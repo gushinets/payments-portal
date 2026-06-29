@@ -1,0 +1,19 @@
+{
+  "name": "anytoolai-payments-portal",
+  "private": true,
+  "workspaces": [
+    "apps/web"
+  ],
+  "scripts": {
+    "dev:web": "npm --workspace @anytoolai/web run dev",
+    "start:web": "npm --workspace @anytoolai/web run start",
+    "build:web": "npm --workspace @anytoolai/web run build",
+    "lint:web": "npm --workspace @anytoolai/web run lint",
+    "dev:api": "python -m uvicorn app.main:app --reload --app-dir apps/api",
+    "test:api": "pytest apps/api/tests"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  }
+}
