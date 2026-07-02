@@ -1,0 +1,11 @@
+.git
+.gitignore
+.next
+node_modules
+apps/web/.next
+apps/web/node_modules
+apps/api/.pytest_cache
+apps/api/__pycache__
+**/__pycache__
+.venv
+docs

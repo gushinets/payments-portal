@@ -103,6 +103,40 @@ npm run build:web
 npm run start:web
 ```
 
+## Docker deployment on a server
+
+Для сервера без системного `node`/`npm` можно использовать Docker Compose:
+
+1. Подготовить production env:
+
+```bash
+cp .env.production.example .env.production
+```
+
+2. При необходимости скорректировать значения в `.env.production`:
+
+- `POSTGRES_PASSWORD`
+- `DATABASE_URL`
+- `NEXT_PUBLIC_API_BASE_URL`
+- `CORS_ALLOW_ORIGINS`
+- CloudPayments env, если виджет уже подключается
+
+3. Собрать и запустить сервисы:
+
+```bash
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+```
+
+4. Проверить состояние:
+
+```bash
+docker compose --env-file .env.production -f docker-compose.prod.yml ps
+docker compose --env-file .env.production -f docker-compose.prod.yml logs --tail=100
+```
+
+По умолчанию web публикуется на `80`, API на `8000`. PostgreSQL остается
+внутри Docker-сети и наружу не публикуется.
+
 ## Проверки
 
 ```bash

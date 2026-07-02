@@ -9,12 +9,18 @@ from app.settings import settings
 
 app = FastAPI(title="AnytoolAI Payments API", version="0.1.0")
 
+default_cors_origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+
+for origin in settings.cors_allow_origins:
+    if origin not in default_cors_origins:
+        default_cors_origins.append(origin)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-    ],
+    allow_origins=default_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -8,6 +8,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+def _split_csv_env(name: str) -> tuple[str, ...]:
+    raw = os.getenv(name, "")
+    return tuple(part.strip() for part in raw.split(",") if part.strip())
+
+
 @dataclass(frozen=True)
 class Settings:
     database_url: str = os.getenv(
@@ -19,6 +24,7 @@ class Settings:
     cloudpayments_enabled: bool = (
         os.getenv("CLOUDPAYMENTS_ENABLED", "false").lower() == "true"
     )
+    cors_allow_origins: tuple[str, ...] = _split_csv_env("CORS_ALLOW_ORIGINS")
 
 
 settings = Settings()
