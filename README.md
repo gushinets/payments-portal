@@ -127,11 +127,23 @@ curl -X POST http://localhost:8000/api/cloudpayments/pay \
 CLOUDPAYMENTS_PUBLIC_ID=
 CLOUDPAYMENTS_API_SECRET=
 CLOUDPAYMENTS_ENABLED=false
+NEXT_PUBLIC_CLOUDPAYMENTS_PUBLIC_ID=
+NEXT_PUBLIC_CLOUDPAYMENTS_ENABLED=false
 ```
 
 Если `CLOUDPAYMENTS_API_SECRET` пустой, webhook signature check работает в
 demo-mode и не блокирует запросы. Если secret задан, backend ожидает HMAC в
 `Content-HMAC` или `X-Content-HMAC`.
+
+Для frontend-виджета после получения terminal id используются публичные env:
+
+```text
+NEXT_PUBLIC_CLOUDPAYMENTS_PUBLIC_ID=pk_xxx
+NEXT_PUBLIC_CLOUDPAYMENTS_ENABLED=true
+```
+
+Пока эти значения не заданы, кнопка оплаты работает как заглушка и ведет на
+`/ru/payment-result?status=demo`.
 
 ## Важные ограничения v1
 

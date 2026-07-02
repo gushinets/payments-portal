@@ -21,20 +21,24 @@ export default function RuHomePage() {
                 RU MVP · CloudPayments ready
               </div>
               <h1 className="hero-h1">
-                AnytoolAI для цифровых сервисов,{" "}
-                <em className="h1-grad">подписок и оплаты</em>
+                AnytoolAI для оформления работ,{" "}
+                <em className="h1-grad">контроля scope и подписок</em>
               </h1>
               <p className="hero-copy">
-                Первая RU-версия платформы: два продукта, тарифы, оформление
-                подписки, юридические страницы и подготовленный платежный контур
-                CloudPayments в demo-режиме.
+                Платформа цифровых сервисов для оформления работ, контроля
+                изменений scope и подписочного доступа к инструментам. В первой
+                RU-версии показываем два продукта, тарифы, checkout, legal
+                pages и подготовленный контур CloudPayments в demo-режиме.
               </p>
               <div className="hero-actions">
                 <Link className="btn-primary" href="/ru/auth-checkout">
-                  Оформить подписку <ArrowRight size={16} aria-hidden="true" />
+                  Оформить <ArrowRight size={16} aria-hidden="true" />
                 </Link>
-                <Link className="btn-secondary" href="/ru/products">
-                  Смотреть продукты
+                <Link
+                  className="btn-secondary"
+                  href="/ru/auth-checkout?product=jobact"
+                >
+                  Попробовать
                 </Link>
               </div>
             </div>
@@ -95,13 +99,42 @@ export default function RuHomePage() {
 
       <section className="page-section compact">
         <div className="two-column">
+          {products.map((product) => (
+            <article className="form-panel" key={product.code}>
+              <span className="badge badge-running">{product.plan.name}</span>
+              <h2 style={{ marginTop: 14 }}>{product.name}</h2>
+              <p className="card-copy">
+                {formatRubles(product.plan.priceRub)} / месяц · бесплатный
+                пробный период {product.plan.trialDays} дней.
+              </p>
+              <div className="hero-actions" style={{ marginTop: 20 }}>
+                <Link
+                  className="btn-primary"
+                  href={`/ru/auth-checkout?product=${product.code}`}
+                >
+                  Оформить
+                </Link>
+                <Link
+                  className="btn-secondary"
+                  href={`/ru/auth-checkout?product=${product.code}`}
+                >
+                  Попробовать
+                </Link>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="page-section compact">
+        <div className="two-column">
           <article className="form-panel">
             <span className="badge badge-demo">Demo payment</span>
             <h2 style={{ marginTop: 14 }}>{demoPayment.name}</h2>
             <p className="card-copy">
               В интерфейсе показан {formatRubles(demoPayment.amountRub)} для
               проверки платежного сценария. До подключения терминала кнопка
-              оплаты ведет на demo result page.
+              оплаты ведет на страницу результата оплаты.
             </p>
           </article>
           <article className="form-panel">

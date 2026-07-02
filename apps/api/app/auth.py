@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import time
 
 from fastapi import APIRouter
 from pydantic import BaseModel, EmailStr
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+logger = logging.getLogger(__name__)
 
 
 class LoginRequest(BaseModel):
@@ -28,6 +30,15 @@ def make_demo_token(email: str) -> str:
 @router.post("/request-login")
 def request_login(payload: LoginRequest):
     token = make_demo_token(payload.email)
+    demo_link = f"/api/auth/verify?token={token}"
+    logger.info(
+        "demo_magic_link_generated email=%s product=%s region=%s token=%s link=%s",
+        payload.email,
+        payload.product,
+        payload.region,
+        token,
+        demo_link,
+    )
     return {
         "status": "demo_link_generated",
         "mode": "demo",
@@ -35,7 +46,7 @@ def request_login(payload: LoginRequest):
         "product": payload.product,
         "region": payload.region,
         "demo_token": token,
-        "demo_link": f"/api/auth/verify?token={token}",
+        "demo_link": demo_link,
     }
 
 

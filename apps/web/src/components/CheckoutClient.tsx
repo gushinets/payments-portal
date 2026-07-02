@@ -21,6 +21,10 @@ type LoginResponse = {
 };
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+const cloudPaymentsEnabled =
+  process.env.NEXT_PUBLIC_CLOUDPAYMENTS_ENABLED === "true";
+const cloudPaymentsPublicId =
+  process.env.NEXT_PUBLIC_CLOUDPAYMENTS_PUBLIC_ID ?? "";
 
 async function postJson<T>(path: string, body: unknown): Promise<T> {
   const response = await fetch(`${apiBase}${path}`, {
@@ -55,6 +59,7 @@ export function CheckoutClient() {
   const [autoRenew, setAutoRenew] = useState(false);
   const [recurrentConsent, setRecurrentConsent] = useState(false);
   const [demoToken, setDemoToken] = useState("");
+  const [demoLink, setDemoLink] = useState("");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -90,9 +95,13 @@ export function CheckoutClient() {
         region: "ru"
       });
       setDemoToken(payload.demo_token ?? "demo-token");
-      setNotice("Мы отправили magic link на email. В первой версии доступен demo-mode.");
+      setDemoLink(payload.demo_link ?? "");
+      setNotice(
+        "Мы отправили magic link на email. Для первой версии доступен demo-режим подтверждения."
+      );
     } catch {
       setDemoToken("demo-token");
+      setDemoLink("");
       setNotice(
         "API недоступен или email-отправка не подключена. Используйте demo-подтверждение."
       );
@@ -152,6 +161,42 @@ export function CheckoutClient() {
       JSON.stringify(payload)
     );
 
+    if (cloudPaymentsEnabled && cloudPaymentsPublicId && window.cp?.CloudPayments) {
+      const widget = new window.cp.CloudPayments({ language: "ru-RU" });
+      widget.pay(
+        "charge",
+        {
+          publicId: cloudPaymentsPublicId,
+          description: selectedProduct.plan.paymentDescription,
+          amount: selectedProduct.plan.priceRub,
+          currency: "RUB",
+          accountId: email,
+          email
+        },
+        {
+          onSuccess: () => {
+            const params = new URLSearchParams({
+              status: "pending",
+              product: selectedProduct.code,
+              plan: selectedProduct.plan.code,
+              email
+            });
+            window.location.assign(`/ru/payment-result?${params.toString()}`);
+          },
+          onFail: () => {
+            const params = new URLSearchParams({
+              status: "demo",
+              product: selectedProduct.code,
+              plan: selectedProduct.plan.code,
+              email
+            });
+            window.location.assign(`/ru/payment-result?${params.toString()}`);
+          }
+        }
+      );
+      return;
+    }
+
     const params = new URLSearchParams({
       status: "demo",
       product: selectedProduct.code,
@@ -170,9 +215,10 @@ export function CheckoutClient() {
       </div>
       <h1 className="legal-title">Оформление подписки</h1>
       <p className="hero-copy">
-        Product-aware entrypoint для первой RU-версии. До подключения
-        CloudPayments terminal id оплата работает как заглушка и ведет на
-        страницу результата.
+        Product-aware entrypoint для первой RU-версии. Если `product` передан в
+        URL, страница сразу показывает нужный продукт, тариф, пробный период и
+        сценарий оформления. До подключения CloudPayments terminal id оплата
+        работает как demo-заглушка и ведет на страницу результата.
       </p>
 
       {invalidProduct ? (
@@ -201,7 +247,7 @@ export function CheckoutClient() {
           )}
         </div>
 
-        <div className="form-panel">
+        <div className="form-panel" id="checkout-form">
           <div className="form-grid">
             <span className="badge badge-running">
               <ShieldCheck size={12} aria-hidden="true" />
@@ -251,8 +297,16 @@ export function CheckoutClient() {
               </button>
             ) : (
               <div className="notice">
-                <MailCheck size={16} aria-hidden="true" /> Magic link отправлен.
-                Demo token: <span style={{ color: "var(--txt)" }}>{demoToken}</span>
+                <MailCheck size={16} aria-hidden="true" /> Мы отправили magic
+                link на email. Demo token:{" "}
+                <span style={{ color: "var(--txt)" }}>{demoToken}</span>
+                {demoLink ? (
+                  <>
+                    <br />
+                    Demo link:{" "}
+                    <span style={{ color: "var(--txt)" }}>{demoLink}</span>
+                  </>
+                ) : null}
               </div>
             )}
 
@@ -263,7 +317,7 @@ export function CheckoutClient() {
                 onClick={confirmEmail}
                 disabled={loading}
               >
-                Продолжить как подтвержденный пользователь
+                Демо: подтвердить email
               </button>
             ) : null}
 
@@ -271,6 +325,11 @@ export function CheckoutClient() {
               <>
                 <h2>2. Тариф и оплата</h2>
                 <CheckoutSummary product={selectedProduct} />
+
+                <div className="notice">
+                  Планируемые способы оплаты: банковская карта, СБП, T-Pay и
+                  Мир. До подключения terminal id страница работает в demo-режиме.
+                </div>
 
                 <label className="checkbox-label">
                   <input
@@ -332,12 +391,18 @@ export function CheckoutClient() {
                   onClick={goToPaymentResult}
                   disabled={!selectedProduct}
                 >
-                  Оплатить в demo-режиме
+                  Оплатить
                   <ArrowRight size={16} aria-hidden="true" />
                 </button>
               </>
             ) : null}
 
+            <p className="muted" style={{ margin: 0 }}>
+              Поддержка:{" "}
+              <a className="inline-link" href="mailto:info@anytoolai.ru">
+                info@anytoolai.ru
+              </a>
+            </p>
             {notice ? <div className="notice">{notice}</div> : null}
             {error ? <div className="notice error">{error}</div> : null}
           </div>
@@ -356,6 +421,12 @@ function SelectedProductCard({
 }) {
   const Icon = product.Icon;
 
+  function scrollToForm() {
+    document
+      .getElementById("checkout-form")
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   return (
     <article className="tool-card active">
       <div className="tool-icon-wrap">
@@ -363,6 +434,9 @@ function SelectedProductCard({
       </div>
       <span className="tool-tag">{product.type}</span>
       <h2>{product.name}</h2>
+      <p className="muted" style={{ margin: "0 0 8px" }}>
+        {product.tagline}
+      </p>
       <p className="card-copy">{product.description}</p>
       <ul className="check-list">
         {product.valuePoints.map((point) => (
@@ -373,7 +447,13 @@ function SelectedProductCard({
         <strong>{formatRubles(product.plan.priceRub)}</strong>
         <span>/ месяц</span>
       </div>
+      <span className="badge badge-live">
+        Пробный период {product.plan.trialDays} дней
+      </span>
       <div className="button-row">
+        <button className="btn-primary" type="button" onClick={scrollToForm}>
+          Оформить
+        </button>
         <button className="btn-secondary" type="button" onClick={onReset}>
           Посмотреть все продукты
         </button>
@@ -399,7 +479,10 @@ function CheckoutSummary({ product }: { product?: Product }) {
       {product.plan.trialDays} дней
       <br />
       Тестовый платеж: {formatRubles(demoPayment.amountRub)} для проверки
-      сценария. Оплата будет доступна после подключения CloudPayments.
+      сценария. Подключение CloudPayments находится в процессе, а источником
+      истины по оплате останется webhook.
+      <br />
+      Оплата будет доступна после подключения CloudPayments.
     </div>
   );
 }

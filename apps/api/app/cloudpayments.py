@@ -4,6 +4,7 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 from decimal import Decimal, InvalidOperation
 from typing import Any
 from urllib.parse import parse_qs
@@ -16,6 +17,7 @@ from app.models import PaymentWebhookEvent
 from app.settings import settings
 
 router = APIRouter(prefix="/api/cloudpayments", tags=["cloudpayments"])
+logger = logging.getLogger(__name__)
 
 SUPPORTED_ENDPOINTS = {"check", "pay", "fail", "refund", "recurrent"}
 
@@ -118,6 +120,16 @@ async def receive_cloudpayments_webhook(
     )
     db.add(event)
     db.commit()
+
+    if error_message:
+        logger.warning(
+            "cloudpayments_webhook_error endpoint=%s status=%s error=%s transaction_id=%s invoice_id=%s",
+            endpoint,
+            status,
+            error_message,
+            event.transaction_id,
+            event.invoice_id,
+        )
 
     if error_message == "invalid_cloudpayments_signature":
         raise HTTPException(status_code=400, detail=error_message)

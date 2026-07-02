@@ -20,15 +20,28 @@ export function ProductCards({ selectedCode }: { selectedCode?: string }) {
             </div>
             <span className="tool-tag">{product.type}</span>
             <h3>{product.name}</h3>
+            <p className="muted" style={{ margin: "0 0 8px" }}>
+              {product.tagline}
+            </p>
             <p className="card-copy">{product.description}</p>
+            <ul className="check-list">
+              {product.valuePoints.map((point) => (
+                <li key={point}>{point}</li>
+              ))}
+            </ul>
             <div className="price-line">
               <strong>{formatRubles(product.plan.priceRub)}</strong>
               <span>/ месяц</span>
             </div>
-            <span className="badge badge-live">
-              <CheckCircle2 size={12} aria-hidden="true" />
-              {product.plan.trialDays} дней trial
-            </span>
+            <div className="button-row" style={{ marginTop: 0 }}>
+              <span className="badge badge-live">
+                <CheckCircle2 size={12} aria-hidden="true" />
+                {product.plan.trialDays} дней бесплатно
+              </span>
+              <span className="badge badge-running">
+                Автопродление по чекбоксу
+              </span>
+            </div>
             <div className="button-row">
               <span className="btn-secondary">
                 Оформить <ArrowRight size={15} aria-hidden="true" />

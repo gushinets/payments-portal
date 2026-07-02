@@ -78,3 +78,36 @@ def test_cloudpayments_webhook_is_saved_without_secret_hmac() -> None:
     assert str(event.amount) == "990.00"
     assert event.currency == "RUB"
     assert event.status == "received"
+
+
+def test_cloudpayments_webhook_rejects_invalid_signature_when_secret_is_set() -> None:
+    os.environ["CLOUDPAYMENTS_API_SECRET"] = "test-secret"
+    app.dependency_overrides.clear()
+
+    from app.settings import settings  # noqa: E402
+
+    object.__setattr__(settings, "cloudpayments_api_secret", "test-secret")
+
+    response = client.post(
+        "/api/cloudpayments/pay",
+        headers={"Content-HMAC": "invalid-signature"},
+        json={
+            "InvoiceId": "invoice-2",
+            "TransactionId": "tx-2",
+            "AccountId": "user@example.com",
+            "Amount": "1490.00",
+            "Currency": "RUB",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "invalid_cloudpayments_signature"
+
+    with SessionLocal() as db:
+        event = db.query(PaymentWebhookEvent).one()
+
+    assert event.status == "error"
+    assert event.error_message == "invalid_cloudpayments_signature"
+
+    object.__setattr__(settings, "cloudpayments_api_secret", "")
+    os.environ["CLOUDPAYMENTS_API_SECRET"] = ""

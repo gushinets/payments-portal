@@ -46,6 +46,8 @@ export function PaymentResultClient() {
   const email = searchParams.get("email") ?? stored.email ?? "не указан";
   const planName = product?.plan.name ?? stored.planName ?? "тариф не выбран";
   const price = product?.plan.priceRub ?? stored.priceRub;
+  const title =
+    status === "pending" ? "Платеж обрабатывается" : "Оплата пока не подключена";
 
   return (
     <section className="page-section compact">
@@ -55,12 +57,13 @@ export function PaymentResultClient() {
           {status}
         </span>
         <h1 className="result-title" style={{ marginTop: 18 }}>
-          Оплата пока не подключена
+          {title}
         </h1>
         <p className="hero-copy">
           Подключение CloudPayments находится в процессе. Эта страница нужна для
-          UX возврата после платежа, но сама не активирует подписку. Источник
-          истины по оплате - webhook CloudPayments.
+          UX возврата после платежа и для будущей интеграции, но сама не
+          активирует подписку. Источник истины по оплате - webhook
+          CloudPayments.
         </p>
 
         <div className="tools-grid" style={{ marginTop: 28 }}>
@@ -82,8 +85,9 @@ export function PaymentResultClient() {
           <div className="feature-card">
             <strong>Следующий шаг</strong>
             <p className="card-copy">
-              После получения terminal id кнопка оплаты сможет открыть виджет
-              CloudPayments с суммой, валютой, описанием и email.
+              После получения terminal id кнопка оплаты сможет открыть сценарий
+              CloudPayments с суммой, валютой, описанием и email, но активация
+              подписки по-прежнему должна происходить только по webhook.
             </p>
           </div>
         </div>

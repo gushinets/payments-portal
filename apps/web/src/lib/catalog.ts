@@ -26,7 +26,7 @@ export const paymentMethods = [
 export const legalLinks = [
   { href: "/ru/privacy", label: "Политика ПДн" },
   { href: "/ru/offer", label: "Оферта" },
-  { href: "/ru/cancellation", label: "Отмена и возврат" },
+  { href: "/ru/cancellation", label: "Условия отмены и возврата" },
   { href: "/ru/cookies", label: "Cookies" },
   { href: "/ru/security", label: "Безопасность" }
 ];
@@ -55,15 +55,16 @@ export const products: Product[] = [
   {
     code: "jobact",
     name: "JobAct",
-    type: "Mobile-first сервис",
+    type: "Mobile-first сервис / мобильный сценарий",
     tagline: "Цифровой акт выполненных работ",
     description:
-      "Список работ, материалы, фото до/после, PDF на подпись и статус оплаты в одном коротком сценарии.",
+      "Цифровой акт выполненных работ: список работ, материалы, фото до/после, PDF на подпись, статус оплаты.",
     valuePoints: [
-      "Собирает акт и состав работ",
-      "Фиксирует материалы и фото",
-      "Готовит PDF для подписи",
-      "Помогает контролировать оплату"
+      "Помогает быстро собрать акт выполненных работ",
+      "Фиксирует состав работ и материалов",
+      "Прикрепляет фото до и после",
+      "Формирует PDF для подписи",
+      "Помогает контролировать статус оплаты"
     ],
     plan: {
       code: "jobact-start",
@@ -79,14 +80,14 @@ export const products: Product[] = [
     code: "scope-creep-guard",
     name: "Scope Creep Guard",
     type: "Chrome Extension",
-    tagline: "AI-контроль изменения scope",
+    tagline: "AI-сравнение запроса с исходным scope",
     description:
-      "Сравнение нового запроса с исходным scope и генерация draft Change Order для согласования допработ.",
+      "AI-сравнение нового запроса с исходным scope и генерация draft Change Order.",
     valuePoints: [
-      "Сравнивает новый запрос и исходный объем",
-      "Подсвечивает scope creep",
-      "Готовит черновик change order",
-      "Снижает риск неоплаченных допработ"
+      "Сравнивает новый запрос клиента с исходным объемом работ",
+      "Подсвечивает потенциальный scope creep",
+      "Помогает подготовить черновик change order",
+      "Снижает риск неоплачиваемых дополнительных работ"
     ],
     plan: {
       code: "scope-guard-start",
