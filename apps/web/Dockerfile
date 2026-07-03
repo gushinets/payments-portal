@@ -16,6 +16,7 @@ COPY apps/web/package.json ./apps/web/package.json
 RUN npm ci
 
 COPY apps/web ./apps/web
+COPY docs/legal ./docs/legal
 
 RUN npm run build:web
 

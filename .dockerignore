@@ -9,3 +9,6 @@ apps/api/__pycache__
 **/__pycache__
 .venv
 docs
+!docs/
+!docs/legal/
+!docs/legal/**
