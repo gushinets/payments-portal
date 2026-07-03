@@ -1,6 +1,6 @@
 import { LegalPageView } from "@/components/LegalPageView";
-import { legalPages } from "@/lib/legal";
+import { getLegalDocument } from "@/lib/legal";
 
-export default function OfferPage() {
-  return <LegalPageView page={legalPages.offer} />;
+export default async function OfferPage() {
+  return <LegalPageView page={await getLegalDocument("offer")} />;
 }

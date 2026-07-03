@@ -604,6 +604,13 @@ export function CheckoutClient() {
                       <span>
                         Я даю согласие на обработку персональных данных в
                         соответствии с{" "}
+                        <Link
+                          className="inline-link"
+                          href="/ru/consent-personal-data"
+                        >
+                          Согласием на обработку персональных данных
+                        </Link>
+                        {" "}и{" "}
                         <Link className="inline-link" href="/ru/privacy">
                           Политикой в отношении обработки персональных данных
                         </Link>

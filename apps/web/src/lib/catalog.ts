@@ -17,37 +17,21 @@ export const seller = {
     "630091, Новосибирская область, г. Новосибирск, Красный пр-кт, дом 45, кв. 30"
 };
 
-export const legalLinks = [
-  {
-    href: "/ru/privacy",
-    label: "Политика в отношении обработки персональных данных"
-  },
-  { href: "/ru/offer", label: "Публичная оферта" },
-  {
-    href: "/ru/cancellation",
-    label: "Условия отмены подписки и возврата денежных средств"
-  },
-  { href: "/ru/cookies", label: "Политика использования файлов cookie" },
-  { href: "/ru/security", label: "Политика информационной безопасности" }
-];
-
 export type PaymentMethod = {
   code: string;
   label: string;
-  mark: string;
   href?: string;
 };
 
 export const paymentMethods: PaymentMethod[] = [
-  { code: "card", label: "Банковская карта", mark: "CARD" },
-  { code: "sbp", label: "СБП", mark: "SBP" },
+  { code: "card", label: "Банковская карта" },
+  { code: "sbp", label: "СБП" },
   {
     code: "tpay",
     label: "T-Pay",
-    mark: "T-Bank",
     href: "https://www.tbank.ru/"
   },
-  { code: "mir", label: "Мир", mark: "MIR" }
+  { code: "mir", label: "Мир" }
 ];
 
 export type ProductCode = "document-summary" | "prompt-optimizer";

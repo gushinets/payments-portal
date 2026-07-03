@@ -616,11 +616,22 @@ button:disabled {
   gap: 18px;
 }
 
+.legal-document-panel {
+  display: grid;
+  gap: 14px;
+}
+
 .legal-panel h2 {
   margin: 0 0 10px;
   font-family: "Cabinet Grotesk", "DM Sans", sans-serif;
   font-size: 22px;
   letter-spacing: 0;
+}
+
+.legal-subtitle {
+  margin: 8px 0 0;
+  color: var(--txt);
+  font-size: 18px;
 }
 
 .legal-panel p {
@@ -629,6 +640,44 @@ button:disabled {
 
 .legal-panel p + p {
   margin-top: 10px;
+}
+
+.legal-list {
+  margin: 0;
+  padding-left: 22px;
+  color: var(--txt2);
+  line-height: 1.65;
+}
+
+.legal-list li + li {
+  margin-top: 8px;
+}
+
+.legal-table-wrap {
+  overflow-x: auto;
+}
+
+.legal-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 420px;
+}
+
+.legal-table th,
+.legal-table td {
+  padding: 12px 14px;
+  text-align: left;
+  vertical-align: top;
+  border: 1px solid var(--border);
+}
+
+.legal-table th {
+  color: var(--txt);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.legal-table td {
+  color: var(--txt2);
 }
 
 .footer {
@@ -694,11 +743,62 @@ button:disabled {
   background: rgba(129, 140, 248, 0.12);
 }
 
-.payment-icon-mark {
-  font-family: "DM Mono", monospace;
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: 0.08em;
+.payment-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 19px;
+}
+
+.payment-logo svg,
+.payment-logo img {
+  display: block;
+  height: 19px;
+  width: auto;
+}
+
+.payment-logo-card svg,
+.payment-logo-tpay svg,
+.payment-logo-fallback svg {
+  height: 21px;
+}
+
+.payment-logo-sbp svg {
+  height: 20px;
+}
+
+.payment-logo-mir img {
+  height: 12px;
+}
+
+.payment-logo img {
+  object-fit: contain;
+}
+
+.payment-svg-base {
+  fill: rgba(255, 255, 255, 0.16);
+  stroke: rgba(255, 255, 255, 0.32);
+  stroke-width: 1.5;
+}
+
+.payment-svg-accent {
+  fill: rgba(129, 140, 248, 0.95);
+}
+
+.payment-svg-teal {
+  fill: rgba(94, 234, 212, 0.95);
+}
+
+.payment-svg-warning {
+  fill: rgba(250, 204, 21, 0.95);
+}
+
+.payment-svg-muted {
+  fill: rgba(255, 255, 255, 0.42);
+}
+
+.payment-svg-dark {
+  fill: rgba(17, 24, 39, 0.95);
 }
 
 .cookie-banner {

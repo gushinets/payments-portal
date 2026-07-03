@@ -1,6 +1,6 @@
 import { LegalPageView } from "@/components/LegalPageView";
-import { legalPages } from "@/lib/legal";
+import { getLegalDocument } from "@/lib/legal";
 
-export default function CancellationPage() {
-  return <LegalPageView page={legalPages.cancellation} />;
+export default async function CancellationPage() {
+  return <LegalPageView page={await getLegalDocument("cancellation")} />;
 }
