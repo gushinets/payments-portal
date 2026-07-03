@@ -259,10 +259,10 @@ button:disabled {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  min-height: 40px;
-  padding: 10px 18px;
-  border-radius: 9px;
-  border: 0;
+  min-height: 48px;
+  padding: 12px 20px;
+  border-radius: 12px;
+  border: 1px solid transparent;
   color: #fff;
   font-weight: 700;
   text-decoration: none;
@@ -270,7 +270,21 @@ button:disabled {
     opacity 0.15s ease,
     box-shadow 0.15s ease,
     transform 0.15s ease,
-    background 0.15s ease;
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.btn-primary:focus-visible,
+.btn-secondary:focus-visible,
+.btn-danger:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 4px rgba(129, 140, 248, 0.2);
+}
+
+.btn-primary:active,
+.btn-secondary:active,
+.btn-danger:active {
+  transform: translateY(0);
 }
 
 .btn-primary {
@@ -286,7 +300,7 @@ button:disabled {
 
 .btn-secondary {
   color: var(--txt);
-  background: rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.04);
   border: 1px solid var(--border2);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
@@ -496,6 +510,10 @@ button:disabled {
   padding: 24px;
 }
 
+#checkout-form {
+  scroll-margin-top: 96px;
+}
+
 .form-grid {
   display: grid;
   gap: 16px;
@@ -563,6 +581,36 @@ button:disabled {
   border-color: rgba(248, 113, 113, 0.25);
 }
 
+.account-card,
+.telegram-placeholder,
+.auth-mode-row {
+  display: flex;
+  gap: 12px;
+}
+
+.account-card,
+.telegram-placeholder {
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+}
+
+.telegram-placeholder {
+  align-items: center;
+}
+
+.telegram-button {
+  flex: 0 0 auto;
+  min-width: 220px;
+}
+
+.auth-mode-row {
+  flex-wrap: wrap;
+}
+
 .legal-grid {
   display: grid;
   gap: 18px;
@@ -606,22 +654,51 @@ button:disabled {
   gap: 8px;
 }
 
-.footer-links a,
-.payment-pill {
+.footer-links a {
   display: inline-flex;
   align-items: center;
-  min-height: 30px;
-  padding: 6px 10px;
+  min-height: 36px;
+  padding: 8px 12px;
   color: var(--txt2);
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: 12px;
   font-size: 12px;
   text-decoration: none;
 }
 
 .footer-links a:hover {
   color: var(--txt);
+}
+
+.payment-icon-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 40px;
+  border-radius: 12px;
+  color: var(--txt);
+  text-decoration: none;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
+  transition:
+    transform 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.payment-icon-link:hover {
+  transform: translateY(-1px);
+  border-color: rgba(129, 140, 248, 0.35);
+  background: rgba(129, 140, 248, 0.12);
+}
+
+.payment-icon-mark {
+  font-family: "DM Mono", monospace;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
 }
 
 .cookie-banner {
@@ -666,6 +743,7 @@ button:disabled {
 
   .nav-links {
     flex-wrap: wrap;
+    gap: 10px;
   }
 
   .bento-grid,
@@ -683,6 +761,16 @@ button:disabled {
 
   .hero-card {
     padding: 26px 22px;
+  }
+
+  #checkout-form {
+    order: -1;
+  }
+
+  .footer-links a {
+    width: 100%;
+    justify-content: center;
+    text-align: center;
   }
 
   .hero-h1 {
@@ -715,6 +803,29 @@ button:disabled {
 
   .stats-grid {
     grid-template-columns: 1fr;
+  }
+
+  .btn-primary,
+  .btn-secondary,
+  .btn-danger {
+    width: 100%;
+  }
+
+  .hero-actions,
+  .button-row,
+  .cookie-actions {
+    flex-direction: column;
+  }
+
+  .account-card,
+  .telegram-placeholder,
+  .auth-mode-row {
+    flex-direction: column;
+  }
+
+  .telegram-button {
+    width: 100%;
+    min-width: 0;
   }
 
   .mobile-only-break {

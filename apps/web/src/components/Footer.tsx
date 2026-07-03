@@ -28,15 +28,33 @@ export function Footer() {
         </div>
         <div>
           <p className="footer-text">
-            Планируемые способы оплаты через CloudPayments. Состав может быть
-            скорректирован после подключения терминала.
+            Поддерживаемые способы оплаты
           </p>
-          <div className="payment-list" aria-label="Планируемые способы оплаты">
-            {paymentMethods.map((method) => (
-              <span className="payment-pill" key={method}>
-                {method}
-              </span>
-            ))}
+          <div className="payment-list" aria-label="Способы оплаты">
+            {paymentMethods.map((method) =>
+              method.href ? (
+                <a
+                  className="payment-icon-link"
+                  href={method.href}
+                  key={method.code}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label={method.label}
+                  title={method.label}
+                >
+                  <span className="payment-icon-mark">{method.mark}</span>
+                </a>
+              ) : (
+                <span
+                  className="payment-icon-link"
+                  key={method.code}
+                  aria-label={method.label}
+                  title={method.label}
+                >
+                  <span className="payment-icon-mark">{method.mark}</span>
+                </span>
+              )
+            )}
           </div>
         </div>
       </div>

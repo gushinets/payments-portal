@@ -39,7 +39,7 @@ export function ProductCards({ selectedCode }: { selectedCode?: string }) {
                 {product.plan.trialDays} дней бесплатно
               </span>
               <span className="badge badge-running">
-                Автопродление по чекбоксу
+                {product.freeLimit}
               </span>
             </div>
             <div className="button-row">

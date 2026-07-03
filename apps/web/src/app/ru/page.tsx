@@ -1,10 +1,10 @@
 import Link from "next/link";
-import { ArrowRight, ShieldCheck } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { ProductCards } from "@/components/ProductCards";
 import {
-  demoPayment,
   formatRubles,
   platformFacts,
+  platformHighlights,
   products,
   supportEmail
 } from "@/lib/catalog";
@@ -18,31 +18,31 @@ export default function RuHomePage() {
             <div>
               <div className="eyebrow">
                 <span className="eyebrow-dot" />
-                RU MVP · CloudPayments ready
+                AnytoolAI RU
               </div>
               <h1 className="hero-h1">
-                AnytoolAI для оформления работ,{" "}
-                <em className="h1-grad">контроля scope и подписок</em>
+                Инструменты для работы с документами и{" "}
+                <em className="h1-grad">улучшения промптов</em>
               </h1>
               <p className="hero-copy">
-                Платформа цифровых сервисов для оформления работ, контроля
-                изменений scope и подписочного доступа к инструментам. В первой
-                RU-версии показываем два продукта, тарифы, checkout, legal
-                pages и подготовленный контур CloudPayments в demo-режиме.
+                AnytoolAI объединяет цифровые сервисы, которые помогают быстрее
+                работать с контентом, документами и AI-инструментами. На сайте
+                можно выбрать продукт, ознакомиться с тарифом и оформить
+                подписку.
               </p>
               <div className="hero-actions">
                 <Link className="btn-primary" href="/ru/auth-checkout">
-                  Оформить <ArrowRight size={16} aria-hidden="true" />
+                  Оформить подписку <ArrowRight size={16} aria-hidden="true" />
                 </Link>
                 <Link
                   className="btn-secondary"
-                  href="/ru/auth-checkout?product=jobact"
+                  href="/ru/auth-checkout?product=document-summary"
                 >
-                  Попробовать
+                  Открыть Document Summary
                 </Link>
               </div>
             </div>
-            <aside className="hero-aside" aria-label="Ключевые параметры MVP">
+            <aside className="hero-aside" aria-label="Ключевые параметры">
               <div className="stats-grid">
                 {platformFacts.map((fact) => {
                   const Icon = fact.Icon;
@@ -60,39 +60,29 @@ export default function RuHomePage() {
             </aside>
           </article>
 
-          <article className="feature-card">
-            <strong>Product-aware checkout</strong>
-            <p className="card-copy">
-              `/ru/auth-checkout?product=...` сразу показывает нужный продукт и
-              тариф без лишнего каталога.
-            </p>
-          </article>
-          <article className="feature-card">
-            <strong>Demo magic link</strong>
-            <p className="card-copy">
-              Email flow работает в демонстрационном режиме без реальной отправки
-              писем.
-            </p>
-          </article>
-          <article className="feature-card">
-            <strong>Webhook first</strong>
-            <p className="card-copy">
-              Страница результата не активирует подписку. Источник истины для
-              оплаты - webhook.
-            </p>
-          </article>
+          {platformHighlights.map((item) => {
+            const Icon = item.Icon;
+
+            return (
+              <article className="feature-card" key={item.title}>
+                <Icon className="stat-icon" aria-hidden="true" />
+                <strong>{item.title}</strong>
+                <p className="card-copy">{item.description}</p>
+              </article>
+            );
+          })}
         </div>
       </section>
 
       <section className="page-section compact">
         <div className="eyebrow">
           <span className="eyebrow-dot" />
-          Products
+          Продукты
         </div>
-        <h2 className="section-title">Два продукта первой версии</h2>
+        <h2 className="section-title">Два сервиса для повседневной работы</h2>
         <p className="section-copy">
-          Тарифы указаны в рублях, пробный период составляет 7 дней. Реальная
-          оплата будет доступна после подключения CloudPayments terminal id.
+          Оба продукта доступны по подписке за {formatRubles(990)} в месяц с
+          бесплатным периодом 7 дней.
         </p>
         <ProductCards />
       </section>
@@ -103,9 +93,9 @@ export default function RuHomePage() {
             <article className="form-panel" key={product.code}>
               <span className="badge badge-running">{product.plan.name}</span>
               <h2 style={{ marginTop: 14 }}>{product.name}</h2>
+              <p className="card-copy">{product.tagline}</p>
               <p className="card-copy">
-                {formatRubles(product.plan.priceRub)} / месяц · бесплатный
-                пробный период {product.plan.trialDays} дней.
+                {formatRubles(product.plan.priceRub)} / месяц · {product.freeLimit}
               </p>
               <div className="hero-actions" style={{ marginTop: 20 }}>
                 <Link
@@ -118,7 +108,7 @@ export default function RuHomePage() {
                   className="btn-secondary"
                   href={`/ru/auth-checkout?product=${product.code}`}
                 >
-                  Попробовать
+                  Подробнее
                 </Link>
               </div>
             </article>
@@ -129,30 +119,24 @@ export default function RuHomePage() {
       <section className="page-section compact">
         <div className="two-column">
           <article className="form-panel">
-            <span className="badge badge-demo">Demo payment</span>
-            <h2 style={{ marginTop: 14 }}>{demoPayment.name}</h2>
+            <span className="badge badge-running">Юридическая информация</span>
+            <h2 style={{ marginTop: 14 }}>Документы опубликованы на сайте</h2>
             <p className="card-copy">
-              В интерфейсе показан {formatRubles(demoPayment.amountRub)} для
-              проверки платежного сценария. До подключения терминала кнопка
-              оплаты ведет на страницу результата оплаты.
+              На сайте доступны политика обработки персональных данных, оферта,
+              условия отмены и возврата, политика cookie и политика
+              информационной безопасности.
             </p>
           </article>
           <article className="form-panel">
-            <span className="badge badge-running">
-              <ShieldCheck size={12} aria-hidden="true" />
-              Legal contour
-            </span>
-            <h2 style={{ marginTop: 14 }}>Документы доступны без авторизации</h2>
+            <span className="badge badge-live">Поддержка</span>
+            <h2 style={{ marginTop: 14 }}>Связь по вопросам подписки</h2>
             <p className="card-copy">
-              Политика ПДн, оферта, условия отмены, cookies и безопасность
-              опубликованы как RU draft. Финальная версия должна пройти проверку
-              юриста перед запуском реальных платежей.
-            </p>
-            <p className="card-copy">
-              Поддержка:{" "}
+              Если у вас возникли вопросы по оплате, доступу или документам,
+              напишите на{" "}
               <a className="inline-link" href={`mailto:${supportEmail}`}>
                 {supportEmail}
               </a>
+              .
             </p>
           </article>
         </div>

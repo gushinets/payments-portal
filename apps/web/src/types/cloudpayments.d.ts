@@ -13,8 +13,10 @@ declare global {
             description: string;
             amount: number;
             currency: string;
+            invoiceId?: string;
             accountId?: string;
             email?: string;
+            data?: Record<string, unknown>;
           },
           callbacks?: {
             onSuccess?: (options?: unknown) => void;

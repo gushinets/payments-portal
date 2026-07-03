@@ -1,42 +1,114 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { ArrowRight, MailCheck, Send, ShieldCheck } from "lucide-react";
-import { ProductCards } from "@/components/ProductCards";
 import {
-  demoPayment,
-  findProduct,
-  formatRubles,
-  Product,
-  products
-} from "@/lib/catalog";
+  ArrowRight,
+  LogOut,
+  MessageCircleMore,
+  ShieldCheck,
+  UserRound
+} from "lucide-react";
+import { ProductCards } from "@/components/ProductCards";
+import { findProduct, formatRubles, Product, products } from "@/lib/catalog";
 
-type LoginResponse = {
-  status: string;
+type SessionUser = {
   email: string;
-  demo_token?: string;
-  demo_link?: string;
 };
 
-const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+type ProductState = {
+  product_code: string;
+  plan_code?: string | null;
+  plan_name?: string | null;
+  invoice_id?: string | null;
+  transaction_id?: string | null;
+  status: "inactive" | "pending" | "active" | "failed";
+  starts_at?: string | null;
+  expires_at?: string | null;
+};
+
+type SessionResponse = {
+  authenticated: boolean;
+  user: SessionUser;
+  product_state?: ProductState | null;
+};
+
+type AuthResponse = {
+  status: string;
+  token: string;
+  user: SessionUser;
+};
+
+const configuredApiBase =
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 const cloudPaymentsEnabled =
   process.env.NEXT_PUBLIC_CLOUDPAYMENTS_ENABLED === "true";
 const cloudPaymentsPublicId =
   process.env.NEXT_PUBLIC_CLOUDPAYMENTS_PUBLIC_ID ?? "";
+const telegramLoginUrl = process.env.NEXT_PUBLIC_TELEGRAM_LOGIN_URL ?? "";
+const sessionStorageKey = "anytoolai_session_token_v1";
+const requestTimeoutMs = 5000;
 
-async function postJson<T>(path: string, body: unknown): Promise<T> {
-  const response = await fetch(`${apiBase}${path}`, {
+function resolveApiBase(): string {
+  if (typeof window === "undefined") {
+    return configuredApiBase;
+  }
+
+  try {
+    const url = new URL(configuredApiBase);
+    const isLocalApiHost =
+      url.hostname === "localhost" || url.hostname === "127.0.0.1";
+    const isLocalBrowserHost =
+      window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1";
+
+    if (isLocalApiHost && !isLocalBrowserHost) {
+      url.hostname = window.location.hostname;
+    }
+
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    return configuredApiBase.replace(/\/$/, "");
+  }
+}
+
+async function postJson<T>(
+  path: string,
+  body: unknown,
+  token?: string
+): Promise<T> {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), requestTimeoutMs);
+  const response = await fetch(`${resolveApiBase()}${path}`, {
     method: "POST",
     headers: {
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
     },
-    body: JSON.stringify(body)
-  });
+    body: JSON.stringify(body),
+    signal: controller.signal
+  }).finally(() => window.clearTimeout(timeoutId));
 
   if (!response.ok) {
-    throw new Error(`API responded with ${response.status}`);
+    throw new Error(`${response.status}:${await response.text()}`);
+  }
+
+  return response.json() as Promise<T>;
+}
+
+async function getJson<T>(path: string, token: string): Promise<T> {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), requestTimeoutMs);
+  const response = await fetch(`${resolveApiBase()}${path}`, {
+    headers: {
+      Authorization: `Bearer ${token}`
+    },
+    signal: controller.signal
+  }).finally(() => window.clearTimeout(timeoutId));
+
+  if (!response.ok) {
+    throw new Error(`${response.status}:${await response.text()}`);
   }
 
   return response.json() as Promise<T>;
@@ -50,115 +122,252 @@ export function CheckoutClient() {
     () => findProduct(selectedCode),
     [selectedCode]
   );
-
+  const [mode, setMode] = useState<"login" | "register">("register");
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [personalConsent, setPersonalConsent] = useState(false);
-  const [linkSent, setLinkSent] = useState(false);
-  const [verified, setVerified] = useState(false);
   const [offerConsent, setOfferConsent] = useState(false);
   const [autoRenew, setAutoRenew] = useState(false);
   const [recurrentConsent, setRecurrentConsent] = useState(false);
-  const [demoToken, setDemoToken] = useState("");
-  const [demoLink, setDemoLink] = useState("");
+  const [sessionToken, setSessionToken] = useState("");
+  const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
+  const [productState, setProductState] = useState<ProductState | null>(null);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [sessionLoading, setSessionLoading] = useState(false);
+  const feedbackRef = useRef<HTMLDivElement | null>(null);
 
   const knownProductCodes = products.map((product) => product.code);
   const invalidProduct =
-    initialProduct !== null && !knownProductCodes.includes(initialProduct as Product["code"]);
+    initialProduct !== null &&
+    !knownProductCodes.includes(initialProduct as Product["code"]);
+  const needsAuthPrompt = !!selectedProduct && !sessionUser;
 
-  async function requestMagicLink() {
+  useEffect(() => {
+    const timerId = window.setTimeout(() => {
+      const storedToken = window.localStorage.getItem(sessionStorageKey) ?? "";
+      if (storedToken) {
+        setSessionLoading(true);
+        setSessionToken(storedToken);
+      }
+    }, 0);
+
+    return () => window.clearTimeout(timerId);
+  }, []);
+
+  useEffect(() => {
+    async function loadSession() {
+      if (!sessionToken) {
+        setSessionUser(null);
+        setProductState(null);
+        setSessionLoading(false);
+        return;
+      }
+
+      setSessionLoading(true);
+      const fallbackTimer = window.setTimeout(() => {
+        setSessionUser(null);
+        setProductState(null);
+        setSessionLoading(false);
+        setNotice(
+          "Не удалось быстро проверить текущую сессию. Войдите снова через форму ниже."
+        );
+      }, 1800);
+
+      try {
+        const suffix = selectedCode
+          ? `/api/auth/session?product=${encodeURIComponent(selectedCode)}`
+          : "/api/auth/session";
+        const payload = await getJson<SessionResponse>(suffix, sessionToken);
+        setSessionUser(payload.user);
+        setProductState(payload.product_state ?? null);
+      } catch {
+        window.localStorage.removeItem(sessionStorageKey);
+        setSessionToken("");
+        setSessionUser(null);
+        setProductState(null);
+        setNotice(
+          "Не удалось быстро проверить текущую сессию. Войдите снова через форму ниже."
+        );
+      } finally {
+        window.clearTimeout(fallbackTimer);
+        setSessionLoading(false);
+      }
+    }
+
+    void loadSession();
+  }, [selectedCode, sessionToken]);
+
+  useEffect(() => {
+    if (!error && !notice) {
+      return;
+    }
+
+    feedbackRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest"
+    });
+  }, [error, notice]);
+
+  function showError(message: string) {
+    setNotice("");
+    setError(message);
+  }
+
+  function showNotice(message: string) {
+    setError("");
+    setNotice(message);
+  }
+
+  async function authenticate() {
     setError("");
     setNotice("");
 
     if (!selectedProduct) {
-      setError("Выберите продукт для оформления.");
+      showError("Выберите продукт для оформления.");
       return;
     }
 
     if (!email.includes("@")) {
-      setError("Укажите корректный email.");
+      showError("Укажите корректный email.");
       return;
     }
 
-    if (!personalConsent) {
-      setError("Нужно дать согласие на обработку персональных данных.");
+    if (password.length < 8) {
+      showError("Пароль должен содержать не менее 8 символов.");
       return;
+    }
+
+    if (mode === "register") {
+      if (!personalConsent) {
+        showError(
+          "Для регистрации нужно отдельное согласие на обработку персональных данных."
+        );
+        return;
+      }
+
+      if (!offerConsent) {
+        showError("Для регистрации нужно принять условия оферты.");
+        return;
+      }
     }
 
     setLoading(true);
     try {
-      const payload = await postJson<LoginResponse>("/api/auth/request-login", {
-        email,
-        product: selectedProduct.code,
-        region: "ru"
-      });
-      setDemoToken(payload.demo_token ?? "demo-token");
-      setDemoLink(payload.demo_link ?? "");
-      setNotice(
-        "Мы отправили magic link на email. Для первой версии доступен demo-режим подтверждения."
+      const payload =
+        mode === "register"
+          ? await postJson<AuthResponse>("/api/auth/register", {
+              email,
+              password,
+              personal_consent: personalConsent,
+              offer_consent: offerConsent
+            })
+          : await postJson<AuthResponse>("/api/auth/login", {
+              email,
+              password
+            });
+
+      window.localStorage.setItem(sessionStorageKey, payload.token);
+      setSessionToken(payload.token);
+      setSessionUser(payload.user);
+      showNotice(
+        mode === "register"
+          ? "Аккаунт создан. Теперь можно перейти к оплате."
+          : "Вход выполнен. Можно продолжить оформление."
       );
-    } catch {
-      setDemoToken("demo-token");
-      setDemoLink("");
-      setNotice(
-        "API недоступен или email-отправка не подключена. Используйте demo-подтверждение."
-      );
+      setPassword("");
+    } catch (requestError) {
+      const message =
+        requestError instanceof Error ? requestError.message : "auth_error";
+      if (message.includes("409")) {
+        showError("Аккаунт с таким email уже существует. Попробуйте войти.");
+      } else if (message.includes("401")) {
+        showError("Неверный email или пароль.");
+      } else if (message.includes("missing_personal_consent")) {
+        showError("Нужно дать согласие на обработку персональных данных.");
+      } else if (message.includes("missing_offer_consent")) {
+        showError("Нужно принять условия оферты.");
+      } else {
+        showError("Не удалось выполнить авторизацию. Попробуйте ещё раз.");
+      }
     } finally {
-      setLinkSent(true);
       setLoading(false);
     }
   }
 
-  async function confirmEmail() {
+  async function logout() {
     setError("");
-    setLoading(true);
+    setNotice("");
+
+    if (!sessionToken) {
+      return;
+    }
+
     try {
-      await postJson("/api/auth/verify", {
-        email,
-        token: demoToken || "demo-token"
-      });
+      await postJson("/api/auth/logout", {}, sessionToken);
     } catch {
-      // Demo fallback is intentional for the first version.
+      // Session cleanup is safe even if backend logout fails.
     } finally {
-      setVerified(true);
-      setNotice("Email подтвержден в demo-режиме.");
-      setLoading(false);
+      window.localStorage.removeItem(sessionStorageKey);
+      setSessionToken("");
+      setSessionUser(null);
+      setProductState(null);
     }
   }
 
-  function goToPaymentResult() {
+  async function goToPaymentResult() {
     setError("");
 
     if (!selectedProduct) {
-      setError("Выберите продукт для оплаты.");
+      showError("Выберите продукт для оплаты.");
       return;
     }
 
-    if (!offerConsent) {
-      setError("Перед оплатой нужно принять оферту и условия отмены.");
+    if (!sessionUser || !sessionToken) {
+      showError("Сначала войдите или зарегистрируйтесь.");
       return;
     }
 
     if (autoRenew && !recurrentConsent) {
-      setError("Для автопродления нужно отдельное согласие на регулярные списания.");
+      showError(
+        "Для автопродления нужно отдельное согласие на регулярные списания."
+      );
       return;
     }
 
-    const payload = {
-      status: "demo",
+    let checkoutState: ProductState;
+    try {
+      const payload = await postJson<{ product_state: ProductState }>(
+        "/api/auth/checkout-intent",
+        {
+          product: selectedProduct.code,
+          plan_code: selectedProduct.plan.code,
+          auto_renew: autoRenew
+        },
+        sessionToken
+      );
+      checkoutState = payload.product_state;
+      setProductState(payload.product_state);
+    } catch {
+      showError("Не удалось подготовить оплату. Попробуйте ещё раз.");
+      return;
+    }
+
+    const resultPayload = {
+      status: "pending",
       productCode: selectedProduct.code,
       productName: selectedProduct.name,
       planName: selectedProduct.plan.name,
       priceRub: selectedProduct.plan.priceRub,
-      email,
-      autoRenew
+      email: sessionUser.email,
+      autoRenew,
+      invoiceId: checkoutState.invoice_id ?? ""
     };
 
     window.sessionStorage.setItem(
       "anytoolai_last_payment_result",
-      JSON.stringify(payload)
+      JSON.stringify(resultPayload)
     );
 
     if (cloudPaymentsEnabled && cloudPaymentsPublicId && window.cp?.CloudPayments) {
@@ -170,8 +379,13 @@ export function CheckoutClient() {
           description: selectedProduct.plan.paymentDescription,
           amount: selectedProduct.plan.priceRub,
           currency: "RUB",
-          accountId: email,
-          email
+          invoiceId: checkoutState.invoice_id ?? undefined,
+          accountId: sessionUser.email,
+          email: sessionUser.email,
+          data: {
+            product_code: selectedProduct.code,
+            plan_code: selectedProduct.plan.code
+          }
         },
         {
           onSuccess: () => {
@@ -179,16 +393,18 @@ export function CheckoutClient() {
               status: "pending",
               product: selectedProduct.code,
               plan: selectedProduct.plan.code,
-              email
+              email: sessionUser.email,
+              invoice: checkoutState.invoice_id ?? ""
             });
             window.location.assign(`/ru/payment-result?${params.toString()}`);
           },
           onFail: () => {
             const params = new URLSearchParams({
-              status: "demo",
+              status: "failed",
               product: selectedProduct.code,
               plan: selectedProduct.plan.code,
-              email
+              email: sessionUser.email,
+              invoice: checkoutState.invoice_id ?? ""
             });
             window.location.assign(`/ru/payment-result?${params.toString()}`);
           }
@@ -198,12 +414,12 @@ export function CheckoutClient() {
     }
 
     const params = new URLSearchParams({
-      status: "demo",
+      status: "pending",
       product: selectedProduct.code,
       plan: selectedProduct.plan.code,
-      email
+      email: sessionUser.email,
+      invoice: checkoutState.invoice_id ?? ""
     });
-
     window.location.assign(`/ru/payment-result?${params.toString()}`);
   }
 
@@ -211,19 +427,17 @@ export function CheckoutClient() {
     <section className="page-section compact">
       <div className="eyebrow">
         <span className="eyebrow-dot" />
-        Auth checkout
+        Оформление подписки
       </div>
-      <h1 className="legal-title">Оформление подписки</h1>
+      <h1 className="legal-title">Оформление доступа к сервису</h1>
       <p className="hero-copy">
-        Product-aware entrypoint для первой RU-версии. Если `product` передан в
-        URL, страница сразу показывает нужный продукт, тариф, пробный период и
-        сценарий оформления. До подключения CloudPayments terminal id оплата
-        работает как demo-заглушка и ведет на страницу результата.
+        Выберите продукт, войдите в аккаунт или зарегистрируйтесь и перейдите к
+        оплате.
       </p>
 
       {invalidProduct ? (
         <div className="notice error" style={{ marginTop: 24 }}>
-          Неизвестный product code: {initialProduct}. Выберите один из продуктов
+          Мы не нашли запрошенный продукт. Выберите один из доступных вариантов
           ниже.
         </div>
       ) : null}
@@ -239,8 +453,8 @@ export function CheckoutClient() {
             <div className="form-panel">
               <h2>Выберите продукт</h2>
               <p className="card-copy">
-                Если параметр `product` не передан, checkout показывает выбор из
-                двух продуктов первой версии.
+                Откройте нужный сервис, чтобы увидеть тариф, бесплатный лимит и
+                перейти к оформлению.
               </p>
               <ProductCards />
             </div>
@@ -251,104 +465,40 @@ export function CheckoutClient() {
           <div className="form-grid">
             <span className="badge badge-running">
               <ShieldCheck size={12} aria-hidden="true" />
-              Demo auth
+              Единый аккаунт
             </span>
-            <h2>1. Email и согласие</h2>
-            <label className="field-label">
-              Email
-              <input
-                className="input"
-                type="email"
-                autoComplete="email"
-                placeholder="user@example.com"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                disabled={verified}
-              />
-            </label>
 
-            <label className="checkbox-label">
-              <input
-                type="checkbox"
-                checked={personalConsent}
-                disabled={verified}
-                onChange={(event) => setPersonalConsent(event.target.checked)}
-              />
-              <span>
-                Я даю согласие на обработку персональных данных в целях
-                регистрации, идентификации пользователя, предоставления доступа к
-                сервису и оформления подписки. Я ознакомлен с{" "}
-                <Link className="inline-link" href="/ru/privacy">
-                  Политикой обработки персональных данных
-                </Link>
-                .
-              </span>
-            </label>
-
-            {!linkSent ? (
-              <button
-                className="btn-primary"
-                type="button"
-                onClick={requestMagicLink}
-                disabled={loading}
-              >
-                <Send size={15} aria-hidden="true" />
-                Получить ссылку для входа
-              </button>
-            ) : (
+            {needsAuthPrompt && !sessionLoading ? (
               <div className="notice">
-                <MailCheck size={16} aria-hidden="true" /> Мы отправили magic
-                link на email. Demo token:{" "}
-                <span style={{ color: "var(--txt)" }}>{demoToken}</span>
-                {demoLink ? (
-                  <>
-                    <br />
-                    Demo link:{" "}
-                    <span style={{ color: "var(--txt)" }}>{demoLink}</span>
-                  </>
-                ) : null}
+                Чтобы продолжить оформление, войдите в аккаунт или
+                зарегистрируйтесь в форме ниже.
               </div>
-            )}
-
-            {linkSent && !verified ? (
-              <button
-                className="btn-secondary"
-                type="button"
-                onClick={confirmEmail}
-                disabled={loading}
-              >
-                Демо: подтвердить email
-              </button>
             ) : null}
 
-            {verified ? (
+            {sessionLoading ? (
+              <div className="notice">Проверяем текущую сессию...</div>
+            ) : sessionUser ? (
               <>
-                <h2>2. Тариф и оплата</h2>
-                <CheckoutSummary product={selectedProduct} />
-
-                <div className="notice">
-                  Планируемые способы оплаты: банковская карта, СБП, T-Pay и
-                  Мир. До подключения terminal id страница работает в demo-режиме.
+                <h2>1. Аккаунт</h2>
+                <div ref={feedbackRef}>
+                  {notice ? <div className="notice">{notice}</div> : null}
+                  {error ? <div className="notice error">{error}</div> : null}
+                </div>
+                <div className="account-card">
+                  <div>
+                    <strong>{sessionUser.email}</strong>
+                    <p className="card-copy" style={{ margin: "6px 0 0" }}>
+                      Вы вошли в единый аккаунт платформы.
+                    </p>
+                  </div>
+                  <button className="btn-secondary" type="button" onClick={logout}>
+                    <LogOut size={15} aria-hidden="true" />
+                    Выйти
+                  </button>
                 </div>
 
-                <label className="checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={offerConsent}
-                    onChange={(event) => setOfferConsent(event.target.checked)}
-                  />
-                  <span>
-                    Я принимаю условия{" "}
-                    <Link className="inline-link" href="/ru/offer">
-                      оферты
-                    </Link>{" "}
-                    и{" "}
-                    <Link className="inline-link" href="/ru/cancellation">
-                      условия отмены подписки и возврата средств
-                    </Link>
-                    .
-                  </span>
-                </label>
+                <h2>2. Статус подписки</h2>
+                <SubscriptionState product={selectedProduct} state={productState} />
 
                 <label className="checkbox-label">
                   <input
@@ -376,11 +526,7 @@ export function CheckoutClient() {
                     <span>
                       Я соглашаюсь на регулярное автоматическое списание средств
                       согласно выбранному тарифу. Подписка продлевается
-                      автоматически до ее отмены. Условия описаны на странице{" "}
-                      <Link className="inline-link" href="/ru/cancellation">
-                        отмены и возврата
-                      </Link>
-                      .
+                      автоматически до её отмены.
                     </span>
                   </label>
                 ) : null}
@@ -395,7 +541,131 @@ export function CheckoutClient() {
                   <ArrowRight size={16} aria-hidden="true" />
                 </button>
               </>
-            ) : null}
+            ) : (
+              <>
+                <h2>1. Вход или регистрация</h2>
+                <div ref={feedbackRef}>
+                  {notice ? <div className="notice">{notice}</div> : null}
+                  {error ? <div className="notice error">{error}</div> : null}
+                </div>
+                <div className="auth-mode-row">
+                  <button
+                    className={mode === "register" ? "btn-primary" : "btn-secondary"}
+                    type="button"
+                    onClick={() => setMode("register")}
+                  >
+                    Регистрация
+                  </button>
+                  <button
+                    className={mode === "login" ? "btn-primary" : "btn-secondary"}
+                    type="button"
+                    onClick={() => setMode("login")}
+                  >
+                    Вход
+                  </button>
+                </div>
+
+                <label className="field-label">
+                  Email
+                  <input
+                    className="input"
+                    type="email"
+                    autoComplete="email"
+                    placeholder="user@example.com"
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
+                  />
+                </label>
+
+                <label className="field-label">
+                  Пароль
+                  <input
+                    className="input"
+                    type="password"
+                    autoComplete={
+                      mode === "register" ? "new-password" : "current-password"
+                    }
+                    placeholder="Не менее 8 символов"
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                  />
+                </label>
+
+                {mode === "register" ? (
+                  <>
+                    <label className="checkbox-label">
+                      <input
+                        type="checkbox"
+                        checked={personalConsent}
+                        onChange={(event) =>
+                          setPersonalConsent(event.target.checked)
+                        }
+                      />
+                      <span>
+                        Я даю согласие на обработку персональных данных в
+                        соответствии с{" "}
+                        <Link className="inline-link" href="/ru/privacy">
+                          Политикой в отношении обработки персональных данных
+                        </Link>
+                        .
+                      </span>
+                    </label>
+
+                    <label className="checkbox-label">
+                      <input
+                        type="checkbox"
+                        checked={offerConsent}
+                        onChange={(event) => setOfferConsent(event.target.checked)}
+                      />
+                      <span>
+                        Я принимаю условия{" "}
+                        <Link className="inline-link" href="/ru/offer">
+                          Публичной оферты
+                        </Link>{" "}
+                        и ознакомлен(а) с{" "}
+                        <Link className="inline-link" href="/ru/cancellation">
+                          Условиями отмены подписки и возврата денежных средств
+                        </Link>
+                        .
+                      </span>
+                    </label>
+                  </>
+                ) : null}
+
+                <button
+                  className="btn-primary"
+                  type="button"
+                  onClick={authenticate}
+                  disabled={loading}
+                >
+                  {mode === "register" ? "Создать аккаунт" : "Войти"}
+                  <ArrowRight size={15} aria-hidden="true" />
+                </button>
+
+                {telegramLoginUrl ? (
+                  <a
+                    className="btn-secondary telegram-button"
+                    href={telegramLoginUrl}
+                  >
+                    <MessageCircleMore size={16} aria-hidden="true" />
+                    Войти через Telegram
+                  </a>
+                ) : (
+                  <button
+                    className="btn-secondary telegram-button"
+                    type="button"
+                    onClick={() =>
+                      showNotice(
+                        "Вход через Telegram пока недоступен. Пока используйте email и пароль."
+                      )
+                    }
+                  >
+                    <MessageCircleMore size={16} aria-hidden="true" />
+                    Войти через Telegram
+                  </button>
+                )}
+              </>
+            )}
 
             <p className="muted" style={{ margin: 0 }}>
               Поддержка:{" "}
@@ -403,8 +673,6 @@ export function CheckoutClient() {
                 info@anytoolai.ru
               </a>
             </p>
-            {notice ? <div className="notice">{notice}</div> : null}
-            {error ? <div className="notice error">{error}</div> : null}
           </div>
         </div>
       </div>
@@ -447,9 +715,12 @@ function SelectedProductCard({
         <strong>{formatRubles(product.plan.priceRub)}</strong>
         <span>/ месяц</span>
       </div>
-      <span className="badge badge-live">
-        Пробный период {product.plan.trialDays} дней
-      </span>
+      <div className="button-row" style={{ marginTop: 0 }}>
+        <span className="badge badge-live">
+          Пробный период {product.plan.trialDays} дней
+        </span>
+        <span className="badge badge-running">{product.freeLimit}</span>
+      </div>
       <div className="button-row">
         <button className="btn-primary" type="button" onClick={scrollToForm}>
           Оформить
@@ -462,27 +733,44 @@ function SelectedProductCard({
   );
 }
 
-function CheckoutSummary({ product }: { product?: Product }) {
+function SubscriptionState({
+  product,
+  state
+}: {
+  product?: Product;
+  state: ProductState | null;
+}) {
   if (!product) {
     return (
       <div className="notice">
-        Выберите продукт, чтобы увидеть тариф и перейти к demo-оплате.
+        Выберите продукт, чтобы увидеть статус подписки и перейти к оплате.
       </div>
     );
   }
+
+  const status = state?.status ?? "inactive";
+  const statusText =
+    status === "active"
+      ? "Подписка активна"
+      : status === "pending"
+        ? "Платёж ожидает подтверждения"
+        : "Подписка не активна";
 
   return (
     <div className="notice">
       <strong style={{ color: "var(--txt)" }}>{product.plan.name}</strong>
       <br />
-      {formatRubles(product.plan.priceRub)} / месяц · пробный период{" "}
-      {product.plan.trialDays} дней
+      Статус: {statusText}
       <br />
-      Тестовый платеж: {formatRubles(demoPayment.amountRub)} для проверки
-      сценария. Подключение CloudPayments находится в процессе, а источником
-      истины по оплате останется webhook.
+      Стоимость: {formatRubles(product.plan.priceRub)} / месяц
       <br />
-      Оплата будет доступна после подключения CloudPayments.
+      Бесплатный лимит: {product.freeLimit}
+      {state?.expires_at ? (
+        <>
+          <br />
+          Действует до: {new Date(state.expires_at).toLocaleDateString("ru-RU")}
+        </>
+      ) : null}
     </div>
   );
 }

@@ -22,10 +22,11 @@ export function CookieBanner() {
 
   return (
     <aside className="cookie-banner" aria-label="Уведомление о cookies">
-      <span className="badge badge-running">Cookies</span>
+      <span className="badge badge-running">Cookie</span>
       <p>
-        Сайт использует функциональные cookies для работы интерфейса и сохранения
-        выбранных настроек. Подробнее описано в политике cookies.
+        Сайт использует cookie для корректной работы интерфейса и сохранения
+        выбранных настроек. Подробнее это описано в Политике использования
+        файлов cookie.
       </p>
       <div className="cookie-actions">
         <button

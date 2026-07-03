@@ -5,10 +5,10 @@ export function LegalPageView({ page }: { page: LegalPage }) {
     <section className="page-section compact">
       <div className="eyebrow">
         <span className="eyebrow-dot" />
-        RU legal draft
+        Юридический документ
       </div>
       <h1 className="legal-title">{page.title}</h1>
-      <p className="hero-copy">{page.intro}</p>
+      {page.intro ? <p className="hero-copy">{page.intro}</p> : null}
 
       <div className="legal-grid" style={{ marginTop: 28 }}>
         {page.sections.map((section) => (

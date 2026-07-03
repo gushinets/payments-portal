@@ -1,7 +1,7 @@
 import {
-  BadgeRussianRuble,
-  Camera,
-  FileCheck2,
+  FileText,
+  Languages,
+  MessageSquareQuote,
   ShieldCheck,
   Sparkles,
   WandSparkles
@@ -13,25 +13,44 @@ export const seller = {
   name: "ИП Говоров Роман Стальевич",
   inn: "143509640374",
   ogrnip: "314547633100101",
-  address: "г. Новосибирск, ул. Ленина 1"
+  address:
+    "630091, Новосибирская область, г. Новосибирск, Красный пр-кт, дом 45, кв. 30"
 };
 
-export const paymentMethods = [
-  "Банковская карта",
-  "СБП",
-  "T-Pay",
-  "Мир"
-];
-
 export const legalLinks = [
-  { href: "/ru/privacy", label: "Политика ПДн" },
-  { href: "/ru/offer", label: "Оферта" },
-  { href: "/ru/cancellation", label: "Условия отмены и возврата" },
-  { href: "/ru/cookies", label: "Cookies" },
-  { href: "/ru/security", label: "Безопасность" }
+  {
+    href: "/ru/privacy",
+    label: "Политика в отношении обработки персональных данных"
+  },
+  { href: "/ru/offer", label: "Публичная оферта" },
+  {
+    href: "/ru/cancellation",
+    label: "Условия отмены подписки и возврата денежных средств"
+  },
+  { href: "/ru/cookies", label: "Политика использования файлов cookie" },
+  { href: "/ru/security", label: "Политика информационной безопасности" }
 ];
 
-export type ProductCode = "jobact" | "scope-creep-guard";
+export type PaymentMethod = {
+  code: string;
+  label: string;
+  mark: string;
+  href?: string;
+};
+
+export const paymentMethods: PaymentMethod[] = [
+  { code: "card", label: "Банковская карта", mark: "CARD" },
+  { code: "sbp", label: "СБП", mark: "SBP" },
+  {
+    code: "tpay",
+    label: "T-Pay",
+    mark: "T-Bank",
+    href: "https://www.tbank.ru/"
+  },
+  { code: "mir", label: "Мир", mark: "MIR" }
+];
+
+export type ProductCode = "document-summary" | "prompt-optimizer";
 
 export type Product = {
   code: ProductCode;
@@ -40,6 +59,7 @@ export type Product = {
   tagline: string;
   description: string;
   valuePoints: string[];
+  freeLimit: string;
   plan: {
     code: string;
     name: string;
@@ -48,89 +68,106 @@ export type Product = {
     trialDays: number;
     paymentDescription: string;
   };
-  Icon: typeof FileCheck2;
+  Icon: typeof FileText;
 };
 
 export const products: Product[] = [
   {
-    code: "jobact",
-    name: "JobAct",
-    type: "Mobile-first сервис / мобильный сценарий",
-    tagline: "Цифровой акт выполненных работ",
+    code: "document-summary",
+    name: "Document Summary",
+    type: "Chrome extension",
+    tagline: "Мгновенное краткое содержание любого документа",
     description:
-      "Цифровой акт выполненных работ: список работ, материалы, фото до/после, PDF на подпись, статус оплаты.",
+      "Расширение помогает быстро получать summary документов и веб-страниц без лишних ручных действий.",
     valuePoints: [
-      "Помогает быстро собрать акт выполненных работ",
-      "Фиксирует состав работ и материалов",
-      "Прикрепляет фото до и после",
-      "Формирует PDF для подписи",
-      "Помогает контролировать статус оплаты"
+      "Три режима: полное summary, короткое summary и тезисы",
+      "Работает с PDF, TXT и веб-страницами",
+      "Определяет язык документа и отвечает на нём же",
+      "Позволяет экспортировать результат в PDF",
+      "Файлы не сохраняются на серверах"
     ],
+    freeLimit: "3 summary в месяц",
     plan: {
-      code: "jobact-start",
-      name: "JobAct Start",
+      code: "document-summary-pro",
+      name: "Document Summary Pro",
       priceRub: 990,
       period: "month",
       trialDays: 7,
-      paymentDescription: "Подписка JobAct Start на 1 месяц"
+      paymentDescription: "Подписка Document Summary Pro на 1 месяц"
     },
-    Icon: Camera
+    Icon: FileText
   },
   {
-    code: "scope-creep-guard",
-    name: "Scope Creep Guard",
-    type: "Chrome Extension",
-    tagline: "AI-сравнение запроса с исходным scope",
+    code: "prompt-optimizer",
+    name: "Prompt Optimizer",
+    type: "Chrome extension",
+    tagline: "Улучшение промптов для ИИ в один клик",
     description:
-      "AI-сравнение нового запроса с исходным scope и генерация draft Change Order.",
+      "Расширение улучшает промпты прямо в привычном интерфейсе и показывает, что именно стало лучше.",
     valuePoints: [
-      "Сравнивает новый запрос клиента с исходным объемом работ",
-      "Подсвечивает потенциальный scope creep",
-      "Помогает подготовить черновик change order",
-      "Снижает риск неоплачиваемых дополнительных работ"
+      "Работает поверх ChatGPT, Claude, Perplexity, Groq и DeepSeek",
+      "Показывает, что именно улучшено в промпте",
+      "Возвращает улучшенный промпт обратно в чат одним кликом",
+      "Сохраняет готовые промпты в библиотеке"
     ],
+    freeLimit: "50 оптимизаций в месяц",
     plan: {
-      code: "scope-guard-start",
-      name: "Scope Guard Start",
-      priceRub: 1490,
+      code: "prompt-optimizer-pro",
+      name: "Prompt Optimizer Pro",
+      priceRub: 990,
       period: "month",
       trialDays: 7,
-      paymentDescription: "Подписка Scope Guard Start на 1 месяц"
+      paymentDescription: "Подписка Prompt Optimizer Pro на 1 месяц"
     },
     Icon: WandSparkles
   }
 ];
 
-export const demoPayment = {
-  name: "Тестовый платеж",
-  amountRub: 1,
-  purpose: "тестовая проверка платежного сценария"
-};
-
 export const platformFacts = [
   {
     label: "Продукта",
     value: "2",
-    detail: "JobAct и Scope Guard",
+    detail: "Document Summary и Prompt Optimizer",
     Icon: Sparkles
   },
   {
-    label: "Пробный период",
+    label: "Бесплатный период",
     value: "7",
-    detail: "дней перед оплатой",
-    Icon: FileCheck2
-  },
-  {
-    label: "Платежный контур",
-    value: "demo",
-    detail: "CloudPayments готовится",
+    detail: "дней до начала оплаты",
     Icon: ShieldCheck
   },
   {
-    label: "Тестовый платеж",
-    value: "1 ₽",
-    detail: "показан в интерфейсе",
-    Icon: BadgeRussianRuble
+    label: "Бесплатный доступ",
+    value: "3 / 50",
+    detail: "лимиты для двух сервисов",
+    Icon: FileText
+  },
+  {
+    label: "Локализация",
+    value: "RU",
+    detail: "юридические документы и оплата",
+    Icon: Languages
+  }
+];
+
+export const platformHighlights = [
+  {
+    title: "Простой старт",
+    description:
+      "Оформление подписки и юридические документы собраны в одном понятном портале.",
+    Icon: Sparkles
+  },
+  {
+    title: "Один аккаунт",
+    description:
+      "Единый вход для сервисов готовится. На этом этапе можно оформить доступ по email.",
+    Icon: MessageSquareQuote
+  },
+  {
+    title: "Безопасная оплата",
+    description:
+      "Платёж подтверждается через платёжного партнёра, а данные карт не хранятся на стороне платформы.",
+    Icon: ShieldCheck
   }
 ];
 

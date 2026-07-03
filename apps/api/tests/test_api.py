@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from app.database import Base, SessionLocal, engine  # noqa: E402
 from app.main import app  # noqa: E402
-from app.models import PaymentWebhookEvent  # noqa: E402
+from app.models import PaymentWebhookEvent, ProductAccessState, User  # noqa: E402
 
 
 client = TestClient(app)
@@ -32,24 +32,141 @@ def test_healthcheck() -> None:
     assert response.json()["status"] == "ok"
 
 
-def test_demo_auth_flow() -> None:
+def test_register_session_and_checkout_intent_flow() -> None:
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "user@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+
+    assert register_response.status_code == 200
+    register_payload = register_response.json()
+    assert register_payload["status"] == "registered"
+    assert register_payload["token"]
+    token = register_payload["token"]
+
+    session_response = client.get(
+        "/api/auth/session?product=document-summary",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert session_response.status_code == 200
+    session_payload = session_response.json()
+    assert session_payload["authenticated"] is True
+    assert session_payload["user"]["email"] == "user@example.com"
+    assert session_payload["product_state"]["status"] == "inactive"
+
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": True,
+        },
+    )
+
+    assert checkout_response.status_code == 200
+    assert checkout_response.json()["product_state"]["status"] == "pending"
+    invoice_id = checkout_response.json()["product_state"]["invoice_id"]
+    assert invoice_id
+
+    with SessionLocal() as db:
+        user = db.query(User).one()
+        state = db.query(ProductAccessState).one()
+
+    assert user.email == "user@example.com"
+    assert state.user_id == user.id
+    assert state.product_code == "document-summary"
+    assert state.plan_code == "document-summary-pro"
+    assert state.status == "pending"
+    assert state.last_invoice_id == invoice_id
+
+
+def test_successful_pay_webhook_updates_payment_status() -> None:
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "user@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = register_response.json()["token"]
+
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": False,
+        },
+    )
+    invoice_id = checkout_response.json()["product_state"]["invoice_id"]
+
+    webhook_response = client.post(
+        "/api/cloudpayments/pay",
+        json={
+            "InvoiceId": invoice_id,
+            "TransactionId": "tx-success-1",
+            "AccountId": "user@example.com",
+            "Amount": "990.00",
+            "Currency": "RUB",
+            "Data": {"product_code": "document-summary", "plan_code": "document-summary-pro"},
+        },
+    )
+
+    assert webhook_response.status_code == 200
+
+    status_response = client.get(
+        f"/api/auth/payment-status?invoice_id={invoice_id}&email=user@example.com"
+    )
+    assert status_response.status_code == 200
+    assert status_response.json()["product_state"]["status"] == "active"
+    assert status_response.json()["product_state"]["transaction_id"] == "tx-success-1"
+
+
+def test_login_and_logout_flow() -> None:
+    client.post(
+        "/api/auth/register",
+        json={
+            "email": "user@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+
     login_response = client.post(
-        "/api/auth/request-login",
-        json={"email": "user@example.com", "product": "jobact", "region": "ru"},
+        "/api/auth/login",
+        json={
+            "email": "user@example.com",
+            "password": "very-secret-password",
+        },
     )
 
     assert login_response.status_code == 200
-    login_payload = login_response.json()
-    assert login_payload["status"] == "demo_link_generated"
-    assert login_payload["demo_token"]
+    token = login_response.json()["token"]
 
-    verify_response = client.post(
-        "/api/auth/verify",
-        json={"email": "user@example.com", "token": login_payload["demo_token"]},
+    logout_response = client.post(
+        "/api/auth/logout",
+        headers={"Authorization": f"Bearer {token}"},
+        json={},
     )
+    assert logout_response.status_code == 200
+    assert logout_response.json()["status"] == "logged_out"
 
-    assert verify_response.status_code == 200
-    assert verify_response.json()["email_verified"] is True
+    session_response = client.get(
+        "/api/auth/session",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert session_response.status_code == 401
 
 
 def test_cloudpayments_webhook_is_saved_without_secret_hmac() -> None:
