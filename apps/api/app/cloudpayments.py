@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import PaymentWebhookEvent, ProductAccessState, User
+from app.models import PaymentWebhookEvent
 from app.settings import settings
 
 router = APIRouter(prefix="/api/cloudpayments", tags=["cloudpayments"])
@@ -53,75 +53,6 @@ def _parse_amount(value: Any) -> Decimal | None:
         return Decimal(str(value))
     except (InvalidOperation, ValueError):
         return None
-
-
-def _extract_json_data(payload: dict[str, Any]) -> dict[str, Any]:
-    raw_data = _get_first(payload, "Data", "JsonData", "jsonData", "data")
-    if isinstance(raw_data, dict):
-        return raw_data
-    if isinstance(raw_data, str):
-        try:
-            loaded = json.loads(raw_data)
-            return loaded if isinstance(loaded, dict) else {}
-        except json.JSONDecodeError:
-            return {}
-    return {}
-
-
-def update_product_access_state(
-    db: Session,
-    endpoint: str,
-    payload: dict[str, Any],
-    event: PaymentWebhookEvent,
-) -> None:
-    email = _get_first(payload, "AccountId", "accountId", "account_id")
-    invoice_id = _get_first(payload, "InvoiceId", "invoiceId", "invoice_id")
-    transaction_id = _get_first(
-        payload, "TransactionId", "transactionId", "transaction_id"
-    )
-    if not email or not invoice_id:
-        return
-
-    user = db.query(User).filter(User.email == str(email).lower()).first()
-    if user is None:
-        return
-
-    state = (
-        db.query(ProductAccessState)
-        .filter(
-            ProductAccessState.user_id == user.id,
-            ProductAccessState.last_invoice_id == str(invoice_id),
-        )
-        .first()
-    )
-
-    json_data = _extract_json_data(payload)
-    if state is None and json_data.get("product_code"):
-        state = (
-            db.query(ProductAccessState)
-            .filter(
-                ProductAccessState.user_id == user.id,
-                ProductAccessState.product_code == json_data["product_code"],
-            )
-            .first()
-        )
-        if state is not None:
-            state.last_invoice_id = str(invoice_id)
-
-    if state is None:
-        return
-
-    state.last_transaction_id = str(transaction_id) if transaction_id else None
-
-    if endpoint == "pay" and event.status == "received":
-        state.status = "active"
-    elif endpoint in {"fail", "refund"}:
-        state.status = "failed"
-    elif endpoint == "recurrent" and event.status == "received":
-        state.status = "active"
-
-    db.add(state)
-    db.commit()
 
 
 def verify_cloudpayments_signature(raw_body: bytes, headers: dict[str, str]) -> bool:
@@ -190,9 +121,6 @@ async def receive_cloudpayments_webhook(
     db.add(event)
     db.commit()
     db.refresh(event)
-
-    if status != "error":
-        update_product_access_state(db, endpoint, payload, event)
 
     if error_message:
         logger.warning(

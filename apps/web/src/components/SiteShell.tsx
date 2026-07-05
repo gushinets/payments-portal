@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { CookieBanner } from "./CookieBanner";
 import { Footer } from "./Footer";
+import { HeaderAccount } from "./HeaderAccount";
 
 export function SiteShell({ children }: { children: React.ReactNode }) {
   return (
@@ -17,6 +18,7 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
             <Link className="nav-link" href="/ru/auth-checkout">
               Оформление
             </Link>
+            <HeaderAccount />
           </nav>
         </div>
       </header>
