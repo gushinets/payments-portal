@@ -1,13 +1,12 @@
 # AnytoolAI Payments Portal RU MVP
 
 Первая RU-версия сайта для предъявления CloudPayments и подготовки платежного
-контура. Источник решений: `docs/project/tz-cloudpayments-ru-mvp.md`.
+контура.
 
 ## Документация
 
 Проектные документы и архитектурные материалы перенесены в `docs/project`:
 
-- `docs/project/tz-cloudpayments-ru-mvp.md`
 - `docs/project/architecture.md`
 - `docs/project/mvp-blueprint.md`
 - `docs/project/mvp-user-journey-and-pages.md`

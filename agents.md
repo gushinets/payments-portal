@@ -7,18 +7,26 @@ Short repo map for OpenAI-style coding agents. Keep this file concise; put task 
 1. Current user prompt.
 2. This file and any narrower `agents.md`/`AGENTS.md` inside a subtree.
 3. [README.md](README.md) for setup, scope, and verification commands.
-4. [docs/project/tz-cloudpayments-ru-mvp.md](docs/project/tz-cloudpayments-ru-mvp.md) as the first source of product decisions for the RU MVP.
-5. Other project docs only when they match the change area.
+4. Other project docs only when they match the change area.
 
 ## Repository Map
 
 - [apps/web](apps/web/) - Next.js RU payment portal. App routes live in [apps/web/src/app](apps/web/src/app/), shared UI in [apps/web/src/components](apps/web/src/components/), catalog/legal data in [apps/web/src/lib](apps/web/src/lib/), global styles in [apps/web/src/app/globals.css](apps/web/src/app/globals.css).
+  Key files: [CheckoutClient.tsx](apps/web/src/components/CheckoutClient.tsx),
+  [PaymentResultClient.tsx](apps/web/src/components/PaymentResultClient.tsx),
+  [ProductCards.tsx](apps/web/src/components/ProductCards.tsx),
+  [Footer.tsx](apps/web/src/components/Footer.tsx),
+  [CookieBanner.tsx](apps/web/src/components/CookieBanner.tsx),
+  [catalog.ts](apps/web/src/lib/catalog.ts), [legal.ts](apps/web/src/lib/legal.ts).
 - [apps/api](apps/api/) - FastAPI backend. Main app is [apps/api/app/main.py](apps/api/app/main.py), auth demo flow is [apps/api/app/auth.py](apps/api/app/auth.py), CloudPayments webhooks are in [apps/api/app/cloudpayments.py](apps/api/app/cloudpayments.py), DB models/session are in [apps/api/app/models.py](apps/api/app/models.py) and [apps/api/app/database.py](apps/api/app/database.py).
 - [apps/api/alembic](apps/api/alembic/) - migrations for PostgreSQL webhook storage.
 - [apps/api/tests](apps/api/tests/) - backend tests.
-- [docs/project](docs/project/) - requirements and architecture. Start with [docs/project/README.md](docs/project/README.md).
+- [docs/project](docs/project/) - requirements and architecture. Start with [docs/project/README.md](docs/project/README.md), then use [mvp-user-journey-and-pages.md](docs/project/mvp-user-journey-and-pages.md), [mvp-blueprint.md](docs/project/mvp-blueprint.md), [payment-portal-data-model.md](docs/project/payment-portal-data-model.md), and [deployment-diagram.md](docs/project/deployment-diagram.md) as relevant.
+- [docs/legal/ru/2026-07-02](docs/legal/ru/2026-07-02/) - RU legal draft source rendered by [apps/web/src/lib/legal.ts](apps/web/src/lib/legal.ts).
 - [docs/design-system/bundle3](docs/design-system/bundle3/) - Bundle 3 web design rules. Use [docs/design-system/bundle3/web.md](docs/design-system/bundle3/web.md) for UI work.
 - [docker-compose.yml](docker-compose.yml) - local PostgreSQL service.
+- [docker-compose.prod.yml](docker-compose.prod.yml) - production Docker Compose stack.
+- [package.json](package.json) - root npm scripts for web/API commands.
 - [.env.example](.env.example) - environment variable template.
 
 ## Change Guidelines

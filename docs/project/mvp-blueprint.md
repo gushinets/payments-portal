@@ -28,23 +28,27 @@
 
 ## MVP-структура сайта
 
-| URL | Назначение |
-|---|---|
-| `/ru/auth-checkout` | RU-flow: логин, verify email, документы, выбор продукта, старт оплаты |
-| `/ru/privacy` | RU политика обработки персональных данных |
-| `/ru/offer` | RU оферта (условия сервиса и автопродления) |
-| `/ru/cancellation` | RU условия отмены подписки и возврата средств |
-| `/ru/cookies` | RU политика куки |
-| `/ru/security` | RU политика информационной безопасности |
-| `/ru/payment-result` | RU экран возврата после оплаты |
-| `/en/auth-checkout` | Global-flow: логин, verify email, документы, выбор продукта, старт оплаты |
-| `/en/privacy` | Global privacy policy |
-| `/en/offer` | Global terms of service |
-| `/en/cancellation` | Global cancellation & refund policy |
-| `/en/cookies` | Global cookie policy |
-| `/en/security` | Global security policy |
-| `/en/payment-result` | Global экран возврата после оплаты |
-| `/products` | Опциональный общий каталог продуктов |
+Текущая реализация в репозитории покрывает RU-контур. Global/EN routes ниже
+остаются целевой структурой, пока соответствующие файлы не добавлены.
+
+| URL | Назначение | Файл |
+|---|---|---|
+| `/ru/auth-checkout` | RU-flow: логин, документы, выбор продукта, старт оплаты | [page.tsx](../../apps/web/src/app/ru/auth-checkout/page.tsx), [CheckoutClient.tsx](../../apps/web/src/components/CheckoutClient.tsx) |
+| `/ru/privacy` | RU политика обработки персональных данных | [page.tsx](../../apps/web/src/app/ru/privacy/page.tsx), [01-privacy-policy.md](../legal/ru/2026-07-02/01-privacy-policy.md) |
+| `/ru/offer` | RU оферта (условия сервиса и автопродления) | [page.tsx](../../apps/web/src/app/ru/offer/page.tsx), [03-offer.md](../legal/ru/2026-07-02/03-offer.md) |
+| `/ru/cancellation` | RU условия отмены подписки и возврата средств | [page.tsx](../../apps/web/src/app/ru/cancellation/page.tsx), [04-cancellation-refund.md](../legal/ru/2026-07-02/04-cancellation-refund.md) |
+| `/ru/cookies` | RU политика куки | [page.tsx](../../apps/web/src/app/ru/cookies/page.tsx), [05-cookie-policy.md](../legal/ru/2026-07-02/05-cookie-policy.md) |
+| `/ru/security` | RU политика информационной безопасности | [page.tsx](../../apps/web/src/app/ru/security/page.tsx), [06-security-policy.md](../legal/ru/2026-07-02/06-security-policy.md) |
+| `/ru/consent-personal-data` | RU согласие на обработку персональных данных | [page.tsx](../../apps/web/src/app/ru/consent-personal-data/page.tsx), [02-consent-personal-data.md](../legal/ru/2026-07-02/02-consent-personal-data.md) |
+| `/ru/payment-result` | RU экран возврата после оплаты | [page.tsx](../../apps/web/src/app/ru/payment-result/page.tsx), [PaymentResultClient.tsx](../../apps/web/src/components/PaymentResultClient.tsx) |
+| `/ru/products` | RU каталог продуктов | [page.tsx](../../apps/web/src/app/ru/products/page.tsx), [ProductCards.tsx](../../apps/web/src/components/ProductCards.tsx) |
+| `/en/auth-checkout` | Global-flow: логин, verify email, документы, выбор продукта, старт оплаты | not implemented |
+| `/en/privacy` | Global privacy policy | not implemented |
+| `/en/offer` | Global terms of service | not implemented |
+| `/en/cancellation` | Global cancellation & refund policy | not implemented |
+| `/en/cookies` | Global cookie policy | not implemented |
+| `/en/security` | Global security policy | not implemented |
+| `/en/payment-result` | Global экран возврата после оплаты | not implemented |
 
 ## Product-aware entrypoints
 
@@ -107,6 +111,11 @@
 
 ### API endpoints
 
+Целевая таблица ниже описывает production API. Текущие backend routes находятся
+в [auth.py](../../apps/api/app/auth.py) и
+[cloudpayments.py](../../apps/api/app/cloudpayments.py); app wiring в
+[main.py](../../apps/api/app/main.py).
+
 | Endpoint | Метод | Назначение |
 |---|---|---|
 | `/api/context/resolve` | POST | Определить регион, entrypoint и стартовое состояние flow |
@@ -120,6 +129,19 @@
 | `/api/checkout/confirm` | POST | Создание order и получение payment URL |
 | `/api/payments/webhook/{provider}` | POST | Webhook-приемник |
 | `/api/me/subscriptions` | GET | Текущие подписки пользователя |
+
+Текущая RU MVP-реализация:
+
+| Endpoint | Метод | Файл |
+|---|---|---|
+| `/api/auth/register` | POST | [auth.py](../../apps/api/app/auth.py) |
+| `/api/auth/login` | POST | [auth.py](../../apps/api/app/auth.py) |
+| `/api/auth/session` | GET | [auth.py](../../apps/api/app/auth.py) |
+| `/api/auth/payment-status` | GET | [auth.py](../../apps/api/app/auth.py) |
+| `/api/auth/logout` | POST | [auth.py](../../apps/api/app/auth.py) |
+| `/api/auth/checkout-intent` | POST | [auth.py](../../apps/api/app/auth.py) |
+| `/api/cloudpayments/{check,pay,fail,refund,recurrent}` | POST | [cloudpayments.py](../../apps/api/app/cloudpayments.py) |
+| `/health` | GET | [main.py](../../apps/api/app/main.py) |
 
 ## MVP payment logic
 

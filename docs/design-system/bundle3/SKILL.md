@@ -9,8 +9,8 @@ description: >
   Trigger on: "make a page", "build a component", "add a screen", "style this",
   "create UI", "extension popup", "mobile screen", "landing", "dashboard",
   "dark theme", "glass UI". Never freestyle tokens — always load this skill first.
-  For platform-specific details read: references/web.md, references/extension.md,
-  references/mobile.md.
+  For repo-local web details read: web.md. The source archive also had
+  extension/mobile references, but this repository only keeps the web rules.
 ---
 
 # AnyToolAI — Bundle 3 Design System
@@ -299,10 +299,10 @@ Every screen needs at least one glow layer behind content:
 
 ## 8. Platform Details
 
-Read the relevant reference file before building:
+Read the relevant repo-local file before building:
 
 | Platform | File | Key notes |
 |----------|------|-----------|
-| Web / Landing | `references/web.md` | Bento grid, hero, nav, tools grid |
-| Extension popup | `references/extension.md` | 340px fixed, glass dark, single CTA |
-| Mobile iOS | `references/mobile.md` | WhatsApp structure, glass bubbles |
+| Web / Landing | [web.md](web.md) | Bento grid, hero, nav, tools grid |
+| Extension popup | not included in this repo | 340px fixed, glass dark, single CTA |
+| Mobile iOS | not included in this repo | WhatsApp structure, glass bubbles |

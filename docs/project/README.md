@@ -5,17 +5,28 @@
 
 ## Документы
 
-- `tz-cloudpayments-ru-mvp.md` - основное ТЗ первой RU-версии для CloudPayments;
-  главный источник зафиксированных решений для текущего скелета.
-- `architecture.md` - платформенная архитектура для продуктов, подписок,
+- [architecture.md](architecture.md) - платформенная архитектура для продуктов, подписок,
   платежного и legal-контура.
-- `mvp-blueprint.md` - расширенный MVP blueprint с региональными контурами,
+- [mvp-blueprint.md](mvp-blueprint.md) - расширенный MVP blueprint с региональными контурами,
   account/payment model и будущими backend-сущностями.
-- `mvp-user-journey-and-pages.md` - user journey, структура сайта и требования к
+- [mvp-user-journey-and-pages.md](mvp-user-journey-and-pages.md) - user journey, структура сайта и требования к
   страницам MVP.
+- [payment-portal-data-model.md](payment-portal-data-model.md) - целевая модель
+  данных Payment Portal и миграционный план от текущей реализации.
+- [deployment-diagram.md](deployment-diagram.md) - региональная схема деплоя и
+  routing/data-plane правила.
 
-## Приоритет решений
+## Связанные файлы реализации
 
-Для первой версии приоритет имеет `tz-cloudpayments-ru-mvp.md`. Остальные файлы
-содержат более широкую архитектуру и используются как контекст для будущих
-итераций.
+- Web routes: [apps/web/src/app/ru](../../apps/web/src/app/ru/), checkout UI
+  [CheckoutClient.tsx](../../apps/web/src/components/CheckoutClient.tsx), result
+  UI [PaymentResultClient.tsx](../../apps/web/src/components/PaymentResultClient.tsx).
+- Catalog/legal data: [catalog.ts](../../apps/web/src/lib/catalog.ts),
+  [legal.ts](../../apps/web/src/lib/legal.ts), RU legal drafts
+  [docs/legal/ru/2026-07-02](../legal/ru/2026-07-02/).
+- API: [main.py](../../apps/api/app/main.py),
+  [auth.py](../../apps/api/app/auth.py),
+  [cloudpayments.py](../../apps/api/app/cloudpayments.py).
+- Persistence: [models.py](../../apps/api/app/models.py),
+  [database.py](../../apps/api/app/database.py),
+  [alembic versions](../../apps/api/alembic/versions/).
