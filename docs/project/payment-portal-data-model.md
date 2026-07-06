@@ -30,7 +30,7 @@ Payment Portal должен стать доменным контуром для 
 
 Критичное правило: artifacts и scenario runtime могут содержать ПДн и коммерческие данные, поэтому Payment Portal не должен становиться единственным "privacy perimeter". Региональный контур должен применяться и к billing, и к platform runtime.
 
-Текущие файлы реализации, от которых отталкивается миграционный план:
+Текущие файлы реализации, от которых отталкивается план реализации:
 [models.py](../../apps/api/app/models.py),
 [auth.py](../../apps/api/app/auth.py),
 [cloudpayments.py](../../apps/api/app/cloudpayments.py),
@@ -221,7 +221,7 @@ subscription_schedules
 
 ## 6. Таблицы и поля
 
-Ниже указаны доменные поля таблиц. Общие технические поля не повторяются в каждой таблице, но должны быть добавлены при реализации миграций по правилу ниже.
+Ниже указаны доменные поля таблиц. Общие технические поля не повторяются в каждой таблице, но должны быть добавлены при реализации DDL/Alembic schema по правилу ниже.
 
 ### 6.0 Common technical fields
 
@@ -907,11 +907,11 @@ Bundle price_amount_minor = 158400
 - partial index: `(user_id, region, product_id, valid_until) where status = 'active'`
 - partial index: `(user_id, region, scope_type) where status = 'active'`
 
-Миграция от текущей `product_access_states`:
+Замена текущей `product_access_states`:
 
-- создать `entitlements`;
-- для каждой строки `product_access_states` создать entitlement с `source_type='migration'`;
-- оставить `product_access_states` как compatibility view или удалить после обновления API.
+- так как проект еще не деплоился, backfill и compatibility view не нужны;
+- текущую временную таблицу можно заменить новой моделью `subscriptions` + `entitlements` при переходе на production schema;
+- тесты текущего access flow нужно переписать на новую модель доступа.
 
 ### 6.22 `subscription_events`
 
@@ -1306,33 +1306,85 @@ Guest quota остается в Platform Kernel. Когда quota exhausted:
 - Payment Portal создает `entrypoint_session` с `platform_guest_id`, `scenario_session_id`, `product_id`.
 - После оплаты Payment Portal выдает entitlement для `user_id`.
 
-## 10. Миграционный план от текущей реализации
+## 10. План реализации
+
+Проект еще не деплоился, поэтому отдельные backward-compatible миграции, backfill из текущих временных таблиц и compatibility views не нужны. Текущую схему можно заменить целевой production schema через новый clean DDL/Alembic baseline.
 
 Текущее состояние в [models.py](../../apps/api/app/models.py) и миграциях
-[apps/api/alembic/versions](../../apps/api/alembic/versions/):
+[apps/api/alembic/versions](../../apps/api/alembic/versions/) можно использовать как ориентир по существующим flows, но не как источник обязательной совместимости:
 
 - `payment_webhook_events`
 - `users`
 - `user_sessions`
 - `product_access_states`
 
-### Step 1: расширить users/auth
+### Step 1: аутентификация пользователей
 
-- Добавить `tenant_id`, `region`, `email_normalized`, `email_verified_at`, `status`.
-- Пересоздать unique constraint email как `unique(tenant_id, region, email_normalized)`.
-- Переименовать `user_sessions` в `auth_sessions` или оставить physical name, но в коде считать это `AuthSession`.
-- Добавить `magic_link_tokens`.
+Цель: создать региональную identity-основу, через которую Platform Kernel сможет получать стабильную связку `tenant_id + region + user_id`.
 
-### Step 2: добавить региональные и юридические основы
+Таблицы:
 
 - `regions`
 - `country_region_rules`
+- `users`
+- `auth_sessions`
+- `magic_link_tokens`
+
+Работы:
+
+- реализовать `tenant_id`, `region`, `email_normalized`, `email_verified_at`, `status`;
+- сделать уникальность email как `unique(tenant_id, region, email_normalized)`;
+- заменить текущий `user_sessions` на `auth_sessions` в целевой модели;
+- хранить только token hash, без raw token;
+- обновить auth tests под региональные аккаунты.
+
+### Step 2: legal and consents
+
+Цель: зафиксировать юридический контур региона до оплаты и до передачи access в Platform Kernel.
+
+Таблицы:
+
 - `legal_entities`
 - `document_versions`
 - `document_acceptances`
-- `payment_provider_accounts`
 
-### Step 3: добавить каталог и планы
+Работы:
+
+- связать документы с `tenant_id`, `region`, `legal_entity_id`;
+- фиксировать принятие документов append-only;
+- поддержать `user_id nullable` для acceptance до создания аккаунта;
+- сохранять `entrypoint_session_id`, `guest_id`, `ip`, `user_agent`, `acceptance_text_hash`;
+- добавить проверки актуальных required documents перед checkout.
+
+### Step 3: checkout, orders, payments
+
+Цель: построить платежный контур, где активация доступа происходит только после проверенного webhook, а не по return URL.
+
+Таблицы:
+
+- `payment_provider_accounts`
+- `entrypoint_sessions`
+- `checkout_sessions`
+- `orders`
+- `order_items`
+- `payments`
+- `refunds`
+- `payment_webhook_events`
+
+Работы:
+
+- создать product-aware `entrypoint_sessions` для web/extension/paywall входов;
+- создавать `checkout_session` и `order` до открытия provider checkout/widget;
+- писать raw webhook в `payment_webhook_events`;
+- нормализовать webhook в `payments` и `orders`;
+- не хранить card data;
+- обеспечить idempotency по provider account + provider IDs.
+
+### Step 4: catalog, plans, bundles, limits
+
+Цель: вынести продукты, тарифы, bundle/all-access и лимиты в явный billing catalog.
+
+Таблицы:
 
 - `products`
 - `bundles`
@@ -1370,44 +1422,41 @@ plan_limits:
   all-access-pro-ru -> document_summary_runs + prompt_optimizations
 ```
 
-### Step 4: добавить checkout/order/payment слой
+### Step 5: subscriptions and entitlements
 
-- `entrypoint_sessions`
-- `checkout_sessions`
-- `orders`
-- `order_items`
-- `payments`
-- `refunds`
+Цель: отделить payment lifecycle от runtime access lifecycle.
 
-CloudPayments handlers сначала пишут raw webhook, потом нормализуют `payment` и `order`.
+Таблицы:
 
-### Step 5: заменить `product_access_states`
+- `subscriptions`
+- `entitlements`
+- `subscription_events`
 
-- Добавить `subscriptions`.
-- Добавить `entitlements`.
-- Добавить `subscription_events`.
-- Backfill из `product_access_states`.
-- Обновить API проверки доступа на `entitlements` + `plan_limits`.
-- Оставить compatibility view:
+Работы:
 
-```sql
-create view product_access_states_compat as
-select
-  user_id,
-  product_code,
-  max(valid_until) as expires_at,
-  case when max(valid_until) > now() then 'active' else 'inactive' end as status
-from entitlements
-join products on products.id = entitlements.product_id
-where entitlements.scope_type = 'product'
-group by user_id, product_code;
-```
+- trial создавать как `subscription + entitlement` без `order/payment`;
+- paid access активировать после `order -> paid`;
+- при refund/cancel/expire обновлять `subscriptions`, писать `subscription_events`, отзывать или сокращать `entitlements`;
+- заменить текущий `product_access_states` новой моделью без backfill и compatibility view.
 
-## 11. Alembic рекомендации
+### Step 6: Platform Kernel access API
 
-- Делать миграции небольшими: auth, legal, catalog, checkout, payments, subscriptions, entitlements.
+Цель: дать Platform Kernel синхронную проверку доступа без локального entitlement cache на первом этапе.
+
+Работы:
+
+- реализовать `POST /v1/access/check`;
+- проверять direct product entitlement, bundle entitlement и all-access entitlement;
+- возвращать `allowed`, `entitlement_id`, `subscription_id`, `plan_code`, `valid_until`, `scope_type`, `limits`;
+- оставить фактические usage counters в Platform Kernel;
+- обновить текущие API/tests, которые читают `product_access_states`.
+
+## 11. DDL/Alembic рекомендации
+
+- Так как production deploy еще не было, можно создать clean baseline schema без backward-compatible переходов.
+- Если удобнее внедрять по частям, делить DDL/Alembic revisions по тем же срезам, что и план реализации: auth, legal/consents, checkout/payments, catalog/plans, subscriptions/entitlements, access API.
 - Не использовать PG enum в первой версии production-модели.
-- Для money использовать `amount_minor integer`, не `numeric`, кроме временной совместимости с текущей webhook table.
+- Для money использовать `amount_minor integer`, не `numeric`.
 - Для внешних provider IDs использовать `text`, потому что форматы отличаются.
 - Для raw payload использовать `jsonb`.
 - Для IP использовать `inet`.
