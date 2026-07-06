@@ -10,9 +10,8 @@ export function ProductCards({ selectedCode }: { selectedCode?: string }) {
         const selected = selectedCode === product.code;
 
         return (
-          <Link
+          <article
             className={`tool-card${selected ? " active" : ""}`}
-            href={`/ru/auth-checkout?product=${product.code}`}
             key={product.code}
           >
             <div className="tool-icon-wrap">
@@ -29,25 +28,30 @@ export function ProductCards({ selectedCode }: { selectedCode?: string }) {
                 <li key={point}>{point}</li>
               ))}
             </ul>
-            <div className="price-line">
-              <strong>{formatRubles(product.plan.priceRub)}</strong>
-              <span>/ месяц</span>
+            <div className="tool-card-bottom">
+              <div className="price-line">
+                <strong>{formatRubles(product.plan.priceRub)}</strong>
+                <span>/ месяц</span>
+              </div>
+              <div className="button-row" style={{ marginTop: 0 }}>
+                <span className="badge badge-live">
+                  <CheckCircle2 size={12} aria-hidden="true" />
+                  {product.plan.trialDays} дней бесплатно
+                </span>
+                <span className="badge badge-running">
+                  {product.freeLimit}
+                </span>
+              </div>
+              <div className="button-row">
+                <Link
+                  className="btn-primary"
+                  href={`/ru/auth-checkout?product=${product.code}`}
+                >
+                  Оформить <ArrowRight size={15} aria-hidden="true" />
+                </Link>
+              </div>
             </div>
-            <div className="button-row" style={{ marginTop: 0 }}>
-              <span className="badge badge-live">
-                <CheckCircle2 size={12} aria-hidden="true" />
-                {product.plan.trialDays} дней бесплатно
-              </span>
-              <span className="badge badge-running">
-                {product.freeLimit}
-              </span>
-            </div>
-            <div className="button-row">
-              <span className="btn-secondary">
-                Оформить <ArrowRight size={15} aria-hidden="true" />
-              </span>
-            </div>
-          </Link>
+          </article>
         );
       })}
     </div>

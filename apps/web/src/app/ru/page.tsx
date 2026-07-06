@@ -4,9 +4,7 @@ import { ProductCards } from "@/components/ProductCards";
 import {
   formatRubles,
   platformFacts,
-  platformHighlights,
-  products,
-  supportEmail
+  platformHighlights
 } from "@/lib/catalog";
 
 export default function RuHomePage() {
@@ -31,14 +29,14 @@ export default function RuHomePage() {
                 подписку.
               </p>
               <div className="hero-actions">
-                <Link className="btn-primary" href="/ru/auth-checkout">
+                <Link className="btn-primary" href="#products">
                   Оформить подписку <ArrowRight size={16} aria-hidden="true" />
                 </Link>
                 <Link
                   className="btn-secondary"
-                  href="/ru/auth-checkout?product=document-summary"
+                  href="#products"
                 >
-                  Открыть Document Summary
+                  Выбрать продукт
                 </Link>
               </div>
             </div>
@@ -74,7 +72,7 @@ export default function RuHomePage() {
         </div>
       </section>
 
-      <section className="page-section compact">
+      <section className="page-section compact" id="products">
         <div className="eyebrow">
           <span className="eyebrow-dot" />
           Продукты
@@ -85,61 +83,6 @@ export default function RuHomePage() {
           бесплатным периодом 7 дней.
         </p>
         <ProductCards />
-      </section>
-
-      <section className="page-section compact">
-        <div className="two-column">
-          {products.map((product) => (
-            <article className="form-panel" key={product.code}>
-              <span className="badge badge-running">{product.plan.name}</span>
-              <h2 style={{ marginTop: 14 }}>{product.name}</h2>
-              <p className="card-copy">{product.tagline}</p>
-              <p className="card-copy">
-                {formatRubles(product.plan.priceRub)} / месяц · {product.freeLimit}
-              </p>
-              <div className="hero-actions" style={{ marginTop: 20 }}>
-                <Link
-                  className="btn-primary"
-                  href={`/ru/auth-checkout?product=${product.code}`}
-                >
-                  Оформить
-                </Link>
-                <Link
-                  className="btn-secondary"
-                  href={`/ru/auth-checkout?product=${product.code}`}
-                >
-                  Подробнее
-                </Link>
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="page-section compact">
-        <div className="two-column">
-          <article className="form-panel">
-            <span className="badge badge-running">Юридическая информация</span>
-            <h2 style={{ marginTop: 14 }}>Документы опубликованы на сайте</h2>
-            <p className="card-copy">
-              На сайте доступны политика обработки персональных данных, оферта,
-              условия отмены и возврата, политика cookie и политика
-              информационной безопасности.
-            </p>
-          </article>
-          <article className="form-panel">
-            <span className="badge badge-live">Поддержка</span>
-            <h2 style={{ marginTop: 14 }}>Связь по вопросам подписки</h2>
-            <p className="card-copy">
-              Если у вас возникли вопросы по оплате, доступу или документам,
-              напишите на{" "}
-              <a className="inline-link" href={`mailto:${supportEmail}`}>
-                {supportEmail}
-              </a>
-              .
-            </p>
-          </article>
-        </div>
       </section>
     </>
   );

@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, EmailStr, Field
@@ -47,7 +47,13 @@ class CheckoutIntentRequest(BaseModel):
 
 
 def utc_now() -> datetime:
-    return datetime.utcnow()
+    return datetime.now(timezone.utc)
+
+
+def as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 
 def hash_password(password: str) -> str:
@@ -116,7 +122,7 @@ def get_current_session(
         .filter(UserSession.token_hash == token_hash)
         .first()
     )
-    if session is None or session.expires_at <= utc_now():
+    if session is None or as_utc(session.expires_at) <= utc_now():
         raise HTTPException(status_code=401, detail="invalid_session")
 
     user = db.query(User).filter(User.id == session.user_id).first()

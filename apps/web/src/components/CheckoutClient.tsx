@@ -7,8 +7,7 @@ import {
   ArrowRight,
   LogOut,
   MessageCircleMore,
-  ShieldCheck,
-  UserRound
+  ShieldCheck
 } from "lucide-react";
 import { ProductCards } from "@/components/ProductCards";
 import { findProduct, formatRubles, Product, products } from "@/lib/catalog";
@@ -48,6 +47,7 @@ const cloudPaymentsPublicId =
   process.env.NEXT_PUBLIC_CLOUDPAYMENTS_PUBLIC_ID ?? "";
 const telegramLoginUrl = process.env.NEXT_PUBLIC_TELEGRAM_LOGIN_URL ?? "";
 const sessionStorageKey = "anytoolai_session_token_v1";
+const sessionChangedEvent = "anytoolai_session_changed";
 const requestTimeoutMs = 5000;
 
 function resolveApiBase(): string {
@@ -117,12 +117,15 @@ async function getJson<T>(path: string, token: string): Promise<T> {
 export function CheckoutClient() {
   const searchParams = useSearchParams();
   const initialProduct = searchParams.get("product");
-  const [selectedCode, setSelectedCode] = useState(initialProduct ?? "");
+  const initialAuthMode = searchParams.get("auth");
+  const [selectedCode] = useState(initialProduct ?? "");
   const selectedProduct = useMemo(
     () => findProduct(selectedCode),
     [selectedCode]
   );
-  const [mode, setMode] = useState<"login" | "register">("register");
+  const [mode, setMode] = useState<"login" | "register">(
+    initialAuthMode === "login" ? "login" : "register"
+  );
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [personalConsent, setPersonalConsent] = useState(false);
@@ -143,17 +146,34 @@ export function CheckoutClient() {
     initialProduct !== null &&
     !knownProductCodes.includes(initialProduct as Product["code"]);
   const needsAuthPrompt = !!selectedProduct && !sessionUser;
+  const forceAuthPrompt = initialAuthMode === "login" && !sessionUser;
+  const [authModalOpen, setAuthModalOpen] = useState(
+    needsAuthPrompt || forceAuthPrompt
+  );
+  const showAuthModal =
+    (needsAuthPrompt || forceAuthPrompt) && !sessionLoading && authModalOpen;
 
   useEffect(() => {
-    const timerId = window.setTimeout(() => {
+    function syncStoredToken() {
       const storedToken = window.localStorage.getItem(sessionStorageKey) ?? "";
       if (storedToken) {
         setSessionLoading(true);
         setSessionToken(storedToken);
+      } else {
+        setSessionToken("");
+        setSessionUser(null);
+        setProductState(null);
+        setSessionLoading(false);
       }
-    }, 0);
+    }
 
-    return () => window.clearTimeout(timerId);
+    const timerId = window.setTimeout(syncStoredToken, 0);
+    window.addEventListener(sessionChangedEvent, syncStoredToken);
+
+    return () => {
+      window.clearTimeout(timerId);
+      window.removeEventListener(sessionChangedEvent, syncStoredToken);
+    };
   }, []);
 
   useEffect(() => {
@@ -166,14 +186,6 @@ export function CheckoutClient() {
       }
 
       setSessionLoading(true);
-      const fallbackTimer = window.setTimeout(() => {
-        setSessionUser(null);
-        setProductState(null);
-        setSessionLoading(false);
-        setNotice(
-          "Не удалось быстро проверить текущую сессию. Войдите снова через форму ниже."
-        );
-      }, 1800);
 
       try {
         const suffix = selectedCode
@@ -182,16 +194,17 @@ export function CheckoutClient() {
         const payload = await getJson<SessionResponse>(suffix, sessionToken);
         setSessionUser(payload.user);
         setProductState(payload.product_state ?? null);
+        setNotice("");
       } catch {
         window.localStorage.removeItem(sessionStorageKey);
+        window.dispatchEvent(new Event(sessionChangedEvent));
         setSessionToken("");
         setSessionUser(null);
         setProductState(null);
         setNotice(
-          "Не удалось быстро проверить текущую сессию. Войдите снова через форму ниже."
+          "Не удалось проверить текущую сессию. Войдите снова через форму ниже."
         );
       } finally {
-        window.clearTimeout(fallbackTimer);
         setSessionLoading(false);
       }
     }
@@ -223,11 +236,6 @@ export function CheckoutClient() {
   async function authenticate() {
     setError("");
     setNotice("");
-
-    if (!selectedProduct) {
-      showError("Выберите продукт для оформления.");
-      return;
-    }
 
     if (!email.includes("@")) {
       showError("Укажите корректный email.");
@@ -269,6 +277,7 @@ export function CheckoutClient() {
             });
 
       window.localStorage.setItem(sessionStorageKey, payload.token);
+      window.dispatchEvent(new Event(sessionChangedEvent));
       setSessionToken(payload.token);
       setSessionUser(payload.user);
       showNotice(
@@ -310,6 +319,7 @@ export function CheckoutClient() {
       // Session cleanup is safe even if backend logout fails.
     } finally {
       window.localStorage.removeItem(sessionStorageKey);
+      window.dispatchEvent(new Event(sessionChangedEvent));
       setSessionToken("");
       setSessionUser(null);
       setProductState(null);
@@ -442,13 +452,19 @@ export function CheckoutClient() {
         </div>
       ) : null}
 
+      {showAuthModal ? (
+        <button
+          className="auth-modal-overlay"
+          type="button"
+          aria-label="Закрыть окно входа"
+          onClick={() => setAuthModalOpen(false)}
+        />
+      ) : null}
+
       <div className="two-column" style={{ marginTop: 28 }}>
         <div>
           {selectedProduct ? (
-            <SelectedProductCard
-              product={selectedProduct}
-              onReset={() => setSelectedCode("")}
-            />
+            <SelectedProductCard product={selectedProduct} />
           ) : (
             <div className="form-panel">
               <h2>Выберите продукт</h2>
@@ -461,7 +477,12 @@ export function CheckoutClient() {
           )}
         </div>
 
-        <div className="form-panel" id="checkout-form">
+        <div
+          className={`form-panel${
+            showAuthModal ? " auth-modal-panel" : ""
+          }`}
+          id="checkout-form"
+        >
           <div className="form-grid">
             <span className="badge badge-running">
               <ShieldCheck size={12} aria-hidden="true" />
@@ -657,20 +678,7 @@ export function CheckoutClient() {
                     <MessageCircleMore size={16} aria-hidden="true" />
                     Войти через Telegram
                   </a>
-                ) : (
-                  <button
-                    className="btn-secondary telegram-button"
-                    type="button"
-                    onClick={() =>
-                      showNotice(
-                        "Вход через Telegram пока недоступен. Пока используйте email и пароль."
-                      )
-                    }
-                  >
-                    <MessageCircleMore size={16} aria-hidden="true" />
-                    Войти через Telegram
-                  </button>
-                )}
+                ) : null}
               </>
             )}
 
@@ -688,11 +696,9 @@ export function CheckoutClient() {
 }
 
 function SelectedProductCard({
-  product,
-  onReset
+  product
 }: {
   product: Product;
-  onReset: () => void;
 }) {
   const Icon = product.Icon;
 
@@ -731,9 +737,6 @@ function SelectedProductCard({
       <div className="button-row">
         <button className="btn-primary" type="button" onClick={scrollToForm}>
           Оформить
-        </button>
-        <button className="btn-secondary" type="button" onClick={onReset}>
-          Посмотреть все продукты
         </button>
       </div>
     </article>

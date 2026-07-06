@@ -83,14 +83,31 @@ export function PaymentResultClient() {
 
   const product = useMemo(() => {
     const queryProduct = searchParams.get("product");
-    return findProduct(queryProduct) ?? findProduct(stored.productCode);
-  }, [searchParams, stored.productCode]);
+    return queryProduct ? findProduct(queryProduct) : undefined;
+  }, [searchParams]);
 
-  const status = searchParams.get("status") ?? stored.status ?? "pending";
-  const email = searchParams.get("email") ?? stored.email ?? "не указан";
-  const invoiceId = searchParams.get("invoice") ?? stored.invoiceId ?? "";
-  const planName = product?.plan.name ?? stored.planName ?? "тариф не выбран";
-  const price = product?.plan.priceRub ?? stored.priceRub;
+  const hasResultParams =
+    searchParams.has("product") ||
+    searchParams.has("status") ||
+    searchParams.has("email") ||
+    searchParams.has("invoice");
+  const status =
+    searchParams.get("status") ??
+    (hasResultParams ? stored.status : undefined) ??
+    "pending";
+  const email =
+    searchParams.get("email") ??
+    (hasResultParams ? stored.email : undefined) ??
+    "не указан";
+  const invoiceId =
+    searchParams.get("invoice") ??
+    (hasResultParams ? stored.invoiceId : undefined) ??
+    "";
+  const planName =
+    product?.plan.name ??
+    (hasResultParams ? stored.planName : undefined) ??
+    "тариф не выбран";
+  const price = product?.plan.priceRub ?? (hasResultParams ? stored.priceRub : undefined);
   const effectiveStatus = resolvedStatus ?? status;
   const waiting = !["failed", "active"].includes(effectiveStatus);
 

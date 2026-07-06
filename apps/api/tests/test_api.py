@@ -87,7 +87,7 @@ def test_register_session_and_checkout_intent_flow() -> None:
     assert state.last_invoice_id == invoice_id
 
 
-def test_successful_pay_webhook_updates_payment_status() -> None:
+def test_successful_pay_webhook_is_saved_without_activating_access() -> None:
     register_response = client.post(
         "/api/auth/register",
         json={
@@ -128,8 +128,15 @@ def test_successful_pay_webhook_updates_payment_status() -> None:
         f"/api/auth/payment-status?invoice_id={invoice_id}&email=user@example.com"
     )
     assert status_response.status_code == 200
-    assert status_response.json()["product_state"]["status"] == "active"
-    assert status_response.json()["product_state"]["transaction_id"] == "tx-success-1"
+    assert status_response.json()["product_state"]["status"] == "pending"
+    assert status_response.json()["product_state"]["transaction_id"] is None
+
+    with SessionLocal() as db:
+        event = db.query(PaymentWebhookEvent).one()
+
+    assert event.endpoint == "pay"
+    assert event.invoice_id == invoice_id
+    assert event.transaction_id == "tx-success-1"
 
 
 def test_login_and_logout_flow() -> None:
