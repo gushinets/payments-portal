@@ -433,6 +433,124 @@ export function CheckoutClient() {
     window.location.assign(`/ru/payment-result?${params.toString()}`);
   }
 
+  const authForm = (
+    <div className="form-grid">
+      <span className="badge badge-running">
+        <ShieldCheck size={12} aria-hidden="true" />
+        Единый аккаунт
+      </span>
+      <h2>1. Вход или регистрация</h2>
+      {needsAuthPrompt && !sessionLoading ? (
+        <div className="notice">
+          Чтобы продолжить оформление, войдите в аккаунт или зарегистрируйтесь.
+        </div>
+      ) : null}
+      <div ref={feedbackRef}>
+        {notice ? <div className="notice">{notice}</div> : null}
+        {error ? <div className="notice error">{error}</div> : null}
+      </div>
+      <div className="auth-mode-row">
+        <button
+          className={mode === "register" ? "btn-primary" : "btn-secondary"}
+          type="button"
+          onClick={() => setMode("register")}
+        >
+          Регистрация
+        </button>
+        <button
+          className={mode === "login" ? "btn-primary" : "btn-secondary"}
+          type="button"
+          onClick={() => setMode("login")}
+        >
+          Вход
+        </button>
+      </div>
+
+      <label className="field-label">
+        Email
+        <input
+          className="input"
+          type="email"
+          autoComplete="email"
+          placeholder="user@example.com"
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+        />
+      </label>
+
+      <label className="field-label">
+        Пароль
+        <input
+          className="input"
+          type="password"
+          autoComplete={mode === "register" ? "new-password" : "current-password"}
+          placeholder="Не менее 8 символов"
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+        />
+      </label>
+
+      {mode === "register" ? (
+        <>
+          <label className="checkbox-label">
+            <input
+              type="checkbox"
+              checked={personalConsent}
+              onChange={(event) => setPersonalConsent(event.target.checked)}
+            />
+            <span>
+              Я даю согласие на обработку персональных данных в соответствии с{" "}
+              <Link className="inline-link" href="/ru/consent-personal-data">
+                Согласием на обработку персональных данных
+              </Link>
+              {" "}и{" "}
+              <Link className="inline-link" href="/ru/privacy">
+                Политикой в отношении обработки персональных данных
+              </Link>
+              .
+            </span>
+          </label>
+
+          <label className="checkbox-label">
+            <input
+              type="checkbox"
+              checked={offerConsent}
+              onChange={(event) => setOfferConsent(event.target.checked)}
+            />
+            <span>
+              Я принимаю условия{" "}
+              <Link className="inline-link" href="/ru/offer">
+                Публичной оферты
+              </Link>{" "}
+              и ознакомлен(а) с{" "}
+              <Link className="inline-link" href="/ru/cancellation">
+                Условиями отмены подписки и возврата денежных средств
+              </Link>
+              .
+            </span>
+          </label>
+        </>
+      ) : null}
+
+      <button
+        className="btn-primary"
+        type="button"
+        onClick={authenticate}
+        disabled={loading}
+      >
+        {mode === "register" ? "Создать аккаунт" : "Войти"}
+        <ArrowRight size={15} aria-hidden="true" />
+      </button>
+
+      {telegramLoginUrl ? (
+        <a className="btn-secondary telegram-button" href={telegramLoginUrl}>
+          <MessageCircleMore size={16} aria-hidden="true" />
+          Войти через Telegram
+        </a>
+      ) : null}
+    </div>
+  );
+
   return (
     <section className="page-section compact">
       <div className="eyebrow">
@@ -453,12 +571,22 @@ export function CheckoutClient() {
       ) : null}
 
       {showAuthModal ? (
-        <button
-          className="auth-modal-overlay"
-          type="button"
-          aria-label="Закрыть окно входа"
-          onClick={() => setAuthModalOpen(false)}
-        />
+        <>
+          <button
+            className="auth-modal-overlay"
+            type="button"
+            aria-label="Закрыть окно входа"
+            onClick={() => setAuthModalOpen(false)}
+          />
+          <div
+            className="form-panel auth-modal-panel"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Вход или регистрация"
+          >
+            {authForm}
+          </div>
+        </>
       ) : null}
 
       <div className="two-column" style={{ marginTop: 28 }}>
@@ -477,12 +605,7 @@ export function CheckoutClient() {
           )}
         </div>
 
-        <div
-          className={`form-panel${
-            showAuthModal ? " auth-modal-panel" : ""
-          }`}
-          id="checkout-form"
-        >
+        <div className="form-panel" id="checkout-form">
           <div className="form-grid">
             <span className="badge badge-running">
               <ShieldCheck size={12} aria-hidden="true" />
@@ -492,7 +615,7 @@ export function CheckoutClient() {
             {needsAuthPrompt && !sessionLoading ? (
               <div className="notice">
                 Чтобы продолжить оформление, войдите в аккаунт или
-                зарегистрируйтесь в форме ниже.
+                зарегистрируйтесь.
               </div>
             ) : null}
 
@@ -569,116 +692,18 @@ export function CheckoutClient() {
                   {notice ? <div className="notice">{notice}</div> : null}
                   {error ? <div className="notice error">{error}</div> : null}
                 </div>
-                <div className="auth-mode-row">
-                  <button
-                    className={mode === "register" ? "btn-primary" : "btn-secondary"}
-                    type="button"
-                    onClick={() => setMode("register")}
-                  >
-                    Регистрация
-                  </button>
-                  <button
-                    className={mode === "login" ? "btn-primary" : "btn-secondary"}
-                    type="button"
-                    onClick={() => setMode("login")}
-                  >
-                    Вход
-                  </button>
+                <div className="notice">
+                  Чтобы продолжить оформление, откройте окно входа или
+                  регистрации.
                 </div>
-
-                <label className="field-label">
-                  Email
-                  <input
-                    className="input"
-                    type="email"
-                    autoComplete="email"
-                    placeholder="user@example.com"
-                    value={email}
-                    onChange={(event) => setEmail(event.target.value)}
-                  />
-                </label>
-
-                <label className="field-label">
-                  Пароль
-                  <input
-                    className="input"
-                    type="password"
-                    autoComplete={
-                      mode === "register" ? "new-password" : "current-password"
-                    }
-                    placeholder="Не менее 8 символов"
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                  />
-                </label>
-
-                {mode === "register" ? (
-                  <>
-                    <label className="checkbox-label">
-                      <input
-                        type="checkbox"
-                        checked={personalConsent}
-                        onChange={(event) =>
-                          setPersonalConsent(event.target.checked)
-                        }
-                      />
-                      <span>
-                        Я даю согласие на обработку персональных данных в
-                        соответствии с{" "}
-                        <Link
-                          className="inline-link"
-                          href="/ru/consent-personal-data"
-                        >
-                          Согласием на обработку персональных данных
-                        </Link>
-                        {" "}и{" "}
-                        <Link className="inline-link" href="/ru/privacy">
-                          Политикой в отношении обработки персональных данных
-                        </Link>
-                        .
-                      </span>
-                    </label>
-
-                    <label className="checkbox-label">
-                      <input
-                        type="checkbox"
-                        checked={offerConsent}
-                        onChange={(event) => setOfferConsent(event.target.checked)}
-                      />
-                      <span>
-                        Я принимаю условия{" "}
-                        <Link className="inline-link" href="/ru/offer">
-                          Публичной оферты
-                        </Link>{" "}
-                        и ознакомлен(а) с{" "}
-                        <Link className="inline-link" href="/ru/cancellation">
-                          Условиями отмены подписки и возврата денежных средств
-                        </Link>
-                        .
-                      </span>
-                    </label>
-                  </>
-                ) : null}
-
                 <button
                   className="btn-primary"
                   type="button"
-                  onClick={authenticate}
-                  disabled={loading}
+                  onClick={() => setAuthModalOpen(true)}
                 >
-                  {mode === "register" ? "Создать аккаунт" : "Войти"}
+                  Войти или зарегистрироваться
                   <ArrowRight size={15} aria-hidden="true" />
                 </button>
-
-                {telegramLoginUrl ? (
-                  <a
-                    className="btn-secondary telegram-button"
-                    href={telegramLoginUrl}
-                  >
-                    <MessageCircleMore size={16} aria-hidden="true" />
-                    Войти через Telegram
-                  </a>
-                ) : null}
               </>
             )}
 

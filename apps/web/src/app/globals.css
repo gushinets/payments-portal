@@ -793,6 +793,11 @@ button:disabled {
   gap: 28px;
 }
 
+.footer-payments {
+  justify-self: end;
+  text-align: right;
+}
+
 .footer-links,
 .payment-list {
   display: grid;
@@ -805,6 +810,7 @@ button:disabled {
 
 .payment-list {
   grid-template-columns: repeat(4, 56px);
+  justify-content: end;
 }
 
 .footer-links a {
@@ -993,8 +999,14 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 
+  .footer-payments {
+    justify-self: stretch;
+    text-align: left;
+  }
+
   .payment-list {
     grid-template-columns: repeat(4, minmax(48px, 56px));
+    justify-content: start;
   }
 
   .hero-h1 {

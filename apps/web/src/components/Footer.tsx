@@ -120,7 +120,7 @@ export function Footer() {
             ))}
           </div>
         </div>
-        <div>
+        <div className="footer-payments">
           <p className="footer-text">
             Поддерживаемые способы оплаты
           </p>

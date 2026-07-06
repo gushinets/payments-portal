@@ -15,9 +15,6 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
             <Link className="nav-link" href="/ru/products">
               Продукты
             </Link>
-            <Link className="nav-link" href="/ru/auth-checkout">
-              Оформление
-            </Link>
             <HeaderAccount />
           </nav>
         </div>
