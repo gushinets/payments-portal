@@ -5,15 +5,17 @@ import hmac
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import ProductAccessState, User, UserSession
+from app.models import AuthSession, ProductAccessState, User
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
+DEFAULT_TENANT_ID = "anytoolai"
+DEFAULT_REGION = "ru"
 SESSION_TTL_DAYS = 30
 PBKDF2_ITERATIONS = 120_000
 PRODUCT_DEFAULTS = {
@@ -29,6 +31,8 @@ PRODUCT_DEFAULTS = {
 
 
 class RegisterRequest(BaseModel):
+    tenant_id: str = DEFAULT_TENANT_ID
+    region: str = DEFAULT_REGION
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
     personal_consent: bool
@@ -36,6 +40,8 @@ class RegisterRequest(BaseModel):
 
 
 class LoginRequest(BaseModel):
+    tenant_id: str = DEFAULT_TENANT_ID
+    region: str = DEFAULT_REGION
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
 
@@ -89,6 +95,27 @@ def make_session_token() -> tuple[str, str, datetime]:
     return token, token_hash, expires_at
 
 
+def normalize_tenant_id(value: str) -> str:
+    return value.strip().lower()
+
+
+def normalize_region(value: str) -> str:
+    return value.strip().lower()
+
+
+def normalize_email(value: str) -> str:
+    return value.strip().lower()
+
+
+def present_user(user: User) -> dict:
+    return {
+        "tenant_id": user.tenant_id,
+        "region": user.region,
+        "user_id": str(user.id),
+        "email": user.email,
+    }
+
+
 def make_invoice_id(product_code: str) -> str:
     return f"{product_code}-{secrets.token_hex(8)}"
 
@@ -110,7 +137,7 @@ def present_product_state(state: ProductAccessState | None, product_code: str) -
 def get_current_session(
     authorization: str | None = Header(default=None),
     db: Session = Depends(get_db),
-) -> tuple[User, UserSession]:
+) -> tuple[User, AuthSession]:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="missing_session")
 
@@ -118,14 +145,26 @@ def get_current_session(
     token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
 
     session = (
-        db.query(UserSession)
-        .filter(UserSession.token_hash == token_hash)
+        db.query(AuthSession)
+        .filter(AuthSession.token_hash == token_hash)
         .first()
     )
-    if session is None or as_utc(session.expires_at) <= utc_now():
+    if (
+        session is None
+        or session.revoked_at is not None
+        or as_utc(session.expires_at) <= utc_now()
+    ):
         raise HTTPException(status_code=401, detail="invalid_session")
 
-    user = db.query(User).filter(User.id == session.user_id).first()
+    user = (
+        db.query(User)
+        .filter(
+            User.id == session.user_id,
+            User.tenant_id == session.tenant_id,
+            User.region == session.region,
+        )
+        .first()
+    )
     if user is None:
         raise HTTPException(status_code=401, detail="invalid_session")
 
@@ -137,57 +176,116 @@ def get_current_session(
 
 
 @router.post("/register")
-def register(payload: RegisterRequest, db: Session = Depends(get_db)):
+def register(
+    payload: RegisterRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
     if not payload.personal_consent:
         raise HTTPException(status_code=400, detail="missing_personal_consent")
     if not payload.offer_consent:
         raise HTTPException(status_code=400, detail="missing_offer_consent")
 
-    normalized_email = payload.email.lower()
-    existing = db.query(User).filter(User.email == normalized_email).first()
+    tenant_id = normalize_tenant_id(payload.tenant_id)
+    region = normalize_region(payload.region)
+    normalized_email = normalize_email(str(payload.email))
+    existing = (
+        db.query(User)
+        .filter(
+            User.tenant_id == tenant_id,
+            User.region == region,
+            User.email_normalized == normalized_email,
+        )
+        .first()
+    )
     if existing is not None:
         raise HTTPException(status_code=409, detail="email_already_registered")
 
-    user = User(email=normalized_email, password_hash=hash_password(payload.password))
+    user = User(
+        tenant_id=tenant_id,
+        region=region,
+        email=str(payload.email),
+        email_normalized=normalized_email,
+        password_hash=hash_password(payload.password),
+        email_verified_at=utc_now(),
+        status="active",
+        last_login_at=utc_now(),
+    )
     db.add(user)
     db.commit()
     db.refresh(user)
 
     token, token_hash, expires_at = make_session_token()
-    session = UserSession(user_id=user.id, token_hash=token_hash, expires_at=expires_at)
+    session = AuthSession(
+        tenant_id=user.tenant_id,
+        region=user.region,
+        user_id=user.id,
+        token_hash=token_hash,
+        expires_at=expires_at,
+        ip=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
     db.add(session)
     db.commit()
 
     return {
-      "status": "registered",
-      "token": token,
-      "user": {"email": user.email},
+        "status": "registered",
+        "token": token,
+        "user": present_user(user),
     }
 
 
 @router.post("/login")
-def login(payload: LoginRequest, db: Session = Depends(get_db)):
-    normalized_email = payload.email.lower()
-    user = db.query(User).filter(User.email == normalized_email).first()
-    if user is None or not verify_password(payload.password, user.password_hash):
+def login(
+    payload: LoginRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    tenant_id = normalize_tenant_id(payload.tenant_id)
+    region = normalize_region(payload.region)
+    normalized_email = normalize_email(str(payload.email))
+    user = (
+        db.query(User)
+        .filter(
+            User.tenant_id == tenant_id,
+            User.region == region,
+            User.email_normalized == normalized_email,
+        )
+        .first()
+    )
+    if (
+        user is None
+        or user.password_hash is None
+        or not verify_password(payload.password, user.password_hash)
+    ):
         raise HTTPException(status_code=401, detail="invalid_credentials")
 
+    user.last_login_at = utc_now()
+    db.add(user)
     token, token_hash, expires_at = make_session_token()
-    session = UserSession(user_id=user.id, token_hash=token_hash, expires_at=expires_at)
+    session = AuthSession(
+        tenant_id=user.tenant_id,
+        region=user.region,
+        user_id=user.id,
+        token_hash=token_hash,
+        expires_at=expires_at,
+        ip=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
     db.add(session)
     db.commit()
 
     return {
         "status": "authenticated",
         "token": token,
-        "user": {"email": user.email},
+        "user": present_user(user),
     }
 
 
 @router.get("/session")
 def get_session(
     product: str | None = None,
-    current: tuple[User, UserSession] = Depends(get_current_session),
+    current: tuple[User, AuthSession] = Depends(get_current_session),
     db: Session = Depends(get_db),
 ):
     user, _ = current
@@ -206,7 +304,7 @@ def get_session(
 
     return {
         "authenticated": True,
-        "user": {"email": user.email},
+        "user": present_user(user),
         "product_state": product_state,
     }
 
@@ -215,10 +313,20 @@ def get_session(
 def get_payment_status(
     invoice_id: str = Query(min_length=1),
     email: EmailStr = Query(),
+    tenant_id: str = Query(default=DEFAULT_TENANT_ID),
+    region: str = Query(default=DEFAULT_REGION),
     db: Session = Depends(get_db),
 ):
-    normalized_email = email.lower()
-    user = db.query(User).filter(User.email == normalized_email).first()
+    normalized_email = normalize_email(str(email))
+    user = (
+        db.query(User)
+        .filter(
+            User.tenant_id == normalize_tenant_id(tenant_id),
+            User.region == normalize_region(region),
+            User.email_normalized == normalized_email,
+        )
+        .first()
+    )
     if user is None:
         raise HTTPException(status_code=404, detail="payment_not_found")
 
@@ -234,6 +342,9 @@ def get_payment_status(
         raise HTTPException(status_code=404, detail="payment_not_found")
 
     return {
+        "tenant_id": user.tenant_id,
+        "region": user.region,
+        "user_id": str(user.id),
         "email": normalized_email,
         "product_state": present_product_state(state, state.product_code),
     }
@@ -241,7 +352,7 @@ def get_payment_status(
 
 @router.post("/logout")
 def logout(
-    current: tuple[User, UserSession] = Depends(get_current_session),
+    current: tuple[User, AuthSession] = Depends(get_current_session),
     db: Session = Depends(get_db),
 ):
     _, session = current
@@ -253,7 +364,7 @@ def logout(
 @router.post("/checkout-intent")
 def create_checkout_intent(
     payload: CheckoutIntentRequest,
-    current: tuple[User, UserSession] = Depends(get_current_session),
+    current: tuple[User, AuthSession] = Depends(get_current_session),
     db: Session = Depends(get_db),
 ):
     user, _ = current

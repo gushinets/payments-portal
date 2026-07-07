@@ -7,6 +7,9 @@ import { ArrowRight, LogIn, UserRound } from "lucide-react";
 type SessionResponse = {
   authenticated: boolean;
   user?: {
+    tenant_id: string;
+    region: string;
+    user_id: string;
     email: string;
   };
 };
@@ -15,6 +18,9 @@ type AuthResponse = {
   status: string;
   token: string;
   user: {
+    tenant_id: string;
+    region: string;
+    user_id: string;
     email: string;
   };
 };

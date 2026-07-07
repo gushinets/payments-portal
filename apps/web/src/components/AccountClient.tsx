@@ -19,6 +19,9 @@ type ProductState = {
 type SessionResponse = {
   authenticated: boolean;
   user: {
+    tenant_id: string;
+    region: string;
+    user_id: string;
     email: string;
   };
   product_state?: ProductState | null;

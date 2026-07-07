@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from app.database import Base, SessionLocal, engine  # noqa: E402
 from app.main import app  # noqa: E402
-from app.models import PaymentWebhookEvent, ProductAccessState, User  # noqa: E402
+from app.models import AuthSession, PaymentWebhookEvent, ProductAccessState, User  # noqa: E402
 
 
 client = TestClient(app)
@@ -47,6 +47,9 @@ def test_register_session_and_checkout_intent_flow() -> None:
     register_payload = register_response.json()
     assert register_payload["status"] == "registered"
     assert register_payload["token"]
+    assert register_payload["user"]["tenant_id"] == "anytoolai"
+    assert register_payload["user"]["region"] == "ru"
+    assert register_payload["user"]["user_id"]
     token = register_payload["token"]
 
     session_response = client.get(
@@ -58,6 +61,9 @@ def test_register_session_and_checkout_intent_flow() -> None:
     session_payload = session_response.json()
     assert session_payload["authenticated"] is True
     assert session_payload["user"]["email"] == "user@example.com"
+    assert session_payload["user"]["tenant_id"] == "anytoolai"
+    assert session_payload["user"]["region"] == "ru"
+    assert session_payload["user"]["user_id"] == register_payload["user"]["user_id"]
     assert session_payload["product_state"]["status"] == "inactive"
 
     checkout_response = client.post(
@@ -80,6 +86,9 @@ def test_register_session_and_checkout_intent_flow() -> None:
         state = db.query(ProductAccessState).one()
 
     assert user.email == "user@example.com"
+    assert user.tenant_id == "anytoolai"
+    assert user.region == "ru"
+    assert user.email_normalized == "user@example.com"
     assert state.user_id == user.id
     assert state.product_code == "document-summary"
     assert state.plan_code == "document-summary-pro"
@@ -137,6 +146,86 @@ def test_successful_pay_webhook_is_saved_without_activating_access() -> None:
     assert event.endpoint == "pay"
     assert event.invoice_id == invoice_id
     assert event.transaction_id == "tx-success-1"
+
+
+def test_same_email_can_register_independent_ru_and_eu_accounts() -> None:
+    ru_response = client.post(
+        "/api/auth/register",
+        json={
+            "region": "ru",
+            "email": "shared@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    eu_response = client.post(
+        "/api/auth/register",
+        json={
+            "region": "eu",
+            "email": "shared@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+
+    assert ru_response.status_code == 200
+    assert eu_response.status_code == 200
+    ru_user = ru_response.json()["user"]
+    eu_user = eu_response.json()["user"]
+    assert ru_user["region"] == "ru"
+    assert eu_user["region"] == "eu"
+    assert ru_user["email"] == eu_user["email"] == "shared@example.com"
+    assert ru_user["user_id"] != eu_user["user_id"]
+
+    with SessionLocal() as db:
+        users = (
+            db.query(User)
+            .filter(User.email_normalized == "shared@example.com")
+            .order_by(User.region)
+            .all()
+        )
+
+    assert len(users) == 2
+    assert {user.region for user in users} == {"eu", "ru"}
+
+
+def test_same_email_cannot_register_twice_in_same_region() -> None:
+    payload = {
+        "region": "ru",
+        "email": "shared@example.com",
+        "password": "very-secret-password",
+        "personal_consent": True,
+        "offer_consent": True,
+    }
+
+    first_response = client.post("/api/auth/register", json=payload)
+    second_response = client.post("/api/auth/register", json=payload)
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 409
+
+
+def test_auth_sessions_store_only_token_hash() -> None:
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "user@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = register_response.json()["token"]
+
+    with SessionLocal() as db:
+        session = db.query(AuthSession).one()
+
+    assert session.token_hash
+    assert session.token_hash != token
+    assert len(session.token_hash) == 64
+    assert not hasattr(session, "token")
 
 
 def test_login_and_logout_flow() -> None:

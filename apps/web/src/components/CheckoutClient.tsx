@@ -13,6 +13,9 @@ import { ProductCards } from "@/components/ProductCards";
 import { findProduct, formatRubles, Product, products } from "@/lib/catalog";
 
 type SessionUser = {
+  tenant_id: string;
+  region: string;
+  user_id: string;
   email: string;
 };
 

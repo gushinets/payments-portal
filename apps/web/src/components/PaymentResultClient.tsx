@@ -18,6 +18,9 @@ type StoredPaymentResult = {
 };
 
 type PaymentStatusResponse = {
+  tenant_id: string;
+  region: string;
+  user_id: string;
   email: string;
   product_state: {
     product_code: string;
