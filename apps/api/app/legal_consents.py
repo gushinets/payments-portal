@@ -28,11 +28,7 @@ def hash_acceptance_text(value: str) -> str:
 
 
 def build_acceptance_text(document: DocumentVersion) -> str:
-    return (
-        "I accept "
-        f"{document.title} "
-        f"({document.doc_type}, version {document.version})."
-    )
+    return f"Я принимаю документ «{document.title}»."
 
 
 def expected_acceptance_text_hash(document: DocumentVersion) -> str:

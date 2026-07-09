@@ -1,14 +1,29 @@
 from __future__ import annotations
 
+import os
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.auth import router as auth_router
 from app.cloudpayments import router as cloudpayments_router
+from app.database import SessionLocal
 from app.legal import router as legal_router
+from app.legal_seed import seed_legal_documents
 from app.settings import settings
 
-app = FastAPI(title="AnytoolAI Payments API", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    if os.getenv("SKIP_LEGAL_SEED") != "true":
+        with SessionLocal() as db:
+            seed_legal_documents(db)
+
+    yield
+
+
+app = FastAPI(title="AnytoolAI Payments API", version="0.1.0", lifespan=lifespan)
 
 default_cors_origins = [
     "http://localhost:3000",

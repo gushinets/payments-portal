@@ -7,6 +7,7 @@ Create Date: 2026-07-07
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from uuid import UUID
 
 from alembic import op
@@ -22,6 +23,7 @@ depends_on = None
 def upgrade() -> None:
     uuid_type = sa.Uuid()
     ip_type = postgresql.INET()
+    legal_published_at = datetime(2026, 7, 2, tzinfo=timezone.utc)
 
     op.create_table(
         "regions",
@@ -247,6 +249,160 @@ def upgrade() -> None:
         "ix_document_versions_legal_entity_id",
         "document_versions",
         ["legal_entity_id"],
+    )
+    op.bulk_insert(
+        sa.table(
+            "legal_entities",
+            sa.column("id", uuid_type),
+            sa.column("tenant_id", sa.Text()),
+            sa.column("region", sa.Text()),
+            sa.column("name", sa.Text()),
+            sa.column("entity_type", sa.Text()),
+            sa.column("tax_id", sa.Text()),
+            sa.column("registration_id", sa.Text()),
+            sa.column("legal_address", sa.Text()),
+            sa.column("support_email", sa.Text()),
+            sa.column("status", sa.Text()),
+        ),
+        [
+            {
+                "id": UUID("44444444-4444-4444-8444-444444444444"),
+                "tenant_id": "anytoolai",
+                "region": "ru",
+                "name": "ИП Говоров Роман Стальевич",
+                "entity_type": "individual_entrepreneur",
+                "tax_id": "143509640374",
+                "registration_id": "314547633100101",
+                "legal_address": (
+                    "630091, Новосибирская область, г. Новосибирск, "
+                    "Красный пр-кт, дом 45, кв. 30"
+                ),
+                "support_email": "info@anytoolai.ru",
+                "status": "active",
+            },
+        ],
+    )
+    op.bulk_insert(
+        sa.table(
+            "document_versions",
+            sa.column("id", uuid_type),
+            sa.column("tenant_id", sa.Text()),
+            sa.column("region", sa.Text()),
+            sa.column("legal_entity_id", uuid_type),
+            sa.column("doc_type", sa.Text()),
+            sa.column("version", sa.Text()),
+            sa.column("title", sa.Text()),
+            sa.column("url_path", sa.Text()),
+            sa.column("content_hash", sa.Text()),
+            sa.column("published_at", sa.DateTime(timezone=True)),
+            sa.column("effective_from", sa.DateTime(timezone=True)),
+            sa.column("is_active", sa.Boolean()),
+            sa.column("requires_acceptance", sa.Boolean()),
+        ),
+        [
+            {
+                "id": UUID("55555555-5555-4555-8555-555555555501"),
+                "tenant_id": "anytoolai",
+                "region": "ru",
+                "legal_entity_id": UUID("44444444-4444-4444-8444-444444444444"),
+                "doc_type": "privacy",
+                "version": "2026-07-02",
+                "title": "Политика в отношении обработки персональных данных",
+                "url_path": "/ru/privacy",
+                "content_hash": (
+                    "sha256:3a859b6704b6e35e41eb97cab1daddc7cde9923540eceffbd7d3a08c0045672c"
+                ),
+                "published_at": legal_published_at,
+                "effective_from": legal_published_at,
+                "is_active": True,
+                "requires_acceptance": True,
+            },
+            {
+                "id": UUID("55555555-5555-4555-8555-555555555502"),
+                "tenant_id": "anytoolai",
+                "region": "ru",
+                "legal_entity_id": UUID("44444444-4444-4444-8444-444444444444"),
+                "doc_type": "pd_consent",
+                "version": "2026-07-02",
+                "title": "Согласие на обработку персональных данных",
+                "url_path": "/ru/consent-personal-data",
+                "content_hash": (
+                    "sha256:645e250d313273dc1488aa1fb7fbf4fe9ae731bea25d33d0025770eef7efba07"
+                ),
+                "published_at": legal_published_at,
+                "effective_from": legal_published_at,
+                "is_active": True,
+                "requires_acceptance": True,
+            },
+            {
+                "id": UUID("55555555-5555-4555-8555-555555555503"),
+                "tenant_id": "anytoolai",
+                "region": "ru",
+                "legal_entity_id": UUID("44444444-4444-4444-8444-444444444444"),
+                "doc_type": "offer",
+                "version": "2026-07-02",
+                "title": "Публичная оферта на оказание услуг",
+                "url_path": "/ru/offer",
+                "content_hash": (
+                    "sha256:5926ed6905b47b941dade5418354fc89d2f6efc330771548bdde4c102572d5c2"
+                ),
+                "published_at": legal_published_at,
+                "effective_from": legal_published_at,
+                "is_active": True,
+                "requires_acceptance": True,
+            },
+            {
+                "id": UUID("55555555-5555-4555-8555-555555555504"),
+                "tenant_id": "anytoolai",
+                "region": "ru",
+                "legal_entity_id": UUID("44444444-4444-4444-8444-444444444444"),
+                "doc_type": "cancellation",
+                "version": "2026-07-02",
+                "title": "Условия отмены подписки и возврата денежных средств",
+                "url_path": "/ru/cancellation",
+                "content_hash": (
+                    "sha256:9790b7cc3a004698a1b0a3d5bea8329450fb78e41bf829fc7d15c40387648c8f"
+                ),
+                "published_at": legal_published_at,
+                "effective_from": legal_published_at,
+                "is_active": True,
+                "requires_acceptance": False,
+            },
+            {
+                "id": UUID("55555555-5555-4555-8555-555555555505"),
+                "tenant_id": "anytoolai",
+                "region": "ru",
+                "legal_entity_id": UUID("44444444-4444-4444-8444-444444444444"),
+                "doc_type": "cookies",
+                "version": "2026-07-02",
+                "title": "Политика использования файлов cookie",
+                "url_path": "/ru/cookies",
+                "content_hash": (
+                    "sha256:2ab4fd889d543c33bbddaead22c1c54843a88db383444043b114de870ec851b4"
+                ),
+                "published_at": legal_published_at,
+                "effective_from": legal_published_at,
+                "is_active": True,
+                "requires_acceptance": False,
+            },
+            {
+                "id": UUID("55555555-5555-4555-8555-555555555506"),
+                "tenant_id": "anytoolai",
+                "region": "ru",
+                "legal_entity_id": UUID("44444444-4444-4444-8444-444444444444"),
+                "doc_type": "security",
+                "version": "2026-07-02",
+                "title": "Политика информационной безопасности",
+                "url_path": "/ru/security",
+                "content_hash": (
+                    "sha256:c6730f20a045becb7ad282d453cc7291eec9435a00e6c463d5042f0ca5ec10eb"
+                ),
+                "published_at": legal_published_at,
+                "effective_from": legal_published_at,
+                "is_active": True,
+                "requires_acceptance": False,
+            },
+        ],
     )
 
     op.create_table(

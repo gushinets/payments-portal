@@ -181,7 +181,9 @@ export function CheckoutClient() {
   const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
   const [productState, setProductState] = useState<ProductState | null>(null);
   const [missingDocuments, setMissingDocuments] = useState<RequiredDocument[]>([]);
-  const [documentsConsent, setDocumentsConsent] = useState(false);
+  const [documentConsentById, setDocumentConsentById] = useState<
+    Record<string, boolean>
+  >({});
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -199,6 +201,11 @@ export function CheckoutClient() {
   );
   const showAuthModal =
     (needsAuthPrompt || forceAuthPrompt) && !sessionLoading && authModalOpen;
+  const allMissingDocumentsAccepted =
+    missingDocuments.length > 0 &&
+    missingDocuments.every(
+      (document) => documentConsentById[document.document_version_id]
+    );
 
   useEffect(() => {
     function syncStoredToken() {
@@ -344,7 +351,7 @@ export function CheckoutClient() {
       setSessionToken(payload.token);
       setSessionUser(payload.user);
       setMissingDocuments([]);
-      setDocumentsConsent(false);
+      setDocumentConsentById({});
       showNotice(
         mode === "register"
           ? "Аккаунт создан. Теперь можно перейти к оплате."
@@ -389,7 +396,7 @@ export function CheckoutClient() {
       setSessionUser(null);
       setProductState(null);
       setMissingDocuments([]);
-      setDocumentsConsent(false);
+      setDocumentConsentById({});
     }
   }
 
@@ -427,12 +434,12 @@ export function CheckoutClient() {
       checkoutState = payload.product_state;
       setProductState(payload.product_state);
       setMissingDocuments([]);
-      setDocumentsConsent(false);
+      setDocumentConsentById({});
     } catch (requestError) {
       const documents = getMissingDocuments(requestError);
       if (documents) {
         setMissingDocuments(documents);
-        setDocumentsConsent(false);
+        setDocumentConsentById({});
         showError("Перед оплатой нужно принять актуальные юридические документы.");
         return;
       }
@@ -518,8 +525,8 @@ export function CheckoutClient() {
       return;
     }
 
-    if (!documentsConsent) {
-      showError("Подтвердите, что принимаете показанные юридические документы.");
+    if (!allMissingDocumentsAccepted) {
+      showError("Отметьте каждый документ, который нужно принять перед оплатой.");
       return;
     }
 
@@ -540,7 +547,7 @@ export function CheckoutClient() {
       }
 
       setMissingDocuments([]);
-      setDocumentsConsent(false);
+      setDocumentConsentById({});
       showNotice("Документы приняты. Продолжаем оформление оплаты.");
       await goToPaymentResult();
     } catch (requestError) {
@@ -779,28 +786,36 @@ export function CheckoutClient() {
                           className="legal-consent-item"
                           key={document.document_version_id}
                         >
-                          <Link className="inline-link" href={document.url_path}>
-                            {document.title}
-                          </Link>
-                          <p>{document.acceptance_text}</p>
+                          <input
+                            aria-label={`Принять документ ${document.title}`}
+                            type="checkbox"
+                            checked={
+                              documentConsentById[
+                                document.document_version_id
+                              ] ?? false
+                            }
+                            onChange={(event) =>
+                              setDocumentConsentById((current) => ({
+                                ...current,
+                                [document.document_version_id]:
+                                  event.target.checked
+                              }))
+                            }
+                          />
+                          <div>
+                            <Link className="inline-link" href={document.url_path}>
+                              {document.title}
+                            </Link>
+                            <p>{document.acceptance_text}</p>
+                          </div>
                         </div>
                       ))}
                     </div>
-                    <label className="checkbox-label">
-                      <input
-                        type="checkbox"
-                        checked={documentsConsent}
-                        onChange={(event) =>
-                          setDocumentsConsent(event.target.checked)
-                        }
-                      />
-                      <span>Я принимаю показанные юридические документы.</span>
-                    </label>
                     <button
                       className="btn-primary"
                       type="button"
                       onClick={acceptRequiredDocumentsAndContinue}
-                      disabled={loading || !documentsConsent}
+                      disabled={loading || !allMissingDocumentsAccepted}
                     >
                       Принять и продолжить
                       <ArrowRight size={16} aria-hidden="true" />

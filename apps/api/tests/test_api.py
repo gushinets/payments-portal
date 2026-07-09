@@ -8,6 +8,7 @@ from pathlib import Path
 
 os.environ["DATABASE_URL"] = "sqlite+pysqlite:///:memory:"
 os.environ["CLOUDPAYMENTS_API_SECRET"] = ""
+os.environ["SKIP_LEGAL_SEED"] = "true"
 
 api_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(api_root))
@@ -25,6 +26,7 @@ from app.models import (  # noqa: E402
     ProductAccessState,
     User,
 )
+from app.legal_seed import RU_DOCUMENT_VERSIONS, seed_legal_documents  # noqa: E402
 
 
 client = TestClient(app)
@@ -57,6 +59,7 @@ def create_document_version(
     legal_entity: LegalEntity,
     doc_type: str = "offer",
     version: str = "2026-07-ru-v1",
+    title: str = "Публичная оферта",
     is_active: bool = True,
     requires_acceptance: bool = True,
 ) -> DocumentVersion:
@@ -68,7 +71,7 @@ def create_document_version(
         legal_entity_id=legal_entity.id,
         doc_type=doc_type,
         version=version,
-        title=f"{doc_type} {version}",
+        title=title,
         url_path=f"/{legal_entity.region}/{doc_type}",
         content_hash=f"sha256:{version}",
         published_at=now,
@@ -87,6 +90,74 @@ def test_healthcheck() -> None:
 
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
+
+
+def test_seeded_legal_documents_block_checkout_on_fresh_database() -> None:
+    with SessionLocal() as db:
+        seed_legal_documents(db)
+
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "seeded-legal@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = register_response.json()["token"]
+
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": False,
+        },
+    )
+
+    assert checkout_response.status_code == 409
+    missing_documents = checkout_response.json()["detail"]["documents"]
+    required_seeded_types = {
+        document["doc_type"]
+        for document in RU_DOCUMENT_VERSIONS
+        if document["requires_acceptance"]
+    }
+    assert {document["doc_type"] for document in missing_documents} == required_seeded_types
+
+
+def test_legal_seed_skips_existing_active_document_type() -> None:
+    with SessionLocal() as db:
+        legal_entity = create_legal_entity(db, region="ru")
+        existing_offer = create_document_version(
+            db,
+            legal_entity=legal_entity,
+            doc_type="offer",
+            version="2026-07-custom",
+        )
+        existing_offer_id = existing_offer.id
+
+        seed_legal_documents(db)
+
+        offers = (
+            db.query(DocumentVersion)
+            .filter(
+                DocumentVersion.tenant_id == "anytoolai",
+                DocumentVersion.region == "ru",
+                DocumentVersion.doc_type == "offer",
+                DocumentVersion.is_active.is_(True),
+            )
+            .all()
+        )
+        seeded_documents_count = (
+            db.query(DocumentVersion)
+            .filter(DocumentVersion.version == "2026-07-02")
+            .count()
+        )
+
+    assert [offer.id for offer in offers] == [existing_offer_id]
+    assert seeded_documents_count == len(RU_DOCUMENT_VERSIONS) - 1
 
 
 def test_register_session_and_checkout_intent_flow() -> None:
@@ -391,7 +462,9 @@ def test_checkout_requires_acceptance_again_when_active_document_version_changes
     assert checkout_response.json()["detail"]["code"] == "missing_required_documents"
     assert missing_document["document_version_id"] == str(first_document_id)
     assert missing_document["version"] == "2026-07-ru-v1"
-    assert missing_document["acceptance_text"]
+    assert missing_document["acceptance_text"] == "Я принимаю документ «Публичная оферта»."
+    assert "offer" not in missing_document["acceptance_text"]
+    assert "2026-07-ru-v1" not in missing_document["acceptance_text"]
     assert missing_document["acceptance_text_hash"]
 
     invalid_accept_response = client.post(
