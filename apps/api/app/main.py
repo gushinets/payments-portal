@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.auth import router as auth_router
 from app.cloudpayments import router as cloudpayments_router
+from app.legal import router as legal_router
 from app.settings import settings
 
 app = FastAPI(title="AnytoolAI Payments API", version="0.1.0")
@@ -27,6 +28,7 @@ app.add_middleware(
 )
 
 app.include_router(auth_router)
+app.include_router(legal_router)
 app.include_router(cloudpayments_router)
 
 

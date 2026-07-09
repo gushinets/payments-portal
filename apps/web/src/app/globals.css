@@ -659,6 +659,29 @@ button:disabled {
   border-color: rgba(248, 113, 113, 0.25);
 }
 
+.legal-consent-box {
+  display: grid;
+  gap: 12px;
+}
+
+.legal-consent-list {
+  display: grid;
+  gap: 10px;
+}
+
+.legal-consent-item {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.legal-consent-item p {
+  margin: 0;
+}
+
 .account-card,
 .telegram-placeholder,
 .auth-mode-row {

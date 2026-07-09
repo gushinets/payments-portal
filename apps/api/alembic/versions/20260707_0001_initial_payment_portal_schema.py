@@ -146,6 +146,110 @@ def upgrade() -> None:
     )
 
     op.create_table(
+        "legal_entities",
+        sa.Column("id", uuid_type, primary_key=True),
+        sa.Column(
+            "tenant_id",
+            sa.Text(),
+            nullable=False,
+            server_default=sa.text("'anytoolai'"),
+        ),
+        sa.Column("region", sa.Text(), sa.ForeignKey("regions.code"), nullable=False),
+        sa.Column("name", sa.Text(), nullable=False),
+        sa.Column("entity_type", sa.Text(), nullable=False),
+        sa.Column("tax_id", sa.Text(), nullable=True),
+        sa.Column("registration_id", sa.Text(), nullable=True),
+        sa.Column("legal_address", sa.Text(), nullable=False),
+        sa.Column("support_email", sa.Text(), nullable=False),
+        sa.Column("status", sa.Text(), nullable=False, server_default=sa.text("'active'")),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
+    )
+    op.create_index(
+        "ix_legal_entities_tenant_region_status",
+        "legal_entities",
+        ["tenant_id", "region", "status"],
+    )
+
+    op.create_table(
+        "document_versions",
+        sa.Column("id", uuid_type, primary_key=True),
+        sa.Column(
+            "tenant_id",
+            sa.Text(),
+            nullable=False,
+            server_default=sa.text("'anytoolai'"),
+        ),
+        sa.Column("region", sa.Text(), sa.ForeignKey("regions.code"), nullable=False),
+        sa.Column("legal_entity_id", uuid_type, sa.ForeignKey("legal_entities.id"), nullable=False),
+        sa.Column("doc_type", sa.Text(), nullable=False),
+        sa.Column("version", sa.Text(), nullable=False),
+        sa.Column("title", sa.Text(), nullable=False),
+        sa.Column("url_path", sa.Text(), nullable=False),
+        sa.Column("content_hash", sa.Text(), nullable=False),
+        sa.Column("published_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("effective_from", sa.DateTime(timezone=True), nullable=False),
+        sa.Column(
+            "is_active",
+            sa.Boolean(),
+            nullable=False,
+            server_default=sa.text("true"),
+        ),
+        sa.Column(
+            "requires_acceptance",
+            sa.Boolean(),
+            nullable=False,
+            server_default=sa.text("true"),
+        ),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
+        sa.UniqueConstraint(
+            "tenant_id",
+            "region",
+            "doc_type",
+            "version",
+            name="uq_document_versions_tenant_region_doc_type_version",
+        ),
+    )
+    op.create_index(
+        "uq_document_versions_active_doc",
+        "document_versions",
+        ["tenant_id", "region", "doc_type"],
+        unique=True,
+        postgresql_where=sa.text("is_active = true"),
+    )
+    op.create_index(
+        "ix_document_versions_region_is_active",
+        "document_versions",
+        ["region", "is_active"],
+    )
+    op.create_index(
+        "ix_document_versions_legal_entity_id",
+        "document_versions",
+        ["legal_entity_id"],
+    )
+
+    op.create_table(
         "users",
         sa.Column("id", uuid_type, primary_key=True),
         sa.Column(
@@ -188,6 +292,79 @@ def upgrade() -> None:
     )
     op.create_index("ix_users_email_normalized", "users", ["email_normalized"])
     op.create_index("ix_users_region_status", "users", ["region", "status"])
+
+    op.create_table(
+        "document_acceptances",
+        sa.Column("id", uuid_type, primary_key=True),
+        sa.Column(
+            "tenant_id",
+            sa.Text(),
+            nullable=False,
+            server_default=sa.text("'anytoolai'"),
+        ),
+        sa.Column("region", sa.Text(), sa.ForeignKey("regions.code"), nullable=False),
+        sa.Column("user_id", uuid_type, sa.ForeignKey("users.id"), nullable=True),
+        sa.Column("guest_id", sa.Text(), nullable=True),
+        sa.Column("entrypoint_session_id", uuid_type, nullable=True),
+        sa.Column(
+            "document_version_id",
+            uuid_type,
+            sa.ForeignKey("document_versions.id"),
+            nullable=False,
+        ),
+        sa.Column("doc_type", sa.Text(), nullable=False),
+        sa.Column("version", sa.Text(), nullable=False),
+        sa.Column("acceptance_kind", sa.Text(), nullable=False),
+        sa.Column(
+            "accepted_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
+        sa.Column("ip", ip_type, nullable=True),
+        sa.Column("user_agent", sa.Text(), nullable=True),
+        sa.Column("acceptance_text_hash", sa.Text(), nullable=False),
+        sa.Column("entrypoint_type", sa.Text(), nullable=True),
+        sa.Column("entrypoint_value", sa.Text(), nullable=True),
+        sa.Column("source_url", sa.Text(), nullable=True),
+        sa.Column(
+            "metadata",
+            postgresql.JSONB(astext_type=sa.Text()),
+            nullable=False,
+            server_default=sa.text("'{}'::jsonb"),
+        ),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
+    )
+    op.create_index(
+        "ix_document_acceptances_user_region_doc_accepted_at",
+        "document_acceptances",
+        ["user_id", "region", "doc_type", "accepted_at"],
+    )
+    op.create_index(
+        "ix_document_acceptances_document_version_id",
+        "document_acceptances",
+        ["document_version_id"],
+    )
+    op.create_index(
+        "ix_document_acceptances_entrypoint_session_id",
+        "document_acceptances",
+        ["entrypoint_session_id"],
+    )
+    op.create_index(
+        "ix_document_acceptances_region_doc_version",
+        "document_acceptances",
+        ["region", "doc_type", "version"],
+    )
+    op.create_index(
+        "ix_document_acceptances_guest_id",
+        "document_acceptances",
+        ["guest_id"],
+    )
 
     op.create_table(
         "auth_sessions",
@@ -385,7 +562,48 @@ def downgrade() -> None:
 
     op.drop_index("ix_users_region_status", table_name="users")
     op.drop_index("ix_users_email_normalized", table_name="users")
+    op.drop_index(
+        "ix_document_acceptances_guest_id",
+        table_name="document_acceptances",
+    )
+    op.drop_index(
+        "ix_document_acceptances_region_doc_version",
+        table_name="document_acceptances",
+    )
+    op.drop_index(
+        "ix_document_acceptances_entrypoint_session_id",
+        table_name="document_acceptances",
+    )
+    op.drop_index(
+        "ix_document_acceptances_document_version_id",
+        table_name="document_acceptances",
+    )
+    op.drop_index(
+        "ix_document_acceptances_user_region_doc_accepted_at",
+        table_name="document_acceptances",
+    )
+    op.drop_table("document_acceptances")
     op.drop_table("users")
+
+    op.drop_index(
+        "ix_document_versions_legal_entity_id",
+        table_name="document_versions",
+    )
+    op.drop_index(
+        "ix_document_versions_region_is_active",
+        table_name="document_versions",
+    )
+    op.drop_index(
+        "uq_document_versions_active_doc",
+        table_name="document_versions",
+    )
+    op.drop_table("document_versions")
+
+    op.drop_index(
+        "ix_legal_entities_tenant_region_status",
+        table_name="legal_entities",
+    )
+    op.drop_table("legal_entities")
 
     op.drop_index(
         "ix_country_region_rules_region_market_enabled",

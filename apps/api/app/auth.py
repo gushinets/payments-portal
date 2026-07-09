@@ -10,6 +10,11 @@ from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.legal_consents import (
+    build_acceptance_text,
+    expected_acceptance_text_hash,
+    get_missing_required_documents_for_user,
+)
 from app.models import AuthSession, ProductAccessState, User
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -368,6 +373,27 @@ def create_checkout_intent(
     db: Session = Depends(get_db),
 ):
     user, _ = current
+    missing_documents = get_missing_required_documents_for_user(db, user=user)
+    if missing_documents:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "missing_required_documents",
+                "documents": [
+                    {
+                        "document_version_id": str(document.id),
+                        "doc_type": document.doc_type,
+                        "version": document.version,
+                        "title": document.title,
+                        "url_path": document.url_path,
+                        "acceptance_text": build_acceptance_text(document),
+                        "acceptance_text_hash": expected_acceptance_text_hash(document),
+                    }
+                    for document in missing_documents
+                ],
+            },
+        )
+
     invoice_id = make_invoice_id(payload.product)
     state = (
         db.query(ProductAccessState)

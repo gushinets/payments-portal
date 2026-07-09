@@ -42,6 +42,34 @@ type AuthResponse = {
   user: SessionUser;
 };
 
+type RequiredDocument = {
+  document_version_id: string;
+  doc_type: string;
+  version: string;
+  title: string;
+  url_path: string;
+  acceptance_text: string;
+  acceptance_text_hash: string;
+};
+
+type ApiErrorDetail =
+  | string
+  | {
+      code?: string;
+      documents?: RequiredDocument[];
+    };
+
+class ApiError extends Error {
+  status: number;
+  detail: ApiErrorDetail;
+
+  constructor(status: number, detail: ApiErrorDetail, rawBody: string) {
+    super(`${status}:${rawBody}`);
+    this.status = status;
+    this.detail = detail;
+  }
+}
+
 const configuredApiBase =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 const cloudPaymentsEnabled =
@@ -52,6 +80,20 @@ const telegramLoginUrl = process.env.NEXT_PUBLIC_TELEGRAM_LOGIN_URL ?? "";
 const sessionStorageKey = "anytoolai_session_token_v1";
 const sessionChangedEvent = "anytoolai_session_changed";
 const requestTimeoutMs = 5000;
+
+async function makeApiError(response: Response): Promise<ApiError> {
+  const rawBody = await response.text();
+  let detail: ApiErrorDetail = rawBody;
+
+  try {
+    const payload = JSON.parse(rawBody) as { detail?: ApiErrorDetail };
+    detail = payload.detail ?? rawBody;
+  } catch {
+    detail = rawBody;
+  }
+
+  return new ApiError(response.status, detail, rawBody);
+}
 
 function resolveApiBase(): string {
   if (typeof window === "undefined") {
@@ -94,7 +136,7 @@ async function postJson<T>(
   }).finally(() => window.clearTimeout(timeoutId));
 
   if (!response.ok) {
-    throw new Error(`${response.status}:${await response.text()}`);
+    throw await makeApiError(response);
   }
 
   return response.json() as Promise<T>;
@@ -111,7 +153,7 @@ async function getJson<T>(path: string, token: string): Promise<T> {
   }).finally(() => window.clearTimeout(timeoutId));
 
   if (!response.ok) {
-    throw new Error(`${response.status}:${await response.text()}`);
+    throw await makeApiError(response);
   }
 
   return response.json() as Promise<T>;
@@ -138,6 +180,8 @@ export function CheckoutClient() {
   const [sessionToken, setSessionToken] = useState("");
   const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
   const [productState, setProductState] = useState<ProductState | null>(null);
+  const [missingDocuments, setMissingDocuments] = useState<RequiredDocument[]>([]);
+  const [documentsConsent, setDocumentsConsent] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -236,6 +280,22 @@ export function CheckoutClient() {
     setNotice(message);
   }
 
+  function getMissingDocuments(errorValue: unknown): RequiredDocument[] | null {
+    if (!(errorValue instanceof ApiError) || errorValue.status !== 409) {
+      return null;
+    }
+
+    if (
+      typeof errorValue.detail === "object" &&
+      errorValue.detail.code === "missing_required_documents" &&
+      Array.isArray(errorValue.detail.documents)
+    ) {
+      return errorValue.detail.documents;
+    }
+
+    return null;
+  }
+
   async function authenticate() {
     setError("");
     setNotice("");
@@ -283,6 +343,8 @@ export function CheckoutClient() {
       window.dispatchEvent(new Event(sessionChangedEvent));
       setSessionToken(payload.token);
       setSessionUser(payload.user);
+      setMissingDocuments([]);
+      setDocumentsConsent(false);
       showNotice(
         mode === "register"
           ? "Аккаунт создан. Теперь можно перейти к оплате."
@@ -326,6 +388,8 @@ export function CheckoutClient() {
       setSessionToken("");
       setSessionUser(null);
       setProductState(null);
+      setMissingDocuments([]);
+      setDocumentsConsent(false);
     }
   }
 
@@ -362,7 +426,17 @@ export function CheckoutClient() {
       );
       checkoutState = payload.product_state;
       setProductState(payload.product_state);
-    } catch {
+      setMissingDocuments([]);
+      setDocumentsConsent(false);
+    } catch (requestError) {
+      const documents = getMissingDocuments(requestError);
+      if (documents) {
+        setMissingDocuments(documents);
+        setDocumentsConsent(false);
+        showError("Перед оплатой нужно принять актуальные юридические документы.");
+        return;
+      }
+
       showError("Не удалось подготовить оплату. Попробуйте ещё раз.");
       return;
     }
@@ -434,6 +508,53 @@ export function CheckoutClient() {
       invoice: checkoutState.invoice_id ?? ""
     });
     window.location.assign(`/ru/payment-result?${params.toString()}`);
+  }
+
+  async function acceptRequiredDocumentsAndContinue() {
+    setError("");
+
+    if (!sessionToken) {
+      showError("Сначала войдите или зарегистрируйтесь.");
+      return;
+    }
+
+    if (!documentsConsent) {
+      showError("Подтвердите, что принимаете показанные юридические документы.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      for (const document of missingDocuments) {
+        await postJson(
+          "/api/legal/acceptances",
+          {
+            document_version_id: document.document_version_id,
+            acceptance_text_hash: document.acceptance_text_hash,
+            entrypoint_type: "product",
+            entrypoint_value: selectedProduct?.code ?? null,
+            source_url: window.location.pathname + window.location.search
+          },
+          sessionToken
+        );
+      }
+
+      setMissingDocuments([]);
+      setDocumentsConsent(false);
+      showNotice("Документы приняты. Продолжаем оформление оплаты.");
+      await goToPaymentResult();
+    } catch (requestError) {
+      if (
+        requestError instanceof ApiError &&
+        requestError.detail === "invalid_acceptance_text_hash"
+      ) {
+        showError("Текст согласия изменился. Обновите страницу и попробуйте ещё раз.");
+      } else {
+        showError("Не удалось зафиксировать согласие. Попробуйте ещё раз.");
+      }
+    } finally {
+      setLoading(false);
+    }
   }
 
   const authForm = (
@@ -647,6 +768,46 @@ export function CheckoutClient() {
                 <h2>2. Статус подписки</h2>
                 <SubscriptionState product={selectedProduct} state={productState} />
 
+                {missingDocuments.length > 0 ? (
+                  <div className="notice legal-consent-box">
+                    <strong style={{ color: "var(--txt)" }}>
+                      Нужно принять актуальные документы
+                    </strong>
+                    <div className="legal-consent-list">
+                      {missingDocuments.map((document) => (
+                        <div
+                          className="legal-consent-item"
+                          key={document.document_version_id}
+                        >
+                          <Link className="inline-link" href={document.url_path}>
+                            {document.title}
+                          </Link>
+                          <p>{document.acceptance_text}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <label className="checkbox-label">
+                      <input
+                        type="checkbox"
+                        checked={documentsConsent}
+                        onChange={(event) =>
+                          setDocumentsConsent(event.target.checked)
+                        }
+                      />
+                      <span>Я принимаю показанные юридические документы.</span>
+                    </label>
+                    <button
+                      className="btn-primary"
+                      type="button"
+                      onClick={acceptRequiredDocumentsAndContinue}
+                      disabled={loading || !documentsConsent}
+                    >
+                      Принять и продолжить
+                      <ArrowRight size={16} aria-hidden="true" />
+                    </button>
+                  </div>
+                ) : null}
+
                 <label className="checkbox-label">
                   <input
                     type="checkbox"
@@ -682,7 +843,7 @@ export function CheckoutClient() {
                   className="btn-primary"
                   type="button"
                   onClick={goToPaymentResult}
-                  disabled={!selectedProduct}
+                  disabled={!selectedProduct || missingDocuments.length > 0}
                 >
                   Оплатить
                   <ArrowRight size={16} aria-hidden="true" />
