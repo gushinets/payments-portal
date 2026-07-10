@@ -32,6 +32,25 @@ type PaymentStatusResponse = {
     starts_at?: string | null;
     expires_at?: string | null;
   };
+  order?: {
+    order_id: string;
+    order_number: string;
+    status: string;
+    amount_minor: number;
+    currency: string;
+    paid_at?: string | null;
+    failed_at?: string | null;
+  } | null;
+  payment?: {
+    payment_id: string;
+    status: string;
+    provider_payment_id?: string | null;
+    amount_minor: number;
+    currency: string;
+    captured_at?: string | null;
+    failed_at?: string | null;
+    refunded_amount_minor: number;
+  } | null;
 };
 
 const configuredApiBase =
@@ -65,6 +84,8 @@ export function PaymentResultClient() {
   const searchParams = useSearchParams();
   const [stored, setStored] = useState<StoredPaymentResult>({});
   const [resolvedStatus, setResolvedStatus] = useState<string | null>(null);
+  const [resolvedOrderStatus, setResolvedOrderStatus] = useState<string | null>(null);
+  const [resolvedPaymentStatus, setResolvedPaymentStatus] = useState<string | null>(null);
   const [statusLoading, setStatusLoading] = useState(false);
 
   useEffect(() => {
@@ -112,7 +133,6 @@ export function PaymentResultClient() {
     "тариф не выбран";
   const price = product?.plan.priceRub ?? (hasResultParams ? stored.priceRub : undefined);
   const effectiveStatus = resolvedStatus ?? status;
-  const waiting = !["failed", "active"].includes(effectiveStatus);
 
   useEffect(() => {
     if (!invoiceId || !email || email === "не указан") {
@@ -142,6 +162,8 @@ export function PaymentResultClient() {
           return;
         }
         setResolvedStatus(payload.product_state.status);
+        setResolvedOrderStatus(payload.order?.status ?? null);
+        setResolvedPaymentStatus(payload.payment?.status ?? null);
       } finally {
         window.clearTimeout(timeoutId);
         if (!cancelled) {
@@ -161,10 +183,20 @@ export function PaymentResultClient() {
     };
   }, [email, invoiceId]);
 
+  const paymentConfirmed =
+    resolvedOrderStatus === "paid" || resolvedPaymentStatus === "succeeded";
+  const paymentFailed =
+    effectiveStatus === "failed" ||
+    resolvedOrderStatus === "payment_failed" ||
+    resolvedPaymentStatus === "failed";
   const isActive = effectiveStatus === "active";
+  const isSuccessful = isActive || paymentConfirmed;
+  const stillWaiting = !paymentFailed && !isSuccessful;
   const finalTitle = isActive
     ? "Оплата подтверждена"
-    : waiting
+    : paymentConfirmed
+      ? "Платёж подтверждён"
+    : stillWaiting
       ? "Платёж обрабатывается"
       : "Не удалось завершить оплату";
 
@@ -173,19 +205,21 @@ export function PaymentResultClient() {
       <div className="result-panel">
         <span
           className={`badge ${
-            isActive ? "badge-live" : waiting ? "badge-running" : "badge-demo"
+            isSuccessful ? "badge-live" : stillWaiting ? "badge-running" : "badge-demo"
           }`}
         >
-          {isActive ? (
+          {isSuccessful ? (
             <ShieldCheck size={12} aria-hidden="true" />
-          ) : waiting ? (
+          ) : stillWaiting ? (
             <Clock3 size={12} aria-hidden="true" />
           ) : (
             <ShieldCheck size={12} aria-hidden="true" />
           )}
           {isActive
             ? "Оплата подтверждена"
-            : waiting
+            : paymentConfirmed
+              ? "Платёж подтверждён"
+            : stillWaiting
               ? "Ожидаем подтверждение"
               : "Платёж требует повторной попытки"}
         </span>
@@ -195,7 +229,9 @@ export function PaymentResultClient() {
         <p className="hero-copy">
           {isActive
             ? "Платёж подтверждён платёжным партнёром. Доступ по выбранному тарифу обновлён."
-            : waiting
+            : paymentConfirmed
+            ? "Платёж подтверждён платёжным партнёром. Доступ будет выдан отдельным backend-слоем после обработки заказа."
+            : stillWaiting
             ? "Мы получили информацию о платеже и ждём подтверждение от платёжного партнёра. Статус подписки обновится после завершения обработки."
             : "Платёж не был подтверждён. Попробуйте повторить оплату позже или свяжитесь с поддержкой, если списание уже произошло."}
         </p>
@@ -221,7 +257,9 @@ export function PaymentResultClient() {
             <p className="card-copy">
               {isActive
                 ? "Можно вернуться к оформлению или дождаться следующего этапа интеграции, где активный доступ будет использоваться самими продуктами."
-                : waiting
+                : paymentConfirmed
+                ? "Платёжная часть завершена. Следующий слой системы свяжет оплаченный заказ с подпиской и доступом продукта."
+                : stillWaiting
                 ? "Если подтверждение пройдёт успешно, доступ к выбранному тарифу будет активирован автоматически. Обычно это занимает всего несколько минут."
                 : "Проверьте способ оплаты и попробуйте ещё раз. Если деньги уже были списаны, напишите в поддержку и укажите email и детали операции."}
             </p>
