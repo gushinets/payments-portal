@@ -8,7 +8,6 @@ from sqlalchemy.orm import Session
 from app.generated.legal_manifest import LEGAL_MANIFEST
 from app.models import DocumentVersion, LegalEntity
 
-
 DEFAULT_TENANT_ID = LEGAL_MANIFEST["tenantId"]
 RU_LEGAL_ENTITY_ID = uuid.UUID(LEGAL_MANIFEST["legalEntityId"])
 LEGAL_PUBLISHED_AT = datetime.fromisoformat(
@@ -23,11 +22,8 @@ RU_LEGAL_ENTITY = {
     "entity_type": "individual_entrepreneur",
     "tax_id": "143509640374",
     "registration_id": "314547633100101",
-    "legal_address": (
-        "630091, Новосибирская область, г. Новосибирск, "
-        "Красный пр-кт, дом 45, кв. 30"
-    ),
-    "support_email": "info@anytoolai.ru",
+    "legal_address": "630091 , Новосибирская область, г. Новосибирск",
+    "support_email": "support@any-tool-ai.ru",
     "status": "active",
 }
 
@@ -58,6 +54,10 @@ def seed_legal_documents(db: Session) -> None:
     if entity is None:
         db.add(LegalEntity(**RU_LEGAL_ENTITY))
         db.flush()
+    else:
+        for key, value in RU_LEGAL_ENTITY.items():
+            if key != "id":
+                setattr(entity, key, value)
 
     for document_data in RU_DOCUMENT_VERSIONS:
         document = (
@@ -70,11 +70,8 @@ def seed_legal_documents(db: Session) -> None:
             )
             .first()
         )
-        if document is not None:
-            continue
-
         if document_data["is_active"]:
-            active_document = (
+            active_documents = (
                 db.query(DocumentVersion)
                 .filter(
                     DocumentVersion.tenant_id == document_data["tenant_id"],
@@ -82,11 +79,17 @@ def seed_legal_documents(db: Session) -> None:
                     DocumentVersion.doc_type == document_data["doc_type"],
                     DocumentVersion.is_active.is_(True),
                 )
-                .first()
+                .all()
             )
-            if active_document is not None:
-                continue
+            for active_document in active_documents:
+                if document is None or active_document.id != document.id:
+                    active_document.is_active = False
 
-        db.add(DocumentVersion(**document_data))
+        if document is None:
+            db.add(DocumentVersion(**document_data))
+        else:
+            for key, value in document_data.items():
+                if key != "id":
+                    setattr(document, key, value)
 
     db.commit()

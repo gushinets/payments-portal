@@ -23,7 +23,7 @@ depends_on = None
 def upgrade() -> None:
     uuid_type = sa.Uuid()
     ip_type = postgresql.INET()
-    legal_published_at = datetime(2026, 7, 2, tzinfo=timezone.utc)
+    legal_published_at = datetime(2026, 7, 11, tzinfo=timezone.utc)
 
     op.create_table(
         "regions",
@@ -273,11 +273,8 @@ def upgrade() -> None:
                 "entity_type": "individual_entrepreneur",
                 "tax_id": "143509640374",
                 "registration_id": "314547633100101",
-                "legal_address": (
-                    "630091, Новосибирская область, г. Новосибирск, "
-                    "Красный пр-кт, дом 45, кв. 30"
-                ),
-                "support_email": "info@anytoolai.ru",
+                "legal_address": "630091 , Новосибирская область, г. Новосибирск",
+                "support_email": "support@any-tool-ai.ru",
                 "status": "active",
             },
         ],
@@ -306,11 +303,11 @@ def upgrade() -> None:
                 "region": "ru",
                 "legal_entity_id": UUID("44444444-4444-4444-8444-444444444444"),
                 "doc_type": "privacy",
-                "version": "2026-07-02",
+                "version": "2026-07-11",
                 "title": "Политика в отношении обработки персональных данных",
                 "url_path": "/ru/privacy",
                 "content_hash": (
-                    "sha256:3a172efed2d4c2d8ccb68c55ca759d63c6b562dc481c0f620fffea2a90e7155f"
+                    "sha256:8abfaa129649d2023d05e96bbb26944ccc83866c20bccb24140b946def4186e8"
                 ),
                 "published_at": legal_published_at,
                 "effective_from": legal_published_at,
@@ -323,11 +320,11 @@ def upgrade() -> None:
                 "region": "ru",
                 "legal_entity_id": UUID("44444444-4444-4444-8444-444444444444"),
                 "doc_type": "pd_consent",
-                "version": "2026-07-02",
+                "version": "2026-07-11",
                 "title": "Согласие на обработку персональных данных",
                 "url_path": "/ru/consent-personal-data",
                 "content_hash": (
-                    "sha256:e65ace7d96b88ff995c4459b6ce4fcb1ce5519ca417f1c9c4a8b96e1c9c29f3c"
+                    "sha256:331bb599a9ccc06760050f95147b4ebf43daaa418a2480a04108663f44192984"
                 ),
                 "published_at": legal_published_at,
                 "effective_from": legal_published_at,
@@ -340,11 +337,11 @@ def upgrade() -> None:
                 "region": "ru",
                 "legal_entity_id": UUID("44444444-4444-4444-8444-444444444444"),
                 "doc_type": "offer",
-                "version": "2026-07-02",
+                "version": "2026-07-11",
                 "title": "Публичная оферта на оказание услуг",
                 "url_path": "/ru/offer",
                 "content_hash": (
-                    "sha256:dba32e30db1fa6f1ab7e5d3fc682f088705a5a5567d8ceeacd9dae7f9c336786"
+                    "sha256:82c2fc6c92c59f163254e39bd1bb344a99912ad14c81d204d9097c8ad683a749"
                 ),
                 "published_at": legal_published_at,
                 "effective_from": legal_published_at,
@@ -357,11 +354,11 @@ def upgrade() -> None:
                 "region": "ru",
                 "legal_entity_id": UUID("44444444-4444-4444-8444-444444444444"),
                 "doc_type": "cancellation",
-                "version": "2026-07-02",
+                "version": "2026-07-11",
                 "title": "Условия отмены подписки и возврата денежных средств",
                 "url_path": "/ru/cancellation",
                 "content_hash": (
-                    "sha256:744ada9ab5ea53cb06e98ce66e51547d73c86f6263d361d6ac4bc903b4d8a3b1"
+                    "sha256:92345654cf4bbc55be641da0d60c1dc547c60e86f7ecfc01df63a0a10aed0c2a"
                 ),
                 "published_at": legal_published_at,
                 "effective_from": legal_published_at,
@@ -374,11 +371,11 @@ def upgrade() -> None:
                 "region": "ru",
                 "legal_entity_id": UUID("44444444-4444-4444-8444-444444444444"),
                 "doc_type": "cookies",
-                "version": "2026-07-02",
+                "version": "2026-07-11",
                 "title": "Политика использования файлов cookie",
                 "url_path": "/ru/cookies",
                 "content_hash": (
-                    "sha256:e96a31dfee4846d6021c67b3af744d5d2ef906ce3b45b51c4ab542797db7fc97"
+                    "sha256:b571f0c42920a79ce10119ef1cd8bd2ba8710ba4328cff06f65753bf15195115"
                 ),
                 "published_at": legal_published_at,
                 "effective_from": legal_published_at,
@@ -391,11 +388,11 @@ def upgrade() -> None:
                 "region": "ru",
                 "legal_entity_id": UUID("44444444-4444-4444-8444-444444444444"),
                 "doc_type": "security",
-                "version": "2026-07-02",
+                "version": "2026-07-11",
                 "title": "Политика информационной безопасности",
                 "url_path": "/ru/security",
                 "content_hash": (
-                    "sha256:4b47419c7c4940e94caf23f1071bb00cd72bbce03e2e2f28e37248a70ac7d924"
+                    "sha256:9893aff188347b951663be409e827a7cb777fade5af1ceade11ab7f25bb7b8da"
                 ),
                 "published_at": legal_published_at,
                 "effective_from": legal_published_at,

@@ -211,10 +211,10 @@ export function AccountClient() {
             Вход выполнен
           </span>
           <h2 style={{ marginTop: 14 }}>Аккаунт</h2>
-          <p className="card-copy" style={{ marginBottom: 0 }}>
+          <p className="card-copy account-summary-email">
             {email}
           </p>
-          <div className="hero-actions">
+          <div className="account-summary-actions">
             <button className="btn-secondary" type="button" onClick={logout}>
               <LogOut size={15} aria-hidden="true" />
               Выйти

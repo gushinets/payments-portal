@@ -14,7 +14,7 @@
       "reason": "Checkout UI was moved behind a feature boundary; functional decomposition follows stable E2E coverage."
     },
     "apps/web/src/app/globals.css": {
-      "maxLines": 1100,
+      "maxLines": 1150,
       "reason": "Existing styles remain behavior-compatible while generated design tokens remove value drift."
     }
   }

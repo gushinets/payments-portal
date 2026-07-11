@@ -24,13 +24,14 @@ ROOT = Path(__file__).resolve().parents[1]
 HARNESS_DIR = ROOT / ".harness"
 RUNTIME_JSON = HARNESS_DIR / "runtime.json"
 RUNTIME_ENV = HARNESS_DIR / "runtime.env"
-LEGAL_DIR = ROOT / "docs" / "legal" / "ru" / "2026-07-02"
+LEGAL_DIR = ROOT / "docs" / "legal" / "ru" / "2026-07-11"
 LEGAL_MANIFEST = LEGAL_DIR / "manifest.json"
 GENERATED_DB = ROOT / "docs" / "generated" / "db-schema.md"
 GENERATED_OPENAPI = ROOT / "docs" / "generated" / "openapi.json"
 GENERATED_TOKENS = ROOT / "apps" / "web" / "src" / "app" / "tokens.generated.css"
 GENERATED_LEGAL_PY = ROOT / "apps" / "api" / "app" / "generated" / "legal_manifest.py"
 GENERATED_LEGAL_JSON = ROOT / "apps" / "web" / "src" / "generated" / "legal-manifest.json"
+LEGAL_DOCS_ROOT = ROOT / "docs" / "legal" / "ru"
 
 
 class HarnessError(RuntimeError):
@@ -419,7 +420,7 @@ def engineering_markdown_files() -> Iterable[Path]:
     yield ROOT / "AGENTS.md"
     yield ROOT / "ARCHITECTURE.md"
     for path in (ROOT / "docs").rglob("*.md"):
-        if LEGAL_DIR in path.parents:
+        if LEGAL_DOCS_ROOT in path.parents:
             continue
         yield path
     for subtree in (ROOT / "apps" / "api", ROOT / "apps" / "web"):

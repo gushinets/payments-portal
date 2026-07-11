@@ -72,7 +72,7 @@ def seeded_legal_documents() -> list[dict[str, str]]:
 
 def expected_legal_documents() -> list[dict[str, str]]:
     repository_root = Path(__file__).resolve().parents[3]
-    manifest_path = repository_root / "docs/legal/ru/2026-07-02/manifest.json"
+    manifest_path = repository_root / "apps/web/src/generated/legal-manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     return sorted(
         [
