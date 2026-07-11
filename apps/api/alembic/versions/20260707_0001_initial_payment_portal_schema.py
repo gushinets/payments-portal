@@ -624,7 +624,7 @@ def upgrade() -> None:
             "region",
             "provider",
             "legal_entity_id",
-            name="uq_payment_provider_accounts_tenant_region_provider_legal_entity",
+            name="uq_pay_provider_accounts_tenant_region_provider_entity",
         ),
     )
     op.create_index(
