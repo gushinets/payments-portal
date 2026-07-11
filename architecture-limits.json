@@ -1,0 +1,21 @@
+{
+  "defaultMaxLines": 500,
+  "exceptions": {
+    "apps/api/app/models.py": {
+      "maxLines": 700,
+      "reason": "Temporary aggregate ORM registry; further model delivery is owned by ANY-71."
+    },
+    "apps/api/app/domains/identity/router.py": {
+      "maxLines": 700,
+      "reason": "Behavior-preserving transition keeps legacy auth flow together until its product redesign."
+    },
+    "apps/web/src/features/checkout/CheckoutClient.tsx": {
+      "maxLines": 1050,
+      "reason": "Checkout UI was moved behind a feature boundary; functional decomposition follows stable E2E coverage."
+    },
+    "apps/web/src/app/globals.css": {
+      "maxLines": 1100,
+      "reason": "Existing styles remain behavior-compatible while generated design tokens remove value drift."
+    }
+  }
+}

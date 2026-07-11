@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
-import { ProductCards } from "@/components/ProductCards";
+import { ProductCards } from "@/features/catalog";
 import {
   formatRubles,
   platformFacts,
   platformHighlights
-} from "@/lib/catalog";
+} from "@/features/catalog";
 
 export default function RuHomePage() {
   return (

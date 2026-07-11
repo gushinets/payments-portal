@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Script from "next/script";
 import "./globals.css";
-import { SiteShell } from "@/components/SiteShell";
+import { SiteShell } from "@/shared/ui";
 
 export const metadata: Metadata = {
   title: "AnytoolAI - RU MVP",

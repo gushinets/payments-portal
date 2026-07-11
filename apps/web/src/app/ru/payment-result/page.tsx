@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { PaymentResultClient } from "@/components/PaymentResultClient";
+import { PaymentResultClient } from "@/features/payment-result";
 
 export default function PaymentResultPage() {
   return (

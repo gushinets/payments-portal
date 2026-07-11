@@ -1,0 +1,1 @@
+"""Regional identity domain."""

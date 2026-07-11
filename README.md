@@ -1,190 +1,87 @@
-# AnytoolAI Payments Portal RU MVP
+# AnytoolAI Payment Portal
 
-Первая RU-версия сайта для предъявления CloudPayments и подготовки платежного
-контура.
+The Payment Portal is the RU payment, identity, legal-consent, and access-entry
+service for AnytoolAI products. It contains a Next.js web application, a FastAPI
+API, PostgreSQL persistence, and CloudPayments webhook handling.
 
-## Документация
+The current release scope is the RU CloudPayments MVP. Platform Kernel code is
+maintained in the separate
+[anytoolai-platform](https://github.com/gushinets/anytoolai-platform) repository.
+Planned Payment Portal catalog, subscription, and entitlement work is tracked by
+[Linear ANY-71](https://linear.app/paveldik/issue/ANY-71/prorabotat-model-dannyh-payment-portal).
 
-Проектные документы и архитектурные материалы перенесены в `docs/project`:
+## Start here
 
-- `docs/project/architecture.md`
-- `docs/project/mvp-blueprint.md`
-- `docs/project/mvp-user-journey-and-pages.md`
+1. Read [AGENTS.md](AGENTS.md) for the repository map and non-negotiable rules.
+2. Read [ARCHITECTURE.md](ARCHITECTURE.md) for current system boundaries.
+3. Run the environment diagnostic:
 
-Дизайн-система находится в `docs/design-system/bundle3`.
+   ```bash
+   npm run repo:doctor
+   ```
 
-## Что входит
+4. Install dependencies and create local configuration:
 
-- Next.js сайт в `apps/web`.
-- FastAPI backend в `apps/api`.
-- RU routes: `/ru`, `/ru/products`, `/ru/auth-checkout`, `/ru/payment-result`,
-  `/ru/privacy`, `/ru/offer`, `/ru/cancellation`, `/ru/cookies`, `/ru/security`.
-- Demo magic link flow без реальной отправки email.
-- Demo payment flow: кнопка оплаты ведет на `/ru/payment-result?status=demo`.
-- CloudPayments webhook endpoints:
-  - `POST /api/cloudpayments/check`
-  - `POST /api/cloudpayments/pay`
-  - `POST /api/cloudpayments/fail`
-  - `POST /api/cloudpayments/refund`
-  - `POST /api/cloudpayments/recurrent`
-- PostgreSQL только для таблицы `payment_webhook_events`.
-- Alembic migration для технического журнала webhook-событий.
+   ```bash
+   npm run repo:setup
+   ```
 
-## Дизайн-система
+5. Start an isolated worktree environment:
 
-UI использует Bundle 3 из архива:
+   ```bash
+   npm run repo:up
+   ```
 
-```text
-D:\Work\AI\Design system\files_Bandl_3.zip
-```
+6. Run the canonical checks:
 
-Web-релевантные файлы дизайн-системы сохранены в репозитории:
+   ```bash
+   npm run check:fast
+   npm run check
+   ```
 
-- `docs/design-system/bundle3/SKILL.md`
-- `docs/design-system/bundle3/PROMPT_SNIPPET.md`
-- `docs/design-system/bundle3/web.md`
+Runtime state and test evidence are written to the ignored `.harness/`
+directory. Each Git worktree receives an isolated Compose project, database,
+ports, logs, and browser artifacts.
 
-В код перенесены необходимые tokens и web rules: dark premium AI-native,
-glass surfaces, bento grids, indigo gradient accents, teal highlights,
-DM Sans / DM Mono / Cabinet Grotesk font stack. Файлы `extension.md` и
-`mobile.md` из исходного архива не добавлены, потому что текущий проект
-реализует только web-портал.
+## Repository layout
 
-## Локальный запуск
+- `apps/web` — Next.js RU portal and legal-page renderer.
+- `apps/api` — FastAPI identity, legal, checkout, payment, and webhook API.
+- `apps/api/alembic` — PostgreSQL schema and first-install legal seed.
+- `docs` — authoritative product, architecture, design, reliability, security,
+  legal, planning, and generated documentation.
+- `scripts/repo.py` — cross-platform development and agent harness.
 
-1. Скопировать env template:
+## Direct development commands
 
-```bash
-cp .env.example .env
-```
-
-2. Поднять PostgreSQL:
+The harness commands are canonical. These lower-level commands remain useful
+while diagnosing a subsystem:
 
 ```bash
-docker compose up -d
-```
-
-3. Установить backend dependencies:
-
-```bash
-python -m venv .venv
-. .venv/Scripts/activate
-pip install -r apps/api/requirements-dev.txt
-```
-
-4. Применить миграции:
-
-```bash
+npm run dev:web
+npm run dev:api
+npm run lint:web
+npm run build:web
+npm run test:api
 python -m alembic -c apps/api/alembic.ini upgrade head
 ```
 
-5. Запустить API:
+## Production Compose preview
 
-```bash
-python -m uvicorn app.main:app --reload --app-dir apps/api
-```
-
-API будет доступен на `http://localhost:8000`.
-
-6. Установить frontend dependencies и запустить сайт:
-
-```bash
-npm install
-npm run dev:web
-```
-
-Web будет доступен на `http://localhost:3000`.
-
-Для production preview после сборки:
-
-```bash
-npm run build:web
-npm run start:web
-```
-
-## Docker deployment on a server
-
-Для сервера без системного `node`/`npm` можно использовать Docker Compose:
-
-1. Подготовить production env:
-
-```bash
-cp .env.production.example .env.production
-```
-
-2. При необходимости скорректировать значения в `.env.production`:
-
-- `POSTGRES_PASSWORD`
-- `DATABASE_URL`
-- `NEXT_PUBLIC_API_BASE_URL`
-- `CORS_ALLOW_ORIGINS`
-- CloudPayments env, если виджет уже подключается
-
-3. Собрать и запустить сервисы:
+Copy `.env.production.example` to `.env.production`, supply production secrets,
+and run:
 
 ```bash
 docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
 ```
 
-4. Проверить состояние:
+Never commit production secrets. Card data is handled by CloudPayments and must
+not be collected or stored by this repository.
 
-```bash
-docker compose --env-file .env.production -f docker-compose.prod.yml ps
-docker compose --env-file .env.production -f docker-compose.prod.yml logs --tail=100
-```
+## Current limitations
 
-По умолчанию web публикуется на `80`, API на `8000`. PostgreSQL остается
-внутри Docker-сети и наружу не публикуется.
-
-## Проверки
-
-```bash
-npm run lint:web
-npm run build:web
-pytest apps/api/tests
-```
-
-Для проверки webhook-сохранения с PostgreSQL:
-
-```bash
-curl -X POST http://localhost:8000/api/cloudpayments/pay \
-  -H "Content-Type: application/json" \
-  -d "{\"InvoiceId\":\"demo-1\",\"TransactionId\":\"tx-1\",\"AccountId\":\"user@example.com\",\"Amount\":\"990.00\",\"Currency\":\"RUB\"}"
-```
-
-## CloudPayments configuration
-
-По умолчанию платежи выключены:
-
-```text
-CLOUDPAYMENTS_PUBLIC_ID=
-CLOUDPAYMENTS_API_SECRET=
-CLOUDPAYMENTS_ENABLED=false
-NEXT_PUBLIC_CLOUDPAYMENTS_PUBLIC_ID=
-NEXT_PUBLIC_CLOUDPAYMENTS_ENABLED=false
-```
-
-Если `CLOUDPAYMENTS_API_SECRET` пустой, webhook signature check работает в
-demo-mode и не блокирует запросы. Если secret задан, backend ожидает HMAC в
-`Content-HMAC` или `X-Content-HMAC`.
-
-Для frontend-виджета после получения terminal id используются публичные env:
-
-```text
-NEXT_PUBLIC_CLOUDPAYMENTS_PUBLIC_ID=pk_xxx
-NEXT_PUBLIC_CLOUDPAYMENTS_ENABLED=true
-```
-
-Пока эти значения не заданы, кнопка оплаты работает как заглушка и ведет на
-`/ru/payment-result?status=demo`.
-
-## Важные ограничения v1
-
-- Только RU-контур.
-- Нет полноценного личного кабинета.
-- Нет полной модели пользователей, продуктов, тарифов, заказов и подписок в БД.
-- Нет реальной email-отправки.
-- Нет реальной активации подписки.
-- Карточные данные не собираются и не хранятся на сайте.
-- Юридические тексты являются черновыми и должны быть проверены юристом перед
-  реальным запуском.
+- RU routes and RU legal documents only.
+- Password-based demo authentication; production email verification is planned.
+- Payment confirmation is webhook-driven, but the target subscription and
+  entitlement model belongs to ANY-71 and is not implemented here yet.
+- Legal documents are drafts until reviewed and approved by counsel.

@@ -1,32 +1,5 @@
 @import url("https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:opsz,wght@9..40,300;400;500;600;700&display=swap");
-
-:root {
-  --bg: #0f0c29;
-  --bg2: #1a1550;
-  --bg3: #0a1a3a;
-  --surf1: rgba(255, 255, 255, 0.07);
-  --surf2: rgba(255, 255, 255, 0.11);
-  --surf3: rgba(255, 255, 255, 0.16);
-  --border: rgba(255, 255, 255, 0.1);
-  --border2: rgba(255, 255, 255, 0.18);
-  --txt: #f0eff8;
-  --txt2: rgba(240, 239, 248, 0.55);
-  --txt3: rgba(240, 239, 248, 0.3);
-  --acc: #818cf8;
-  --acc2: #6366f1;
-  --acc-grad: linear-gradient(135deg, #6366f1 0%, #818cf8 100%);
-  --headline-grad: linear-gradient(120deg, #818cf8 0%, #5eead4 100%);
-  --acc-glow: rgba(99, 102, 241, 0.25);
-  --teal: #5eead4;
-  --teal-glow: rgba(94, 234, 212, 0.15);
-  --green: #34d399;
-  --green-bg: rgba(52, 211, 153, 0.15);
-  --green-bdr: rgba(52, 211, 153, 0.25);
-  --red: #f87171;
-  --red-bg: rgba(248, 113, 113, 0.15);
-  --amber: #fbbf24;
-  --max: 1160px;
-}
+@import "./tokens.generated.css";
 
 * {
   box-sizing: border-box;

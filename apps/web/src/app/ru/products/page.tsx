@@ -1,4 +1,4 @@
-import { ProductCards } from "@/components/ProductCards";
+import { ProductCards } from "@/features/catalog";
 
 export default function ProductsPage() {
   return (

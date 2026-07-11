@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "tenantId": "anytoolai",
+  "region": "ru",
+  "legalEntityId": "44444444-4444-4444-8444-444444444444",
+  "publishedAt": "2026-07-02T00:00:00Z",
+  "documents": [
+    {
+      "id": "55555555-5555-4555-8555-555555555501",
+      "file": "01-privacy-policy.md",
+      "slug": "privacy",
+      "docType": "privacy",
+      "version": "2026-07-02",
+      "title": "Политика в отношении обработки персональных данных",
+      "urlPath": "/ru/privacy",
+      "contentHash": "sha256:3a172efed2d4c2d8ccb68c55ca759d63c6b562dc481c0f620fffea2a90e7155f",
+      "requiresAcceptance": true
+    },
+    {
+      "id": "55555555-5555-4555-8555-555555555502",
+      "file": "02-consent-personal-data.md",
+      "slug": "consent-personal-data",
+      "docType": "pd_consent",
+      "version": "2026-07-02",
+      "title": "Согласие на обработку персональных данных",
+      "urlPath": "/ru/consent-personal-data",
+      "contentHash": "sha256:e65ace7d96b88ff995c4459b6ce4fcb1ce5519ca417f1c9c4a8b96e1c9c29f3c",
+      "requiresAcceptance": true
+    },
+    {
+      "id": "55555555-5555-4555-8555-555555555503",
+      "file": "03-offer.md",
+      "slug": "offer",
+      "docType": "offer",
+      "version": "2026-07-02",
+      "title": "Публичная оферта на оказание услуг",
+      "urlPath": "/ru/offer",
+      "contentHash": "sha256:dba32e30db1fa6f1ab7e5d3fc682f088705a5a5567d8ceeacd9dae7f9c336786",
+      "requiresAcceptance": true
+    },
+    {
+      "id": "55555555-5555-4555-8555-555555555504",
+      "file": "04-cancellation-refund.md",
+      "slug": "cancellation",
+      "docType": "cancellation",
+      "version": "2026-07-02",
+      "title": "Условия отмены подписки и возврата денежных средств",
+      "urlPath": "/ru/cancellation",
+      "contentHash": "sha256:744ada9ab5ea53cb06e98ce66e51547d73c86f6263d361d6ac4bc903b4d8a3b1",
+      "requiresAcceptance": false
+    },
+    {
+      "id": "55555555-5555-4555-8555-555555555505",
+      "file": "05-cookie-policy.md",
+      "slug": "cookies",
+      "docType": "cookies",
+      "version": "2026-07-02",
+      "title": "Политика использования файлов cookie",
+      "urlPath": "/ru/cookies",
+      "contentHash": "sha256:e96a31dfee4846d6021c67b3af744d5d2ef906ce3b45b51c4ab542797db7fc97",
+      "requiresAcceptance": false
+    },
+    {
+      "id": "55555555-5555-4555-8555-555555555506",
+      "file": "06-security-policy.md",
+      "slug": "security",
+      "docType": "security",
+      "version": "2026-07-02",
+      "title": "Политика информационной безопасности",
+      "urlPath": "/ru/security",
+      "contentHash": "sha256:4b47419c7c4940e94caf23f1071bb00cd72bbce03e2e2f28e37248a70ac7d924",
+      "requiresAcceptance": false
+    }
+  ]
+}
