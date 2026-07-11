@@ -49,9 +49,8 @@ backend payment/order state instead of leaving refunded payments in pending UI.
     `partially_refunded`, `refunded_amount_minor=40000`, one refund row.
 - Live browser verification against harness web/API:
   - Full refund URL with spoofed `status=success` rendered
-    `Платёж возвращён` / `Возврат выполнен` and no `Ожидаем подтверждение`.
+    the full-refund title and badge, and did not render the pending label.
   - Partial refund URL with spoofed `status=success` rendered
-    `Платёж частично возвращён` / `Частичный возврат` and no
-    `Ожидаем подтверждение`.
+    the partial-refund title and badge, and did not render the pending label.
   - Screenshots: `.harness/playwright-results/live-refund-full.png` and
     `.harness/playwright-results/live-refund-partial.png`.
