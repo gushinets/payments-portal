@@ -9,23 +9,14 @@ import {
   MessageCircleMore,
   ShieldCheck
 } from "lucide-react";
-<<<<<<< HEAD:apps/web/src/features/checkout/CheckoutClient.tsx
 import { ProductCards } from "@/features/catalog";
-=======
-import { ProductCards } from "@/components/ProductCards";
->>>>>>> 8468fa5 (ANY-91 / Visual refinements and document edits):apps/web/src/components/CheckoutClient.tsx
 import {
   findProduct,
   formatRubles,
   Product,
-<<<<<<< HEAD:apps/web/src/features/checkout/CheckoutClient.tsx
-  products
-} from "@/features/catalog";
-=======
   products,
   supportEmail
-} from "@/lib/catalog";
->>>>>>> 8468fa5 (ANY-91 / Visual refinements and document edits):apps/web/src/components/CheckoutClient.tsx
+} from "@/features/catalog";
 
 type SessionUser = {
   tenant_id: string;

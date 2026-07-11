@@ -307,11 +307,7 @@ def upgrade() -> None:
                 "title": "Политика в отношении обработки персональных данных",
                 "url_path": "/ru/privacy",
                 "content_hash": (
-<<<<<<< HEAD
-                    "sha256:3a172efed2d4c2d8ccb68c55ca759d63c6b562dc481c0f620fffea2a90e7155f"
-=======
-                    "sha256:9ebe8daf5d7a833e32f738f9d60e145f02f1bdaa817df744cf14f22dbba9c50c"
->>>>>>> 8468fa5 (ANY-91 / Visual refinements and document edits)
+                    "sha256:8abfaa129649d2023d05e96bbb26944ccc83866c20bccb24140b946def4186e8"
                 ),
                 "published_at": legal_published_at,
                 "effective_from": legal_published_at,
@@ -328,11 +324,7 @@ def upgrade() -> None:
                 "title": "Согласие на обработку персональных данных",
                 "url_path": "/ru/consent-personal-data",
                 "content_hash": (
-<<<<<<< HEAD
-                    "sha256:e65ace7d96b88ff995c4459b6ce4fcb1ce5519ca417f1c9c4a8b96e1c9c29f3c"
-=======
-                    "sha256:52081466de8af8108508710d48523bd873079cd91bfc2ca453ad6416a83a34c3"
->>>>>>> 8468fa5 (ANY-91 / Visual refinements and document edits)
+                    "sha256:331bb599a9ccc06760050f95147b4ebf43daaa418a2480a04108663f44192984"
                 ),
                 "published_at": legal_published_at,
                 "effective_from": legal_published_at,
@@ -349,11 +341,7 @@ def upgrade() -> None:
                 "title": "Публичная оферта на оказание услуг",
                 "url_path": "/ru/offer",
                 "content_hash": (
-<<<<<<< HEAD
-                    "sha256:dba32e30db1fa6f1ab7e5d3fc682f088705a5a5567d8ceeacd9dae7f9c336786"
-=======
-                    "sha256:81966788e83843a11ab0c1803c8a8368a2db2e5dc2edd965ec1269abf802a64f"
->>>>>>> 8468fa5 (ANY-91 / Visual refinements and document edits)
+                    "sha256:82c2fc6c92c59f163254e39bd1bb344a99912ad14c81d204d9097c8ad683a749"
                 ),
                 "published_at": legal_published_at,
                 "effective_from": legal_published_at,
@@ -370,11 +358,7 @@ def upgrade() -> None:
                 "title": "Условия отмены подписки и возврата денежных средств",
                 "url_path": "/ru/cancellation",
                 "content_hash": (
-<<<<<<< HEAD
-                    "sha256:744ada9ab5ea53cb06e98ce66e51547d73c86f6263d361d6ac4bc903b4d8a3b1"
-=======
-                    "sha256:134233cb13bfb4470a1a26909355333eb85432ca230b4df4bb578f3722186504"
->>>>>>> 8468fa5 (ANY-91 / Visual refinements and document edits)
+                    "sha256:92345654cf4bbc55be641da0d60c1dc547c60e86f7ecfc01df63a0a10aed0c2a"
                 ),
                 "published_at": legal_published_at,
                 "effective_from": legal_published_at,
@@ -391,11 +375,7 @@ def upgrade() -> None:
                 "title": "Политика использования файлов cookie",
                 "url_path": "/ru/cookies",
                 "content_hash": (
-<<<<<<< HEAD
-                    "sha256:e96a31dfee4846d6021c67b3af744d5d2ef906ce3b45b51c4ab542797db7fc97"
-=======
-                    "sha256:bdc9e4da60fe18fb9ec072a52c07d3d79103bb641aef903cda8db38a6b38b571"
->>>>>>> 8468fa5 (ANY-91 / Visual refinements and document edits)
+                    "sha256:b571f0c42920a79ce10119ef1cd8bd2ba8710ba4328cff06f65753bf15195115"
                 ),
                 "published_at": legal_published_at,
                 "effective_from": legal_published_at,
@@ -412,11 +392,7 @@ def upgrade() -> None:
                 "title": "Политика информационной безопасности",
                 "url_path": "/ru/security",
                 "content_hash": (
-<<<<<<< HEAD
-                    "sha256:4b47419c7c4940e94caf23f1071bb00cd72bbce03e2e2f28e37248a70ac7d924"
-=======
-                    "sha256:686c159832728cbe7b0b199e21a68f93e435402746eb667c3a4aee14f949d7ed"
->>>>>>> 8468fa5 (ANY-91 / Visual refinements and document edits)
+                    "sha256:9893aff188347b951663be409e827a7cb777fade5af1ceade11ab7f25bb7b8da"
                 ),
                 "published_at": legal_published_at,
                 "effective_from": legal_published_at,
