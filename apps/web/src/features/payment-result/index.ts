@@ -1,0 +1,1 @@
+export { PaymentResultClient } from "./PaymentResultClient";

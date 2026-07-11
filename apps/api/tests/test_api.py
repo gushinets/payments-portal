@@ -95,6 +95,30 @@ def test_healthcheck() -> None:
     assert response.json()["status"] == "ok"
 
 
+def test_liveness_readiness_metrics_and_request_id() -> None:
+    request_id = "agent-check-123"
+    live_response = client.get("/health/live", headers={"X-Request-ID": request_id})
+    ready_response = client.get("/health/ready")
+    metrics_response = client.get("/metrics")
+
+    assert live_response.status_code == 200
+    assert live_response.headers["X-Request-ID"] == request_id
+    assert live_response.json() == {"status": "ok"}
+    assert ready_response.status_code == 200
+    assert ready_response.json() == {"status": "ready"}
+    assert ready_response.headers["X-Request-ID"]
+    assert metrics_response.status_code == 200
+    assert metrics_response.headers["content-type"].startswith("text/plain")
+
+
+def test_invalid_request_id_is_replaced() -> None:
+    response = client.get("/health/live", headers={"X-Request-ID": "invalid request id"})
+
+    assert response.status_code == 200
+    assert response.headers["X-Request-ID"] != "invalid request id"
+    assert len(response.headers["X-Request-ID"]) == 32
+
+
 def test_seeded_legal_documents_block_checkout_on_fresh_database() -> None:
     with SessionLocal() as db:
         seed_legal_documents(db)
@@ -695,6 +719,7 @@ def test_login_and_logout_flow() -> None:
 def test_cloudpayments_webhook_is_saved_without_secret_hmac() -> None:
     response = client.post(
         "/api/cloudpayments/pay",
+        headers={"Content-HMAC": "demo-signature"},
         json={
             "InvoiceId": "invoice-1",
             "TransactionId": "tx-1",
@@ -720,6 +745,7 @@ def test_cloudpayments_webhook_is_saved_without_secret_hmac() -> None:
     assert str(event.amount) == "990.00"
     assert event.currency == "RUB"
     assert event.raw_payload["CardFirstSix"] == "[redacted]"
+    assert event.headers["content-hmac"] == "[redacted]"
     assert event.status == "ignored"
     assert event.error_code == "order_not_found"
 

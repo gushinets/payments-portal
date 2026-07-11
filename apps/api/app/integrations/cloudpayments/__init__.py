@@ -1,0 +1,1 @@
+"""CloudPayments provider adapter."""

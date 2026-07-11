@@ -1,6 +1,7 @@
 .env
 .env.*
 !.env.example
+!.env.production.example
 
 node_modules/
 .next/
@@ -8,12 +9,16 @@ out/
 dist/
 coverage/
 logs/
+.harness/
+playwright-report/
+test-results/
 npm-debug.log*
 
 .venv/
 venv/
 __pycache__/
 *.py[cod]
+*.tsbuildinfo
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
