@@ -49,7 +49,9 @@ type LegalDocumentMeta = {
 };
 
 const legalDocsRoot = path.resolve(process.cwd(), "../../docs/legal/ru");
+const currentLegalVersion = "2026-07-11";
 
+<<<<<<< HEAD:apps/web/src/features/legal/legal.ts
 export const legalDocuments = Object.fromEntries(
   legalManifest.documents.map((document) => [
     document.slug,
@@ -62,6 +64,52 @@ export const legalDocuments = Object.fromEntries(
     }
   ])
 ) as Record<LegalSlug, LegalDocumentMeta>;
+=======
+export const legalDocuments: Record<LegalSlug, LegalDocumentMeta> = {
+  privacy: {
+    slug: "privacy",
+    href: "/ru/privacy",
+    label: "Политика в отношении обработки персональных данных",
+    version: currentLegalVersion,
+    sourcePath: `${currentLegalVersion}/01-privacy-policy.md`
+  },
+  "consent-personal-data": {
+    slug: "consent-personal-data",
+    href: "/ru/consent-personal-data",
+    label: "Согласие на обработку персональных данных",
+    version: currentLegalVersion,
+    sourcePath: `${currentLegalVersion}/02-consent-personal-data.md`
+  },
+  offer: {
+    slug: "offer",
+    href: "/ru/offer",
+    label: "Публичная оферта",
+    version: currentLegalVersion,
+    sourcePath: `${currentLegalVersion}/03-offer.md`
+  },
+  cancellation: {
+    slug: "cancellation",
+    href: "/ru/cancellation",
+    label: "Условия отмены подписки и возврата денежных средств",
+    version: currentLegalVersion,
+    sourcePath: `${currentLegalVersion}/04-cancellation-refund.md`
+  },
+  cookies: {
+    slug: "cookies",
+    href: "/ru/cookies",
+    label: "Политика использования файлов cookie",
+    version: currentLegalVersion,
+    sourcePath: `${currentLegalVersion}/05-cookie-policy.md`
+  },
+  security: {
+    slug: "security",
+    href: "/ru/security",
+    label: "Политика информационной безопасности",
+    version: currentLegalVersion,
+    sourcePath: `${currentLegalVersion}/06-security-policy.md`
+  }
+};
+>>>>>>> 8468fa5 (ANY-91 / Visual refinements and document edits):apps/web/src/lib/legal.ts
 
 export const legalLinks = Object.values(legalDocuments).map((document) => ({
   href: document.href,

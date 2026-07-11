@@ -7,14 +7,13 @@ import {
   WandSparkles
 } from "lucide-react";
 
-export const supportEmail = "info@anytoolai.ru";
+export const supportEmail = "support@any-tool-ai.ru";
 
 export const seller = {
   name: "ИП Говоров Роман Стальевич",
   inn: "143509640374",
   ogrnip: "314547633100101",
-  address:
-    "630091, Новосибирская область, г. Новосибирск, Красный пр-кт, дом 45, кв. 30"
+  address: "630091 , Новосибирская область, г. Новосибирск"
 };
 
 export type PaymentMethod = {

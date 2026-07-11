@@ -154,7 +154,7 @@ def test_seeded_legal_documents_block_checkout_on_fresh_database() -> None:
     assert {document["doc_type"] for document in missing_documents} == required_seeded_types
 
 
-def test_legal_seed_skips_existing_active_document_type() -> None:
+def test_legal_seed_replaces_existing_active_document_type() -> None:
     with SessionLocal() as db:
         legal_entity = create_legal_entity(db, region="ru")
         existing_offer = create_document_version(
@@ -179,12 +179,16 @@ def test_legal_seed_skips_existing_active_document_type() -> None:
         )
         seeded_documents_count = (
             db.query(DocumentVersion)
-            .filter(DocumentVersion.version == "2026-07-02")
+            .filter(DocumentVersion.version == "2026-07-11")
             .count()
         )
+        db.refresh(existing_offer)
 
-    assert [offer.id for offer in offers] == [existing_offer_id]
-    assert seeded_documents_count == len(RU_DOCUMENT_VERSIONS) - 1
+    assert existing_offer.is_active is False
+    assert [offer.id for offer in offers] == [
+        RU_DOCUMENT_VERSIONS[2]["id"],
+    ]
+    assert seeded_documents_count == len(RU_DOCUMENT_VERSIONS)
 
 
 def test_register_session_and_checkout_intent_flow() -> None:

@@ -393,6 +393,7 @@ button:disabled {
 .tools-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
   gap: 10px;
   margin-top: 24px;
 }
@@ -401,6 +402,7 @@ button:disabled {
   position: relative;
   display: flex;
   flex-direction: column;
+  height: 100%;
   min-height: 100%;
   padding: 22px 20px;
   border-radius: 18px;
@@ -525,7 +527,12 @@ button:disabled {
   display: grid;
   grid-template-columns: minmax(0, 0.95fr) minmax(340px, 1.05fr);
   gap: 10px;
-  align-items: start;
+  align-items: stretch;
+}
+
+.checkout-grid > *,
+.checkout-equal-panel {
+  min-height: 100%;
 }
 
 .form-panel,
@@ -568,6 +575,14 @@ button:disabled {
 .form-grid {
   display: grid;
   gap: 16px;
+}
+
+.checkout-form-grid {
+  gap: 14px;
+}
+
+.checkout-step-title {
+  margin: 0;
 }
 
 .field-label {
@@ -632,6 +647,10 @@ button:disabled {
   border-color: rgba(248, 113, 113, 0.25);
 }
 
+.feedback-slot:empty {
+  display: none;
+}
+
 .legal-consent-box {
   display: grid;
   gap: 12px;
@@ -681,6 +700,15 @@ button:disabled {
   border: 1px solid var(--border);
 }
 
+.checkout-account-card {
+  gap: 18px;
+  padding: 18px 20px;
+}
+
+.checkout-account-card .card-copy {
+  margin: 6px 0 0;
+}
+
 .telegram-placeholder {
   align-items: center;
 }
@@ -699,17 +727,28 @@ button:disabled {
   grid-template-columns: minmax(260px, 0.78fr) minmax(0, 1.22fr);
   gap: 10px;
   margin-top: 28px;
-  align-items: start;
+  align-items: stretch;
 }
 
 .account-summary-panel {
-  position: sticky;
-  top: 96px;
+  display: flex;
+  flex-direction: column;
+}
+
+.account-summary-email {
+  margin: 0;
+}
+
+.account-summary-actions {
+  display: flex;
+  margin-top: auto;
+  padding-top: 22px;
 }
 
 .account-products-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
   gap: 10px;
 }
 
@@ -979,7 +1018,7 @@ button:disabled {
   }
 
   .account-summary-panel {
-    position: static;
+    min-height: 0;
   }
 
   .page-section {

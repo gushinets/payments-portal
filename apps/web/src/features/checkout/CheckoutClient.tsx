@@ -9,13 +9,23 @@ import {
   MessageCircleMore,
   ShieldCheck
 } from "lucide-react";
+<<<<<<< HEAD:apps/web/src/features/checkout/CheckoutClient.tsx
 import { ProductCards } from "@/features/catalog";
+=======
+import { ProductCards } from "@/components/ProductCards";
+>>>>>>> 8468fa5 (ANY-91 / Visual refinements and document edits):apps/web/src/components/CheckoutClient.tsx
 import {
   findProduct,
   formatRubles,
   Product,
+<<<<<<< HEAD:apps/web/src/features/checkout/CheckoutClient.tsx
   products
 } from "@/features/catalog";
+=======
+  products,
+  supportEmail
+} from "@/lib/catalog";
+>>>>>>> 8468fa5 (ANY-91 / Visual refinements and document edits):apps/web/src/components/CheckoutClient.tsx
 
 type SessionUser = {
   tenant_id: string;
@@ -725,12 +735,12 @@ export function CheckoutClient() {
         </>
       ) : null}
 
-      <div className="two-column" style={{ marginTop: 28 }}>
+      <div className="two-column checkout-grid" style={{ marginTop: 28 }}>
         <div>
           {selectedProduct ? (
             <SelectedProductCard product={selectedProduct} />
           ) : (
-            <div className="form-panel">
+            <div className="form-panel checkout-equal-panel">
               <h2>Выберите продукт</h2>
               <p className="card-copy">
                 Откройте нужный сервис, чтобы увидеть тариф, бесплатный лимит и
@@ -741,8 +751,8 @@ export function CheckoutClient() {
           )}
         </div>
 
-        <div className="form-panel" id="checkout-form">
-          <div className="form-grid">
+        <div className="form-panel checkout-equal-panel" id="checkout-form">
+          <div className="form-grid checkout-form-grid">
             <span className="badge badge-running">
               <ShieldCheck size={12} aria-hidden="true" />
               Единый аккаунт
@@ -759,15 +769,15 @@ export function CheckoutClient() {
               <div className="notice">Проверяем текущую сессию...</div>
             ) : sessionUser ? (
               <>
-                <h2>1. Аккаунт</h2>
-                <div ref={feedbackRef}>
+                <h2 className="checkout-step-title">1. Аккаунт</h2>
+                <div className="feedback-slot" ref={feedbackRef}>
                   {notice ? <div className="notice">{notice}</div> : null}
                   {error ? <div className="notice error">{error}</div> : null}
                 </div>
-                <div className="account-card">
+                <div className="account-card checkout-account-card">
                   <div>
                     <strong>{sessionUser.email}</strong>
-                    <p className="card-copy" style={{ margin: "6px 0 0" }}>
+                    <p className="card-copy">
                       Вы вошли в единый аккаунт платформы.
                     </p>
                   </div>
@@ -777,7 +787,7 @@ export function CheckoutClient() {
                   </button>
                 </div>
 
-                <h2>2. Статус подписки</h2>
+                <h2 className="checkout-step-title">2. Статус подписки</h2>
                 <SubscriptionState product={selectedProduct} state={productState} />
 
                 {missingDocuments.length > 0 ? (
@@ -871,8 +881,8 @@ export function CheckoutClient() {
               </>
             ) : (
               <>
-                <h2>1. Вход или регистрация</h2>
-                <div ref={feedbackRef}>
+                <h2 className="checkout-step-title">1. Вход или регистрация</h2>
+                <div className="feedback-slot" ref={feedbackRef}>
                   {notice ? <div className="notice">{notice}</div> : null}
                   {error ? <div className="notice error">{error}</div> : null}
                 </div>
@@ -893,8 +903,8 @@ export function CheckoutClient() {
 
             <p className="muted" style={{ margin: 0 }}>
               Поддержка:{" "}
-              <a className="inline-link" href="mailto:info@anytoolai.ru">
-                info@anytoolai.ru
+              <a className="inline-link" href={`mailto:${supportEmail}`}>
+                {supportEmail}
               </a>
             </p>
           </div>
@@ -918,7 +928,7 @@ function SelectedProductCard({
   }
 
   return (
-    <article className="tool-card active">
+    <article className="tool-card checkout-equal-panel active">
       <div className="tool-icon-wrap">
         <Icon size={22} aria-hidden="true" />
       </div>
