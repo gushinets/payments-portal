@@ -33,7 +33,7 @@ Start with the smallest document that matches the task.
 ## Legal
 
 - [Legal source workflow](legal/README.md)
-- `legal/ru/2026-07-02` contains the current Russian source documents.
+- Current RU legal source version: `2026-07-11`.
 
 ## Generated references
 

@@ -34,5 +34,8 @@ Migration seed rows are fixed historical snapshots and are verified separately.
   new version.
 - Verify that checkout requires acceptance of the new active version.
 
-The `2026-07-02` directory is seeded by the corrected pre-production baseline
-migration.
+Current RU legal source version: `2026-07-11`.
+
+The corrected pre-production baseline migration seeds version `2026-07-11`.
+The `2026-07-02` directory is retained as historical draft source and is not
+the active baseline.
