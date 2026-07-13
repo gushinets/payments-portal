@@ -519,6 +519,17 @@ def test_refund_webhook_records_refund_skeleton_and_updates_payment() -> None:
     )
 
     assert refund_response.status_code == 200
+
+    status_response = client.get(
+        f"/api/auth/payment-status?invoice_id={invoice_id}&email=refund-user@example.com"
+    )
+    assert status_response.status_code == 200
+    status_payload = status_response.json()
+    assert status_payload["product_state"]["status"] == "pending"
+    assert status_payload["order"]["status"] == "refunded"
+    assert status_payload["payment"]["status"] == "refunded"
+    assert status_payload["payment"]["refunded_amount_minor"] == 99000
+
     with SessionLocal() as db:
         order = db.query(Order).one()
         payment = db.query(Payment).one()
@@ -576,6 +587,19 @@ def test_distinct_refund_ids_for_same_transaction_are_not_deduplicated() -> None
             "Reason": "customer_request",
         },
     )
+    assert first_refund_response.status_code == 200
+
+    partial_status_response = client.get(
+        f"/api/auth/payment-status?invoice_id={invoice_id}&email=multi-refund-user@example.com"
+    )
+    assert partial_status_response.status_code == 200
+    partial_status_payload = partial_status_response.json()
+    assert partial_status_payload["product_state"]["status"] == "pending"
+    assert partial_status_payload["order"]["status"] == "partially_refunded"
+    assert partial_status_payload["payment"]["status"] == "partially_refunded"
+    assert partial_status_payload["payment"]["amount_minor"] == 99000
+    assert partial_status_payload["payment"]["refunded_amount_minor"] == 40000
+
     second_refund_response = client.post(
         "/api/cloudpayments/refund",
         json={
@@ -588,7 +612,6 @@ def test_distinct_refund_ids_for_same_transaction_are_not_deduplicated() -> None
         },
     )
 
-    assert first_refund_response.status_code == 200
     assert second_refund_response.status_code == 200
     with SessionLocal() as db:
         order = db.query(Order).one()

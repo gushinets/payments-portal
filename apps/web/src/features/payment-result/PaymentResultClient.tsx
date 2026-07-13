@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { ArrowLeft, Clock3, Mail, ShieldCheck } from "lucide-react";
+import { ArrowLeft, Clock3, Mail, ShieldCheck, Undo2 } from "lucide-react";
 import {
   findProduct,
   formatRubles,
@@ -57,6 +57,14 @@ type PaymentStatusResponse = {
   } | null;
 };
 
+type PaymentResultKind =
+  | "active"
+  | "paid"
+  | "refunded"
+  | "partially_refunded"
+  | "failed"
+  | "pending";
+
 const configuredApiBase =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 const requestTimeoutMs = 5000;
@@ -84,12 +92,60 @@ function resolveApiBase(): string {
   }
 }
 
+function derivePaymentResultKind(
+  fallbackStatus: string,
+  payload: PaymentStatusResponse | null
+): PaymentResultKind {
+  const productStatus = payload?.product_state.status ?? fallbackStatus;
+  const orderStatus = payload?.order?.status ?? null;
+  const paymentStatus = payload?.payment?.status ?? null;
+  const refundedAmount = payload?.payment?.refunded_amount_minor ?? 0;
+  const paymentAmount = payload?.payment?.amount_minor ?? payload?.order?.amount_minor ?? 0;
+
+  if (
+    paymentStatus === "partially_refunded" ||
+    orderStatus === "partially_refunded" ||
+    (refundedAmount > 0 && paymentAmount > 0 && refundedAmount < paymentAmount)
+  ) {
+    return "partially_refunded";
+  }
+
+  if (
+    paymentStatus === "refunded" ||
+    orderStatus === "refunded" ||
+    (refundedAmount > 0 && paymentAmount > 0 && refundedAmount >= paymentAmount)
+  ) {
+    return "refunded";
+  }
+
+  if (
+    productStatus === "failed" ||
+    orderStatus === "payment_failed" ||
+    paymentStatus === "failed"
+  ) {
+    return "failed";
+  }
+
+  if (productStatus === "active") {
+    return "active";
+  }
+
+  if (orderStatus === "paid" || paymentStatus === "succeeded") {
+    return "paid";
+  }
+
+  return "pending";
+}
+
+function formatMinorRubles(value: number): string {
+  return formatRubles(value / 100);
+}
+
 export function PaymentResultClient() {
   const searchParams = useSearchParams();
   const [stored, setStored] = useState<StoredPaymentResult>({});
-  const [resolvedStatus, setResolvedStatus] = useState<string | null>(null);
-  const [resolvedOrderStatus, setResolvedOrderStatus] = useState<string | null>(null);
-  const [resolvedPaymentStatus, setResolvedPaymentStatus] = useState<string | null>(null);
+  const [paymentStatusPayload, setPaymentStatusPayload] =
+    useState<PaymentStatusResponse | null>(null);
   const [statusLoading, setStatusLoading] = useState(false);
 
   useEffect(() => {
@@ -136,7 +192,7 @@ export function PaymentResultClient() {
     (hasResultParams ? stored.planName : undefined) ??
     "тариф не выбран";
   const price = product?.plan.priceRub ?? (hasResultParams ? stored.priceRub : undefined);
-  const effectiveStatus = resolvedStatus ?? status;
+  const effectiveStatus = status;
 
   useEffect(() => {
     if (!invoiceId || !email || email === "не указан") {
@@ -165,9 +221,7 @@ export function PaymentResultClient() {
         if (cancelled) {
           return;
         }
-        setResolvedStatus(payload.product_state.status);
-        setResolvedOrderStatus(payload.order?.status ?? null);
-        setResolvedPaymentStatus(payload.payment?.status ?? null);
+        setPaymentStatusPayload(payload);
       } finally {
         window.clearTimeout(timeoutId);
         if (!cancelled) {
@@ -187,57 +241,89 @@ export function PaymentResultClient() {
     };
   }, [email, invoiceId]);
 
-  const paymentConfirmed =
-    resolvedOrderStatus === "paid" || resolvedPaymentStatus === "succeeded";
-  const paymentFailed =
-    effectiveStatus === "failed" ||
-    resolvedOrderStatus === "payment_failed" ||
-    resolvedPaymentStatus === "failed";
-  const isActive = effectiveStatus === "active";
+  const resultKind = derivePaymentResultKind(effectiveStatus, paymentStatusPayload);
+  const isActive = resultKind === "active";
+  const paymentConfirmed = resultKind === "paid";
+  const isRefunded = resultKind === "refunded";
+  const isPartiallyRefunded = resultKind === "partially_refunded";
+  const paymentFailed = resultKind === "failed";
   const isSuccessful = isActive || paymentConfirmed;
-  const stillWaiting = !paymentFailed && !isSuccessful;
-  const finalTitle = isActive
-    ? "Оплата подтверждена"
-    : paymentConfirmed
-      ? "Платёж подтверждён"
-    : stillWaiting
-      ? "Платёж обрабатывается"
-      : "Не удалось завершить оплату";
+  const stillWaiting = resultKind === "pending";
+  const refundedAmount = paymentStatusPayload?.payment?.refunded_amount_minor ?? 0;
+  const refundAmountText = refundedAmount > 0 ? formatMinorRubles(refundedAmount) : null;
+  const finalTitle = isRefunded
+    ? "Платёж возвращён"
+    : isPartiallyRefunded
+      ? "Платёж частично возвращён"
+      : isActive
+        ? "Оплата подтверждена"
+        : paymentConfirmed
+          ? "Платёж подтверждён"
+          : stillWaiting
+            ? "Платёж обрабатывается"
+            : "Не удалось завершить оплату";
+  const badgeLabel = isRefunded
+    ? "Возврат выполнен"
+    : isPartiallyRefunded
+      ? "Частичный возврат"
+      : isActive
+        ? "Оплата подтверждена"
+        : paymentConfirmed
+          ? "Платёж подтверждён"
+          : stillWaiting
+            ? "Ожидаем подтверждение"
+            : "Платёж требует повторной попытки";
+  const resultCopy = isRefunded
+    ? "Платёж полностью возвращён по данным платёжного партнёра. Если деньги ещё не поступили, срок зачисления зависит от банка."
+    : isPartiallyRefunded
+      ? `Платёж частично возвращён по данным платёжного партнёра.${refundAmountText ? ` Сумма возврата: ${refundAmountText}.` : ""}`
+      : isActive
+        ? "Платёж подтверждён платёжным партнёром. Доступ по выбранному тарифу обновлён."
+        : paymentConfirmed
+          ? "Платёж подтверждён платёжным партнёром. Доступ будет выдан отдельным backend-слоем после обработки заказа."
+          : stillWaiting
+            ? "Мы получили информацию о платеже и ждём подтверждение от платёжного партнёра. Статус подписки обновится после завершения обработки."
+            : "Платёж не был подтверждён. Попробуйте повторить оплату позже или свяжитесь с поддержкой, если списание уже произошло.";
+  const nextStepCopy = isRefunded
+    ? "Дополнительных действий не требуется. Сохраните Invoice ID, если будете писать в поддержку по срокам зачисления."
+    : isPartiallyRefunded
+      ? "Оставшаяся часть платежа продолжает числиться по заказу. Если ожидали полный возврат, напишите в поддержку и укажите Invoice ID."
+      : isActive
+        ? "Можно вернуться к оформлению или дождаться следующего этапа интеграции, где активный доступ будет использоваться самими продуктами."
+        : paymentConfirmed
+          ? "Платёжная часть завершена. Следующий слой системы свяжет оплаченный заказ с подпиской и доступом продукта."
+          : stillWaiting
+            ? "Если подтверждение пройдёт успешно, доступ к выбранному тарифу будет активирован автоматически. Обычно это занимает всего несколько минут."
+            : "Проверьте способ оплаты и попробуйте ещё раз. Если деньги уже были списаны, напишите в поддержку и укажите email и детали операции.";
 
   return (
     <section className="page-section compact">
       <div className="result-panel">
         <span
           className={`badge ${
-            isSuccessful ? "badge-live" : stillWaiting ? "badge-running" : "badge-demo"
+            isSuccessful || isRefunded || isPartiallyRefunded
+              ? "badge-live"
+              : stillWaiting
+                ? "badge-running"
+                : "badge-demo"
           }`}
         >
-          {isSuccessful ? (
+          {isRefunded || isPartiallyRefunded ? (
+            <Undo2 size={12} aria-hidden="true" />
+          ) : isSuccessful ? (
             <ShieldCheck size={12} aria-hidden="true" />
           ) : stillWaiting ? (
             <Clock3 size={12} aria-hidden="true" />
           ) : (
             <ShieldCheck size={12} aria-hidden="true" />
           )}
-          {isActive
-            ? "Оплата подтверждена"
-            : paymentConfirmed
-              ? "Платёж подтверждён"
-            : stillWaiting
-              ? "Ожидаем подтверждение"
-              : "Платёж требует повторной попытки"}
+          {badgeLabel}
         </span>
         <h1 className="result-title" style={{ marginTop: 18 }}>
           {finalTitle}
         </h1>
         <p className="hero-copy">
-          {isActive
-            ? "Платёж подтверждён платёжным партнёром. Доступ по выбранному тарифу обновлён."
-            : paymentConfirmed
-            ? "Платёж подтверждён платёжным партнёром. Доступ будет выдан отдельным backend-слоем после обработки заказа."
-            : stillWaiting
-            ? "Мы получили информацию о платеже и ждём подтверждение от платёжного партнёра. Статус подписки обновится после завершения обработки."
-            : "Платёж не был подтверждён. Попробуйте повторить оплату позже или свяжитесь с поддержкой, если списание уже произошло."}
+          {resultCopy}
         </p>
 
         <div className="tools-grid" style={{ marginTop: 28 }}>
@@ -259,13 +345,7 @@ export function PaymentResultClient() {
           <div className="feature-card">
             <strong>Что дальше</strong>
             <p className="card-copy">
-              {isActive
-                ? "Можно вернуться к оформлению или дождаться следующего этапа интеграции, где активный доступ будет использоваться самими продуктами."
-                : paymentConfirmed
-                ? "Платёжная часть завершена. Следующий слой системы свяжет оплаченный заказ с подпиской и доступом продукта."
-                : stillWaiting
-                ? "Если подтверждение пройдёт успешно, доступ к выбранному тарифу будет активирован автоматически. Обычно это занимает всего несколько минут."
-                : "Проверьте способ оплаты и попробуйте ещё раз. Если деньги уже были списаны, напишите в поддержку и укажите email и детали операции."}
+              {nextStepCopy}
             </p>
           </div>
         </div>
