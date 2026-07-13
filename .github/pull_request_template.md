@@ -1,5 +1,6 @@
 <!--
-Required PR title: ANY-71 - Implement Payment Portal data model
+Required PR title format: ANY-<number> - <summary>
+Example: ANY-115 - Clarify PR title validation
 Pattern: ^ANY-[1-9][0-9]* - \S.*$
 -->
 

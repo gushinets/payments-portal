@@ -540,7 +540,7 @@ def cmd_pr_title(args: argparse.Namespace) -> None:
     pattern = re.compile(r"^ANY-[1-9][0-9]* - \S.*$")
     if not pattern.fullmatch(args.title):
         raise HarnessError(
-            'Invalid PR title. Required format: "ANY-71 - Implement Payment Portal data model"'
+            'Invalid PR title. Required format: "ANY-<number> - <summary>"'
         )
     print("PR title is valid.")
 
