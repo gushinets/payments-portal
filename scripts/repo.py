@@ -550,7 +550,18 @@ def cmd_check(args: argparse.Namespace) -> None:
     cmd_generate(argparse.Namespace(check=True))
     cmd_architecture(argparse.Namespace())
     run([tool("npm"), "run", "lint:web"])
-    run([sys.executable, "-m", "pytest", "-p", "no:cacheprovider", "apps/api/tests"])
+    run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-p",
+            "no:cacheprovider",
+            "--ignore",
+            "apps/api/tests/test_alembic_postgres.py",
+            "apps/api/tests",
+        ]
+    )
     if not args.fast:
         run([tool("npm"), "run", "build:web"])
         postgres_url = os.getenv("TEST_POSTGRES_DATABASE_URL")

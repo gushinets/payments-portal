@@ -22,6 +22,7 @@
     "start:web": "npm --workspace @anytoolai/web run start",
     "build:web": "npm --workspace @anytoolai/web run build",
     "lint:web": "npm --workspace @anytoolai/web run lint",
+    "typecheck:web": "npm --workspace @anytoolai/web run typecheck",
     "dev:api": "python -m uvicorn app.main:app --reload --app-dir apps/api",
     "test:api": "pytest apps/api/tests"
   },

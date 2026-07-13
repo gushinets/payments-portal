@@ -8,6 +8,7 @@ from unittest.mock import patch
 import pytest
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, inspect, text
 
 
@@ -89,6 +90,9 @@ def expected_legal_documents() -> list[dict[str, str]]:
 
 
 def test_clean_postgres_alembic_upgrade_and_downgrade() -> None:
+    heads = ScriptDirectory.from_config(alembic_config()).get_heads()
+    assert len(heads) == 1, f"expected one Alembic head, found {heads}"
+
     reset_public_schema()
 
     with patch.dict(os.environ, {"DATABASE_URL": TEST_DATABASE_URL}):
@@ -106,4 +110,12 @@ def test_clean_postgres_alembic_upgrade_and_downgrade() -> None:
     assert public_table_names() == {"alembic_version"}
     assert alembic_version_count() == 0
 
-    reset_public_schema()
+    with patch.dict(os.environ, {"DATABASE_URL": TEST_DATABASE_URL}):
+        command.upgrade(alembic_config(), "head")
+
+    tables = public_table_names()
+    assert "alembic_version" in tables
+    assert "payment_provider_accounts" in tables
+    assert "payment_webhook_events" in tables
+    assert alembic_version_count() == 1
+    assert seeded_legal_documents() == expected_legal_documents()
