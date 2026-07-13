@@ -3,9 +3,9 @@ from __future__ import annotations
 import hashlib
 import hmac
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
 
@@ -15,6 +15,13 @@ from app.domains.legal.service import (
     build_acceptance_text,
     expected_acceptance_text_hash,
     get_missing_required_documents_for_user,
+)
+from app.domains.identity.session import (
+    DEFAULT_REGION,
+    DEFAULT_TENANT_ID,
+    as_utc,
+    get_current_session,
+    utc_now,
 )
 from app.models import (
     AuthSession,
@@ -30,8 +37,6 @@ from app.models import (
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
-DEFAULT_TENANT_ID = "anytoolai"
-DEFAULT_REGION = "ru"
 SESSION_TTL_DAYS = 30
 PBKDF2_ITERATIONS = 120_000
 PRODUCT_DEFAULTS = {
@@ -73,16 +78,6 @@ class CheckoutIntentRequest(BaseModel):
     entrypoint_type: str = "product"
     frontend_id: str | None = None
     source_url: str | None = None
-
-
-def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-def as_utc(value: datetime) -> datetime:
-    if value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc)
 
 
 def hash_password(password: str) -> str:
@@ -195,47 +190,6 @@ def present_product_state(state: ProductAccessState | None, product_code: str) -
         "starts_at": state.starts_at.isoformat() if state and state.starts_at else None,
         "expires_at": state.expires_at.isoformat() if state and state.expires_at else None,
     }
-
-
-def get_current_session(
-    authorization: str | None = Header(default=None),
-    db: Session = Depends(get_db),
-) -> tuple[User, AuthSession]:
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="missing_session")
-
-    token = authorization.removeprefix("Bearer ").strip()
-    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
-
-    session = (
-        db.query(AuthSession)
-        .filter(AuthSession.token_hash == token_hash)
-        .first()
-    )
-    if (
-        session is None
-        or session.revoked_at is not None
-        or as_utc(session.expires_at) <= utc_now()
-    ):
-        raise HTTPException(status_code=401, detail="invalid_session")
-
-    user = (
-        db.query(User)
-        .filter(
-            User.id == session.user_id,
-            User.tenant_id == session.tenant_id,
-            User.region == session.region,
-        )
-        .first()
-    )
-    if user is None:
-        raise HTTPException(status_code=401, detail="invalid_session")
-
-    session.last_seen_at = utc_now()
-    db.add(session)
-    db.commit()
-    db.refresh(session)
-    return user, session
 
 
 @router.post("/register")
