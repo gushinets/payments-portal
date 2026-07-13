@@ -1,6 +1,6 @@
 # ANY-92 — Mandatory CI Quality Gate
 
-Status: active
+Status: completed
 Owner: repository maintainers
 Started: 2026-07-13
 
@@ -23,8 +23,8 @@ request and push to `main`, while keeping the warm-cache required path within
 - [x] Add the two required CI jobs and failure diagnostics.
 - [x] Verify a single Alembic head and a full upgrade/downgrade/upgrade cycle.
 - [x] Validate both Compose files, build production images, and smoke the API.
-- [ ] Record local and GitHub Actions evidence.
-- [ ] Configure the emitted checks as required for `main`.
+- [x] Record local and GitHub Actions evidence.
+- [x] Configure the emitted checks as required for `main`.
 
 ## Completion evidence
 
@@ -36,5 +36,9 @@ request and push to `main`, while keeping the warm-cache required path within
 - Production API and web image builds: passed from a cold local Docker cache.
 - Built API image smoke: `/health/ready` returned `ready`.
 
-GitHub Actions timing and branch-protection evidence remain pending the pull
-request run.
+- GitHub Actions run 29241870479: `Code quality` passed in 58 seconds and
+  `Production gate` passed in 67 seconds.
+- `main` protection requires strict `Code quality`, `Production gate`, and
+  `validate` checks, applies to administrators, and rejects force-pushes and
+  branch deletion.
+- Draft PR: https://github.com/gushinets/payments-portal/pull/5
