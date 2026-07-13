@@ -1,9 +1,15 @@
 import Link from "next/link";
 import { CookieBanner } from "./CookieBanner";
-import { Footer } from "./Footer";
+import { Footer, FooterContent } from "./Footer";
 import { HeaderAccount } from "./HeaderAccount";
 
-export function SiteShell({ children }: { children: React.ReactNode }) {
+export function SiteShell({
+  children,
+  footer
+}: {
+  children: React.ReactNode;
+  footer: FooterContent;
+}) {
   return (
     <div className="site-shell">
       <header className="top-nav">
@@ -20,7 +26,7 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
       <main className="site-main">{children}</main>
-      <Footer />
+      <Footer {...footer} />
       <CookieBanner />
     </div>
   );

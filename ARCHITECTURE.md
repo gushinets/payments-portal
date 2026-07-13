@@ -40,11 +40,21 @@ Provider adapters may call application services but domain code must not import
 provider or router modules. Core configuration, database, logging, telemetry,
 and security helpers are shared infrastructure.
 
+These directions are mechanically enforced with Python AST analysis. Routers
+share authentication through session or service modules rather than importing
+one another. The aggregate `app.models` module and the top-level compatibility
+exports remain allowed until the model transition owned by ANY-71.
+
 The web dependency direction is:
 
 ```text
 shared contracts and UI -> features -> app routes
 ```
+
+Shared modules do not import features or app routes. App routes and
+cross-feature dependencies import public feature entrypoints; code within one
+feature uses relative imports for its internal modules. ESLint enforces these
+directions and rejects deep alias imports.
 
 ## Authoritative details
 
