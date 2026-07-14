@@ -53,6 +53,21 @@ def reset_schema() -> None:
     Base.metadata.create_all(engine)
 
 
+def clear_schema() -> None:
+    assert engine is not None
+    with engine.begin() as connection:
+        connection.execute(text("DROP SCHEMA IF EXISTS public CASCADE"))
+        connection.execute(text("CREATE SCHEMA public"))
+
+
+@pytest.fixture(autouse=True)
+def clean_schema_after_test():
+    yield
+    if engine is not None:
+        clear_schema()
+    app.dependency_overrides.clear()
+
+
 def override_get_db():
     db = TestingSessionLocal()
     try:
