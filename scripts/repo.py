@@ -111,6 +111,17 @@ def runtime_config(port_offset: int = 0, *, root: Path = ROOT) -> RuntimeConfig:
     )
 
 
+def canonical_check_environment(
+    *, root: Path = ROOT, environ: dict[str, str] | None = None
+) -> dict[str, str]:
+    environment = dict(os.environ if environ is None else environ)
+    temp_dir = (root / ".harness" / "tmp").resolve()
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    for variable in ("TEMP", "TMP", "TMPDIR"):
+        environment[variable] = str(temp_dir)
+    return environment
+
+
 def port_is_free(port: int) -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -834,11 +845,12 @@ def cmd_pr_title(args: argparse.Namespace) -> None:
 
 
 def cmd_check(args: argparse.Namespace) -> None:
+    check_env = canonical_check_environment()
     cmd_docs(argparse.Namespace())
     cmd_generate(argparse.Namespace(check=True))
     cmd_architecture(argparse.Namespace())
-    run([tool("npm"), "run", "test:boundaries:web"])
-    run([tool("npm"), "run", "lint:web"])
+    run([tool("npm"), "run", "test:boundaries:web"], env=check_env)
+    run([tool("npm"), "run", "lint:web"], env=check_env)
     run(
         [
             sys.executable,
@@ -849,10 +861,11 @@ def cmd_check(args: argparse.Namespace) -> None:
             "--ignore",
             "apps/api/tests/test_alembic_postgres.py",
             "apps/api/tests",
-        ]
+        ],
+        env=check_env,
     )
     if not args.fast:
-        run([tool("npm"), "run", "build:web"])
+        run([tool("npm"), "run", "build:web"], env=check_env)
         postgres_url = os.getenv("TEST_POSTGRES_DATABASE_URL")
         if postgres_url:
             run(
@@ -863,12 +876,13 @@ def cmd_check(args: argparse.Namespace) -> None:
                     "-p",
                     "no:cacheprovider",
                     "apps/api/tests/test_alembic_postgres.py",
-                ]
+                ],
+                env=check_env,
             )
         else:
             print("SKIP: PostgreSQL integration test requires TEST_POSTGRES_DATABASE_URL")
         if os.getenv("RUN_E2E") == "true":
-            run([tool("npm"), "run", "test:e2e"])
+            run([tool("npm"), "run", "test:e2e"], env=check_env)
         else:
             print("SKIP: browser suite requires RUN_E2E=true and a running harness stack")
 
