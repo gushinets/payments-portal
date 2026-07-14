@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import os
 import sys
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -172,3 +175,69 @@ def test_raw_webhook_event_survives_failed_normalization_and_can_retry(monkeypat
     assert payments[0].provider_payment_id == "tx-durable-1"
 
     app.dependency_overrides.clear()
+
+
+def test_concurrent_duplicate_webhook_is_serialized_without_provider_payment_id(monkeypatch) -> None:
+    reset_schema()
+    app.dependency_overrides[get_db] = override_get_db
+    invoice_id = "inv-concurrent-1"
+    seed_order(invoice_id)
+
+    original_upsert = cloudpayments_processing.upsert_payment_from_webhook
+    first_upsert_entered = threading.Event()
+    call_lock = threading.Lock()
+    call_count = 0
+
+    def slow_first_upsert(*args, **kwargs):
+        nonlocal call_count
+        with call_lock:
+            call_count += 1
+            is_first_call = call_count == 1
+        if is_first_call:
+            first_upsert_entered.set()
+            time.sleep(0.3)
+        return original_upsert(*args, **kwargs)
+
+    monkeypatch.setattr(
+        cloudpayments_processing,
+        "upsert_payment_from_webhook",
+        slow_first_upsert,
+    )
+
+    payload = {
+        "InvoiceId": invoice_id,
+        "AccountId": "durable-webhook@example.com",
+        "Amount": "990.00",
+        "Currency": "RUB",
+    }
+
+    def post_webhook():
+        with TestClient(app, raise_server_exceptions=False) as client:
+            return client.post("/api/cloudpayments/pay", json=payload)
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            first_result = executor.submit(post_webhook)
+            assert first_upsert_entered.wait(timeout=5)
+            second_result = executor.submit(post_webhook)
+
+            first_response = first_result.result(timeout=10)
+            second_response = second_result.result(timeout=10)
+
+        assert first_response.status_code == 200
+        assert second_response.status_code == 200
+
+        with TestingSessionLocal() as db:
+            events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
+            order = db.query(Order).one()
+            payments = db.query(Payment).all()
+
+        assert sorted(event.status for event in events) == ["duplicate", "processed"]
+        processed_event = next(event for event in events if event.status == "processed")
+        duplicate_event = next(event for event in events if event.status == "duplicate")
+        assert duplicate_event.payment_id == processed_event.payment_id
+        assert order.status == "paid"
+        assert len(payments) == 1
+        assert payments[0].provider_payment_id is None
+    finally:
+        app.dependency_overrides.clear()

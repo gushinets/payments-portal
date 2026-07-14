@@ -839,6 +839,26 @@ def test_cloudpayments_webhook_is_saved_without_secret_hmac() -> None:
     assert event.error_code == "order_not_found"
 
 
+def test_malformed_cloudpayments_payload_omits_raw_body() -> None:
+    response = client.post(
+        "/api/cloudpayments/pay",
+        headers={"Content-HMAC": "demo-signature", "Content-Type": "application/json"},
+        content='{"InvoiceId":"invoice-raw","CardFirstSix":"411111","Token":"secret-token"',
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"code": 0}
+
+    with SessionLocal() as db:
+        event = db.query(PaymentWebhookEvent).one()
+
+    assert event.status == "failed"
+    assert event.error_code == "payload_parse_error"
+    assert event.raw_payload == {"_raw": "[omitted: payload_parse_error]"}
+    assert "411111" not in str(event.raw_payload)
+    assert "secret-token" not in str(event.raw_payload)
+
+
 def test_checkout_requires_acceptance_again_when_active_document_version_changes() -> None:
     with SessionLocal() as db:
         legal_entity = create_legal_entity(db, region="ru")

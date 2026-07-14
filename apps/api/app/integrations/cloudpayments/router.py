@@ -170,7 +170,7 @@ async def receive_cloudpayments_webhook(
     try:
         payload = await parse_payload(request, raw_body)
     except Exception as exc:
-        payload = {"_raw": raw_body.decode("utf-8", errors="replace")}
+        payload = {"_raw": "[omitted: payload_parse_error]"}
         status = "failed"
         error_code = "payload_parse_error"
         error_message = f"payload_parse_error: {type(exc).__name__}"

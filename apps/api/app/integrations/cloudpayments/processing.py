@@ -50,17 +50,16 @@ def _safe_summary(payload: dict[str, Any], data: dict[str, Any]) -> dict[str, An
     }
 
 
-def find_order(db: Session, invoice_id: str | None) -> Order | None:
+def find_order(db: Session, invoice_id: str | None, *, for_update: bool = False) -> Order | None:
     if not invoice_id:
         return None
-    return (
-        db.query(Order)
-        .filter(
-            Order.provider == "cloudpayments",
-            Order.provider_invoice_id == invoice_id,
-        )
-        .first()
+    query = db.query(Order).filter(
+        Order.provider == "cloudpayments",
+        Order.provider_invoice_id == invoice_id,
     )
+    if for_update:
+        query = query.with_for_update()
+    return query.first()
 
 
 def _find_payment(
@@ -242,7 +241,7 @@ def process_webhook_event(
         raise RuntimeError("payment_webhook_event_missing")
 
     event.status = "processing"
-    order = find_order(db, invoice_id)
+    order = find_order(db, invoice_id, for_update=True)
     if order is not None:
         event.tenant_id = order.tenant_id
         event.region = order.region
