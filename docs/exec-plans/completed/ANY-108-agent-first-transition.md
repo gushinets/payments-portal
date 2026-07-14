@@ -1,8 +1,9 @@
 # ANY-108 — AI-Agent-First Repository Transition
 
-Status: active
+Status: completed
 Owner: repository maintainers
 Started: 2026-07-11
+Completed: 2026-07-14
 
 ## Objective
 
@@ -24,7 +25,7 @@ maintainable by coding agents while retaining human merge approval.
 - [x] Enforce architecture boundaries.
 - [x] Add logs, metrics, traces, and browser journeys.
 - [x] Add CI, PR title validation, ownership, and gardening.
-- [ ] Complete a clean-context agent trial and record evidence.
+- [x] Complete a clean-context agent trial and record evidence.
 
 ## Decisions
 
@@ -39,7 +40,7 @@ maintainable by coding agents while retaining human merge approval.
   lint, and API tests.
 - PostgreSQL integration: clean upgrade, exact six-document legal seed, hashes,
   clean downgrade, and schema cleanup.
-- `npm run test:e2e`: 18 desktop/mobile journeys with accessibility, console,
+- `npm run test:e2e`: desktop/mobile journeys with accessibility, console,
   network, screenshot, trace, video-on-failure, and JSON evidence.
 - `python scripts/repo.py harness-smoke`: deterministic disjoint current and
   second-worktree project, database, and port assignments on Windows/Linux CI.
@@ -49,10 +50,20 @@ maintainable by coding agents while retaining human merge approval.
   `ready`.
 - Observability: request-ID lookup in Loki, business metric lookup in
   Prometheus, and correlated checkout trace lookup in Tempo.
+- [Draft PR #9](https://github.com/gushinets/payments-portal/pull/9)
+  completed the ANY-116 clean-context autonomy trial. Every CI job passed,
+  including Code quality, Production gate, PR-title validation, browser, and
+  Windows/Linux harness-smoke.
+- Final trial grades: repository discovery A; baseline reproduction A;
+  implementation correctness A; verification and cross-platform evidence A;
+  evidence quality and review response A; autonomous completion B; overall
+  clean-context trial B.
 
-The final clean-context autonomy trial is tracked by ANY-116 and remains the
-last closure gate for ANY-108; this implementation run cannot represent a
-fresh context.
+The open maintenance tickets are non-blocking debt after ANY-108 completion:
+ANY-123 owns cleanup safety, ANY-124 owns heartbeats/timeouts and resumable
+execution, and ANY-125 owns trace discovery and artifact hygiene. Existing
+ANY-100 owns deterministic Python locking, and existing ANY-99 owns
+PostgreSQL/Alembic stability.
 
 ## Ordered Linear workstreams
 
