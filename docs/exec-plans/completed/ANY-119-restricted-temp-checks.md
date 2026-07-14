@@ -111,6 +111,20 @@ the operating system's default temporary directory is unavailable.
 - GitHub CLI authentication was stale at baseline. Git push and draft PR
   creation therefore use the repository Git credential path and connected
   GitHub app respectively.
+- Coordinator intervention #1 was recorded with timestamp
+  `2026-07-14T10:34:12Z`:
+
+  ```text
+  Coordinator intervention #1 (2026-07-14T10:34:12Z): this task has shown no observable transcript, process, or worktree progress for about 30 minutes after the dependency/environment investigation. Please report the current blocking condition, if any, then continue independently toward the requested draft PR. This is a status/resume request only; it provides no implementation guidance and does not change the issue scope. Record this intervention verbatim in the trial evidence, including whether it was necessary and what repository or runtime improvement could prevent the stall.
+  ```
+
+  The intervention was not necessary for an implementation decision and did
+  not change scope. Work was progressing through long dependency installation,
+  Docker build, and integration-test commands, including two processes that
+  later required explicit hang diagnosis and termination. At the time this
+  evidence follow-up was received, there was no remaining blocker: draft PR #9
+  was already open. The intervention was useful for exposing a visibility gap
+  and ensuring that the gap itself was recorded.
 
 ## Missing repository fixtures, commands, documentation, and guardrails
 
@@ -133,6 +147,11 @@ the operating system's default temporary directory is unavailable.
   be inspected and removed manually.
 - The observability helper requires a known trace ID and offers no recent-trace
   discovery command.
+- Long-running setup, Docker, and test commands need a durable heartbeat that is
+  visible to coordinators even when the active transcript or process session is
+  not observable. The harness should also persist the current command, start
+  time, worktree, and last output timestamp and apply bounded command timeouts
+  with a documented cleanup path.
 
 ## Independent review findings and responses
 
