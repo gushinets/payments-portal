@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.observability import record_legal_acceptance, traced
-from app.domains.identity.router import DEFAULT_REGION, DEFAULT_TENANT_ID, get_current_session
+from app.domains.identity.session import DEFAULT_REGION, DEFAULT_TENANT_ID, get_current_session
 from app.domains.legal.service import (
     build_acceptance_text,
     create_document_acceptance,

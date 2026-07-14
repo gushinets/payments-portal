@@ -1,6 +1,12 @@
 import type { Metadata } from "next";
 import Script from "next/script";
 import "./globals.css";
+import {
+  paymentMethods,
+  seller,
+  supportEmail
+} from "@/features/catalog";
+import { legalLinks } from "@/features/legal";
 import { SiteShell } from "@/shared/ui";
 
 export const metadata: Metadata = {
@@ -22,7 +28,11 @@ export default function RootLayout({
   return (
     <html lang="ru">
       <body>
-        <SiteShell>{children}</SiteShell>
+        <SiteShell
+          footer={{ seller, supportEmail, legalLinks, paymentMethods }}
+        >
+          {children}
+        </SiteShell>
         {cloudPaymentsEnabled && cloudPaymentsPublicId ? (
           <Script
             src="https://widget.cloudpayments.ru/bundles/cloudpayments"

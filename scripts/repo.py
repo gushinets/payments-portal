@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import importlib
 import json
@@ -17,7 +18,7 @@ import urllib.parse
 import urllib.request
 from dataclasses import dataclass, asdict
 from pathlib import Path
-from typing import Iterable
+from typing import Callable, Iterable
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -36,6 +37,12 @@ LEGAL_DOCS_ROOT = ROOT / "docs" / "legal" / "ru"
 
 class HarnessError(RuntimeError):
     pass
+
+
+@dataclass(frozen=True)
+class PythonImport:
+    line: int
+    targets: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -413,6 +420,45 @@ def cmd_legal(args: argparse.Namespace) -> None:
 
 MARKDOWN_LINK = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
 CYRILLIC = re.compile(r"[А-Яа-яЁё]")
+CURRENT_LEGAL_VERSION = re.compile(
+    r"Current RU legal source version:\s*`([^`]+)`"
+)
+MIGRATION_LEGAL_VERSION = re.compile(r'"version":\s*"([^"]+)"')
+GENERATED_PY_LEGAL_VERSION = re.compile(r"'version':\s*'([^']+)'")
+INITIAL_MIGRATION = (
+    ROOT
+    / "apps"
+    / "api"
+    / "alembic"
+    / "versions"
+    / "20260707_0001_initial_payment_portal_schema.py"
+)
+CORE_AUTHORITY_LINKS = {
+    ROOT / "AGENTS.md": (
+        ROOT / "README.md",
+        ROOT / "ARCHITECTURE.md",
+        ROOT / "docs" / "PRODUCT.md",
+        ROOT / "docs" / "architecture" / "payment-portal-data-model.md",
+        ROOT / "docs" / "product" / "ru-mvp.md",
+        ROOT / "docs" / "DESIGN.md",
+        ROOT / "docs" / "SECURITY.md",
+        ROOT / "docs" / "RELIABILITY.md",
+        ROOT / "docs" / "engineering" / "AGENT_WORKFLOW.md",
+        ROOT / "docs" / "exec-plans",
+    ),
+    ROOT / "docs" / "README.md": (
+        ROOT / "ARCHITECTURE.md",
+        ROOT / "docs" / "PRODUCT.md",
+        ROOT / "docs" / "product" / "ru-mvp.md",
+        ROOT / "docs" / "DESIGN.md",
+        ROOT / "docs" / "architecture" / "payment-portal-data-model.md",
+        ROOT / "docs" / "engineering" / "AGENT_WORKFLOW.md",
+        ROOT / "docs" / "RELIABILITY.md",
+        ROOT / "docs" / "SECURITY.md",
+        ROOT / "docs" / "legal" / "README.md",
+        ROOT / "docs" / "exec-plans" / "README.md",
+    ),
+}
 
 
 def engineering_markdown_files() -> Iterable[Path]:
@@ -427,6 +473,122 @@ def engineering_markdown_files() -> Iterable[Path]:
         yield from subtree.rglob("AGENTS.md")
 
 
+def resolved_markdown_links(source: Path, content: str, *, root: Path) -> set[Path]:
+    resolved: set[Path] = set()
+    for target in MARKDOWN_LINK.findall(content):
+        clean = target.split("#", 1)[0].strip()
+        if not clean or clean.startswith(("http://", "https://", "mailto:")):
+            continue
+        candidate = (source.parent / urllib.parse.unquote(clean)).resolve()
+        try:
+            candidate.relative_to(root.resolve())
+        except ValueError:
+            continue
+        resolved.add(candidate)
+    return resolved
+
+
+def check_required_markdown_link_content(
+    source: Path,
+    content: str,
+    required: Iterable[Path],
+    *,
+    root: Path,
+) -> list[str]:
+    linked = resolved_markdown_links(source, content, root=root)
+    return [
+        (
+            f"Missing core authority link in {source.relative_to(root)}: "
+            f"{target.relative_to(root)}"
+        )
+        for target in required
+        if target.resolve() not in linked
+    ]
+
+
+def check_required_markdown_links(
+    source: Path, required: Iterable[Path], *, root: Path = ROOT
+) -> list[str]:
+    if not source.exists():
+        return []
+    return check_required_markdown_link_content(
+        source,
+        source.read_text(encoding="utf-8"),
+        required,
+        root=root,
+    )
+
+
+def check_expected_legal_versions(
+    expected: str,
+    sources: Iterable[tuple[str, Iterable[str], int]],
+) -> list[str]:
+    errors: list[str] = []
+    for label, versions, expected_count in sources:
+        found = list(versions)
+        if len(found) != expected_count or set(found) != {expected}:
+            rendered = ", ".join(found) if found else "none"
+            errors.append(
+                f"Current legal version mismatch in {label}: expected "
+                f"{expected_count} occurrence(s) of {expected}, found {rendered}"
+            )
+    return errors
+
+
+def check_knowledge_hierarchy() -> list[str]:
+    errors: list[str] = []
+    for source, required in CORE_AUTHORITY_LINKS.items():
+        errors.extend(check_required_markdown_links(source, required))
+
+    expected = LEGAL_DIR.name
+    source_manifest = json.loads(LEGAL_MANIFEST.read_text(encoding="utf-8"))
+    web_manifest_path = ROOT / "apps" / "web" / "src" / "generated" / "legal-manifest.json"
+    web_manifest = json.loads(web_manifest_path.read_text(encoding="utf-8"))
+    api_manifest_path = ROOT / "apps" / "api" / "app" / "generated" / "legal_manifest.py"
+    version_sources = [
+        (
+            "docs/README.md",
+            CURRENT_LEGAL_VERSION.findall(
+                (ROOT / "docs" / "README.md").read_text(encoding="utf-8")
+            ),
+            1,
+        ),
+        (
+            "docs/legal/README.md",
+            CURRENT_LEGAL_VERSION.findall(
+                (ROOT / "docs" / "legal" / "README.md").read_text(encoding="utf-8")
+            ),
+            1,
+        ),
+        (
+            str(LEGAL_MANIFEST.relative_to(ROOT)),
+            [document["version"] for document in source_manifest["documents"]],
+            6,
+        ),
+        (
+            str(web_manifest_path.relative_to(ROOT)),
+            [document["version"] for document in web_manifest["documents"]],
+            6,
+        ),
+        (
+            str(api_manifest_path.relative_to(ROOT)),
+            GENERATED_PY_LEGAL_VERSION.findall(
+                api_manifest_path.read_text(encoding="utf-8")
+            ),
+            6,
+        ),
+        (
+            str(INITIAL_MIGRATION.relative_to(ROOT)),
+            MIGRATION_LEGAL_VERSION.findall(
+                INITIAL_MIGRATION.read_text(encoding="utf-8")
+            ),
+            6,
+        ),
+    ]
+    errors.extend(check_expected_legal_versions(expected, version_sources))
+    return errors
+
+
 def check_docs() -> list[str]:
     errors: list[str] = []
     required = [
@@ -439,6 +601,7 @@ def check_docs() -> list[str]:
     for path in required:
         if not path.exists():
             errors.append(f"Missing authoritative document: {path.relative_to(ROOT)}")
+    errors.extend(check_knowledge_hierarchy())
     for path in engineering_markdown_files():
         if not path.exists():
             continue
@@ -474,20 +637,145 @@ def cmd_docs(_: argparse.Namespace) -> None:
     print("Documentation checks passed.")
 
 
-def cmd_architecture(_: argparse.Namespace) -> None:
-    errors: list[str] = []
-    forbidden = {
-        ROOT / "apps/api/app/domains": ("app.integrations",),
-        ROOT / "apps/api/app/core": ("app.domains", "app.integrations"),
-    }
-    for root, prefixes in forbidden.items():
-        if not root.exists():
+def python_module_for_path(path: Path, app_root: Path) -> tuple[str, bool]:
+    parts = list(path.relative_to(app_root.parent).with_suffix("").parts)
+    is_package = parts[-1] == "__init__"
+    if is_package:
+        parts.pop()
+    return ".".join(parts), is_package
+
+
+def resolve_python_imports(path: Path, app_root: Path) -> list[PythonImport]:
+    source = path.read_text(encoding="utf-8")
+    tree = ast.parse(source, filename=str(path))
+    current_module, is_package = python_module_for_path(path, app_root)
+    current_package = current_module if is_package else current_module.rpartition(".")[0]
+    imports: list[PythonImport] = []
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imports.extend(
+                PythonImport(line=node.lineno, targets=(alias.name,))
+                for alias in node.names
+            )
             continue
-        for path in root.rglob("*.py"):
-            source = path.read_text(encoding="utf-8")
-            for prefix in prefixes:
-                if re.search(rf"(?:from|import)\s+{re.escape(prefix)}", source):
-                    errors.append(f"{path.relative_to(ROOT)} imports forbidden boundary {prefix}")
+        if not isinstance(node, ast.ImportFrom):
+            continue
+
+        if node.level:
+            package_parts = current_package.split(".") if current_package else []
+            keep = max(0, len(package_parts) - node.level + 1)
+            base_parts = package_parts[:keep]
+            if node.module:
+                base_parts.extend(node.module.split("."))
+            base = ".".join(base_parts)
+        else:
+            base = node.module or ""
+
+        targets = [base] if base else []
+        targets.extend(
+            f"{base}.{alias.name}" if base else alias.name
+            for alias in node.names
+            if alias.name != "*"
+        )
+        imports.append(PythonImport(line=node.lineno, targets=tuple(targets)))
+
+    return imports
+
+
+def module_matches(module: str, prefix: str) -> bool:
+    return module == prefix or module.startswith(f"{prefix}.")
+
+
+def router_module(module: str) -> bool:
+    return module.endswith(".router") or ".router." in module
+
+
+def check_python_boundaries(root: Path = ROOT) -> list[str]:
+    app_root = root / "apps/api/app"
+    if not app_root.exists():
+        return []
+
+    errors: list[str] = []
+    for path in sorted(app_root.rglob("*.py")):
+        relative = path.relative_to(root).as_posix()
+        path_parts = path.relative_to(app_root).parts
+        in_core = path_parts[0] == "core"
+        in_domains = path_parts[0] == "domains"
+        in_integrations = path_parts[0] == "integrations"
+        is_domain_service_or_model = in_domains and path.name in {"service.py", "models.py"}
+        is_router = path.name == "router.py"
+
+        try:
+            imports = resolve_python_imports(path, app_root)
+        except SyntaxError as error:
+            errors.append(
+                f"{relative}:{error.lineno or 1} cannot be parsed for dependency boundaries; "
+                "fix the Python syntax before running architecture checks"
+            )
+            continue
+
+        for imported in imports:
+            rules: list[tuple[str, Callable[[str], bool], str]] = []
+            if in_core:
+                rules.append(
+                    (
+                        "core dependency direction",
+                        lambda target: module_matches(target, "app.domains")
+                        or module_matches(target, "app.integrations"),
+                        "move the dependency to wiring or shared core infrastructure",
+                    )
+                )
+            if in_domains:
+                rules.append(
+                    (
+                        "domain-to-integration dependency",
+                        lambda target: module_matches(target, "app.integrations"),
+                        "inject a provider-independent service instead of importing an integration",
+                    )
+                )
+            if is_domain_service_or_model:
+                rules.append(
+                    (
+                        "domain service/model-to-router dependency",
+                        router_module,
+                        "import a service, model, contract, or session dependency instead of a router",
+                    )
+                )
+            if in_integrations:
+                rules.append(
+                    (
+                        "integration-to-domain-router dependency",
+                        lambda target: module_matches(target, "app.domains")
+                        and router_module(target),
+                        "call a domain service instead of importing a domain router",
+                    )
+                )
+            if is_router:
+                rules.append(
+                    (
+                        "router-to-router dependency",
+                        router_module,
+                        "import a service, contract, or session dependency instead of a router",
+                    )
+                )
+
+            for rule_name, predicate, remediation in rules:
+                target = next(
+                    (candidate for candidate in imported.targets if predicate(candidate)),
+                    None,
+                )
+                if target:
+                    errors.append(
+                        f"{relative}:{imported.line} imports {target}; violates {rule_name}; "
+                        f"{remediation} (see ARCHITECTURE.md)"
+                    )
+
+    return errors
+
+
+def cmd_architecture(_: argparse.Namespace) -> None:
+    errors = check_python_boundaries()
     limits = json.loads((ROOT / "architecture-limits.json").read_text(encoding="utf-8"))
     default_limit = int(limits["defaultMaxLines"])
     exceptions = limits["exceptions"]
@@ -549,8 +837,20 @@ def cmd_check(args: argparse.Namespace) -> None:
     cmd_docs(argparse.Namespace())
     cmd_generate(argparse.Namespace(check=True))
     cmd_architecture(argparse.Namespace())
+    run([tool("npm"), "run", "test:boundaries:web"])
     run([tool("npm"), "run", "lint:web"])
-    run([sys.executable, "-m", "pytest", "-p", "no:cacheprovider", "apps/api/tests"])
+    run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-p",
+            "no:cacheprovider",
+            "--ignore",
+            "apps/api/tests/test_alembic_postgres.py",
+            "apps/api/tests",
+        ]
+    )
     if not args.fast:
         run([tool("npm"), "run", "build:web"])
         postgres_url = os.getenv("TEST_POSTGRES_DATABASE_URL")

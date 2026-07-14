@@ -1,11 +1,24 @@
 import Image from "next/image";
 import Link from "next/link";
-import {
-  paymentMethods,
-  seller,
-  supportEmail
-} from "@/features/catalog/catalog";
-import { legalLinks } from "@/features/legal/legal";
+
+export type FooterContent = {
+  seller: {
+    name: string;
+    inn: string;
+    ogrnip: string;
+    address: string;
+  };
+  supportEmail: string;
+  legalLinks: readonly {
+    href: string;
+    label: string;
+  }[];
+  paymentMethods: readonly {
+    code: string;
+    label: string;
+    href?: string;
+  }[];
+};
 
 function PaymentMethodIcon({ code }: { code: string }) {
   if (code === "card") {
@@ -99,7 +112,12 @@ function PaymentMethodIcon({ code }: { code: string }) {
   );
 }
 
-export function Footer() {
+export function Footer({
+  seller,
+  supportEmail,
+  legalLinks,
+  paymentMethods
+}: FooterContent) {
   return (
     <footer className="footer">
       <div className="footer-inner">
