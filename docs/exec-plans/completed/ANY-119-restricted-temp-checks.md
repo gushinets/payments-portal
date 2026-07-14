@@ -125,6 +125,39 @@ the operating system's default temporary directory is unavailable.
   evidence follow-up was received, there was no remaining blocker: draft PR #9
   was already open. The intervention was useful for exposing a visibility gap
   and ensuring that the gap itself was recorded.
+- Coordinator interventions #2-#4 were manual user messages containing only
+  `continue`. None provided implementation guidance or changed issue scope:
+
+  - Intervention #2 at `2026-07-14T12:16:12Z` resumed a turn interrupted while
+    `npm run check:fast` was active. The original process handle was no longer
+    available after resumption, so the check was rerun. There was no code
+    blocker; the effect was limited to repeating validation and continuing from
+    the existing worktree. A durable exec-session handle and automatic
+    post-interruption status checkpoint would remove the need for this manual
+    resumption.
+  - Intervention #3 at `2026-07-14T14:13:02Z` resumed a turn interrupted after
+    final diff inspection and commit preparation, before branch publication.
+    There was no implementation or runtime blocker. The effect was to continue
+    with push and draft PR creation using the already-reviewed commit. Persisting
+    the current delivery phase and automatically resuming the next safe action
+    would remove the need for this message.
+  - Intervention #4 at `2026-07-14T14:38:03Z` resumed a turn interrupted after
+    draft PR creation and before worktree-stack teardown and final verification.
+    There was no change-specific blocker. The effect was to finish cleanup,
+    remove the abandoned temporary worktree remnants, and verify synchronized
+    branch and main-checkout state. A durable completion checklist with
+    automatic continuation after turn interruption would remove the need for
+    manual resumption.
+
+  Each message was exactly:
+
+  ```text
+  continue
+  ```
+- Coordinator intervention #5 at `2026-07-14T14:45:28Z` reported independent
+  review results and requested evidence corrections only. It provided no
+  implementation guidance and caused only this trial-evidence update; the code
+  and issue scope remained unchanged.
 
 ## Missing repository fixtures, commands, documentation, and guardrails
 
@@ -152,8 +185,11 @@ the operating system's default temporary directory is unavailable.
   not observable. The harness should also persist the current command, start
   time, worktree, and last output timestamp and apply bounded command timeouts
   with a documented cleanup path.
+- Turn interruption should preserve active process handles and a machine-readable
+  delivery checkpoint so safe validation, publication, and cleanup steps can
+  resume automatically without a manual `continue` message.
 
-## Independent review findings and responses
+## Implementation/self-review findings and responses
 
 - Finding: a helper-only unit test would not detect failure to pass the scoped
   environment into pytest. Response: added a `cmd_check` orchestration test that
@@ -168,3 +204,19 @@ the operating system's default temporary directory is unavailable.
   helper copies its input and the test asserts the caller's original `TEMP`
   remains unchanged.
 - Final review found no unresolved change-specific defect.
+
+## Coordinator independent review
+
+Coordinator intervention #5 reported no change-specific code defect. The
+coordinator independently recorded the following evidence:
+
+- `npm run check:fast` passed with the inaccessible system `TEMP` forced: 34
+  passed and 2 skipped.
+- Code quality passed.
+- Production gate passed.
+- PR-title validation passed.
+- Windows and Linux harness-smoke jobs passed.
+- The browser CI job was still pending at review time.
+
+The review changed only this evidence record. No implementation response was
+required, and draft PR #9 remained unmerged.
