@@ -626,6 +626,68 @@ def test_distinct_refund_ids_for_same_transaction_are_not_deduplicated() -> None
     assert [event.status for event in events] == ["processed", "processed", "processed"]
 
 
+def test_duplicate_refund_id_with_distinct_event_id_does_not_double_count_refund() -> None:
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "duplicate-refund-user@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = register_response.json()["token"]
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": False,
+        },
+    )
+    invoice_id = checkout_response.json()["product_state"]["invoice_id"]
+    client.post(
+        "/api/cloudpayments/pay",
+        json={
+            "InvoiceId": invoice_id,
+            "TransactionId": "tx-duplicate-refund-1",
+            "AccountId": "duplicate-refund-user@example.com",
+            "Amount": "990.00",
+            "Currency": "RUB",
+        },
+    )
+    refund_payload = {
+        "InvoiceId": invoice_id,
+        "TransactionId": "tx-duplicate-refund-1",
+        "RefundId": "refund-duplicate-1",
+        "Amount": "400.00",
+        "Currency": "RUB",
+        "Reason": "customer_request",
+    }
+
+    first_refund_response = client.post(
+        "/api/cloudpayments/refund",
+        json={**refund_payload, "EventId": "refund-event-1"},
+    )
+    second_refund_response = client.post(
+        "/api/cloudpayments/refund",
+        json={**refund_payload, "EventId": "refund-event-2"},
+    )
+
+    assert first_refund_response.status_code == 200
+    assert second_refund_response.status_code == 200
+    with SessionLocal() as db:
+        payment = db.query(Payment).one()
+        refunds = db.query(Refund).all()
+        events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
+
+    assert payment.status == "partially_refunded"
+    assert payment.refunded_amount_minor == 40000
+    assert len(refunds) == 1
+    assert [event.status for event in events] == ["processed", "processed", "processed"]
+
+
 def test_same_email_can_register_independent_ru_and_eu_accounts() -> None:
     ru_response = client.post(
         "/api/auth/register",
@@ -775,6 +837,26 @@ def test_cloudpayments_webhook_is_saved_without_secret_hmac() -> None:
     assert event.headers["content-hmac"] == "[redacted]"
     assert event.status == "ignored"
     assert event.error_code == "order_not_found"
+
+
+def test_malformed_cloudpayments_payload_omits_raw_body() -> None:
+    response = client.post(
+        "/api/cloudpayments/pay",
+        headers={"Content-HMAC": "demo-signature", "Content-Type": "application/json"},
+        content='{"InvoiceId":"invoice-raw","CardFirstSix":"411111","Token":"secret-token"',
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"code": 0}
+
+    with SessionLocal() as db:
+        event = db.query(PaymentWebhookEvent).one()
+
+    assert event.status == "failed"
+    assert event.error_code == "payload_parse_error"
+    assert event.raw_payload == {"_raw": "[omitted: payload_parse_error]"}
+    assert "411111" not in str(event.raw_payload)
+    assert "secret-token" not in str(event.raw_payload)
 
 
 def test_checkout_requires_acceptance_again_when_active_document_version_changes() -> None:
@@ -1050,8 +1132,9 @@ def test_cloudpayments_webhook_rejects_invalid_signature_when_secret_is_set() ->
     with SessionLocal() as db:
         event = db.query(PaymentWebhookEvent).one()
 
-    assert event.status == "error"
+    assert event.status == "failed"
     assert event.error_message == "invalid_cloudpayments_signature"
+    assert event.processed_at
 
     object.__setattr__(settings, "cloudpayments_api_secret", "")
     os.environ["CLOUDPAYMENTS_API_SECRET"] = ""

@@ -109,7 +109,9 @@ jobs:
           set -a
           source "$CI_ENV_FILE"
           set +a
-          python -m pytest apps/api/tests/test_alembic_postgres.py \
+          python -m pytest \
+            apps/api/tests/test_alembic_postgres.py \
+            apps/api/tests/test_cloudpayments_webhook_postgres.py \
             --junitxml="$CI_ARTIFACTS/postgres-junit.xml" \
             2>&1 | tee "$CI_ARTIFACTS/postgres-pytest.log"
       - name: Validate Compose configuration
