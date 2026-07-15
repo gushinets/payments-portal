@@ -1,9 +1,18 @@
 name: payments-portal-dev
 
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-anytoolai}
       POSTGRES_USER: ${POSTGRES_USER:-anytoolai}
@@ -12,6 +21,8 @@ services:
       - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_dev_data:/var/lib/postgresql/data
+    networks:
+      - backend
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-anytoolai} -d ${POSTGRES_DB:-anytoolai}"]
       interval: 10s
@@ -24,6 +35,9 @@ services:
       dockerfile: apps/api/Dockerfile
       target: development
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
     depends_on:
       postgres:
         condition: service_healthy
@@ -37,6 +51,9 @@ services:
       OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-payment-portal-api}
     volumes:
       - ./apps/api:/app/apps/api
+    networks:
+      - edge
+      - backend
     ports:
       - "127.0.0.1:${API_PORT:-8000}:8000"
     healthcheck:
@@ -52,6 +69,9 @@ services:
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
     depends_on:
       api:
         condition: service_healthy
@@ -63,6 +83,12 @@ services:
       - "127.0.0.1:${CADDY_PORT:-8080}:80"
     volumes:
       - ./deploy/caddy/Caddyfile.dev:/etc/caddy/Caddyfile:ro
+    networks:
+      - edge
 
 volumes:
   postgres_dev_data:
+
+networks:
+  edge:
+  backend:

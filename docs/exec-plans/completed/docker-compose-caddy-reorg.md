@@ -46,11 +46,17 @@ PostgreSQL, API, web, and Caddy with Caddy as the only public HTTP entrypoint.
 - Local smoke: `docker compose up -d --build postgres api caddy`; API became
   healthy, Alembic ran initial migration, direct `GET /health/ready` returned
   200, Caddy `GET /api/auth/session` returned the API's 401, and Caddy
-  `GET /ru` returned 200 while `npm run dev:web` was running.
+  `GET /ru` returned 200 while `npm run dev:web` was running. After the
+  ANY-81 hardening update, local smoke also confirmed `postgres` only on
+  `backend`, API on `backend` and `edge`, Caddy only on `edge`,
+  `no-new-privileges:true`, and `json-file` log rotation.
 - Production smoke:
   `docker compose --env-file .env.production.example -f docker-compose.prod.yml up -d --build`;
   postgres and API became healthy, web and Caddy started, and `ps` showed only
-  Caddy publishing host ports `80` and `443`.
+  Caddy publishing host ports `80` and `443`. After the ANY-81 hardening update,
+  production smoke also confirmed `postgres` only on `backend`, API on
+  `backend` and `edge`, web and Caddy only on `edge`, API running as `app`, web
+  running as `node`, `no-new-privileges:true`, and `json-file` log rotation.
 
 Note: runtime smoke used the developer's current `.env`, where `POSTGRES_PORT`
 is `5433` because local host port `5432` was already occupied. `.env.example`

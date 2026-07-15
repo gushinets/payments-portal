@@ -20,6 +20,10 @@ COPY docs/legal ./docs/legal
 
 RUN npm run build:web
 
+RUN chown -R node:node /app
+
+USER node
+
 EXPOSE 3000
 
 CMD ["npm", "--workspace", "@anytoolai/web", "run", "start", "--", "--hostname", "0.0.0.0", "--port", "3000"]
