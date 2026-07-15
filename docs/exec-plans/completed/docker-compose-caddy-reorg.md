@@ -35,6 +35,7 @@ PostgreSQL, API, web, and Caddy with Caddy as the only public HTTP entrypoint.
 - `docker compose --env-file .env.production.example -f docker-compose.prod.yml config`
 - `docker compose --env-file .env.production.example -f docker-compose.prod.yml config --services`
 - `python3 -m py_compile scripts/repo.py`
+- `python3 scripts/repo.py harness-smoke`
 - `.venv/bin/python -m pytest apps/api/tests` — 32 passed, 3 skipped.
 - `npm run lint:web`
 - `npm run build:web`

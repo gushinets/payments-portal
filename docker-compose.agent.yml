@@ -56,6 +56,13 @@ services:
       timeout: 3s
       retries: 20
 
+  caddy:
+    depends_on:
+      web:
+        condition: service_healthy
+    environment:
+      WEB_UPSTREAM: web:3000
+
   observability:
     image: ${OTEL_LGTM_IMAGE:-grafana/otel-lgtm:0.11.10}
     restart: unless-stopped

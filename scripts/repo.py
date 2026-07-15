@@ -132,9 +132,14 @@ def port_is_free(port: int) -> bool:
     return True
 
 
+def runtime_caddy_port(config: RuntimeConfig) -> int:
+    return config.otlp_http_port + 1000
+
+
 def write_runtime(config: RuntimeConfig) -> None:
     HARNESS_DIR.mkdir(parents=True, exist_ok=True)
     RUNTIME_JSON.write_text(json.dumps(asdict(config), indent=2) + "\n", encoding="utf-8")
+    caddy_origin = f"http://localhost:{runtime_caddy_port(config)}"
     values = {
         "COMPOSE_PROJECT_NAME": config.compose_project,
         "POSTGRES_DB": config.database_name,
@@ -147,9 +152,9 @@ def write_runtime(config: RuntimeConfig) -> None:
         ),
         "WEB_PORT": str(config.web_port),
         "API_PORT": str(config.api_port),
-        "CADDY_PORT": str(config.otlp_http_port + 1000),
-        "NEXT_PUBLIC_API_BASE_URL": f"http://localhost:{config.api_port}",
-        "CORS_ALLOW_ORIGINS": f"http://localhost:{config.web_port}",
+        "CADDY_PORT": str(runtime_caddy_port(config)),
+        "NEXT_PUBLIC_API_BASE_URL": caddy_origin,
+        "CORS_ALLOW_ORIGINS": caddy_origin,
         "GRAFANA_PORT": str(config.grafana_port),
         "LOKI_PORT": str(config.loki_port),
         "PROMETHEUS_PORT": str(config.prometheus_port),
@@ -216,7 +221,7 @@ def runtime_ports(config: RuntimeConfig) -> Iterable[int]:
     return (
         config.web_port,
         config.api_port,
-        config.otlp_http_port + 1000,
+        runtime_caddy_port(config),
         config.postgres_port,
         config.grafana_port,
         config.loki_port,
@@ -814,7 +819,15 @@ def cmd_harness_smoke(_: argparse.Namespace) -> None:
     config = runtime_config()
     assert config.compose_project == f"payments-{config.worktree_id}"
     assert config.database_name == f"payments_{config.worktree_id}"
-    assert len(set(runtime_ports(config))) == len(tuple(runtime_ports(config)))
+    ports = tuple(runtime_ports(config))
+    assert runtime_caddy_port(config) in ports
+    assert len(set(ports)) == len(ports)
+    write_runtime(config)
+    env = read_runtime_env()
+    caddy_origin = f"http://localhost:{runtime_caddy_port(config)}"
+    assert env["CADDY_PORT"] == str(runtime_caddy_port(config))
+    assert env["NEXT_PUBLIC_API_BASE_URL"] == caddy_origin
+    assert env["CORS_ALLOW_ORIGINS"] == caddy_origin
     if not re.fullmatch(r"payments-[0-9a-f]{8}", config.compose_project):
         raise HarnessError("Invalid deterministic Compose project name")
     alternative = None
