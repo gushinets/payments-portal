@@ -147,6 +147,7 @@ def write_runtime(config: RuntimeConfig) -> None:
         ),
         "WEB_PORT": str(config.web_port),
         "API_PORT": str(config.api_port),
+        "CADDY_PORT": str(config.otlp_http_port + 1000),
         "NEXT_PUBLIC_API_BASE_URL": f"http://localhost:{config.api_port}",
         "CORS_ALLOW_ORIGINS": f"http://localhost:{config.web_port}",
         "GRAFANA_PORT": str(config.grafana_port),
@@ -215,6 +216,7 @@ def runtime_ports(config: RuntimeConfig) -> Iterable[int]:
     return (
         config.web_port,
         config.api_port,
+        config.otlp_http_port + 1000,
         config.postgres_port,
         config.grafana_port,
         config.loki_port,

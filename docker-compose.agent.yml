@@ -3,6 +3,7 @@ services:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
+      target: development
     restart: unless-stopped
     depends_on:
       postgres:
@@ -17,8 +18,6 @@ services:
       CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://observability:4318}
       OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-payment-portal-api}
-    ports:
-      - "${API_PORT}:8000"
     healthcheck:
       test:
         - CMD

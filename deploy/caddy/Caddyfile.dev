@@ -1,0 +1,4 @@
+:80 {
+	reverse_proxy /api/* api:8000
+	reverse_proxy host.docker.internal:3000
+}

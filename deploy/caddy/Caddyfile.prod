@@ -1,0 +1,4 @@
+{$CADDY_DOMAIN} {
+	reverse_proxy /api/* api:8000
+	reverse_proxy web:3000
+}
