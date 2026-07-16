@@ -7,7 +7,7 @@
     "start": "next start",
     "build": "next build",
     "lint": "eslint . --max-warnings=0",
-    "test:boundaries": "node --test tests/eslint-boundaries.test.mjs",
+    "test:boundaries": "node --test tests/*.test.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
