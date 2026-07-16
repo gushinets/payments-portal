@@ -10,9 +10,8 @@ import { legalLinks } from "@/features/legal";
 import { SiteShell } from "@/shared/ui";
 
 export const metadata: Metadata = {
-  title: "AnytoolAI - RU MVP",
-  description:
-    "RU-версия платформы цифровых сервисов AnytoolAI для подготовки подключения CloudPayments."
+  title: "AnytoolAI - RU",
+  description: "RU-версия платформы цифровых сервисов AnytoolAI."
 };
 
 export default function RootLayout({
