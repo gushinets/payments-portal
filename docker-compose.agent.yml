@@ -3,6 +3,7 @@ services:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
+      target: development
     restart: unless-stopped
     depends_on:
       postgres:
@@ -17,8 +18,6 @@ services:
       CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://observability:4318}
       OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-payment-portal-api}
-    ports:
-      - "${API_PORT}:8000"
     healthcheck:
       test:
         - CMD
@@ -45,6 +44,15 @@ services:
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL}
       NEXT_PUBLIC_CLOUDPAYMENTS_PUBLIC_ID: ${NEXT_PUBLIC_CLOUDPAYMENTS_PUBLIC_ID:-}
       NEXT_PUBLIC_CLOUDPAYMENTS_ENABLED: ${NEXT_PUBLIC_CLOUDPAYMENTS_ENABLED:-false}
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - edge
     ports:
       - "${WEB_PORT}:3000"
     healthcheck:
@@ -57,9 +65,25 @@ services:
       timeout: 3s
       retries: 20
 
+  caddy:
+    depends_on:
+      web:
+        condition: service_healthy
+    environment:
+      WEB_UPSTREAM: web:3000
+
   observability:
     image: ${OTEL_LGTM_IMAGE:-grafana/otel-lgtm:0.11.10}
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - backend
     ports:
       - "${GRAFANA_PORT}:3000"
       - "${LOKI_PORT}:3100"

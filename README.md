@@ -66,7 +66,27 @@ npm run test:api
 python -m alembic -c apps/api/alembic.ini upgrade head
 ```
 
-## Production Compose preview
+## Local Compose workflow
+
+Local Compose runs PostgreSQL, the FastAPI API, and Caddy. Next.js stays on the
+host so it can use the normal development server:
+
+```bash
+docker compose up --build
+npm run dev:web
+```
+
+Local addresses:
+
+- App through Caddy: http://localhost:8080
+- API directly for debugging: http://localhost:8000
+- PostgreSQL for local DB clients: localhost:5432
+
+The API container applies Alembic migrations before starting. Its internal
+`DATABASE_URL` must use the Docker service name `postgres:5432`; host tools use
+the loopback PostgreSQL port instead.
+
+## Production Compose workflow
 
 Copy `.env.production.example` to `.env.production`, supply production secrets,
 and run:
@@ -74,6 +94,12 @@ and run:
 ```bash
 docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
 ```
+
+Production Compose runs PostgreSQL, API, web, and Caddy. Only Caddy publishes
+host ports (`80` and `443`); API, web, and PostgreSQL stay on the internal
+Docker network. Set `CADDY_DOMAIN` and `NEXT_PUBLIC_API_BASE_URL` to the public
+HTTPS origin before building because `NEXT_PUBLIC_*` values are captured in the
+Next.js production image.
 
 Never commit production secrets. Card data is handled by CloudPayments and must
 not be collected or stored by this repository.
