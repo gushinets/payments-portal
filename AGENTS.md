@@ -34,6 +34,33 @@ document that applies to the current task.
 - `docs/design-system/bundle3` — canonical web design reference and tokens.
 - `scripts/repo.py` — setup, isolation, checks, generation, and observability.
 
+## Log papercuts
+
+When the current task permits repository edits and you encounter actionable,
+repository-related workflow friction—a failing tool or command, confusing setup,
+flaky check, stale cache, misleading error, missing helper, or non-obvious
+gotcha—append one concise entry to [PAPERCUTS.md](PAPERCUTS.md). Create the file
+if it does not exist.
+
+Use UTC and this format:
+
+```text
+## YYYY-MM-DD HH:MMZ - <model or agent, if known> - <operating system>
+
+<What you were doing> → <what got in the way>. Add a likely cause, workaround,
+or proposed fix when useful.
+```
+
+Record the entry after recovering or at task handoff so the main task continues.
+Before appending, search for a materially equivalent entry and do not add a
+duplicate. Never include secrets, tokens, authorization headers, personal data,
+or unredacted payment data.
+
+Do not log simple command typos, canceled actions, or one-off external failures
+unless they reveal a reusable repository improvement. Use this file only for
+minor workflow friction; use Linear or the documented debt process for product
+bugs and tracked work.
+
 ## Non-negotiable rules
 
 - Keep v1 scoped to the RU CloudPayments MVP.
