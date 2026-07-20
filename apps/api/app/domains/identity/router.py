@@ -519,6 +519,9 @@ def create_checkout_intent(
     invoice_id = make_invoice_id(sellable_plan["entrypoint_value"])
     amount_minor = int(sellable_plan["amount_minor"])
     currency = str(sellable_plan["currency"])
+    if currency != provider_account.default_currency:
+        record_checkout("provider_currency_mismatch")
+        raise HTTPException(status_code=409, detail="provider_currency_mismatch")
     now = utc_now()
     expires_at = now + timedelta(minutes=30)
 

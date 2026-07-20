@@ -447,6 +447,60 @@ def test_register_session_and_checkout_intent_flow() -> None:
     assert state.last_invoice_id == invoice_id
 
 
+def test_checkout_rejects_plan_provider_currency_mismatch() -> None:
+    with SessionLocal() as db:
+        plan = (
+            db.query(Plan)
+            .filter(
+                Plan.tenant_id == "anytoolai",
+                Plan.region == "ru",
+                Plan.code == "document-summary-pro",
+            )
+            .one()
+        )
+        plan.currency = "EUR"
+        db.add(
+            PaymentProviderAccount(
+                tenant_id="anytoolai",
+                region="ru",
+                provider="cloudpayments",
+                default_currency="RUB",
+                enabled=True,
+                test_mode=True,
+                config={},
+            )
+        )
+        db.commit()
+
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "currency-mismatch@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = register_response.json()["token"]
+
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": False,
+        },
+    )
+
+    assert checkout_response.status_code == 409
+    assert checkout_response.json()["detail"] == "provider_currency_mismatch"
+    with SessionLocal() as db:
+        assert db.query(Order).count() == 0
+        assert db.query(OrderItem).count() == 0
+        assert db.query(ProductAccessState).count() == 0
+
+
 def test_bundle_checkout_snapshots_one_sellable_catalog_plan() -> None:
     with SessionLocal() as db:
         catalog = seed_catalog(db)
@@ -611,57 +665,6 @@ def test_checkout_rejects_catalog_plan_outside_validity_window() -> None:
     assert checkout_response.json()["detail"] == "unknown_product_plan"
     with SessionLocal() as db:
         assert db.query(Order).count() == 0
-
-
-def test_checkout_uses_plan_currency_when_provider_default_differs() -> None:
-    with SessionLocal() as db:
-        plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
-        plan.currency = "USD"
-        db.add(
-            PaymentProviderAccount(
-                tenant_id="anytoolai",
-                region="ru",
-                provider="cloudpayments",
-                public_identifier=None,
-                default_currency="RUB",
-                enabled=True,
-                test_mode=True,
-                config={"widget_mode": "charge", "receipt_mode": "deferred"},
-            )
-        )
-        db.add(plan)
-        db.commit()
-
-    register_response = client.post(
-        "/api/auth/register",
-        json={
-            "email": "plan-currency-user@example.com",
-            "password": "very-secret-password",
-            "personal_consent": True,
-            "offer_consent": True,
-        },
-    )
-    token = register_response.json()["token"]
-
-    checkout_response = client.post(
-        "/api/auth/checkout-intent",
-        headers={"Authorization": f"Bearer {token}"},
-        json={
-            "product": "document-summary",
-            "plan_code": "document-summary-pro",
-            "auto_renew": False,
-        },
-    )
-
-    assert checkout_response.status_code == 200
-    assert checkout_response.json()["checkout"]["currency"] == "USD"
-    with SessionLocal() as db:
-        order = db.query(Order).one()
-        item = db.query(OrderItem).one()
-
-    assert order.currency == "USD"
-    assert item.currency == "USD"
-    assert item.pricing_snapshot["currency"] == "USD"
 
 
 def test_checkout_rejects_active_plan_for_inactive_product() -> None:
