@@ -30,7 +30,7 @@ maintainable by coding agents while retaining human merge approval.
 ## Decisions
 
 - PR titles use `ANY-<number> - <summary>`.
-- The corrected initial migration is allowed because production has not launched.
+- The corrected initial migration defines the repository schema baseline.
 - Agents prepare PRs; humans approve merges.
 - Russian legal and RU UI content are language-policy exceptions.
 

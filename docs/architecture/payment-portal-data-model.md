@@ -262,7 +262,7 @@ on the consumer side.
 
 ## 8. Migration and seed rules
 
-- The corrected initial migration is the clean pre-production baseline.
+- The corrected initial migration defines the schema baseline.
 - After it is frozen, use forward Alembic revisions.
 - Do not use PostgreSQL enums for evolving provider/domain statuses.
 - Use JSONB for redacted provider payloads and INET for IP data.
