@@ -117,7 +117,7 @@ def seed_order(invoice_id: str) -> None:
                 order_number="RU-TEST-0001",
                 user_id=user.id,
                 status="pending_payment",
-                amount_minor=99000,
+                amount_minor=990,
                 currency="RUB",
                 provider="cloudpayments",
                 provider_account_id=provider_account.id,
@@ -149,7 +149,7 @@ def test_raw_webhook_event_survives_failed_normalization_and_can_retry(monkeypat
         "InvoiceId": invoice_id,
         "TransactionId": "tx-durable-1",
         "AccountId": "durable-webhook@example.com",
-        "Amount": "990.00",
+        "Amount": "9.90",
         "Currency": "RUB",
         "CardFirstSix": "411111",
     }
@@ -222,7 +222,7 @@ def test_concurrent_duplicate_webhook_is_serialized_without_provider_payment_id(
     payload = {
         "InvoiceId": invoice_id,
         "AccountId": "durable-webhook@example.com",
-        "Amount": "990.00",
+        "Amount": "9.90",
         "Currency": "RUB",
     }
 

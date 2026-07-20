@@ -25,6 +25,47 @@ Indexes and constraints:
 - `ix_auth_sessions_token_hash`
 - `ix_auth_sessions_user_id`
 
+## `bundle_products`
+
+| Column | Type | Nullable | Key |
+|---|---|---:|---|
+| `id` | `CHAR(32)` | no | PK |
+| `tenant_id` | `TEXT` | no |  |
+| `bundle_id` | `CHAR(32)` | no | FK |
+| `product_id` | `CHAR(32)` | no | FK |
+| `status` | `TEXT` | no |  |
+| `valid_from` | `DATETIME` | no |  |
+| `valid_to` | `DATETIME` | yes |  |
+| `created_at` | `DATETIME` | no |  |
+
+Indexes and constraints:
+
+- `ix_bundle_products_bundle_status`
+- `ix_bundle_products_product_id`
+- `ix_bundle_products_tenant_id`
+- `uq_bundle_products_active_product`
+
+## `bundles`
+
+| Column | Type | Nullable | Key |
+|---|---|---:|---|
+| `id` | `CHAR(32)` | no | PK |
+| `tenant_id` | `TEXT` | no |  |
+| `code` | `TEXT` | no |  |
+| `name` | `TEXT` | no |  |
+| `description` | `TEXT` | yes |  |
+| `status` | `TEXT` | no |  |
+| `created_at` | `DATETIME` | no |  |
+| `updated_at` | `DATETIME` | no |  |
+
+Indexes and constraints:
+
+- `uq_bundles_tenant_code`
+- `ix_bundles_code`
+- `ix_bundles_status`
+- `ix_bundles_tenant_id`
+- `ix_bundles_tenant_status`
+
 ## `checkout_sessions`
 
 | Column | Type | Nullable | Key |
@@ -34,7 +75,7 @@ Indexes and constraints:
 | `region` | `TEXT` | no | FK |
 | `user_id` | `CHAR(32)` | no | FK |
 | `entrypoint_session_id` | `CHAR(32)` | yes | FK |
-| `plan_id` | `CHAR(32)` | yes |  |
+| `plan_id` | `CHAR(32)` | yes | FK |
 | `status` | `TEXT` | no |  |
 | `amount_minor` | `INTEGER` | no |  |
 | `currency` | `VARCHAR(3)` | no |  |
@@ -152,8 +193,8 @@ Indexes and constraints:
 | `region_mismatch_status` | `TEXT` | no |  |
 | `entrypoint_type` | `TEXT` | no |  |
 | `entrypoint_value` | `TEXT` | no |  |
-| `product_id` | `CHAR(32)` | yes |  |
-| `bundle_id` | `CHAR(32)` | yes |  |
+| `product_id` | `CHAR(32)` | yes | FK |
+| `bundle_id` | `CHAR(32)` | yes | FK |
 | `frontend_id` | `TEXT` | yes |  |
 | `platform_guest_id` | `TEXT` | yes |  |
 | `platform_user_id` | `TEXT` | yes |  |
@@ -232,9 +273,9 @@ Indexes and constraints:
 | `id` | `CHAR(32)` | no | PK |
 | `order_id` | `CHAR(32)` | no | FK |
 | `item_type` | `TEXT` | no |  |
-| `product_id` | `CHAR(32)` | yes |  |
-| `bundle_id` | `CHAR(32)` | yes |  |
-| `plan_id` | `CHAR(32)` | yes |  |
+| `product_id` | `CHAR(32)` | yes | FK |
+| `bundle_id` | `CHAR(32)` | yes | FK |
+| `plan_id` | `CHAR(32)` | yes | FK |
 | `product_code_snapshot` | `TEXT` | yes |  |
 | `plan_code_snapshot` | `TEXT` | yes |  |
 | `title_snapshot` | `TEXT` | no |  |
@@ -266,7 +307,7 @@ Indexes and constraints:
 | `user_id` | `CHAR(32)` | no | FK |
 | `checkout_session_id` | `CHAR(32)` | yes | FK |
 | `entrypoint_session_id` | `CHAR(32)` | yes | FK |
-| `plan_id` | `CHAR(32)` | yes |  |
+| `plan_id` | `CHAR(32)` | yes | FK |
 | `status` | `TEXT` | no |  |
 | `amount_minor` | `INTEGER` | no |  |
 | `currency` | `VARCHAR(3)` | no |  |
@@ -406,6 +447,95 @@ Indexes and constraints:
 - `ix_payments_tenant_id`
 - `uq_payments_provider_account_payment_id`
 
+## `plan_limits`
+
+| Column | Type | Nullable | Key |
+|---|---|---:|---|
+| `id` | `CHAR(32)` | no | PK |
+| `plan_id` | `CHAR(32)` | no | FK |
+| `product_id` | `CHAR(32)` | yes | FK |
+| `metric` | `TEXT` | no |  |
+| `limit_count` | `INTEGER` | no |  |
+| `period` | `TEXT` | no |  |
+| `reset_policy` | `TEXT` | no |  |
+| `overage_policy` | `TEXT` | no |  |
+| `created_at` | `DATETIME` | no |  |
+| `updated_at` | `DATETIME` | no |  |
+
+Indexes and constraints:
+
+- `ck_plan_limits_limit_count_non_negative`
+- `uq_plan_limits_plan_metric`
+- `ix_plan_limits_metric`
+- `ix_plan_limits_plan_id`
+
+## `plan_price_components`
+
+| Column | Type | Nullable | Key |
+|---|---|---:|---|
+| `id` | `CHAR(32)` | no | PK |
+| `plan_id` | `CHAR(32)` | no | FK |
+| `component_type` | `TEXT` | no |  |
+| `source_product_id` | `CHAR(32)` | yes | FK |
+| `source_bundle_id` | `CHAR(32)` | yes | FK |
+| `source_plan_id` | `CHAR(32)` | yes | FK |
+| `component_code_snapshot` | `TEXT` | no |  |
+| `title_snapshot` | `TEXT` | no |  |
+| `quantity` | `INTEGER` | no |  |
+| `list_amount_minor` | `INTEGER` | no |  |
+| `discount_amount_minor` | `INTEGER` | no |  |
+| `amount_minor` | `INTEGER` | no |  |
+| `currency` | `VARCHAR(3)` | no |  |
+| `position` | `INTEGER` | no |  |
+| `metadata` | `JSON` | no |  |
+| `created_at` | `DATETIME` | no |  |
+
+Indexes and constraints:
+
+- `ck_plan_price_components_amounts_non_negative`
+- `ck_plan_price_components_quantity_positive`
+- `ix_plan_price_components_plan_position`
+- `ix_plan_price_components_source_plan_id`
+
+## `plans`
+
+| Column | Type | Nullable | Key |
+|---|---|---:|---|
+| `id` | `CHAR(32)` | no | PK |
+| `tenant_id` | `TEXT` | no |  |
+| `region` | `TEXT` | no | FK |
+| `code` | `TEXT` | no |  |
+| `name` | `TEXT` | no |  |
+| `scope_type` | `TEXT` | no |  |
+| `product_id` | `CHAR(32)` | yes | FK |
+| `bundle_id` | `CHAR(32)` | yes | FK |
+| `price_amount_minor` | `INTEGER` | no |  |
+| `currency` | `VARCHAR(3)` | no |  |
+| `billing_period` | `TEXT` | no |  |
+| `renewal_mode` | `TEXT` | no |  |
+| `trial_days` | `INTEGER` | no |  |
+| `status` | `TEXT` | no |  |
+| `valid_from` | `DATETIME` | no |  |
+| `valid_to` | `DATETIME` | yes |  |
+| `metadata` | `JSON` | no |  |
+| `created_at` | `DATETIME` | no |  |
+| `updated_at` | `DATETIME` | no |  |
+
+Indexes and constraints:
+
+- `ck_plans_price_non_negative`
+- `ck_plans_scope_type`
+- `ck_plans_trial_days_non_negative`
+- `uq_plans_tenant_region_code_valid_from`
+- `ix_plans_bundle_id`
+- `ix_plans_code`
+- `ix_plans_product_id`
+- `ix_plans_region`
+- `ix_plans_region_status`
+- `ix_plans_status`
+- `ix_plans_tenant_id`
+- `uq_plans_active_code`
+
 ## `product_access_states`
 
 | Column | Type | Nullable | Key |
@@ -427,6 +557,29 @@ Indexes and constraints:
 - `ix_product_access_states_last_invoice_id`
 - `ix_product_access_states_product_code`
 - `ix_product_access_states_user_id`
+
+## `products`
+
+| Column | Type | Nullable | Key |
+|---|---|---:|---|
+| `id` | `CHAR(32)` | no | PK |
+| `tenant_id` | `TEXT` | no |  |
+| `code` | `TEXT` | no |  |
+| `platform_product_id` | `TEXT` | no |  |
+| `name` | `TEXT` | no |  |
+| `description` | `TEXT` | yes |  |
+| `status` | `TEXT` | no |  |
+| `created_at` | `DATETIME` | no |  |
+| `updated_at` | `DATETIME` | no |  |
+
+Indexes and constraints:
+
+- `uq_products_tenant_code`
+- `uq_products_tenant_platform_product_id`
+- `ix_products_code`
+- `ix_products_status`
+- `ix_products_tenant_id`
+- `ix_products_tenant_status`
 
 ## `refunds`
 

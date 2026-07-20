@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import sys
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 os.environ["DATABASE_URL"] = "sqlite+pysqlite:///:memory:"
@@ -19,13 +19,18 @@ from app.database import Base, SessionLocal, engine  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import (  # noqa: E402
     AuthSession,
+    Bundle,
+    BundleProduct,
     DocumentAcceptance,
     DocumentVersion,
     LegalEntity,
     Order,
+    OrderItem,
     Payment,
     PaymentWebhookEvent,
+    Plan,
     ProductAccessState,
+    Product,
     Refund,
     User,
 )
@@ -38,6 +43,8 @@ client = TestClient(app)
 def setup_function() -> None:
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
+    with SessionLocal() as db:
+        seed_catalog(db)
 
 
 def create_legal_entity(db, *, tenant_id: str = "anytoolai", region: str = "ru") -> LegalEntity:
@@ -86,6 +93,184 @@ def create_document_version(
     db.commit()
     db.refresh(document)
     return document
+
+
+def seed_catalog(db) -> dict[str, object]:
+    existing_document_plan = (
+        db.query(Plan)
+        .filter(
+            Plan.tenant_id == "anytoolai",
+            Plan.region == "ru",
+            Plan.code == "document-summary-pro",
+        )
+        .first()
+    )
+    existing_bundle_plan = (
+        db.query(Plan)
+        .filter(
+            Plan.tenant_id == "anytoolai",
+            Plan.region == "ru",
+            Plan.code == "core-tools-bundle-pro-ru",
+        )
+        .first()
+    )
+    existing_prompt_plan = (
+        db.query(Plan)
+        .filter(
+            Plan.tenant_id == "anytoolai",
+            Plan.region == "ru",
+            Plan.code == "prompt-optimizer-pro",
+        )
+        .first()
+    )
+    existing_all_access_plan = (
+        db.query(Plan)
+        .filter(
+            Plan.tenant_id == "anytoolai",
+            Plan.region == "ru",
+            Plan.code == "all-access-pro-ru",
+        )
+        .first()
+    )
+    existing_document_summary = (
+        db.query(Product)
+        .filter(Product.tenant_id == "anytoolai", Product.code == "document-summary")
+        .first()
+    )
+    existing_prompt_optimizer = (
+        db.query(Product)
+        .filter(Product.tenant_id == "anytoolai", Product.code == "prompt-optimizer")
+        .first()
+    )
+    existing_bundle = (
+        db.query(Bundle)
+        .filter(Bundle.tenant_id == "anytoolai", Bundle.code == "core-tools-bundle")
+        .first()
+    )
+    if (
+        existing_document_plan is not None
+        and existing_bundle_plan is not None
+        and existing_prompt_plan is not None
+        and existing_all_access_plan is not None
+        and existing_document_summary is not None
+        and existing_prompt_optimizer is not None
+        and existing_bundle is not None
+    ):
+        return {
+            "document_summary": existing_document_summary,
+            "prompt_optimizer": existing_prompt_optimizer,
+            "bundle": existing_bundle,
+            "document_plan": existing_document_plan,
+            "prompt_plan": existing_prompt_plan,
+            "bundle_plan": existing_bundle_plan,
+            "all_access_plan": existing_all_access_plan,
+        }
+
+    document_summary = Product(
+        tenant_id="anytoolai",
+        code="document-summary",
+        platform_product_id="document-summary",
+        name="Document Summary",
+        status="active",
+    )
+    prompt_optimizer = Product(
+        tenant_id="anytoolai",
+        code="prompt-optimizer",
+        platform_product_id="prompt-optimizer",
+        name="Prompt Optimizer",
+        status="active",
+    )
+    bundle = Bundle(
+        tenant_id="anytoolai",
+        code="core-tools-bundle",
+        name="Core Tools Bundle",
+        status="active",
+    )
+    db.add_all([document_summary, prompt_optimizer, bundle])
+    db.flush()
+    db.add_all(
+        [
+            BundleProduct(
+                tenant_id="anytoolai",
+                bundle_id=bundle.id,
+                product_id=document_summary.id,
+                status="active",
+            ),
+            BundleProduct(
+                tenant_id="anytoolai",
+                bundle_id=bundle.id,
+                product_id=prompt_optimizer.id,
+                status="active",
+            ),
+        ]
+    )
+    document_plan = Plan(
+        tenant_id="anytoolai",
+        region="ru",
+        code="document-summary-pro",
+        name="Document Summary Pro",
+        scope_type="product",
+        product_id=document_summary.id,
+        price_amount_minor=990,
+        currency="RUB",
+        billing_period="month",
+        renewal_mode="manual",
+        trial_days=7,
+        status="active",
+    )
+    prompt_plan = Plan(
+        tenant_id="anytoolai",
+        region="ru",
+        code="prompt-optimizer-pro",
+        name="Prompt Optimizer Pro",
+        scope_type="product",
+        product_id=prompt_optimizer.id,
+        price_amount_minor=990,
+        currency="RUB",
+        billing_period="month",
+        renewal_mode="manual",
+        trial_days=7,
+        status="active",
+    )
+    bundle_plan = Plan(
+        tenant_id="anytoolai",
+        region="ru",
+        code="core-tools-bundle-pro-ru",
+        name="Core Tools Bundle Pro RU",
+        scope_type="bundle",
+        bundle_id=bundle.id,
+        price_amount_minor=1980,
+        currency="RUB",
+        billing_period="month",
+        renewal_mode="manual",
+        trial_days=7,
+        status="active",
+    )
+    all_access_plan = Plan(
+        tenant_id="anytoolai",
+        region="ru",
+        code="all-access-pro-ru",
+        name="All Access Pro RU",
+        scope_type="all_access",
+        price_amount_minor=1980,
+        currency="RUB",
+        billing_period="month",
+        renewal_mode="manual",
+        trial_days=7,
+        status="active",
+        metadata_={"included_product_codes": ["document-summary", "prompt-optimizer"]},
+    )
+    db.add_all([document_plan, prompt_plan, bundle_plan, all_access_plan])
+    db.commit()
+    return {
+        "document_summary": document_summary,
+        "prompt_optimizer": prompt_optimizer,
+        "bundle": bundle,
+        "document_plan": document_plan,
+        "prompt_plan": prompt_plan,
+        "bundle_plan": bundle_plan,
+        "all_access_plan": all_access_plan,
+    }
 
 
 def test_healthcheck() -> None:
@@ -255,6 +440,172 @@ def test_register_session_and_checkout_intent_flow() -> None:
     assert state.last_invoice_id == invoice_id
 
 
+def test_bundle_checkout_snapshots_one_sellable_catalog_plan() -> None:
+    with SessionLocal() as db:
+        catalog = seed_catalog(db)
+        bundle_plan_id = catalog["bundle_plan"].id
+        bundle_id = catalog["bundle"].id
+
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "bundle-user@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = register_response.json()["token"]
+
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "core-tools-bundle",
+            "plan_code": "core-tools-bundle-pro-ru",
+            "entrypoint_type": "bundle",
+            "auto_renew": True,
+        },
+    )
+
+    assert checkout_response.status_code == 200
+    invoice_id = checkout_response.json()["product_state"]["invoice_id"]
+    assert invoice_id.startswith("core-tools-bundle-")
+
+    with SessionLocal() as db:
+        order = db.query(Order).one()
+        item = db.query(OrderItem).one()
+
+    assert order.plan_id == bundle_plan_id
+    assert order.amount_minor == 1980
+    assert item.item_type == "bundle_plan"
+    assert item.plan_id == bundle_plan_id
+    assert item.bundle_id == bundle_id
+    assert item.product_id is None
+    assert item.product_code_snapshot is None
+    assert item.plan_code_snapshot == "core-tools-bundle-pro-ru"
+    assert item.amount_minor == 1980
+    assert item.trial_days_snapshot == 7
+
+
+def test_all_access_checkout_snapshots_one_sellable_catalog_plan() -> None:
+    with SessionLocal() as db:
+        catalog = seed_catalog(db)
+        all_access_plan_id = catalog["all_access_plan"].id
+
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "all-access-user@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = register_response.json()["token"]
+
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "all-access",
+            "plan_code": "all-access-pro-ru",
+            "entrypoint_type": "catalog",
+            "auto_renew": True,
+        },
+    )
+
+    assert checkout_response.status_code == 200
+    product_state = checkout_response.json()["product_state"]
+    assert product_state["invoice_id"].startswith("all-access-")
+    assert product_state["plan_code"] == "all-access-pro-ru"
+
+    with SessionLocal() as db:
+        order = db.query(Order).one()
+        item = db.query(OrderItem).one()
+
+    assert order.plan_id == all_access_plan_id
+    assert order.amount_minor == 1980
+    assert item.item_type == "all_access_plan"
+    assert item.plan_id == all_access_plan_id
+    assert item.bundle_id is None
+    assert item.product_id is None
+    assert item.product_code_snapshot is None
+    assert item.plan_code_snapshot == "all-access-pro-ru"
+    assert item.amount_minor == 1980
+    assert item.trial_days_snapshot == 7
+
+
+def test_checkout_rejects_inactive_catalog_plan_without_legacy_fallback() -> None:
+    with SessionLocal() as db:
+        plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
+        plan.status = "inactive"
+        db.add(plan)
+        db.commit()
+
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "inactive-plan-user@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = register_response.json()["token"]
+
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": False,
+        },
+    )
+
+    assert checkout_response.status_code == 400
+    assert checkout_response.json()["detail"] == "unknown_product_plan"
+    with SessionLocal() as db:
+        assert db.query(Order).count() == 0
+
+
+def test_checkout_rejects_catalog_plan_outside_validity_window() -> None:
+    with SessionLocal() as db:
+        plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
+        now = datetime.now(timezone.utc)
+        plan.valid_from = now - timedelta(days=30)
+        plan.valid_to = now - timedelta(seconds=1)
+        db.add(plan)
+        db.commit()
+
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "expired-plan-user@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = register_response.json()["token"]
+
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": False,
+        },
+    )
+
+    assert checkout_response.status_code == 400
+    assert checkout_response.json()["detail"] == "unknown_product_plan"
+    with SessionLocal() as db:
+        assert db.query(Order).count() == 0
+
+
 def test_successful_pay_webhook_is_saved_without_activating_access() -> None:
     register_response = client.post(
         "/api/auth/register",
@@ -284,7 +635,7 @@ def test_successful_pay_webhook_is_saved_without_activating_access() -> None:
             "InvoiceId": invoice_id,
             "TransactionId": "tx-success-1",
             "AccountId": "user@example.com",
-            "Amount": "990.00",
+            "Amount": "9.90",
             "Currency": "RUB",
             "Data": {"product_code": "document-summary", "plan_code": "document-summary-pro"},
         },
@@ -319,7 +670,7 @@ def test_successful_pay_webhook_is_saved_without_activating_access() -> None:
     assert order.provider_invoice_id == invoice_id
     assert payment.status == "succeeded"
     assert payment.provider_payment_id == "tx-success-1"
-    assert payment.amount_minor == 99000
+    assert payment.amount_minor == 990
     assert "CardFirstSix" not in payment.raw_summary
 
 
@@ -351,7 +702,7 @@ def test_fail_webhook_updates_payment_and_order_without_access_activation() -> N
             "InvoiceId": invoice_id,
             "TransactionId": "tx-fail-1",
             "AccountId": "fail-user@example.com",
-            "Amount": "990.00",
+            "Amount": "9.90",
             "Currency": "RUB",
             "ReasonCode": "5",
             "Reason": "Insufficient funds",
@@ -400,7 +751,7 @@ def test_late_fail_webhook_does_not_downgrade_paid_order() -> None:
             "InvoiceId": invoice_id,
             "TransactionId": "tx-late-fail-success",
             "AccountId": "late-fail-user@example.com",
-            "Amount": "990.00",
+            "Amount": "9.90",
             "Currency": "RUB",
         },
     )
@@ -410,7 +761,7 @@ def test_late_fail_webhook_does_not_downgrade_paid_order() -> None:
             "InvoiceId": invoice_id,
             "TransactionId": "tx-late-fail-declined",
             "AccountId": "late-fail-user@example.com",
-            "Amount": "990.00",
+            "Amount": "9.90",
             "Currency": "RUB",
             "ReasonCode": "5",
             "Reason": "Insufficient funds",
@@ -454,7 +805,7 @@ def test_duplicate_success_webhook_does_not_duplicate_payment_or_order_updates()
         "InvoiceId": invoice_id,
         "TransactionId": "tx-duplicate-1",
         "AccountId": "duplicate-user@example.com",
-        "Amount": "990.00",
+        "Amount": "9.90",
         "Currency": "RUB",
     }
 
@@ -501,7 +852,7 @@ def test_refund_webhook_records_refund_skeleton_and_updates_payment() -> None:
             "InvoiceId": invoice_id,
             "TransactionId": "tx-refund-1",
             "AccountId": "refund-user@example.com",
-            "Amount": "990.00",
+            "Amount": "9.90",
             "Currency": "RUB",
         },
     )
@@ -512,7 +863,7 @@ def test_refund_webhook_records_refund_skeleton_and_updates_payment() -> None:
             "InvoiceId": invoice_id,
             "TransactionId": "tx-refund-1",
             "RefundId": "refund-1",
-            "Amount": "990.00",
+            "Amount": "9.90",
             "Currency": "RUB",
             "Reason": "customer_request",
         },
@@ -528,7 +879,7 @@ def test_refund_webhook_records_refund_skeleton_and_updates_payment() -> None:
     assert status_payload["product_state"]["status"] == "pending"
     assert status_payload["order"]["status"] == "refunded"
     assert status_payload["payment"]["status"] == "refunded"
-    assert status_payload["payment"]["refunded_amount_minor"] == 99000
+    assert status_payload["payment"]["refunded_amount_minor"] == 990
 
     with SessionLocal() as db:
         order = db.query(Order).one()
@@ -538,7 +889,7 @@ def test_refund_webhook_records_refund_skeleton_and_updates_payment() -> None:
 
     assert order.status == "refunded"
     assert payment.status == "refunded"
-    assert payment.refunded_amount_minor == 99000
+    assert payment.refunded_amount_minor == 990
     assert refund.status == "succeeded"
     assert refund.provider_refund_id == "refund-1"
     assert len(events) == 2
@@ -571,7 +922,7 @@ def test_distinct_refund_ids_for_same_transaction_are_not_deduplicated() -> None
             "InvoiceId": invoice_id,
             "TransactionId": "tx-multi-refund-1",
             "AccountId": "multi-refund-user@example.com",
-            "Amount": "990.00",
+            "Amount": "9.90",
             "Currency": "RUB",
         },
     )
@@ -582,7 +933,7 @@ def test_distinct_refund_ids_for_same_transaction_are_not_deduplicated() -> None
             "InvoiceId": invoice_id,
             "TransactionId": "tx-multi-refund-1",
             "RefundId": "refund-part-1",
-            "Amount": "400.00",
+            "Amount": "4.00",
             "Currency": "RUB",
             "Reason": "customer_request",
         },
@@ -597,8 +948,8 @@ def test_distinct_refund_ids_for_same_transaction_are_not_deduplicated() -> None
     assert partial_status_payload["product_state"]["status"] == "pending"
     assert partial_status_payload["order"]["status"] == "partially_refunded"
     assert partial_status_payload["payment"]["status"] == "partially_refunded"
-    assert partial_status_payload["payment"]["amount_minor"] == 99000
-    assert partial_status_payload["payment"]["refunded_amount_minor"] == 40000
+    assert partial_status_payload["payment"]["amount_minor"] == 990
+    assert partial_status_payload["payment"]["refunded_amount_minor"] == 400
 
     second_refund_response = client.post(
         "/api/cloudpayments/refund",
@@ -606,7 +957,7 @@ def test_distinct_refund_ids_for_same_transaction_are_not_deduplicated() -> None
             "InvoiceId": invoice_id,
             "TransactionId": "tx-multi-refund-1",
             "RefundId": "refund-part-2",
-            "Amount": "590.00",
+            "Amount": "5.90",
             "Currency": "RUB",
             "Reason": "customer_request",
         },
@@ -621,7 +972,7 @@ def test_distinct_refund_ids_for_same_transaction_are_not_deduplicated() -> None
 
     assert order.status == "refunded"
     assert payment.status == "refunded"
-    assert payment.refunded_amount_minor == 99000
+    assert payment.refunded_amount_minor == 990
     assert [refund.provider_refund_id for refund in refunds] == ["refund-part-1", "refund-part-2"]
     assert [event.status for event in events] == ["processed", "processed", "processed"]
 
@@ -653,7 +1004,7 @@ def test_duplicate_refund_id_with_distinct_event_id_does_not_double_count_refund
             "InvoiceId": invoice_id,
             "TransactionId": "tx-duplicate-refund-1",
             "AccountId": "duplicate-refund-user@example.com",
-            "Amount": "990.00",
+            "Amount": "9.90",
             "Currency": "RUB",
         },
     )
@@ -661,7 +1012,7 @@ def test_duplicate_refund_id_with_distinct_event_id_does_not_double_count_refund
         "InvoiceId": invoice_id,
         "TransactionId": "tx-duplicate-refund-1",
         "RefundId": "refund-duplicate-1",
-        "Amount": "400.00",
+        "Amount": "4.00",
         "Currency": "RUB",
         "Reason": "customer_request",
     }
@@ -683,7 +1034,7 @@ def test_duplicate_refund_id_with_distinct_event_id_does_not_double_count_refund
         events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
 
     assert payment.status == "partially_refunded"
-    assert payment.refunded_amount_minor == 40000
+    assert payment.refunded_amount_minor == 400
     assert len(refunds) == 1
     assert [event.status for event in events] == ["processed", "processed", "processed"]
 
@@ -813,7 +1164,7 @@ def test_cloudpayments_webhook_is_saved_without_secret_hmac() -> None:
             "InvoiceId": "invoice-1",
             "TransactionId": "tx-1",
             "AccountId": "user@example.com",
-            "Amount": "990.00",
+            "Amount": "9.90",
             "Currency": "RUB",
             "CardFirstSix": "411111",
         },
@@ -830,8 +1181,8 @@ def test_cloudpayments_webhook_is_saved_without_secret_hmac() -> None:
     assert event.invoice_id == "invoice-1"
     assert event.transaction_id == "tx-1"
     assert event.account_id == "user@example.com"
-    assert event.amount_minor == 99000
-    assert str(event.amount) == "990.00"
+    assert event.amount_minor == 990
+    assert str(event.amount) == "9.90"
     assert event.currency == "RUB"
     assert event.raw_payload["CardFirstSix"] == "[redacted]"
     assert event.headers["content-hmac"] == "[redacted]"

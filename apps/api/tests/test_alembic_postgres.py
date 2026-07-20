@@ -71,6 +71,56 @@ def seeded_legal_documents() -> list[dict[str, str]]:
         engine.dispose()
 
 
+def seeded_catalog_summary() -> dict[str, object]:
+    engine = create_engine(TEST_DATABASE_URL, future=True)
+    try:
+        with engine.connect() as connection:
+            products = connection.execute(
+                text("SELECT code FROM products ORDER BY code")
+            ).scalars().all()
+            plans = connection.execute(
+                text(
+                    "SELECT code, scope_type, price_amount_minor, currency, "
+                    "billing_period, trial_days FROM plans ORDER BY code"
+                )
+            ).mappings().all()
+            bundle_products = connection.execute(
+                text(
+                    "SELECT b.code AS bundle_code, p.code AS product_code "
+                    "FROM bundle_products bp "
+                    "JOIN bundles b ON b.id = bp.bundle_id "
+                    "JOIN products p ON p.id = bp.product_id "
+                    "ORDER BY b.code, p.code"
+                )
+            ).mappings().all()
+            price_components = connection.execute(
+                text(
+                    "SELECT p.code AS plan_code, pc.component_code_snapshot, "
+                    "pc.list_amount_minor, pc.discount_amount_minor, pc.amount_minor "
+                    "FROM plan_price_components pc "
+                    "JOIN plans p ON p.id = pc.plan_id "
+                    "ORDER BY p.code, pc.position"
+                )
+            ).mappings().all()
+            limits = connection.execute(
+                text(
+                    "SELECT p.code AS plan_code, pl.metric, pl.limit_count, pl.period "
+                    "FROM plan_limits pl "
+                    "JOIN plans p ON p.id = pl.plan_id "
+                    "ORDER BY p.code, pl.metric"
+                )
+            ).mappings().all()
+            return {
+                "products": list(products),
+                "plans": [dict(row) for row in plans],
+                "bundle_products": [dict(row) for row in bundle_products],
+                "price_components": [dict(row) for row in price_components],
+                "limits": [dict(row) for row in limits],
+            }
+    finally:
+        engine.dispose()
+
+
 def expected_legal_documents() -> list[dict[str, str]]:
     repository_root = Path(__file__).resolve().parents[3]
     manifest_path = repository_root / "apps/web/src/generated/legal-manifest.json"
@@ -119,3 +169,118 @@ def test_clean_postgres_alembic_upgrade_and_downgrade() -> None:
     assert "payment_webhook_events" in tables
     assert alembic_version_count() == 1
     assert seeded_legal_documents() == expected_legal_documents()
+    assert seeded_catalog_summary() == {
+        "products": ["document-summary", "prompt-optimizer"],
+        "plans": [
+            {
+                "code": "all-access-pro-ru",
+                "scope_type": "all_access",
+                "price_amount_minor": 1980,
+                "currency": "RUB",
+                "billing_period": "month",
+                "trial_days": 7,
+            },
+            {
+                "code": "core-tools-bundle-pro-ru",
+                "scope_type": "bundle",
+                "price_amount_minor": 1980,
+                "currency": "RUB",
+                "billing_period": "month",
+                "trial_days": 7,
+            },
+            {
+                "code": "document-summary-pro",
+                "scope_type": "product",
+                "price_amount_minor": 990,
+                "currency": "RUB",
+                "billing_period": "month",
+                "trial_days": 7,
+            },
+            {
+                "code": "prompt-optimizer-pro",
+                "scope_type": "product",
+                "price_amount_minor": 990,
+                "currency": "RUB",
+                "billing_period": "month",
+                "trial_days": 7,
+            },
+        ],
+        "bundle_products": [
+            {
+                "bundle_code": "core-tools-bundle",
+                "product_code": "document-summary",
+            },
+            {
+                "bundle_code": "core-tools-bundle",
+                "product_code": "prompt-optimizer",
+            },
+        ],
+        "price_components": [
+            {
+                "plan_code": "all-access-pro-ru",
+                "component_code_snapshot": "document-summary-pro",
+                "list_amount_minor": 990,
+                "discount_amount_minor": 0,
+                "amount_minor": 990,
+            },
+            {
+                "plan_code": "all-access-pro-ru",
+                "component_code_snapshot": "prompt-optimizer-pro",
+                "list_amount_minor": 990,
+                "discount_amount_minor": 0,
+                "amount_minor": 990,
+            },
+            {
+                "plan_code": "core-tools-bundle-pro-ru",
+                "component_code_snapshot": "document-summary-pro",
+                "list_amount_minor": 990,
+                "discount_amount_minor": 0,
+                "amount_minor": 990,
+            },
+            {
+                "plan_code": "core-tools-bundle-pro-ru",
+                "component_code_snapshot": "prompt-optimizer-pro",
+                "list_amount_minor": 990,
+                "discount_amount_minor": 0,
+                "amount_minor": 990,
+            },
+        ],
+        "limits": [
+            {
+                "plan_code": "all-access-pro-ru",
+                "metric": "document_summary_runs",
+                "limit_count": 1000,
+                "period": "month",
+            },
+            {
+                "plan_code": "all-access-pro-ru",
+                "metric": "prompt_optimizations",
+                "limit_count": 1000,
+                "period": "month",
+            },
+            {
+                "plan_code": "core-tools-bundle-pro-ru",
+                "metric": "document_summary_runs",
+                "limit_count": 1000,
+                "period": "month",
+            },
+            {
+                "plan_code": "core-tools-bundle-pro-ru",
+                "metric": "prompt_optimizations",
+                "limit_count": 1000,
+                "period": "month",
+            },
+            {
+                "plan_code": "document-summary-pro",
+                "metric": "document_summary_runs",
+                "limit_count": 1000,
+                "period": "month",
+            },
+            {
+                "plan_code": "prompt-optimizer-pro",
+                "metric": "prompt_optimizations",
+                "limit_count": 1000,
+                "period": "month",
+            },
+        ],
+    }
