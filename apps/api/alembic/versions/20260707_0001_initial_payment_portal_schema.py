@@ -1495,7 +1495,7 @@ def downgrade() -> None:
     )
     op.drop_table("plan_price_components")
 
-    op.drop_constraint("ex_plans_active_version_overlap", "plans", type_="exclude")
+    op.execute("ALTER TABLE plans DROP CONSTRAINT ex_plans_active_version_overlap")
     op.drop_index("uq_plans_active_code", table_name="plans")
     op.drop_index("ix_plans_bundle_id", table_name="plans")
     op.drop_index("ix_plans_product_id", table_name="plans")
