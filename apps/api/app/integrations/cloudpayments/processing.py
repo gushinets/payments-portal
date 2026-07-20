@@ -224,6 +224,18 @@ def fail_webhook_event(
     return event
 
 
+def _money_mismatch(order: Order, *, amount_minor: int | None, currency: str | None) -> str | None:
+    if amount_minor is None:
+        return "missing_amount"
+    if amount_minor != order.amount_minor:
+        return "amount_mismatch"
+    if currency is None:
+        return "missing_currency"
+    if currency.upper() != order.currency.upper():
+        return "currency_mismatch"
+    return None
+
+
 def process_webhook_event(
     db: Session,
     *,
@@ -275,18 +287,26 @@ def process_webhook_event(
         event.status = "ignored"
         event.processed_at = datetime_now()
     elif endpoint in {"pay", "fail"}:
-        payment = upsert_payment_from_webhook(
-            db,
-            endpoint=endpoint,
-            order=order,
-            invoice_id=invoice_id,
-            transaction_id=transaction_id,
-            amount_minor=amount_minor if amount_minor is not None else order.amount_minor,
-            currency=currency if currency is not None else order.currency,
-            payload=payload,
-        )
-        event.payment_id = payment.id
-        event.status = "processed"
+        mismatch = _money_mismatch(order, amount_minor=amount_minor, currency=currency)
+        if mismatch is not None:
+            event.status = "failed"
+            event.error_code = mismatch
+            event.error_message = "Webhook amount or currency does not match order"
+        else:
+            assert amount_minor is not None
+            assert currency is not None
+            payment = upsert_payment_from_webhook(
+                db,
+                endpoint=endpoint,
+                order=order,
+                invoice_id=invoice_id,
+                transaction_id=transaction_id,
+                amount_minor=amount_minor,
+                currency=currency,
+                payload=payload,
+            )
+            event.payment_id = payment.id
+            event.status = "processed"
         event.processed_at = datetime_now()
     elif endpoint == "refund":
         payment = _find_payment(

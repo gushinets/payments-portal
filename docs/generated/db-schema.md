@@ -526,6 +526,7 @@ Indexes and constraints:
 - `ck_plans_price_non_negative`
 - `ck_plans_scope_type`
 - `ck_plans_trial_days_non_negative`
+- `ck_plans_valid_window`
 - `uq_plans_tenant_region_code_valid_from`
 - `ix_plans_bundle_id`
 - `ix_plans_code`

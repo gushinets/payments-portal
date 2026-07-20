@@ -425,6 +425,10 @@ class Plan(Base):
         ),
         CheckConstraint("price_amount_minor >= 0", name="ck_plans_price_non_negative"),
         CheckConstraint("trial_days >= 0", name="ck_plans_trial_days_non_negative"),
+        CheckConstraint(
+            "valid_to IS NULL OR valid_to > valid_from",
+            name="ck_plans_valid_window",
+        ),
         Index("ix_plans_region_status", "region", "status"),
         Index("ix_plans_product_id", "product_id"),
         Index("ix_plans_bundle_id", "bundle_id"),

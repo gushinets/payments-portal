@@ -10,6 +10,7 @@ from alembic import command
 from alembic.config import Config
 from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.exc import IntegrityError
 
 
 TEST_DATABASE_URL = os.getenv("TEST_POSTGRES_DATABASE_URL")
@@ -175,7 +176,7 @@ def test_clean_postgres_alembic_upgrade_and_downgrade() -> None:
             {
                 "code": "all-access-pro-ru",
                 "scope_type": "all_access",
-                "price_amount_minor": 1980,
+                "price_amount_minor": 198000,
                 "currency": "RUB",
                 "billing_period": "month",
                 "trial_days": 7,
@@ -183,7 +184,7 @@ def test_clean_postgres_alembic_upgrade_and_downgrade() -> None:
             {
                 "code": "core-tools-bundle-pro-ru",
                 "scope_type": "bundle",
-                "price_amount_minor": 1980,
+                "price_amount_minor": 198000,
                 "currency": "RUB",
                 "billing_period": "month",
                 "trial_days": 7,
@@ -191,7 +192,7 @@ def test_clean_postgres_alembic_upgrade_and_downgrade() -> None:
             {
                 "code": "document-summary-pro",
                 "scope_type": "product",
-                "price_amount_minor": 990,
+                "price_amount_minor": 99000,
                 "currency": "RUB",
                 "billing_period": "month",
                 "trial_days": 7,
@@ -199,7 +200,7 @@ def test_clean_postgres_alembic_upgrade_and_downgrade() -> None:
             {
                 "code": "prompt-optimizer-pro",
                 "scope_type": "product",
-                "price_amount_minor": 990,
+                "price_amount_minor": 99000,
                 "currency": "RUB",
                 "billing_period": "month",
                 "trial_days": 7,
@@ -219,30 +220,30 @@ def test_clean_postgres_alembic_upgrade_and_downgrade() -> None:
             {
                 "plan_code": "all-access-pro-ru",
                 "component_code_snapshot": "document-summary-pro",
-                "list_amount_minor": 990,
+                "list_amount_minor": 99000,
                 "discount_amount_minor": 0,
-                "amount_minor": 990,
+                "amount_minor": 99000,
             },
             {
                 "plan_code": "all-access-pro-ru",
                 "component_code_snapshot": "prompt-optimizer-pro",
-                "list_amount_minor": 990,
+                "list_amount_minor": 99000,
                 "discount_amount_minor": 0,
-                "amount_minor": 990,
+                "amount_minor": 99000,
             },
             {
                 "plan_code": "core-tools-bundle-pro-ru",
                 "component_code_snapshot": "document-summary-pro",
-                "list_amount_minor": 990,
+                "list_amount_minor": 99000,
                 "discount_amount_minor": 0,
-                "amount_minor": 990,
+                "amount_minor": 99000,
             },
             {
                 "plan_code": "core-tools-bundle-pro-ru",
                 "component_code_snapshot": "prompt-optimizer-pro",
-                "list_amount_minor": 990,
+                "list_amount_minor": 99000,
                 "discount_amount_minor": 0,
-                "amount_minor": 990,
+                "amount_minor": 99000,
             },
         ],
         "limits": [
@@ -284,3 +285,45 @@ def test_clean_postgres_alembic_upgrade_and_downgrade() -> None:
             },
         ],
     }
+
+
+def test_active_plan_versions_cannot_overlap() -> None:
+    reset_public_schema()
+
+    with patch.dict(os.environ, {"DATABASE_URL": TEST_DATABASE_URL}):
+        command.upgrade(alembic_config(), "head")
+
+    engine = create_engine(TEST_DATABASE_URL, future=True)
+    try:
+        with engine.connect() as connection:
+            with connection.begin():
+                product_id = connection.execute(
+                    text("SELECT id FROM products WHERE code = 'document-summary'")
+                ).scalar_one()
+                connection.execute(
+                    text(
+                        "UPDATE plans SET valid_to = '2026-08-01T00:00:00Z' "
+                        "WHERE code = 'document-summary-pro'"
+                    )
+                )
+
+            with pytest.raises(IntegrityError):
+                with connection.begin():
+                    connection.execute(
+                        text(
+                            "INSERT INTO plans ("
+                            "id, tenant_id, region, code, name, scope_type, product_id, "
+                            "price_amount_minor, currency, billing_period, renewal_mode, "
+                            "trial_days, status, valid_from, valid_to"
+                            ") VALUES ("
+                            "'99999999-9999-4999-8999-999999999905', "
+                            "'anytoolai', 'ru', 'document-summary-pro', "
+                            "'Document Summary Pro overlap', 'product', :product_id, "
+                            "99000, 'RUB', 'month', 'manual', 7, 'active', "
+                            "'2026-07-15T00:00:00Z', '2026-08-15T00:00:00Z'"
+                            ")"
+                        ),
+                        {"product_id": product_id},
+                    )
+    finally:
+        engine.dispose()

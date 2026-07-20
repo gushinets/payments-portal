@@ -211,7 +211,7 @@ def seed_catalog(db) -> dict[str, object]:
         name="Document Summary Pro",
         scope_type="product",
         product_id=document_summary.id,
-        price_amount_minor=990,
+        price_amount_minor=99000,
         currency="RUB",
         billing_period="month",
         renewal_mode="manual",
@@ -225,7 +225,7 @@ def seed_catalog(db) -> dict[str, object]:
         name="Prompt Optimizer Pro",
         scope_type="product",
         product_id=prompt_optimizer.id,
-        price_amount_minor=990,
+        price_amount_minor=99000,
         currency="RUB",
         billing_period="month",
         renewal_mode="manual",
@@ -239,7 +239,7 @@ def seed_catalog(db) -> dict[str, object]:
         name="Core Tools Bundle Pro RU",
         scope_type="bundle",
         bundle_id=bundle.id,
-        price_amount_minor=1980,
+        price_amount_minor=198000,
         currency="RUB",
         billing_period="month",
         renewal_mode="manual",
@@ -252,7 +252,7 @@ def seed_catalog(db) -> dict[str, object]:
         code="all-access-pro-ru",
         name="All Access Pro RU",
         scope_type="all_access",
-        price_amount_minor=1980,
+        price_amount_minor=198000,
         currency="RUB",
         billing_period="month",
         renewal_mode="manual",
@@ -421,8 +421,14 @@ def test_register_session_and_checkout_intent_flow() -> None:
     )
 
     assert checkout_response.status_code == 200
-    assert checkout_response.json()["product_state"]["status"] == "pending"
-    invoice_id = checkout_response.json()["product_state"]["invoice_id"]
+    checkout_payload = checkout_response.json()
+    assert checkout_payload["product_state"]["status"] == "pending"
+    assert checkout_payload["checkout"] == {
+        "amount_minor": 99000,
+        "amount": 990.0,
+        "currency": "RUB",
+    }
+    invoice_id = checkout_payload["product_state"]["invoice_id"]
     assert invoice_id
 
     with SessionLocal() as db:
@@ -477,14 +483,14 @@ def test_bundle_checkout_snapshots_one_sellable_catalog_plan() -> None:
         item = db.query(OrderItem).one()
 
     assert order.plan_id == bundle_plan_id
-    assert order.amount_minor == 1980
+    assert order.amount_minor == 198000
     assert item.item_type == "bundle_plan"
     assert item.plan_id == bundle_plan_id
     assert item.bundle_id == bundle_id
     assert item.product_id is None
     assert item.product_code_snapshot is None
     assert item.plan_code_snapshot == "core-tools-bundle-pro-ru"
-    assert item.amount_minor == 1980
+    assert item.amount_minor == 198000
     assert item.trial_days_snapshot == 7
 
 
@@ -525,14 +531,14 @@ def test_all_access_checkout_snapshots_one_sellable_catalog_plan() -> None:
         item = db.query(OrderItem).one()
 
     assert order.plan_id == all_access_plan_id
-    assert order.amount_minor == 1980
+    assert order.amount_minor == 198000
     assert item.item_type == "all_access_plan"
     assert item.plan_id == all_access_plan_id
     assert item.bundle_id is None
     assert item.product_id is None
     assert item.product_code_snapshot is None
     assert item.plan_code_snapshot == "all-access-pro-ru"
-    assert item.amount_minor == 1980
+    assert item.amount_minor == 198000
     assert item.trial_days_snapshot == 7
 
 
@@ -606,6 +612,50 @@ def test_checkout_rejects_catalog_plan_outside_validity_window() -> None:
         assert db.query(Order).count() == 0
 
 
+def test_pay_webhook_amount_mismatch_is_failed_without_order_update() -> None:
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "mismatch-user@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = register_response.json()["token"]
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": False,
+        },
+    )
+    invoice_id = checkout_response.json()["product_state"]["invoice_id"]
+
+    webhook_response = client.post(
+        "/api/cloudpayments/pay",
+        json={
+            "InvoiceId": invoice_id,
+            "TransactionId": "tx-amount-mismatch",
+            "AccountId": "mismatch-user@example.com",
+            "Amount": "9.90",
+            "Currency": "RUB",
+        },
+    )
+
+    assert webhook_response.status_code == 200
+    with SessionLocal() as db:
+        event = db.query(PaymentWebhookEvent).one()
+        order = db.query(Order).one()
+
+    assert event.status == "failed"
+    assert event.error_code == "amount_mismatch"
+    assert order.status == "pending_payment"
+    assert db.query(Payment).count() == 0
+
+
 def test_successful_pay_webhook_is_saved_without_activating_access() -> None:
     register_response = client.post(
         "/api/auth/register",
@@ -635,7 +685,7 @@ def test_successful_pay_webhook_is_saved_without_activating_access() -> None:
             "InvoiceId": invoice_id,
             "TransactionId": "tx-success-1",
             "AccountId": "user@example.com",
-            "Amount": "9.90",
+            "Amount": "990.00",
             "Currency": "RUB",
             "Data": {"product_code": "document-summary", "plan_code": "document-summary-pro"},
         },
@@ -670,7 +720,7 @@ def test_successful_pay_webhook_is_saved_without_activating_access() -> None:
     assert order.provider_invoice_id == invoice_id
     assert payment.status == "succeeded"
     assert payment.provider_payment_id == "tx-success-1"
-    assert payment.amount_minor == 990
+    assert payment.amount_minor == 99000
     assert "CardFirstSix" not in payment.raw_summary
 
 
@@ -702,7 +752,7 @@ def test_fail_webhook_updates_payment_and_order_without_access_activation() -> N
             "InvoiceId": invoice_id,
             "TransactionId": "tx-fail-1",
             "AccountId": "fail-user@example.com",
-            "Amount": "9.90",
+            "Amount": "990.00",
             "Currency": "RUB",
             "ReasonCode": "5",
             "Reason": "Insufficient funds",
@@ -751,7 +801,7 @@ def test_late_fail_webhook_does_not_downgrade_paid_order() -> None:
             "InvoiceId": invoice_id,
             "TransactionId": "tx-late-fail-success",
             "AccountId": "late-fail-user@example.com",
-            "Amount": "9.90",
+            "Amount": "990.00",
             "Currency": "RUB",
         },
     )
@@ -761,7 +811,7 @@ def test_late_fail_webhook_does_not_downgrade_paid_order() -> None:
             "InvoiceId": invoice_id,
             "TransactionId": "tx-late-fail-declined",
             "AccountId": "late-fail-user@example.com",
-            "Amount": "9.90",
+            "Amount": "990.00",
             "Currency": "RUB",
             "ReasonCode": "5",
             "Reason": "Insufficient funds",
@@ -805,7 +855,7 @@ def test_duplicate_success_webhook_does_not_duplicate_payment_or_order_updates()
         "InvoiceId": invoice_id,
         "TransactionId": "tx-duplicate-1",
         "AccountId": "duplicate-user@example.com",
-        "Amount": "9.90",
+        "Amount": "990.00",
         "Currency": "RUB",
     }
 
@@ -852,7 +902,7 @@ def test_refund_webhook_records_refund_skeleton_and_updates_payment() -> None:
             "InvoiceId": invoice_id,
             "TransactionId": "tx-refund-1",
             "AccountId": "refund-user@example.com",
-            "Amount": "9.90",
+            "Amount": "990.00",
             "Currency": "RUB",
         },
     )
@@ -863,7 +913,7 @@ def test_refund_webhook_records_refund_skeleton_and_updates_payment() -> None:
             "InvoiceId": invoice_id,
             "TransactionId": "tx-refund-1",
             "RefundId": "refund-1",
-            "Amount": "9.90",
+            "Amount": "990.00",
             "Currency": "RUB",
             "Reason": "customer_request",
         },
@@ -879,7 +929,7 @@ def test_refund_webhook_records_refund_skeleton_and_updates_payment() -> None:
     assert status_payload["product_state"]["status"] == "pending"
     assert status_payload["order"]["status"] == "refunded"
     assert status_payload["payment"]["status"] == "refunded"
-    assert status_payload["payment"]["refunded_amount_minor"] == 990
+    assert status_payload["payment"]["refunded_amount_minor"] == 99000
 
     with SessionLocal() as db:
         order = db.query(Order).one()
@@ -889,7 +939,7 @@ def test_refund_webhook_records_refund_skeleton_and_updates_payment() -> None:
 
     assert order.status == "refunded"
     assert payment.status == "refunded"
-    assert payment.refunded_amount_minor == 990
+    assert payment.refunded_amount_minor == 99000
     assert refund.status == "succeeded"
     assert refund.provider_refund_id == "refund-1"
     assert len(events) == 2
@@ -922,7 +972,7 @@ def test_distinct_refund_ids_for_same_transaction_are_not_deduplicated() -> None
             "InvoiceId": invoice_id,
             "TransactionId": "tx-multi-refund-1",
             "AccountId": "multi-refund-user@example.com",
-            "Amount": "9.90",
+            "Amount": "990.00",
             "Currency": "RUB",
         },
     )
@@ -933,7 +983,7 @@ def test_distinct_refund_ids_for_same_transaction_are_not_deduplicated() -> None
             "InvoiceId": invoice_id,
             "TransactionId": "tx-multi-refund-1",
             "RefundId": "refund-part-1",
-            "Amount": "4.00",
+            "Amount": "400.00",
             "Currency": "RUB",
             "Reason": "customer_request",
         },
@@ -948,8 +998,8 @@ def test_distinct_refund_ids_for_same_transaction_are_not_deduplicated() -> None
     assert partial_status_payload["product_state"]["status"] == "pending"
     assert partial_status_payload["order"]["status"] == "partially_refunded"
     assert partial_status_payload["payment"]["status"] == "partially_refunded"
-    assert partial_status_payload["payment"]["amount_minor"] == 990
-    assert partial_status_payload["payment"]["refunded_amount_minor"] == 400
+    assert partial_status_payload["payment"]["amount_minor"] == 99000
+    assert partial_status_payload["payment"]["refunded_amount_minor"] == 40000
 
     second_refund_response = client.post(
         "/api/cloudpayments/refund",
@@ -957,7 +1007,7 @@ def test_distinct_refund_ids_for_same_transaction_are_not_deduplicated() -> None
             "InvoiceId": invoice_id,
             "TransactionId": "tx-multi-refund-1",
             "RefundId": "refund-part-2",
-            "Amount": "5.90",
+            "Amount": "590.00",
             "Currency": "RUB",
             "Reason": "customer_request",
         },
@@ -972,7 +1022,7 @@ def test_distinct_refund_ids_for_same_transaction_are_not_deduplicated() -> None
 
     assert order.status == "refunded"
     assert payment.status == "refunded"
-    assert payment.refunded_amount_minor == 990
+    assert payment.refunded_amount_minor == 99000
     assert [refund.provider_refund_id for refund in refunds] == ["refund-part-1", "refund-part-2"]
     assert [event.status for event in events] == ["processed", "processed", "processed"]
 
@@ -1004,7 +1054,7 @@ def test_duplicate_refund_id_with_distinct_event_id_does_not_double_count_refund
             "InvoiceId": invoice_id,
             "TransactionId": "tx-duplicate-refund-1",
             "AccountId": "duplicate-refund-user@example.com",
-            "Amount": "9.90",
+            "Amount": "990.00",
             "Currency": "RUB",
         },
     )
@@ -1012,7 +1062,7 @@ def test_duplicate_refund_id_with_distinct_event_id_does_not_double_count_refund
         "InvoiceId": invoice_id,
         "TransactionId": "tx-duplicate-refund-1",
         "RefundId": "refund-duplicate-1",
-        "Amount": "4.00",
+        "Amount": "400.00",
         "Currency": "RUB",
         "Reason": "customer_request",
     }
@@ -1034,7 +1084,7 @@ def test_duplicate_refund_id_with_distinct_event_id_does_not_double_count_refund
         events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
 
     assert payment.status == "partially_refunded"
-    assert payment.refunded_amount_minor == 400
+    assert payment.refunded_amount_minor == 40000
     assert len(refunds) == 1
     assert [event.status for event in events] == ["processed", "processed", "processed"]
 
@@ -1164,7 +1214,7 @@ def test_cloudpayments_webhook_is_saved_without_secret_hmac() -> None:
             "InvoiceId": "invoice-1",
             "TransactionId": "tx-1",
             "AccountId": "user@example.com",
-            "Amount": "9.90",
+            "Amount": "990.00",
             "Currency": "RUB",
             "CardFirstSix": "411111",
         },
@@ -1181,8 +1231,8 @@ def test_cloudpayments_webhook_is_saved_without_secret_hmac() -> None:
     assert event.invoice_id == "invoice-1"
     assert event.transaction_id == "tx-1"
     assert event.account_id == "user@example.com"
-    assert event.amount_minor == 990
-    assert str(event.amount) == "9.90"
+    assert event.amount_minor == 99000
+    assert str(event.amount) == "990.00"
     assert event.currency == "RUB"
     assert event.raw_payload["CardFirstSix"] == "[redacted]"
     assert event.headers["content-hmac"] == "[redacted]"

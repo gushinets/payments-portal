@@ -47,13 +47,13 @@ PRODUCT_DEFAULTS = {
     "document-summary": {
         "plan_code": "document-summary-pro",
         "plan_name": "Document Summary Pro",
-        "price_amount_minor": 990,
+        "price_amount_minor": 99000,
         "trial_days": 7,
     },
     "prompt-optimizer": {
         "plan_code": "prompt-optimizer-pro",
         "plan_name": "Prompt Optimizer Pro",
-        "price_amount_minor": 990,
+        "price_amount_minor": 99000,
         "trial_days": 7,
     },
 }
@@ -165,6 +165,7 @@ def get_sellable_plan(db: Session, *, user: User, entrypoint_code: str, plan_cod
             Plan.valid_from <= now,
             or_(Plan.valid_to.is_(None), Plan.valid_to > now),
         )
+        .order_by(Plan.valid_from.desc(), Plan.created_at.desc())
         .first()
     )
     if plan is None:
@@ -631,4 +632,12 @@ def create_checkout_intent(
     db.refresh(state)
     record_checkout("created")
 
-    return {"status": "pending", "product_state": present_product_state(state, payload.product)}
+    return {
+        "status": "pending",
+        "product_state": present_product_state(state, payload.product),
+        "checkout": {
+            "amount_minor": amount_minor,
+            "amount": round(amount_minor / 100, 2),
+            "currency": currency,
+        },
+    }

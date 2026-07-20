@@ -25,6 +25,8 @@ def upgrade() -> None:
     ip_type = postgresql.INET()
     legal_published_at = datetime(2026, 7, 11, tzinfo=timezone.utc)
 
+    op.execute("CREATE EXTENSION IF NOT EXISTS btree_gist")
+
     op.create_table(
         "regions",
         sa.Column("code", sa.Text(), primary_key=True),
@@ -735,6 +737,10 @@ def upgrade() -> None:
         ),
         sa.CheckConstraint("price_amount_minor >= 0", name="ck_plans_price_non_negative"),
         sa.CheckConstraint("trial_days >= 0", name="ck_plans_trial_days_non_negative"),
+        sa.CheckConstraint(
+            "valid_to IS NULL OR valid_to > valid_from",
+            name="ck_plans_valid_window",
+        ),
         sa.UniqueConstraint(
             "tenant_id",
             "region",
@@ -756,6 +762,16 @@ def upgrade() -> None:
         ["tenant_id", "region", "code"],
         unique=True,
         postgresql_where=sa.text("status = 'active' AND valid_to IS NULL"),
+    )
+    op.create_exclude_constraint(
+        "ex_plans_active_version_overlap",
+        "plans",
+        ("tenant_id", "="),
+        ("region", "="),
+        ("code", "="),
+        (sa.text("tstzrange(valid_from, COALESCE(valid_to, 'infinity'::timestamptz), '[)')"), "&&"),
+        where=sa.text("status = 'active'"),
+        using="gist",
     )
 
     op.create_table(
@@ -924,7 +940,7 @@ def upgrade() -> None:
                 "scope_type": "product",
                 "product_id": UUID("66666666-6666-4666-8666-666666666601"),
                 "bundle_id": None,
-                "price_amount_minor": 990,
+                "price_amount_minor": 99000,
                 "currency": "RUB",
                 "billing_period": "month",
                 "renewal_mode": "manual",
@@ -941,7 +957,7 @@ def upgrade() -> None:
                 "scope_type": "product",
                 "product_id": UUID("66666666-6666-4666-8666-666666666602"),
                 "bundle_id": None,
-                "price_amount_minor": 990,
+                "price_amount_minor": 99000,
                 "currency": "RUB",
                 "billing_period": "month",
                 "renewal_mode": "manual",
@@ -958,7 +974,7 @@ def upgrade() -> None:
                 "scope_type": "bundle",
                 "product_id": None,
                 "bundle_id": UUID("77777777-7777-4777-8777-777777777701"),
-                "price_amount_minor": 1980,
+                "price_amount_minor": 198000,
                 "currency": "RUB",
                 "billing_period": "month",
                 "renewal_mode": "manual",
@@ -975,7 +991,7 @@ def upgrade() -> None:
                 "scope_type": "all_access",
                 "product_id": None,
                 "bundle_id": None,
-                "price_amount_minor": 1980,
+                "price_amount_minor": 198000,
                 "currency": "RUB",
                 "billing_period": "month",
                 "renewal_mode": "manual",
@@ -1013,9 +1029,9 @@ def upgrade() -> None:
                 "component_code_snapshot": "document-summary-pro",
                 "title_snapshot": "Document Summary Pro",
                 "quantity": 1,
-                "list_amount_minor": 990,
+                "list_amount_minor": 99000,
                 "discount_amount_minor": 0,
-                "amount_minor": 990,
+                "amount_minor": 99000,
                 "currency": "RUB",
                 "position": 1,
                 "metadata": {},
@@ -1029,9 +1045,9 @@ def upgrade() -> None:
                 "component_code_snapshot": "prompt-optimizer-pro",
                 "title_snapshot": "Prompt Optimizer Pro",
                 "quantity": 1,
-                "list_amount_minor": 990,
+                "list_amount_minor": 99000,
                 "discount_amount_minor": 0,
-                "amount_minor": 990,
+                "amount_minor": 99000,
                 "currency": "RUB",
                 "position": 2,
                 "metadata": {},
@@ -1045,9 +1061,9 @@ def upgrade() -> None:
                 "component_code_snapshot": "document-summary-pro",
                 "title_snapshot": "Document Summary Pro",
                 "quantity": 1,
-                "list_amount_minor": 990,
+                "list_amount_minor": 99000,
                 "discount_amount_minor": 0,
-                "amount_minor": 990,
+                "amount_minor": 99000,
                 "currency": "RUB",
                 "position": 1,
                 "metadata": {},
@@ -1061,9 +1077,9 @@ def upgrade() -> None:
                 "component_code_snapshot": "prompt-optimizer-pro",
                 "title_snapshot": "Prompt Optimizer Pro",
                 "quantity": 1,
-                "list_amount_minor": 990,
+                "list_amount_minor": 99000,
                 "discount_amount_minor": 0,
-                "amount_minor": 990,
+                "amount_minor": 99000,
                 "currency": "RUB",
                 "position": 2,
                 "metadata": {},
@@ -1476,6 +1492,7 @@ def downgrade() -> None:
     )
     op.drop_table("plan_price_components")
 
+    op.drop_constraint("ex_plans_active_version_overlap", "plans", type_="exclude")
     op.drop_index("uq_plans_active_code", table_name="plans")
     op.drop_index("ix_plans_bundle_id", table_name="plans")
     op.drop_index("ix_plans_product_id", table_name="plans")
