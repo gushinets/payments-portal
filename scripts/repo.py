@@ -449,7 +449,7 @@ INITIAL_MIGRATION = (
     / "api"
     / "alembic"
     / "versions"
-    / "20260707_0001_initial_payment_portal_schema.py"
+    / "20260707_0001_foundation_identity_legal_provider.py"
 )
 CORE_AUTHORITY_LINKS = {
     ROOT / "AGENTS.md": (
