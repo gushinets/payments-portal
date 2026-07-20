@@ -763,15 +763,18 @@ def upgrade() -> None:
         unique=True,
         postgresql_where=sa.text("status = 'active' AND valid_to IS NULL"),
     )
-    op.create_exclude_constraint(
-        "ex_plans_active_version_overlap",
-        "plans",
-        ("tenant_id", "="),
-        ("region", "="),
-        ("code", "="),
-        (sa.text("tstzrange(valid_from, COALESCE(valid_to, 'infinity'::timestamptz), '[)')"), "&&"),
-        where=sa.text("status = 'active'"),
-        using="gist",
+    op.execute(
+        """
+        ALTER TABLE plans
+        ADD CONSTRAINT ex_plans_active_version_overlap
+        EXCLUDE USING gist (
+            tenant_id WITH =,
+            region WITH =,
+            code WITH =,
+            tstzrange(valid_from, COALESCE(valid_to, 'infinity'::timestamptz), '[)') WITH &&
+        )
+        WHERE (status = 'active')
+        """
     )
 
     op.create_table(
