@@ -36,6 +36,6 @@ Migration seed rows are fixed historical snapshots and are verified separately.
 
 Current RU legal source version: `2026-07-11`.
 
-The corrected pre-production baseline migration seeds version `2026-07-11`.
+The initial migration seeds version `2026-07-11`.
 The `2026-07-02` directory is retained as historical draft source and is not
 the active baseline.
