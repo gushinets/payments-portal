@@ -14,7 +14,8 @@ repository-local pytest base temp directory the default.
 
 ## 2026-07-20 05:38Z - Codex (GPT-5) - macOS
 
-Running API checks and generation through npm scripts → `pytest` and `python`
-were not available on PATH even though `.venv/bin/pytest` and `.venv/bin/python`
-worked. The harness could resolve the repository virtualenv automatically or
-document the required PATH setup.
+Running `npm run check:fast` directly → the npm script could not start because
+`python` was not available on PATH. Once `scripts/repo.py` was launched with
+`.venv/bin/python`, the existing virtualenv re-exec behavior kept checks and
+pytest on the repository interpreter; the remaining friction is the npm entry
+point's dependency on a `python` executable being discoverable.
