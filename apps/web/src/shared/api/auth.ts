@@ -23,9 +23,22 @@ export type SubmitAuthValues = {
   offerConsent: boolean;
 };
 
+export type ApiErrorDetail = unknown;
+
+export class ApiError extends Error {
+  status: number;
+  detail: ApiErrorDetail;
+
+  constructor(status: number, detail: ApiErrorDetail, rawBody: string) {
+    super(`${status}:${rawBody}`);
+    this.status = status;
+    this.detail = detail;
+  }
+}
+
 const configuredApiBase =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
-const requestTimeoutMs = 5000;
+export const requestTimeoutMs = 5000;
 
 export function resolveApiBase(): string {
   if (typeof window === "undefined") {
@@ -50,20 +63,56 @@ export function resolveApiBase(): string {
   }
 }
 
-async function postJson<T>(path: string, body: unknown): Promise<T> {
+async function makeApiError(response: Response): Promise<ApiError> {
+  const rawBody = await response.text();
+  let detail: ApiErrorDetail = rawBody;
+
+  try {
+    const payload = JSON.parse(rawBody) as { detail?: ApiErrorDetail };
+    detail = payload.detail ?? rawBody;
+  } catch {
+    detail = rawBody;
+  }
+
+  return new ApiError(response.status, detail, rawBody);
+}
+
+export async function postJson<T>(
+  path: string,
+  body: unknown,
+  token?: string
+): Promise<T> {
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => controller.abort(), requestTimeoutMs);
   const response = await fetch(`${resolveApiBase()}${path}`, {
     method: "POST",
     headers: {
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
     },
     body: JSON.stringify(body),
     signal: controller.signal
   }).finally(() => window.clearTimeout(timeoutId));
 
   if (!response.ok) {
-    throw new Error(`${response.status}:${await response.text()}`);
+    throw await makeApiError(response);
+  }
+
+  return response.json() as Promise<T>;
+}
+
+export async function getJson<T>(path: string, token: string): Promise<T> {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), requestTimeoutMs);
+  const response = await fetch(`${resolveApiBase()}${path}`, {
+    headers: {
+      Authorization: `Bearer ${token}`
+    },
+    signal: controller.signal
+  }).finally(() => window.clearTimeout(timeoutId));
+
+  if (!response.ok) {
+    throw await makeApiError(response);
   }
 
   return response.json() as Promise<T>;

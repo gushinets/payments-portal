@@ -10,7 +10,13 @@ import {
   ShieldCheck
 } from "lucide-react";
 import { ProductCards } from "@/features/catalog";
-import { authErrorMessage, submitAuth } from "@/shared/api/auth";
+import {
+  ApiError,
+  authErrorMessage,
+  getJson,
+  postJson,
+  submitAuth
+} from "@/shared/api/auth";
 import { AuthForm, AuthFormSubmitValues, AuthMode } from "@/shared/ui";
 import {
   findProduct,
@@ -63,26 +69,6 @@ type RequiredDocument = {
   acceptance_text_hash: string;
 };
 
-type ApiErrorDetail =
-  | string
-  | {
-      code?: string;
-      documents?: RequiredDocument[];
-    };
-
-class ApiError extends Error {
-  status: number;
-  detail: ApiErrorDetail;
-
-  constructor(status: number, detail: ApiErrorDetail, rawBody: string) {
-    super(`${status}:${rawBody}`);
-    this.status = status;
-    this.detail = detail;
-  }
-}
-
-const configuredApiBase =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 const cloudPaymentsEnabled =
   process.env.NEXT_PUBLIC_CLOUDPAYMENTS_ENABLED === "true";
 const cloudPaymentsPublicId =
@@ -90,85 +76,6 @@ const cloudPaymentsPublicId =
 const telegramLoginUrl = process.env.NEXT_PUBLIC_TELEGRAM_LOGIN_URL ?? "";
 const sessionStorageKey = "anytoolai_session_token_v1";
 const sessionChangedEvent = "anytoolai_session_changed";
-const requestTimeoutMs = 5000;
-
-async function makeApiError(response: Response): Promise<ApiError> {
-  const rawBody = await response.text();
-  let detail: ApiErrorDetail = rawBody;
-
-  try {
-    const payload = JSON.parse(rawBody) as { detail?: ApiErrorDetail };
-    detail = payload.detail ?? rawBody;
-  } catch {
-    detail = rawBody;
-  }
-
-  return new ApiError(response.status, detail, rawBody);
-}
-
-function resolveApiBase(): string {
-  if (typeof window === "undefined") {
-    return configuredApiBase;
-  }
-
-  try {
-    const url = new URL(configuredApiBase);
-    const isLocalApiHost =
-      url.hostname === "localhost" || url.hostname === "127.0.0.1";
-    const isLocalBrowserHost =
-      window.location.hostname === "localhost" ||
-      window.location.hostname === "127.0.0.1";
-
-    if (isLocalApiHost && !isLocalBrowserHost) {
-      url.hostname = window.location.hostname;
-    }
-
-    return url.toString().replace(/\/$/, "");
-  } catch {
-    return configuredApiBase.replace(/\/$/, "");
-  }
-}
-
-async function postJson<T>(
-  path: string,
-  body: unknown,
-  token?: string
-): Promise<T> {
-  const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), requestTimeoutMs);
-  const response = await fetch(`${resolveApiBase()}${path}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {})
-    },
-    body: JSON.stringify(body),
-    signal: controller.signal
-  }).finally(() => window.clearTimeout(timeoutId));
-
-  if (!response.ok) {
-    throw await makeApiError(response);
-  }
-
-  return response.json() as Promise<T>;
-}
-
-async function getJson<T>(path: string, token: string): Promise<T> {
-  const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), requestTimeoutMs);
-  const response = await fetch(`${resolveApiBase()}${path}`, {
-    headers: {
-      Authorization: `Bearer ${token}`
-    },
-    signal: controller.signal
-  }).finally(() => window.clearTimeout(timeoutId));
-
-  if (!response.ok) {
-    throw await makeApiError(response);
-  }
-
-  return response.json() as Promise<T>;
-}
 
 export function CheckoutClient() {
   const searchParams = useSearchParams();
@@ -299,12 +206,16 @@ export function CheckoutClient() {
       return null;
     }
 
+    const detail = errorValue.detail;
     if (
-      typeof errorValue.detail === "object" &&
-      errorValue.detail.code === "missing_required_documents" &&
-      Array.isArray(errorValue.detail.documents)
+      typeof detail === "object" &&
+      detail !== null &&
+      "code" in detail &&
+      "documents" in detail &&
+      detail.code === "missing_required_documents" &&
+      Array.isArray(detail.documents)
     ) {
-      return errorValue.detail.documents;
+      return detail.documents as RequiredDocument[];
     }
 
     return null;

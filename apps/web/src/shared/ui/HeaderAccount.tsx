@@ -3,7 +3,12 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { LogIn, UserRound } from "lucide-react";
-import { authErrorMessage, resolveApiBase, submitAuth } from "@/shared/api/auth";
+import {
+  authErrorMessage,
+  requestTimeoutMs,
+  resolveApiBase,
+  submitAuth
+} from "@/shared/api/auth";
 import { AuthForm, AuthFormSubmitValues, AuthMode } from "./AuthForm";
 
 type SessionResponse = {
@@ -19,7 +24,6 @@ type SessionResponse = {
 const telegramLoginUrl = process.env.NEXT_PUBLIC_TELEGRAM_LOGIN_URL ?? "";
 const sessionStorageKey = "anytoolai_session_token_v1";
 const sessionChangedEvent = "anytoolai_session_changed";
-const requestTimeoutMs = 5000;
 
 export function HeaderAccount() {
   const [email, setEmail] = useState("");
