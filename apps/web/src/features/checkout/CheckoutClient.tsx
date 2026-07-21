@@ -468,7 +468,8 @@ export function CheckoutClient() {
       productCode: selectedProduct.code,
       productName: selectedProduct.name,
       planName: selectedProduct.plan.name,
-      priceRub: checkoutIntent.checkout.amount,
+      amount: checkoutIntent.checkout.amount,
+      currency: checkoutIntent.checkout.currency,
       email: sessionUser.email,
       autoRenew,
       invoiceId: checkoutIntent.product_state.invoice_id ?? ""

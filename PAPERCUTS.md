@@ -26,3 +26,10 @@ Running repository commands → every zsh startup printed missing
 `/opt/homebrew/bin/brew` errors from `.zprofile`. Likely stale Homebrew init
 lines on a machine without that path; guard the init with an existence check or
 remove it to keep command evidence readable.
+
+## 2026-07-21 10:42Z - Codex - macOS
+
+Running targeted Playwright against Next dev → using `127.0.0.1` for a server
+advertised as `localhost` blocked Next dev resources and prevented hydration.
+Use `PLAYWRIGHT_BASE_URL=http://localhost:<port>` or configure
+`allowedDevOrigins` when intentionally testing through `127.0.0.1`.
