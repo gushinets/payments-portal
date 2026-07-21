@@ -55,12 +55,12 @@ that schema means and distinguishes current implementation from planned work.
 | `refunds` | Implemented | Full and partial refund records |
 | `payment_webhook_events` | Implemented | Redacted webhook inbox and processing audit |
 | `product_access_states` | Legacy temporary | Current simplified product payment/access view |
-| `products` | Planned under ANY-71 | Billing-visible product catalog |
-| `bundles` | Planned under ANY-71 | Sellable product groups |
-| `bundle_products` | Planned under ANY-71 | Version-aware bundle membership |
-| `plans` | Planned under ANY-71 | Versioned sellable prices and periods |
-| `plan_price_components` | Planned under ANY-71 | Bundle/all-access price calculation snapshot |
-| `plan_limits` | Planned under ANY-71 | Purchased usage limits |
+| `products` | Implemented | Billing-visible product catalog |
+| `bundles` | Implemented | Sellable product groups |
+| `bundle_products` | Implemented | Version-aware bundle membership |
+| `plans` | Implemented | Versioned sellable prices and periods |
+| `plan_price_components` | Implemented | Bundle/all-access price calculation snapshot |
+| `plan_limits` | Implemented | Purchased usage limits |
 | `subscriptions` | Planned under ANY-71 | Trial/manual/automatic access lifecycle |
 | `entitlements` | Planned under ANY-71 | Explicit runtime-readable access grants |
 | `subscription_events` | Planned under ANY-71 | Append-only subscription audit |

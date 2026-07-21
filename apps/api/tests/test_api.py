@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import sys
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 os.environ["DATABASE_URL"] = "sqlite+pysqlite:///:memory:"
@@ -19,13 +19,19 @@ from app.database import Base, SessionLocal, engine  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import (  # noqa: E402
     AuthSession,
+    Bundle,
+    BundleProduct,
     DocumentAcceptance,
     DocumentVersion,
     LegalEntity,
     Order,
+    OrderItem,
     Payment,
+    PaymentProviderAccount,
     PaymentWebhookEvent,
+    Plan,
     ProductAccessState,
+    Product,
     Refund,
     User,
 )
@@ -38,6 +44,8 @@ client = TestClient(app)
 def setup_function() -> None:
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
+    with SessionLocal() as db:
+        seed_catalog(db)
 
 
 def create_legal_entity(db, *, tenant_id: str = "anytoolai", region: str = "ru") -> LegalEntity:
@@ -86,6 +94,184 @@ def create_document_version(
     db.commit()
     db.refresh(document)
     return document
+
+
+def seed_catalog(db) -> dict[str, object]:
+    existing_document_plan = (
+        db.query(Plan)
+        .filter(
+            Plan.tenant_id == "anytoolai",
+            Plan.region == "ru",
+            Plan.code == "document-summary-pro",
+        )
+        .first()
+    )
+    existing_bundle_plan = (
+        db.query(Plan)
+        .filter(
+            Plan.tenant_id == "anytoolai",
+            Plan.region == "ru",
+            Plan.code == "core-tools-bundle-pro-ru",
+        )
+        .first()
+    )
+    existing_prompt_plan = (
+        db.query(Plan)
+        .filter(
+            Plan.tenant_id == "anytoolai",
+            Plan.region == "ru",
+            Plan.code == "prompt-optimizer-pro",
+        )
+        .first()
+    )
+    existing_all_access_plan = (
+        db.query(Plan)
+        .filter(
+            Plan.tenant_id == "anytoolai",
+            Plan.region == "ru",
+            Plan.code == "all-access-pro-ru",
+        )
+        .first()
+    )
+    existing_document_summary = (
+        db.query(Product)
+        .filter(Product.tenant_id == "anytoolai", Product.code == "document-summary")
+        .first()
+    )
+    existing_prompt_optimizer = (
+        db.query(Product)
+        .filter(Product.tenant_id == "anytoolai", Product.code == "prompt-optimizer")
+        .first()
+    )
+    existing_bundle = (
+        db.query(Bundle)
+        .filter(Bundle.tenant_id == "anytoolai", Bundle.code == "core-tools-bundle")
+        .first()
+    )
+    if (
+        existing_document_plan is not None
+        and existing_bundle_plan is not None
+        and existing_prompt_plan is not None
+        and existing_all_access_plan is not None
+        and existing_document_summary is not None
+        and existing_prompt_optimizer is not None
+        and existing_bundle is not None
+    ):
+        return {
+            "document_summary": existing_document_summary,
+            "prompt_optimizer": existing_prompt_optimizer,
+            "bundle": existing_bundle,
+            "document_plan": existing_document_plan,
+            "prompt_plan": existing_prompt_plan,
+            "bundle_plan": existing_bundle_plan,
+            "all_access_plan": existing_all_access_plan,
+        }
+
+    document_summary = Product(
+        tenant_id="anytoolai",
+        code="document-summary",
+        platform_product_id="document-summary",
+        name="Document Summary",
+        status="active",
+    )
+    prompt_optimizer = Product(
+        tenant_id="anytoolai",
+        code="prompt-optimizer",
+        platform_product_id="prompt-optimizer",
+        name="Prompt Optimizer",
+        status="active",
+    )
+    bundle = Bundle(
+        tenant_id="anytoolai",
+        code="core-tools-bundle",
+        name="Core Tools Bundle",
+        status="active",
+    )
+    db.add_all([document_summary, prompt_optimizer, bundle])
+    db.flush()
+    db.add_all(
+        [
+            BundleProduct(
+                tenant_id="anytoolai",
+                bundle_id=bundle.id,
+                product_id=document_summary.id,
+                status="active",
+            ),
+            BundleProduct(
+                tenant_id="anytoolai",
+                bundle_id=bundle.id,
+                product_id=prompt_optimizer.id,
+                status="active",
+            ),
+        ]
+    )
+    document_plan = Plan(
+        tenant_id="anytoolai",
+        region="ru",
+        code="document-summary-pro",
+        name="Document Summary Pro",
+        scope_type="product",
+        product_id=document_summary.id,
+        price_amount_minor=99000,
+        currency="RUB",
+        billing_period="month",
+        renewal_mode="manual",
+        trial_days=7,
+        status="active",
+    )
+    prompt_plan = Plan(
+        tenant_id="anytoolai",
+        region="ru",
+        code="prompt-optimizer-pro",
+        name="Prompt Optimizer Pro",
+        scope_type="product",
+        product_id=prompt_optimizer.id,
+        price_amount_minor=99000,
+        currency="RUB",
+        billing_period="month",
+        renewal_mode="manual",
+        trial_days=7,
+        status="active",
+    )
+    bundle_plan = Plan(
+        tenant_id="anytoolai",
+        region="ru",
+        code="core-tools-bundle-pro-ru",
+        name="Core Tools Bundle Pro RU",
+        scope_type="bundle",
+        bundle_id=bundle.id,
+        price_amount_minor=198000,
+        currency="RUB",
+        billing_period="month",
+        renewal_mode="manual",
+        trial_days=7,
+        status="active",
+    )
+    all_access_plan = Plan(
+        tenant_id="anytoolai",
+        region="ru",
+        code="all-access-pro-ru",
+        name="All Access Pro RU",
+        scope_type="all_access",
+        price_amount_minor=198000,
+        currency="RUB",
+        billing_period="month",
+        renewal_mode="manual",
+        trial_days=7,
+        status="active",
+        metadata_={"included_product_codes": ["document-summary", "prompt-optimizer"]},
+    )
+    db.add_all([document_plan, prompt_plan, bundle_plan, all_access_plan])
+    db.commit()
+    return {
+        "document_summary": document_summary,
+        "prompt_optimizer": prompt_optimizer,
+        "bundle": bundle,
+        "document_plan": document_plan,
+        "prompt_plan": prompt_plan,
+        "bundle_plan": bundle_plan,
+        "all_access_plan": all_access_plan,
+    }
 
 
 def test_healthcheck() -> None:
@@ -236,8 +422,14 @@ def test_register_session_and_checkout_intent_flow() -> None:
     )
 
     assert checkout_response.status_code == 200
-    assert checkout_response.json()["product_state"]["status"] == "pending"
-    invoice_id = checkout_response.json()["product_state"]["invoice_id"]
+    checkout_payload = checkout_response.json()
+    assert checkout_payload["product_state"]["status"] == "pending"
+    assert checkout_payload["checkout"] == {
+        "amount_minor": 99000,
+        "amount": 990.0,
+        "currency": "RUB",
+    }
+    invoice_id = checkout_payload["product_state"]["invoice_id"]
     assert invoice_id
 
     with SessionLocal() as db:
@@ -253,6 +445,336 @@ def test_register_session_and_checkout_intent_flow() -> None:
     assert state.plan_code == "document-summary-pro"
     assert state.status == "pending"
     assert state.last_invoice_id == invoice_id
+
+
+def test_bundle_checkout_snapshots_one_sellable_catalog_plan() -> None:
+    with SessionLocal() as db:
+        catalog = seed_catalog(db)
+        bundle_plan_id = catalog["bundle_plan"].id
+        bundle_id = catalog["bundle"].id
+
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "bundle-user@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = register_response.json()["token"]
+
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "core-tools-bundle",
+            "plan_code": "core-tools-bundle-pro-ru",
+            "entrypoint_type": "bundle",
+            "auto_renew": True,
+        },
+    )
+
+    assert checkout_response.status_code == 200
+    invoice_id = checkout_response.json()["product_state"]["invoice_id"]
+    assert invoice_id.startswith("core-tools-bundle-")
+
+    with SessionLocal() as db:
+        order = db.query(Order).one()
+        item = db.query(OrderItem).one()
+
+    assert order.plan_id == bundle_plan_id
+    assert order.amount_minor == 198000
+    assert item.item_type == "bundle_plan"
+    assert item.plan_id == bundle_plan_id
+    assert item.bundle_id == bundle_id
+    assert item.product_id is None
+    assert item.product_code_snapshot is None
+    assert item.plan_code_snapshot == "core-tools-bundle-pro-ru"
+    assert item.amount_minor == 198000
+    assert item.trial_days_snapshot == 7
+
+
+def test_all_access_checkout_snapshots_one_sellable_catalog_plan() -> None:
+    with SessionLocal() as db:
+        catalog = seed_catalog(db)
+        all_access_plan_id = catalog["all_access_plan"].id
+
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "all-access-user@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = register_response.json()["token"]
+
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "all-access",
+            "plan_code": "all-access-pro-ru",
+            "entrypoint_type": "catalog",
+            "auto_renew": True,
+        },
+    )
+
+    assert checkout_response.status_code == 200
+    product_state = checkout_response.json()["product_state"]
+    assert product_state["invoice_id"].startswith("all-access-")
+    assert product_state["plan_code"] == "all-access-pro-ru"
+
+    with SessionLocal() as db:
+        order = db.query(Order).one()
+        item = db.query(OrderItem).one()
+
+    assert order.plan_id == all_access_plan_id
+    assert order.amount_minor == 198000
+    assert item.item_type == "all_access_plan"
+    assert item.plan_id == all_access_plan_id
+    assert item.bundle_id is None
+    assert item.product_id is None
+    assert item.product_code_snapshot is None
+    assert item.plan_code_snapshot == "all-access-pro-ru"
+    assert item.amount_minor == 198000
+    assert item.trial_days_snapshot == 7
+
+
+def test_checkout_rejects_inactive_catalog_plan_without_legacy_fallback() -> None:
+    with SessionLocal() as db:
+        plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
+        plan.status = "inactive"
+        db.add(plan)
+        db.commit()
+
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "inactive-plan-user@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = register_response.json()["token"]
+
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": False,
+        },
+    )
+
+    assert checkout_response.status_code == 400
+    assert checkout_response.json()["detail"] == "unknown_product_plan"
+    with SessionLocal() as db:
+        assert db.query(Order).count() == 0
+
+
+def test_checkout_rejects_catalog_plan_outside_validity_window() -> None:
+    with SessionLocal() as db:
+        plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
+        now = datetime.now(timezone.utc)
+        plan.valid_from = now - timedelta(days=30)
+        plan.valid_to = now - timedelta(seconds=1)
+        db.add(plan)
+        db.commit()
+
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "expired-plan-user@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = register_response.json()["token"]
+
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": False,
+        },
+    )
+
+    assert checkout_response.status_code == 400
+    assert checkout_response.json()["detail"] == "unknown_product_plan"
+    with SessionLocal() as db:
+        assert db.query(Order).count() == 0
+
+
+def test_checkout_uses_plan_currency_when_provider_default_differs() -> None:
+    with SessionLocal() as db:
+        plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
+        plan.currency = "USD"
+        db.add(
+            PaymentProviderAccount(
+                tenant_id="anytoolai",
+                region="ru",
+                provider="cloudpayments",
+                public_identifier=None,
+                default_currency="RUB",
+                enabled=True,
+                test_mode=True,
+                config={"widget_mode": "charge", "receipt_mode": "deferred"},
+            )
+        )
+        db.add(plan)
+        db.commit()
+
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "plan-currency-user@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = register_response.json()["token"]
+
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": False,
+        },
+    )
+
+    assert checkout_response.status_code == 200
+    assert checkout_response.json()["checkout"]["currency"] == "USD"
+    with SessionLocal() as db:
+        order = db.query(Order).one()
+        item = db.query(OrderItem).one()
+
+    assert order.currency == "USD"
+    assert item.currency == "USD"
+    assert item.pricing_snapshot["currency"] == "USD"
+
+
+def test_checkout_rejects_active_plan_for_inactive_product() -> None:
+    with SessionLocal() as db:
+        product = db.query(Product).filter(Product.code == "document-summary").one()
+        product.status = "inactive"
+        db.add(product)
+        db.commit()
+
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "inactive-product-user@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = register_response.json()["token"]
+
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": False,
+        },
+    )
+
+    assert checkout_response.status_code == 400
+    assert checkout_response.json()["detail"] == "unknown_product_plan"
+    with SessionLocal() as db:
+        assert db.query(Order).count() == 0
+
+
+def test_checkout_rejects_active_plan_for_inactive_bundle() -> None:
+    with SessionLocal() as db:
+        bundle = db.query(Bundle).filter(Bundle.code == "core-tools-bundle").one()
+        bundle.status = "inactive"
+        db.add(bundle)
+        db.commit()
+
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "inactive-bundle-user@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = register_response.json()["token"]
+
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "core-tools-bundle",
+            "plan_code": "core-tools-bundle-pro-ru",
+            "entrypoint_type": "bundle",
+            "auto_renew": True,
+        },
+    )
+
+    assert checkout_response.status_code == 400
+    assert checkout_response.json()["detail"] == "unknown_product_plan"
+    with SessionLocal() as db:
+        assert db.query(Order).count() == 0
+
+
+def test_pay_webhook_amount_mismatch_is_failed_without_order_update() -> None:
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "mismatch-user@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = register_response.json()["token"]
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": False,
+        },
+    )
+    invoice_id = checkout_response.json()["product_state"]["invoice_id"]
+
+    webhook_response = client.post(
+        "/api/cloudpayments/pay",
+        json={
+            "InvoiceId": invoice_id,
+            "TransactionId": "tx-amount-mismatch",
+            "AccountId": "mismatch-user@example.com",
+            "Amount": "9.90",
+            "Currency": "RUB",
+        },
+    )
+
+    assert webhook_response.status_code == 200
+    with SessionLocal() as db:
+        event = db.query(PaymentWebhookEvent).one()
+        order = db.query(Order).one()
+
+    assert event.status == "failed"
+    assert event.error_code == "amount_mismatch"
+    assert order.status == "pending_payment"
+    assert db.query(Payment).count() == 0
 
 
 def test_successful_pay_webhook_is_saved_without_activating_access() -> None:

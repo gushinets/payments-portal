@@ -48,6 +48,15 @@ type AuthResponse = {
   user: SessionUser;
 };
 
+type CheckoutIntentResponse = {
+  product_state: ProductState;
+  checkout: {
+    amount_minor: number;
+    amount: number;
+    currency: string;
+  };
+};
+
 type RequiredDocument = {
   document_version_id: string;
   doc_type: string;
@@ -426,9 +435,9 @@ export function CheckoutClient() {
       return;
     }
 
-    let checkoutState: ProductState;
+    let checkoutIntent: CheckoutIntentResponse;
     try {
-      const payload = await postJson<{ product_state: ProductState }>(
+      const payload = await postJson<CheckoutIntentResponse>(
         "/api/auth/checkout-intent",
         {
           product: selectedProduct.code,
@@ -437,7 +446,7 @@ export function CheckoutClient() {
         },
         sessionToken
       );
-      checkoutState = payload.product_state;
+      checkoutIntent = payload;
       setProductState(payload.product_state);
       setMissingDocuments([]);
       setDocumentConsentById({});
@@ -459,10 +468,11 @@ export function CheckoutClient() {
       productCode: selectedProduct.code,
       productName: selectedProduct.name,
       planName: selectedProduct.plan.name,
-      priceRub: selectedProduct.plan.priceRub,
+      amount: checkoutIntent.checkout.amount,
+      currency: checkoutIntent.checkout.currency,
       email: sessionUser.email,
       autoRenew,
-      invoiceId: checkoutState.invoice_id ?? ""
+      invoiceId: checkoutIntent.product_state.invoice_id ?? ""
     };
 
     window.sessionStorage.setItem(
@@ -477,9 +487,9 @@ export function CheckoutClient() {
         {
           publicId: cloudPaymentsPublicId,
           description: selectedProduct.plan.paymentDescription,
-          amount: selectedProduct.plan.priceRub,
-          currency: "RUB",
-          invoiceId: checkoutState.invoice_id ?? undefined,
+          amount: checkoutIntent.checkout.amount,
+          currency: checkoutIntent.checkout.currency,
+          invoiceId: checkoutIntent.product_state.invoice_id ?? undefined,
           accountId: sessionUser.email,
           email: sessionUser.email,
           data: {
@@ -494,7 +504,7 @@ export function CheckoutClient() {
               product: selectedProduct.code,
               plan: selectedProduct.plan.code,
               email: sessionUser.email,
-              invoice: checkoutState.invoice_id ?? ""
+              invoice: checkoutIntent.product_state.invoice_id ?? ""
             });
             window.location.assign(`/ru/payment-result?${params.toString()}`);
           },
@@ -504,7 +514,7 @@ export function CheckoutClient() {
               product: selectedProduct.code,
               plan: selectedProduct.plan.code,
               email: sessionUser.email,
-              invoice: checkoutState.invoice_id ?? ""
+              invoice: checkoutIntent.product_state.invoice_id ?? ""
             });
             window.location.assign(`/ru/payment-result?${params.toString()}`);
           }
@@ -518,7 +528,7 @@ export function CheckoutClient() {
       product: selectedProduct.code,
       plan: selectedProduct.plan.code,
       email: sessionUser.email,
-      invoice: checkoutState.invoice_id ?? ""
+      invoice: checkoutIntent.product_state.invoice_id ?? ""
     });
     window.location.assign(`/ru/payment-result?${params.toString()}`);
   }

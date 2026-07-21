@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, EmailStr, Field
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -25,12 +26,15 @@ from app.domains.identity.session import (
 )
 from app.models import (
     AuthSession,
+    Bundle,
     CheckoutSession,
     EntrypointSession,
     Order,
     OrderItem,
     Payment,
     PaymentProviderAccount,
+    Plan,
+    Product,
     ProductAccessState,
     User,
 )
@@ -43,13 +47,13 @@ PRODUCT_DEFAULTS = {
     "document-summary": {
         "plan_code": "document-summary-pro",
         "plan_name": "Document Summary Pro",
-        "price_rub": 990,
+        "price_amount_minor": 99000,
         "trial_days": 7,
     },
     "prompt-optimizer": {
         "plan_code": "prompt-optimizer-pro",
         "plan_name": "Prompt Optimizer Pro",
-        "price_rub": 990,
+        "price_amount_minor": 99000,
         "trial_days": 7,
     },
 }
@@ -147,6 +151,62 @@ def get_product_defaults(product_code: str, plan_code: str) -> dict:
     if defaults is None or defaults["plan_code"] != plan_code:
         raise HTTPException(status_code=400, detail="unknown_product_plan")
     return defaults
+
+
+def get_sellable_plan(db: Session, *, user: User, entrypoint_code: str, plan_code: str) -> dict:
+    now = utc_now()
+    plan = (
+        db.query(Plan)
+        .filter(
+            Plan.tenant_id == user.tenant_id,
+            Plan.region == user.region,
+            Plan.code == plan_code,
+            Plan.status == "active",
+            Plan.valid_from <= now,
+            or_(Plan.valid_to.is_(None), Plan.valid_to > now),
+        )
+        .order_by(Plan.valid_from.desc(), Plan.created_at.desc())
+        .first()
+    )
+    if plan is None:
+        raise HTTPException(status_code=400, detail="unknown_product_plan")
+
+    product_code = None
+    bundle_code = None
+    if plan.scope_type == "product":
+        product = db.get(Product, plan.product_id) if plan.product_id else None
+        product_code = product.code if product else None
+        if product_code != entrypoint_code or product.status != "active":
+            raise HTTPException(status_code=400, detail="unknown_product_plan")
+    elif plan.scope_type == "bundle":
+        bundle = db.get(Bundle, plan.bundle_id) if plan.bundle_id else None
+        bundle_code = bundle.code if bundle else None
+        if bundle_code != entrypoint_code or bundle.status != "active":
+            raise HTTPException(status_code=400, detail="unknown_product_plan")
+    elif plan.scope_type == "all_access":
+        if entrypoint_code not in {"all-access", plan.code}:
+            raise HTTPException(status_code=400, detail="unknown_product_plan")
+    else:
+        raise HTTPException(status_code=400, detail="unknown_product_plan")
+
+    return {
+        "plan_id": plan.id,
+        "product_id": plan.product_id,
+        "bundle_id": plan.bundle_id,
+        "scope_type": plan.scope_type,
+        "entrypoint_value": product_code or bundle_code or "all-access",
+        "plan_code": plan.code,
+        "plan_name": plan.name,
+        "amount_minor": plan.price_amount_minor,
+        "currency": plan.currency,
+        "trial_days": plan.trial_days,
+        "pricing_snapshot": {
+            "price_amount_minor": plan.price_amount_minor,
+            "currency": plan.currency,
+            "billing_period": plan.billing_period,
+            "scope_type": plan.scope_type,
+        },
+    }
 
 
 def get_or_create_provider_account(db: Session, user: User) -> PaymentProviderAccount:
@@ -427,7 +487,12 @@ def create_checkout_intent(
     db: Session = Depends(get_db),
 ):
     user, _ = current
-    product_defaults = get_product_defaults(payload.product, payload.plan_code)
+    sellable_plan = get_sellable_plan(
+        db,
+        user=user,
+        entrypoint_code=payload.product,
+        plan_code=payload.plan_code,
+    )
     missing_documents = get_missing_required_documents_for_user(db, user=user)
     if missing_documents:
         record_checkout("missing_required_documents")
@@ -451,9 +516,9 @@ def create_checkout_intent(
         )
 
     provider_account = get_or_create_provider_account(db, user)
-    invoice_id = make_invoice_id(payload.product)
-    amount_minor = int(product_defaults["price_rub"]) * 100
-    currency = provider_account.default_currency
+    invoice_id = make_invoice_id(sellable_plan["entrypoint_value"])
+    amount_minor = int(sellable_plan["amount_minor"])
+    currency = str(sellable_plan["currency"])
     now = utc_now()
     expires_at = now + timedelta(minutes=30)
 
@@ -462,7 +527,9 @@ def create_checkout_intent(
         route_region=user.region,
         resolved_region=user.region,
         entrypoint_type=payload.entrypoint_type,
-        entrypoint_value=payload.product,
+        entrypoint_value=sellable_plan["entrypoint_value"],
+        product_id=sellable_plan["product_id"],
+        bundle_id=sellable_plan["bundle_id"],
         frontend_id=payload.frontend_id or "web_checkout",
         user_id=user.id,
         source_url=payload.source_url,
@@ -478,14 +545,15 @@ def create_checkout_intent(
         region=user.region,
         user_id=user.id,
         entrypoint_session_id=entrypoint_session.id,
-        plan_id=None,
+        plan_id=sellable_plan["plan_id"],
         status="order_created",
         amount_minor=amount_minor,
         currency=currency,
         expires_at=expires_at,
         metadata_={
             "product_code": payload.product,
-            "plan_code": payload.plan_code,
+            "plan_code": sellable_plan["plan_code"],
+            "scope_type": sellable_plan["scope_type"],
             "auto_renew": payload.auto_renew,
         },
     )
@@ -499,6 +567,7 @@ def create_checkout_intent(
         user_id=user.id,
         checkout_session_id=checkout_session.id,
         entrypoint_session_id=entrypoint_session.id,
+        plan_id=sellable_plan["plan_id"],
         status="pending_payment",
         amount_minor=amount_minor,
         currency=currency,
@@ -509,7 +578,8 @@ def create_checkout_intent(
         expires_at=expires_at,
         metadata_={
             "product_code": payload.product,
-            "plan_code": payload.plan_code,
+            "plan_code": sellable_plan["plan_code"],
+            "scope_type": sellable_plan["scope_type"],
             "auto_renew": payload.auto_renew,
         },
     )
@@ -518,21 +588,21 @@ def create_checkout_intent(
     db.add(
         OrderItem(
             order_id=order.id,
-            item_type="product_plan",
-            product_code_snapshot=payload.product,
-            plan_code_snapshot=payload.plan_code,
-            title_snapshot=str(product_defaults["plan_name"]),
+            item_type=f"{sellable_plan['scope_type']}_plan",
+            product_id=sellable_plan["product_id"],
+            bundle_id=sellable_plan["bundle_id"],
+            plan_id=sellable_plan["plan_id"],
+            product_code_snapshot=payload.product if sellable_plan["scope_type"] == "product" else None,
+            plan_code_snapshot=sellable_plan["plan_code"],
+            title_snapshot=str(sellable_plan["plan_name"]),
             quantity=1,
             list_amount_minor=amount_minor,
             discount_amount_minor=0,
             unit_amount_minor=amount_minor,
             amount_minor=amount_minor,
             currency=currency,
-            trial_days_snapshot=int(product_defaults["trial_days"]),
-            pricing_snapshot={
-                "price_rub": product_defaults["price_rub"],
-                "period": "month",
-            },
+            trial_days_snapshot=int(sellable_plan["trial_days"]),
+            pricing_snapshot=sellable_plan["pricing_snapshot"],
         )
     )
 
@@ -548,13 +618,13 @@ def create_checkout_intent(
         state = ProductAccessState(
             user_id=user.id,
             product_code=payload.product,
-            plan_code=payload.plan_code,
+            plan_code=sellable_plan["plan_code"],
             last_invoice_id=invoice_id,
             status="pending",
             starts_at=now,
         )
     else:
-        state.plan_code = payload.plan_code
+        state.plan_code = sellable_plan["plan_code"]
         state.last_invoice_id = invoice_id
         state.last_transaction_id = None
         state.status = "pending"
@@ -564,4 +634,12 @@ def create_checkout_intent(
     db.refresh(state)
     record_checkout("created")
 
-    return {"status": "pending", "product_state": present_product_state(state, payload.product)}
+    return {
+        "status": "pending",
+        "product_state": present_product_state(state, payload.product),
+        "checkout": {
+            "amount_minor": amount_minor,
+            "amount": round(amount_minor / 100, 2),
+            "currency": currency,
+        },
+    }

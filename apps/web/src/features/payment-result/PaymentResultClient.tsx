@@ -15,6 +15,8 @@ type StoredPaymentResult = {
   productCode?: string;
   productName?: string;
   planName?: string;
+  amount?: number;
+  currency?: string;
   priceRub?: number;
   email?: string;
   autoRenew?: boolean;
@@ -137,8 +139,19 @@ function derivePaymentResultKind(
   return "pending";
 }
 
-function formatMinorRubles(value: number): string {
-  return formatRubles(value / 100);
+function formatCurrencyAmount(value: number, currency: string): string {
+  if (currency.toUpperCase() === "RUB") {
+    return formatRubles(value);
+  }
+
+  return new Intl.NumberFormat("ru-RU", {
+    style: "currency",
+    currency: currency.toUpperCase()
+  }).format(value);
+}
+
+function formatMinorCurrency(value: number, currency: string): string {
+  return formatCurrencyAmount(value / 100, currency);
 }
 
 export function PaymentResultClient() {
@@ -191,7 +204,19 @@ export function PaymentResultClient() {
     product?.plan.name ??
     (hasResultParams ? stored.planName : undefined) ??
     "тариф не выбран";
-  const price = product?.plan.priceRub ?? (hasResultParams ? stored.priceRub : undefined);
+  const paymentAmountMinor =
+    paymentStatusPayload?.payment?.amount_minor ??
+    paymentStatusPayload?.order?.amount_minor;
+  const paymentCurrency =
+    paymentStatusPayload?.payment?.currency ??
+    paymentStatusPayload?.order?.currency;
+  const amount =
+    paymentAmountMinor !== undefined
+      ? paymentAmountMinor / 100
+      : hasResultParams
+        ? (stored.amount ?? stored.priceRub ?? product?.plan.priceRub)
+        : product?.plan.priceRub;
+  const currency = paymentCurrency ?? stored.currency ?? "RUB";
   const effectiveStatus = status;
 
   useEffect(() => {
@@ -250,7 +275,8 @@ export function PaymentResultClient() {
   const isSuccessful = isActive || paymentConfirmed;
   const stillWaiting = resultKind === "pending";
   const refundedAmount = paymentStatusPayload?.payment?.refunded_amount_minor ?? 0;
-  const refundAmountText = refundedAmount > 0 ? formatMinorRubles(refundedAmount) : null;
+  const refundAmountText =
+    refundedAmount > 0 ? formatMinorCurrency(refundedAmount, currency) : null;
   const finalTitle = isRefunded
     ? "Платёж возвращён"
     : isPartiallyRefunded
@@ -335,7 +361,7 @@ export function PaymentResultClient() {
             <strong>Тариф</strong>
             <p className="card-copy">
               {planName}
-              {price ? ` · ${formatRubles(price)} / месяц` : ""}
+              {amount ? ` · ${formatCurrencyAmount(amount, currency)} / месяц` : ""}
             </p>
           </div>
           <div className="feature-card">

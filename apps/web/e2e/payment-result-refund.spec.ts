@@ -39,7 +39,7 @@ for (const scenario of scenarios) {
     const invoice = `invoice-${testInfo.workerIndex}-${Date.now()}`;
     const email = `refund-${testInfo.workerIndex}@example.com`;
 
-    await page.route("**/api/auth/payment-status?**", async (route) => {
+    await page.route("**/payment-status?**", async (route) => {
       await route.fulfill({
         contentType: "application/json",
         body: JSON.stringify({
@@ -102,3 +102,31 @@ for (const scenario of scenarios) {
     });
   });
 }
+
+test("/ru/payment-result formats stored checkout amount with its currency", async ({
+  page
+}) => {
+  await page.goto("/ru");
+  await page.evaluate(() => {
+    window.sessionStorage.setItem(
+      "anytoolai_last_payment_result",
+      JSON.stringify({
+        status: "pending",
+        productCode: "document-summary",
+        productName: "Document Summary",
+        planName: "Document Summary Pro",
+        amount: 12,
+        currency: "USD",
+        email: "currency@example.com",
+        invoiceId: ""
+      })
+    );
+  });
+
+  await page.goto("/ru/payment-result?status=pending&product=document-summary");
+
+  await expect(
+    page.getByText(/Document Summary Pro · 12,00\s*\$ \/ месяц/)
+  ).toBeVisible();
+  await expect(page.getByText("990 ₽ / месяц")).toHaveCount(0);
+});

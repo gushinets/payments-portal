@@ -2,8 +2,8 @@
   "defaultMaxLines": 500,
   "exceptions": {
     "apps/api/app/models.py": {
-      "maxLines": 700,
-      "reason": "Temporary aggregate ORM registry; further model delivery is owned by ANY-71."
+      "maxLines": 820,
+      "reason": "Temporary aggregate ORM registry includes the ANY-71 catalog baseline; split before adding subscriptions or entitlements."
     },
     "apps/api/app/domains/identity/router.py": {
       "maxLines": 700,

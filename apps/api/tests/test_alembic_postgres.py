@@ -10,6 +10,7 @@ from alembic import command
 from alembic.config import Config
 from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.exc import IntegrityError
 
 
 TEST_DATABASE_URL = os.getenv("TEST_POSTGRES_DATABASE_URL")
@@ -71,6 +72,56 @@ def seeded_legal_documents() -> list[dict[str, str]]:
         engine.dispose()
 
 
+def seeded_catalog_summary() -> dict[str, object]:
+    engine = create_engine(TEST_DATABASE_URL, future=True)
+    try:
+        with engine.connect() as connection:
+            products = connection.execute(
+                text("SELECT code FROM products ORDER BY code")
+            ).scalars().all()
+            plans = connection.execute(
+                text(
+                    "SELECT code, scope_type, price_amount_minor, currency, "
+                    "billing_period, trial_days FROM plans ORDER BY code"
+                )
+            ).mappings().all()
+            bundle_products = connection.execute(
+                text(
+                    "SELECT b.code AS bundle_code, p.code AS product_code "
+                    "FROM bundle_products bp "
+                    "JOIN bundles b ON b.id = bp.bundle_id "
+                    "JOIN products p ON p.id = bp.product_id "
+                    "ORDER BY b.code, p.code"
+                )
+            ).mappings().all()
+            price_components = connection.execute(
+                text(
+                    "SELECT p.code AS plan_code, pc.component_code_snapshot, "
+                    "pc.list_amount_minor, pc.discount_amount_minor, pc.amount_minor "
+                    "FROM plan_price_components pc "
+                    "JOIN plans p ON p.id = pc.plan_id "
+                    "ORDER BY p.code, pc.position"
+                )
+            ).mappings().all()
+            limits = connection.execute(
+                text(
+                    "SELECT p.code AS plan_code, pl.metric, pl.limit_count, pl.period "
+                    "FROM plan_limits pl "
+                    "JOIN plans p ON p.id = pl.plan_id "
+                    "ORDER BY p.code, pl.metric"
+                )
+            ).mappings().all()
+            return {
+                "products": list(products),
+                "plans": [dict(row) for row in plans],
+                "bundle_products": [dict(row) for row in bundle_products],
+                "price_components": [dict(row) for row in price_components],
+                "limits": [dict(row) for row in limits],
+            }
+    finally:
+        engine.dispose()
+
+
 def expected_legal_documents() -> list[dict[str, str]]:
     repository_root = Path(__file__).resolve().parents[3]
     manifest_path = repository_root / "apps/web/src/generated/legal-manifest.json"
@@ -119,3 +170,160 @@ def test_clean_postgres_alembic_upgrade_and_downgrade() -> None:
     assert "payment_webhook_events" in tables
     assert alembic_version_count() == 1
     assert seeded_legal_documents() == expected_legal_documents()
+    assert seeded_catalog_summary() == {
+        "products": ["document-summary", "prompt-optimizer"],
+        "plans": [
+            {
+                "code": "all-access-pro-ru",
+                "scope_type": "all_access",
+                "price_amount_minor": 198000,
+                "currency": "RUB",
+                "billing_period": "month",
+                "trial_days": 7,
+            },
+            {
+                "code": "core-tools-bundle-pro-ru",
+                "scope_type": "bundle",
+                "price_amount_minor": 198000,
+                "currency": "RUB",
+                "billing_period": "month",
+                "trial_days": 7,
+            },
+            {
+                "code": "document-summary-pro",
+                "scope_type": "product",
+                "price_amount_minor": 99000,
+                "currency": "RUB",
+                "billing_period": "month",
+                "trial_days": 7,
+            },
+            {
+                "code": "prompt-optimizer-pro",
+                "scope_type": "product",
+                "price_amount_minor": 99000,
+                "currency": "RUB",
+                "billing_period": "month",
+                "trial_days": 7,
+            },
+        ],
+        "bundle_products": [
+            {
+                "bundle_code": "core-tools-bundle",
+                "product_code": "document-summary",
+            },
+            {
+                "bundle_code": "core-tools-bundle",
+                "product_code": "prompt-optimizer",
+            },
+        ],
+        "price_components": [
+            {
+                "plan_code": "all-access-pro-ru",
+                "component_code_snapshot": "document-summary-pro",
+                "list_amount_minor": 99000,
+                "discount_amount_minor": 0,
+                "amount_minor": 99000,
+            },
+            {
+                "plan_code": "all-access-pro-ru",
+                "component_code_snapshot": "prompt-optimizer-pro",
+                "list_amount_minor": 99000,
+                "discount_amount_minor": 0,
+                "amount_minor": 99000,
+            },
+            {
+                "plan_code": "core-tools-bundle-pro-ru",
+                "component_code_snapshot": "document-summary-pro",
+                "list_amount_minor": 99000,
+                "discount_amount_minor": 0,
+                "amount_minor": 99000,
+            },
+            {
+                "plan_code": "core-tools-bundle-pro-ru",
+                "component_code_snapshot": "prompt-optimizer-pro",
+                "list_amount_minor": 99000,
+                "discount_amount_minor": 0,
+                "amount_minor": 99000,
+            },
+        ],
+        "limits": [
+            {
+                "plan_code": "all-access-pro-ru",
+                "metric": "document_summary_runs",
+                "limit_count": 1000,
+                "period": "month",
+            },
+            {
+                "plan_code": "all-access-pro-ru",
+                "metric": "prompt_optimizations",
+                "limit_count": 1000,
+                "period": "month",
+            },
+            {
+                "plan_code": "core-tools-bundle-pro-ru",
+                "metric": "document_summary_runs",
+                "limit_count": 1000,
+                "period": "month",
+            },
+            {
+                "plan_code": "core-tools-bundle-pro-ru",
+                "metric": "prompt_optimizations",
+                "limit_count": 1000,
+                "period": "month",
+            },
+            {
+                "plan_code": "document-summary-pro",
+                "metric": "document_summary_runs",
+                "limit_count": 1000,
+                "period": "month",
+            },
+            {
+                "plan_code": "prompt-optimizer-pro",
+                "metric": "prompt_optimizations",
+                "limit_count": 1000,
+                "period": "month",
+            },
+        ],
+    }
+
+
+def test_active_plan_versions_cannot_overlap() -> None:
+    reset_public_schema()
+
+    with patch.dict(os.environ, {"DATABASE_URL": TEST_DATABASE_URL}):
+        command.upgrade(alembic_config(), "head")
+
+    engine = create_engine(TEST_DATABASE_URL, future=True)
+    try:
+        with engine.connect() as connection:
+            with connection.begin():
+                product_id = connection.execute(
+                    text("SELECT id FROM products WHERE code = 'document-summary'")
+                ).scalar_one()
+                connection.execute(
+                    text(
+                        "UPDATE plans SET valid_to = '2026-08-01T00:00:00Z' "
+                        "WHERE code = 'document-summary-pro'"
+                    )
+                )
+
+            with pytest.raises(IntegrityError):
+                with connection.begin():
+                    connection.execute(
+                        text(
+                            "INSERT INTO plans ("
+                            "id, tenant_id, region, code, name, scope_type, product_id, "
+                            "price_amount_minor, currency, billing_period, renewal_mode, "
+                            "trial_days, status, valid_from, valid_to"
+                            ") VALUES ("
+                            "'99999999-9999-4999-8999-999999999905', "
+                            "'anytoolai', 'ru', 'document-summary-pro', "
+                            "'Document Summary Pro overlap', 'product', :product_id, "
+                            "99000, 'RUB', 'month', 'manual', 7, 'active', "
+                            "'2026-07-15T00:00:00Z', '2026-08-15T00:00:00Z'"
+                            ")"
+                        ),
+                        {"product_id": product_id},
+                    )
+    finally:
+        engine.dispose()
