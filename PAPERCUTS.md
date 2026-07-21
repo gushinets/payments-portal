@@ -19,3 +19,10 @@ Running `npm run check:fast` directly → the npm script could not start because
 `.venv/bin/python`, the existing virtualenv re-exec behavior kept checks and
 pytest on the repository interpreter; the remaining friction is the npm entry
 point's dependency on a `python` executable being discoverable.
+
+## 2026-07-21 10:11Z - Codex - macOS
+
+Running repository commands → every zsh startup printed missing
+`/opt/homebrew/bin/brew` errors from `.zprofile`. Likely stale Homebrew init
+lines on a machine without that path; guard the init with an existence check or
+remove it to keep command evidence readable.

@@ -27,6 +27,7 @@ from app.models import (  # noqa: E402
     Order,
     OrderItem,
     Payment,
+    PaymentProviderAccount,
     PaymentWebhookEvent,
     Plan,
     ProductAccessState,
@@ -603,6 +604,126 @@ def test_checkout_rejects_catalog_plan_outside_validity_window() -> None:
             "product": "document-summary",
             "plan_code": "document-summary-pro",
             "auto_renew": False,
+        },
+    )
+
+    assert checkout_response.status_code == 400
+    assert checkout_response.json()["detail"] == "unknown_product_plan"
+    with SessionLocal() as db:
+        assert db.query(Order).count() == 0
+
+
+def test_checkout_uses_plan_currency_when_provider_default_differs() -> None:
+    with SessionLocal() as db:
+        plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
+        plan.currency = "USD"
+        db.add(
+            PaymentProviderAccount(
+                tenant_id="anytoolai",
+                region="ru",
+                provider="cloudpayments",
+                public_identifier=None,
+                default_currency="RUB",
+                enabled=True,
+                test_mode=True,
+                config={"widget_mode": "charge", "receipt_mode": "deferred"},
+            )
+        )
+        db.add(plan)
+        db.commit()
+
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "plan-currency-user@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = register_response.json()["token"]
+
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": False,
+        },
+    )
+
+    assert checkout_response.status_code == 200
+    assert checkout_response.json()["checkout"]["currency"] == "USD"
+    with SessionLocal() as db:
+        order = db.query(Order).one()
+        item = db.query(OrderItem).one()
+
+    assert order.currency == "USD"
+    assert item.currency == "USD"
+    assert item.pricing_snapshot["currency"] == "USD"
+
+
+def test_checkout_rejects_active_plan_for_inactive_product() -> None:
+    with SessionLocal() as db:
+        product = db.query(Product).filter(Product.code == "document-summary").one()
+        product.status = "inactive"
+        db.add(product)
+        db.commit()
+
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "inactive-product-user@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = register_response.json()["token"]
+
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": False,
+        },
+    )
+
+    assert checkout_response.status_code == 400
+    assert checkout_response.json()["detail"] == "unknown_product_plan"
+    with SessionLocal() as db:
+        assert db.query(Order).count() == 0
+
+
+def test_checkout_rejects_active_plan_for_inactive_bundle() -> None:
+    with SessionLocal() as db:
+        bundle = db.query(Bundle).filter(Bundle.code == "core-tools-bundle").one()
+        bundle.status = "inactive"
+        db.add(bundle)
+        db.commit()
+
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "inactive-bundle-user@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = register_response.json()["token"]
+
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "core-tools-bundle",
+            "plan_code": "core-tools-bundle-pro-ru",
+            "entrypoint_type": "bundle",
+            "auto_renew": True,
         },
     )
 

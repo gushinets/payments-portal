@@ -176,12 +176,12 @@ def get_sellable_plan(db: Session, *, user: User, entrypoint_code: str, plan_cod
     if plan.scope_type == "product":
         product = db.get(Product, plan.product_id) if plan.product_id else None
         product_code = product.code if product else None
-        if product_code != entrypoint_code:
+        if product_code != entrypoint_code or product.status != "active":
             raise HTTPException(status_code=400, detail="unknown_product_plan")
     elif plan.scope_type == "bundle":
         bundle = db.get(Bundle, plan.bundle_id) if plan.bundle_id else None
         bundle_code = bundle.code if bundle else None
-        if bundle_code != entrypoint_code:
+        if bundle_code != entrypoint_code or bundle.status != "active":
             raise HTTPException(status_code=400, detail="unknown_product_plan")
     elif plan.scope_type == "all_access":
         if entrypoint_code not in {"all-access", plan.code}:
@@ -198,9 +198,11 @@ def get_sellable_plan(db: Session, *, user: User, entrypoint_code: str, plan_cod
         "plan_code": plan.code,
         "plan_name": plan.name,
         "amount_minor": plan.price_amount_minor,
+        "currency": plan.currency,
         "trial_days": plan.trial_days,
         "pricing_snapshot": {
             "price_amount_minor": plan.price_amount_minor,
+            "currency": plan.currency,
             "billing_period": plan.billing_period,
             "scope_type": plan.scope_type,
         },
@@ -516,7 +518,7 @@ def create_checkout_intent(
     provider_account = get_or_create_provider_account(db, user)
     invoice_id = make_invoice_id(sellable_plan["entrypoint_value"])
     amount_minor = int(sellable_plan["amount_minor"])
-    currency = provider_account.default_currency
+    currency = str(sellable_plan["currency"])
     now = utc_now()
     expires_at = now + timedelta(minutes=30)
 
