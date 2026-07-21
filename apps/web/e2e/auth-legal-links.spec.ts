@@ -20,6 +20,13 @@ async function expectLegalLinksOpenInNewTab(
 }
 
 test("checkout registration asks to repeat password and opens legal docs in new tabs", async ({ page }) => {
+  let authRequests = 0;
+  page.on("request", (request) => {
+    if (/\/api\/auth\/(login|register)$/.test(new URL(request.url()).pathname)) {
+      authRequests += 1;
+    }
+  });
+
   await page.goto("/ru/auth-checkout?product=document-summary");
 
   const dialog = page.getByRole("dialog", { name: "Вход или регистрация" });
@@ -36,6 +43,7 @@ test("checkout registration asks to repeat password and opens legal docs in new 
   await dialog.getByRole("button", { name: /Создать аккаунт/ }).click();
 
   await expect(dialog.getByText("Пароли не совпадают.")).toBeVisible();
+  expect(authRequests).toBe(0);
 });
 
 test("header registration legal docs open in new tabs", async ({ page }) => {
@@ -47,4 +55,41 @@ test("header registration legal docs open in new tabs", async ({ page }) => {
 
   await expect(dialog.getByLabel("Повторите пароль")).toBeVisible();
   await expectLegalLinksOpenInNewTab(dialog);
+});
+
+test("checkout registration validation rejects invalid inputs before submitting", async ({ page }) => {
+  let authRequests = 0;
+  page.on("request", (request) => {
+    if (/\/api\/auth\/(login|register)$/.test(new URL(request.url()).pathname)) {
+      authRequests += 1;
+    }
+  });
+
+  await page.goto("/ru/auth-checkout?product=document-summary");
+
+  const dialog = page.getByRole("dialog", { name: "Вход или регистрация" });
+  await expect(dialog).toBeVisible();
+
+  await dialog.getByLabel("Email").fill("audit-user");
+  await dialog.getByRole("button", { name: /Создать аккаунт/ }).click();
+  await expect(dialog.getByText("Укажите корректный email.")).toBeVisible();
+  expect(authRequests).toBe(0);
+
+  await dialog.getByLabel("Email").fill("audit-user@example.com");
+  await dialog.getByLabel("Пароль", { exact: true }).fill("synthetic-password-123");
+  await dialog.getByLabel("Повторите пароль").fill("synthetic-password-123");
+  await dialog.getByRole("button", { name: /Создать аккаунт/ }).click();
+  await expect(
+    dialog.getByText(
+      "Для регистрации нужно отдельное согласие на обработку персональных данных."
+    )
+  ).toBeVisible();
+  expect(authRequests).toBe(0);
+
+  await dialog.getByLabel(/Я даю согласие/).check();
+  await dialog.getByRole("button", { name: /Создать аккаунт/ }).click();
+  await expect(
+    dialog.getByText("Для регистрации нужно принять условия оферты.")
+  ).toBeVisible();
+  expect(authRequests).toBe(0);
 });

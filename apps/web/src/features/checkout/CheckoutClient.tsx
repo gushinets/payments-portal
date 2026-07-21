@@ -10,6 +10,7 @@ import {
   ShieldCheck
 } from "lucide-react";
 import { ProductCards } from "@/features/catalog";
+import { authErrorMessage, submitAuth } from "@/shared/api/auth";
 import { AuthForm, AuthFormSubmitValues, AuthMode } from "@/shared/ui";
 import {
   findProduct,
@@ -41,12 +42,6 @@ type SessionResponse = {
   authenticated: boolean;
   user: SessionUser;
   product_state?: ProductState | null;
-};
-
-type AuthResponse = {
-  status: string;
-  token: string;
-  user: SessionUser;
 };
 
 type CheckoutIntentResponse = {
@@ -321,19 +316,7 @@ export function CheckoutClient() {
 
     setLoading(true);
     try {
-      const payload =
-        values.mode === "register"
-          ? await postJson<AuthResponse>("/api/auth/register", {
-              email: values.email,
-              password: values.password,
-              personal_consent: values.personalConsent,
-              offer_consent: values.offerConsent
-            })
-          : await postJson<AuthResponse>("/api/auth/login", {
-              email: values.email,
-              password: values.password
-            });
-
+      const payload = await submitAuth(values);
       window.localStorage.setItem(sessionStorageKey, payload.token);
       window.dispatchEvent(new Event(sessionChangedEvent));
       setSessionToken(payload.token);
@@ -346,19 +329,7 @@ export function CheckoutClient() {
           : "Вход выполнен. Можно продолжить оформление."
       );
     } catch (requestError) {
-      const message =
-        requestError instanceof Error ? requestError.message : "auth_error";
-      if (message.includes("409")) {
-        showError("Аккаунт с таким email уже существует. Попробуйте войти.");
-      } else if (message.includes("401")) {
-        showError("Неверный email или пароль.");
-      } else if (message.includes("missing_personal_consent")) {
-        showError("Нужно дать согласие на обработку персональных данных.");
-      } else if (message.includes("missing_offer_consent")) {
-        showError("Нужно принять условия оферты.");
-      } else {
-        showError("Не удалось выполнить авторизацию. Попробуйте ещё раз.");
-      }
+      showError(authErrorMessage(requestError));
     } finally {
       setLoading(false);
     }

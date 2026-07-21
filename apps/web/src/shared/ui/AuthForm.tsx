@@ -118,7 +118,7 @@ export function AuthForm({
       </span>
       <h2>{title}</h2>
       {prompt}
-      <div ref={feedbackRef}>
+      <div ref={feedbackRef} aria-live="polite">
         {notice ? <div className="notice">{notice}</div> : null}
         {error ? <div className="notice error">{error}</div> : null}
       </div>

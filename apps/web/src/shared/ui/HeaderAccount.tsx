@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { LogIn, UserRound } from "lucide-react";
+import { authErrorMessage, resolveApiBase, submitAuth } from "@/shared/api/auth";
 import { AuthForm, AuthFormSubmitValues, AuthMode } from "./AuthForm";
 
 type SessionResponse = {
@@ -15,65 +16,10 @@ type SessionResponse = {
   };
 };
 
-type AuthResponse = {
-  status: string;
-  token: string;
-  user: {
-    tenant_id: string;
-    region: string;
-    user_id: string;
-    email: string;
-  };
-};
-
-const configuredApiBase =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 const telegramLoginUrl = process.env.NEXT_PUBLIC_TELEGRAM_LOGIN_URL ?? "";
 const sessionStorageKey = "anytoolai_session_token_v1";
 const sessionChangedEvent = "anytoolai_session_changed";
 const requestTimeoutMs = 5000;
-
-function resolveApiBase(): string {
-  if (typeof window === "undefined") {
-    return configuredApiBase;
-  }
-
-  try {
-    const url = new URL(configuredApiBase);
-    const isLocalApiHost =
-      url.hostname === "localhost" || url.hostname === "127.0.0.1";
-    const isLocalBrowserHost =
-      window.location.hostname === "localhost" ||
-      window.location.hostname === "127.0.0.1";
-
-    if (isLocalApiHost && !isLocalBrowserHost) {
-      url.hostname = window.location.hostname;
-    }
-
-    return url.toString().replace(/\/$/, "");
-  } catch {
-    return configuredApiBase.replace(/\/$/, "");
-  }
-}
-
-async function postJson<T>(path: string, body: unknown): Promise<T> {
-  const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), requestTimeoutMs);
-  const response = await fetch(`${resolveApiBase()}${path}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(body),
-    signal: controller.signal
-  }).finally(() => window.clearTimeout(timeoutId));
-
-  if (!response.ok) {
-    throw new Error(`${response.status}:${await response.text()}`);
-  }
-
-  return response.json() as Promise<T>;
-}
 
 export function HeaderAccount() {
   const [email, setEmail] = useState("");
@@ -154,33 +100,13 @@ export function HeaderAccount() {
 
     setLoading(true);
     try {
-      const payload =
-        values.mode === "register"
-          ? await postJson<AuthResponse>("/api/auth/register", {
-              email: values.email,
-              password: values.password,
-              personal_consent: values.personalConsent,
-              offer_consent: values.offerConsent
-            })
-          : await postJson<AuthResponse>("/api/auth/login", {
-              email: values.email,
-              password: values.password
-            });
-
+      const payload = await submitAuth(values);
       window.localStorage.setItem(sessionStorageKey, payload.token);
       window.dispatchEvent(new Event(sessionChangedEvent));
       setEmail(payload.user.email);
       setModalOpen(false);
     } catch (requestError) {
-      const message =
-        requestError instanceof Error ? requestError.message : "auth_error";
-      if (message.includes("409")) {
-        setError("Аккаунт с таким email уже существует. Попробуйте войти.");
-      } else if (message.includes("401")) {
-        setError("Неверный email или пароль.");
-      } else {
-        setError("Не удалось выполнить авторизацию. Попробуйте ещё раз.");
-      }
+      setError(authErrorMessage(requestError));
     } finally {
       setLoading(false);
     }
