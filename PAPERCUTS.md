@@ -20,6 +20,15 @@ Running `npm run check:fast` directly → the npm script could not start because
 pytest on the repository interpreter; the remaining friction is the npm entry
 point's dependency on a `python` executable being discoverable.
 
+## 2026-07-20 17:00Z - Codex (GPT-5) - macOS
+
+Running PostgreSQL Alembic integration tests from the local `.env` database key
+→ the sandboxed attempt was blocked and the escalated attempt found no local
+database listener. `repo:doctor` reported busy preferred ports but did not give
+a one-command path to a fresh test database; a targeted test-DB helper or clearer
+doctor hint would make migration evidence less dependent on ambient harness
+state.
+
 ## 2026-07-21 10:11Z - Codex - macOS
 
 Running repository commands → every zsh startup printed missing
