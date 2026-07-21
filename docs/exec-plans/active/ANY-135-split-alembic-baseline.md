@@ -44,6 +44,11 @@ indexes, constraints, foreign keys, and deterministic legal/catalog seed data.
 
 ## Completion Evidence
 
+- Rebased `ANY-135` onto `origin/main` after `origin/main` advanced to
+  `ANY-77 - Implement Payment Portal catalog, plans, bundles, and limits (#13)`.
+  Duplicate local ANY-77 commits were skipped or dropped as already upstream;
+  final branch diff contains only ANY-135 migration split plus the checkout
+  currency guard.
 - `.venv/bin/python -m py_compile scripts/repo.py apps/api/tests/test_alembic_postgres.py apps/api/alembic/versions/*.py`:
   passed.
 - `.venv/bin/python -m alembic -c apps/api/alembic.ini heads`: single head
@@ -58,6 +63,16 @@ indexes, constraints, foreign keys, and deterministic legal/catalog seed data.
 - `PATH=.venv/bin:$PATH npm run check`: passed; PostgreSQL integration skipped
   because `TEST_POSTGRES_DATABASE_URL` was not set, and browser suite skipped
   because `RUN_E2E=true` was not set.
+- Post-rebase focused checkout/currency tests:
+  `.venv/bin/python -m pytest -p no:cacheprovider apps/api/tests/test_api.py -k 'checkout or currency'`
+  passed with 10 passed.
+- Post-rebase API suite:
+  `.venv/bin/python -m pytest -p no:cacheprovider --ignore apps/api/tests/test_alembic_postgres.py apps/api/tests`
+  passed with 42 passed, 2 skipped.
+- Post-rebase `PATH=.venv/bin:$PATH npm run check:fast`: passed.
+- Post-rebase `PATH=.venv/bin:$PATH npm run check`: passed; PostgreSQL
+  integration skipped because `TEST_POSTGRES_DATABASE_URL` was not set, and
+  browser suite skipped because `RUN_E2E=true` was not set.
 - `.venv/bin/python -m pytest -p no:cacheprovider apps/api/tests/test_alembic_postgres.py`:
   2 skipped because `TEST_POSTGRES_DATABASE_URL` was not set.
 - `git diff --check`: passed.
