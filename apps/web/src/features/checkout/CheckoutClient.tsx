@@ -10,6 +10,7 @@ import {
   ShieldCheck
 } from "lucide-react";
 import { ProductCards } from "@/features/catalog";
+import { AuthForm, AuthFormSubmitValues, AuthMode } from "@/shared/ui";
 import {
   findProduct,
   formatRubles,
@@ -186,11 +187,6 @@ export function CheckoutClient() {
   const [mode, setMode] = useState<"login" | "register">(
     initialAuthMode === "login" ? "login" : "register"
   );
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [passwordConfirm, setPasswordConfirm] = useState("");
-  const [personalConsent, setPersonalConsent] = useState(false);
-  const [offerConsent, setOfferConsent] = useState(false);
   const [autoRenew, setAutoRenew] = useState(false);
   const [recurrentConsent, setRecurrentConsent] = useState(false);
   const [sessionToken, setSessionToken] = useState("");
@@ -319,52 +315,23 @@ export function CheckoutClient() {
     return null;
   }
 
-  async function authenticate() {
+  async function authenticate(values: AuthFormSubmitValues) {
     setError("");
     setNotice("");
-
-    if (!email.includes("@")) {
-      showError("Укажите корректный email.");
-      return;
-    }
-
-    if (password.length < 8) {
-      showError("Пароль должен содержать не менее 8 символов.");
-      return;
-    }
-
-    if (mode === "register") {
-      if (password !== passwordConfirm) {
-        showError("Пароли не совпадают.");
-        return;
-      }
-
-      if (!personalConsent) {
-        showError(
-          "Для регистрации нужно отдельное согласие на обработку персональных данных."
-        );
-        return;
-      }
-
-      if (!offerConsent) {
-        showError("Для регистрации нужно принять условия оферты.");
-        return;
-      }
-    }
 
     setLoading(true);
     try {
       const payload =
-        mode === "register"
+        values.mode === "register"
           ? await postJson<AuthResponse>("/api/auth/register", {
-              email,
-              password,
-              personal_consent: personalConsent,
-              offer_consent: offerConsent
+              email: values.email,
+              password: values.password,
+              personal_consent: values.personalConsent,
+              offer_consent: values.offerConsent
             })
           : await postJson<AuthResponse>("/api/auth/login", {
-              email,
-              password
+              email: values.email,
+              password: values.password
             });
 
       window.localStorage.setItem(sessionStorageKey, payload.token);
@@ -374,12 +341,10 @@ export function CheckoutClient() {
       setMissingDocuments([]);
       setDocumentConsentById({});
       showNotice(
-        mode === "register"
+        values.mode === "register"
           ? "Аккаунт создан. Теперь можно перейти к оплате."
           : "Вход выполнен. Можно продолжить оформление."
       );
-      setPassword("");
-      setPasswordConfirm("");
     } catch (requestError) {
       const message =
         requestError instanceof Error ? requestError.message : "auth_error";
@@ -588,153 +553,35 @@ export function CheckoutClient() {
   }
 
   const authForm = (
-    <div className="form-grid">
-      <span className="badge badge-running">
-        <ShieldCheck size={12} aria-hidden="true" />
-        Единый аккаунт
-      </span>
-      <h2>1. Вход или регистрация</h2>
-      {needsAuthPrompt && !sessionLoading ? (
+    <AuthForm
+      title="1. Вход или регистрация"
+      badgeIcon={<ShieldCheck size={12} aria-hidden="true" />}
+      initialMode={mode}
+      modeOrder={["register", "login"]}
+      prompt={
+        needsAuthPrompt && !sessionLoading ? (
         <div className="notice">
           Чтобы продолжить оформление, войдите в аккаунт или зарегистрируйтесь.
         </div>
-      ) : null}
-      <div ref={feedbackRef}>
-        {notice ? <div className="notice">{notice}</div> : null}
-        {error ? <div className="notice error">{error}</div> : null}
-      </div>
-      <div className="auth-mode-row">
-        <button
-          className={mode === "register" ? "btn-primary" : "btn-secondary"}
-          type="button"
-          onClick={() => setMode("register")}
-        >
-          Регистрация
-        </button>
-        <button
-          className={mode === "login" ? "btn-primary" : "btn-secondary"}
-          type="button"
-          onClick={() => setMode("login")}
-        >
-          Вход
-        </button>
-      </div>
-
-      <label className="field-label">
-        Email
-        <input
-          className="input"
-          type="email"
-          autoComplete="email"
-          placeholder="user@example.com"
-          value={email}
-          onChange={(event) => setEmail(event.target.value)}
-        />
-      </label>
-
-      <label className="field-label">
-        Пароль
-        <input
-          className="input"
-          type="password"
-          autoComplete={mode === "register" ? "new-password" : "current-password"}
-          placeholder="Не менее 8 символов"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-        />
-      </label>
-
-      {mode === "register" ? (
-        <>
-          <label className="field-label">
-            Повторите пароль
-            <input
-              className="input"
-              type="password"
-              autoComplete="new-password"
-              placeholder="Введите пароль ещё раз"
-              value={passwordConfirm}
-              onChange={(event) => setPasswordConfirm(event.target.value)}
-            />
-          </label>
-
-          <label className="checkbox-label">
-            <input
-              type="checkbox"
-              checked={personalConsent}
-              onChange={(event) => setPersonalConsent(event.target.checked)}
-            />
-            <span>
-              Я даю согласие на обработку персональных данных в соответствии с{" "}
-              <Link
-                className="inline-link"
-                href="/ru/consent-personal-data"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Согласием на обработку персональных данных
-              </Link>
-              {" "}и{" "}
-              <Link
-                className="inline-link"
-                href="/ru/privacy"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Политикой в отношении обработки персональных данных
-              </Link>
-              .
-            </span>
-          </label>
-
-          <label className="checkbox-label">
-            <input
-              type="checkbox"
-              checked={offerConsent}
-              onChange={(event) => setOfferConsent(event.target.checked)}
-            />
-            <span>
-              Я принимаю условия{" "}
-              <Link
-                className="inline-link"
-                href="/ru/offer"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Публичной оферты
-              </Link>{" "}
-              и ознакомлен(а) с{" "}
-              <Link
-                className="inline-link"
-                href="/ru/cancellation"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Условиями отмены подписки и возврата денежных средств
-              </Link>
-              .
-            </span>
-          </label>
-        </>
-      ) : null}
-
-      <button
-        className="btn-primary"
-        type="button"
-        onClick={authenticate}
-        disabled={loading}
-      >
-        {mode === "register" ? "Создать аккаунт" : "Войти"}
-        <ArrowRight size={15} aria-hidden="true" />
-      </button>
-
-      {telegramLoginUrl ? (
-        <a className="btn-secondary telegram-button" href={telegramLoginUrl}>
-          <MessageCircleMore size={16} aria-hidden="true" />
-          Войти через Telegram
-        </a>
-      ) : null}
-    </div>
+        ) : null
+      }
+      notice={notice}
+      error={error}
+      loading={loading}
+      personalConsentError="Для регистрации нужно отдельное согласие на обработку персональных данных."
+      offerConsentError="Для регистрации нужно принять условия оферты."
+      includeCancellationLink
+      telegramLoginUrl={telegramLoginUrl}
+      telegramIcon={<MessageCircleMore size={16} aria-hidden="true" />}
+      feedbackRef={feedbackRef}
+      onModeChange={(nextMode: AuthMode) => setMode(nextMode)}
+      onBeforeSubmit={() => {
+        setError("");
+        setNotice("");
+      }}
+      onValidationError={showError}
+      onSubmit={authenticate}
+    />
   );
 
   return (
