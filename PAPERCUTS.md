@@ -42,3 +42,11 @@ Running targeted Playwright against Next dev → using `127.0.0.1` for a server
 advertised as `localhost` blocked Next dev resources and prevented hydration.
 Use `PLAYWRIGHT_BASE_URL=http://localhost:<port>` or configure
 `allowedDevOrigins` when intentionally testing through `127.0.0.1`.
+
+## 2026-07-21 12:52Z - Codex (GPT-5) - macOS
+
+Running `python3 scripts/repo.py check --fast` after the npm `python` shim
+failure → docs passed, then generation stopped on `ModuleNotFoundError: No
+module named 'sqlalchemy'` while importing the API data model. A doctor hint or
+bootstrap step for API Python dependencies would make the fallback check path
+clearer.

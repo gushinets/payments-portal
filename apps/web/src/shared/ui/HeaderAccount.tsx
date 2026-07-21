@@ -81,6 +81,7 @@ export function HeaderAccount() {
   const [mode, setMode] = useState<"login" | "register">("login");
   const [formEmail, setFormEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
   const [personalConsent, setPersonalConsent] = useState(false);
   const [offerConsent, setOfferConsent] = useState(false);
   const [notice, setNotice] = useState("");
@@ -165,6 +166,11 @@ export function HeaderAccount() {
       return;
     }
 
+    if (mode === "register" && password !== passwordConfirm) {
+      setError("Пароли не совпадают.");
+      return;
+    }
+
     if (mode === "register" && !personalConsent) {
       setError("Нужно дать согласие на обработку персональных данных.");
       return;
@@ -194,6 +200,7 @@ export function HeaderAccount() {
       window.dispatchEvent(new Event(sessionChangedEvent));
       setEmail(payload.user.email);
       setPassword("");
+      setPasswordConfirm("");
       setModalOpen(false);
     } catch (requestError) {
       const message =
@@ -304,6 +311,20 @@ export function HeaderAccount() {
 
               {mode === "register" ? (
                 <>
+                  <label className="field-label">
+                    Повторите пароль
+                    <input
+                      className="input"
+                      type="password"
+                      autoComplete="new-password"
+                      placeholder="Введите пароль ещё раз"
+                      value={passwordConfirm}
+                      onChange={(event) =>
+                        setPasswordConfirm(event.target.value)
+                      }
+                    />
+                  </label>
+
                   <label className="checkbox-label">
                     <input
                       type="checkbox"
@@ -318,11 +339,18 @@ export function HeaderAccount() {
                       <Link
                         className="inline-link"
                         href="/ru/consent-personal-data"
+                        target="_blank"
+                        rel="noopener noreferrer"
                       >
                         Согласием на обработку персональных данных
                       </Link>{" "}
                       и{" "}
-                      <Link className="inline-link" href="/ru/privacy">
+                      <Link
+                        className="inline-link"
+                        href="/ru/privacy"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
                         Политикой в отношении обработки персональных данных
                       </Link>
                       .
@@ -337,7 +365,12 @@ export function HeaderAccount() {
                     />
                     <span>
                       Я принимаю условия{" "}
-                      <Link className="inline-link" href="/ru/offer">
+                      <Link
+                        className="inline-link"
+                        href="/ru/offer"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
                         Публичной оферты
                       </Link>
                       .

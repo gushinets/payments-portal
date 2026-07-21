@@ -188,6 +188,7 @@ export function CheckoutClient() {
   );
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
   const [personalConsent, setPersonalConsent] = useState(false);
   const [offerConsent, setOfferConsent] = useState(false);
   const [autoRenew, setAutoRenew] = useState(false);
@@ -333,6 +334,11 @@ export function CheckoutClient() {
     }
 
     if (mode === "register") {
+      if (password !== passwordConfirm) {
+        showError("Пароли не совпадают.");
+        return;
+      }
+
       if (!personalConsent) {
         showError(
           "Для регистрации нужно отдельное согласие на обработку персональных данных."
@@ -373,6 +379,7 @@ export function CheckoutClient() {
           : "Вход выполнен. Можно продолжить оформление."
       );
       setPassword("");
+      setPasswordConfirm("");
     } catch (requestError) {
       const message =
         requestError instanceof Error ? requestError.message : "auth_error";
@@ -639,6 +646,18 @@ export function CheckoutClient() {
 
       {mode === "register" ? (
         <>
+          <label className="field-label">
+            Повторите пароль
+            <input
+              className="input"
+              type="password"
+              autoComplete="new-password"
+              placeholder="Введите пароль ещё раз"
+              value={passwordConfirm}
+              onChange={(event) => setPasswordConfirm(event.target.value)}
+            />
+          </label>
+
           <label className="checkbox-label">
             <input
               type="checkbox"
@@ -647,11 +666,21 @@ export function CheckoutClient() {
             />
             <span>
               Я даю согласие на обработку персональных данных в соответствии с{" "}
-              <Link className="inline-link" href="/ru/consent-personal-data">
+              <Link
+                className="inline-link"
+                href="/ru/consent-personal-data"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
                 Согласием на обработку персональных данных
               </Link>
               {" "}и{" "}
-              <Link className="inline-link" href="/ru/privacy">
+              <Link
+                className="inline-link"
+                href="/ru/privacy"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
                 Политикой в отношении обработки персональных данных
               </Link>
               .
@@ -666,11 +695,21 @@ export function CheckoutClient() {
             />
             <span>
               Я принимаю условия{" "}
-              <Link className="inline-link" href="/ru/offer">
+              <Link
+                className="inline-link"
+                href="/ru/offer"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
                 Публичной оферты
               </Link>{" "}
               и ознакомлен(а) с{" "}
-              <Link className="inline-link" href="/ru/cancellation">
+              <Link
+                className="inline-link"
+                href="/ru/cancellation"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
                 Условиями отмены подписки и возврата денежных средств
               </Link>
               .
@@ -819,7 +858,12 @@ export function CheckoutClient() {
                             }
                           />
                           <div>
-                            <Link className="inline-link" href={document.url_path}>
+                            <Link
+                              className="inline-link"
+                              href={document.url_path}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
                               {document.title}
                             </Link>
                             <p>{document.acceptance_text}</p>
