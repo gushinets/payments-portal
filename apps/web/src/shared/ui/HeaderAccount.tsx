@@ -2,7 +2,14 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ArrowRight, LogIn, UserRound } from "lucide-react";
+import { LogIn, UserRound } from "lucide-react";
+import {
+  authErrorMessage,
+  requestTimeoutMs,
+  resolveApiBase,
+  submitAuth
+} from "@/shared/api/auth";
+import { AuthForm, AuthFormSubmitValues, AuthMode } from "./AuthForm";
 
 type SessionResponse = {
   authenticated: boolean;
@@ -14,75 +21,15 @@ type SessionResponse = {
   };
 };
 
-type AuthResponse = {
-  status: string;
-  token: string;
-  user: {
-    tenant_id: string;
-    region: string;
-    user_id: string;
-    email: string;
-  };
-};
-
-const configuredApiBase =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 const telegramLoginUrl = process.env.NEXT_PUBLIC_TELEGRAM_LOGIN_URL ?? "";
 const sessionStorageKey = "anytoolai_session_token_v1";
 const sessionChangedEvent = "anytoolai_session_changed";
-const requestTimeoutMs = 5000;
-
-function resolveApiBase(): string {
-  if (typeof window === "undefined") {
-    return configuredApiBase;
-  }
-
-  try {
-    const url = new URL(configuredApiBase);
-    const isLocalApiHost =
-      url.hostname === "localhost" || url.hostname === "127.0.0.1";
-    const isLocalBrowserHost =
-      window.location.hostname === "localhost" ||
-      window.location.hostname === "127.0.0.1";
-
-    if (isLocalApiHost && !isLocalBrowserHost) {
-      url.hostname = window.location.hostname;
-    }
-
-    return url.toString().replace(/\/$/, "");
-  } catch {
-    return configuredApiBase.replace(/\/$/, "");
-  }
-}
-
-async function postJson<T>(path: string, body: unknown): Promise<T> {
-  const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), requestTimeoutMs);
-  const response = await fetch(`${resolveApiBase()}${path}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(body),
-    signal: controller.signal
-  }).finally(() => window.clearTimeout(timeoutId));
-
-  if (!response.ok) {
-    throw new Error(`${response.status}:${await response.text()}`);
-  }
-
-  return response.json() as Promise<T>;
-}
 
 export function HeaderAccount() {
   const [email, setEmail] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
-  const [mode, setMode] = useState<"login" | "register">("login");
-  const [formEmail, setFormEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [personalConsent, setPersonalConsent] = useState(false);
-  const [offerConsent, setOfferConsent] = useState(false);
+  const [initialAuthMode, setInitialAuthMode] = useState<AuthMode>("login");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -144,67 +91,26 @@ export function HeaderAccount() {
     };
   }, []);
 
-  function openAuthModal(nextMode: "login" | "register" = "login") {
-    setMode(nextMode);
+  function openAuthModal(nextMode: AuthMode = "login") {
+    setInitialAuthMode(nextMode);
     setNotice("");
     setError("");
     setModalOpen(true);
   }
 
-  async function authenticate() {
+  async function authenticate(values: AuthFormSubmitValues) {
     setError("");
     setNotice("");
 
-    if (!formEmail.includes("@")) {
-      setError("Укажите корректный email.");
-      return;
-    }
-
-    if (password.length < 8) {
-      setError("Пароль должен содержать не менее 8 символов.");
-      return;
-    }
-
-    if (mode === "register" && !personalConsent) {
-      setError("Нужно дать согласие на обработку персональных данных.");
-      return;
-    }
-
-    if (mode === "register" && !offerConsent) {
-      setError("Нужно принять условия оферты.");
-      return;
-    }
-
     setLoading(true);
     try {
-      const payload =
-        mode === "register"
-          ? await postJson<AuthResponse>("/api/auth/register", {
-              email: formEmail,
-              password,
-              personal_consent: personalConsent,
-              offer_consent: offerConsent
-            })
-          : await postJson<AuthResponse>("/api/auth/login", {
-              email: formEmail,
-              password
-            });
-
+      const payload = await submitAuth(values);
       window.localStorage.setItem(sessionStorageKey, payload.token);
       window.dispatchEvent(new Event(sessionChangedEvent));
       setEmail(payload.user.email);
-      setPassword("");
       setModalOpen(false);
     } catch (requestError) {
-      const message =
-        requestError instanceof Error ? requestError.message : "auth_error";
-      if (message.includes("409")) {
-        setError("Аккаунт с таким email уже существует. Попробуйте войти.");
-      } else if (message.includes("401")) {
-        setError("Неверный email или пароль.");
-      } else {
-        setError("Не удалось выполнить авторизацию. Попробуйте ещё раз.");
-      }
+      setError(authErrorMessage(requestError));
     } finally {
       setLoading(false);
     }
@@ -248,120 +154,28 @@ export function HeaderAccount() {
             aria-modal="true"
             aria-label="Вход в аккаунт"
           >
-            <div className="form-grid">
-              <span className="badge badge-running">
-                <UserRound size={12} aria-hidden="true" />
-                Единый аккаунт
-              </span>
-              <h2>Вход или регистрация</h2>
-              {notice ? <div className="notice">{notice}</div> : null}
-              {error ? <div className="notice error">{error}</div> : null}
-
-              <div className="auth-mode-row">
-                <button
-                  className={mode === "login" ? "btn-primary" : "btn-secondary"}
-                  type="button"
-                  onClick={() => openAuthModal("login")}
-                >
-                  Вход
-                </button>
-                <button
-                  className={
-                    mode === "register" ? "btn-primary" : "btn-secondary"
-                  }
-                  type="button"
-                  onClick={() => openAuthModal("register")}
-                >
-                  Регистрация
-                </button>
-              </div>
-
-              <label className="field-label">
-                Email
-                <input
-                  className="input"
-                  type="email"
-                  autoComplete="email"
-                  placeholder="user@example.com"
-                  value={formEmail}
-                  onChange={(event) => setFormEmail(event.target.value)}
-                />
-              </label>
-
-              <label className="field-label">
-                Пароль
-                <input
-                  className="input"
-                  type="password"
-                  autoComplete={
-                    mode === "register" ? "new-password" : "current-password"
-                  }
-                  placeholder="Не менее 8 символов"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                />
-              </label>
-
-              {mode === "register" ? (
-                <>
-                  <label className="checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={personalConsent}
-                      onChange={(event) =>
-                        setPersonalConsent(event.target.checked)
-                      }
-                    />
-                    <span>
-                      Я даю согласие на обработку персональных данных в
-                      соответствии с{" "}
-                      <Link
-                        className="inline-link"
-                        href="/ru/consent-personal-data"
-                      >
-                        Согласием на обработку персональных данных
-                      </Link>{" "}
-                      и{" "}
-                      <Link className="inline-link" href="/ru/privacy">
-                        Политикой в отношении обработки персональных данных
-                      </Link>
-                      .
-                    </span>
-                  </label>
-
-                  <label className="checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={offerConsent}
-                      onChange={(event) => setOfferConsent(event.target.checked)}
-                    />
-                    <span>
-                      Я принимаю условия{" "}
-                      <Link className="inline-link" href="/ru/offer">
-                        Публичной оферты
-                      </Link>
-                      .
-                    </span>
-                  </label>
-                </>
-              ) : null}
-
-              <button
-                className="btn-primary"
-                type="button"
-                onClick={authenticate}
-                disabled={loading}
-              >
-                {mode === "register" ? "Создать аккаунт" : "Войти"}
-                <ArrowRight size={15} aria-hidden="true" />
-              </button>
-
-              {telegramLoginUrl ? (
-                <a className="btn-secondary telegram-button" href={telegramLoginUrl}>
-                  Войти через Telegram
-                </a>
-              ) : null}
-            </div>
+            <AuthForm
+              title="Вход или регистрация"
+              badgeIcon={<UserRound size={12} aria-hidden="true" />}
+              initialMode={initialAuthMode}
+              modeOrder={["login", "register"]}
+              notice={notice}
+              error={error}
+              loading={loading}
+              personalConsentError="Нужно дать согласие на обработку персональных данных."
+              offerConsentError="Нужно принять условия оферты."
+              telegramLoginUrl={telegramLoginUrl}
+              onModeChange={() => {
+                setNotice("");
+                setError("");
+              }}
+              onBeforeSubmit={() => {
+                setError("");
+                setNotice("");
+              }}
+              onValidationError={setError}
+              onSubmit={authenticate}
+            />
           </div>
         </>
       ) : null}

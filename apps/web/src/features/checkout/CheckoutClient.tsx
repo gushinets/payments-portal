@@ -11,6 +11,14 @@ import {
 } from "lucide-react";
 import { ProductCards } from "@/features/catalog";
 import {
+  ApiError,
+  authErrorMessage,
+  getJson,
+  postJson,
+  submitAuth
+} from "@/shared/api/auth";
+import { AuthForm, AuthFormSubmitValues, AuthMode } from "@/shared/ui";
+import {
   findProduct,
   formatRubles,
   Product,
@@ -42,12 +50,6 @@ type SessionResponse = {
   product_state?: ProductState | null;
 };
 
-type AuthResponse = {
-  status: string;
-  token: string;
-  user: SessionUser;
-};
-
 type CheckoutIntentResponse = {
   product_state: ProductState;
   checkout: {
@@ -67,26 +69,6 @@ type RequiredDocument = {
   acceptance_text_hash: string;
 };
 
-type ApiErrorDetail =
-  | string
-  | {
-      code?: string;
-      documents?: RequiredDocument[];
-    };
-
-class ApiError extends Error {
-  status: number;
-  detail: ApiErrorDetail;
-
-  constructor(status: number, detail: ApiErrorDetail, rawBody: string) {
-    super(`${status}:${rawBody}`);
-    this.status = status;
-    this.detail = detail;
-  }
-}
-
-const configuredApiBase =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 const cloudPaymentsEnabled =
   process.env.NEXT_PUBLIC_CLOUDPAYMENTS_ENABLED === "true";
 const cloudPaymentsPublicId =
@@ -94,85 +76,6 @@ const cloudPaymentsPublicId =
 const telegramLoginUrl = process.env.NEXT_PUBLIC_TELEGRAM_LOGIN_URL ?? "";
 const sessionStorageKey = "anytoolai_session_token_v1";
 const sessionChangedEvent = "anytoolai_session_changed";
-const requestTimeoutMs = 5000;
-
-async function makeApiError(response: Response): Promise<ApiError> {
-  const rawBody = await response.text();
-  let detail: ApiErrorDetail = rawBody;
-
-  try {
-    const payload = JSON.parse(rawBody) as { detail?: ApiErrorDetail };
-    detail = payload.detail ?? rawBody;
-  } catch {
-    detail = rawBody;
-  }
-
-  return new ApiError(response.status, detail, rawBody);
-}
-
-function resolveApiBase(): string {
-  if (typeof window === "undefined") {
-    return configuredApiBase;
-  }
-
-  try {
-    const url = new URL(configuredApiBase);
-    const isLocalApiHost =
-      url.hostname === "localhost" || url.hostname === "127.0.0.1";
-    const isLocalBrowserHost =
-      window.location.hostname === "localhost" ||
-      window.location.hostname === "127.0.0.1";
-
-    if (isLocalApiHost && !isLocalBrowserHost) {
-      url.hostname = window.location.hostname;
-    }
-
-    return url.toString().replace(/\/$/, "");
-  } catch {
-    return configuredApiBase.replace(/\/$/, "");
-  }
-}
-
-async function postJson<T>(
-  path: string,
-  body: unknown,
-  token?: string
-): Promise<T> {
-  const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), requestTimeoutMs);
-  const response = await fetch(`${resolveApiBase()}${path}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {})
-    },
-    body: JSON.stringify(body),
-    signal: controller.signal
-  }).finally(() => window.clearTimeout(timeoutId));
-
-  if (!response.ok) {
-    throw await makeApiError(response);
-  }
-
-  return response.json() as Promise<T>;
-}
-
-async function getJson<T>(path: string, token: string): Promise<T> {
-  const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), requestTimeoutMs);
-  const response = await fetch(`${resolveApiBase()}${path}`, {
-    headers: {
-      Authorization: `Bearer ${token}`
-    },
-    signal: controller.signal
-  }).finally(() => window.clearTimeout(timeoutId));
-
-  if (!response.ok) {
-    throw await makeApiError(response);
-  }
-
-  return response.json() as Promise<T>;
-}
 
 export function CheckoutClient() {
   const searchParams = useSearchParams();
@@ -186,10 +89,6 @@ export function CheckoutClient() {
   const [mode, setMode] = useState<"login" | "register">(
     initialAuthMode === "login" ? "login" : "register"
   );
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [personalConsent, setPersonalConsent] = useState(false);
-  const [offerConsent, setOfferConsent] = useState(false);
   const [autoRenew, setAutoRenew] = useState(false);
   const [recurrentConsent, setRecurrentConsent] = useState(false);
   const [sessionToken, setSessionToken] = useState("");
@@ -307,60 +206,28 @@ export function CheckoutClient() {
       return null;
     }
 
+    const detail = errorValue.detail;
     if (
-      typeof errorValue.detail === "object" &&
-      errorValue.detail.code === "missing_required_documents" &&
-      Array.isArray(errorValue.detail.documents)
+      typeof detail === "object" &&
+      detail !== null &&
+      "code" in detail &&
+      "documents" in detail &&
+      detail.code === "missing_required_documents" &&
+      Array.isArray(detail.documents)
     ) {
-      return errorValue.detail.documents;
+      return detail.documents as RequiredDocument[];
     }
 
     return null;
   }
 
-  async function authenticate() {
+  async function authenticate(values: AuthFormSubmitValues) {
     setError("");
     setNotice("");
 
-    if (!email.includes("@")) {
-      showError("Укажите корректный email.");
-      return;
-    }
-
-    if (password.length < 8) {
-      showError("Пароль должен содержать не менее 8 символов.");
-      return;
-    }
-
-    if (mode === "register") {
-      if (!personalConsent) {
-        showError(
-          "Для регистрации нужно отдельное согласие на обработку персональных данных."
-        );
-        return;
-      }
-
-      if (!offerConsent) {
-        showError("Для регистрации нужно принять условия оферты.");
-        return;
-      }
-    }
-
     setLoading(true);
     try {
-      const payload =
-        mode === "register"
-          ? await postJson<AuthResponse>("/api/auth/register", {
-              email,
-              password,
-              personal_consent: personalConsent,
-              offer_consent: offerConsent
-            })
-          : await postJson<AuthResponse>("/api/auth/login", {
-              email,
-              password
-            });
-
+      const payload = await submitAuth(values);
       window.localStorage.setItem(sessionStorageKey, payload.token);
       window.dispatchEvent(new Event(sessionChangedEvent));
       setSessionToken(payload.token);
@@ -368,25 +235,12 @@ export function CheckoutClient() {
       setMissingDocuments([]);
       setDocumentConsentById({});
       showNotice(
-        mode === "register"
+        values.mode === "register"
           ? "Аккаунт создан. Теперь можно перейти к оплате."
           : "Вход выполнен. Можно продолжить оформление."
       );
-      setPassword("");
     } catch (requestError) {
-      const message =
-        requestError instanceof Error ? requestError.message : "auth_error";
-      if (message.includes("409")) {
-        showError("Аккаунт с таким email уже существует. Попробуйте войти.");
-      } else if (message.includes("401")) {
-        showError("Неверный email или пароль.");
-      } else if (message.includes("missing_personal_consent")) {
-        showError("Нужно дать согласие на обработку персональных данных.");
-      } else if (message.includes("missing_offer_consent")) {
-        showError("Нужно принять условия оферты.");
-      } else {
-        showError("Не удалось выполнить авторизацию. Попробуйте ещё раз.");
-      }
+      showError(authErrorMessage(requestError));
     } finally {
       setLoading(false);
     }
@@ -581,121 +435,35 @@ export function CheckoutClient() {
   }
 
   const authForm = (
-    <div className="form-grid">
-      <span className="badge badge-running">
-        <ShieldCheck size={12} aria-hidden="true" />
-        Единый аккаунт
-      </span>
-      <h2>1. Вход или регистрация</h2>
-      {needsAuthPrompt && !sessionLoading ? (
+    <AuthForm
+      title="1. Вход или регистрация"
+      badgeIcon={<ShieldCheck size={12} aria-hidden="true" />}
+      initialMode={mode}
+      modeOrder={["register", "login"]}
+      prompt={
+        needsAuthPrompt && !sessionLoading ? (
         <div className="notice">
           Чтобы продолжить оформление, войдите в аккаунт или зарегистрируйтесь.
         </div>
-      ) : null}
-      <div ref={feedbackRef}>
-        {notice ? <div className="notice">{notice}</div> : null}
-        {error ? <div className="notice error">{error}</div> : null}
-      </div>
-      <div className="auth-mode-row">
-        <button
-          className={mode === "register" ? "btn-primary" : "btn-secondary"}
-          type="button"
-          onClick={() => setMode("register")}
-        >
-          Регистрация
-        </button>
-        <button
-          className={mode === "login" ? "btn-primary" : "btn-secondary"}
-          type="button"
-          onClick={() => setMode("login")}
-        >
-          Вход
-        </button>
-      </div>
-
-      <label className="field-label">
-        Email
-        <input
-          className="input"
-          type="email"
-          autoComplete="email"
-          placeholder="user@example.com"
-          value={email}
-          onChange={(event) => setEmail(event.target.value)}
-        />
-      </label>
-
-      <label className="field-label">
-        Пароль
-        <input
-          className="input"
-          type="password"
-          autoComplete={mode === "register" ? "new-password" : "current-password"}
-          placeholder="Не менее 8 символов"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-        />
-      </label>
-
-      {mode === "register" ? (
-        <>
-          <label className="checkbox-label">
-            <input
-              type="checkbox"
-              checked={personalConsent}
-              onChange={(event) => setPersonalConsent(event.target.checked)}
-            />
-            <span>
-              Я даю согласие на обработку персональных данных в соответствии с{" "}
-              <Link className="inline-link" href="/ru/consent-personal-data">
-                Согласием на обработку персональных данных
-              </Link>
-              {" "}и{" "}
-              <Link className="inline-link" href="/ru/privacy">
-                Политикой в отношении обработки персональных данных
-              </Link>
-              .
-            </span>
-          </label>
-
-          <label className="checkbox-label">
-            <input
-              type="checkbox"
-              checked={offerConsent}
-              onChange={(event) => setOfferConsent(event.target.checked)}
-            />
-            <span>
-              Я принимаю условия{" "}
-              <Link className="inline-link" href="/ru/offer">
-                Публичной оферты
-              </Link>{" "}
-              и ознакомлен(а) с{" "}
-              <Link className="inline-link" href="/ru/cancellation">
-                Условиями отмены подписки и возврата денежных средств
-              </Link>
-              .
-            </span>
-          </label>
-        </>
-      ) : null}
-
-      <button
-        className="btn-primary"
-        type="button"
-        onClick={authenticate}
-        disabled={loading}
-      >
-        {mode === "register" ? "Создать аккаунт" : "Войти"}
-        <ArrowRight size={15} aria-hidden="true" />
-      </button>
-
-      {telegramLoginUrl ? (
-        <a className="btn-secondary telegram-button" href={telegramLoginUrl}>
-          <MessageCircleMore size={16} aria-hidden="true" />
-          Войти через Telegram
-        </a>
-      ) : null}
-    </div>
+        ) : null
+      }
+      notice={notice}
+      error={error}
+      loading={loading}
+      personalConsentError="Для регистрации нужно отдельное согласие на обработку персональных данных."
+      offerConsentError="Для регистрации нужно принять условия оферты."
+      includeCancellationLink
+      telegramLoginUrl={telegramLoginUrl}
+      telegramIcon={<MessageCircleMore size={16} aria-hidden="true" />}
+      feedbackRef={feedbackRef}
+      onModeChange={(nextMode: AuthMode) => setMode(nextMode)}
+      onBeforeSubmit={() => {
+        setError("");
+        setNotice("");
+      }}
+      onValidationError={showError}
+      onSubmit={authenticate}
+    />
   );
 
   return (
@@ -819,7 +587,12 @@ export function CheckoutClient() {
                             }
                           />
                           <div>
-                            <Link className="inline-link" href={document.url_path}>
+                            <Link
+                              className="inline-link"
+                              href={document.url_path}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
                               {document.title}
                             </Link>
                             <p>{document.acceptance_text}</p>
