@@ -8,7 +8,7 @@ x-logging: &default-logging
 
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:18.4-alpine3.22@sha256:774521500f4c22761b25a6bdb772a0a3c2e8dd32468210bdad9231c5752ea398
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -20,7 +20,7 @@ services:
     ports:
       - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
-      - postgres_dev_data:/var/lib/postgresql/data
+      - postgres18_dev_data:/var/lib/postgresql
     networks:
       - backend
     healthcheck:
@@ -67,7 +67,7 @@ services:
       retries: 12
 
   caddy:
-    image: caddy:2-alpine
+    image: caddy:2.11.4-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -87,7 +87,7 @@ services:
       - edge
 
 volumes:
-  postgres_dev_data:
+  postgres18_dev_data:
 
 networks:
   edge:

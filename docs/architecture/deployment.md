@@ -9,7 +9,7 @@ Last verified: 2026-07-11
 flowchart LR
   Browser["Browser"] --> Web["Next.js web container"]
   Web --> API["FastAPI API container"]
-  API --> DB[("PostgreSQL 16")]
+  API --> DB[("PostgreSQL 18")]
   Browser --> CP["CloudPayments widget"]
   CP -->|"HTTPS webhook"| API
   API --> OTEL["Optional telemetry backend"]
