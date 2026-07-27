@@ -2,7 +2,7 @@
 
 Status: active
 Started: 2026-07-27
-Linear: https://linear.app/paveldik/issue/ANY-96
+Linear: ANY-96
 
 ## Goal
 
