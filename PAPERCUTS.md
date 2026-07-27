@@ -58,8 +58,6 @@ about 73 seconds and image unpack took about 83 seconds after a successful Next
 build. Use `COPY --chown=node:node` or narrow ownership changes to avoid an
 expensive full-tree metadata layer.
 
-## 2026-07-27 07:18Z - Codex (GPT-5) - macOS
-
 Trying to run a quick local Caddy/API/web smoke with `scripts/repo.py up` →
 Compose began pulling the optional 536 MB observability image before the smoke
 could run. Add a harness flag or profile for app-only Caddy smoke so baseline
