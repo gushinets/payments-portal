@@ -14,7 +14,8 @@ request and push to `main`, while keeping the warm-cache required path within
 
 - `Code quality` and `Production gate` are the only new required checks.
 - Existing browser and harness jobs remain additional non-blocking evidence.
-- PostgreSQL 16, Python 3.12, and Node 20 remain the current runtime baseline.
+- The CI gate followed the runtime baseline that was current when this plan was
+  completed; the current baseline is documented in the root README.
 - CI uses an ephemeral trust-authenticated PostgreSQL service and never prints
   or uploads database connection strings.
 
@@ -31,7 +32,7 @@ request and push to `main`, while keeping the warm-cache required path within
 - `npm run check:fast`: passed, 21 API tests with no PostgreSQL skip.
 - `npm run typecheck:web`: passed.
 - `npm run build:web`: passed, 14 static routes generated.
-- PostgreSQL 16 migration cycle: passed, including the repeated upgrade.
+- PostgreSQL migration cycle: passed, including the repeated upgrade.
 - Development and production Compose validation: passed.
 - Production API and web image builds: passed from a cold local Docker cache.
 - Built API image smoke: `/health/ready` returned `ready`.

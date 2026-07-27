@@ -43,6 +43,23 @@ Runtime state and test evidence are written to the ignored `.harness/`
 directory. Each Git worktree receives an isolated Compose project, database,
 ports, logs, and browser artifacts.
 
+## Runtime baseline
+
+- Node.js: `24.x` LTS for local development, CI, and the production web image.
+  The production Docker image is pinned to `node:24.18.0-alpine3.24` plus its
+  multi-architecture digest.
+- PostgreSQL: `18.3` for local development, CI, pre-production, and the first
+  production deployment. Compose uses the PostgreSQL 18 Docker volume layout:
+  named volumes mount at `/var/lib/postgresql`, while the image-owned `PGDATA`
+  remains `/var/lib/postgresql/18/docker`.
+- Caddy: production and local Compose pin `caddy:2.11.4-alpine` plus its
+  multi-architecture digest.
+
+The first production deployment has no existing data to migrate. Older local
+development/test PostgreSQL major-version volumes are intentionally not reused;
+recreate the development database with `npm run repo:reset` or
+`docker compose down -v` before starting the PostgreSQL 18 stack.
+
 ## Repository layout
 
 - `apps/web` — Next.js RU portal and legal-page renderer.
