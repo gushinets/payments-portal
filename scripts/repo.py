@@ -136,10 +136,29 @@ def runtime_caddy_port(config: RuntimeConfig) -> int:
     return config.otlp_http_port + 1000
 
 
+def read_dotenv(path: Path = ROOT / ".env") -> dict[str, str]:
+    if not path.exists():
+        return {}
+
+    values: dict[str, str] = {}
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        values[key.strip()] = value.strip().strip("'\"")
+    return values
+
+
 def write_runtime(config: RuntimeConfig) -> None:
     HARNESS_DIR.mkdir(parents=True, exist_ok=True)
     RUNTIME_JSON.write_text(json.dumps(asdict(config), indent=2) + "\n", encoding="utf-8")
     caddy_origin = f"http://localhost:{runtime_caddy_port(config)}"
+    local_env = read_dotenv()
+    app_public_base_url = local_env.get("APP_PUBLIC_BASE_URL", caddy_origin)
+    cors_allow_origins = caddy_origin
+    if app_public_base_url != caddy_origin:
+        cors_allow_origins = f"{caddy_origin},{app_public_base_url}"
     values = {
         "COMPOSE_PROJECT_NAME": config.compose_project,
         "POSTGRES_DB": config.database_name,
@@ -154,7 +173,14 @@ def write_runtime(config: RuntimeConfig) -> None:
         "API_PORT": str(config.api_port),
         "CADDY_PORT": str(runtime_caddy_port(config)),
         "NEXT_PUBLIC_API_BASE_URL": caddy_origin,
-        "CORS_ALLOW_ORIGINS": caddy_origin,
+        "CORS_ALLOW_ORIGINS": cors_allow_origins,
+        "APP_PUBLIC_BASE_URL": app_public_base_url,
+        "SMTP_HOST": local_env.get("SMTP_HOST", ""),
+        "SMTP_PORT": local_env.get("SMTP_PORT", "587"),
+        "SMTP_USERNAME": local_env.get("SMTP_USERNAME", ""),
+        "SMTP_PASSWORD": local_env.get("SMTP_PASSWORD", ""),
+        "SMTP_FROM_EMAIL": local_env.get("SMTP_FROM_EMAIL", "support@any-tool-ai.ru"),
+        "SMTP_USE_TLS": local_env.get("SMTP_USE_TLS", "true"),
         "GRAFANA_PORT": str(config.grafana_port),
         "LOKI_PORT": str(config.loki_port),
         "PROMETHEUS_PORT": str(config.prometheus_port),
@@ -827,7 +853,9 @@ def cmd_harness_smoke(_: argparse.Namespace) -> None:
     caddy_origin = f"http://localhost:{runtime_caddy_port(config)}"
     assert env["CADDY_PORT"] == str(runtime_caddy_port(config))
     assert env["NEXT_PUBLIC_API_BASE_URL"] == caddy_origin
-    assert env["CORS_ALLOW_ORIGINS"] == caddy_origin
+    cors_origins = set(env["CORS_ALLOW_ORIGINS"].split(","))
+    assert caddy_origin in cors_origins
+    assert env["APP_PUBLIC_BASE_URL"] in cors_origins
     if not re.fullmatch(r"payments-[0-9a-f]{8}", config.compose_project):
         raise HarnessError("Invalid deterministic Compose project name")
     alternative = None

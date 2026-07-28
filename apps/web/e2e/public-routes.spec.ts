@@ -5,6 +5,8 @@ import { expect, test } from "@playwright/test";
 const routes = [
   "/ru",
   "/ru/products",
+  "/ru/forgot-password",
+  "/ru/reset-password?token=synthetic-reset-token-for-smoke",
   "/ru/privacy",
   "/ru/consent-personal-data",
   "/ru/offer",

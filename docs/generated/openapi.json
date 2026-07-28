@@ -154,6 +154,52 @@
         "title": "LoginRequest",
         "type": "object"
       },
+      "PasswordResetConfirmRequest": {
+        "properties": {
+          "password": {
+            "maxLength": 128,
+            "minLength": 8,
+            "title": "Password",
+            "type": "string"
+          },
+          "token": {
+            "maxLength": 256,
+            "minLength": 32,
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "password"
+        ],
+        "title": "PasswordResetConfirmRequest",
+        "type": "object"
+      },
+      "PasswordResetRequest": {
+        "properties": {
+          "email": {
+            "format": "email",
+            "title": "Email",
+            "type": "string"
+          },
+          "region": {
+            "default": "ru",
+            "title": "Region",
+            "type": "string"
+          },
+          "tenant_id": {
+            "default": "anytoolai",
+            "title": "Tenant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "title": "PasswordResetRequest",
+        "type": "object"
+      },
       "RegisterRequest": {
         "properties": {
           "email": {
@@ -374,6 +420,84 @@
           }
         },
         "summary": "Logout",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/password-reset/confirm": {
+      "post": {
+        "operationId": "confirm_password_reset_api_auth_password_reset_confirm_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordResetConfirmRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Confirm Password Reset",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/password-reset/request": {
+      "post": {
+        "operationId": "request_password_reset_api_auth_password_reset_request_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordResetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Request Password Reset",
         "tags": [
           "auth"
         ]

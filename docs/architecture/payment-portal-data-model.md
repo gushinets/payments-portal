@@ -45,7 +45,7 @@ that schema means and distinguishes current implementation from planned work.
 | `document_acceptances` | Implemented | Append-only acceptance evidence |
 | `users` | Implemented | Regional user identity |
 | `auth_sessions` | Implemented | Hashed login sessions |
-| `magic_link_tokens` | Implemented schema | Future passwordless token storage |
+| `magic_link_tokens` | Implemented | Hash-only password-reset token storage |
 | `payment_provider_accounts` | Implemented | Non-secret regional provider configuration |
 | `entrypoint_sessions` | Implemented schema | Product/paywall entry context |
 | `checkout_sessions` | Implemented | Checkout preparation state |
@@ -91,8 +91,9 @@ unique(tenant_id, region, email_normalized)
 
 Raw session tokens are returned to the client once and stored only as SHA-256
 hashes in `auth_sessions`. Sessions have expiry and revocation timestamps.
-`magic_link_tokens` follows the same hash-only rule when passwordless login is
-implemented.
+Password-reset tokens are emailed once and stored only as SHA-256 hashes in
+`magic_link_tokens`. Reset confirmation consumes outstanding reset tokens for
+that user and revokes active sessions.
 
 ### Legal
 

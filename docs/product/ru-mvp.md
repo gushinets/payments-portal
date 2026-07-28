@@ -16,6 +16,8 @@ CloudPayments checkout, and see provider-confirmed payment state.
 | `/ru` | RU landing and catalog | Implemented |
 | `/ru/products` | Product catalog | Implemented |
 | `/ru/auth-checkout` | Product-aware authentication and checkout | Implemented |
+| `/ru/forgot-password` | Password reset email request | Implemented |
+| `/ru/reset-password` | Password replacement from emailed reset link | Implemented |
 | `/ru/account` | Current account and product state | Implemented |
 | `/ru/payment-result` | Informational post-payment result | Implemented |
 | `/ru/privacy` | Personal-data policy | Implemented |
@@ -32,18 +34,20 @@ CloudPayments checkout, and see provider-confirmed payment state.
    selects a product from the catalog.
 2. The page validates the product code and prioritizes that product.
 3. An unauthenticated user registers or signs in.
-4. Registration requires explicit personal-data and offer confirmation.
-5. Checkout asks the API for a checkout intent.
-6. If an active required legal version has not been accepted, the API returns
+4. A returning user who forgot their password can request an email reset link
+   and set a new password from `/ru/reset-password`.
+5. Registration requires explicit personal-data and offer confirmation.
+6. Checkout asks the API for a checkout intent.
+7. If an active required legal version has not been accepted, the API returns
    each missing document and its acceptance text hash.
-7. The user explicitly accepts every required version; the API writes append-only
+8. The user explicitly accepts every required version; the API writes append-only
    acceptance evidence.
-8. The checkout intent creates pending commercial state.
-9. In configured mode, the CloudPayments widget handles payment. Demo mode still
+9. The checkout intent creates pending commercial state.
+10. In configured mode, the CloudPayments widget handles payment. Demo mode still
    produces only pending/informational browser state.
-10. The payment-result page polls API state. It never declares payment success
+11. The payment-result page polls API state. It never declares payment success
     solely because the browser returned from the provider.
-11. Verified webhook delivery updates order and payment state idempotently.
+12. Verified webhook delivery updates order and payment state idempotently.
 
 ## Returning user
 

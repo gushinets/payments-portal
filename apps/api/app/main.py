@@ -15,6 +15,7 @@ from app.core.observability import (
     request_context_middleware,
 )
 from app.core.settings import settings
+from app.domains.identity.password_reset import router as password_reset_router
 from app.domains.identity.router import router as auth_router
 from app.domains.legal.router import router as legal_router
 from app.integrations.cloudpayments.router import router as cloudpayments_router
@@ -51,6 +52,7 @@ app.add_middleware(
 )
 
 app.include_router(auth_router)
+app.include_router(password_reset_router)
 app.include_router(legal_router)
 app.include_router(cloudpayments_router)
 configure_observability(app, engine)

@@ -15,6 +15,7 @@ sys.path.insert(0, str(api_root))
 
 from fastapi.testclient import TestClient  # noqa: E402
 
+import app.domains.identity.password_reset as password_reset_router  # noqa: E402
 from app.database import Base, SessionLocal, engine  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import (  # noqa: E402
@@ -24,6 +25,7 @@ from app.models import (  # noqa: E402
     DocumentAcceptance,
     DocumentVersion,
     LegalEntity,
+    MagicLinkToken,
     Order,
     OrderItem,
     Payment,
@@ -1328,6 +1330,110 @@ def test_login_and_logout_flow() -> None:
         headers={"Authorization": f"Bearer {token}"},
     )
     assert session_response.status_code == 401
+
+
+def test_password_reset_email_token_and_session_revocation(monkeypatch) -> None:
+    sent_messages: list[tuple[str, str]] = []
+    reset_token = "known-reset-token-value-with-enough-entropy"
+
+    def fake_make_password_reset_token():
+        token_hash = password_reset_router.hashlib.sha256(reset_token.encode("utf-8")).hexdigest()
+        return reset_token, token_hash, datetime.now(timezone.utc) + timedelta(minutes=30)
+
+    monkeypatch.setattr(
+        password_reset_router,
+        "make_password_reset_token",
+        fake_make_password_reset_token,
+    )
+    monkeypatch.setattr(
+        password_reset_router,
+        "send_password_reset_email",
+        lambda email, url: sent_messages.append((email, url)) or True,
+    )
+
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "reset-user@example.com",
+            "password": "old-password-123",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    assert register_response.status_code == 200
+    old_session_token = register_response.json()["token"]
+
+    request_response = client.post(
+        "/api/auth/password-reset/request",
+        json={"email": "reset-user@example.com"},
+    )
+    assert request_response.status_code == 200
+    assert request_response.json() == {"status": "accepted"}
+    assert sent_messages == [
+        (
+            "reset-user@example.com",
+            f"http://localhost:3000/ru/reset-password?token={reset_token}",
+        )
+    ]
+
+    with SessionLocal() as db:
+        stored_token = db.query(MagicLinkToken).one()
+        assert stored_token.purpose == "password_reset"
+        assert stored_token.token_hash
+        assert stored_token.token_hash != reset_token
+        assert len(stored_token.token_hash) == 64
+
+    confirm_response = client.post(
+        "/api/auth/password-reset/confirm",
+        json={"token": reset_token, "password": "new-password-123"},
+    )
+    assert confirm_response.status_code == 200
+    assert confirm_response.json() == {"status": "password_reset"}
+
+    old_session_response = client.get(
+        "/api/auth/session",
+        headers={"Authorization": f"Bearer {old_session_token}"},
+    )
+    assert old_session_response.status_code == 401
+
+    old_login_response = client.post(
+        "/api/auth/login",
+        json={"email": "reset-user@example.com", "password": "old-password-123"},
+    )
+    assert old_login_response.status_code == 401
+
+    new_login_response = client.post(
+        "/api/auth/login",
+        json={"email": "reset-user@example.com", "password": "new-password-123"},
+    )
+    assert new_login_response.status_code == 200
+
+    reuse_response = client.post(
+        "/api/auth/password-reset/confirm",
+        json={"token": reset_token, "password": "another-password-123"},
+    )
+    assert reuse_response.status_code == 400
+    assert reuse_response.json()["detail"] == "invalid_or_expired_reset_token"
+
+
+def test_password_reset_request_does_not_reveal_unknown_email(monkeypatch) -> None:
+    sent_messages: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        password_reset_router,
+        "send_password_reset_email",
+        lambda email, url: sent_messages.append((email, url)) or True,
+    )
+
+    response = client.post(
+        "/api/auth/password-reset/request",
+        json={"email": "missing@example.com"},
+    )
+    assert response.status_code == 200
+    assert response.json() == {"status": "accepted"}
+    assert sent_messages == []
+
+    with SessionLocal() as db:
+        assert db.query(MagicLinkToken).count() == 0
 
 
 def test_cloudpayments_webhook_is_saved_without_secret_hmac() -> None:

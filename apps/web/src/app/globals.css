@@ -577,6 +577,20 @@ button:disabled {
   gap: 16px;
 }
 
+.auth-page-section {
+  display: flex;
+  justify-content: center;
+}
+
+.auth-page-panel {
+  width: min(100%, 520px);
+}
+
+.auth-form-secondary-link {
+  width: fit-content;
+  font-weight: 700;
+}
+
 .checkout-form-grid {
   gap: 14px;
 }

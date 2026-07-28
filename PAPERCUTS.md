@@ -62,3 +62,16 @@ Trying to run a quick local Caddy/API/web smoke with `scripts/repo.py up` →
 Compose began pulling the optional 536 MB observability image before the smoke
 could run. Add a harness flag or profile for app-only Caddy smoke so baseline
 checks do not need the telemetry stack.
+
+## 2026-07-28 15:01Z - Codex (GPT-5) - macOS
+
+Running targeted API tests with `npm run test:api -- -k ...` → the script failed
+with `pytest: command not found` even though `.venv/bin/pytest` existed and
+passed the same tests. The npm test entrypoint could delegate through the
+repository virtualenv, or `repo:doctor` could warn when pytest is available only
+inside `.venv`.
+
+Running Playwright against a manually started local web server → the config read
+a stale `.harness/runtime.json` and targeted `127.0.0.1:30207` instead of the
+live server on port 3000. Prefer an explicit fresh runtime check, or print the
+selected `PLAYWRIGHT_BASE_URL` when the harness runtime file is reused.

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import hmac
 import secrets
 from datetime import datetime, timedelta
 
@@ -12,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.observability import record_checkout, traced
+from app.domains.identity.passwords import hash_password, verify_password
 from app.domains.legal.service import (
     build_acceptance_text,
     expected_acceptance_text_hash,
@@ -42,7 +42,6 @@ from app.models import (
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 SESSION_TTL_DAYS = 30
-PBKDF2_ITERATIONS = 120_000
 PRODUCT_DEFAULTS = {
     "document-summary": {
         "plan_code": "document-summary-pro",
@@ -82,32 +81,6 @@ class CheckoutIntentRequest(BaseModel):
     entrypoint_type: str = "product"
     frontend_id: str | None = None
     source_url: str | None = None
-
-
-def hash_password(password: str) -> str:
-    salt = secrets.token_hex(16)
-    digest = hashlib.pbkdf2_hmac(
-        "sha256", password.encode("utf-8"), salt.encode("utf-8"), PBKDF2_ITERATIONS
-    ).hex()
-    return f"pbkdf2_sha256${PBKDF2_ITERATIONS}${salt}${digest}"
-
-
-def verify_password(password: str, encoded: str) -> bool:
-    try:
-        algorithm, iterations_raw, salt, expected = encoded.split("$", 3)
-    except ValueError:
-        return False
-
-    if algorithm != "pbkdf2_sha256":
-        return False
-
-    digest = hashlib.pbkdf2_hmac(
-        "sha256",
-        password.encode("utf-8"),
-        salt.encode("utf-8"),
-        int(iterations_raw),
-    ).hex()
-    return hmac.compare_digest(digest, expected)
 
 
 def make_session_token() -> tuple[str, str, datetime]:
