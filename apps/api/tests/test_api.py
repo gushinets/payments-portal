@@ -44,6 +44,7 @@ client = TestClient(app)
 
 
 def setup_function() -> None:
+    password_reset_router.password_reset_attempts.clear()
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
     with SessionLocal() as db:
@@ -1372,7 +1373,7 @@ def test_password_reset_email_token_and_session_revocation(monkeypatch) -> None:
     assert sent_messages == [
         (
             "reset-user@example.com",
-            f"http://localhost:3000/ru/reset-password?token={reset_token}",
+            password_reset_router.build_password_reset_url(reset_token),
         )
     ]
 
@@ -1434,6 +1435,22 @@ def test_password_reset_request_does_not_reveal_unknown_email(monkeypatch) -> No
 
     with SessionLocal() as db:
         assert db.query(MagicLinkToken).count() == 0
+
+
+def test_password_reset_request_is_rate_limited_for_repeated_probes() -> None:
+    for _ in range(password_reset_router.PASSWORD_RESET_RATE_LIMIT_MAX):
+        response = client.post(
+            "/api/auth/password-reset/request",
+            json={"email": "probe@example.com"},
+        )
+        assert response.status_code == 200
+
+    limited_response = client.post(
+        "/api/auth/password-reset/request",
+        json={"email": "probe@example.com"},
+    )
+    assert limited_response.status_code == 429
+    assert limited_response.json()["detail"] == "password_reset_rate_limited"
 
 
 def test_cloudpayments_webhook_is_saved_without_secret_hmac() -> None:

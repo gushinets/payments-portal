@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { type FormEvent, useState } from "react";
 import { ArrowRight, KeyRound } from "lucide-react";
 import {
   confirmPasswordReset,
@@ -21,7 +21,8 @@ export function PasswordResetConfirmClient() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  async function submit() {
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     setNotice("");
     setError("");
 
@@ -58,7 +59,7 @@ export function PasswordResetConfirmClient() {
   return (
     <section className="page-section compact auth-page-section">
       <div className="form-panel auth-page-panel">
-        <div className="form-grid">
+        <form className="form-grid" onSubmit={submit}>
           <span className="badge badge-running">
             <KeyRound size={12} aria-hidden="true" />
             Новый пароль
@@ -100,10 +101,7 @@ export function PasswordResetConfirmClient() {
 
           <button
             className="btn-primary"
-            type="button"
-            onClick={() => {
-              void submit();
-            }}
+            type="submit"
             disabled={loading}
           >
             Сменить пароль
@@ -113,7 +111,7 @@ export function PasswordResetConfirmClient() {
           <Link className="btn-secondary" href="/ru/auth-checkout">
             Перейти ко входу
           </Link>
-        </div>
+        </form>
       </div>
     </section>
   );

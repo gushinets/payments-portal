@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { type FormEvent, useState } from "react";
 import { ArrowRight, Mail } from "lucide-react";
 import {
   passwordResetErrorMessage,
@@ -14,7 +14,8 @@ export function PasswordResetRequestClient() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  async function submit() {
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     setNotice("");
     setError("");
 
@@ -39,7 +40,7 @@ export function PasswordResetRequestClient() {
   return (
     <section className="page-section compact auth-page-section">
       <div className="form-panel auth-page-panel">
-        <div className="form-grid">
+        <form className="form-grid" onSubmit={submit}>
           <span className="badge badge-running">
             <Mail size={12} aria-hidden="true" />
             Восстановление доступа
@@ -68,10 +69,7 @@ export function PasswordResetRequestClient() {
 
           <button
             className="btn-primary"
-            type="button"
-            onClick={() => {
-              void submit();
-            }}
+            type="submit"
             disabled={loading}
           >
             Отправить ссылку
@@ -81,7 +79,7 @@ export function PasswordResetRequestClient() {
           <Link className="btn-secondary" href="/ru/auth-checkout">
             Вернуться ко входу
           </Link>
-        </div>
+        </form>
       </div>
     </section>
   );

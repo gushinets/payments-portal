@@ -1,7 +1,7 @@
 # RU MVP User Journey and Pages
 
 Status: authoritative implemented-product specification
-Last verified: 2026-07-11
+Last verified: 2026-07-28
 
 ## Goal
 

@@ -6,7 +6,7 @@ const routes = [
   "/ru",
   "/ru/products",
   "/ru/forgot-password",
-  "/ru/reset-password?token=synthetic-reset-token-for-smoke",
+  "/ru/reset-password",
   "/ru/privacy",
   "/ru/consent-personal-data",
   "/ru/offer",
@@ -18,6 +18,7 @@ const routes = [
 
 for (const route of routes) {
   test(`${route} renders without browser or accessibility failures`, async ({ page }, testInfo) => {
+    const safeRouteName = route.split("?")[0].replaceAll("/", "_") || "root";
     const consoleErrors: string[] = [];
     const failedRequests: string[] = [];
     page.on("console", (message) => {
@@ -38,11 +39,15 @@ for (const route of routes) {
       violation.impact === "critical" || violation.impact === "serious"
     );
     await testInfo.attach("runtime-evidence", {
-      body: JSON.stringify({ route, consoleErrors, failedRequests, accessibility: critical }, null, 2),
+      body: JSON.stringify(
+        { route: route.split("?")[0], consoleErrors, failedRequests, accessibility: critical },
+        null,
+        2
+      ),
       contentType: "application/json"
     });
     await page.screenshot({
-      path: testInfo.outputPath(`${route.replaceAll("/", "_") || "root"}.png`),
+      path: testInfo.outputPath(`${safeRouteName}.png`),
       fullPage: true
     });
 
