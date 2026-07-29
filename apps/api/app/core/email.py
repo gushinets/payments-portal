@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import smtplib
 import logging
+import smtplib
+import ssl
 from email.message import EmailMessage
 
 from app.core.settings import settings
@@ -25,7 +26,7 @@ def send_text_email(*, to_email: str, subject: str, body: str) -> bool:
 
     with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=10) as smtp:
         if settings.smtp_use_tls:
-            smtp.starttls()
+            smtp.starttls(context=ssl.create_default_context())
         if settings.smtp_username:
             smtp.login(settings.smtp_username, settings.smtp_password)
         smtp.send_message(message)

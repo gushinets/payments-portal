@@ -1,8 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import { ArrowRight, KeyRound } from "lucide-react";
 import {
   confirmPasswordReset,
@@ -13,19 +12,29 @@ const sessionStorageKey = "anytoolai_session_token_v1";
 const sessionChangedEvent = "anytoolai_session_changed";
 
 export function PasswordResetConfirmClient() {
-  const searchParams = useSearchParams();
-  const token = searchParams.get("token") ?? "";
+  const tokenRef = useRef("");
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    const fragment = new URLSearchParams(window.location.hash.slice(1));
+    tokenRef.current = fragment.get("token") ?? "";
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${window.location.pathname}${window.location.search}`
+    );
+  }, []);
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setNotice("");
     setError("");
 
+    const token = tokenRef.current;
     if (!token) {
       setError("Ссылка для смены пароля недействительна. Запросите новую ссылку.");
       return;
@@ -44,6 +53,7 @@ export function PasswordResetConfirmClient() {
     setLoading(true);
     try {
       await confirmPasswordReset({ token, password });
+      tokenRef.current = "";
       window.localStorage.removeItem(sessionStorageKey);
       window.dispatchEvent(new Event(sessionChangedEvent));
       setPassword("");

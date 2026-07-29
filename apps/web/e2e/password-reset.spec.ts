@@ -34,7 +34,8 @@ test("password reset confirmation submits token and new password", async ({ page
     });
   });
 
-  await page.goto("/ru/reset-password?token=test-only-reset-token");
+  await page.goto("/ru/reset-password#token=test-only-reset-token");
+  await expect(page).toHaveURL(/\/ru\/reset-password$/);
   await page.getByLabel("Новый пароль").fill("new-password-123");
   await page.getByLabel("Повторите пароль").fill("new-password-123");
   await page.getByLabel("Повторите пароль").press("Enter");

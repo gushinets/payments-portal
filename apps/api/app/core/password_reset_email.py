@@ -8,8 +8,8 @@ from app.core.settings import settings
 
 def build_password_reset_url(token: str) -> str:
     base_url = settings.app_public_base_url.rstrip("/")
-    query = urlencode({"token": token})
-    return f"{base_url}/ru/reset-password?{query}"
+    fragment = urlencode({"token": token})
+    return f"{base_url}/ru/reset-password#{fragment}"
 
 
 def send_password_reset_email(email: str, reset_url: str) -> bool:
