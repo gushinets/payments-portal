@@ -1478,6 +1478,29 @@ def test_password_reset_request_is_rate_limited_per_account() -> None:
     assert limited_response.json()["detail"] == "password_reset_rate_limited"
 
 
+def test_password_reset_account_limit_does_not_rollback_ip_counter() -> None:
+    for _ in range(password_reset_router.PASSWORD_RESET_ACCOUNT_RATE_LIMIT_MAX):
+        response = client.post(
+            "/api/auth/password-reset/request",
+            json={"email": "rollback-probe@example.com"},
+        )
+        assert response.status_code == 200
+
+    limited_response = client.post(
+        "/api/auth/password-reset/request",
+        json={"email": "rollback-probe@example.com"},
+    )
+    assert limited_response.status_code == 429
+
+    with SessionLocal() as db:
+        stored_limit = (
+            db.query(PasswordResetRateLimit)
+            .filter_by(rate_limit_key="ip:anytoolai:ru:testclient")
+            .one()
+        )
+        assert stored_limit.count == password_reset_router.PASSWORD_RESET_ACCOUNT_RATE_LIMIT_MAX + 1
+
+
 def test_password_reset_confirm_invalidates_other_outstanding_reset_tokens(monkeypatch) -> None:
     first_token = "first-reset-token-with-enough-length-123"
     second_token = "second-reset-token-with-enough-length-456"

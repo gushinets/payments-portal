@@ -174,18 +174,21 @@ def request_password_reset(
     )
     try:
         prune_expired_password_reset_rate_limits(db=db, now=now)
+        db.commit()
         enforce_password_reset_rate_limit(
             db=db,
             key=ip_rate_limit_key,
             limit=PASSWORD_RESET_IP_RATE_LIMIT_MAX,
             now=now,
         )
+        db.commit()
         enforce_password_reset_rate_limit(
             db=db,
             key=account_rate_limit_key,
             limit=PASSWORD_RESET_ACCOUNT_RATE_LIMIT_MAX,
             now=now,
         )
+        db.commit()
     except HTTPException:
         db.rollback()
         raise
