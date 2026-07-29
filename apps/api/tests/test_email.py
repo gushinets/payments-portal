@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
 
-
-os.environ["DATABASE_URL"] = "sqlite+pysqlite:///:memory:"
 
 api_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(api_root))

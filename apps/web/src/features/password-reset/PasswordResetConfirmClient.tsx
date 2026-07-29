@@ -21,7 +21,11 @@ export function PasswordResetConfirmClient() {
 
   useEffect(() => {
     const fragment = new URLSearchParams(window.location.hash.slice(1));
-    tokenRef.current = fragment.get("token") ?? "";
+    const token = fragment.get("token");
+    if (!token) {
+      return;
+    }
+    tokenRef.current = token;
     window.history.replaceState(
       window.history.state,
       "",

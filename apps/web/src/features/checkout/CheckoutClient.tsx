@@ -77,7 +77,17 @@ const telegramLoginUrl = process.env.NEXT_PUBLIC_TELEGRAM_LOGIN_URL ?? "";
 const sessionStorageKey = "anytoolai_session_token_v1";
 const sessionChangedEvent = "anytoolai_session_changed";
 
-export function CheckoutClient() {
+export type CloudPaymentsWidgetStatus =
+  | "disabled"
+  | "loading"
+  | "ready"
+  | "failed";
+
+export function CheckoutClient({
+  cloudPaymentsWidgetStatus = "disabled"
+}: {
+  cloudPaymentsWidgetStatus?: CloudPaymentsWidgetStatus;
+}) {
   const searchParams = useSearchParams();
   const initialProduct = searchParams.get("product");
   const initialAuthMode = searchParams.get("auth");
@@ -120,6 +130,10 @@ export function CheckoutClient() {
     missingDocuments.every(
       (document) => documentConsentById[document.document_version_id]
     );
+  const cloudPaymentsWidgetRequired =
+    cloudPaymentsEnabled && !!cloudPaymentsPublicId;
+  const cloudPaymentsWidgetBlocked =
+    cloudPaymentsWidgetRequired && cloudPaymentsWidgetStatus !== "ready";
 
   useEffect(() => {
     function syncStoredToken() {
@@ -289,6 +303,18 @@ export function CheckoutClient() {
       return;
     }
 
+    if (cloudPaymentsWidgetRequired && cloudPaymentsWidgetStatus === "loading") {
+      showError("Платёжный виджет ещё загружается. Попробуйте через несколько секунд.");
+      return;
+    }
+
+    if (cloudPaymentsWidgetRequired && cloudPaymentsWidgetStatus !== "ready") {
+      showError(
+        "Не удалось загрузить платёжный виджет. Обновите страницу и попробуйте ещё раз."
+      );
+      return;
+    }
+
     let checkoutIntent: CheckoutIntentResponse;
     try {
       const payload = await postJson<CheckoutIntentResponse>(
@@ -334,7 +360,7 @@ export function CheckoutClient() {
       JSON.stringify(resultPayload)
     );
 
-    if (cloudPaymentsEnabled && cloudPaymentsPublicId && window.cp?.CloudPayments) {
+    if (cloudPaymentsWidgetRequired && window.cp?.CloudPayments) {
       const widget = new window.cp.CloudPayments({ language: "ru-RU" });
       widget.pay(
         "charge",
@@ -373,6 +399,13 @@ export function CheckoutClient() {
             window.location.assign(`/ru/payment-result?${params.toString()}`);
           }
         }
+      );
+      return;
+    }
+
+    if (cloudPaymentsWidgetRequired) {
+      showError(
+        "Не удалось открыть платёжный виджет. Обновите страницу и попробуйте ещё раз."
       );
       return;
     }
@@ -643,13 +676,26 @@ export function CheckoutClient() {
                   </label>
                 ) : null}
 
+                {cloudPaymentsWidgetStatus === "failed" ? (
+                  <div className="notice error">
+                    Не удалось загрузить платёжный виджет. Обновите страницу и
+                    попробуйте ещё раз.
+                  </div>
+                ) : null}
+
                 <button
                   className="btn-primary"
                   type="button"
                   onClick={goToPaymentResult}
-                  disabled={!selectedProduct || missingDocuments.length > 0}
+                  disabled={
+                    !selectedProduct ||
+                    missingDocuments.length > 0 ||
+                    cloudPaymentsWidgetBlocked
+                  }
                 >
-                  Оплатить
+                  {cloudPaymentsWidgetStatus === "loading"
+                    ? "Загрузка оплаты..."
+                    : "Оплатить"}
                   <ArrowRight size={16} aria-hidden="true" />
                 </button>
               </>
