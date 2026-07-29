@@ -61,14 +61,25 @@ def normalize_email(value: str) -> str:
     return value.strip().lower()
 
 
+def password_reset_client_ip(request: Request) -> str:
+    return request.client.host if request.client else "unknown"
+
+
 def password_reset_rate_limit_keys(
     *, tenant_id: str, region: str, email_normalized: str, request: Request
 ) -> tuple[str, str]:
-    ip = request.client.host if request.client else "unknown"
+    ip = password_reset_client_ip(request)
     return (
         f"account:{tenant_id}:{region}:{email_normalized}",
         f"ip:{tenant_id}:{region}:{ip}",
     )
+
+
+def make_password_reset_decoy_email_normalized(
+    *, tenant_id: str, region: str, email_normalized: str
+) -> str:
+    digest = hashlib.sha256(f"{tenant_id}:{region}:{email_normalized}".encode("utf-8")).hexdigest()
+    return f"password-reset-decoy:{digest}"
 
 
 def enforce_password_reset_rate_limit(*, db: Session, key: str, limit: int, now: datetime) -> None:
@@ -140,6 +151,10 @@ def send_password_reset_email_safely(email: str, reset_url: str) -> None:
         )
 
 
+def skip_password_reset_email(email: str, reset_url: str) -> None:
+    return None
+
+
 @router.post("/password-reset/request")
 def request_password_reset(
     payload: PasswordResetRequest,
@@ -186,27 +201,33 @@ def request_password_reset(
         .first()
     )
 
-    if user is not None:
-        reset_token = MagicLinkToken(
-            tenant_id=user.tenant_id,
-            region=user.region,
-            email_normalized=user.email_normalized,
-            token_hash=token_hash,
-            purpose=PASSWORD_RESET_PURPOSE,
-            expires_at=expires_at,
-            ip=request.client.host if request.client else None,
-            user_agent=request.headers.get("user-agent"),
-        )
-        db.add(reset_token)
+    reset_token = MagicLinkToken(
+        tenant_id=user.tenant_id if user is not None else tenant_id,
+        region=user.region if user is not None else region,
+        email_normalized=(
+            user.email_normalized
+            if user is not None
+            else make_password_reset_decoy_email_normalized(
+                tenant_id=tenant_id,
+                region=region,
+                email_normalized=normalized_email,
+            )
+        ),
+        token_hash=token_hash,
+        purpose=PASSWORD_RESET_PURPOSE,
+        expires_at=expires_at,
+        ip=password_reset_client_ip(request),
+        user_agent=request.headers.get("user-agent"),
+    )
+    db.add(reset_token)
 
     db.commit()
 
-    if user is not None:
-        background_tasks.add_task(
-            send_password_reset_email_safely,
-            user.email,
-            build_password_reset_url(token),
-        )
+    background_tasks.add_task(
+        send_password_reset_email_safely if user is not None else skip_password_reset_email,
+        user.email if user is not None else normalized_email,
+        build_password_reset_url(token),
+    )
 
     return {"status": "accepted"}
 
@@ -260,6 +281,18 @@ def confirm_password_reset(
 
     user.password_hash = hash_password(payload.password)
     db.add(user)
+
+    (
+        db.query(MagicLinkToken)
+        .filter(
+            MagicLinkToken.tenant_id == user.tenant_id,
+            MagicLinkToken.region == user.region,
+            MagicLinkToken.email_normalized == user.email_normalized,
+            MagicLinkToken.purpose == PASSWORD_RESET_PURPOSE,
+            MagicLinkToken.used_at.is_(None),
+        )
+        .update({"used_at": now}, synchronize_session=False)
+    )
 
     (
         db.query(AuthSession)

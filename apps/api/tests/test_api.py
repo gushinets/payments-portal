@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import os
 import sys
 import uuid
@@ -14,6 +15,7 @@ api_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(api_root))
 
 from fastapi.testclient import TestClient  # noqa: E402
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware  # noqa: E402
 
 import app.domains.identity.password_reset as password_reset_router  # noqa: E402
 from app.database import Base, SessionLocal, engine  # noqa: E402
@@ -1434,7 +1436,30 @@ def test_password_reset_request_does_not_reveal_unknown_email(monkeypatch) -> No
     assert sent_messages == []
 
     with SessionLocal() as db:
-        assert db.query(MagicLinkToken).count() == 0
+        stored_token = db.query(MagicLinkToken).one()
+        assert stored_token.purpose == "password_reset"
+        assert stored_token.email_normalized.startswith("password-reset-decoy:")
+
+
+def test_password_reset_request_uses_forwarded_client_ip_from_trusted_proxy() -> None:
+    proxy_client = TestClient(
+        ProxyHeadersMiddleware(app, trusted_hosts=["testclient"]),
+    )
+
+    response = proxy_client.post(
+        "/api/auth/password-reset/request",
+        json={"email": "forwarded@example.com"},
+        headers={"x-forwarded-for": "203.0.113.10"},
+    )
+
+    assert response.status_code == 200
+    with SessionLocal() as db:
+        stored_limit = (
+            db.query(PasswordResetRateLimit)
+            .filter_by(rate_limit_key="ip:anytoolai:ru:203.0.113.10")
+            .one()
+        )
+        assert stored_limit.count == 1
 
 
 def test_password_reset_request_is_rate_limited_per_account() -> None:
@@ -1451,6 +1476,58 @@ def test_password_reset_request_is_rate_limited_per_account() -> None:
     )
     assert limited_response.status_code == 429
     assert limited_response.json()["detail"] == "password_reset_rate_limited"
+
+
+def test_password_reset_confirm_invalidates_other_outstanding_reset_tokens(monkeypatch) -> None:
+    first_token = "first-reset-token-with-enough-length-123"
+    second_token = "second-reset-token-with-enough-length-456"
+    tokens = iter([first_token, second_token])
+
+    def make_token() -> tuple[str, str, datetime]:
+        token = next(tokens)
+        return (
+            token,
+            hashlib.sha256(token.encode("utf-8")).hexdigest(),
+            datetime.now(timezone.utc) + timedelta(minutes=30),
+        )
+
+    monkeypatch.setattr(password_reset_router, "make_password_reset_token", make_token)
+    monkeypatch.setattr(password_reset_router, "send_password_reset_email", lambda email, url: True)
+
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "multi-reset@example.com",
+            "password": "old-password-123",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    assert register_response.status_code == 200
+
+    first_request = client.post(
+        "/api/auth/password-reset/request",
+        json={"email": "multi-reset@example.com"},
+    )
+    second_request = client.post(
+        "/api/auth/password-reset/request",
+        json={"email": "multi-reset@example.com"},
+    )
+    assert first_request.status_code == 200
+    assert second_request.status_code == 200
+
+    confirm_response = client.post(
+        "/api/auth/password-reset/confirm",
+        json={"token": first_token, "password": "new-password-123"},
+    )
+    assert confirm_response.status_code == 200
+
+    second_confirm_response = client.post(
+        "/api/auth/password-reset/confirm",
+        json={"token": second_token, "password": "another-password-123"},
+    )
+    assert second_confirm_response.status_code == 400
+    assert second_confirm_response.json()["detail"] == "invalid_or_expired_reset_token"
 
 
 def test_password_reset_request_is_rate_limited_per_ip_across_emails() -> None:
