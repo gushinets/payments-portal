@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import secrets
 from collections import defaultdict
 from datetime import datetime, timedelta
@@ -10,6 +11,7 @@ from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.observability import record_password_reset_email
 from app.core.password_reset_email import build_password_reset_url, send_password_reset_email
 from app.domains.identity.passwords import hash_password
 from app.domains.identity.session import (
@@ -24,8 +26,10 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 PASSWORD_RESET_TTL_MINUTES = 30
 PASSWORD_RESET_PURPOSE = "password_reset"
 PASSWORD_RESET_RATE_LIMIT_WINDOW_MINUTES = 15
-PASSWORD_RESET_RATE_LIMIT_MAX = 5
+PASSWORD_RESET_ACCOUNT_RATE_LIMIT_MAX = 5
+PASSWORD_RESET_IP_RATE_LIMIT_MAX = 20
 password_reset_attempts: dict[str, list[datetime]] = defaultdict(list)
+logger = logging.getLogger("payment_portal.identity.password_reset")
 
 
 class PasswordResetRequest(BaseModel):
@@ -58,17 +62,20 @@ def normalize_email(value: str) -> str:
     return value.strip().lower()
 
 
-def password_reset_rate_limit_key(
+def password_reset_rate_limit_keys(
     *, tenant_id: str, region: str, email_normalized: str, request: Request
-) -> str:
+) -> tuple[str, str]:
     ip = request.client.host if request.client else "unknown"
-    return f"{tenant_id}:{region}:{email_normalized}:{ip}"
+    return (
+        f"account:{tenant_id}:{region}:{email_normalized}",
+        f"ip:{tenant_id}:{region}:{ip}",
+    )
 
 
-def enforce_password_reset_rate_limit(key: str, now: datetime) -> None:
+def enforce_password_reset_rate_limit(*, key: str, limit: int, now: datetime) -> None:
     window_start = now - timedelta(minutes=PASSWORD_RESET_RATE_LIMIT_WINDOW_MINUTES)
     recent = [attempt for attempt in password_reset_attempts[key] if attempt > window_start]
-    if len(recent) >= PASSWORD_RESET_RATE_LIMIT_MAX:
+    if len(recent) >= limit:
         password_reset_attempts[key] = recent
         raise HTTPException(status_code=429, detail="password_reset_rate_limited")
     recent.append(now)
@@ -77,9 +84,27 @@ def enforce_password_reset_rate_limit(key: str, now: datetime) -> None:
 
 def send_password_reset_email_safely(email: str, reset_url: str) -> None:
     try:
-        send_password_reset_email(email, reset_url)
-    except Exception:
-        pass
+        sent = send_password_reset_email(email, reset_url)
+    except Exception as error:
+        record_password_reset_email("failed")
+        logger.warning(
+            "password_reset_email_delivery_failed",
+            extra={
+                "structured": {
+                    "outcome": "failed",
+                    "reason": error.__class__.__name__,
+                }
+            },
+        )
+        return
+
+    outcome = "sent" if sent else "disabled"
+    record_password_reset_email(outcome)
+    if not sent:
+        logger.warning(
+            "password_reset_email_delivery_disabled",
+            extra={"structured": {"outcome": outcome, "reason": "smtp_not_configured"}},
+        )
 
 
 @router.post("/password-reset/request")
@@ -93,14 +118,21 @@ def request_password_reset(
     region = normalize_region(payload.region)
     normalized_email = normalize_email(str(payload.email))
     now = utc_now()
+    account_rate_limit_key, ip_rate_limit_key = password_reset_rate_limit_keys(
+        tenant_id=tenant_id,
+        region=region,
+        email_normalized=normalized_email,
+        request=request,
+    )
     enforce_password_reset_rate_limit(
-        password_reset_rate_limit_key(
-            tenant_id=tenant_id,
-            region=region,
-            email_normalized=normalized_email,
-            request=request,
-        ),
-        now,
+        key=ip_rate_limit_key,
+        limit=PASSWORD_RESET_IP_RATE_LIMIT_MAX,
+        now=now,
+    )
+    enforce_password_reset_rate_limit(
+        key=account_rate_limit_key,
+        limit=PASSWORD_RESET_ACCOUNT_RATE_LIMIT_MAX,
+        now=now,
     )
     token, token_hash, expires_at = make_password_reset_token()
     user = (

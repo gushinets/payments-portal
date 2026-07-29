@@ -1,13 +1,20 @@
 from __future__ import annotations
 
 import smtplib
+import logging
 from email.message import EmailMessage
 
 from app.core.settings import settings
 
+logger = logging.getLogger("payment_portal.email")
+
 
 def send_text_email(*, to_email: str, subject: str, body: str) -> bool:
     if not settings.smtp_host:
+        logger.warning(
+            "email_delivery_disabled",
+            extra={"structured": {"outcome": "disabled", "reason": "missing_smtp_host"}},
+        )
         return False
 
     message = EmailMessage()
