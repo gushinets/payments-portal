@@ -23,6 +23,15 @@ export type SubmitAuthValues = {
   offerConsent: boolean;
 };
 
+export type PasswordResetRequestValues = {
+  email: string;
+};
+
+export type PasswordResetConfirmValues = {
+  token: string;
+  password: string;
+};
+
 export type ApiErrorDetail = unknown;
 
 export class ApiError extends Error {
@@ -132,6 +141,23 @@ export async function submitAuth(values: SubmitAuthValues): Promise<AuthResponse
       });
 }
 
+export async function requestPasswordReset(
+  values: PasswordResetRequestValues
+): Promise<{ status: string }> {
+  return postJson<{ status: string }>("/api/auth/password-reset/request", {
+    email: values.email
+  });
+}
+
+export async function confirmPasswordReset(
+  values: PasswordResetConfirmValues
+): Promise<{ status: string }> {
+  return postJson<{ status: string }>("/api/auth/password-reset/confirm", {
+    token: values.token,
+    password: values.password
+  });
+}
+
 export function authErrorMessage(
   requestError: unknown,
   fallback = "Не удалось выполнить авторизацию. Попробуйте ещё раз."
@@ -156,4 +182,19 @@ export function authErrorMessage(
   }
 
   return fallback;
+}
+
+export function passwordResetErrorMessage(requestError: unknown): string {
+  const message =
+    requestError instanceof Error ? requestError.message : "password_reset_error";
+
+  if (message.includes("invalid_or_expired_reset_token")) {
+    return "Ссылка недействительна или срок её действия истёк. Запросите новую ссылку.";
+  }
+
+  if (message.includes("422")) {
+    return "Проверьте email и пароль. Пароль должен содержать не менее 8 символов.";
+  }
+
+  return "Не удалось выполнить восстановление пароля. Попробуйте ещё раз.";
 }

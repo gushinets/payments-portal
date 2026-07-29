@@ -1,1 +1,1 @@
-export { CheckoutClient } from "./CheckoutClient";
+export { CheckoutClient, type CloudPaymentsWidgetStatus } from "./CheckoutClient";

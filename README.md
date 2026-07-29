@@ -124,7 +124,8 @@ not be collected or stored by this repository.
 ## Current limitations
 
 - RU routes and RU legal documents only.
-- Password-based demo authentication; production email verification is planned.
+- Password-based demo authentication with SMTP-backed password reset;
+  production email verification is planned.
 - Payment confirmation is webhook-driven, but the target subscription and
   entitlement model belongs to ANY-71 and is not implemented here yet.
 - Legal documents are drafts until reviewed and approved by counsel.

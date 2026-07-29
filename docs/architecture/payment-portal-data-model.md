@@ -45,7 +45,8 @@ that schema means and distinguishes current implementation from planned work.
 | `document_acceptances` | Implemented | Append-only acceptance evidence |
 | `users` | Implemented | Regional user identity |
 | `auth_sessions` | Implemented | Hashed login sessions |
-| `magic_link_tokens` | Implemented schema | Future passwordless token storage |
+| `magic_link_tokens` | Implemented | Hash-only password-reset token storage |
+| `password_reset_rate_limits` | Implemented | Shared password-reset throttling counters |
 | `payment_provider_accounts` | Implemented | Non-secret regional provider configuration |
 | `entrypoint_sessions` | Implemented schema | Product/paywall entry context |
 | `checkout_sessions` | Implemented | Checkout preparation state |
@@ -91,8 +92,14 @@ unique(tenant_id, region, email_normalized)
 
 Raw session tokens are returned to the client once and stored only as SHA-256
 hashes in `auth_sessions`. Sessions have expiry and revocation timestamps.
-`magic_link_tokens` follows the same hash-only rule when passwordless login is
-implemented.
+Password-reset tokens are emailed once and stored only as SHA-256 hashes in
+`magic_link_tokens`. Reset confirmation consumes outstanding reset tokens for
+that user and revokes active sessions. For the RU MVP, password-reset request
+scope is derived server-side rather than accepted from unauthenticated clients.
+Password-reset request throttling is stored in `password_reset_rate_limits` so
+limits are shared across API workers. Counters are keyed by account or IP scope
+and expire after their current window. Expired password-reset token rows are
+pruned before new reset-token persistence.
 
 ### Legal
 

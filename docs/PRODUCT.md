@@ -9,7 +9,7 @@ Document Summary and Prompt Optimizer.
 ## Implemented
 
 - RU landing, product catalog, account, checkout, payment-result, and legal pages.
-- Password-based demo registration and sessions.
+- Password-based demo registration, sessions, and email password reset.
 - Versioned RU legal-document metadata and append-only acceptance records.
 - Checkout sessions, orders, order items, payment attempts, refunds, and a
   CloudPayments webhook inbox.

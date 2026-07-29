@@ -18,6 +18,7 @@ EXPECTED_REVISION_CHAIN = [
     "20260707_0001",
     "20260707_0002",
     "20260707_0003",
+    "20260729_0004",
 ]
 
 
@@ -205,6 +206,7 @@ def test_clean_postgres_alembic_upgrade_and_downgrade() -> None:
     assert "alembic_version" in tables
     assert "payment_provider_accounts" in tables
     assert "payment_webhook_events" in tables
+    assert "password_reset_rate_limits" in tables
     assert seeded_legal_documents() == expected_legal_documents()
 
     with patch.dict(os.environ, {"DATABASE_URL": TEST_DATABASE_URL}):
@@ -221,6 +223,7 @@ def test_clean_postgres_alembic_upgrade_and_downgrade() -> None:
     assert "payment_provider_accounts" in tables
     assert "plans" in tables
     assert "payment_webhook_events" in tables
+    assert "password_reset_rate_limits" in tables
     assert alembic_version_count() == 1
     assert current_alembic_revision() == EXPECTED_REVISION_CHAIN[-1]
     assert seeded_legal_documents() == expected_legal_documents()

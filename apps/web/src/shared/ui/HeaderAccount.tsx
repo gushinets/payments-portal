@@ -169,6 +169,7 @@ export function HeaderAccount() {
                 setNotice("");
                 setError("");
               }}
+              onPasswordResetClick={() => setModalOpen(false)}
               onBeforeSubmit={() => {
                 setError("");
                 setNotice("");

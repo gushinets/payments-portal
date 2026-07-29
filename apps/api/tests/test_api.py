@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import os
 import sys
 import uuid
@@ -14,7 +15,9 @@ api_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(api_root))
 
 from fastapi.testclient import TestClient  # noqa: E402
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware  # noqa: E402
 
+import app.domains.identity.password_reset as password_reset_router  # noqa: E402
 from app.database import Base, SessionLocal, engine  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import (  # noqa: E402
@@ -24,12 +27,14 @@ from app.models import (  # noqa: E402
     DocumentAcceptance,
     DocumentVersion,
     LegalEntity,
+    MagicLinkToken,
     Order,
     OrderItem,
     Payment,
     PaymentProviderAccount,
     PaymentWebhookEvent,
     Plan,
+    PasswordResetRateLimit,
     ProductAccessState,
     Product,
     Refund,
@@ -1328,6 +1333,377 @@ def test_login_and_logout_flow() -> None:
         headers={"Authorization": f"Bearer {token}"},
     )
     assert session_response.status_code == 401
+
+
+def test_password_reset_email_token_and_session_revocation(monkeypatch) -> None:
+    sent_messages: list[tuple[str, str]] = []
+    reset_token = "known-reset-token-value-with-enough-entropy"
+
+    def fake_make_password_reset_token():
+        token_hash = password_reset_router.hashlib.sha256(reset_token.encode("utf-8")).hexdigest()
+        return reset_token, token_hash, datetime.now(timezone.utc) + timedelta(minutes=30)
+
+    monkeypatch.setattr(
+        password_reset_router,
+        "make_password_reset_token",
+        fake_make_password_reset_token,
+    )
+    monkeypatch.setattr(
+        password_reset_router,
+        "send_password_reset_email",
+        lambda email, url: sent_messages.append((email, url)) or True,
+    )
+
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "reset-user@example.com",
+            "password": "old-password-123",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    assert register_response.status_code == 200
+    old_session_token = register_response.json()["token"]
+
+    request_response = client.post(
+        "/api/auth/password-reset/request",
+        json={"email": "reset-user@example.com"},
+    )
+    assert request_response.status_code == 200
+    assert request_response.json() == {"status": "accepted"}
+    assert sent_messages == [
+        (
+            "reset-user@example.com",
+            password_reset_router.build_password_reset_url(reset_token),
+        )
+    ]
+
+    with SessionLocal() as db:
+        stored_token = db.query(MagicLinkToken).one()
+        assert stored_token.purpose == "password_reset"
+        assert stored_token.token_hash
+        assert stored_token.token_hash != reset_token
+        assert len(stored_token.token_hash) == 64
+
+    confirm_response = client.post(
+        "/api/auth/password-reset/confirm",
+        json={"token": reset_token, "password": "new-password-123"},
+    )
+    assert confirm_response.status_code == 200
+    assert confirm_response.json() == {"status": "password_reset"}
+
+    old_session_response = client.get(
+        "/api/auth/session",
+        headers={"Authorization": f"Bearer {old_session_token}"},
+    )
+    assert old_session_response.status_code == 401
+
+    old_login_response = client.post(
+        "/api/auth/login",
+        json={"email": "reset-user@example.com", "password": "old-password-123"},
+    )
+    assert old_login_response.status_code == 401
+
+    new_login_response = client.post(
+        "/api/auth/login",
+        json={"email": "reset-user@example.com", "password": "new-password-123"},
+    )
+    assert new_login_response.status_code == 200
+
+    reuse_response = client.post(
+        "/api/auth/password-reset/confirm",
+        json={"token": reset_token, "password": "another-password-123"},
+    )
+    assert reuse_response.status_code == 400
+    assert reuse_response.json()["detail"] == "invalid_or_expired_reset_token"
+
+
+def test_password_reset_request_does_not_reveal_unknown_email(monkeypatch) -> None:
+    sent_messages: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        password_reset_router,
+        "send_password_reset_email",
+        lambda email, url: sent_messages.append((email, url)) or True,
+    )
+
+    response = client.post(
+        "/api/auth/password-reset/request",
+        json={"email": "missing@example.com"},
+    )
+    assert response.status_code == 200
+    assert response.json() == {"status": "accepted"}
+    assert sent_messages == []
+
+    with SessionLocal() as db:
+        stored_token = db.query(MagicLinkToken).one()
+        assert stored_token.purpose == "password_reset"
+        assert stored_token.email_normalized.startswith("password-reset-decoy:")
+
+
+def test_password_reset_request_uses_forwarded_client_ip_from_trusted_proxy() -> None:
+    proxy_client = TestClient(
+        ProxyHeadersMiddleware(app, trusted_hosts=["testclient"]),
+    )
+
+    response = proxy_client.post(
+        "/api/auth/password-reset/request",
+        json={"email": "forwarded@example.com"},
+        headers={"x-forwarded-for": "203.0.113.10"},
+    )
+
+    assert response.status_code == 200
+    with SessionLocal() as db:
+        stored_limit = (
+            db.query(PasswordResetRateLimit)
+            .filter_by(rate_limit_key="ip:anytoolai:ru:203.0.113.10")
+            .one()
+        )
+        assert stored_limit.count == 1
+
+
+def test_password_reset_request_derives_scope_server_side_for_rate_limits() -> None:
+    for index in range(password_reset_router.PASSWORD_RESET_IP_RATE_LIMIT_MAX):
+        response = client.post(
+            "/api/auth/password-reset/request",
+            json={
+                "tenant_id": f"attacker-{index}",
+                "region": "not-a-region",
+                "email": f"scope-probe-{index}@example.com",
+            },
+        )
+        assert response.status_code == 200
+
+    limited_response = client.post(
+        "/api/auth/password-reset/request",
+        json={
+            "tenant_id": "attacker-final",
+            "region": "still-not-a-region",
+            "email": "scope-probe-final@example.com",
+        },
+    )
+    assert limited_response.status_code == 429
+    assert limited_response.json()["detail"] == "password_reset_rate_limited"
+
+    with SessionLocal() as db:
+        assert db.query(MagicLinkToken).count() == password_reset_router.PASSWORD_RESET_IP_RATE_LIMIT_MAX
+        stored_token = db.query(MagicLinkToken).first()
+        assert stored_token is not None
+        assert stored_token.tenant_id == "anytoolai"
+        assert stored_token.region == "ru"
+        ip_limit = (
+            db.query(PasswordResetRateLimit)
+            .filter_by(rate_limit_key="ip:anytoolai:ru:testclient")
+            .one()
+        )
+        assert ip_limit.count == password_reset_router.PASSWORD_RESET_IP_RATE_LIMIT_MAX
+
+
+def test_password_reset_request_is_rate_limited_per_account() -> None:
+    for _ in range(password_reset_router.PASSWORD_RESET_ACCOUNT_RATE_LIMIT_MAX):
+        response = client.post(
+            "/api/auth/password-reset/request",
+            json={"email": "probe@example.com"},
+        )
+        assert response.status_code == 200
+
+    limited_response = client.post(
+        "/api/auth/password-reset/request",
+        json={"email": "probe@example.com"},
+    )
+    assert limited_response.status_code == 429
+    assert limited_response.json()["detail"] == "password_reset_rate_limited"
+
+
+def test_password_reset_account_limit_does_not_rollback_ip_counter() -> None:
+    for _ in range(password_reset_router.PASSWORD_RESET_ACCOUNT_RATE_LIMIT_MAX):
+        response = client.post(
+            "/api/auth/password-reset/request",
+            json={"email": "rollback-probe@example.com"},
+        )
+        assert response.status_code == 200
+
+    limited_response = client.post(
+        "/api/auth/password-reset/request",
+        json={"email": "rollback-probe@example.com"},
+    )
+    assert limited_response.status_code == 429
+
+    with SessionLocal() as db:
+        stored_limit = (
+            db.query(PasswordResetRateLimit)
+            .filter_by(rate_limit_key="ip:anytoolai:ru:testclient")
+            .one()
+        )
+        assert stored_limit.count == password_reset_router.PASSWORD_RESET_ACCOUNT_RATE_LIMIT_MAX + 1
+
+
+def test_password_reset_confirm_invalidates_other_outstanding_reset_tokens(monkeypatch) -> None:
+    first_token = "first-reset-token-with-enough-length-123"
+    second_token = "second-reset-token-with-enough-length-456"
+    tokens = iter([first_token, second_token])
+
+    def make_token() -> tuple[str, str, datetime]:
+        token = next(tokens)
+        return (
+            token,
+            hashlib.sha256(token.encode("utf-8")).hexdigest(),
+            datetime.now(timezone.utc) + timedelta(minutes=30),
+        )
+
+    monkeypatch.setattr(password_reset_router, "make_password_reset_token", make_token)
+    monkeypatch.setattr(password_reset_router, "send_password_reset_email", lambda email, url: True)
+
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "multi-reset@example.com",
+            "password": "old-password-123",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    assert register_response.status_code == 200
+
+    first_request = client.post(
+        "/api/auth/password-reset/request",
+        json={"email": "multi-reset@example.com"},
+    )
+    second_request = client.post(
+        "/api/auth/password-reset/request",
+        json={"email": "multi-reset@example.com"},
+    )
+    assert first_request.status_code == 200
+    assert second_request.status_code == 200
+
+    confirm_response = client.post(
+        "/api/auth/password-reset/confirm",
+        json={"token": first_token, "password": "new-password-123"},
+    )
+    assert confirm_response.status_code == 200
+
+    second_confirm_response = client.post(
+        "/api/auth/password-reset/confirm",
+        json={"token": second_token, "password": "another-password-123"},
+    )
+    assert second_confirm_response.status_code == 400
+    assert second_confirm_response.json()["detail"] == "invalid_or_expired_reset_token"
+
+
+def test_password_reset_request_is_rate_limited_per_ip_across_emails() -> None:
+    for index in range(password_reset_router.PASSWORD_RESET_IP_RATE_LIMIT_MAX):
+        response = client.post(
+            "/api/auth/password-reset/request",
+            json={"email": f"probe-{index}@example.com"},
+        )
+        assert response.status_code == 200
+
+    limited_response = client.post(
+        "/api/auth/password-reset/request",
+        json={"email": "another-probe@example.com"},
+    )
+    assert limited_response.status_code == 429
+    assert limited_response.json()["detail"] == "password_reset_rate_limited"
+
+
+def test_password_reset_rate_limit_window_resets_after_expiry() -> None:
+    key = "account:anytoolai:ru:window-reset@example.com"
+    first_attempt_at = datetime(2026, 7, 29, 9, 0, tzinfo=timezone.utc)
+    next_window_at = first_attempt_at + timedelta(
+        minutes=password_reset_router.PASSWORD_RESET_RATE_LIMIT_WINDOW_MINUTES + 1
+    )
+
+    with SessionLocal() as db:
+        password_reset_router.enforce_password_reset_rate_limit(
+            db=db,
+            key=key,
+            limit=1,
+            now=first_attempt_at,
+        )
+        db.commit()
+
+        password_reset_router.enforce_password_reset_rate_limit(
+            db=db,
+            key=key,
+            limit=1,
+            now=next_window_at,
+        )
+        db.commit()
+
+        stored_limit = db.query(PasswordResetRateLimit).filter_by(rate_limit_key=key).one()
+        assert stored_limit.count == 1
+        assert stored_limit.window_start == next_window_at
+
+
+def test_password_reset_rate_limit_prunes_expired_keys() -> None:
+    now = datetime(2026, 7, 29, 9, 30, tzinfo=timezone.utc)
+    expired_at = now - timedelta(minutes=1)
+
+    with SessionLocal() as db:
+        db.add(
+            PasswordResetRateLimit(
+                rate_limit_key="account:anytoolai:ru:expired@example.com",
+                count=1,
+                window_start=expired_at - timedelta(minutes=15),
+                expires_at=expired_at,
+            )
+        )
+        db.commit()
+
+        password_reset_router.prune_expired_password_reset_rate_limits(db=db, now=now)
+        db.commit()
+
+        assert db.query(PasswordResetRateLimit).count() == 0
+
+
+def test_password_reset_request_prunes_expired_reset_tokens() -> None:
+    now = datetime(2026, 7, 29, 9, 30, tzinfo=timezone.utc)
+
+    with SessionLocal() as db:
+        db.add(
+            MagicLinkToken(
+                tenant_id="anytoolai",
+                region="ru",
+                email_normalized="password-reset-decoy:expired",
+                token_hash=hashlib.sha256(b"expired-reset-token").hexdigest(),
+                purpose="password_reset",
+                expires_at=now - timedelta(minutes=1),
+            )
+        )
+        db.commit()
+
+        password_reset_router.prune_expired_password_reset_tokens(db=db, now=now)
+        db.commit()
+
+        assert db.query(MagicLinkToken).count() == 0
+
+
+def test_password_reset_email_delivery_disabled_is_observable(monkeypatch, caplog) -> None:
+    monkeypatch.setattr(password_reset_router, "send_password_reset_email", lambda email, url: False)
+
+    with caplog.at_level("WARNING", logger="payment_portal.identity.password_reset"):
+        password_reset_router.send_password_reset_email_safely(
+            "reset-user@example.com",
+            "http://localhost/reset",
+        )
+
+    assert "password_reset_email_delivery_disabled" in caplog.text
+
+
+def test_password_reset_email_delivery_failure_is_observable(monkeypatch, caplog) -> None:
+    def fail_delivery(email: str, url: str) -> bool:
+        raise TimeoutError("synthetic timeout")
+
+    monkeypatch.setattr(password_reset_router, "send_password_reset_email", fail_delivery)
+
+    with caplog.at_level("WARNING", logger="payment_portal.identity.password_reset"):
+        password_reset_router.send_password_reset_email_safely(
+            "reset-user@example.com",
+            "http://localhost/reset",
+        )
+
+    assert "password_reset_email_delivery_failed" in caplog.text
+    assert caplog.records[-1].structured["reason"] == "TimeoutError"
 
 
 def test_cloudpayments_webhook_is_saved_without_secret_hmac() -> None:

@@ -26,10 +26,12 @@ type AuthFormProps = {
   personalConsentError: string;
   offerConsentError: string;
   includeCancellationLink?: boolean;
+  passwordResetHref?: string;
   telegramLoginUrl?: string;
   telegramIcon?: ReactNode;
   feedbackRef?: Ref<HTMLDivElement>;
   onModeChange?: (mode: AuthMode) => void;
+  onPasswordResetClick?: () => void;
   onBeforeSubmit: () => void;
   onValidationError: (message: string) => void;
   onSubmit: (values: AuthFormSubmitValues) => Promise<void>;
@@ -49,10 +51,12 @@ export function AuthForm({
   personalConsentError,
   offerConsentError,
   includeCancellationLink = false,
+  passwordResetHref = "/ru/forgot-password",
   telegramLoginUrl,
   telegramIcon,
   feedbackRef,
   onModeChange,
+  onPasswordResetClick,
   onBeforeSubmit,
   onValidationError,
   onSubmit
@@ -158,6 +162,16 @@ export function AuthForm({
           onChange={(event) => setPassword(event.target.value)}
         />
       </label>
+
+      {mode === "login" ? (
+        <Link
+          className="auth-form-secondary-link inline-link"
+          href={passwordResetHref}
+          onClick={onPasswordResetClick}
+        >
+          Забыли пароль?
+        </Link>
+      ) : null}
 
       {mode === "register" ? (
         <>
