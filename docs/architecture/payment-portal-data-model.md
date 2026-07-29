@@ -94,9 +94,12 @@ Raw session tokens are returned to the client once and stored only as SHA-256
 hashes in `auth_sessions`. Sessions have expiry and revocation timestamps.
 Password-reset tokens are emailed once and stored only as SHA-256 hashes in
 `magic_link_tokens`. Reset confirmation consumes outstanding reset tokens for
-that user and revokes active sessions. Password-reset request throttling is
-stored in `password_reset_rate_limits` so limits are shared across API workers.
-Counters are keyed by account or IP scope and expire after their current window.
+that user and revokes active sessions. For the RU MVP, password-reset request
+scope is derived server-side rather than accepted from unauthenticated clients.
+Password-reset request throttling is stored in `password_reset_rate_limits` so
+limits are shared across API workers. Counters are keyed by account or IP scope
+and expire after their current window. Expired password-reset token rows are
+pruned before new reset-token persistence.
 
 ### Legal
 

@@ -182,16 +182,6 @@
             "format": "email",
             "title": "Email",
             "type": "string"
-          },
-          "region": {
-            "default": "ru",
-            "title": "Region",
-            "type": "string"
-          },
-          "tenant_id": {
-            "default": "anytoolai",
-            "title": "Tenant Id",
-            "type": "string"
           }
         },
         "required": [

@@ -1462,6 +1462,43 @@ def test_password_reset_request_uses_forwarded_client_ip_from_trusted_proxy() ->
         assert stored_limit.count == 1
 
 
+def test_password_reset_request_derives_scope_server_side_for_rate_limits() -> None:
+    for index in range(password_reset_router.PASSWORD_RESET_IP_RATE_LIMIT_MAX):
+        response = client.post(
+            "/api/auth/password-reset/request",
+            json={
+                "tenant_id": f"attacker-{index}",
+                "region": "not-a-region",
+                "email": f"scope-probe-{index}@example.com",
+            },
+        )
+        assert response.status_code == 200
+
+    limited_response = client.post(
+        "/api/auth/password-reset/request",
+        json={
+            "tenant_id": "attacker-final",
+            "region": "still-not-a-region",
+            "email": "scope-probe-final@example.com",
+        },
+    )
+    assert limited_response.status_code == 429
+    assert limited_response.json()["detail"] == "password_reset_rate_limited"
+
+    with SessionLocal() as db:
+        assert db.query(MagicLinkToken).count() == password_reset_router.PASSWORD_RESET_IP_RATE_LIMIT_MAX
+        stored_token = db.query(MagicLinkToken).first()
+        assert stored_token is not None
+        assert stored_token.tenant_id == "anytoolai"
+        assert stored_token.region == "ru"
+        ip_limit = (
+            db.query(PasswordResetRateLimit)
+            .filter_by(rate_limit_key="ip:anytoolai:ru:testclient")
+            .one()
+        )
+        assert ip_limit.count == password_reset_router.PASSWORD_RESET_IP_RATE_LIMIT_MAX
+
+
 def test_password_reset_request_is_rate_limited_per_account() -> None:
     for _ in range(password_reset_router.PASSWORD_RESET_ACCOUNT_RATE_LIMIT_MAX):
         response = client.post(
@@ -1617,6 +1654,28 @@ def test_password_reset_rate_limit_prunes_expired_keys() -> None:
         db.commit()
 
         assert db.query(PasswordResetRateLimit).count() == 0
+
+
+def test_password_reset_request_prunes_expired_reset_tokens() -> None:
+    now = datetime(2026, 7, 29, 9, 30, tzinfo=timezone.utc)
+
+    with SessionLocal() as db:
+        db.add(
+            MagicLinkToken(
+                tenant_id="anytoolai",
+                region="ru",
+                email_normalized="password-reset-decoy:expired",
+                token_hash=hashlib.sha256(b"expired-reset-token").hexdigest(),
+                purpose="password_reset",
+                expires_at=now - timedelta(minutes=1),
+            )
+        )
+        db.commit()
+
+        password_reset_router.prune_expired_password_reset_tokens(db=db, now=now)
+        db.commit()
+
+        assert db.query(MagicLinkToken).count() == 0
 
 
 def test_password_reset_email_delivery_disabled_is_observable(monkeypatch, caplog) -> None:

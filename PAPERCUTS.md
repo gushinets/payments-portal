@@ -75,3 +75,11 @@ Running Playwright against a manually started local web server → the config re
 a stale `.harness/runtime.json` and targeted `127.0.0.1:30207` instead of the
 live server on port 3000. Prefer an explicit fresh runtime check, or print the
 selected `PLAYWRIGHT_BASE_URL` when the harness runtime file is reused.
+
+## 2026-07-29 08:30Z - Codex (GPT-5) - macOS
+
+Running `npm run generate` after changing the password-reset request schema →
+the script failed with `python: command not found` even though the repository
+virtualenv had a working interpreter. The npm generate entrypoint could invoke
+`.venv/bin/python` when present, or `repo:doctor` could flag a missing `python`
+alias. Workaround: run `./.venv/bin/python scripts/repo.py generate`.

@@ -32,8 +32,6 @@ logger = logging.getLogger("payment_portal.identity.password_reset")
 
 
 class PasswordResetRequest(BaseModel):
-    tenant_id: str = DEFAULT_TENANT_ID
-    region: str = DEFAULT_REGION
     email: EmailStr
 
 
@@ -47,14 +45,6 @@ def make_password_reset_token() -> tuple[str, str, datetime]:
     token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
     expires_at = utc_now() + timedelta(minutes=PASSWORD_RESET_TTL_MINUTES)
     return token, token_hash, expires_at
-
-
-def normalize_tenant_id(value: str) -> str:
-    return value.strip().lower()
-
-
-def normalize_region(value: str) -> str:
-    return value.strip().lower()
 
 
 def normalize_email(value: str) -> str:
@@ -126,6 +116,17 @@ def prune_expired_password_reset_rate_limits(*, db: Session, now: datetime) -> N
     )
 
 
+def prune_expired_password_reset_tokens(*, db: Session, now: datetime) -> None:
+    (
+        db.query(MagicLinkToken)
+        .filter(
+            MagicLinkToken.purpose == PASSWORD_RESET_PURPOSE,
+            MagicLinkToken.expires_at <= now,
+        )
+        .delete(synchronize_session=False)
+    )
+
+
 def send_password_reset_email_safely(email: str, reset_url: str) -> None:
     try:
         sent = send_password_reset_email(email, reset_url)
@@ -162,8 +163,8 @@ def request_password_reset(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
-    tenant_id = normalize_tenant_id(payload.tenant_id)
-    region = normalize_region(payload.region)
+    tenant_id = DEFAULT_TENANT_ID
+    region = DEFAULT_REGION
     normalized_email = normalize_email(str(payload.email))
     now = utc_now()
     account_rate_limit_key, ip_rate_limit_key = password_reset_rate_limit_keys(
@@ -173,6 +174,7 @@ def request_password_reset(
         request=request,
     )
     try:
+        prune_expired_password_reset_tokens(db=db, now=now)
         prune_expired_password_reset_rate_limits(db=db, now=now)
         db.commit()
         enforce_password_reset_rate_limit(
