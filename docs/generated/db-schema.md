@@ -342,6 +342,21 @@ Indexes and constraints:
 - `ix_orders_user_id`
 - `ix_orders_user_id_created_at`
 
+## `password_reset_rate_limits`
+
+| Column | Type | Nullable | Key |
+|---|---|---:|---|
+| `rate_limit_key` | `TEXT` | no | PK |
+| `count` | `INTEGER` | no |  |
+| `window_start` | `DATETIME` | no |  |
+| `expires_at` | `DATETIME` | no |  |
+| `created_at` | `DATETIME` | no |  |
+| `updated_at` | `DATETIME` | no |  |
+
+Indexes and constraints:
+
+- `ix_password_reset_rate_limits_expires_at`
+
 ## `payment_provider_accounts`
 
 | Column | Type | Nullable | Key |

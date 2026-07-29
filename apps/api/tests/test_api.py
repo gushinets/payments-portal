@@ -32,6 +32,7 @@ from app.models import (  # noqa: E402
     PaymentProviderAccount,
     PaymentWebhookEvent,
     Plan,
+    PasswordResetRateLimit,
     ProductAccessState,
     Product,
     Refund,
@@ -44,7 +45,6 @@ client = TestClient(app)
 
 
 def setup_function() -> None:
-    password_reset_router.password_reset_attempts.clear()
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
     with SessionLocal() as db:
@@ -1467,6 +1467,56 @@ def test_password_reset_request_is_rate_limited_per_ip_across_emails() -> None:
     )
     assert limited_response.status_code == 429
     assert limited_response.json()["detail"] == "password_reset_rate_limited"
+
+
+def test_password_reset_rate_limit_window_resets_after_expiry() -> None:
+    key = "account:anytoolai:ru:window-reset@example.com"
+    first_attempt_at = datetime(2026, 7, 29, 9, 0, tzinfo=timezone.utc)
+    next_window_at = first_attempt_at + timedelta(
+        minutes=password_reset_router.PASSWORD_RESET_RATE_LIMIT_WINDOW_MINUTES + 1
+    )
+
+    with SessionLocal() as db:
+        password_reset_router.enforce_password_reset_rate_limit(
+            db=db,
+            key=key,
+            limit=1,
+            now=first_attempt_at,
+        )
+        db.commit()
+
+        password_reset_router.enforce_password_reset_rate_limit(
+            db=db,
+            key=key,
+            limit=1,
+            now=next_window_at,
+        )
+        db.commit()
+
+        stored_limit = db.query(PasswordResetRateLimit).filter_by(rate_limit_key=key).one()
+        assert stored_limit.count == 1
+        assert stored_limit.window_start == next_window_at
+
+
+def test_password_reset_rate_limit_prunes_expired_keys() -> None:
+    now = datetime(2026, 7, 29, 9, 30, tzinfo=timezone.utc)
+    expired_at = now - timedelta(minutes=1)
+
+    with SessionLocal() as db:
+        db.add(
+            PasswordResetRateLimit(
+                rate_limit_key="account:anytoolai:ru:expired@example.com",
+                count=1,
+                window_start=expired_at - timedelta(minutes=15),
+                expires_at=expired_at,
+            )
+        )
+        db.commit()
+
+        password_reset_router.prune_expired_password_reset_rate_limits(db=db, now=now)
+        db.commit()
+
+        assert db.query(PasswordResetRateLimit).count() == 0
 
 
 def test_password_reset_email_delivery_disabled_is_observable(monkeypatch, caplog) -> None:

@@ -290,6 +290,24 @@ class MagicLinkToken(Base):
     user_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class PasswordResetRateLimit(Base):
+    __tablename__ = "password_reset_rate_limits"
+    __table_args__ = (
+        Index("ix_password_reset_rate_limits_expires_at", "expires_at"),
+    )
+
+    rate_limit_key: Mapped[str] = mapped_column(Text, primary_key=True)
+    count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
 class PaymentProviderAccount(Base):
     __tablename__ = "payment_provider_accounts"
     __table_args__ = (

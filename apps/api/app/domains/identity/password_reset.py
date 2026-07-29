@@ -3,11 +3,11 @@ from __future__ import annotations
 import hashlib
 import logging
 import secrets
-from collections import defaultdict
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel, EmailStr, Field
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -28,7 +28,6 @@ PASSWORD_RESET_PURPOSE = "password_reset"
 PASSWORD_RESET_RATE_LIMIT_WINDOW_MINUTES = 15
 PASSWORD_RESET_ACCOUNT_RATE_LIMIT_MAX = 5
 PASSWORD_RESET_IP_RATE_LIMIT_MAX = 20
-password_reset_attempts: dict[str, list[datetime]] = defaultdict(list)
 logger = logging.getLogger("payment_portal.identity.password_reset")
 
 
@@ -72,14 +71,48 @@ def password_reset_rate_limit_keys(
     )
 
 
-def enforce_password_reset_rate_limit(*, key: str, limit: int, now: datetime) -> None:
-    window_start = now - timedelta(minutes=PASSWORD_RESET_RATE_LIMIT_WINDOW_MINUTES)
-    recent = [attempt for attempt in password_reset_attempts[key] if attempt > window_start]
-    if len(recent) >= limit:
-        password_reset_attempts[key] = recent
+def enforce_password_reset_rate_limit(*, db: Session, key: str, limit: int, now: datetime) -> None:
+    expires_at = now + timedelta(minutes=PASSWORD_RESET_RATE_LIMIT_WINDOW_MINUTES)
+    attempts = db.execute(
+        text(
+            """
+            INSERT INTO password_reset_rate_limits (
+                rate_limit_key,
+                count,
+                window_start,
+                expires_at,
+                created_at,
+                updated_at
+            )
+            VALUES (:key, 1, :now, :expires_at, :now, :now)
+            ON CONFLICT(rate_limit_key) DO UPDATE SET
+                count = CASE
+                    WHEN password_reset_rate_limits.expires_at <= :now THEN 1
+                    ELSE password_reset_rate_limits.count + 1
+                END,
+                window_start = CASE
+                    WHEN password_reset_rate_limits.expires_at <= :now THEN :now
+                    ELSE password_reset_rate_limits.window_start
+                END,
+                expires_at = CASE
+                    WHEN password_reset_rate_limits.expires_at <= :now THEN :expires_at
+                    ELSE password_reset_rate_limits.expires_at
+                END,
+                updated_at = :now
+            RETURNING count
+            """
+        ),
+        {"key": key, "now": now, "expires_at": expires_at},
+    ).scalar_one()
+    if attempts > limit:
         raise HTTPException(status_code=429, detail="password_reset_rate_limited")
-    recent.append(now)
-    password_reset_attempts[key] = recent
+
+
+def prune_expired_password_reset_rate_limits(*, db: Session, now: datetime) -> None:
+    db.execute(
+        text("DELETE FROM password_reset_rate_limits WHERE expires_at <= :now"),
+        {"now": now},
+    )
 
 
 def send_password_reset_email_safely(email: str, reset_url: str) -> None:
@@ -124,16 +157,23 @@ def request_password_reset(
         email_normalized=normalized_email,
         request=request,
     )
-    enforce_password_reset_rate_limit(
-        key=ip_rate_limit_key,
-        limit=PASSWORD_RESET_IP_RATE_LIMIT_MAX,
-        now=now,
-    )
-    enforce_password_reset_rate_limit(
-        key=account_rate_limit_key,
-        limit=PASSWORD_RESET_ACCOUNT_RATE_LIMIT_MAX,
-        now=now,
-    )
+    try:
+        prune_expired_password_reset_rate_limits(db=db, now=now)
+        enforce_password_reset_rate_limit(
+            db=db,
+            key=ip_rate_limit_key,
+            limit=PASSWORD_RESET_IP_RATE_LIMIT_MAX,
+            now=now,
+        )
+        enforce_password_reset_rate_limit(
+            db=db,
+            key=account_rate_limit_key,
+            limit=PASSWORD_RESET_ACCOUNT_RATE_LIMIT_MAX,
+            now=now,
+        )
+    except HTTPException:
+        db.rollback()
+        raise
     token, token_hash, expires_at = make_password_reset_token()
     user = (
         db.query(User)
@@ -158,7 +198,10 @@ def request_password_reset(
             user_agent=request.headers.get("user-agent"),
         )
         db.add(reset_token)
-        db.commit()
+
+    db.commit()
+
+    if user is not None:
         background_tasks.add_task(
             send_password_reset_email_safely,
             user.email,
