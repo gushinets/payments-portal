@@ -190,7 +190,14 @@ def write_runtime(config: RuntimeConfig) -> None:
         "OTEL_EXPORTER_OTLP_ENDPOINT": "http://observability:4318",
         "OTEL_SERVICE_NAME": "payment-portal-api",
         "CLOUDPAYMENTS_ENABLED": "false",
-        "NEXT_PUBLIC_CLOUDPAYMENTS_ENABLED": "false",
+        "NEXT_PUBLIC_CLOUDPAYMENTS_PUBLIC_ID": os.getenv(
+            "NEXT_PUBLIC_CLOUDPAYMENTS_PUBLIC_ID",
+            local_env.get("NEXT_PUBLIC_CLOUDPAYMENTS_PUBLIC_ID", ""),
+        ),
+        "NEXT_PUBLIC_CLOUDPAYMENTS_ENABLED": os.getenv(
+            "NEXT_PUBLIC_CLOUDPAYMENTS_ENABLED",
+            local_env.get("NEXT_PUBLIC_CLOUDPAYMENTS_ENABLED", "false"),
+        ),
     }
     RUNTIME_ENV.write_text(
         "".join(f"{key}={value}\n" for key, value in values.items()),
@@ -893,6 +900,10 @@ def cmd_check(args: argparse.Namespace) -> None:
     cmd_generate(argparse.Namespace(check=True))
     cmd_architecture(argparse.Namespace())
     run([tool("npm"), "run", "test:boundaries:web"], env=check_env)
+    run(
+        [tool("npm"), "--workspace", "@anytoolai/web", "run", "test:components"],
+        env=check_env,
+    )
     run([tool("npm"), "run", "lint:web"], env=check_env)
     run(
         [

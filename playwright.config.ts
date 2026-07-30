@@ -5,6 +5,7 @@ import { defineConfig, devices } from "@playwright/test";
 type RuntimeConfig = {
   web_port: number;
   api_port: number;
+  otlp_http_port?: number;
 };
 
 const repositoryRoot = process.cwd();
@@ -18,9 +19,11 @@ function runtimeConfig(): RuntimeConfig | null {
 }
 
 const runtime = runtimeConfig();
+const runtimeCaddyPort =
+  runtime?.otlp_http_port === undefined ? null : runtime.otlp_http_port + 1000;
 const baseURL =
   process.env.PLAYWRIGHT_BASE_URL ??
-  `http://127.0.0.1:${runtime?.web_port ?? 3000}`;
+  `http://localhost:${runtimeCaddyPort ?? runtime?.web_port ?? 3000}`;
 const apiBaseURL =
   process.env.PLAYWRIGHT_API_BASE_URL ??
   `http://127.0.0.1:${runtime?.api_port ?? 8000}`;

@@ -98,7 +98,8 @@ function derivePaymentResultKind(
   fallbackStatus: string,
   payload: PaymentStatusResponse | null
 ): PaymentResultKind {
-  const productStatus = payload?.product_state.status ?? fallbackStatus;
+  const productStatus =
+    payload?.product_state.status ?? (fallbackStatus === "failed" ? "failed" : "pending");
   const orderStatus = payload?.order?.status ?? null;
   const paymentStatus = payload?.payment?.status ?? null;
   const refundedAmount = payload?.payment?.refunded_amount_minor ?? 0;
@@ -247,6 +248,8 @@ export function PaymentResultClient() {
           return;
         }
         setPaymentStatusPayload(payload);
+      } catch {
+        // Payment status polling is best-effort; pending remains authoritative.
       } finally {
         window.clearTimeout(timeoutId);
         if (!cancelled) {

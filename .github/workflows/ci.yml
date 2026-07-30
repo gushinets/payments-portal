@@ -37,6 +37,16 @@ jobs:
         run: npm ci
       - name: Run fast checks
         run: npm run check:fast
+      - name: Generate frontend component coverage
+        run: npm --workspace @anytoolai/web run test:components:coverage
+      - name: Upload frontend component coverage
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: frontend-component-coverage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .harness/coverage/web-components/
+          if-no-files-found: warn
+          retention-days: 7
       - name: Type-check web
         run: npm run typecheck:web
       - name: Build web
@@ -184,6 +194,10 @@ jobs:
 
   browser:
     runs-on: ubuntu-latest
+    env:
+      PLAYWRIGHT_PROVIDER_UI_STUB: "true"
+      NEXT_PUBLIC_CLOUDPAYMENTS_ENABLED: "true"
+      NEXT_PUBLIC_CLOUDPAYMENTS_PUBLIC_ID: test-provider-public-id
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0

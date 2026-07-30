@@ -83,3 +83,11 @@ the script failed with `python: command not found` even though the repository
 virtualenv had a working interpreter. The npm generate entrypoint could invoke
 `.venv/bin/python` when present, or `repo:doctor` could flag a missing `python`
 alias. Workaround: run `./.venv/bin/python scripts/repo.py generate`.
+
+## 2026-07-30 11:04Z - Codex (GPT-5) - macOS
+
+Installing new web test dependencies with `npm install` → npm emitted
+`EBADENGINE` warnings because the local shell used Node `v23.6.0` while the
+repository requires Node `>=24 <25`. `repo:doctor` reports the version, but the
+install still proceeds noisily; a stronger preinstall hint or documented Node
+24 activation command would make dependency updates less ambiguous.
