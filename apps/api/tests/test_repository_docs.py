@@ -117,6 +117,7 @@ def test_fast_check_passes_the_scoped_environment_to_every_subprocess(
 
     repo.cmd_check(argparse.Namespace(fast=True))
 
-    assert len(invocations) == 3
+    assert len(invocations) == 4
     assert all(environment is check_environment for _, environment in invocations)
+    assert any("test:components" in command for command, _ in invocations)
     assert any("pytest" in command for command, _ in invocations)
