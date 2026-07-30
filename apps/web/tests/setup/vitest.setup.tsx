@@ -29,6 +29,7 @@ vi.mock("next/navigation", () => ({
 beforeAll(() => {
   window.HTMLElement.prototype.scrollIntoView = vi.fn();
   server.listen({ onUnhandledRequest: "error" });
+  installFetchAbortSignalCompatibility();
 });
 
 afterEach(() => {
@@ -45,3 +46,31 @@ afterEach(() => {
 afterAll(() => {
   server.close();
 });
+
+function installFetchAbortSignalCompatibility() {
+  const interceptedFetch = globalThis.fetch.bind(globalThis);
+
+  globalThis.fetch = ((input, init) => {
+    if (init?.signal && !requestAcceptsSignal(init.signal)) {
+      const nextInit = { ...init };
+      delete nextInit.signal;
+      return interceptedFetch(input, nextInit);
+    }
+
+    return interceptedFetch(input, init);
+  }) as typeof fetch;
+  window.fetch = globalThis.fetch;
+}
+
+function requestAcceptsSignal(signal: AbortSignal) {
+  try {
+    new Request("http://localhost", { signal });
+    return true;
+  } catch (error) {
+    if (error instanceof TypeError && String(error.message).includes("signal")) {
+      return false;
+    }
+
+    throw error;
+  }
+}
