@@ -161,10 +161,12 @@ test("provider UI stub success cannot activate access without backend state", as
   await payButton.click();
 
   const providerPayments = await expectProviderPaymentWithoutCardData(page);
+  expect(providerPayments[0].hasSensitiveFields).toBe(false);
+  expect(providerPayments[0].sensitiveFieldKeys).toEqual([]);
   await completeProviderUiSuccess(page);
   await expect(page).toHaveURL(/\/ru\/payment-result\?status=pending/);
 
-  const invoice = String(providerPayments[0].options.invoiceId);
+  const invoice = String(providerPayments[0].safeOptions.invoiceId);
   const statusPath = `/api/auth/payment-status?invoice_id=${encodeURIComponent(invoice)}&email=${encodeURIComponent(email)}`;
   const paymentStatus = await api.get(statusPath);
   expect(paymentStatus.ok()).toBeTruthy();
@@ -175,7 +177,12 @@ test("provider UI stub success cannot activate access without backend state", as
     body: JSON.stringify(
       {
         invoice,
-        providerPayment: providerPayments[0],
+        providerPayment: {
+          kind: providerPayments[0].kind,
+          safeOptions: providerPayments[0].safeOptions,
+          hasSensitiveFields: providerPayments[0].hasSensitiveFields,
+          sensitiveFieldKeys: providerPayments[0].sensitiveFieldKeys
+        },
         backendProductState: statusBody.product_state,
         invariant:
           "Provider browser success navigates to pending result only; backend state remains authoritative"

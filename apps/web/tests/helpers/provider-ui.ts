@@ -61,4 +61,5 @@ export function expectNoCardData(request: ProviderPaymentRequest) {
   expect(serialized).not.toContain("card");
   expect(serialized).not.toContain("pan");
   expect(serialized).not.toContain("cvv");
+  expect(serialized).not.toContain("cvc");
 }

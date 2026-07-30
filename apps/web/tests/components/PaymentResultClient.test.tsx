@@ -1,5 +1,5 @@
 import { HttpResponse, http } from "msw";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { setRouteSearchParams } from "../helpers/navigation";
 import { server } from "../setup/msw-server";
@@ -117,5 +117,55 @@ describe("PaymentResultClient authoritative status characterization", () => {
       await screen.findByRole("heading", { name: "Не удалось завершить оплату" })
     ).toBeVisible();
     expect(screen.getByText(/Платёж не был подтверждён/)).toBeVisible();
+  });
+
+  it("keeps pending state when payment-status polling times out", async () => {
+    const realSetTimeout = window.setTimeout.bind(window);
+    const abortSpy = vi.spyOn(AbortController.prototype, "abort");
+    const RealRequest = globalThis.Request;
+    let requestStarted = false;
+
+    vi.spyOn(window, "setTimeout").mockImplementation(
+      (handler: TimerHandler, _timeout?: number, ...args: unknown[]) =>
+        realSetTimeout(handler, 10, ...args) as unknown as ReturnType<
+          typeof window.setTimeout
+        >
+    );
+    globalThis.Request = class SignalRejectingRequest extends RealRequest {
+      constructor(input: RequestInfo | URL, init?: RequestInit) {
+        if (init?.signal) {
+          throw new TypeError("Expected signal to be an instance of AbortSignal");
+        }
+        super(input, init);
+      }
+    } as typeof Request;
+
+    server.use(
+      http.get(`${apiBase}/api/auth/payment-status`, () => {
+        requestStarted = true;
+        return new Promise<never>(() => {});
+      })
+    );
+    setRouteSearchParams(
+      "status=pending&product=document-summary&email=buyer%40example.com&invoice=invoice-result"
+    );
+
+    try {
+      render(<PaymentResultClient />);
+
+      expect(
+        await screen.findByRole("heading", { name: "Платёж обрабатывается" })
+      ).toBeVisible();
+      await waitFor(() => expect(requestStarted).toBe(true));
+      await waitFor(() => expect(abortSpy).toHaveBeenCalled());
+      expect(globalThis.__ANYTOOLAI_FETCH_SIGNAL_STRIPPED_COUNT__).toBeGreaterThan(
+        0
+      );
+      expect(
+        screen.getByRole("heading", { name: "Платёж обрабатывается" })
+      ).toBeVisible();
+    } finally {
+      globalThis.Request = RealRequest;
+    }
   });
 });

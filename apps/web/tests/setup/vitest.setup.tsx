@@ -5,6 +5,7 @@ import { server } from "./msw-server";
 
 declare global {
   var __NEXT_SEARCH_PARAMS__: string | undefined;
+  var __ANYTOOLAI_FETCH_SIGNAL_STRIPPED_COUNT__: number | undefined;
 }
 
 vi.mock("next/link", () => ({
@@ -38,6 +39,7 @@ afterEach(() => {
   window.localStorage.clear();
   window.sessionStorage.clear();
   globalThis.__NEXT_SEARCH_PARAMS__ = "";
+  globalThis.__ANYTOOLAI_FETCH_SIGNAL_STRIPPED_COUNT__ = 0;
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
   vi.useRealTimers();
@@ -49,11 +51,14 @@ afterAll(() => {
 
 function installFetchAbortSignalCompatibility() {
   const interceptedFetch = globalThis.fetch.bind(globalThis);
+  globalThis.__ANYTOOLAI_FETCH_SIGNAL_STRIPPED_COUNT__ = 0;
 
   globalThis.fetch = ((input, init) => {
     if (init?.signal && !requestAcceptsSignal(init.signal)) {
       const nextInit = { ...init };
       delete nextInit.signal;
+      globalThis.__ANYTOOLAI_FETCH_SIGNAL_STRIPPED_COUNT__ =
+        (globalThis.__ANYTOOLAI_FETCH_SIGNAL_STRIPPED_COUNT__ ?? 0) + 1;
       return interceptedFetch(input, nextInit);
     }
 
