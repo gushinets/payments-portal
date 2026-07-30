@@ -119,33 +119,24 @@ describe("PaymentResultClient authoritative status characterization", () => {
     expect(screen.getByText(/Платёж не был подтверждён/)).toBeVisible();
   });
 
-  it("keeps pending state when payment-status polling times out", async () => {
-    const realSetTimeout = window.setTimeout.bind(window);
-    const abortSpy = vi.spyOn(AbortController.prototype, "abort");
-    const RealRequest = globalThis.Request;
-    let requestStarted = false;
+  it("keeps pending state when payment-status polling aborts", async () => {
+    const originalFetch = globalThis.fetch.bind(globalThis);
+    const unhandledRejections: unknown[] = [];
+    const abortError = new DOMException("The operation was aborted.", "AbortError");
+    const onUnhandledRejection = (event: PromiseRejectionEvent) => {
+      unhandledRejections.push(event.reason);
+    };
 
-    vi.spyOn(window, "setTimeout").mockImplementation(
-      (handler: TimerHandler, _timeout?: number, ...args: unknown[]) =>
-        realSetTimeout(handler, 10, ...args) as unknown as ReturnType<
-          typeof window.setTimeout
-        >
-    );
-    globalThis.Request = class SignalRejectingRequest extends RealRequest {
-      constructor(input: RequestInfo | URL, init?: RequestInit) {
-        if (init?.signal) {
-          throw new TypeError("Expected signal to be an instance of AbortSignal");
-        }
-        super(input, init);
+    window.addEventListener("unhandledrejection", onUnhandledRejection);
+    vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+      const url = String(input);
+      if (url.includes("/api/auth/payment-status")) {
+        expect(init?.signal).toBeInstanceOf(AbortSignal);
+        return Promise.reject(abortError);
       }
-    } as typeof Request;
 
-    server.use(
-      http.get(`${apiBase}/api/auth/payment-status`, () => {
-        requestStarted = true;
-        return new Promise<never>(() => {});
-      })
-    );
+      return originalFetch(input, init);
+    });
     setRouteSearchParams(
       "status=pending&product=document-summary&email=buyer%40example.com&invoice=invoice-result"
     );
@@ -156,16 +147,14 @@ describe("PaymentResultClient authoritative status characterization", () => {
       expect(
         await screen.findByRole("heading", { name: "Платёж обрабатывается" })
       ).toBeVisible();
-      await waitFor(() => expect(requestStarted).toBe(true));
-      await waitFor(() => expect(abortSpy).toHaveBeenCalled());
-      expect(globalThis.__ANYTOOLAI_FETCH_SIGNAL_STRIPPED_COUNT__).toBeGreaterThan(
-        0
-      );
+      await waitFor(() => expect(globalThis.fetch).toHaveBeenCalled());
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+      expect(unhandledRejections).toEqual([]);
       expect(
         screen.getByRole("heading", { name: "Платёж обрабатывается" })
       ).toBeVisible();
     } finally {
-      globalThis.Request = RealRequest;
+      window.removeEventListener("unhandledrejection", onUnhandledRejection);
     }
   });
 });

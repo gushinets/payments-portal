@@ -59,6 +59,100 @@ describe("CheckoutClient critical characterization", () => {
     expect(screen.queryByRole("button", { name: /^Оплатить/ })).not.toBeInTheDocument();
   });
 
+  it("logs in through the checkout form and stores the session token", async () => {
+    const user = userEvent.setup();
+    setRouteSearchParams("product=document-summary&auth=login");
+    const loginUser = { ...sessionUser, email: "login-buyer@example.com" };
+
+    server.use(
+      http.post(`${apiBase}/api/auth/login`, async ({ request }) => {
+        const body = (await request.json()) as Record<string, unknown>;
+        expect(body).toEqual({
+          email: "login-buyer@example.com",
+          password: "password-123"
+        });
+        return HttpResponse.json({
+          status: "authenticated",
+          token: "login-session-token",
+          user: loginUser
+        });
+      }),
+      http.get(`${apiBase}/api/auth/session`, ({ request }) => {
+        expect(request.headers.get("authorization")).toBe(
+          "Bearer login-session-token"
+        );
+        return HttpResponse.json({
+          ...sessionResponse("inactive"),
+          user: loginUser
+        });
+      })
+    );
+
+    await renderCheckoutWithProviderStub();
+
+    await user.type(screen.getByLabelText("Email"), "login-buyer@example.com");
+    await user.type(screen.getByLabelText("Пароль"), "password-123");
+    await user.click(screen.getByRole("button", { name: /^Войти$/ }));
+
+    await waitFor(() => {
+      expect(window.localStorage.getItem("anytoolai_session_token_v1")).toBe(
+        "login-session-token"
+      );
+    });
+    expect(await screen.findByText("login-buyer@example.com")).toBeVisible();
+    expect(screen.getByRole("button", { name: /^Оплатить/ })).toBeEnabled();
+  });
+
+  it("registers through the checkout form and stores the session token", async () => {
+    const user = userEvent.setup();
+    const registerUser = { ...sessionUser, email: "register-buyer@example.com" };
+
+    server.use(
+      http.post(`${apiBase}/api/auth/register`, async ({ request }) => {
+        const body = (await request.json()) as Record<string, unknown>;
+        expect(body).toEqual({
+          email: "register-buyer@example.com",
+          password: "password-123",
+          personal_consent: true,
+          offer_consent: true
+        });
+        return HttpResponse.json({
+          status: "registered",
+          token: "register-session-token",
+          user: registerUser
+        });
+      }),
+      http.get(`${apiBase}/api/auth/session`, ({ request }) => {
+        expect(request.headers.get("authorization")).toBe(
+          "Bearer register-session-token"
+        );
+        return HttpResponse.json({
+          ...sessionResponse("inactive"),
+          user: registerUser
+        });
+      })
+    );
+
+    await renderCheckoutWithProviderStub();
+
+    await user.type(screen.getByLabelText("Email"), "register-buyer@example.com");
+    await user.type(screen.getByLabelText("Пароль"), "password-123");
+    await user.type(screen.getByLabelText("Повторите пароль"), "password-123");
+    await user.click(
+      screen.getByLabelText(/Я даю согласие на обработку персональных данных/)
+    );
+    await user.click(screen.getByLabelText(/Я принимаю условия/));
+    await user.click(screen.getByRole("button", { name: /Создать аккаунт/ }));
+
+    await waitFor(() => {
+      expect(window.localStorage.getItem("anytoolai_session_token_v1")).toBe(
+        "register-session-token"
+      );
+    });
+    expect(await screen.findByText("register-buyer@example.com")).toBeVisible();
+    expect(screen.getByRole("button", { name: /^Оплатить/ })).toBeEnabled();
+  });
+
   it("loads an existing session and clears it on logout", async () => {
     const user = userEvent.setup();
     storeSessionToken("session-token");

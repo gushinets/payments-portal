@@ -247,6 +247,8 @@ export function PaymentResultClient() {
           return;
         }
         setPaymentStatusPayload(payload);
+      } catch {
+        // Payment status polling is best-effort; pending remains authoritative.
       } finally {
         window.clearTimeout(timeoutId);
         if (!cancelled) {
