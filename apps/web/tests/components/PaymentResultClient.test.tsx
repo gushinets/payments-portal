@@ -99,6 +99,26 @@ describe("PaymentResultClient authoritative status characterization", () => {
     expect(screen.queryByText("Оплата подтверждена")).not.toBeInTheDocument();
   });
 
+  it.each(["active", "paid", "refunded", "partially_refunded"])(
+    "keeps a spoofed %s return URL pending without backend state",
+    (spoofedStatus) => {
+      setRouteSearchParams(
+        `status=${spoofedStatus}&product=document-summary&email=buyer%40example.com`
+      );
+
+      render(<PaymentResultClient />);
+
+      expect(
+        screen.getByRole("heading", { name: "Платёж обрабатывается" })
+      ).toBeVisible();
+      expect(screen.getByText("Ожидаем подтверждение")).toBeVisible();
+      expect(screen.queryByText("Оплата подтверждена")).not.toBeInTheDocument();
+      expect(screen.queryByText("Платёж подтверждён")).not.toBeInTheDocument();
+      expect(screen.queryByText("Платёж возвращён")).not.toBeInTheDocument();
+      expect(screen.queryByText("Платёж частично возвращён")).not.toBeInTheDocument();
+    }
+  );
+
   it("polls pending to paid from backend state", async () => {
     await renderPollingResult("active");
 
