@@ -38,3 +38,14 @@ remains the only production adapter.
   PostgreSQL integration was skipped because `TEST_POSTGRES_DATABASE_URL` was
   not set; browser e2e was skipped because `RUN_E2E=true` and a running harness
   stack were not set.
+- Review fixes:
+  `.venv/bin/python -m pytest -p no:cacheprovider apps/api/tests/test_api.py -k 'cloudpayments or webhook or checkout'`:
+  24 passed, 24 deselected.
+- Review fixes:
+  `npm --workspace @anytoolai/web run test:components -- CheckoutClient.test.tsx`:
+  7 passed.
+- Review fixes:
+  `PATH=.venv/bin:$PATH npm run check:fast`: passed; 63 API tests passed, 2
+  PostgreSQL webhook tests skipped, web boundaries/components/lint passed.
+- Review fixes:
+  `npm run build:web`: passed.

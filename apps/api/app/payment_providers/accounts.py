@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import HTTPException
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import CountryRegionRule, PaymentProviderAccount, User
@@ -19,6 +20,26 @@ def _default_provider_code(db: Session, *, region: str) -> str | None:
         .first()
     )
     return rule.default_payment_provider if rule else None
+
+
+def _enabled_provider_account(
+    db: Session,
+    *,
+    tenant_id: str,
+    region: str,
+    provider: str,
+) -> PaymentProviderAccount | None:
+    return (
+        db.query(PaymentProviderAccount)
+        .filter(
+            PaymentProviderAccount.tenant_id == tenant_id,
+            PaymentProviderAccount.region == region,
+            PaymentProviderAccount.provider == provider,
+            PaymentProviderAccount.enabled.is_(True),
+        )
+        .order_by(PaymentProviderAccount.created_at.asc())
+        .first()
+    )
 
 
 def get_or_create_checkout_provider_account(
@@ -56,6 +77,17 @@ def get_or_create_checkout_provider_account(
     account = PaymentProviderAccount(
         **adapter.default_account_fields(tenant_id=user.tenant_id, region=user.region)
     )
-    db.add(account)
-    db.flush()
+    try:
+        with db.begin_nested():
+            db.add(account)
+            db.flush()
+    except IntegrityError:
+        account = _enabled_provider_account(
+            db,
+            tenant_id=user.tenant_id,
+            region=user.region,
+            provider=adapter.provider_code,
+        )
+        if account is None:
+            raise
     return account, adapter

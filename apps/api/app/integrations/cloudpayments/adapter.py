@@ -40,7 +40,10 @@ async def _parse_payload(request: Request, raw_body: bytes) -> dict[str, Any]:
     if "application/json" in content_type:
         if not raw_body:
             return {}
-        return json.loads(raw_body.decode("utf-8"))
+        payload = json.loads(raw_body.decode("utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError("payload_not_object")
+        return payload
     return _flatten_form_payload(raw_body)
 
 
@@ -51,15 +54,21 @@ def _get_first(payload: dict[str, Any], *keys: str) -> Any:
     return None
 
 
+def _safe_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return _safe_payload(value)
+    if isinstance(value, list):
+        return [_safe_value(item) for item in value]
+    return value
+
+
 def _safe_payload(payload: dict[str, Any]) -> dict[str, Any]:
     safe: dict[str, Any] = {}
     for key, value in payload.items():
         if key.lower() in CARD_DATA_KEYS:
             safe[key] = "[redacted]"
-        elif isinstance(value, dict):
-            safe[key] = _safe_payload(value)
         else:
-            safe[key] = value
+            safe[key] = _safe_value(value)
     return safe
 
 
@@ -119,7 +128,7 @@ def _event_idempotency_key(
 
 def verify_cloudpayments_signature(raw_body: bytes, headers: dict[str, str]) -> bool:
     if not settings.cloudpayments_api_secret:
-        return True
+        return not settings.cloudpayments_enabled
 
     signature = (
         headers.get("content-hmac")
@@ -135,8 +144,8 @@ def verify_cloudpayments_signature(raw_body: bytes, headers: dict[str, str]) -> 
         raw_body,
         hashlib.sha256,
     ).digest()
-    expected = base64.b64encode(digest).decode("ascii")
-    return hmac.compare_digest(signature, expected)
+    expected = base64.b64encode(digest)
+    return hmac.compare_digest(signature.encode("utf-8"), expected)
 
 
 class CloudPaymentsAdapter:
@@ -170,7 +179,7 @@ class CloudPaymentsAdapter:
             mode=mode,
             public_identifier=provider_account.public_identifier or settings.cloudpayments_public_id or None,
             amount_minor=order.amount_minor,
-            amount=round(order.amount_minor / 100, 2),
+            amount=(Decimal(order.amount_minor) / Decimal("100")).quantize(Decimal("0.01")),
             currency=order.currency,
             merchant_order_id=order.merchant_order_id,
             provider_invoice_id=order.provider_invoice_id or order.merchant_order_id,
@@ -237,7 +246,7 @@ class CloudPaymentsAdapter:
             error_message=error_message,
         )
 
-    def webhook_success_response(self, event: NormalizedPaymentEvent) -> dict[str, Any]:
+    def webhook_success_response(self, _event: NormalizedPaymentEvent) -> dict[str, Any]:
         return {"code": 0}
 
 

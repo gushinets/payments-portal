@@ -16,7 +16,7 @@ class CheckoutAction:
     mode: str
     public_identifier: str | None
     amount_minor: int
-    amount: float
+    amount: Decimal
     currency: str
     merchant_order_id: str
     provider_invoice_id: str

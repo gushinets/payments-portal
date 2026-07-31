@@ -10,7 +10,6 @@ from app.core.observability import record_webhook, traced
 from app.integrations.cloudpayments.adapter import (
     SUPPORTED_ENDPOINTS,
     cloudpayments_adapter,
-    verify_cloudpayments_signature,
 )
 from app.integrations.cloudpayments.processing import (
     datetime_now,
@@ -120,7 +119,10 @@ async def receive_cloudpayments_webhook(
             event.invoice_id,
         )
 
-    if normalized_event.error_message == "invalid_cloudpayments_signature":
-        raise HTTPException(status_code=400, detail=normalized_event.error_message)
+    if normalized_event.error_message:
+        raise HTTPException(
+            status_code=400,
+            detail=normalized_event.error_code or "webhook_rejected",
+        )
 
     return cloudpayments_adapter.webhook_success_response(normalized_event)

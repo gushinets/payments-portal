@@ -363,12 +363,19 @@ export function CheckoutClient({
         );
         return;
       }
-      checkoutAdapter.start(checkoutAction, {
-        productCode: selectedProduct.code,
-        planCode: selectedProduct.plan.code,
-        email: sessionUser.email,
-        invoiceId: checkoutIntent.product_state.invoice_id ?? ""
-      });
+      try {
+        checkoutAdapter.start(checkoutAction, {
+          productCode: selectedProduct.code,
+          planCode: selectedProduct.plan.code,
+          email: sessionUser.email,
+          invoiceId: checkoutIntent.product_state.invoice_id ?? ""
+        });
+      } catch {
+        window.sessionStorage.removeItem("anytoolai_last_payment_result");
+        showError(
+          "Не удалось открыть платёжный виджет. Обновите страницу и попробуйте ещё раз."
+        );
+      }
       return;
     }
 

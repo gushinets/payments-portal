@@ -351,4 +351,45 @@ describe("CheckoutClient critical characterization", () => {
     expect(checkoutAttempts).toBe(0);
     expect(readStoredPaymentResult()).toBeNull();
   });
+
+  it("recovers when the provider adapter throws while starting checkout", async () => {
+    const user = userEvent.setup();
+    storeSessionToken("session-token");
+    server.use(
+      http.get(`${apiBase}/api/auth/session`, () =>
+        HttpResponse.json(sessionResponse("inactive"))
+      ),
+      http.post(`${apiBase}/api/auth/checkout-intent`, () =>
+        HttpResponse.json({
+          product_state: {
+            product_code: "document-summary",
+            plan_code: "document-summary-pro",
+            plan_name: "Document Summary Pro",
+            invoice_id: "invoice-unsupported-mode",
+            transaction_id: null,
+            status: "pending",
+            starts_at: null,
+            expires_at: null
+          },
+          checkout: {
+            amount_minor: 99000,
+            amount: 990,
+            currency: "RUB",
+            action: checkoutAction("invoice-unsupported-mode", "unsupported-mode")
+          }
+        })
+      )
+    );
+    const provider = await renderCheckoutWithProviderStub();
+
+    expect(await screen.findByText("buyer@example.com")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: /^Оплатить/ }));
+
+    expect(
+      await screen.findByText(/Не удалось открыть платёжный виджет/)
+    ).toBeVisible();
+    expect(provider.payments).toHaveLength(0);
+    expect(provider.modes).toHaveLength(0);
+    expect(readStoredPaymentResult()).toBeNull();
+  });
 });
