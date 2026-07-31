@@ -754,8 +754,15 @@ def check_python_boundaries(root: Path = ROOT) -> list[str]:
         in_core = path_parts[0] == "core"
         in_domains = path_parts[0] == "domains"
         in_integrations = path_parts[0] == "integrations"
+        in_provider_neutral_payment = path_parts[0] == "payment_providers"
         is_domain_service_or_model = in_domains and path.name in {"service.py", "models.py"}
         is_router = path.name == "router.py"
+        source = path.read_text(encoding="utf-8")
+        if (in_domains or in_provider_neutral_payment) and "cloudpayments" in source.lower():
+            errors.append(
+                f"{relative} contains CloudPayments-specific logic; keep provider-neutral "
+                "modules keyed by provider accounts and adapters instead (see ARCHITECTURE.md)"
+            )
 
         try:
             imports = resolve_python_imports(path, app_root)

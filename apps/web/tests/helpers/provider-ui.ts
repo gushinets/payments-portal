@@ -1,6 +1,7 @@
 import { expect, vi } from "vitest";
 
 type ProviderOutcome = "success" | "fail";
+type ProviderMode = "charge" | "auth";
 
 type ProviderCallbacks = {
   onSuccess?: () => void;
@@ -19,20 +20,23 @@ type ProviderPaymentRequest = {
 };
 
 export type ProviderUiStub = {
+  modes: ProviderMode[];
   payments: ProviderPaymentRequest[];
   complete: (outcome: ProviderOutcome) => void;
 };
 
 export function installProviderUiStub(): ProviderUiStub {
+  const modes: ProviderMode[] = [];
   const payments: ProviderPaymentRequest[] = [];
   let callbacks: ProviderCallbacks | undefined;
 
   class ProviderNeutralCheckoutWidget {
     pay(
-      _mode: "charge",
+      mode: ProviderMode,
       request: ProviderPaymentRequest,
       nextCallbacks?: ProviderCallbacks
     ) {
+      modes.push(mode);
       payments.push(request);
       callbacks = nextCallbacks;
     }
@@ -45,6 +49,7 @@ export function installProviderUiStub(): ProviderUiStub {
   };
 
   return {
+    modes,
     payments,
     complete: (outcome: ProviderOutcome) => {
       if (outcome === "success") {

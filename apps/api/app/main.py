@@ -18,8 +18,12 @@ from app.core.settings import settings
 from app.domains.identity.password_reset import router as password_reset_router
 from app.domains.identity.router import router as auth_router
 from app.domains.legal.router import router as legal_router
+from app.integrations.cloudpayments.adapter import cloudpayments_adapter
 from app.integrations.cloudpayments.router import router as cloudpayments_router
 from app.legal_seed import seed_legal_documents
+from app.payment_providers.registry import payment_provider_registry
+
+payment_provider_registry.register(cloudpayments_adapter)
 
 
 @asynccontextmanager

@@ -1,1 +1,5 @@
-export { CheckoutClient, type CloudPaymentsWidgetStatus } from "./CheckoutClient";
+export { CheckoutClient } from "./CheckoutClient";
+export {
+  registeredCheckoutAdapters,
+  type CheckoutAdapterStatus
+} from "./provider-adapters";

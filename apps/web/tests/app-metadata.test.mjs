@@ -7,6 +7,9 @@ const layoutPath = fileURLToPath(new URL("../src/app/layout.tsx", import.meta.ur
 const checkoutPagePath = fileURLToPath(
   new URL("../src/app/ru/auth-checkout/page.tsx", import.meta.url)
 );
+const checkoutAdaptersPath = fileURLToPath(
+  new URL("../src/features/checkout/provider-adapters.ts", import.meta.url)
+);
 
 test("root metadata keeps public RU branding copy", async () => {
   const source = await readFile(layoutPath, "utf8");
@@ -21,11 +24,13 @@ test("root metadata keeps public RU branding copy", async () => {
 });
 
 test("CloudPayments widget is isolated to the checkout route", async () => {
-  const [layoutSource, checkoutPageSource] = await Promise.all([
+  const [layoutSource, checkoutPageSource, adapterSource] = await Promise.all([
     readFile(layoutPath, "utf8"),
-    readFile(checkoutPagePath, "utf8")
+    readFile(checkoutPagePath, "utf8"),
+    readFile(checkoutAdaptersPath, "utf8")
   ]);
 
   assert.doesNotMatch(layoutSource, /widget\.cloudpayments\.ru/);
-  assert.match(checkoutPageSource, /widget\.cloudpayments\.ru/);
+  assert.doesNotMatch(checkoutPageSource, /widget\.cloudpayments\.ru/);
+  assert.match(adapterSource, /widget\.cloudpayments\.ru/);
 });
