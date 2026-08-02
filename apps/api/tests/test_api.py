@@ -1768,8 +1768,8 @@ def test_malformed_cloudpayments_payload_omits_raw_body() -> None:
         content='{"InvoiceId":"invoice-raw","CardFirstSix":"411111","Token":"secret-token"',
     )
 
-    assert response.status_code == 400
-    assert response.json()["detail"] == "payload_parse_error"
+    assert response.status_code == 200
+    assert response.json() == {"code": 0}
 
     with SessionLocal() as db:
         event = db.query(PaymentWebhookEvent).one()
@@ -1788,8 +1788,8 @@ def test_cloudpayments_webhook_rejects_non_object_json_payload() -> None:
         content='["not-a-provider-object"]',
     )
 
-    assert response.status_code == 400
-    assert response.json()["detail"] == "payload_parse_error"
+    assert response.status_code == 200
+    assert response.json() == {"code": 0}
 
     with SessionLocal() as db:
         event = db.query(PaymentWebhookEvent).one()

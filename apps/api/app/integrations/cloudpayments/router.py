@@ -119,10 +119,10 @@ async def receive_cloudpayments_webhook(
             event.invoice_id,
         )
 
-    if normalized_event.error_message:
+    if normalized_event.error_message == "invalid_cloudpayments_signature":
         raise HTTPException(
             status_code=400,
-            detail=normalized_event.error_code or "webhook_rejected",
+            detail=normalized_event.error_message,
         )
 
     return cloudpayments_adapter.webhook_success_response(normalized_event)
