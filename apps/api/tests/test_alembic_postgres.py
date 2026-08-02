@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import json
+from datetime import timedelta
 from pathlib import Path
 from unittest.mock import patch
 
@@ -395,14 +396,20 @@ def test_active_plan_versions_cannot_overlap() -> None:
     try:
         with engine.connect() as connection:
             with connection.begin():
-                product_id = connection.execute(
-                    text("SELECT id FROM products WHERE code = 'document-summary'")
-                ).scalar_one()
+                seed_plan = connection.execute(
+                    text(
+                        "SELECT product_id, valid_from "
+                        "FROM plans WHERE code = 'document-summary-pro'"
+                    )
+                ).mappings().one()
+                product_id = seed_plan["product_id"]
+                valid_from = seed_plan["valid_from"]
                 connection.execute(
                     text(
-                        "UPDATE plans SET valid_to = '2026-08-01T00:00:00Z' "
+                        "UPDATE plans SET valid_to = :valid_to "
                         "WHERE code = 'document-summary-pro'"
-                    )
+                    ),
+                    {"valid_to": valid_from + timedelta(days=1)},
                 )
 
             with pytest.raises(IntegrityError):
@@ -418,10 +425,14 @@ def test_active_plan_versions_cannot_overlap() -> None:
                             "'anytoolai', 'ru', 'document-summary-pro', "
                             "'Document Summary Pro overlap', 'product', :product_id, "
                             "99000, 'RUB', 'month', 'manual', 7, 'active', "
-                            "'2026-07-15T00:00:00Z', '2026-08-15T00:00:00Z'"
+                            ":valid_from, :valid_to"
                             ")"
                         ),
-                        {"product_id": product_id},
+                        {
+                            "product_id": product_id,
+                            "valid_from": valid_from - timedelta(days=1),
+                            "valid_to": valid_from + timedelta(days=2),
+                        },
                     )
     finally:
         engine.dispose()
