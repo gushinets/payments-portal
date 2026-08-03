@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import base64
 import hashlib
+import hmac
 import os
 import sys
 import uuid
@@ -41,6 +43,10 @@ from app.models import (  # noqa: E402
     User,
 )
 from app.legal_seed import RU_DOCUMENT_VERSIONS, seed_legal_documents  # noqa: E402
+from app.integrations.cloudpayments.adapter import (  # noqa: E402
+    _event_idempotency_key,
+    verify_cloudpayments_signature,
+)
 
 
 client = TestClient(app)
@@ -429,10 +435,25 @@ def test_register_session_and_checkout_intent_flow() -> None:
     assert checkout_response.status_code == 200
     checkout_payload = checkout_response.json()
     assert checkout_payload["product_state"]["status"] == "pending"
-    assert checkout_payload["checkout"] == {
+    assert checkout_payload["checkout"]["amount_minor"] == 99000
+    assert checkout_payload["checkout"]["amount"] == 990.0
+    assert checkout_payload["checkout"]["currency"] == "RUB"
+    assert checkout_payload["checkout"]["action"] == {
+        "provider": "cloudpayments",
+        "experience": "widget",
+        "mode": "charge",
+        "public_identifier": None,
         "amount_minor": 99000,
         "amount": 990.0,
         "currency": "RUB",
+        "merchant_order_id": checkout_payload["product_state"]["invoice_id"],
+        "provider_invoice_id": checkout_payload["product_state"]["invoice_id"],
+        "account_id": "user@example.com",
+        "description": "Document Summary Pro",
+        "metadata": {
+            "product_code": "document-summary",
+            "plan_code": "document-summary-pro",
+        },
     }
     invoice_id = checkout_payload["product_state"]["invoice_id"]
     assert invoice_id
@@ -1760,6 +1781,68 @@ def test_malformed_cloudpayments_payload_omits_raw_body() -> None:
     assert "secret-token" not in str(event.raw_payload)
 
 
+def test_cloudpayments_webhook_rejects_non_object_json_payload() -> None:
+    response = client.post(
+        "/api/cloudpayments/pay",
+        headers={"Content-HMAC": "demo-signature", "Content-Type": "application/json"},
+        content='["not-a-provider-object"]',
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"code": 0}
+
+    with SessionLocal() as db:
+        event = db.query(PaymentWebhookEvent).one()
+
+    assert event.status == "failed"
+    assert event.error_code == "payload_parse_error"
+    assert event.raw_payload == {"_raw": "[omitted: payload_parse_error]"}
+
+
+def test_cloudpayments_payload_redaction_recurses_through_lists() -> None:
+    response = client.post(
+        "/api/cloudpayments/pay",
+        json={
+            "InvoiceId": "invoice-list-redaction",
+            "TransactionId": "tx-list-redaction",
+            "AccountId": "user@example.com",
+            "Amount": "990.00",
+            "Currency": "RUB",
+            "Nested": [{"CardFirstSix": "411111", "safe": "kept"}],
+        },
+    )
+
+    assert response.status_code == 200
+
+    with SessionLocal() as db:
+        event = db.query(PaymentWebhookEvent).one()
+
+    assert event.raw_payload["Nested"] == [{"CardFirstSix": "[redacted]", "safe": "kept"}]
+
+
+def test_cloudpayments_idempotency_key_fallbacks_are_stable() -> None:
+    assert (
+        _event_idempotency_key("pay", "event-1", "invoice-1", "tx-1", None, "hash-1")
+        == "cloudpayments:event:event-1"
+    )
+    assert (
+        _event_idempotency_key("refund", None, "invoice-1", "tx-1", "refund-1", "hash-1")
+        == "cloudpayments:refund:refund-1"
+    )
+    assert (
+        _event_idempotency_key("pay", None, "invoice-1", "tx-1", None, "hash-1")
+        == "cloudpayments:pay:transaction:tx-1"
+    )
+    assert (
+        _event_idempotency_key("pay", None, "invoice-1", None, None, "hash-1")
+        == "cloudpayments:pay:invoice:invoice-1:hash-1"
+    )
+    assert (
+        _event_idempotency_key("pay", None, None, None, None, "hash-1")
+        == "cloudpayments:pay:payload:hash-1"
+    )
+
+
 def test_checkout_requires_acceptance_again_when_active_document_version_changes() -> None:
     with SessionLocal() as db:
         legal_entity = create_legal_entity(db, region="ru")
@@ -2039,3 +2122,49 @@ def test_cloudpayments_webhook_rejects_invalid_signature_when_secret_is_set() ->
 
     object.__setattr__(settings, "cloudpayments_api_secret", "")
     os.environ["CLOUDPAYMENTS_API_SECRET"] = ""
+
+
+def test_cloudpayments_webhook_rejects_missing_secret_when_provider_is_enabled() -> None:
+    from app.settings import settings  # noqa: E402
+
+    object.__setattr__(settings, "cloudpayments_enabled", True)
+    object.__setattr__(settings, "cloudpayments_api_secret", "")
+
+    response = client.post(
+        "/api/cloudpayments/pay",
+        json={
+            "InvoiceId": "invoice-enabled-missing-secret",
+            "TransactionId": "tx-enabled-missing-secret",
+            "AccountId": "user@example.com",
+            "Amount": "1490.00",
+            "Currency": "RUB",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "invalid_cloudpayments_signature"
+
+    object.__setattr__(settings, "cloudpayments_enabled", False)
+
+
+def test_cloudpayments_webhook_rejects_non_ascii_signature_without_500() -> None:
+    secret = "test-secret"
+    from app.settings import settings  # noqa: E402
+
+    object.__setattr__(settings, "cloudpayments_enabled", True)
+    object.__setattr__(settings, "cloudpayments_api_secret", secret)
+    payload = b'{"InvoiceId":"invoice-non-ascii","Amount":"1490.00","Currency":"RUB"}'
+    valid_signature = base64.b64encode(
+        hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).digest()
+    ).decode("ascii")
+
+    assert (
+        verify_cloudpayments_signature(
+            payload,
+            {"Content-HMAC": f"{valid_signature}å"},
+        )
+        is False
+    )
+
+    object.__setattr__(settings, "cloudpayments_enabled", False)
+    object.__setattr__(settings, "cloudpayments_api_secret", "")

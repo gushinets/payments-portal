@@ -90,6 +90,32 @@ def test_comments_strings_and_allowed_session_import_pass(tmp_path: Path) -> Non
     assert check_python_boundaries(tmp_path) == []
 
 
+def test_provider_neutral_modules_reject_cloudpayments_literal(tmp_path: Path) -> None:
+    write_module(
+        tmp_path,
+        "apps/api/app/domains/billing/service.py",
+        'if provider == "cloudpayments":\n    pass\n',
+    )
+    write_module(
+        tmp_path,
+        "apps/api/app/payment_providers/accounts.py",
+        'DEFAULT_PROVIDER = "cloudpayments"\n',
+    )
+
+    errors = check_python_boundaries(tmp_path)
+
+    assert any(
+        "apps/api/app/domains/billing/service.py contains CloudPayments-specific logic"
+        in error
+        for error in errors
+    )
+    assert any(
+        "apps/api/app/payment_providers/accounts.py contains CloudPayments-specific logic"
+        in error
+        for error in errors
+    )
+
+
 def test_legacy_auth_module_reexports_session_contract() -> None:
     from app.auth import DEFAULT_REGION, DEFAULT_TENANT_ID, as_utc, get_current_session
     from app.domains.identity import session

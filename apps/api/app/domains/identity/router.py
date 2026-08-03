@@ -32,11 +32,15 @@ from app.models import (
     Order,
     OrderItem,
     Payment,
-    PaymentProviderAccount,
     Plan,
     Product,
     ProductAccessState,
     User,
+)
+from app.payment_providers.accounts import get_or_create_checkout_provider_account
+from app.payment_providers.registry import (
+    PaymentProviderRegistry,
+    get_payment_provider_registry,
 )
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -180,35 +184,6 @@ def get_sellable_plan(db: Session, *, user: User, entrypoint_code: str, plan_cod
             "scope_type": plan.scope_type,
         },
     }
-
-
-def get_or_create_provider_account(db: Session, user: User) -> PaymentProviderAccount:
-    account = (
-        db.query(PaymentProviderAccount)
-        .filter(
-            PaymentProviderAccount.tenant_id == user.tenant_id,
-            PaymentProviderAccount.region == user.region,
-            PaymentProviderAccount.provider == "cloudpayments",
-            PaymentProviderAccount.enabled.is_(True),
-        )
-        .first()
-    )
-    if account is not None:
-        return account
-
-    account = PaymentProviderAccount(
-        tenant_id=user.tenant_id,
-        region=user.region,
-        provider="cloudpayments",
-        public_identifier=None,
-        default_currency="RUB",
-        enabled=True,
-        test_mode=True,
-        config={"widget_mode": "charge", "receipt_mode": "deferred"},
-    )
-    db.add(account)
-    db.flush()
-    return account
 
 
 def present_product_state(state: ProductAccessState | None, product_code: str) -> dict:
@@ -458,6 +433,7 @@ def create_checkout_intent(
     request: Request,
     current: tuple[User, AuthSession] = Depends(get_current_session),
     db: Session = Depends(get_db),
+    providers: PaymentProviderRegistry = Depends(get_payment_provider_registry),
 ):
     user, _ = current
     sellable_plan = get_sellable_plan(
@@ -488,7 +464,11 @@ def create_checkout_intent(
             },
         )
 
-    provider_account = get_or_create_provider_account(db, user)
+    provider_account, provider_adapter = get_or_create_checkout_provider_account(
+        db,
+        user=user,
+        registry=providers,
+    )
     invoice_id = make_invoice_id(sellable_plan["entrypoint_value"])
     amount_minor = int(sellable_plan["amount_minor"])
     currency = str(sellable_plan["currency"])
@@ -547,7 +527,7 @@ def create_checkout_intent(
         status="pending_payment",
         amount_minor=amount_minor,
         currency=currency,
-        provider="cloudpayments",
+        provider=provider_account.provider,
         provider_account_id=provider_account.id,
         merchant_order_id=invoice_id,
         provider_invoice_id=invoice_id,
@@ -561,6 +541,16 @@ def create_checkout_intent(
     )
     db.add(order)
     db.flush()
+    checkout_action = provider_adapter.prepare_checkout_action(
+        provider_account=provider_account,
+        order=order,
+        account_id=user.email,
+        description=str(sellable_plan["plan_name"]),
+        metadata={
+            "product_code": payload.product,
+            "plan_code": sellable_plan["plan_code"],
+        },
+    )
     db.add(
         OrderItem(
             order_id=order.id,
@@ -617,5 +607,6 @@ def create_checkout_intent(
             "amount_minor": amount_minor,
             "amount": round(amount_minor / 100, 2),
             "currency": currency,
+            "action": checkout_action.as_response(),
         },
     }

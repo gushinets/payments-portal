@@ -25,6 +25,11 @@ import {
   products,
   supportEmail
 } from "@/features/catalog";
+import {
+  CheckoutAction,
+  CheckoutAdapterStatus,
+  getCheckoutAdapter
+} from "./provider-adapters";
 
 type SessionUser = {
   tenant_id: string;
@@ -56,6 +61,7 @@ type CheckoutIntentResponse = {
     amount_minor: number;
     amount: number;
     currency: string;
+    action: CheckoutAction;
   };
 };
 
@@ -69,24 +75,14 @@ type RequiredDocument = {
   acceptance_text_hash: string;
 };
 
-const cloudPaymentsEnabled =
-  process.env.NEXT_PUBLIC_CLOUDPAYMENTS_ENABLED === "true";
-const cloudPaymentsPublicId =
-  process.env.NEXT_PUBLIC_CLOUDPAYMENTS_PUBLIC_ID ?? "";
 const telegramLoginUrl = process.env.NEXT_PUBLIC_TELEGRAM_LOGIN_URL ?? "";
 const sessionStorageKey = "anytoolai_session_token_v1";
 const sessionChangedEvent = "anytoolai_session_changed";
 
-export type CloudPaymentsWidgetStatus =
-  | "disabled"
-  | "loading"
-  | "ready"
-  | "failed";
-
 export function CheckoutClient({
-  cloudPaymentsWidgetStatus = "disabled"
+  checkoutAdapterStatus = "disabled"
 }: {
-  cloudPaymentsWidgetStatus?: CloudPaymentsWidgetStatus;
+  checkoutAdapterStatus?: CheckoutAdapterStatus;
 }) {
   const searchParams = useSearchParams();
   const initialProduct = searchParams.get("product");
@@ -130,10 +126,8 @@ export function CheckoutClient({
     missingDocuments.every(
       (document) => documentConsentById[document.document_version_id]
     );
-  const cloudPaymentsWidgetRequired =
-    cloudPaymentsEnabled && !!cloudPaymentsPublicId;
-  const cloudPaymentsWidgetBlocked =
-    cloudPaymentsWidgetRequired && cloudPaymentsWidgetStatus !== "ready";
+  const checkoutAdapterBlocked =
+    checkoutAdapterStatus === "loading" || checkoutAdapterStatus === "failed";
 
   useEffect(() => {
     function syncStoredToken() {
@@ -303,12 +297,12 @@ export function CheckoutClient({
       return;
     }
 
-    if (cloudPaymentsWidgetRequired && cloudPaymentsWidgetStatus === "loading") {
+    if (checkoutAdapterStatus === "loading") {
       showError("Платёжный виджет ещё загружается. Попробуйте через несколько секунд.");
       return;
     }
 
-    if (cloudPaymentsWidgetRequired && cloudPaymentsWidgetStatus !== "ready") {
+    if (checkoutAdapterStatus === "failed") {
       showError(
         "Не удалось загрузить платёжный виджет. Обновите страницу и попробуйте ещё раз."
       );
@@ -360,53 +354,28 @@ export function CheckoutClient({
       JSON.stringify(resultPayload)
     );
 
-    if (cloudPaymentsWidgetRequired && window.cp?.CloudPayments) {
-      const widget = new window.cp.CloudPayments({ language: "ru-RU" });
-      widget.pay(
-        "charge",
-        {
-          publicId: cloudPaymentsPublicId,
-          description: selectedProduct.plan.paymentDescription,
-          amount: checkoutIntent.checkout.amount,
-          currency: checkoutIntent.checkout.currency,
-          invoiceId: checkoutIntent.product_state.invoice_id ?? undefined,
-          accountId: sessionUser.email,
+    const checkoutAction = checkoutIntent.checkout.action;
+    const checkoutAdapter = getCheckoutAdapter(checkoutAction.provider);
+    if (checkoutAdapter?.isRequired()) {
+      if (!checkoutAdapter.isReady()) {
+        showError(
+          "Не удалось открыть платёжный виджет. Обновите страницу и попробуйте ещё раз."
+        );
+        return;
+      }
+      try {
+        checkoutAdapter.start(checkoutAction, {
+          productCode: selectedProduct.code,
+          planCode: selectedProduct.plan.code,
           email: sessionUser.email,
-          data: {
-            product_code: selectedProduct.code,
-            plan_code: selectedProduct.plan.code
-          }
-        },
-        {
-          onSuccess: () => {
-            const params = new URLSearchParams({
-              status: "pending",
-              product: selectedProduct.code,
-              plan: selectedProduct.plan.code,
-              email: sessionUser.email,
-              invoice: checkoutIntent.product_state.invoice_id ?? ""
-            });
-            window.location.assign(`/ru/payment-result?${params.toString()}`);
-          },
-          onFail: () => {
-            const params = new URLSearchParams({
-              status: "failed",
-              product: selectedProduct.code,
-              plan: selectedProduct.plan.code,
-              email: sessionUser.email,
-              invoice: checkoutIntent.product_state.invoice_id ?? ""
-            });
-            window.location.assign(`/ru/payment-result?${params.toString()}`);
-          }
-        }
-      );
-      return;
-    }
-
-    if (cloudPaymentsWidgetRequired) {
-      showError(
-        "Не удалось открыть платёжный виджет. Обновите страницу и попробуйте ещё раз."
-      );
+          invoiceId: checkoutIntent.product_state.invoice_id ?? ""
+        });
+      } catch {
+        window.sessionStorage.removeItem("anytoolai_last_payment_result");
+        showError(
+          "Не удалось открыть платёжный виджет. Обновите страницу и попробуйте ещё раз."
+        );
+      }
       return;
     }
 
@@ -676,7 +645,7 @@ export function CheckoutClient({
                   </label>
                 ) : null}
 
-                {cloudPaymentsWidgetStatus === "failed" ? (
+                {checkoutAdapterStatus === "failed" ? (
                   <div className="notice error">
                     Не удалось загрузить платёжный виджет. Обновите страницу и
                     попробуйте ещё раз.
@@ -690,10 +659,10 @@ export function CheckoutClient({
                   disabled={
                     !selectedProduct ||
                     missingDocuments.length > 0 ||
-                    cloudPaymentsWidgetBlocked
+                    checkoutAdapterBlocked
                   }
                 >
-                  {cloudPaymentsWidgetStatus === "loading"
+                  {checkoutAdapterStatus === "loading"
                     ? "Загрузка оплаты..."
                     : "Оплатить"}
                   <ArrowRight size={16} aria-hidden="true" />

@@ -91,3 +91,12 @@ Installing new web test dependencies with `npm install` → npm emitted
 repository requires Node `>=24 <25`. `repo:doctor` reports the version, but the
 install still proceeds noisily; a stronger preinstall hint or documented Node
 24 activation command would make dependency updates less ambiguous.
+
+## 2026-08-02 11:54Z - Codex (GPT-5) - macOS
+
+Re-running the browser harness with CI CloudPayments env flags after a targeted
+Playwright failure → Docker Desktop/BuildKit failed while committing the web
+`npm ci` layer with `metadata_v2.db: input/output error` under
+`/var/lib/docker/buildkit/containerd-overlayfs`. Retrying after Docker cleanup
+or pruning BuildKit state may be required; a lighter app-only browser harness
+would reduce exposure to this large rebuild path.

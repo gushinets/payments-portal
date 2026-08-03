@@ -7,7 +7,7 @@ declare global {
         language?: string;
       }) => {
         pay: (
-          kind: "charge",
+          kind: "charge" | "auth",
           options: {
             publicId: string;
             description: string;

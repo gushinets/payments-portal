@@ -155,7 +155,7 @@ test("provider UI stub success cannot activate access without backend state", as
   }, token);
 
   await page.goto(`/ru/auth-checkout?product=${product}`);
-  await expect(page.getByText(email)).toBeVisible();
+  await expect(page.locator("#checkout-form").getByText(email)).toBeVisible();
   const payButton = page.getByRole("button", { name: /^Оплатить/ });
   await expect(payButton).toBeEnabled();
   await payButton.click();

@@ -4,37 +4,41 @@ import { Suspense, useState } from "react";
 import Script from "next/script";
 import {
   CheckoutClient,
-  type CloudPaymentsWidgetStatus
+  type CheckoutAdapterStatus,
+  registeredCheckoutAdapters
 } from "@/features/checkout";
 
 export default function AuthCheckoutPage() {
-  const cloudPaymentsEnabled =
-    process.env.NEXT_PUBLIC_CLOUDPAYMENTS_ENABLED === "true";
-  const cloudPaymentsPublicId =
-    process.env.NEXT_PUBLIC_CLOUDPAYMENTS_PUBLIC_ID;
-  const widgetRequired = cloudPaymentsEnabled && !!cloudPaymentsPublicId;
-  const [widgetStatus, setWidgetStatus] = useState<CloudPaymentsWidgetStatus>(
-    widgetRequired ? "loading" : "disabled"
+  const requiredAdapters = registeredCheckoutAdapters().filter((adapter) =>
+    adapter.isRequired()
+  );
+  const [adapterStatus, setAdapterStatus] = useState<CheckoutAdapterStatus>(
+    requiredAdapters.length > 0 ? "loading" : "disabled"
   );
 
   function markWidgetReady() {
-    setWidgetStatus(window.cp?.CloudPayments ? "ready" : "failed");
+    setAdapterStatus(
+      requiredAdapters.every((adapter) => adapter.isReady()) ? "ready" : "failed"
+    );
   }
 
   return (
     <>
       <Suspense fallback={<CheckoutFallback />}>
-        <CheckoutClient cloudPaymentsWidgetStatus={widgetStatus} />
+        <CheckoutClient checkoutAdapterStatus={adapterStatus} />
       </Suspense>
-      {widgetRequired ? (
+      {requiredAdapters.map((adapter) =>
+        adapter.scriptSrc ? (
         <Script
-          src="https://widget.cloudpayments.ru/bundles/cloudpayments"
+          key={adapter.provider}
+          src={adapter.scriptSrc}
           strategy="afterInteractive"
           onLoad={markWidgetReady}
           onReady={markWidgetReady}
-          onError={() => setWidgetStatus("failed")}
+          onError={() => setAdapterStatus("failed")}
         />
-      ) : null}
+        ) : null
+      )}
     </>
   );
 }

@@ -21,8 +21,28 @@ async function renderCheckoutWithProviderStub() {
   vi.resetModules();
   const provider = installProviderUiStub();
   const { CheckoutClient } = await import("@/features/checkout/CheckoutClient");
-  render(<CheckoutClient cloudPaymentsWidgetStatus="ready" />);
+  render(<CheckoutClient checkoutAdapterStatus="ready" />);
   return provider;
+}
+
+function checkoutAction(invoiceId: string, mode = "charge") {
+  return {
+    provider: "cloudpayments",
+    experience: "widget",
+    mode,
+    public_identifier: "pk_test_provider",
+    amount_minor: 99000,
+    amount: 990,
+    currency: "RUB",
+    merchant_order_id: invoiceId,
+    provider_invoice_id: invoiceId,
+    account_id: sessionUser.email,
+    description: "Document Summary Pro",
+    metadata: {
+      product_code: "document-summary",
+      plan_code: "document-summary-pro"
+    }
+  };
 }
 
 function sessionResponse(status: "inactive" | "pending" | "active" | "failed") {
@@ -244,7 +264,8 @@ describe("CheckoutClient critical characterization", () => {
           checkout: {
             amount_minor: 99000,
             amount: 990,
-            currency: "RUB"
+            currency: "RUB",
+            action: checkoutAction("invoice-after-legal", "auth")
           }
         });
       }),
@@ -282,6 +303,7 @@ describe("CheckoutClient critical characterization", () => {
     await waitFor(() => {
       expect(provider.payments).toHaveLength(1);
     });
+    expect(provider.modes).toEqual(["auth"]);
     expect(acceptedDocumentIds).toEqual(["doc-offer-v1", "doc-consent-v1"]);
     expectNoCardData(provider.payments[0]);
     expect(provider.payments[0]).toMatchObject({
@@ -297,5 +319,77 @@ describe("CheckoutClient critical characterization", () => {
       email: "buyer@example.com",
       invoiceId: "invoice-after-legal"
     });
+  });
+
+  it("does not create checkout state when the required provider widget failed to load", async () => {
+    const user = userEvent.setup();
+    storeSessionToken("session-token");
+    let checkoutAttempts = 0;
+    vi.stubEnv("NEXT_PUBLIC_CLOUDPAYMENTS_ENABLED", "true");
+    vi.stubEnv("NEXT_PUBLIC_CLOUDPAYMENTS_PUBLIC_ID", "pk_test_provider");
+    vi.resetModules();
+    server.use(
+      http.get(`${apiBase}/api/auth/session`, () =>
+        HttpResponse.json(sessionResponse("inactive"))
+      ),
+      http.post(`${apiBase}/api/auth/checkout-intent`, () => {
+        checkoutAttempts += 1;
+        return HttpResponse.json({});
+      })
+    );
+    const { CheckoutClient } = await import("@/features/checkout/CheckoutClient");
+    render(<CheckoutClient checkoutAdapterStatus="failed" />);
+
+    expect(await screen.findByText("buyer@example.com")).toBeVisible();
+    expect(
+      screen.getByText(/Не удалось загрузить платёжный виджет/)
+    ).toBeVisible();
+    const checkoutButton = screen.getByRole("button", { name: /^Оплатить/ });
+    expect(checkoutButton).toBeDisabled();
+    await user.click(checkoutButton);
+
+    expect(checkoutAttempts).toBe(0);
+    expect(readStoredPaymentResult()).toBeNull();
+  });
+
+  it("recovers when the provider adapter throws while starting checkout", async () => {
+    const user = userEvent.setup();
+    storeSessionToken("session-token");
+    server.use(
+      http.get(`${apiBase}/api/auth/session`, () =>
+        HttpResponse.json(sessionResponse("inactive"))
+      ),
+      http.post(`${apiBase}/api/auth/checkout-intent`, () =>
+        HttpResponse.json({
+          product_state: {
+            product_code: "document-summary",
+            plan_code: "document-summary-pro",
+            plan_name: "Document Summary Pro",
+            invoice_id: "invoice-unsupported-mode",
+            transaction_id: null,
+            status: "pending",
+            starts_at: null,
+            expires_at: null
+          },
+          checkout: {
+            amount_minor: 99000,
+            amount: 990,
+            currency: "RUB",
+            action: checkoutAction("invoice-unsupported-mode", "unsupported-mode")
+          }
+        })
+      )
+    );
+    const provider = await renderCheckoutWithProviderStub();
+
+    expect(await screen.findByText("buyer@example.com")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: /^Оплатить/ }));
+
+    expect(
+      await screen.findByText(/Не удалось открыть платёжный виджет/)
+    ).toBeVisible();
+    expect(provider.payments).toHaveLength(0);
+    expect(provider.modes).toHaveLength(0);
+    expect(readStoredPaymentResult()).toBeNull();
   });
 });

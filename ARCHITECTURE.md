@@ -27,8 +27,11 @@ flowchart LR
 - **Legal** — legal entities, document versions, and append-only acceptances.
 - **Billing** — entrypoints, checkout sessions, orders, items, payments,
   refunds, webhook inbox, and the temporary product access state.
-- **CloudPayments integration** — provider request validation, redaction,
-  idempotency, and translation into billing operations.
+- **Payment provider boundary** — provider-neutral checkout actions and
+  normalized payment events selected through `payment_provider_accounts`.
+- **CloudPayments integration** — the currently registered provider adapter for
+  request validation, redaction, idempotency keys, response formatting, and
+  translation into billing operations.
 
 The API dependency direction is:
 
@@ -36,8 +39,10 @@ The API dependency direction is:
 contracts/models -> repositories -> services -> routers/wiring
 ```
 
-Provider adapters may call application services but domain code must not import
-provider or router modules. Core configuration, database, logging, telemetry,
+Provider adapters are registered at the API composition root by provider code.
+Provider-neutral modules do not import provider integrations and do not branch on
+provider-specific literals; they select enabled provider accounts and use the
+registered adapter contract. Core configuration, database, logging, telemetry,
 and security helpers are shared infrastructure.
 
 These directions are mechanically enforced with Python AST analysis. Routers
