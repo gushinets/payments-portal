@@ -11,6 +11,7 @@ from pathlib import Path
 
 os.environ["DATABASE_URL"] = "sqlite+pysqlite:///:memory:"
 os.environ["CLOUDPAYMENTS_API_SECRET"] = ""
+os.environ["CLOUDPAYMENTS_PUBLIC_ID"] = "pk_test_provider"
 os.environ["SKIP_LEGAL_SEED"] = "true"
 
 api_root = Path(__file__).resolve().parents[1]
@@ -442,7 +443,7 @@ def test_register_session_and_checkout_intent_flow() -> None:
         "provider": "cloudpayments",
         "experience": "widget",
         "mode": "charge",
-        "public_identifier": None,
+        "public_identifier": "pk_test_provider",
         "amount_minor": 99000,
         "amount": 990.0,
         "currency": "RUB",
@@ -471,6 +472,88 @@ def test_register_session_and_checkout_intent_flow() -> None:
     assert state.plan_code == "document-summary-pro"
     assert state.status == "pending"
     assert state.last_invoice_id == invoice_id
+
+
+def test_checkout_rejects_missing_cloudpayments_public_terminal_id() -> None:
+    from app.core.settings import settings
+
+    previous_public_id = settings.cloudpayments_public_id
+    object.__setattr__(settings, "cloudpayments_public_id", "")
+    try:
+        register_response = client.post(
+            "/api/auth/register",
+            json={
+                "email": "missing-terminal@example.com",
+                "password": "very-secret-password",
+                "personal_consent": True,
+                "offer_consent": True,
+            },
+        )
+        token = register_response.json()["token"]
+
+        checkout_response = client.post(
+            "/api/auth/checkout-intent",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "product": "document-summary",
+                "plan_code": "document-summary-pro",
+                "auto_renew": False,
+            },
+        )
+
+        assert checkout_response.status_code == 409
+        assert checkout_response.json()["detail"] == "cloudpayments_public_terminal_id_missing"
+        with SessionLocal() as db:
+            assert db.query(Order).count() == 0
+            assert db.query(OrderItem).count() == 0
+            assert db.query(ProductAccessState).count() == 0
+    finally:
+        object.__setattr__(settings, "cloudpayments_public_id", previous_public_id)
+
+
+def test_checkout_rejects_non_charge_cloudpayments_widget_mode() -> None:
+    with SessionLocal() as db:
+        db.add(
+            PaymentProviderAccount(
+                tenant_id="anytoolai",
+                region="ru",
+                provider="cloudpayments",
+                public_identifier="pk_test_provider",
+                default_currency="RUB",
+                enabled=True,
+                test_mode=True,
+                config={"widget_mode": "auth"},
+            )
+        )
+        db.commit()
+
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "auth-mode@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = register_response.json()["token"]
+
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": False,
+        },
+    )
+
+    assert checkout_response.status_code == 409
+    assert checkout_response.json()["detail"] == "cloudpayments_one_stage_charge_required"
+    with SessionLocal() as db:
+        assert db.query(Order).count() == 0
+        assert db.query(OrderItem).count() == 0
+        assert db.query(ProductAccessState).count() == 0
 
 
 def test_checkout_rejects_plan_provider_currency_mismatch() -> None:

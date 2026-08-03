@@ -41,16 +41,12 @@ services:
       dockerfile: apps/web/Dockerfile
       args:
         NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL}
-        NEXT_PUBLIC_CLOUDPAYMENTS_PUBLIC_ID: ${NEXT_PUBLIC_CLOUDPAYMENTS_PUBLIC_ID:-}
-        NEXT_PUBLIC_CLOUDPAYMENTS_ENABLED: ${NEXT_PUBLIC_CLOUDPAYMENTS_ENABLED:-false}
     restart: unless-stopped
     depends_on:
       api:
         condition: service_healthy
     environment:
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL}
-      NEXT_PUBLIC_CLOUDPAYMENTS_PUBLIC_ID: ${NEXT_PUBLIC_CLOUDPAYMENTS_PUBLIC_ID:-}
-      NEXT_PUBLIC_CLOUDPAYMENTS_ENABLED: ${NEXT_PUBLIC_CLOUDPAYMENTS_ENABLED:-false}
     security_opt:
       - no-new-privileges:true
     logging:

@@ -190,14 +190,6 @@ def write_runtime(config: RuntimeConfig) -> None:
         "OTEL_EXPORTER_OTLP_ENDPOINT": "http://observability:4318",
         "OTEL_SERVICE_NAME": "payment-portal-api",
         "CLOUDPAYMENTS_ENABLED": "false",
-        "NEXT_PUBLIC_CLOUDPAYMENTS_PUBLIC_ID": os.getenv(
-            "NEXT_PUBLIC_CLOUDPAYMENTS_PUBLIC_ID",
-            local_env.get("NEXT_PUBLIC_CLOUDPAYMENTS_PUBLIC_ID", ""),
-        ),
-        "NEXT_PUBLIC_CLOUDPAYMENTS_ENABLED": os.getenv(
-            "NEXT_PUBLIC_CLOUDPAYMENTS_ENABLED",
-            local_env.get("NEXT_PUBLIC_CLOUDPAYMENTS_ENABLED", "false"),
-        ),
     }
     RUNTIME_ENV.write_text(
         "".join(f"{key}={value}\n" for key, value in values.items()),

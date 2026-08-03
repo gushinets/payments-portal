@@ -74,8 +74,6 @@ services:
       dockerfile: apps/web/Dockerfile
       args:
         NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-https://example.com}
-        NEXT_PUBLIC_CLOUDPAYMENTS_PUBLIC_ID: ${NEXT_PUBLIC_CLOUDPAYMENTS_PUBLIC_ID:-}
-        NEXT_PUBLIC_CLOUDPAYMENTS_ENABLED: ${NEXT_PUBLIC_CLOUDPAYMENTS_ENABLED:-false}
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -85,8 +83,6 @@ services:
         condition: service_healthy
     environment:
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-https://example.com}
-      NEXT_PUBLIC_CLOUDPAYMENTS_PUBLIC_ID: ${NEXT_PUBLIC_CLOUDPAYMENTS_PUBLIC_ID:-}
-      NEXT_PUBLIC_CLOUDPAYMENTS_ENABLED: ${NEXT_PUBLIC_CLOUDPAYMENTS_ENABLED:-false}
     networks:
       - edge
 

@@ -36,11 +36,6 @@ export type CheckoutAdapter = {
   ): void;
 };
 
-const cloudPaymentsPublicId =
-  process.env.NEXT_PUBLIC_CLOUDPAYMENTS_PUBLIC_ID ?? "";
-const cloudPaymentsEnabled =
-  process.env.NEXT_PUBLIC_CLOUDPAYMENTS_ENABLED === "true";
-
 function paymentResultUrl(
   status: "pending" | "failed",
   context: CheckoutAdapterResultContext
@@ -56,17 +51,53 @@ function paymentResultUrl(
 }
 
 function cloudPaymentsWidgetMode(mode: string): CloudPaymentsWidgetMode {
-  if (mode === "charge" || mode === "auth") {
+  if (mode === "charge") {
     return mode;
   }
   throw new Error("unsupported_cloudpayments_widget_mode");
+}
+
+function requireNonEmptyString(value: unknown, code: string): string {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error(code);
+  }
+  return value;
+}
+
+function validateCloudPaymentsAction(action: CheckoutAction) {
+  if (action.experience !== "widget") {
+    throw new Error("unsupported_checkout_experience");
+  }
+  const publicId = requireNonEmptyString(
+    action.public_identifier,
+    "checkout_provider_public_identifier_missing"
+  );
+  const invoiceId = requireNonEmptyString(
+    action.provider_invoice_id,
+    "checkout_provider_invoice_missing"
+  );
+  const accountId = requireNonEmptyString(
+    action.account_id,
+    "checkout_provider_account_missing"
+  );
+  const currency = requireNonEmptyString(
+    action.currency,
+    "checkout_provider_currency_missing"
+  );
+  if (!Number.isFinite(action.amount) || action.amount <= 0) {
+    throw new Error("checkout_provider_amount_invalid");
+  }
+  if (!Number.isInteger(action.amount_minor) || action.amount_minor <= 0) {
+    throw new Error("checkout_provider_amount_minor_invalid");
+  }
+  return { publicId, invoiceId, accountId, currency };
 }
 
 export const cloudPaymentsCheckoutAdapter: CheckoutAdapter = {
   provider: "cloudpayments",
   scriptSrc: "https://widget.cloudpayments.ru/bundles/cloudpayments",
   isRequired() {
-    return cloudPaymentsEnabled && !!cloudPaymentsPublicId;
+    return true;
   },
   isReady() {
     return !!window.cp?.CloudPayments;
@@ -76,16 +107,17 @@ export const cloudPaymentsCheckoutAdapter: CheckoutAdapter = {
     if (!Widget) {
       throw new Error("checkout_provider_widget_unavailable");
     }
+    const validated = validateCloudPaymentsAction(action);
     const widget = new Widget({ language: "ru-RU" });
     widget.pay(
       cloudPaymentsWidgetMode(action.mode),
       {
-        publicId: action.public_identifier ?? cloudPaymentsPublicId,
+        publicId: validated.publicId,
         description: action.description ?? "",
         amount: action.amount,
-        currency: action.currency,
-        invoiceId: action.provider_invoice_id,
-        accountId: action.account_id,
+        currency: validated.currency,
+        invoiceId: validated.invoiceId,
+        accountId: validated.accountId,
         email: context.email,
         data: action.metadata
       },

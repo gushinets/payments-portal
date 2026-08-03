@@ -161,6 +161,19 @@ test("provider UI stub success cannot activate access without backend state", as
   await payButton.click();
 
   const providerPayments = await expectProviderPaymentWithoutCardData(page);
+  expect(providerPayments[0].kind).toBe("charge");
+  expect(providerPayments[0].safeOptions).toMatchObject({
+    publicId: expect.any(String),
+    description: "Document Summary Pro",
+    amount: 990,
+    currency: "RUB",
+    accountId: email,
+    email,
+    data: {
+      product_code: product,
+      plan_code: planCode
+    }
+  });
   expect(providerPayments[0].hasSensitiveFields).toBe(false);
   expect(providerPayments[0].sensitiveFieldKeys).toEqual([]);
   await completeProviderUiSuccess(page);

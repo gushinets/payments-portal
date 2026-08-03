@@ -13,7 +13,11 @@ from fastapi import Request
 from app.core.observability import redact
 from app.core.settings import settings
 from app.models import Order, PaymentProviderAccount
-from app.payment_providers.contracts import CheckoutAction, NormalizedPaymentEvent
+from app.payment_providers.contracts import (
+    CheckoutAction,
+    NormalizedPaymentEvent,
+    PaymentProviderConfigurationError,
+)
 
 CLOUDPAYMENTS_PROVIDER_CODE = "cloudpayments"
 SUPPORTED_ENDPOINTS = {"check", "pay", "fail", "refund", "recurrent"}
@@ -173,11 +177,22 @@ class CloudPaymentsAdapter:
         metadata: dict[str, Any],
     ) -> CheckoutAction:
         mode = str(provider_account.config.get("widget_mode") or "charge")
+        if mode != "charge":
+            raise PaymentProviderConfigurationError(
+                "cloudpayments_one_stage_charge_required"
+            )
+        public_identifier = (
+            provider_account.public_identifier or settings.cloudpayments_public_id or None
+        )
+        if public_identifier is None or not public_identifier.strip():
+            raise PaymentProviderConfigurationError(
+                "cloudpayments_public_terminal_id_missing"
+            )
         return CheckoutAction(
             provider=self.provider_code,
             experience="widget",
             mode=mode,
-            public_identifier=provider_account.public_identifier or settings.cloudpayments_public_id or None,
+            public_identifier=public_identifier,
             amount_minor=order.amount_minor,
             amount=(Decimal(order.amount_minor) / Decimal("100")).quantize(Decimal("0.01")),
             currency=order.currency,
