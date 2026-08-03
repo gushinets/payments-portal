@@ -150,22 +150,23 @@ def read_dotenv(path: Path = ROOT / ".env") -> dict[str, str]:
     return values
 
 
+def resolve_cloudpayments_public_id(
+    local_env: dict[str, str], *, environ: dict[str, str] | None = None
+) -> str:
+    environment = os.environ if environ is None else environ
+    return environment.get(
+        "CLOUDPAYMENTS_PUBLIC_ID",
+        local_env.get("CLOUDPAYMENTS_PUBLIC_ID", ""),
+    )
+
+
 def write_runtime(config: RuntimeConfig) -> None:
     HARNESS_DIR.mkdir(parents=True, exist_ok=True)
     RUNTIME_JSON.write_text(json.dumps(asdict(config), indent=2) + "\n", encoding="utf-8")
     caddy_origin = f"http://localhost:{runtime_caddy_port(config)}"
     local_env = read_dotenv()
     app_public_base_url = local_env.get("APP_PUBLIC_BASE_URL", caddy_origin)
-    cloudpayments_public_id = os.getenv(
-        "CLOUDPAYMENTS_PUBLIC_ID",
-        os.getenv(
-            "NEXT_PUBLIC_CLOUDPAYMENTS_PUBLIC_ID",
-            local_env.get(
-                "CLOUDPAYMENTS_PUBLIC_ID",
-                local_env.get("NEXT_PUBLIC_CLOUDPAYMENTS_PUBLIC_ID", ""),
-            ),
-        ),
-    )
+    cloudpayments_public_id = resolve_cloudpayments_public_id(local_env)
     cors_allow_origins = caddy_origin
     if app_public_base_url != caddy_origin:
         cors_allow_origins = f"{caddy_origin},{app_public_base_url}"

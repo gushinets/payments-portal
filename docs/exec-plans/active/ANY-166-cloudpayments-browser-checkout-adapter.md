@@ -1,7 +1,7 @@
 # ANY-166 - CloudPayments browser checkout adapter
 
 Status: active
-Parent: https://linear.app/paveldik/issue/ANY-166/podklyuchenie-cloudpayments-browser-checkout-adapter
+Parent: ANY-166
 
 ## Goal
 
@@ -34,10 +34,14 @@ informational until verified provider state arrives.
 - `npm run build:web`: passed.
 - `python3 -m compileall -q apps/api/app`: passed.
 - `npm run lint:web`: passed after provider-UI stub smoke assertions.
+- `PATH=.venv/bin:$PATH npm run docs:check`: passed.
+- `python3 scripts/repo.py harness-smoke`: passed after CI browser runtime fix.
+- API checkout smoke against the local harness stack returned
+  `public_identifier=test-provider-public-id` and `mode=charge`.
+- GitHub Actions `browser` job on PR #24 passed after the CI browser runtime fix.
 - `PLAYWRIGHT_PROVIDER_UI_STUB=true npm exec playwright test -- --config playwright.config.ts apps/web/e2e/checkout-webhook.spec.ts --project desktop-chromium --workers=1 -g "provider UI stub success"`:
-  not completed locally. Sandboxed Chromium launch failed with `SIGTRAP/EPERM`;
-  escalated rerun launched Chromium but failed on `ECONNREFUSED 127.0.0.1:8000`
-  because the local API harness stack was not running.
+  not completed locally. Chromium exits with `SIGTRAP` in the macOS sandbox
+  before the test body runs.
 
 ## Notes
 
