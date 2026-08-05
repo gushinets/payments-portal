@@ -8,6 +8,7 @@ from scripts.repo import (
     canonical_check_environment,
     check_expected_legal_versions,
     check_required_markdown_link_content,
+    resolve_cloudpayments_public_id,
 )
 
 
@@ -121,3 +122,36 @@ def test_fast_check_passes_the_scoped_environment_to_every_subprocess(
     assert all(environment is check_environment for _, environment in invocations)
     assert any("test:components" in command for command, _ in invocations)
     assert any("pytest" in command for command, _ in invocations)
+
+
+def test_cloudpayments_public_id_uses_process_environment_first() -> None:
+    value = resolve_cloudpayments_public_id(
+        {"CLOUDPAYMENTS_PUBLIC_ID": "pk_from_dotenv"},
+        environ={"CLOUDPAYMENTS_PUBLIC_ID": "pk_from_process"},
+    )
+
+    assert value == "pk_from_process"
+
+
+def test_cloudpayments_public_id_uses_dotenv_fallback() -> None:
+    value = resolve_cloudpayments_public_id(
+        {"CLOUDPAYMENTS_PUBLIC_ID": "pk_from_dotenv"},
+        environ={},
+    )
+
+    assert value == "pk_from_dotenv"
+
+
+def test_cloudpayments_public_id_defaults_empty_when_missing() -> None:
+    value = resolve_cloudpayments_public_id({}, environ={})
+
+    assert value == ""
+
+
+def test_cloudpayments_public_id_ignores_legacy_next_public_value() -> None:
+    value = resolve_cloudpayments_public_id(
+        {"NEXT_PUBLIC_CLOUDPAYMENTS_PUBLIC_ID": "pk_legacy_dotenv"},
+        environ={"NEXT_PUBLIC_CLOUDPAYMENTS_PUBLIC_ID": "pk_legacy_process"},
+    )
+
+    assert value == ""

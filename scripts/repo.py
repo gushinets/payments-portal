@@ -150,12 +150,23 @@ def read_dotenv(path: Path = ROOT / ".env") -> dict[str, str]:
     return values
 
 
+def resolve_cloudpayments_public_id(
+    local_env: dict[str, str], *, environ: dict[str, str] | None = None
+) -> str:
+    environment = os.environ if environ is None else environ
+    return environment.get(
+        "CLOUDPAYMENTS_PUBLIC_ID",
+        local_env.get("CLOUDPAYMENTS_PUBLIC_ID", ""),
+    )
+
+
 def write_runtime(config: RuntimeConfig) -> None:
     HARNESS_DIR.mkdir(parents=True, exist_ok=True)
     RUNTIME_JSON.write_text(json.dumps(asdict(config), indent=2) + "\n", encoding="utf-8")
     caddy_origin = f"http://localhost:{runtime_caddy_port(config)}"
     local_env = read_dotenv()
     app_public_base_url = local_env.get("APP_PUBLIC_BASE_URL", caddy_origin)
+    cloudpayments_public_id = resolve_cloudpayments_public_id(local_env)
     cors_allow_origins = caddy_origin
     if app_public_base_url != caddy_origin:
         cors_allow_origins = f"{caddy_origin},{app_public_base_url}"
@@ -189,15 +200,8 @@ def write_runtime(config: RuntimeConfig) -> None:
         "OTLP_HTTP_PORT": str(config.otlp_http_port),
         "OTEL_EXPORTER_OTLP_ENDPOINT": "http://observability:4318",
         "OTEL_SERVICE_NAME": "payment-portal-api",
+        "CLOUDPAYMENTS_PUBLIC_ID": cloudpayments_public_id,
         "CLOUDPAYMENTS_ENABLED": "false",
-        "NEXT_PUBLIC_CLOUDPAYMENTS_PUBLIC_ID": os.getenv(
-            "NEXT_PUBLIC_CLOUDPAYMENTS_PUBLIC_ID",
-            local_env.get("NEXT_PUBLIC_CLOUDPAYMENTS_PUBLIC_ID", ""),
-        ),
-        "NEXT_PUBLIC_CLOUDPAYMENTS_ENABLED": os.getenv(
-            "NEXT_PUBLIC_CLOUDPAYMENTS_ENABLED",
-            local_env.get("NEXT_PUBLIC_CLOUDPAYMENTS_ENABLED", "false"),
-        ),
     }
     RUNTIME_ENV.write_text(
         "".join(f"{key}={value}\n" for key, value in values.items()),

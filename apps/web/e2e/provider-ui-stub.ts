@@ -17,6 +17,8 @@ type ProviderPayment = {
     amount?: unknown;
     currency?: unknown;
     invoiceId?: unknown;
+    accountId?: unknown;
+    email?: unknown;
     data?: {
       product_code?: unknown;
       plan_code?: unknown;
@@ -59,6 +61,8 @@ export async function installProviderUiScriptStub(page: Page) {
               amount: options?.amount,
               currency: options?.currency,
               invoiceId: options?.invoiceId,
+              accountId: options?.accountId,
+              email: options?.email,
               data: {
                 product_code: options?.data?.product_code,
                 plan_code: options?.data?.plan_code
@@ -79,6 +83,8 @@ export async function installProviderUiScriptStub(page: Page) {
                     amount: sanitizedOptions.amount,
                     currency: sanitizedOptions.currency,
                     invoiceId: sanitizedOptions.invoiceId,
+                    accountId: sanitizedOptions.accountId,
+                    email: sanitizedOptions.email,
                     data: sanitizedOptions.data
                   },
                   hasSensitiveFields: sanitizedOptions.hasSensitiveFields,

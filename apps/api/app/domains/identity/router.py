@@ -38,6 +38,7 @@ from app.models import (
     User,
 )
 from app.payment_providers.accounts import get_or_create_checkout_provider_account
+from app.payment_providers.contracts import PaymentProviderConfigurationError
 from app.payment_providers.registry import (
     PaymentProviderRegistry,
     get_payment_provider_registry,
@@ -541,16 +542,21 @@ def create_checkout_intent(
     )
     db.add(order)
     db.flush()
-    checkout_action = provider_adapter.prepare_checkout_action(
-        provider_account=provider_account,
-        order=order,
-        account_id=user.email,
-        description=str(sellable_plan["plan_name"]),
-        metadata={
-            "product_code": payload.product,
-            "plan_code": sellable_plan["plan_code"],
-        },
-    )
+    try:
+        checkout_action = provider_adapter.prepare_checkout_action(
+            provider_account=provider_account,
+            order=order,
+            account_id=user.email,
+            description=str(sellable_plan["plan_name"]),
+            metadata={
+                "product_code": payload.product,
+                "plan_code": sellable_plan["plan_code"],
+            },
+        )
+    except PaymentProviderConfigurationError as exc:
+        db.rollback()
+        record_checkout("provider_configuration_error")
+        raise HTTPException(status_code=409, detail=exc.code) from exc
     db.add(
         OrderItem(
             order_id=order.id,

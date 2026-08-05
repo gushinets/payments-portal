@@ -229,6 +229,19 @@ export function CheckoutClient({
     return null;
   }
 
+  function checkoutPreparationErrorMessage(errorValue: unknown): string {
+    if (errorValue instanceof ApiError && errorValue.status === 409) {
+      if (
+        errorValue.detail === "cloudpayments_public_terminal_id_missing" ||
+        errorValue.detail === "cloudpayments_one_stage_charge_required"
+      ) {
+        return "Платёжный терминал настроен некорректно. Обратитесь в поддержку.";
+      }
+    }
+
+    return "Не удалось подготовить оплату. Попробуйте ещё раз.";
+  }
+
   async function authenticate(values: AuthFormSubmitValues) {
     setError("");
     setNotice("");
@@ -333,7 +346,7 @@ export function CheckoutClient({
         return;
       }
 
-      showError("Не удалось подготовить оплату. Попробуйте ещё раз.");
+      showError(checkoutPreparationErrorMessage(requestError));
       return;
     }
 
@@ -356,37 +369,34 @@ export function CheckoutClient({
 
     const checkoutAction = checkoutIntent.checkout.action;
     const checkoutAdapter = getCheckoutAdapter(checkoutAction.provider);
-    if (checkoutAdapter?.isRequired()) {
-      if (!checkoutAdapter.isReady()) {
-        showError(
-          "Не удалось открыть платёжный виджет. Обновите страницу и попробуйте ещё раз."
-        );
-        return;
-      }
-      try {
-        checkoutAdapter.start(checkoutAction, {
-          productCode: selectedProduct.code,
-          planCode: selectedProduct.plan.code,
-          email: sessionUser.email,
-          invoiceId: checkoutIntent.product_state.invoice_id ?? ""
-        });
-      } catch {
-        window.sessionStorage.removeItem("anytoolai_last_payment_result");
-        showError(
-          "Не удалось открыть платёжный виджет. Обновите страницу и попробуйте ещё раз."
-        );
-      }
+    if (!checkoutAdapter || !checkoutAdapter.isRequired()) {
+      window.sessionStorage.removeItem("anytoolai_last_payment_result");
+      showError("Платёжный провайдер недоступен. Обратитесь в поддержку.");
       return;
     }
 
-    const params = new URLSearchParams({
-      status: "pending",
-      product: selectedProduct.code,
-      plan: selectedProduct.plan.code,
-      email: sessionUser.email,
-      invoice: checkoutIntent.product_state.invoice_id ?? ""
-    });
-    window.location.assign(`/ru/payment-result?${params.toString()}`);
+    if (!checkoutAdapter.isReady()) {
+      window.sessionStorage.removeItem("anytoolai_last_payment_result");
+      showError(
+        "Не удалось открыть платёжный виджет. Обновите страницу и попробуйте ещё раз."
+      );
+      return;
+    }
+
+    try {
+      checkoutAdapter.start(checkoutAction, {
+        productCode: selectedProduct.code,
+        planCode: selectedProduct.plan.code,
+        email: sessionUser.email,
+        invoiceId: checkoutIntent.product_state.invoice_id ?? ""
+      });
+    } catch {
+      window.sessionStorage.removeItem("anytoolai_last_payment_result");
+      showError(
+        "Не удалось открыть платёжный виджет. Обновите страницу и попробуйте ещё раз."
+      );
+      return;
+    }
   }
 
   async function acceptRequiredDocumentsAndContinue() {

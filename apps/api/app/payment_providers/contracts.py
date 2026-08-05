@@ -9,6 +9,12 @@ from app.models import Order, PaymentProviderAccount
 CheckoutExperience = Literal["widget", "redirect", "embedded"]
 
 
+class PaymentProviderConfigurationError(Exception):
+    def __init__(self, code: str) -> None:
+        super().__init__(code)
+        self.code = code
+
+
 @dataclass(frozen=True)
 class CheckoutAction:
     provider: str

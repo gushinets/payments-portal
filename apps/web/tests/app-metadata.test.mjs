@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -10,6 +10,7 @@ const checkoutPagePath = fileURLToPath(
 const checkoutAdaptersPath = fileURLToPath(
   new URL("../src/features/checkout/provider-adapters.ts", import.meta.url)
 );
+const srcRootPath = fileURLToPath(new URL("../src", import.meta.url));
 
 test("root metadata keeps public RU branding copy", async () => {
   const source = await readFile(layoutPath, "utf8");
@@ -34,3 +35,34 @@ test("CloudPayments widget is isolated to the checkout route", async () => {
   assert.doesNotMatch(checkoutPageSource, /widget\.cloudpayments\.ru/);
   assert.match(adapterSource, /widget\.cloudpayments\.ru/);
 });
+
+test("CloudPayments browser SDK calls stay inside the checkout adapter", async () => {
+  const files = await sourceFiles(srcRootPath);
+  const offenders = [];
+
+  await Promise.all(
+    files.map(async (filePath) => {
+      const source = await readFile(filePath, "utf8");
+      if (/\bwindow\.cp\b|\bcp\./.test(source) && filePath !== checkoutAdaptersPath) {
+        offenders.push(filePath);
+      }
+    })
+  );
+
+  assert.deepEqual(offenders, []);
+});
+
+async function sourceFiles(directory) {
+  const entries = await readdir(directory);
+  const files = await Promise.all(
+    entries.map(async (entry) => {
+      const entryPath = `${directory}/${entry}`;
+      const entryStat = await stat(entryPath);
+      if (entryStat.isDirectory()) {
+        return sourceFiles(entryPath);
+      }
+      return /\.(ts|tsx|js|jsx)$/.test(entryPath) ? [entryPath] : [];
+    })
+  );
+  return files.flat();
+}
