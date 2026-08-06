@@ -5,7 +5,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.models import Order, Payment, PaymentWebhookEvent, Refund
+from app.models import Order, Payment, PaymentWebhookEvent, Refund, User
 
 
 def datetime_now():
@@ -120,7 +120,7 @@ def upsert_payment_from_webhook(
     payment.payment_method_type = _get_first(payload, "PaymentMethod", "paymentMethod")
     payment.raw_summary = _safe_summary(payload, data)
 
-    if endpoint == "pay":
+    if endpoint in {"pay", "confirm"}:
         payment.status = "succeeded"
         payment.authorized_at = payment.authorized_at or now
         payment.captured_at = payment.captured_at or now
@@ -138,6 +138,14 @@ def upsert_payment_from_webhook(
         if order.status not in terminal_order_statuses:
             order.status = "payment_failed"
             order.failed_at = order.failed_at or now
+    elif endpoint == "cancel":
+        terminal_payment_statuses = {"succeeded", "refunded", "partially_refunded"}
+        terminal_order_statuses = {"paid", "refunded", "partially_refunded"}
+        if previous_payment_status not in terminal_payment_statuses:
+            payment.status = "canceled"
+        if order.status not in terminal_order_statuses:
+            order.status = "canceled"
+            order.canceled_at = order.canceled_at or now
 
     db.add(payment)
     db.add(order)
@@ -236,6 +244,97 @@ def _money_mismatch(order: Order, *, amount_minor: int | None, currency: str | N
     return None
 
 
+def _account_mismatch(
+    db: Session,
+    order: Order,
+    *,
+    account_id: str | None,
+    require_account_id: bool,
+) -> str | None:
+    if not account_id:
+        return "missing_account_id" if require_account_id else None
+    user = db.get(User, order.user_id)
+    if user is None:
+        return "account_mismatch"
+    if str(account_id).strip().lower() != user.email_normalized:
+        return "account_mismatch"
+    return None
+
+
+def _order_expired(order: Order) -> bool:
+    if order.expires_at is None:
+        return False
+    now = datetime_now()
+    expires_at = order.expires_at
+    if expires_at.tzinfo is None:
+        now = now.replace(tzinfo=None)
+    return expires_at < now
+
+
+def _validation_error(
+    db: Session,
+    order: Order,
+    *,
+    account_id: str | None,
+    amount_minor: int | None,
+    currency: str | None,
+    require_account_id: bool = True,
+) -> str | None:
+    account_error = _account_mismatch(
+        db,
+        order,
+        account_id=account_id,
+        require_account_id=require_account_id,
+    )
+    if account_error is not None:
+        return account_error
+    money_error = _money_mismatch(order, amount_minor=amount_minor, currency=currency)
+    if money_error is not None:
+        return money_error
+    if _order_expired(order):
+        return "order_expired"
+    return None
+
+
+def _validation_error_message(error_code: str) -> str:
+    return {
+        "missing_account_id": "Webhook account id is missing",
+        "account_mismatch": "Webhook account id does not match order user",
+        "missing_amount": "Webhook amount is missing",
+        "amount_mismatch": "Webhook amount does not match order",
+        "missing_currency": "Webhook currency is missing",
+        "currency_mismatch": "Webhook currency does not match order",
+        "order_expired": "Order is expired",
+    }.get(error_code, "Webhook validation failed")
+
+
+def _refund_validation_error(
+    db: Session,
+    order: Order,
+    *,
+    account_id: str | None,
+    amount_minor: int | None,
+    currency: str | None,
+) -> str | None:
+    account_error = _account_mismatch(
+        db,
+        order,
+        account_id=account_id,
+        require_account_id=False,
+    )
+    if account_error is not None:
+        return account_error
+    if amount_minor is None:
+        return "missing_amount"
+    if amount_minor <= 0 or amount_minor > order.amount_minor:
+        return "amount_mismatch"
+    if currency is None:
+        return "missing_currency"
+    if currency.upper() != order.currency.upper():
+        return "currency_mismatch"
+    return None
+
+
 def process_webhook_event(
     db: Session,
     *,
@@ -247,6 +346,7 @@ def process_webhook_event(
     amount_minor: int | None,
     currency: str | None,
     idempotency_key: str,
+    account_id: str | None = None,
 ) -> PaymentWebhookEvent:
     event = db.get(PaymentWebhookEvent, event_id)
     if event is None:
@@ -278,20 +378,41 @@ def process_webhook_event(
         event.processed_at = datetime_now()
         event.order_id = existing_event.order_id
         event.payment_id = existing_event.payment_id
+    elif endpoint == "recurrent":
+        event.status = "processed"
+        event.processed_at = datetime_now()
     elif order is None:
-        event.status = "ignored"
+        event.status = "failed"
         event.error_code = "order_not_found"
         event.error_message = "No order found for provider invoice"
         event.processed_at = datetime_now()
-    elif endpoint in {"check", "recurrent"}:
-        event.status = "ignored"
-        event.processed_at = datetime_now()
-    elif endpoint in {"pay", "fail"}:
-        mismatch = _money_mismatch(order, amount_minor=amount_minor, currency=currency)
-        if mismatch is not None:
+    elif endpoint == "check":
+        validation_error = _validation_error(
+            db,
+            order,
+            account_id=account_id,
+            amount_minor=amount_minor,
+            currency=currency,
+        )
+        if validation_error is None:
+            event.status = "processed"
+        else:
             event.status = "failed"
-            event.error_code = mismatch
-            event.error_message = "Webhook amount or currency does not match order"
+            event.error_code = validation_error
+            event.error_message = _validation_error_message(validation_error)
+        event.processed_at = datetime_now()
+    elif endpoint in {"pay", "fail", "confirm", "cancel"}:
+        validation_error = _validation_error(
+            db,
+            order,
+            account_id=account_id,
+            amount_minor=amount_minor,
+            currency=currency,
+        )
+        if validation_error is not None:
+            event.status = "failed"
+            event.error_code = validation_error
+            event.error_message = _validation_error_message(validation_error)
         else:
             assert amount_minor is not None
             assert currency is not None
@@ -309,6 +430,21 @@ def process_webhook_event(
             event.status = "processed"
         event.processed_at = datetime_now()
     elif endpoint == "refund":
+        validation_error = _refund_validation_error(
+            db,
+            order,
+            account_id=account_id,
+            amount_minor=amount_minor,
+            currency=currency,
+        )
+        if validation_error is not None:
+            event.status = "failed"
+            event.error_code = validation_error
+            event.error_message = _validation_error_message(validation_error)
+            event.processed_at = datetime_now()
+            db.add(event)
+            db.flush()
+            return event
         payment = _find_payment(
             db,
             order=order,

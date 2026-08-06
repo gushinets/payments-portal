@@ -48,12 +48,32 @@ from app.integrations.cloudpayments.adapter import (  # noqa: E402
     _event_idempotency_key,
     verify_cloudpayments_signature,
 )
+from app.settings import settings  # noqa: E402
 
 
 client = TestClient(app)
 
 
+def cloudpayments_signature(raw_body: bytes, secret: str = "test-secret") -> str:
+    return base64.b64encode(
+        hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).digest()
+    ).decode("ascii")
+
+
+def signed_cloudpayments_post(endpoint: str, payload: bytes, *, secret: str = "test-secret"):
+    return client.post(
+        f"/api/cloudpayments/{endpoint}",
+        headers={
+            "Content-HMAC": cloudpayments_signature(payload, secret),
+            "Content-Type": "application/json",
+        },
+        content=payload,
+    )
+
+
 def setup_function() -> None:
+    object.__setattr__(settings, "cloudpayments_enabled", False)
+    object.__setattr__(settings, "cloudpayments_api_secret", "")
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
     with SessionLocal() as db:
@@ -889,6 +909,121 @@ def test_pay_webhook_amount_mismatch_is_failed_without_order_update() -> None:
     assert db.query(Payment).count() == 0
 
 
+def test_signed_check_webhook_validates_order_before_acknowledging() -> None:
+    from app.settings import settings  # noqa: E402
+
+    object.__setattr__(settings, "cloudpayments_enabled", True)
+    object.__setattr__(settings, "cloudpayments_api_secret", "test-secret")
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "check-user@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = register_response.json()["token"]
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": False,
+        },
+    )
+    invoice_id = checkout_response.json()["product_state"]["invoice_id"]
+    valid_payload = (
+        b'{"InvoiceId":"'
+        + invoice_id.encode("utf-8")
+        + b'","AccountId":"check-user@example.com","Amount":"990.00","Currency":"RUB"}'
+    )
+    amount_mismatch_payload = (
+        b'{"InvoiceId":"'
+        + invoice_id.encode("utf-8")
+        + b'","AccountId":"check-user@example.com","Amount":"9.90","Currency":"RUB"}'
+    )
+    unknown_payload = (
+        b'{"InvoiceId":"unknown-invoice","AccountId":"check-user@example.com",'
+        b'"Amount":"990.00","Currency":"RUB"}'
+    )
+
+    valid_response = signed_cloudpayments_post("check", valid_payload)
+    mismatch_response = signed_cloudpayments_post("check", amount_mismatch_payload)
+    unknown_response = signed_cloudpayments_post("check", unknown_payload)
+
+    assert valid_response.status_code == 200
+    assert valid_response.json() == {"code": 0}
+    assert mismatch_response.status_code == 200
+    assert mismatch_response.json() == {"code": 12}
+    assert unknown_response.status_code == 200
+    assert unknown_response.json() == {"code": 10}
+    with SessionLocal() as db:
+        events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
+        order = db.query(Order).one()
+
+    assert [event.status for event in events] == ["processed", "failed", "failed"]
+    assert events[1].error_code == "amount_mismatch"
+    assert events[2].error_code == "order_not_found"
+    assert order.status == "pending_payment"
+
+    object.__setattr__(settings, "cloudpayments_enabled", False)
+    object.__setattr__(settings, "cloudpayments_api_secret", "")
+
+
+def test_signed_check_webhook_rejects_account_and_currency_mismatch() -> None:
+    from app.settings import settings  # noqa: E402
+
+    object.__setattr__(settings, "cloudpayments_enabled", True)
+    object.__setattr__(settings, "cloudpayments_api_secret", "test-secret")
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "check-account-user@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = register_response.json()["token"]
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": False,
+        },
+    )
+    invoice_id = checkout_response.json()["product_state"]["invoice_id"]
+    account_mismatch_payload = (
+        b'{"InvoiceId":"'
+        + invoice_id.encode("utf-8")
+        + b'","AccountId":"other@example.com","Amount":"990.00","Currency":"RUB"}'
+    )
+    currency_mismatch_payload = (
+        b'{"InvoiceId":"'
+        + invoice_id.encode("utf-8")
+        + b'","AccountId":"check-account-user@example.com","Amount":"990.00","Currency":"USD"}'
+    )
+
+    account_response = signed_cloudpayments_post("check", account_mismatch_payload)
+    currency_response = signed_cloudpayments_post("check", currency_mismatch_payload)
+
+    assert account_response.status_code == 200
+    assert account_response.json() == {"code": 11}
+    assert currency_response.status_code == 200
+    assert currency_response.json() == {"code": 12}
+    with SessionLocal() as db:
+        events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
+
+    assert [event.error_code for event in events] == ["account_mismatch", "currency_mismatch"]
+
+    object.__setattr__(settings, "cloudpayments_enabled", False)
+    object.__setattr__(settings, "cloudpayments_api_secret", "")
+
+
 def test_successful_pay_webhook_is_saved_without_activating_access() -> None:
     register_response = client.post(
         "/api/auth/register",
@@ -957,6 +1092,55 @@ def test_successful_pay_webhook_is_saved_without_activating_access() -> None:
     assert "CardFirstSix" not in payment.raw_summary
 
 
+def test_signed_pay_webhook_processes_valid_signature() -> None:
+    from app.settings import settings  # noqa: E402
+
+    object.__setattr__(settings, "cloudpayments_enabled", True)
+    object.__setattr__(settings, "cloudpayments_api_secret", "test-secret")
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "signed-pay-user@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = register_response.json()["token"]
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": False,
+        },
+    )
+    invoice_id = checkout_response.json()["product_state"]["invoice_id"]
+    raw_payload = (
+        b'{"InvoiceId":"'
+        + invoice_id.encode("utf-8")
+        + b'","TransactionId":"tx-signed-pay-1","AccountId":"signed-pay-user@example.com",'
+        b'"Amount":"990.00","Currency":"RUB","CardFirstSix":"411111","Token":"tok_secret"}'
+    )
+
+    response = signed_cloudpayments_post("pay", raw_payload)
+
+    assert response.status_code == 200
+    assert response.json() == {"code": 0}
+    with SessionLocal() as db:
+        event = db.query(PaymentWebhookEvent).one()
+        payment = db.query(Payment).one()
+
+    assert event.status == "processed"
+    assert event.raw_payload["CardFirstSix"] == "[redacted]"
+    assert event.raw_payload["Token"] == "[redacted]"
+    assert payment.status == "succeeded"
+
+    object.__setattr__(settings, "cloudpayments_enabled", False)
+    object.__setattr__(settings, "cloudpayments_api_secret", "")
+
+
 def test_fail_webhook_updates_payment_and_order_without_access_activation() -> None:
     register_response = client.post(
         "/api/auth/register",
@@ -1004,6 +1188,91 @@ def test_fail_webhook_updates_payment_and_order_without_access_activation() -> N
     assert payment.failure_message_safe == "Insufficient funds"
     assert state.status == "pending"
     assert state.last_transaction_id is None
+
+
+def test_confirm_and_cancel_notifications_update_two_stage_payment_state() -> None:
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "confirm-cancel-user@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = register_response.json()["token"]
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": False,
+        },
+    )
+    invoice_id = checkout_response.json()["product_state"]["invoice_id"]
+
+    confirm_response = client.post(
+        "/api/cloudpayments/confirm",
+        json={
+            "InvoiceId": invoice_id,
+            "TransactionId": "tx-confirm-1",
+            "AccountId": "confirm-cancel-user@example.com",
+            "Amount": "990.00",
+            "Currency": "RUB",
+        },
+    )
+
+    assert confirm_response.status_code == 200
+    assert confirm_response.json() == {"code": 0}
+    with SessionLocal() as db:
+        confirmed_order = db.query(Order).one()
+        confirmed_payment = db.query(Payment).one()
+
+    assert confirmed_order.status == "paid"
+    assert confirmed_payment.status == "succeeded"
+
+    register_cancel_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "cancel-user@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    cancel_token = register_cancel_response.json()["token"]
+    cancel_checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {cancel_token}"},
+        json={
+            "product": "prompt-optimizer",
+            "plan_code": "prompt-optimizer-pro",
+            "auto_renew": False,
+        },
+    )
+    cancel_invoice_id = cancel_checkout_response.json()["product_state"]["invoice_id"]
+
+    cancel_response = client.post(
+        "/api/cloudpayments/cancel",
+        json={
+            "InvoiceId": cancel_invoice_id,
+            "TransactionId": "tx-cancel-1",
+            "AccountId": "cancel-user@example.com",
+            "Amount": "990.00",
+            "Currency": "RUB",
+        },
+    )
+
+    assert cancel_response.status_code == 200
+    assert cancel_response.json() == {"code": 0}
+    with SessionLocal() as db:
+        canceled_order = db.query(Order).filter(Order.provider_invoice_id == cancel_invoice_id).one()
+        canceled_payment = db.query(Payment).filter(Payment.provider_payment_id == "tx-cancel-1").one()
+
+    assert canceled_order.status == "canceled"
+    assert canceled_order.canceled_at
+    assert canceled_payment.status == "canceled"
 
 
 def test_late_fail_webhook_does_not_downgrade_paid_order() -> None:
@@ -1320,6 +1589,34 @@ def test_duplicate_refund_id_with_distinct_event_id_does_not_double_count_refund
     assert payment.refunded_amount_minor == 40000
     assert len(refunds) == 1
     assert [event.status for event in events] == ["processed", "processed", "processed"]
+
+
+def test_recurrent_webhook_is_persisted_for_downstream_subscription_handling() -> None:
+    response = client.post(
+        "/api/cloudpayments/recurrent",
+        json={
+            "Id": "sub_1",
+            "AccountId": "recurrent-user@example.com",
+            "Email": "recurrent-user@example.com",
+            "Amount": "990.00",
+            "Currency": "RUB",
+            "Status": "Active",
+            "CardLastFour": "4242",
+            "Token": "tok_secret",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"code": 0}
+    with SessionLocal() as db:
+        event = db.query(PaymentWebhookEvent).one()
+
+    assert event.endpoint == "recurrent"
+    assert event.event_type == "subscription.updated"
+    assert event.provider_event_id == "sub_1"
+    assert event.status == "processed"
+    assert event.raw_payload["CardLastFour"] == "[redacted]"
+    assert event.raw_payload["Token"] == "[redacted]"
 
 
 def test_same_email_can_register_independent_ru_and_eu_accounts() -> None:
@@ -1825,7 +2122,7 @@ def test_cloudpayments_webhook_is_saved_without_secret_hmac() -> None:
     )
 
     assert response.status_code == 200
-    assert response.json() == {"code": 0}
+    assert response.json() == {"code": 10}
 
     with SessionLocal() as db:
         event = db.query(PaymentWebhookEvent).one()
@@ -1840,7 +2137,7 @@ def test_cloudpayments_webhook_is_saved_without_secret_hmac() -> None:
     assert event.currency == "RUB"
     assert event.raw_payload["CardFirstSix"] == "[redacted]"
     assert event.headers["content-hmac"] == "[redacted]"
-    assert event.status == "ignored"
+    assert event.status == "failed"
     assert event.error_code == "order_not_found"
 
 
@@ -1852,7 +2149,7 @@ def test_malformed_cloudpayments_payload_omits_raw_body() -> None:
     )
 
     assert response.status_code == 200
-    assert response.json() == {"code": 0}
+    assert response.json() == {"code": 13}
 
     with SessionLocal() as db:
         event = db.query(PaymentWebhookEvent).one()
@@ -1872,7 +2169,7 @@ def test_cloudpayments_webhook_rejects_non_object_json_payload() -> None:
     )
 
     assert response.status_code == 200
-    assert response.json() == {"code": 0}
+    assert response.json() == {"code": 13}
 
     with SessionLocal() as db:
         event = db.query(PaymentWebhookEvent).one()

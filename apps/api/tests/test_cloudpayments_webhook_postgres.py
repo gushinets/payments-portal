@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 import os
 import sys
 import threading
@@ -30,6 +33,7 @@ sys.path.insert(0, str(api_root))
 
 from app.core.database import Base, get_db  # noqa: E402
 from app.integrations.cloudpayments import processing as cloudpayments_processing  # noqa: E402
+from app.core.settings import settings  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import (  # noqa: E402
     Order,
@@ -43,6 +47,12 @@ from app.models import (  # noqa: E402
 
 engine = create_engine(TEST_DATABASE_URL, future=True) if TEST_DATABASE_URL else None
 TestingSessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
+
+
+def cloudpayments_signature(raw_body: bytes, secret: str = "test-secret") -> str:
+    return base64.b64encode(
+        hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).digest()
+    ).decode("ascii")
 
 
 def reset_schema() -> None:
@@ -255,4 +265,56 @@ def test_concurrent_duplicate_webhook_is_serialized_without_provider_payment_id(
         assert len(payments) == 1
         assert payments[0].provider_payment_id is None
     finally:
+        app.dependency_overrides.clear()
+
+
+def test_signed_duplicate_webhook_is_persisted_once_and_acknowledged_idempotently(monkeypatch) -> None:
+    reset_schema()
+    app.dependency_overrides[get_db] = override_get_db
+    object.__setattr__(settings, "cloudpayments_enabled", True)
+    object.__setattr__(settings, "cloudpayments_api_secret", "test-secret")
+    invoice_id = "inv-signed-duplicate-1"
+    seed_order(invoice_id)
+
+    raw_payload = (
+        b'{"InvoiceId":"inv-signed-duplicate-1","TransactionId":"tx-signed-duplicate-1",'
+        b'"AccountId":"durable-webhook@example.com","Amount":"990.00","Currency":"RUB"}'
+    )
+    headers = {
+        "Content-HMAC": cloudpayments_signature(raw_payload),
+        "Content-Type": "application/json",
+    }
+
+    def post_webhook():
+        with TestClient(app, raise_server_exceptions=False) as client:
+            return client.post(
+                "/api/cloudpayments/pay",
+                headers=headers,
+                content=raw_payload,
+            )
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            first_result = executor.submit(post_webhook)
+            second_result = executor.submit(post_webhook)
+            first_response = first_result.result(timeout=10)
+            second_response = second_result.result(timeout=10)
+
+        assert first_response.status_code == 200
+        assert second_response.status_code == 200
+        assert first_response.json() == {"code": 0}
+        assert second_response.json() == {"code": 0}
+
+        with TestingSessionLocal() as db:
+            events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
+            payments = db.query(Payment).all()
+            order = db.query(Order).one()
+
+        assert sorted(event.status for event in events) == ["duplicate", "processed"]
+        assert len(payments) == 1
+        assert payments[0].provider_payment_id == "tx-signed-duplicate-1"
+        assert order.status == "paid"
+    finally:
+        object.__setattr__(settings, "cloudpayments_enabled", False)
+        object.__setattr__(settings, "cloudpayments_api_secret", "")
         app.dependency_overrides.clear()

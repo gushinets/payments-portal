@@ -20,14 +20,43 @@ from app.payment_providers.contracts import (
 )
 
 CLOUDPAYMENTS_PROVIDER_CODE = "cloudpayments"
-SUPPORTED_ENDPOINTS = {"check", "pay", "fail", "refund", "recurrent"}
+SUPPORTED_ENDPOINTS = {"check", "pay", "fail", "refund", "recurrent", "confirm", "cancel"}
 CARD_DATA_KEYS = {
+    "cardcryptogrampacket",
+    "cardholdermessage",
     "cardfirstsix",
     "cardlastfour",
     "cardtype",
     "cardexpdate",
     "cardproduct",
+    "cryptogram",
+    "cvv",
+    "cvc",
+    "pan",
     "token",
+}
+EVENT_TYPES_BY_ENDPOINT = {
+    "check": "payment.check",
+    "pay": "payment.succeeded",
+    "fail": "payment.failed",
+    "refund": "payment.refunded",
+    "confirm": "payment.confirmed",
+    "cancel": "payment.canceled",
+    "recurrent": "subscription.updated",
+}
+CLOUDPAYMENTS_RESPONSE_CODES = {
+    "order_not_found": 10,
+    "missing_account_id": 11,
+    "account_mismatch": 11,
+    "missing_amount": 12,
+    "amount_mismatch": 12,
+    "missing_currency": 12,
+    "currency_mismatch": 12,
+    "order_expired": 20,
+    "payload_parse_error": 13,
+    "payment_not_found": 13,
+    "normalization_unexpected_error": 13,
+    "invalid_cloudpayments_signature": 13,
 }
 
 
@@ -236,7 +265,7 @@ class CloudPaymentsAdapter:
 
         return NormalizedPaymentEvent(
             endpoint=endpoint,
-            event_type=endpoint,
+            event_type=EVENT_TYPES_BY_ENDPOINT.get(endpoint, endpoint),
             provider_event_id=provider_event_id,
             idempotency_key=_event_idempotency_key(
                 endpoint,
@@ -261,8 +290,16 @@ class CloudPaymentsAdapter:
             error_message=error_message,
         )
 
-    def webhook_success_response(self, _event: NormalizedPaymentEvent) -> dict[str, Any]:
-        return {"code": 0}
+    def webhook_success_response(self, event: NormalizedPaymentEvent) -> dict[str, Any]:
+        return {"code": self.webhook_response_code(error_code=event.error_code)}
+
+    def webhook_event_response(self, *, error_code: str | None) -> dict[str, Any]:
+        return {"code": self.webhook_response_code(error_code=error_code)}
+
+    def webhook_response_code(self, *, error_code: str | None) -> int:
+        if error_code is None:
+            return 0
+        return CLOUDPAYMENTS_RESPONSE_CODES.get(error_code, 13)
 
 
 cloudpayments_adapter = CloudPaymentsAdapter()
