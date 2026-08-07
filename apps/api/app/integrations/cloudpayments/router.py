@@ -126,4 +126,7 @@ async def receive_cloudpayments_webhook(
             detail=normalized_event.error_message,
         )
 
-    return cloudpayments_adapter.webhook_event_response(error_code=event.error_code)
+    return cloudpayments_adapter.webhook_event_response(
+        endpoint=endpoint,
+        error_code=event.error_code,
+    )

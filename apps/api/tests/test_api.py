@@ -899,6 +899,7 @@ def test_pay_webhook_amount_mismatch_is_failed_without_order_update() -> None:
     )
 
     assert webhook_response.status_code == 200
+    assert webhook_response.json() == {"code": 0}
     with SessionLocal() as db:
         event = db.query(PaymentWebhookEvent).one()
         order = db.query(Order).one()
@@ -1273,6 +1274,86 @@ def test_confirm_and_cancel_notifications_update_two_stage_payment_state() -> No
     assert canceled_order.status == "canceled"
     assert canceled_order.canceled_at
     assert canceled_payment.status == "canceled"
+
+
+def test_late_pay_or_confirm_does_not_reopen_canceled_order() -> None:
+    scenarios = [
+        {
+            "email": "late-pay-after-cancel@example.com",
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "endpoint": "pay",
+            "transaction_id": "tx-late-pay-after-cancel",
+        },
+        {
+            "email": "late-confirm-after-cancel@example.com",
+            "product": "prompt-optimizer",
+            "plan_code": "prompt-optimizer-pro",
+            "endpoint": "confirm",
+            "transaction_id": "tx-late-confirm-after-cancel",
+        },
+    ]
+
+    for scenario in scenarios:
+        register_response = client.post(
+            "/api/auth/register",
+            json={
+                "email": scenario["email"],
+                "password": "very-secret-password",
+                "personal_consent": True,
+                "offer_consent": True,
+            },
+        )
+        token = register_response.json()["token"]
+        checkout_response = client.post(
+            "/api/auth/checkout-intent",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "product": scenario["product"],
+                "plan_code": scenario["plan_code"],
+                "auto_renew": False,
+            },
+        )
+        invoice_id = checkout_response.json()["product_state"]["invoice_id"]
+        base_payload = {
+            "InvoiceId": invoice_id,
+            "TransactionId": scenario["transaction_id"],
+            "AccountId": scenario["email"],
+            "Amount": "990.00",
+            "Currency": "RUB",
+        }
+
+        cancel_response = client.post("/api/cloudpayments/cancel", json=base_payload)
+        late_response = client.post(
+            f"/api/cloudpayments/{scenario['endpoint']}",
+            json=base_payload,
+        )
+
+        assert cancel_response.status_code == 200
+        assert cancel_response.json() == {"code": 0}
+        assert late_response.status_code == 200
+        assert late_response.json() == {"code": 0}
+        with SessionLocal() as db:
+            order = db.query(Order).filter(Order.provider_invoice_id == invoice_id).one()
+            payment = (
+                db.query(Payment)
+                .filter(Payment.provider_payment_id == scenario["transaction_id"])
+                .one()
+            )
+            events = (
+                db.query(PaymentWebhookEvent)
+                .filter(PaymentWebhookEvent.invoice_id == invoice_id)
+                .order_by(PaymentWebhookEvent.received_at)
+                .all()
+            )
+
+        assert order.status == "canceled"
+        assert order.paid_at is None
+        assert order.canceled_at
+        assert payment.status == "canceled"
+        assert [event.endpoint for event in events] == ["cancel", scenario["endpoint"]]
+        assert [event.status for event in events] == ["processed", "ignored"]
+        assert events[1].error_code == "order_already_canceled"
 
 
 def test_late_fail_webhook_does_not_downgrade_paid_order() -> None:
@@ -2122,7 +2203,7 @@ def test_cloudpayments_webhook_is_saved_without_secret_hmac() -> None:
     )
 
     assert response.status_code == 200
-    assert response.json() == {"code": 10}
+    assert response.json() == {"code": 0}
 
     with SessionLocal() as db:
         event = db.query(PaymentWebhookEvent).one()
@@ -2149,7 +2230,7 @@ def test_malformed_cloudpayments_payload_omits_raw_body() -> None:
     )
 
     assert response.status_code == 200
-    assert response.json() == {"code": 13}
+    assert response.json() == {"code": 0}
 
     with SessionLocal() as db:
         event = db.query(PaymentWebhookEvent).one()
@@ -2169,7 +2250,7 @@ def test_cloudpayments_webhook_rejects_non_object_json_payload() -> None:
     )
 
     assert response.status_code == 200
-    assert response.json() == {"code": 13}
+    assert response.json() == {"code": 0}
 
     with SessionLocal() as db:
         event = db.query(PaymentWebhookEvent).one()

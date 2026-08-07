@@ -2,7 +2,7 @@
 
 Status: active
 Owner: Codex
-Parent: https://linear.app/paveldik/issue/ANY-163/podklyuchenie-cloudpayments-vidzhet-api-uvedomleniya-podpiski
+Parent: ANY-163
 
 ## Goal
 
@@ -28,6 +28,9 @@ or integration layer.
   18 passed, 32 deselected.
 - `.venv/bin/python -m pytest -p no:cacheprovider apps/api/tests/test_api.py -k 'cloudpayments or webhook or refund or late_fail or duplicate_success or confirm_and_cancel or recurrent or signed_check or signed_pay'`:
   23 passed, 32 deselected.
+- Review fixes:
+  `.venv/bin/python -m pytest -p no:cacheprovider apps/api/tests/test_api.py -k 'cloudpayments or webhook or refund or late_fail or duplicate_success or confirm_and_cancel or late_pay_or_confirm or recurrent or signed_check or signed_pay'`:
+  24 passed, 32 deselected.
 - `.venv/bin/python -m pytest -p no:cacheprovider apps/api/tests/test_cloudpayments_webhook_postgres.py`:
   3 skipped because `TEST_POSTGRES_DATABASE_URL` is not set locally.
 - `python3 -m compileall -q apps/api/app`: passed.
@@ -39,5 +42,16 @@ or integration layer.
 - `npm run check:fast`: failed before checks because this shell has no `python`
   executable.
 - `PATH=.venv/bin:$PATH npm run check:fast`: passed; 74 passed, 3
+  PostgreSQL webhook tests skipped because `TEST_POSTGRES_DATABASE_URL` is not
+  set locally.
+- Review fixes:
+  `.venv/bin/python -m pytest -p no:cacheprovider apps/api/tests/test_api.py`:
+  56 passed.
+- Review fixes:
+  `python3 -m compileall -q apps/api/app`: passed.
+- Review fixes:
+  `python3 scripts/repo.py architecture check`: passed.
+- Review fixes:
+  `PATH=.venv/bin:$PATH npm run check:fast`: passed; 75 passed, 3
   PostgreSQL webhook tests skipped because `TEST_POSTGRES_DATABASE_URL` is not
   set locally.

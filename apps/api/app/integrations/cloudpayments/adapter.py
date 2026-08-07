@@ -291,13 +291,16 @@ class CloudPaymentsAdapter:
         )
 
     def webhook_success_response(self, event: NormalizedPaymentEvent) -> dict[str, Any]:
-        return {"code": self.webhook_response_code(error_code=event.error_code)}
+        return self.webhook_event_response(
+            endpoint=event.endpoint,
+            error_code=event.error_code,
+        )
 
-    def webhook_event_response(self, *, error_code: str | None) -> dict[str, Any]:
-        return {"code": self.webhook_response_code(error_code=error_code)}
+    def webhook_event_response(self, *, endpoint: str, error_code: str | None) -> dict[str, Any]:
+        return {"code": self.webhook_response_code(endpoint=endpoint, error_code=error_code)}
 
-    def webhook_response_code(self, *, error_code: str | None) -> int:
-        if error_code is None:
+    def webhook_response_code(self, *, endpoint: str, error_code: str | None) -> int:
+        if error_code is None or endpoint != "check":
             return 0
         return CLOUDPAYMENTS_RESPONSE_CODES.get(error_code, 13)
 

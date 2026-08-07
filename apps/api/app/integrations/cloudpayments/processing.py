@@ -335,6 +335,25 @@ def _refund_validation_error(
     return None
 
 
+def _ignore_late_capture_for_canceled_order(
+    db: Session,
+    *,
+    event: PaymentWebhookEvent,
+    endpoint: str,
+    order: Order,
+    transaction_id: str | None,
+) -> bool:
+    if endpoint not in {"pay", "confirm"} or order.status != "canceled":
+        return False
+    payment = _find_payment(db, order=order, transaction_id=transaction_id)
+    event.payment_id = payment.id if payment is not None else None
+    event.status = "ignored"
+    event.error_code = "order_already_canceled"
+    event.error_message = "Payment capture notification ignored because order is canceled"
+    event.processed_at = datetime_now()
+    return True
+
+
 def process_webhook_event(
     db: Session,
     *,
@@ -413,6 +432,14 @@ def process_webhook_event(
             event.status = "failed"
             event.error_code = validation_error
             event.error_message = _validation_error_message(validation_error)
+        elif _ignore_late_capture_for_canceled_order(
+            db,
+            event=event,
+            endpoint=endpoint,
+            order=order,
+            transaction_id=transaction_id,
+        ):
+            pass
         else:
             assert amount_minor is not None
             assert currency is not None
