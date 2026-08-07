@@ -183,6 +183,24 @@ describe("PaymentResultClient authoritative status characterization", () => {
     expect(screen.queryByText("Ожидаем подтверждение")).not.toBeInTheDocument();
   });
 
+  it("shows canceled URL fallback when backend payload is unavailable", () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    setRouteSearchParams("status=canceled&product=document-summary");
+
+    try {
+      render(<PaymentResultClient />);
+
+      expect(
+        screen.getByRole("heading", { name: "Платёж отменён" })
+      ).toBeVisible();
+      expect(screen.getByText(/Списание не подтверждено/)).toBeVisible();
+      expect(screen.queryByText("Ожидаем подтверждение")).not.toBeInTheDocument();
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it("keeps pending state when payment-status polling aborts", async () => {
     const originalFetch = globalThis.fetch.bind(globalThis);
     const unhandledRejections: unknown[] = [];

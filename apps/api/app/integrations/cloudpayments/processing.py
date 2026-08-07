@@ -257,7 +257,15 @@ def fail_webhook_event(
     return event
 
 
-def _ignore_late_capture_for_terminal_order(
+def _terminal_order_event_error_code(order: Order) -> str:
+    if order.status == "canceled":
+        return "order_already_canceled"
+    if order.status in {"refunded", "partially_refunded"}:
+        return "order_already_refunded"
+    return "order_already_paid"
+
+
+def _ignore_late_pay_or_confirm_for_terminal_order(
     db: Session,
     *,
     event: PaymentWebhookEvent,
@@ -275,9 +283,30 @@ def _ignore_late_capture_for_terminal_order(
     payment = _find_payment(db, order=order, transaction_id=transaction_id)
     event.payment_id = payment.id if payment is not None else None
     event.status = "ignored"
-    event.error_code = (
-        "order_already_canceled" if order.status == "canceled" else "order_already_paid"
-    )
+    event.error_code = _terminal_order_event_error_code(order)
+    event.error_message = validation_error_message(event.error_code)
+    event.processed_at = datetime_now()
+    return True
+
+
+def _ignore_cancel_for_terminal_order(
+    db: Session,
+    *,
+    event: PaymentWebhookEvent,
+    endpoint: str,
+    order: Order,
+    transaction_id: str | None,
+) -> bool:
+    if endpoint != "cancel" or order.status not in {
+        "paid",
+        "refunded",
+        "partially_refunded",
+    }:
+        return False
+    payment = _find_payment(db, order=order, transaction_id=transaction_id)
+    event.payment_id = payment.id if payment is not None else None
+    event.status = "ignored"
+    event.error_code = _terminal_order_event_error_code(order)
     event.error_message = validation_error_message(event.error_code)
     event.processed_at = datetime_now()
     return True
@@ -378,7 +407,13 @@ def process_webhook_event(
             event.status = "failed"
             event.error_code = validation_error
             event.error_message = validation_error_message(validation_error)
-        elif _ignore_late_capture_for_terminal_order(
+        elif _ignore_late_pay_or_confirm_for_terminal_order(
+            db,
+            event=event,
+            endpoint=endpoint,
+            order=order,
+            transaction_id=transaction_id,
+        ) or _ignore_cancel_for_terminal_order(
             db,
             event=event,
             endpoint=endpoint,
@@ -415,6 +450,7 @@ def process_webhook_event(
             event.error_message = "No payment found for refund webhook"
             event.processed_at = datetime_now()
         else:
+            event.payment_id = payment.id
             validation_error = refund_validation_error(
                 db,
                 order,
@@ -440,7 +476,6 @@ def process_webhook_event(
                 currency=currency if currency is not None else payment.currency,
                 payload=payload,
             )
-            event.payment_id = payment.id
             event.currency = currency if currency is not None else payment.currency
             event.status = "processed"
             event.processed_at = refund.succeeded_at

@@ -40,6 +40,7 @@ from app.models import (  # noqa: E402
     Payment,
     PaymentProviderAccount,
     PaymentWebhookEvent,
+    Refund,
     Region,
     User,
 )
@@ -138,6 +139,48 @@ def seed_order(invoice_id: str) -> None:
             )
         )
         db.commit()
+
+
+def paid_payload(invoice_id: str, transaction_id: str) -> dict[str, str]:
+    return {
+        "InvoiceId": invoice_id,
+        "TransactionId": transaction_id,
+        "AccountId": "durable-webhook@example.com",
+        "Amount": "990.00",
+        "Currency": "RUB",
+        "Status": "Completed",
+    }
+
+
+def authorized_payload(invoice_id: str, transaction_id: str) -> dict[str, str]:
+    return {
+        **paid_payload(invoice_id, transaction_id),
+        "Status": "Authorized",
+    }
+
+
+def cancel_payload(invoice_id: str, transaction_id: str) -> dict[str, str]:
+    return {
+        "InvoiceId": invoice_id,
+        "TransactionId": transaction_id,
+        "Amount": "990.00",
+    }
+
+
+def refund_payload(
+    invoice_id: str,
+    *,
+    refund_transaction_id: str,
+    payment_transaction_id: str,
+    amount: str,
+) -> dict[str, str]:
+    return {
+        "InvoiceId": invoice_id,
+        "TransactionId": refund_transaction_id,
+        "PaymentTransactionId": payment_transaction_id,
+        "AccountId": "durable-webhook@example.com",
+        "Amount": amount,
+    }
 
 
 def test_raw_webhook_event_survives_failed_normalization_and_can_retry(monkeypatch) -> None:
@@ -318,3 +361,177 @@ def test_signed_duplicate_webhook_is_persisted_once_and_acknowledged_idempotentl
         object.__setattr__(settings, "cloudpayments_enabled", False)
         object.__setattr__(settings, "cloudpayments_api_secret", "")
         app.dependency_overrides.clear()
+
+
+def test_cancel_after_paid_payment_is_ignored_without_state_regression() -> None:
+    reset_schema()
+    app.dependency_overrides[get_db] = override_get_db
+    client = TestClient(app, raise_server_exceptions=False)
+    invoice_id = "inv-cancel-after-paid-1"
+    transaction_id = "tx-paid-before-cancel-1"
+    seed_order(invoice_id)
+
+    pay_response = client.post(
+        "/api/cloudpayments/pay",
+        json=paid_payload(invoice_id, transaction_id),
+    )
+    cancel_response = client.post(
+        "/api/cloudpayments/cancel",
+        json=cancel_payload(invoice_id, transaction_id),
+    )
+
+    assert pay_response.status_code == 200
+    assert cancel_response.status_code == 200
+    assert cancel_response.json() == {"code": 0}
+    with TestingSessionLocal() as db:
+        order = db.query(Order).one()
+        payment = db.query(Payment).one()
+        events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
+
+    assert order.status == "paid"
+    assert order.canceled_at is None
+    assert payment.status == "succeeded"
+    assert payment.refunded_amount_minor == 0
+    assert [event.status for event in events] == ["processed", "ignored"]
+    assert events[-1].payment_id == payment.id
+    assert events[-1].error_code == "order_already_paid"
+
+
+def test_cancel_after_refunded_payment_is_ignored_without_refund_mutation() -> None:
+    reset_schema()
+    app.dependency_overrides[get_db] = override_get_db
+    client = TestClient(app, raise_server_exceptions=False)
+    invoice_id = "inv-cancel-after-refund-1"
+    transaction_id = "tx-refunded-before-cancel-1"
+    seed_order(invoice_id)
+
+    pay_response = client.post(
+        "/api/cloudpayments/pay",
+        json=paid_payload(invoice_id, transaction_id),
+    )
+    refund_response = client.post(
+        "/api/cloudpayments/refund",
+        json=refund_payload(
+            invoice_id,
+            refund_transaction_id="tx-refund-before-cancel-1",
+            payment_transaction_id=transaction_id,
+            amount="990.00",
+        ),
+    )
+    cancel_response = client.post(
+        "/api/cloudpayments/cancel",
+        json=cancel_payload(invoice_id, transaction_id),
+    )
+
+    assert pay_response.status_code == 200
+    assert refund_response.status_code == 200
+    assert cancel_response.status_code == 200
+    assert cancel_response.json() == {"code": 0}
+    with TestingSessionLocal() as db:
+        order = db.query(Order).one()
+        payment = db.query(Payment).one()
+        events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
+        refunds = db.query(Refund).all()
+
+    assert order.status == "refunded"
+    assert payment.status == "refunded"
+    assert payment.refunded_amount_minor == 99000
+    assert len(refunds) == 1
+    assert [event.status for event in events] == ["processed", "processed", "ignored"]
+    assert events[-1].payment_id == payment.id
+    assert events[-1].error_code == "order_already_refunded"
+
+
+def test_refund_after_canceled_payment_is_rejected_without_refund_mutation() -> None:
+    reset_schema()
+    app.dependency_overrides[get_db] = override_get_db
+    client = TestClient(app, raise_server_exceptions=False)
+    invoice_id = "inv-refund-after-cancel-1"
+    transaction_id = "tx-canceled-before-refund-1"
+    seed_order(invoice_id)
+
+    pay_response = client.post(
+        "/api/cloudpayments/pay",
+        json=authorized_payload(invoice_id, transaction_id),
+    )
+    cancel_response = client.post(
+        "/api/cloudpayments/cancel",
+        json=cancel_payload(invoice_id, transaction_id),
+    )
+    refund_response = client.post(
+        "/api/cloudpayments/refund",
+        json=refund_payload(
+            invoice_id,
+            refund_transaction_id="tx-refund-after-cancel-1",
+            payment_transaction_id=transaction_id,
+            amount="100.00",
+        ),
+    )
+
+    assert pay_response.status_code == 200
+    assert cancel_response.status_code == 200
+    assert refund_response.status_code == 200
+    assert refund_response.json() == {"code": 0}
+    with TestingSessionLocal() as db:
+        order = db.query(Order).one()
+        payment = db.query(Payment).one()
+        events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
+        refund_count = db.query(Refund).count()
+
+    assert order.status == "canceled"
+    assert payment.status == "canceled"
+    assert payment.refunded_amount_minor == 0
+    assert refund_count == 0
+    assert [event.status for event in events] == ["processed", "processed", "failed"]
+    assert events[-1].payment_id == payment.id
+    assert events[-1].error_code == "order_already_canceled"
+
+
+def test_excessive_partial_refund_is_rejected_without_refund_total_mutation() -> None:
+    reset_schema()
+    app.dependency_overrides[get_db] = override_get_db
+    client = TestClient(app, raise_server_exceptions=False)
+    invoice_id = "inv-excessive-refund-1"
+    transaction_id = "tx-excessive-refund-payment-1"
+    seed_order(invoice_id)
+
+    pay_response = client.post(
+        "/api/cloudpayments/pay",
+        json=paid_payload(invoice_id, transaction_id),
+    )
+    first_refund_response = client.post(
+        "/api/cloudpayments/refund",
+        json=refund_payload(
+            invoice_id,
+            refund_transaction_id="tx-partial-refund-1",
+            payment_transaction_id=transaction_id,
+            amount="600.00",
+        ),
+    )
+    excessive_refund_response = client.post(
+        "/api/cloudpayments/refund",
+        json=refund_payload(
+            invoice_id,
+            refund_transaction_id="tx-partial-refund-2",
+            payment_transaction_id=transaction_id,
+            amount="500.00",
+        ),
+    )
+
+    assert pay_response.status_code == 200
+    assert first_refund_response.status_code == 200
+    assert excessive_refund_response.status_code == 200
+    assert excessive_refund_response.json() == {"code": 0}
+    with TestingSessionLocal() as db:
+        order = db.query(Order).one()
+        payment = db.query(Payment).one()
+        events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
+        refunds = db.query(Refund).all()
+
+    assert order.status == "partially_refunded"
+    assert payment.status == "partially_refunded"
+    assert payment.refunded_amount_minor == 60000
+    assert len(refunds) == 1
+    assert [event.status for event in events] == ["processed", "processed", "failed"]
+    assert events[-1].payment_id == payment.id
+    assert events[-1].error_code == "refund_amount_exceeds_payment"

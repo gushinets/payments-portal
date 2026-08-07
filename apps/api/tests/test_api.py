@@ -86,6 +86,7 @@ def create_checkout_invoice(
             "offer_consent": True,
         },
     )
+    assert register_response.status_code == 200, register_response.text
     token = register_response.json()["token"]
     checkout_response = client.post(
         "/api/auth/checkout-intent",
@@ -96,6 +97,7 @@ def create_checkout_invoice(
             "auto_renew": False,
         },
     )
+    assert checkout_response.status_code == 200, checkout_response.text
     return checkout_response.json()["product_state"]["invoice_id"]
 
 
@@ -1216,53 +1218,54 @@ def test_verified_late_pay_and_confirm_after_checkout_expiry_remain_authoritativ
 
     object.__setattr__(settings, "cloudpayments_enabled", True)
     object.__setattr__(settings, "cloudpayments_api_secret", "test-secret")
-    scenarios = [
-        {
-            "email": "expired-pay-user@example.com",
-            "endpoint": "pay",
-            "transaction_id": "tx-expired-pay-1",
-        },
-        {
-            "email": "expired-confirm-user@example.com",
-            "endpoint": "confirm",
-            "transaction_id": "tx-expired-confirm-1",
-        },
-    ]
+    try:
+        scenarios = [
+            {
+                "email": "expired-pay-user@example.com",
+                "endpoint": "pay",
+                "transaction_id": "tx-expired-pay-1",
+            },
+            {
+                "email": "expired-confirm-user@example.com",
+                "endpoint": "confirm",
+                "transaction_id": "tx-expired-confirm-1",
+            },
+        ]
 
-    for scenario in scenarios:
-        invoice_id = create_checkout_invoice(email=scenario["email"])
-        with SessionLocal() as db:
-            order = db.query(Order).filter(Order.provider_invoice_id == invoice_id).one()
-            order.expires_at = datetime.now(timezone.utc) - timedelta(minutes=1)
-            db.commit()
-        raw_payload = (
-            b'{"InvoiceId":"'
-            + invoice_id.encode("utf-8")
-            + b'","TransactionId":"'
-            + scenario["transaction_id"].encode("utf-8")
-            + b'","AccountId":"'
-            + scenario["email"].encode("utf-8")
-            + b'","Amount":"990.00","Currency":"RUB","Status":"Completed"}'
-        )
-
-        response = signed_cloudpayments_post(scenario["endpoint"], raw_payload)
-
-        assert response.status_code == 200
-        assert response.json() == {"code": 0}
-        with SessionLocal() as db:
-            order = db.query(Order).filter(Order.provider_invoice_id == invoice_id).one()
-            payment = (
-                db.query(Payment)
-                .filter(Payment.provider_payment_id == scenario["transaction_id"])
-                .one()
+        for scenario in scenarios:
+            invoice_id = create_checkout_invoice(email=scenario["email"])
+            with SessionLocal() as db:
+                order = db.query(Order).filter(Order.provider_invoice_id == invoice_id).one()
+                order.expires_at = datetime.now(timezone.utc) - timedelta(minutes=1)
+                db.commit()
+            raw_payload = (
+                b'{"InvoiceId":"'
+                + invoice_id.encode("utf-8")
+                + b'","TransactionId":"'
+                + scenario["transaction_id"].encode("utf-8")
+                + b'","AccountId":"'
+                + scenario["email"].encode("utf-8")
+                + b'","Amount":"990.00","Currency":"RUB","Status":"Completed"}'
             )
 
-        assert order.status == "paid"
-        assert order.paid_at
-        assert payment.status == "succeeded"
+            response = signed_cloudpayments_post(scenario["endpoint"], raw_payload)
 
-    object.__setattr__(settings, "cloudpayments_enabled", False)
-    object.__setattr__(settings, "cloudpayments_api_secret", "")
+            assert response.status_code == 200
+            assert response.json() == {"code": 0}
+            with SessionLocal() as db:
+                order = db.query(Order).filter(Order.provider_invoice_id == invoice_id).one()
+                payment = (
+                    db.query(Payment)
+                    .filter(Payment.provider_payment_id == scenario["transaction_id"])
+                    .one()
+                )
+
+            assert order.status == "paid"
+            assert order.paid_at
+            assert payment.status == "succeeded"
+    finally:
+        object.__setattr__(settings, "cloudpayments_enabled", False)
+        object.__setattr__(settings, "cloudpayments_api_secret", "")
 
 
 def test_signed_pay_webhook_processes_valid_signature() -> None:

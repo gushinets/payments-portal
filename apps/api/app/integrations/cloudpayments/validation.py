@@ -90,6 +90,7 @@ def validation_error_message(error_code: str) -> str:
         "order_not_payable": "Order is not payable",
         "order_already_paid": "Payment capture notification ignored because order is already paid",
         "order_already_canceled": "Payment capture notification ignored because order is canceled",
+        "order_already_refunded": "Payment notification ignored because order is refunded",
         "refund_amount_exceeds_payment": "Refund amount exceeds remaining payment amount",
     }.get(error_code, "Webhook validation failed")
 
@@ -128,6 +129,8 @@ def refund_validation_error(
     amount_minor: int | None,
     currency: str | None,
 ) -> str | None:
+    if order.status == "canceled" or payment.status == "canceled":
+        return "order_already_canceled"
     validation_error = cancel_validation_error(
         db,
         order,

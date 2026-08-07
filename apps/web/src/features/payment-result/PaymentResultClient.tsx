@@ -99,8 +99,12 @@ function derivePaymentResultKind(
   fallbackStatus: string,
   payload: PaymentStatusResponse | null
 ): PaymentResultKind {
+  const fallbackResultStatus =
+    fallbackStatus === "failed" || fallbackStatus === "canceled"
+      ? fallbackStatus
+      : "pending";
   const productStatus =
-    payload?.product_state.status ?? (fallbackStatus === "failed" ? "failed" : "pending");
+    payload?.product_state.status ?? fallbackResultStatus;
   const orderStatus = payload?.order?.status ?? null;
   const paymentStatus = payload?.payment?.status ?? null;
   const refundedAmount = payload?.payment?.refunded_amount_minor ?? 0;
@@ -130,7 +134,11 @@ function derivePaymentResultKind(
     return "failed";
   }
 
-  if (orderStatus === "canceled" || paymentStatus === "canceled") {
+  if (
+    productStatus === "canceled" ||
+    orderStatus === "canceled" ||
+    paymentStatus === "canceled"
+  ) {
     return "canceled";
   }
 
