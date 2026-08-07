@@ -143,7 +143,7 @@ function derivePaymentResultKind(
   }
 
   if (
-    productStatus === "canceled" ||
+    fallbackResultStatus === "canceled" ||
     orderStatus === "canceled" ||
     paymentStatus === "canceled"
   ) {

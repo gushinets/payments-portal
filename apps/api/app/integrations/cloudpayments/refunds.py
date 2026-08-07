@@ -1,19 +1,14 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.integrations.cloudpayments.payload import get_first
 from app.models import Order, Payment, Refund
 
 CAPTURED_PAYMENT_STATUSES = {"succeeded", "refunded", "partially_refunded"}
-
-
-def _get_first(payload: dict[str, Any], *keys: str) -> Any:
-    for key in keys:
-        if key in payload and payload[key] not in (None, ""):
-            return payload[key]
-    return None
 
 
 def record_refund(
@@ -24,9 +19,9 @@ def record_refund(
     amount_minor: int,
     currency: str,
     payload: dict[str, Any],
-    now,
+    now: datetime,
 ) -> Refund:
-    provider_refund_id = _get_first(
+    provider_refund_id = get_first(
         payload,
         "RefundId",
         "refundId",
@@ -56,7 +51,7 @@ def record_refund(
         status="succeeded",
         amount_minor=amount_minor,
         currency=currency,
-        reason=_get_first(payload, "Reason", "reason"),
+        reason=get_first(payload, "Reason", "reason"),
         requested_at=now,
         succeeded_at=now,
         metadata_={},

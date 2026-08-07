@@ -12,6 +12,12 @@ from fastapi import Request
 
 from app.core.observability import redact
 from app.core.settings import settings
+from app.integrations.cloudpayments.payload import (
+    get_first,
+    normalized_recurrent_status,
+    parse_bool,
+    parse_int,
+)
 from app.models import Order, PaymentProviderAccount
 from app.payment_providers.contracts import (
     CheckoutAction,
@@ -85,13 +91,6 @@ async def _parse_payload(request: Request, raw_body: bytes) -> dict[str, Any]:
     return _flatten_form_payload(raw_body)
 
 
-def _get_first(payload: dict[str, Any], *keys: str) -> Any:
-    for key in keys:
-        if key in payload and payload[key] not in (None, ""):
-            return payload[key]
-    return None
-
-
 def _safe_value(value: Any) -> Any:
     if isinstance(value, dict):
         return _safe_payload(value)
@@ -133,7 +132,7 @@ def _amount_minor(amount: Decimal | None) -> int | None:
 
 
 def _provider_event_id(payload: dict[str, Any]) -> str | None:
-    value = _get_first(
+    value = get_first(
         payload,
         "EventId",
         "eventId",
@@ -146,44 +145,7 @@ def _provider_event_id(payload: dict[str, Any]) -> str | None:
 
 
 def _provider_status(payload: dict[str, Any]) -> str:
-    return str(_get_first(payload, "Status", "status") or "").lower()
-
-
-def _parse_bool(value: Any) -> bool | None:
-    if value is None:
-        return None
-    if isinstance(value, bool):
-        return value
-    normalized = str(value).strip().lower()
-    if normalized in {"true", "1", "yes", "y"}:
-        return True
-    if normalized in {"false", "0", "no", "n"}:
-        return False
-    return None
-
-
-def _parse_int(value: Any) -> int | None:
-    if value in (None, ""):
-        return None
-    if isinstance(value, bool):
-        return None
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _normalized_recurrent_status(value: Any) -> str:
-    normalized = str(value or "").strip().lower().replace("-", "_")
-    return {
-        "active": "active",
-        "pastdue": "past_due",
-        "past_due": "past_due",
-        "cancelled": "canceled",
-        "canceled": "canceled",
-        "rejected": "rejected",
-        "expired": "expired",
-    }.get(normalized, "unknown")
+    return str(get_first(payload, "Status", "status") or "").lower()
 
 
 def _without_empty_values(payload: dict[str, Any]) -> dict[str, Any]:
@@ -196,39 +158,39 @@ def _normalized_recurrent_payload(
     amount_minor: int | None,
     currency: str | None,
 ) -> dict[str, Any]:
-    interval = _get_first(payload, "Interval", "interval")
+    interval = get_first(payload, "Interval", "interval")
     return _without_empty_values(
         {
-            "subscription_id": _get_first(payload, "Id", "id"),
-            "account_id": _get_first(payload, "AccountId", "accountId", "account_id"),
-            "email": _get_first(payload, "Email", "email"),
-            "description": _get_first(payload, "Description", "description"),
-            "status": _normalized_recurrent_status(_get_first(payload, "Status", "status")),
+            "subscription_id": get_first(payload, "Id", "id"),
+            "account_id": get_first(payload, "AccountId", "accountId", "account_id"),
+            "email": get_first(payload, "Email", "email"),
+            "description": get_first(payload, "Description", "description"),
+            "status": normalized_recurrent_status(get_first(payload, "Status", "status")),
             "amount_minor": amount_minor,
             "currency": currency,
-            "require_confirmation": _parse_bool(
-                _get_first(payload, "RequireConfirmation", "requireConfirmation")
+            "require_confirmation": parse_bool(
+                get_first(payload, "RequireConfirmation", "requireConfirmation")
             ),
-            "start_at": _get_first(payload, "StartDate", "startDate", "start_at"),
+            "start_at": get_first(payload, "StartDate", "startDate", "start_at"),
             "interval": str(interval).strip().lower() if interval is not None else None,
-            "period": _parse_int(_get_first(payload, "Period", "period")),
-            "successful_payments_count": _parse_int(
-                _get_first(
+            "period": parse_int(get_first(payload, "Period", "period")),
+            "successful_payments_count": parse_int(
+                get_first(
                     payload,
                     "SuccessfulTransactionsNumber",
                     "successfulTransactionsNumber",
                 )
             ),
-            "failed_payments_count": _parse_int(
-                _get_first(payload, "FailedTransactionsNumber", "failedTransactionsNumber")
+            "failed_payments_count": parse_int(
+                get_first(payload, "FailedTransactionsNumber", "failedTransactionsNumber")
             ),
-            "max_periods": _parse_int(_get_first(payload, "MaxPeriods", "maxPeriods")),
-            "last_transaction_at": _get_first(
+            "max_periods": parse_int(get_first(payload, "MaxPeriods", "maxPeriods")),
+            "last_transaction_at": get_first(
                 payload,
                 "LastTransactionDate",
                 "lastTransactionDate",
             ),
-            "next_transaction_at": _get_first(
+            "next_transaction_at": get_first(
                 payload,
                 "NextTransactionDate",
                 "nextTransactionDate",
@@ -359,20 +321,20 @@ class CloudPaymentsAdapter:
             status = "invalid_cloudpayments_signature"
             error_message = "invalid_cloudpayments_signature"
 
-        invoice_id = _get_first(payload, "InvoiceId", "invoiceId", "invoice_id")
-        transaction_id = _get_first(payload, "TransactionId", "transactionId", "transaction_id")
-        refund_id = _get_first(payload, "RefundId", "refundId", "refund_id")
+        invoice_id = get_first(payload, "InvoiceId", "invoiceId", "invoice_id")
+        transaction_id = get_first(payload, "TransactionId", "transactionId", "transaction_id")
+        refund_id = get_first(payload, "RefundId", "refundId", "refund_id")
         if endpoint == "refund":
             refund_id = refund_id or transaction_id
-            transaction_id = _get_first(
+            transaction_id = get_first(
                 payload,
                 "PaymentTransactionId",
                 "paymentTransactionId",
                 "payment_transaction_id",
             ) or transaction_id
-        amount = _parse_amount(_get_first(payload, "Amount", "amount"))
+        amount = _parse_amount(get_first(payload, "Amount", "amount"))
         amount_minor = _amount_minor(amount)
-        currency = _get_first(payload, "Currency", "currency")
+        currency = get_first(payload, "Currency", "currency")
         provider_event_id = _provider_event_id(payload)
         payload_hash = _payload_hash(raw_body, payload)
         safe_payload = _safe_payload(payload)
@@ -399,7 +361,7 @@ class CloudPaymentsAdapter:
             invoice_id=str(invoice_id) if invoice_id is not None else None,
             transaction_id=str(transaction_id) if transaction_id is not None else None,
             refund_id=str(refund_id) if refund_id is not None else None,
-            account_id=_get_first(payload, "AccountId", "accountId", "account_id"),
+            account_id=get_first(payload, "AccountId", "accountId", "account_id"),
             amount_minor=amount_minor,
             amount=amount,
             currency=str(currency) if currency is not None else None,
@@ -439,6 +401,8 @@ class CloudPaymentsAdapter:
         event_status: str | None = None,
     ) -> int:
         if error_code is None or event_status in {"processed", "ignored", "duplicate"}:
+            return 0
+        if endpoint != "check":
             return 0
         return CLOUDPAYMENTS_RESPONSE_CODES.get(error_code, 13)
 

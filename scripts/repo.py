@@ -160,6 +160,17 @@ def resolve_cloudpayments_public_id(
     )
 
 
+def resolve_cloudpayments_api_secret(
+    local_env: dict[str, str], *, environ: dict[str, str] | None = None
+) -> str:
+    environment = os.environ if environ is None else environ
+    return (
+        environment.get("CLOUDPAYMENTS_API_SECRET")
+        or local_env.get("CLOUDPAYMENTS_API_SECRET")
+        or "test-cloudpayments-signing-key"
+    )
+
+
 def write_runtime(config: RuntimeConfig) -> None:
     HARNESS_DIR.mkdir(parents=True, exist_ok=True)
     RUNTIME_JSON.write_text(json.dumps(asdict(config), indent=2) + "\n", encoding="utf-8")
@@ -167,6 +178,7 @@ def write_runtime(config: RuntimeConfig) -> None:
     local_env = read_dotenv()
     app_public_base_url = local_env.get("APP_PUBLIC_BASE_URL", caddy_origin)
     cloudpayments_public_id = resolve_cloudpayments_public_id(local_env)
+    cloudpayments_api_secret = resolve_cloudpayments_api_secret(local_env)
     cors_allow_origins = caddy_origin
     if app_public_base_url != caddy_origin:
         cors_allow_origins = f"{caddy_origin},{app_public_base_url}"
@@ -201,6 +213,7 @@ def write_runtime(config: RuntimeConfig) -> None:
         "OTEL_EXPORTER_OTLP_ENDPOINT": "http://observability:4318",
         "OTEL_SERVICE_NAME": "payment-portal-api",
         "CLOUDPAYMENTS_PUBLIC_ID": cloudpayments_public_id,
+        "CLOUDPAYMENTS_API_SECRET": cloudpayments_api_secret,
         "CLOUDPAYMENTS_ENABLED": "false",
     }
     RUNTIME_ENV.write_text(

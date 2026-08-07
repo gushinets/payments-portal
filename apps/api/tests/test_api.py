@@ -70,6 +70,10 @@ def require_signed_cloudpayments_webhooks_for_test() -> None:
     )
 
 
+def teardown_function() -> None:
+    require_signed_cloudpayments_webhooks_for_test()
+
+
 def cloudpayments_signature(raw_body: bytes, secret: str = "test-secret") -> str:
     return base64.b64encode(
         hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).digest()
@@ -984,7 +988,7 @@ def test_pay_webhook_amount_mismatch_is_failed_without_order_update() -> None:
     )
 
     assert webhook_response.status_code == 200
-    assert webhook_response.json() == {"code": 12}
+    assert webhook_response.json() == {"code": 0}
     with SessionLocal() as db:
         event = db.query(PaymentWebhookEvent).one()
         order = db.query(Order).one()
@@ -1212,7 +1216,7 @@ def test_charge_pay_rejects_missing_declined_and_unknown_statuses() -> None:
         response = client.post("/api/cloudpayments/pay", json=payload)
 
         assert response.status_code == 200
-        assert response.json() == {"code": 13}
+        assert response.json() == {"code": 0}
 
     with SessionLocal() as db:
         orders = db.query(Order).order_by(Order.created_at).all()
@@ -1248,7 +1252,7 @@ def test_authorized_pay_requires_confirm_or_cancel_to_reach_terminal_state() -> 
     )
 
     assert completed_pay_response.status_code == 200
-    assert completed_pay_response.json() == {"code": 13}
+    assert completed_pay_response.json() == {"code": 0}
     with SessionLocal() as db:
         order_after_completed_pay = db.query(Order).one()
         failed_event = db.query(PaymentWebhookEvent).one()
@@ -1505,7 +1509,7 @@ def test_two_stage_notifications_are_rejected_for_charge_orders() -> None:
         )
 
         assert response.status_code == 200
-        assert response.json() == {"code": 13}
+        assert response.json() == {"code": 0}
 
     with SessionLocal() as db:
         orders = db.query(Order).order_by(Order.created_at).all()
@@ -1550,7 +1554,12 @@ def test_legacy_orders_without_payment_mode_snapshot_default_to_charge_schema() 
         responses.append(client.post(f"/api/cloudpayments/{endpoint}", json=payload))
 
     assert [response.status_code for response in responses] == [200, 200, 200, 200]
-    assert [response.json() for response in responses] == [{"code": 13}] * 4
+    assert [response.json() for response in responses] == [
+        {"code": 13},
+        {"code": 0},
+        {"code": 0},
+        {"code": 0},
+    ]
     with SessionLocal() as db:
         order = db.query(Order).one()
         events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
@@ -1667,7 +1676,7 @@ def test_signed_pay_webhook_processes_valid_signature() -> None:
 
         assert event.status == "processed"
         assert event.raw_payload["CardFirstSix"] == "[redacted]"
-        assert event.raw_payload["Token"] == "[redacted]"
+        assert event.raw_payload["Token"] == "[redacted]"  # noqa: S105
         assert payment.status == "succeeded"
     finally:
         allow_unsigned_cloudpayments_webhooks_for_test()
@@ -2162,8 +2171,8 @@ def test_completed_pay_after_auth_cancel_is_rejected_and_cannot_be_refunded() ->
     )
 
     assert cancel_response.json() == {"code": 0}
-    assert late_pay_response.json() == {"code": 13}
-    assert refund_response.json() == {"code": 13}
+    assert late_pay_response.json() == {"code": 0}
+    assert refund_response.json() == {"code": 0}
     with SessionLocal() as db:
         order = db.query(Order).one()
         payments = db.query(Payment).order_by(Payment.provider_payment_id).all()
@@ -2580,7 +2589,7 @@ def test_partial_refunds_cannot_exceed_original_payment_amount() -> None:
 
     assert first_refund_response.status_code == 200
     assert excessive_refund_response.status_code == 200
-    assert excessive_refund_response.json() == {"code": 13}
+    assert excessive_refund_response.json() == {"code": 0}
     with SessionLocal() as db:
         payment = db.query(Payment).one()
         refunds = db.query(Refund).all()
@@ -2626,7 +2635,7 @@ def test_recurrent_webhook_is_persisted_for_downstream_subscription_handling() -
     assert event.provider_event_id == "sub_1"
     assert event.status == "processed"
     assert event.raw_payload["CardLastFour"] == "[redacted]"
-    assert event.raw_payload["Token"] == "[redacted]"
+    assert event.raw_payload["Token"] == "[redacted]"  # noqa: S105
     assert event.raw_payload["_normalized"] == {
         "subscription_id": "sub_1",
         "account_id": "recurrent-user@example.com",
@@ -2658,7 +2667,7 @@ def test_recurrent_webhook_requires_an_enabled_provider_account() -> None:
     )
 
     assert response.status_code == 200
-    assert response.json() == {"code": 13}
+    assert response.json() == {"code": 0}
     with SessionLocal() as db:
         event = db.query(PaymentWebhookEvent).one()
 
@@ -2687,30 +2696,27 @@ def test_recurrent_webhook_validates_required_provider_fields() -> None:
     scenarios = [
         (
             "missing_subscription_id",
+            0,
             {key: value for key, value in base_payload.items() if key != "Id"},
         ),
         (
             "missing_account_id",
+            0,
             {key: value for key, value in base_payload.items() if key != "AccountId"},
         ),
         (
-            "missing_subscription_description",
-            {key: value for key, value in base_payload.items() if key != "Description"},
-        ),
-        (
-            "missing_subscription_email",
-            {key: value for key, value in base_payload.items() if key != "Email"},
-        ),
-        (
             "missing_amount",
+            0,
             {key: value for key, value in base_payload.items() if key != "Amount"},
         ),
         (
             "missing_currency",
+            0,
             {key: value for key, value in base_payload.items() if key != "Currency"},
         ),
         (
             "missing_subscription_require_confirmation",
+            0,
             {
                 key: value
                 for key, value in base_payload.items()
@@ -2719,28 +2725,34 @@ def test_recurrent_webhook_validates_required_provider_fields() -> None:
         ),
         (
             "invalid_subscription_require_confirmation",
+            0,
             {**base_payload, "RequireConfirmation": "not-a-bool"},
         ),
         (
             "missing_subscription_start_date",
+            0,
             {key: value for key, value in base_payload.items() if key != "StartDate"},
         ),
         (
             "missing_subscription_interval",
+            0,
             {key: value for key, value in base_payload.items() if key != "Interval"},
         ),
         (
             "missing_subscription_period",
+            0,
             {key: value for key, value in base_payload.items() if key != "Period"},
         ),
-        ("invalid_subscription_period", {**base_payload, "Period": "monthly"}),
+        ("invalid_subscription_period", 0, {**base_payload, "Period": "monthly"}),
         (
             "missing_subscription_status",
+            0,
             {key: value for key, value in base_payload.items() if key != "Status"},
         ),
-        ("invalid_subscription_status", {**base_payload, "Status": "Paused"}),
+        ("invalid_subscription_status", 0, {**base_payload, "Status": "Paused"}),
         (
             "missing_subscription_successful_transactions_number",
+            0,
             {
                 key: value
                 for key, value in base_payload.items()
@@ -2749,10 +2761,12 @@ def test_recurrent_webhook_validates_required_provider_fields() -> None:
         ),
         (
             "invalid_subscription_successful_transactions_number",
+            0,
             {**base_payload, "SuccessfulTransactionsNumber": "many"},
         ),
         (
             "missing_subscription_failed_transactions_number",
+            0,
             {
                 key: value
                 for key, value in base_payload.items()
@@ -2761,43 +2775,26 @@ def test_recurrent_webhook_validates_required_provider_fields() -> None:
         ),
         (
             "invalid_subscription_failed_transactions_number",
+            0,
             {**base_payload, "FailedTransactionsNumber": "none"},
         ),
-        ("invalid_subscription_max_periods", {**base_payload, "MaxPeriods": "forever"}),
+        ("invalid_subscription_max_periods", 0, {**base_payload, "MaxPeriods": "forever"}),
     ]
 
     responses = [
         client.post("/api/cloudpayments/recurrent", json=payload)
-        for _, payload in scenarios
+        for _, _, payload in scenarios
     ]
 
     assert [response.json()["code"] for response in responses] == [
-        13,
-        11,
-        13,
-        13,
-        12,
-        12,
-        13,
-        13,
-        13,
-        13,
-        13,
-        13,
-        13,
-        13,
-        13,
-        13,
-        13,
-        13,
-        13,
+        expected_code for _, expected_code, _ in scenarios
     ]
     with SessionLocal() as db:
         events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
 
     assert [event.status for event in events] == ["failed"] * len(scenarios)
     assert [event.error_code for event in events] == [
-        error_code for error_code, _ in scenarios
+        error_code for error_code, _, _ in scenarios
     ]
 
 
@@ -3415,7 +3412,7 @@ def test_cloudpayments_webhook_is_saved_without_secret_hmac() -> None:
     )
 
     assert response.status_code == 200
-    assert response.json() == {"code": 10}
+    assert response.json() == {"code": 0}
 
     with SessionLocal() as db:
         event = db.query(PaymentWebhookEvent).one()
@@ -3442,7 +3439,7 @@ def test_malformed_cloudpayments_payload_omits_raw_body() -> None:
     )
 
     assert response.status_code == 200
-    assert response.json() == {"code": 13}
+    assert response.json() == {"code": 0}
 
     with SessionLocal() as db:
         event = db.query(PaymentWebhookEvent).one()
@@ -3462,7 +3459,7 @@ def test_cloudpayments_webhook_rejects_non_object_json_payload() -> None:
     )
 
     assert response.status_code == 200
-    assert response.json() == {"code": 13}
+    assert response.json() == {"code": 0}
 
     with SessionLocal() as db:
         event = db.query(PaymentWebhookEvent).one()

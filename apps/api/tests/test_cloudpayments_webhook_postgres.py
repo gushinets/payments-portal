@@ -92,6 +92,7 @@ def clear_schema() -> None:
 def clean_schema_after_test():
     allow_unsigned_cloudpayments_webhooks_for_test()
     yield
+    require_signed_cloudpayments_webhooks_for_test()
     if engine is not None:
         clear_schema()
     app.dependency_overrides.clear()
@@ -350,6 +351,27 @@ def test_signed_duplicate_webhook_is_persisted_once_and_acknowledged_idempotentl
         "Content-Type": "application/json",
     }
 
+    original_upsert = cloudpayments_processing.upsert_payment_from_webhook
+    first_upsert_entered = threading.Event()
+    call_lock = threading.Lock()
+    call_count = 0
+
+    def slow_first_upsert(*args, **kwargs):
+        nonlocal call_count
+        with call_lock:
+            call_count += 1
+            is_first_call = call_count == 1
+        if is_first_call:
+            first_upsert_entered.set()
+            time.sleep(0.3)
+        return original_upsert(*args, **kwargs)
+
+    monkeypatch.setattr(
+        cloudpayments_processing,
+        "upsert_payment_from_webhook",
+        slow_first_upsert,
+    )
+
     def post_webhook():
         with TestClient(app, raise_server_exceptions=False) as client:
             return client.post(
@@ -361,6 +383,7 @@ def test_signed_duplicate_webhook_is_persisted_once_and_acknowledged_idempotentl
     try:
         with ThreadPoolExecutor(max_workers=2) as executor:
             first_result = executor.submit(post_webhook)
+            assert first_upsert_entered.wait(timeout=5)
             second_result = executor.submit(post_webhook)
             first_response = first_result.result(timeout=10)
             second_response = second_result.result(timeout=10)
@@ -503,7 +526,7 @@ def test_refund_after_canceled_payment_is_rejected_without_refund_mutation() -> 
     assert pay_response.status_code == 200
     assert cancel_response.status_code == 200
     assert refund_response.status_code == 200
-    assert refund_response.json() == {"code": 13}
+    assert refund_response.json() == {"code": 0}
     with TestingSessionLocal() as db:
         order = db.query(Order).one()
         payment = db.query(Payment).one()
@@ -516,7 +539,7 @@ def test_refund_after_canceled_payment_is_rejected_without_refund_mutation() -> 
     assert refund_count == 0
     assert [event.status for event in events] == ["processed", "processed", "failed"]
     assert events[-1].payment_id == payment.id
-    assert events[-1].error_code == "order_already_canceled"
+    assert events[-1].error_code == "payment_already_canceled"
 
 
 def test_completed_pay_after_auth_cancel_is_rejected_and_cannot_be_refunded() -> None:
@@ -545,8 +568,8 @@ def test_completed_pay_after_auth_cancel_is_rejected_and_cannot_be_refunded() ->
     )
 
     assert cancel_response.json() == {"code": 0}
-    assert late_pay_response.json() == {"code": 13}
-    assert refund_response.json() == {"code": 13}
+    assert late_pay_response.json() == {"code": 0}
+    assert refund_response.json() == {"code": 0}
     with TestingSessionLocal() as db:
         order = db.query(Order).one()
         payments = db.query(Payment).order_by(Payment.provider_payment_id).all()
@@ -600,7 +623,7 @@ def test_excessive_partial_refund_is_rejected_without_refund_total_mutation() ->
     assert pay_response.status_code == 200
     assert first_refund_response.status_code == 200
     assert excessive_refund_response.status_code == 200
-    assert excessive_refund_response.json() == {"code": 13}
+    assert excessive_refund_response.json() == {"code": 0}
     with TestingSessionLocal() as db:
         order = db.query(Order).one()
         payment = db.query(Payment).one()

@@ -5,6 +5,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.integrations.cloudpayments.payload import get_first
 from app.integrations.cloudpayments.validation import (
     cancel_validation_error,
     check_order_state_error,
@@ -30,15 +31,8 @@ def datetime_now():
     return datetime.now(timezone.utc)
 
 
-def _get_first(payload: dict[str, Any], *keys: str) -> Any:
-    for key in keys:
-        if key in payload and payload[key] not in (None, ""):
-            return payload[key]
-    return None
-
-
 def _parse_data(payload: dict[str, Any]) -> dict[str, Any]:
-    data = _get_first(payload, "Data", "data")
+    data = get_first(payload, "Data", "data")
     if isinstance(data, dict):
         return data
     if isinstance(data, str) and data:
@@ -52,12 +46,12 @@ def _parse_data(payload: dict[str, Any]) -> dict[str, Any]:
 
 def _safe_summary(payload: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
     return {
-        "invoice_id": _get_first(payload, "InvoiceId", "invoiceId", "invoice_id"),
-        "transaction_id": _get_first(payload, "TransactionId", "transactionId", "transaction_id"),
-        "account_id": _get_first(payload, "AccountId", "accountId", "account_id"),
-        "payment_method_type": _get_first(payload, "PaymentMethod", "paymentMethod"),
-        "reason_code": _get_first(payload, "ReasonCode", "reasonCode"),
-        "reason": _get_first(payload, "Reason", "reason"),
+        "invoice_id": get_first(payload, "InvoiceId", "invoiceId", "invoice_id"),
+        "transaction_id": get_first(payload, "TransactionId", "transactionId", "transaction_id"),
+        "account_id": get_first(payload, "AccountId", "accountId", "account_id"),
+        "payment_method_type": get_first(payload, "PaymentMethod", "paymentMethod"),
+        "reason_code": get_first(payload, "ReasonCode", "reasonCode"),
+        "reason": get_first(payload, "Reason", "reason"),
         "data": {
             key: value
             for key, value in data.items()
@@ -89,6 +83,7 @@ def _find_payment(
         payment = query.filter(Payment.provider_payment_id == transaction_id).first()
         if payment is not None:
             return payment
+        return None
     return (
         db.query(Payment)
         .filter(
@@ -133,27 +128,29 @@ def upsert_payment_from_webhook(
     payment.provider_invoice_id = invoice_id
     payment.amount_minor = amount_minor
     payment.currency = currency
-    payment.payment_method_type = _get_first(payload, "PaymentMethod", "paymentMethod")
+    payment.payment_method_type = get_first(payload, "PaymentMethod", "paymentMethod")
     payment.raw_summary = _safe_summary(payload, data)
 
-    provider_status = str(_get_first(payload, "Status", "status") or "").lower()
+    provider_status = str(get_first(payload, "Status", "status") or "").lower()
     if endpoint == "pay" and provider_status == "authorized":
-        payment.status = "authorized"
-        payment.authorized_at = payment.authorized_at or now
+        if previous_payment_status not in TERMINAL_PAYMENT_STATUSES:
+            payment.status = "authorized"
+            payment.authorized_at = payment.authorized_at or now
     elif endpoint in {"pay", "confirm"}:
-        payment.status = "succeeded"
-        payment.authorized_at = payment.authorized_at or now
-        payment.captured_at = payment.captured_at or now
-        if update_order_status:
-            order.status = "paid"
-            order.paid_at = order.paid_at or now
-            order.failed_at = None
+        if previous_payment_status not in TERMINAL_PAYMENT_STATUSES:
+            payment.status = "succeeded"
+            payment.authorized_at = payment.authorized_at or now
+            payment.captured_at = payment.captured_at or now
+            if update_order_status:
+                order.status = "paid"
+                order.paid_at = order.paid_at or now
+                order.failed_at = None
     elif endpoint == "fail":
         if previous_payment_status not in TERMINAL_PAYMENT_STATUSES:
             payment.status = "failed"
             payment.failed_at = payment.failed_at or now
-            payment.failure_code = str(_get_first(payload, "ReasonCode", "reasonCode") or "")
-            payment.failure_message_safe = _get_first(payload, "Reason", "reason")
+            payment.failure_code = str(get_first(payload, "ReasonCode", "reasonCode") or "")
+            payment.failure_message_safe = get_first(payload, "Reason", "reason")
         if order.status not in TERMINAL_ORDER_STATUSES:
             order.status = "payment_failed"
             order.failed_at = order.failed_at or now
@@ -237,7 +234,7 @@ def _handle_pay_or_confirm_for_terminal_order(
             event.status = "processed"
             event.processed_at = datetime_now()
             return True
-        event.payment_id = payment.id if payment is not None else None
+        event.payment_id = payment.id
         event.status = "ignored"
         event.error_code = _terminal_order_event_error_code(order)
         event.error_message = validation_error_message(event.error_code)
@@ -487,7 +484,7 @@ def process_webhook_event(
             )
             event.currency = currency if currency is not None else payment.currency
             event.status = "processed"
-            event.processed_at = refund.succeeded_at
+            event.processed_at = datetime_now()
 
     db.add(event)
     db.flush()
