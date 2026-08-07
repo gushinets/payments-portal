@@ -1,10 +1,18 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Any
 
 from sqlalchemy.orm import Session
 
 from app.models import Order, Payment, User
+
+
+def _get_first(payload: dict[str, Any], *keys: str) -> Any:
+    for key in keys:
+        if key in payload and payload[key] not in (None, ""):
+            return payload[key]
+    return None
 
 
 def money_mismatch(order: Order, *, amount_minor: int | None, currency: str | None) -> str | None:
@@ -92,6 +100,32 @@ def validation_error_message(error_code: str) -> str:
         "order_already_canceled": "Payment capture notification ignored because order is canceled",
         "order_already_refunded": "Payment notification ignored because order is refunded",
         "refund_amount_exceeds_payment": "Refund amount exceeds remaining payment amount",
+        "payment_schema_mismatch": "Webhook type does not match the configured payment schema",
+        "provider_account_not_found": "No enabled provider account found for webhook",
+        "missing_subscription_id": "Webhook subscription id is missing",
+        "missing_subscription_description": "Webhook subscription description is missing",
+        "missing_subscription_email": "Webhook subscription email is missing",
+        "missing_subscription_require_confirmation": "Webhook subscription confirmation mode is missing",
+        "invalid_subscription_require_confirmation": "Webhook subscription confirmation mode is invalid",
+        "missing_subscription_start_date": "Webhook subscription start date is missing",
+        "missing_subscription_interval": "Webhook subscription interval is missing",
+        "missing_subscription_period": "Webhook subscription period is missing",
+        "invalid_subscription_period": "Webhook subscription period is invalid",
+        "missing_subscription_status": "Webhook subscription status is missing",
+        "invalid_subscription_status": "Webhook subscription status is invalid",
+        "missing_subscription_successful_transactions_number": (
+            "Webhook subscription successful transaction count is missing"
+        ),
+        "invalid_subscription_successful_transactions_number": (
+            "Webhook subscription successful transaction count is invalid"
+        ),
+        "missing_subscription_failed_transactions_number": (
+            "Webhook subscription failed transaction count is missing"
+        ),
+        "invalid_subscription_failed_transactions_number": (
+            "Webhook subscription failed transaction count is invalid"
+        ),
+        "invalid_subscription_max_periods": "Webhook subscription maximum period count is invalid",
     }.get(error_code, "Webhook validation failed")
 
 
@@ -129,7 +163,7 @@ def refund_validation_error(
     amount_minor: int | None,
     currency: str | None,
 ) -> str | None:
-    if order.status == "canceled" or payment.status == "canceled":
+    if payment.status == "canceled":
         return "order_already_canceled"
     validation_error = cancel_validation_error(
         db,
@@ -143,4 +177,93 @@ def refund_validation_error(
     assert amount_minor is not None
     if payment.refunded_amount_minor + amount_minor > payment.amount_minor:
         return "refund_amount_exceeds_payment"
+    return None
+
+
+def _parse_bool(value: Any) -> bool | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    normalized = str(value).strip().lower()
+    if normalized in {"true", "1", "yes", "y"}:
+        return True
+    if normalized in {"false", "0", "no", "n"}:
+        return False
+    return None
+
+
+def _parse_int(value: Any) -> int | None:
+    if value in (None, ""):
+        return None
+    if isinstance(value, bool):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def recurrent_validation_error(
+    payload: dict[str, Any],
+    *,
+    account_id: str | None,
+    amount_minor: int | None,
+    currency: str | None,
+) -> str | None:
+    normalized = payload.get("_normalized")
+    if not isinstance(normalized, dict):
+        normalized = {}
+    if not normalized.get("subscription_id"):
+        return "missing_subscription_id"
+    if not account_id:
+        return "missing_account_id"
+    if _get_first(payload, "Description", "description") is None:
+        return "missing_subscription_description"
+    if _get_first(payload, "Email", "email") is None:
+        return "missing_subscription_email"
+    if amount_minor is None:
+        return "missing_amount"
+    if currency is None:
+        return "missing_currency"
+    require_confirmation = _get_first(payload, "RequireConfirmation", "requireConfirmation")
+    if require_confirmation is None:
+        return "missing_subscription_require_confirmation"
+    if _parse_bool(require_confirmation) is None:
+        return "invalid_subscription_require_confirmation"
+    if _get_first(payload, "StartDate", "startDate", "start_at") is None:
+        return "missing_subscription_start_date"
+    if _get_first(payload, "Interval", "interval") is None:
+        return "missing_subscription_interval"
+    period = _get_first(payload, "Period", "period")
+    if period is None:
+        return "missing_subscription_period"
+    if _parse_int(period) is None:
+        return "invalid_subscription_period"
+    if _get_first(payload, "Status", "status") is None:
+        return "missing_subscription_status"
+    status = normalized.get("status")
+    if status == "unknown":
+        return "invalid_subscription_status"
+    successful_transactions = _get_first(
+        payload,
+        "SuccessfulTransactionsNumber",
+        "successfulTransactionsNumber",
+    )
+    if successful_transactions is None:
+        return "missing_subscription_successful_transactions_number"
+    if _parse_int(successful_transactions) is None:
+        return "invalid_subscription_successful_transactions_number"
+    failed_transactions = _get_first(
+        payload,
+        "FailedTransactionsNumber",
+        "failedTransactionsNumber",
+    )
+    if failed_transactions is None:
+        return "missing_subscription_failed_transactions_number"
+    if _parse_int(failed_transactions) is None:
+        return "invalid_subscription_failed_transactions_number"
+    max_periods = _get_first(payload, "MaxPeriods", "maxPeriods")
+    if max_periods is not None and _parse_int(max_periods) is None:
+        return "invalid_subscription_max_periods"
     return None

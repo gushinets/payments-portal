@@ -323,6 +323,44 @@ describe("CheckoutClient critical characterization", () => {
     });
   });
 
+  it("starts the CloudPayments widget in two-stage auth mode", async () => {
+    const user = userEvent.setup();
+    storeSessionToken("session-token");
+    server.use(
+      http.get(`${apiBase}/api/auth/session`, () =>
+        HttpResponse.json(sessionResponse("inactive"))
+      ),
+      http.post(`${apiBase}/api/auth/checkout-intent`, () =>
+        HttpResponse.json({
+          product_state: {
+            product_code: "document-summary",
+            plan_code: "document-summary-pro",
+            plan_name: "Document Summary Pro",
+            invoice_id: "invoice-auth-mode",
+            transaction_id: null,
+            status: "pending",
+            starts_at: null,
+            expires_at: null
+          },
+          checkout: {
+            amount_minor: 99000,
+            amount: 990,
+            currency: "RUB",
+            action: checkoutAction("invoice-auth-mode", "auth")
+          }
+        })
+      )
+    );
+    const provider = await renderCheckoutWithProviderStub();
+
+    expect(await screen.findByText("buyer@example.com")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: /^Оплатить/ }));
+
+    await waitFor(() => expect(provider.payments).toHaveLength(1));
+    expect(provider.modes).toEqual(["auth"]);
+    expectNoCardData(provider.payments[0]);
+  });
+
   it("does not create checkout state when the required provider widget failed to load", async () => {
     const user = userEvent.setup();
     storeSessionToken("session-token");

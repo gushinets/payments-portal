@@ -84,6 +84,22 @@ function canceledPaymentStatusPayload() {
   };
 }
 
+function lateSucceededPaymentOnCanceledOrderPayload() {
+  return {
+    ...canceledPaymentStatusPayload(),
+    payment: {
+      payment_id: "44444444-4444-4444-8444-444444444444",
+      status: "succeeded",
+      provider_payment_id: "tx-late-succeeded",
+      amount_minor: 99000,
+      currency: "RUB",
+      captured_at: "2026-08-07T10:00:00Z",
+      failed_at: null,
+      refunded_amount_minor: 0
+    }
+  };
+}
+
 async function renderPollingResult(finalStatus: "active" | "failed") {
   let attempt = 0;
   const realSetInterval = window.setInterval.bind(window);
@@ -181,6 +197,24 @@ describe("PaymentResultClient authoritative status characterization", () => {
     ).toBeVisible();
     expect(screen.getByText(/Списание не подтверждено/)).toBeVisible();
     expect(screen.queryByText("Ожидаем подтверждение")).not.toBeInTheDocument();
+  });
+
+  it("shows a verified late charge even when the order remains canceled", async () => {
+    server.use(
+      http.get(`${apiBase}/api/auth/payment-status`, () =>
+        HttpResponse.json(lateSucceededPaymentOnCanceledOrderPayload())
+      )
+    );
+    setRouteSearchParams(
+      "status=pending&product=document-summary&email=buyer%40example.com&invoice=invoice-result"
+    );
+
+    render(<PaymentResultClient />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Платёж подтверждён" })
+    ).toBeVisible();
+    expect(screen.queryByText(/Списание не подтверждено/)).not.toBeInTheDocument();
   });
 
   it("shows canceled URL fallback when backend payload is unavailable", () => {

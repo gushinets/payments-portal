@@ -129,4 +129,5 @@ async def receive_cloudpayments_webhook(
     return cloudpayments_adapter.webhook_event_response(
         endpoint=endpoint,
         error_code=event.error_code,
+        event_status=event.status,
     )

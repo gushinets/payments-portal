@@ -84,3 +84,46 @@ or integration layer.
   `PATH=.venv/bin:$PATH npm run check:fast`: passed; 83 passed, 7
   PostgreSQL webhook tests skipped inside the broad harness because
   `TEST_POSTGRES_DATABASE_URL` is not set for that command.
+- Remaining review fixes evidence:
+  `.venv/bin/python -m pytest -p no:cacheprovider apps/api/tests/test_api.py -k 'authorized_pay or late_distinct_pay or recurrent or idempotency_key'`:
+  6 passed, 58 deselected.
+  `TEST_POSTGRES_DATABASE_URL=postgresql+psycopg://postgres:postgres@127.0.0.1:55432/payments_portal_test .venv/bin/python -m pytest -p no:cacheprovider apps/api/tests/test_cloudpayments_webhook_postgres.py`:
+  8 passed against a disposable local PostgreSQL 18.4 container.
+  `.venv/bin/python -m pytest -p no:cacheprovider apps/api/tests/test_api.py`:
+  64 passed.
+  `python3 -m compileall -q apps/api/app`: passed.
+  `python3 scripts/repo.py architecture check`: passed.
+  `PATH=.venv/bin:$PATH npm run docs:check`: passed.
+  `PATH=.venv/bin:$PATH npm run check:fast`: passed; 83 passed, 8
+  PostgreSQL webhook tests skipped inside the broad harness because
+  `TEST_POSTGRES_DATABASE_URL` is not set for that command.
+- Review comment fixes evidence:
+  `.venv/bin/python -m pytest -p no:cacheprovider apps/api/tests/test_api.py -k 'cloudpayments or webhook or refund or late_fail or late_distinct_pay or multiple_successful or recurrent or signed_check or signed_pay or confirm_and_cancel or authorized_pay'`:
+  32 passed, 34 deselected.
+  `.venv/bin/python -m pytest -p no:cacheprovider apps/api/tests/test_cloudpayments_webhook_postgres.py`:
+  9 skipped because `TEST_POSTGRES_DATABASE_URL` is not set locally.
+  `.venv/bin/python -m pytest -p no:cacheprovider apps/api/tests/test_api.py`:
+  66 passed.
+  `python3 -m compileall -q apps/api/app`: passed.
+  `python3 scripts/repo.py architecture check`: passed.
+  `git diff --check`: passed.
+  `PATH=.venv/bin:$PATH npm run check:fast`: passed; 85 passed, 9
+  PostgreSQL webhook tests skipped inside the broad harness because
+  `TEST_POSTGRES_DATABASE_URL` is not set for that command.
+- Final defect fixes:
+  enabled the configured CloudPayments `auth` checkout mode, gated DMS-only
+  notifications by payment schema, preserved late-charge refund accounting and
+  customer-visible provider truth, rejected unscoped Recurrent events, and
+  normalized terminal Recurrent statuses and schedule fields.
+  `.venv/bin/python -m pytest -p no:cacheprovider apps/api/tests/test_api.py`:
+  70 passed.
+  `npm --workspace @anytoolai/web run test:components -- CheckoutClient.test.tsx PaymentResultClient.test.tsx`:
+  22 passed.
+  `TEST_POSTGRES_DATABASE_URL=postgresql+psycopg://postgres:postgres@127.0.0.1:55432/payments_portal_test .venv/bin/python -m pytest -p no:cacheprovider apps/api/tests/test_cloudpayments_webhook_postgres.py`:
+  10 passed against a disposable local PostgreSQL 18.4 container.
+  `python3 -m compileall -q apps/api/app`: passed.
+  `python3 scripts/repo.py architecture check`: passed.
+  `git diff --check`: passed.
+  `PATH=.venv/bin:$PATH npm run check:fast`: passed; 89 passed, 10
+  PostgreSQL webhook tests skipped inside the broad harness because
+  `TEST_POSTGRES_DATABASE_URL` is not set for that command.

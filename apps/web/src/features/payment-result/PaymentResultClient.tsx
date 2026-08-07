@@ -126,6 +126,14 @@ function derivePaymentResultKind(
     return "refunded";
   }
 
+  if (productStatus === "active") {
+    return "active";
+  }
+
+  if (orderStatus === "paid" || paymentStatus === "succeeded") {
+    return "paid";
+  }
+
   if (
     productStatus === "failed" ||
     orderStatus === "payment_failed" ||
@@ -140,14 +148,6 @@ function derivePaymentResultKind(
     paymentStatus === "canceled"
   ) {
     return "canceled";
-  }
-
-  if (productStatus === "active") {
-    return "active";
-  }
-
-  if (orderStatus === "paid" || paymentStatus === "succeeded") {
-    return "paid";
   }
 
   return "pending";

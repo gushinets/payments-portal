@@ -55,6 +55,11 @@ CLOUDPAYMENTS_RESPONSE_CODES = {
     "order_expired": 20,
     "payload_parse_error": 13,
     "payment_not_found": 13,
+    "payment_schema_mismatch": 13,
+    "provider_account_not_found": 13,
+    "missing_subscription_id": 13,
+    "missing_subscription_status": 13,
+    "invalid_subscription_status": 13,
     "normalization_unexpected_error": 13,
     "invalid_cloudpayments_signature": 13,
 }
@@ -140,6 +145,104 @@ def _provider_event_id(payload: dict[str, Any]) -> str | None:
     return str(value) if value is not None else None
 
 
+def _provider_status(payload: dict[str, Any]) -> str:
+    return str(_get_first(payload, "Status", "status") or "").lower()
+
+
+def _parse_bool(value: Any) -> bool | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    normalized = str(value).strip().lower()
+    if normalized in {"true", "1", "yes", "y"}:
+        return True
+    if normalized in {"false", "0", "no", "n"}:
+        return False
+    return None
+
+
+def _parse_int(value: Any) -> int | None:
+    if value in (None, ""):
+        return None
+    if isinstance(value, bool):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _normalized_recurrent_status(value: Any) -> str:
+    normalized = str(value or "").strip().lower().replace("-", "_")
+    return {
+        "active": "active",
+        "pastdue": "past_due",
+        "past_due": "past_due",
+        "cancelled": "canceled",
+        "canceled": "canceled",
+        "rejected": "rejected",
+        "expired": "expired",
+    }.get(normalized, "unknown")
+
+
+def _without_empty_values(payload: dict[str, Any]) -> dict[str, Any]:
+    return {key: value for key, value in payload.items() if value is not None}
+
+
+def _normalized_recurrent_payload(
+    payload: dict[str, Any],
+    *,
+    amount_minor: int | None,
+    currency: str | None,
+) -> dict[str, Any]:
+    interval = _get_first(payload, "Interval", "interval")
+    return _without_empty_values(
+        {
+            "subscription_id": _get_first(payload, "Id", "id"),
+            "account_id": _get_first(payload, "AccountId", "accountId", "account_id"),
+            "email": _get_first(payload, "Email", "email"),
+            "description": _get_first(payload, "Description", "description"),
+            "status": _normalized_recurrent_status(_get_first(payload, "Status", "status")),
+            "amount_minor": amount_minor,
+            "currency": currency,
+            "require_confirmation": _parse_bool(
+                _get_first(payload, "RequireConfirmation", "requireConfirmation")
+            ),
+            "start_at": _get_first(payload, "StartDate", "startDate", "start_at"),
+            "interval": str(interval).strip().lower() if interval is not None else None,
+            "period": _parse_int(_get_first(payload, "Period", "period")),
+            "successful_payments_count": _parse_int(
+                _get_first(
+                    payload,
+                    "SuccessfulTransactionsNumber",
+                    "successfulTransactionsNumber",
+                )
+            ),
+            "failed_payments_count": _parse_int(
+                _get_first(payload, "FailedTransactionsNumber", "failedTransactionsNumber")
+            ),
+            "max_periods": _parse_int(_get_first(payload, "MaxPeriods", "maxPeriods")),
+            "last_transaction_at": _get_first(
+                payload,
+                "LastTransactionDate",
+                "lastTransactionDate",
+            ),
+            "next_transaction_at": _get_first(
+                payload,
+                "NextTransactionDate",
+                "nextTransactionDate",
+            ),
+        }
+    )
+
+
+def _event_type(endpoint: str, payload: dict[str, Any]) -> str:
+    if endpoint == "pay" and _provider_status(payload) == "authorized":
+        return "payment.authorized"
+    return EVENT_TYPES_BY_ENDPOINT.get(endpoint, endpoint)
+
+
 def _event_idempotency_key(
     endpoint: str,
     provider_event_id: str | None,
@@ -163,7 +266,7 @@ def _event_idempotency_key(
 
 def verify_cloudpayments_signature(raw_body: bytes, headers: dict[str, str]) -> bool:
     if not settings.cloudpayments_api_secret:
-        return not settings.cloudpayments_enabled
+        return False
 
     signature = (
         headers.get("content-hmac")
@@ -208,9 +311,9 @@ class CloudPaymentsAdapter:
         metadata: dict[str, Any],
     ) -> CheckoutAction:
         mode = str(provider_account.config.get("widget_mode") or "charge")
-        if mode != "charge":
+        if mode not in {"charge", "auth"}:
             raise PaymentProviderConfigurationError(
-                "cloudpayments_one_stage_charge_required"
+                "cloudpayments_widget_mode_invalid"
             )
         public_identifier = (
             provider_account.public_identifier or settings.cloudpayments_public_id or None
@@ -272,10 +375,17 @@ class CloudPaymentsAdapter:
         currency = _get_first(payload, "Currency", "currency")
         provider_event_id = _provider_event_id(payload)
         payload_hash = _payload_hash(raw_body, payload)
+        safe_payload = _safe_payload(payload)
+        if endpoint == "recurrent":
+            safe_payload["_normalized"] = _normalized_recurrent_payload(
+                payload,
+                amount_minor=amount_minor,
+                currency=str(currency) if currency is not None else None,
+            )
 
         return NormalizedPaymentEvent(
             endpoint=endpoint,
-            event_type=EVENT_TYPES_BY_ENDPOINT.get(endpoint, endpoint),
+            event_type=_event_type(endpoint, payload),
             provider_event_id=provider_event_id,
             idempotency_key=_event_idempotency_key(
                 endpoint,
@@ -293,7 +403,7 @@ class CloudPaymentsAdapter:
             amount_minor=amount_minor,
             amount=amount,
             currency=str(currency) if currency is not None else None,
-            safe_payload=_safe_payload(payload),
+            safe_payload=safe_payload,
             safe_headers=redact(headers),
             verified=verified,
             error_code=status,
@@ -306,11 +416,29 @@ class CloudPaymentsAdapter:
             error_code=event.error_code,
         )
 
-    def webhook_event_response(self, *, endpoint: str, error_code: str | None) -> dict[str, Any]:
-        return {"code": self.webhook_response_code(endpoint=endpoint, error_code=error_code)}
+    def webhook_event_response(
+        self,
+        *,
+        endpoint: str,
+        error_code: str | None,
+        event_status: str | None = None,
+    ) -> dict[str, Any]:
+        return {
+            "code": self.webhook_response_code(
+                endpoint=endpoint,
+                error_code=error_code,
+                event_status=event_status,
+            )
+        }
 
-    def webhook_response_code(self, *, endpoint: str, error_code: str | None) -> int:
-        if error_code is None or endpoint != "check":
+    def webhook_response_code(
+        self,
+        *,
+        endpoint: str,
+        error_code: str | None,
+        event_status: str | None = None,
+    ) -> int:
+        if error_code is None or event_status in {"processed", "ignored", "duplicate"}:
             return 0
         return CLOUDPAYMENTS_RESPONSE_CODES.get(error_code, 13)
 
