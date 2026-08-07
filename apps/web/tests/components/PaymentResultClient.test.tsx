@@ -59,6 +59,31 @@ function paymentStatusPayload(status: "pending" | "active" | "failed") {
   };
 }
 
+function canceledPaymentStatusPayload() {
+  return {
+    ...paymentStatusPayload("pending"),
+    order: {
+      order_id: "22222222-2222-4222-8222-222222222222",
+      order_number: "RU-CANCELED",
+      status: "canceled",
+      amount_minor: 99000,
+      currency: "RUB",
+      paid_at: null,
+      failed_at: null
+    },
+    payment: {
+      payment_id: "33333333-3333-4333-8333-333333333333",
+      status: "canceled",
+      provider_payment_id: "tx-canceled",
+      amount_minor: 99000,
+      currency: "RUB",
+      captured_at: null,
+      failed_at: null,
+      refunded_amount_minor: 0
+    }
+  };
+}
+
 async function renderPollingResult(finalStatus: "active" | "failed") {
   let attempt = 0;
   const realSetInterval = window.setInterval.bind(window);
@@ -137,6 +162,25 @@ describe("PaymentResultClient authoritative status characterization", () => {
       await screen.findByRole("heading", { name: "Не удалось завершить оплату" })
     ).toBeVisible();
     expect(screen.getByText(/Платёж не был подтверждён/)).toBeVisible();
+  });
+
+  it("shows canceled backend state instead of polling forever", async () => {
+    server.use(
+      http.get(`${apiBase}/api/auth/payment-status`, () =>
+        HttpResponse.json(canceledPaymentStatusPayload())
+      )
+    );
+    setRouteSearchParams(
+      "status=pending&product=document-summary&email=buyer%40example.com&invoice=invoice-result"
+    );
+
+    render(<PaymentResultClient />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Платёж отменён" })
+    ).toBeVisible();
+    expect(screen.getByText(/Списание не подтверждено/)).toBeVisible();
+    expect(screen.queryByText("Ожидаем подтверждение")).not.toBeInTheDocument();
   });
 
   it("keeps pending state when payment-status polling aborts", async () => {

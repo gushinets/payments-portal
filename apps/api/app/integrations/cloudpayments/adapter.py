@@ -148,6 +148,8 @@ def _event_idempotency_key(
     refund_id: str | None,
     payload_hash: str,
 ) -> str:
+    if endpoint == "recurrent":
+        return f"{CLOUDPAYMENTS_PROVIDER_CODE}:recurrent:payload:{payload_hash}"
     if provider_event_id:
         return f"{CLOUDPAYMENTS_PROVIDER_CODE}:event:{provider_event_id}"
     if endpoint == "refund" and refund_id:
@@ -257,6 +259,14 @@ class CloudPaymentsAdapter:
         invoice_id = _get_first(payload, "InvoiceId", "invoiceId", "invoice_id")
         transaction_id = _get_first(payload, "TransactionId", "transactionId", "transaction_id")
         refund_id = _get_first(payload, "RefundId", "refundId", "refund_id")
+        if endpoint == "refund":
+            refund_id = refund_id or transaction_id
+            transaction_id = _get_first(
+                payload,
+                "PaymentTransactionId",
+                "paymentTransactionId",
+                "payment_transaction_id",
+            ) or transaction_id
         amount = _parse_amount(_get_first(payload, "Amount", "amount"))
         amount_minor = _amount_minor(amount)
         currency = _get_first(payload, "Currency", "currency")
