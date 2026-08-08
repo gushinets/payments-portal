@@ -99,8 +99,10 @@ function derivePaymentResultKind(
   fallbackStatus: string,
   payload: PaymentStatusResponse | null
 ): PaymentResultKind {
+  const hasBackendPayload = payload !== null;
   const fallbackResultStatus =
-    fallbackStatus === "failed" || fallbackStatus === "canceled"
+    !hasBackendPayload &&
+    (fallbackStatus === "failed" || fallbackStatus === "canceled")
       ? fallbackStatus
       : "pending";
   const productStatus =
@@ -143,9 +145,9 @@ function derivePaymentResultKind(
   }
 
   if (
-    fallbackResultStatus === "canceled" ||
     orderStatus === "canceled" ||
-    paymentStatus === "canceled"
+    paymentStatus === "canceled" ||
+    fallbackResultStatus === "canceled"
   ) {
     return "canceled";
   }

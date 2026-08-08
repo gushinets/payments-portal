@@ -78,6 +78,50 @@ def payment_validation_error(
     return None
 
 
+def confirm_validation_error(
+    db: Session,
+    order: Order,
+    *,
+    transaction_id: str | None,
+    account_id: str | None,
+    amount_minor: int | None,
+    currency: str | None,
+) -> str | None:
+    account_error = account_mismatch(
+        db,
+        order,
+        account_id=account_id,
+        require_account_id=False,
+    )
+    if account_error is not None:
+        return account_error
+    if amount_minor is None:
+        return "missing_amount"
+    if amount_minor <= 0:
+        return "amount_mismatch"
+    if currency is None:
+        return "missing_currency"
+    if currency.upper() != order.currency.upper():
+        return "currency_mismatch"
+
+    authorized_amount_minor = order.amount_minor
+    if transaction_id:
+        payment = (
+            db.query(Payment)
+            .filter(
+                Payment.provider_account_id == order.provider_account_id,
+                Payment.provider_payment_id == transaction_id,
+            )
+            .first()
+        )
+        if payment is not None:
+            authorized_amount_minor = payment.amount_minor
+
+    if amount_minor > authorized_amount_minor:
+        return "amount_mismatch"
+    return None
+
+
 def check_order_state_error(order: Order) -> str | None:
     if order.status == "pending_payment":
         return None
@@ -102,6 +146,8 @@ def validation_error_message(error_code: str) -> str:
         "payment_schema_mismatch": "Webhook type does not match the configured payment schema",
         "provider_account_not_found": "No enabled provider account found for webhook",
         "missing_subscription_id": "Webhook subscription id is missing",
+        "missing_subscription_description": "Webhook subscription description is missing",
+        "missing_subscription_email": "Webhook subscription email is missing",
         "missing_subscription_require_confirmation": "Webhook subscription confirmation mode is missing",
         "invalid_subscription_require_confirmation": "Webhook subscription confirmation mode is invalid",
         "missing_subscription_start_date": "Webhook subscription start date is missing",
@@ -192,6 +238,10 @@ def recurrent_validation_error(
         return "missing_subscription_id"
     if not account_id:
         return "missing_account_id"
+    if get_first(payload, "Description", "description") is None:
+        return "missing_subscription_description"
+    if get_first(payload, "Email", "email") is None:
+        return "missing_subscription_email"
     if amount_minor is None:
         return "missing_amount"
     if currency is None:

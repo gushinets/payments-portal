@@ -64,6 +64,8 @@ CLOUDPAYMENTS_RESPONSE_CODES = {
     "payment_schema_mismatch": 13,
     "provider_account_not_found": 13,
     "missing_subscription_id": 13,
+    "missing_subscription_description": 13,
+    "missing_subscription_email": 13,
     "missing_subscription_status": 13,
     "invalid_subscription_status": 13,
     "normalization_unexpected_error": 13,

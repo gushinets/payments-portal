@@ -1864,6 +1864,103 @@ def test_confirm_notification_accepts_missing_account_id() -> None:
     assert event.error_code is None
 
 
+def test_confirm_notification_accepts_partial_capture_amount() -> None:
+    invoice_id = create_checkout_invoice(
+        email="partial-confirm-user@example.com",
+        widget_mode="auth",
+    )
+    pay_response = client.post(
+        "/api/cloudpayments/pay",
+        json={
+            "InvoiceId": invoice_id,
+            "TransactionId": "tx-partial-confirm-1",
+            "AccountId": "partial-confirm-user@example.com",
+            "Amount": "990.00",
+            "Currency": "RUB",
+            "Status": "Authorized",
+        },
+    )
+    confirm_response = client.post(
+        "/api/cloudpayments/confirm",
+        json={
+            "InvoiceId": invoice_id,
+            "TransactionId": "tx-partial-confirm-1",
+            "AccountId": "partial-confirm-user@example.com",
+            "Amount": "450.00",
+            "Currency": "RUB",
+            "Status": "Completed",
+        },
+    )
+
+    assert pay_response.status_code == 200
+    assert confirm_response.status_code == 200
+    assert confirm_response.json() == {"code": 0}
+    with SessionLocal() as db:
+        order = db.query(Order).one()
+        payment = db.query(Payment).one()
+        confirm_event = (
+            db.query(PaymentWebhookEvent)
+            .filter(PaymentWebhookEvent.endpoint == "confirm")
+            .one()
+        )
+
+    assert order.status == "paid"
+    assert payment.status == "succeeded"
+    assert payment.amount_minor == 45000
+    assert payment.captured_at
+    assert confirm_event.status == "processed"
+    assert confirm_event.amount_minor == 45000
+    assert confirm_event.error_code is None
+
+
+def test_confirm_notification_rejects_amount_above_authorization() -> None:
+    invoice_id = create_checkout_invoice(
+        email="excessive-confirm-user@example.com",
+        widget_mode="auth",
+    )
+    pay_response = client.post(
+        "/api/cloudpayments/pay",
+        json={
+            "InvoiceId": invoice_id,
+            "TransactionId": "tx-excessive-confirm-1",
+            "AccountId": "excessive-confirm-user@example.com",
+            "Amount": "990.00",
+            "Currency": "RUB",
+            "Status": "Authorized",
+        },
+    )
+    confirm_response = client.post(
+        "/api/cloudpayments/confirm",
+        json={
+            "InvoiceId": invoice_id,
+            "TransactionId": "tx-excessive-confirm-1",
+            "AccountId": "excessive-confirm-user@example.com",
+            "Amount": "1200.00",
+            "Currency": "RUB",
+            "Status": "Completed",
+        },
+    )
+
+    assert pay_response.status_code == 200
+    assert confirm_response.status_code == 200
+    assert confirm_response.json() == {"code": 0}
+    with SessionLocal() as db:
+        order = db.query(Order).one()
+        payment = db.query(Payment).one()
+        confirm_event = (
+            db.query(PaymentWebhookEvent)
+            .filter(PaymentWebhookEvent.endpoint == "confirm")
+            .one()
+        )
+
+    assert order.status == "pending_payment"
+    assert payment.status == "authorized"
+    assert payment.amount_minor == 99000
+    assert payment.captured_at is None
+    assert confirm_event.status == "failed"
+    assert confirm_event.error_code == "amount_mismatch"
+
+
 def test_cancel_webhook_accepts_provider_payload_without_currency_or_account() -> None:
     invoice_id = create_checkout_invoice(
         email="provider-cancel-user@example.com",
@@ -2772,6 +2869,30 @@ def test_recurrent_webhook_validates_required_provider_fields() -> None:
             "missing_account_id",
             0,
             {key: value for key, value in base_payload.items() if key != "AccountId"},
+        ),
+        (
+            "missing_subscription_description",
+            "missing_subscription_description",
+            0,
+            {key: value for key, value in base_payload.items() if key != "Description"},
+        ),
+        (
+            "blank_subscription_description",
+            "missing_subscription_description",
+            0,
+            {**base_payload, "Description": "   "},
+        ),
+        (
+            "missing_subscription_email",
+            "missing_subscription_email",
+            0,
+            {key: value for key, value in base_payload.items() if key != "Email"},
+        ),
+        (
+            "blank_subscription_email",
+            "missing_subscription_email",
+            0,
+            {**base_payload, "Email": "\t"},
         ),
         (
             "missing_amount",

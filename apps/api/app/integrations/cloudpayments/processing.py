@@ -9,6 +9,7 @@ from app.integrations.cloudpayments.payload import get_first
 from app.integrations.cloudpayments.validation import (
     cancel_validation_error,
     check_order_state_error,
+    confirm_validation_error,
     payment_validation_error,
     recurrent_validation_error,
     refund_validation_error,
@@ -395,6 +396,15 @@ def process_webhook_event(
                 amount_minor=amount_minor,
                 currency=currency,
             )
+        elif validation_error is None and endpoint == "confirm":
+            validation_error = confirm_validation_error(
+                db,
+                order,
+                transaction_id=transaction_id,
+                account_id=account_id,
+                amount_minor=amount_minor,
+                currency=currency,
+            )
         elif validation_error is None:
             validation_error = payment_validation_error(
                 db,
@@ -402,7 +412,6 @@ def process_webhook_event(
                 account_id=account_id,
                 amount_minor=amount_minor,
                 currency=currency,
-                require_account_id=endpoint != "confirm",
             )
         if validation_error is not None:
             event.status = "failed"
@@ -473,7 +482,7 @@ def process_webhook_event(
                 db.flush()
                 return event
             assert amount_minor is not None
-            refund = record_refund(
+            record_refund(
                 db,
                 order=order,
                 payment=payment,

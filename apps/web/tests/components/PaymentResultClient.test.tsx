@@ -199,6 +199,25 @@ describe("PaymentResultClient authoritative status characterization", () => {
     expect(screen.queryByText("Ожидаем подтверждение")).not.toBeInTheDocument();
   });
 
+  it("keeps authoritative backend pending state over a canceled return URL", async () => {
+    server.use(
+      http.get(`${apiBase}/api/auth/payment-status`, () =>
+        HttpResponse.json(paymentStatusPayload("pending"))
+      )
+    );
+    setRouteSearchParams(
+      "status=canceled&product=document-summary&email=buyer%40example.com&invoice=invoice-result"
+    );
+
+    render(<PaymentResultClient />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Платёж обрабатывается" })
+    ).toBeVisible();
+    expect(screen.getByText("Ожидаем подтверждение")).toBeVisible();
+    expect(screen.queryByText(/Списание не подтверждено/)).not.toBeInTheDocument();
+  });
+
   it("shows a verified late charge even when the order remains canceled", async () => {
     server.use(
       http.get(`${apiBase}/api/auth/payment-status`, () =>
