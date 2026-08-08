@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import stat
 from pathlib import Path
 
 import scripts.repo as repo
@@ -8,6 +9,7 @@ from scripts.repo import (
     canonical_check_environment,
     check_expected_legal_versions,
     check_required_markdown_link_content,
+    resolve_cloudpayments_api_secret,
     resolve_cloudpayments_public_id,
 )
 
@@ -155,3 +157,71 @@ def test_cloudpayments_public_id_ignores_legacy_next_public_value() -> None:
     )
 
     assert value == ""
+
+
+def test_cloudpayments_api_secret_uses_process_environment_first() -> None:
+    value = resolve_cloudpayments_api_secret(
+        {"CLOUDPAYMENTS_API_SECRET": "secret_from_dotenv"},
+        environ={"CLOUDPAYMENTS_API_SECRET": "secret_from_process"},
+    )
+
+    assert value == "secret_from_process"
+
+
+def test_cloudpayments_api_secret_uses_dotenv_before_runtime_fallback() -> None:
+    value = resolve_cloudpayments_api_secret(
+        {"CLOUDPAYMENTS_API_SECRET": "secret_from_dotenv"},
+        environ={},
+    )
+
+    assert value == "secret_from_dotenv"
+
+
+def test_cloudpayments_api_secret_skips_empty_values_before_fallback() -> None:
+    dotenv_value = resolve_cloudpayments_api_secret(
+        {"CLOUDPAYMENTS_API_SECRET": "secret_from_dotenv"},
+        environ={"CLOUDPAYMENTS_API_SECRET": ""},
+    )
+    fallback_value = resolve_cloudpayments_api_secret(
+        {"CLOUDPAYMENTS_API_SECRET": ""},
+        environ={"CLOUDPAYMENTS_API_SECRET": ""},
+    )
+
+    assert dotenv_value == "secret_from_dotenv"
+    assert fallback_value == "test-cloudpayments-signing-key"
+
+
+def test_write_runtime_protects_generated_secret_file(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    harness_dir = tmp_path / ".harness"
+    runtime_json = harness_dir / "runtime.json"
+    runtime_env = harness_dir / "runtime.env"
+    monkeypatch.setattr(repo, "HARNESS_DIR", harness_dir)
+    monkeypatch.setattr(repo, "RUNTIME_JSON", runtime_json)
+    monkeypatch.setattr(repo, "RUNTIME_ENV", runtime_env)
+    monkeypatch.setattr(repo, "read_dotenv", lambda: {})
+
+    repo.write_runtime(
+        repo.RuntimeConfig(
+            worktree_id="test",
+            compose_project="payment-portal-test",
+            database_name="payment_portal_test",
+            web_port=3000,
+            api_port=8000,
+            postgres_port=5432,
+            grafana_port=3001,
+            loki_port=3100,
+            prometheus_port=9090,
+            tempo_port=3200,
+            otlp_grpc_port=4317,
+            otlp_http_port=4318,
+        )
+    )
+
+    assert stat.S_IMODE(harness_dir.stat().st_mode) == 0o700
+    assert stat.S_IMODE(runtime_env.stat().st_mode) == 0o600
+    assert "CLOUDPAYMENTS_API_SECRET=test-cloudpayments-signing-key" in (
+        runtime_env.read_text(encoding="utf-8")
+    )

@@ -49,6 +49,12 @@ from app.integrations.cloudpayments.adapter import (  # noqa: E402
     _event_idempotency_key,
     verify_cloudpayments_signature,
 )
+from app.integrations.cloudpayments.payload import (  # noqa: E402
+    get_first,
+    normalized_recurrent_status,
+    parse_bool,
+    parse_int,
+)
 from app.settings import settings  # noqa: E402
 
 
@@ -2683,6 +2689,54 @@ def test_recurrent_webhook_requires_an_enabled_provider_account() -> None:
     assert event.error_code == "provider_account_not_found"
 
 
+def test_cloudpayments_payload_helpers_keep_normalization_contract() -> None:
+    assert get_first({"primary": "", "fallback": "value"}, "primary", "fallback") == "value"
+    assert get_first({"primary": "   ", "fallback": "value"}, "primary", "fallback") == "value"
+    assert get_first({"flag": False}, "flag") is False
+    assert get_first({"count": 0}, "count") == 0
+    assert get_first({"blank": " \t\n"}, "blank") is None
+
+    assert all(parse_bool(value) is True for value in ("true", "1", "yes", "y", True))
+    assert all(
+        parse_bool(value) is False for value in ("false", "0", "no", "n", False)
+    )
+    assert parse_bool("maybe") is None
+
+    assert parse_int(7) == 7
+    assert parse_int(" 007 ") == 7
+    assert parse_int("-3") == -3
+    assert parse_int(True) is None
+    assert parse_int("") is None
+    assert parse_int("1.5") is None
+    assert parse_int(1.5) is None
+    assert parse_int(float("inf")) is None
+
+    assert {
+        value: normalized_recurrent_status(value)
+        for value in (
+            "Active",
+            "PastDue",
+            "Past_Due",
+            "past-due",
+            "Cancelled",
+            "Canceled",
+            "Rejected",
+            "Expired",
+            "Paused",
+        )
+    } == {
+        "Active": "active",
+        "PastDue": "past_due",
+        "Past_Due": "past_due",
+        "past-due": "past_due",
+        "Cancelled": "canceled",
+        "Canceled": "canceled",
+        "Rejected": "rejected",
+        "Expired": "expired",
+        "Paused": "unknown",
+    }
+
+
 def test_recurrent_webhook_validates_required_provider_fields() -> None:
     seed_cloudpayments_provider_account()
     base_payload = {
@@ -2703,25 +2757,36 @@ def test_recurrent_webhook_validates_required_provider_fields() -> None:
     scenarios = [
         (
             "missing_subscription_id",
+            "missing_subscription_id",
             0,
             {key: value for key, value in base_payload.items() if key != "Id"},
         ),
         (
+            "blank_subscription_id",
+            "missing_subscription_id",
+            0,
+            {**base_payload, "Id": "   "},
+        ),
+        (
+            "missing_account_id",
             "missing_account_id",
             0,
             {key: value for key, value in base_payload.items() if key != "AccountId"},
         ),
         (
             "missing_amount",
+            "missing_amount",
             0,
             {key: value for key, value in base_payload.items() if key != "Amount"},
         ),
         (
             "missing_currency",
+            "missing_currency",
             0,
             {key: value for key, value in base_payload.items() if key != "Currency"},
         ),
         (
+            "missing_subscription_require_confirmation",
             "missing_subscription_require_confirmation",
             0,
             {
@@ -2732,32 +2797,66 @@ def test_recurrent_webhook_validates_required_provider_fields() -> None:
         ),
         (
             "invalid_subscription_require_confirmation",
+            "invalid_subscription_require_confirmation",
             0,
             {**base_payload, "RequireConfirmation": "not-a-bool"},
         ),
         (
             "missing_subscription_start_date",
+            "missing_subscription_start_date",
             0,
             {key: value for key, value in base_payload.items() if key != "StartDate"},
         ),
         (
+            "blank_subscription_start_date",
+            "missing_subscription_start_date",
+            0,
+            {**base_payload, "StartDate": "  "},
+        ),
+        (
+            "missing_subscription_interval",
             "missing_subscription_interval",
             0,
             {key: value for key, value in base_payload.items() if key != "Interval"},
         ),
         (
+            "blank_subscription_interval",
+            "missing_subscription_interval",
+            0,
+            {**base_payload, "Interval": "\t"},
+        ),
+        (
+            "missing_subscription_period",
             "missing_subscription_period",
             0,
             {key: value for key, value in base_payload.items() if key != "Period"},
         ),
-        ("invalid_subscription_period", 0, {**base_payload, "Period": "monthly"}),
         (
+            "invalid_subscription_period",
+            "invalid_subscription_period",
+            0,
+            {**base_payload, "Period": "monthly"},
+        ),
+        (
+            "fractional_subscription_period",
+            "invalid_subscription_period",
+            0,
+            {**base_payload, "Period": "1.5"},
+        ),
+        (
+            "missing_subscription_status",
             "missing_subscription_status",
             0,
             {key: value for key, value in base_payload.items() if key != "Status"},
         ),
-        ("invalid_subscription_status", 0, {**base_payload, "Status": "Paused"}),
         (
+            "invalid_subscription_status",
+            "invalid_subscription_status",
+            0,
+            {**base_payload, "Status": "Paused"},
+        ),
+        (
+            "missing_subscription_successful_transactions_number",
             "missing_subscription_successful_transactions_number",
             0,
             {
@@ -2768,10 +2867,12 @@ def test_recurrent_webhook_validates_required_provider_fields() -> None:
         ),
         (
             "invalid_subscription_successful_transactions_number",
+            "invalid_subscription_successful_transactions_number",
             0,
             {**base_payload, "SuccessfulTransactionsNumber": "many"},
         ),
         (
+            "missing_subscription_failed_transactions_number",
             "missing_subscription_failed_transactions_number",
             0,
             {
@@ -2782,27 +2883,57 @@ def test_recurrent_webhook_validates_required_provider_fields() -> None:
         ),
         (
             "invalid_subscription_failed_transactions_number",
+            "invalid_subscription_failed_transactions_number",
             0,
             {**base_payload, "FailedTransactionsNumber": "none"},
         ),
-        ("invalid_subscription_max_periods", 0, {**base_payload, "MaxPeriods": "forever"}),
+        (
+            "invalid_subscription_max_periods",
+            "invalid_subscription_max_periods",
+            0,
+            {**base_payload, "MaxPeriods": "forever"},
+        ),
     ]
+    scenario_payloads = []
+    for index, (name, error_code, expected_code, payload) in enumerate(scenarios):
+        scenario_payload = dict(payload)
+        if get_first(scenario_payload, "Id", "id") is not None:
+            scenario_payload["Id"] = f"sub_required_fields_{index}"
+        scenario_payloads.append((name, error_code, expected_code, scenario_payload))
 
     responses = [
         client.post("/api/cloudpayments/recurrent", json=payload)
-        for _, _, payload in scenarios
+        for _, _, _, payload in scenario_payloads
     ]
 
     assert [response.json()["code"] for response in responses] == [
-        expected_code for _, expected_code, _ in scenarios
+        expected_code for _, _, expected_code, _ in scenario_payloads
     ]
     with SessionLocal() as db:
-        events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
+        events = db.query(PaymentWebhookEvent).all()
 
     assert [event.status for event in events] == ["failed"] * len(scenarios)
-    assert [event.error_code for event in events] == [
-        error_code for error_code, _, _ in scenarios
+    events_by_provider_event_id = {
+        event.provider_event_id: event
+        for event in events
+        if event.provider_event_id is not None
+    }
+    expected_by_provider_event_id = {
+        payload["Id"]: error_code
+        for _, error_code, _, payload in scenario_payloads
+        if get_first(payload, "Id", "id") is not None
+    }
+    assert {
+        provider_event_id: event.error_code
+        for provider_event_id, event in events_by_provider_event_id.items()
+    } == expected_by_provider_event_id
+    missing_id_events = [
+        event for event in events if event.provider_event_id is None
     ]
+    assert len(missing_id_events) == 2
+    assert {event.error_code for event in missing_id_events} == {
+        "missing_subscription_id"
+    }
 
 
 def test_recurrent_terminal_statuses_and_schedule_are_normalized() -> None:

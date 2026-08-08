@@ -172,7 +172,8 @@ def resolve_cloudpayments_api_secret(
 
 
 def write_runtime(config: RuntimeConfig) -> None:
-    HARNESS_DIR.mkdir(parents=True, exist_ok=True)
+    HARNESS_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
+    HARNESS_DIR.chmod(0o700)
     RUNTIME_JSON.write_text(json.dumps(asdict(config), indent=2) + "\n", encoding="utf-8")
     caddy_origin = f"http://localhost:{runtime_caddy_port(config)}"
     local_env = read_dotenv()
@@ -220,6 +221,7 @@ def write_runtime(config: RuntimeConfig) -> None:
         "".join(f"{key}={value}\n" for key, value in values.items()),
         encoding="utf-8",
     )
+    RUNTIME_ENV.chmod(0o600)
 
 
 def compose_command(config: RuntimeConfig) -> list[str]:

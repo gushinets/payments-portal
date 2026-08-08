@@ -1,12 +1,19 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 
 def get_first(payload: dict[str, Any], *keys: str) -> Any:
     for key in keys:
-        if key in payload and payload[key] not in (None, ""):
-            return payload[key]
+        if key not in payload:
+            continue
+        value = payload[key]
+        if value is None:
+            continue
+        if isinstance(value, str) and not value.strip():
+            continue
+        return value
     return None
 
 
@@ -28,9 +35,16 @@ def parse_int(value: Any) -> int | None:
         return None
     if isinstance(value, bool):
         return None
+    if isinstance(value, int):
+        return value
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    if not re.fullmatch(r"[+-]?\d+", normalized):
+        return None
     try:
-        return int(value)
-    except (TypeError, ValueError):
+        return int(normalized)
+    except (OverflowError, TypeError, ValueError):
         return None
 
 
