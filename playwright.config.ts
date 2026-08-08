@@ -1,6 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { defineConfig, devices } from "@playwright/test";
+import runtimeEnv from "./playwright.runtime-env.cjs";
+
+const { loadRuntimeEnv } = runtimeEnv as {
+  loadRuntimeEnv: (repositoryRoot: string) => Record<string, string>;
+};
 
 type RuntimeConfig = {
   web_port: number;
@@ -9,6 +14,7 @@ type RuntimeConfig = {
 };
 
 const repositoryRoot = process.cwd();
+loadRuntimeEnv(repositoryRoot);
 
 function runtimeConfig(): RuntimeConfig | null {
   const runtimePath = path.join(repositoryRoot, ".harness/runtime.json");

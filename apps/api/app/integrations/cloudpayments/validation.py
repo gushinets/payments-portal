@@ -13,6 +13,13 @@ from app.integrations.cloudpayments.payload import (
 from app.models import Order, Payment, User
 
 
+def parse_int_at_least(value: object, minimum: int) -> int | None:
+    parsed = parse_int(value)
+    if parsed is None or parsed < minimum:
+        return None
+    return parsed
+
+
 def money_mismatch(order: Order, *, amount_minor: int | None, currency: str | None) -> str | None:
     if amount_minor is None:
         return "missing_amount"
@@ -244,6 +251,8 @@ def recurrent_validation_error(
         return "missing_subscription_email"
     if amount_minor is None:
         return "missing_amount"
+    if amount_minor <= 0:
+        return "invalid_amount"
     if currency is None:
         return "missing_currency"
     require_confirmation = get_first(payload, "RequireConfirmation", "requireConfirmation")
@@ -258,7 +267,7 @@ def recurrent_validation_error(
     period = get_first(payload, "Period", "period")
     if period is None:
         return "missing_subscription_period"
-    if parse_int(period) is None:
+    if parse_int_at_least(period, 1) is None:
         return "invalid_subscription_period"
     raw_status = get_first(payload, "Status", "status")
     if raw_status is None:
@@ -273,7 +282,7 @@ def recurrent_validation_error(
     )
     if successful_transactions is None:
         return "missing_subscription_successful_transactions_number"
-    if parse_int(successful_transactions) is None:
+    if parse_int_at_least(successful_transactions, 0) is None:
         return "invalid_subscription_successful_transactions_number"
     failed_transactions = get_first(
         payload,
@@ -282,9 +291,9 @@ def recurrent_validation_error(
     )
     if failed_transactions is None:
         return "missing_subscription_failed_transactions_number"
-    if parse_int(failed_transactions) is None:
+    if parse_int_at_least(failed_transactions, 0) is None:
         return "invalid_subscription_failed_transactions_number"
     max_periods = get_first(payload, "MaxPeriods", "maxPeriods")
-    if max_periods is not None and parse_int(max_periods) is None:
+    if max_periods is not None and parse_int_at_least(max_periods, 1) is None:
         return "invalid_subscription_max_periods"
     return None

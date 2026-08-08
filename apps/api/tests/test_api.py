@@ -2901,6 +2901,18 @@ def test_recurrent_webhook_validates_required_provider_fields() -> None:
             {key: value for key, value in base_payload.items() if key != "Amount"},
         ),
         (
+            "zero_amount",
+            "invalid_amount",
+            0,
+            {**base_payload, "Amount": "0"},
+        ),
+        (
+            "negative_amount",
+            "invalid_amount",
+            0,
+            {**base_payload, "Amount": "-990.00"},
+        ),
+        (
             "missing_currency",
             "missing_currency",
             0,
@@ -2965,6 +2977,18 @@ def test_recurrent_webhook_validates_required_provider_fields() -> None:
             {**base_payload, "Period": "1.5"},
         ),
         (
+            "zero_subscription_period",
+            "invalid_subscription_period",
+            0,
+            {**base_payload, "Period": 0},
+        ),
+        (
+            "negative_subscription_period",
+            "invalid_subscription_period",
+            0,
+            {**base_payload, "Period": "-3"},
+        ),
+        (
             "missing_subscription_status",
             "missing_subscription_status",
             0,
@@ -2993,6 +3017,12 @@ def test_recurrent_webhook_validates_required_provider_fields() -> None:
             {**base_payload, "SuccessfulTransactionsNumber": "many"},
         ),
         (
+            "negative_subscription_successful_transactions_number",
+            "invalid_subscription_successful_transactions_number",
+            0,
+            {**base_payload, "SuccessfulTransactionsNumber": -1},
+        ),
+        (
             "missing_subscription_failed_transactions_number",
             "missing_subscription_failed_transactions_number",
             0,
@@ -3009,10 +3039,28 @@ def test_recurrent_webhook_validates_required_provider_fields() -> None:
             {**base_payload, "FailedTransactionsNumber": "none"},
         ),
         (
+            "negative_subscription_failed_transactions_number",
+            "invalid_subscription_failed_transactions_number",
+            0,
+            {**base_payload, "FailedTransactionsNumber": "-1"},
+        ),
+        (
             "invalid_subscription_max_periods",
             "invalid_subscription_max_periods",
             0,
             {**base_payload, "MaxPeriods": "forever"},
+        ),
+        (
+            "zero_subscription_max_periods",
+            "invalid_subscription_max_periods",
+            0,
+            {**base_payload, "MaxPeriods": 0},
+        ),
+        (
+            "negative_subscription_max_periods",
+            "invalid_subscription_max_periods",
+            0,
+            {**base_payload, "MaxPeriods": "-12"},
         ),
     ]
     scenario_payloads = []
