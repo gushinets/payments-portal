@@ -64,6 +64,7 @@ type PaymentResultKind =
   | "paid"
   | "refunded"
   | "partially_refunded"
+  | "canceled"
   | "failed"
   | "pending";
 
@@ -98,8 +99,12 @@ function derivePaymentResultKind(
   fallbackStatus: string,
   payload: PaymentStatusResponse | null
 ): PaymentResultKind {
+  const fallbackResultStatus =
+    fallbackStatus === "failed" || fallbackStatus === "canceled"
+      ? fallbackStatus
+      : "pending";
   const productStatus =
-    payload?.product_state.status ?? (fallbackStatus === "failed" ? "failed" : "pending");
+    payload?.product_state.status ?? fallbackResultStatus;
   const orderStatus = payload?.order?.status ?? null;
   const paymentStatus = payload?.payment?.status ?? null;
   const refundedAmount = payload?.payment?.refunded_amount_minor ?? 0;
@@ -121,6 +126,14 @@ function derivePaymentResultKind(
     return "refunded";
   }
 
+  if (productStatus === "active") {
+    return "active";
+  }
+
+  if (orderStatus === "paid" || paymentStatus === "succeeded") {
+    return "paid";
+  }
+
   if (
     productStatus === "failed" ||
     orderStatus === "payment_failed" ||
@@ -129,12 +142,12 @@ function derivePaymentResultKind(
     return "failed";
   }
 
-  if (productStatus === "active") {
-    return "active";
-  }
-
-  if (orderStatus === "paid" || paymentStatus === "succeeded") {
-    return "paid";
+  if (
+    fallbackResultStatus === "canceled" ||
+    orderStatus === "canceled" ||
+    paymentStatus === "canceled"
+  ) {
+    return "canceled";
   }
 
   return "pending";
@@ -275,6 +288,7 @@ export function PaymentResultClient() {
   const isRefunded = resultKind === "refunded";
   const isPartiallyRefunded = resultKind === "partially_refunded";
   const paymentFailed = resultKind === "failed";
+  const paymentCanceled = resultKind === "canceled";
   const isSuccessful = isActive || paymentConfirmed;
   const stillWaiting = resultKind === "pending";
   const refundedAmount = paymentStatusPayload?.payment?.refunded_amount_minor ?? 0;
@@ -288,9 +302,11 @@ export function PaymentResultClient() {
         ? "Оплата подтверждена"
         : paymentConfirmed
           ? "Платёж подтверждён"
-          : stillWaiting
-            ? "Платёж обрабатывается"
-            : "Не удалось завершить оплату";
+          : paymentCanceled
+            ? "Платёж отменён"
+            : stillWaiting
+              ? "Платёж обрабатывается"
+              : "Не удалось завершить оплату";
   const badgeLabel = isRefunded
     ? "Возврат выполнен"
     : isPartiallyRefunded
@@ -299,9 +315,11 @@ export function PaymentResultClient() {
         ? "Оплата подтверждена"
         : paymentConfirmed
           ? "Платёж подтверждён"
-          : stillWaiting
-            ? "Ожидаем подтверждение"
-            : "Платёж требует повторной попытки";
+          : paymentCanceled
+            ? "Платёж отменён"
+            : stillWaiting
+              ? "Ожидаем подтверждение"
+              : "Платёж требует повторной попытки";
   const resultCopy = isRefunded
     ? "Платёж полностью возвращён по данным платёжного партнёра. Если деньги ещё не поступили, срок зачисления зависит от банка."
     : isPartiallyRefunded
@@ -310,9 +328,11 @@ export function PaymentResultClient() {
         ? "Платёж подтверждён платёжным партнёром. Доступ по выбранному тарифу обновлён."
         : paymentConfirmed
           ? "Платёж подтверждён платёжным партнёром. Доступ будет выдан отдельным backend-слоем после обработки заказа."
-          : stillWaiting
-            ? "Мы получили информацию о платеже и ждём подтверждение от платёжного партнёра. Статус подписки обновится после завершения обработки."
-            : "Платёж не был подтверждён. Попробуйте повторить оплату позже или свяжитесь с поддержкой, если списание уже произошло.";
+          : paymentCanceled
+            ? "Платёж отменён платёжным партнёром. Списание не подтверждено, доступ по этому заказу не будет активирован."
+            : stillWaiting
+              ? "Мы получили информацию о платеже и ждём подтверждение от платёжного партнёра. Статус подписки обновится после завершения обработки."
+              : "Платёж не был подтверждён. Попробуйте повторить оплату позже или свяжитесь с поддержкой, если списание уже произошло.";
   const nextStepCopy = isRefunded
     ? "Дополнительных действий не требуется. Сохраните Invoice ID, если будете писать в поддержку по срокам зачисления."
     : isPartiallyRefunded
@@ -321,9 +341,11 @@ export function PaymentResultClient() {
         ? "Можно вернуться к оформлению или дождаться следующего этапа интеграции, где активный доступ будет использоваться самими продуктами."
         : paymentConfirmed
           ? "Платёжная часть завершена. Следующий слой системы свяжет оплаченный заказ с подпиской и доступом продукта."
-          : stillWaiting
-            ? "Если подтверждение пройдёт успешно, доступ к выбранному тарифу будет активирован автоматически. Обычно это занимает всего несколько минут."
-            : "Проверьте способ оплаты и попробуйте ещё раз. Если деньги уже были списаны, напишите в поддержку и укажите email и детали операции.";
+          : paymentCanceled
+            ? "Можно вернуться к оформлению и начать новый платёж. Если отмена неожиданная, напишите в поддержку и укажите Invoice ID."
+            : stillWaiting
+              ? "Если подтверждение пройдёт успешно, доступ к выбранному тарифу будет активирован автоматически. Обычно это занимает всего несколько минут."
+              : "Проверьте способ оплаты и попробуйте ещё раз. Если деньги уже были списаны, напишите в поддержку и укажите email и детали операции.";
 
   return (
     <section className="page-section compact">

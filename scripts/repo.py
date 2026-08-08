@@ -160,13 +160,69 @@ def resolve_cloudpayments_public_id(
     )
 
 
+def resolve_cloudpayments_api_secret(
+    local_env: dict[str, str], *, environ: dict[str, str] | None = None
+) -> str:
+    environment = os.environ if environ is None else environ
+    return (
+        environment.get("CLOUDPAYMENTS_API_SECRET")
+        or local_env.get("CLOUDPAYMENTS_API_SECRET")
+        or "test-cloudpayments-signing-key"
+    )
+
+
+def protect_private_directory(path: Path, *, os_name: str | None = None) -> None:
+    if (os.name if os_name is None else os_name) != "nt":
+        path.chmod(0o700)
+
+
+def windows_current_user(*, environ: dict[str, str] | None = None) -> str:
+    environment = os.environ if environ is None else environ
+    username = environment.get("USERNAME") or environment.get("USER")
+    if not username:
+        raise HarnessError("Cannot protect runtime.env on Windows: current user is unknown")
+    domain = environment.get("USERDOMAIN")
+    computer = environment.get("COMPUTERNAME")
+    if domain and domain != computer:
+        return f"{domain}\\{username}"
+    return username
+
+
+def protect_runtime_env_file(
+    path: Path,
+    *,
+    os_name: str | None = None,
+    environ: dict[str, str] | None = None,
+    runner: Callable[[list[str]], object] = run,
+    icacls_path: str | None = None,
+) -> None:
+    if (os.name if os_name is None else os_name) != "nt":
+        path.chmod(0o600)
+        return
+
+    principal = windows_current_user(environ=environ)
+    command = [
+        icacls_path or tool("icacls"),
+        str(path),
+        "/inheritance:r",
+        "/grant:r",
+        f"{principal}:RW",
+    ]
+    try:
+        runner(command)
+    except (HarnessError, OSError, subprocess.CalledProcessError) as exc:
+        raise HarnessError("Failed to protect runtime.env ACLs on Windows") from exc
+
+
 def write_runtime(config: RuntimeConfig) -> None:
-    HARNESS_DIR.mkdir(parents=True, exist_ok=True)
+    HARNESS_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
+    protect_private_directory(HARNESS_DIR)
     RUNTIME_JSON.write_text(json.dumps(asdict(config), indent=2) + "\n", encoding="utf-8")
     caddy_origin = f"http://localhost:{runtime_caddy_port(config)}"
     local_env = read_dotenv()
     app_public_base_url = local_env.get("APP_PUBLIC_BASE_URL", caddy_origin)
     cloudpayments_public_id = resolve_cloudpayments_public_id(local_env)
+    cloudpayments_api_secret = resolve_cloudpayments_api_secret(local_env)
     cors_allow_origins = caddy_origin
     if app_public_base_url != caddy_origin:
         cors_allow_origins = f"{caddy_origin},{app_public_base_url}"
@@ -201,12 +257,14 @@ def write_runtime(config: RuntimeConfig) -> None:
         "OTEL_EXPORTER_OTLP_ENDPOINT": "http://observability:4318",
         "OTEL_SERVICE_NAME": "payment-portal-api",
         "CLOUDPAYMENTS_PUBLIC_ID": cloudpayments_public_id,
+        "CLOUDPAYMENTS_API_SECRET": cloudpayments_api_secret,
         "CLOUDPAYMENTS_ENABLED": "false",
     }
     RUNTIME_ENV.write_text(
         "".join(f"{key}={value}\n" for key, value in values.items()),
         encoding="utf-8",
     )
+    protect_runtime_env_file(RUNTIME_ENV)
 
 
 def compose_command(config: RuntimeConfig) -> list[str]:

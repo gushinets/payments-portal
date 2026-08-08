@@ -553,6 +553,11 @@ def create_checkout_intent(
                 "plan_code": sellable_plan["plan_code"],
             },
         )
+        order.metadata_ = {
+            **order.metadata_,
+            "payment_mode": checkout_action.mode,
+        }
+        db.add(order)
     except PaymentProviderConfigurationError as exc:
         db.rollback()
         record_checkout("provider_configuration_error")

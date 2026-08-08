@@ -51,7 +51,7 @@ function paymentResultUrl(
 }
 
 function cloudPaymentsWidgetMode(mode: string): CloudPaymentsWidgetMode {
-  if (mode === "charge") {
+  if (mode === "charge" || mode === "auth") {
     return mode;
   }
   throw new Error("unsupported_cloudpayments_widget_mode");
