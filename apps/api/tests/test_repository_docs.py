@@ -4,6 +4,8 @@ import argparse
 import stat
 from pathlib import Path
 
+import pytest
+
 import scripts.repo as repo
 from scripts.repo import (
     canonical_check_environment,
@@ -225,3 +227,58 @@ def test_write_runtime_protects_generated_secret_file(
     assert "CLOUDPAYMENTS_API_SECRET=test-cloudpayments-signing-key" in (
         runtime_env.read_text(encoding="utf-8")
     )
+
+
+def test_runtime_env_windows_acl_removes_inheritance_for_current_user() -> None:
+    invocations: list[list[str]] = []
+
+    repo.protect_runtime_env_file(
+        Path("C:/repo/.harness/runtime.env"),
+        os_name="nt",
+        environ={
+            "USERNAME": "agent",
+            "USERDOMAIN": "WORKSTATION",
+            "COMPUTERNAME": "WORKSTATION",
+        },
+        runner=lambda command: invocations.append(command),
+        icacls_path="icacls",
+    )
+
+    assert invocations == [
+        [
+            "icacls",
+            "C:/repo/.harness/runtime.env",
+            "/inheritance:r",
+            "/grant:r",
+            "agent:R,W",
+        ]
+    ]
+
+
+def test_runtime_env_windows_acl_preserves_domain_user() -> None:
+    invocations: list[list[str]] = []
+
+    repo.protect_runtime_env_file(
+        Path("C:/repo/.harness/runtime.env"),
+        os_name="nt",
+        environ={
+            "USERNAME": "agent",
+            "USERDOMAIN": "ANYTOOL",
+            "COMPUTERNAME": "WORKSTATION",
+        },
+        runner=lambda command: invocations.append(command),
+        icacls_path="icacls",
+    )
+
+    assert invocations[0][-1] == "ANYTOOL\\agent:R,W"
+
+
+def test_runtime_env_windows_acl_requires_current_user() -> None:
+    with pytest.raises(repo.HarnessError, match="current user is unknown"):
+        repo.protect_runtime_env_file(
+            Path("C:/repo/.harness/runtime.env"),
+            os_name="nt",
+            environ={},
+            runner=lambda command: None,
+            icacls_path="icacls",
+        )

@@ -171,9 +171,52 @@ def resolve_cloudpayments_api_secret(
     )
 
 
+def protect_private_directory(path: Path, *, os_name: str | None = None) -> None:
+    if (os.name if os_name is None else os_name) != "nt":
+        path.chmod(0o700)
+
+
+def windows_current_user(*, environ: dict[str, str] | None = None) -> str:
+    environment = os.environ if environ is None else environ
+    username = environment.get("USERNAME") or environment.get("USER")
+    if not username:
+        raise HarnessError("Cannot protect runtime.env on Windows: current user is unknown")
+    domain = environment.get("USERDOMAIN")
+    computer = environment.get("COMPUTERNAME")
+    if domain and domain != computer:
+        return f"{domain}\\{username}"
+    return username
+
+
+def protect_runtime_env_file(
+    path: Path,
+    *,
+    os_name: str | None = None,
+    environ: dict[str, str] | None = None,
+    runner: Callable[[list[str]], object] = run,
+    icacls_path: str | None = None,
+) -> None:
+    if (os.name if os_name is None else os_name) != "nt":
+        path.chmod(0o600)
+        return
+
+    principal = windows_current_user(environ=environ)
+    command = [
+        icacls_path or tool("icacls"),
+        str(path),
+        "/inheritance:r",
+        "/grant:r",
+        f"{principal}:R,W",
+    ]
+    try:
+        runner(command)
+    except (HarnessError, OSError, subprocess.CalledProcessError) as exc:
+        raise HarnessError("Failed to protect runtime.env ACLs on Windows") from exc
+
+
 def write_runtime(config: RuntimeConfig) -> None:
     HARNESS_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
-    HARNESS_DIR.chmod(0o700)
+    protect_private_directory(HARNESS_DIR)
     RUNTIME_JSON.write_text(json.dumps(asdict(config), indent=2) + "\n", encoding="utf-8")
     caddy_origin = f"http://localhost:{runtime_caddy_port(config)}"
     local_env = read_dotenv()
@@ -221,7 +264,7 @@ def write_runtime(config: RuntimeConfig) -> None:
         "".join(f"{key}={value}\n" for key, value in values.items()),
         encoding="utf-8",
     )
-    RUNTIME_ENV.chmod(0o600)
+    protect_runtime_env_file(RUNTIME_ENV)
 
 
 def compose_command(config: RuntimeConfig) -> list[str]:
