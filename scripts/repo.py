@@ -206,7 +206,7 @@ def protect_runtime_env_file(
         str(path),
         "/inheritance:r",
         "/grant:r",
-        f"{principal}:R,W",
+        f"{principal}:RW",
     ]
     try:
         runner(command)

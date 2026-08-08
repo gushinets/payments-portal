@@ -250,7 +250,7 @@ def test_runtime_env_windows_acl_removes_inheritance_for_current_user() -> None:
             "C:/repo/.harness/runtime.env",
             "/inheritance:r",
             "/grant:r",
-            "agent:R,W",
+            "agent:RW",
         ]
     ]
 
@@ -270,7 +270,7 @@ def test_runtime_env_windows_acl_preserves_domain_user() -> None:
         icacls_path="icacls",
     )
 
-    assert invocations[0][-1] == "ANYTOOL\\agent:R,W"
+    assert invocations[0][-1] == "ANYTOOL\\agent:RW"
 
 
 def test_runtime_env_windows_acl_requires_current_user() -> None:
