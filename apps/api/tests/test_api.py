@@ -1310,11 +1310,18 @@ def test_authorized_pay_requires_confirm_or_cancel_to_reach_terminal_state() -> 
     with SessionLocal() as db:
         confirmed_order = db.query(Order).one()
         confirmed_payment = db.query(Payment).one()
+        confirmed_event = (
+            db.query(PaymentWebhookEvent)
+            .filter(PaymentWebhookEvent.transaction_id == "tx-dms-confirm-1")
+            .filter(PaymentWebhookEvent.endpoint == "confirm")
+            .one()
+        )
 
     assert confirmed_order.status == "paid"
     assert confirmed_order.paid_at
     assert confirmed_payment.status == "succeeded"
     assert confirmed_payment.captured_at
+    assert confirmed_event.event_type == "payment.succeeded"
 
 
 def test_check_webhook_validates_snapshotted_payment_schema() -> None:

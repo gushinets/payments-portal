@@ -46,7 +46,7 @@ EVENT_TYPES_BY_ENDPOINT = {
     "pay": "payment.succeeded",
     "fail": "payment.failed",
     "refund": "payment.refunded",
-    "confirm": "payment.confirmed",
+    "confirm": "payment.succeeded",
     "cancel": "payment.canceled",
     "recurrent": "subscription.updated",
 }
