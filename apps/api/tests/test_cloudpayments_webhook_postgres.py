@@ -265,7 +265,7 @@ def test_raw_webhook_event_survives_failed_normalization_and_can_retry(monkeypat
     app.dependency_overrides.clear()
 
 
-def test_concurrent_duplicate_webhook_is_serialized_without_provider_payment_id(monkeypatch) -> None:
+def test_concurrent_duplicate_webhook_is_serialized_with_provider_payment_id(monkeypatch) -> None:
     reset_schema()
     app.dependency_overrides[get_db] = override_get_db
     invoice_id = "inv-concurrent-1"
@@ -294,6 +294,7 @@ def test_concurrent_duplicate_webhook_is_serialized_without_provider_payment_id(
 
     payload = {
         "InvoiceId": invoice_id,
+        "TransactionId": "tx-concurrent-1",
         "AccountId": "durable-webhook@example.com",
         "Amount": "990.00",
         "Currency": "RUB",
@@ -327,7 +328,7 @@ def test_concurrent_duplicate_webhook_is_serialized_without_provider_payment_id(
         assert duplicate_event.payment_id == processed_event.payment_id
         assert order.status == "paid"
         assert len(payments) == 1
-        assert payments[0].provider_payment_id is None
+        assert payments[0].provider_payment_id == "tx-concurrent-1"
     finally:
         app.dependency_overrides.clear()
 
