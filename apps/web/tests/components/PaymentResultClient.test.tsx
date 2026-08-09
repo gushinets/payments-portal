@@ -218,7 +218,7 @@ describe("PaymentResultClient authoritative status characterization", () => {
     expect(screen.queryByText(/Списание не подтверждено/)).not.toBeInTheDocument();
   });
 
-  it("shows a verified late charge even when the order remains canceled", async () => {
+  it("shows a support result for a verified late charge on a canceled order", async () => {
     server.use(
       http.get(`${apiBase}/api/auth/payment-status`, () =>
         HttpResponse.json(lateSucceededPaymentOnCanceledOrderPayload())
@@ -231,9 +231,11 @@ describe("PaymentResultClient authoritative status characterization", () => {
     render(<PaymentResultClient />);
 
     expect(
-      await screen.findByRole("heading", { name: "Платёж подтверждён" })
+      await screen.findByRole("heading", { name: "Платёж требует проверки" })
     ).toBeVisible();
-    expect(screen.queryByText(/Списание не подтверждено/)).not.toBeInTheDocument();
+    expect(screen.getByText(/заказ уже отменён/)).toBeVisible();
+    expect(screen.getByText(/Напишите в поддержку/)).toBeVisible();
+    expect(screen.queryByText("Платёж подтверждён")).not.toBeInTheDocument();
   });
 
   it("shows canceled URL fallback when backend payload is unavailable", () => {

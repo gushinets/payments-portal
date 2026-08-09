@@ -383,10 +383,9 @@ def process_webhook_event(
             event.error_message = validation_error_message(validation_error)
         event.processed_at = datetime_now()
     elif endpoint in {"pay", "fail", "confirm", "cancel"}:
-        validation_error = payment_schema_error(
-            order=order,
-            endpoint=endpoint,
-            payload=payload,
+        validation_error = None if transaction_id else "missing_transaction_id"
+        validation_error = validation_error or payment_schema_error(
+            order=order, endpoint=endpoint, payload=payload,
         )
         if validation_error is None and endpoint == "cancel":
             validation_error = cancel_validation_error(

@@ -1746,6 +1746,49 @@ def test_fail_webhook_updates_payment_and_order_without_access_activation() -> N
     assert state.last_transaction_id is None
 
 
+def test_signed_check_after_failed_attempt_allows_retry() -> None:
+    require_signed_cloudpayments_webhooks_for_test()
+    object.__setattr__(settings, "cloudpayments_enabled", True)
+    object.__setattr__(settings, "cloudpayments_api_secret", "test-secret")
+    try:
+        invoice_id = create_checkout_invoice(email="retry-after-fail@example.com")
+        fail_payload = (
+            b'{"InvoiceId":"'
+            + invoice_id.encode("utf-8")
+            + b'","TransactionId":"tx-retry-fail-1",'
+            b'"AccountId":"retry-after-fail@example.com",'
+            b'"Amount":"990.00","Currency":"RUB",'
+            b'"ReasonCode":"5","Reason":"Insufficient funds"}'
+        )
+        check_payload = (
+            b'{"InvoiceId":"'
+            + invoice_id.encode("utf-8")
+            + b'","TransactionId":"tx-retry-check-1",'
+            b'"AccountId":"retry-after-fail@example.com",'
+            b'"Amount":"990.00","Currency":"RUB","Status":"Completed"}'
+        )
+
+        fail_response = signed_cloudpayments_post("fail", fail_payload)
+        check_response = signed_cloudpayments_post("check", check_payload)
+
+        assert fail_response.status_code == 200
+        assert fail_response.json() == {"code": 0}
+        assert check_response.status_code == 200
+        assert check_response.json() == {"code": 0}
+        with SessionLocal() as db:
+            order = db.query(Order).one()
+            events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
+
+        assert order.status == "payment_failed"
+        assert [event.endpoint for event in events] == ["fail", "check"]
+        assert [event.status for event in events] == ["processed", "processed"]
+        assert events[1].error_code is None
+    finally:
+        allow_unsigned_cloudpayments_webhooks_for_test()
+        object.__setattr__(settings, "cloudpayments_enabled", False)
+        object.__setattr__(settings, "cloudpayments_api_secret", "")
+
+
 def test_confirm_and_cancel_notifications_update_two_stage_payment_state() -> None:
     seed_cloudpayments_provider_account(widget_mode="auth")
     register_response = client.post(
@@ -1987,6 +2030,45 @@ def test_cancel_webhook_accepts_provider_payload_without_currency_or_account() -
     assert payment.status == "canceled"
     assert payment.currency == "RUB"
     assert event.status == "processed"
+
+
+def test_state_changing_notifications_require_transaction_id() -> None:
+    seed_cloudpayments_provider_account(widget_mode="auth")
+    scenarios = [
+        ("pay", "missing-transaction-pay@example.com", {"Status": "Completed"}),
+        ("fail", "missing-transaction-fail@example.com", {"ReasonCode": "5"}),
+        ("confirm", "missing-transaction-confirm@example.com", {"Status": "Completed"}),
+        ("cancel", "missing-transaction-cancel@example.com", {}),
+    ]
+
+    for endpoint, email, extra_payload in scenarios:
+        invoice_id = create_checkout_invoice(email=email, widget_mode="auth")
+        response = client.post(
+            f"/api/cloudpayments/{endpoint}",
+            json={
+                "InvoiceId": invoice_id,
+                "AccountId": email,
+                "Amount": "990.00",
+                "Currency": "RUB",
+                **extra_payload,
+            },
+        )
+
+        assert response.status_code == 200
+        assert response.json() == {"code": 0}
+        with SessionLocal() as db:
+            order = db.query(Order).filter(Order.provider_invoice_id == invoice_id).one()
+            event = (
+                db.query(PaymentWebhookEvent)
+                .filter(PaymentWebhookEvent.invoice_id == invoice_id)
+                .one()
+            )
+            payment_count = db.query(Payment).filter(Payment.order_id == order.id).count()
+
+        assert order.status == "pending_payment"
+        assert event.status == "failed"
+        assert event.error_code == "missing_transaction_id"
+        assert payment_count == 0
 
 
 def test_late_pay_or_confirm_does_not_reopen_canceled_order() -> None:

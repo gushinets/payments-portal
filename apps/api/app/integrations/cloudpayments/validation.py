@@ -133,7 +133,7 @@ def confirm_validation_error(
 
 
 def check_order_state_error(order: Order) -> str | None:
-    if order.status == "pending_payment":
+    if order.status in {"pending_payment", "payment_failed"}:
         return None
     return "order_not_payable"
 
@@ -141,6 +141,7 @@ def check_order_state_error(order: Order) -> str | None:
 def validation_error_message(error_code: str) -> str:
     return {
         "missing_account_id": "Webhook account id is missing",
+        "missing_transaction_id": "Webhook transaction id is missing",
         "account_mismatch": "Webhook account id does not match order user",
         "missing_amount": "Webhook amount is missing",
         "amount_mismatch": "Webhook amount does not match order",
