@@ -214,6 +214,18 @@ def protect_runtime_env_file(
         raise HarnessError("Failed to protect runtime.env ACLs on Windows") from exc
 
 
+def write_protected_runtime_env_file(path: Path, contents: str) -> None:
+    temporary_path = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        temporary_path.write_text("", encoding="utf-8")
+        protect_runtime_env_file(temporary_path)
+        temporary_path.write_text(contents, encoding="utf-8")
+        os.replace(temporary_path, path)
+    except Exception:
+        temporary_path.unlink(missing_ok=True)
+        raise
+
+
 def write_runtime(config: RuntimeConfig) -> None:
     HARNESS_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
     protect_private_directory(HARNESS_DIR)
@@ -260,11 +272,10 @@ def write_runtime(config: RuntimeConfig) -> None:
         "CLOUDPAYMENTS_API_SECRET": cloudpayments_api_secret,
         "CLOUDPAYMENTS_ENABLED": "false",
     }
-    RUNTIME_ENV.write_text(
+    write_protected_runtime_env_file(
+        RUNTIME_ENV,
         "".join(f"{key}={value}\n" for key, value in values.items()),
-        encoding="utf-8",
     )
-    protect_runtime_env_file(RUNTIME_ENV)
 
 
 def compose_command(config: RuntimeConfig) -> list[str]:

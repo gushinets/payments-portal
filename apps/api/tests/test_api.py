@@ -1864,7 +1864,7 @@ def test_confirm_notification_accepts_missing_account_id() -> None:
     assert event.error_code is None
 
 
-def test_confirm_notification_accepts_partial_capture_amount() -> None:
+def test_confirm_notification_rejects_partial_capture_amount() -> None:
     invoice_id = create_checkout_invoice(
         email="partial-confirm-user@example.com",
         widget_mode="auth",
@@ -1904,13 +1904,13 @@ def test_confirm_notification_accepts_partial_capture_amount() -> None:
             .one()
         )
 
-    assert order.status == "paid"
-    assert payment.status == "succeeded"
-    assert payment.amount_minor == 45000
-    assert payment.captured_at
-    assert confirm_event.status == "processed"
+    assert order.status == "pending_payment"
+    assert payment.status == "authorized"
+    assert payment.amount_minor == 99000
+    assert payment.captured_at is None
+    assert confirm_event.status == "failed"
     assert confirm_event.amount_minor == 45000
-    assert confirm_event.error_code is None
+    assert confirm_event.error_code == "amount_mismatch"
 
 
 def test_confirm_notification_rejects_amount_above_authorization() -> None:

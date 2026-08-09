@@ -229,6 +229,51 @@ def test_write_runtime_protects_generated_secret_file(
     )
 
 
+def test_write_runtime_does_not_leave_secret_when_protection_fails(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    harness_dir = tmp_path / ".harness"
+    runtime_json = harness_dir / "runtime.json"
+    runtime_env = harness_dir / "runtime.env"
+    monkeypatch.setattr(repo, "HARNESS_DIR", harness_dir)
+    monkeypatch.setattr(repo, "RUNTIME_JSON", runtime_json)
+    monkeypatch.setattr(repo, "RUNTIME_ENV", runtime_env)
+    monkeypatch.setattr(repo, "read_dotenv", lambda: {})
+    monkeypatch.setenv("CLOUDPAYMENTS_API_SECRET", "super-secret")
+
+    def fail_protection(path: Path) -> None:
+        assert path.read_text(encoding="utf-8") == ""
+        raise repo.HarnessError("protection failed")
+
+    monkeypatch.setattr(repo, "protect_runtime_env_file", fail_protection)
+
+    with pytest.raises(repo.HarnessError, match="protection failed"):
+        repo.write_runtime(
+            repo.RuntimeConfig(
+                worktree_id="test",
+                compose_project="payment-portal-test",
+                database_name="payment_portal_test",
+                web_port=3000,
+                api_port=8000,
+                postgres_port=5432,
+                grafana_port=3001,
+                loki_port=3100,
+                prometheus_port=9090,
+                tempo_port=3200,
+                otlp_grpc_port=4317,
+                otlp_http_port=4318,
+            )
+        )
+
+    assert not runtime_env.exists()
+    assert all(
+        "super-secret" not in path.read_text(encoding="utf-8")
+        for path in harness_dir.iterdir()
+        if path.is_file()
+    )
+
+
 def test_runtime_env_windows_acl_removes_inheritance_for_current_user() -> None:
     invocations: list[list[str]] = []
 

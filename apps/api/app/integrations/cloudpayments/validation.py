@@ -111,6 +111,9 @@ def confirm_validation_error(
     if currency.upper() != order.currency.upper():
         return "currency_mismatch"
 
+    if amount_minor != order.amount_minor:
+        return "amount_mismatch"
+
     authorized_amount_minor = order.amount_minor
     if transaction_id:
         payment = (
