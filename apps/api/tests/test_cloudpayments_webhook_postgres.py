@@ -543,7 +543,7 @@ def test_refund_after_canceled_payment_is_rejected_without_refund_mutation() -> 
     assert events[-1].error_code == "payment_already_canceled"
 
 
-def test_completed_pay_after_auth_cancel_is_rejected_and_cannot_be_refunded() -> None:
+def test_completed_pay_after_auth_cancel_can_be_refunded_without_reopening_order() -> None:
     reset_schema()
     app.dependency_overrides[get_db] = override_get_db
     client = TestClient(app, raise_server_exceptions=False)
@@ -580,13 +580,14 @@ def test_completed_pay_after_auth_cancel_is_rejected_and_cannot_be_refunded() ->
     assert order.status == "canceled"
     assert [(payment.provider_payment_id, payment.status) for payment in payments] == [
         ("tx-canceled-attempt-pg-1", "canceled"),
+        ("tx-late-distinct-charge-pg-1", "refunded"),
     ]
-    assert refund_count == 0
-    assert [event.status for event in events] == ["processed", "failed", "failed"]
+    assert refund_count == 1
+    assert [event.status for event in events] == ["processed", "processed", "processed"]
     assert [event.error_code for event in events] == [
         None,
-        "payment_schema_mismatch",
-        "payment_not_found",
+        None,
+        None,
     ]
 
 
