@@ -12,6 +12,8 @@ from app.integrations.cloudpayments.payload import (
 )
 from app.models import Order, Payment, User
 
+REFUNDABLE_PAYMENT_STATUSES = {"succeeded", "partially_refunded", "refunded"}
+
 
 def parse_int_at_least(value: object, minimum: int) -> int | None:
     parsed = parse_int(value)
@@ -152,6 +154,7 @@ def validation_error_message(error_code: str) -> str:
         "order_already_paid": "Payment capture notification ignored because order is already paid",
         "order_already_canceled": "Payment capture notification ignored because order is canceled",
         "payment_already_canceled": "Refund notification rejected because payment is canceled",
+        "payment_not_refundable": "Refund notification rejected because payment is not captured",
         "order_already_refunded": "Payment notification ignored because order is refunded",
         "refund_amount_exceeds_payment": "Refund amount exceeds remaining payment amount",
         "payment_schema_mismatch": "Webhook type does not match the configured payment schema",
@@ -219,6 +222,8 @@ def refund_validation_error(
 ) -> str | None:
     if payment.status == "canceled":
         return "payment_already_canceled"
+    if payment.status not in REFUNDABLE_PAYMENT_STATUSES:
+        return "payment_not_refundable"
     validation_error = cancel_validation_error(
         db,
         order,

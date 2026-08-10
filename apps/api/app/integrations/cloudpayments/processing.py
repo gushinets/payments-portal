@@ -360,7 +360,8 @@ def process_webhook_event(
         event.error_message = "No order found for provider invoice"
         event.processed_at = datetime_now()
     elif endpoint == "check":
-        validation_error = payment_schema_error(
+        validation_error = None if transaction_id else "missing_transaction_id"
+        validation_error = validation_error or payment_schema_error(
             order=order,
             endpoint=endpoint,
             payload=payload,

@@ -1035,23 +1035,33 @@ def test_signed_check_webhook_validates_order_before_acknowledging() -> None:
         valid_payload = (
             b'{"InvoiceId":"'
             + invoice_id.encode("utf-8")
-            + b'","AccountId":"check-user@example.com","Amount":"990.00",'
+            + b'","TransactionId":"tx-check-valid-1",'
+            b'"AccountId":"check-user@example.com","Amount":"990.00",'
             b'"Currency":"RUB","Status":"Completed"}'
         )
         amount_mismatch_payload = (
             b'{"InvoiceId":"'
             + invoice_id.encode("utf-8")
-            + b'","AccountId":"check-user@example.com","Amount":"9.90",'
+            + b'","TransactionId":"tx-check-amount-mismatch-1",'
+            b'"AccountId":"check-user@example.com","Amount":"9.90",'
             b'"Currency":"RUB","Status":"Completed"}'
         )
         unknown_payload = (
-            b'{"InvoiceId":"unknown-invoice","AccountId":"check-user@example.com",'
+            b'{"InvoiceId":"unknown-invoice","TransactionId":"tx-check-unknown-1",'
+            b'"AccountId":"check-user@example.com",'
+            b'"Amount":"990.00","Currency":"RUB","Status":"Completed"}'
+        )
+        missing_transaction_payload = (
+            b'{"InvoiceId":"'
+            + invoice_id.encode("utf-8")
+            + b'","AccountId":"check-user@example.com",'
             b'"Amount":"990.00","Currency":"RUB","Status":"Completed"}'
         )
 
         valid_response = signed_cloudpayments_post("check", valid_payload)
         mismatch_response = signed_cloudpayments_post("check", amount_mismatch_payload)
         unknown_response = signed_cloudpayments_post("check", unknown_payload)
+        missing_transaction_response = signed_cloudpayments_post("check", missing_transaction_payload)
 
         assert valid_response.status_code == 200
         assert valid_response.json() == {"code": 0}
@@ -1059,13 +1069,16 @@ def test_signed_check_webhook_validates_order_before_acknowledging() -> None:
         assert mismatch_response.json() == {"code": 12}
         assert unknown_response.status_code == 200
         assert unknown_response.json() == {"code": 10}
+        assert missing_transaction_response.status_code == 200
+        assert missing_transaction_response.json() == {"code": 13}
         with SessionLocal() as db:
             events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
             order = db.query(Order).one()
 
-        assert [event.status for event in events] == ["processed", "failed", "failed"]
+        assert [event.status for event in events] == ["processed", "failed", "failed", "failed"]
         assert events[1].error_code == "amount_mismatch"
         assert events[2].error_code == "order_not_found"
+        assert events[3].error_code == "missing_transaction_id"
         assert order.status == "pending_payment"
     finally:
         allow_unsigned_cloudpayments_webhooks_for_test()
@@ -1103,13 +1116,15 @@ def test_signed_check_webhook_rejects_account_and_currency_mismatch() -> None:
         account_mismatch_payload = (
             b'{"InvoiceId":"'
             + invoice_id.encode("utf-8")
-            + b'","AccountId":"other@example.com","Amount":"990.00",'
+            + b'","TransactionId":"tx-check-account-mismatch-1",'
+            b'"AccountId":"other@example.com","Amount":"990.00",'
             b'"Currency":"RUB","Status":"Completed"}'
         )
         currency_mismatch_payload = (
             b'{"InvoiceId":"'
             + invoice_id.encode("utf-8")
-            + b'","AccountId":"check-account-user@example.com","Amount":"990.00",'
+            + b'","TransactionId":"tx-check-currency-mismatch-1",'
+            b'"AccountId":"check-account-user@example.com","Amount":"990.00",'
             b'"Currency":"USD","Status":"Completed"}'
         )
 
@@ -2612,6 +2627,50 @@ def test_refund_webhook_accepts_provider_payload_without_currency_or_refund_id()
     assert refund.currency == "RUB"
     assert refund_event.status == "processed"
     assert refund_event.transaction_id == "tx-provider-refund-original"
+
+
+def test_refund_webhook_rejects_failed_payment_without_refund_mutation() -> None:
+    invoice_id = create_checkout_invoice(email="refund-failed-user@example.com")
+    fail_response = client.post(
+        "/api/cloudpayments/fail",
+        json={
+            "InvoiceId": invoice_id,
+            "TransactionId": "tx-refund-failed-original",
+            "AccountId": "refund-failed-user@example.com",
+            "Amount": "990.00",
+            "Currency": "RUB",
+            "ReasonCode": "5",
+            "Reason": "Insufficient funds",
+        },
+    )
+    refund_response = client.post(
+        "/api/cloudpayments/refund",
+        json={
+            "InvoiceId": invoice_id,
+            "TransactionId": "tx-refund-failed-refund",
+            "PaymentTransactionId": "tx-refund-failed-original",
+            "AccountId": "refund-failed-user@example.com",
+            "Amount": "990.00",
+            "Currency": "RUB",
+        },
+    )
+
+    assert fail_response.status_code == 200
+    assert refund_response.status_code == 200
+    assert refund_response.json() == {"code": 0}
+    with SessionLocal() as db:
+        order = db.query(Order).one()
+        payment = db.query(Payment).one()
+        events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
+        refund_count = db.query(Refund).count()
+
+    assert order.status == "payment_failed"
+    assert payment.status == "failed"
+    assert payment.refunded_amount_minor == 0
+    assert refund_count == 0
+    assert [event.status for event in events] == ["processed", "failed"]
+    assert events[-1].payment_id == payment.id
+    assert events[-1].error_code == "payment_not_refundable"
 
 
 def test_distinct_refund_ids_for_same_transaction_are_not_deduplicated() -> None:
