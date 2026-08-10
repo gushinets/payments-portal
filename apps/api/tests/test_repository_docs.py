@@ -300,6 +300,32 @@ def test_runtime_env_windows_acl_removes_inheritance_for_current_user() -> None:
     ]
 
 
+def test_harness_directory_windows_acl_removes_inheritance_for_current_user() -> None:
+    invocations: list[list[str]] = []
+
+    repo.protect_private_directory(
+        Path("C:/repo/.harness"),
+        os_name="nt",
+        environ={
+            "USERNAME": "agent",
+            "USERDOMAIN": "WORKSTATION",
+            "COMPUTERNAME": "WORKSTATION",
+        },
+        runner=lambda command: invocations.append(command),
+        icacls_path="icacls",
+    )
+
+    assert invocations == [
+        [
+            "icacls",
+            "C:/repo/.harness",
+            "/inheritance:r",
+            "/grant:r",
+            "agent:(OI)(CI)F",
+        ]
+    ]
+
+
 def test_runtime_env_windows_acl_preserves_domain_user() -> None:
     invocations: list[list[str]] = []
 

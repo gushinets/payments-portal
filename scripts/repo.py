@@ -171,9 +171,26 @@ def resolve_cloudpayments_api_secret(
     )
 
 
-def protect_private_directory(path: Path, *, os_name: str | None = None) -> None:
+def protect_private_directory(
+    path: Path,
+    *,
+    os_name: str | None = None,
+    environ: dict[str, str] | None = None,
+    runner: Callable[[list[str]], object] = run,
+    icacls_path: str | None = None,
+) -> None:
     if (os.name if os_name is None else os_name) != "nt":
         path.chmod(0o700)
+        return
+
+    protect_windows_path_acl(
+        path,
+        permission="(OI)(CI)F",
+        failure_message="Failed to protect harness directory ACLs on Windows",
+        environ=environ,
+        runner=runner,
+        icacls_path=icacls_path,
+    )
 
 
 def windows_current_user(*, environ: dict[str, str] | None = None) -> str:
@@ -188,6 +205,29 @@ def windows_current_user(*, environ: dict[str, str] | None = None) -> str:
     return username
 
 
+def protect_windows_path_acl(
+    path: Path,
+    *,
+    permission: str,
+    failure_message: str,
+    environ: dict[str, str] | None = None,
+    runner: Callable[[list[str]], object] = run,
+    icacls_path: str | None = None,
+) -> None:
+    principal = windows_current_user(environ=environ)
+    command = [
+        icacls_path or tool("icacls"),
+        str(path),
+        "/inheritance:r",
+        "/grant:r",
+        f"{principal}:{permission}",
+    ]
+    try:
+        runner(command)
+    except (HarnessError, OSError, subprocess.CalledProcessError) as exc:
+        raise HarnessError(failure_message) from exc
+
+
 def protect_runtime_env_file(
     path: Path,
     *,
@@ -200,18 +240,14 @@ def protect_runtime_env_file(
         path.chmod(0o600)
         return
 
-    principal = windows_current_user(environ=environ)
-    command = [
-        icacls_path or tool("icacls"),
-        str(path),
-        "/inheritance:r",
-        "/grant:r",
-        f"{principal}:RW",
-    ]
-    try:
-        runner(command)
-    except (HarnessError, OSError, subprocess.CalledProcessError) as exc:
-        raise HarnessError("Failed to protect runtime.env ACLs on Windows") from exc
+    protect_windows_path_acl(
+        path,
+        permission="RW",
+        failure_message="Failed to protect runtime.env ACLs on Windows",
+        environ=environ,
+        runner=runner,
+        icacls_path=icacls_path,
+    )
 
 
 def write_protected_runtime_env_file(path: Path, contents: str) -> None:

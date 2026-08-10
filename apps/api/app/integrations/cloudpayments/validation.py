@@ -113,6 +113,7 @@ def confirm_validation_error(
     if currency.upper() != order.currency.upper():
         return "currency_mismatch"
 
+    # RU MVP fixed-price orders do not support partial captures.
     if amount_minor != order.amount_minor:
         return "amount_mismatch"
 
@@ -129,7 +130,7 @@ def confirm_validation_error(
         if payment is not None:
             authorized_amount_minor = payment.amount_minor
 
-    if amount_minor > authorized_amount_minor:
+    if authorized_amount_minor != order.amount_minor:
         return "amount_mismatch"
     return None
 
