@@ -13,6 +13,7 @@ from app.integrations.cloudpayments.payload import (
 from app.models import Order, Payment, User
 
 REFUNDABLE_PAYMENT_STATUSES = {"succeeded", "partially_refunded", "refunded"}
+SUPPORTED_RECURRENT_INTERVALS = {"week", "month"}
 
 
 def parse_int_at_least(value: object, minimum: int) -> int | None:
@@ -167,6 +168,7 @@ def validation_error_message(error_code: str) -> str:
         "invalid_subscription_require_confirmation": "Webhook subscription confirmation mode is invalid",
         "missing_subscription_start_date": "Webhook subscription start date is missing",
         "missing_subscription_interval": "Webhook subscription interval is missing",
+        "invalid_subscription_interval": "Webhook subscription interval is invalid",
         "missing_subscription_period": "Webhook subscription period is missing",
         "invalid_subscription_period": "Webhook subscription period is invalid",
         "missing_subscription_status": "Webhook subscription status is missing",
@@ -272,8 +274,11 @@ def recurrent_validation_error(
         return "invalid_subscription_require_confirmation"
     if get_first(payload, "StartDate", "startDate", "start_at") is None:
         return "missing_subscription_start_date"
-    if get_first(payload, "Interval", "interval") is None:
+    interval = get_first(payload, "Interval", "interval")
+    if interval is None:
         return "missing_subscription_interval"
+    if str(interval).strip().lower() not in SUPPORTED_RECURRENT_INTERVALS:
+        return "invalid_subscription_interval"
     period = get_first(payload, "Period", "period")
     if period is None:
         return "missing_subscription_period"

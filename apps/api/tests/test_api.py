@@ -3116,6 +3116,12 @@ def test_recurrent_webhook_validates_required_provider_fields() -> None:
             {**base_payload, "Interval": "\t"},
         ),
         (
+            "invalid_subscription_interval",
+            "invalid_subscription_interval",
+            0,
+            {**base_payload, "Interval": "Year"},
+        ),
+        (
             "missing_subscription_period",
             "missing_subscription_period",
             0,
