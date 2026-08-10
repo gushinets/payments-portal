@@ -377,12 +377,16 @@ def get_payment_status(
     )
     payment = None
     if order is not None:
-        payment = (
-            db.query(Payment)
-            .filter(Payment.order_id == order.id)
-            .order_by(Payment.created_at.desc())
-            .first()
-        )
+        payment_query = db.query(Payment).filter(Payment.order_id == order.id)
+        if order.status == "canceled":
+            payment = (
+                payment_query.filter(
+                    Payment.status.in_(("succeeded", "partially_refunded", "refunded"))
+                )
+                .order_by(Payment.captured_at.desc(), Payment.created_at.desc())
+                .first()
+            )
+        payment = payment or payment_query.order_by(Payment.created_at.desc()).first()
 
     return {
         "tenant_id": user.tenant_id,

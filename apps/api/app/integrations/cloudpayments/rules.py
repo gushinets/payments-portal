@@ -45,7 +45,7 @@ def payment_schema_error(
         if mode != "auth" and provider_status != "completed":
             return "payment_schema_mismatch"
     if endpoint == "pay":
-        if mode == "auth" and provider_status != "authorized":
+        if mode == "auth" and provider_status not in {"authorized", "completed"}:
             return "payment_schema_mismatch"
         if mode != "auth" and provider_status != "completed":
             return "payment_schema_mismatch"

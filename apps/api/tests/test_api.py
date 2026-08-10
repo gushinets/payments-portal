@@ -1235,22 +1235,18 @@ def test_charge_pay_rejects_missing_declined_and_unknown_statuses() -> None:
     assert {event.error_code for event in events} == {"payment_schema_mismatch"}
 
 
-def test_authorized_pay_requires_confirm_or_cancel_to_reach_terminal_state() -> None:
+def test_auth_mode_completed_pay_marks_order_paid() -> None:
     invoice_id = create_checkout_invoice(
-        email="dms-confirm-user@example.com",
+        email="dms-completed-pay-user@example.com",
         widget_mode="auth",
     )
-    with SessionLocal() as db:
-        provider_account = db.query(PaymentProviderAccount).one()
-        provider_account.config = {**provider_account.config, "widget_mode": "charge"}
-        db.commit()
 
     completed_pay_response = client.post(
         "/api/cloudpayments/pay",
         json={
             "InvoiceId": invoice_id,
             "TransactionId": "tx-dms-completed-pay-1",
-            "AccountId": "dms-confirm-user@example.com",
+            "AccountId": "dms-completed-pay-user@example.com",
             "Amount": "990.00",
             "Currency": "RUB",
             "Status": "Completed",
@@ -1260,14 +1256,23 @@ def test_authorized_pay_requires_confirm_or_cancel_to_reach_terminal_state() -> 
     assert completed_pay_response.status_code == 200
     assert completed_pay_response.json() == {"code": 0}
     with SessionLocal() as db:
-        order_after_completed_pay = db.query(Order).one()
-        failed_event = db.query(PaymentWebhookEvent).one()
-        assert db.query(Payment).count() == 0
+        order = db.query(Order).one()
+        payment = db.query(Payment).one()
+        event = db.query(PaymentWebhookEvent).one()
 
-    assert order_after_completed_pay.status == "pending_payment"
-    assert order_after_completed_pay.paid_at is None
-    assert failed_event.status == "failed"
-    assert failed_event.error_code == "payment_schema_mismatch"
+    assert order.status == "paid"
+    assert order.paid_at
+    assert payment.status == "succeeded"
+    assert payment.captured_at
+    assert event.status == "processed"
+    assert event.event_type == "payment.succeeded"
+
+
+def test_authorized_pay_requires_confirm_or_cancel_to_reach_terminal_state() -> None:
+    invoice_id = create_checkout_invoice(
+        email="dms-confirm-user@example.com",
+        widget_mode="auth",
+    )
 
     pay_response = client.post(
         "/api/cloudpayments/pay",
@@ -2328,7 +2333,7 @@ def test_late_distinct_pay_is_persisted_without_reopening_paid_order() -> None:
     assert events[2].error_code is None
 
 
-def test_completed_pay_after_auth_cancel_is_rejected_and_cannot_be_refunded() -> None:
+def test_payment_status_surfaces_late_charge_on_canceled_order_after_later_fail() -> None:
     invoice_id = create_checkout_invoice(
         email="late-charge-refund@example.com",
         widget_mode="auth",
@@ -2352,35 +2357,46 @@ def test_completed_pay_after_auth_cancel_is_rejected_and_cannot_be_refunded() ->
             "Status": "Completed",
         },
     )
-    refund_response = client.post(
-        "/api/cloudpayments/refund",
+    late_fail_response = client.post(
+        "/api/cloudpayments/fail",
         json={
             "InvoiceId": invoice_id,
-            "TransactionId": "tx-late-distinct-refund",
-            "PaymentTransactionId": "tx-late-distinct-charge",
+            "TransactionId": "tx-late-distinct-fail",
+            "AccountId": "late-charge-refund@example.com",
             "Amount": "990.00",
+            "Currency": "RUB",
+            "ReasonCode": "5",
+            "Reason": "Insufficient funds",
         },
+    )
+    status_response = client.get(
+        f"/api/auth/payment-status?invoice_id={invoice_id}&email=late-charge-refund@example.com"
     )
 
     assert cancel_response.json() == {"code": 0}
     assert late_pay_response.json() == {"code": 0}
-    assert refund_response.json() == {"code": 0}
+    assert late_fail_response.json() == {"code": 0}
+    assert status_response.status_code == 200
+    status_payload = status_response.json()
+    assert status_payload["order"]["status"] == "canceled"
+    assert status_payload["payment"]["status"] == "succeeded"
+    assert status_payload["payment"]["provider_payment_id"] == "tx-late-distinct-charge"
     with SessionLocal() as db:
         order = db.query(Order).one()
         payments = db.query(Payment).order_by(Payment.provider_payment_id).all()
-        refund_count = db.query(Refund).count()
         events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
 
     assert order.status == "canceled"
     assert [(payment.provider_payment_id, payment.status) for payment in payments] == [
         ("tx-canceled-attempt", "canceled"),
+        ("tx-late-distinct-charge", "succeeded"),
+        ("tx-late-distinct-fail", "failed"),
     ]
-    assert refund_count == 0
-    assert [event.status for event in events] == ["processed", "failed", "failed"]
+    assert [event.status for event in events] == ["processed", "processed", "processed"]
     assert [event.error_code for event in events] == [
         None,
-        "payment_schema_mismatch",
-        "payment_not_found",
+        None,
+        None,
     ]
 
 
