@@ -84,6 +84,7 @@ async def receive_cloudpayments_webhook(
                 amount_minor=normalized_event.amount_minor,
                 currency=normalized_event.currency,
                 idempotency_key=normalized_event.idempotency_key,
+                account_id=normalized_event.account_id,
             )
             db.commit()
             db.refresh(event)
@@ -125,4 +126,8 @@ async def receive_cloudpayments_webhook(
             detail=normalized_event.error_message,
         )
 
-    return cloudpayments_adapter.webhook_success_response(normalized_event)
+    return cloudpayments_adapter.webhook_event_response(
+        endpoint=endpoint,
+        error_code=event.error_code,
+        event_status=event.status,
+    )

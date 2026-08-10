@@ -233,7 +233,7 @@ export function CheckoutClient({
     if (errorValue instanceof ApiError && errorValue.status === 409) {
       if (
         errorValue.detail === "cloudpayments_public_terminal_id_missing" ||
-        errorValue.detail === "cloudpayments_one_stage_charge_required"
+        errorValue.detail === "cloudpayments_widget_mode_invalid"
       ) {
         return "Платёжный терминал настроен некорректно. Обратитесь в поддержку.";
       }

@@ -160,13 +160,117 @@ def resolve_cloudpayments_public_id(
     )
 
 
+def resolve_cloudpayments_api_secret(
+    local_env: dict[str, str], *, environ: dict[str, str] | None = None
+) -> str:
+    environment = os.environ if environ is None else environ
+    return (
+        environment.get("CLOUDPAYMENTS_API_SECRET")
+        or local_env.get("CLOUDPAYMENTS_API_SECRET")
+        or "test-cloudpayments-signing-key"
+    )
+
+
+def protect_private_directory(
+    path: Path,
+    *,
+    os_name: str | None = None,
+    environ: dict[str, str] | None = None,
+    runner: Callable[[list[str]], object] = run,
+    icacls_path: str | None = None,
+) -> None:
+    if (os.name if os_name is None else os_name) != "nt":
+        path.chmod(0o700)
+        return
+
+    protect_windows_path_acl(
+        path,
+        permission="(OI)(CI)F",
+        failure_message="Failed to protect harness directory ACLs on Windows",
+        environ=environ,
+        runner=runner,
+        icacls_path=icacls_path,
+    )
+
+
+def windows_current_user(*, environ: dict[str, str] | None = None) -> str:
+    environment = os.environ if environ is None else environ
+    username = environment.get("USERNAME") or environment.get("USER")
+    if not username:
+        raise HarnessError("Cannot protect runtime.env on Windows: current user is unknown")
+    domain = environment.get("USERDOMAIN")
+    computer = environment.get("COMPUTERNAME")
+    if domain and domain != computer:
+        return f"{domain}\\{username}"
+    return username
+
+
+def protect_windows_path_acl(
+    path: Path,
+    *,
+    permission: str,
+    failure_message: str,
+    environ: dict[str, str] | None = None,
+    runner: Callable[[list[str]], object] = run,
+    icacls_path: str | None = None,
+) -> None:
+    principal = windows_current_user(environ=environ)
+    command = [
+        icacls_path or tool("icacls"),
+        str(path),
+        "/inheritance:r",
+        "/grant:r",
+        f"{principal}:{permission}",
+    ]
+    try:
+        runner(command)
+    except (HarnessError, OSError, subprocess.CalledProcessError) as exc:
+        raise HarnessError(failure_message) from exc
+
+
+def protect_runtime_env_file(
+    path: Path,
+    *,
+    os_name: str | None = None,
+    environ: dict[str, str] | None = None,
+    runner: Callable[[list[str]], object] = run,
+    icacls_path: str | None = None,
+) -> None:
+    if (os.name if os_name is None else os_name) != "nt":
+        path.chmod(0o600)
+        return
+
+    protect_windows_path_acl(
+        path,
+        permission="RW",
+        failure_message="Failed to protect runtime.env ACLs on Windows",
+        environ=environ,
+        runner=runner,
+        icacls_path=icacls_path,
+    )
+
+
+def write_protected_runtime_env_file(path: Path, contents: str) -> None:
+    temporary_path = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        temporary_path.write_text("", encoding="utf-8")
+        protect_runtime_env_file(temporary_path)
+        temporary_path.write_text(contents, encoding="utf-8")
+        os.replace(temporary_path, path)
+    except Exception:
+        temporary_path.unlink(missing_ok=True)
+        raise
+
+
 def write_runtime(config: RuntimeConfig) -> None:
-    HARNESS_DIR.mkdir(parents=True, exist_ok=True)
+    HARNESS_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
+    protect_private_directory(HARNESS_DIR)
     RUNTIME_JSON.write_text(json.dumps(asdict(config), indent=2) + "\n", encoding="utf-8")
     caddy_origin = f"http://localhost:{runtime_caddy_port(config)}"
     local_env = read_dotenv()
     app_public_base_url = local_env.get("APP_PUBLIC_BASE_URL", caddy_origin)
     cloudpayments_public_id = resolve_cloudpayments_public_id(local_env)
+    cloudpayments_api_secret = resolve_cloudpayments_api_secret(local_env)
     cors_allow_origins = caddy_origin
     if app_public_base_url != caddy_origin:
         cors_allow_origins = f"{caddy_origin},{app_public_base_url}"
@@ -201,11 +305,12 @@ def write_runtime(config: RuntimeConfig) -> None:
         "OTEL_EXPORTER_OTLP_ENDPOINT": "http://observability:4318",
         "OTEL_SERVICE_NAME": "payment-portal-api",
         "CLOUDPAYMENTS_PUBLIC_ID": cloudpayments_public_id,
+        "CLOUDPAYMENTS_API_SECRET": cloudpayments_api_secret,
         "CLOUDPAYMENTS_ENABLED": "false",
     }
-    RUNTIME_ENV.write_text(
+    write_protected_runtime_env_file(
+        RUNTIME_ENV,
         "".join(f"{key}={value}\n" for key, value in values.items()),
-        encoding="utf-8",
     )
 
 

@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import { expect, request as playwrightRequest, test } from "@playwright/test";
 import {
   completeProviderUiSuccess,
@@ -6,8 +7,25 @@ import {
 } from "./provider-ui-stub";
 
 const apiBaseURL = process.env.PLAYWRIGHT_API_BASE_URL ?? "http://127.0.0.1:8000";
+const cloudpaymentsApiSecret =
+  process.env.PLAYWRIGHT_CLOUDPAYMENTS_API_SECRET ??
+  process.env.CLOUDPAYMENTS_API_SECRET ??
+  "test-cloudpayments-signing-key";
 
 test.setTimeout(60_000);
+
+function signedCloudpaymentsJson(payload: Record<string, unknown>) {
+  const body = JSON.stringify(payload);
+  return {
+    body,
+    headers: {
+      "Content-HMAC": createHmac("sha256", cloudpaymentsApiSecret)
+        .update(body)
+        .digest("base64"),
+      "Content-Type": "application/json"
+    }
+  };
+}
 
 test("legal acceptance gates checkout and webhook state remains authoritative", async ({ page }, testInfo) => {
   const api = await playwrightRequest.newContext({ baseURL: apiBaseURL });
@@ -67,16 +85,19 @@ test("legal acceptance gates checkout and webhook state remains authoritative", 
   const beforeState = await beforeWebhook.json();
   expect(beforeState.product_state.status).toBe("pending");
 
-  const webhook = await api.post("/api/cloudpayments/pay", {
-    data: {
+  const webhookPayload = signedCloudpaymentsJson({
       InvoiceId: invoice,
       TransactionId: `tx-${Date.now()}`,
       AccountId: email,
       Amount: "990.00",
       Currency: "RUB",
+      Status: "Completed",
       CardFirstSix: "411111",
       CardLastFour: "1111"
-    }
+  });
+  const webhook = await api.post("/api/cloudpayments/pay", {
+    headers: webhookPayload.headers,
+    data: webhookPayload.body
   });
   expect(webhook.ok()).toBeTruthy();
 

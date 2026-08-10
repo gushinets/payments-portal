@@ -59,6 +59,47 @@ function paymentStatusPayload(status: "pending" | "active" | "failed") {
   };
 }
 
+function canceledPaymentStatusPayload() {
+  return {
+    ...paymentStatusPayload("pending"),
+    order: {
+      order_id: "22222222-2222-4222-8222-222222222222",
+      order_number: "RU-CANCELED",
+      status: "canceled",
+      amount_minor: 99000,
+      currency: "RUB",
+      paid_at: null,
+      failed_at: null
+    },
+    payment: {
+      payment_id: "33333333-3333-4333-8333-333333333333",
+      status: "canceled",
+      provider_payment_id: "tx-canceled",
+      amount_minor: 99000,
+      currency: "RUB",
+      captured_at: null,
+      failed_at: null,
+      refunded_amount_minor: 0
+    }
+  };
+}
+
+function lateSucceededPaymentOnCanceledOrderPayload() {
+  return {
+    ...canceledPaymentStatusPayload(),
+    payment: {
+      payment_id: "44444444-4444-4444-8444-444444444444",
+      status: "succeeded",
+      provider_payment_id: "tx-late-succeeded",
+      amount_minor: 99000,
+      currency: "RUB",
+      captured_at: "2026-08-07T10:00:00Z",
+      failed_at: null,
+      refunded_amount_minor: 0
+    }
+  };
+}
+
 async function renderPollingResult(finalStatus: "active" | "failed") {
   let attempt = 0;
   const realSetInterval = window.setInterval.bind(window);
@@ -137,6 +178,82 @@ describe("PaymentResultClient authoritative status characterization", () => {
       await screen.findByRole("heading", { name: "Не удалось завершить оплату" })
     ).toBeVisible();
     expect(screen.getByText(/Платёж не был подтверждён/)).toBeVisible();
+  });
+
+  it("shows canceled backend state instead of polling forever", async () => {
+    server.use(
+      http.get(`${apiBase}/api/auth/payment-status`, () =>
+        HttpResponse.json(canceledPaymentStatusPayload())
+      )
+    );
+    setRouteSearchParams(
+      "status=pending&product=document-summary&email=buyer%40example.com&invoice=invoice-result"
+    );
+
+    render(<PaymentResultClient />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Платёж отменён" })
+    ).toBeVisible();
+    expect(screen.getByText(/Списание не подтверждено/)).toBeVisible();
+    expect(screen.queryByText("Ожидаем подтверждение")).not.toBeInTheDocument();
+  });
+
+  it("keeps authoritative backend pending state over a canceled return URL", async () => {
+    server.use(
+      http.get(`${apiBase}/api/auth/payment-status`, () =>
+        HttpResponse.json(paymentStatusPayload("pending"))
+      )
+    );
+    setRouteSearchParams(
+      "status=canceled&product=document-summary&email=buyer%40example.com&invoice=invoice-result"
+    );
+
+    render(<PaymentResultClient />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Платёж обрабатывается" })
+    ).toBeVisible();
+    expect(screen.getByText("Ожидаем подтверждение")).toBeVisible();
+    expect(screen.queryByText(/Списание не подтверждено/)).not.toBeInTheDocument();
+  });
+
+  it("shows a support result for a verified late charge on a canceled order", async () => {
+    server.use(
+      http.get(`${apiBase}/api/auth/payment-status`, () =>
+        HttpResponse.json(lateSucceededPaymentOnCanceledOrderPayload())
+      )
+    );
+    setRouteSearchParams(
+      "status=pending&product=document-summary&email=buyer%40example.com&invoice=invoice-result"
+    );
+
+    render(<PaymentResultClient />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Платёж требует проверки" })
+    ).toBeVisible();
+    expect(screen.getByText(/заказ уже отменён/)).toBeVisible();
+    expect(screen.getByText(/Напишите в поддержку/)).toBeVisible();
+    expect(screen.queryByText("Платёж подтверждён")).not.toBeInTheDocument();
+  });
+
+  it("shows canceled URL fallback when backend payload is unavailable", () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    setRouteSearchParams("status=canceled&product=document-summary");
+
+    try {
+      render(<PaymentResultClient />);
+
+      expect(
+        screen.getByRole("heading", { name: "Платёж отменён" })
+      ).toBeVisible();
+      expect(screen.getByText(/Списание не подтверждено/)).toBeVisible();
+      expect(screen.queryByText("Ожидаем подтверждение")).not.toBeInTheDocument();
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 
   it("keeps pending state when payment-status polling aborts", async () => {
