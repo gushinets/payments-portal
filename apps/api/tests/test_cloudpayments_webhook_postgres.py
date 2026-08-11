@@ -4,12 +4,10 @@ import base64
 import hashlib
 import hmac
 import os
-import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -27,9 +25,6 @@ pytestmark = pytest.mark.skipif(
 os.environ.setdefault("DATABASE_URL", TEST_DATABASE_URL or "sqlite+pysqlite:///:memory:")
 os.environ["CLOUDPAYMENTS_API_SECRET"] = ""
 os.environ["SKIP_LEGAL_SEED"] = "true"
-
-api_root = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(api_root))
 
 from app.core.database import Base, get_db  # noqa: E402
 from app.integrations.cloudpayments import adapter as cloudpayments_adapter_module  # noqa: E402

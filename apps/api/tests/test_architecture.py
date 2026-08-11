@@ -2,11 +2,8 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-import sys
 
-ROOT = Path(__file__).resolve().parents[3]
 os.environ["DATABASE_URL"] = "sqlite+pysqlite:///:memory:"
-sys.path.insert(0, str(ROOT / "apps" / "api"))
 
 from scripts.repo import check_python_boundaries
 

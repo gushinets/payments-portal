@@ -4,18 +4,13 @@ import base64
 import hashlib
 import hmac
 import os
-import sys
 import uuid
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
 os.environ["DATABASE_URL"] = "sqlite+pysqlite:///:memory:"
 os.environ["CLOUDPAYMENTS_API_SECRET"] = ""
 os.environ["CLOUDPAYMENTS_PUBLIC_ID"] = "pk_test_provider"
 os.environ["SKIP_LEGAL_SEED"] = "true"
-
-api_root = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(api_root))
 
 from fastapi.testclient import TestClient  # noqa: E402
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware  # noqa: E402

@@ -1,15 +1,9 @@
 from __future__ import annotations
 
-import sys
-from pathlib import Path
 from types import SimpleNamespace
 
-
-api_root = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(api_root))
-
-import app.core.email as email_sender  # noqa: E402
-import app.core.password_reset_email as password_reset_email  # noqa: E402
+import app.core.email as email_sender
+import app.core.password_reset_email as password_reset_email
 
 
 class FakeSmtp:
