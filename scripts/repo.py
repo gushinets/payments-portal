@@ -61,6 +61,24 @@ class RuntimeConfig:
     database_name: str
 
 
+@dataclass(frozen=True)
+class TrivyGateSummary:
+    report: str
+    critical_vulnerabilities: int
+    fixable_high_vulnerabilities: int
+    high_or_critical_misconfigurations: int
+    high_or_critical_secrets: int
+
+    @property
+    def blocking_findings(self) -> int:
+        return (
+            self.critical_vulnerabilities
+            + self.fixable_high_vulnerabilities
+            + self.high_or_critical_misconfigurations
+            + self.high_or_critical_secrets
+        )
+
+
 def run(
     command: list[str],
     *,
@@ -1041,6 +1059,108 @@ def cmd_pr_title(args: argparse.Namespace) -> None:
     print("PR title is valid.")
 
 
+def summarize_trivy_report(path: Path) -> TrivyGateSummary:
+    try:
+        report = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        raise HarnessError(f"Cannot read Trivy report {path}: {exc}") from exc
+
+    results = report.get("Results", [])
+    if not isinstance(results, list):
+        raise HarnessError(f"Invalid Trivy report {path}: Results must be a list")
+
+    critical_vulnerabilities = 0
+    fixable_high_vulnerabilities = 0
+    high_or_critical_misconfigurations = 0
+    high_or_critical_secrets = 0
+
+    for result in results:
+        if not isinstance(result, dict):
+            raise HarnessError(f"Invalid Trivy report {path}: result must be an object")
+        for vulnerability in result.get("Vulnerabilities") or []:
+            severity = vulnerability.get("Severity")
+            if severity == "CRITICAL":
+                critical_vulnerabilities += 1
+            elif severity == "HIGH" and vulnerability.get("FixedVersion"):
+                fixable_high_vulnerabilities += 1
+        for misconfiguration in result.get("Misconfigurations") or []:
+            if misconfiguration.get("Severity") in {"HIGH", "CRITICAL"}:
+                high_or_critical_misconfigurations += 1
+        for secret in result.get("Secrets") or []:
+            if secret.get("Severity") in {"HIGH", "CRITICAL"}:
+                high_or_critical_secrets += 1
+
+    return TrivyGateSummary(
+        report=path.name,
+        critical_vulnerabilities=critical_vulnerabilities,
+        fixable_high_vulnerabilities=fixable_high_vulnerabilities,
+        high_or_critical_misconfigurations=high_or_critical_misconfigurations,
+        high_or_critical_secrets=high_or_critical_secrets,
+    )
+
+
+def redact_trivy_report(path: Path) -> int:
+    try:
+        report = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        raise HarnessError(f"Cannot read Trivy report {path}: {exc}") from exc
+
+    results = report.get("Results", [])
+    if not isinstance(results, list):
+        raise HarnessError(f"Invalid Trivy report {path}: Results must be a list")
+
+    redacted_secrets = 0
+    for result in results:
+        if not isinstance(result, dict):
+            raise HarnessError(f"Invalid Trivy report {path}: result must be an object")
+        for secret in result.get("Secrets") or []:
+            if not isinstance(secret, dict):
+                raise HarnessError(
+                    f"Invalid Trivy report {path}: secret must be an object"
+                )
+            secret.pop("Match", None)
+            secret.pop("Code", None)
+            redacted_secrets += 1
+
+    path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    return redacted_secrets
+
+
+def cmd_trivy(args: argparse.Namespace) -> None:
+    report_dir = Path(args.report_dir)
+    if args.action == "redact":
+        reports = sorted(report_dir.glob("*.json"))
+        redacted = sum(redact_trivy_report(path) for path in reports)
+        print(f"Redacted secret values from {len(reports)} report(s): {redacted}")
+        return
+
+    expected_reports = ("filesystem.json", "api-image.json", "web-image.json")
+    missing = [name for name in expected_reports if not (report_dir / name).is_file()]
+    if missing:
+        raise HarnessError("Missing Trivy reports: " + ", ".join(missing))
+
+    summaries = [
+        summarize_trivy_report(report_dir / report) for report in expected_reports
+    ]
+    for summary in summaries:
+        print(
+            f"{summary.report}: blocking={summary.blocking_findings} "
+            f"critical_vulnerabilities={summary.critical_vulnerabilities} "
+            f"fixable_high_vulnerabilities={summary.fixable_high_vulnerabilities} "
+            f"high_or_critical_misconfigurations="
+            f"{summary.high_or_critical_misconfigurations} "
+            f"high_or_critical_secrets={summary.high_or_critical_secrets}"
+        )
+
+    blocking_findings = sum(summary.blocking_findings for summary in summaries)
+    if blocking_findings:
+        raise HarnessError(
+            f"Trivy policy rejected {blocking_findings} finding(s); "
+            "review the redacted workflow artifact for details"
+        )
+    print("Trivy policy passed.")
+
+
 def cmd_check(args: argparse.Namespace) -> None:
     check_env = canonical_check_environment()
     cmd_docs(argparse.Namespace())
@@ -1154,6 +1274,10 @@ def build_parser() -> argparse.ArgumentParser:
     title = sub.add_parser("pr-title")
     title.add_argument("title")
     title.set_defaults(func=cmd_pr_title)
+    trivy = sub.add_parser("trivy")
+    trivy.add_argument("action", choices=("gate", "redact"))
+    trivy.add_argument("report_dir")
+    trivy.set_defaults(func=cmd_trivy)
     observe = sub.add_parser("observe")
     observe.add_argument("signal", choices=("logs", "metrics", "traces"))
     observe.add_argument("--request-id")

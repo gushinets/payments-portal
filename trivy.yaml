@@ -1,0 +1,15 @@
+pkg:
+  include-dev-deps: true
+
+misconfiguration:
+  config-file-schemas:
+    - security/trivy/schemas/docker-compose.json
+  scanners:
+    - dockerfile
+    - yaml
+
+rego:
+  check:
+    - security/trivy/checks
+  namespaces:
+    - user

@@ -9,3 +9,6 @@
 /.env.production.example @gushinets
 /docker-compose.prod.yml @gushinets
 /.github/ @gushinets
+/.trivyignore.yaml @gushinets
+/trivy.yaml @gushinets
+/security/trivy/ @gushinets

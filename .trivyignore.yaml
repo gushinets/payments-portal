@@ -1,0 +1,12 @@
+# Trivy exceptions are intentionally empty while the initial baseline is cleaned.
+# Every future entry must include all of: id, paths, statement, and expired_at.
+# Example:
+# vulnerabilities:
+#   - id: CVE-2099-0001
+#     paths: ["usr/lib/example"]
+#     statement: "Temporary upstream exception; tracked by ANY-000."
+#     expired_at: 2099-01-31
+
+vulnerabilities: []
+misconfigurations: []
+secrets: []
