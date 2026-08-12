@@ -3896,6 +3896,36 @@ def test_cloudpayments_webhook_is_saved_without_secret_hmac() -> None:
     assert event.error_code == "order_not_found"
 
 
+def test_cloudpayments_form_webhook_preserves_response_and_parsing_contract() -> None:
+    response = client.post(
+        "/api/cloudpayments/pay",
+        headers={"Content-HMAC": "demo-signature"},
+        data={
+            "InvoiceId": "invoice-form-1",
+            "TransactionId": "tx-form-1",
+            "AccountId": "form-user@example.com",
+            "Amount": "990.00",
+            "Currency": "RUB",
+            "CardFirstSix": "411111",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"code": 0}
+
+    with SessionLocal() as db:
+        event = db.query(PaymentWebhookEvent).one()
+
+    assert event.invoice_id == "invoice-form-1"
+    assert event.transaction_id == "tx-form-1"
+    assert event.account_id == "form-user@example.com"
+    assert event.amount_minor == 99000
+    assert event.currency == "RUB"
+    assert event.raw_payload["CardFirstSix"] == "[redacted]"
+    assert event.status == "failed"
+    assert event.error_code == "order_not_found"
+
+
 def test_malformed_cloudpayments_payload_omits_raw_body() -> None:
     response = client.post(
         "/api/cloudpayments/pay",

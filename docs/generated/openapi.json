@@ -233,6 +233,13 @@
       },
       "ValidationError": {
         "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
           "loc": {
             "items": {
               "anyOf": [
@@ -827,7 +834,10 @@
             "description": "Successful Response"
           }
         },
-        "summary": "Health"
+        "summary": "Health",
+        "tags": [
+          "health"
+        ]
       }
     },
     "/health/live": {
@@ -843,7 +853,10 @@
             "description": "Successful Response"
           }
         },
-        "summary": "Health Live"
+        "summary": "Health Live",
+        "tags": [
+          "health"
+        ]
       }
     },
     "/health/ready": {
@@ -859,7 +872,10 @@
             "description": "Successful Response"
           }
         },
-        "summary": "Health Ready"
+        "summary": "Health Ready",
+        "tags": [
+          "health"
+        ]
       }
     }
   }

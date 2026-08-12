@@ -6,7 +6,7 @@ import subprocess
 import sys
 import time
 
-import httpx
+import httpx2
 
 
 def _available_port() -> int:
@@ -53,13 +53,13 @@ def test_uvicorn_serves_application_with_production_proxy_flags() -> None:
             if process.poll() is not None:
                 break
             try:
-                response = httpx.get(
+                response = httpx2.get(
                     f"http://127.0.0.1:{port}/health/live",
                     headers={"X-Request-ID": "uvicorn-compatibility"},
                     timeout=0.5,
                 )
                 break
-            except httpx.ConnectError:
+            except httpx2.ConnectError:
                 time.sleep(0.1)
 
         if response is None:

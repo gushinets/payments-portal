@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-from collections import Counter
 
 os.environ["DATABASE_URL"] = "sqlite+pysqlite:///:memory:"
 os.environ["CLOUDPAYMENTS_API_SECRET"] = ""
@@ -19,16 +18,16 @@ def test_app_factory_builds_independent_apps_with_stable_routes() -> None:
 
     assert first_app is not second_app
 
-    route_counts = Counter(route.path for route in first_app.routes)
-    for path in ("/health", "/health/live", "/health/ready", "/metrics"):
-        assert route_counts[path] == 1
+    with TestClient(first_app) as client:
+        for path in ("/health", "/health/live", "/health/ready", "/metrics"):
+            assert client.get(path).status_code == 200
 
     openapi = first_app.openapi()
     assert openapi["paths"]["/health"]["get"]["tags"] == ["health"]
     assert "/metrics" not in openapi["paths"]
 
 
-def test_app_factory_preserves_validation_and_cors_contract() -> None:
+def test_app_factory_preserves_validation_and_development_cors_contract() -> None:
     import app.main as main_module
 
     with TestClient(main_module.create_app()) as client:
@@ -47,6 +46,46 @@ def test_app_factory_preserves_validation_and_cors_contract() -> None:
     assert preflight_response.headers["access-control-allow-origin"] == (
         "http://localhost:3000"
     )
+
+
+def test_app_factory_preserves_configured_production_cors_contract() -> None:
+    import app.main as main_module
+
+    original_origins = main_module.settings.cors_allow_origins
+    object.__setattr__(
+        main_module.settings,
+        "cors_allow_origins",
+        ("https://payments.example.com",),
+    )
+    try:
+        with TestClient(main_module.create_app()) as client:
+            allowed_response = client.options(
+                "/api/auth/register",
+                headers={
+                    "Origin": "https://payments.example.com",
+                    "Access-Control-Request-Method": "POST",
+                },
+            )
+            rejected_response = client.options(
+                "/api/auth/register",
+                headers={
+                    "Origin": "https://untrusted.example.com",
+                    "Access-Control-Request-Method": "POST",
+                },
+            )
+    finally:
+        object.__setattr__(
+            main_module.settings,
+            "cors_allow_origins",
+            original_origins,
+        )
+
+    assert allowed_response.status_code == 200
+    assert allowed_response.headers["access-control-allow-origin"] == (
+        "https://payments.example.com"
+    )
+    assert rejected_response.status_code == 400
+    assert "access-control-allow-origin" not in rejected_response.headers
 
 
 def test_app_factory_runs_lifespan_once(monkeypatch) -> None:
