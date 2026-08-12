@@ -16,8 +16,6 @@ COPY docs/legal ./docs/legal
 
 RUN npm run build:web
 
-RUN chown -R node:node /app
-
 USER node
 
 EXPOSE 3000

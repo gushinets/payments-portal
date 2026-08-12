@@ -17,6 +17,8 @@ jobs:
     name: Code quality
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      POETRY_VIRTUALENVS_CREATE: "false"
     steps:
       - name: Check out repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -24,15 +26,17 @@ jobs:
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
-          cache: pip
-          cache-dependency-path: apps/api/requirements-dev.txt
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "24"
           cache: npm
+      - name: Install Poetry
+        run: python -m pip install poetry==1.8.4
+      - name: Validate API dependency lock
+        run: poetry --directory apps/api check --lock
       - name: Install API dependencies
-        run: python -m pip install -r apps/api/requirements-dev.txt
+        run: poetry --directory apps/api install --with dev --no-root
       - name: Install web dependencies
         run: npm ci
       - name: Run fast checks
@@ -56,6 +60,17 @@ jobs:
     name: Production gate
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      POETRY_VIRTUALENVS_CREATE: "false"
+      CI_ARTIFACTS: .harness/ci
+      COMPOSE_PROJECT_NAME: payment-portal-ci-${{ github.run_id }}-${{ github.run_attempt }}
+      POSTGRES_DB: payment_portal_test
+      POSTGRES_USER: anytoolai
+      API_PORT: "8000"
+      WEB_PORT: "3000"
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+      CORS_ALLOW_ORIGINS: http://localhost:3000
+      CLOUDPAYMENTS_ENABLED: "false"
     services:
       postgres:
         image: postgres:18.4-alpine3.22@sha256:774521500f4c22761b25a6bdb772a0a3c2e8dd32468210bdad9231c5752ea398
@@ -70,16 +85,6 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
-    env:
-      CI_ARTIFACTS: .harness/ci
-      COMPOSE_PROJECT_NAME: payment-portal-ci-${{ github.run_id }}-${{ github.run_attempt }}
-      POSTGRES_DB: payment_portal_test
-      POSTGRES_USER: anytoolai
-      API_PORT: "8000"
-      WEB_PORT: "3000"
-      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
-      CORS_ALLOW_ORIGINS: http://localhost:3000
-      CLOUDPAYMENTS_ENABLED: "false"
     steps:
       - name: Check out repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -87,20 +92,22 @@ jobs:
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
-          cache: pip
-          cache-dependency-path: apps/api/requirements-dev.txt
+      - name: Install Poetry
+        run: python -m pip install poetry==1.8.4
       - name: Install API dependencies
-        run: python -m pip install -r apps/api/requirements-dev.txt
+        run: poetry --directory apps/api install --with dev --no-root
       - name: Create private CI environment
         shell: bash
         run: |
           mkdir -p "$CI_ARTIFACTS"
           ci_env="$RUNNER_TEMP/payment-portal-ci.env"
-          database_url="postgresql+psycopg://${POSTGRES_USER}@127.0.0.1:5432/${POSTGRES_DB}"
-          echo "::add-mask::$database_url"
+          application_database_url="postgresql+psycopg://${POSTGRES_USER}@127.0.0.1:5432/${POSTGRES_DB}"
+          test_database_url="postgresql+psycopg://${POSTGRES_USER}@127.0.0.1:5432/${POSTGRES_DB}_tests"
+          echo "::add-mask::$application_database_url"
+          echo "::add-mask::$test_database_url"
           {
-            echo "TEST_POSTGRES_DATABASE_URL=$database_url"
-            echo "DATABASE_URL=$database_url"
+            echo "TEST_POSTGRES_DATABASE_URL=$test_database_url"
+            echo "DATABASE_URL=$application_database_url"
             echo "POSTGRES_DB=$POSTGRES_DB"
             echo "POSTGRES_USER=$POSTGRES_USER"
             echo "POSTGRES_HOST_AUTH_METHOD=trust"
@@ -118,6 +125,8 @@ jobs:
           source "$CI_ENV_FILE"
           set +a
           python -m pytest \
+            apps/api/tests/compatibility/test_database_fixtures.py \
+            apps/api/tests/compatibility/test_sqlalchemy_postgres.py \
             apps/api/tests/test_alembic_postgres.py \
             apps/api/tests/test_cloudpayments_webhook_postgres.py \
             --junitxml="$CI_ARTIFACTS/postgres-junit.xml" \
@@ -193,6 +202,7 @@ jobs:
   browser:
     runs-on: ubuntu-latest
     env:
+      POETRY_VIRTUALENVS_CREATE: "false"
       PLAYWRIGHT_PROVIDER_UI_STUB: "true"
       CLOUDPAYMENTS_PUBLIC_ID: test-provider-public-id
     steps:
@@ -204,7 +214,8 @@ jobs:
         with:
           node-version: "24"
           cache: npm
-      - run: python -m pip install -r apps/api/requirements-dev.txt
+      - run: python -m pip install poetry==1.8.4
+      - run: poetry --directory apps/api install --with dev --no-root
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: python scripts/repo.py up

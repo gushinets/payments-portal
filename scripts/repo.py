@@ -331,7 +331,14 @@ def compose_command(config: RuntimeConfig) -> list[str]:
 
 def cmd_doctor(_: argparse.Namespace) -> None:
     failures: list[str] = []
-    commands = (["git", "--version"], ["python", "--version"], ["node", "--version"], ["npm", "--version"], ["docker", "--version"])
+    commands = (
+        ["git", "--version"],
+        ["python", "--version"],
+        ["poetry", "--version"],
+        ["node", "--version"],
+        ["npm", "--version"],
+        ["docker", "--version"],
+    )
     for command in commands:
         try:
             executable = tool(command[0])
@@ -343,7 +350,12 @@ def cmd_doctor(_: argparse.Namespace) -> None:
         run([tool("docker"), "compose", "version"], capture=True)
     except (HarnessError, subprocess.CalledProcessError) as exc:
         failures.append(str(exc))
-    required = [ROOT / ".env.example", ROOT / "package-lock.json", ROOT / "apps/api/requirements-dev.txt"]
+    required = [
+        ROOT / ".env.example",
+        ROOT / "package-lock.json",
+        ROOT / "apps/api/pyproject.toml",
+        ROOT / "apps/api/poetry.lock",
+    ]
     for path in required:
         if not path.exists():
             failures.append(f"Missing required file: {path.relative_to(ROOT)}")
@@ -376,12 +388,31 @@ def runtime_ports(config: RuntimeConfig) -> Iterable[int]:
 
 def cmd_setup(_: argparse.Namespace) -> None:
     tool("python")
+    poetry = tool("poetry")
     tool("npm")
     venv = ROOT / ".venv"
     if not venv.exists():
         run([sys.executable, "-m", "venv", str(venv)])
-    venv_python = venv / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
-    run([str(venv_python), "-m", "pip", "install", "-r", "apps/api/requirements-dev.txt"])
+    venv_bin = venv / ("Scripts" if os.name == "nt" else "bin")
+    poetry_environment = {
+        **os.environ,
+        "PATH": f"{venv_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+        "POETRY_VIRTUALENVS_CREATE": "false",
+        "VIRTUAL_ENV": str(venv),
+    }
+    run(
+        [
+            poetry,
+            "--directory",
+            "apps/api",
+            "install",
+            "--with",
+            "dev",
+            "--no-root",
+            "--sync",
+        ],
+        env=poetry_environment,
+    )
     run([tool("npm"), "ci"])
     run([tool("npm"), "run", "playwright:install"])
     config = runtime_config()

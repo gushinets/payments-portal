@@ -26,3 +26,27 @@ npm run dev:api
 npm run lint:web
 npm run test:api
 ```
+
+## API dependency management
+
+`apps/api/pyproject.toml` and `apps/api/poetry.lock` are the source of truth for
+API dependencies. The API Docker image and repository setup install directly
+from the Poetry lock file.
+
+The Makefile API targets below are local shortcuts for Unix-compatible shells
+on Linux, macOS, and WSL. They are not a native Windows command interface; use
+WSL for these targets. The root npm commands backed by `scripts/repo.py` remain
+the cross-platform interface for repository setup, checks, and harness control.
+
+After changing an API dependency, regenerate the lock file:
+
+```bash
+make lock_api
+```
+
+To synchronize development dependencies into the canonical root virtual
+environment, run:
+
+```bash
+make install_api
+```
