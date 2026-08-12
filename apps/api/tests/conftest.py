@@ -14,6 +14,7 @@ from .support.postgres import (
     drop_test_database,
     reset_public_schema,
     run_migrations,
+    validate_test_database_url,
 )
 
 
@@ -28,29 +29,34 @@ def database_test_url() -> URL:
     without PostgreSQL requirements should not depend on it and remain portable.
     """
     if configured_url := os.getenv("TEST_POSTGRES_DATABASE_URL"):
-        return make_url(configured_url)
+        # Temporary CI compatibility: CI currently uses an application database
+        # plus a separately named disposable database. Remove this branch once
+        # local and CI tests share one canonical test database name.
+        database_url = make_url(configured_url)
+    else:
+        required_names = (
+            "POSTGRES_USER_TEST",
+            "POSTGRES_PASSWORD_TEST",
+            "POSTGRES_PORT_TEST",
+            "POSTGRES_DB_TEST",
+        )
+        missing_names = [name for name in required_names if not os.getenv(name)]
+        if missing_names:
+            pytest.skip(
+                "PostgreSQL test configuration is unavailable; missing: "
+                + ", ".join(missing_names)
+            )
 
-    required_names = (
-        "POSTGRES_USER_TEST",
-        "POSTGRES_PASSWORD_TEST",
-        "POSTGRES_PORT_TEST",
-        "POSTGRES_DB_TEST",
-    )
-    missing_names = [name for name in required_names if not os.getenv(name)]
-    if missing_names:
-        pytest.skip(
-            "PostgreSQL test configuration is unavailable; missing: "
-            + ", ".join(missing_names)
+        database_url = URL.create(
+            drivername="postgresql+psycopg",
+            username=os.environ["POSTGRES_USER_TEST"],
+            password=os.environ["POSTGRES_PASSWORD_TEST"],
+            host=os.getenv("POSTGRES_HOST_TEST", "localhost"),
+            port=int(os.environ["POSTGRES_PORT_TEST"]),
+            database=os.environ["POSTGRES_DB_TEST"],
         )
 
-    return URL.create(
-        drivername="postgresql+psycopg",
-        username=os.environ["POSTGRES_USER_TEST"],
-        password=os.environ["POSTGRES_PASSWORD_TEST"],
-        host=os.getenv("POSTGRES_HOST_TEST", "localhost"),
-        port=int(os.environ["POSTGRES_PORT_TEST"]),
-        database=os.environ["POSTGRES_DB_TEST"],
-    )
+    return validate_test_database_url(database_url)
 
 
 @pytest.fixture(scope="session")

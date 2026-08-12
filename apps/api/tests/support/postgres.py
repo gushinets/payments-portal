@@ -9,8 +9,34 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine, URL
 
 
+_TEST_DATABASE_SUFFIXES = ("_test", "_tests")
+_SYSTEM_DATABASE_NAMES = frozenset({"postgres", "template0", "template1"})
+
+
+def validate_test_database_url(database_url: URL) -> URL:
+    """Reject database targets that are unsafe for destructive test fixtures."""
+    if database_url.get_backend_name() != "postgresql":
+        raise ValueError("PostgreSQL test fixtures require a PostgreSQL URL")
+
+    database_name = database_url.database
+    if not database_name:
+        raise ValueError("PostgreSQL test URL must include a database name")
+
+    normalized_name = database_name.lower()
+    if normalized_name in _SYSTEM_DATABASE_NAMES or not normalized_name.endswith(
+        _TEST_DATABASE_SUFFIXES
+    ):
+        raise ValueError(
+            "Refusing destructive test operations for database "
+            f"{database_name!r}; its name must end with '_test' or '_tests'"
+        )
+
+    return database_url
+
+
 def create_test_database(database_test_url: URL, database_admin_url: URL) -> None:
     """Create a fresh physical PostgreSQL database for the test session."""
+    validate_test_database_url(database_test_url)
     admin_engine = create_engine(database_admin_url, isolation_level="AUTOCOMMIT")
     try:
         with admin_engine.connect() as connection:
@@ -27,6 +53,7 @@ def create_test_database(database_test_url: URL, database_admin_url: URL) -> Non
 
 def drop_test_database(database_test_url: URL, database_admin_url: URL) -> None:
     """Remove the physical PostgreSQL database after the test session."""
+    validate_test_database_url(database_test_url)
     admin_engine = create_engine(database_admin_url, isolation_level="AUTOCOMMIT")
     try:
         with admin_engine.connect() as connection:

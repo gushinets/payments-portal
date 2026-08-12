@@ -15,6 +15,19 @@ def _available_port() -> int:
         return listener.getsockname()[1]
 
 
+def _stop_process(process: subprocess.Popen[str]) -> str:
+    if process.poll() is None:
+        process.terminate()
+
+    try:
+        output, _ = process.communicate(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        output, _ = process.communicate(timeout=5)
+
+    return output or ""
+
+
 def test_uvicorn_serves_application_with_production_proxy_flags() -> None:
     port = _available_port()
     environment = {
@@ -47,9 +60,9 @@ def test_uvicorn_serves_application_with_production_proxy_flags() -> None:
         text=True,
     )
 
+    response = None
     try:
         deadline = time.monotonic() + 10
-        response = None
         while time.monotonic() < deadline:
             if process.poll() is not None:
                 break
@@ -62,18 +75,12 @@ def test_uvicorn_serves_application_with_production_proxy_flags() -> None:
                 break
             except httpx2.ConnectError:
                 time.sleep(0.1)
-
-        if response is None:
-            output = process.stdout.read() if process.stdout is not None else ""
-            raise AssertionError(f"Uvicorn did not become ready:\n{output}")
-
-        assert response.status_code == 200
-        assert response.json() == {"status": "ok"}
-        assert response.headers["X-Request-ID"] == "uvicorn-compatibility"
     finally:
-        process.terminate()
-        try:
-            process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait(timeout=5)
+        output = _stop_process(process)
+
+    if response is None:
+        raise AssertionError(f"Uvicorn did not become ready:\n{output}")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+    assert response.headers["X-Request-ID"] == "uvicorn-compatibility"
