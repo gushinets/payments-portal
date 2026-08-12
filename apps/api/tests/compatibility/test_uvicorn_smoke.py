@@ -20,6 +20,7 @@ def test_uvicorn_serves_application_with_production_proxy_flags() -> None:
     environment = {
         **os.environ,
         "DATABASE_URL": "sqlite+pysqlite:///:memory:",
+        "OTEL_EXPORTER_OTLP_ENDPOINT": "http://127.0.0.1:4318",
         "SKIP_LEGAL_SEED": "true",
     }
     process = subprocess.Popen(
