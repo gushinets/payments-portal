@@ -1,3 +1,5 @@
+# Local API shortcuts require a Unix-compatible shell and virtualenv layout.
+# Use WSL on Windows; cross-platform repository workflows use scripts/repo.py.
 API_VENV := $(CURDIR)/.venv
 API_VENV_BIN := $(API_VENV)/bin
 API_PYTHON := $(API_VENV_BIN)/python
