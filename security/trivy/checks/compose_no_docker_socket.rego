@@ -1,6 +1,8 @@
 # METADATA
 # title: Compose services must not mount the Docker socket
 # description: Docker socket access is equivalent to control of the container host.
+# schemas:
+#   - input: schema["docker-compose"]
 # custom:
 #   id: ANY-COMPOSE-003
 #   severity: CRITICAL

@@ -48,7 +48,26 @@ jobs:
           hide-progress: true
           timeout: "15m"
           trivyignores: ".trivyignore.yaml"
-          skip-dirs: ".git,.harness,node_modules,apps/web/.next,.venv"
+          skip-dirs: ".git,.harness,node_modules,apps/web/.next,.venv,security/trivy/fixtures"
+
+      - name: Scan non-Compose IaC coverage fixtures
+        run: >-
+          trivy config --config trivy.yaml --format json
+          --output "$RUNNER_TEMP/non-compose-iac.json"
+          security/trivy/fixtures/non-compose
+
+      - name: Verify non-Compose IaC scanner coverage
+        run: >-
+          python3 scripts/repo.py trivy verify-iac-fixture
+          "$RUNNER_TEMP/non-compose-iac.json"
+
+      - name: Scan Docker Compose configurations
+        run: >-
+          trivy config --config trivy-compose.yaml --format json
+          --output "$TRIVY_REPORT_DIR/compose.json"
+          --ignorefile .trivyignore.yaml
+          --skip-dirs .git,.harness,node_modules,apps/web/.next,.venv,security/trivy/fixtures
+          .
 
       - name: Build production API image
         run: >-

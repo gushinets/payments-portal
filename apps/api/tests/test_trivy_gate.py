@@ -69,11 +69,12 @@ def test_gate_blocks_high_or_critical_secrets_and_misconfigurations(
     assert summary.blocking_findings == 2
 
 
-def test_gate_requires_all_three_reports_and_does_not_print_secret_values(
+def test_gate_requires_all_reports_and_does_not_print_secret_values(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     write_report(tmp_path / "filesystem.json")
+    write_report(tmp_path / "compose.json")
     write_report(tmp_path / "api-image.json")
     write_report(
         tmp_path / "web-image.json",
@@ -92,7 +93,10 @@ def test_gate_rejects_missing_report(tmp_path: Path) -> None:
 
     with pytest.raises(
         HarnessError,
-        match="Missing Trivy reports: api-image.json, web-image.json",
+        match=(
+            r"Missing Trivy reports: compose\.json, api-image\.json, "
+            r"web-image\.json"
+        ),
     ):
         args = type("Args", (), {"action": "gate", "report_dir": str(tmp_path)})()
         cmd_trivy(args)
@@ -135,3 +139,35 @@ def test_trivy_ignore_entries_are_scoped_explained_and_unexpired() -> None:
             if isinstance(expiration, str):
                 expiration = date.fromisoformat(expiration)
             assert expiration >= date.today()
+
+
+def test_non_compose_iac_fixture_requires_yaml_and_json_findings(
+    tmp_path: Path,
+) -> None:
+    report = tmp_path / "non-compose-iac.json"
+    report.write_text(
+        json.dumps(
+            {
+                "SchemaVersion": 2,
+                "Results": [
+                    {
+                        "Target": "security/trivy/fixtures/non-compose/insecure-pod.json",
+                        "Misconfigurations": [{"Severity": "HIGH"}],
+                    },
+                    {
+                        "Target": "security/trivy/fixtures/non-compose/insecure-pod.yaml",
+                        "Misconfigurations": [{"Severity": "HIGH"}],
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    args = type(
+        "Args",
+        (),
+        {"action": "verify-iac-fixture", "report_dir": str(report)},
+    )()
+
+    cmd_trivy(args)

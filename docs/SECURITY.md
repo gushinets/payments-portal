@@ -1,7 +1,7 @@
 # Security Requirements
 
 Status: authoritative
-Last verified: 2026-07-11
+Last verified: 2026-08-13
 
 ## Sensitive data
 
@@ -43,9 +43,12 @@ Scans must write findings to reports instead of workflow logs. Secret match and
 source-code fields are removed before upload so detected values are neither
 printed nor retained in workflow artifacts.
 
-Trivy's built-in Dockerfile checks are supplemented by repository-owned Compose
-checks under `security/trivy`. They reject privileged services, host namespace
-sharing, Docker socket mounts, and adding all Linux capabilities.
+Trivy's built-in IaC checks are supplemented by a separate Compose-policy scan
+configured in `trivy-compose.yaml`. Repository-owned checks under
+`security/trivy` reject privileged services, host namespace sharing, Docker
+socket mounts, and adding all Linux capabilities. Keeping the raw YAML scan
+separate prevents it from replacing Trivy's built-in Kubernetes and other IaC
+adapters.
 
 The initial rollout is report-only while the baseline is remediated. After human
 approval, set the repository Actions variable `TRIVY_ENFORCE=true`. The checked-in

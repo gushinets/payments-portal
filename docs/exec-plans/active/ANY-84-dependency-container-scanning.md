@@ -2,7 +2,7 @@
 
 Status: active
 Started: 2026-08-12
-Linear: https://linear.app/paveldik/issue/ANY-84/nastroit-dependabot-i-regulyarnoe-trivy-skanirovanie-proekta
+Linear: ANY-84
 
 ## Objective
 
@@ -17,8 +17,10 @@ every relevant repository change and on a weekly schedule.
 - Dependabot PR titles use the `ANY-84 -` prefix so automated updates satisfy
   the repository title gate.
 - The workflow uses the SHA-pinned Trivy action and an explicit Trivy version.
-- A schema-filtered custom Trivy policy covers Docker Compose because Trivy's
-  built-in misconfiguration scanner supports Dockerfiles but not Compose files.
+- A separate, schema-bound custom Trivy policy scan covers Docker Compose
+  because Trivy's built-in misconfiguration scanner supports Dockerfiles but
+  not Compose files. Separating raw YAML scanning preserves the built-in IaC
+  adapters used by the filesystem scan.
 - Filesystem vulnerability scanning includes development dependencies.
 - Filesystem and image findings are written to JSON files and uploaded with
   14-day retention. Secret match and source-code fields are stripped before
@@ -67,12 +69,15 @@ mixing upgrades into the scanner rollout.
 - Trivy 0.70.0 accepted `.trivyignore.yaml` and the repository config.
 - Custom Compose checks reported all four expected findings on an unsafe fixture
   and zero custom findings in the checked-in Compose files.
+- Dedicated non-Compose Kubernetes YAML and JSON fixtures remain visible to
+  Trivy's built-in misconfiguration scanner alongside the separate Compose
+  policy scan.
 - The enforcement helper rejected the measured baseline without printing
   finding details; focused gate, redaction, and ignore-policy tests passed
-  (`6 passed`).
+  (`7 passed`).
 - Dependabot and workflow YAML parsed successfully; configuration options were
   reviewed against current GitHub and Trivy documentation.
-- Final full canonical check passed outside the filesystem sandbox: 132 API
+- Final full canonical check passed outside the filesystem sandbox: 133 API
   tests, 9 web boundary tests, 25 web component tests, docs, architecture,
   lint, and the production web build. PostgreSQL integration and browser tests
   were skipped because their required database URL and running harness were not

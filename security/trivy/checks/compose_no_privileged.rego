@@ -1,6 +1,8 @@
 # METADATA
 # title: Compose services must not run privileged
 # description: Privileged containers bypass most container isolation controls.
+# schemas:
+#   - input: schema["docker-compose"]
 # custom:
 #   id: ANY-COMPOSE-001
 #   severity: CRITICAL

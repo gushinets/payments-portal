@@ -1,6 +1,8 @@
 # METADATA
 # title: Compose services must not share host namespaces
 # description: Host network, PID, or IPC modes weaken container isolation.
+# schemas:
+#   - input: schema["docker-compose"]
 # custom:
 #   id: ANY-COMPOSE-002
 #   severity: HIGH

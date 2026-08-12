@@ -1128,13 +1128,42 @@ def redact_trivy_report(path: Path) -> int:
 
 def cmd_trivy(args: argparse.Namespace) -> None:
     report_dir = Path(args.report_dir)
+    if args.action == "verify-iac-fixture":
+        try:
+            report = json.loads(report_dir.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError) as exc:
+            raise HarnessError(f"Cannot read Trivy report {report_dir}: {exc}") from exc
+        results = report.get("Results", [])
+        if not isinstance(results, list):
+            raise HarnessError(
+                f"Invalid Trivy report {report_dir}: Results must be a list"
+            )
+        covered_fixtures = {
+            Path(result.get("Target", "")).name
+            for result in results
+            if isinstance(result, dict) and result.get("Misconfigurations")
+        }
+        expected_fixtures = {"insecure-pod.json", "insecure-pod.yaml"}
+        missing = sorted(expected_fixtures - covered_fixtures)
+        if missing:
+            raise HarnessError(
+                "Trivy did not scan non-Compose IaC fixture(s): " + ", ".join(missing)
+            )
+        print("Verified non-Compose IaC scanner coverage for YAML and JSON.")
+        return
+
     if args.action == "redact":
         reports = sorted(report_dir.glob("*.json"))
         redacted = sum(redact_trivy_report(path) for path in reports)
         print(f"Redacted secret values from {len(reports)} report(s): {redacted}")
         return
 
-    expected_reports = ("filesystem.json", "api-image.json", "web-image.json")
+    expected_reports = (
+        "filesystem.json",
+        "compose.json",
+        "api-image.json",
+        "web-image.json",
+    )
     missing = [name for name in expected_reports if not (report_dir / name).is_file()]
     if missing:
         raise HarnessError("Missing Trivy reports: " + ", ".join(missing))
@@ -1275,7 +1304,9 @@ def build_parser() -> argparse.ArgumentParser:
     title.add_argument("title")
     title.set_defaults(func=cmd_pr_title)
     trivy = sub.add_parser("trivy")
-    trivy.add_argument("action", choices=("gate", "redact"))
+    trivy.add_argument(
+        "action", choices=("gate", "redact", "verify-iac-fixture")
+    )
     trivy.add_argument("report_dir")
     trivy.set_defaults(func=cmd_trivy)
     observe = sub.add_parser("observe")

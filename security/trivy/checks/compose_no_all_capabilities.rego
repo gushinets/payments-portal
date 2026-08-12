@@ -1,6 +1,8 @@
 # METADATA
 # title: Compose services must not add every Linux capability
 # description: Adding ALL capabilities removes an important container boundary.
+# schemas:
+#   - input: schema["docker-compose"]
 # custom:
 #   id: ANY-COMPOSE-004
 #   severity: HIGH
