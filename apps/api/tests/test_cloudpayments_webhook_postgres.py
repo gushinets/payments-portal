@@ -6,23 +6,17 @@ import hmac
 import os
 import threading
 import time
+from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.engine import Engine
+from sqlalchemy.orm import Session, sessionmaker
 
+from apps.api.tests.support.postgres import reset_public_schema
 
-TEST_DATABASE_URL = os.getenv("TEST_POSTGRES_DATABASE_URL")
-
-pytestmark = pytest.mark.skipif(
-    not TEST_DATABASE_URL,
-    reason="set TEST_POSTGRES_DATABASE_URL to run PostgreSQL webhook integration tests",
-)
-
-os.environ.setdefault("DATABASE_URL", TEST_DATABASE_URL or "sqlite+pysqlite:///:memory:")
 os.environ["CLOUDPAYMENTS_API_SECRET"] = ""
 os.environ["SKIP_LEGAL_SEED"] = "true"
 
@@ -43,13 +37,37 @@ from app.models import (  # noqa: E402
 )
 
 
-engine = create_engine(TEST_DATABASE_URL, future=True) if TEST_DATABASE_URL else None
-TestingSessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
-_original_verify_cloudpayments_signature = verify_cloudpayments_signature
+@pytest.fixture
+def webhook_database(
+    postgres_engine: Engine,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> Iterator[sessionmaker[Session]]:
+    """Provide isolated PostgreSQL state and sessions for webhook persistence tests.
 
+    Use this module-local fixture when a webhook test needs ORM-created metadata,
+    FastAPI database injection, or independent sessions for concurrent requests.
+    Signature verification is bypassed because these tests cover persistence;
+    signature contract tests must restore the real verifier explicitly.
+    """
+    reset_public_schema(postgres_engine)
+    Base.metadata.create_all(postgres_engine)
 
-def _verified_webhook_for_test(raw_body: bytes, headers: dict[str, str]) -> bool:
-    return True
+    def override_get_db() -> Iterator[Session]:
+        with postgres_session_factory() as db:
+            yield db
+
+    monkeypatch.setattr(
+        cloudpayments_adapter_module,
+        "verify_cloudpayments_signature",
+        lambda _raw_body, _headers: True,
+    )
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        yield postgres_session_factory
+    finally:
+        app.dependency_overrides.clear()
+        reset_public_schema(postgres_engine)
 
 
 def cloudpayments_signature(raw_body: bytes, secret: str = "test-secret") -> str:
@@ -58,52 +76,14 @@ def cloudpayments_signature(raw_body: bytes, secret: str = "test-secret") -> str
     ).decode("ascii")
 
 
-def allow_unsigned_cloudpayments_webhooks_for_test() -> None:
-    cloudpayments_adapter_module.verify_cloudpayments_signature = _verified_webhook_for_test
-
-
-def require_signed_cloudpayments_webhooks_for_test() -> None:
-    cloudpayments_adapter_module.verify_cloudpayments_signature = (
-        _original_verify_cloudpayments_signature
-    )
-
-
-def reset_schema() -> None:
-    assert engine is not None
-    with engine.begin() as connection:
-        connection.execute(text("DROP SCHEMA IF EXISTS public CASCADE"))
-        connection.execute(text("CREATE SCHEMA public"))
-    Base.metadata.create_all(engine)
-
-
-def clear_schema() -> None:
-    assert engine is not None
-    with engine.begin() as connection:
-        connection.execute(text("DROP SCHEMA IF EXISTS public CASCADE"))
-        connection.execute(text("CREATE SCHEMA public"))
-
-
-@pytest.fixture(autouse=True)
-def clean_schema_after_test():
-    allow_unsigned_cloudpayments_webhooks_for_test()
-    yield
-    require_signed_cloudpayments_webhooks_for_test()
-    if engine is not None:
-        clear_schema()
-    app.dependency_overrides.clear()
-
-
-def override_get_db():
-    db = TestingSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
-def seed_order(invoice_id: str, *, widget_mode: str = "charge") -> None:
+def seed_order(
+    session_factory: sessionmaker[Session],
+    invoice_id: str,
+    *,
+    widget_mode: str = "charge",
+) -> None:
     now = datetime.now(timezone.utc)
-    with TestingSessionLocal() as db:
+    with session_factory() as db:
         db.add(
             Region(
                 code="ru",
@@ -197,12 +177,13 @@ def refund_payload(
     }
 
 
-def test_raw_webhook_event_survives_failed_normalization_and_can_retry(monkeypatch) -> None:
-    reset_schema()
-    app.dependency_overrides[get_db] = override_get_db
+def test_raw_webhook_event_survives_failed_normalization_and_can_retry(
+    monkeypatch: pytest.MonkeyPatch,
+    webhook_database: sessionmaker[Session],
+) -> None:
     client = TestClient(app, raise_server_exceptions=False)
     invoice_id = "inv-durable-1"
-    seed_order(invoice_id)
+    seed_order(webhook_database, invoice_id)
 
     original_upsert = cloudpayments_processing.upsert_payment_from_webhook
 
@@ -228,7 +209,7 @@ def test_raw_webhook_event_survives_failed_normalization_and_can_retry(monkeypat
     )
 
     assert failed_response.status_code == 500
-    with TestingSessionLocal() as db:
+    with webhook_database() as db:
         event = db.query(PaymentWebhookEvent).one()
         order = db.query(Order).one()
         payment_count = db.query(Payment).count()
@@ -247,7 +228,7 @@ def test_raw_webhook_event_survives_failed_normalization_and_can_retry(monkeypat
     retry_response = client.post("/api/cloudpayments/pay", json=payload)
 
     assert retry_response.status_code == 200
-    with TestingSessionLocal() as db:
+    with webhook_database() as db:
         events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
         order = db.query(Order).one()
         payments = db.query(Payment).all()
@@ -257,14 +238,13 @@ def test_raw_webhook_event_survives_failed_normalization_and_can_retry(monkeypat
     assert len(payments) == 1
     assert payments[0].provider_payment_id == "tx-durable-1"
 
-    app.dependency_overrides.clear()
 
-
-def test_concurrent_duplicate_webhook_is_serialized_with_provider_payment_id(monkeypatch) -> None:
-    reset_schema()
-    app.dependency_overrides[get_db] = override_get_db
+def test_concurrent_duplicate_webhook_is_serialized_with_provider_payment_id(
+    monkeypatch: pytest.MonkeyPatch,
+    webhook_database: sessionmaker[Session],
+) -> None:
     invoice_id = "inv-concurrent-1"
-    seed_order(invoice_id)
+    seed_order(webhook_database, invoice_id)
 
     original_upsert = cloudpayments_processing.upsert_payment_from_webhook
     first_upsert_entered = threading.Event()
@@ -300,42 +280,44 @@ def test_concurrent_duplicate_webhook_is_serialized_with_provider_payment_id(mon
         with TestClient(app, raise_server_exceptions=False) as client:
             return client.post("/api/cloudpayments/pay", json=payload)
 
-    try:
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            first_result = executor.submit(post_webhook)
-            assert first_upsert_entered.wait(timeout=5)
-            second_result = executor.submit(post_webhook)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first_result = executor.submit(post_webhook)
+        assert first_upsert_entered.wait(timeout=5)
+        second_result = executor.submit(post_webhook)
 
-            first_response = first_result.result(timeout=10)
-            second_response = second_result.result(timeout=10)
+        first_response = first_result.result(timeout=10)
+        second_response = second_result.result(timeout=10)
 
-        assert first_response.status_code == 200
-        assert second_response.status_code == 200
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
 
-        with TestingSessionLocal() as db:
-            events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
-            order = db.query(Order).one()
-            payments = db.query(Payment).all()
+    with webhook_database() as db:
+        events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
+        order = db.query(Order).one()
+        payments = db.query(Payment).all()
 
-        assert sorted(event.status for event in events) == ["duplicate", "processed"]
-        processed_event = next(event for event in events if event.status == "processed")
-        duplicate_event = next(event for event in events if event.status == "duplicate")
-        assert duplicate_event.payment_id == processed_event.payment_id
-        assert order.status == "paid"
-        assert len(payments) == 1
-        assert payments[0].provider_payment_id == "tx-concurrent-1"
-    finally:
-        app.dependency_overrides.clear()
+    assert sorted(event.status for event in events) == ["duplicate", "processed"]
+    processed_event = next(event for event in events if event.status == "processed")
+    duplicate_event = next(event for event in events if event.status == "duplicate")
+    assert duplicate_event.payment_id == processed_event.payment_id
+    assert order.status == "paid"
+    assert len(payments) == 1
+    assert payments[0].provider_payment_id == "tx-concurrent-1"
 
 
-def test_signed_duplicate_webhook_is_persisted_once_and_acknowledged_idempotently(monkeypatch) -> None:
-    reset_schema()
-    app.dependency_overrides[get_db] = override_get_db
-    require_signed_cloudpayments_webhooks_for_test()
+def test_signed_duplicate_webhook_is_persisted_once_and_acknowledged_idempotently(
+    monkeypatch: pytest.MonkeyPatch,
+    webhook_database: sessionmaker[Session],
+) -> None:
+    monkeypatch.setattr(
+        cloudpayments_adapter_module,
+        "verify_cloudpayments_signature",
+        verify_cloudpayments_signature,
+    )
     object.__setattr__(settings, "cloudpayments_enabled", True)
     object.__setattr__(settings, "cloudpayments_api_secret", "test-secret")
     invoice_id = "inv-signed-duplicate-1"
-    seed_order(invoice_id)
+    seed_order(webhook_database, invoice_id)
 
     raw_payload = (
         b'{"InvoiceId":"inv-signed-duplicate-1","TransactionId":"tx-signed-duplicate-1",'
@@ -389,7 +371,7 @@ def test_signed_duplicate_webhook_is_persisted_once_and_acknowledged_idempotentl
         assert first_response.json() == {"code": 0}
         assert second_response.json() == {"code": 0}
 
-        with TestingSessionLocal() as db:
+        with webhook_database() as db:
             events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
             payments = db.query(Payment).all()
             order = db.query(Order).one()
@@ -401,16 +383,15 @@ def test_signed_duplicate_webhook_is_persisted_once_and_acknowledged_idempotentl
     finally:
         object.__setattr__(settings, "cloudpayments_enabled", False)
         object.__setattr__(settings, "cloudpayments_api_secret", "")
-        app.dependency_overrides.clear()
 
 
-def test_cancel_after_paid_payment_is_ignored_without_state_regression() -> None:
-    reset_schema()
-    app.dependency_overrides[get_db] = override_get_db
+def test_cancel_after_paid_payment_is_ignored_without_state_regression(
+    webhook_database: sessionmaker[Session],
+) -> None:
     client = TestClient(app, raise_server_exceptions=False)
     invoice_id = "inv-cancel-after-paid-1"
     transaction_id = "tx-paid-before-cancel-1"
-    seed_order(invoice_id, widget_mode="auth")
+    seed_order(webhook_database, invoice_id, widget_mode="auth")
 
     authorized_response = client.post(
         "/api/cloudpayments/pay",
@@ -429,7 +410,7 @@ def test_cancel_after_paid_payment_is_ignored_without_state_regression() -> None
     assert confirm_response.status_code == 200
     assert cancel_response.status_code == 200
     assert cancel_response.json() == {"code": 0}
-    with TestingSessionLocal() as db:
+    with webhook_database() as db:
         order = db.query(Order).one()
         payment = db.query(Payment).one()
         events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
@@ -443,13 +424,13 @@ def test_cancel_after_paid_payment_is_ignored_without_state_regression() -> None
     assert events[-1].error_code == "order_already_paid"
 
 
-def test_cancel_after_refunded_payment_is_ignored_without_refund_mutation() -> None:
-    reset_schema()
-    app.dependency_overrides[get_db] = override_get_db
+def test_cancel_after_refunded_payment_is_ignored_without_refund_mutation(
+    webhook_database: sessionmaker[Session],
+) -> None:
     client = TestClient(app, raise_server_exceptions=False)
     invoice_id = "inv-cancel-after-refund-1"
     transaction_id = "tx-refunded-before-cancel-1"
-    seed_order(invoice_id, widget_mode="auth")
+    seed_order(webhook_database, invoice_id, widget_mode="auth")
 
     authorized_response = client.post(
         "/api/cloudpayments/pay",
@@ -478,7 +459,7 @@ def test_cancel_after_refunded_payment_is_ignored_without_refund_mutation() -> N
     assert refund_response.status_code == 200
     assert cancel_response.status_code == 200
     assert cancel_response.json() == {"code": 0}
-    with TestingSessionLocal() as db:
+    with webhook_database() as db:
         order = db.query(Order).one()
         payment = db.query(Payment).one()
         events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
@@ -493,13 +474,13 @@ def test_cancel_after_refunded_payment_is_ignored_without_refund_mutation() -> N
     assert events[-1].error_code == "order_already_refunded"
 
 
-def test_refund_after_canceled_payment_is_rejected_without_refund_mutation() -> None:
-    reset_schema()
-    app.dependency_overrides[get_db] = override_get_db
+def test_refund_after_canceled_payment_is_rejected_without_refund_mutation(
+    webhook_database: sessionmaker[Session],
+) -> None:
     client = TestClient(app, raise_server_exceptions=False)
     invoice_id = "inv-refund-after-cancel-1"
     transaction_id = "tx-canceled-before-refund-1"
-    seed_order(invoice_id, widget_mode="auth")
+    seed_order(webhook_database, invoice_id, widget_mode="auth")
 
     pay_response = client.post(
         "/api/cloudpayments/pay",
@@ -523,7 +504,7 @@ def test_refund_after_canceled_payment_is_rejected_without_refund_mutation() -> 
     assert cancel_response.status_code == 200
     assert refund_response.status_code == 200
     assert refund_response.json() == {"code": 0}
-    with TestingSessionLocal() as db:
+    with webhook_database() as db:
         order = db.query(Order).one()
         payment = db.query(Payment).one()
         events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
@@ -538,13 +519,13 @@ def test_refund_after_canceled_payment_is_rejected_without_refund_mutation() -> 
     assert events[-1].error_code == "payment_already_canceled"
 
 
-def test_refund_after_failed_payment_is_rejected_without_refund_mutation() -> None:
-    reset_schema()
-    app.dependency_overrides[get_db] = override_get_db
+def test_refund_after_failed_payment_is_rejected_without_refund_mutation(
+    webhook_database: sessionmaker[Session],
+) -> None:
     client = TestClient(app, raise_server_exceptions=False)
     invoice_id = "inv-refund-after-fail-1"
     transaction_id = "tx-failed-before-refund-1"
-    seed_order(invoice_id)
+    seed_order(webhook_database, invoice_id)
 
     fail_response = client.post(
         "/api/cloudpayments/fail",
@@ -567,7 +548,7 @@ def test_refund_after_failed_payment_is_rejected_without_refund_mutation() -> No
     assert fail_response.status_code == 200
     assert refund_response.status_code == 200
     assert refund_response.json() == {"code": 0}
-    with TestingSessionLocal() as db:
+    with webhook_database() as db:
         order = db.query(Order).one()
         payment = db.query(Payment).one()
         events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
@@ -582,12 +563,12 @@ def test_refund_after_failed_payment_is_rejected_without_refund_mutation() -> No
     assert events[-1].error_code == "payment_not_refundable"
 
 
-def test_completed_pay_after_auth_cancel_can_be_refunded_without_reopening_order() -> None:
-    reset_schema()
-    app.dependency_overrides[get_db] = override_get_db
+def test_completed_pay_after_auth_cancel_can_be_refunded_without_reopening_order(
+    webhook_database: sessionmaker[Session],
+) -> None:
     client = TestClient(app, raise_server_exceptions=False)
     invoice_id = "inv-late-charge-refund-pg-1"
-    seed_order(invoice_id, widget_mode="auth")
+    seed_order(webhook_database, invoice_id, widget_mode="auth")
 
     cancel_response = client.post(
         "/api/cloudpayments/cancel",
@@ -610,7 +591,7 @@ def test_completed_pay_after_auth_cancel_can_be_refunded_without_reopening_order
     assert cancel_response.json() == {"code": 0}
     assert late_pay_response.json() == {"code": 0}
     assert refund_response.json() == {"code": 0}
-    with TestingSessionLocal() as db:
+    with webhook_database() as db:
         order = db.query(Order).one()
         payments = db.query(Payment).order_by(Payment.provider_payment_id).all()
         refund_count = db.query(Refund).count()
@@ -630,13 +611,13 @@ def test_completed_pay_after_auth_cancel_can_be_refunded_without_reopening_order
     ]
 
 
-def test_excessive_partial_refund_is_rejected_without_refund_total_mutation() -> None:
-    reset_schema()
-    app.dependency_overrides[get_db] = override_get_db
+def test_excessive_partial_refund_is_rejected_without_refund_total_mutation(
+    webhook_database: sessionmaker[Session],
+) -> None:
     client = TestClient(app, raise_server_exceptions=False)
     invoice_id = "inv-excessive-refund-1"
     transaction_id = "tx-excessive-refund-payment-1"
-    seed_order(invoice_id)
+    seed_order(webhook_database, invoice_id)
 
     pay_response = client.post(
         "/api/cloudpayments/pay",
@@ -665,7 +646,7 @@ def test_excessive_partial_refund_is_rejected_without_refund_total_mutation() ->
     assert first_refund_response.status_code == 200
     assert excessive_refund_response.status_code == 200
     assert excessive_refund_response.json() == {"code": 0}
-    with TestingSessionLocal() as db:
+    with webhook_database() as db:
         order = db.query(Order).one()
         payment = db.query(Payment).one()
         events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
@@ -680,12 +661,12 @@ def test_excessive_partial_refund_is_rejected_without_refund_total_mutation() ->
     assert events[-1].error_code == "refund_amount_exceeds_payment"
 
 
-def test_refund_one_of_multiple_successful_payments_keeps_order_partially_refunded() -> None:
-    reset_schema()
-    app.dependency_overrides[get_db] = override_get_db
+def test_refund_one_of_multiple_successful_payments_keeps_order_partially_refunded(
+    webhook_database: sessionmaker[Session],
+) -> None:
     client = TestClient(app, raise_server_exceptions=False)
     invoice_id = "inv-multi-success-refund-1"
-    seed_order(invoice_id)
+    seed_order(webhook_database, invoice_id)
 
     first_pay_response = client.post(
         "/api/cloudpayments/pay",
@@ -709,7 +690,7 @@ def test_refund_one_of_multiple_successful_payments_keeps_order_partially_refund
     assert second_pay_response.status_code == 200
     assert refund_response.status_code == 200
     assert refund_response.json() == {"code": 0}
-    with TestingSessionLocal() as db:
+    with webhook_database() as db:
         order = db.query(Order).one()
         payments = db.query(Payment).order_by(Payment.provider_payment_id).all()
         refund = db.query(Refund).one()
@@ -723,10 +704,11 @@ def test_refund_one_of_multiple_successful_payments_keeps_order_partially_refund
     assert refund.provider_refund_id == "tx-multi-success-refund-pg-refund-1"
 
 
-def test_concurrent_recurrent_duplicate_delivery_is_serialized(monkeypatch) -> None:
-    reset_schema()
-    app.dependency_overrides[get_db] = override_get_db
-    seed_order("inv-recurrent-account-scope")
+def test_concurrent_recurrent_duplicate_delivery_is_serialized(
+    monkeypatch: pytest.MonkeyPatch,
+    webhook_database: sessionmaker[Session],
+) -> None:
+    seed_order(webhook_database, "inv-recurrent-account-scope")
 
     original_find_account = cloudpayments_processing.find_default_provider_account
     first_account_locked = threading.Event()
@@ -770,27 +752,24 @@ def test_concurrent_recurrent_duplicate_delivery_is_serialized(monkeypatch) -> N
         with TestClient(app, raise_server_exceptions=False) as client:
             return client.post("/api/cloudpayments/recurrent", json=payload)
 
-    try:
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            first_result = executor.submit(post_webhook)
-            assert first_account_locked.wait(timeout=5)
-            second_result = executor.submit(post_webhook)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first_result = executor.submit(post_webhook)
+        assert first_account_locked.wait(timeout=5)
+        second_result = executor.submit(post_webhook)
 
-            first_response = first_result.result(timeout=10)
-            second_response = second_result.result(timeout=10)
+        first_response = first_result.result(timeout=10)
+        second_response = second_result.result(timeout=10)
 
-        assert first_response.status_code == 200
-        assert second_response.status_code == 200
-        assert first_response.json() == {"code": 0}
-        assert second_response.json() == {"code": 0}
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+    assert first_response.json() == {"code": 0}
+    assert second_response.json() == {"code": 0}
 
-        with TestingSessionLocal() as db:
-            events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
+    with webhook_database() as db:
+        events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
 
-        assert sorted(event.status for event in events) == ["duplicate", "processed"]
-        assert {event.idempotency_key for event in events} == {
-            "cloudpayments:recurrent:payload:" + events[0].payload_hash
-        }
-        assert all(event.provider_account_id is not None for event in events)
-    finally:
-        app.dependency_overrides.clear()
+    assert sorted(event.status for event in events) == ["duplicate", "processed"]
+    assert {event.idempotency_key for event in events} == {
+        "cloudpayments:recurrent:payload:" + events[0].payload_hash
+    }
+    assert all(event.provider_account_id is not None for event in events)

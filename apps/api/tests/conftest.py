@@ -90,6 +90,16 @@ def postgres_engine(
         drop_test_database(database_test_url, database_admin_url)
 
 
+@pytest.fixture(scope="session")
+def postgres_session_factory(postgres_engine: Engine) -> sessionmaker[Session]:
+    """Create sessions against the test database owned by ``postgres_engine``."""
+    return sessionmaker(
+        bind=postgres_engine,
+        autoflush=False,
+        autocommit=False,
+    )
+
+
 @pytest.fixture
 def migrated_database(
     postgres_engine: Engine,
@@ -106,18 +116,16 @@ def migrated_database(
 
 
 @pytest.fixture
-def db_session(migrated_database: Engine) -> Iterator[Session]:
+def db_session(
+    migrated_database: Engine,
+    postgres_session_factory: sessionmaker[Session],
+) -> Iterator[Session]:
     """Provide a rollback-safe ORM session backed by the migrated test database.
 
     Use it for tests that need direct ORM setup or assertions. API tests should
     instead depend on a future client fixture that overrides ``get_db``.
     """
-    session_factory = sessionmaker(
-        bind=migrated_database,
-        autoflush=False,
-        autocommit=False,
-    )
-    with session_factory() as session:
+    with postgres_session_factory() as session:
         try:
             yield session
         finally:

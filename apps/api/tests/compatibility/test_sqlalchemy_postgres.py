@@ -9,9 +9,29 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.models import AuthSession, Payment, PaymentWebhookEvent, User
+
 
 def test_postgres_orm_round_trip_and_rollback(migrated_database: Engine) -> None:
-    from app.models import AuthSession, User
+    assert (
+        PaymentWebhookEvent.__table__.c.raw_payload.type.compile(
+            dialect=migrated_database.dialect
+        )
+        == "JSONB"
+    )
+    payment_id_index = next(
+        index
+        for index in Payment.__table__.indexes
+        if index.name == "uq_payments_provider_account_payment_id"
+    )
+    assert payment_id_index.unique is True
+    assert str(payment_id_index.dialect_options["postgresql"]["where"]) == (
+        "provider_payment_id IS NOT NULL"
+    )
+    assert {
+        foreign_key.target_fullname
+        for foreign_key in Payment.__table__.c.order_id.foreign_keys
+    } == {"orders.id"}
 
     verified_at = datetime.now(timezone.utc)
 
@@ -64,6 +84,21 @@ def test_postgres_orm_round_trip_and_rollback(migrated_database: Engine) -> None
                 email_normalized=stored_user.email_normalized,
                 status="active",
                 metadata_={},
+            )
+        )
+        with pytest.raises(IntegrityError):
+            session.commit()
+
+        session.rollback()
+        assert session.scalar(select(User).where(User.id == user_id)) is not None
+
+        session.add(
+            AuthSession(
+                tenant_id=stored_user.tenant_id,
+                region=stored_user.region,
+                user_id=uuid.uuid4(),
+                token_hash="missing-user-token-hash",
+                expires_at=verified_at + timedelta(hours=1),
             )
         )
         with pytest.raises(IntegrityError):
