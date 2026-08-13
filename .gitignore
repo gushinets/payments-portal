@@ -23,6 +23,9 @@ __pycache__/
 .ruff_cache/
 .mypy_cache/
 
+# Local task working notes (the authoritative plan lives in docs/exec-plans/).
+plan_task.md
+
 *.sqlite
 *.db
 

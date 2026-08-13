@@ -10,5 +10,5 @@
 | Agent heartbeats, timeouts, and resumable checkpoints | ANY-124 | Planned | Remove manual resume needs for long or interrupted commands |
 | Trace discovery and browser artifact hygiene | ANY-125 | Planned | Add recent-trace lookup and contain or ignore expected browser diagnostics |
 | Deterministic Python dependency locking | ANY-100 | Planned | Owns the unpinned indirect dependency and generated-OpenAPI drift gap |
-| PostgreSQL and Alembic test stability | ANY-99 | Planned | Owns integration timing and hung migration-test follow-up |
+| PostgreSQL and Alembic test stability | ANY-99 | Completed | [PR #28](https://github.com/gushinets/payments-portal/pull/28); shared fixtures and the canonical migration gate cover the PostgreSQL follow-up |
 | npm moderate advisories | Maintenance ticket required | Observed | Review without applying breaking `npm audit fix --force` automatically |

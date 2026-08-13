@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Iterator
+from contextlib import contextmanager
 from unittest.mock import patch
 
 from alembic import command
@@ -69,13 +71,16 @@ def drop_test_database(database_test_url: URL, database_admin_url: URL) -> None:
 
 def reset_public_schema(engine: Engine) -> None:
     """Remove test data and schema objects before applying migrations."""
+    validate_test_database_url(engine.url)
     with engine.begin() as connection:
         connection.execute(text("DROP SCHEMA IF EXISTS public CASCADE"))
         connection.execute(text("CREATE SCHEMA public"))
 
 
-def run_migrations(database_test_url: URL) -> None:
-    """Upgrade the test database through the production Alembic chain."""
+@contextmanager
+def alembic_test_config(database_test_url: URL) -> Iterator[Config]:
+    """Configure Alembic for a test database without replacing pytest logging."""
+    validate_test_database_url(database_test_url)
     database_url = database_test_url.render_as_string(hide_password=False)
     config = Config("apps/api/alembic.ini")
     config.set_main_option("sqlalchemy.url", database_url)
@@ -87,4 +92,10 @@ def run_migrations(database_test_url: URL) -> None:
         patch.dict(os.environ, {"DATABASE_URL": database_url}),
         patch("logging.config.fileConfig"),
     ):
+        yield config
+
+
+def run_migrations(database_test_url: URL) -> None:
+    """Upgrade the test database through the production Alembic chain."""
+    with alembic_test_config(database_test_url) as config:
         command.upgrade(config, "head")

@@ -1251,21 +1251,17 @@ def cmd_check(args: argparse.Namespace) -> None:
     )
     if not args.fast:
         run([tool("npm"), "run", "build:web"], env=check_env)
-        postgres_url = os.getenv("TEST_POSTGRES_DATABASE_URL")
-        if postgres_url:
-            run(
-                [
-                    sys.executable,
-                    "-m",
-                    "pytest",
-                    "-p",
-                    "no:cacheprovider",
-                    "apps/api/tests/test_alembic_postgres.py",
-                ],
-                env=check_env,
-            )
-        else:
-            print("SKIP: PostgreSQL integration test requires TEST_POSTGRES_DATABASE_URL")
+        run(
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                "-p",
+                "no:cacheprovider",
+                "apps/api/tests/test_alembic_postgres.py",
+            ],
+            env=check_env,
+        )
         if os.getenv("RUN_E2E") == "true":
             run([tool("npm"), "run", "test:e2e"], env=check_env)
         else:
