@@ -7,23 +7,23 @@ package-mode = false
 
 [tool.poetry.dependencies]
 python = ">=3.12,<3.13"
-alembic = "1.14.0"
-email-validator = "2.2.0"
+alembic = "1.19.1"
+email-validator = "2.3.0"
 fastapi = "0.141.1"
 opentelemetry-api = "1.44.0"
 opentelemetry-exporter-otlp-proto-http = "1.44.0"
 opentelemetry-instrumentation-fastapi = "0.65b0"
 opentelemetry-instrumentation-sqlalchemy = "0.65b0"
 opentelemetry-sdk = "1.44.0"
-prometheus-client = "0.22.1"
-psycopg = { version = "3.2.3", extras = ["binary"] }
-python-dotenv = "1.0.1"
-sqlalchemy = "2.0.36"
+prometheus-client = "0.26.0"
+psycopg = { version = "3.3.4", extras = ["binary"] }
+python-dotenv = "1.2.2"
+sqlalchemy = "2.0.51"
 uvicorn = { version = "0.52.1", extras = ["standard"] }
 
 [tool.poetry.group.dev.dependencies]
 httpx2 = "2.10.0"
-pytest = "8.3.4"
+pytest = "9.1.1"
 
 [build-system]
 requires = ["poetry-core>=1.9.0"]
