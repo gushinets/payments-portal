@@ -1,7 +1,7 @@
 # Security Requirements
 
 Status: authoritative
-Last verified: 2026-07-11
+Last verified: 2026-08-13
 
 ## Sensitive data
 
@@ -28,3 +28,31 @@ Authentication, payments, legal sources and seeds, migrations, telemetry
 redaction, production Compose, deployment configuration, and secret handling
 require human review. Agents may prepare changes and evidence but may not merge
 them autonomously.
+
+## Dependency and container scanning
+
+Dependabot checks npm, Poetry, Dockerfile, Docker Compose, and GitHub Actions
+dependencies weekly. Repository administrators must keep Dependabot alerts and
+security updates enabled in GitHub; those settings are not controlled by
+`.github/dependabot.yml`.
+
+The `Security scans` workflow scans the repository filesystem and both
+production images on pull requests, pushes to `main`, a weekly schedule, and
+manual dispatch. JSON reports are retained as workflow artifacts for 14 days.
+Scans must write findings to reports instead of workflow logs. Secret match and
+source-code fields are removed before upload so detected values are neither
+printed nor retained in workflow artifacts.
+
+Trivy's built-in IaC checks are supplemented by a separate Compose-policy scan
+configured in `trivy-compose.yaml`. Repository-owned checks under
+`security/trivy` reject privileged services, host namespace sharing, Docker
+socket mounts, and adding all Linux capabilities. Keeping the raw YAML scan
+separate prevents it from replacing Trivy's built-in Kubernetes and other IaC
+adapters.
+
+The initial rollout is report-only while the baseline is remediated. After human
+approval, set the repository Actions variable `TRIVY_ENFORCE=true`. The checked-in
+gate then rejects all Critical vulnerabilities, fixable High vulnerabilities,
+and High or Critical secret and misconfiguration findings. Exceptions belong in
+`.trivyignore.yaml` and must include an ID, affected paths, an actionable reason,
+and an expiration date.

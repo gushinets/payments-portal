@@ -1,0 +1,152 @@
+name: Security scans
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "23 2 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  API_IMAGE: payment-portal-api:trivy-${{ github.sha }}
+  TRIVY_REPORT_DIR: .harness/trivy
+  WEB_IMAGE: payment-portal-web:trivy-${{ github.sha }}
+
+jobs:
+  trivy:
+    name: Trivy security scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Prepare report directory
+        run: mkdir -p "$TRIVY_REPORT_DIR"
+
+      - name: Scan repository filesystem
+        env:
+          TRIVY_INCLUDE_DEV_DEPS: "true"
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: "v0.72.0"
+          trivy-config: "trivy.yaml"
+          scan-type: "fs"
+          scan-ref: "."
+          scanners: "vuln,secret,misconfig"
+          format: "json"
+          output: ".harness/trivy/filesystem.json"
+          exit-code: "0"
+          hide-progress: true
+          timeout: "15m"
+          trivyignores: ".trivyignore.yaml"
+          skip-dirs: ".cache,.git,.harness,node_modules,apps/web/.next,.venv,security/trivy/fixtures"
+
+      - name: Scan non-Compose IaC coverage fixtures
+        run: >-
+          trivy config --config trivy.yaml --format json
+          --output "$RUNNER_TEMP/non-compose-iac.json"
+          security/trivy/fixtures/non-compose
+
+      - name: Verify non-Compose IaC scanner coverage
+        run: >-
+          python3 scripts/repo.py trivy verify-iac-fixture
+          "$RUNNER_TEMP/non-compose-iac.json"
+
+      - name: Scan Docker socket policy coverage fixture
+        run: >-
+          trivy config --config trivy-compose.yaml --format json
+          --output "$RUNNER_TEMP/compose-policy.json"
+          security/trivy/fixtures/compose
+
+      - name: Verify Docker socket policy coverage
+        run: >-
+          python3 scripts/repo.py trivy verify-compose-fixture
+          "$RUNNER_TEMP/compose-policy.json"
+
+      - name: Scan Docker Compose configurations
+        run: >-
+          trivy config --config trivy-compose.yaml --format json
+          --output "$TRIVY_REPORT_DIR/compose.json"
+          --ignorefile .trivyignore.yaml
+          --skip-dirs .cache,.git,.harness,node_modules,apps/web/.next,.venv,security/trivy/fixtures
+          .
+
+      - name: Build production API image
+        run: >-
+          docker build --target production --file apps/api/Dockerfile
+          --tag "$API_IMAGE" .
+
+      - name: Build production web image
+        run: >-
+          docker build --file apps/web/Dockerfile
+          --tag "$WEB_IMAGE" .
+
+      - name: Scan production API image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: "v0.72.0"
+          trivy-config: "trivy.yaml"
+          skip-setup-trivy: true
+          cache: false
+          scan-type: "image"
+          image-ref: "${{ env.API_IMAGE }}"
+          scanners: "vuln,secret"
+          format: "json"
+          output: ".harness/trivy/api-image.json"
+          exit-code: "0"
+          hide-progress: true
+          timeout: "15m"
+          trivyignores: ".trivyignore.yaml"
+
+      - name: Scan production web image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: "v0.72.0"
+          trivy-config: "trivy.yaml"
+          skip-setup-trivy: true
+          cache: false
+          scan-type: "image"
+          image-ref: "${{ env.WEB_IMAGE }}"
+          scanners: "vuln,secret"
+          format: "json"
+          output: ".harness/trivy/web-image.json"
+          exit-code: "0"
+          hide-progress: true
+          timeout: "15m"
+          trivyignores: ".trivyignore.yaml"
+
+      - name: Redact secret values from reports
+        id: redact
+        if: always()
+        run: python3 scripts/repo.py trivy redact "$TRIVY_REPORT_DIR"
+
+      - name: Upload Trivy reports
+        if: ${{ always() && steps.redact.outcome == 'success' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: trivy-reports-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .harness/trivy/*.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Record report-only policy
+        if: ${{ vars.TRIVY_ENFORCE != 'true' }}
+        run: |
+          {
+            echo "### Trivy policy"
+            echo "Report-only baseline mode is active."
+            echo "Set the repository Actions variable \`TRIVY_ENFORCE=true\` after the baseline is cleared and approved."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Enforce Critical and fixable High policy
+        if: ${{ vars.TRIVY_ENFORCE == 'true' }}
+        run: python3 scripts/repo.py trivy gate "$TRIVY_REPORT_DIR"

@@ -1,0 +1,9 @@
+misconfiguration:
+  scanners:
+    - yaml
+
+rego:
+  check:
+    - security/trivy/checks
+  namespaces:
+    - user

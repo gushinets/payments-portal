@@ -1,0 +1,14 @@
+{
+  "$id": "https://any-tool-ai.ru/schemas/docker-compose.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["services"],
+  "properties": {
+    "services": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object"
+      }
+    }
+  }
+}

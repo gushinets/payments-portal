@@ -1,0 +1,15 @@
+{
+  "apiVersion": "v1",
+  "kind": "Pod",
+  "metadata": {
+    "name": "insecure-json-fixture"
+  },
+  "spec": {
+    "containers": [
+      {
+        "name": "app",
+        "image": "alpine:3.22"
+      }
+    ]
+  }
+}
