@@ -110,9 +110,12 @@ persistence, and the API production image remain compatible with PostgreSQL
   3.12 SQLite datetime adapter deprecations, which are outside this ticket.
 - The fast canonical runner passed documentation, architecture, web boundary,
   component and lint checks plus 140 API tests. The full canonical runner also
-  passed the production web build. Its standalone Alembic phase was skipped
-  because `TEST_POSTGRES_DATABASE_URL` was not exported, but the same Alembic
-  suite passed separately against the configured PostgreSQL 18.4 instance.
+  passed the production web build.
+- The review follow-up removed the runner's `TEST_POSTGRES_DATABASE_URL`-only
+  gate and delegated PostgreSQL configuration to the shared pytest fixture.
+  With that variable unset and only the local `POSTGRES_*_TEST` fallback
+  configured, `npm run check` passed 141 API tests and then ran the standalone
+  Alembic phase successfully: 2 passed on PostgreSQL 18.4.
 - Production Compose configuration validated. The production API image built
   from a clean dependency layer and installed the requested database versions
   without changing FastAPI or Uvicorn.
