@@ -1128,6 +1128,41 @@ def redact_trivy_report(path: Path) -> int:
 
 def cmd_trivy(args: argparse.Namespace) -> None:
     report_dir = Path(args.report_dir)
+    if args.action == "verify-compose-fixture":
+        try:
+            report = json.loads(report_dir.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError) as exc:
+            raise HarnessError(f"Cannot read Trivy report {report_dir}: {exc}") from exc
+        results = report.get("Results", [])
+        if not isinstance(results, list):
+            raise HarnessError(
+                f"Invalid Trivy report {report_dir}: Results must be a list"
+            )
+        messages = {
+            finding.get("Message", "")
+            for result in results
+            if isinstance(result, dict)
+            for finding in result.get("Misconfigurations") or []
+            if isinstance(finding, dict) and finding.get("ID") == "ANY-COMPOSE-003"
+        }
+        missing_services = [
+            service
+            for service in (
+                "var-run-short-syntax",
+                "run-short-syntax",
+                "var-run-long-syntax",
+                "run-long-syntax",
+            )
+            if not any(service in message for message in messages)
+        ]
+        if missing_services:
+            raise HarnessError(
+                "Docker socket policy missed Compose fixture service(s): "
+                + ", ".join(missing_services)
+            )
+        print("Verified Docker socket paths in short and long Compose syntax.")
+        return
+
     if args.action == "verify-iac-fixture":
         try:
             report = json.loads(report_dir.read_text(encoding="utf-8"))
@@ -1305,7 +1340,13 @@ def build_parser() -> argparse.ArgumentParser:
     title.set_defaults(func=cmd_pr_title)
     trivy = sub.add_parser("trivy")
     trivy.add_argument(
-        "action", choices=("gate", "redact", "verify-iac-fixture")
+        "action",
+        choices=(
+            "gate",
+            "redact",
+            "verify-compose-fixture",
+            "verify-iac-fixture",
+        ),
     )
     trivy.add_argument("report_dir")
     trivy.set_defaults(func=cmd_trivy)

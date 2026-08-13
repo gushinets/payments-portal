@@ -68,16 +68,18 @@ mixing upgrades into the scanner rollout.
 
 - Trivy 0.70.0 accepted `.trivyignore.yaml` and the repository config.
 - Custom Compose checks reported all four expected findings on an unsafe fixture
-  and zero custom findings in the checked-in Compose files.
+  and zero custom findings in the checked-in Compose files. The Docker socket
+  fixture covers `/var/run/docker.sock` and `/run/docker.sock` in both short and
+  long Compose syntax.
 - Dedicated non-Compose Kubernetes YAML and JSON fixtures remain visible to
   Trivy's built-in misconfiguration scanner alongside the separate Compose
   policy scan.
 - The enforcement helper rejected the measured baseline without printing
   finding details; focused gate, redaction, and ignore-policy tests passed
-  (`7 passed`).
+  (`8 passed`).
 - Dependabot and workflow YAML parsed successfully; configuration options were
   reviewed against current GitHub and Trivy documentation.
-- Final full canonical check passed outside the filesystem sandbox: 133 API
+- Final full canonical check passed outside the filesystem sandbox: 134 API
   tests, 9 web boundary tests, 25 web component tests, docs, architecture,
   lint, and the production web build. PostgreSQL integration and browser tests
   were skipped because their required database URL and running harness were not

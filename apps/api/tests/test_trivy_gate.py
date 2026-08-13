@@ -171,3 +171,58 @@ def test_non_compose_iac_fixture_requires_yaml_and_json_findings(
     )()
 
     cmd_trivy(args)
+
+
+def test_docker_socket_fixture_requires_both_paths_and_compose_syntaxes(
+    tmp_path: Path,
+) -> None:
+    report = tmp_path / "compose-policy.json"
+    report.write_text(
+        json.dumps(
+            {
+                "SchemaVersion": 2,
+                "Results": [
+                    {
+                        "Misconfigurations": [
+                            {
+                                "ID": "ANY-COMPOSE-003",
+                                "Message": (
+                                    'Compose service "var-run-short-syntax" must '
+                                    "not mount the Docker socket"
+                                ),
+                            },
+                            {
+                                "ID": "ANY-COMPOSE-003",
+                                "Message": (
+                                    'Compose service "run-short-syntax" must not '
+                                    "mount the Docker socket"
+                                ),
+                            },
+                            {
+                                "ID": "ANY-COMPOSE-003",
+                                "Message": (
+                                    'Compose service "var-run-long-syntax" must not '
+                                    "mount the Docker socket"
+                                ),
+                            },
+                            {
+                                "ID": "ANY-COMPOSE-003",
+                                "Message": (
+                                    'Compose service "run-long-syntax" must not '
+                                    "mount the Docker socket"
+                                ),
+                            },
+                        ]
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    args = type(
+        "Args",
+        (),
+        {"action": "verify-compose-fixture", "report_dir": str(report)},
+    )()
+
+    cmd_trivy(args)
