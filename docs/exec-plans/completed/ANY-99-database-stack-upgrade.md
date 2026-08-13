@@ -1,6 +1,6 @@
 # ANY-99 - Upgrade SQLAlchemy, Alembic, and Psycopg
 
-Status: active
+Status: completed
 Owner: repository maintainers
 Started: 2026-08-13
 
@@ -37,13 +37,13 @@ persistence, and the API production image remain compatible with PostgreSQL
 - [x] Record the pre-upgrade unit/API and PostgreSQL 18.4 baseline.
 - [x] Strengthen PostgreSQL schema-contract coverage and destructive-test
   safety.
-- [ ] Upgrade the three direct dependencies and regenerate the Poetry lock.
-- [ ] Run the complete compatibility and production-image validation matrix.
+- [x] Upgrade the three direct dependencies and regenerate the Poetry lock.
+- [x] Run the complete compatibility and production-image validation matrix.
 
 ## Baseline Evidence
 
 - Branch `ANY-99` started clean at `origin/main` commit `1a9d798`.
-- Current versions are SQLAlchemy 2.0.36, Alembic 1.14.0, and psycopg 3.2.3.
+- Baseline versions were SQLAlchemy 2.0.36, Alembic 1.14.0, and psycopg 3.2.3.
 - Alembic has one linear head at `20260729_0004`.
 - Unit/API baseline: 128 passed and 11 PostgreSQL-only tests skipped.
 - PostgreSQL 18.4 migration, ORM, and webhook baseline: 15 passed, including
@@ -88,3 +88,46 @@ persistence, and the API production image remain compatible with PostgreSQL
 - The exact `make test_api` command passed all 142 tests after the Alembic
   logging-isolation regression was fixed.
 - Python compilation and `git diff --check`: passed.
+
+## Step 2 Evidence
+
+- Direct pins and the lock now resolve SQLAlchemy 2.0.51, Alembic 1.18.5,
+  psycopg 3.3.4, and psycopg-binary 3.3.4. FastAPI remains at 0.141.1 and
+  Uvicorn remains at 0.52.1.
+- The lock diff changes package versions only for the three requested packages
+  and the binary distribution required by the Psycopg extra. Re-running
+  `poetry lock --no-update` preserved lock SHA-256
+  `c55710400134f81cd2433f33f699f8818916bcb40bce22e908c27974e25cb018`,
+  and `poetry check --lock` passed.
+- Alembic configuration now uses `path_separator = os`, replacing the
+  deprecated `version_path_separator` option required by Alembic 1.18 while
+  preserving the existing `prepend_sys_path` behavior.
+- Focused PostgreSQL ORM, migration, and webhook compatibility tests passed:
+  14 passed. The clean Alembic upgrade/downgrade/upgrade cycle reached the
+  single head `20260729_0004`, and the concurrent duplicate webhook scenarios
+  passed repeatedly across focused and broader suites.
+- `make test_api`: 142 passed. The only warnings are the pre-existing Python
+  3.12 SQLite datetime adapter deprecations, which are outside this ticket.
+- The fast canonical runner passed documentation, architecture, web boundary,
+  component and lint checks plus 140 API tests. The full canonical runner also
+  passed the production web build. Its standalone Alembic phase was skipped
+  because `TEST_POSTGRES_DATABASE_URL` was not exported, but the same Alembic
+  suite passed separately against the configured PostgreSQL 18.4 instance.
+- Production Compose configuration validated. The production API image built
+  from a clean dependency layer and installed the requested database versions
+  without changing FastAPI or Uvicorn.
+- An isolated production smoke stack on PostgreSQL 18.4 started healthy. API
+  startup applied every migration to `20260729_0004`, both `alembic current`
+  and `alembic heads` reported that single head, and `/health/ready` returned
+  `{"status": "ready"}`. The isolated containers, networks, and test volume
+  were removed after verification.
+- A second production image build with Docker layer caching disabled installed
+  all dependencies from the lock. It started against a newly created PostgreSQL
+  18.4 volume, and `alembic current --check-heads` confirmed the database was at
+  the single head. Real HTTP smoke covered health, legal document discovery,
+  registration, session and login, the required-document checkout guard, legal
+  acceptances, checkout creation, pending payment status, logout, and rejected
+  session reuse. After an API restart, login and the pending product state were
+  still available, proving persistence across process lifecycle.
+- Public API, PostgreSQL schema and migration history, webhook semantics, env
+  variables, and deployment entrypoints are unchanged.
