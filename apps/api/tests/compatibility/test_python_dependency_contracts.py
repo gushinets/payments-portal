@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
-from dotenv import dotenv_values
 from pydantic import ValidationError
 
-from app.core.settings import load_settings_from_environment
+from app.core.settings import Settings
 from app.domains.identity.router import normalize_email
 from apps.api.tests.factories.auth import (
     LoginRequestFactory,
@@ -51,7 +52,8 @@ def test_identity_email_normalization_contract_for_auth_lookup(factory: type) ->
 
 
 def test_settings_preserve_fallback_defaults_when_environment_is_absent() -> None:
-    loaded_settings = load_settings_from_environment({})
+    with patch.dict(os.environ, {}, clear=True):
+        loaded_settings = Settings(_env_file=None)
 
     assert loaded_settings.app_public_base_url == "http://localhost:3000"
     assert loaded_settings.database_url == (
@@ -67,6 +69,35 @@ def test_settings_preserve_fallback_defaults_when_environment_is_absent() -> Non
     assert loaded_settings.smtp_password == ""
     assert loaded_settings.smtp_from_email == "support@any-tool-ai.ru"
     assert loaded_settings.smtp_use_tls is True
+
+
+@pytest.mark.parametrize(
+    ("raw_value", "expected"),
+    [
+        ("true", True),
+        ("TRUE", True),
+        ("false", False),
+        ("1", False),
+        ("yes", False),
+        ("", False),
+    ],
+)
+def test_settings_preserve_legacy_boolean_parsing(
+    raw_value: str,
+    expected: bool,
+) -> None:
+    with patch.dict(
+        os.environ,
+        {
+            "CLOUDPAYMENTS_ENABLED": raw_value,
+            "SMTP_USE_TLS": raw_value,
+        },
+        clear=True,
+    ):
+        loaded_settings = Settings(_env_file=None)
+
+    assert loaded_settings.cloudpayments_enabled is expected
+    assert loaded_settings.smtp_use_tls is expected
 
 
 def test_settings_preserve_dotenv_parsing_and_process_environment_precedence(
@@ -93,18 +124,15 @@ def test_settings_preserve_dotenv_parsing_and_process_environment_precedence(
         encoding="utf-8",
     )
 
-    dotenv_environment = {
-        name: value
-        for name, value in dotenv_values(dotenv_path).items()
-        if value is not None
-    }
-    loaded_settings = load_settings_from_environment(
+    with patch.dict(
+        os.environ,
         {
-            **dotenv_environment,
             "APP_PUBLIC_BASE_URL": "https://process.example/app",
             "SMTP_USERNAME": "process-user",
-        }
-    )
+        },
+        clear=True,
+    ):
+        loaded_settings = Settings(_env_file=dotenv_path)
 
     assert loaded_settings.app_public_base_url == "https://process.example/app"
     assert loaded_settings.database_url == "sqlite+pysqlite:///from-dotenv.db"

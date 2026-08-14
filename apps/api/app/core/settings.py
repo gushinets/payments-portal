@@ -1,26 +1,23 @@
 from __future__ import annotations
 
-import os
-from collections.abc import Mapping
-from dataclasses import dataclass
+from typing import Annotated, Any
 
-from dotenv import load_dotenv
+from dotenv import find_dotenv
+from pydantic import field_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 def _split_csv_value(raw: str) -> tuple[str, ...]:
     return tuple(part.strip() for part in raw.split(",") if part.strip())
 
 
-def _bool_env(environ: Mapping[str, str], name: str, default: str) -> bool:
-    return environ.get(name, default).lower() == "true"
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file_encoding="utf-8",
+        extra="ignore",
+        frozen=True,
+    )
 
-
-def _int_env(environ: Mapping[str, str], name: str, default: str) -> int:
-    return int(environ.get(name, default))
-
-
-@dataclass(frozen=True)
-class Settings:
     app_public_base_url: str = "http://localhost:3000"
     database_url: str = (
         "postgresql+psycopg://anytoolai:anytoolai@localhost:5432/anytoolai"
@@ -28,7 +25,7 @@ class Settings:
     cloudpayments_public_id: str = ""
     cloudpayments_api_secret: str = ""
     cloudpayments_enabled: bool = False
-    cors_allow_origins: tuple[str, ...] = ()
+    cors_allow_origins: Annotated[tuple[str, ...], NoDecode] = ()
     smtp_host: str = ""
     smtp_port: int = 587
     smtp_username: str = ""
@@ -36,29 +33,25 @@ class Settings:
     smtp_from_email: str = "support@any-tool-ai.ru"
     smtp_use_tls: bool = True
 
+    @field_validator("cloudpayments_enabled", "smtp_use_tls", mode="before")
+    @classmethod
+    def parse_legacy_bool(cls, value: Any) -> bool:
+        if isinstance(value, str):
+            return value.lower() == "true"
+        return bool(value)
 
-def load_settings_from_environment(environ: Mapping[str, str]) -> Settings:
-    return Settings(
-        app_public_base_url=environ.get(
-            "APP_PUBLIC_BASE_URL",
-            "http://localhost:3000",
-        ),
-        database_url=environ.get(
-            "DATABASE_URL",
-            "postgresql+psycopg://anytoolai:anytoolai@localhost:5432/anytoolai",
-        ),
-        cloudpayments_public_id=environ.get("CLOUDPAYMENTS_PUBLIC_ID", ""),
-        cloudpayments_api_secret=environ.get("CLOUDPAYMENTS_API_SECRET", ""),
-        cloudpayments_enabled=_bool_env(environ, "CLOUDPAYMENTS_ENABLED", "false"),
-        cors_allow_origins=_split_csv_value(environ.get("CORS_ALLOW_ORIGINS", "")),
-        smtp_host=environ.get("SMTP_HOST", ""),
-        smtp_port=_int_env(environ, "SMTP_PORT", "587"),
-        smtp_username=environ.get("SMTP_USERNAME", ""),
-        smtp_password=environ.get("SMTP_PASSWORD", ""),
-        smtp_from_email=environ.get("SMTP_FROM_EMAIL", "support@any-tool-ai.ru"),
-        smtp_use_tls=_bool_env(environ, "SMTP_USE_TLS", "true"),
-    )
+    @field_validator("cors_allow_origins", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, value: Any) -> tuple[str, ...]:
+        if isinstance(value, str):
+            return _split_csv_value(value)
+        if value is None:
+            return ()
+        return tuple(value)
 
 
-load_dotenv()
-settings = load_settings_from_environment(os.environ)
+def _dotenv_file() -> str | None:
+    return find_dotenv(usecwd=True) or None
+
+
+settings = Settings(_env_file=_dotenv_file())

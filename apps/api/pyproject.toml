@@ -20,6 +20,8 @@ psycopg = { version = "3.3.4", extras = ["binary"] }
 python-dotenv = "1.0.1"
 sqlalchemy = "2.0.51"
 uvicorn = { version = "0.52.1", extras = ["standard"] }
+pydantic = "2.13.4"
+pydantic-settings = "2.15.0"
 
 [tool.poetry.group.dev.dependencies]
 httpx2 = "2.10.0"
