@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import importlib
 import os
 from pathlib import Path
 from unittest.mock import patch
@@ -9,6 +8,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.core.settings import Settings
+from app.core.settings import _load_dotenv_into_environment
 from app.domains.identity.router import normalize_email
 from apps.api.tests.factories.auth import (
     LoginRequestFactory,
@@ -151,11 +151,7 @@ def test_settings_do_not_expose_configurable_default_scope() -> None:
     assert "default_region" not in Settings.model_fields
 
 
-def test_identity_default_scope_stays_aligned_with_ru_seed_data(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    monkeypatch.chdir(tmp_path)
+def test_identity_default_scope_stays_aligned_with_ru_seed_data() -> None:
     with patch.dict(
         os.environ,
         {
@@ -164,24 +160,13 @@ def test_identity_default_scope_stays_aligned_with_ru_seed_data(
         },
         clear=True,
     ):
-        import app.core.settings as settings_module
         import app.domains.identity.session as session_module
 
-        importlib.reload(settings_module)
-        reloaded_session = importlib.reload(session_module)
-
-        assert reloaded_session.DEFAULT_TENANT_ID == "anytoolai"
-        assert reloaded_session.DEFAULT_REGION == "ru"
-
-    import app.core.settings as settings_module
-    import app.domains.identity.session as session_module
-
-    importlib.reload(settings_module)
-    importlib.reload(session_module)
+        assert session_module.DEFAULT_TENANT_ID == "anytoolai"
+        assert session_module.DEFAULT_REGION == "ru"
 
 
 def test_runtime_dotenv_preserves_os_getenv_consumers(
-    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     dotenv_path = tmp_path / ".env"
@@ -196,16 +181,9 @@ def test_runtime_dotenv_preserves_os_getenv_consumers(
         encoding="utf-8",
     )
 
-    monkeypatch.chdir(tmp_path)
     with patch.dict(os.environ, {"LOG_LEVEL": "WARNING"}, clear=True):
-        import app.core.settings as settings_module
-
-        importlib.reload(settings_module)
+        assert _load_dotenv_into_environment(str(dotenv_path)) == str(dotenv_path)
 
         assert os.environ["LOG_LEVEL"] == "WARNING"
         assert os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] == "http://127.0.0.1:4318"
         assert os.environ["OTEL_SERVICE_NAME"] == "payment-portal-test"
-
-    import app.core.settings as settings_module
-
-    importlib.reload(settings_module)

@@ -138,6 +138,7 @@ def canonical_check_environment(
     temp_dir.mkdir(parents=True, exist_ok=True)
     for variable in ("TEMP", "TMP", "TMPDIR"):
         environment[variable] = str(temp_dir)
+    environment["OTEL_EXPORTER_OTLP_ENDPOINT"] = ""
     return environment
 
 

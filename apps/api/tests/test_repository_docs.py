@@ -76,7 +76,11 @@ def test_migration_legal_version_mismatch_is_rejected() -> None:
 def test_canonical_checks_use_a_worktree_scoped_temp_directory(tmp_path: Path) -> None:
     first_root = tmp_path / "first-worktree"
     second_root = tmp_path / "second-worktree"
-    original = {"PATH": "tools", "TEMP": "unreadable-system-temp"}
+    original = {
+        "PATH": "tools",
+        "TEMP": "unreadable-system-temp",
+        "OTEL_EXPORTER_OTLP_ENDPOINT": "http://127.0.0.1:4318",
+    }
 
     first = canonical_check_environment(root=first_root, environ=original)
     second = canonical_check_environment(root=second_root, environ=original)
@@ -87,6 +91,8 @@ def test_canonical_checks_use_a_worktree_scoped_temp_directory(tmp_path: Path) -
     assert original["TEMP"] == "unreadable-system-temp"
     assert {first[name] for name in ("TEMP", "TMP", "TMPDIR")} == {str(first_temp)}
     assert {second[name] for name in ("TEMP", "TMP", "TMPDIR")} == {str(second_temp)}
+    assert first["OTEL_EXPORTER_OTLP_ENDPOINT"] == ""
+    assert second["OTEL_EXPORTER_OTLP_ENDPOINT"] == ""
     assert first_temp.is_dir()
     assert second_temp.is_dir()
     assert first_temp != second_temp
