@@ -42,3 +42,16 @@ PostgreSQL tests must not resolve database environment variables or perform
 physical database lifecycle independently when a shared fixture already owns
 that responsibility. Every destructive database or schema operation must pass
 the shared test-database safety validation before connecting or executing SQL.
+
+## Test data factories
+
+New API tests should build Pydantic DTOs, ORM models, and reusable payloads
+through typed factories under `apps/api/tests/factories/`. Existing tests may
+continue using inline setup until they are touched for a related change, then
+they should migrate only the affected setup to factories.
+
+Use factories for object shape and default test data. Use fixtures for resource
+lifecycle, dependency overrides, environment changes, database sessions, and
+other setup that requires teardown. Put a fixture in `apps/api/tests/conftest.py`
+only when multiple test modules need it; keep module-specific setup as a
+module-local fixture near the tests that use it.

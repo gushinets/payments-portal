@@ -58,11 +58,7 @@ def record_refund(
     )
     db.add(refund)
     payment.refunded_amount_minor = max(payment.refunded_amount_minor, 0) + amount_minor
-    payment.status = (
-        "refunded"
-        if payment.refunded_amount_minor >= payment.amount_minor
-        else "partially_refunded"
-    )
+    payment.status = "refunded" if payment.refunded_amount_minor >= payment.amount_minor else "partially_refunded"
     db.add(payment)
     db.flush()
     _apply_order_refund_status(db, order)
@@ -83,13 +79,7 @@ def _apply_order_refund_status(db: Session, order: Order) -> None:
         .all()
     )
     captured_total = sum(max(payment.amount_minor, 0) for payment in captured_payments)
-    refunded_total = sum(
-        max(payment.refunded_amount_minor, 0) for payment in captured_payments
-    )
+    refunded_total = sum(max(payment.refunded_amount_minor, 0) for payment in captured_payments)
     if refunded_total <= 0:
         return
-    order.status = (
-        "refunded"
-        if captured_total > 0 and refunded_total >= captured_total
-        else "partially_refunded"
-    )
+    order.status = "refunded" if captured_total > 0 and refunded_total >= captured_total else "partially_refunded"

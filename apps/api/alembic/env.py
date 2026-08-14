@@ -11,8 +11,8 @@ from sqlalchemy import engine_from_config, pool
 api_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(api_root))
 
-from app.database import Base
-from app import models  # noqa: F401
+from app.database import Base  # noqa: E402
+from app import models  # noqa: E402,F401
 
 config = context.config
 

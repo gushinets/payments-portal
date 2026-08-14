@@ -12,7 +12,10 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.observability import record_password_reset_email
-from app.core.password_reset_email import build_password_reset_url, send_password_reset_email
+from app.core.password_reset_email import (
+    build_password_reset_url,
+    send_password_reset_email,
+)
 from app.domains.identity.passwords import hash_password
 from app.domains.identity.session import (
     DEFAULT_REGION,
@@ -65,9 +68,7 @@ def password_reset_rate_limit_keys(
     )
 
 
-def make_password_reset_decoy_email_normalized(
-    *, tenant_id: str, region: str, email_normalized: str
-) -> str:
+def make_password_reset_decoy_email_normalized(*, tenant_id: str, region: str, email_normalized: str) -> str:
     digest = hashlib.sha256(f"{tenant_id}:{region}:{email_normalized}".encode("utf-8")).hexdigest()
     return f"password-reset-decoy:{digest}"
 

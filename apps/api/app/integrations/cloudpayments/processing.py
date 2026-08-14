@@ -53,11 +53,7 @@ def _safe_summary(payload: dict[str, Any], data: dict[str, Any]) -> dict[str, An
         "payment_method_type": get_first(payload, "PaymentMethod", "paymentMethod"),
         "reason_code": get_first(payload, "ReasonCode", "reasonCode"),
         "reason": get_first(payload, "Reason", "reason"),
-        "data": {
-            key: value
-            for key, value in data.items()
-            if key in {"product_code", "plan_code", "auto_renew"}
-        },
+        "data": {key: value for key, value in data.items() if key in {"product_code", "plan_code", "auto_renew"}},
     }
 
 
@@ -104,7 +100,8 @@ def upsert_payment_from_webhook(
     transaction_id: str | None,
     amount_minor: int,
     currency: str,
-    payload: dict[str, Any], update_order_status: bool = True,
+    payload: dict[str, Any],
+    update_order_status: bool = True,
 ) -> Payment:
     now = datetime_now()
     data = _parse_data(payload)
@@ -386,7 +383,9 @@ def process_webhook_event(
     elif endpoint in {"pay", "fail", "confirm", "cancel"}:
         validation_error = None if transaction_id else "missing_transaction_id"
         validation_error = validation_error or payment_schema_error(
-            order=order, endpoint=endpoint, payload=payload,
+            order=order,
+            endpoint=endpoint,
+            payload=payload,
         )
         if validation_error is None and endpoint == "cancel":
             validation_error = cancel_validation_error(

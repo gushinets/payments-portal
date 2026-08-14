@@ -41,6 +41,16 @@ jobs:
         run: npm ci
       - name: Run fast checks
         run: npm run check:fast
+      - name: Generate API coverage
+        run: python scripts/repo.py coverage api-fast
+      - name: Upload API coverage
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: api-coverage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .harness/coverage/api/
+          if-no-files-found: warn
+          retention-days: 7
       - name: Generate frontend component coverage
         run: npm --workspace @anytoolai/web run test:components:coverage
       - name: Upload frontend component coverage
@@ -124,11 +134,7 @@ jobs:
           set -a
           source "$CI_ENV_FILE"
           set +a
-          python -m pytest \
-            apps/api/tests/compatibility/test_database_fixtures.py \
-            apps/api/tests/compatibility/test_sqlalchemy_postgres.py \
-            apps/api/tests/test_alembic_postgres.py \
-            apps/api/tests/test_cloudpayments_webhook_postgres.py \
+          python scripts/repo.py test api-postgres \
             --junitxml="$CI_ARTIFACTS/postgres-junit.xml" \
             2>&1 | tee "$CI_ARTIFACTS/postgres-pytest.log"
       - name: Validate Compose configuration

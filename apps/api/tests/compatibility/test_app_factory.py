@@ -43,9 +43,7 @@ def test_app_factory_preserves_validation_and_development_cors_contract() -> Non
     assert validation_response.status_code == 422
     assert isinstance(validation_response.json()["detail"], list)
     assert preflight_response.status_code == 200
-    assert preflight_response.headers["access-control-allow-origin"] == (
-        "http://localhost:3000"
-    )
+    assert preflight_response.headers["access-control-allow-origin"] == ("http://localhost:3000")
 
 
 def test_app_factory_preserves_configured_production_cors_contract() -> None:
@@ -81,9 +79,7 @@ def test_app_factory_preserves_configured_production_cors_contract() -> None:
         )
 
     assert allowed_response.status_code == 200
-    assert allowed_response.headers["access-control-allow-origin"] == (
-        "https://payments.example.com"
-    )
+    assert allowed_response.headers["access-control-allow-origin"] == ("https://payments.example.com")
     assert rejected_response.status_code == 400
     assert "access-control-allow-origin" not in rejected_response.headers
 
