@@ -54,3 +54,13 @@ def test_destructive_database_operations_validate_before_connecting(
         operation(database_url, database_url.set(database="postgres"))
 
     create_engine.assert_not_called()
+
+
+def test_schema_reset_validates_before_connecting() -> None:
+    engine = Mock()
+    engine.url = make_url("postgresql+psycopg://owner@localhost/production")
+
+    with pytest.raises(ValueError, match="Refusing destructive test operations"):
+        postgres_support.reset_public_schema(engine)
+
+    engine.begin.assert_not_called()
