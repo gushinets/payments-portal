@@ -5,7 +5,7 @@ import hashlib
 import hmac
 import os
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 
 os.environ["DATABASE_URL"] = "sqlite+pysqlite:///:memory:"
 os.environ["CLOUDPAYMENTS_API_SECRET"] = ""
@@ -66,9 +66,7 @@ def allow_unsigned_cloudpayments_webhooks_for_test() -> None:
 
 
 def require_signed_cloudpayments_webhooks_for_test() -> None:
-    cloudpayments_adapter_module.verify_cloudpayments_signature = (
-        _original_verify_cloudpayments_signature
-    )
+    cloudpayments_adapter_module.verify_cloudpayments_signature = _original_verify_cloudpayments_signature
 
 
 def teardown_function() -> None:
@@ -76,9 +74,7 @@ def teardown_function() -> None:
 
 
 def cloudpayments_signature(raw_body: bytes, secret: str = "test-secret") -> str:
-    return base64.b64encode(
-        hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).digest()
-    ).decode("ascii")
+    return base64.b64encode(hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).digest()).decode("ascii")
 
 
 def signed_cloudpayments_post(endpoint: str, payload: bytes, *, secret: str = "test-secret"):
@@ -254,19 +250,13 @@ def seed_catalog(db) -> dict[str, object]:
         .first()
     )
     existing_document_summary = (
-        db.query(Product)
-        .filter(Product.tenant_id == "anytoolai", Product.code == "document-summary")
-        .first()
+        db.query(Product).filter(Product.tenant_id == "anytoolai", Product.code == "document-summary").first()
     )
     existing_prompt_optimizer = (
-        db.query(Product)
-        .filter(Product.tenant_id == "anytoolai", Product.code == "prompt-optimizer")
-        .first()
+        db.query(Product).filter(Product.tenant_id == "anytoolai", Product.code == "prompt-optimizer").first()
     )
     existing_bundle = (
-        db.query(Bundle)
-        .filter(Bundle.tenant_id == "anytoolai", Bundle.code == "core-tools-bundle")
-        .first()
+        db.query(Bundle).filter(Bundle.tenant_id == "anytoolai", Bundle.code == "core-tools-bundle").first()
     )
     if (
         existing_document_plan is not None
@@ -453,9 +443,7 @@ def test_seeded_legal_documents_block_checkout_on_fresh_database() -> None:
     assert checkout_response.status_code == 409
     missing_documents = checkout_response.json()["detail"]["documents"]
     required_seeded_types = {
-        document["doc_type"]
-        for document in RU_DOCUMENT_VERSIONS
-        if document["requires_acceptance"]
+        document["doc_type"] for document in RU_DOCUMENT_VERSIONS if document["requires_acceptance"]
     }
     assert {document["doc_type"] for document in missing_documents} == required_seeded_types
 
@@ -469,7 +457,6 @@ def test_legal_seed_replaces_existing_active_document_type() -> None:
             doc_type="offer",
             version="2026-07-custom",
         )
-        existing_offer_id = existing_offer.id
 
         seed_legal_documents(db)
 
@@ -483,11 +470,7 @@ def test_legal_seed_replaces_existing_active_document_type() -> None:
             )
             .all()
         )
-        seeded_documents_count = (
-            db.query(DocumentVersion)
-            .filter(DocumentVersion.version == "2026-07-11")
-            .count()
-        )
+        seeded_documents_count = db.query(DocumentVersion).filter(DocumentVersion.version == "2026-07-11").count()
         db.refresh(existing_offer)
 
     assert existing_offer.is_active is False
@@ -1028,16 +1011,12 @@ def test_signed_check_webhook_validates_order_before_acknowledging() -> None:
         )
         invoice_id = checkout_response.json()["product_state"]["invoice_id"]
         valid_payload = (
-            b'{"InvoiceId":"'
-            + invoice_id.encode("utf-8")
-            + b'","TransactionId":"tx-check-valid-1",'
+            b'{"InvoiceId":"' + invoice_id.encode("utf-8") + b'","TransactionId":"tx-check-valid-1",'
             b'"AccountId":"check-user@example.com","Amount":"990.00",'
             b'"Currency":"RUB","Status":"Completed"}'
         )
         amount_mismatch_payload = (
-            b'{"InvoiceId":"'
-            + invoice_id.encode("utf-8")
-            + b'","TransactionId":"tx-check-amount-mismatch-1",'
+            b'{"InvoiceId":"' + invoice_id.encode("utf-8") + b'","TransactionId":"tx-check-amount-mismatch-1",'
             b'"AccountId":"check-user@example.com","Amount":"9.90",'
             b'"Currency":"RUB","Status":"Completed"}'
         )
@@ -1047,9 +1026,7 @@ def test_signed_check_webhook_validates_order_before_acknowledging() -> None:
             b'"Amount":"990.00","Currency":"RUB","Status":"Completed"}'
         )
         missing_transaction_payload = (
-            b'{"InvoiceId":"'
-            + invoice_id.encode("utf-8")
-            + b'","AccountId":"check-user@example.com",'
+            b'{"InvoiceId":"' + invoice_id.encode("utf-8") + b'","AccountId":"check-user@example.com",'
             b'"Amount":"990.00","Currency":"RUB","Status":"Completed"}'
         )
 
@@ -1070,7 +1047,12 @@ def test_signed_check_webhook_validates_order_before_acknowledging() -> None:
             events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
             order = db.query(Order).one()
 
-        assert [event.status for event in events] == ["processed", "failed", "failed", "failed"]
+        assert [event.status for event in events] == [
+            "processed",
+            "failed",
+            "failed",
+            "failed",
+        ]
         assert events[1].error_code == "amount_mismatch"
         assert events[2].error_code == "order_not_found"
         assert events[3].error_code == "missing_transaction_id"
@@ -1109,16 +1091,12 @@ def test_signed_check_webhook_rejects_account_and_currency_mismatch() -> None:
         )
         invoice_id = checkout_response.json()["product_state"]["invoice_id"]
         account_mismatch_payload = (
-            b'{"InvoiceId":"'
-            + invoice_id.encode("utf-8")
-            + b'","TransactionId":"tx-check-account-mismatch-1",'
+            b'{"InvoiceId":"' + invoice_id.encode("utf-8") + b'","TransactionId":"tx-check-account-mismatch-1",'
             b'"AccountId":"other@example.com","Amount":"990.00",'
             b'"Currency":"RUB","Status":"Completed"}'
         )
         currency_mismatch_payload = (
-            b'{"InvoiceId":"'
-            + invoice_id.encode("utf-8")
-            + b'","TransactionId":"tx-check-currency-mismatch-1",'
+            b'{"InvoiceId":"' + invoice_id.encode("utf-8") + b'","TransactionId":"tx-check-currency-mismatch-1",'
             b'"AccountId":"check-account-user@example.com","Amount":"990.00",'
             b'"Currency":"USD","Status":"Completed"}'
         )
@@ -1133,7 +1111,10 @@ def test_signed_check_webhook_rejects_account_and_currency_mismatch() -> None:
         with SessionLocal() as db:
             events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
 
-        assert [event.error_code for event in events] == ["account_mismatch", "currency_mismatch"]
+        assert [event.error_code for event in events] == [
+            "account_mismatch",
+            "currency_mismatch",
+        ]
     finally:
         allow_unsigned_cloudpayments_webhooks_for_test()
         object.__setattr__(settings, "cloudpayments_enabled", False)
@@ -1172,15 +1153,16 @@ def test_successful_pay_webhook_is_saved_without_activating_access() -> None:
             "Amount": "990.00",
             "Currency": "RUB",
             "Status": "Completed",
-            "Data": {"product_code": "document-summary", "plan_code": "document-summary-pro"},
+            "Data": {
+                "product_code": "document-summary",
+                "plan_code": "document-summary-pro",
+            },
         },
     )
 
     assert webhook_response.status_code == 200
 
-    status_response = client.get(
-        f"/api/auth/payment-status?invoice_id={invoice_id}&email=user@example.com"
-    )
+    status_response = client.get(f"/api/auth/payment-status?invoice_id={invoice_id}&email=user@example.com")
     assert status_response.status_code == 200
     status_payload = status_response.json()
     assert status_payload["product_state"]["status"] == "pending"
@@ -1302,9 +1284,7 @@ def test_authorized_pay_requires_confirm_or_cancel_to_reach_terminal_state() -> 
         authorized_order = db.query(Order).one()
         authorized_payment = db.query(Payment).one()
         authorized_event = (
-            db.query(PaymentWebhookEvent)
-            .filter(PaymentWebhookEvent.transaction_id == "tx-dms-confirm-1")
-            .one()
+            db.query(PaymentWebhookEvent).filter(PaymentWebhookEvent.transaction_id == "tx-dms-confirm-1").one()
         )
 
     assert authorized_order.status == "pending_payment"
@@ -1392,7 +1372,13 @@ def test_check_webhook_validates_snapshotted_payment_schema() -> None:
     ]
 
     responses = []
-    for invoice_id, email, provider_status, expected_response, expected_error in scenarios:
+    for (
+        invoice_id,
+        email,
+        provider_status,
+        expected_response,
+        expected_error,
+    ) in scenarios:
         payload = {
             "InvoiceId": invoice_id,
             "TransactionId": f"tx-{email}",
@@ -1405,7 +1391,12 @@ def test_check_webhook_validates_snapshotted_payment_schema() -> None:
         response = client.post("/api/cloudpayments/check", json=payload)
         responses.append((response, expected_response, expected_error))
 
-    assert [response.status_code for response, _, _ in responses] == [200, 200, 200, 200]
+    assert [response.status_code for response, _, _ in responses] == [
+        200,
+        200,
+        200,
+        200,
+    ]
     assert [response.json() for response, _, _ in responses] == [
         expected_response for _, expected_response, _ in responses
     ]
@@ -1414,10 +1405,13 @@ def test_check_webhook_validates_snapshotted_payment_schema() -> None:
         events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
 
     assert [order.status for order in orders] == ["pending_payment"] * len(scenarios)
-    assert [event.status for event in events] == ["failed", "failed", "failed", "processed"]
-    assert [event.error_code for event in events] == [
-        expected_error for _, _, expected_error in responses
+    assert [event.status for event in events] == [
+        "failed",
+        "failed",
+        "failed",
+        "processed",
     ]
+    assert [event.error_code for event in events] == [expected_error for _, _, expected_error in responses]
 
 
 def test_late_confirm_captures_existing_authorized_payment_after_order_is_paid() -> None:
@@ -1454,9 +1448,15 @@ def test_late_confirm_captures_existing_authorized_payment_after_order_is_paid()
     ]
 
     assert [response.status_code for response in authorized_responses] == [200, 200]
-    assert [response.json() for response in authorized_responses] == [{"code": 0}, {"code": 0}]
+    assert [response.json() for response in authorized_responses] == [
+        {"code": 0},
+        {"code": 0},
+    ]
     assert [response.status_code for response in confirm_responses] == [200, 200]
-    assert [response.json() for response in confirm_responses] == [{"code": 0}, {"code": 0}]
+    assert [response.json() for response in confirm_responses] == [
+        {"code": 0},
+        {"code": 0},
+    ]
     with SessionLocal() as db:
         order = db.query(Order).one()
         payments = db.query(Payment).order_by(Payment.provider_payment_id).all()
@@ -1555,9 +1555,7 @@ def test_legacy_orders_without_payment_mode_snapshot_default_to_charge_schema() 
     invoice_id = create_checkout_invoice(email=email)
     with SessionLocal() as db:
         order = db.query(Order).filter(Order.provider_invoice_id == invoice_id).one()
-        order.metadata_ = {
-            key: value for key, value in order.metadata_.items() if key != "payment_mode"
-        }
+        order.metadata_ = {key: value for key, value in order.metadata_.items() if key != "payment_mode"}
         provider_account = db.get(PaymentProviderAccount, order.provider_account_id)
         provider_account.config = {**provider_account.config, "widget_mode": "auth"}
         db.commit()
@@ -1595,7 +1593,12 @@ def test_legacy_orders_without_payment_mode_snapshot_default_to_charge_schema() 
 
     assert order.status == "pending_payment"
     assert payment_count == 0
-    assert [event.status for event in events] == ["failed", "failed", "failed", "failed"]
+    assert [event.status for event in events] == [
+        "failed",
+        "failed",
+        "failed",
+        "failed",
+    ]
     assert {event.error_code for event in events} == {"payment_schema_mismatch"}
 
 
@@ -1644,11 +1647,7 @@ def test_verified_late_pay_and_confirm_after_checkout_expiry_remain_authoritativ
             assert response.json() == {"code": 0}
             with SessionLocal() as db:
                 order = db.query(Order).filter(Order.provider_invoice_id == invoice_id).one()
-                payment = (
-                    db.query(Payment)
-                    .filter(Payment.provider_payment_id == scenario["transaction_id"])
-                    .one()
-                )
+                payment = db.query(Payment).filter(Payment.provider_payment_id == scenario["transaction_id"]).one()
 
             assert order.status == "paid"
             assert order.paid_at
@@ -1768,17 +1767,13 @@ def test_signed_check_after_failed_attempt_allows_retry() -> None:
     try:
         invoice_id = create_checkout_invoice(email="retry-after-fail@example.com")
         fail_payload = (
-            b'{"InvoiceId":"'
-            + invoice_id.encode("utf-8")
-            + b'","TransactionId":"tx-retry-fail-1",'
+            b'{"InvoiceId":"' + invoice_id.encode("utf-8") + b'","TransactionId":"tx-retry-fail-1",'
             b'"AccountId":"retry-after-fail@example.com",'
             b'"Amount":"990.00","Currency":"RUB",'
             b'"ReasonCode":"5","Reason":"Insufficient funds"}'
         )
         check_payload = (
-            b'{"InvoiceId":"'
-            + invoice_id.encode("utf-8")
-            + b'","TransactionId":"tx-retry-check-1",'
+            b'{"InvoiceId":"' + invoice_id.encode("utf-8") + b'","TransactionId":"tx-retry-check-1",'
             b'"AccountId":"retry-after-fail@example.com",'
             b'"Amount":"990.00","Currency":"RUB","Status":"Completed"}'
         )
@@ -1956,11 +1951,7 @@ def test_confirm_notification_rejects_partial_capture_amount() -> None:
     with SessionLocal() as db:
         order = db.query(Order).one()
         payment = db.query(Payment).one()
-        confirm_event = (
-            db.query(PaymentWebhookEvent)
-            .filter(PaymentWebhookEvent.endpoint == "confirm")
-            .one()
-        )
+        confirm_event = db.query(PaymentWebhookEvent).filter(PaymentWebhookEvent.endpoint == "confirm").one()
 
     assert order.status == "pending_payment"
     assert payment.status == "authorized"
@@ -2005,11 +1996,7 @@ def test_confirm_notification_rejects_amount_above_authorization() -> None:
     with SessionLocal() as db:
         order = db.query(Order).one()
         payment = db.query(Payment).one()
-        confirm_event = (
-            db.query(PaymentWebhookEvent)
-            .filter(PaymentWebhookEvent.endpoint == "confirm")
-            .one()
-        )
+        confirm_event = db.query(PaymentWebhookEvent).filter(PaymentWebhookEvent.endpoint == "confirm").one()
 
     assert order.status == "pending_payment"
     assert payment.status == "authorized"
@@ -2073,11 +2060,7 @@ def test_state_changing_notifications_require_transaction_id() -> None:
         assert response.json() == {"code": 0}
         with SessionLocal() as db:
             order = db.query(Order).filter(Order.provider_invoice_id == invoice_id).one()
-            event = (
-                db.query(PaymentWebhookEvent)
-                .filter(PaymentWebhookEvent.invoice_id == invoice_id)
-                .one()
-            )
+            event = db.query(PaymentWebhookEvent).filter(PaymentWebhookEvent.invoice_id == invoice_id).one()
             payment_count = db.query(Payment).filter(Payment.order_id == order.id).count()
 
         assert order.status == "pending_payment"
@@ -2139,9 +2122,7 @@ def test_late_pay_or_confirm_does_not_reopen_canceled_order() -> None:
             f"/api/cloudpayments/{scenario['endpoint']}",
             json={
                 **base_payload,
-                "Status": "Authorized"
-                if scenario["endpoint"] == "pay"
-                else "Completed",
+                "Status": "Authorized" if scenario["endpoint"] == "pay" else "Completed",
             },
         )
 
@@ -2151,11 +2132,7 @@ def test_late_pay_or_confirm_does_not_reopen_canceled_order() -> None:
         assert late_response.json() == {"code": 0}
         with SessionLocal() as db:
             order = db.query(Order).filter(Order.provider_invoice_id == invoice_id).one()
-            payment = (
-                db.query(Payment)
-                .filter(Payment.provider_payment_id == scenario["transaction_id"])
-                .one()
-            )
+            payment = db.query(Payment).filter(Payment.provider_payment_id == scenario["transaction_id"]).one()
             events = (
                 db.query(PaymentWebhookEvent)
                 .filter(PaymentWebhookEvent.invoice_id == invoice_id)
@@ -2556,9 +2533,7 @@ def test_refund_webhook_records_refund_skeleton_and_updates_payment() -> None:
 
     assert refund_response.status_code == 200
 
-    status_response = client.get(
-        f"/api/auth/payment-status?invoice_id={invoice_id}&email=refund-user@example.com"
-    )
+    status_response = client.get(f"/api/auth/payment-status?invoice_id={invoice_id}&email=refund-user@example.com")
     assert status_response.status_code == 200
     status_payload = status_response.json()
     assert status_payload["product_state"]["status"] == "pending"
@@ -2610,11 +2585,7 @@ def test_refund_webhook_accepts_provider_payload_without_currency_or_refund_id()
     with SessionLocal() as db:
         payment = db.query(Payment).one()
         refund = db.query(Refund).one()
-        refund_event = (
-            db.query(PaymentWebhookEvent)
-            .filter(PaymentWebhookEvent.endpoint == "refund")
-            .one()
-        )
+        refund_event = db.query(PaymentWebhookEvent).filter(PaymentWebhookEvent.endpoint == "refund").one()
 
     assert payment.status == "partially_refunded"
     assert payment.refunded_amount_minor == 40000
@@ -2747,7 +2718,10 @@ def test_distinct_refund_ids_for_same_transaction_are_not_deduplicated() -> None
     assert order.status == "refunded"
     assert payment.status == "refunded"
     assert payment.refunded_amount_minor == 99000
-    assert [refund.provider_refund_id for refund in refunds] == ["refund-part-1", "refund-part-2"]
+    assert [refund.provider_refund_id for refund in refunds] == [
+        "refund-part-1",
+        "refund-part-2",
+    ]
     assert [event.status for event in events] == ["processed", "processed", "processed"]
 
 
@@ -2946,9 +2920,7 @@ def test_cloudpayments_payload_helpers_keep_normalization_contract() -> None:
     assert get_first({"blank": " \t\n"}, "blank") is None
 
     assert all(parse_bool(value) is True for value in ("true", "1", "yes", "y", True))
-    assert all(
-        parse_bool(value) is False for value in ("false", "0", "no", "n", False)
-    )
+    assert all(parse_bool(value) is False for value in ("false", "0", "no", "n", False))
     assert parse_bool("maybe") is None
 
     assert parse_int(7) == 7
@@ -3074,11 +3046,7 @@ def test_recurrent_webhook_validates_required_provider_fields() -> None:
             "missing_subscription_require_confirmation",
             "missing_subscription_require_confirmation",
             0,
-            {
-                key: value
-                for key, value in base_payload.items()
-                if key != "RequireConfirmation"
-            },
+            {key: value for key, value in base_payload.items() if key != "RequireConfirmation"},
         ),
         (
             "invalid_subscription_require_confirmation",
@@ -3162,11 +3130,7 @@ def test_recurrent_webhook_validates_required_provider_fields() -> None:
             "missing_subscription_successful_transactions_number",
             "missing_subscription_successful_transactions_number",
             0,
-            {
-                key: value
-                for key, value in base_payload.items()
-                if key != "SuccessfulTransactionsNumber"
-            },
+            {key: value for key, value in base_payload.items() if key != "SuccessfulTransactionsNumber"},
         ),
         (
             "invalid_subscription_successful_transactions_number",
@@ -3184,11 +3148,7 @@ def test_recurrent_webhook_validates_required_provider_fields() -> None:
             "missing_subscription_failed_transactions_number",
             "missing_subscription_failed_transactions_number",
             0,
-            {
-                key: value
-                for key, value in base_payload.items()
-                if key != "FailedTransactionsNumber"
-            },
+            {key: value for key, value in base_payload.items() if key != "FailedTransactionsNumber"},
         ),
         (
             "invalid_subscription_failed_transactions_number",
@@ -3228,10 +3188,7 @@ def test_recurrent_webhook_validates_required_provider_fields() -> None:
             scenario_payload["Id"] = f"sub_required_fields_{index}"
         scenario_payloads.append((name, error_code, expected_code, scenario_payload))
 
-    responses = [
-        client.post("/api/cloudpayments/recurrent", json=payload)
-        for _, _, _, payload in scenario_payloads
-    ]
+    responses = [client.post("/api/cloudpayments/recurrent", json=payload) for _, _, _, payload in scenario_payloads]
 
     assert [response.json()["code"] for response in responses] == [
         expected_code for _, _, expected_code, _ in scenario_payloads
@@ -3241,9 +3198,7 @@ def test_recurrent_webhook_validates_required_provider_fields() -> None:
 
     assert [event.status for event in events] == ["failed"] * len(scenarios)
     events_by_provider_event_id = {
-        event.provider_event_id: event
-        for event in events
-        if event.provider_event_id is not None
+        event.provider_event_id: event for event in events if event.provider_event_id is not None
     }
     expected_by_provider_event_id = {
         payload["Id"]: error_code
@@ -3251,16 +3206,11 @@ def test_recurrent_webhook_validates_required_provider_fields() -> None:
         if get_first(payload, "Id", "id") is not None
     }
     assert {
-        provider_event_id: event.error_code
-        for provider_event_id, event in events_by_provider_event_id.items()
+        provider_event_id: event.error_code for provider_event_id, event in events_by_provider_event_id.items()
     } == expected_by_provider_event_id
-    missing_id_events = [
-        event for event in events if event.provider_event_id is None
-    ]
+    missing_id_events = [event for event in events if event.provider_event_id is None]
     assert len(missing_id_events) == 2
-    assert {event.error_code for event in missing_id_events} == {
-        "missing_subscription_id"
-    }
+    assert {event.error_code for event in missing_id_events} == {"missing_subscription_id"}
 
 
 def test_recurrent_terminal_statuses_and_schedule_are_normalized() -> None:
@@ -3406,12 +3356,7 @@ def test_same_email_can_register_independent_ru_and_eu_accounts() -> None:
     assert ru_user["user_id"] != eu_user["user_id"]
 
     with SessionLocal() as db:
-        users = (
-            db.query(User)
-            .filter(User.email_normalized == "shared@example.com")
-            .order_by(User.region)
-            .all()
-        )
+        users = db.query(User).filter(User.email_normalized == "shared@example.com").order_by(User.region).all()
 
     assert len(users) == 2
     assert {user.region for user in users} == {"eu", "ru"}
@@ -3497,7 +3442,11 @@ def test_password_reset_email_token_and_session_revocation(monkeypatch) -> None:
 
     def fake_make_password_reset_token():
         token_hash = password_reset_router.hashlib.sha256(reset_token.encode("utf-8")).hexdigest()
-        return reset_token, token_hash, datetime.now(timezone.utc) + timedelta(minutes=30)
+        return (
+            reset_token,
+            token_hash,
+            datetime.now(UTC) + timedelta(minutes=30),
+        )
 
     monkeypatch.setattr(
         password_reset_router,
@@ -3610,11 +3559,7 @@ def test_password_reset_request_uses_forwarded_client_ip_from_trusted_proxy() ->
 
     assert response.status_code == 200
     with SessionLocal() as db:
-        stored_limit = (
-            db.query(PasswordResetRateLimit)
-            .filter_by(rate_limit_key="ip:anytoolai:ru:203.0.113.10")
-            .one()
-        )
+        stored_limit = db.query(PasswordResetRateLimit).filter_by(rate_limit_key="ip:anytoolai:ru:203.0.113.10").one()
         assert stored_limit.count == 1
 
 
@@ -3647,11 +3592,7 @@ def test_password_reset_request_derives_scope_server_side_for_rate_limits() -> N
         assert stored_token is not None
         assert stored_token.tenant_id == "anytoolai"
         assert stored_token.region == "ru"
-        ip_limit = (
-            db.query(PasswordResetRateLimit)
-            .filter_by(rate_limit_key="ip:anytoolai:ru:testclient")
-            .one()
-        )
+        ip_limit = db.query(PasswordResetRateLimit).filter_by(rate_limit_key="ip:anytoolai:ru:testclient").one()
         assert ip_limit.count == password_reset_router.PASSWORD_RESET_IP_RATE_LIMIT_MAX
 
 
@@ -3686,15 +3627,13 @@ def test_password_reset_account_limit_does_not_rollback_ip_counter() -> None:
     assert limited_response.status_code == 429
 
     with SessionLocal() as db:
-        stored_limit = (
-            db.query(PasswordResetRateLimit)
-            .filter_by(rate_limit_key="ip:anytoolai:ru:testclient")
-            .one()
-        )
+        stored_limit = db.query(PasswordResetRateLimit).filter_by(rate_limit_key="ip:anytoolai:ru:testclient").one()
         assert stored_limit.count == password_reset_router.PASSWORD_RESET_ACCOUNT_RATE_LIMIT_MAX + 1
 
 
-def test_password_reset_confirm_invalidates_other_outstanding_reset_tokens(monkeypatch) -> None:
+def test_password_reset_confirm_invalidates_other_outstanding_reset_tokens(
+    monkeypatch,
+) -> None:
     first_token = "first-reset-token-with-enough-length-123"
     second_token = "second-reset-token-with-enough-length-456"
     tokens = iter([first_token, second_token])
@@ -3987,25 +3926,20 @@ def test_cloudpayments_payload_redaction_recurses_through_lists() -> None:
 
 def test_cloudpayments_idempotency_key_fallbacks_are_stable() -> None:
     assert (
-        _event_idempotency_key("pay", "event-1", "invoice-1", "tx-1", None, "hash-1")
-        == "cloudpayments:event:event-1"
+        _event_idempotency_key("pay", "event-1", "invoice-1", "tx-1", None, "hash-1") == "cloudpayments:event:event-1"
     )
     assert (
         _event_idempotency_key("refund", None, "invoice-1", "tx-1", "refund-1", "hash-1")
         == "cloudpayments:refund:refund-1"
     )
     assert (
-        _event_idempotency_key("pay", None, "invoice-1", "tx-1", None, "hash-1")
-        == "cloudpayments:pay:transaction:tx-1"
+        _event_idempotency_key("pay", None, "invoice-1", "tx-1", None, "hash-1") == "cloudpayments:pay:transaction:tx-1"
     )
     assert (
         _event_idempotency_key("pay", None, "invoice-1", None, None, "hash-1")
         == "cloudpayments:pay:invoice:invoice-1:hash-1"
     )
-    assert (
-        _event_idempotency_key("pay", None, None, None, None, "hash-1")
-        == "cloudpayments:pay:payload:hash-1"
-    )
+    assert _event_idempotency_key("pay", None, None, None, None, "hash-1") == "cloudpayments:pay:payload:hash-1"
 
 
 def test_checkout_requires_acceptance_again_when_active_document_version_changes() -> None:
@@ -4180,12 +4114,8 @@ def test_legal_required_documents_are_scoped_by_tenant_and_region() -> None:
 
     assert ru_documents_response.status_code == 200
     assert eu_documents_response.status_code == 200
-    assert ru_documents_response.json()["documents"][0]["document_version_id"] == str(
-        ru_document_id
-    )
-    assert eu_documents_response.json()["documents"][0]["document_version_id"] == str(
-        eu_document_id
-    )
+    assert ru_documents_response.json()["documents"][0]["document_version_id"] == str(ru_document_id)
+    assert eu_documents_response.json()["documents"][0]["document_version_id"] == str(eu_document_id)
     assert ru_documents_response.json()["documents"][0]["acceptance_text_hash"]
     assert eu_documents_response.json()["documents"][0]["acceptance_text_hash"]
 
@@ -4223,9 +4153,7 @@ def test_legal_required_documents_are_scoped_by_tenant_and_region() -> None:
         headers={"Authorization": f"Bearer {ru_token}"},
         json={
             "document_version_id": str(ru_document_id),
-            "acceptance_text_hash": ru_documents_response.json()["documents"][0][
-                "acceptance_text_hash"
-            ],
+            "acceptance_text_hash": ru_documents_response.json()["documents"][0]["acceptance_text_hash"],
         },
     )
     eu_accept_response = client.post(
@@ -4233,9 +4161,7 @@ def test_legal_required_documents_are_scoped_by_tenant_and_region() -> None:
         headers={"Authorization": f"Bearer {eu_token}"},
         json={
             "document_version_id": str(eu_document_id),
-            "acceptance_text_hash": eu_documents_response.json()["documents"][0][
-                "acceptance_text_hash"
-            ],
+            "acceptance_text_hash": eu_documents_response.json()["documents"][0]["acceptance_text_hash"],
         },
     )
 
@@ -4246,10 +4172,7 @@ def test_legal_required_documents_are_scoped_by_tenant_and_region() -> None:
         acceptances = db.query(DocumentAcceptance).all()
 
     assert len(acceptances) == 2
-    assert {
-        (acceptance.region, acceptance.document_version_id)
-        for acceptance in acceptances
-    } == {
+    assert {(acceptance.region, acceptance.document_version_id) for acceptance in acceptances} == {
         ("ru", ru_document_id),
         ("eu", eu_document_id),
     }
@@ -4350,10 +4273,7 @@ def test_new_cloudpayments_webhook_types_reject_unsigned_disabled_mode() -> None
         ),
     ]
 
-    responses = [
-        client.post(f"/api/cloudpayments/{endpoint}", json=payload)
-        for endpoint, payload in scenarios
-    ]
+    responses = [client.post(f"/api/cloudpayments/{endpoint}", json=payload) for endpoint, payload in scenarios]
 
     assert [response.status_code for response in responses] == [400, 400, 400]
     assert [response.json()["detail"] for response in responses] == [
@@ -4376,9 +4296,9 @@ def test_cloudpayments_webhook_rejects_non_ascii_signature_without_500() -> None
     object.__setattr__(settings, "cloudpayments_enabled", True)
     object.__setattr__(settings, "cloudpayments_api_secret", secret)
     payload = b'{"InvoiceId":"invoice-non-ascii","Amount":"1490.00","Currency":"RUB"}'
-    valid_signature = base64.b64encode(
-        hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).digest()
-    ).decode("ascii")
+    valid_signature = base64.b64encode(hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).digest()).decode(
+        "ascii"
+    )
 
     assert (
         verify_cloudpayments_signature(

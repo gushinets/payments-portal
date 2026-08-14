@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from collections.abc import Iterator
 from contextlib import contextmanager
+from pathlib import Path
 from unittest.mock import patch
 
 from alembic import command
@@ -13,6 +14,7 @@ from sqlalchemy.engine import Engine, URL
 
 _TEST_DATABASE_SUFFIXES = ("_test", "_tests")
 _SYSTEM_DATABASE_NAMES = frozenset({"postgres", "template0", "template1"})
+REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
 
 
 def validate_test_database_url(database_url: URL) -> URL:
@@ -25,9 +27,7 @@ def validate_test_database_url(database_url: URL) -> URL:
         raise ValueError("PostgreSQL test URL must include a database name")
 
     normalized_name = database_name.lower()
-    if normalized_name in _SYSTEM_DATABASE_NAMES or not normalized_name.endswith(
-        _TEST_DATABASE_SUFFIXES
-    ):
+    if normalized_name in _SYSTEM_DATABASE_NAMES or not normalized_name.endswith(_TEST_DATABASE_SUFFIXES):
         raise ValueError(
             "Refusing destructive test operations for database "
             f"{database_name!r}; its name must end with '_test' or '_tests'"
@@ -42,12 +42,8 @@ def create_test_database(database_test_url: URL, database_admin_url: URL) -> Non
     admin_engine = create_engine(database_admin_url, isolation_level="AUTOCOMMIT")
     try:
         with admin_engine.connect() as connection:
-            database_name = connection.dialect.identifier_preparer.quote(
-                database_test_url.database
-            )
-            connection.execute(
-                text(f"DROP DATABASE IF EXISTS {database_name} WITH (FORCE)")
-            )
+            database_name = connection.dialect.identifier_preparer.quote(database_test_url.database)
+            connection.execute(text(f"DROP DATABASE IF EXISTS {database_name} WITH (FORCE)"))
             connection.execute(text(f"CREATE DATABASE {database_name}"))
     finally:
         admin_engine.dispose()
@@ -59,12 +55,8 @@ def drop_test_database(database_test_url: URL, database_admin_url: URL) -> None:
     admin_engine = create_engine(database_admin_url, isolation_level="AUTOCOMMIT")
     try:
         with admin_engine.connect() as connection:
-            database_name = connection.dialect.identifier_preparer.quote(
-                database_test_url.database
-            )
-            connection.execute(
-                text(f"DROP DATABASE IF EXISTS {database_name} WITH (FORCE)")
-            )
+            database_name = connection.dialect.identifier_preparer.quote(database_test_url.database)
+            connection.execute(text(f"DROP DATABASE IF EXISTS {database_name} WITH (FORCE)"))
     finally:
         admin_engine.dispose()
 
@@ -82,7 +74,7 @@ def alembic_test_config(database_test_url: URL) -> Iterator[Config]:
     """Configure Alembic for a test database without replacing pytest logging."""
     validate_test_database_url(database_test_url)
     database_url = database_test_url.render_as_string(hide_password=False)
-    config = Config("apps/api/alembic.ini")
+    config = Config(str(REPOSITORY_ROOT / "apps/api/alembic.ini"))
     config.set_main_option("sqlalchemy.url", database_url)
 
     # env.py reads DATABASE_URL first, so force it to the dedicated test DB.

@@ -26,7 +26,15 @@ from app.payment_providers.contracts import (
 )
 
 CLOUDPAYMENTS_PROVIDER_CODE = "cloudpayments"
-SUPPORTED_ENDPOINTS = {"check", "pay", "fail", "refund", "recurrent", "confirm", "cancel"}
+SUPPORTED_ENDPOINTS = {
+    "check",
+    "pay",
+    "fail",
+    "refund",
+    "recurrent",
+    "confirm",
+    "cancel",
+}
 CARD_DATA_KEYS = {
     "cardcryptogrampacket",
     "cardholdermessage",
@@ -77,10 +85,7 @@ CLOUDPAYMENTS_RESPONSE_CODES = {
 
 def _flatten_form_payload(raw_body: bytes) -> dict[str, Any]:
     parsed = parse_qs(raw_body.decode("utf-8"), keep_blank_values=True)
-    return {
-        key: values[0] if len(values) == 1 else values
-        for key, values in parsed.items()
-    }
+    return {key: values[0] if len(values) == 1 else values for key, values in parsed.items()}
 
 
 async def _parse_payload(request: Request, raw_body: bytes) -> dict[str, Any]:
@@ -172,9 +177,7 @@ def _normalized_recurrent_payload(
             "status": normalized_recurrent_status(get_first(payload, "Status", "status")),
             "amount_minor": amount_minor,
             "currency": currency,
-            "require_confirmation": parse_bool(
-                get_first(payload, "RequireConfirmation", "requireConfirmation")
-            ),
+            "require_confirmation": parse_bool(get_first(payload, "RequireConfirmation", "requireConfirmation")),
             "start_at": get_first(payload, "StartDate", "startDate", "start_at"),
             "interval": str(interval).strip().lower() if interval is not None else None,
             "period": parse_int(get_first(payload, "Period", "period")),
@@ -278,16 +281,10 @@ class CloudPaymentsAdapter:
     ) -> CheckoutAction:
         mode = str(provider_account.config.get("widget_mode") or "charge")
         if mode not in {"charge", "auth"}:
-            raise PaymentProviderConfigurationError(
-                "cloudpayments_widget_mode_invalid"
-            )
-        public_identifier = (
-            provider_account.public_identifier or settings.cloudpayments_public_id or None
-        )
+            raise PaymentProviderConfigurationError("cloudpayments_widget_mode_invalid")
+        public_identifier = provider_account.public_identifier or settings.cloudpayments_public_id or None
         if public_identifier is None or not public_identifier.strip():
-            raise PaymentProviderConfigurationError(
-                "cloudpayments_public_terminal_id_missing"
-            )
+            raise PaymentProviderConfigurationError("cloudpayments_public_terminal_id_missing")
         return CheckoutAction(
             provider=self.provider_code,
             experience="widget",
@@ -330,12 +327,15 @@ class CloudPaymentsAdapter:
         refund_id = get_first(payload, "RefundId", "refundId", "refund_id")
         if endpoint == "refund":
             refund_id = refund_id or transaction_id
-            transaction_id = get_first(
-                payload,
-                "PaymentTransactionId",
-                "paymentTransactionId",
-                "payment_transaction_id",
-            ) or transaction_id
+            transaction_id = (
+                get_first(
+                    payload,
+                    "PaymentTransactionId",
+                    "paymentTransactionId",
+                    "payment_transaction_id",
+                )
+                or transaction_id
+            )
         amount = _parse_amount(get_first(payload, "Amount", "amount"))
         amount_minor = _amount_minor(amount)
         currency = get_first(payload, "Currency", "currency")

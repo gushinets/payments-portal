@@ -71,7 +71,5 @@ def test_password_reset_url_keeps_token_out_of_query_string(monkeypatch) -> None
 
     reset_url = password_reset_email.build_password_reset_url("secret-token")
 
-    assert reset_url == (
-        "https://payments.example.com/ru/reset-password#token=secret-token"
-    )
+    assert reset_url == ("https://payments.example.com/ru/reset-password#token=secret-token")
     assert "?" not in reset_url
