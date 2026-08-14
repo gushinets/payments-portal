@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import os
 from pathlib import Path
 from unittest.mock import patch
@@ -57,8 +58,6 @@ def test_settings_preserve_fallback_defaults_when_environment_is_absent() -> Non
     assert loaded_settings.cloudpayments_api_secret == ""
     assert loaded_settings.cloudpayments_enabled is False
     assert loaded_settings.cors_allow_origins == ()
-    assert loaded_settings.default_tenant_id == "anytoolai"
-    assert loaded_settings.default_region == "ru"
     assert loaded_settings.smtp_host == ""
     assert loaded_settings.smtp_port == 587
     assert loaded_settings.smtp_username == ""
@@ -109,8 +108,6 @@ def test_settings_preserve_dotenv_parsing_and_process_environment_precedence(
                 "CLOUDPAYMENTS_API_SECRET=secret-from-dotenv",
                 "CLOUDPAYMENTS_ENABLED=true",
                 'CORS_ALLOW_ORIGINS="https://web.example, https://admin.example"',
-                "DEFAULT_TENANT_ID=tenant-from-dotenv",
-                "DEFAULT_REGION=eu",
                 "SMTP_HOST=smtp.dotenv.example",
                 "SMTP_PORT=2525",
                 "SMTP_USERNAME=dotenv-user",
@@ -126,7 +123,6 @@ def test_settings_preserve_dotenv_parsing_and_process_environment_precedence(
         os.environ,
         {
             "APP_PUBLIC_BASE_URL": "https://process.example/app",
-            "DEFAULT_REGION": "ru",
             "SMTP_USERNAME": "process-user",
         },
         clear=True,
@@ -142,11 +138,74 @@ def test_settings_preserve_dotenv_parsing_and_process_environment_precedence(
         "https://web.example",
         "https://admin.example",
     )
-    assert loaded_settings.default_tenant_id == "tenant-from-dotenv"
-    assert loaded_settings.default_region == "ru"
     assert loaded_settings.smtp_host == "smtp.dotenv.example"
     assert loaded_settings.smtp_port == 2525
     assert loaded_settings.smtp_username == "process-user"
     assert loaded_settings.smtp_password == "dotenv-password"
     assert loaded_settings.smtp_from_email == "payments@example.com"
     assert loaded_settings.smtp_use_tls is False
+
+
+def test_settings_do_not_expose_configurable_default_scope() -> None:
+    assert "default_tenant_id" not in Settings.model_fields
+    assert "default_region" not in Settings.model_fields
+
+
+def test_identity_default_scope_stays_aligned_with_ru_seed_data(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    with patch.dict(
+        os.environ,
+        {
+            "DEFAULT_TENANT_ID": "tenant-from-env",
+            "DEFAULT_REGION": "eu",
+        },
+        clear=True,
+    ):
+        import app.core.settings as settings_module
+        import app.domains.identity.session as session_module
+
+        importlib.reload(settings_module)
+        reloaded_session = importlib.reload(session_module)
+
+        assert reloaded_session.DEFAULT_TENANT_ID == "anytoolai"
+        assert reloaded_session.DEFAULT_REGION == "ru"
+
+    import app.core.settings as settings_module
+    import app.domains.identity.session as session_module
+
+    importlib.reload(settings_module)
+    importlib.reload(session_module)
+
+
+def test_runtime_dotenv_preserves_os_getenv_consumers(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    dotenv_path = tmp_path / ".env"
+    dotenv_path.write_text(
+        "\n".join(
+            [
+                "LOG_LEVEL=DEBUG",
+                "OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318",
+                "OTEL_SERVICE_NAME=payment-portal-test",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.chdir(tmp_path)
+    with patch.dict(os.environ, {"LOG_LEVEL": "WARNING"}, clear=True):
+        import app.core.settings as settings_module
+
+        importlib.reload(settings_module)
+
+        assert os.environ["LOG_LEVEL"] == "WARNING"
+        assert os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] == "http://127.0.0.1:4318"
+        assert os.environ["OTEL_SERVICE_NAME"] == "payment-portal-test"
+
+    import app.core.settings as settings_module
+
+    importlib.reload(settings_module)

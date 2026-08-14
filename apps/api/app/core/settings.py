@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from dotenv import find_dotenv
+from dotenv import find_dotenv, load_dotenv
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
@@ -24,8 +24,6 @@ class Settings(BaseSettings):
     cloudpayments_api_secret: str = ""
     cloudpayments_enabled: bool = False
     cors_allow_origins: Annotated[tuple[str, ...], NoDecode] = ()
-    default_tenant_id: str = "anytoolai"
-    default_region: str = "ru"
     smtp_host: str = ""
     smtp_port: int = 587
     smtp_username: str = ""
@@ -54,4 +52,10 @@ def _dotenv_file() -> str | None:
     return find_dotenv(usecwd=True) or None
 
 
-settings = Settings(_env_file=_dotenv_file())
+def _load_dotenv_into_environment(dotenv_file: str | None) -> str | None:
+    if dotenv_file:
+        load_dotenv(dotenv_file, override=False)
+    return dotenv_file
+
+
+settings = Settings(_env_file=_load_dotenv_into_environment(_dotenv_file()))

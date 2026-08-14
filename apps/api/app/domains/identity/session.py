@@ -6,12 +6,11 @@ from datetime import datetime, timezone
 from fastapi import Depends, Header, HTTPException
 from sqlalchemy.orm import Session
 
-from app.core.settings import settings
 from app.core.database import get_db
 from app.models import AuthSession, User
 
-DEFAULT_TENANT_ID = settings.default_tenant_id
-DEFAULT_REGION = settings.default_region
+DEFAULT_TENANT_ID = "anytoolai"
+DEFAULT_REGION = "ru"
 
 
 def utc_now() -> datetime:
