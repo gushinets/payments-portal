@@ -1,0 +1,123 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+from dotenv import dotenv_values
+from pydantic import ValidationError
+
+from app.core.settings import load_settings_from_environment
+from app.domains.identity.router import normalize_email
+from apps.api.tests.factories.auth import (
+    LoginRequestFactory,
+    RegisterRequestFactory,
+)
+
+
+def assert_register_email_is_rejected(email: str) -> None:
+    with pytest.raises(ValidationError):
+        RegisterRequestFactory.build(email=email)
+
+
+@pytest.mark.parametrize("email", ["not-an-email", "user＠example.com"])
+def test_identity_email_validation_rejects_malformed_addresses(email: str) -> None:
+    assert_register_email_is_rejected(email)
+
+
+def test_identity_email_validation_preserves_current_length_boundaries() -> None:
+    local_part_limit_email = f'{"a" * 64}@example.com'
+    local_part_over_limit_email = f'{"a" * 65}@example.com'
+    max_total_length_email = f'{"a" * 64}@{"b" * 63}.{"c" * 63}.{"d" * 57}.com'
+    over_total_length_email = f'{"a" * 64}@{"b" * 63}.{"c" * 63}.{"d" * 58}.com'
+
+    assert len(max_total_length_email) == 254
+    assert len(over_total_length_email) == 255
+    assert str(RegisterRequestFactory.build(email=local_part_limit_email).email) == (
+        local_part_limit_email
+    )
+    assert str(RegisterRequestFactory.build(email=max_total_length_email).email) == (
+        max_total_length_email
+    )
+    assert_register_email_is_rejected(local_part_over_limit_email)
+    assert_register_email_is_rejected(over_total_length_email)
+
+
+@pytest.mark.parametrize("factory", [RegisterRequestFactory, LoginRequestFactory])
+def test_identity_email_normalization_contract_for_auth_lookup(factory: type) -> None:
+    request = factory.build(email="USER@EXAMPLE.COM")
+
+    assert str(request.email) == "USER@example.com"
+    assert normalize_email(str(request.email)) == "user@example.com"
+
+
+def test_settings_preserve_fallback_defaults_when_environment_is_absent() -> None:
+    loaded_settings = load_settings_from_environment({})
+
+    assert loaded_settings.app_public_base_url == "http://localhost:3000"
+    assert loaded_settings.database_url == (
+        "postgresql+psycopg://anytoolai:anytoolai@localhost:5432/anytoolai"
+    )
+    assert loaded_settings.cloudpayments_public_id == ""
+    assert loaded_settings.cloudpayments_api_secret == ""
+    assert loaded_settings.cloudpayments_enabled is False
+    assert loaded_settings.cors_allow_origins == ()
+    assert loaded_settings.smtp_host == ""
+    assert loaded_settings.smtp_port == 587
+    assert loaded_settings.smtp_username == ""
+    assert loaded_settings.smtp_password == ""
+    assert loaded_settings.smtp_from_email == "support@any-tool-ai.ru"
+    assert loaded_settings.smtp_use_tls is True
+
+
+def test_settings_preserve_dotenv_parsing_and_process_environment_precedence(
+    tmp_path: Path,
+) -> None:
+    dotenv_path = tmp_path / ".env"
+    dotenv_path.write_text(
+        "\n".join(
+            [
+                'APP_PUBLIC_BASE_URL="https://dotenv.example/app"',
+                "DATABASE_URL=sqlite+pysqlite:///from-dotenv.db",
+                "CLOUDPAYMENTS_PUBLIC_ID=pk_from_dotenv",
+                "CLOUDPAYMENTS_API_SECRET=secret-from-dotenv",
+                "CLOUDPAYMENTS_ENABLED=true",
+                'CORS_ALLOW_ORIGINS="https://web.example, https://admin.example"',
+                "SMTP_HOST=smtp.dotenv.example",
+                "SMTP_PORT=2525",
+                "SMTP_USERNAME=dotenv-user",
+                "SMTP_PASSWORD=dotenv-password",
+                "SMTP_FROM_EMAIL=payments@example.com",
+                "SMTP_USE_TLS=false",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    dotenv_environment = {
+        name: value
+        for name, value in dotenv_values(dotenv_path).items()
+        if value is not None
+    }
+    loaded_settings = load_settings_from_environment(
+        {
+            **dotenv_environment,
+            "APP_PUBLIC_BASE_URL": "https://process.example/app",
+            "SMTP_USERNAME": "process-user",
+        }
+    )
+
+    assert loaded_settings.app_public_base_url == "https://process.example/app"
+    assert loaded_settings.database_url == "sqlite+pysqlite:///from-dotenv.db"
+    assert loaded_settings.cloudpayments_public_id == "pk_from_dotenv"
+    assert loaded_settings.cloudpayments_api_secret == "secret-from-dotenv"
+    assert loaded_settings.cloudpayments_enabled is True
+    assert loaded_settings.cors_allow_origins == (
+        "https://web.example",
+        "https://admin.example",
+    )
+    assert loaded_settings.smtp_host == "smtp.dotenv.example"
+    assert loaded_settings.smtp_port == 2525
+    assert loaded_settings.smtp_username == "process-user"
+    assert loaded_settings.smtp_password == "dotenv-password"
+    assert loaded_settings.smtp_from_email == "payments@example.com"
+    assert loaded_settings.smtp_use_tls is False
