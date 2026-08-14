@@ -20,6 +20,8 @@ from apps.api.tests.support.postgres import reset_public_schema
 os.environ["CLOUDPAYMENTS_API_SECRET"] = ""
 os.environ["SKIP_LEGAL_SEED"] = "true"
 
+pytestmark = pytest.mark.postgres
+
 from app.core.database import Base, get_db  # noqa: E402
 from app.integrations.cloudpayments import adapter as cloudpayments_adapter_module  # noqa: E402
 from app.integrations.cloudpayments.adapter import verify_cloudpayments_signature  # noqa: E402
@@ -71,9 +73,7 @@ def webhook_database(
 
 
 def cloudpayments_signature(raw_body: bytes, secret: str = "test-secret") -> str:
-    return base64.b64encode(
-        hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).digest()
-    ).decode("ascii")
+    return base64.b64encode(hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).digest()).decode("ascii")
 
 
 def seed_order(
@@ -471,7 +471,12 @@ def test_cancel_after_refunded_payment_is_ignored_without_refund_mutation(
     assert payment.status == "refunded"
     assert payment.refunded_amount_minor == 99000
     assert len(refunds) == 1
-    assert [event.status for event in events] == ["processed", "processed", "processed", "ignored"]
+    assert [event.status for event in events] == [
+        "processed",
+        "processed",
+        "processed",
+        "ignored",
+    ]
     assert events[-1].payment_id == payment.id
     assert events[-1].error_code == "order_already_refunded"
 
@@ -771,7 +776,5 @@ def test_concurrent_recurrent_duplicate_delivery_is_serialized(
         events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
 
     assert sorted(event.status for event in events) == ["duplicate", "processed"]
-    assert {event.idempotency_key for event in events} == {
-        "cloudpayments:recurrent:payload:" + events[0].payload_hash
-    }
+    assert {event.idempotency_key for event in events} == {"cloudpayments:recurrent:payload:" + events[0].payload_hash}
     assert all(event.provider_account_id is not None for event in events)

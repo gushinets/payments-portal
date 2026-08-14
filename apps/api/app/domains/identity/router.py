@@ -20,7 +20,6 @@ from app.domains.legal.service import (
 from app.domains.identity.session import (
     DEFAULT_REGION,
     DEFAULT_TENANT_ID,
-    as_utc,
     get_current_session,
     utc_now,
 )
@@ -279,11 +278,7 @@ def login(
         )
         .first()
     )
-    if (
-        user is None
-        or user.password_hash is None
-        or not verify_password(payload.password, user.password_hash)
-    ):
+    if user is None or user.password_hash is None or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=401, detail="invalid_credentials")
 
     user.last_login_at = utc_now()
@@ -380,9 +375,7 @@ def get_payment_status(
         payment_query = db.query(Payment).filter(Payment.order_id == order.id)
         if order.status == "canceled":
             payment = (
-                payment_query.filter(
-                    Payment.status.in_(("succeeded", "partially_refunded", "refunded"))
-                )
+                payment_query.filter(Payment.status.in_(("succeeded", "partially_refunded", "refunded")))
                 .order_by(Payment.captured_at.desc(), Payment.created_at.desc())
                 .first()
             )
