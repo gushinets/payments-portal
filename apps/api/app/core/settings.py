@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Annotated, Any
 
-from dotenv import find_dotenv, load_dotenv
+from dotenv import load_dotenv
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
@@ -48,8 +49,19 @@ class Settings(BaseSettings):
         return tuple(value)
 
 
-def _dotenv_file() -> str | None:
-    return find_dotenv(usecwd=True) or None
+def _dotenv_file(settings_file: Path | str = Path(__file__)) -> str | None:
+    search_root = Path(settings_file).resolve().parent
+    for directory in (search_root, *search_root.parents):
+        dotenv_file = directory / ".env"
+        if dotenv_file.is_file():
+            return str(dotenv_file)
+        if _is_repository_root(directory):
+            break
+    return None
+
+
+def _is_repository_root(directory: Path) -> bool:
+    return (directory / "AGENTS.md").is_file() and (directory / "apps" / "api").is_dir()
 
 
 def _load_dotenv_into_environment(dotenv_file: str | None) -> str | None:

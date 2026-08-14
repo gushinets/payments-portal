@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import tomllib
 from pathlib import Path
 from unittest.mock import patch
 
@@ -8,12 +9,15 @@ import pytest
 from pydantic import ValidationError
 
 from app.core.settings import Settings
+from app.core.settings import _dotenv_file
 from app.core.settings import _load_dotenv_into_environment
 from app.domains.identity.router import normalize_email
 from apps.api.tests.factories.auth import (
     LoginRequestFactory,
     RegisterRequestFactory,
 )
+
+API_ROOT = Path(__file__).resolve().parents[2]
 
 
 def assert_register_email_is_rejected(email: str) -> None:
@@ -187,3 +191,43 @@ def test_runtime_dotenv_preserves_os_getenv_consumers(
         assert os.environ["LOG_LEVEL"] == "WARNING"
         assert os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] == "http://127.0.0.1:4318"
         assert os.environ["OTEL_SERVICE_NAME"] == "payment-portal-test"
+
+
+def test_dotenv_discovery_starts_from_settings_module_tree(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    repository_root = tmp_path / "repository"
+    settings_file = repository_root / "apps" / "api" / "app" / "core" / "settings.py"
+    settings_file.parent.mkdir(parents=True)
+    (repository_root / "AGENTS.md").write_text("# Repository instructions\n", encoding="utf-8")
+    repository_dotenv = repository_root / ".env"
+    repository_dotenv.write_text("DATABASE_URL=sqlite+pysqlite:///repo.db\n", encoding="utf-8")
+
+    outside_working_directory = tmp_path / "outside" / "nested"
+    outside_working_directory.mkdir(parents=True)
+    (tmp_path / "outside" / ".env").write_text("DATABASE_URL=sqlite+pysqlite:///outside.db\n", encoding="utf-8")
+    monkeypatch.chdir(outside_working_directory)
+
+    assert _dotenv_file(settings_file) == str(repository_dotenv)
+
+    repository_dotenv.unlink()
+
+    assert _dotenv_file(settings_file) is None
+
+
+def test_api_test_tooling_stays_out_of_main_dependencies() -> None:
+    pyproject = tomllib.loads((API_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    poetry_config = pyproject["tool"]["poetry"]
+    main_dependencies = set(poetry_config["dependencies"])
+    dev_dependencies = set(poetry_config["group"]["dev"]["dependencies"])
+    test_tooling = {"httpx2", "polyfactory", "pytest", "pytest-cov", "ruff"}
+
+    assert test_tooling.isdisjoint(main_dependencies)
+    assert test_tooling.issubset(dev_dependencies)
+
+
+def test_api_production_image_installs_only_main_dependencies() -> None:
+    dockerfile = (API_ROOT / "Dockerfile").read_text(encoding="utf-8")
+
+    assert "poetry --directory apps/api install --only main --no-root" in dockerfile

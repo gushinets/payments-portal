@@ -5,7 +5,7 @@ import hashlib
 import hmac
 import os
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 
 os.environ["DATABASE_URL"] = "sqlite+pysqlite:///:memory:"
 os.environ["CLOUDPAYMENTS_API_SECRET"] = ""
@@ -3445,7 +3445,7 @@ def test_password_reset_email_token_and_session_revocation(monkeypatch) -> None:
         return (
             reset_token,
             token_hash,
-            datetime.now(timezone.utc) + timedelta(minutes=30),
+            datetime.now(UTC) + timedelta(minutes=30),
         )
 
     monkeypatch.setattr(
