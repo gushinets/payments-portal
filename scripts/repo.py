@@ -32,6 +32,7 @@ GENERATED_OPENAPI = ROOT / "docs" / "generated" / "openapi.json"
 GENERATED_TOKENS = ROOT / "apps" / "web" / "src" / "app" / "tokens.generated.css"
 GENERATED_LEGAL_PY = ROOT / "apps" / "api" / "app" / "generated" / "legal_manifest.py"
 GENERATED_LEGAL_JSON = ROOT / "apps" / "web" / "src" / "generated" / "legal-manifest.json"
+API_TEST_PATH = "apps/api/tests"
 LEGAL_DOCS_ROOT = ROOT / "docs" / "legal" / "ru"
 
 
@@ -1237,36 +1238,63 @@ def cmd_check(args: argparse.Namespace) -> None:
         env=check_env,
     )
     run([tool("npm"), "run", "lint:web"], env=check_env)
-    run(
-        [
-            sys.executable,
-            "-m",
-            "pytest",
-            "-p",
-            "no:cacheprovider",
-            "--ignore",
-            "apps/api/tests/test_alembic_postgres.py",
-            "apps/api/tests",
-        ],
-        env=check_env,
-    )
+    cmd_test(argparse.Namespace(target="api-fast", junitxml=None))
     if not args.fast:
         run([tool("npm"), "run", "build:web"], env=check_env)
-        run(
-            [
-                sys.executable,
-                "-m",
-                "pytest",
-                "-p",
-                "no:cacheprovider",
-                "apps/api/tests/test_alembic_postgres.py",
-            ],
-            env=check_env,
-        )
+        cmd_test(argparse.Namespace(target="api-postgres", junitxml=None))
         if os.getenv("RUN_E2E") == "true":
             run([tool("npm"), "run", "test:e2e"], env=check_env)
         else:
             print("SKIP: browser suite requires RUN_E2E=true and a running harness stack")
+
+
+def api_pytest_command(*args: str) -> list[str]:
+    return [
+        sys.executable,
+        "-m",
+        "pytest",
+        "-p",
+        "no:cacheprovider",
+        *args,
+        API_TEST_PATH,
+    ]
+
+
+def api_test_marker_args(target: str) -> list[str]:
+    if target == "api-fast":
+        return ["-m", "not postgres"]
+    if target == "api-postgres":
+        return ["-m", "postgres"]
+    if target == "api":
+        return []
+    raise HarnessError(f"Unsupported API test target: {target}")
+
+
+def cmd_test(args: argparse.Namespace) -> None:
+    check_env = canonical_check_environment()
+    command = api_pytest_command(*api_test_marker_args(args.target))
+    if args.junitxml:
+        command.insert(-1, f"--junitxml={args.junitxml}")
+    run(command, env=check_env)
+
+
+def api_coverage_xml_path() -> Path:
+    return ROOT / ".harness" / "coverage" / "api" / "coverage.xml"
+
+
+def cmd_coverage(args: argparse.Namespace) -> None:
+    check_env = canonical_check_environment()
+    coverage_xml = api_coverage_xml_path()
+    coverage_xml.parent.mkdir(parents=True, exist_ok=True)
+    run(
+        api_pytest_command(
+            *api_test_marker_args(args.target),
+            "--cov=apps/api/app",
+            "--cov-report=term-missing",
+            f"--cov-report=xml:{coverage_xml}",
+        ),
+        env=check_env,
+    )
 
 
 def cmd_lint(args: argparse.Namespace) -> None:
@@ -1344,6 +1372,13 @@ def build_parser() -> argparse.ArgumentParser:
     lint = sub.add_parser("lint")
     lint.add_argument("target", choices=("api",))
     lint.set_defaults(func=cmd_lint)
+    test = sub.add_parser("test")
+    test.add_argument("target", choices=("api-fast", "api-postgres"))
+    test.add_argument("--junitxml")
+    test.set_defaults(func=cmd_test)
+    coverage = sub.add_parser("coverage")
+    coverage.add_argument("target", choices=("api", "api-fast"))
+    coverage.set_defaults(func=cmd_coverage)
     check = sub.add_parser("check")
     check.add_argument("--fast", action="store_true")
     check.set_defaults(func=cmd_check)
@@ -1372,7 +1407,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def reexec_in_repository_venv_if_required() -> None:
-    if len(sys.argv) < 2 or sys.argv[1] not in {"check", "generate", "lint"}:
+    if len(sys.argv) < 2 or sys.argv[1] not in {"check", "coverage", "generate", "lint", "test"}:
         return
     python = (
         ROOT / ".venv" / "Scripts" / "python.exe"

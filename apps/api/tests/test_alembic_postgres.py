@@ -23,6 +23,8 @@ EXPECTED_REVISION_CHAIN = [
     "20260729_0004",
 ]
 
+pytestmark = pytest.mark.postgres
+
 
 def public_table_names(postgres_engine: Engine) -> set[str]:
     inspector = inspect(postgres_engine)

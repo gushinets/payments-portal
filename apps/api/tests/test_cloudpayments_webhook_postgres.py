@@ -20,6 +20,8 @@ from apps.api.tests.support.postgres import reset_public_schema
 os.environ["CLOUDPAYMENTS_API_SECRET"] = ""
 os.environ["SKIP_LEGAL_SEED"] = "true"
 
+pytestmark = pytest.mark.postgres
+
 from app.core.database import Base, get_db  # noqa: E402
 from app.integrations.cloudpayments import adapter as cloudpayments_adapter_module  # noqa: E402
 from app.integrations.cloudpayments.adapter import verify_cloudpayments_signature  # noqa: E402

@@ -11,6 +11,8 @@ from sqlalchemy.orm import Session
 
 from app.models import AuthSession, Payment, PaymentWebhookEvent, User
 
+pytestmark = pytest.mark.postgres
+
 
 def test_postgres_orm_round_trip_and_rollback(migrated_database: Engine) -> None:
     assert PaymentWebhookEvent.__table__.c.raw_payload.type.compile(dialect=migrated_database.dialect) == "JSONB"

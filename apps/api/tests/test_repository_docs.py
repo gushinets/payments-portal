@@ -116,10 +116,10 @@ def test_fast_check_passes_the_scoped_environment_to_every_subprocess(
     assert any(command[-3:] == ["ruff", "check", "."] for command, _ in invocations)
     assert any(command[-4:] == ["ruff", "format", "--check", "."] for command, _ in invocations)
     assert any("test:components" in command for command, _ in invocations)
-    assert any("pytest" in command for command, _ in invocations)
+    assert any(command[-3:] == ["-m", "not postgres", "apps/api/tests"] for command, _ in invocations)
 
 
-def test_full_check_runs_alembic_with_postgres_fixture_fallback(
+def test_full_check_runs_explicit_postgres_partition(
     monkeypatch,
 ) -> None:
     check_environment = {
@@ -145,12 +145,12 @@ def test_full_check_runs_alembic_with_postgres_fixture_fallback(
 
     repo.cmd_check(argparse.Namespace(fast=False))
 
-    alembic_invocations = [
+    postgres_invocations = [
         (command, environment)
         for command, environment in invocations
-        if "apps/api/tests/test_alembic_postgres.py" in command and "--ignore" not in command
+        if command[-3:] == ["-m", "postgres", "apps/api/tests"]
     ]
-    assert alembic_invocations == [
+    assert postgres_invocations == [
         (
             [
                 repo.sys.executable,
@@ -158,7 +158,48 @@ def test_full_check_runs_alembic_with_postgres_fixture_fallback(
                 "pytest",
                 "-p",
                 "no:cacheprovider",
-                "apps/api/tests/test_alembic_postgres.py",
+                "-m",
+                "postgres",
+                "apps/api/tests",
+            ],
+            check_environment,
+        )
+    ]
+
+
+def test_api_coverage_writes_xml_to_stable_harness_path(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    check_environment = {"TEMP": "worktree-temp"}
+    invocations: list[tuple[list[str], dict[str, str] | None]] = []
+
+    monkeypatch.setattr(repo, "ROOT", tmp_path)
+    monkeypatch.setattr(repo, "canonical_check_environment", lambda: check_environment)
+    monkeypatch.setattr(
+        repo,
+        "run",
+        lambda command, **kwargs: invocations.append((command, kwargs.get("env"))),
+    )
+
+    repo.cmd_coverage(argparse.Namespace(target="api-fast"))
+
+    coverage_xml = tmp_path / ".harness" / "coverage" / "api" / "coverage.xml"
+    assert coverage_xml.parent.is_dir()
+    assert invocations == [
+        (
+            [
+                repo.sys.executable,
+                "-m",
+                "pytest",
+                "-p",
+                "no:cacheprovider",
+                "-m",
+                "not postgres",
+                "--cov=apps/api/app",
+                "--cov-report=term-missing",
+                f"--cov-report=xml:{coverage_xml}",
+                "apps/api/tests",
             ],
             check_environment,
         )
