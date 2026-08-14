@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -179,12 +180,8 @@ def validation_error_message(error_code: str) -> str:
         "invalid_subscription_successful_transactions_number": (
             "Webhook subscription successful transaction count is invalid"
         ),
-        "missing_subscription_failed_transactions_number": (
-            "Webhook subscription failed transaction count is missing"
-        ),
-        "invalid_subscription_failed_transactions_number": (
-            "Webhook subscription failed transaction count is invalid"
-        ),
+        "missing_subscription_failed_transactions_number": ("Webhook subscription failed transaction count is missing"),
+        "invalid_subscription_failed_transactions_number": ("Webhook subscription failed transaction count is invalid"),
         "invalid_subscription_max_periods": "Webhook subscription maximum period count is invalid",
     }.get(error_code, "Webhook validation failed")
 

@@ -24,7 +24,7 @@ from app.legal_seed import seed_legal_documents
 from app.payment_providers.registry import payment_provider_registry
 
 payment_provider_registry.register(cloudpayments_adapter)
-health_router = APIRouter(prefix="/health",tags=["health"])
+health_router = APIRouter(prefix="/health", tags=["health"])
 metrics_router = APIRouter(prefix="/metrics", tags=["metrics"])
 
 

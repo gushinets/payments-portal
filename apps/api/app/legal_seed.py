@@ -10,9 +10,7 @@ from app.models import DocumentVersion, LegalEntity
 
 DEFAULT_TENANT_ID = LEGAL_MANIFEST["tenantId"]
 RU_LEGAL_ENTITY_ID = uuid.UUID(LEGAL_MANIFEST["legalEntityId"])
-LEGAL_PUBLISHED_AT = datetime.fromisoformat(
-    LEGAL_MANIFEST["publishedAt"].replace("Z", "+00:00")
-)
+LEGAL_PUBLISHED_AT = datetime.fromisoformat(LEGAL_MANIFEST["publishedAt"])
 
 RU_LEGAL_ENTITY = {
     "id": RU_LEGAL_ENTITY_ID,

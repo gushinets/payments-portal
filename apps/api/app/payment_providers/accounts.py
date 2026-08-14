@@ -74,9 +74,7 @@ def get_or_create_checkout_provider_account(
         except LookupError as exc:
             raise HTTPException(status_code=503, detail="payment_provider_unavailable") from exc
 
-    account = PaymentProviderAccount(
-        **adapter.default_account_fields(tenant_id=user.tenant_id, region=user.region)
-    )
+    account = PaymentProviderAccount(**adapter.default_account_fields(tenant_id=user.tenant_id, region=user.region))
     try:
         with db.begin_nested():
             db.add(account)

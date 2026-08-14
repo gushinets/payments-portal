@@ -29,8 +29,7 @@ def test_ast_import_forms_are_rejected_with_actionable_errors(tmp_path: Path) ->
     errors = check_python_boundaries(tmp_path)
 
     assert any(
-        "apps/api/app/core/settings.py:1 imports app.integrations.cloudpayments"
-        in error
+        "apps/api/app/core/settings.py:1 imports app.integrations.cloudpayments" in error
         and "core dependency direction" in error
         and "move the dependency" in error
         for error in errors
@@ -102,14 +101,10 @@ def test_provider_neutral_modules_reject_cloudpayments_literal(tmp_path: Path) -
     errors = check_python_boundaries(tmp_path)
 
     assert any(
-        "apps/api/app/domains/billing/service.py contains CloudPayments-specific logic"
-        in error
-        for error in errors
+        "apps/api/app/domains/billing/service.py contains CloudPayments-specific logic" in error for error in errors
     )
     assert any(
-        "apps/api/app/payment_providers/accounts.py contains CloudPayments-specific logic"
-        in error
-        for error in errors
+        "apps/api/app/payment_providers/accounts.py contains CloudPayments-specific logic" in error for error in errors
     )
 
 
