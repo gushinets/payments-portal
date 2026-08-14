@@ -24,10 +24,6 @@ def test_legal_manifest_hashes_match_source() -> None:
 
     assert len(manifest["documents"]) == 6
     for document in manifest["documents"]:
-        source = (LEGAL_ROOT / document["version"] / document["file"]).read_text(
-            encoding="utf-8"
-        )
-        digest = hashlib.sha256(
-            normalize_legal_markdown(source).encode("utf-8")
-        ).hexdigest()
+        source = (LEGAL_ROOT / document["version"] / document["file"]).read_text(encoding="utf-8")
+        digest = hashlib.sha256(normalize_legal_markdown(source).encode("utf-8")).hexdigest()
         assert document["contentHash"] == f"sha256:{digest}"

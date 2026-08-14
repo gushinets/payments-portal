@@ -25,9 +25,7 @@ def validate_test_database_url(database_url: URL) -> URL:
         raise ValueError("PostgreSQL test URL must include a database name")
 
     normalized_name = database_name.lower()
-    if normalized_name in _SYSTEM_DATABASE_NAMES or not normalized_name.endswith(
-        _TEST_DATABASE_SUFFIXES
-    ):
+    if normalized_name in _SYSTEM_DATABASE_NAMES or not normalized_name.endswith(_TEST_DATABASE_SUFFIXES):
         raise ValueError(
             "Refusing destructive test operations for database "
             f"{database_name!r}; its name must end with '_test' or '_tests'"
@@ -42,12 +40,8 @@ def create_test_database(database_test_url: URL, database_admin_url: URL) -> Non
     admin_engine = create_engine(database_admin_url, isolation_level="AUTOCOMMIT")
     try:
         with admin_engine.connect() as connection:
-            database_name = connection.dialect.identifier_preparer.quote(
-                database_test_url.database
-            )
-            connection.execute(
-                text(f"DROP DATABASE IF EXISTS {database_name} WITH (FORCE)")
-            )
+            database_name = connection.dialect.identifier_preparer.quote(database_test_url.database)
+            connection.execute(text(f"DROP DATABASE IF EXISTS {database_name} WITH (FORCE)"))
             connection.execute(text(f"CREATE DATABASE {database_name}"))
     finally:
         admin_engine.dispose()
@@ -59,12 +53,8 @@ def drop_test_database(database_test_url: URL, database_admin_url: URL) -> None:
     admin_engine = create_engine(database_admin_url, isolation_level="AUTOCOMMIT")
     try:
         with admin_engine.connect() as connection:
-            database_name = connection.dialect.identifier_preparer.quote(
-                database_test_url.database
-            )
-            connection.execute(
-                text(f"DROP DATABASE IF EXISTS {database_name} WITH (FORCE)")
-            )
+            database_name = connection.dialect.identifier_preparer.quote(database_test_url.database)
+            connection.execute(text(f"DROP DATABASE IF EXISTS {database_name} WITH (FORCE)"))
     finally:
         admin_engine.dispose()
 

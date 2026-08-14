@@ -1230,6 +1230,7 @@ def cmd_check(args: argparse.Namespace) -> None:
     cmd_docs(argparse.Namespace())
     cmd_generate(argparse.Namespace(check=True))
     cmd_architecture(argparse.Namespace())
+    cmd_lint(argparse.Namespace(target="api"))
     run([tool("npm"), "run", "test:boundaries:web"], env=check_env)
     run(
         [tool("npm"), "--workspace", "@anytoolai/web", "run", "test:components"],
@@ -1266,6 +1267,18 @@ def cmd_check(args: argparse.Namespace) -> None:
             run([tool("npm"), "run", "test:e2e"], env=check_env)
         else:
             print("SKIP: browser suite requires RUN_E2E=true and a running harness stack")
+
+
+def cmd_lint(args: argparse.Namespace) -> None:
+    check_env = canonical_check_environment()
+    if args.target == "api":
+        api_root = ROOT / "apps" / "api"
+        run([sys.executable, "-m", "ruff", "check", "."], cwd=api_root, env=check_env)
+        run(
+            [sys.executable, "-m", "ruff", "format", "--check", "."],
+            cwd=api_root,
+            env=check_env,
+        )
 
 
 def read_runtime_env() -> dict[str, str]:
@@ -1328,6 +1341,9 @@ def build_parser() -> argparse.ArgumentParser:
     architecture.add_argument("action", choices=("check",))
     architecture.set_defaults(func=cmd_architecture)
     sub.add_parser("harness-smoke").set_defaults(func=cmd_harness_smoke)
+    lint = sub.add_parser("lint")
+    lint.add_argument("target", choices=("api",))
+    lint.set_defaults(func=cmd_lint)
     check = sub.add_parser("check")
     check.add_argument("--fast", action="store_true")
     check.set_defaults(func=cmd_check)
@@ -1356,7 +1372,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def reexec_in_repository_venv_if_required() -> None:
-    if len(sys.argv) < 2 or sys.argv[1] not in {"check", "generate"}:
+    if len(sys.argv) < 2 or sys.argv[1] not in {"check", "generate", "lint"}:
         return
     python = (
         ROOT / ".venv" / "Scripts" / "python.exe"

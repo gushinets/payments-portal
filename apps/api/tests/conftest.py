@@ -42,10 +42,7 @@ def database_test_url() -> URL:
         )
         missing_names = [name for name in required_names if not os.getenv(name)]
         if missing_names:
-            pytest.skip(
-                "PostgreSQL test configuration is unavailable; missing: "
-                + ", ".join(missing_names)
-            )
+            pytest.skip("PostgreSQL test configuration is unavailable; missing: " + ", ".join(missing_names))
 
         database_url = URL.create(
             drivername="postgresql+psycopg",

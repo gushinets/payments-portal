@@ -186,31 +186,19 @@ def test_docker_socket_fixture_requires_both_paths_and_compose_syntaxes(
                         "Misconfigurations": [
                             {
                                 "ID": "ANY-COMPOSE-003",
-                                "Message": (
-                                    'Compose service "var-run-short-syntax" must '
-                                    "not mount the Docker socket"
-                                ),
+                                "Message": ('Compose service "var-run-short-syntax" must not mount the Docker socket'),
                             },
                             {
                                 "ID": "ANY-COMPOSE-003",
-                                "Message": (
-                                    'Compose service "run-short-syntax" must not '
-                                    "mount the Docker socket"
-                                ),
+                                "Message": ('Compose service "run-short-syntax" must not mount the Docker socket'),
                             },
                             {
                                 "ID": "ANY-COMPOSE-003",
-                                "Message": (
-                                    'Compose service "var-run-long-syntax" must not '
-                                    "mount the Docker socket"
-                                ),
+                                "Message": ('Compose service "var-run-long-syntax" must not mount the Docker socket'),
                             },
                             {
                                 "ID": "ANY-COMPOSE-003",
-                                "Message": (
-                                    'Compose service "run-long-syntax" must not '
-                                    "mount the Docker socket"
-                                ),
+                                "Message": ('Compose service "run-long-syntax" must not mount the Docker socket'),
                             },
                         ]
                     }

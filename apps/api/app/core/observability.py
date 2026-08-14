@@ -15,9 +15,7 @@ from typing import Any, get_type_hints
 from fastapi import FastAPI, Request, Response
 
 
-request_id_context: contextvars.ContextVar[str] = contextvars.ContextVar(
-    "request_id", default=""
-)
+request_id_context: contextvars.ContextVar[str] = contextvars.ContextVar("request_id", default="")
 OTEL_CHECKOUTS = None
 OTEL_LEGAL_ACCEPTANCES = None
 OTEL_WEBHOOKS = None
@@ -88,21 +86,28 @@ def configure_logging() -> None:
 
 
 try:
-    from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
+    from prometheus_client import (
+        CONTENT_TYPE_LATEST,
+        Counter,
+        Histogram,
+        generate_latest,
+    )
 
     REQUEST_DURATION = Histogram(
         "payment_portal_http_request_duration_seconds",
         "HTTP request duration",
         ("method", "route", "status"),
     )
-    CHECKOUTS = Counter(
-        "payment_portal_checkouts_total", "Checkout intent outcomes", ("outcome",)
-    )
+    CHECKOUTS = Counter("payment_portal_checkouts_total", "Checkout intent outcomes", ("outcome",))
     LEGAL_ACCEPTANCES = Counter(
-        "payment_portal_legal_acceptances_total", "Legal acceptance outcomes", ("outcome",)
+        "payment_portal_legal_acceptances_total",
+        "Legal acceptance outcomes",
+        ("outcome",),
     )
     WEBHOOKS = Counter(
-        "payment_portal_webhooks_total", "CloudPayments webhook outcomes", ("endpoint", "outcome")
+        "payment_portal_webhooks_total",
+        "CloudPayments webhook outcomes",
+        ("endpoint", "outcome"),
     )
     PASSWORD_RESET_EMAILS = Counter(
         "payment_portal_password_reset_emails_total",
@@ -188,14 +193,13 @@ def traced(span_name: str):
         resolved_hints = get_type_hints(function)
         resolved_signature = signature.replace(
             parameters=[
-                parameter.replace(
-                    annotation=resolved_hints.get(name, parameter.annotation)
-                )
+                parameter.replace(annotation=resolved_hints.get(name, parameter.annotation))
                 for name, parameter in signature.parameters.items()
             ],
             return_annotation=resolved_hints.get("return", signature.return_annotation),
         )
         if inspect.iscoroutinefunction(function):
+
             @functools.wraps(function)
             async def async_wrapper(*args, **kwargs):
                 with operation_tracer.start_as_current_span(span_name):
@@ -225,8 +229,12 @@ def configure_observability(app: FastAPI, engine: object) -> None:
         from opentelemetry import metrics, trace
         from opentelemetry._logs import set_logger_provider
         from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
-        from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
-        from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+        from opentelemetry.exporter.otlp.proto.http.metric_exporter import (
+            OTLPMetricExporter,
+        )
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
+            OTLPSpanExporter,
+        )
         from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
         from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
         from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
@@ -237,40 +245,28 @@ def configure_observability(app: FastAPI, engine: object) -> None:
         from opentelemetry.sdk.trace import TracerProvider
         from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
-        resource = Resource.create(
-            {"service.name": os.getenv("OTEL_SERVICE_NAME", "payment-portal-api")}
-        )
+        resource = Resource.create({"service.name": os.getenv("OTEL_SERVICE_NAME", "payment-portal-api")})
         provider = TracerProvider(resource=resource)
-        provider.add_span_processor(
-            BatchSpanProcessor(OTLPSpanExporter(endpoint=f"{endpoint}/v1/traces"))
-        )
+        provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=f"{endpoint}/v1/traces")))
         trace.set_tracer_provider(provider)
 
         metric_reader = PeriodicExportingMetricReader(
             OTLPMetricExporter(endpoint=f"{endpoint}/v1/metrics"),
             export_interval_millis=5_000,
         )
-        metrics.set_meter_provider(
-            MeterProvider(resource=resource, metric_readers=[metric_reader])
-        )
+        metrics.set_meter_provider(MeterProvider(resource=resource, metric_readers=[metric_reader]))
         meter = metrics.get_meter("payment-portal.business")
         OTEL_CHECKOUTS = meter.create_counter("payment_portal_checkouts")
-        OTEL_LEGAL_ACCEPTANCES = meter.create_counter(
-            "payment_portal_legal_acceptances"
-        )
+        OTEL_LEGAL_ACCEPTANCES = meter.create_counter("payment_portal_legal_acceptances")
         OTEL_WEBHOOKS = meter.create_counter("payment_portal_webhooks")
-        OTEL_PASSWORD_RESET_EMAILS = meter.create_counter(
-            "payment_portal_password_reset_emails"
-        )
+        OTEL_PASSWORD_RESET_EMAILS = meter.create_counter("payment_portal_password_reset_emails")
 
         logger_provider = LoggerProvider(resource=resource)
         logger_provider.add_log_record_processor(
             BatchLogRecordProcessor(OTLPLogExporter(endpoint=f"{endpoint}/v1/logs"))
         )
         set_logger_provider(logger_provider)
-        logging.getLogger().addHandler(
-            LoggingHandler(level=logging.NOTSET, logger_provider=logger_provider)
-        )
+        logging.getLogger().addHandler(LoggingHandler(level=logging.NOTSET, logger_provider=logger_provider))
         FastAPIInstrumentor.instrument_app(app)
         SQLAlchemyInstrumentor().instrument(engine=engine)
     except (ImportError, RuntimeError):
@@ -291,9 +287,7 @@ async def request_context_middleware(request: Request, call_next):
     finally:
         route = request.scope.get("route")
         route_path = getattr(route, "path", request.url.path)
-        REQUEST_DURATION.labels(request.method, route_path, str(status)).observe(
-            time.perf_counter() - started
-        )
+        REQUEST_DURATION.labels(request.method, route_path, str(status)).observe(time.perf_counter() - started)
         logging.getLogger("payment_portal.http").info(
             "http_request_complete request_id=%s",
             request_id,

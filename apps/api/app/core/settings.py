@@ -19,13 +19,13 @@ class Settings(BaseSettings):
     )
 
     app_public_base_url: str = "http://localhost:3000"
-    database_url: str = (
-        "postgresql+psycopg://anytoolai:anytoolai@localhost:5432/anytoolai"
-    )
+    database_url: str = "postgresql+psycopg://anytoolai:anytoolai@localhost:5432/anytoolai"
     cloudpayments_public_id: str = ""
     cloudpayments_api_secret: str = ""
     cloudpayments_enabled: bool = False
     cors_allow_origins: Annotated[tuple[str, ...], NoDecode] = ()
+    default_tenant_id: str = "anytoolai"
+    default_region: str = "ru"
     smtp_host: str = ""
     smtp_port: int = 587
     smtp_username: str = ""

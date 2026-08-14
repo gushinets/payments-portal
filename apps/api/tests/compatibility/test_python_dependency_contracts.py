@@ -26,19 +26,15 @@ def test_identity_email_validation_rejects_malformed_addresses(email: str) -> No
 
 
 def test_identity_email_validation_preserves_current_length_boundaries() -> None:
-    local_part_limit_email = f'{"a" * 64}@example.com'
-    local_part_over_limit_email = f'{"a" * 65}@example.com'
-    max_total_length_email = f'{"a" * 64}@{"b" * 63}.{"c" * 63}.{"d" * 57}.com'
-    over_total_length_email = f'{"a" * 64}@{"b" * 63}.{"c" * 63}.{"d" * 58}.com'
+    local_part_limit_email = f"{'a' * 64}@example.com"
+    local_part_over_limit_email = f"{'a' * 65}@example.com"
+    max_total_length_email = f"{'a' * 64}@{'b' * 63}.{'c' * 63}.{'d' * 57}.com"
+    over_total_length_email = f"{'a' * 64}@{'b' * 63}.{'c' * 63}.{'d' * 58}.com"
 
     assert len(max_total_length_email) == 254
     assert len(over_total_length_email) == 255
-    assert str(RegisterRequestFactory.build(email=local_part_limit_email).email) == (
-        local_part_limit_email
-    )
-    assert str(RegisterRequestFactory.build(email=max_total_length_email).email) == (
-        max_total_length_email
-    )
+    assert str(RegisterRequestFactory.build(email=local_part_limit_email).email) == (local_part_limit_email)
+    assert str(RegisterRequestFactory.build(email=max_total_length_email).email) == (max_total_length_email)
     assert_register_email_is_rejected(local_part_over_limit_email)
     assert_register_email_is_rejected(over_total_length_email)
 
@@ -56,13 +52,13 @@ def test_settings_preserve_fallback_defaults_when_environment_is_absent() -> Non
         loaded_settings = Settings(_env_file=None)
 
     assert loaded_settings.app_public_base_url == "http://localhost:3000"
-    assert loaded_settings.database_url == (
-        "postgresql+psycopg://anytoolai:anytoolai@localhost:5432/anytoolai"
-    )
+    assert loaded_settings.database_url == ("postgresql+psycopg://anytoolai:anytoolai@localhost:5432/anytoolai")
     assert loaded_settings.cloudpayments_public_id == ""
     assert loaded_settings.cloudpayments_api_secret == ""
     assert loaded_settings.cloudpayments_enabled is False
     assert loaded_settings.cors_allow_origins == ()
+    assert loaded_settings.default_tenant_id == "anytoolai"
+    assert loaded_settings.default_region == "ru"
     assert loaded_settings.smtp_host == ""
     assert loaded_settings.smtp_port == 587
     assert loaded_settings.smtp_username == ""
@@ -113,6 +109,8 @@ def test_settings_preserve_dotenv_parsing_and_process_environment_precedence(
                 "CLOUDPAYMENTS_API_SECRET=secret-from-dotenv",
                 "CLOUDPAYMENTS_ENABLED=true",
                 'CORS_ALLOW_ORIGINS="https://web.example, https://admin.example"',
+                "DEFAULT_TENANT_ID=tenant-from-dotenv",
+                "DEFAULT_REGION=eu",
                 "SMTP_HOST=smtp.dotenv.example",
                 "SMTP_PORT=2525",
                 "SMTP_USERNAME=dotenv-user",
@@ -128,6 +126,7 @@ def test_settings_preserve_dotenv_parsing_and_process_environment_precedence(
         os.environ,
         {
             "APP_PUBLIC_BASE_URL": "https://process.example/app",
+            "DEFAULT_REGION": "ru",
             "SMTP_USERNAME": "process-user",
         },
         clear=True,
@@ -143,6 +142,8 @@ def test_settings_preserve_dotenv_parsing_and_process_environment_precedence(
         "https://web.example",
         "https://admin.example",
     )
+    assert loaded_settings.default_tenant_id == "tenant-from-dotenv"
+    assert loaded_settings.default_region == "ru"
     assert loaded_settings.smtp_host == "smtp.dotenv.example"
     assert loaded_settings.smtp_port == 2525
     assert loaded_settings.smtp_username == "process-user"

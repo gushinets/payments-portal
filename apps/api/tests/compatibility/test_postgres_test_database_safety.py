@@ -14,9 +14,7 @@ from apps.api.tests.support import postgres as postgres_support
 def test_validate_test_database_url_accepts_dedicated_names(
     database_name: str,
 ) -> None:
-    database_url = make_url(
-        f"postgresql+psycopg://test@localhost/{database_name}"
-    )
+    database_url = make_url(f"postgresql+psycopg://test@localhost/{database_name}")
 
     assert postgres_support.validate_test_database_url(database_url) == database_url
 

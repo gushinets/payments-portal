@@ -6,11 +6,12 @@ from datetime import datetime, timezone
 from fastapi import Depends, Header, HTTPException
 from sqlalchemy.orm import Session
 
+from app.core.settings import settings
 from app.core.database import get_db
 from app.models import AuthSession, User
 
-DEFAULT_TENANT_ID = "anytoolai"
-DEFAULT_REGION = "ru"
+DEFAULT_TENANT_ID = settings.default_tenant_id
+DEFAULT_REGION = settings.default_region
 
 
 def utc_now() -> datetime:
@@ -34,11 +35,7 @@ def get_current_session(
     token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
 
     session = db.query(AuthSession).filter(AuthSession.token_hash == token_hash).first()
-    if (
-        session is None
-        or session.revoked_at is not None
-        or as_utc(session.expires_at) <= utc_now()
-    ):
+    if session is None or session.revoked_at is not None or as_utc(session.expires_at) <= utc_now():
         raise HTTPException(status_code=401, detail="invalid_session")
 
     user = (

@@ -35,12 +35,30 @@ ip_type = String(45).with_variant(INET(), "postgresql")
 class PaymentWebhookEvent(Base):
     __tablename__ = "payment_webhook_events"
     __table_args__ = (
-        Index("ix_payment_webhook_events_region_provider_received_at", "region", "provider", "received_at"),
-        Index("ix_payment_webhook_events_provider_endpoint_event_type", "provider", "endpoint", "event_type"),
-        Index("ix_payment_webhook_events_provider_event_id", "provider_account_id", "provider_event_id"),
+        Index(
+            "ix_payment_webhook_events_region_provider_received_at",
+            "region",
+            "provider",
+            "received_at",
+        ),
+        Index(
+            "ix_payment_webhook_events_provider_endpoint_event_type",
+            "provider",
+            "endpoint",
+            "event_type",
+        ),
+        Index(
+            "ix_payment_webhook_events_provider_event_id",
+            "provider_account_id",
+            "provider_event_id",
+        ),
         Index("ix_payment_webhook_events_order_id", "order_id"),
         Index("ix_payment_webhook_events_payment_id", "payment_id"),
-        Index("ix_payment_webhook_events_idempotency_lookup", "provider_account_id", "idempotency_key"),
+        Index(
+            "ix_payment_webhook_events_idempotency_lookup",
+            "provider_account_id",
+            "idempotency_key",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(uuid_type, primary_key=True, default=uuid.uuid4)
@@ -65,9 +83,7 @@ class PaymentWebhookEvent(Base):
     currency: Mapped[str | None] = mapped_column(Text, nullable=True)
     raw_payload: Mapped[dict] = mapped_column(json_type, nullable=False)
     headers: Mapped[dict | None] = mapped_column(json_type, nullable=True)
-    received_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     status: Mapped[str] = mapped_column(Text, nullable=False, default="received")
     error_code: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -89,9 +105,7 @@ class CountryRegionRule(Base):
     __tablename__ = "country_region_rules"
 
     id: Mapped[uuid.UUID] = mapped_column(uuid_type, primary_key=True, default=uuid.uuid4)
-    country_code: Mapped[str] = mapped_column(
-        String(2), nullable=False, unique=True, index=True
-    )
+    country_code: Mapped[str] = mapped_column(String(2), nullable=False, unique=True, index=True)
     region: Mapped[str] = mapped_column(ForeignKey("regions.code"), nullable=False, index=True)
     market_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     allow_region_override: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
@@ -102,9 +116,7 @@ class CountryRegionRule(Base):
 
 class LegalEntity(Base):
     __tablename__ = "legal_entities"
-    __table_args__ = (
-        Index("ix_legal_entities_tenant_region_status", "tenant_id", "region", "status"),
-    )
+    __table_args__ = (Index("ix_legal_entities_tenant_region_status", "tenant_id", "region", "status"),)
 
     id: Mapped[uuid.UUID] = mapped_column(uuid_type, primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[str] = mapped_column(Text, nullable=False, default="anytoolai", index=True)
@@ -116,11 +128,12 @@ class LegalEntity(Base):
     legal_address: Mapped[str] = mapped_column(Text, nullable=False)
     support_email: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(Text, nullable=False, default="active", index=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
     )
 
 
@@ -149,9 +162,7 @@ class DocumentVersion(Base):
     id: Mapped[uuid.UUID] = mapped_column(uuid_type, primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[str] = mapped_column(Text, nullable=False, default="anytoolai", index=True)
     region: Mapped[str] = mapped_column(ForeignKey("regions.code"), nullable=False, index=True)
-    legal_entity_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("legal_entities.id"), nullable=False, index=True
-    )
+    legal_entity_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("legal_entities.id"), nullable=False, index=True)
     doc_type: Mapped[str] = mapped_column(Text, nullable=False, index=True)
     version: Mapped[str] = mapped_column(Text, nullable=False)
     title: Mapped[str] = mapped_column(Text, nullable=False)
@@ -161,11 +172,12 @@ class DocumentVersion(Base):
     effective_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, index=True)
     requires_acceptance: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
     )
 
 
@@ -194,9 +206,7 @@ class DocumentAcceptance(Base):
     id: Mapped[uuid.UUID] = mapped_column(uuid_type, primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[str] = mapped_column(Text, nullable=False, default="anytoolai", index=True)
     region: Mapped[str] = mapped_column(ForeignKey("regions.code"), nullable=False, index=True)
-    user_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("users.id"), nullable=True, index=True
-    )
+    user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
     guest_id: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
     entrypoint_session_id: Mapped[uuid.UUID | None] = mapped_column(uuid_type, nullable=True)
     document_version_id: Mapped[uuid.UUID] = mapped_column(
@@ -215,9 +225,7 @@ class DocumentAcceptance(Base):
     entrypoint_value: Mapped[str | None] = mapped_column(Text, nullable=True)
     source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     metadata_: Mapped[dict] = mapped_column("metadata", json_type, nullable=False, default=dict)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
 class User(Base):
@@ -236,18 +244,17 @@ class User(Base):
     region: Mapped[str] = mapped_column(ForeignKey("regions.code"), nullable=False, index=True)
     email: Mapped[str] = mapped_column(String(320), nullable=False)
     email_normalized: Mapped[str] = mapped_column(String(320), nullable=False, index=True)
-    email_verified_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     status: Mapped[str] = mapped_column(Text, nullable=False, default="active", index=True)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     password_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
     metadata_: Mapped[dict] = mapped_column("metadata", json_type, nullable=False, default=dict)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
     )
 
 
@@ -259,13 +266,9 @@ class AuthSession(Base):
     region: Mapped[str] = mapped_column(ForeignKey("regions.code"), nullable=False, index=True)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     token_hash: Mapped[str] = mapped_column(Text, nullable=False, unique=True, index=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    last_seen_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ip: Mapped[str | None] = mapped_column(ip_type, nullable=True)
     user_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -281,9 +284,7 @@ class MagicLinkToken(Base):
     token_hash: Mapped[str] = mapped_column(Text, nullable=False, unique=True, index=True)
     purpose: Mapped[str] = mapped_column(Text, nullable=False)
     entrypoint_session_id: Mapped[uuid.UUID | None] = mapped_column(uuid_type, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ip: Mapped[str | None] = mapped_column(ip_type, nullable=True)
@@ -292,19 +293,18 @@ class MagicLinkToken(Base):
 
 class PasswordResetRateLimit(Base):
     __tablename__ = "password_reset_rate_limits"
-    __table_args__ = (
-        Index("ix_password_reset_rate_limits_expires_at", "expires_at"),
-    )
+    __table_args__ = (Index("ix_password_reset_rate_limits_expires_at", "expires_at"),)
 
     rate_limit_key: Mapped[str] = mapped_column(Text, primary_key=True)
     count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
     )
 
 
@@ -342,11 +342,12 @@ class PaymentProviderAccount(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     test_mode: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     config: Mapped[dict] = mapped_column(json_type, nullable=False, default=dict)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
     )
 
 
@@ -369,11 +370,12 @@ class Product(Base):
     name: Mapped[str] = mapped_column(Text, nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(Text, nullable=False, default="active", index=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
     )
 
 
@@ -390,11 +392,12 @@ class Bundle(Base):
     name: Mapped[str] = mapped_column(Text, nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(Text, nullable=False, default="active", index=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
     )
 
 
@@ -418,13 +421,9 @@ class BundleProduct(Base):
     bundle_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("bundles.id"), nullable=False)
     product_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("products.id"), nullable=False)
     status: Mapped[str] = mapped_column(Text, nullable=False, default="active")
-    valid_from: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )
+    valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     valid_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
 class Plan(Base):
@@ -475,16 +474,15 @@ class Plan(Base):
     renewal_mode: Mapped[str] = mapped_column(Text, nullable=False, default="manual")
     trial_days: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     status: Mapped[str] = mapped_column(Text, nullable=False, default="active", index=True)
-    valid_from: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )
+    valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     valid_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     metadata_: Mapped[dict] = mapped_column("metadata", json_type, nullable=False, default=dict)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
     )
 
 
@@ -503,12 +501,8 @@ class PlanPriceComponent(Base):
     id: Mapped[uuid.UUID] = mapped_column(uuid_type, primary_key=True, default=uuid.uuid4)
     plan_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("plans.id"), nullable=False)
     component_type: Mapped[str] = mapped_column(Text, nullable=False)
-    source_product_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("products.id"), nullable=True
-    )
-    source_bundle_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("bundles.id"), nullable=True
-    )
+    source_product_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("products.id"), nullable=True)
+    source_bundle_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("bundles.id"), nullable=True)
     source_plan_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("plans.id"), nullable=True)
     component_code_snapshot: Mapped[str] = mapped_column(Text, nullable=False)
     title_snapshot: Mapped[str] = mapped_column(Text, nullable=False)
@@ -519,9 +513,7 @@ class PlanPriceComponent(Base):
     currency: Mapped[str] = mapped_column(String(3), nullable=False)
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     metadata_: Mapped[dict] = mapped_column("metadata", json_type, nullable=False, default=dict)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
 class PlanLimit(Base):
@@ -541,18 +533,23 @@ class PlanLimit(Base):
     period: Mapped[str] = mapped_column(Text, nullable=False)
     reset_policy: Mapped[str] = mapped_column(Text, nullable=False, default="billing_period")
     overage_policy: Mapped[str] = mapped_column(Text, nullable=False, default="deny")
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
     )
 
 
 class EntrypointSession(Base):
     __tablename__ = "entrypoint_sessions"
     __table_args__ = (
-        Index("ix_entrypoint_sessions_resolved_region_created_at", "resolved_region", "created_at"),
+        Index(
+            "ix_entrypoint_sessions_resolved_region_created_at",
+            "resolved_region",
+            "created_at",
+        ),
         Index("ix_entrypoint_sessions_user_id_created_at", "user_id", "created_at"),
         Index("ix_entrypoint_sessions_type_value", "entrypoint_type", "entrypoint_value"),
         Index("ix_entrypoint_sessions_frontend_id_created_at", "frontend_id", "created_at"),
@@ -576,17 +573,13 @@ class EntrypointSession(Base):
     platform_user_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     scenario_session_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     artifact_id: Mapped[str | None] = mapped_column(Text, nullable=True)
-    user_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("users.id"), nullable=True, index=True
-    )
+    user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
     source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     acquisition_source: Mapped[str | None] = mapped_column(Text, nullable=True)
     ip: Mapped[str | None] = mapped_column(ip_type, nullable=True)
     user_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
     metadata_: Mapped[dict] = mapped_column("metadata", json_type, nullable=False, default=dict)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
 class CheckoutSession(Base):
@@ -609,11 +602,12 @@ class CheckoutSession(Base):
     currency: Mapped[str] = mapped_column(String(3), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     metadata_: Mapped[dict] = mapped_column("metadata", json_type, nullable=False, default=dict)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
     )
 
 
@@ -645,9 +639,7 @@ class Order(Base):
     checkout_session_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("checkout_sessions.id"), nullable=True, index=True
     )
-    entrypoint_session_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("entrypoint_sessions.id"), nullable=True
-    )
+    entrypoint_session_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("entrypoint_sessions.id"), nullable=True)
     plan_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("plans.id"), nullable=True)
     status: Mapped[str] = mapped_column(Text, nullable=False, default="created", index=True)
     amount_minor: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -667,11 +659,12 @@ class Order(Base):
     canceled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     metadata_: Mapped[dict] = mapped_column("metadata", json_type, nullable=False, default=dict)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
     )
 
 
@@ -701,9 +694,7 @@ class OrderItem(Base):
     trial_days_snapshot: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     pricing_snapshot: Mapped[dict] = mapped_column(json_type, nullable=False, default=dict)
     metadata_: Mapped[dict] = mapped_column("metadata", json_type, nullable=False, default=dict)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
 class Payment(Base):
@@ -742,11 +733,12 @@ class Payment(Base):
     failure_code: Mapped[str | None] = mapped_column(Text, nullable=True)
     failure_message_safe: Mapped[str | None] = mapped_column(Text, nullable=True)
     raw_summary: Mapped[dict] = mapped_column(json_type, nullable=False, default=dict)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
     )
 
 
@@ -781,9 +773,7 @@ class Refund(Base):
     requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     succeeded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     metadata_: Mapped[dict] = mapped_column("metadata", json_type, nullable=False, default=dict)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
 class ProductAccessState(Base):
@@ -800,5 +790,8 @@ class ProductAccessState(Base):
     starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
     )
