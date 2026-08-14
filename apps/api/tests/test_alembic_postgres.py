@@ -1,20 +1,21 @@
 from __future__ import annotations
 
-import os
 import json
+import logging
 from datetime import timedelta
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 from alembic import command
-from alembic.config import Config
 from alembic.script import ScriptDirectory
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import inspect, text
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.engine import Engine, URL
 from sqlalchemy.exc import IntegrityError
 
+from apps.api.tests.support.postgres import alembic_test_config, reset_public_schema
 
-TEST_DATABASE_URL = os.getenv("TEST_POSTGRES_DATABASE_URL")
+
 EXPECTED_REVISION_CHAIN = [
     "20260707_0001",
     "20260707_0002",
@@ -23,152 +24,166 @@ EXPECTED_REVISION_CHAIN = [
 ]
 
 
-pytestmark = pytest.mark.skipif(
-    not TEST_DATABASE_URL,
-    reason="set TEST_POSTGRES_DATABASE_URL to run PostgreSQL Alembic integration tests",
-)
+def public_table_names(postgres_engine: Engine) -> set[str]:
+    inspector = inspect(postgres_engine)
+    return set(inspector.get_table_names(schema="public"))
 
 
-def alembic_config() -> Config:
-    api_root = Path(__file__).resolve().parents[1]
-    config = Config(str(api_root / "alembic.ini"))
-    config.set_main_option("sqlalchemy.url", TEST_DATABASE_URL)
-    return config
+def alembic_version_count(postgres_engine: Engine) -> int:
+    with postgres_engine.connect() as connection:
+        return connection.execute(
+            text("SELECT count(*) FROM alembic_version")
+        ).scalar_one()
 
 
-def reset_public_schema() -> None:
-    engine = create_engine(TEST_DATABASE_URL, future=True)
-    try:
-        with engine.begin() as connection:
-            connection.execute(text("DROP SCHEMA IF EXISTS public CASCADE"))
-            connection.execute(text("CREATE SCHEMA public"))
-    finally:
-        engine.dispose()
+def current_alembic_revision(postgres_engine: Engine) -> str:
+    with postgres_engine.connect() as connection:
+        return connection.execute(
+            text("SELECT version_num FROM alembic_version")
+        ).scalar_one()
 
 
-def public_table_names() -> set[str]:
-    engine = create_engine(TEST_DATABASE_URL, future=True)
-    try:
-        inspector = inspect(engine)
-        return set(inspector.get_table_names(schema="public"))
-    finally:
-        engine.dispose()
+def seeded_legal_documents(postgres_engine: Engine) -> list[dict[str, str]]:
+    with postgres_engine.connect() as connection:
+        rows = connection.execute(
+            text(
+                "SELECT id::text, doc_type, version, content_hash "
+                "FROM document_versions ORDER BY id"
+            )
+        ).mappings()
+        return [dict(row) for row in rows]
 
 
-def alembic_version_count() -> int:
-    engine = create_engine(TEST_DATABASE_URL, future=True)
-    try:
-        with engine.connect() as connection:
-            return connection.execute(text("SELECT count(*) FROM alembic_version")).scalar_one()
-    finally:
-        engine.dispose()
+def seeded_catalog_summary(postgres_engine: Engine) -> dict[str, object]:
+    with postgres_engine.connect() as connection:
+        products = connection.execute(
+            text("SELECT code FROM products ORDER BY code")
+        ).scalars().all()
+        plans = connection.execute(
+            text(
+                "SELECT code, scope_type, price_amount_minor, currency, "
+                "billing_period, trial_days FROM plans ORDER BY code"
+            )
+        ).mappings().all()
+        bundle_products = connection.execute(
+            text(
+                "SELECT b.code AS bundle_code, p.code AS product_code "
+                "FROM bundle_products bp "
+                "JOIN bundles b ON b.id = bp.bundle_id "
+                "JOIN products p ON p.id = bp.product_id "
+                "ORDER BY b.code, p.code"
+            )
+        ).mappings().all()
+        price_components = connection.execute(
+            text(
+                "SELECT p.code AS plan_code, pc.component_code_snapshot, "
+                "pc.list_amount_minor, pc.discount_amount_minor, pc.amount_minor "
+                "FROM plan_price_components pc "
+                "JOIN plans p ON p.id = pc.plan_id "
+                "ORDER BY p.code, pc.position"
+            )
+        ).mappings().all()
+        limits = connection.execute(
+            text(
+                "SELECT p.code AS plan_code, pl.metric, pl.limit_count, pl.period "
+                "FROM plan_limits pl "
+                "JOIN plans p ON p.id = pl.plan_id "
+                "ORDER BY p.code, pl.metric"
+            )
+        ).mappings().all()
+        return {
+            "products": list(products),
+            "plans": [dict(row) for row in plans],
+            "bundle_products": [dict(row) for row in bundle_products],
+            "price_components": [dict(row) for row in price_components],
+            "limits": [dict(row) for row in limits],
+        }
 
 
-def current_alembic_revision() -> str:
-    engine = create_engine(TEST_DATABASE_URL, future=True)
-    try:
-        with engine.connect() as connection:
-            return connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-    finally:
-        engine.dispose()
+def seeded_catalog_ids(postgres_engine: Engine) -> dict[str, str]:
+    with postgres_engine.connect() as connection:
+        rows = connection.execute(
+            text(
+                "SELECT 'product:' || code AS seed_key, id::text AS id FROM products "
+                "UNION ALL "
+                "SELECT 'bundle:' || code AS seed_key, id::text AS id FROM bundles "
+                "UNION ALL "
+                "SELECT 'bundle_product:' || b.code || ':' || p.code AS seed_key, "
+                "bp.id::text AS id "
+                "FROM bundle_products bp "
+                "JOIN bundles b ON b.id = bp.bundle_id "
+                "JOIN products p ON p.id = bp.product_id "
+                "UNION ALL "
+                "SELECT 'plan:' || code AS seed_key, id::text AS id FROM plans "
+                "UNION ALL "
+                "SELECT 'price_component:' || p.code || ':' || pc.position AS seed_key, "
+                "pc.id::text AS id "
+                "FROM plan_price_components pc "
+                "JOIN plans p ON p.id = pc.plan_id "
+                "UNION ALL "
+                "SELECT 'limit:' || p.code || ':' || pl.metric AS seed_key, pl.id::text AS id "
+                "FROM plan_limits pl "
+                "JOIN plans p ON p.id = pl.plan_id "
+                "ORDER BY seed_key"
+            )
+        ).mappings()
+        return {row["seed_key"]: row["id"] for row in rows}
 
 
-def seeded_legal_documents() -> list[dict[str, str]]:
-    engine = create_engine(TEST_DATABASE_URL, future=True)
-    try:
-        with engine.connect() as connection:
-            rows = connection.execute(
+def assert_postgres_schema_contract(postgres_engine: Engine) -> None:
+    inspector = inspect(postgres_engine)
+    webhook_columns = {
+        column["name"]: column
+        for column in inspector.get_columns("payment_webhook_events")
+    }
+    payment_columns = {
+        column["name"]: column for column in inspector.get_columns("payments")
+    }
+    assert isinstance(webhook_columns["raw_payload"]["type"], JSONB)
+    assert isinstance(webhook_columns["headers"]["type"], JSONB)
+    assert isinstance(payment_columns["raw_summary"]["type"], JSONB)
+
+    payment_foreign_keys = {
+        (
+            tuple(foreign_key["constrained_columns"]),
+            foreign_key["referred_table"],
+            tuple(foreign_key["referred_columns"]),
+        )
+        for foreign_key in inspector.get_foreign_keys("payments")
+    }
+    assert (("order_id",), "orders", ("id",)) in payment_foreign_keys
+    assert (
+        ("provider_account_id",),
+        "payment_provider_accounts",
+        ("id",),
+    ) in payment_foreign_keys
+
+    with postgres_engine.connect() as connection:
+        partial_indexes = dict(
+            connection.execute(
                 text(
-                    "SELECT id::text, doc_type, version, content_hash "
-                    "FROM document_versions ORDER BY id"
+                    "SELECT indexname, indexdef FROM pg_indexes "
+                    "WHERE schemaname = 'public' AND indexdef LIKE '% WHERE %'"
                 )
-            ).mappings()
-            return [dict(row) for row in rows]
-    finally:
-        engine.dispose()
+            ).all()
+        )
 
-
-def seeded_catalog_summary() -> dict[str, object]:
-    engine = create_engine(TEST_DATABASE_URL, future=True)
-    try:
-        with engine.connect() as connection:
-            products = connection.execute(
-                text("SELECT code FROM products ORDER BY code")
-            ).scalars().all()
-            plans = connection.execute(
-                text(
-                    "SELECT code, scope_type, price_amount_minor, currency, "
-                    "billing_period, trial_days FROM plans ORDER BY code"
-                )
-            ).mappings().all()
-            bundle_products = connection.execute(
-                text(
-                    "SELECT b.code AS bundle_code, p.code AS product_code "
-                    "FROM bundle_products bp "
-                    "JOIN bundles b ON b.id = bp.bundle_id "
-                    "JOIN products p ON p.id = bp.product_id "
-                    "ORDER BY b.code, p.code"
-                )
-            ).mappings().all()
-            price_components = connection.execute(
-                text(
-                    "SELECT p.code AS plan_code, pc.component_code_snapshot, "
-                    "pc.list_amount_minor, pc.discount_amount_minor, pc.amount_minor "
-                    "FROM plan_price_components pc "
-                    "JOIN plans p ON p.id = pc.plan_id "
-                    "ORDER BY p.code, pc.position"
-                )
-            ).mappings().all()
-            limits = connection.execute(
-                text(
-                    "SELECT p.code AS plan_code, pl.metric, pl.limit_count, pl.period "
-                    "FROM plan_limits pl "
-                    "JOIN plans p ON p.id = pl.plan_id "
-                    "ORDER BY p.code, pl.metric"
-                )
-            ).mappings().all()
-            return {
-                "products": list(products),
-                "plans": [dict(row) for row in plans],
-                "bundle_products": [dict(row) for row in bundle_products],
-                "price_components": [dict(row) for row in price_components],
-                "limits": [dict(row) for row in limits],
-            }
-    finally:
-        engine.dispose()
-
-
-def seeded_catalog_ids() -> dict[str, str]:
-    engine = create_engine(TEST_DATABASE_URL, future=True)
-    try:
-        with engine.connect() as connection:
-            rows = connection.execute(
-                text(
-                    "SELECT 'product:' || code AS seed_key, id::text AS id FROM products "
-                    "UNION ALL "
-                    "SELECT 'bundle:' || code AS seed_key, id::text AS id FROM bundles "
-                    "UNION ALL "
-                    "SELECT 'bundle_product:' || b.code || ':' || p.code AS seed_key, bp.id::text AS id "
-                    "FROM bundle_products bp "
-                    "JOIN bundles b ON b.id = bp.bundle_id "
-                    "JOIN products p ON p.id = bp.product_id "
-                    "UNION ALL "
-                    "SELECT 'plan:' || code AS seed_key, id::text AS id FROM plans "
-                    "UNION ALL "
-                    "SELECT 'price_component:' || p.code || ':' || pc.position AS seed_key, "
-                    "pc.id::text AS id "
-                    "FROM plan_price_components pc "
-                    "JOIN plans p ON p.id = pc.plan_id "
-                    "UNION ALL "
-                    "SELECT 'limit:' || p.code || ':' || pl.metric AS seed_key, pl.id::text AS id "
-                    "FROM plan_limits pl "
-                    "JOIN plans p ON p.id = pl.plan_id "
-                    "ORDER BY seed_key"
-                )
-            ).mappings()
-            return {row["seed_key"]: row["id"] for row in rows}
-    finally:
-        engine.dispose()
+    assert {
+        "uq_bundle_products_active_product",
+        "uq_document_versions_active_doc",
+        "uq_payment_provider_accounts_default",
+        "uq_payments_provider_account_payment_id",
+        "uq_plans_active_code",
+        "uq_refunds_provider_account_refund_id",
+    } <= partial_indexes.keys()
+    payment_predicate = " ".join(
+        partial_indexes["uq_payments_provider_account_payment_id"]
+        .upper()
+        .replace("(", " ")
+        .replace(")", " ")
+        .split()
+    )
+    assert payment_predicate.endswith("WHERE PROVIDER_PAYMENT_ID IS NOT NULL")
 
 
 def expected_legal_documents() -> list[dict[str, str]]:
@@ -189,46 +204,52 @@ def expected_legal_documents() -> list[dict[str, str]]:
     )
 
 
-def test_clean_postgres_alembic_upgrade_and_downgrade() -> None:
-    script = ScriptDirectory.from_config(alembic_config())
-    heads = script.get_heads()
-    assert heads == [EXPECTED_REVISION_CHAIN[-1]]
-    assert script.get_bases() == [EXPECTED_REVISION_CHAIN[0]]
-    assert [revision.revision for revision in reversed(list(script.walk_revisions()))] == (
-        EXPECTED_REVISION_CHAIN
-    )
+def test_clean_postgres_alembic_upgrade_and_downgrade(
+    postgres_engine: Engine,
+    database_test_url: URL,
+) -> None:
+    reset_public_schema(postgres_engine)
+    pytest_logging_handlers = tuple(logging.getLogger().handlers)
 
-    reset_public_schema()
+    with alembic_test_config(database_test_url) as config:
+        script = ScriptDirectory.from_config(config)
+        heads = script.get_heads()
+        assert heads == [EXPECTED_REVISION_CHAIN[-1]]
+        assert script.get_bases() == [EXPECTED_REVISION_CHAIN[0]]
+        assert [
+            revision.revision for revision in reversed(list(script.walk_revisions()))
+        ] == EXPECTED_REVISION_CHAIN
+        command.upgrade(config, "head")
 
-    with patch.dict(os.environ, {"DATABASE_URL": TEST_DATABASE_URL}):
-        command.upgrade(alembic_config(), "head")
-
-    tables = public_table_names()
+    assert tuple(logging.getLogger().handlers) == pytest_logging_handlers
+    tables = public_table_names(postgres_engine)
     assert "alembic_version" in tables
     assert "payment_provider_accounts" in tables
     assert "payment_webhook_events" in tables
     assert "password_reset_rate_limits" in tables
-    assert seeded_legal_documents() == expected_legal_documents()
+    assert seeded_legal_documents(postgres_engine) == expected_legal_documents()
+    assert_postgres_schema_contract(postgres_engine)
 
-    with patch.dict(os.environ, {"DATABASE_URL": TEST_DATABASE_URL}):
-        command.downgrade(alembic_config(), "base")
+    with alembic_test_config(database_test_url) as config:
+        command.downgrade(config, "base")
 
-    assert public_table_names() == {"alembic_version"}
-    assert alembic_version_count() == 0
+    assert public_table_names(postgres_engine) == {"alembic_version"}
+    assert alembic_version_count(postgres_engine) == 0
 
-    with patch.dict(os.environ, {"DATABASE_URL": TEST_DATABASE_URL}):
-        command.upgrade(alembic_config(), "head")
+    with alembic_test_config(database_test_url) as config:
+        command.upgrade(config, "head")
 
-    tables = public_table_names()
+    tables = public_table_names(postgres_engine)
     assert "alembic_version" in tables
     assert "payment_provider_accounts" in tables
     assert "plans" in tables
     assert "payment_webhook_events" in tables
     assert "password_reset_rate_limits" in tables
-    assert alembic_version_count() == 1
-    assert current_alembic_revision() == EXPECTED_REVISION_CHAIN[-1]
-    assert seeded_legal_documents() == expected_legal_documents()
-    assert seeded_catalog_ids() == {
+    assert alembic_version_count(postgres_engine) == 1
+    assert current_alembic_revision(postgres_engine) == EXPECTED_REVISION_CHAIN[-1]
+    assert seeded_legal_documents(postgres_engine) == expected_legal_documents()
+    assert_postgres_schema_contract(postgres_engine)
+    assert seeded_catalog_ids(postgres_engine) == {
         "bundle:core-tools-bundle": "77777777-7777-4777-8777-777777777701",
         "bundle_product:core-tools-bundle:document-summary": (
             "88888888-8888-4888-8888-888888888801"
@@ -269,7 +290,7 @@ def test_clean_postgres_alembic_upgrade_and_downgrade() -> None:
         "product:document-summary": "66666666-6666-4666-8666-666666666601",
         "product:prompt-optimizer": "66666666-6666-4666-8666-666666666602",
     }
-    assert seeded_catalog_summary() == {
+    assert seeded_catalog_summary(postgres_engine) == {
         "products": ["document-summary", "prompt-optimizer"],
         "plans": [
             {
@@ -386,53 +407,52 @@ def test_clean_postgres_alembic_upgrade_and_downgrade() -> None:
     }
 
 
-def test_active_plan_versions_cannot_overlap() -> None:
-    reset_public_schema()
+def test_active_plan_versions_cannot_overlap(
+    postgres_engine: Engine,
+    database_test_url: URL,
+) -> None:
+    reset_public_schema(postgres_engine)
 
-    with patch.dict(os.environ, {"DATABASE_URL": TEST_DATABASE_URL}):
-        command.upgrade(alembic_config(), "head")
+    with alembic_test_config(database_test_url) as config:
+        command.upgrade(config, "head")
 
-    engine = create_engine(TEST_DATABASE_URL, future=True)
-    try:
-        with engine.connect() as connection:
+    with postgres_engine.connect() as connection:
+        with connection.begin():
+            seed_plan = connection.execute(
+                text(
+                    "SELECT product_id, valid_from "
+                    "FROM plans WHERE code = 'document-summary-pro'"
+                )
+            ).mappings().one()
+            product_id = seed_plan["product_id"]
+            valid_from = seed_plan["valid_from"]
+            connection.execute(
+                text(
+                    "UPDATE plans SET valid_to = :valid_to "
+                    "WHERE code = 'document-summary-pro'"
+                ),
+                {"valid_to": valid_from + timedelta(days=1)},
+            )
+
+        with pytest.raises(IntegrityError):
             with connection.begin():
-                seed_plan = connection.execute(
-                    text(
-                        "SELECT product_id, valid_from "
-                        "FROM plans WHERE code = 'document-summary-pro'"
-                    )
-                ).mappings().one()
-                product_id = seed_plan["product_id"]
-                valid_from = seed_plan["valid_from"]
                 connection.execute(
                     text(
-                        "UPDATE plans SET valid_to = :valid_to "
-                        "WHERE code = 'document-summary-pro'"
+                        "INSERT INTO plans ("
+                        "id, tenant_id, region, code, name, scope_type, product_id, "
+                        "price_amount_minor, currency, billing_period, renewal_mode, "
+                        "trial_days, status, valid_from, valid_to"
+                        ") VALUES ("
+                        "'99999999-9999-4999-8999-999999999905', "
+                        "'anytoolai', 'ru', 'document-summary-pro', "
+                        "'Document Summary Pro overlap', 'product', :product_id, "
+                        "99000, 'RUB', 'month', 'manual', 7, 'active', "
+                        ":valid_from, :valid_to"
+                        ")"
                     ),
-                    {"valid_to": valid_from + timedelta(days=1)},
+                    {
+                        "product_id": product_id,
+                        "valid_from": valid_from - timedelta(days=1),
+                        "valid_to": valid_from + timedelta(days=2),
+                    },
                 )
-
-            with pytest.raises(IntegrityError):
-                with connection.begin():
-                    connection.execute(
-                        text(
-                            "INSERT INTO plans ("
-                            "id, tenant_id, region, code, name, scope_type, product_id, "
-                            "price_amount_minor, currency, billing_period, renewal_mode, "
-                            "trial_days, status, valid_from, valid_to"
-                            ") VALUES ("
-                            "'99999999-9999-4999-8999-999999999905', "
-                            "'anytoolai', 'ru', 'document-summary-pro', "
-                            "'Document Summary Pro overlap', 'product', :product_id, "
-                            "99000, 'RUB', 'month', 'manual', 7, 'active', "
-                            ":valid_from, :valid_to"
-                            ")"
-                        ),
-                        {
-                            "product_id": product_id,
-                            "valid_from": valid_from - timedelta(days=1),
-                            "valid_to": valid_from + timedelta(days=2),
-                        },
-                    )
-    finally:
-        engine.dispose()

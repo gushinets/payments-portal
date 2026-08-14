@@ -128,6 +128,53 @@ def test_fast_check_passes_the_scoped_environment_to_every_subprocess(
     assert any("pytest" in command for command, _ in invocations)
 
 
+def test_full_check_runs_alembic_with_postgres_fixture_fallback(
+    monkeypatch,
+) -> None:
+    check_environment = {
+        "POSTGRES_USER_TEST": "test-user",
+        "POSTGRES_PASSWORD_TEST": "test-password",
+        "POSTGRES_PORT_TEST": "5432",
+        "POSTGRES_DB_TEST": "payment_portal_test",
+    }
+    invocations: list[tuple[list[str], dict[str, str] | None]] = []
+
+    monkeypatch.delenv("TEST_POSTGRES_DATABASE_URL", raising=False)
+    monkeypatch.delenv("RUN_E2E", raising=False)
+    monkeypatch.setattr(repo, "canonical_check_environment", lambda: check_environment)
+    monkeypatch.setattr(repo, "cmd_docs", lambda _: None)
+    monkeypatch.setattr(repo, "cmd_generate", lambda _: None)
+    monkeypatch.setattr(repo, "cmd_architecture", lambda _: None)
+    monkeypatch.setattr(repo, "tool", lambda name: name)
+    monkeypatch.setattr(
+        repo,
+        "run",
+        lambda command, **kwargs: invocations.append((command, kwargs.get("env"))),
+    )
+
+    repo.cmd_check(argparse.Namespace(fast=False))
+
+    alembic_invocations = [
+        (command, environment)
+        for command, environment in invocations
+        if "apps/api/tests/test_alembic_postgres.py" in command
+        and "--ignore" not in command
+    ]
+    assert alembic_invocations == [
+        (
+            [
+                repo.sys.executable,
+                "-m",
+                "pytest",
+                "-p",
+                "no:cacheprovider",
+                "apps/api/tests/test_alembic_postgres.py",
+            ],
+            check_environment,
+        )
+    ]
+
+
 def test_cloudpayments_public_id_uses_process_environment_first() -> None:
     value = resolve_cloudpayments_public_id(
         {"CLOUDPAYMENTS_PUBLIC_ID": "pk_from_dotenv"},
