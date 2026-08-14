@@ -23,6 +23,8 @@ EXPECTED_REVISION_CHAIN = [
     "20260729_0004",
 ]
 
+pytestmark = pytest.mark.postgres
+
 
 def public_table_names(postgres_engine: Engine) -> set[str]:
     inspector = inspect(postgres_engine)
@@ -31,66 +33,73 @@ def public_table_names(postgres_engine: Engine) -> set[str]:
 
 def alembic_version_count(postgres_engine: Engine) -> int:
     with postgres_engine.connect() as connection:
-        return connection.execute(
-            text("SELECT count(*) FROM alembic_version")
-        ).scalar_one()
+        return connection.execute(text("SELECT count(*) FROM alembic_version")).scalar_one()
 
 
 def current_alembic_revision(postgres_engine: Engine) -> str:
     with postgres_engine.connect() as connection:
-        return connection.execute(
-            text("SELECT version_num FROM alembic_version")
-        ).scalar_one()
+        return connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
 
 
 def seeded_legal_documents(postgres_engine: Engine) -> list[dict[str, str]]:
     with postgres_engine.connect() as connection:
         rows = connection.execute(
-            text(
-                "SELECT id::text, doc_type, version, content_hash "
-                "FROM document_versions ORDER BY id"
-            )
+            text("SELECT id::text, doc_type, version, content_hash FROM document_versions ORDER BY id")
         ).mappings()
         return [dict(row) for row in rows]
 
 
 def seeded_catalog_summary(postgres_engine: Engine) -> dict[str, object]:
     with postgres_engine.connect() as connection:
-        products = connection.execute(
-            text("SELECT code FROM products ORDER BY code")
-        ).scalars().all()
-        plans = connection.execute(
-            text(
-                "SELECT code, scope_type, price_amount_minor, currency, "
-                "billing_period, trial_days FROM plans ORDER BY code"
+        products = connection.execute(text("SELECT code FROM products ORDER BY code")).scalars().all()
+        plans = (
+            connection.execute(
+                text(
+                    "SELECT code, scope_type, price_amount_minor, currency, "
+                    "billing_period, trial_days FROM plans ORDER BY code"
+                )
             )
-        ).mappings().all()
-        bundle_products = connection.execute(
-            text(
-                "SELECT b.code AS bundle_code, p.code AS product_code "
-                "FROM bundle_products bp "
-                "JOIN bundles b ON b.id = bp.bundle_id "
-                "JOIN products p ON p.id = bp.product_id "
-                "ORDER BY b.code, p.code"
+            .mappings()
+            .all()
+        )
+        bundle_products = (
+            connection.execute(
+                text(
+                    "SELECT b.code AS bundle_code, p.code AS product_code "
+                    "FROM bundle_products bp "
+                    "JOIN bundles b ON b.id = bp.bundle_id "
+                    "JOIN products p ON p.id = bp.product_id "
+                    "ORDER BY b.code, p.code"
+                )
             )
-        ).mappings().all()
-        price_components = connection.execute(
-            text(
-                "SELECT p.code AS plan_code, pc.component_code_snapshot, "
-                "pc.list_amount_minor, pc.discount_amount_minor, pc.amount_minor "
-                "FROM plan_price_components pc "
-                "JOIN plans p ON p.id = pc.plan_id "
-                "ORDER BY p.code, pc.position"
+            .mappings()
+            .all()
+        )
+        price_components = (
+            connection.execute(
+                text(
+                    "SELECT p.code AS plan_code, pc.component_code_snapshot, "
+                    "pc.list_amount_minor, pc.discount_amount_minor, pc.amount_minor "
+                    "FROM plan_price_components pc "
+                    "JOIN plans p ON p.id = pc.plan_id "
+                    "ORDER BY p.code, pc.position"
+                )
             )
-        ).mappings().all()
-        limits = connection.execute(
-            text(
-                "SELECT p.code AS plan_code, pl.metric, pl.limit_count, pl.period "
-                "FROM plan_limits pl "
-                "JOIN plans p ON p.id = pl.plan_id "
-                "ORDER BY p.code, pl.metric"
+            .mappings()
+            .all()
+        )
+        limits = (
+            connection.execute(
+                text(
+                    "SELECT p.code AS plan_code, pl.metric, pl.limit_count, pl.period "
+                    "FROM plan_limits pl "
+                    "JOIN plans p ON p.id = pl.plan_id "
+                    "ORDER BY p.code, pl.metric"
+                )
             )
-        ).mappings().all()
+            .mappings()
+            .all()
+        )
         return {
             "products": list(products),
             "plans": [dict(row) for row in plans],
@@ -132,13 +141,8 @@ def seeded_catalog_ids(postgres_engine: Engine) -> dict[str, str]:
 
 def assert_postgres_schema_contract(postgres_engine: Engine) -> None:
     inspector = inspect(postgres_engine)
-    webhook_columns = {
-        column["name"]: column
-        for column in inspector.get_columns("payment_webhook_events")
-    }
-    payment_columns = {
-        column["name"]: column for column in inspector.get_columns("payments")
-    }
+    webhook_columns = {column["name"]: column for column in inspector.get_columns("payment_webhook_events")}
+    payment_columns = {column["name"]: column for column in inspector.get_columns("payments")}
     assert isinstance(webhook_columns["raw_payload"]["type"], JSONB)
     assert isinstance(webhook_columns["headers"]["type"], JSONB)
     assert isinstance(payment_columns["raw_summary"]["type"], JSONB)
@@ -177,11 +181,7 @@ def assert_postgres_schema_contract(postgres_engine: Engine) -> None:
         "uq_refunds_provider_account_refund_id",
     } <= partial_indexes.keys()
     payment_predicate = " ".join(
-        partial_indexes["uq_payments_provider_account_payment_id"]
-        .upper()
-        .replace("(", " ")
-        .replace(")", " ")
-        .split()
+        partial_indexes["uq_payments_provider_account_payment_id"].upper().replace("(", " ").replace(")", " ").split()
     )
     assert payment_predicate.endswith("WHERE PROVIDER_PAYMENT_ID IS NOT NULL")
 
@@ -216,9 +216,7 @@ def test_clean_postgres_alembic_upgrade_and_downgrade(
         heads = script.get_heads()
         assert heads == [EXPECTED_REVISION_CHAIN[-1]]
         assert script.get_bases() == [EXPECTED_REVISION_CHAIN[0]]
-        assert [
-            revision.revision for revision in reversed(list(script.walk_revisions()))
-        ] == EXPECTED_REVISION_CHAIN
+        assert [revision.revision for revision in reversed(list(script.walk_revisions()))] == EXPECTED_REVISION_CHAIN
         command.upgrade(config, "head")
 
     assert tuple(logging.getLogger().handlers) == pytest_logging_handlers
@@ -251,42 +249,22 @@ def test_clean_postgres_alembic_upgrade_and_downgrade(
     assert_postgres_schema_contract(postgres_engine)
     assert seeded_catalog_ids(postgres_engine) == {
         "bundle:core-tools-bundle": "77777777-7777-4777-8777-777777777701",
-        "bundle_product:core-tools-bundle:document-summary": (
-            "88888888-8888-4888-8888-888888888801"
-        ),
-        "bundle_product:core-tools-bundle:prompt-optimizer": (
-            "88888888-8888-4888-8888-888888888802"
-        ),
-        "limit:all-access-pro-ru:document_summary_runs": (
-            "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb5"
-        ),
-        "limit:all-access-pro-ru:prompt_optimizations": (
-            "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb6"
-        ),
-        "limit:core-tools-bundle-pro-ru:document_summary_runs": (
-            "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb3"
-        ),
-        "limit:core-tools-bundle-pro-ru:prompt_optimizations": (
-            "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb4"
-        ),
-        "limit:document-summary-pro:document_summary_runs": (
-            "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1"
-        ),
-        "limit:prompt-optimizer-pro:prompt_optimizations": (
-            "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2"
-        ),
+        "bundle_product:core-tools-bundle:document-summary": ("88888888-8888-4888-8888-888888888801"),
+        "bundle_product:core-tools-bundle:prompt-optimizer": ("88888888-8888-4888-8888-888888888802"),
+        "limit:all-access-pro-ru:document_summary_runs": ("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb5"),
+        "limit:all-access-pro-ru:prompt_optimizations": ("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb6"),
+        "limit:core-tools-bundle-pro-ru:document_summary_runs": ("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb3"),
+        "limit:core-tools-bundle-pro-ru:prompt_optimizations": ("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb4"),
+        "limit:document-summary-pro:document_summary_runs": ("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1"),
+        "limit:prompt-optimizer-pro:prompt_optimizations": ("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2"),
         "plan:all-access-pro-ru": "99999999-9999-4999-8999-999999999904",
         "plan:core-tools-bundle-pro-ru": "99999999-9999-4999-8999-999999999903",
         "plan:document-summary-pro": "99999999-9999-4999-8999-999999999901",
         "plan:prompt-optimizer-pro": "99999999-9999-4999-8999-999999999902",
         "price_component:all-access-pro-ru:1": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3",
         "price_component:all-access-pro-ru:2": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa4",
-        "price_component:core-tools-bundle-pro-ru:1": (
-            "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1"
-        ),
-        "price_component:core-tools-bundle-pro-ru:2": (
-            "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2"
-        ),
+        "price_component:core-tools-bundle-pro-ru:1": ("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1"),
+        "price_component:core-tools-bundle-pro-ru:2": ("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2"),
         "product:document-summary": "66666666-6666-4666-8666-666666666601",
         "product:prompt-optimizer": "66666666-6666-4666-8666-666666666602",
     }
@@ -418,19 +396,15 @@ def test_active_plan_versions_cannot_overlap(
 
     with postgres_engine.connect() as connection:
         with connection.begin():
-            seed_plan = connection.execute(
-                text(
-                    "SELECT product_id, valid_from "
-                    "FROM plans WHERE code = 'document-summary-pro'"
-                )
-            ).mappings().one()
+            seed_plan = (
+                connection.execute(text("SELECT product_id, valid_from FROM plans WHERE code = 'document-summary-pro'"))
+                .mappings()
+                .one()
+            )
             product_id = seed_plan["product_id"]
             valid_from = seed_plan["valid_from"]
             connection.execute(
-                text(
-                    "UPDATE plans SET valid_to = :valid_to "
-                    "WHERE code = 'document-summary-pro'"
-                ),
+                text("UPDATE plans SET valid_to = :valid_to WHERE code = 'document-summary-pro'"),
                 {"valid_to": valid_from + timedelta(days=1)},
             )
 

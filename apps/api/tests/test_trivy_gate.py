@@ -8,6 +8,7 @@ import pytest
 import yaml
 
 from scripts.repo import (
+    ROOT,
     HarnessError,
     cmd_trivy,
     redact_trivy_report,
@@ -125,7 +126,7 @@ def test_report_redaction_removes_secret_match_and_code(tmp_path: Path) -> None:
 
 
 def test_trivy_ignore_entries_are_scoped_explained_and_unexpired() -> None:
-    policy = yaml.safe_load(Path(".trivyignore.yaml").read_text(encoding="utf-8"))
+    policy = yaml.safe_load((ROOT / ".trivyignore.yaml").read_text(encoding="utf-8"))
 
     for section in ("vulnerabilities", "misconfigurations", "secrets"):
         entries = policy.get(section, [])
@@ -186,31 +187,19 @@ def test_docker_socket_fixture_requires_both_paths_and_compose_syntaxes(
                         "Misconfigurations": [
                             {
                                 "ID": "ANY-COMPOSE-003",
-                                "Message": (
-                                    'Compose service "var-run-short-syntax" must '
-                                    "not mount the Docker socket"
-                                ),
+                                "Message": ('Compose service "var-run-short-syntax" must not mount the Docker socket'),
                             },
                             {
                                 "ID": "ANY-COMPOSE-003",
-                                "Message": (
-                                    'Compose service "run-short-syntax" must not '
-                                    "mount the Docker socket"
-                                ),
+                                "Message": ('Compose service "run-short-syntax" must not mount the Docker socket'),
                             },
                             {
                                 "ID": "ANY-COMPOSE-003",
-                                "Message": (
-                                    'Compose service "var-run-long-syntax" must not '
-                                    "mount the Docker socket"
-                                ),
+                                "Message": ('Compose service "var-run-long-syntax" must not mount the Docker socket'),
                             },
                             {
                                 "ID": "ANY-COMPOSE-003",
-                                "Message": (
-                                    'Compose service "run-long-syntax" must not '
-                                    "mount the Docker socket"
-                                ),
+                                "Message": ('Compose service "run-long-syntax" must not mount the Docker socket'),
                             },
                         ]
                     }

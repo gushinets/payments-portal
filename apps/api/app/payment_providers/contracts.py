@@ -71,8 +71,7 @@ class NormalizedPaymentEvent:
 class PaymentProviderAdapter(Protocol):
     provider_code: str
 
-    def default_account_fields(self, *, tenant_id: str, region: str) -> dict[str, Any]:
-        ...
+    def default_account_fields(self, *, tenant_id: str, region: str) -> dict[str, Any]: ...
 
     def prepare_checkout_action(
         self,
@@ -82,8 +81,6 @@ class PaymentProviderAdapter(Protocol):
         account_id: str,
         description: str | None,
         metadata: dict[str, Any],
-    ) -> CheckoutAction:
-        ...
+    ) -> CheckoutAction: ...
 
-    def webhook_success_response(self, event: NormalizedPaymentEvent) -> dict[str, Any]:
-        ...
+    def webhook_success_response(self, event: NormalizedPaymentEvent) -> dict[str, Any]: ...

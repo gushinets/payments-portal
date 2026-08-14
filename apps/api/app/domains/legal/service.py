@@ -79,17 +79,11 @@ def get_missing_required_documents_for_user(
             DocumentAcceptance.tenant_id == user.tenant_id,
             DocumentAcceptance.region == user.region,
             DocumentAcceptance.user_id == user.id,
-            DocumentAcceptance.document_version_id.in_(
-                [document.id for document in required_documents]
-            ),
+            DocumentAcceptance.document_version_id.in_([document.id for document in required_documents]),
         )
         .all()
     }
-    return [
-        document
-        for document in required_documents
-        if document.id not in accepted_version_ids
-    ]
+    return [document for document in required_documents if document.id not in accepted_version_ids]
 
 
 def create_document_acceptance(
@@ -117,9 +111,7 @@ def create_document_acceptance(
         document_version_id=document.id,
         doc_type=document.doc_type,
         version=document.version,
-        acceptance_kind=ACCEPTANCE_KIND_BY_DOC_TYPE.get(
-            document.doc_type, "terms_acceptance"
-        ),
+        acceptance_kind=ACCEPTANCE_KIND_BY_DOC_TYPE.get(document.doc_type, "terms_acceptance"),
         accepted_at=accepted_at or utc_now(),
         ip=ip,
         user_agent=user_agent,

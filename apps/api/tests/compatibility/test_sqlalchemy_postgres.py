@@ -11,27 +11,17 @@ from sqlalchemy.orm import Session
 
 from app.models import AuthSession, Payment, PaymentWebhookEvent, User
 
+pytestmark = pytest.mark.postgres
+
 
 def test_postgres_orm_round_trip_and_rollback(migrated_database: Engine) -> None:
-    assert (
-        PaymentWebhookEvent.__table__.c.raw_payload.type.compile(
-            dialect=migrated_database.dialect
-        )
-        == "JSONB"
-    )
+    assert PaymentWebhookEvent.__table__.c.raw_payload.type.compile(dialect=migrated_database.dialect) == "JSONB"
     payment_id_index = next(
-        index
-        for index in Payment.__table__.indexes
-        if index.name == "uq_payments_provider_account_payment_id"
+        index for index in Payment.__table__.indexes if index.name == "uq_payments_provider_account_payment_id"
     )
     assert payment_id_index.unique is True
-    assert str(payment_id_index.dialect_options["postgresql"]["where"]) == (
-        "provider_payment_id IS NOT NULL"
-    )
-    assert {
-        foreign_key.target_fullname
-        for foreign_key in Payment.__table__.c.order_id.foreign_keys
-    } == {"orders.id"}
+    assert str(payment_id_index.dialect_options["postgresql"]["where"]) == ("provider_payment_id IS NOT NULL")
+    assert {foreign_key.target_fullname for foreign_key in Payment.__table__.c.order_id.foreign_keys} == {"orders.id"}
 
     verified_at = datetime.now(timezone.utc)
 
@@ -62,9 +52,7 @@ def test_postgres_orm_round_trip_and_rollback(migrated_database: Engine) -> None
 
     with Session(migrated_database) as session:
         stored_user = session.scalar(select(User).where(User.id == user_id))
-        stored_auth_session = session.scalar(
-            select(AuthSession).where(AuthSession.user_id == user_id)
-        )
+        stored_auth_session = session.scalar(select(AuthSession).where(AuthSession.user_id == user_id))
 
         assert stored_user is not None
         assert isinstance(stored_user.id, uuid.UUID)
@@ -72,9 +60,7 @@ def test_postgres_orm_round_trip_and_rollback(migrated_database: Engine) -> None
         assert stored_user.email_verified_at == verified_at
         assert stored_auth_session is not None
         assert str(stored_auth_session.ip) == "127.0.0.1"
-        assert session.execute(
-            text("SELECT version_num FROM alembic_version")
-        ).scalar_one() == "20260729_0004"
+        assert session.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "20260729_0004"
 
         session.add(
             User(
