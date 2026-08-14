@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from collections.abc import Iterator
 from contextlib import contextmanager
+from pathlib import Path
 from unittest.mock import patch
 
 from alembic import command
@@ -13,6 +14,7 @@ from sqlalchemy.engine import Engine, URL
 
 _TEST_DATABASE_SUFFIXES = ("_test", "_tests")
 _SYSTEM_DATABASE_NAMES = frozenset({"postgres", "template0", "template1"})
+REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
 
 
 def validate_test_database_url(database_url: URL) -> URL:
@@ -72,7 +74,7 @@ def alembic_test_config(database_test_url: URL) -> Iterator[Config]:
     """Configure Alembic for a test database without replacing pytest logging."""
     validate_test_database_url(database_test_url)
     database_url = database_test_url.render_as_string(hide_password=False)
-    config = Config("apps/api/alembic.ini")
+    config = Config(str(REPOSITORY_ROOT / "apps/api/alembic.ini"))
     config.set_main_option("sqlalchemy.url", database_url)
 
     # env.py reads DATABASE_URL first, so force it to the dedicated test DB.

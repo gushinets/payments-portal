@@ -8,6 +8,7 @@ import pytest
 import yaml
 
 from scripts.repo import (
+    ROOT,
     HarnessError,
     cmd_trivy,
     redact_trivy_report,
@@ -125,7 +126,7 @@ def test_report_redaction_removes_secret_match_and_code(tmp_path: Path) -> None:
 
 
 def test_trivy_ignore_entries_are_scoped_explained_and_unexpired() -> None:
-    policy = yaml.safe_load(Path(".trivyignore.yaml").read_text(encoding="utf-8"))
+    policy = yaml.safe_load((ROOT / ".trivyignore.yaml").read_text(encoding="utf-8"))
 
     for section in ("vulnerabilities", "misconfigurations", "secrets"):
         entries = policy.get(section, [])

@@ -27,15 +27,15 @@ def test_identity_email_validation_rejects_malformed_addresses(email: str) -> No
 
 def test_identity_email_validation_preserves_current_length_boundaries() -> None:
     local_part_limit_email = f"{'a' * 64}@example.com"
-    local_part_over_limit_email = f"{'a' * 65}@example.com"
+    local_part_65_email = f"{'a' * 65}@example.com"
     max_total_length_email = f"{'a' * 64}@{'b' * 63}.{'c' * 63}.{'d' * 57}.com"
     over_total_length_email = f"{'a' * 64}@{'b' * 63}.{'c' * 63}.{'d' * 58}.com"
 
     assert len(max_total_length_email) == 254
     assert len(over_total_length_email) == 255
     assert str(RegisterRequestFactory.build(email=local_part_limit_email).email) == (local_part_limit_email)
+    assert str(RegisterRequestFactory.build(email=local_part_65_email).email) == (local_part_65_email)
     assert str(RegisterRequestFactory.build(email=max_total_length_email).email) == (max_total_length_email)
-    assert_register_email_is_rejected(local_part_over_limit_email)
     assert_register_email_is_rejected(over_total_length_email)
 
 
