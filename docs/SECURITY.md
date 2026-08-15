@@ -56,3 +56,11 @@ gate then rejects all Critical vulnerabilities, fixable High vulnerabilities,
 and High or Critical secret and misconfiguration findings. Exceptions belong in
 `.trivyignore.yaml` and must include an ID, affected paths, an actionable reason,
 and an expiration date.
+
+The root npm overrides for vulnerable nanoid 3.x and `brace-expansion` 1.x
+releases are temporary security constraints. Remove the nanoid override once
+every parent that requires the 3.x line resolves `3.3.18` or newer without it.
+Remove the `brace-expansion` override once every parent that requires the 1.x
+line resolves `1.1.18` or newer without it. In both cases, regenerate the
+lockfile and confirm that npm audit and the Trivy filesystem scan remain free of
+Critical and fixable High findings before removing the override.

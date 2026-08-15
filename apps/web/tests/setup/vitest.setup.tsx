@@ -5,6 +5,7 @@ import { server } from "./msw-server";
 
 declare global {
   var __NEXT_SEARCH_PARAMS__: string | undefined;
+  var __NEXT_ROUTER_PUSH__: ((href: string) => void) | undefined;
   var __ANYTOOLAI_FETCH_SIGNAL_STRIPPED_COUNT__: number | undefined;
 }
 
@@ -24,6 +25,9 @@ vi.mock("next/link", () => ({
 }));
 
 vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: (href: string) => globalThis.__NEXT_ROUTER_PUSH__?.(href)
+  }),
   useSearchParams: () => new URLSearchParams(globalThis.__NEXT_SEARCH_PARAMS__ ?? "")
 }));
 
@@ -39,6 +43,7 @@ afterEach(() => {
   window.localStorage.clear();
   window.sessionStorage.clear();
   globalThis.__NEXT_SEARCH_PARAMS__ = "";
+  globalThis.__NEXT_ROUTER_PUSH__ = undefined;
   globalThis.__ANYTOOLAI_FETCH_SIGNAL_STRIPPED_COUNT__ = 0;
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
