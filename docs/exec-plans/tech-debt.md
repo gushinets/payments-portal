@@ -3,6 +3,7 @@
 | Item | Owner | Status | Notes |
 |---|---|---|---|
 | Target catalog/subscription/entitlement model | ANY-71 | Planned | Out of scope for ANY-108 |
+| DDD-lite layering (billing service, repos, thin routers) | Follow-up after CloudPayments | Observed | [Audit and safe plan](../architecture/ddd-lite-audit.md); do not block ANY-165/166/167 |
 | Platform Kernel runtime and usage integration | External repository | Planned | No implementation in this repository |
 | Production email verification | Product backlog | Planned | Current authentication remains demo-oriented |
 | Clean-context autonomy trial | ANY-116 | Completed | [PR #9](https://github.com/gushinets/payments-portal/pull/9); final autonomy and overall grade B |
