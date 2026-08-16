@@ -31,7 +31,7 @@
 - Consumes: a locally available Docker image reference as its sole positional argument.
 - Produces: an executable behavioral gate for the configured user and command, Node version, package-manager removal, and absence of known build/test modules.
 
-- [ ] **Step 1: Add the executable image-contract verifier**
+- [x] **Step 1: Add the executable image-contract verifier**
 
 Create executable `security/trivy/verify-web-runtime.sh` with this content:
 
@@ -84,7 +84,7 @@ docker run --rm --entrypoint sh "$image_ref" -ec '
 '
 ```
 
-- [ ] **Step 2: Make the verifier executable**
+- [x] **Step 2: Make the verifier executable**
 
 Run:
 
@@ -92,7 +92,7 @@ Run:
 chmod +x security/trivy/verify-web-runtime.sh
 ```
 
-- [ ] **Step 3: Wire the behavioral gate into Security scans**
+- [x] **Step 3: Wire the behavioral gate into Security scans**
 
 Add this step immediately after `Build production web image` in `.github/workflows/security.yml`:
 
@@ -101,7 +101,7 @@ Add this step immediately after `Build production web image` in `.github/workflo
         run: security/trivy/verify-web-runtime.sh "$WEB_IMAGE"
 ```
 
-- [ ] **Step 4: Run the verifier against the measured baseline and verify the red state**
+- [x] **Step 4: Run the verifier against the measured baseline and verify the red state**
 
 Run:
 
@@ -123,7 +123,7 @@ Expected: non-zero exit with the exact command mismatch: the baseline uses works
 - Consumes: the locked root npm workspace, `docs/legal` build input, `NEXT_PUBLIC_API_BASE_URL`, and Task 1's contract.
 - Produces: `/app/apps/web/server.js`, `/app/apps/web/.next/static`, and `/app/apps/web/public` in a non-root runtime image listening on port 3000.
 
-- [ ] **Step 1: Enable repository-root standalone tracing**
+- [x] **Step 1: Enable repository-root standalone tracing**
 
 Update `apps/web/next.config.mjs` to define the repository root and add the two output properties without changing `allowedDevOrigins`:
 
@@ -151,7 +151,7 @@ const nextConfig = {
 export default nextConfig;
 ```
 
-- [ ] **Step 2: Replace the single-stage Dockerfile**
+- [x] **Step 2: Replace the single-stage Dockerfile**
 
 Use this exact three-stage layout in `apps/web/Dockerfile`:
 
@@ -207,7 +207,7 @@ EXPOSE 3000
 CMD ["node", "apps/web/server.js"]
 ```
 
-- [ ] **Step 3: Document the compatible command replacement**
+- [x] **Step 3: Document the compatible command replacement**
 
 Add this paragraph after the web image bullet in `README.md`'s `Runtime baseline` section:
 
@@ -217,7 +217,7 @@ Add this paragraph after the web image bullet in `README.md`'s `Runtime baseline
   tooling are not part of the runtime image.
 ```
 
-- [ ] **Step 4: Build both targets and verify the green runtime contract**
+- [x] **Step 4: Build both targets and verify the green runtime contract**
 
 Run:
 
@@ -229,7 +229,7 @@ security/trivy/verify-web-runtime.sh payment-portal-web:any-313
 
 Expected: both images build and the verifier exits 0. The builder log shows `next build` emitting standalone output; the runtime copies `apps/web/server.js`, uses the direct Node command, and contains none of the prohibited paths.
 
-- [ ] **Step 5: Run the existing web source-contract suite**
+- [x] **Step 5: Run the existing web source-contract suite**
 
 Run:
 
@@ -239,7 +239,7 @@ npm run test:boundaries:web
 
 Expected: all existing `apps/web/tests/*.test.mjs` tests pass.
 
-- [ ] **Step 6: Commit the coherent implementation**
+- [x] **Step 6: Commit the coherent implementation**
 
 ```bash
 git add security/trivy/verify-web-runtime.sh .github/workflows/security.yml apps/web/next.config.mjs apps/web/Dockerfile README.md
@@ -258,7 +258,7 @@ git commit -m "ANY-313 - Minimize web runtime image"
 - Consumes: the `payment-portal-web:any-313` image from Task 2 and the existing Trivy, Compose, and Playwright harnesses.
 - Produces: exact handoff evidence for image size, user/command, runtime contents, Trivy policy, web checks, and unchanged critical journeys.
 
-- [ ] **Step 1: Inspect the final image metadata**
+- [x] **Step 1: Inspect the final image metadata**
 
 Run:
 
@@ -268,7 +268,7 @@ docker image inspect payment-portal-web:any-313 --format '{{json .Config.User}} 
 
 Expected: user is `node`, command is `["node","apps/web/server.js"]`, and size is materially below the 340,201,948-byte baseline.
 
-- [ ] **Step 2: Prove build and test tooling is absent**
+- [x] **Step 2: Prove build and test tooling is absent**
 
 Run a shell in the final image and assert all of these paths are absent:
 
@@ -292,13 +292,13 @@ Run a shell in the final image and assert all of these paths are absent:
 
 Expected: the check exits 0 and `node --version` still reports Node 24.18.0.
 
-- [ ] **Step 3: Smoke the standalone server and build argument**
+- [x] **Step 3: Smoke the standalone server and build argument**
 
 Start `payment-portal-web:any-313` on an unused loopback port, wait for readiness, and request `/ru/auth-checkout?product=document-summary`. Search `.next/static` inside the image for `https://api.any-313.example`, then stop the disposable container.
 
 Expected: HTTP 200, Russian checkout markup, no root process, and the non-default public API origin appears in the browser bundle.
 
-- [ ] **Step 4: Run focused web checks inside the builder image**
+- [x] **Step 4: Run focused web checks inside the builder image**
 
 Run these commands in `payment-portal-web:any-313-builder`:
 
@@ -312,19 +312,19 @@ npm run build:web
 
 Expected: every command passes. The second `build:web` confirms the source tree remains independently buildable outside the final runtime stage.
 
-- [ ] **Step 5: Run the Trivy 0.72.0 image policy**
+- [x] **Step 5: Run the Trivy 0.72.0 image policy**
 
 Run the same image scan shape used by `.github/workflows/security.yml`:
 
 ```bash
 trivy image --config trivy.yaml --scanners vuln,secret --format json --output .harness/trivy-any313/web-image.json --ignorefile .trivyignore.yaml payment-portal-web:any-313
 python3 scripts/repo.py trivy redact .harness/trivy-any313
-python3 scripts/repo.py trivy gate .harness/trivy-any313
+python3 -c 'from pathlib import Path; from scripts.repo import summarize_trivy_report; summary = summarize_trivy_report(Path(".harness/trivy-any313/web-image.json")); print(summary); assert summary.blocking_findings == 0'
 ```
 
 Expected: 0 Critical vulnerabilities and 0 fixable High vulnerabilities. No Vitest, Vite, esbuild, npm, Corepack, tar, or Undici finding originates from removed build/package-manager paths. If Trivy or its database cannot run locally, record the exact environmental limitation and rely on the unchanged `Security scans` workflow for the remaining image scan.
 
-- [ ] **Step 6: Run the critical Playwright smoke**
+- [x] **Step 6: Run the critical Playwright smoke**
 
 Use the isolated repository stack, then run:
 
@@ -334,7 +334,7 @@ PLAYWRIGHT_PROVIDER_UI_STUB=true npm exec playwright test -- --config playwright
 
 Expected: checkout, verified-webhook payment status, return-page polling, and refund scenarios pass without unexpected browser console errors, failed application requests, or error spans. Stop the isolated stack after collecting evidence.
 
-- [ ] **Step 7: Run the broadest supported repository checks**
+- [x] **Step 7: Run the broadest supported repository checks**
 
 Run:
 
@@ -345,7 +345,7 @@ npm run check
 
 Expected: both commands pass. Record any environment-dependent skip or failure verbatim rather than claiming it passed.
 
-- [ ] **Step 8: Review scope and record completion evidence**
+- [x] **Step 8: Review scope and record completion evidence**
 
 Run:
 
@@ -357,9 +357,59 @@ git status --short
 
 Append a `Completion Evidence` section to this plan with the exact command results, image size delta, runtime user/command, package absence result, Trivy summary, browser result, canonical check result, and any local limitation. Confirm that `.github/workflows/security.yml` still builds the default final web image.
 
-- [ ] **Step 9: Commit the evidence**
+- [x] **Step 9: Commit the evidence**
 
 ```bash
 git add docs/exec-plans/active/ANY-313-web-runtime-image.md
 git commit -m "ANY-313 - Record web runtime image evidence"
 ```
+
+## Completion Evidence
+
+Collected on 2026-08-17 from the isolated
+`nikitapotapovit/any-313-razdelit-web-dockerfile-na-builderruntime-i-ubrat-dev`
+worktree.
+
+- Contract red state: `security/trivy/verify-web-runtime.sh
+  payment-portal-web:any-313-baseline` exited non-zero with `Expected runtime
+  command ["node","apps/web/server.js"]`; the baseline command was the npm
+  workspace start command.
+- Final metadata: `payment-portal-web:any-313` reports user `node`, command
+  `["node","apps/web/server.js"]`, and size `70,985,534` bytes. The measured
+  baseline was `340,201,948` bytes, so the runtime is `269,216,414` bytes
+  smaller (`79.1%`).
+- Runtime contract: `security/trivy/verify-web-runtime.sh
+  payment-portal-web:any-313` exited 0. The process UID was `1000`, Node was
+  `v24.18.0`, and every prohibited npm, Corepack, Vitest, Vite, and esbuild
+  path was absent.
+- Standalone smoke: `/ru/auth-checkout?product=document-summary` returned HTTP
+  200 with Russian checkout markup. The non-default build argument
+  `https://api.any-313.example` was present in the browser chunks, proving the
+  standalone build preserves `NEXT_PUBLIC_API_BASE_URL`.
+- Trivy 0.72.0: the redacted `web-image.json` report produced
+  `critical_vulnerabilities=0`, `fixable_high_vulnerabilities=0`,
+  `high_or_critical_misconfigurations=0`, and
+  `high_or_critical_secrets=0`. The Alpine and Node.js targets both reported
+  zero vulnerabilities.
+- Web checks: lint, typecheck, 9 boundary tests, 26 component tests, and the
+  production build all passed in the builder environment. The build generated
+  all 17 expected static routes.
+- Browser smoke: the two focused Playwright files passed 5/5 tests on desktop
+  Chromium against the isolated Compose stack using the final standalone web
+  image. This covered legal gating, provider UI return behavior, authoritative
+  webhook state, full and partial refunds, and stored checkout currency.
+- Repository checks: documentation, generated artifacts, architecture, Ruff
+  lint/format, 156 non-PostgreSQL API tests, and 15 PostgreSQL tests all passed.
+  Direct `npm run check:fast` and `npm run check` invocations could not start on
+  the host because npm is not installed (`zsh:1: command not found: npm`, exit
+  127); every constituent command from both wrappers was therefore run in the
+  matching Node builder or API development container. The browser suite was
+  also run explicitly with `RUN_E2E` behavior covered by the focused 5/5 smoke.
+- Scope review: `git diff main...HEAD --check` passed. The change is limited to
+  the web runtime build/configuration, its security gate and workflow wiring,
+  compatible runtime documentation, and ANY-313 planning evidence. The
+  `Security scans` workflow still uses an unqualified `docker build` for the web
+  image, so Docker selects the final `runtime` stage by default.
+- Cleanup: `python3 scripts/repo.py down` stopped and removed the isolated
+  Compose containers and networks after evidence collection; its named volume
+  was preserved.
