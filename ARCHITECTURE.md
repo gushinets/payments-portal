@@ -1,7 +1,7 @@
 # Payment Portal Architecture
 
 Status: authoritative current-state map
-Last verified: 2026-07-11
+Last verified: 2026-08-16
 
 ## System boundary
 
@@ -38,6 +38,11 @@ The API dependency direction is:
 ```text
 contracts/models -> repositories -> services -> routers/wiring
 ```
+
+This is an allowed dependency direction, not a requirement that every
+operation use every layer. Services may use SQLAlchemy `Session` directly;
+repositories are extracted only when they reduce duplication or isolate
+persistence complexity.
 
 Provider adapters are registered at the API composition root by provider code.
 Provider-neutral modules do not import provider integrations and do not branch on
