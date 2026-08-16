@@ -74,8 +74,9 @@ image:
    workspace paths in the emitted layout.
 3. `runtime` receives only the standalone server tree, `.next/static`, and
    `public`. It sets production runtime environment, uses the existing `node`
-   account, exposes port 3000, and runs the generated workspace server with
-   `node apps/web/server.js`.
+   account, removes the base image's npm and Corepack files because the direct
+   Node entry point does not use them, exposes port 3000, and runs the generated
+   workspace server with `node apps/web/server.js`.
 
 The final stage will not copy the root `node_modules`, source tree, TypeScript
 configuration, tests, or builder package manager state.
@@ -111,8 +112,8 @@ command. Runtime evidence will additionally:
   `NEXT_PUBLIC_API_BASE_URL`;
 - inspect the configured user and command;
 - start the container and request a representative RU route;
-- verify that `vitest`, `vite`, `@vitejs`, `@vitest`, and known build-only
-  binaries are absent from the final filesystem;
+- verify that npm, Corepack, `vitest`, `vite`, `@vitejs`, `@vitest`, and known
+  build-only binaries are absent from the final filesystem;
 - compare the final image size with the 340,201,948-byte baseline;
 - run web lint, typecheck, component/boundary tests, production build, and the
   critical Playwright checkout/payment smoke;
