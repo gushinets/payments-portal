@@ -261,6 +261,186 @@ git add docs/exec-plans/active/ANY-98-next-postcss-security-baseline.md
 git commit -m "ANY-98 - Record dependency upgrade evidence"
 ```
 
+### Task 5: Restore behavior-preserving logout navigation after PR review
+
+**Files:**
+- Create: `apps/web/e2e/account-logout.spec.ts`
+- Modify: `apps/web/src/features/account/AccountClient.tsx:1-165`
+- Modify: `apps/web/tests/components/AccountClient.test.tsx`
+- Modify: `apps/web/tests/setup/vitest.setup.tsx`
+- Modify: `docs/exec-plans/active/ANY-98-next-postcss-security-baseline.md`
+
+**Interfaces:**
+- Consumes: the `anytoolai_session_token_v1` local-storage contract, the
+  `anytoolai_session_changed` browser event, and the root-layout
+  `HeaderAccount` lifecycle.
+- Produces: a logout that clears local session state and performs a full
+  document navigation to `/ru`, preventing a pre-logout header request from
+  repainting stale authenticated state.
+
+- [ ] **Step 1: Write the failing real-browser regression**
+
+Create `apps/web/e2e/account-logout.spec.ts`:
+
+```ts
+import { expect, request as playwrightRequest, test } from "@playwright/test";
+
+const apiBaseURL = process.env.PLAYWRIGHT_API_BASE_URL ?? "http://127.0.0.1:8000";
+const documentLoadCountKey = "anytoolai_test_document_load_count";
+const sessionBootstrapKey = "anytoolai_test_session_bootstrapped";
+
+test("account logout performs a full document navigation", async ({ page }, testInfo) => {
+  const api = await playwrightRequest.newContext({ baseURL: apiBaseURL });
+  const email = `logout-${Date.now()}-${testInfo.workerIndex}@example.com`;
+  const registration = await api.post("/api/auth/register", {
+    data: {
+      email,
+      password: "synthetic-password-123",
+      personal_consent: true,
+      offer_consent: true
+    }
+  });
+  expect(registration.ok()).toBeTruthy();
+  const { token } = (await registration.json()) as { token: string };
+
+  await page.addInitScript((storageKey) => {
+    const count = Number(window.sessionStorage.getItem(storageKey) ?? "0");
+    window.sessionStorage.setItem(storageKey, String(count + 1));
+  }, documentLoadCountKey);
+  await page.addInitScript(
+    ({ bootstrapKey, sessionToken }) => {
+      if (window.sessionStorage.getItem(bootstrapKey) === "true") {
+        return;
+      }
+      window.localStorage.setItem("anytoolai_session_token_v1", sessionToken);
+      window.sessionStorage.setItem(bootstrapKey, "true");
+    },
+    { bootstrapKey: sessionBootstrapKey, sessionToken: token }
+  );
+
+  await page.goto("/ru/account");
+  await expect(page.getByText(email).first()).toBeVisible();
+  const loadCountBeforeLogout = await page.evaluate(
+    (storageKey) => Number(window.sessionStorage.getItem(storageKey)),
+    documentLoadCountKey
+  );
+
+  await page.getByRole("button", { name: /\u0412\u044b\u0439\u0442\u0438/ }).click();
+  await expect(page).toHaveURL(/\/ru$/);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        (storageKey) => Number(window.sessionStorage.getItem(storageKey)),
+        documentLoadCountKey
+      )
+    )
+    .toBe(loadCountBeforeLogout + 1);
+  await api.dispose();
+});
+```
+
+- [ ] **Step 2: Run the browser regression and verify RED**
+
+Start the isolated stack with the test provider identifier:
+
+```bash
+CLOUDPAYMENTS_PUBLIC_ID=pk_test_provider npm run repo:up -- --reuse
+```
+
+Run the focused Playwright test. On macOS 12, use the ignored local Chrome
+config already documented in completion evidence:
+
+```bash
+npm exec playwright test -- --config .harness/playwright.chrome.config.ts apps/web/e2e/account-logout.spec.ts --project desktop-chromium --workers=1
+```
+
+Expected: FAIL because the URL changes through `router.push` without loading a
+second document, so the observed load count remains unchanged.
+
+- [ ] **Step 3: Remove the router-specific component-test contract**
+
+Update `AccountClient.test.tsx` so the test is named
+`clears local session state and announces logout`, registers a one-shot listener
+for `anytoolai_session_changed`, and asserts both the removed token and one real
+event dispatch. Remove `__NEXT_ROUTER_PUSH__` and the `useRouter` mock branch
+from `vitest.setup.tsx` because no production component will consume them.
+
+Use this component-test contract:
+
+```ts
+it("clears local session state and announces logout", async () => {
+  const user = userEvent.setup();
+  const sessionChanged = vi.fn();
+  window.addEventListener("anytoolai_session_changed", sessionChanged, {
+    once: true
+  });
+  storeSessionToken("session-token");
+  // Keep the existing complete MSW session response.
+
+  render(<AccountClient />);
+  expect(await screen.findByText("buyer@example.com")).toBeVisible();
+  await user.click(
+    screen.getByRole("button", { name: /\u0412\u044b\u0439\u0442\u0438/ })
+  );
+
+  await waitFor(() => {
+    expect(window.localStorage.getItem("anytoolai_session_token_v1")).toBeNull();
+  });
+  expect(sessionChanged).toHaveBeenCalledOnce();
+});
+```
+
+The final `next/navigation` setup mock remains limited to the API still used by
+the suite:
+
+```ts
+vi.mock("next/navigation", () => ({
+  useSearchParams: () => new URLSearchParams(globalThis.__NEXT_SEARCH_PARAMS__ ?? "")
+}));
+```
+
+- [ ] **Step 4: Restore the minimal production behavior**
+
+Remove the `useRouter` import and hook from `AccountClient.tsx`. Replace the
+client navigation with this exact documented exception:
+
+```ts
+// Full navigation discards root-layout session state and in-flight session requests.
+// eslint-disable-next-line @next/next/no-location-assign-relative-destination
+window.location.assign("/ru");
+```
+
+Keep token removal and `anytoolai_session_changed` dispatch before navigation.
+
+- [ ] **Step 5: Verify GREEN and focused regressions**
+
+```bash
+npm exec playwright test -- --config .harness/playwright.chrome.config.ts apps/web/e2e/account-logout.spec.ts --project desktop-chromium --workers=1
+npm --workspace @anytoolai/web run test:components -- tests/components/AccountClient.test.tsx
+npm --workspace @anytoolai/web run test:components
+npm run test:boundaries:web
+npm run lint:web
+npm run typecheck:web
+npm run build:web
+```
+
+Expected: the browser test observes exactly one additional document load; all
+component, boundary, lint, typecheck, and production-build checks pass.
+
+- [ ] **Step 6: Stop the stack, review, commit, and publish**
+
+```bash
+npm run repo:down
+git diff --check
+git status --short
+git add apps/web/e2e/account-logout.spec.ts apps/web/src/features/account/AccountClient.tsx apps/web/tests/components/AccountClient.test.tsx apps/web/tests/setup/vitest.setup.tsx docs/exec-plans/active/ANY-98-next-postcss-security-baseline.md
+git commit -m "ANY-98 - Preserve document navigation on logout"
+git push origin ANY-98
+```
+
+After push, rerun PR checks. Do not reply to or resolve the GitHub comment
+unless the user separately authorizes that GitHub write.
+
 ## Completion Evidence
 
 Completed on 2026-08-15 on branch `ANY-98`:
