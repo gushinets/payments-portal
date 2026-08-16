@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+from enum import StrEnum
 from pathlib import Path
 from typing import Annotated, Any
 
-from dotenv import load_dotenv
-from pydantic import field_validator
+from pydantic import StringConstraints, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
@@ -12,19 +12,27 @@ def _split_csv_value(raw: str) -> tuple[str, ...]:
     return tuple(part.strip() for part in raw.split(",") if part.strip())
 
 
+class AppEnv(StrEnum):
+    DEVELOPMENT = "development"
+    TEST = "test"
+    PRODUCTION = "production"
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file_encoding="utf-8",
         extra="ignore",
         frozen=True,
+        hide_input_in_errors=True,
     )
 
-    app_public_base_url: str = "http://localhost:3000"
-    database_url: str = "postgresql+psycopg://anytoolai:anytoolai@localhost:5432/anytoolai"
+    app_env: AppEnv
+    app_public_base_url: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+    database_url: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+    cloudpayments_enabled: bool
+    cors_allow_origins: Annotated[tuple[str, ...], NoDecode]
     cloudpayments_public_id: str = ""
     cloudpayments_api_secret: str = ""
-    cloudpayments_enabled: bool = False
-    cors_allow_origins: Annotated[tuple[str, ...], NoDecode] = ()
     smtp_host: str = ""
     smtp_port: int = 587
     smtp_username: str = ""
@@ -48,6 +56,33 @@ class Settings(BaseSettings):
             return ()
         return tuple(value)
 
+    @field_validator("app_public_base_url")
+    @classmethod
+    def require_https_public_base_url_in_production(cls, value: str, info: ValidationInfo) -> str:
+        if info.data.get("app_env") == AppEnv.PRODUCTION and not value.startswith("https://"):
+            raise ValueError("APP_PUBLIC_BASE_URL must use https in production")
+        return value
+
+    @field_validator("cors_allow_origins")
+    @classmethod
+    def require_cors_origins(cls, value: tuple[str, ...], info: ValidationInfo) -> tuple[str, ...]:
+        if not value:
+            raise ValueError("CORS_ALLOW_ORIGINS is required")
+        if info.data.get("app_env") == AppEnv.PRODUCTION:
+            forbidden_origins = ("localhost", "127.0.0.1", "::1", "*")
+            if any(forbidden_origin in origin for origin in value for forbidden_origin in forbidden_origins):
+                raise ValueError("CORS_ALLOW_ORIGINS contains a forbidden production origin")
+        return value
+
+    @model_validator(mode="after")
+    def require_cloudpayments_credentials_when_enabled(self) -> Settings:
+        if self.cloudpayments_enabled:
+            if not self.cloudpayments_public_id.strip():
+                raise ValueError("CLOUDPAYMENTS_PUBLIC_ID is required when CLOUDPAYMENTS_ENABLED=true")
+            if not self.cloudpayments_api_secret.strip():
+                raise ValueError("CLOUDPAYMENTS_API_SECRET is required when CLOUDPAYMENTS_ENABLED=true")
+        return self
+
 
 def _dotenv_file(settings_file: Path | str = Path(__file__)) -> str | None:
     search_root = Path(settings_file).resolve().parent
@@ -55,19 +90,9 @@ def _dotenv_file(settings_file: Path | str = Path(__file__)) -> str | None:
         dotenv_file = directory / ".env"
         if dotenv_file.is_file():
             return str(dotenv_file)
-        if _is_repository_root(directory):
+        if (directory / "AGENTS.md").is_file() and (directory / "apps" / "api").is_dir():
             break
     return None
 
 
-def _is_repository_root(directory: Path) -> bool:
-    return (directory / "AGENTS.md").is_file() and (directory / "apps" / "api").is_dir()
-
-
-def _load_dotenv_into_environment(dotenv_file: str | None) -> str | None:
-    if dotenv_file:
-        load_dotenv(dotenv_file, override=False)
-    return dotenv_file
-
-
-settings = Settings(_env_file=_load_dotenv_into_environment(_dotenv_file()))
+settings = Settings(_env_file=_dotenv_file())

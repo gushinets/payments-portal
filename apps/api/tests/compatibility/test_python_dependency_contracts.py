@@ -8,9 +8,10 @@ from unittest.mock import patch
 import pytest
 from pydantic import ValidationError
 
-from app.core.settings import Settings
+os.environ["APP_ENV"] = "test"
+
+from app.core.settings import AppEnv, Settings
 from app.core.settings import _dotenv_file
-from app.core.settings import _load_dotenv_into_environment
 from app.domains.identity.router import normalize_email
 from apps.api.tests.factories.auth import (
     LoginRequestFactory,
@@ -18,6 +19,14 @@ from apps.api.tests.factories.auth import (
 )
 
 API_ROOT = Path(__file__).resolve().parents[2]
+
+REQUIRED_SETTINGS_ENV = {
+    "APP_ENV": "test",
+    "APP_PUBLIC_BASE_URL": "http://localhost:3000",
+    "DATABASE_URL": "sqlite+pysqlite:///:memory:",
+    "CLOUDPAYMENTS_ENABLED": "false",
+    "CORS_ALLOW_ORIGINS": "http://localhost:3000",
+}
 
 
 def assert_register_email_is_rejected(email: str) -> None:
@@ -52,16 +61,37 @@ def test_identity_email_normalization_contract_for_auth_lookup(factory: type) ->
     assert normalize_email(str(request.email)) == "user@example.com"
 
 
-def test_settings_preserve_fallback_defaults_when_environment_is_absent() -> None:
+def test_settings_require_critical_environment_values_when_environment_is_absent() -> None:
     with patch.dict(os.environ, {}, clear=True):
+        with pytest.raises(ValidationError) as error:
+            Settings(_env_file=None)
+
+    missing_fields = {validation_error["loc"][0] for validation_error in error.value.errors()}
+    assert missing_fields == {
+        "app_env",
+        "app_public_base_url",
+        "database_url",
+        "cloudpayments_enabled",
+        "cors_allow_origins",
+    }
+
+
+@pytest.mark.parametrize("app_env", ["development", "test", "production"])
+def test_settings_accept_supported_app_environments(app_env: str) -> None:
+    environment = {
+        **REQUIRED_SETTINGS_ENV,
+        "APP_ENV": app_env,
+        "APP_PUBLIC_BASE_URL": "https://payments.example.com",
+        "CORS_ALLOW_ORIGINS": "https://payments.example.com",
+    }
+    with patch.dict(os.environ, environment, clear=True):
         loaded_settings = Settings(_env_file=None)
 
-    assert loaded_settings.app_public_base_url == "http://localhost:3000"
-    assert loaded_settings.database_url == ("postgresql+psycopg://anytoolai:anytoolai@localhost:5432/anytoolai")
-    assert loaded_settings.cloudpayments_public_id == ""
-    assert loaded_settings.cloudpayments_api_secret == ""
+    assert loaded_settings.app_env == AppEnv(app_env)
+    assert loaded_settings.app_public_base_url == "https://payments.example.com"
+    assert loaded_settings.database_url == "sqlite+pysqlite:///:memory:"
     assert loaded_settings.cloudpayments_enabled is False
-    assert loaded_settings.cors_allow_origins == ()
+    assert loaded_settings.cors_allow_origins == ("https://payments.example.com",)
     assert loaded_settings.smtp_host == ""
     assert loaded_settings.smtp_port == 587
     assert loaded_settings.smtp_username == ""
@@ -85,9 +115,19 @@ def test_settings_preserve_legacy_boolean_parsing(
     raw_value: str,
     expected: bool,
 ) -> None:
+    cloudpayments_credentials = (
+        {
+            "CLOUDPAYMENTS_PUBLIC_ID": "pk_test_provider",
+            "CLOUDPAYMENTS_API_SECRET": "secret-test-provider",
+        }
+        if expected
+        else {}
+    )
     with patch.dict(
         os.environ,
         {
+            **REQUIRED_SETTINGS_ENV,
+            **cloudpayments_credentials,
             "CLOUDPAYMENTS_ENABLED": raw_value,
             "SMTP_USE_TLS": raw_value,
         },
@@ -106,6 +146,7 @@ def test_settings_preserve_dotenv_parsing_and_process_environment_precedence(
     dotenv_path.write_text(
         "\n".join(
             [
+                "APP_ENV=development",
                 'APP_PUBLIC_BASE_URL="https://dotenv.example/app"',
                 "DATABASE_URL=sqlite+pysqlite:///from-dotenv.db",
                 "CLOUDPAYMENTS_PUBLIC_ID=pk_from_dotenv",
@@ -126,6 +167,7 @@ def test_settings_preserve_dotenv_parsing_and_process_environment_precedence(
     with patch.dict(
         os.environ,
         {
+            "APP_ENV": "test",
             "APP_PUBLIC_BASE_URL": "https://process.example/app",
             "SMTP_USERNAME": "process-user",
         },
@@ -133,6 +175,7 @@ def test_settings_preserve_dotenv_parsing_and_process_environment_precedence(
     ):
         loaded_settings = Settings(_env_file=dotenv_path)
 
+    assert loaded_settings.app_env == AppEnv.TEST
     assert loaded_settings.app_public_base_url == "https://process.example/app"
     assert loaded_settings.database_url == "sqlite+pysqlite:///from-dotenv.db"
     assert loaded_settings.cloudpayments_public_id == "pk_from_dotenv"
@@ -148,6 +191,118 @@ def test_settings_preserve_dotenv_parsing_and_process_environment_precedence(
     assert loaded_settings.smtp_password == "dotenv-password"
     assert loaded_settings.smtp_from_email == "payments@example.com"
     assert loaded_settings.smtp_use_tls is False
+
+
+@pytest.mark.parametrize("app_env", ["", "staging", "prod"])
+def test_settings_reject_unsupported_app_environment(app_env: str) -> None:
+    environment = {**REQUIRED_SETTINGS_ENV, "APP_ENV": app_env}
+    with patch.dict(os.environ, environment, clear=True):
+        with pytest.raises(ValidationError) as error:
+            Settings(_env_file=None)
+
+    assert error.value.errors()[0]["loc"] == ("app_env",)
+
+
+@pytest.mark.parametrize(
+    ("missing_name", "field_name"),
+    [
+        ("DATABASE_URL", "database_url"),
+        ("APP_PUBLIC_BASE_URL", "app_public_base_url"),
+        ("CLOUDPAYMENTS_ENABLED", "cloudpayments_enabled"),
+        ("CORS_ALLOW_ORIGINS", "cors_allow_origins"),
+    ],
+)
+def test_settings_require_each_critical_environment_value(missing_name: str, field_name: str) -> None:
+    environment = REQUIRED_SETTINGS_ENV.copy()
+    environment.pop(missing_name)
+    with patch.dict(os.environ, environment, clear=True):
+        with pytest.raises(ValidationError) as error:
+            Settings(_env_file=None)
+
+    assert {validation_error["loc"][0] for validation_error in error.value.errors()} == {field_name}
+
+
+@pytest.mark.parametrize("field_name", ["DATABASE_URL", "APP_PUBLIC_BASE_URL", "CORS_ALLOW_ORIGINS"])
+def test_settings_reject_empty_critical_environment_values(field_name: str) -> None:
+    environment = {**REQUIRED_SETTINGS_ENV, field_name: ""}
+    with patch.dict(os.environ, environment, clear=True):
+        with pytest.raises(ValidationError):
+            Settings(_env_file=None)
+
+
+def test_settings_require_https_public_base_url_in_production() -> None:
+    environment = {
+        **REQUIRED_SETTINGS_ENV,
+        "APP_ENV": "production",
+        "APP_PUBLIC_BASE_URL": "http://payments.example.com",
+        "CORS_ALLOW_ORIGINS": "https://payments.example.com",
+    }
+    with patch.dict(os.environ, environment, clear=True):
+        with pytest.raises(ValidationError) as error:
+            Settings(_env_file=None)
+
+    assert "APP_PUBLIC_BASE_URL must use https in production" in str(error.value)
+
+
+@pytest.mark.parametrize(
+    "origin",
+    [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://[::1]:3000",
+        "*",
+    ],
+)
+def test_settings_reject_forbidden_production_cors_origins(origin: str) -> None:
+    environment = {
+        **REQUIRED_SETTINGS_ENV,
+        "APP_ENV": "production",
+        "APP_PUBLIC_BASE_URL": "https://payments.example.com",
+        "CORS_ALLOW_ORIGINS": origin,
+    }
+    with patch.dict(os.environ, environment, clear=True):
+        with pytest.raises(ValidationError) as error:
+            Settings(_env_file=None)
+
+    assert "CORS_ALLOW_ORIGINS contains a forbidden production origin" in str(error.value)
+
+
+@pytest.mark.parametrize("missing_name", ["CLOUDPAYMENTS_PUBLIC_ID", "CLOUDPAYMENTS_API_SECRET"])
+def test_settings_require_cloudpayments_credentials_when_provider_is_enabled(missing_name: str) -> None:
+    environment = {
+        **REQUIRED_SETTINGS_ENV,
+        "CLOUDPAYMENTS_ENABLED": "true",
+        "CLOUDPAYMENTS_PUBLIC_ID": "pk_test_provider",
+        "CLOUDPAYMENTS_API_SECRET": "secret-test-provider",
+    }
+    environment.pop(missing_name)
+    with patch.dict(os.environ, environment, clear=True):
+        with pytest.raises(ValidationError) as error:
+            Settings(_env_file=None)
+
+    assert f"{missing_name} is required when CLOUDPAYMENTS_ENABLED=true" in str(error.value)
+
+
+def test_settings_validation_messages_do_not_include_sensitive_values() -> None:
+    environment = {
+        **REQUIRED_SETTINGS_ENV,
+        "APP_ENV": "production",
+        "APP_PUBLIC_BASE_URL": "http://secret-host.example/app",
+        "DATABASE_URL": "postgresql+psycopg://secret-user:secret-password@db.example/payments",
+        "CLOUDPAYMENTS_ENABLED": "true",
+        "CLOUDPAYMENTS_PUBLIC_ID": "pk_secret_public_id",
+        "CLOUDPAYMENTS_API_SECRET": "secret-cloudpayments-api-key",
+    }
+    with patch.dict(os.environ, environment, clear=True):
+        with pytest.raises(ValidationError) as error:
+            Settings(_env_file=None)
+
+    message = str(error.value)
+    assert "secret-host.example" not in message
+    assert "secret-user" not in message
+    assert "secret-password" not in message
+    assert "pk_secret_public_id" not in message
+    assert "secret-cloudpayments-api-key" not in message
 
 
 def test_settings_do_not_expose_configurable_default_scope() -> None:
@@ -168,29 +323,6 @@ def test_identity_default_scope_stays_aligned_with_ru_seed_data() -> None:
 
         assert session_module.DEFAULT_TENANT_ID == "anytoolai"
         assert session_module.DEFAULT_REGION == "ru"
-
-
-def test_runtime_dotenv_preserves_os_getenv_consumers(
-    tmp_path: Path,
-) -> None:
-    dotenv_path = tmp_path / ".env"
-    dotenv_path.write_text(
-        "\n".join(
-            [
-                "LOG_LEVEL=DEBUG",
-                "OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318",
-                "OTEL_SERVICE_NAME=payment-portal-test",
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-    with patch.dict(os.environ, {"LOG_LEVEL": "WARNING"}, clear=True):
-        assert _load_dotenv_into_environment(str(dotenv_path)) == str(dotenv_path)
-
-        assert os.environ["LOG_LEVEL"] == "WARNING"
-        assert os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] == "http://127.0.0.1:4318"
-        assert os.environ["OTEL_SERVICE_NAME"] == "payment-portal-test"
 
 
 def test_dotenv_discovery_starts_from_settings_module_tree(
