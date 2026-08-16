@@ -24,81 +24,92 @@
 ### Task 1: Characterize the production-image contract
 
 **Files:**
-- Create: `apps/web/tests/docker-runtime.test.mjs`
-- Read: `apps/web/Dockerfile`
-- Read: `apps/web/next.config.mjs`
+- Create: `security/trivy/verify-web-runtime.sh`
+- Modify: `.github/workflows/security.yml`
 
 **Interfaces:**
-- Consumes: the approved ANY-313 standalone layout and the existing `test:boundaries` Node test command.
-- Produces: a source-level regression contract for the standalone configuration, runtime copy boundary, package-manager removal, non-root user, and direct Node command.
+- Consumes: a locally available Docker image reference as its sole positional argument.
+- Produces: an executable behavioral gate for the configured user and command, Node version, package-manager removal, and absence of known build/test modules.
 
-- [ ] **Step 1: Add the focused failing contract test**
+- [ ] **Step 1: Add the executable image-contract verifier**
 
-Create `apps/web/tests/docker-runtime.test.mjs` with this content:
+Create executable `security/trivy/verify-web-runtime.sh` with this content:
 
-```js
-import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
-import path from "node:path";
-import test from "node:test";
-import { fileURLToPath } from "node:url";
+```sh
+#!/usr/bin/env sh
+set -eu
 
-const repositoryRoot = fileURLToPath(new URL("../../..", import.meta.url));
-const dockerfilePath = path.join(repositoryRoot, "apps/web/Dockerfile");
-const nextConfigPath = path.join(repositoryRoot, "apps/web/next.config.mjs");
+image_ref=${1:?Usage: verify-web-runtime.sh IMAGE}
+expected_command='["node","apps/web/server.js"]'
 
-test("Next.js emits a repository-root standalone workspace", async () => {
-  const source = await readFile(nextConfigPath, "utf8");
+configured_user=$(docker image inspect --format '{{.Config.User}}' "$image_ref")
+configured_command=$(docker image inspect --format '{{json .Config.Cmd}}' "$image_ref")
 
-  assert.match(source, /output:\s*"standalone"/);
-  assert.match(source, /outputFileTracingRoot:\s*repositoryRoot/);
-});
+if [ "$configured_user" != "node" ]; then
+  echo "Expected runtime user node, got: $configured_user" >&2
+  exit 1
+fi
 
-test("production web image contains only the standalone runtime", async () => {
-  const source = await readFile(dockerfilePath, "utf8");
-  const runtimeMarker = /^FROM .* AS runtime$/m;
-  const runtimeStart = source.search(runtimeMarker);
+if [ "$configured_command" != "$expected_command" ]; then
+  echo "Expected runtime command $expected_command, got: $configured_command" >&2
+  exit 1
+fi
 
-  assert.notEqual(runtimeStart, -1, "runtime stage must be named");
-  assert.match(source, /^FROM .* AS dependencies$/m);
-  assert.match(source, /^FROM dependencies AS builder$/m);
+docker run --rm --entrypoint sh "$image_ref" -ec '
+  test "$(id -u)" -ne 0
+  test "$(node --version)" = "v24.18.0"
 
-  const runtime = source.slice(runtimeStart);
-  assert.match(runtime, /COPY --from=builder .*\.next\/standalone \.\//);
-  assert.match(runtime, /COPY --from=builder .*\.next\/static \.\/apps\/web\/\.next\/static/);
-  assert.match(runtime, /COPY --from=builder .*apps\/web\/public \.\/apps\/web\/public/);
-  assert.doesNotMatch(runtime, /COPY --from=dependencies/);
-  assert.doesNotMatch(runtime, /npm (ci|install|prune)/);
-
-  for (const packageManagerPath of [
-    "/usr/local/bin/corepack",
-    "/usr/local/bin/npm",
-    "/usr/local/bin/npx",
-    "/usr/local/lib/node_modules/corepack",
-    "/usr/local/lib/node_modules/npm"
-  ]) {
-    assert.ok(runtime.includes(packageManagerPath));
-  }
-
-  assert.match(runtime, /^USER node$/m);
-  assert.match(runtime, /^EXPOSE 3000$/m);
-  assert.match(runtime, /^CMD \["node", "apps\/web\/server\.js"\]$/m);
-});
+  for path in \
+    /usr/local/bin/corepack \
+    /usr/local/bin/npm \
+    /usr/local/bin/npx \
+    /usr/local/lib/node_modules/corepack \
+    /usr/local/lib/node_modules/npm \
+    /app/node_modules/vitest \
+    /app/node_modules/vite \
+    /app/node_modules/@vitejs \
+    /app/node_modules/@vitest \
+    /app/node_modules/esbuild \
+    /app/apps/web/node_modules/vitest \
+    /app/apps/web/node_modules/vite \
+    /app/apps/web/node_modules/@vitejs \
+    /app/apps/web/node_modules/@vitest \
+    /app/apps/web/node_modules/esbuild
+  do
+    if [ -e "$path" ] || [ -L "$path" ]; then
+      echo "Unexpected runtime path: $path" >&2
+      exit 1
+    fi
+  done
+'
 ```
 
-- [ ] **Step 2: Run the focused test and verify the red state**
+- [ ] **Step 2: Make the verifier executable**
 
 Run:
 
 ```bash
-node --test apps/web/tests/docker-runtime.test.mjs
+chmod +x security/trivy/verify-web-runtime.sh
 ```
 
-Expected: both tests fail because standalone output and a named runtime stage do not exist yet. If the host has no Node.js binary, run the same command in the pinned Node image with the worktree mounted read-only.
+- [ ] **Step 3: Wire the behavioral gate into Security scans**
 
-- [ ] **Step 3: Confirm the failure describes only the missing ANY-313 contract**
+Add this step immediately after `Build production web image` in `.github/workflows/security.yml`:
 
-Expected failure messages must name `output: "standalone"` and `runtime stage must be named`. Fix test path or pattern errors before changing production files.
+```yaml
+      - name: Verify production web runtime
+        run: security/trivy/verify-web-runtime.sh "$WEB_IMAGE"
+```
+
+- [ ] **Step 4: Run the verifier against the measured baseline and verify the red state**
+
+Run:
+
+```bash
+security/trivy/verify-web-runtime.sh payment-portal-web:any-313-baseline
+```
+
+Expected: non-zero exit with the exact command mismatch: the baseline uses workspace `npm start` instead of `["node","apps/web/server.js"]`. This proves the behavioral gate rejects the pre-change production image.
 
 ### Task 2: Build the standalone runtime image
 
@@ -106,7 +117,7 @@ Expected failure messages must name `output: "standalone"` and `runtime stage mu
 - Modify: `apps/web/next.config.mjs`
 - Modify: `apps/web/Dockerfile`
 - Modify: `README.md`
-- Test: `apps/web/tests/docker-runtime.test.mjs`
+- Test: `security/trivy/verify-web-runtime.sh`
 
 **Interfaces:**
 - Consumes: the locked root npm workspace, `docs/legal` build input, `NEXT_PUBLIC_API_BASE_URL`, and Task 1's contract.
@@ -206,15 +217,17 @@ Add this paragraph after the web image bullet in `README.md`'s `Runtime baseline
   tooling are not part of the runtime image.
 ```
 
-- [ ] **Step 4: Run the focused contract test and verify the green state**
+- [ ] **Step 4: Build both targets and verify the green runtime contract**
 
 Run:
 
 ```bash
-node --test apps/web/tests/docker-runtime.test.mjs
+docker build --target builder --file apps/web/Dockerfile --tag payment-portal-web:any-313-builder .
+docker build --file apps/web/Dockerfile --build-arg NEXT_PUBLIC_API_BASE_URL=https://api.any-313.example --tag payment-portal-web:any-313 .
+security/trivy/verify-web-runtime.sh payment-portal-web:any-313
 ```
 
-Expected: 2 tests pass, 0 fail.
+Expected: both images build and the verifier exits 0. The builder log shows `next build` emitting standalone output; the runtime copies `apps/web/server.js`, uses the direct Node command, and contains none of the prohibited paths.
 
 - [ ] **Step 5: Run the existing web source-contract suite**
 
@@ -224,23 +237,12 @@ Run:
 npm run test:boundaries:web
 ```
 
-Expected: all `apps/web/tests/*.test.mjs` tests pass, including the two new Docker runtime tests.
+Expected: all existing `apps/web/tests/*.test.mjs` tests pass.
 
-- [ ] **Step 6: Build the builder and runtime targets**
-
-Run:
+- [ ] **Step 6: Commit the coherent implementation**
 
 ```bash
-docker build --target builder --file apps/web/Dockerfile --tag payment-portal-web:any-313-builder .
-docker build --file apps/web/Dockerfile --build-arg NEXT_PUBLIC_API_BASE_URL=https://api.any-313.example --tag payment-portal-web:any-313 .
-```
-
-Expected: both images build successfully. The builder log shows `next build` emitting standalone output, and the runtime build copies `apps/web/server.js` without installing dependencies.
-
-- [ ] **Step 7: Commit the coherent implementation**
-
-```bash
-git add apps/web/tests/docker-runtime.test.mjs apps/web/next.config.mjs apps/web/Dockerfile README.md
+git add security/trivy/verify-web-runtime.sh .github/workflows/security.yml apps/web/next.config.mjs apps/web/Dockerfile README.md
 git commit -m "ANY-313 - Minimize web runtime image"
 ```
 
@@ -349,7 +351,7 @@ Run:
 
 ```bash
 git diff main...HEAD --check
-git diff main...HEAD -- apps/web/Dockerfile apps/web/next.config.mjs apps/web/tests/docker-runtime.test.mjs README.md .github/workflows/security.yml
+git diff main...HEAD -- apps/web/Dockerfile apps/web/next.config.mjs security/trivy/verify-web-runtime.sh README.md .github/workflows/security.yml
 git status --short
 ```
 

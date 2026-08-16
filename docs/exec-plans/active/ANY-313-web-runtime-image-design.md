@@ -103,10 +103,12 @@ deployment.
 
 ## Verification
 
-The implementation will add a focused Node test under `apps/web/tests` that
-checks the standalone configuration, repository-root tracing, named
-builder/runtime split, minimal copy contract, non-root user, and standalone
-command. Runtime evidence will additionally:
+The implementation will add an executable image-contract verifier under
+`security/trivy` and run it locally and in the `Security scans` workflow. The
+verifier will inspect the built image rather than matching Dockerfile source
+text: it checks the configured non-root user and standalone command, then runs
+the image to prove the expected Node runtime remains while package managers and
+known build/test packages are absent. Runtime evidence will additionally:
 
 - build the production image with a non-default
   `NEXT_PUBLIC_API_BASE_URL`;
