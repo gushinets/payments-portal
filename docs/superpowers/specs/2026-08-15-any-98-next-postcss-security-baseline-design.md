@@ -2,6 +2,7 @@
 
 Status: approved design
 Date: 2026-08-15
+Review follow-up approved: 2026-08-16
 Linear: https://linear.app/paveldik/issue/ANY-98/obnovit-nextjs-i-eslint-config-next-i-ustranit-postcss-advisory
 
 ## Goal
@@ -94,5 +95,48 @@ The selected design does not plan to introduce such an exception.
 - A PostCSS override could diverge from Next.js's tested dependency graph. This
   is why the upstream resolution is preferred and any override requires full
   lint, build, component, and browser verification.
-- The dependency-only commit can be reverted without data migration or runtime
-  state changes.
+- The dependency and focused compatibility commits can be reverted without data
+  migration or runtime state changes.
+
+## Review follow-up: preserve document navigation on logout
+
+The aligned `eslint-config-next` preset enabled
+`@next/next/no-location-assign-relative-destination`. The initial compatibility
+change replaced `window.location.assign("/ru")` in `AccountClient` with
+`router.push("/ru")`. PR review identified that this is not behavior preserving.
+
+`HeaderAccount` lives in `SiteShell` under the root layout, so a client-side
+route transition does not unmount it. Its effect-level `cancelled` flag only
+changes during unmount. A session request started before logout can therefore
+resolve after the session token is removed and the session-change event clears
+the header, then write the stale authenticated email back into the still-mounted
+header. The previous full document navigation unloaded that state before it
+could repaint.
+
+The approved correction is deliberately narrow:
+
+1. Remove `useRouter` from `AccountClient` and restore
+   `window.location.assign("/ru")` after local token removal and the existing
+   session-change event.
+2. Add a line-level ESLint suppression for
+   `@next/next/no-location-assign-relative-destination`, preceded by a comment
+   explaining that full document navigation is required to discard root-layout
+   session state and in-flight session requests.
+3. Remove the test-only router push hook introduced by ANY-98 when no remaining
+   component uses it.
+4. Replace the router-specific assertion with coverage of logout session
+   cleanup, and add a boundary regression test that records the required hard
+   navigation contract. The boundary test must fail against the current
+   `router.push` implementation before production code changes.
+
+Keeping client navigation and adding request-generation or abort coordination
+inside `HeaderAccount` was rejected because it broadens this dependency-security
+task into shared session-state concurrency behavior. Introducing a global auth
+store was also rejected as unrelated architecture work. The selected fix
+restores the pre-upgrade behavior with the smallest surface area.
+
+Verification for the follow-up consists of the focused red/green regression,
+the complete component and boundary suites, web lint and typecheck, and a
+production web build. No rendered UI, localization, API, payment, legal, or
+database behavior changes, so new desktop/mobile visual evidence is not
+applicable.
