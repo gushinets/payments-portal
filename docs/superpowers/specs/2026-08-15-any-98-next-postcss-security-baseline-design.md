@@ -125,9 +125,10 @@ The approved correction is deliberately narrow:
 3. Remove the test-only router push hook introduced by ANY-98 when no remaining
    component uses it.
 4. Replace the router-specific assertion with coverage of logout session
-   cleanup, and add a boundary regression test that records the required hard
-   navigation contract. The boundary test must fail against the current
-   `router.push` implementation before production code changes.
+   cleanup, and add a real-browser Playwright regression that records the
+   required hard navigation contract. The Playwright regression must fail
+   against the current `router.push` implementation before production code
+   changes.
 
 Keeping client navigation and adding request-generation or abort coordination
 inside `HeaderAccount` was rejected because it broadens this dependency-security
@@ -135,8 +136,8 @@ task into shared session-state concurrency behavior. Introducing a global auth
 store was also rejected as unrelated architecture work. The selected fix
 restores the pre-upgrade behavior with the smallest surface area.
 
-Verification for the follow-up consists of the focused red/green regression,
-the complete component and boundary suites, web lint and typecheck, and a
-production web build. No rendered UI, localization, API, payment, legal, or
-database behavior changes, so new desktop/mobile visual evidence is not
-applicable.
+Verification for the follow-up consists of the focused real-browser Playwright
+red/green regression, the complete component suite, the separate existing web
+boundary suite, web lint and typecheck, and a production web build. No rendered
+UI, localization, API, payment, legal, or database behavior changes, so new
+desktop/mobile visual evidence is not applicable.
