@@ -8,10 +8,19 @@ import { AccountClient } from "@/features/account";
 
 const apiBase = "http://localhost:8000";
 
-it("clears the session and uses Next navigation on logout", async () => {
+it("clears local session state and announces logout", async () => {
   const user = userEvent.setup();
-  const routerPush = vi.fn();
-  globalThis.__NEXT_ROUTER_PUSH__ = routerPush;
+  const sessionChanged = vi.fn();
+  const originalConsoleError = console.error;
+  const consoleError = vi.spyOn(console, "error").mockImplementation((...args) => {
+    if (String(args[0]).includes("Not implemented: navigation (except hash changes)")) {
+      return;
+    }
+    originalConsoleError(...args);
+  });
+  window.addEventListener("anytoolai_session_changed", sessionChanged, {
+    once: true
+  });
   storeSessionToken("session-token");
   server.use(
     http.get(`${apiBase}/api/auth/session`, ({ request }) => {
@@ -32,10 +41,14 @@ it("clears the session and uses Next navigation on logout", async () => {
   render(<AccountClient />);
 
   expect(await screen.findByText("buyer@example.com")).toBeVisible();
-  await user.click(screen.getByRole("button", { name: /Выйти/ }));
+  try {
+    await user.click(screen.getByRole("button", { name: /Выйти/ }));
+  } finally {
+    consoleError.mockRestore();
+  }
 
   await waitFor(() => {
     expect(window.localStorage.getItem("anytoolai_session_token_v1")).toBeNull();
   });
-  expect(routerPush).toHaveBeenCalledWith("/ru");
+  expect(sessionChanged).toHaveBeenCalledOnce();
 });

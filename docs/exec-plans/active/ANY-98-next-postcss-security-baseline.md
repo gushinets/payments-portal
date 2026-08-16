@@ -278,7 +278,7 @@ git commit -m "ANY-98 - Record dependency upgrade evidence"
   document navigation to `/ru`, preventing a pre-logout header request from
   repainting stale authenticated state.
 
-- [ ] **Step 1: Write the failing real-browser regression**
+- [x] **Step 1: Write the failing real-browser regression**
 
 Create `apps/web/e2e/account-logout.spec.ts`:
 
@@ -339,7 +339,7 @@ test("account logout performs a full document navigation", async ({ page }, test
 });
 ```
 
-- [ ] **Step 2: Run the browser regression and verify RED**
+- [x] **Step 2: Run the browser regression and verify RED**
 
 Start the isolated stack with the test provider identifier:
 
@@ -357,7 +357,7 @@ npm exec playwright test -- --config .harness/playwright.chrome.config.ts apps/w
 Expected: FAIL because the URL changes through `router.push` without loading a
 second document, so the observed load count remains unchanged.
 
-- [ ] **Step 3: Remove the router-specific component-test contract**
+- [x] **Step 3: Remove the router-specific component-test contract**
 
 Update `AccountClient.test.tsx` so the test is named
 `clears local session state and announces logout`, registers a one-shot listener
@@ -399,7 +399,7 @@ vi.mock("next/navigation", () => ({
 }));
 ```
 
-- [ ] **Step 4: Restore the minimal production behavior**
+- [x] **Step 4: Restore the minimal production behavior**
 
 Remove the `useRouter` import and hook from `AccountClient.tsx`. Replace the
 client navigation with this exact documented exception:
@@ -412,7 +412,7 @@ window.location.assign("/ru");
 
 Keep token removal and `anytoolai_session_changed` dispatch before navigation.
 
-- [ ] **Step 5: Verify GREEN and focused regressions**
+- [x] **Step 5: Verify GREEN and focused regressions**
 
 ```bash
 npm exec playwright test -- --config .harness/playwright.chrome.config.ts apps/web/e2e/account-logout.spec.ts --project desktop-chromium --workers=1
@@ -427,7 +427,7 @@ npm run build:web
 Expected: the browser test observes exactly one additional document load; all
 component, boundary, lint, typecheck, and production-build checks pass.
 
-- [ ] **Step 6: Stop the stack, review, commit, and publish**
+- [x] **Step 6: Stop the stack, review, commit, and publish**
 
 ```bash
 npm run repo:down
@@ -442,6 +442,18 @@ After push, rerun PR checks. Do not reply to or resolve the GitHub comment
 unless the user separately authorizes that GitHub write.
 
 ## Completion Evidence
+
+- Task 5 follow-up (2026-08-16): Added a real-stack logout regression that
+  counts document loads. Before the fix it failed as expected with
+  `Expected: 2`, `Received: 1` after the router transition; after replacing the
+  router call with `window.location.assign("/ru")`, the same Chrome-based
+  Playwright run passed (`1 passed (38.8s)`). The rebuilt isolated web
+  container was healthy and confirmed to contain the documented assignment.
+  The focused component test passed 1/1 and the complete component suite
+  passed 26/26 without stderr by suppressing only jsdom's known unsupported
+  navigation emission during the click and restoring the console immediately
+  afterward. Web boundaries (9/9), lint, typecheck, and the 17-page production
+  build all passed.
 
 Completed on 2026-08-15 on branch `ANY-98`:
 

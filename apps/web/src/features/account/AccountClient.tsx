@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ArrowRight, LogOut, UserRound } from "lucide-react";
 import { formatRubles, products } from "@/features/catalog";
@@ -71,7 +70,6 @@ function statusLabel(status: ProductState["status"] | undefined): string {
 }
 
 export function AccountClient() {
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [states, setStates] = useState<Record<string, ProductState>>({});
   const [loading, setLoading] = useState(true);
@@ -160,7 +158,9 @@ export function AccountClient() {
   function logout() {
     window.localStorage.removeItem(sessionStorageKey);
     window.dispatchEvent(new Event(sessionChangedEvent));
-    router.push("/ru");
+    // Full navigation discards root-layout session state and in-flight session requests.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+    window.location.assign("/ru");
   }
 
   if (loading) {
