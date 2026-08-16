@@ -1,7 +1,7 @@
 # Documentation Index
 
 Status: authoritative index
-Last verified: 2026-07-11
+Last verified: 2026-08-16
 
 Start with the smallest document that matches the task.
 

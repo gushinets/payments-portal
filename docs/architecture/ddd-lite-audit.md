@@ -63,12 +63,13 @@ not P0.
 
 ## CloudPayments constraint
 
-Do not freeze or rewrite `apps/api/app/integrations/cloudpayments/**`. Do not
-change webhook HTTP paths, HMAC verification, redaction, inbox idempotency, or
-CloudPayments body `code` values. Do not change `PaymentProviderAdapter`
-signatures while adapters are landing. Do not relocate checkout-intent JSON
-fields the widget consumes. Do not expand `product_access_states` (legacy;
-ANY-71 owns entitlements).
+Do not broadly rewrite `apps/api/app/integrations/cloudpayments/**`. Targeted
+changes required for slice-2 delegation from `processing.py` to billing are
+allowed. Do not change webhook HTTP paths, HMAC verification, redaction, inbox
+idempotency, or CloudPayments body `code` values. Do not change
+`PaymentProviderAdapter` signatures while adapters are landing. Do not relocate
+checkout-intent JSON fields the widget consumes. Do not expand
+`product_access_states` (legacy; ANY-71 owns entitlements).
 
 **Merge rule:** CloudPayments PRs win. Layering PRs rebase or wait.
 
@@ -275,8 +276,9 @@ tokens, relocating ambient TypeScript declarations.
 
 ### Step 1 — one billing vertical slice: checkout
 
-After checkout-intent JSON is stable, pick an **existing** Linear ticket (or
-file one with a business reason) and move checkout create:
+After checkout-intent JSON is stable, start implementation only under an
+existing Linear ticket with a business reason, include its URL in the PR body,
+and then move checkout create:
 
 ```text
 HTTP façade
