@@ -8,6 +8,8 @@ import time
 
 import httpx2
 
+from apps.api.tests.support.settings import api_test_environment
+
 
 def _available_port() -> int:
     with socket.socket() as listener:
@@ -32,9 +34,8 @@ def test_uvicorn_serves_application_with_production_proxy_flags() -> None:
     port = _available_port()
     environment = {
         **os.environ,
-        "DATABASE_URL": "sqlite+pysqlite:///:memory:",
+        **api_test_environment(),
         "OTEL_EXPORTER_OTLP_ENDPOINT": "http://127.0.0.1:4318",
-        "SKIP_LEGAL_SEED": "true",
     }
     process = subprocess.Popen(
         [

@@ -8,25 +8,20 @@ from unittest.mock import patch
 import pytest
 from pydantic import ValidationError
 
-os.environ["APP_ENV"] = "test"
+from apps.api.tests.support.settings import DEFAULT_API_TEST_ENV
+from apps.api.tests.support.settings import configure_api_test_environment
 
-from app.core.settings import AppEnv, Settings
-from app.core.settings import _dotenv_file
-from app.domains.identity.router import normalize_email
-from apps.api.tests.factories.auth import (
+configure_api_test_environment()
+
+from app.core.settings import AppEnv, Settings  # noqa: E402
+from app.core.settings import _dotenv_file  # noqa: E402
+from app.domains.identity.router import normalize_email  # noqa: E402
+from apps.api.tests.factories.auth import (  # noqa: E402
     LoginRequestFactory,
     RegisterRequestFactory,
 )
 
 API_ROOT = Path(__file__).resolve().parents[2]
-
-REQUIRED_SETTINGS_ENV = {
-    "APP_ENV": "test",
-    "APP_PUBLIC_BASE_URL": "http://localhost:3000",
-    "DATABASE_URL": "sqlite+pysqlite:///:memory:",
-    "CLOUDPAYMENTS_ENABLED": "false",
-    "CORS_ALLOW_ORIGINS": "http://localhost:3000",
-}
 
 
 def assert_register_email_is_rejected(email: str) -> None:
@@ -79,7 +74,7 @@ def test_settings_require_critical_environment_values_when_environment_is_absent
 @pytest.mark.parametrize("app_env", ["development", "test", "production"])
 def test_settings_accept_supported_app_environments(app_env: str) -> None:
     environment = {
-        **REQUIRED_SETTINGS_ENV,
+        **DEFAULT_API_TEST_ENV,
         "APP_ENV": app_env,
         "APP_PUBLIC_BASE_URL": "https://payments.example.com",
         "CORS_ALLOW_ORIGINS": "https://payments.example.com",
@@ -126,7 +121,7 @@ def test_settings_preserve_legacy_boolean_parsing(
     with patch.dict(
         os.environ,
         {
-            **REQUIRED_SETTINGS_ENV,
+            **DEFAULT_API_TEST_ENV,
             **cloudpayments_credentials,
             "CLOUDPAYMENTS_ENABLED": raw_value,
             "SMTP_USE_TLS": raw_value,
@@ -195,7 +190,7 @@ def test_settings_preserve_dotenv_parsing_and_process_environment_precedence(
 
 @pytest.mark.parametrize("app_env", ["", "staging", "prod"])
 def test_settings_reject_unsupported_app_environment(app_env: str) -> None:
-    environment = {**REQUIRED_SETTINGS_ENV, "APP_ENV": app_env}
+    environment = {**DEFAULT_API_TEST_ENV, "APP_ENV": app_env}
     with patch.dict(os.environ, environment, clear=True):
         with pytest.raises(ValidationError) as error:
             Settings(_env_file=None)
@@ -213,7 +208,7 @@ def test_settings_reject_unsupported_app_environment(app_env: str) -> None:
     ],
 )
 def test_settings_require_each_critical_environment_value(missing_name: str, field_name: str) -> None:
-    environment = REQUIRED_SETTINGS_ENV.copy()
+    environment = DEFAULT_API_TEST_ENV.copy()
     environment.pop(missing_name)
     with patch.dict(os.environ, environment, clear=True):
         with pytest.raises(ValidationError) as error:
@@ -224,7 +219,7 @@ def test_settings_require_each_critical_environment_value(missing_name: str, fie
 
 @pytest.mark.parametrize("field_name", ["DATABASE_URL", "APP_PUBLIC_BASE_URL", "CORS_ALLOW_ORIGINS"])
 def test_settings_reject_empty_critical_environment_values(field_name: str) -> None:
-    environment = {**REQUIRED_SETTINGS_ENV, field_name: ""}
+    environment = {**DEFAULT_API_TEST_ENV, field_name: ""}
     with patch.dict(os.environ, environment, clear=True):
         with pytest.raises(ValidationError):
             Settings(_env_file=None)
@@ -232,7 +227,7 @@ def test_settings_reject_empty_critical_environment_values(field_name: str) -> N
 
 def test_settings_require_https_public_base_url_in_production() -> None:
     environment = {
-        **REQUIRED_SETTINGS_ENV,
+        **DEFAULT_API_TEST_ENV,
         "APP_ENV": "production",
         "APP_PUBLIC_BASE_URL": "http://payments.example.com",
         "CORS_ALLOW_ORIGINS": "https://payments.example.com",
@@ -255,7 +250,7 @@ def test_settings_require_https_public_base_url_in_production() -> None:
 )
 def test_settings_reject_forbidden_production_cors_origins(origin: str) -> None:
     environment = {
-        **REQUIRED_SETTINGS_ENV,
+        **DEFAULT_API_TEST_ENV,
         "APP_ENV": "production",
         "APP_PUBLIC_BASE_URL": "https://payments.example.com",
         "CORS_ALLOW_ORIGINS": origin,
@@ -270,7 +265,7 @@ def test_settings_reject_forbidden_production_cors_origins(origin: str) -> None:
 @pytest.mark.parametrize("missing_name", ["CLOUDPAYMENTS_PUBLIC_ID", "CLOUDPAYMENTS_API_SECRET"])
 def test_settings_require_cloudpayments_credentials_when_provider_is_enabled(missing_name: str) -> None:
     environment = {
-        **REQUIRED_SETTINGS_ENV,
+        **DEFAULT_API_TEST_ENV,
         "CLOUDPAYMENTS_ENABLED": "true",
         "CLOUDPAYMENTS_PUBLIC_ID": "pk_test_provider",
         "CLOUDPAYMENTS_API_SECRET": "secret-test-provider",
@@ -285,7 +280,7 @@ def test_settings_require_cloudpayments_credentials_when_provider_is_enabled(mis
 
 def test_settings_validation_messages_do_not_include_sensitive_values() -> None:
     environment = {
-        **REQUIRED_SETTINGS_ENV,
+        **DEFAULT_API_TEST_ENV,
         "APP_ENV": "production",
         "APP_PUBLIC_BASE_URL": "http://secret-host.example/app",
         "DATABASE_URL": "postgresql+psycopg://secret-user:secret-password@db.example/payments",

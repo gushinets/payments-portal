@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import os
+from apps.api.tests.support.settings import configure_api_test_environment
+from apps.api.tests.support.settings import override_settings
 
-os.environ["DATABASE_URL"] = "sqlite+pysqlite:///:memory:"
-os.environ["CLOUDPAYMENTS_API_SECRET"] = ""
-os.environ["CLOUDPAYMENTS_PUBLIC_ID"] = "pk_test_provider"
-os.environ["SKIP_LEGAL_SEED"] = "true"
+configure_api_test_environment(APP_ENV="development")
 
 from fastapi.testclient import TestClient  # noqa: E402
 
@@ -49,13 +47,11 @@ def test_app_factory_preserves_validation_and_development_cors_contract() -> Non
 def test_app_factory_preserves_configured_production_cors_contract() -> None:
     import app.main as main_module
 
-    original_origins = main_module.settings.cors_allow_origins
-    object.__setattr__(
+    with override_settings(
         main_module.settings,
-        "cors_allow_origins",
-        ("https://payments.example.com",),
-    )
-    try:
+        app_env=main_module.AppEnv.PRODUCTION,
+        cors_allow_origins=("https://payments.example.com",),
+    ):
         with TestClient(main_module.create_app()) as client:
             allowed_response = client.options(
                 "/api/auth/register",
@@ -71,17 +67,41 @@ def test_app_factory_preserves_configured_production_cors_contract() -> None:
                     "Access-Control-Request-Method": "POST",
                 },
             )
-    finally:
-        object.__setattr__(
-            main_module.settings,
-            "cors_allow_origins",
-            original_origins,
-        )
 
     assert allowed_response.status_code == 200
     assert allowed_response.headers["access-control-allow-origin"] == ("https://payments.example.com")
     assert rejected_response.status_code == 400
     assert "access-control-allow-origin" not in rejected_response.headers
+
+
+def test_app_factory_uses_explicit_cors_origins_in_test_mode() -> None:
+    import app.main as main_module
+
+    with override_settings(
+        main_module.settings,
+        app_env=main_module.AppEnv.TEST,
+        cors_allow_origins=("https://test-web.example.com",),
+    ):
+        with TestClient(main_module.create_app()) as client:
+            explicit_response = client.options(
+                "/api/auth/register",
+                headers={
+                    "Origin": "https://test-web.example.com",
+                    "Access-Control-Request-Method": "POST",
+                },
+            )
+            localhost_response = client.options(
+                "/api/auth/register",
+                headers={
+                    "Origin": "http://localhost:3000",
+                    "Access-Control-Request-Method": "POST",
+                },
+            )
+
+    assert explicit_response.status_code == 200
+    assert explicit_response.headers["access-control-allow-origin"] == ("https://test-web.example.com")
+    assert localhost_response.status_code == 400
+    assert "access-control-allow-origin" not in localhost_response.headers
 
 
 def test_app_factory_runs_lifespan_once(monkeypatch) -> None:
