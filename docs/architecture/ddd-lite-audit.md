@@ -2,68 +2,80 @@
 
 Status: investigation snapshot; not current-state authority
 Date: 2026-08-15
+Revised: 2026-08-16
 Scope: `apps/api/app`, `apps/web/src`
-Code changes: none at audit time
 
-This document records a read-only DDD-lite review and a remediation plan that
-keeps CloudPayments delivery moving. [ARCHITECTURE.md](../../ARCHITECTURE.md)
-and [the data model](payment-portal-data-model.md) remain the sources of truth
-for implemented behavior. Findings here are maintainability and extensibility
-gaps, not a claim that the RU MVP is broken.
+This is a smell catalog plus two targeted moves. It is not a DDD migration
+programme and not a second source of truth.
+[ARCHITECTURE.md](../../ARCHITECTURE.md) and
+[the data model](payment-portal-data-model.md) remain authoritative for
+implemented behavior.
 
-Related active CloudPayments work (must not be blocked):
+The RU MVP is not claimed broken. Findings are maintainability and
+extensibility gaps unless marked as a product display issue.
+
+Related CloudPayments work (must not be blocked):
 
 - [ANY-165 payment provider boundary](../exec-plans/active/ANY-165-payment-provider-boundary.md)
 - [ANY-166 browser checkout adapter](../exec-plans/active/ANY-166-cloudpayments-browser-checkout-adapter.md)
 - [ANY-167 notification adapter](../exec-plans/active/ANY-167-cloudpayments-notification-adapter.md)
 
-ANY-112 already enforced a **minimal** import graph. This audit is about the
-documented next step that ANY-112 explicitly deferred: repositories, services,
-and aggregate ownership.
+ANY-112 already enforced a **minimal** import graph. ANY-112 deferred
+repository/service decomposition. This document does not reopen that as a
+blanket layer requirement.
 
 ## Verdict
 
-The package skeleton exists. DDD-lite does not.
+The package skeleton exists. Billing application operations do not: checkout
+and payment state transitions live in the identity router and the CloudPayments
+integration.
 
-Documented API direction:
+**Target operations (about 70–80% of the architectural value):**
 
-```text
-contracts/models -> repositories -> services -> routers/wiring
-```
+1. Checkout belongs to billing.
+2. Payment/order/refund state transitions belong to billing.
 
-Observed production graph: `app.models` is the hub, `identity.router` is the
-commerce application service, CloudPayments `processing.py` writes billing
-aggregates, and `domains/billing` has no incoming production imports.
+Everything else is ANY-71, opportunistic cleanup when a file is already in the
+diff, a product/ops decision, or work to skip until a later re-evaluation
+proves it is needed.
 
-`python scripts/repo.py architecture check` can pass while that layering is
-absent. It blocks illegal imports, the `cloudpayments` literal in
-provider-neutral modules, and file-size caps. It does not fail SQL in routers,
-a hollow billing domain, or integration-owned payment state.
-`architecture-limits.json` already excepts `app/models.py`,
-`identity/router.py`, and `CheckoutClient.tsx`.
+[ARCHITECTURE.md](../../ARCHITECTURE.md) states the API arrow as an **allowed
+dependency direction**, not a requirement to route every query through a
+repository class, interface, or unit-of-work framework. A billing application
+service may take a SQLAlchemy `Session`. Extract persistence functions only
+where they cut duplication or isolate persistence complexity.
 
-Counts: **42 findings** — 4 P0, 18 P1, 14 P2, 6 P3. Seven items are already
-named as transition debt (ANY-71, ANY-112, architecture-limit exceptions, or
-legacy `product_access_states`).
+`python scripts/repo.py architecture check` can pass while billing operations
+live outside the billing package. That is expected: the checker enforces the
+minimal ANY-112 graph, not this snapshot.
+
+## Severity scale
+
+| Grade | Meaning in this document |
+|---|---|
+| P0 | Payment correctness or safety: wrong confirmation, broken idempotency, secret/card leak, access activated from a return URL, corrupted payment state. **None of the catalog items are P0.** |
+| P1 | Next billing change is concentrated in the wrong module (identity router or CloudPayments processing). |
+| P2 | Real maintainability debt; fix inside a vertical slice or a dedicated product ticket, not as a layer programme. |
+| P3 | Opportunistic cleanup. Do not open a PR for it alone. |
+
+Refactor priority is not incident severity. Empty packages and large files are
+not P0.
 
 ## CloudPayments constraint
 
-CloudPayments widget, checkout-intent, signed notifications, redaction,
-idempotency, and response codes are the critical path. Remediation must not:
+Do not freeze or rewrite `apps/api/app/integrations/cloudpayments/**`. Do not
+change webhook HTTP paths, HMAC verification, redaction, inbox idempotency, or
+CloudPayments body `code` values. Do not change `PaymentProviderAdapter`
+signatures while adapters are landing. Do not relocate checkout-intent JSON
+fields the widget consumes. Do not expand `product_access_states` (legacy;
+ANY-71 owns entitlements).
 
-- freeze or rewrite `apps/api/app/integrations/cloudpayments/**` as a big-bang
-- change webhook HTTP paths, HMAC verification, redaction, inbox idempotency,
-  or CloudPayments body `code` values
-- change `PaymentProviderAdapter` method signatures while adapters are landing
-- relocate checkout-intent JSON fields that the widget adapter consumes
-- expand `product_access_states` (legacy; [data model](payment-portal-data-model.md)
-  forbids expanding it; ANY-71 owns entitlements)
-- mix product behavior changes into structural moves
+**Merge rule:** CloudPayments PRs win. Layering PRs rebase or wait.
 
-**Merge rule:** CloudPayments PRs win. Layering PRs rebase. Prefer additive
-files and one-function delegations over file moves.
+**Execution rule:** each implementation PR needs an existing Linear ticket and
+a business reason. This snapshot is not a PR queue.
 
-### Hot files (do not structurally edit while ANY-165/166/167 are in flight)
+### Hot files while ANY-165/166/167 are in flight
 
 | Path | Why it is hot |
 |---|---|
@@ -76,17 +88,19 @@ files and one-function delegations over file moves.
 | `apps/web/src/features/payment-result/PaymentResultClient.tsx` | Refund/result status (ANY-76 overlap) |
 | CloudPayments / checkout / webhook tests | Characterization baseline |
 
-Additive edits inside those files are allowed only when they are required by a
-CloudPayments ticket, not by this layering plan.
+No separate DDD refactor against these files until checkout-intent and
+notification JSON are stable. Security/correctness fixes and changes required
+by the CloudPayments tickets themselves are allowed.
 
 ## Intended vs actual
 
 ```mermaid
 flowchart LR
-  models["models / contracts"] --> repos["repositories"]
-  repos --> services["services"]
+  models["models / contracts"] --> services["application services"]
   services --> routers["routers"]
   integrations["integrations"] --> services
+  models -.-> repos["optional persistence functions"]
+  repos -.-> services
 ```
 
 ```mermaid
@@ -104,93 +118,100 @@ flowchart LR
   billing["billing empty"]
 ```
 
+## Action legend for the catalog
+
+| Action | Meaning |
+|---|---|
+| slice-1 | Move checkout create into billing, including the pending `ProductAccessState` write. Same URL and JSON. No access activation. No `CheckoutSession` lifecycle change. |
+| slice-2 | Move Order/Payment/Refund transitions into billing. Integration keeps verify/redact/normalize and CP response mapping. |
+| product | Needs a product/ops decision, not a DDD cleanup. |
+| any-71 | Catalog, subscriptions, entitlements, model split, shim removal. |
+| opportunistic | Fix when that file is already changing. |
+| skip | Do not do unless re-evaluation after the two slices shows measurable cost. |
+
+The catalog is a map of smells. It is not a backlog to burn down.
+
 ## Ranked findings
 
-Ranked by impact on maintainability and extensibility, not by whether current
-RU MVP tests are green. **Debt?** = already acknowledged in architecture docs,
-ANY-71, ANY-112, or an architecture-limit exception.
+| Rank | ID | Sev | Action | Problem | Primary files |
+|---:|---|---|---|---|---|
+| 1 | F03 | P1 | slice-2 | CloudPayments processing owns Order/Payment/Refund transitions. Integration should translate into a billing operation. This is the main architectural win. | `integrations/cloudpayments/processing.py`, `refunds.py` |
+| 2 | F02 | P1 | slice-1 | Identity router owns checkout, orders, and access writes. `create_checkout_intent` writes `EntrypointSession`, `CheckoutSession`, `Order`, `OrderItem`, `ProductAccessState`. Checkout sits under `/api/auth` (keep the URL). | `domains/identity/router.py` |
+| 3 | F04 | P2 | slice-1 / slice-2 | `process_webhook_event` (~214 lines) and `create_checkout_intent` (~192 lines) concentrate the lifecycle. Size is a symptom; ownership is F02/F03. | identity router, `processing.py` |
+| 4 | F01 | P2 | slice-1 | Billing package is an unused re-export. Empty package is not an incident; the missing application operations are F02/F03. | `domains/billing/models.py` |
+| 5 | F17 | P2 | product | `ProductAccessState` stays `pending` after a paid webhook (documented legacy; E2E asserts it). Account can keep showing pending after pay. Payment-result may show paid from Order/Payment. **Paid and access-active are different facts.** Do not map a succeeded payment to "subscription active" on the read path. Show payment confirmed and access not activated separately. Activation is ANY-71. | identity router, `processing.py`, `AccountClient.tsx`, `checkout-webhook.spec.ts` |
+| 6 | F16 | P2 | skip | `CheckoutSession` is write-once (`order_created`). Preserve that behavior in slice-1. Do not add a checkout-session lifecycle during the structural move; change status only with a separate product requirement. | identity router, `models.py` |
+| 7 | F23 | P2 | slice-1 | `PRODUCT_DEFAULTS` in the identity router. Move with checkout, do not keep a second catalog in identity. | `identity/router.py` |
+| 8 | F13 | P2 | skip | Commerce HTTP under `/api/auth`. Keep the path. A billing router is not required for slice-1. | `identity/router.py` |
+| 9 | F15 | P2 | slice-1 / slice-2 | Statuses are free strings. Add Enum/Literal **in the same PR** that moves the transition, only for values that PR touches. No unused enum modules. | `models.py`, identity router, CP processing |
+| 10 | F09 | P2 | skip | Provider protocol takes ORM `Order` / `PaymentProviderAccount`. Re-evaluate after the two slices; do not decouple during CloudPayments landing. | `payment_providers/contracts.py` |
+| 11 | F11 | P2 | opportunistic | Adapter takes FastAPI `Request`. Peel to body/headers when that file is already changing after ANY-167 freezes. | `integrations/cloudpayments/adapter.py` |
+| 12 | F12 | P2 | any-71 | `app.models.py` is the real model home. Allowed until ANY-71. | `apps/api/app/models.py` |
+| 13 | F19 | P2 | skip | `CheckoutClient.tsx` mixes session, legal, checkout, and widget. Re-evaluate after slices; do not split the widget path during ANY-166. | `features/checkout/CheckoutClient.tsx` |
+| 14 | F25 | P2 | slice-2 | Webhook payload is `dict[str, Any]`. Type only what the billing operation needs. Do not swallow decode errors as `{}` if that hides a real failure for that endpoint. | adapter, processing, validation, contracts |
+| 15 | F24 | P2 | opportunistic | Tenant/region/provider string fallbacks (`anytoolai`, `ru`, `cloudpayments`). Change with the slice that owns that lookup. | `session.py`, CP router/rules/processing |
+| 16 | F06 | P2 | slice-1 / slice-2 | Routers query and commit. The checkout router delegates checkout creation. The webhook router retains durable inbox and recovery orchestration; aggregate mutations delegate to billing. This is not a reason to introduce repositories everywhere. | identity/legal/CP routers, `password_reset.py` |
+| 17 | F10 | P3 | opportunistic | `accounts.py` raises `HTTPException`. Map HTTP at the router when that module is already in the diff. | `payment_providers/accounts.py` |
+| 18 | F14 | P3 | slice-1 / slice-2 | No `response_model=`. Add Pydantic models only for the JSON the slice already returns. Serialized keys stay the same. | `apps/api/app/**` |
+| 19 | F05 | P3 | skip | "Missing repository layer" is not a defect under the allowed-direction reading of `ARCHITECTURE.md`. | — |
+| 20 | F18 | P3 | skip | Do not tighten the architecture checker to require repositories until the two slices exist and a later ticket needs the guard. | `scripts/repo.py`, `architecture-limits.json` |
+| 21 | F07 | P3 | opportunistic | `password_reset.py` mixes router/service/SQL. Not part of billing slices. | `domains/identity/password_reset.py` |
+| 22 | F08 | P3 | opportunistic | Session dependency mixes HTTP and ORM. | `domains/identity/session.py` |
+| 23 | F20 | P3 | opportunistic | Unvalidated `as T` and copied `resolveApiBase`. Real auth footgun; fix when those files already change. Not a DDD programme. | `shared/api/auth.ts`, Account, PaymentResult, HeaderAccount |
+| 24 | F21 | P3 | opportunistic | Unknown legal `doc_type` falls back to `terms_acceptance`. Fail fast when legal service is already in the diff. | `domains/legal/service.py` |
+| 25 | F22 | P3 | product | Password-reset HTTP success when email send fails may be anti-enumeration. Logging exists. Changing HTTP needs an ops contract (metric, retry, queue), not DDD cleanup. | `password_reset.py` |
+| 26 | F26 | P3 | any-71 | Root star-import shims. Allowed until ANY-71. | `app/auth.py`, `legal.py`, `cloudpayments.py`, … |
+| 27 | F27 | P3 | opportunistic | Duplicated `utc_now` / `normalize_email`. | identity, legal, processing |
+| 28 | F28 | P3 | opportunistic | Legal service is SQL + `db.add`; router still loads `DocumentVersion`. | legal service/router |
+| 29 | F29 | P3 | opportunistic | Frontend catalog hardcodes 990 RUB; home page duplicates the price. | `catalog.ts`, `app/ru/page.tsx` |
+| 30 | F30 | P3 | opportunistic | CloudPayments error codes handled in `CheckoutClient` instead of the adapter. Fix with ANY-166 or a later checkout UI change. | `CheckoutClient.tsx` |
+| 31 | F31 | P3 | opportunistic | `HeaderAccount` owns session fetch. | `shared/ui/HeaderAccount.tsx` |
+| 32 | F32 | P3 | skip | Home route owns marketing UI. | `app/ru/page.tsx` |
+| 33 | F33 | P3 | opportunistic | Payment-result empty `catch`; placeholder email used as control flow. | `PaymentResultClient.tsx` |
+| 34 | F34 | P3 | opportunistic | `os.getenv` bypasses Settings; hardcoded CORS localhost. | `core/observability.py`, `main.py` |
+| 35 | F35 | P3 | opportunistic | Duplicated session storage keys. | Checkout, Account, HeaderAccount, password-reset, PaymentResult |
+| 36 | F36 | P3 | skip | `NEXT_PUBLIC_API_BASE_URL` localhost fallback. Do not remove without a concrete production failure. | `shared/api/auth.ts`, Account, PaymentResult |
+| 37 | F37 | P3 | any-71 | Unused domain model façades. | `domains/*/models.py` |
+| 38 | F38 | P3 | opportunistic | `skip_password_reset_email` no-op. | `password_reset.py` |
+| 39 | F39 | P3 | opportunistic | `ProductCards.selectedCode` unused. | `ProductCards.tsx` |
+| 40 | F40 | P3 | skip | Ambient CloudPayments types at app root. | `src/types/cloudpayments.d.ts` |
+| 41 | F41 | P3 | opportunistic | Hardcoded Footer SVG hex. | `Footer.tsx` |
+| 42 | F42 | P3 | skip | Health payload names CloudPayments fields. Do not rename without a consumer need. | `main.py` |
 
-| Rank | ID | Sev | Impact | Category | Problem | Primary files | Debt? |
-|---:|---|---|---:|---|---|---|---|
-| 1 | F01 | P0 | 10 | Domain boundary | Billing domain is empty: unused re-export only. No service, repository, schemas, or router. Checkout, orders, payments, refunds, and webhooks live elsewhere. ANY-71 covers subscriptions later; implemented commerce has no application layer. | `apps/api/app/domains/billing/models.py` | No |
-| 2 | F02 | P0 | 10 | Domain boundary | Identity router owns checkout, orders, and access. `create_checkout_intent` (~192 lines) writes `EntrypointSession`, `CheckoutSession`, `Order`, `OrderItem`, `ProductAccessState`. Session and payment-status query billing tables. Identity imports legal service, billing ORM types, and payment providers. Checkout sits under `/api/auth`. | `apps/api/app/domains/identity/router.py` | No |
-| 3 | F03 | P0 | 10 | Domain boundary | CloudPayments processing is the billing state machine. Integrations should translate into domain operations. Instead they assign Order/Payment statuses (`paid`, `succeeded`, `payment_failed`, `canceled`, `refunded`) and persist aggregates. | `integrations/cloudpayments/processing.py`, `refunds.py` | No |
-| 4 | F04 | P0 | 9 | God module | Two god functions concentrate the payment lifecycle: `process_webhook_event` (~214 lines) and `create_checkout_intent` (~192 lines). Any new provider, plan scope, or entitlement rule has to edit these two functions. | `identity/router.py`, `processing.py` | No |
-| 5 | F05 | P1 | 9 | Layering | Documented repository layer does not exist. SQLAlchemy queries sit in routers, `session.py`, `password_reset.py`, `legal/service.py`, `payment_providers/accounts.py`, and CloudPayments modules. | `apps/api/app/**` | No |
-| 6 | F06 | P1 | 9 | Layering | Routers query the database and commit. `identity/router.py` has ~29 `db.query`/`add`/`commit` sites. Legal accept loads `DocumentVersion` then commits after the service `db.add`. Webhook router builds `PaymentWebhookEvent`, commits, then processes. | identity/legal/CP routers, `password_reset.py` | No |
-| 7 | F07 | P1 | 8 | God module | `password_reset.py` mixes router, service, and repository: Pydantic schemas, raw SQL rate limits, token CRUD, session revocation, email send, and FastAPI routes in 271 lines. | `domains/identity/password_reset.py` | No |
-| 8 | F08 | P1 | 8 | Layering | Session dependency mixes HTTP, ORM, and commits. `get_current_session` uses `Header`, `HTTPException`, `db.query`, and `db.commit`. | `domains/identity/session.py` | No |
-| 9 | F09 | P1 | 8 | Contracts | Provider protocol is coupled to ORM entities. `prepare_checkout_action` takes `Order` and `PaymentProviderAccount` from `app.models`. `CheckoutAction.as_response()` returns `dict[str, Any]`. | `payment_providers/contracts.py` | No |
-| 10 | F10 | P1 | 8 | Layering | Provider-neutral accounts layer raises `HTTPException(503)` and queries ORM. HTTP belongs at the router edge. | `payment_providers/accounts.py` | No |
-| 11 | F11 | P1 | 7 | Layering | CloudPayments adapter depends on FastAPI `Request`. It is not a pure translator of bytes/headers into `NormalizedPaymentEvent`. | `integrations/cloudpayments/adapter.py` | No |
-| 12 | F12 | P1 | 8 | God module | `app.models.py` (~720 lines) is the real model home. Production imports `from app.models import …`. Domain `models.py` files are dead façades. Allowed until ANY-71. | `apps/api/app/models.py` | Yes |
-| 13 | F13 | P1 | 7 | Domain boundary | Commerce HTTP lives under the auth router: `POST /api/auth/checkout-intent` and `GET /api/auth/payment-status`. `main.py` never mounts a billing router because none exists. | `domains/identity/router.py` | No |
-| 14 | F14 | P1 | 8 | Contracts | No Pydantic response models. Zero `response_model=`. Request models exist inline. Responses are bare dicts (`present_user`, `present_document`, checkout, payment-status, webhook). | `apps/api/app/**` | No |
-| 15 | F15 | P1 | 8 | Magic values | Domain statuses are free strings. The only production `Literal` is `CheckoutExperience`. Order/Payment/User/Plan/Webhook/Access statuses are compared as `'paid'`, `'succeeded'`, `'active'`, `'pending'`. DB `CheckConstraint` covers `plan.scope_type` only. | `models.py`, identity router, CP processing/validation/refunds/rules | No |
-| 16 | F16 | P1 | 7 | Domain boundary | `CheckoutSession` is write-once (`status='order_created'`) and never updated. Webhook advances Order/Payment only. | `identity/router.py`, `models.py` | No |
-| 17 | F17 | P1 | 8 | Domain boundary | `ProductAccessState` stays `pending` after a paid webhook. Checkout sets `pending`; processing never updates it. E2E asserts this. Payment-result reads Order/Payment so it can show paid; Account reads `product_state` and can keep showing pending. Legacy until ANY-71; the two UIs already disagree. | identity router, `processing.py`, `AccountClient.tsx`, `checkout-webhook.spec.ts` | Yes |
-| 18 | F18 | P1 | 7 | Guardrail gap | Architecture checker does not enforce DDD-lite (see Verdict). | `scripts/repo.py`, `architecture-limits.json` | Yes |
-| 19 | F19 | P1 | 8 | Frontend | `CheckoutClient.tsx` (~735 lines) mixes session, legal acceptances, checkout-intent, widget start, product cards, and status UI. CloudPayments error codes are handled here, not in the adapter. File already has a line-limit exception. | `features/checkout/CheckoutClient.tsx` | Yes |
-| 20 | F20 | P1 | 8 | Frontend | API JSON is cast, not validated. `getJson`/`postJson` return `response.json() as T`. Account and payment-result bypass the shared client. `resolveApiBase` is copied three times. `SessionResponse` / `ProductState` are duplicated. | `shared/api/auth.ts`, `AccountClient.tsx`, `PaymentResultClient.tsx`, `HeaderAccount.tsx` | No |
-| 21 | F21 | P1 | 6 | Magic values | Legal acceptance kind falls back silently: `ACCEPTANCE_KIND_BY_DOC_TYPE.get(doc_type, "terms_acceptance")`. | `domains/legal/service.py` | No |
-| 22 | F22 | P1 | 6 | Error handling | Password-reset email failures are swallowed (`except Exception`: log warning, return). Hides delivery outages behind HTTP success. | `domains/identity/password_reset.py` | No |
-| 23 | F23 | P2 | 6 | Magic values | Hardcoded catalog defaults in the identity router (`PRODUCT_DEFAULTS`, `99000`, trial 7). `present_product_state` still uses these when DB state is missing. | `identity/router.py` | No |
-| 24 | F24 | P2 | 6 | Magic values | Tenant/region/provider literals as fallbacks (`anytoolai`, `ru`). Webhook inbox uses them when the order is missing. `find_order` filters `Order.provider == "cloudpayments"`. | `session.py`, CP router/rules/processing | No |
-| 25 | F25 | P2 | 6 | Contracts | Webhook pipeline is `dict[str, Any]`. `_parse_data` swallows `JSONDecodeError` as `{}`. `NormalizedPaymentEvent.safe_payload` is untyped. | adapter, processing, validation, contracts | No |
-| 26 | F26 | P2 | 5 | Thin shim | Root star-import compatibility modules pollute the import surface. Allowed until ANY-71. | `app/auth.py`, `legal.py`, `cloudpayments.py`, `legal_consents.py`, `database.py`, `settings.py` | Yes |
-| 27 | F27 | P2 | 4 | Layering | Duplicated helpers: `utc_now` in session, legal service, and `processing.datetime_now`; `normalize_email` in identity router and password reset. | identity, legal, processing | No |
-| 28 | F28 | P2 | 5 | Layering | Legal service is an anemic repository (SQL + `db.add`). Router still loads `DocumentVersion` and owns commit. | `legal/service.py`, `legal/router.py` | No |
-| 29 | F29 | P2 | 5 | Frontend | Frontend catalog hardcodes products and 990 RUB. Home page duplicates the price instead of using catalog data. | `features/catalog/catalog.ts`, `app/ru/page.tsx` | Yes |
-| 30 | F30 | P2 | 5 | Frontend | CloudPayments error codes leak into checkout UI (`cloudpayments_public_terminal_id_missing`, `cloudpayments_widget_mode_invalid`). | `CheckoutClient.tsx` | No |
-| 31 | F31 | P2 | 5 | Frontend | Shared `HeaderAccount` owns session fetch, token writes, and the auth modal. | `shared/ui/HeaderAccount.tsx` | No |
-| 32 | F32 | P2 | 4 | Frontend | Home route owns marketing UI instead of composing a feature entrypoint. | `app/ru/page.tsx` | No |
-| 33 | F33 | P2 | 5 | Error handling | Payment-result polling fails open (empty `catch` leaves pending). Missing-email placeholder is used as a logic gate. Status strings compared without shared enums. | `PaymentResultClient.tsx` | No |
-| 34 | F34 | P2 | 4 | Layering | Settings bypass: `os.getenv` for log/OTEL/legal-seed. CORS hardcodes `localhost:3000` beside `settings.cors_allow_origins`. | `core/observability.py`, `main.py` | No |
-| 35 | F35 | P2 | 5 | Frontend | Session storage keys duplicated: `anytoolai_session_token_v1`, `anytoolai_session_changed`, `anytoolai_last_payment_result`. | Checkout, Account, HeaderAccount, password-reset, PaymentResult | No |
-| 36 | F36 | P2 | 4 | Contracts | `NEXT_PUBLIC_API_BASE_URL` falls back to `http://localhost:8000`, masking missing env. | `shared/api/auth.ts`, Account, PaymentResult | No |
-| 37 | F37 | P3 | 3 | Thin shim | One-import / unused domain model façades. | `domains/*/models.py`, root shims | Yes |
-| 38 | F38 | P3 | 2 | Error handling | `skip_password_reset_email` is a no-op decoy. | `password_reset.py` | No |
-| 39 | F39 | P3 | 2 | Frontend | `ProductCards.selectedCode` is unused. | `features/catalog/ProductCards.tsx` | No |
-| 40 | F40 | P3 | 2 | Frontend | Ambient CloudPayments types at app root couple the app to the provider namespace. | `apps/web/src/types/cloudpayments.d.ts` | No |
-| 41 | F41 | P3 | 2 | Frontend | Hardcoded hex in Footer SVG instead of Bundle 3 tokens. | `shared/ui/Footer.tsx` | No |
-| 42 | F42 | P3 | 3 | Guardrail gap | Health payload names CloudPayments fields. Wiring is allowed; the contract is provider-specific. | `apps/api/app/main.py` | No |
+Counts after re-grade: **0 P0**, **2 P1**, **14 P2**, **26 P3**.
 
 ## Layer inventory
 
-Expected DDD-lite per domain: entities, value objects / enums, Pydantic
-schemas, repository, application service, thin router.
+Expected per domain for **billing slices**: an application operation, the HTTP
+façade that calls it, and persistence functions only where they pay for
+themselves. Enums/DTOs only for values that slice serializes or transitions.
 
-| Area | Exists today | Missing vs DDD-lite |
+| Area | Exists today | Needed for the two slices |
 |---|---|---|
-| Identity | Fat router, `session.py`, `password_reset.py`, `passwords.py`, unused models façade | Repository, auth service, response schemas, enums. Session is HTTP+SQL. |
-| Legal | Router + SQL service + unused models façade + `app/legal_seed.py` | Repository, response schemas, fail-fast acceptance-kind map. Router still queries. |
-| Billing | Unused `models.py` re-export only | Entities ownership, enums, schemas, repos, checkout/order/payment/access services, router. |
-| Payment providers | Protocol, registry, `accounts.py` | ORM-free port types; domain errors instead of `HTTPException`. |
-| CloudPayments | Adapter, router, processing, validation, refunds, rules, payload | Side effects should call billing services. Adapter should not take FastAPI `Request`. |
-| Core | settings, database, observability, email | Mostly fits. `getenv` bypass and SMTP `timeout=10` are local smells. |
-| Web | `shared` → features → app; ESLint boundaries hold | Shared API barrel + runtime DTO validation; split `CheckoutClient`; stop duplicating fetch/session keys. |
+| Identity | Fat router, `session.py`, `password_reset.py`, `passwords.py` | Thin HTTP façade for `POST /api/auth/checkout-intent`. Leave auth and `GET /api/auth/payment-status` in identity until re-evaluation after the two slices. |
+| Legal | Router + SQL service | Unchanged unless a slice already touches acceptances. |
+| Billing | Unused `models.py` re-export | `create_checkout` and payment-transition operations. Optional `repository.py` functions, not a generic layer. |
+| Payment providers | Protocol, registry, `accounts.py` | Leave stable during CloudPayments landing. |
+| CloudPayments | Adapter, router, processing, validation, refunds, rules, payload | Keep verify/redact/normalize/response codes. Call billing for aggregate transitions. |
+| Core | settings, database, observability, email | Fits. |
+| Web | `shared` → features → app | No required frontend split for the two slices. Account payment-vs-access copy is a product ticket. |
 
 ## Hottest files
 
-| File | Role today | Lines | Ceiling |
+| File | Role today | Lines | Relevant action |
 |---|---|---:|---|
-| `apps/api/app/models.py` | God ORM aggregate | 720 | P1 |
-| `apps/api/app/domains/identity/router.py` | Router + billing service + repo | 558 | P0 |
-| `apps/api/app/integrations/cloudpayments/processing.py` | Integration acting as billing service | 463 | P0 |
-| `apps/api/app/integrations/cloudpayments/adapter.py` | Adapter + FastAPI Request + Any dicts | 367 | P1 |
-| `apps/api/app/integrations/cloudpayments/validation.py` | String status rules | 282 | P1 |
-| `apps/api/app/domains/identity/password_reset.py` | Router + service + repo | 271 | P1 |
-| `apps/web/src/features/checkout/CheckoutClient.tsx` | God UI + API + widget | 735 | P1 |
-| `apps/web/src/features/payment-result/PaymentResultClient.tsx` | Polling + silent catch + magic status | 403 | P2 |
-| `apps/api/app/integrations/cloudpayments/router.py` | Inbox persist + unit of work in router | 120 | P1 |
-| `apps/api/app/domains/legal/router.py` | Still queries + commits | 109 | P2 |
-| `apps/api/app/domains/legal/service.py` | Anemic SQL service | 105 | P2 |
-| `apps/api/app/payment_providers/accounts.py` | HTTP + ORM in port layer | 80 | P1 |
-| `apps/api/app/payment_providers/contracts.py` | Port depends on ORM | 71 | P1 |
-| `apps/api/app/domains/identity/session.py` | HTTP + SQL auth | 42 | P1 |
-| `apps/api/app/domains/billing/models.py` | Unused façade; only billing file | 35 | P0 |
+| `apps/api/app/models.py` | God ORM aggregate | 720 | any-71 |
+| `apps/api/app/domains/identity/router.py` | Router + billing checkout | 558 | slice-1 |
+| `apps/api/app/integrations/cloudpayments/processing.py` | Integration acting as billing state machine | 463 | slice-2 |
+| `apps/api/app/integrations/cloudpayments/adapter.py` | Adapter + FastAPI Request | 367 | opportunistic after ANY-167 |
+| `apps/api/app/integrations/cloudpayments/validation.py` | Provider-specific rules | 282 | stays in integration |
+| `apps/api/app/domains/identity/password_reset.py` | Router + service + SQL | 271 | opportunistic |
+| `apps/web/src/features/checkout/CheckoutClient.tsx` | God UI + API + widget | 735 | skip during ANY-166 |
+| `apps/web/src/features/payment-result/PaymentResultClient.tsx` | Payment outcome UI | 403 | product/opportunistic |
+| `apps/api/app/integrations/cloudpayments/router.py` | Inbox persist | 120 | slice-2 (keep inbox; call billing) |
+| `apps/api/app/domains/billing/models.py` | Unused façade | 35 | slice-1 |
 
-## Persistence sites outside a repository
+## Persistence sites (inventory, not a repository mandate)
 
 | Module | What it persists |
 |---|---|
@@ -217,161 +238,143 @@ schemas, repository, application service, thin router.
 | `domains/legal/models.py` | `app.models` subset | Unused façade |
 | `domains/billing/models.py` | `app.models` subset | Unused; only billing file |
 
+Leave shims until ANY-71. Do not add new unused façades, unused enum modules,
+or repository interfaces with one implementation.
+
 ## What is already in good shape
 
-- Domain folders exist: identity, legal, billing, `payment_providers`,
-  `integrations/cloudpayments`. Core does not import domains.
-- AST checks already forbid domain→integration, core→domain, and router→router.
+- Domain folders exist. Core does not import domains.
+- AST checks forbid domain→integration, core→domain, and router→router.
   Provider-neutral modules cannot contain the `cloudpayments` literal.
 - CloudPayments adapter redacts card keys. Named endpoint, event, and response
   code maps exist. Webhook processing is idempotent at the inbox row.
-- Legal acceptances are append-only. Legal is the only domain with a real
-  `service.py`. Password hashing is isolated in `passwords.py`.
-- Web ESLint boundaries hold: no shared→feature imports, no feature
-  deep-imports. Public feature barrels exist. Customer-facing copy is Russian.
-  Legal versions come from the generated manifest.
+- Legal acceptances are append-only. Password hashing is isolated.
+- Web ESLint boundaries hold. Legal versions come from the generated manifest.
 
-## Safe remediation plan
+## Remediation plan
 
-### Principles
+Do not keep this snapshot updated as a live tracker. When a Linear ticket
+lands, that ticket's exec-plan is the execution log.
 
-1. **Strangler, not rewrite.** Add billing/identity/legal application modules.
-   Point existing callers at them in small diffs. Delete the old body only after
-   the new path has the same tests green.
-2. **Preserve public contracts.** No URL, webhook body `code`, redaction, or
-   checkout-intent field changes unless a CloudPayments ticket requires them.
-3. **Additive types first.** Introduce Enums/Literals and Pydantic models whose
-   serialized values equal today's strings/dicts. Call sites can keep using
-   `.value` until a later sweep.
-4. **Do not expand `product_access_states`.** Account/payment-result disagreement
-   (F17) may be fixed on the read path (Account should use order/payment like
-   payment-result). Activating access from the webhook is ANY-71 product work,
-   not this layering plan.
-5. **One vertical slice per PR.** Prefer "move `upsert_payment_from_webhook`
-   persistence into billing and leave the endpoint ladder in processing" over
-   "split the CloudPayments package".
-6. **Stop and fix.** If a layering PR conflicts with a CloudPayments PR, rebase
-   or pause the layering PR. Do not merge overlapping edits to hot files.
+### Step 0 — while ANY-165/166/167 are active
 
-### Phase 0 — now, while CloudPayments is in flight
+No separate DDD refactor.
 
-Goal: reduce debt without touching hot files.
+Allowed:
 
-| ID | Task | Findings | Validation |
-|---|---|---|---|
-| 0.1 | Keep this document current when CloudPayments PRs land (file list / hot-file table only). | — | `npm run docs:check` |
-| 0.2 | Split `password_reset.py` into router + service + queries. Keep HTTP paths. | F07, F22, F38 | `npm run test:api` focused on password reset |
-| 0.3 | Move remaining `DocumentVersion` load and commit ownership into legal service. Fail fast on unknown `doc_type` (no default kind). | F21, F28 | legal API tests |
-| 0.4 | Extract shared web session key, `resolveApiBase`, and `getJson`/`postJson` usage. Switch Account and HeaderAccount to the shared client. Do not edit `provider-adapters.ts` or Checkout widget start. | F20, F31, F35, F36 | `npm --workspace @anytoolai/web run test:components` |
-| 0.5 | Deduplicate `utc_now` / `normalize_email` into existing identity helpers; legal can import the identity helper or a tiny `core` datetime helper. Do not import integrations. | F27 | architecture check + API tests |
-| 0.6 | Add **new** `domains/billing/enums.py` (and identity/legal equivalents) wrapping current string vocabularies. Do not switch CloudPayments processing onto them yet. | F15 | architecture check; no behavior change |
-| 0.7 | Home page: stop hardcoding 990; read catalog data. Dead `ProductCards.selectedCode`. | F29, F32, F39 | web component tests |
+- security or payment-correctness fixes
+- a **product** ticket for Account copy: show "payment confirmed" and "access
+  not activated" as separate facts (F17). Do not treat a succeeded payment as
+  an active subscription
+- changes the CloudPayments tickets themselves need
 
-Non-goals for Phase 0: billing service extraction, processing.py surgery,
-adapter Request decoupling, `app.models` split, CheckoutClient decomposition
-of the widget path.
+Not allowed as standalone work: unused enums, identity/legal repository
+layers, password-reset split, home-page feature move, health-payload rename,
+removing the localhost API fallback, splitting files for line count, Footer
+tokens, relocating ambient TypeScript declarations.
 
-Definition of done: CloudPayments tests still pass unchanged; no diff in
-`integrations/cloudpayments/**` unless a CloudPayments ticket owns it.
+### Step 1 — one billing vertical slice: checkout
 
-### Phase 1 — after ANY-166/167 stabilize, or between their PRs
+After checkout-intent JSON is stable, pick an **existing** Linear ticket (or
+file one with a business reason) and move checkout create:
 
-Goal: give billing an application layer without changing webhook semantics.
+```text
+HTTP façade
+  -> billing.create_checkout
+  -> persistence functions only if they reduce complexity
+  -> same JSON contract
+  -> focused tests
+```
 
-Do this as several PRs, not one.
+Constraints:
 
-| ID | Task | Findings | Notes |
-|---|---|---|---|
-| 1.1 | Add `domains/billing/service.py` (checkout create) by moving the body of `create_checkout_intent` out of identity. Identity router stays the HTTP façade and keeps `/api/auth/checkout-intent` until a later URL move. | F01, F02, F04, F13, F23 | Highest merge risk with ANY-166. Wait until checkout-intent JSON is stable. |
-| 1.2 | Move payment-status assembly into billing (still served from `/api/auth/payment-status`). | F02, F13 | Read-only vs webhook writers; lower risk. |
-| 1.3 | One function at a time, make `processing.py` / `refunds.py` call billing persistence helpers (`upsert_payment_from_webhook`, refund recording). Leave endpoint routing, validation, and CP response mapping in the integration. | F03, F04, F16 | Domain must not import `app.integrations`. Integration imports billing service. |
-| 1.4 | Advance `CheckoutSession` status from the same billing helpers that update Order (no product-access expansion). | F16 | Behavior addition; needs tests. Do not mix with ANY-167 unless that ticket already touches order transitions. |
-| 1.5 | Account UI: derive subscription card state from order/payment like payment-result, or poll payment-status. Do not activate `ProductAccessState` from the webhook. | F17 | Product-consistent read model; still legacy access table. |
+- `POST /api/auth/checkout-intent` stays
+- router validates HTTP and calls billing
+- billing owns `EntrypointSession`, `CheckoutSession`, `Order`, `OrderItem`,
+  and the legacy pending `ProductAccessState` write
+- the pending access row moves with checkout, same behavior, **no activation**
+- do not advance `CheckoutSession.status` (keep write-once `order_created`)
+- JSON unchanged
+- Enums/DTOs only for values this slice uses
+- no generic repository, base class, or unit-of-work framework
+- billing service may take `Session`
+- `GET /api/auth/payment-status` stays in identity; re-evaluate after the two
+  slices
 
-Definition of done: same webhook fixtures and E2E "access stays pending"
-invariant; checkout-intent response shape unchanged; `processing.py` no longer
-assigns Order/Payment status literals inline.
+This creates a real billing application layer without a full skeleton.
 
-### Phase 2 — contracts and thin edges
+### Step 2 — payment state machine
 
-Goal: make invalid states harder, without a provider rewrite.
+Separate Linear ticket, separate PR, after notification handling is stable
+enough to rebase:
 
-| ID | Task | Findings |
-|---|---|---|
-| 2.1 | Add Pydantic response models and `response_model=` for auth, legal, checkout, payment-status. Serialized JSON must match today's keys. | F14 |
-| 2.2 | Switch remaining string comparisons to Enums/Literals introduced in 0.6. | F15, F24 |
-| 2.3 | Introduce repositories for identity, legal, billing. Routers stop calling `db.query` / `db.commit` except via a unit-of-work helper if one is adopted. | F05, F06 |
-| 2.4 | `session.py`: HTTP adapter in the router/deps module; domain lookup without `HTTPException`. | F08 |
-| 2.5 | `accounts.py`: domain error instead of `HTTPException`; router maps 503. | F10 |
-| 2.6 | Adapter: router passes body + header map; adapter no longer takes FastAPI `Request`. Protocol still accepts ORM until Phase 3 if changing it now collides with ANY-165. | F11 |
-| 2.7 | Typed webhook payload model; stop swallowing JSON decode as `{}` without an error code. | F25 |
+- CloudPayments verifies, redacts, and normalizes the event
+- a provider-neutral billing operation applies Order/Payment/Refund
+  transitions
+- Order/Payment/Refund mutations are applied atomically by the billing
+  operation
+- preserve the existing durable inbox commit **before** processing and
+  failed-event recovery **after** rollback; do not fold inbox persistence and
+  aggregate mutations into one transaction
+- integration keeps provider-specific response mapping
+- run PostgreSQL idempotency and monotonic-transition tests
 
-Do 2.6 only after ANY-167's adapter surface is frozen.
+Do not activate `product_access_states` from this move.
 
-### Phase 3 — web checkout split and provider-port cleanup
+### Step 3 — stop and re-evaluate
 
-Goal: finish frontend and port decoupling after the widget path is stable.
+After the two slices, check:
 
-| ID | Task | Findings |
-|---|---|---|
-| 3.1 | Split `CheckoutClient` into session/legal/checkout-intent/UI. Keep widget start in `provider-adapters.ts`. Map CP error codes inside the adapter. | F19, F30 |
-| 3.2 | Runtime validation of session/checkout/payment-status JSON (shared DTOs). | F20 |
-| 3.3 | Payment-result: no empty catch; no placeholder email as a control-flow value. | F33 |
-| 3.4 | Decouple `PaymentProviderAdapter` from ORM (`Order` / `PaymentProviderAccount` → checkout snapshot DTO). | F09 |
-| 3.5 | Observability/settings: stop `os.getenv` bypass; CORS only from settings. | F34 |
-| 3.6 | Health contract: provider-neutral flags or nested provider map. | F42 |
+- is a second provider cheaper
+- did transition duplication actually disappear
+- are identity/legal repositories still unnecessary
+- should `GET /api/auth/payment-status` move behind a billing read model
+- do large frontend components still block change
+- which remaining catalog items still have measurable cost
 
-### Phase 4 — ANY-71 and shim removal
+If the answer is no, later phases are not needed. ANY-71 separately owns model
+ownership, subscriptions, entitlements, and shim removal.
 
-Goal: entity ownership. Do not start until catalog/subscription/entitlement
-work owns the model split.
+## Validation gates
 
-| ID | Task | Findings |
-|---|---|---|
-| 4.1 | Split `app.models` into domain modules; delete unused façades; stop root star-imports. | F12, F26, F37 |
-| 4.2 | Replace `product_access_states` with subscriptions/entitlements. Activate access only from verified webhook-processed payment state. | F17 (product) |
-| 4.3 | Move checkout HTTP to a billing router when clients can change; keep compatibility routes if needed. | F13 |
-| 4.4 | Tighten `check_python_boundaries` to fail SQL in routers and domain→router leaks **after** repositories exist. | F18 |
-| 4.5 | Footer tokens; move ambient CP types next to checkout. | F40, F41 |
+Use the smallest relevant check while iterating. Before each handoff run
+`npm run check:fast`. Run `npm run docs:check` only when documentation or
+OpenAPI changed.
 
-### Finding → phase map
-
-| Findings | Phase |
-|---|---|
-| F07, F20–F22, F27–F29, F31, F32, F35, F36, F38, F39 | 0 (parallel with CloudPayments) |
-| F01–F04, F13, F16, F17 (read-path only), F23 | 1 (after checkout/webhook JSON freeze) |
-| F05, F06, F08, F10, F11, F14, F15, F24, F25 | 2 |
-| F09, F19, F30, F33, F34, F42 | 3 |
-| F12, F17 (activation), F18, F26, F37, F40, F41 | 4 / ANY-71 |
-
-### Validation gates (every phase)
-
-Use the smallest relevant check while iterating; before handoff run the
-broadest check the environment supports.
+Slice 1 (checkout):
 
 ```bash
 python scripts/repo.py architecture check
 python -m pytest apps/api/tests/test_architecture.py
-python -m pytest apps/api/tests/test_api.py -k "cloudpayments or webhook or checkout or refund"
-npm --workspace @anytoolai/web run test:components
-npm run docs:check
-npm run check:fast
+python -m pytest apps/api/tests/test_api.py -k "checkout"
 ```
 
-When `TEST_POSTGRES_DATABASE_URL` is set:
+Slice 2 (payment transitions):
+
+```bash
+python scripts/repo.py architecture check
+python -m pytest apps/api/tests/test_architecture.py
+python -m pytest apps/api/tests/test_api.py -k "cloudpayments or webhook or refund"
+```
+
+When `TEST_POSTGRES_DATABASE_URL` is set, slice 2 also runs:
 
 ```bash
 python -m pytest apps/api/tests/test_cloudpayments_webhook_postgres.py
 ```
 
-Do not claim a phase done if CloudPayments characterization tests regress, if
+Do not claim a slice done if CloudPayments characterization tests regress, if
 `docs/generated/openapi.json` drifts from an unintentional contract change, or
-if `product_access_states` is expanded.
+if `product_access_states` is expanded, activated, or treated as a subscription.
 
-### Explicit non-goals
+## Explicit non-goals
 
-- Stopping or rewriting the CloudPayments integration to "get layering done".
-- Activating paid access from the browser return URL.
-- Implementing ANY-71 subscriptions/entitlements inside this plan.
-- Presenting legal pages as counsel-approved.
-- Collecting card data or logging unredacted payment fields.
+- A DDD migration programme, unused types, or blanket repositories
+- Stopping CloudPayments delivery to "get layering done"
+- Activating paid access from a browser return URL
+- Mapping payment success to access-active on the Account read path
+- Advancing `CheckoutSession.status` during the checkout structural move
+- Implementing ANY-71 subscriptions/entitlements inside this plan
+- Presenting legal pages as counsel-approved
+- Collecting card data or logging unredacted payment fields
+- Opening PRs without an existing Linear ticket

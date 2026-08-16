@@ -20,7 +20,7 @@ Start with the smallest document that matches the task.
 - [Platform Kernel contract boundary](architecture/platform-kernel-contract.md)
 - [Architecture decisions](architecture/decisions/README.md)
 - [DDD-lite audit and safe remediation](architecture/ddd-lite-audit.md) —
-  investigation snapshot; not current-state authority
+  smell catalog and two billing slices; not current-state authority
 
 ## Engineering
 
