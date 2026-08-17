@@ -713,6 +713,44 @@
         ]
       }
     },
+    "/api/health/live": {
+      "get": {
+        "operationId": "canonical_liveness_api_health_live_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Canonical Liveness",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/health/ready": {
+      "get": {
+        "operationId": "canonical_readiness_api_health_ready_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Canonical Readiness",
+        "tags": [
+          "health"
+        ]
+      }
+    },
     "/api/legal/acceptances": {
       "post": {
         "operationId": "accept_document_api_legal_acceptances_post",
@@ -823,7 +861,7 @@
     },
     "/health": {
       "get": {
-        "operationId": "health_health_get",
+        "operationId": "legacy_health_health_get",
         "responses": {
           "200": {
             "content": {
@@ -834,7 +872,7 @@
             "description": "Successful Response"
           }
         },
-        "summary": "Health",
+        "summary": "Legacy Health",
         "tags": [
           "health"
         ]
@@ -842,7 +880,7 @@
     },
     "/health/live": {
       "get": {
-        "operationId": "health_live_health_live_get",
+        "operationId": "legacy_liveness_health_live_get",
         "responses": {
           "200": {
             "content": {
@@ -853,7 +891,7 @@
             "description": "Successful Response"
           }
         },
-        "summary": "Health Live",
+        "summary": "Legacy Liveness",
         "tags": [
           "health"
         ]
@@ -861,7 +899,7 @@
     },
     "/health/ready": {
       "get": {
-        "operationId": "health_ready_health_ready_get",
+        "operationId": "legacy_readiness_health_ready_get",
         "responses": {
           "200": {
             "content": {
@@ -872,7 +910,7 @@
             "description": "Successful Response"
           }
         },
-        "summary": "Health Ready",
+        "summary": "Legacy Readiness",
         "tags": [
           "health"
         ]
