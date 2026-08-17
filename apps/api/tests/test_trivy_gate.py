@@ -134,9 +134,7 @@ def test_trivy_ignore_entries_are_scoped_explained_and_unexpired() -> None:
         "CVE-2026-8376",
     }
     vulnerability_entries = policy.get("vulnerabilities", [])
-    configured_vulnerability_ids = {
-        entry["id"] for entry in vulnerability_entries
-    }
+    configured_vulnerability_ids = {entry["id"] for entry in vulnerability_entries}
 
     assert len(vulnerability_entries) == len(approved_api_image_cves)
     assert configured_vulnerability_ids == approved_api_image_cves
@@ -155,10 +153,7 @@ def test_trivy_ignore_entries_are_scoped_explained_and_unexpired() -> None:
             for scope_key in ("paths", "purls"):
                 section_scopes = entry.get(scope_key, [])
                 assert isinstance(section_scopes, list)
-                assert all(
-                    isinstance(scope, str) and scope.strip()
-                    for scope in section_scopes
-                )
+                assert all(isinstance(scope, str) and scope.strip() for scope in section_scopes)
                 scopes.extend(section_scopes)
             assert scopes
             expiration = entry["expired_at"]
@@ -170,14 +165,8 @@ def test_trivy_ignore_entries_are_scoped_explained_and_unexpired() -> None:
         assert entry["purls"] == ["pkg:deb/debian/perl-base"]
         assert not entry.get("paths")
         statement = entry["statement"]
-        assert (
-            "Affected image: payment-portal-api built from apps/api/Dockerfile."
-            in statement
-        )
-        assert (
-            "Debian Trixie had no fixed perl-base package on 2026-08-17."
-            in statement
-        )
+        assert "Affected image: payment-portal-api built from apps/api/Dockerfile." in statement
+        assert "Debian Trixie had no fixed perl-base package on 2026-08-17." in statement
         assert "Owner: @gushinets." in statement
         assert "tracked by ANY-314." in statement
         expiration = entry["expired_at"]
