@@ -11,6 +11,7 @@ services:
       observability:
         condition: service_started
     environment:
+      APP_ENV: ${APP_ENV}
       DATABASE_URL: ${DATABASE_URL}
       CLOUDPAYMENTS_PUBLIC_ID: ${CLOUDPAYMENTS_PUBLIC_ID:-}
       CLOUDPAYMENTS_API_SECRET: ${CLOUDPAYMENTS_API_SECRET:-}

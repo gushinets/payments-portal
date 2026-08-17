@@ -103,6 +103,12 @@ The API container applies Alembic migrations before starting. Its internal
 `DATABASE_URL` must use the Docker service name `postgres:5432`; host tools use
 the loopback PostgreSQL port instead.
 
+Local API configuration uses the same environment variable names as production,
+with development values supplied by `.env.example`, local `.env`, or the
+worktree harness. Set `APP_ENV=development` for local Compose and keep
+`DATABASE_URL`, `APP_PUBLIC_BASE_URL`, `CORS_ALLOW_ORIGINS`, and
+`CLOUDPAYMENTS_ENABLED` explicit.
+
 ## Production Compose workflow
 
 Copy `.env.production.example` to `.env.production`, supply production secrets,
@@ -117,6 +123,17 @@ host ports (`80` and `443`); API, web, and PostgreSQL stay on the internal
 Docker network. Set `CADDY_DOMAIN` and `NEXT_PUBLIC_API_BASE_URL` to the public
 HTTPS origin before building because `NEXT_PUBLIC_*` values are captured in the
 Next.js production image.
+
+Set `APP_ENV=production` in the external production env file. Production uses
+the same variable names as local development, but required API values must be
+provided explicitly; `docker-compose.prod.yml` does not provide fallback values
+for `APP_ENV`, `APP_PUBLIC_BASE_URL`, `CORS_ALLOW_ORIGINS`, or
+`CLOUDPAYMENTS_ENABLED`, and it also requires explicit `POSTGRES_DB`,
+`POSTGRES_USER`, `POSTGRES_PASSWORD`, `CADDY_DOMAIN`, and
+`NEXT_PUBLIC_API_BASE_URL`. Production Compose derives the API `DATABASE_URL`
+from `POSTGRES_*` so PostgreSQL initialization and API migrations cannot drift.
+Keep `.env.production` outside Git and use `.env.production.example` only as a
+template.
 
 Never commit production secrets. Card data is handled by CloudPayments and must
 not be collected or stored by this repository.

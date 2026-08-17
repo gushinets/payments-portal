@@ -4,6 +4,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Annotated, Any
 
+from dotenv import load_dotenv
 from pydantic import StringConstraints, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
@@ -84,15 +85,17 @@ class Settings(BaseSettings):
         return self
 
 
-def _dotenv_file(settings_file: Path | str = Path(__file__)) -> str | None:
+def _load_settings_env_file(settings_file: Path | str = Path(__file__)) -> str | None:
     search_root = Path(settings_file).resolve().parent
     for directory in (search_root, *search_root.parents):
         dotenv_file = directory / ".env"
         if dotenv_file.is_file():
-            return str(dotenv_file)
+            dotenv_path = str(dotenv_file)
+            load_dotenv(dotenv_path, override=False)
+            return dotenv_path
         if (directory / "AGENTS.md").is_file() and (directory / "apps" / "api").is_dir():
             break
     return None
 
 
-settings = Settings(_env_file=_dotenv_file())
+settings = Settings(_env_file=_load_settings_env_file())

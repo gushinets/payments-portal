@@ -14,7 +14,7 @@ from apps.api.tests.support.settings import configure_api_test_environment
 configure_api_test_environment()
 
 from app.core.settings import AppEnv, Settings  # noqa: E402
-from app.core.settings import _dotenv_file  # noqa: E402
+from app.core.settings import _load_settings_env_file  # noqa: E402
 from app.domains.identity.router import normalize_email  # noqa: E402
 from apps.api.tests.factories.auth import (  # noqa: E402
     LoginRequestFactory,
@@ -320,6 +320,35 @@ def test_identity_default_scope_stays_aligned_with_ru_seed_data() -> None:
         assert session_module.DEFAULT_REGION == "ru"
 
 
+def test_runtime_dotenv_preserves_os_getenv_consumers(
+    tmp_path: Path,
+) -> None:
+    repository_root = tmp_path / "repository"
+    settings_file = repository_root / "apps" / "api" / "app" / "core" / "settings.py"
+    settings_file.parent.mkdir(parents=True)
+    (repository_root / "AGENTS.md").write_text("# Repository instructions\n", encoding="utf-8")
+    dotenv_path = repository_root / ".env"
+    dotenv_path.write_text(
+        "\n".join(
+            [
+                "LOG_LEVEL=DEBUG",
+                "OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318",
+                "OTEL_SERVICE_NAME=payment-portal-test",
+                "SKIP_LEGAL_SEED=true",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with patch.dict(os.environ, {"LOG_LEVEL": "WARNING"}, clear=True):
+        assert _load_settings_env_file(settings_file) == str(dotenv_path)
+
+        assert os.environ["LOG_LEVEL"] == "WARNING"
+        assert os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] == "http://127.0.0.1:4318"
+        assert os.environ["OTEL_SERVICE_NAME"] == "payment-portal-test"
+        assert os.environ["SKIP_LEGAL_SEED"] == "true"
+
+
 def test_dotenv_discovery_starts_from_settings_module_tree(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -336,11 +365,12 @@ def test_dotenv_discovery_starts_from_settings_module_tree(
     (tmp_path / "outside" / ".env").write_text("DATABASE_URL=sqlite+pysqlite:///outside.db\n", encoding="utf-8")
     monkeypatch.chdir(outside_working_directory)
 
-    assert _dotenv_file(settings_file) == str(repository_dotenv)
+    with patch.dict(os.environ, {}, clear=True):
+        assert _load_settings_env_file(settings_file) == str(repository_dotenv)
 
     repository_dotenv.unlink()
 
-    assert _dotenv_file(settings_file) is None
+    assert _load_settings_env_file(settings_file) is None
 
 
 def test_api_test_tooling_stays_out_of_main_dependencies() -> None:

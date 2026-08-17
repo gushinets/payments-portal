@@ -14,9 +14,9 @@ services:
       - no-new-privileges:true
     logging: *default-logging
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-anytoolai}
-      POSTGRES_USER: ${POSTGRES_USER:-anytoolai}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-anytoolai}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
     volumes:
       - postgres18_prod_data:/var/lib/postgresql
     networks:
@@ -40,12 +40,13 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://anytoolai:anytoolai@postgres:5432/anytoolai}
+      APP_ENV: ${APP_ENV:?APP_ENV is required}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:?POSTGRES_USER is required}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:?POSTGRES_DB is required}
       CLOUDPAYMENTS_PUBLIC_ID: ${CLOUDPAYMENTS_PUBLIC_ID:-}
       CLOUDPAYMENTS_API_SECRET: ${CLOUDPAYMENTS_API_SECRET:-}
-      CLOUDPAYMENTS_ENABLED: ${CLOUDPAYMENTS_ENABLED:-false}
-      CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-}
-      APP_PUBLIC_BASE_URL: ${APP_PUBLIC_BASE_URL:-}
+      CLOUDPAYMENTS_ENABLED: ${CLOUDPAYMENTS_ENABLED:?CLOUDPAYMENTS_ENABLED is required}
+      CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:?CORS_ALLOW_ORIGINS is required}
+      APP_PUBLIC_BASE_URL: ${APP_PUBLIC_BASE_URL:?APP_PUBLIC_BASE_URL is required}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USERNAME: ${SMTP_USERNAME:-}
@@ -73,7 +74,7 @@ services:
       context: .
       dockerfile: apps/web/Dockerfile
       args:
-        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-https://example.com}
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:?NEXT_PUBLIC_API_BASE_URL is required}
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -82,7 +83,7 @@ services:
       api:
         condition: service_healthy
     environment:
-      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-https://example.com}
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:?NEXT_PUBLIC_API_BASE_URL is required}
     networks:
       - edge
 
@@ -98,7 +99,7 @@ services:
       web:
         condition: service_started
     environment:
-      CADDY_DOMAIN: ${CADDY_DOMAIN:-example.com}
+      CADDY_DOMAIN: ${CADDY_DOMAIN:?CADDY_DOMAIN is required}
     ports:
       - "80:80"
       - "443:443"

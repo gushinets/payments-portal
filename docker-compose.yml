@@ -42,6 +42,7 @@ services:
       postgres:
         condition: service_healthy
     environment:
+      APP_ENV: ${APP_ENV:-development}
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-anytoolai}:${POSTGRES_PASSWORD:-anytoolai}@postgres:5432/${POSTGRES_DB:-anytoolai}
       CLOUDPAYMENTS_PUBLIC_ID: ${CLOUDPAYMENTS_PUBLIC_ID:-}
       CLOUDPAYMENTS_API_SECRET: ${CLOUDPAYMENTS_API_SECRET:-}
