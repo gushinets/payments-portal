@@ -1,15 +1,25 @@
 from __future__ import annotations
 
+from enum import StrEnum
 from pathlib import Path
 from typing import Annotated, Any
+from urllib.parse import quote
 
 from dotenv import load_dotenv
-from pydantic import field_validator
+from pydantic import StringConstraints, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+
+from app.core.url_validation import validate_production_cors_origin, validate_production_public_url
 
 
 def _split_csv_value(raw: str) -> tuple[str, ...]:
     return tuple(part.strip() for part in raw.split(",") if part.strip())
+
+
+class AppEnv(StrEnum):
+    DEVELOPMENT = "development"
+    TEST = "test"
+    PRODUCTION = "production"
 
 
 class Settings(BaseSettings):
@@ -17,14 +27,21 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
         frozen=True,
+        hide_input_in_errors=True,
     )
 
-    app_public_base_url: str = "http://localhost:3000"
-    database_url: str = "postgresql+psycopg://anytoolai:anytoolai@localhost:5432/anytoolai"
+    app_env: AppEnv
+    app_public_base_url: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+    database_url: Annotated[str, StringConstraints(strip_whitespace=True)] = ""
+    cloudpayments_enabled: bool
+    cors_allow_origins: Annotated[tuple[str, ...], NoDecode]
+    postgres_db: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+    postgres_user: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+    postgres_password: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+    postgres_host: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+    postgres_port: int
     cloudpayments_public_id: str = ""
     cloudpayments_api_secret: str = ""
-    cloudpayments_enabled: bool = False
-    cors_allow_origins: Annotated[tuple[str, ...], NoDecode] = ()
     smtp_host: str = ""
     smtp_port: int = 587
     smtp_username: str = ""
@@ -48,26 +65,73 @@ class Settings(BaseSettings):
             return ()
         return tuple(value)
 
+    @field_validator("app_public_base_url")
+    @classmethod
+    def require_https_public_base_url_in_production(cls, value: str, info: ValidationInfo) -> str:
+        if info.data.get("app_env") == AppEnv.PRODUCTION:
+            return validate_production_public_url(value, "APP_PUBLIC_BASE_URL")
+        return value
 
-def _dotenv_file(settings_file: Path | str = Path(__file__)) -> str | None:
+    @model_validator(mode="before")
+    @classmethod
+    def derive_database_url_from_postgres_environment(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        if str(data.get("database_url") or "").strip():
+            return data
+
+        postgres_db = str(data.get("postgres_db") or "").strip()
+        postgres_user = str(data.get("postgres_user") or "").strip()
+        postgres_password = str(data.get("postgres_password") or "")
+        if not (postgres_db and postgres_user and postgres_password):
+            return data
+
+        postgres_host = str(data.get("postgres_host") or "postgres").strip() or "postgres"
+        postgres_port = int(data.get("postgres_port") or 5432)
+        database_url = (
+            f"postgresql+psycopg://{quote(postgres_user, safe='')}:"
+            f"{quote(postgres_password, safe='')}@{postgres_host}:{postgres_port}/"
+            f"{quote(postgres_db, safe='')}"
+        )
+        return {**data, "database_url": database_url}
+
+    @field_validator("database_url")
+    @classmethod
+    def require_database_url(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("DATABASE_URL is required")
+        return value
+
+    @field_validator("cors_allow_origins")
+    @classmethod
+    def require_cors_origins(cls, value: tuple[str, ...], info: ValidationInfo) -> tuple[str, ...]:
+        if not value:
+            raise ValueError("CORS_ALLOW_ORIGINS is required")
+        if info.data.get("app_env") == AppEnv.PRODUCTION:
+            return tuple(validate_production_cors_origin(origin) for origin in value)
+        return value
+
+    @model_validator(mode="after")
+    def require_cloudpayments_credentials_when_enabled(self) -> Settings:
+        if self.cloudpayments_enabled:
+            if not self.cloudpayments_public_id.strip():
+                raise ValueError("CLOUDPAYMENTS_PUBLIC_ID is required when CLOUDPAYMENTS_ENABLED=true")
+            if not self.cloudpayments_api_secret.strip():
+                raise ValueError("CLOUDPAYMENTS_API_SECRET is required when CLOUDPAYMENTS_ENABLED=true")
+        return self
+
+
+def _load_settings_env_file(settings_file: Path | str = Path(__file__)) -> str | None:
     search_root = Path(settings_file).resolve().parent
     for directory in (search_root, *search_root.parents):
         dotenv_file = directory / ".env"
         if dotenv_file.is_file():
-            return str(dotenv_file)
-        if _is_repository_root(directory):
+            dotenv_path = str(dotenv_file)
+            load_dotenv(dotenv_path, override=False)
+            return dotenv_path
+        if (directory / "AGENTS.md").is_file() and (directory / "apps" / "api").is_dir():
             break
     return None
 
 
-def _is_repository_root(directory: Path) -> bool:
-    return (directory / "AGENTS.md").is_file() and (directory / "apps" / "api").is_dir()
-
-
-def _load_dotenv_into_environment(dotenv_file: str | None) -> str | None:
-    if dotenv_file:
-        load_dotenv(dotenv_file, override=False)
-    return dotenv_file
-
-
-settings = Settings(_env_file=_load_dotenv_into_environment(_dotenv_file()))
+settings = Settings(_env_file=_load_settings_env_file())

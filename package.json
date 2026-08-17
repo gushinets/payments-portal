@@ -24,7 +24,7 @@
     "lint:web": "npm --workspace @anytoolai/web run lint",
     "test:boundaries:web": "npm --workspace @anytoolai/web run test:boundaries",
     "typecheck:web": "npm --workspace @anytoolai/web run typecheck",
-    "dev:api": "python -m uvicorn app.main:app --reload --app-dir apps/api",
+    "dev:api": "python scripts/repo.py dev-api",
     "test:api": "pytest apps/api/tests"
   },
   "engines": {

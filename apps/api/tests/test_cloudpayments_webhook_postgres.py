@@ -3,7 +3,6 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
-import os
 import threading
 import time
 from collections.abc import Iterator
@@ -16,9 +15,9 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from apps.api.tests.support.postgres import reset_public_schema
+from apps.api.tests.support.settings import configure_api_test_environment
 
-os.environ["CLOUDPAYMENTS_API_SECRET"] = ""
-os.environ["SKIP_LEGAL_SEED"] = "true"
+configure_api_test_environment(CLOUDPAYMENTS_PUBLIC_ID="")
 
 pytestmark = pytest.mark.postgres
 

@@ -14,7 +14,7 @@ from app.core.observability import (
     metrics_response,
     request_context_middleware,
 )
-from app.core.settings import settings
+from app.core.settings import AppEnv, settings
 from app.domains.identity.password_reset import router as password_reset_router
 from app.domains.identity.router import router as auth_router
 from app.domains.legal.router import router as legal_router
@@ -64,6 +64,9 @@ def metrics():
 
 
 def get_cors_origins() -> tuple[str, ...]:
+    if settings.app_env != AppEnv.DEVELOPMENT:
+        return settings.cors_allow_origins
+
     return tuple(
         dict.fromkeys(
             (

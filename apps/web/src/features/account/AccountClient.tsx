@@ -159,8 +159,7 @@ export function AccountClient() {
     window.localStorage.removeItem(sessionStorageKey);
     window.dispatchEvent(new Event(sessionChangedEvent));
     // Full navigation discards root-layout session state and in-flight session requests.
-    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-    window.location.assign("/ru");
+    window.location.assign(new URL("/ru", window.location.href));
   }
 
   if (loading) {
