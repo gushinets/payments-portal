@@ -16,9 +16,12 @@ from .support.postgres import (
     run_migrations,
     validate_test_database_url,
 )
+from .support.settings import DEFAULT_API_TEST_ENV
 
 
 load_dotenv()
+for name, value in DEFAULT_API_TEST_ENV.items():
+    os.environ.setdefault(name, value)
 
 
 @pytest.fixture(scope="session")

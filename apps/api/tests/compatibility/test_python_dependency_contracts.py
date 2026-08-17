@@ -7,9 +7,11 @@ from unittest.mock import patch
 
 import pytest
 from pydantic import ValidationError
+from sqlalchemy.engine import make_url
 
 from apps.api.tests.support.settings import DEFAULT_API_TEST_ENV
 from apps.api.tests.support.settings import configure_api_test_environment
+from apps.api.tests.support.postgres import alembic_test_config
 
 configure_api_test_environment()
 
@@ -66,8 +68,15 @@ def test_settings_require_critical_environment_values_when_environment_is_absent
         "app_env",
         "app_public_base_url",
         "database_url",
+        "postgres_db",
+        "postgres_user",
+        "postgres_password",
+        "postgres_host",
+        "postgres_port",
         "cloudpayments_enabled",
         "cors_allow_origins",
+        "cloudpayments_public_id",
+        "cloudpayments_api_secret",
     }
 
 
@@ -144,6 +153,11 @@ def test_settings_preserve_dotenv_parsing_and_process_environment_precedence(
                 "APP_ENV=development",
                 'APP_PUBLIC_BASE_URL="https://dotenv.example/app"',
                 "DATABASE_URL=sqlite+pysqlite:///from-dotenv.db",
+                "POSTGRES_DB=payments_dotenv",
+                "POSTGRES_USER=dotenv_user",
+                "POSTGRES_PASSWORD=dotenv_password",
+                "POSTGRES_HOST=postgres",
+                "POSTGRES_PORT=5432",
                 "CLOUDPAYMENTS_PUBLIC_ID=pk_from_dotenv",
                 "CLOUDPAYMENTS_API_SECRET=secret-from-dotenv",
                 "CLOUDPAYMENTS_ENABLED=true",
@@ -188,6 +202,41 @@ def test_settings_preserve_dotenv_parsing_and_process_environment_precedence(
     assert loaded_settings.smtp_use_tls is False
 
 
+def test_settings_derives_encoded_database_url_from_postgres_environment() -> None:
+    environment = {
+        **DEFAULT_API_TEST_ENV,
+        "DATABASE_URL": "",
+        "POSTGRES_DB": "payments/prod",
+        "POSTGRES_USER": "payments user",
+        "POSTGRES_PASSWORD": "secret#value?",
+        "POSTGRES_HOST": "postgres",
+        "POSTGRES_PORT": "5432",
+    }
+    with patch.dict(os.environ, environment, clear=True):
+        loaded_settings = Settings(_env_file=None)
+
+    assert loaded_settings.database_url == (
+        "postgresql+psycopg://payments%20user:secret%23value%3F@postgres:5432/payments%2Fprod"
+    )
+
+
+def test_alembic_test_config_overrides_settings_database_url() -> None:
+    from app.core.settings import settings
+
+    original_database_url = settings.database_url
+    database_url = make_url("postgresql+psycopg://test_user:test_password@localhost:5432/payments_alembic_test")
+
+    with alembic_test_config(database_url):
+        assert os.environ["DATABASE_URL"] == (
+            "postgresql+psycopg://test_user:test_password@localhost:5432/payments_alembic_test"
+        )
+        assert settings.database_url == (
+            "postgresql+psycopg://test_user:test_password@localhost:5432/payments_alembic_test"
+        )
+
+    assert settings.database_url == original_database_url
+
+
 @pytest.mark.parametrize("app_env", ["", "staging", "prod"])
 def test_settings_reject_unsupported_app_environment(app_env: str) -> None:
     environment = {**DEFAULT_API_TEST_ENV, "APP_ENV": app_env}
@@ -201,10 +250,16 @@ def test_settings_reject_unsupported_app_environment(app_env: str) -> None:
 @pytest.mark.parametrize(
     ("missing_name", "field_name"),
     [
-        ("DATABASE_URL", "database_url"),
         ("APP_PUBLIC_BASE_URL", "app_public_base_url"),
+        ("POSTGRES_DB", "postgres_db"),
+        ("POSTGRES_USER", "postgres_user"),
+        ("POSTGRES_PASSWORD", "postgres_password"),
+        ("POSTGRES_HOST", "postgres_host"),
+        ("POSTGRES_PORT", "postgres_port"),
         ("CLOUDPAYMENTS_ENABLED", "cloudpayments_enabled"),
         ("CORS_ALLOW_ORIGINS", "cors_allow_origins"),
+        ("CLOUDPAYMENTS_PUBLIC_ID", "cloudpayments_public_id"),
+        ("CLOUDPAYMENTS_API_SECRET", "cloudpayments_api_secret"),
     ],
 )
 def test_settings_require_each_critical_environment_value(missing_name: str, field_name: str) -> None:
@@ -217,7 +272,18 @@ def test_settings_require_each_critical_environment_value(missing_name: str, fie
     assert {validation_error["loc"][0] for validation_error in error.value.errors()} == {field_name}
 
 
-@pytest.mark.parametrize("field_name", ["DATABASE_URL", "APP_PUBLIC_BASE_URL", "CORS_ALLOW_ORIGINS"])
+@pytest.mark.parametrize(
+    "field_name",
+    [
+        "APP_PUBLIC_BASE_URL",
+        "POSTGRES_DB",
+        "POSTGRES_USER",
+        "POSTGRES_PASSWORD",
+        "POSTGRES_HOST",
+        "POSTGRES_PORT",
+        "CORS_ALLOW_ORIGINS",
+    ],
+)
 def test_settings_reject_empty_critical_environment_values(field_name: str) -> None:
     environment = {**DEFAULT_API_TEST_ENV, field_name: ""}
     with patch.dict(os.environ, environment, clear=True):
@@ -262,20 +328,20 @@ def test_settings_reject_forbidden_production_cors_origins(origin: str) -> None:
     assert "CORS_ALLOW_ORIGINS contains a forbidden production origin" in str(error.value)
 
 
-@pytest.mark.parametrize("missing_name", ["CLOUDPAYMENTS_PUBLIC_ID", "CLOUDPAYMENTS_API_SECRET"])
-def test_settings_require_cloudpayments_credentials_when_provider_is_enabled(missing_name: str) -> None:
+@pytest.mark.parametrize("empty_name", ["CLOUDPAYMENTS_PUBLIC_ID", "CLOUDPAYMENTS_API_SECRET"])
+def test_settings_reject_empty_cloudpayments_credentials_when_provider_is_enabled(empty_name: str) -> None:
     environment = {
         **DEFAULT_API_TEST_ENV,
         "CLOUDPAYMENTS_ENABLED": "true",
         "CLOUDPAYMENTS_PUBLIC_ID": "pk_test_provider",
         "CLOUDPAYMENTS_API_SECRET": "secret-test-provider",
     }
-    environment.pop(missing_name)
+    environment[empty_name] = ""
     with patch.dict(os.environ, environment, clear=True):
         with pytest.raises(ValidationError) as error:
             Settings(_env_file=None)
 
-    assert f"{missing_name} is required when CLOUDPAYMENTS_ENABLED=true" in str(error.value)
+    assert f"{empty_name} is required when CLOUDPAYMENTS_ENABLED=true" in str(error.value)
 
 
 def test_settings_validation_messages_do_not_include_sensitive_values() -> None:

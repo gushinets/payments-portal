@@ -3,6 +3,7 @@ from __future__ import annotations
 from enum import StrEnum
 from pathlib import Path
 from typing import Annotated, Any
+from urllib.parse import quote
 
 from dotenv import load_dotenv
 from pydantic import StringConstraints, ValidationInfo, field_validator, model_validator
@@ -29,11 +30,16 @@ class Settings(BaseSettings):
 
     app_env: AppEnv
     app_public_base_url: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
-    database_url: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+    database_url: Annotated[str, StringConstraints(strip_whitespace=True)] = ""
     cloudpayments_enabled: bool
     cors_allow_origins: Annotated[tuple[str, ...], NoDecode]
-    cloudpayments_public_id: str = ""
-    cloudpayments_api_secret: str = ""
+    postgres_db: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+    postgres_user: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+    postgres_password: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+    postgres_host: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+    postgres_port: int
+    cloudpayments_public_id: str
+    cloudpayments_api_secret: str
     smtp_host: str = ""
     smtp_port: int = 587
     smtp_username: str = ""
@@ -62,6 +68,36 @@ class Settings(BaseSettings):
     def require_https_public_base_url_in_production(cls, value: str, info: ValidationInfo) -> str:
         if info.data.get("app_env") == AppEnv.PRODUCTION and not value.startswith("https://"):
             raise ValueError("APP_PUBLIC_BASE_URL must use https in production")
+        return value
+
+    @model_validator(mode="before")
+    @classmethod
+    def derive_database_url_from_postgres_environment(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        if str(data.get("database_url") or "").strip():
+            return data
+
+        postgres_db = str(data.get("postgres_db") or "").strip()
+        postgres_user = str(data.get("postgres_user") or "").strip()
+        postgres_password = str(data.get("postgres_password") or "")
+        if not (postgres_db and postgres_user and postgres_password):
+            return data
+
+        postgres_host = str(data.get("postgres_host") or "postgres").strip() or "postgres"
+        postgres_port = int(data.get("postgres_port") or 5432)
+        database_url = (
+            f"postgresql+psycopg://{quote(postgres_user, safe='')}:"
+            f"{quote(postgres_password, safe='')}@{postgres_host}:{postgres_port}/"
+            f"{quote(postgres_db, safe='')}"
+        )
+        return {**data, "database_url": database_url}
+
+    @field_validator("database_url")
+    @classmethod
+    def require_database_url(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("DATABASE_URL is required")
         return value
 
     @field_validator("cors_allow_origins")

@@ -77,14 +77,27 @@ def alembic_test_config(database_test_url: URL) -> Iterator[Config]:
     config = Config(str(REPOSITORY_ROOT / "apps/api/alembic.ini"))
     config.set_main_option("sqlalchemy.url", database_url)
 
-    # env.py reads DATABASE_URL first, so force it to the dedicated test DB.
+    # env.py uses app settings, so force the already-imported singleton and any
+    # later settings import to the dedicated test DB.
     # Suppress Alembic's fileConfig call so it cannot replace pytest's logging
     # handlers while migrations run inside the test process.
-    with (
-        patch.dict(os.environ, {"DATABASE_URL": database_url}),
-        patch("logging.config.fileConfig"),
-    ):
-        yield config
+    env_overrides = {
+        "DATABASE_URL": database_url,
+        "POSTGRES_DB": database_test_url.database or "",
+        "POSTGRES_USER": database_test_url.username or "",
+        "POSTGRES_PASSWORD": database_test_url.password or "",
+        "POSTGRES_HOST": database_test_url.host or "",
+        "POSTGRES_PORT": str(database_test_url.port or 5432),
+    }
+    with patch.dict(os.environ, env_overrides), patch("logging.config.fileConfig"):
+        from app.core.settings import settings
+
+        original_database_url = settings.database_url
+        try:
+            object.__setattr__(settings, "database_url", database_url)
+            yield config
+        finally:
+            object.__setattr__(settings, "database_url", original_database_url)
 
 
 def run_migrations(database_test_url: URL) -> None:

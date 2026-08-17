@@ -300,6 +300,7 @@ def write_runtime(config: RuntimeConfig) -> None:
         "POSTGRES_DB": config.database_name,
         "POSTGRES_USER": "anytoolai",
         "POSTGRES_PASSWORD": "anytoolai-local-only",
+        "POSTGRES_HOST": "postgres",
         "POSTGRES_PORT": str(config.postgres_port),
         "DATABASE_URL": (
             f"postgresql+psycopg://anytoolai:anytoolai-local-only@postgres:5432/"
@@ -1268,8 +1269,8 @@ def direct_api_environment(*, environ: dict[str, str] | None = None) -> dict[str
     runtime_env = read_runtime_env()
     defaults = {
         **runtime_env,
-        "DATABASE_URL": host_database_url_from_runtime(runtime_env),
         **local_env,
+        "DATABASE_URL": host_database_url_from_runtime(runtime_env),
         **base_environment,
     }
     defaults.setdefault("APP_ENV", "development")

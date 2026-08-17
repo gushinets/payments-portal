@@ -106,11 +106,19 @@ def test_production_compose_derives_database_url_from_postgres_environment() -> 
 
     assert "DATABASE_URL=" not in production_example
     assert "DATABASE_URL: ${DATABASE_URL:?" not in production_compose
-    assert (
-        "DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:?POSTGRES_USER is required}:"
-        "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/"
-        "${POSTGRES_DB:?POSTGRES_DB is required}"
-    ) in production_compose
+    assert "POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}" in production_compose
+    assert "POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}" in production_compose
+    assert "POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}" in production_compose
+    assert "POSTGRES_HOST: postgres" in production_compose
+    assert "POSTGRES_PORT: 5432" in production_compose
+
+
+def test_alembic_uses_validated_application_database_url() -> None:
+    alembic_env = Path("apps/api/alembic/env.py").read_text(encoding="utf-8")
+
+    assert "from app.core.settings import settings" in alembic_env
+    assert 'os.getenv("DATABASE_URL")' not in alembic_env
+    assert 'config.set_main_option("sqlalchemy.url", settings.database_url)' in alembic_env
 
 
 def test_direct_api_environment_uses_host_database_url_from_runtime(
@@ -164,6 +172,33 @@ def test_direct_api_environment_preserves_process_overrides(
 
     assert environment["LOG_LEVEL"] == "WARNING"
     assert environment["DATABASE_URL"] == "sqlite:///process.db"
+
+
+def test_direct_api_environment_keeps_host_database_url_over_local_dotenv(
+    monkeypatch,
+) -> None:
+    runtime_env = {
+        "APP_ENV": "development",
+        "APP_PUBLIC_BASE_URL": "http://localhost:39000",
+        "CORS_ALLOW_ORIGINS": "http://localhost:39000",
+        "POSTGRES_DB": "payments_test",
+        "POSTGRES_USER": "anytoolai",
+        "POSTGRES_PASSWORD": "anytoolai-local-only",
+        "POSTGRES_PORT": "32053",
+        "CLOUDPAYMENTS_ENABLED": "false",
+    }
+    monkeypatch.setattr(
+        repo,
+        "read_dotenv",
+        lambda: {"DATABASE_URL": "postgresql+psycopg://anytoolai:anytoolai@postgres:5432/anytoolai"},
+    )
+    monkeypatch.setattr(repo, "read_runtime_env", lambda: runtime_env)
+
+    environment = direct_api_environment(environ={})
+
+    assert environment["DATABASE_URL"] == (
+        "postgresql+psycopg://anytoolai:anytoolai-local-only@127.0.0.1:32053/payments_test"
+    )
 
 
 def test_host_database_url_from_runtime_url_encodes_credentials() -> None:
