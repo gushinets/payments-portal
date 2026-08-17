@@ -300,8 +300,31 @@ def test_settings_require_https_public_base_url_in_production() -> None:
 
 
 @pytest.mark.parametrize(
+    "public_url",
+    [
+        "https://localhost:3000",
+        "https://127.0.0.1:3000",
+        "https://[::1]:3000",
+    ],
+)
+def test_settings_reject_loopback_public_base_url_in_production(public_url: str) -> None:
+    environment = {
+        **DEFAULT_API_TEST_ENV,
+        "APP_ENV": "production",
+        "APP_PUBLIC_BASE_URL": public_url,
+        "CORS_ALLOW_ORIGINS": "https://payments.example.com",
+    }
+    with patch.dict(os.environ, environment, clear=True):
+        with pytest.raises(ValidationError) as error:
+            Settings(_env_file=None)
+
+    assert "APP_PUBLIC_BASE_URL must not use a loopback host in production" in str(error.value)
+
+
+@pytest.mark.parametrize(
     "origin",
     [
+        "http://payments.example.com",
         "http://localhost:3000",
         "http://127.0.0.1:3000",
         "http://[::1]:3000",
@@ -319,7 +342,11 @@ def test_settings_reject_forbidden_production_cors_origins(origin: str) -> None:
         with pytest.raises(ValidationError) as error:
             Settings(_env_file=None)
 
-    assert "CORS_ALLOW_ORIGINS contains a forbidden production origin" in str(error.value)
+    message = str(error.value)
+    assert (
+        "CORS_ALLOW_ORIGINS contains a forbidden production origin" in message
+        or "CORS_ALLOW_ORIGINS must use https origins in production" in message
+    )
 
 
 @pytest.mark.parametrize("empty_name", ["CLOUDPAYMENTS_PUBLIC_ID", "CLOUDPAYMENTS_API_SECRET"])

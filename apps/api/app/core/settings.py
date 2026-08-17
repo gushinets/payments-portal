@@ -9,6 +9,8 @@ from dotenv import load_dotenv
 from pydantic import StringConstraints, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
+from app.core.url_validation import validate_production_cors_origin, validate_production_public_url
+
 
 def _split_csv_value(raw: str) -> tuple[str, ...]:
     return tuple(part.strip() for part in raw.split(",") if part.strip())
@@ -66,8 +68,8 @@ class Settings(BaseSettings):
     @field_validator("app_public_base_url")
     @classmethod
     def require_https_public_base_url_in_production(cls, value: str, info: ValidationInfo) -> str:
-        if info.data.get("app_env") == AppEnv.PRODUCTION and not value.startswith("https://"):
-            raise ValueError("APP_PUBLIC_BASE_URL must use https in production")
+        if info.data.get("app_env") == AppEnv.PRODUCTION:
+            return validate_production_public_url(value, "APP_PUBLIC_BASE_URL")
         return value
 
     @model_validator(mode="before")
@@ -106,9 +108,7 @@ class Settings(BaseSettings):
         if not value:
             raise ValueError("CORS_ALLOW_ORIGINS is required")
         if info.data.get("app_env") == AppEnv.PRODUCTION:
-            forbidden_origins = ("localhost", "127.0.0.1", "::1", "*")
-            if any(forbidden_origin in origin for origin in value for forbidden_origin in forbidden_origins):
-                raise ValueError("CORS_ALLOW_ORIGINS contains a forbidden production origin")
+            return tuple(validate_production_cors_origin(origin) for origin in value)
         return value
 
     @model_validator(mode="after")
