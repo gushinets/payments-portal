@@ -1,12 +1,25 @@
-# Trivy exceptions are intentionally empty while the initial baseline is cleaned.
-# Every future entry must include all of: id, paths, statement, and expired_at.
-# Example:
-# vulnerabilities:
-#   - id: CVE-2099-0001
-#     paths: ["usr/lib/example"]
-#     statement: "Temporary upstream exception; tracked by ANY-000."
-#     expired_at: 2099-01-31
+# Every exception must include an ID, functional path or package-PURL scope,
+# an actionable statement naming the affected location and owner, and an expiry.
+# OS-package vulnerabilities normally require purls because Trivy image reports
+# do not provide a file path for dpkg packages.
 
-vulnerabilities: []
+vulnerabilities:
+  - id: CVE-2026-13221
+    purls: ["pkg:deb/debian/perl-base"]
+    statement: "Affected image: payment-portal-api built from apps/api/Dockerfile. Debian Trixie had no fixed perl-base package on 2026-08-17. Owner: @gushinets. Remove after the upstream fix; tracked by ANY-314."
+    expired_at: 2026-09-30
+  - id: CVE-2026-42496
+    purls: ["pkg:deb/debian/perl-base"]
+    statement: "Affected image: payment-portal-api built from apps/api/Dockerfile. Debian Trixie had no fixed perl-base package on 2026-08-17. Owner: @gushinets. Remove after the upstream fix; tracked by ANY-314."
+    expired_at: 2026-09-30
+  - id: CVE-2026-57433
+    purls: ["pkg:deb/debian/perl-base"]
+    statement: "Affected image: payment-portal-api built from apps/api/Dockerfile. Debian Trixie had no fixed perl-base package on 2026-08-17. Owner: @gushinets. Remove after the upstream fix; tracked by ANY-314."
+    expired_at: 2026-09-30
+  - id: CVE-2026-8376
+    purls: ["pkg:deb/debian/perl-base"]
+    statement: "Affected image: payment-portal-api built from apps/api/Dockerfile. Debian Trixie had no fixed perl-base package on 2026-08-17. Owner: @gushinets. Remove after the upstream fix; tracked by ANY-314."
+    expired_at: 2026-09-30
+
 misconfigurations: []
 secrets: []

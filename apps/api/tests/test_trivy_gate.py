@@ -127,15 +127,33 @@ def test_report_redaction_removes_secret_match_and_code(tmp_path: Path) -> None:
 
 def test_trivy_ignore_entries_are_scoped_explained_and_unexpired() -> None:
     policy = yaml.safe_load((ROOT / ".trivyignore.yaml").read_text(encoding="utf-8"))
+    approved_api_image_cves = {
+        "CVE-2026-13221",
+        "CVE-2026-42496",
+        "CVE-2026-57433",
+        "CVE-2026-8376",
+    }
+    configured_vulnerability_ids = {
+        entry["id"] for entry in policy.get("vulnerabilities", [])
+    }
+
+    assert approved_api_image_cves <= configured_vulnerability_ids
 
     for section in ("vulnerabilities", "misconfigurations", "secrets"):
         entries = policy.get(section, [])
         assert isinstance(entries, list)
         for entry in entries:
-            assert {"id", "paths", "statement", "expired_at"} <= entry.keys()
+            assert {"id", "statement", "expired_at"} <= entry.keys()
             assert entry["id"].strip()
-            assert entry["statement"].strip()
-            assert entry["paths"] and all(path.strip() for path in entry["paths"])
+            statement = entry["statement"].strip()
+            assert statement
+            assert "Owner:" in statement
+            assert "Affected image:" in statement or "Affected path:" in statement
+            scopes = [
+                *(entry.get("paths") or []),
+                *(entry.get("purls") or []),
+            ]
+            assert scopes and all(scope.strip() for scope in scopes)
             expiration = entry["expired_at"]
             if isinstance(expiration, str):
                 expiration = date.fromisoformat(expiration)
