@@ -390,7 +390,12 @@ worktree.
   `critical_vulnerabilities=0`, `fixable_high_vulnerabilities=0`,
   `high_or_critical_misconfigurations=0`, and
   `high_or_critical_secrets=0`. The Alpine and Node.js targets both reported
-  zero vulnerabilities.
+  zero vulnerabilities. The repository-wide `python3 scripts/repo.py trivy
+  gate .harness/trivy-any313` command was skipped because it requires the full
+  `filesystem.json`, `compose.json`, `api-image.json`, and `web-image.json`
+  report set, while this focused task scan intentionally produced only
+  `web-image.json`. That report was evaluated directly with
+  `summarize_trivy_report`, which returned zero blocking findings.
 - Web checks: lint, typecheck, 9 boundary tests, 26 component tests, and the
   production build all passed in the builder environment. The build generated
   all 17 expected static routes.
