@@ -67,8 +67,8 @@ exceptions for unfixed upstream `perl-base` Critical vulnerabilities.
   zero fixable High findings.
 - [x] Confirm the exception-filtered API report has zero blocking findings.
 - [x] Pass backend and repository checks supported by the local environment.
-- [ ] Pass the GitHub `Security scans` workflow on the PR's amd64 image.
-- [ ] Mirror final evidence and the draft PR URL to ANY-314.
+- [x] Pass the GitHub `Security scans` workflow on the PR's amd64 image.
+- [x] Mirror final evidence and the PR URL to ANY-314.
 
 ## Implementation evidence
 
@@ -113,9 +113,13 @@ exceptions for unfixed upstream `perl-base` Critical vulnerabilities.
   that no fixed Trixie package was available on 2026-08-17, assigns owner
   `@gushinets`, references ANY-314, scopes to
   `pkg:deb/debian/perl-base`, and expires on 2026-09-30.
-- The local image is arm64 because it was built on Apple Silicon. The PR
-  `Security scans` result for the GitHub runner's amd64 image remains the
-  authoritative cross-architecture completion gate.
+- The local image is arm64 because it was built on Apple Silicon. The
+  authoritative amd64 `Security scans` run `32023883507` passed against commit
+  `8627939de53e92e9a5c6c650249e12cdef12088c`. Artifact
+  `trivy-reports-32023883507-1` (ID `9286383323`, digest
+  `sha256:60231fbacd329455676c5ec4922251429071e5fb0b58f2867b07e39b6fe395fe`)
+  reports Debian 13.6, 0 Critical, 0 fixable High, and 0 blocking findings for
+  the filtered API image report.
 
 ## Validation
 

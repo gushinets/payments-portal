@@ -1,7 +1,7 @@
 # Security Requirements
 
 Status: authoritative
-Last verified: 2026-08-15
+Last verified: 2026-08-17
 
 ## Sensitive data
 
