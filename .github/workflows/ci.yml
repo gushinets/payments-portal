@@ -85,6 +85,8 @@ jobs:
       APP_PUBLIC_BASE_URL: http://localhost:3000
       CADDY_DOMAIN: localhost
       POSTGRES_PASSWORD: ci-local-only
+      POSTGRES_HOST: 127.0.0.1
+      POSTGRES_PORT: "5432"
     services:
       postgres:
         image: postgres:18.4-alpine3.22@sha256:774521500f4c22761b25a6bdb772a0a3c2e8dd32468210bdad9231c5752ea398
@@ -125,6 +127,8 @@ jobs:
             echo "POSTGRES_DB=$POSTGRES_DB"
             echo "POSTGRES_USER=$POSTGRES_USER"
             echo "POSTGRES_PASSWORD=$POSTGRES_PASSWORD"
+            echo "POSTGRES_HOST=$POSTGRES_HOST"
+            echo "POSTGRES_PORT=$POSTGRES_PORT"
             echo "POSTGRES_HOST_AUTH_METHOD=trust"
             echo "APP_ENV=$APP_ENV"
             echo "APP_PUBLIC_BASE_URL=$APP_PUBLIC_BASE_URL"
