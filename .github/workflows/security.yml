@@ -85,6 +85,9 @@ jobs:
           docker build --target production --file apps/api/Dockerfile
           --tag "$API_IMAGE" .
 
+      - name: Verify production API runtime
+        run: security/trivy/verify-api-runtime.sh "$API_IMAGE"
+
       - name: Build production web image
         run: >-
           docker build --file apps/web/Dockerfile
