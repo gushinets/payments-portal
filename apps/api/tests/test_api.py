@@ -3,14 +3,13 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
-import os
 import uuid
 from datetime import UTC, datetime, timedelta, timezone
 
-os.environ["DATABASE_URL"] = "sqlite+pysqlite:///:memory:"
-os.environ["CLOUDPAYMENTS_API_SECRET"] = ""
-os.environ["CLOUDPAYMENTS_PUBLIC_ID"] = "pk_test_provider"
-os.environ["SKIP_LEGAL_SEED"] = "true"
+from apps.api.tests.support.settings import configure_api_test_environment
+from apps.api.tests.support.settings import override_settings
+
+configure_api_test_environment()
 
 from fastapi.testclient import TestClient  # noqa: E402
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware  # noqa: E402
@@ -4180,24 +4179,22 @@ def test_legal_required_documents_are_scoped_by_tenant_and_region() -> None:
 
 def test_cloudpayments_webhook_rejects_invalid_signature_when_secret_is_set() -> None:
     require_signed_cloudpayments_webhooks_for_test()
-    os.environ["CLOUDPAYMENTS_API_SECRET"] = "test-secret"
     app.dependency_overrides.clear()
 
     from app.settings import settings  # noqa: E402
 
-    object.__setattr__(settings, "cloudpayments_api_secret", "test-secret")
-
-    response = client.post(
-        "/api/cloudpayments/pay",
-        headers={"Content-HMAC": "invalid-signature"},
-        json={
-            "InvoiceId": "invoice-2",
-            "TransactionId": "tx-2",
-            "AccountId": "user@example.com",
-            "Amount": "1490.00",
-            "Currency": "RUB",
-        },
-    )
+    with override_settings(settings, cloudpayments_api_secret="test-secret"):
+        response = client.post(
+            "/api/cloudpayments/pay",
+            headers={"Content-HMAC": "invalid-signature"},
+            json={
+                "InvoiceId": "invoice-2",
+                "TransactionId": "tx-2",
+                "AccountId": "user@example.com",
+                "Amount": "1490.00",
+                "Currency": "RUB",
+            },
+        )
 
     assert response.status_code == 400
     assert response.json()["detail"] == "invalid_cloudpayments_signature"
@@ -4208,9 +4205,6 @@ def test_cloudpayments_webhook_rejects_invalid_signature_when_secret_is_set() ->
     assert event.status == "failed"
     assert event.error_message == "invalid_cloudpayments_signature"
     assert event.processed_at
-
-    object.__setattr__(settings, "cloudpayments_api_secret", "")
-    os.environ["CLOUDPAYMENTS_API_SECRET"] = ""
 
 
 def test_cloudpayments_webhook_rejects_missing_secret_when_provider_is_enabled() -> None:

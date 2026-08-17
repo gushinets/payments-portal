@@ -11,6 +11,10 @@ from scripts.repo import (
     canonical_check_environment,
     check_expected_legal_versions,
     check_required_markdown_link_content,
+    direct_api_environment,
+    host_database_url_from_runtime,
+    validate_production_caddy_domain,
+    validate_production_deployment_environment,
     resolve_cloudpayments_api_secret,
     resolve_cloudpayments_public_id,
 )
@@ -96,6 +100,147 @@ def test_canonical_checks_use_a_worktree_scoped_temp_directory(tmp_path: Path) -
     assert first_temp.is_dir()
     assert second_temp.is_dir()
     assert first_temp != second_temp
+
+
+def test_production_compose_derives_database_url_from_postgres_environment() -> None:
+    production_compose = Path("docker-compose.prod.yml").read_text(encoding="utf-8")
+    production_example = Path(".env.production.example").read_text(encoding="utf-8")
+
+    assert "DATABASE_URL=" not in production_example
+    assert "DATABASE_URL: ${DATABASE_URL:?" not in production_compose
+    assert "POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}" in production_compose
+    assert "POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}" in production_compose
+    assert "POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}" in production_compose
+    assert "POSTGRES_HOST: postgres" in production_compose
+    assert "POSTGRES_PORT: 5432" in production_compose
+
+
+def test_validate_production_caddy_domain_accepts_public_hostname() -> None:
+    assert validate_production_caddy_domain("payments.example.test") == "payments.example.test"
+
+
+@pytest.mark.parametrize(
+    "value, message",
+    [
+        ("", "CADDY_DOMAIN is required"),
+        ("https://payments.example.test", "CADDY_DOMAIN must not include a URL scheme"),
+        ("localhost", "CADDY_DOMAIN must not use a loopback host in production"),
+        ("127.0.0.1", "CADDY_DOMAIN must not use a loopback host in production"),
+        ("[::1]", "CADDY_DOMAIN must not use a loopback host in production"),
+        ("payments.example.test:443", "CADDY_DOMAIN must be a bare public hostname"),
+        ("payments.example.test/path", "CADDY_DOMAIN must be a bare public hostname"),
+    ],
+)
+def test_validate_production_caddy_domain_rejects_invalid_hostnames(value: str, message: str) -> None:
+    with pytest.raises(repo.HarnessError, match=message):
+        validate_production_caddy_domain(value)
+
+
+def test_validate_production_deployment_environment_requires_public_caddy_domain() -> None:
+    with pytest.raises(repo.HarnessError, match="CADDY_DOMAIN must not use a loopback host in production"):
+        validate_production_deployment_environment(environ={"CADDY_DOMAIN": "localhost"})
+
+
+def test_alembic_uses_validated_application_database_url() -> None:
+    alembic_env = Path("apps/api/alembic/env.py").read_text(encoding="utf-8")
+
+    assert "from app.core.settings import settings" in alembic_env
+    assert 'os.getenv("DATABASE_URL")' not in alembic_env
+    assert 'config.set_main_option("sqlalchemy.url", settings.database_url.replace("%", "%%"))' in alembic_env
+
+
+def test_direct_api_environment_uses_host_database_url_from_runtime(
+    monkeypatch,
+) -> None:
+    runtime_env = {
+        "APP_ENV": "development",
+        "APP_PUBLIC_BASE_URL": "http://localhost:39000",
+        "CORS_ALLOW_ORIGINS": "http://localhost:39000",
+        "DATABASE_URL": "postgresql+psycopg://anytoolai:anytoolai-local-only@postgres:5432/payments_test",
+        "POSTGRES_DB": "payments_test",
+        "POSTGRES_USER": "anytoolai",
+        "POSTGRES_PASSWORD": "anytoolai-local-only",
+        "POSTGRES_PORT": "32053",
+        "CLOUDPAYMENTS_ENABLED": "false",
+    }
+    monkeypatch.setattr(repo, "read_dotenv", dict)
+    monkeypatch.setattr(repo, "read_runtime_env", lambda: runtime_env)
+
+    environment = direct_api_environment(environ={})
+
+    assert environment["APP_ENV"] == "development"
+    assert environment["DATABASE_URL"] == (
+        "postgresql+psycopg://anytoolai:anytoolai-local-only@127.0.0.1:32053/payments_test"
+    )
+    assert environment["SKIP_LEGAL_SEED"] == "true"
+
+
+def test_direct_api_environment_preserves_process_overrides(
+    monkeypatch,
+) -> None:
+    runtime_env = {
+        "APP_ENV": "development",
+        "APP_PUBLIC_BASE_URL": "http://localhost:39000",
+        "CORS_ALLOW_ORIGINS": "http://localhost:39000",
+        "POSTGRES_DB": "payments_test",
+        "POSTGRES_USER": "anytoolai",
+        "POSTGRES_PASSWORD": "anytoolai-local-only",
+        "POSTGRES_PORT": "32053",
+        "CLOUDPAYMENTS_ENABLED": "false",
+    }
+    monkeypatch.setattr(repo, "read_dotenv", lambda: {"LOG_LEVEL": "DEBUG", "DATABASE_URL": "sqlite:///dotenv.db"})
+    monkeypatch.setattr(repo, "read_runtime_env", lambda: runtime_env)
+
+    environment = direct_api_environment(
+        environ={
+            "LOG_LEVEL": "WARNING",
+            "DATABASE_URL": "sqlite:///process.db",
+        }
+    )
+
+    assert environment["LOG_LEVEL"] == "WARNING"
+    assert environment["DATABASE_URL"] == "sqlite:///process.db"
+
+
+def test_direct_api_environment_keeps_host_database_url_over_local_dotenv(
+    monkeypatch,
+) -> None:
+    runtime_env = {
+        "APP_ENV": "development",
+        "APP_PUBLIC_BASE_URL": "http://localhost:39000",
+        "CORS_ALLOW_ORIGINS": "http://localhost:39000",
+        "POSTGRES_DB": "payments_test",
+        "POSTGRES_USER": "anytoolai",
+        "POSTGRES_PASSWORD": "anytoolai-local-only",
+        "POSTGRES_PORT": "32053",
+        "CLOUDPAYMENTS_ENABLED": "false",
+    }
+    monkeypatch.setattr(
+        repo,
+        "read_dotenv",
+        lambda: {"DATABASE_URL": "postgresql+psycopg://anytoolai:anytoolai@postgres:5432/anytoolai"},
+    )
+    monkeypatch.setattr(repo, "read_runtime_env", lambda: runtime_env)
+
+    environment = direct_api_environment(environ={})
+
+    assert environment["DATABASE_URL"] == (
+        "postgresql+psycopg://anytoolai:anytoolai-local-only@127.0.0.1:32053/payments_test"
+    )
+
+
+def test_host_database_url_from_runtime_url_encodes_credentials() -> None:
+    assert (
+        host_database_url_from_runtime(
+            {
+                "POSTGRES_DB": "payments/test",
+                "POSTGRES_USER": "any/tool",
+                "POSTGRES_PASSWORD": "secret value",
+                "POSTGRES_PORT": "32053",
+            }
+        )
+        == "postgresql+psycopg://any%2Ftool:secret%20value@127.0.0.1:32053/payments%2Ftest"
+    )
 
 
 def test_fast_check_passes_the_scoped_environment_to_every_subprocess(
@@ -287,7 +432,7 @@ def test_write_runtime_protects_generated_secret_file(
     monkeypatch.setattr(repo, "HARNESS_DIR", harness_dir)
     monkeypatch.setattr(repo, "RUNTIME_JSON", runtime_json)
     monkeypatch.setattr(repo, "RUNTIME_ENV", runtime_env)
-    monkeypatch.setattr(repo, "read_dotenv", lambda: {})
+    monkeypatch.setattr(repo, "read_dotenv", dict)
 
     repo.write_runtime(
         repo.RuntimeConfig(
@@ -308,6 +453,7 @@ def test_write_runtime_protects_generated_secret_file(
 
     assert stat.S_IMODE(harness_dir.stat().st_mode) == 0o700
     assert stat.S_IMODE(runtime_env.stat().st_mode) == 0o600
+    assert "APP_ENV=development" in runtime_env.read_text(encoding="utf-8")
     assert "CLOUDPAYMENTS_API_SECRET=test-cloudpayments-signing-key" in (runtime_env.read_text(encoding="utf-8"))
 
 
@@ -321,7 +467,7 @@ def test_write_runtime_does_not_leave_secret_when_protection_fails(
     monkeypatch.setattr(repo, "HARNESS_DIR", harness_dir)
     monkeypatch.setattr(repo, "RUNTIME_JSON", runtime_json)
     monkeypatch.setattr(repo, "RUNTIME_ENV", runtime_env)
-    monkeypatch.setattr(repo, "read_dotenv", lambda: {})
+    monkeypatch.setattr(repo, "read_dotenv", dict)
     monkeypatch.setenv("CLOUDPAYMENTS_API_SECRET", "super-secret")
 
     def fail_protection(path: Path) -> None:

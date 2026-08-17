@@ -7,6 +7,7 @@ import argparse
 import ast
 import hashlib
 import importlib
+import ipaddress
 import json
 import os
 import re
@@ -170,6 +171,45 @@ def read_dotenv(path: Path = ROOT / ".env") -> dict[str, str]:
     return values
 
 
+def is_loopback_hostname(hostname: str) -> bool:
+    normalized_hostname = hostname.strip().lower()
+    if normalized_hostname == "localhost" or normalized_hostname.endswith(".localhost"):
+        return True
+    try:
+        return ipaddress.ip_address(normalized_hostname).is_loopback
+    except ValueError:
+        return False
+
+
+def validate_production_caddy_domain(value: str) -> str:
+    candidate = value.strip()
+    if not candidate:
+        raise HarnessError("CADDY_DOMAIN is required")
+    if "://" in candidate:
+        raise HarnessError("CADDY_DOMAIN must not include a URL scheme")
+
+    parsed = urllib.parse.urlparse(f"//{candidate}")
+    if (
+        not parsed.hostname
+        or parsed.path
+        or parsed.params
+        or parsed.query
+        or parsed.fragment
+        or parsed.username
+        or parsed.password
+        or parsed.port is not None
+    ):
+        raise HarnessError("CADDY_DOMAIN must be a bare public hostname")
+    if is_loopback_hostname(parsed.hostname):
+        raise HarnessError("CADDY_DOMAIN must not use a loopback host in production")
+    return candidate
+
+
+def validate_production_deployment_environment(*, environ: dict[str, str] | None = None) -> None:
+    environment = os.environ if environ is None else environ
+    validate_production_caddy_domain(environment.get("CADDY_DOMAIN", ""))
+
+
 def resolve_cloudpayments_public_id(
     local_env: dict[str, str], *, environ: dict[str, str] | None = None
 ) -> str:
@@ -296,9 +336,11 @@ def write_runtime(config: RuntimeConfig) -> None:
         cors_allow_origins = f"{caddy_origin},{app_public_base_url}"
     values = {
         "COMPOSE_PROJECT_NAME": config.compose_project,
+        "APP_ENV": "development",
         "POSTGRES_DB": config.database_name,
         "POSTGRES_USER": "anytoolai",
         "POSTGRES_PASSWORD": "anytoolai-local-only",
+        "POSTGRES_HOST": "postgres",
         "POSTGRES_PORT": str(config.postgres_port),
         "DATABASE_URL": (
             f"postgresql+psycopg://anytoolai:anytoolai-local-only@postgres:5432/"
@@ -532,7 +574,16 @@ def import_api() -> tuple[object, object]:
     api_root = str(ROOT / "apps" / "api")
     if api_root not in sys.path:
         sys.path.insert(0, api_root)
+    os.environ.setdefault("APP_ENV", "test")
+    os.environ.setdefault("APP_PUBLIC_BASE_URL", "http://localhost:3000")
     os.environ.setdefault("DATABASE_URL", "sqlite+pysqlite:///:memory:")
+    os.environ.setdefault("POSTGRES_DB", "anytoolai")
+    os.environ.setdefault("POSTGRES_USER", "anytoolai")
+    os.environ.setdefault("POSTGRES_PASSWORD", "anytoolai")
+    os.environ.setdefault("POSTGRES_HOST", "postgres")
+    os.environ.setdefault("POSTGRES_PORT", "5432")
+    os.environ.setdefault("CLOUDPAYMENTS_ENABLED", "false")
+    os.environ.setdefault("CORS_ALLOW_ORIGINS", "http://localhost:3000")
     os.environ.setdefault("SKIP_LEGAL_SEED", "true")
     from app.database import Base  # type: ignore
     from app.main import app as fastapi_app  # type: ignore
@@ -1025,6 +1076,7 @@ def cmd_harness_smoke(_: argparse.Namespace) -> None:
     write_runtime(config)
     env = read_runtime_env()
     caddy_origin = f"http://localhost:{runtime_caddy_port(config)}"
+    assert env["APP_ENV"] == "development"
     assert env["CADDY_PORT"] == str(runtime_caddy_port(config))
     assert env["NEXT_PUBLIC_API_BASE_URL"] == caddy_origin
     cors_origins = set(env["CORS_ALLOW_ORIGINS"].split(","))
@@ -1059,6 +1111,11 @@ def cmd_pr_title(args: argparse.Namespace) -> None:
             'Invalid PR title. Required format: "ANY-<number> - <summary>"'
         )
     print("PR title is valid.")
+
+
+def cmd_validate_production_env(_: argparse.Namespace) -> None:
+    validate_production_deployment_environment()
+    print("Production deployment environment is valid.")
 
 
 def summarize_trivy_report(path: Path) -> TrivyGateSummary:
@@ -1249,6 +1306,46 @@ def cmd_check(args: argparse.Namespace) -> None:
             print("SKIP: browser suite requires RUN_E2E=true and a running harness stack")
 
 
+def host_database_url_from_runtime(env: dict[str, str]) -> str:
+    user = urllib.parse.quote(env["POSTGRES_USER"], safe="")
+    password = urllib.parse.quote(env["POSTGRES_PASSWORD"], safe="")
+    database = urllib.parse.quote(env["POSTGRES_DB"], safe="")
+    return f"postgresql+psycopg://{user}:{password}@127.0.0.1:{env['POSTGRES_PORT']}/{database}"
+
+
+def direct_api_environment(*, environ: dict[str, str] | None = None) -> dict[str, str]:
+    base_environment = dict(os.environ if environ is None else environ)
+    local_env = read_dotenv()
+    runtime_env = read_runtime_env()
+    defaults = {
+        **runtime_env,
+        **local_env,
+        "DATABASE_URL": host_database_url_from_runtime(runtime_env),
+        **base_environment,
+    }
+    defaults.setdefault("APP_ENV", "development")
+    defaults.setdefault("APP_PUBLIC_BASE_URL", "http://localhost:3000")
+    defaults.setdefault("CLOUDPAYMENTS_ENABLED", "false")
+    defaults.setdefault("CORS_ALLOW_ORIGINS", defaults.get("APP_PUBLIC_BASE_URL", "http://localhost:3000"))
+    defaults.setdefault("SKIP_LEGAL_SEED", "true")
+    return defaults
+
+
+def cmd_dev_api(_: argparse.Namespace) -> None:
+    run(
+        [
+            sys.executable,
+            "-m",
+            "uvicorn",
+            "app.main:app",
+            "--reload",
+            "--app-dir",
+            "apps/api",
+        ],
+        env=direct_api_environment(),
+    )
+
+
 def api_pytest_command(*args: str) -> list[str]:
     return [
         sys.executable,
@@ -1383,6 +1480,8 @@ def build_parser() -> argparse.ArgumentParser:
     check = sub.add_parser("check")
     check.add_argument("--fast", action="store_true")
     check.set_defaults(func=cmd_check)
+    sub.add_parser("dev-api").set_defaults(func=cmd_dev_api)
+    sub.add_parser("validate-production-env").set_defaults(func=cmd_validate_production_env)
     title = sub.add_parser("pr-title")
     title.add_argument("title")
     title.set_defaults(func=cmd_pr_title)
@@ -1408,7 +1507,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def reexec_in_repository_venv_if_required() -> None:
-    if len(sys.argv) < 2 or sys.argv[1] not in {"check", "coverage", "generate", "lint", "test"}:
+    if len(sys.argv) < 2 or sys.argv[1] not in {"check", "coverage", "dev-api", "generate", "lint", "test"}:
         return
     python = (
         ROOT / ".venv" / "Scripts" / "python.exe"

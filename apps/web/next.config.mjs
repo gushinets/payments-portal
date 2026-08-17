@@ -15,7 +15,10 @@ const nextConfig = {
   reactStrictMode: true,
   allowedDevOrigins,
   output: "standalone",
-  outputFileTracingRoot: repositoryRoot
+  outputFileTracingRoot: repositoryRoot,
+  experimental: {
+    useTypeScriptCli: false
+  }
 };
 
 export default nextConfig;

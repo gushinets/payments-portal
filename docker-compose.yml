@@ -24,7 +24,7 @@ services:
     networks:
       - backend
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-anytoolai} -d ${POSTGRES_DB:-anytoolai}"]
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -42,7 +42,13 @@ services:
       postgres:
         condition: service_healthy
     environment:
+      APP_ENV: ${APP_ENV:-development}
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-anytoolai}:${POSTGRES_PASSWORD:-anytoolai}@postgres:5432/${POSTGRES_DB:-anytoolai}
+      POSTGRES_DB: ${POSTGRES_DB:-anytoolai}
+      POSTGRES_USER: ${POSTGRES_USER:-anytoolai}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-anytoolai}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
       CLOUDPAYMENTS_PUBLIC_ID: ${CLOUDPAYMENTS_PUBLIC_ID:-}
       CLOUDPAYMENTS_API_SECRET: ${CLOUDPAYMENTS_API_SECRET:-}
       CLOUDPAYMENTS_ENABLED: ${CLOUDPAYMENTS_ENABLED:-false}

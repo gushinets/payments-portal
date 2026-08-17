@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import sys
 from logging.config import fileConfig
 from pathlib import Path
@@ -11,6 +10,7 @@ from sqlalchemy import engine_from_config, pool
 api_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(api_root))
 
+from app.core.settings import settings  # noqa: E402
 from app.database import Base  # noqa: E402
 from app import models  # noqa: E402,F401
 
@@ -19,9 +19,7 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-database_url = os.getenv("DATABASE_URL")
-if database_url:
-    config.set_main_option("sqlalchemy.url", database_url)
+config.set_main_option("sqlalchemy.url", settings.database_url.replace("%", "%%"))
 
 target_metadata = Base.metadata
 
