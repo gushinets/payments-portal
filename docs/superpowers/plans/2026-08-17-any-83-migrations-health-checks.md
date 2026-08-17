@@ -1,6 +1,6 @@
 # ANY-83 Migration and Health-Check Lifecycle Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Run Alembic as an explicit one-shot Compose prerequisite and expose safe canonical liveness/readiness endpoints while preserving every existing health route.
 
@@ -39,7 +39,7 @@
 - Consumes: `app.core.database.SessionLocal`, SQLAlchemy `text` and `SQLAlchemyError`, FastAPI `APIRouter`, and `JSONResponse`.
 - Produces: `canonical_health_router`, `legacy_health_router`, and `database_is_ready() -> bool` from `app.health`.
 
-- [ ] **Step 1: Write focused failing health tests**
+- [x] **Step 1: Write focused failing health tests**
 
 Create `apps/api/tests/test_health.py` with:
 
@@ -113,7 +113,7 @@ def test_readiness_database_failure_is_safe(monkeypatch) -> None:
         assert "secret" not in response.text
 ```
 
-- [ ] **Step 2: Run the focused module and verify the red state**
+- [x] **Step 2: Run the focused module and verify the red state**
 
 Run:
 
@@ -126,7 +126,7 @@ virtual environment is unavailable, run the same command with the development
 API image and a repository bind mount; a missing interpreter is not the
 expected red state.
 
-- [ ] **Step 3: Implement the shared health infrastructure module**
+- [x] **Step 3: Implement the shared health infrastructure module**
 
 Create `apps/api/app/health.py` with:
 
@@ -200,7 +200,7 @@ Register them before metrics in `create_app()`:
     app.include_router(metrics_router)
 ```
 
-- [ ] **Step 4: Update existing compatibility assertions**
+- [x] **Step 4: Update existing compatibility assertions**
 
 In `apps/api/tests/test_api.py`, make `test_healthcheck` assert the exact safe
 legacy body and make the existing combined health test cover both families:
@@ -259,7 +259,7 @@ Also assert the OpenAPI health tag at the canonical route:
 In `apps/api/tests/compatibility/test_uvicorn_smoke.py`, request
 `/api/health/live` and expect `{"status": "alive"}`.
 
-- [ ] **Step 5: Run focused health and compatibility tests and verify green**
+- [x] **Step 5: Run focused health and compatibility tests and verify green**
 
 Run:
 
@@ -275,7 +275,7 @@ Run:
 Expected: every selected test passes; the failing-session test returns two
 safe 503 responses.
 
-- [ ] **Step 6: Run API lint and inspect the health diff**
+- [x] **Step 6: Run API lint and inspect the health diff**
 
 Run:
 
@@ -291,7 +291,7 @@ git diff -- apps/api/app/health.py apps/api/app/main.py apps/api/tests
 Expected: Ruff and whitespace checks pass; no health response includes
 configuration or exception content.
 
-- [ ] **Step 7: Commit the health API contract**
+- [x] **Step 7: Commit the health API contract**
 
 ```bash
 git add apps/api/app/health.py apps/api/app/main.py apps/api/tests/test_health.py \
@@ -317,7 +317,7 @@ git commit -m "ANY-83 - Add safe liveness and readiness endpoints"
 - Consumes: the existing API development/production image targets, validated settings environment, PostgreSQL healthcheck, and Caddy `/api/*` route.
 - Produces: a `migrate` service whose successful completion is required by `api`, Uvicorn-only image startup commands, and canonical Docker readiness probes.
 
-- [ ] **Step 1: Write failing deployment contract tests**
+- [x] **Step 1: Write failing deployment contract tests**
 
 Create `apps/api/tests/test_deployment_contract.py` with:
 
@@ -384,7 +384,7 @@ def test_caddy_proxies_canonical_health_routes(path: str) -> None:
     assert "reverse_proxy /api/*" in caddyfile
 ```
 
-- [ ] **Step 2: Run the deployment contract module and verify the red state**
+- [x] **Step 2: Run the deployment contract module and verify the red state**
 
 Run:
 
@@ -395,7 +395,7 @@ Run:
 Expected: migration-service assertions fail because neither Compose file has a
 `migrate` service; Dockerfile and healthcheck assertions also fail.
 
-- [ ] **Step 3: Remove Alembic from the API image startup commands**
+- [x] **Step 3: Remove Alembic from the API image startup commands**
 
 Replace the development `CMD` in `apps/api/Dockerfile` with:
 
@@ -409,7 +409,7 @@ Replace the production `CMD` with:
 CMD ["sh", "-c", "PYTHONPATH=apps/api python -c 'from app.core.settings import settings' && exec python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips \"${FORWARDED_ALLOW_IPS:-*}\" --app-dir apps/api"]
 ```
 
-- [ ] **Step 4: Add the development migration prerequisite**
+- [x] **Step 4: Add the development migration prerequisite**
 
 In `docker-compose.yml`, extract the current API build, environment, and source
 volume into YAML anchors. Add this service before `api`:
@@ -450,7 +450,7 @@ with:
 Change the development API healthcheck URL to
 `http://localhost:8000/api/health/ready`.
 
-- [ ] **Step 5: Add the production migration prerequisite**
+- [x] **Step 5: Add the production migration prerequisite**
 
 In `docker-compose.prod.yml`, extract the production API build and current API
 environment into YAML anchors. Add this service before `api`:
@@ -482,7 +482,7 @@ Use the same anchors in `api`, replace its direct PostgreSQL prerequisite with
 the successful migration condition, and change its healthcheck URL to
 `http://localhost:8000/api/health/ready`.
 
-- [ ] **Step 6: Update the agent override healthcheck**
+- [x] **Step 6: Update the agent override healthcheck**
 
 In `docker-compose.agent.yml`, change the API healthcheck URL to:
 
@@ -493,7 +493,7 @@ http://localhost:8000/api/health/ready
 Keep its PostgreSQL and observability dependencies; Compose mapping merge must
 also retain the base file's successful migration prerequisite.
 
-- [ ] **Step 7: Run static tests and render both Compose models**
+- [x] **Step 7: Run static tests and render both Compose models**
 
 Run:
 
@@ -515,7 +515,7 @@ development model has `api.depends_on.migrate.condition` equal to
 `service_completed_successfully`. The production render uses only the explicit
 non-secret contract-test values shown above and does not write an env file.
 
-- [ ] **Step 8: Prove the merged agent model retains the migration gate**
+- [x] **Step 8: Prove the merged agent model retains the migration gate**
 
 Run the harness-equivalent config command with local-only contract ports:
 
@@ -534,7 +534,7 @@ Expected: the rendered `api.depends_on` contains `migrate` with
 `service_completed_successfully`, `postgres` with `service_healthy`, and
 `observability` with `service_started`.
 
-- [ ] **Step 9: Commit the deployment lifecycle**
+- [x] **Step 9: Commit the deployment lifecycle**
 
 ```bash
 git add apps/api/Dockerfile apps/api/tests/test_deployment_contract.py \
@@ -556,7 +556,7 @@ git commit -m "ANY-83 - Gate API startup on migrations"
 - Consumes: the implemented health routers, one-shot migration lifecycle, repository generator, and existing documentation authority hierarchy.
 - Produces: current operational documentation and a generated OpenAPI artifact containing both canonical and compatibility health paths.
 
-- [ ] **Step 1: Add the generated-contract assertions before regeneration**
+- [x] **Step 1: Add the generated-contract assertions before regeneration**
 
 Extend `test_app_factory_builds_independent_apps_with_stable_routes` with:
 
@@ -579,7 +579,7 @@ python3 scripts/repo.py generate --check
 Expected: the generator reports that `docs/generated/openapi.json` is stale
 because the canonical health paths are absent from the checked-in artifact.
 
-- [ ] **Step 2: Document the local and production lifecycle**
+- [x] **Step 2: Document the local and production lifecycle**
 
 Update `README.md` so it states:
 
@@ -597,7 +597,7 @@ monitoring use readiness. The legacy `/health`, `/health/live`, and
 Replace every statement that says the API container applies migrations during
 startup with the one-shot service contract.
 
-- [ ] **Step 3: Update the authoritative deployment architecture**
+- [x] **Step 3: Update the authoritative deployment architecture**
 
 Update `docs/architecture/deployment.md` to show this flow:
 
@@ -617,7 +617,7 @@ flowchart LR
 Describe canonical liveness/readiness, the safe readiness 503 response, legacy
 route compatibility, and the existing Caddy `/api/*` path used by HetrixTools.
 
-- [ ] **Step 4: Regenerate artifacts through the repository generator**
+- [x] **Step 4: Regenerate artifacts through the repository generator**
 
 Run:
 
@@ -636,7 +636,7 @@ docker compose run --rm --no-deps \
   migrate python scripts/repo.py generate
 ```
 
-- [ ] **Step 5: Run documentation, generator, and OpenAPI checks**
+- [x] **Step 5: Run documentation, generator, and OpenAPI checks**
 
 Run:
 
@@ -651,7 +651,7 @@ git diff --check
 Expected: documentation and generator checks pass, the app-factory test passes,
 and no generated file other than the OpenAPI artifact changes.
 
-- [ ] **Step 6: Commit documentation and generated contracts**
+- [x] **Step 6: Commit documentation and generated contracts**
 
 ```bash
 git add README.md docs/architecture/deployment.md docs/generated/openapi.json \
@@ -672,7 +672,7 @@ git commit -m "ANY-83 - Document migration and health operations"
 - Consumes: the final Compose stack, canonical and legacy health routes, repository checks, and Linear issue URL.
 - Produces: positive and negative migration lifecycle evidence, focused and canonical test evidence, and a clean local `ANY-83` branch ready for human review.
 
-- [ ] **Step 1: Run the complete backend and architecture checks**
+- [x] **Step 1: Run the complete backend and architecture checks**
 
 Run:
 
@@ -688,7 +688,7 @@ Expected: backend, architecture, documentation, generated-artifact, and
 whitespace checks pass. PostgreSQL-marked tests must use the dedicated test
 database and never the application database.
 
-- [ ] **Step 2: Start the real development stack and inspect ordering**
+- [x] **Step 2: Start the real development stack and inspect ordering**
 
 Run:
 
@@ -704,7 +704,7 @@ docker compose --project-name "$(python3 -c 'import json; print(json.load(open("
 Expected: `migrate` is `Exited (0)` before API is healthy; PostgreSQL, API,
 web, Caddy, and observability are running without restart loops.
 
-- [ ] **Step 3: Exercise direct and Caddy health contracts**
+- [x] **Step 3: Exercise direct and Caddy health contracts**
 
 Read ports from `.harness/runtime.json` and request:
 
@@ -721,7 +721,7 @@ Caddy       /api/health/ready  -> 200 {"status":"ready"}
 Expected: every body is exact and every response has `X-Request-ID`; no body
 contains application configuration or database details.
 
-- [ ] **Step 4: Prove a failed migration blocks API startup**
+- [x] **Step 4: Prove a failed migration blocks API startup**
 
 Create an ignored temporary Compose override in `.harness/tmp` that changes the
 migration command and removes conflicting host port publications:
@@ -765,7 +765,7 @@ docker compose --project-name payments-any83-negative \
   down --volumes --remove-orphans
 ```
 
-- [ ] **Step 5: Inspect logs for unexpected runtime behavior**
+- [x] **Step 5: Inspect logs for unexpected runtime behavior**
 
 Inspect migration, API, PostgreSQL, and Caddy logs from the successful stack.
 
@@ -773,7 +773,7 @@ Expected: one successful Alembic run, no Alembic invocation in API logs, no
 traceback for successful probes, and no secret, authorization header,
 connection string, raw token, or payment field in captured output.
 
-- [ ] **Step 6: Run the broadest supported canonical check**
+- [x] **Step 6: Run the broadest supported canonical check**
 
 Run:
 
@@ -786,7 +786,7 @@ all API, Compose, documentation, generation, web build, and security checks
 supported by repository containers and record `npm run check` as skipped for
 that exact environment reason.
 
-- [ ] **Step 7: Write the execution evidence record**
+- [x] **Step 7: Write the execution evidence record**
 
 Create `docs/exec-plans/active/ANY-83-migrations-health-checks.md` in English.
 Record the Linear URL, implemented scope, commit IDs, exact commands and
@@ -795,7 +795,7 @@ direct/Caddy response bodies, log inspection, canonical-check result, and every
 skipped check with its reason. Do not include credentials, environment values,
 connection strings, raw logs containing secrets, or invented results.
 
-- [ ] **Step 8: Review the final diff and mark this plan complete**
+- [x] **Step 8: Review the final diff and mark this plan complete**
 
 Run:
 
@@ -811,7 +811,7 @@ secrets, migration changes, payment/legal behavior changes, and accidental
 route removal. Change every completed checkbox in this plan from `[ ]` to
 `[x]` only after its evidence exists.
 
-- [ ] **Step 9: Commit final evidence**
+- [x] **Step 9: Commit final evidence**
 
 ```bash
 git add docs/exec-plans/active/ANY-83-migrations-health-checks.md \
@@ -819,7 +819,7 @@ git add docs/exec-plans/active/ANY-83-migrations-health-checks.md \
 git commit -m "ANY-83 - Record migration health-check evidence"
 ```
 
-- [ ] **Step 10: Prepare the human-review handoff**
+- [x] **Step 10: Prepare the human-review handoff**
 
 Report the local branch, commit list, test and runtime evidence, skipped checks,
 and Linear URL. Use PR title `ANY-83 - Separate migrations and add health
