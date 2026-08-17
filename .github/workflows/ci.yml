@@ -81,6 +81,10 @@ jobs:
       NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
       CORS_ALLOW_ORIGINS: http://localhost:3000
       CLOUDPAYMENTS_ENABLED: "false"
+      APP_ENV: test
+      APP_PUBLIC_BASE_URL: http://localhost:3000
+      CADDY_DOMAIN: localhost
+      POSTGRES_PASSWORD: ci-local-only
     services:
       postgres:
         image: postgres:18.4-alpine3.22@sha256:774521500f4c22761b25a6bdb772a0a3c2e8dd32468210bdad9231c5752ea398
@@ -111,8 +115,8 @@ jobs:
         run: |
           mkdir -p "$CI_ARTIFACTS"
           ci_env="$RUNNER_TEMP/payment-portal-ci.env"
-          application_database_url="postgresql+psycopg://${POSTGRES_USER}@127.0.0.1:5432/${POSTGRES_DB}"
-          test_database_url="postgresql+psycopg://${POSTGRES_USER}@127.0.0.1:5432/${POSTGRES_DB}_tests"
+          application_database_url="postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@127.0.0.1:5432/${POSTGRES_DB}"
+          test_database_url="postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@127.0.0.1:5432/${POSTGRES_DB}_tests"
           echo "::add-mask::$application_database_url"
           echo "::add-mask::$test_database_url"
           {
@@ -120,12 +124,16 @@ jobs:
             echo "DATABASE_URL=$application_database_url"
             echo "POSTGRES_DB=$POSTGRES_DB"
             echo "POSTGRES_USER=$POSTGRES_USER"
+            echo "POSTGRES_PASSWORD=$POSTGRES_PASSWORD"
             echo "POSTGRES_HOST_AUTH_METHOD=trust"
+            echo "APP_ENV=$APP_ENV"
+            echo "APP_PUBLIC_BASE_URL=$APP_PUBLIC_BASE_URL"
             echo "API_PORT=$API_PORT"
             echo "WEB_PORT=$WEB_PORT"
             echo "NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL"
             echo "CORS_ALLOW_ORIGINS=$CORS_ALLOW_ORIGINS"
             echo "CLOUDPAYMENTS_ENABLED=$CLOUDPAYMENTS_ENABLED"
+            echo "CADDY_DOMAIN=$CADDY_DOMAIN"
           } > "$ci_env"
           echo "CI_ENV_FILE=$ci_env" >> "$GITHUB_ENV"
       - name: Run PostgreSQL migration cycle

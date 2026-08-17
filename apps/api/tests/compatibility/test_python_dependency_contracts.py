@@ -75,8 +75,6 @@ def test_settings_require_critical_environment_values_when_environment_is_absent
         "postgres_port",
         "cloudpayments_enabled",
         "cors_allow_origins",
-        "cloudpayments_public_id",
-        "cloudpayments_api_secret",
     }
 
 
@@ -258,8 +256,6 @@ def test_settings_reject_unsupported_app_environment(app_env: str) -> None:
         ("POSTGRES_PORT", "postgres_port"),
         ("CLOUDPAYMENTS_ENABLED", "cloudpayments_enabled"),
         ("CORS_ALLOW_ORIGINS", "cors_allow_origins"),
-        ("CLOUDPAYMENTS_PUBLIC_ID", "cloudpayments_public_id"),
-        ("CLOUDPAYMENTS_API_SECRET", "cloudpayments_api_secret"),
     ],
 )
 def test_settings_require_each_critical_environment_value(missing_name: str, field_name: str) -> None:

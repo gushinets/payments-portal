@@ -38,8 +38,8 @@ class Settings(BaseSettings):
     postgres_password: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
     postgres_host: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
     postgres_port: int
-    cloudpayments_public_id: str
-    cloudpayments_api_secret: str
+    cloudpayments_public_id: str = ""
+    cloudpayments_api_secret: str = ""
     smtp_host: str = ""
     smtp_port: int = 587
     smtp_username: str = ""
