@@ -47,26 +47,28 @@ def test_app_factory_preserves_validation_and_development_cors_contract() -> Non
 def test_app_factory_preserves_configured_production_cors_contract() -> None:
     import app.main as main_module
 
-    with override_settings(
-        main_module.settings,
-        app_env=main_module.AppEnv.PRODUCTION,
-        cors_allow_origins=("https://payments.example.com",),
+    with (
+        override_settings(
+            main_module.settings,
+            app_env=main_module.AppEnv.PRODUCTION,
+            cors_allow_origins=("https://payments.example.com",),
+        ),
+        TestClient(main_module.create_app()) as client,
     ):
-        with TestClient(main_module.create_app()) as client:
-            allowed_response = client.options(
-                "/api/auth/register",
-                headers={
-                    "Origin": "https://payments.example.com",
-                    "Access-Control-Request-Method": "POST",
-                },
-            )
-            rejected_response = client.options(
-                "/api/auth/register",
-                headers={
-                    "Origin": "https://untrusted.example.com",
-                    "Access-Control-Request-Method": "POST",
-                },
-            )
+        allowed_response = client.options(
+            "/api/auth/register",
+            headers={
+                "Origin": "https://payments.example.com",
+                "Access-Control-Request-Method": "POST",
+            },
+        )
+        rejected_response = client.options(
+            "/api/auth/register",
+            headers={
+                "Origin": "https://untrusted.example.com",
+                "Access-Control-Request-Method": "POST",
+            },
+        )
 
     assert allowed_response.status_code == 200
     assert allowed_response.headers["access-control-allow-origin"] == ("https://payments.example.com")
@@ -77,26 +79,28 @@ def test_app_factory_preserves_configured_production_cors_contract() -> None:
 def test_app_factory_uses_explicit_cors_origins_in_test_mode() -> None:
     import app.main as main_module
 
-    with override_settings(
-        main_module.settings,
-        app_env=main_module.AppEnv.TEST,
-        cors_allow_origins=("https://test-web.example.com",),
+    with (
+        override_settings(
+            main_module.settings,
+            app_env=main_module.AppEnv.TEST,
+            cors_allow_origins=("https://test-web.example.com",),
+        ),
+        TestClient(main_module.create_app()) as client,
     ):
-        with TestClient(main_module.create_app()) as client:
-            explicit_response = client.options(
-                "/api/auth/register",
-                headers={
-                    "Origin": "https://test-web.example.com",
-                    "Access-Control-Request-Method": "POST",
-                },
-            )
-            localhost_response = client.options(
-                "/api/auth/register",
-                headers={
-                    "Origin": "http://localhost:3000",
-                    "Access-Control-Request-Method": "POST",
-                },
-            )
+        explicit_response = client.options(
+            "/api/auth/register",
+            headers={
+                "Origin": "https://test-web.example.com",
+                "Access-Control-Request-Method": "POST",
+            },
+        )
+        localhost_response = client.options(
+            "/api/auth/register",
+            headers={
+                "Origin": "http://localhost:3000",
+                "Access-Control-Request-Method": "POST",
+            },
+        )
 
     assert explicit_response.status_code == 200
     assert explicit_response.headers["access-control-allow-origin"] == ("https://test-web.example.com")

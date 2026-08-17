@@ -9,7 +9,10 @@ const allowedDevOrigins = (
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  allowedDevOrigins
+  allowedDevOrigins,
+  experimental: {
+    useTypeScriptCli: false
+  }
 };
 
 export default nextConfig;

@@ -222,15 +222,13 @@ def test_alembic_test_config_overrides_settings_database_url() -> None:
     from app.core.settings import settings
 
     original_database_url = settings.database_url
-    database_url = make_url("postgresql+psycopg://test_user:test_password@localhost:5432/payments_alembic_test")
+    database_url = make_url("postgresql+psycopg://test_user:secret%23value%3F@localhost:5432/payments_alembic_test")
+    expected_database_url = "postgresql+psycopg://test_user:secret%23value%3F@localhost:5432/payments_alembic_test"
 
-    with alembic_test_config(database_url):
-        assert os.environ["DATABASE_URL"] == (
-            "postgresql+psycopg://test_user:test_password@localhost:5432/payments_alembic_test"
-        )
-        assert settings.database_url == (
-            "postgresql+psycopg://test_user:test_password@localhost:5432/payments_alembic_test"
-        )
+    with alembic_test_config(database_url) as config:
+        assert config.get_main_option("sqlalchemy.url") == expected_database_url
+        assert os.environ["DATABASE_URL"] == expected_database_url
+        assert settings.database_url == expected_database_url
 
     assert settings.database_url == original_database_url
 

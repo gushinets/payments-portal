@@ -118,7 +118,7 @@ def test_alembic_uses_validated_application_database_url() -> None:
 
     assert "from app.core.settings import settings" in alembic_env
     assert 'os.getenv("DATABASE_URL")' not in alembic_env
-    assert 'config.set_main_option("sqlalchemy.url", settings.database_url)' in alembic_env
+    assert 'config.set_main_option("sqlalchemy.url", settings.database_url.replace("%", "%%"))' in alembic_env
 
 
 def test_direct_api_environment_uses_host_database_url_from_runtime(
@@ -135,7 +135,7 @@ def test_direct_api_environment_uses_host_database_url_from_runtime(
         "POSTGRES_PORT": "32053",
         "CLOUDPAYMENTS_ENABLED": "false",
     }
-    monkeypatch.setattr(repo, "read_dotenv", lambda: {})
+    monkeypatch.setattr(repo, "read_dotenv", dict)
     monkeypatch.setattr(repo, "read_runtime_env", lambda: runtime_env)
 
     environment = direct_api_environment(environ={})
@@ -404,7 +404,7 @@ def test_write_runtime_protects_generated_secret_file(
     monkeypatch.setattr(repo, "HARNESS_DIR", harness_dir)
     monkeypatch.setattr(repo, "RUNTIME_JSON", runtime_json)
     monkeypatch.setattr(repo, "RUNTIME_ENV", runtime_env)
-    monkeypatch.setattr(repo, "read_dotenv", lambda: {})
+    monkeypatch.setattr(repo, "read_dotenv", dict)
 
     repo.write_runtime(
         repo.RuntimeConfig(
@@ -439,7 +439,7 @@ def test_write_runtime_does_not_leave_secret_when_protection_fails(
     monkeypatch.setattr(repo, "HARNESS_DIR", harness_dir)
     monkeypatch.setattr(repo, "RUNTIME_JSON", runtime_json)
     monkeypatch.setattr(repo, "RUNTIME_ENV", runtime_env)
-    monkeypatch.setattr(repo, "read_dotenv", lambda: {})
+    monkeypatch.setattr(repo, "read_dotenv", dict)
     monkeypatch.setenv("CLOUDPAYMENTS_API_SECRET", "super-secret")
 
     def fail_protection(path: Path) -> None:

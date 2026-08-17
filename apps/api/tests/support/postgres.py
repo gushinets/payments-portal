@@ -75,7 +75,7 @@ def alembic_test_config(database_test_url: URL) -> Iterator[Config]:
     validate_test_database_url(database_test_url)
     database_url = database_test_url.render_as_string(hide_password=False)
     config = Config(str(REPOSITORY_ROOT / "apps/api/alembic.ini"))
-    config.set_main_option("sqlalchemy.url", database_url)
+    config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 
     # env.py uses app settings, so force the already-imported singleton and any
     # later settings import to the dedicated test DB.

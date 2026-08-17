@@ -78,12 +78,12 @@ jobs:
       POSTGRES_USER: anytoolai
       API_PORT: "8000"
       WEB_PORT: "3000"
-      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
-      CORS_ALLOW_ORIGINS: http://localhost:3000
+      NEXT_PUBLIC_API_BASE_URL: https://payments.example.test
+      CORS_ALLOW_ORIGINS: https://payments.example.test
       CLOUDPAYMENTS_ENABLED: "false"
-      APP_ENV: test
-      APP_PUBLIC_BASE_URL: http://localhost:3000
-      CADDY_DOMAIN: localhost
+      APP_ENV: production
+      APP_PUBLIC_BASE_URL: https://payments.example.test
+      CADDY_DOMAIN: payments.example.test
       POSTGRES_PASSWORD: ci-local-only
       POSTGRES_HOST: 127.0.0.1
       POSTGRES_PORT: "5432"
