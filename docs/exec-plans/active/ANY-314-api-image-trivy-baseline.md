@@ -82,8 +82,10 @@ exceptions for unfixed upstream `perl-base` Critical vulnerabilities.
   `mount`, and `util-linux` to `2.41.5-0+deb13u1`, plus `login` to
   `1:4.16.0-2+really2.41.5-0+deb13u1`.
 - The final local arm64 image is 73,307,795 bytes, runs as `app`, uses Python
-  3.12.14, and retains `perl-base 5.40.1-6`. Its local manifest-list ID is
-  `sha256:3453638d388d6568ba2578f0093178e7f5691e5e0a8070377241a4ebe4804168`.
+  3.12.14, and retains `perl-base 5.40.1-6`. Its image config ID is
+  `sha256:3c54b195e6eddcaa075152bd2b92557880b551d4f9a38bebeef2307e4e04f432`;
+  the BuildKit manifest-list ID is not used as stable evidence because its
+  provenance attestation changes between otherwise identical builds.
 - `security/trivy/verify-api-runtime.sh payment-portal-api:any-314`: passed with
   the fixed minimum package version, non-root user, and
   `GET /health/live -> {"status":"ok"}`.
@@ -137,4 +139,3 @@ exceptions for unfixed upstream `perl-base` Critical vulnerabilities.
 - `npm run check:fast` and `npm run check` were both attempted and could not run
   because `npm` is absent from the local `PATH`. PR CI remains responsible for
   the Node-owned and canonical aggregate checks.
-
