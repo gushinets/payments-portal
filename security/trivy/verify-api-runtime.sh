@@ -10,6 +10,12 @@ if [ "$configured_user" != "app" ]; then
 fi
 
 docker run --rm --entrypoint sh "$image_ref" -ec '
+  resolved_uid=$(id -u)
+  if [ "$resolved_uid" -eq 0 ]; then
+    echo "Expected runtime user app to resolve to a non-root UID, got: $resolved_uid" >&2
+    exit 1
+  fi
+
   set -- $(dpkg-query -W util-linux)
   installed=$2
   if ! dpkg --compare-versions "$installed" ge "2.41.5-0+deb13u1"; then
@@ -48,7 +54,8 @@ endpoint=$(docker port "$container_id" 8000/tcp)
 response=""
 attempt=0
 while [ "$attempt" -lt 50 ]; do
-  if response=$(curl --fail --silent --show-error "http://${endpoint}/health/live" 2>/dev/null); then
+  if response=$(curl --connect-timeout 1 --max-time 2 \
+    --fail --silent --show-error "http://${endpoint}/health/live" 2>/dev/null); then
     break
   fi
   if [ "$(docker inspect --format '{{.State.Running}}' "$container_id")" != "true" ]; then

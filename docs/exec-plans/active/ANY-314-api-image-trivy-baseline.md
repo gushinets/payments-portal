@@ -121,9 +121,17 @@ exceptions for unfixed upstream `perl-base` Critical vulnerabilities.
 
 - Exception policy red/green: the new contract failed before the four entries
   were added, then passed; complete `test_trivy_gate.py`: 8 passed.
+- Independent review hardening: the exception contract now requires exactly the
+  four approved CVEs, exact package PURL, image/Dockerfile, owner, ticket,
+  no-fix reason, and expiry. A temporary fifth-CVE mutation failed as expected;
+  the approved policy then passed with 8 Trivy gate tests.
 - Runtime baseline red/green: the verifier rejected the old image at
   `util-linux 2.41-5`, then passed against the rebuilt image at
   `2.41.5-0+deb13u1`.
+- The final verifier also proves that `app` resolves to a nonzero UID and bounds
+  each liveness request to a one-second connection timeout and two-second total
+  timeout. Its detached container already remains available for logs until the
+  cleanup trap removes it.
 - Focused API checks:
   `test_trivy_gate.py` plus `test_python_dependency_contracts.py`: 62 passed.
 - Complete API checks: 207 passed, 15 skipped. All 15 skips are PostgreSQL-only
