@@ -13,6 +13,8 @@ from scripts.repo import (
     check_required_markdown_link_content,
     direct_api_environment,
     host_database_url_from_runtime,
+    validate_production_caddy_domain,
+    validate_production_deployment_environment,
     resolve_cloudpayments_api_secret,
     resolve_cloudpayments_public_id,
 )
@@ -111,6 +113,32 @@ def test_production_compose_derives_database_url_from_postgres_environment() -> 
     assert "POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}" in production_compose
     assert "POSTGRES_HOST: postgres" in production_compose
     assert "POSTGRES_PORT: 5432" in production_compose
+
+
+def test_validate_production_caddy_domain_accepts_public_hostname() -> None:
+    assert validate_production_caddy_domain("payments.example.test") == "payments.example.test"
+
+
+@pytest.mark.parametrize(
+    "value, message",
+    [
+        ("", "CADDY_DOMAIN is required"),
+        ("https://payments.example.test", "CADDY_DOMAIN must not include a URL scheme"),
+        ("localhost", "CADDY_DOMAIN must not use a loopback host in production"),
+        ("127.0.0.1", "CADDY_DOMAIN must not use a loopback host in production"),
+        ("[::1]", "CADDY_DOMAIN must not use a loopback host in production"),
+        ("payments.example.test:443", "CADDY_DOMAIN must be a bare public hostname"),
+        ("payments.example.test/path", "CADDY_DOMAIN must be a bare public hostname"),
+    ],
+)
+def test_validate_production_caddy_domain_rejects_invalid_hostnames(value: str, message: str) -> None:
+    with pytest.raises(repo.HarnessError, match=message):
+        validate_production_caddy_domain(value)
+
+
+def test_validate_production_deployment_environment_requires_public_caddy_domain() -> None:
+    with pytest.raises(repo.HarnessError, match="CADDY_DOMAIN must not use a loopback host in production"):
+        validate_production_deployment_environment(environ={"CADDY_DOMAIN": "localhost"})
 
 
 def test_alembic_uses_validated_application_database_url() -> None:

@@ -152,6 +152,10 @@ jobs:
       - name: Validate Compose configuration
         shell: bash
         run: |
+          set -a
+          source "$CI_ENV_FILE"
+          set +a
+          python scripts/repo.py validate-production-env
           docker compose --env-file "$CI_ENV_FILE" -f docker-compose.yml config --quiet
           docker compose --env-file "$CI_ENV_FILE" -f docker-compose.prod.yml config --quiet
       - name: Build production images

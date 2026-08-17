@@ -7,6 +7,7 @@ import argparse
 import ast
 import hashlib
 import importlib
+import ipaddress
 import json
 import os
 import re
@@ -168,6 +169,45 @@ def read_dotenv(path: Path = ROOT / ".env") -> dict[str, str]:
         key, value = line.split("=", 1)
         values[key.strip()] = value.strip().strip("'\"")
     return values
+
+
+def is_loopback_hostname(hostname: str) -> bool:
+    normalized_hostname = hostname.strip().lower()
+    if normalized_hostname == "localhost" or normalized_hostname.endswith(".localhost"):
+        return True
+    try:
+        return ipaddress.ip_address(normalized_hostname).is_loopback
+    except ValueError:
+        return False
+
+
+def validate_production_caddy_domain(value: str) -> str:
+    candidate = value.strip()
+    if not candidate:
+        raise HarnessError("CADDY_DOMAIN is required")
+    if "://" in candidate:
+        raise HarnessError("CADDY_DOMAIN must not include a URL scheme")
+
+    parsed = urllib.parse.urlparse(f"//{candidate}")
+    if (
+        not parsed.hostname
+        or parsed.path
+        or parsed.params
+        or parsed.query
+        or parsed.fragment
+        or parsed.username
+        or parsed.password
+        or parsed.port is not None
+    ):
+        raise HarnessError("CADDY_DOMAIN must be a bare public hostname")
+    if is_loopback_hostname(parsed.hostname):
+        raise HarnessError("CADDY_DOMAIN must not use a loopback host in production")
+    return candidate
+
+
+def validate_production_deployment_environment(*, environ: dict[str, str] | None = None) -> None:
+    environment = os.environ if environ is None else environ
+    validate_production_caddy_domain(environment.get("CADDY_DOMAIN", ""))
 
 
 def resolve_cloudpayments_public_id(
@@ -1073,6 +1113,11 @@ def cmd_pr_title(args: argparse.Namespace) -> None:
     print("PR title is valid.")
 
 
+def cmd_validate_production_env(_: argparse.Namespace) -> None:
+    validate_production_deployment_environment()
+    print("Production deployment environment is valid.")
+
+
 def summarize_trivy_report(path: Path) -> TrivyGateSummary:
     try:
         report = json.loads(path.read_text(encoding="utf-8"))
@@ -1436,6 +1481,7 @@ def build_parser() -> argparse.ArgumentParser:
     check.add_argument("--fast", action="store_true")
     check.set_defaults(func=cmd_check)
     sub.add_parser("dev-api").set_defaults(func=cmd_dev_api)
+    sub.add_parser("validate-production-env").set_defaults(func=cmd_validate_production_env)
     title = sub.add_parser("pr-title")
     title.add_argument("title")
     title.set_defaults(func=cmd_pr_title)
