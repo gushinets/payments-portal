@@ -387,21 +387,28 @@ def test_healthcheck() -> None:
     response = client.get("/health")
 
     assert response.status_code == 200
-    assert response.json()["status"] == "ok"
+    assert response.json() == {"status": "ok"}
 
 
 def test_liveness_readiness_metrics_and_request_id() -> None:
     request_id = "agent-check-123"
-    live_response = client.get("/health/live", headers={"X-Request-ID": request_id})
-    ready_response = client.get("/health/ready")
+    canonical_live_response = client.get(
+        "/api/health/live",
+        headers={"X-Request-ID": request_id},
+    )
+    canonical_ready_response = client.get("/api/health/ready")
+    legacy_live_response = client.get("/health/live")
+    legacy_ready_response = client.get("/health/ready")
     metrics_response = client.get("/metrics")
 
-    assert live_response.status_code == 200
-    assert live_response.headers["X-Request-ID"] == request_id
-    assert live_response.json() == {"status": "ok"}
-    assert ready_response.status_code == 200
-    assert ready_response.json() == {"status": "ready"}
-    assert ready_response.headers["X-Request-ID"]
+    assert canonical_live_response.status_code == 200
+    assert canonical_live_response.headers["X-Request-ID"] == request_id
+    assert canonical_live_response.json() == {"status": "alive"}
+    assert canonical_ready_response.status_code == 200
+    assert canonical_ready_response.json() == {"status": "ready"}
+    assert canonical_ready_response.headers["X-Request-ID"]
+    assert legacy_live_response.json() == {"status": "ok"}
+    assert legacy_ready_response.json() == {"status": "ready"}
     assert metrics_response.status_code == 200
     assert metrics_response.headers["content-type"].startswith("text/plain")
 

@@ -5,7 +5,6 @@ from contextlib import asynccontextmanager
 
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import text
 
 from app.core.database import SessionLocal
 from app.core.database import engine
@@ -18,13 +17,13 @@ from app.core.settings import AppEnv, settings
 from app.domains.identity.password_reset import router as password_reset_router
 from app.domains.identity.router import router as auth_router
 from app.domains.legal.router import router as legal_router
+from app.health import canonical_health_router, legacy_health_router
 from app.integrations.cloudpayments.adapter import cloudpayments_adapter
 from app.integrations.cloudpayments.router import router as cloudpayments_router
 from app.legal_seed import seed_legal_documents
 from app.payment_providers.registry import payment_provider_registry
 
 payment_provider_registry.register(cloudpayments_adapter)
-health_router = APIRouter(prefix="/health", tags=["health"])
 metrics_router = APIRouter(prefix="/metrics", tags=["metrics"])
 
 
@@ -35,27 +34,6 @@ async def lifespan(app: FastAPI):
             seed_legal_documents(db)
 
     yield
-
-
-@health_router.get("")
-def health():
-    return {
-        "status": "ok",
-        "cloudpayments_enabled": settings.cloudpayments_enabled,
-        "cloudpayments_public_id_configured": bool(settings.cloudpayments_public_id),
-    }
-
-
-@health_router.get("/live")
-def health_live():
-    return {"status": "ok"}
-
-
-@health_router.get("/ready")
-def health_ready():
-    with SessionLocal() as db:
-        db.execute(text("SELECT 1"))
-    return {"status": "ready"}
 
 
 @metrics_router.get("", include_in_schema=False)
@@ -98,7 +76,8 @@ def create_app() -> FastAPI:
     app.include_router(password_reset_router)
     app.include_router(legal_router)
     app.include_router(cloudpayments_router)
-    app.include_router(health_router)
+    app.include_router(canonical_health_router)
+    app.include_router(legacy_health_router)
     app.include_router(metrics_router)
     return app
 

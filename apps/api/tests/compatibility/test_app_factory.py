@@ -17,11 +17,26 @@ def test_app_factory_builds_independent_apps_with_stable_routes() -> None:
     assert first_app is not second_app
 
     with TestClient(first_app) as client:
-        for path in ("/health", "/health/live", "/health/ready", "/metrics"):
+        for path in (
+            "/api/health/live",
+            "/api/health/ready",
+            "/health",
+            "/health/live",
+            "/health/ready",
+            "/metrics",
+        ):
             assert client.get(path).status_code == 200
 
     openapi = first_app.openapi()
     assert openapi["paths"]["/health"]["get"]["tags"] == ["health"]
+    assert openapi["paths"]["/api/health/live"]["get"]["tags"] == ["health"]
+    assert {
+        "/api/health/live",
+        "/api/health/ready",
+        "/health",
+        "/health/live",
+        "/health/ready",
+    } <= set(openapi["paths"])
     assert "/metrics" not in openapi["paths"]
 
 
