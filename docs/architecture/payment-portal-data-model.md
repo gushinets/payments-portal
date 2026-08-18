@@ -210,10 +210,12 @@ partially_refunded
 disputed
 ```
 
-For the implemented `ru` one-stage CloudPayments charge, the expected terminal
-transition is `created -> succeeded` or `created -> failed`. A late failure must
-not downgrade an already successful payment or paid order. Other contours will
-use the same payment states through their own adapters.
+For the implemented `ru` CloudPayments charge mode, the expected terminal
+transition is `created -> succeeded` or `created -> failed`. Authorization mode
+may persist `created -> authorized`; a later `confirm`, `fail`, or `cancel`
+webhook moves it to `succeeded`, `failed`, or `canceled`. A late failure must not
+downgrade an already successful payment or paid order. Other contours will use
+the same payment states through their own adapters.
 
 ### Webhook event
 

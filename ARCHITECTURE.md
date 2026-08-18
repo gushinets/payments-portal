@@ -14,21 +14,22 @@ Platform Kernel repository.
 The implemented instance is the `ru` contour. Target contours are `ru`, `eu`,
 and `us`. See [contours](docs/architecture/contours.md).
 
-Region Resolver is a separate UI-less service. Frontends ask it for deployed
-contours and base URLs, then talk to this portal and Platform Kernel directly.
-See [Region Resolver contract](docs/architecture/region-resolver-contract.md).
+Region Resolver is a separate UI-less service planned for contour selection.
+When implemented, frontends will ask it for deployed contours and base URLs,
+then talk to this portal and Platform Kernel directly. See
+[Region Resolver contract](docs/architecture/region-resolver-contract.md).
 
 ```mermaid
 flowchart LR
-  Browser --> Resolver["Region Resolver"]
-  Resolver -->|"deployed contours and 3 base URLs"| Browser
+  Browser -. "planned contour lookup" .-> Resolver["Planned Region Resolver"]
+  Resolver -. "deployed contours and 3 base URLs" .-> Browser
   Browser --> Web["Next.js web"]
   Web --> API["FastAPI API"]
   API --> DB[("PostgreSQL")]
   Web --> Provider["Contour payment provider"]
   Provider -->|"verified webhook"| API
   API -. "future access contract" .-> PK["Platform Kernel in this contour"]
-  Web -->|"other contour chosen"| Resolver
+  Web -. "planned contour switch" .-> Resolver
 ```
 
 ## Current domains
