@@ -383,13 +383,6 @@ def seed_catalog(db) -> dict[str, object]:
     }
 
 
-def test_healthcheck() -> None:
-    response = client.get("/health")
-
-    assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
-
-
 def test_liveness_readiness_metrics_and_request_id() -> None:
     request_id = "agent-check-123"
     canonical_live_response = client.get(
@@ -397,8 +390,6 @@ def test_liveness_readiness_metrics_and_request_id() -> None:
         headers={"X-Request-ID": request_id},
     )
     canonical_ready_response = client.get("/api/health/ready")
-    legacy_live_response = client.get("/health/live")
-    legacy_ready_response = client.get("/health/ready")
     metrics_response = client.get("/metrics")
 
     assert canonical_live_response.status_code == 200
@@ -407,14 +398,15 @@ def test_liveness_readiness_metrics_and_request_id() -> None:
     assert canonical_ready_response.status_code == 200
     assert canonical_ready_response.json() == {"status": "ready"}
     assert canonical_ready_response.headers["X-Request-ID"]
-    assert legacy_live_response.json() == {"status": "ok"}
-    assert legacy_ready_response.json() == {"status": "ready"}
     assert metrics_response.status_code == 200
     assert metrics_response.headers["content-type"].startswith("text/plain")
 
 
 def test_invalid_request_id_is_replaced() -> None:
-    response = client.get("/health/live", headers={"X-Request-ID": "invalid request id"})
+    response = client.get(
+        "/api/health/live",
+        headers={"X-Request-ID": "invalid request id"},
+    )
 
     assert response.status_code == 200
     assert response.headers["X-Request-ID"] != "invalid request id"

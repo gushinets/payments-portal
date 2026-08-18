@@ -4,6 +4,7 @@ from apps.api.tests.support.settings import configure_api_test_environment
 
 configure_api_test_environment()
 
+import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy.exc import OperationalError  # noqa: E402
 
@@ -47,22 +48,23 @@ def test_canonical_health_contract() -> None:
 def test_liveness_does_not_use_database(monkeypatch) -> None:
     monkeypatch.setattr(database_module, "SessionLocal", FailingSession)
 
-    canonical_response = client.get("/api/health/live")
-    legacy_response = client.get("/health/live")
+    response = client.get("/api/health/live")
 
-    assert canonical_response.status_code == 200
-    assert canonical_response.json() == {"status": "alive"}
-    assert legacy_response.status_code == 200
-    assert legacy_response.json() == {"status": "ok"}
+    assert response.status_code == 200
+    assert response.json() == {"status": "alive"}
 
 
 def test_readiness_database_failure_is_safe(monkeypatch) -> None:
     monkeypatch.setattr(database_module, "SessionLocal", FailingSession)
 
-    for path in ("/api/health/ready", "/health/ready"):
-        response = client.get(path)
+    response = client.get("/api/health/ready")
 
-        assert response.status_code == 503
-        assert response.json() == {"status": "not_ready"}
-        assert "postgresql" not in response.text
-        assert "secret" not in response.text
+    assert response.status_code == 503
+    assert response.json() == {"status": "not_ready"}
+    assert "postgresql" not in response.text
+    assert "secret" not in response.text
+
+
+@pytest.mark.parametrize("path", ["/health", "/health/live", "/health/ready"])
+def test_legacy_health_routes_are_not_registered(path: str) -> None:
+    assert client.get(path).status_code == 404

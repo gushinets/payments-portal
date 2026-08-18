@@ -8,8 +8,7 @@ from sqlalchemy.exc import SQLAlchemyError
 import app.core.database as database
 
 
-canonical_health_router = APIRouter(prefix="/api/health", tags=["health"])
-legacy_health_router = APIRouter(prefix="/health", tags=["health"])
+health_router = APIRouter(prefix="/api/health", tags=["health"])
 
 
 def database_is_ready() -> bool:
@@ -27,26 +26,11 @@ def readiness_response() -> JSONResponse:
     return JSONResponse(status_code=503, content={"status": "not_ready"})
 
 
-@canonical_health_router.get("/live")
-def canonical_liveness():
+@health_router.get("/live")
+def liveness():
     return {"status": "alive"}
 
 
-@canonical_health_router.get("/ready")
-def canonical_readiness():
-    return readiness_response()
-
-
-@legacy_health_router.get("")
-def legacy_health():
-    return {"status": "ok"}
-
-
-@legacy_health_router.get("/live")
-def legacy_liveness():
-    return {"status": "ok"}
-
-
-@legacy_health_router.get("/ready")
-def legacy_readiness():
+@health_router.get("/ready")
+def readiness():
     return readiness_response()

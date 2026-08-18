@@ -17,7 +17,7 @@ from app.core.settings import AppEnv, settings
 from app.domains.identity.password_reset import router as password_reset_router
 from app.domains.identity.router import router as auth_router
 from app.domains.legal.router import router as legal_router
-from app.health import canonical_health_router, legacy_health_router
+from app.health import health_router
 from app.integrations.cloudpayments.adapter import cloudpayments_adapter
 from app.integrations.cloudpayments.router import router as cloudpayments_router
 from app.legal_seed import seed_legal_documents
@@ -76,8 +76,7 @@ def create_app() -> FastAPI:
     app.include_router(password_reset_router)
     app.include_router(legal_router)
     app.include_router(cloudpayments_router)
-    app.include_router(canonical_health_router)
-    app.include_router(legacy_health_router)
+    app.include_router(health_router)
     app.include_router(metrics_router)
     return app
 
