@@ -3,12 +3,14 @@ from __future__ import annotations
 import hashlib
 import secrets
 from datetime import datetime, timedelta
+import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+from app.core.client_info import ClientInfo, get_client_info
 from app.core.database import get_db
 from app.core.observability import record_checkout, traced
 from app.domains.identity.passwords import hash_password, verify_password
@@ -42,6 +44,8 @@ from app.payment_providers.registry import (
     PaymentProviderRegistry,
     get_payment_provider_registry,
 )
+
+logger = logging.getLogger("checkout-intent")
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -78,6 +82,7 @@ class LoginRequest(BaseModel):
     password: str = Field(min_length=8, max_length=128)
 
 
+# Перенес в ordering/schemas
 class CheckoutIntentRequest(BaseModel):
     product: str
     plan_code: str
@@ -203,7 +208,7 @@ def present_product_state(state: ProductAccessState | None, product_code: str) -
 @router.post("/register")
 def register(
     payload: RegisterRequest,
-    request: Request,
+    client_info: ClientInfo = Depends(get_client_info),
     db: Session = Depends(get_db),
 ):
     if not payload.personal_consent:
@@ -247,8 +252,8 @@ def register(
         user_id=user.id,
         token_hash=token_hash,
         expires_at=expires_at,
-        ip=request.client.host if request.client else None,
-        user_agent=request.headers.get("user-agent"),
+        ip=client_info.ip,
+        user_agent=client_info.user_agent,
     )
     db.add(session)
     db.commit()
@@ -263,7 +268,7 @@ def register(
 @router.post("/login")
 def login(
     payload: LoginRequest,
-    request: Request,
+    client_info: ClientInfo = Depends(get_client_info),
     db: Session = Depends(get_db),
 ):
     tenant_id = normalize_tenant_id(payload.tenant_id)
@@ -290,8 +295,8 @@ def login(
         user_id=user.id,
         token_hash=token_hash,
         expires_at=expires_at,
-        ip=request.client.host if request.client else None,
-        user_agent=request.headers.get("user-agent"),
+        ip=client_info.ip,
+        user_agent=client_info.user_agent,
     )
     db.add(session)
     db.commit()
@@ -428,7 +433,7 @@ def logout(
 @traced("billing.checkout_intent.create")
 def create_checkout_intent(
     payload: CheckoutIntentRequest,
-    request: Request,
+    client_info: ClientInfo = Depends(get_client_info),
     current: tuple[User, AuthSession] = Depends(get_current_session),
     db: Session = Depends(get_db),
     providers: PaymentProviderRegistry = Depends(get_payment_provider_registry),
@@ -487,8 +492,8 @@ def create_checkout_intent(
         frontend_id=payload.frontend_id or "web_checkout",
         user_id=user.id,
         source_url=payload.source_url,
-        ip=request.client.host if request.client else None,
-        user_agent=request.headers.get("user-agent"),
+        ip=client_info.ip,
+        user_agent=client_info.user_agent,
         metadata_={"plan_code": payload.plan_code, "auto_renew": payload.auto_renew},
     )
     db.add(entrypoint_session)

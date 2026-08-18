@@ -3,10 +3,11 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from app.core.client_info import ClientInfo, get_client_info
 from app.core.database import get_db
 from app.core.observability import record_legal_acceptance, traced
 from app.domains.identity.session import (
@@ -72,7 +73,7 @@ def list_required_documents(
 @traced("legal.acceptance.create")
 def accept_document(
     payload: AcceptDocumentRequest,
-    request: Request,
+    client_info: ClientInfo = Depends(get_client_info),
     current: tuple[User, AuthSession] = Depends(get_current_session),
     db: Session = Depends(get_db),
 ):
@@ -101,8 +102,8 @@ def accept_document(
         db,
         document=document,
         user_id=user.id,
-        ip=request.client.host if request.client else None,
-        user_agent=request.headers.get("user-agent"),
+        ip=client_info.ip,
+        user_agent=client_info.user_agent,
         acceptance_text_hash=payload.acceptance_text_hash,
         entrypoint_type=payload.entrypoint_type,
         entrypoint_value=payload.entrypoint_value,

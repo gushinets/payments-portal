@@ -5,11 +5,12 @@ import logging
 import secrets
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.core.client_info import ClientInfo, get_client_info
 from app.core.database import get_db
 from app.core.observability import record_password_reset_email
 from app.core.password_reset_email import (
@@ -54,14 +55,10 @@ def normalize_email(value: str) -> str:
     return value.strip().lower()
 
 
-def password_reset_client_ip(request: Request) -> str:
-    return request.client.host if request.client else "unknown"
-
-
 def password_reset_rate_limit_keys(
-    *, tenant_id: str, region: str, email_normalized: str, request: Request
+    *, tenant_id: str, region: str, email_normalized: str, client_info: ClientInfo
 ) -> tuple[str, str]:
-    ip = password_reset_client_ip(request)
+    ip = client_info.ip_or_unknown
     return (
         f"account:{tenant_id}:{region}:{email_normalized}",
         f"ip:{tenant_id}:{region}:{ip}",
@@ -160,8 +157,8 @@ def skip_password_reset_email(email: str, reset_url: str) -> None:
 @router.post("/password-reset/request")
 def request_password_reset(
     payload: PasswordResetRequest,
-    request: Request,
     background_tasks: BackgroundTasks,
+    client_info: ClientInfo = Depends(get_client_info),
     db: Session = Depends(get_db),
 ):
     tenant_id = DEFAULT_TENANT_ID
@@ -172,7 +169,7 @@ def request_password_reset(
         tenant_id=tenant_id,
         region=region,
         email_normalized=normalized_email,
-        request=request,
+        client_info=client_info,
     )
     try:
         prune_expired_password_reset_tokens(db=db, now=now)
@@ -222,8 +219,8 @@ def request_password_reset(
         token_hash=token_hash,
         purpose=PASSWORD_RESET_PURPOSE,
         expires_at=expires_at,
-        ip=password_reset_client_ip(request),
-        user_agent=request.headers.get("user-agent"),
+        ip=client_info.ip_or_unknown,
+        user_agent=client_info.user_agent,
     )
     db.add(reset_token)
 
