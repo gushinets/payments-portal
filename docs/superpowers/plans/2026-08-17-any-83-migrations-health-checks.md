@@ -1,8 +1,7 @@
 # ANY-83 Migration and Health-Check Lifecycle Implementation Plan
 
 > Review amendment: the compatibility-route steps in this completed plan are
-> superseded by `2026-08-18-any-83-canonical-health-routes.md`.
-
+> superseded by [2026-08-18-any-83-canonical-health-routes.md](2026-08-18-any-83-canonical-health-routes.md).
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Run Alembic as an explicit one-shot Compose prerequisite and expose safe canonical liveness/readiness endpoints while preserving every existing health route.
