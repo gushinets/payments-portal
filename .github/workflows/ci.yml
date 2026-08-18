@@ -169,12 +169,15 @@ jobs:
         run: |
           api_image="${COMPOSE_PROJECT_NAME}-api"
           docker image inspect "$api_image" > /dev/null
+          docker run --rm --network host \
+            --env-file "$CI_ENV_FILE" "$api_image" \
+            python -m alembic -c apps/api/alembic.ini upgrade head
           docker run --detach --name payment-portal-api-smoke --network host \
             --env-file "$CI_ENV_FILE" "$api_image"
 
           for attempt in $(seq 1 30); do
             if curl --silent --show-error --fail \
-              http://127.0.0.1:8000/health/ready \
+              http://127.0.0.1:8000/api/health/ready \
               | python -c 'import json, sys; assert json.load(sys.stdin)["status"] == "ready"'; then
               exit 0
             fi
