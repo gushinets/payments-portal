@@ -1,9 +1,9 @@
 # Deployment Architecture
 
-Status: authoritative current deployment
+Status: authoritative current deployment plus target contour isolation
 Last verified: 2026-08-18
 
-## Current RU deployment
+## Current `ru` deployment
 
 ```mermaid
 flowchart LR
@@ -23,7 +23,7 @@ one-shot `migrate` service after PostgreSQL becomes healthy. The API depends on
 successful migration completion and its container command starts only Uvicorn;
 a failed migration therefore blocks API startup. Only Caddy publishes host
 ports, while PostgreSQL, API, and web remain internal. Production must provide
-HTTPS termination, Russian data residency, backups, secret storage, and
+HTTPS termination, `ru` data residency, backups, secret storage, and
 monitoring outside this repository's local Compose assumptions.
 
 `GET /api/health/live` reports only whether the API process can serve HTTP and
@@ -35,6 +35,19 @@ monitoring such as HetrixTools. The supported health surface is limited to
 these two endpoints; `/health`, `/health/live`, and `/health/ready` are removed
 and return HTTP 404.
 
+## Target contour deployments
+
+Each production contour is its own data plane: web, API, PostgreSQL, provider
+credentials, and webhook endpoints. A `ru` instance does not serve `eu` or `us`.
+No user or payment data may be silently replicated between contour data planes.
+
+Region Resolver is deployed separately. It is not part of this Compose stack.
+This portal may later receive the resolver origin as instance configuration.
+Provider webhooks continue to hit the contour API directly.
+
+The first-install schema can physically hold more than one `regions` row. That
+does not authorize one production database to operate as two contours.
+
 ## Local worktree deployment
 
 `scripts/repo.py` creates a Compose project name and ports derived from the Git
@@ -44,9 +57,7 @@ permitted in development Compose.
 
 ## Future Platform Kernel connection
 
-Platform Kernel is a separately deployed service and repository. Future calls
-will use verified regional identity and the Payment Portal access API described
-by ANY-71. This repository must not copy Platform Kernel runtime tables or store
-its artifacts and usage events.
-
-No user or payment data may be silently replicated between regional data planes.
+Platform Kernel is a separately deployed service and repository in the **same**
+contour. Future calls will use verified contour identity and the Payment Portal
+access API described by ANY-71. This repository must not copy Platform Kernel
+runtime tables or store its artifacts and usage events.

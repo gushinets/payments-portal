@@ -1,7 +1,8 @@
 # Documentation Agent Guide
 
-Engineering documentation is English. Russian is allowed only inside
-`docs/legal/ru/**`, where the content is a versioned legal artifact.
+Engineering documentation is English. Customer-facing legal source lives under
+`docs/legal/<contour>/**` and may use that contour's language. The only
+existing tree is `docs/legal/ru`.
 
 - Keep `AGENTS.md` files navigational and concise.
 - Add authoritative documents to `docs/README.md`.
