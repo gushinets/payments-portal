@@ -69,7 +69,7 @@ def test_uvicorn_serves_application_with_production_proxy_flags() -> None:
                 break
             try:
                 response = httpx2.get(
-                    f"http://127.0.0.1:{port}/health/live",
+                    f"http://127.0.0.1:{port}/api/health/live",
                     headers={"X-Request-ID": "uvicorn-compatibility"},
                     timeout=0.5,
                 )
@@ -83,5 +83,5 @@ def test_uvicorn_serves_application_with_production_proxy_flags() -> None:
         raise AssertionError(f"Uvicorn did not become ready:\n{output}")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    assert response.json() == {"status": "alive"}
     assert response.headers["X-Request-ID"] == "uvicorn-compatibility"
