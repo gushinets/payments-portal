@@ -257,7 +257,7 @@ git commit -m "ANY-83 - Document canonical health routes"
 - Consumes: canonical-only API, production image, Compose migration lifecycle, PR #52, and unresolved thread `PRRT_kwDOTIm_Wc6Z_py1`.
 - Produces: clean branch evidence and pushed commits for human review; the GitHub thread remains unresolved unless the user separately authorizes a reply or resolution.
 
-- [ ] **Step 1: Run the complete API suite against PostgreSQL**
+- [x] **Step 1: Run the complete API suite against PostgreSQL**
 
 Start the repository PostgreSQL service and apply migrations:
 
@@ -278,7 +278,7 @@ docker run --rm --network payments-portal-dev_backend \
 
 Expected: all non-PostgreSQL and PostgreSQL tests pass; no unexpected skip or failure is introduced.
 
-- [ ] **Step 2: Run full API lint, format, docs, architecture, and generator checks**
+- [x] **Step 2: Run full API lint, format, docs, architecture, and generator checks**
 
 Run:
 
@@ -296,7 +296,7 @@ docker run --rm -v "$PWD:/workspace" -w /workspace \
 
 Expected: every command exits 0.
 
-- [ ] **Step 3: Verify production and Compose health behavior**
+- [x] **Step 3: Verify production and Compose health behavior**
 
 Build and run the production runtime verifier:
 
@@ -320,7 +320,7 @@ Caddy       /api/health/ready  -> 200 {"status":"ready"}
 
 Stop the temporary stack with `docker compose down` and do not pass `--volumes`.
 
-- [ ] **Step 4: Inspect the final diff and branch state**
+- [x] **Step 4: Inspect the final diff and branch state**
 
 Run:
 
@@ -335,7 +335,7 @@ rg -n --hidden --glob '!.git/**' '/health' \
 
 Expected: remaining `/health` matches describe removed paths or canonical `/api/health`; the worktree is clean after any evidence commit.
 
-- [ ] **Step 5: Push the reviewed implementation**
+- [x] **Step 5: Push the reviewed implementation**
 
 ```bash
 git push origin ANY-83

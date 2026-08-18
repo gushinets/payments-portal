@@ -55,9 +55,11 @@ health surface before the first production deployment.
 - `c85f784` - `ANY-83 - Add safe liveness and readiness endpoints`
 - `363c1b2` - `ANY-83 - Gate API startup on migrations`
 - `c9bbabe` - `ANY-83 - Document migration and health operations`
+- `99f251e` - `ANY-83 - Fix production gate migration smoke`
 - `b4ba406` - `ANY-83 - Simplify health route design`
 - `8d595c0` - `ANY-83 - Add canonical health route plan`
 - `ce8301f` - `ANY-83 - Remove legacy health routes`
+- `64befda` - `ANY-83 - Document canonical health routes`
 
 ## TDD evidence
 
@@ -104,6 +106,9 @@ health surface before the first production deployment.
 - The PostgreSQL run covered Alembic upgrade/downgrade, database fixtures,
   SQLAlchemy PostgreSQL behavior, constraints, concurrency, idempotency, and
   CloudPayments webhook persistence.
+- Review-amendment full API run used
+  `TEST_POSTGRES_DATABASE_URL=.../anytoolai_tests`: 236 passed with no skipped
+  tests. This combined the portable and PostgreSQL partitions in one run.
 
 ## Compose and runtime validation
 
@@ -146,6 +151,13 @@ responses are retained as historical evidence, not as the current contract.
   passed.
 - `security/trivy/verify-api-runtime.sh payments-any83-health-review`: passed
   after the verifier moved to canonical liveness.
+- The review-amendment development Compose smoke rebuilt the API, completed
+  the one-shot migration, and reached healthy API and Caddy states. Direct API
+  `/api/health/live` and `/api/health/ready` returned exact 200 `alive` and
+  `ready` bodies; `/health`, `/health/live`, and `/health/ready` returned 404.
+  Caddy returned the same exact canonical 200 bodies through `/api/*`.
+- The final production image rebuild and runtime verifier passed. The temporary
+  Compose containers and networks were stopped without deleting volumes.
 - The disposable production-smoke containers, networks, and PostgreSQL volume
   were removed after evidence capture.
 
