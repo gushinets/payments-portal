@@ -1,11 +1,15 @@
 # Legal Source Workflow
 
 Status: authoritative process
-Last verified: 2026-07-11
+Last verified: 2026-08-18
 
-The files under `docs/legal/ru/<version>` are Russian customer-facing legal
+The files under `docs/legal/<contour>/<version>` are customer-facing legal
 artifacts and are intentional exceptions to the engineering-English policy.
-They are draft content until approved by counsel.
+They may use the contour's language. The only existing tree is
+`docs/legal/ru`. They are draft content until approved by counsel.
+
+Do not add `eu` or `us` legal trees without legal-content authorization and a
+contour-enablement ticket.
 
 ## Canonical representation
 

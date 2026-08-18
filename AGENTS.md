@@ -15,9 +15,16 @@ document that applies to the current task.
 - [README.md](README.md) — setup and canonical commands.
 - [ARCHITECTURE.md](ARCHITECTURE.md) — current boundaries and dependency rules.
 - [docs/PRODUCT.md](docs/PRODUCT.md) — current product scope.
+- [docs/architecture/contours.md](docs/architecture/contours.md) — contour
+  isolation and country membership.
+- [docs/architecture/region-resolver-contract.md](docs/architecture/region-resolver-contract.md)
+  — planned Region Resolver consumer rules.
+- [docs/architecture/payment-providers.md](docs/architecture/payment-providers.md)
+  — provider-neutral billing and adapters.
 - [docs/architecture/payment-portal-data-model.md](docs/architecture/payment-portal-data-model.md)
   — normative Payment Portal data and backend invariants.
-- [docs/product/ru-mvp.md](docs/product/ru-mvp.md) — verified RU journey and pages.
+- [docs/product/ru-mvp.md](docs/product/ru-mvp.md) — implemented `ru` journey
+  and pages.
 - [docs/DESIGN.md](docs/DESIGN.md) — Bundle 3 UI rules.
 - [docs/SECURITY.md](docs/SECURITY.md) and
   [docs/RELIABILITY.md](docs/RELIABILITY.md) — operational constraints.
@@ -27,16 +34,26 @@ document that applies to the current task.
 
 ## Repository map
 
-- `apps/web` — Next.js RU portal. Read `apps/web/AGENTS.md` before UI work.
+- `apps/web` — Next.js Payment Portal UI. Current routes are the `ru` contour.
+  Read `apps/web/AGENTS.md` before UI work.
 - `apps/api` — FastAPI service. Read `apps/api/AGENTS.md` before backend work.
-- `docs/legal/ru` — versioned Russian legal source. Do not edit without explicit
-  legal-content authorization.
+- `docs/legal/<contour>` — versioned customer-facing legal source. The only
+  existing tree is `docs/legal/ru`. Do not edit without explicit legal-content
+  authorization.
 - `docs/design-system/bundle3` — canonical web design reference and tokens.
 - `scripts/repo.py` — setup, isolation, checks, generation, and observability.
 
 ## Non-negotiable rules
 
-- Keep v1 scoped to the RU CloudPayments MVP.
+- The implemented product surface remains the `ru` contour until a ticket
+  enables another contour. Do not ship `eu` or `us` product surface without
+  that ticket.
+- Domain architecture is multi-contour. Do not document or encode CloudPayments
+  or `ru` as the only possible provider or contour in billing design.
+- A production instance serves one contour. It must not persist other contours'
+  base URLs, users, or legal records, and must not call another contour's API.
+- Region Resolver is a separate repository. This portal may know only that
+  resolver origin, as a planned client. Do not implement the resolver here.
 - Platform Kernel changes belong to `gushinets/anytoolai-platform`.
 - ANY-71 owns planned catalog, subscription, entitlement, and access-API work.
 - Activate paid access only from a verified webhook, never from a return URL.
@@ -45,8 +62,8 @@ document that applies to the current task.
 - Legal pages are drafts; do not present them as legally approved.
 - Preserve Bundle 3 for frontend changes.
 - Add tests when behavior changes and use PostgreSQL tests for migration logic.
-- Engineering artifacts are English. Russian is allowed only in RU legal source
-  and customer-facing localization.
+- Engineering artifacts are English. Customer legal source lives under
+  `docs/legal/<contour>/`. Customer-facing UI uses that contour's locale.
 - Do not hand-edit generated files; run `npm run generate`.
 
 ## Canonical verification

@@ -1,7 +1,8 @@
 # API Agent Guide
 
-Read the root `AGENTS.md`, `ARCHITECTURE.md`, and the canonical data-model
-document before backend work.
+Read the root `AGENTS.md`, `ARCHITECTURE.md`, [contours](../../docs/architecture/contours.md),
+[payment providers](../../docs/architecture/payment-providers.md), and the
+canonical data-model document before backend work.
 
 ## Boundaries
 
@@ -11,8 +12,9 @@ document before backend work.
 - `integrations` translates provider-specific input into domain operations.
 - Routers validate HTTP input and delegate to services.
 
-Domain modules must not import routers or provider integrations. CloudPayments
-payloads must be verified, redacted, normalized, and processed idempotently.
+Domain modules must not import routers or provider integrations. Provider
+payloads must be verified, redacted, normalized, and processed idempotently
+inside the adapter. CloudPayments is the current `ru` adapter.
 
 ## Safety
 

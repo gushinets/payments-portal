@@ -1,7 +1,8 @@
 # Web Agent Guide
 
-Read the root `AGENTS.md`, `docs/product/ru-mvp.md`, and `docs/DESIGN.md` before
-frontend work.
+Read the root `AGENTS.md`, [the `ru` journey](../../docs/product/ru-mvp.md),
+[contours](../../docs/architecture/contours.md), and
+[design](../../docs/DESIGN.md) before frontend work.
 
 ## Boundaries
 
@@ -12,7 +13,8 @@ frontend work.
 
 ## UI rules
 
-- Preserve Russian customer-facing localization.
+- Preserve the current contour's customer-facing locale. The implemented `ru`
+  contour uses Russian.
 - Use Bundle 3 tokens and glass/bento patterns; do not invent replacement tokens.
 - Prefer semantic roles and labels. Add `data-testid` only when a stable semantic
   selector is unavailable.

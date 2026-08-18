@@ -1,7 +1,7 @@
 # Design System
 
 Status: authoritative entry point
-Last verified: 2026-07-11
+Last verified: 2026-08-18
 
 Payment Portal UI follows AnytoolAI Bundle 3: a dark AI-native glass and bento
 system with indigo gradients and restrained teal status accents.
@@ -15,4 +15,5 @@ Before UI work, read:
 
 The machine-readable tokens are canonical for values consumed by the app. UI
 changes must include desktop and mobile screenshots plus accessibility results.
-Russian customer-facing text remains Russian.
+Customer-facing copy uses the current contour's locale. The implemented `ru`
+contour remains Russian.

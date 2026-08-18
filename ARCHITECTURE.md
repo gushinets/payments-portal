@@ -1,37 +1,48 @@
 # Payment Portal Architecture
 
 Status: authoritative current-state map
-Last verified: 2026-08-16
+Last verified: 2026-08-18
 
 ## System boundary
 
-This repository owns the RU-facing identity entry flow, legal-document and
-acceptance records, checkout/order/payment records, CloudPayments webhooks, and
-the payment portal UI. It does not own workflow execution, scenario runtime,
-artifacts, or usage consumption. Those belong to the separate Platform Kernel
-repository.
+This repository owns identity, legal-document and acceptance records,
+checkout/order/payment records, provider webhooks, and the payment portal UI
+for **one contour per production instance**. It does not own workflow execution,
+scenario runtime, artifacts, or usage consumption. Those belong to the separate
+Platform Kernel repository.
+
+The implemented instance is the `ru` contour. Target contours are `ru`, `eu`,
+and `us`. See [contours](docs/architecture/contours.md).
+
+Region Resolver is a separate UI-less service. Frontends ask it for deployed
+contours and base URLs, then talk to this portal and Platform Kernel directly.
+See [Region Resolver contract](docs/architecture/region-resolver-contract.md).
 
 ```mermaid
 flowchart LR
-  User["RU user or product entrypoint"] --> Web["Next.js web"]
+  Browser --> Resolver["Region Resolver"]
+  Resolver -->|"deployed contours and 3 base URLs"| Browser
+  Browser --> Web["Next.js web"]
   Web --> API["FastAPI API"]
   API --> DB[("PostgreSQL")]
-  Web --> CP["CloudPayments widget"]
-  CP -->|"verified webhook"| API
-  API -. "future access contract" .-> PK["Platform Kernel repository"]
+  Web --> Provider["Contour payment provider"]
+  Provider -->|"verified webhook"| API
+  API -. "future access contract" .-> PK["Platform Kernel in this contour"]
+  Web -->|"other contour chosen"| Resolver
 ```
 
 ## Current domains
 
-- **Identity** — regional users and hashed authentication sessions.
+- **Identity** — contour-local users and hashed authentication sessions.
 - **Legal** — legal entities, document versions, and append-only acceptances.
 - **Billing** — entrypoints, checkout sessions, orders, items, payments,
   refunds, webhook inbox, and the temporary product access state.
-- **Payment provider boundary** — provider-neutral checkout actions and
-  normalized payment events selected through `payment_provider_accounts`.
-- **CloudPayments integration** — the currently registered provider adapter for
-  request validation, redaction, idempotency keys, response formatting, and
-  translation into billing operations.
+- **Payment provider boundary** — provider-neutral checkout actions selected
+  through `payment_provider_accounts`; webhook normalization remains
+  provider-adapter-specific.
+- **CloudPayments integration** — the currently registered adapter for the `ru`
+  contour: request validation, redaction, idempotency keys, response formatting,
+  and translation into billing operations.
 
 The API dependency direction is:
 
@@ -68,9 +79,12 @@ directions and rejects deep alias imports.
 
 ## Authoritative details
 
+- [Contours](docs/architecture/contours.md)
+- [Region Resolver contract](docs/architecture/region-resolver-contract.md)
+- [Payment providers](docs/architecture/payment-providers.md)
 - [Data model](docs/architecture/payment-portal-data-model.md)
 - [Deployment](docs/architecture/deployment.md)
 - [Platform Kernel contract boundary](docs/architecture/platform-kernel-contract.md)
-- [RU product journey](docs/product/ru-mvp.md)
+- [Implemented `ru` journey](docs/product/ru-mvp.md)
 - [Security](docs/SECURITY.md)
 - [Reliability](docs/RELIABILITY.md)
