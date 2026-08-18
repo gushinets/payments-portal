@@ -6,6 +6,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.domains.billing.schemas import PlanScopeType
+
 
 class OrderStatusEnum(str, Enum):
     CREATED = "created"
@@ -31,6 +33,12 @@ class CheckoutIntentRequest(BaseModel):
     frontend_id: str | None = None
     source_url: str | None = None
 
+
+class ResolveSellablePlanInput(BaseModel):
+    tenant_id: str
+    region: str
+    entrypoint_code: str
+    plan_code: str
 
 
 class OrderingSchema(BaseModel):
@@ -130,3 +138,16 @@ class EntrypointSession(OrderingSchema):
     user_agent: str | None = None
     metadata_: dict = Field(default_factory=dict)
     created_at: datetime
+
+
+class SellablePlan(OrderingSchema):
+    id: UUID
+    product_id: UUID | None = None
+    bundle_id: UUID | None = None
+    scope_type: PlanScopeType | str
+    code: str
+    name: str
+    price_amount_minor: int = Field(ge=0)
+    currency: str = Field(min_length=3, max_length=3)
+    trial_days: int = Field(ge=0)
+    billing_period: str
