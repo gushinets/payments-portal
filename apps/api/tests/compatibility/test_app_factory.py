@@ -17,11 +17,18 @@ def test_app_factory_builds_independent_apps_with_stable_routes() -> None:
     assert first_app is not second_app
 
     with TestClient(first_app) as client:
-        for path in ("/health", "/health/live", "/health/ready", "/metrics"):
+        for path in (
+            "/api/health/live",
+            "/api/health/ready",
+            "/metrics",
+        ):
             assert client.get(path).status_code == 200
 
     openapi = first_app.openapi()
-    assert openapi["paths"]["/health"]["get"]["tags"] == ["health"]
+    assert openapi["paths"]["/api/health/live"]["get"]["tags"] == ["health"]
+    assert openapi["paths"]["/api/health/ready"]["get"]["tags"] == ["health"]
+    assert {"/api/health/live", "/api/health/ready"} <= set(openapi["paths"])
+    assert {"/health", "/health/live", "/health/ready"}.isdisjoint(openapi["paths"])
     assert "/metrics" not in openapi["paths"]
 
 
@@ -120,6 +127,6 @@ def test_app_factory_runs_lifespan_once(monkeypatch) -> None:
     )
 
     with TestClient(main_module.create_app()) as client:
-        assert client.get("/health/live").status_code == 200
+        assert client.get("/api/health/live").status_code == 200
 
     assert len(seed_calls) == 1
