@@ -85,10 +85,16 @@ jobs:
           docker build --target production --file apps/api/Dockerfile
           --tag "$API_IMAGE" .
 
+      - name: Verify production API runtime
+        run: security/trivy/verify-api-runtime.sh "$API_IMAGE"
+
       - name: Build production web image
         run: >-
           docker build --file apps/web/Dockerfile
           --tag "$WEB_IMAGE" .
+
+      - name: Verify production web runtime
+        run: security/trivy/verify-web-runtime.sh "$WEB_IMAGE"
 
       - name: Scan production API image
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0

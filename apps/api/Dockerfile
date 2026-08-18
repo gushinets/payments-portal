@@ -1,4 +1,8 @@
-FROM python:3.12-slim@sha256:423ed6ab25b1921a477529254bfeeabf5855151dc2c3141699a1bfc852199fbf AS base
+FROM python:3.12-slim@sha256:2c941e860699f878900b0edc2403613c234d4b32eda3cc9fa7036991a2a63c4a AS base
+
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get upgrade --yes --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
@@ -35,7 +39,7 @@ COPY apps/api ./apps/api
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "PYTHONPATH=apps/api python -c 'from app.core.settings import settings' && python -m alembic -c apps/api/alembic.ini upgrade head && exec python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --app-dir apps/api"]
+CMD ["sh", "-c", "PYTHONPATH=apps/api python -c 'from app.core.settings import settings' && exec python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --app-dir apps/api"]
 
 FROM base AS production
 
@@ -52,4 +56,4 @@ USER app
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "PYTHONPATH=apps/api python -c 'from app.core.settings import settings' && python -m alembic -c apps/api/alembic.ini upgrade head && exec python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips \"${FORWARDED_ALLOW_IPS:-*}\" --app-dir apps/api"]
+CMD ["sh", "-c", "PYTHONPATH=apps/api python -c 'from app.core.settings import settings' && exec python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips \"${FORWARDED_ALLOW_IPS:-*}\" --app-dir apps/api"]

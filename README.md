@@ -48,6 +48,9 @@ ports, logs, and browser artifacts.
 - Node.js: `24.x` LTS for local development, CI, and the production web image.
   The production Docker image is pinned to `node:24.18.0-alpine3.24` plus its
   multi-architecture digest.
+  The production web image uses Next.js standalone output and starts the traced
+  workspace server directly with `node apps/web/server.js`; npm and other build
+  tooling are not part of the runtime image.
 - PostgreSQL: `18.4` for local development, CI, pre-production, and the first
   production deployment. Compose uses the PostgreSQL 18 Docker volume layout:
   named volumes mount at `/var/lib/postgresql`, while the image-owned `PGDATA`
@@ -85,8 +88,9 @@ python -m alembic -c apps/api/alembic.ini upgrade head
 
 ## Local Compose workflow
 
-Local Compose runs PostgreSQL, the FastAPI API, and Caddy. Next.js stays on the
-host so it can use the normal development server:
+Local Compose runs PostgreSQL, a one-shot Alembic migration service, the FastAPI
+API, and Caddy. Next.js stays on the host so it can use the normal development
+server:
 
 ```bash
 docker compose up --build
@@ -99,9 +103,17 @@ Local addresses:
 - API directly for debugging: http://localhost:8000
 - PostgreSQL for local DB clients: localhost:5432
 
-The API container applies Alembic migrations before starting. Its internal
+The `migrate` service waits for healthy PostgreSQL and applies Alembic
+migrations once. The API starts only after that service completes successfully;
+the API container command does not mutate the schema. The internal
 `DATABASE_URL` must use the Docker service name `postgres:5432`; host tools use
 the loopback PostgreSQL port instead.
+
+Canonical health endpoints are `/api/health/live` for process liveness and
+`/api/health/ready` for PostgreSQL-backed readiness. Docker and external
+monitoring use readiness. These are the complete supported health surface;
+the older `/health`, `/health/live`, and `/health/ready` paths are removed and
+return HTTP 404.
 
 Local API configuration uses the same environment variable names as production,
 with development values supplied by `.env.example`, local `.env`, or the
@@ -118,11 +130,13 @@ and run:
 docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
 ```
 
-Production Compose runs PostgreSQL, API, web, and Caddy. Only Caddy publishes
-host ports (`80` and `443`); API, web, and PostgreSQL stay on the internal
-Docker network. Set `CADDY_DOMAIN` and `NEXT_PUBLIC_API_BASE_URL` to the public
-HTTPS origin before building because `NEXT_PUBLIC_*` values are captured in the
-Next.js production image.
+Production Compose runs PostgreSQL, the one-shot migration service, API, web,
+and Caddy. Migration failure prevents API startup. Only Caddy publishes host
+ports (`80` and `443`); API, web, and PostgreSQL stay on the internal Docker
+network. Set `CADDY_DOMAIN` and `NEXT_PUBLIC_API_BASE_URL` to the public HTTPS
+origin before building because `NEXT_PUBLIC_*` values are captured in the
+Next.js production image. External monitors such as HetrixTools can use
+`https://<CADDY_DOMAIN>/api/health/ready`.
 
 Set `APP_ENV=production` in the external production env file. Production uses
 the same variable names as local development, but required API values must be

@@ -1,3 +1,7 @@
+import { fileURLToPath } from "node:url";
+
+const repositoryRoot = fileURLToPath(new URL("../..", import.meta.url));
+
 const allowedDevOrigins = (
   process.env.NEXT_ALLOWED_DEV_ORIGINS ?? "192.168.1.102"
 )
@@ -10,6 +14,8 @@ const allowedDevOrigins = (
 const nextConfig = {
   reactStrictMode: true,
   allowedDevOrigins,
+  output: "standalone",
+  outputFileTracingRoot: repositoryRoot,
   experimental: {
     useTypeScriptCli: false
   }

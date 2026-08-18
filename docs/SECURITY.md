@@ -1,7 +1,7 @@
 # Security Requirements
 
 Status: authoritative
-Last verified: 2026-08-15
+Last verified: 2026-08-17
 
 ## Sensitive data
 
@@ -54,8 +54,11 @@ The initial rollout is report-only while the baseline is remediated. After human
 approval, set the repository Actions variable `TRIVY_ENFORCE=true`. The checked-in
 gate then rejects all Critical vulnerabilities, fixable High vulnerabilities,
 and High or Critical secret and misconfiguration findings. Exceptions belong in
-`.trivyignore.yaml` and must include an ID, affected paths, an actionable reason,
-and an expiration date.
+`.trivyignore.yaml` and must include an ID, an actionable statement naming the
+affected image or path and its owner, an expiration date, and either affected
+paths or package PURLs. Use a package PURL for an OS-package image finding
+without `PkgPath`; adding a source path to Trivy's `paths` filter would prevent
+that exception from matching the image finding.
 
 The root npm overrides for vulnerable nanoid 3.x and `brace-expansion` 1.x
 releases are temporary security constraints. Remove the nanoid override once
