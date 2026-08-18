@@ -1,7 +1,7 @@
 # ANY-83 migration and health-check lifecycle design
 
-Status: approved design
-Date: 2026-08-17
+Status: approved design, amended after review
+Date: 2026-08-18
 Linear: https://linear.app/paveldik/issue/ANY-83/vynesti-migracii-iz-zapuska-api-i-dobavit-livenessreadiness-proverki
 
 ## Goal
@@ -13,28 +13,27 @@ database failure details.
 
 ## Current baseline
 
-The development and production API image commands currently validate settings,
-apply Alembic migrations, and then start Uvicorn in one shell command. Compose
-waits only for PostgreSQL health before starting the API, so migration failure
-is coupled to the API container restart lifecycle rather than represented as a
-failed deployment step.
+The PR branch already runs Alembic through separate development and production
+Compose migration services, gates API startup on their successful completion,
+and keeps migrations out of the Uvicorn image command. Docker healthchecks and
+the production CI smoke use the canonical readiness route.
 
-The API already exposes `/health`, `/health/live`, and `/health/ready`.
-Liveness returns the legacy `{"status":"ok"}` response. Readiness executes
-`SELECT 1`, but an unavailable database is allowed to escape through the normal
-error path instead of returning the required safe response. The public Caddy
-configuration proxies `/api/*`, while no health route currently exists below
-that prefix. Docker healthchecks call the legacy readiness path.
+The PR branch currently exposes both `/api/health/*` and the older `/health*`
+routes. Docker Compose, CI, and Uvicorn smoke checks already use the canonical
+routes. Caddy proxies only `/api/*`, so the older routes are not available
+through the public production boundary. The only non-test repository consumer
+of an older route is the API image runtime verifier, which is maintained in
+this repository and can move to `/api/health/live`. The application has not
+been deployed to production, so there is no external compatibility contract to
+preserve.
 
-The local checkout is already on the user-requested `ANY-83` branch. The local
-host does not currently have the repository Python virtual environment, Poetry,
-Node.js, or npm, so the initial focused test baseline could not be executed.
-Verification will use the repository harness or containerized toolchain once
-the implementation phase begins.
+This review amendment is limited to simplifying the health route surface,
+updating the repository-owned runtime verifier, and closing the remaining
+OpenAPI review assertion. It does not change the migration lifecycle.
 
 ## Considered approaches
 
-### Selected: explicit migration service plus canonical and compatibility routes
+### Selected: explicit migration service plus canonical health routes only
 
 Add one-shot `migrate` services to development and production Compose, built
 from the same API target and configured with the same validated application and
@@ -43,19 +42,28 @@ PostgreSQL and runs `alembic upgrade head`. The API waits for the migration
 service to complete successfully and its image command starts only Uvicorn
 after the existing settings validation.
 
-Expose canonical health routes under `/api/health`, while preserving every
-existing `/health` route during the compatibility period. Both route families
-share the same database probe so their readiness semantics cannot drift.
+Expose liveness and readiness only under `/api/health`. Remove `/health`,
+`/health/live`, and `/health/ready`, and update the repository-owned runtime
+verifier, tests, generated OpenAPI, and documentation to use the canonical
+routes.
 
-This makes migration failure visible as a failed prerequisite, preserves direct
-legacy API consumers, and uses the existing Caddy `/api/*` boundary without a
-rewrite or a second health implementation.
+This makes migration failure visible as a failed prerequisite, keeps a single
+public health contract, and uses the existing Caddy `/api/*` boundary without a
+rewrite or duplicate route implementation.
 
-### Rejected: preserve legacy health only through Caddy rewrites
+### Rejected: retain compatibility aliases
 
-Caddy could rewrite old paths to new paths, but callers that reach the API
-container directly would lose the compatibility routes. It would also split
-the public contract between proxy configuration and application routing.
+Keeping `/health*` as aliases would preserve an unused contract and duplicate
+the route surface without helping production callers because Caddy does not
+proxy those paths. There is no deployed consumer that justifies the additional
+compatibility layer.
+
+### Rejected: combine liveness and readiness into one endpoint
+
+A single database-backed health endpoint would make a PostgreSQL outage look
+like process failure. Kubernetes and similar orchestrators need separate
+liveness and readiness signals so they can stop routing traffic without
+restarting an otherwise healthy API process.
 
 ### Rejected: a multi-mode shell entrypoint
 
@@ -75,16 +83,10 @@ The canonical endpoints are:
   `{"status":"not_ready"}`. The response contains no exception text,
   connection string, credentials, driver details, or stack trace.
 
-The compatibility routes remain available:
+`GET /health`, `GET /health/live`, and `GET /health/ready` are removed. Their
+documented replacements are `/api/health/live` and `/api/health/ready`.
 
-- `GET /health` keeps its HTTP 200 and `status: ok` compatibility signal, but
-  returns no configuration flags or other internal state.
-- `GET /health/live` keeps its HTTP 200 and legacy
-  `{"status":"ok"}` payload and remains independent of PostgreSQL.
-- `GET /health/ready` uses the same database probe and ready/not-ready status
-  codes as the canonical readiness endpoint.
-
-All routes continue through the existing request-context middleware and return
+Both routes continue through the existing request-context middleware and return
 an `X-Request-ID`. Unexpected programming errors are not converted into a
 readiness result; only database-layer failures are mapped to the safe 503
 response.
@@ -132,11 +134,12 @@ Implementation will follow a red/green sequence:
 
 1. Add backend tests for the exact canonical liveness and readiness payloads,
    status codes, and request IDs.
-2. Force the database session to fail and prove canonical and legacy readiness
-   both return the exact safe 503 body without exception or connection details.
-3. Prove both liveness routes succeed while the database probe is failing or
+2. Force the database session to fail and prove canonical readiness returns the
+   exact safe 503 body without exception or connection details.
+3. Prove canonical liveness succeeds while the database probe is failing or
    replaced with a function that would fail if called.
-4. Preserve coverage for `/health` and all legacy paths.
+4. Prove the removed `/health*` routes are absent from the application and
+   generated OpenAPI contract.
 5. Add deployment contract tests proving Dockerfile server commands contain no
    Alembic invocation, both Compose stacks define a one-shot migration service,
    API startup depends on successful migration, and healthchecks use the
@@ -146,8 +149,8 @@ Implementation will follow a red/green sequence:
 7. Run focused API and repository tests, architecture and documentation checks,
    and the broadest supported canonical check.
 8. Build and start the Compose stack against PostgreSQL, confirm migration
-   completion precedes API startup, exercise both health families directly,
-   and exercise `/api/health/*` through Caddy.
+   completion precedes API startup, exercise the canonical health routes
+   directly, and exercise `/api/health/*` through Caddy.
 9. Run a negative Compose probe with a deliberately failing migration command
    and confirm that the API does not start.
 10. Inspect service logs and the final diff for leaked secrets, raw database
@@ -160,9 +163,9 @@ will be recorded explicitly rather than inferred.
 ## Documentation, scope, and rollback
 
 `README.md` and `docs/architecture/deployment.md` will describe the separate
-migration lifecycle, canonical external health paths, legacy compatibility, and
-monitoring semantics. `docs/generated/openapi.json` will be regenerated from
-the application.
+migration lifecycle, canonical external health paths, removal of the older
+routes, and monitoring semantics. `docs/generated/openapi.json` will be
+regenerated from the application.
 
 This change does not alter database schema, migrations, payment or legal
 behavior, authentication, application settings, or Caddy's general API routing
