@@ -6,6 +6,36 @@ x-logging: &default-logging
     max-size: "10m"
     max-file: "3"
 
+x-api-build: &api-build
+  context: .
+  dockerfile: apps/api/Dockerfile
+  target: development
+
+x-api-environment: &api-environment
+  APP_ENV: ${APP_ENV:-development}
+  DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-anytoolai}:${POSTGRES_PASSWORD:-anytoolai}@postgres:5432/${POSTGRES_DB:-anytoolai}
+  POSTGRES_DB: ${POSTGRES_DB:-anytoolai}
+  POSTGRES_USER: ${POSTGRES_USER:-anytoolai}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-anytoolai}
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: 5432
+  CLOUDPAYMENTS_PUBLIC_ID: ${CLOUDPAYMENTS_PUBLIC_ID:-}
+  CLOUDPAYMENTS_API_SECRET: ${CLOUDPAYMENTS_API_SECRET:-}
+  CLOUDPAYMENTS_ENABLED: ${CLOUDPAYMENTS_ENABLED:-false}
+  CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-http://localhost:8080,http://localhost:3000}
+  APP_PUBLIC_BASE_URL: ${APP_PUBLIC_BASE_URL:-http://localhost:3000}
+  SMTP_HOST: ${SMTP_HOST:-}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_USERNAME: ${SMTP_USERNAME:-}
+  SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+  SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-support@any-tool-ai.ru}
+  SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+  OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-payment-portal-api}
+
+x-api-volumes: &api-volumes
+  - ./apps/api:/app/apps/api
+
 services:
   postgres:
     image: postgres:18.4-alpine3.22@sha256:774521500f4c22761b25a6bdb772a0a3c2e8dd32468210bdad9231c5752ea398
@@ -29,41 +59,39 @@ services:
       timeout: 5s
       retries: 5
 
-  api:
-    build:
-      context: .
-      dockerfile: apps/api/Dockerfile
-      target: development
-    restart: unless-stopped
+  migrate:
+    build: *api-build
+    restart: "no"
     security_opt:
       - no-new-privileges:true
     logging: *default-logging
     depends_on:
       postgres:
         condition: service_healthy
-    environment:
-      APP_ENV: ${APP_ENV:-development}
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-anytoolai}:${POSTGRES_PASSWORD:-anytoolai}@postgres:5432/${POSTGRES_DB:-anytoolai}
-      POSTGRES_DB: ${POSTGRES_DB:-anytoolai}
-      POSTGRES_USER: ${POSTGRES_USER:-anytoolai}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-anytoolai}
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-      CLOUDPAYMENTS_PUBLIC_ID: ${CLOUDPAYMENTS_PUBLIC_ID:-}
-      CLOUDPAYMENTS_API_SECRET: ${CLOUDPAYMENTS_API_SECRET:-}
-      CLOUDPAYMENTS_ENABLED: ${CLOUDPAYMENTS_ENABLED:-false}
-      CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-http://localhost:8080,http://localhost:3000}
-      APP_PUBLIC_BASE_URL: ${APP_PUBLIC_BASE_URL:-http://localhost:3000}
-      SMTP_HOST: ${SMTP_HOST:-}
-      SMTP_PORT: ${SMTP_PORT:-587}
-      SMTP_USERNAME: ${SMTP_USERNAME:-}
-      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
-      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-support@any-tool-ai.ru}
-      SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
-      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
-      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-payment-portal-api}
-    volumes:
-      - ./apps/api:/app/apps/api
+    environment: *api-environment
+    command:
+      - python
+      - -m
+      - alembic
+      - -c
+      - apps/api/alembic.ini
+      - upgrade
+      - head
+    volumes: *api-volumes
+    networks:
+      - backend
+
+  api:
+    build: *api-build
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment: *api-environment
+    volumes: *api-volumes
     networks:
       - edge
       - backend
@@ -74,7 +102,7 @@ services:
         - CMD
         - python
         - -c
-        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready', timeout=2)"
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health/ready', timeout=2)"
       interval: 10s
       timeout: 5s
       retries: 12

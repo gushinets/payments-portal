@@ -36,7 +36,7 @@ services:
         - CMD
         - python
         - -c
-        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready', timeout=2)"
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health/ready', timeout=2)"
       interval: 5s
       timeout: 3s
       retries: 20
