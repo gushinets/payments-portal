@@ -55,7 +55,7 @@ response=""
 attempt=0
 while [ "$attempt" -lt 50 ]; do
   if response=$(curl --connect-timeout 1 --max-time 2 \
-    --fail --silent --show-error "http://${endpoint}/health/live" 2>/dev/null); then
+    --fail --silent --show-error "http://${endpoint}/api/health/live" 2>/dev/null); then
     break
   fi
   if [ "$(docker inspect --format '{{.State.Running}}' "$container_id")" != "true" ]; then
@@ -66,7 +66,7 @@ while [ "$attempt" -lt 50 ]; do
   sleep 0.2
 done
 
-if [ "$response" != '{"status":"ok"}' ]; then
+if [ "$response" != '{"status":"alive"}' ]; then
   docker logs "$container_id" >&2
   echo "Unexpected liveness response: $response" >&2
   exit 1

@@ -715,7 +715,7 @@
     },
     "/api/health/live": {
       "get": {
-        "operationId": "canonical_liveness_api_health_live_get",
+        "operationId": "liveness_api_health_live_get",
         "responses": {
           "200": {
             "content": {
@@ -726,7 +726,7 @@
             "description": "Successful Response"
           }
         },
-        "summary": "Canonical Liveness",
+        "summary": "Liveness",
         "tags": [
           "health"
         ]
@@ -734,7 +734,7 @@
     },
     "/api/health/ready": {
       "get": {
-        "operationId": "canonical_readiness_api_health_ready_get",
+        "operationId": "readiness_api_health_ready_get",
         "responses": {
           "200": {
             "content": {
@@ -745,7 +745,7 @@
             "description": "Successful Response"
           }
         },
-        "summary": "Canonical Readiness",
+        "summary": "Readiness",
         "tags": [
           "health"
         ]
@@ -856,63 +856,6 @@
         "summary": "List Required Documents",
         "tags": [
           "legal"
-        ]
-      }
-    },
-    "/health": {
-      "get": {
-        "operationId": "legacy_health_health_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Legacy Health",
-        "tags": [
-          "health"
-        ]
-      }
-    },
-    "/health/live": {
-      "get": {
-        "operationId": "legacy_liveness_health_live_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Legacy Liveness",
-        "tags": [
-          "health"
-        ]
-      }
-    },
-    "/health/ready": {
-      "get": {
-        "operationId": "legacy_readiness_health_ready_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Legacy Readiness",
-        "tags": [
-          "health"
         ]
       }
     }

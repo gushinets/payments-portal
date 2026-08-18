@@ -8,8 +8,8 @@ Linear: https://linear.app/paveldik/issue/ANY-83/vynesti-migracii-iz-zapuska-api
 ## Objective
 
 Run Alembic as a separate one-shot Compose prerequisite, expose independent
-liveness and PostgreSQL-backed readiness contracts, and keep every existing
-health route available during the compatibility period.
+liveness and PostgreSQL-backed readiness contracts, and use only the canonical
+health surface before the first production deployment.
 
 ## Scope and decisions
 
@@ -18,8 +18,13 @@ health route available during the compatibility period.
 - `GET /api/health/ready` runs `SELECT 1`, returns `{"status":"ready"}` on
   success, and returns HTTP 503 with `{"status":"not_ready"}` for a
   database-layer failure.
-- `/health`, `/health/live`, and `/health/ready` remain available. The root
-  legacy response no longer exposes CloudPayments configuration state.
+- `/health`, `/health/live`, and `/health/ready` are removed and return HTTP
+  404. ANY-83 permits either temporary compatibility or a documented
+  replacement; the repository is not deployed to production, so the reviewed
+  decision is to document the canonical replacement without aliases.
+- The repository usage audit found Docker Compose, CI, Caddy, and Uvicorn smoke
+  tests already using `/api/health/*`. The only non-test legacy consumer was
+  `security/trivy/verify-api-runtime.sh`, which now uses `/api/health/live`.
 - Development and production Compose define a one-shot `migrate` service that
   waits for healthy PostgreSQL. The API waits for successful migration
   completion.
@@ -33,7 +38,8 @@ health route available during the compatibility period.
 ## Progress
 
 - [x] Approve and commit the design and implementation plan.
-- [x] Add canonical and compatibility health contracts through RED/GREEN tests.
+- [x] Add canonical liveness and readiness contracts through RED/GREEN tests.
+- [x] Audit legacy consumers and remove the undeployed compatibility routes.
 - [x] Add one-shot development and production migration services.
 - [x] Remove Alembic from API image startup commands.
 - [x] Switch every API Docker healthcheck to canonical readiness.
@@ -49,6 +55,9 @@ health route available during the compatibility period.
 - `c85f784` - `ANY-83 - Add safe liveness and readiness endpoints`
 - `363c1b2` - `ANY-83 - Gate API startup on migrations`
 - `c9bbabe` - `ANY-83 - Document migration and health operations`
+- `b4ba406` - `ANY-83 - Simplify health route design`
+- `8d595c0` - `ANY-83 - Add canonical health route plan`
+- `ce8301f` - `ANY-83 - Remove legacy health routes`
 
 ## TDD evidence
 
@@ -62,6 +71,14 @@ health route available during the compatibility period.
   image commands still contained Alembic.
 - After the Compose and Dockerfile implementation: 8 deployment contract tests
   passed.
+- Review amendment route run: 4 failed as expected because `/health`,
+  `/health/live`, and `/health/ready` still returned 200 and remained in
+  OpenAPI; the other 91 selected tests passed.
+- After removing the compatibility router: all 95 selected health, API, and
+  app-factory tests passed, including the requested readiness OpenAPI tag.
+- The unchanged production-image verifier failed against removed
+  `/health/live`; after moving it to `/api/health/live` and the canonical
+  `{"status":"alive"}` payload, it passed against the same image.
 
 ## Static and generated validation
 
@@ -71,8 +88,8 @@ health route available during the compatibility period.
   `docs/generated/openapi.json` as stale. The generator was then run through
   the API development image because host npm is unavailable.
 - `scripts/repo.py generate --check` in the API development image: passed.
-- The generated OpenAPI contains `/api/health/live`, `/api/health/ready`, and
-  all three legacy health paths.
+- The generated OpenAPI contains `/api/health/live` and `/api/health/ready` and
+  contains none of `/health`, `/health/live`, or `/health/ready`.
 - Full API Ruff check: passed.
 - Full API Ruff format check: 68 files already formatted.
 - `git diff --check`: passed during every implementation stage.
@@ -89,6 +106,9 @@ health route available during the compatibility period.
   CloudPayments webhook persistence.
 
 ## Compose and runtime validation
+
+The first-pass observations below predate the review amendment. Legacy-route
+responses are retained as historical evidence, not as the current contract.
 
 - Rendered development, production, and merged agent Compose models were valid.
   Development and production `api` depend on `migrate` with
@@ -124,6 +144,8 @@ health route available during the compatibility period.
   contains settings validation and Uvicorn only.
 - `security/trivy/verify-api-runtime.sh payments-any83-prod-smoke-api:latest`:
   passed.
+- `security/trivy/verify-api-runtime.sh payments-any83-health-review`: passed
+  after the verifier moved to canonical liveness.
 - The disposable production-smoke containers, networks, and PostgreSQL volume
   were removed after evidence capture.
 
@@ -158,7 +180,7 @@ health route available during the compatibility period.
 
 ## Handoff
 
-The local `ANY-83` branch is ready for human review. The required PR title is
-`ANY-83 - Separate migrations and add health checks`, and the PR body must link
-the Linear issue above. No PR or Linear status transition is part of this local
-implementation handoff.
+PR #52 is the review vehicle for the local `ANY-83` branch and uses the required
+title `ANY-83 - Separate migrations and add health checks`. Its body links the
+Linear issue above. The remaining review thread stays unresolved until a human
+explicitly authorizes a reply or resolution.

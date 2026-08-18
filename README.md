@@ -111,8 +111,9 @@ the loopback PostgreSQL port instead.
 
 Canonical health endpoints are `/api/health/live` for process liveness and
 `/api/health/ready` for PostgreSQL-backed readiness. Docker and external
-monitoring use readiness. The legacy `/health`, `/health/live`, and
-`/health/ready` routes remain available during the compatibility period.
+monitoring use readiness. These are the complete supported health surface;
+the older `/health`, `/health/live`, and `/health/ready` paths are removed and
+return HTTP 404.
 
 Local API configuration uses the same environment variable names as production,
 with development values supplied by `.env.example`, local `.env`, or the

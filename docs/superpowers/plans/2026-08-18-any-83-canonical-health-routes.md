@@ -34,7 +34,7 @@
 - Consumes: `app.core.database.SessionLocal`, SQLAlchemy `text` and `SQLAlchemyError`, FastAPI `APIRouter` and `JSONResponse`.
 - Produces: `health_router`, `database_is_ready() -> bool`, and `readiness_response() -> JSONResponse` from `app.health`; only `/api/health/live` and `/api/health/ready` are public.
 
-- [ ] **Step 1: Write failing canonical-only route tests**
+- [x] **Step 1: Write failing canonical-only route tests**
 
 In `apps/api/tests/test_health.py`, retain the exact canonical payload tests, make the database-independence checks canonical-only, and add the removal contract:
 
@@ -58,7 +58,7 @@ assert {"/health", "/health/live", "/health/ready"}.isdisjoint(openapi["paths"])
 
 This readiness tag assertion directly addresses unresolved review thread `PRRT_kwDOTIm_Wc6Z_py1`.
 
-- [ ] **Step 2: Run the focused tests and verify RED**
+- [x] **Step 2: Run the focused tests and verify RED**
 
 Run:
 
@@ -74,7 +74,7 @@ docker run --rm \
 
 Expected: FAIL because the three `/health*` routes still return HTTP 200 and still appear in OpenAPI. Canonical contract assertions remain green.
 
-- [ ] **Step 3: Remove the compatibility router**
+- [x] **Step 3: Remove the compatibility router**
 
 In `apps/api/app/health.py`, rename `canonical_health_router` to `health_router`, keep its `/api/health` prefix and both route functions, and delete `legacy_health_router`, `legacy_health`, `legacy_liveness`, and `legacy_readiness`:
 
@@ -101,13 +101,13 @@ from app.health import health_router
 app.include_router(health_router)
 ```
 
-- [ ] **Step 4: Run focused tests and verify GREEN**
+- [x] **Step 4: Run focused tests and verify GREEN**
 
 Run the Step 2 command again.
 
 Expected: all selected tests pass; `/health*` return 404; canonical response bodies, readiness failure handling, request IDs, route tags, metrics, app-factory isolation, and lifespan behavior remain covered.
 
-- [ ] **Step 5: Run Python lint and formatting checks**
+- [x] **Step 5: Run Python lint and formatting checks**
 
 Run:
 
@@ -127,7 +127,7 @@ docker run --rm -v "$PWD:/workspace" -w /workspace \
 
 Expected: both commands exit 0.
 
-- [ ] **Step 6: Commit the canonical API contract**
+- [x] **Step 6: Commit the canonical API contract**
 
 ```bash
 git add apps/api/app/health.py apps/api/app/main.py \
@@ -152,7 +152,7 @@ git commit -m "ANY-83 - Remove legacy health routes"
 - Consumes: production API image exposing `GET /api/health/live -> {"status":"alive"}` and the checked-in repository generator.
 - Produces: a runtime verifier, current operational documentation, and generated OpenAPI containing only the two canonical health paths.
 
-- [ ] **Step 1: Prove the old runtime verifier fails against the canonical-only API**
+- [x] **Step 1: Prove the old runtime verifier fails against the canonical-only API**
 
 Build a fresh production image after Task 1 and run the unchanged verifier:
 
@@ -164,7 +164,7 @@ security/trivy/verify-api-runtime.sh payments-any83-health-review
 
 Expected: FAIL because the verifier requests removed `/health/live` or expects `{"status":"ok"}`.
 
-- [ ] **Step 2: Update the runtime verifier**
+- [x] **Step 2: Update the runtime verifier**
 
 In `security/trivy/verify-api-runtime.sh`, request the canonical path and exact payload:
 
@@ -176,7 +176,7 @@ In `security/trivy/verify-api-runtime.sh`, request the canonical path and exact 
 if [ "$response" != '{"status":"alive"}' ]; then
 ```
 
-- [ ] **Step 3: Re-run the runtime verifier and verify GREEN**
+- [x] **Step 3: Re-run the runtime verifier and verify GREEN**
 
 Run:
 
@@ -186,7 +186,7 @@ security/trivy/verify-api-runtime.sh payments-any83-health-review
 
 Expected: `Verified patched, non-root API production image liveness.`
 
-- [ ] **Step 4: Update current documentation and supersede the old compatibility plan**
+- [x] **Step 4: Update current documentation and supersede the old compatibility plan**
 
 In `README.md` and `docs/architecture/deployment.md`, remove claims that `/health*` remain available and state that `/api/health/live` and `/api/health/ready` are the complete supported health surface.
 
@@ -201,7 +201,7 @@ At the top of `docs/superpowers/plans/2026-08-17-any-83-migrations-health-checks
 
 Do not rewrite the checked historical steps in the older plan.
 
-- [ ] **Step 5: Regenerate and verify OpenAPI**
+- [x] **Step 5: Regenerate and verify OpenAPI**
 
 Run the checked-in generator in the API development image when host npm is unavailable:
 
@@ -217,7 +217,7 @@ docker run --rm -v "$PWD:/workspace" -w /workspace \
 
 Expected: `docs/generated/openapi.json` contains `/api/health/live` and `/api/health/ready`, contains neither `/health` nor its child paths, and the check exits 0.
 
-- [ ] **Step 6: Run documentation and focused contract checks**
+- [x] **Step 6: Run documentation and focused contract checks**
 
 Run:
 
@@ -234,7 +234,7 @@ git diff --check
 
 Expected: every command exits 0.
 
-- [ ] **Step 7: Commit repository consumers and documentation**
+- [x] **Step 7: Commit repository consumers and documentation**
 
 ```bash
 git add security/trivy/verify-api-runtime.sh README.md \

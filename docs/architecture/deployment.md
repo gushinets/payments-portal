@@ -1,7 +1,7 @@
 # Deployment Architecture
 
 Status: authoritative current deployment
-Last verified: 2026-08-17
+Last verified: 2026-08-18
 
 ## Current RU deployment
 
@@ -31,8 +31,9 @@ does not access PostgreSQL. `GET /api/health/ready` runs `SELECT 1` and returns
 HTTP 503 with `{"status":"not_ready"}` when PostgreSQL is unavailable, without
 returning database or exception details. Docker uses readiness for API health.
 Caddy's `/api/*` proxy exposes both canonical health endpoints for external
-monitoring such as HetrixTools. `/health`, `/health/live`, and `/health/ready`
-remain available as compatibility routes.
+monitoring such as HetrixTools. The supported health surface is limited to
+these two endpoints; `/health`, `/health/live`, and `/health/ready` are removed
+and return HTTP 404.
 
 ## Local worktree deployment
 
