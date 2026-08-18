@@ -39,6 +39,6 @@ def create_checkout_intent(
     except SellablePlanResolutionError as exc:
         logger.warning(
             "checkout intent sellable plan resolution failed",
-            extra=exc.log_context(),
+            extra={"structured": exc.log_context()},
         )
         raise HTTPException(status_code=400, detail=exc.code) from exc

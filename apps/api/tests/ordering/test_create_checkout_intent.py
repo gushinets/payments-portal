@@ -13,6 +13,7 @@ from app.models import AuthSession, Plan, Product, Region, User
 
 
 def test_create_checkout_intent(db_session: Session) -> None:
+    # Удалить/переписать - нужен сейчас для тестов
     token = "test-ordering-token"
     user = User(
         tenant_id="anytoolai",
