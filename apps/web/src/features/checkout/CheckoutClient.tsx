@@ -17,6 +17,7 @@ import {
   postJson,
   submitAuth
 } from "@/shared/api/auth";
+import type { CheckoutIntentResponse } from "@/shared/api/contracts";
 import { AuthForm, AuthFormSubmitValues, AuthMode } from "@/shared/ui";
 import {
   findProduct,
@@ -53,16 +54,6 @@ type SessionResponse = {
   authenticated: boolean;
   user: SessionUser;
   product_state?: ProductState | null;
-};
-
-type CheckoutIntentResponse = {
-  product_state: ProductState;
-  checkout: {
-    amount_minor: number;
-    amount: number;
-    currency: string;
-    action: CheckoutAction;
-  };
 };
 
 type RequiredDocument = {
@@ -325,7 +316,7 @@ export function CheckoutClient({
     let checkoutIntent: CheckoutIntentResponse;
     try {
       const payload = await postJson<CheckoutIntentResponse>(
-        "/api/auth/checkout-intent",
+        "/api/v1/ordering/checkout/intent",
         {
           product: selectedProduct.code,
           plan_code: selectedProduct.plan.code,

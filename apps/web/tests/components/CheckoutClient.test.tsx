@@ -211,7 +211,9 @@ describe("CheckoutClient critical characterization", () => {
       http.get(`${apiBase}/api/auth/session`, () =>
         HttpResponse.json(sessionResponse("inactive"))
       ),
-      http.post(`${apiBase}/api/auth/checkout-intent`, async ({ request }) => {
+      http.post(
+        `${apiBase}/api/v1/ordering/checkout/intent`,
+        async ({ request }) => {
         checkoutAttempts += 1;
         const body = (await request.json()) as Record<string, unknown>;
         expect(body).toEqual({
@@ -253,6 +255,7 @@ describe("CheckoutClient critical characterization", () => {
         }
 
         return HttpResponse.json({
+          status: "pending",
           product_state: {
             product_code: "document-summary",
             plan_code: "document-summary-pro",
@@ -270,7 +273,8 @@ describe("CheckoutClient critical characterization", () => {
             action: checkoutAction("invoice-after-legal")
           }
         });
-      }),
+      }
+      ),
       http.post(`${apiBase}/api/legal/acceptances`, async ({ request }) => {
         const body = (await request.json()) as {
           document_version_id: string;
@@ -330,8 +334,9 @@ describe("CheckoutClient critical characterization", () => {
       http.get(`${apiBase}/api/auth/session`, () =>
         HttpResponse.json(sessionResponse("inactive"))
       ),
-      http.post(`${apiBase}/api/auth/checkout-intent`, () =>
+      http.post(`${apiBase}/api/v1/ordering/checkout/intent`, () =>
         HttpResponse.json({
+          status: "pending",
           product_state: {
             product_code: "document-summary",
             plan_code: "document-summary-pro",
@@ -370,7 +375,7 @@ describe("CheckoutClient critical characterization", () => {
       http.get(`${apiBase}/api/auth/session`, () =>
         HttpResponse.json(sessionResponse("inactive"))
       ),
-      http.post(`${apiBase}/api/auth/checkout-intent`, () => {
+      http.post(`${apiBase}/api/v1/ordering/checkout/intent`, () => {
         checkoutAttempts += 1;
         return HttpResponse.json({});
       })
@@ -399,8 +404,9 @@ describe("CheckoutClient critical characterization", () => {
       http.get(`${apiBase}/api/auth/session`, () =>
         HttpResponse.json(sessionResponse("inactive"))
       ),
-      http.post(`${apiBase}/api/auth/checkout-intent`, () =>
+      http.post(`${apiBase}/api/v1/ordering/checkout/intent`, () =>
         HttpResponse.json({
+          status: "pending",
           product_state: {
             product_code: "document-summary",
             plan_code: "document-summary-pro",
@@ -439,8 +445,9 @@ describe("CheckoutClient critical characterization", () => {
       http.get(`${apiBase}/api/auth/session`, () =>
         HttpResponse.json(sessionResponse("inactive"))
       ),
-      http.post(`${apiBase}/api/auth/checkout-intent`, () =>
+      http.post(`${apiBase}/api/v1/ordering/checkout/intent`, () =>
         HttpResponse.json({
+          status: "pending",
           product_state: {
             product_code: "document-summary",
             plan_code: "document-summary-pro",
@@ -479,7 +486,7 @@ describe("CheckoutClient critical characterization", () => {
       http.get(`${apiBase}/api/auth/session`, () =>
         HttpResponse.json(sessionResponse("inactive"))
       ),
-      http.post(`${apiBase}/api/auth/checkout-intent`, () =>
+      http.post(`${apiBase}/api/v1/ordering/checkout/intent`, () =>
         HttpResponse.json(
           { detail: "cloudpayments_public_terminal_id_missing" },
           { status: 409 }
@@ -505,8 +512,9 @@ describe("CheckoutClient critical characterization", () => {
       http.get(`${apiBase}/api/auth/session`, () =>
         HttpResponse.json(sessionResponse("inactive"))
       ),
-      http.post(`${apiBase}/api/auth/checkout-intent`, () =>
+      http.post(`${apiBase}/api/v1/ordering/checkout/intent`, () =>
         HttpResponse.json({
+          status: "pending",
           product_state: {
             product_code: "document-summary",
             plan_code: "document-summary-pro",

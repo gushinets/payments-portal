@@ -46,7 +46,7 @@ test("legal acceptance gates checkout and webhook state remains authoritative", 
   const token = registrationBody.token as string;
   const headers = { Authorization: `Bearer ${token}` };
 
-  const blockedCheckout = await api.post("/api/auth/checkout-intent", {
+  const blockedCheckout = await api.post("/api/v1/ordering/checkout/intent", {
     headers,
     data: { product, plan_code: planCode, auto_renew: false }
   });
@@ -68,7 +68,7 @@ test("legal acceptance gates checkout and webhook state remains authoritative", 
     expect(acceptance.ok()).toBeTruthy();
   }
 
-  const checkout = await api.post("/api/auth/checkout-intent", {
+  const checkout = await api.post("/api/v1/ordering/checkout/intent", {
     headers,
     data: { product, plan_code: planCode, auto_renew: false }
   });
@@ -149,7 +149,7 @@ test("provider UI stub success cannot activate access without backend state", as
   const token = registrationBody.token as string;
   const headers = { Authorization: `Bearer ${token}` };
 
-  const blockedCheckout = await api.post("/api/auth/checkout-intent", {
+  const blockedCheckout = await api.post("/api/v1/ordering/checkout/intent", {
     headers,
     data: { product, plan_code: planCode, auto_renew: false }
   });
