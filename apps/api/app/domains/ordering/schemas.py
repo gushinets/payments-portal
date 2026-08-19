@@ -37,18 +37,26 @@ class OrderingSchema(BaseModel):
 
 class OrderStatusEnum(str, Enum):
     CREATED = "created"
-    PENDING = "pending"
+    REQUIRES_CONSENTS = "requires_consents"
+    PENDING_PAYMENT = "pending_payment"
     PAID = "paid"
-    FAILED = "failed"
+    PAYMENT_FAILED = "payment_failed"
     CANCELED = "canceled"
     EXPIRED = "expired"
+    REFUNDED = "refunded"
+    PARTIALLY_REFUNDED = "partially_refunded"
+    REGION_MISMATCH = "region_mismatch"
 
 
 class CheckoutSessionStatusEnum(str, Enum):
     CREATED = "created"
-    IN_PROGRESS = "in_progress"
-    COMPLETED = "completed"
+    ORDER_CREATED = "order_created"
     EXPIRED = "expired"
+
+
+class ProductAccessStateStatusEnum(str, Enum):
+    INACTIVE = "inactive"
+    PENDING = "pending"
 
 
 class CreateEntrypointSessionInput(OrderingSchema):
@@ -110,7 +118,7 @@ class CreateCheckoutSessionInput(OrderingSchema):
     user_id: UUID
     entrypoint_session_id: UUID | None = None
     plan_id: UUID | None = None
-    status: str = "created"
+    status: CheckoutSessionStatusEnum = CheckoutSessionStatusEnum.CREATED
     amount_minor: int = Field(ge=0)
     currency: str = Field(min_length=3, max_length=3)
     expires_at: datetime
@@ -132,7 +140,7 @@ class CreateCheckoutSessionInput(OrderingSchema):
             user_id=user.id,
             entrypoint_session_id=entrypoint_session_id,
             plan_id=sellable_plan.id,
-            status="order_created",
+            status=CheckoutSessionStatusEnum.ORDER_CREATED,
             amount_minor=sellable_plan.price_amount_minor,
             currency=sellable_plan.currency,
             expires_at=expires_at,
@@ -153,7 +161,7 @@ class CreateOrderInput(OrderingSchema):
     checkout_session_id: UUID | None = None
     entrypoint_session_id: UUID | None = None
     plan_id: UUID | None = None
-    status: str = "created"
+    status: OrderStatusEnum = OrderStatusEnum.CREATED
     amount_minor: int = Field(ge=0)
     currency: str = Field(min_length=3, max_length=3)
     tax_amount_minor: int = Field(default=0, ge=0)
@@ -190,7 +198,7 @@ class CreateOrderInput(OrderingSchema):
             checkout_session_id=checkout_session_id,
             entrypoint_session_id=entrypoint_session_id,
             plan_id=sellable_plan.id,
-            status="pending_payment",
+            status=OrderStatusEnum.PENDING_PAYMENT,
             amount_minor=sellable_plan.price_amount_minor,
             currency=sellable_plan.currency,
             provider=provider,
@@ -304,7 +312,7 @@ class CheckoutIntentProductStateResponse(OrderingSchema):
     plan_name: str | None = None
     invoice_id: str | None = None
     transaction_id: str | None = None
-    status: str
+    status: ProductAccessStateStatusEnum
     starts_at: str | None = None
     expires_at: str | None = None
 
