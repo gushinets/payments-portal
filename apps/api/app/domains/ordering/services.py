@@ -1,5 +1,5 @@
 from __future__ import annotations
-
+import secrets
 from sqlalchemy.orm import Session
 
 from app.domains.billing.schemas import BundleStatus, PlanScopeType, ProductStatus
@@ -18,6 +18,10 @@ from app.infrastructure.queries.plan import (
     get_bundle_by_id,
     get_product_by_id,
 )
+
+
+def make_invoice_id(product_code: str) -> str:
+    return f"{product_code}-{secrets.token_hex(8)}"
 
 
 def resolve_checkout_sellable_plan(

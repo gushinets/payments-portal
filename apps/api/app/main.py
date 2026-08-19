@@ -20,7 +20,7 @@ from app.domains.legal.router import router as legal_router
 from app.integrations.cloudpayments.adapter import cloudpayments_adapter
 from app.integrations.cloudpayments.router import router as cloudpayments_router
 from app.legal_seed import seed_legal_documents
-from app.payment_providers.registry import payment_provider_registry
+from app.payment_providers import payment_provider_registry
 
 
 payment_provider_registry.register(cloudpayments_adapter)

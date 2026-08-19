@@ -38,11 +38,12 @@ from app.models import (
     ProductAccessState,
     User,
 )
-from app.payment_providers.accounts import get_or_create_checkout_provider_account
-from app.payment_providers.contracts import PaymentProviderConfigurationError
-from app.payment_providers.registry import (
+from app.payment_providers import (
+    CheckoutProviderUnavailableError,
     PaymentProviderRegistry,
+    PaymentProviderConfigurationError,
     get_payment_provider_registry,
+    get_or_create_checkout_provider_account,
 )
 
 logger = logging.getLogger("checkout-intent")
@@ -120,6 +121,7 @@ def present_user(user: User) -> dict:
     }
 
 
+# Перенес
 def make_invoice_id(product_code: str) -> str:
     return f"{product_code}-{secrets.token_hex(8)}"
 
@@ -468,11 +470,18 @@ def create_checkout_intent(
             },
         )
 
-    provider_account, provider_adapter = get_or_create_checkout_provider_account(
-        db,
-        user=user,
-        registry=providers,
-    )
+    try:
+        provider_account, provider_adapter = get_or_create_checkout_provider_account(
+            db,
+            user=user,
+            registry=providers,
+        )
+    except CheckoutProviderUnavailableError as exc:
+        logger.warning(
+            "checkout intent payment provider unavailable",
+            extra={"structured": exc.log_context()},
+        )
+        raise HTTPException(status_code=503, detail=exc.code) from exc
     invoice_id = make_invoice_id(sellable_plan["entrypoint_value"])
     amount_minor = int(sellable_plan["amount_minor"])
     currency = str(sellable_plan["currency"])
