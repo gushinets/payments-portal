@@ -30,7 +30,7 @@ type ProviderPayment = {
 
 export async function installProviderUiScriptStub(page: Page) {
   await page.route(
-    "https://widget.cloudpayments.ru/bundles/cloudpayments",
+    /https:\/\/widget\.cloudpayments\.ru\/bundles\/cloudpayments(?:\.js)?(?:\/)?(?:\?.*)?$/,
     async (route) => {
       await route.fulfill({
         contentType: "application/javascript",
