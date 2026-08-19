@@ -93,13 +93,13 @@ def resolve_checkout_sellable_plan(
             )
         entrypoint_value = bundle.code
     elif plan.scope_type == PlanScopeType.ALL_ACCESS.value:
-        if payload.entrypoint_code not in {PlanScopeType.ALL_ACCESS.value, plan.code}:
+        if payload.entrypoint_code not in {"all-access", plan.code}:
             raise SellablePlanResolutionError(
                 reason="entrypoint_scope_mismatch",
                 payload=payload,
                 plan=plan,
             )
-        entrypoint_value = PlanScopeType.ALL_ACCESS.value
+        entrypoint_value = "all-access"
     else:
         raise SellablePlanResolutionError(
             reason="unsupported_scope_type",
