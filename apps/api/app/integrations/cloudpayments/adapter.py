@@ -18,11 +18,12 @@ from app.integrations.cloudpayments.payload import (
     parse_bool,
     parse_int,
 )
-from app.models import Order, PaymentProviderAccount
+from app.models import PaymentProviderAccount
 from app.payment_providers.contracts import (
     CheckoutAction,
     NormalizedPaymentEvent,
     PaymentProviderConfigurationError,
+    PrepareCheckoutActionInput,
 )
 
 CLOUDPAYMENTS_PROVIDER_CODE = "cloudpayments"
@@ -274,10 +275,7 @@ class CloudPaymentsAdapter:
         self,
         *,
         provider_account: PaymentProviderAccount,
-        order: Order,
-        account_id: str,
-        description: str | None,
-        metadata: dict[str, Any],
+        checkout: PrepareCheckoutActionInput,
     ) -> CheckoutAction:
         mode = str(provider_account.config.get("widget_mode") or "charge")
         if mode not in {"charge", "auth"}:
@@ -290,14 +288,14 @@ class CloudPaymentsAdapter:
             experience="widget",
             mode=mode,
             public_identifier=public_identifier,
-            amount_minor=order.amount_minor,
-            amount=(Decimal(order.amount_minor) / Decimal("100")).quantize(Decimal("0.01")),
-            currency=order.currency,
-            merchant_order_id=order.merchant_order_id,
-            provider_invoice_id=order.provider_invoice_id or order.merchant_order_id,
-            account_id=account_id,
-            description=description,
-            metadata=metadata,
+            amount_minor=checkout.amount_minor,
+            amount=(Decimal(checkout.amount_minor) / Decimal("100")).quantize(Decimal("0.01")),
+            currency=checkout.currency,
+            merchant_order_id=checkout.merchant_order_id,
+            provider_invoice_id=checkout.provider_invoice_id,
+            account_id=checkout.account_id,
+            description=checkout.description,
+            metadata=checkout.metadata,
         )
 
     async def normalize_webhook_request(

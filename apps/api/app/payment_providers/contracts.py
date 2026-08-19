@@ -4,7 +4,9 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Literal, Protocol
 
-from app.models import Order, PaymentProviderAccount
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.models import PaymentProviderAccount
 
 CheckoutExperience = Literal["widget", "redirect", "embedded"]
 
@@ -13,6 +15,18 @@ class PaymentProviderConfigurationError(Exception):
     def __init__(self, code: str) -> None:
         super().__init__(code)
         self.code = code
+
+
+class PrepareCheckoutActionInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    amount_minor: int = Field(ge=0)
+    currency: str = Field(min_length=3, max_length=3)
+    merchant_order_id: str
+    provider_invoice_id: str
+    account_id: str
+    description: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -77,10 +91,7 @@ class PaymentProviderAdapter(Protocol):
         self,
         *,
         provider_account: PaymentProviderAccount,
-        order: Order,
-        account_id: str,
-        description: str | None,
-        metadata: dict[str, Any],
+        checkout: PrepareCheckoutActionInput,
     ) -> CheckoutAction: ...
 
     def webhook_success_response(self, event: NormalizedPaymentEvent) -> dict[str, Any]: ...

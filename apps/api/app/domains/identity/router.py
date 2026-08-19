@@ -45,6 +45,7 @@ from app.payment_providers import (
     get_payment_provider_registry,
     get_or_create_checkout_provider_account,
 )
+from app.payment_providers.contracts import PrepareCheckoutActionInput
 
 logger = logging.getLogger("checkout-intent")
 
@@ -557,13 +558,18 @@ def create_checkout_intent(
     try:
         checkout_action = provider_adapter.prepare_checkout_action(
             provider_account=provider_account,
-            order=order,
-            account_id=user.email,
-            description=str(sellable_plan["plan_name"]),
-            metadata={
-                "product_code": payload.product,
-                "plan_code": sellable_plan["plan_code"],
-            },
+            checkout=PrepareCheckoutActionInput(
+                amount_minor=amount_minor,
+                currency=currency,
+                merchant_order_id=invoice_id,
+                provider_invoice_id=invoice_id,
+                account_id=user.email,
+                description=str(sellable_plan["plan_name"]),
+                metadata={
+                    "product_code": payload.product,
+                    "plan_code": sellable_plan["plan_code"],
+                },
+            ),
         )
         order.metadata_ = {
             **order.metadata_,

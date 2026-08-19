@@ -1,28 +1,14 @@
 from __future__ import annotations
 
 from datetime import datetime
-from enum import Enum
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.core.client_info import ClientInfo
 from app.domains.billing.schemas import PlanScopeType
-
-
-class OrderStatusEnum(str, Enum):
-    CREATED = "created"
-    PENDING = "pending"
-    PAID = "paid"
-    FAILED = "failed"
-    CANCELED = "canceled"
-    EXPIRED = "expired"
-
-
-class CheckoutSessionStatusEnum(str, Enum):
-    CREATED = "created"
-    IN_PROGRESS = "in_progress"
-    COMPLETED = "completed"
-    EXPIRED = "expired"
+from app.domains.identity.models import User
+from app.models import Plan
 
 
 class CheckoutIntentRequest(BaseModel):
@@ -42,86 +28,17 @@ class ResolveSellablePlanInput(BaseModel):
 
 
 class OrderingSchema(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
 
 
-class OrderItem(OrderingSchema):
-    id: UUID
-    order_id: UUID
-    item_type: str
-    product_id: UUID | None = None
-    bundle_id: UUID | None = None
-    plan_id: UUID | None = None
-    product_code_snapshot: str | None = None
-    plan_code_snapshot: str | None = None
-    title_snapshot: str
-    quantity: int = Field(ge=1)
-    list_amount_minor: int = Field(ge=0)
-    discount_amount_minor: int = Field(ge=0)
-    unit_amount_minor: int = Field(ge=0)
-    amount_minor: int = Field(ge=0)
-    currency: str = Field(min_length=3, max_length=3)
-    trial_days_snapshot: int = Field(ge=0)
-    pricing_snapshot: dict = Field(default_factory=dict)
-    metadata_: dict = Field(default_factory=dict)
-    created_at: datetime
-
-
-class Order(OrderingSchema):
-    id: UUID
-    tenant_id: str
-    region: str
-    order_number: str
-    user_id: UUID
-    checkout_session_id: UUID | None = None
-    entrypoint_session_id: UUID | None = None
-    plan_id: UUID | None = None
-    status: OrderStatusEnum | str
-    amount_minor: int = Field(ge=0)
-    currency: str = Field(min_length=3, max_length=3)
-    tax_amount_minor: int = Field(ge=0)
-    discount_amount_minor: int = Field(ge=0)
-    provider: str
-    provider_account_id: UUID
-    merchant_order_id: str
-    provider_invoice_id: str | None = None
-    billing_country: str | None = None
-    region_mismatch_status: str
-    paid_at: datetime | None = None
-    failed_at: datetime | None = None
-    canceled_at: datetime | None = None
-    expires_at: datetime | None = None
-    metadata_: dict = Field(default_factory=dict)
-    created_at: datetime
-    updated_at: datetime
-    items: list[OrderItem] = Field(default_factory=list)
-
-
-class CheckoutSession(OrderingSchema):
-    id: UUID
-    tenant_id: str
-    region: str
-    user_id: UUID
-    entrypoint_session_id: UUID | None = None
-    plan_id: UUID | None = None
-    status: CheckoutSessionStatusEnum | str
-    amount_minor: int = Field(ge=0)
-    currency: str = Field(min_length=3, max_length=3)
-    expires_at: datetime
-    metadata_: dict = Field(default_factory=dict)
-    created_at: datetime
-    updated_at: datetime
-
-
-class EntrypointSession(OrderingSchema):
-    id: UUID
+class CreateEntrypointSessionInput(OrderingSchema):
     tenant_id: str
     route_region: str
     resolved_region: str
     ip_country: str | None = None
     declared_country: str | None = None
     browser_language: str | None = None
-    region_mismatch_status: str
+    region_mismatch_status: str = "none"
     entrypoint_type: str
     entrypoint_value: str
     product_id: UUID | None = None
@@ -137,11 +54,191 @@ class EntrypointSession(OrderingSchema):
     ip: str | None = None
     user_agent: str | None = None
     metadata_: dict = Field(default_factory=dict)
-    created_at: datetime
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        payload: CheckoutIntentRequest,
+        user: User,
+        client_info: ClientInfo,
+        sellable_plan: "SellablePlan",
+    ) -> "CreateEntrypointSessionInput":
+        return cls(
+            tenant_id=user.tenant_id,
+            route_region=user.region,
+            resolved_region=user.region,
+            entrypoint_type=payload.entrypoint_type,
+            entrypoint_value=sellable_plan.entrypoint_value,
+            product_id=sellable_plan.product_id,
+            bundle_id=sellable_plan.bundle_id,
+            frontend_id=payload.frontend_id or "web_checkout",
+            user_id=user.id,
+            source_url=payload.source_url,
+            ip=client_info.ip,
+            user_agent=client_info.user_agent,
+            metadata_={
+                "plan_code": payload.plan_code,
+                "auto_renew": payload.auto_renew,
+            },
+        )
+
+
+class CreateCheckoutSessionInput(OrderingSchema):
+    tenant_id: str
+    region: str
+    user_id: UUID
+    entrypoint_session_id: UUID | None = None
+    plan_id: UUID | None = None
+    status: str = "created"
+    amount_minor: int = Field(ge=0)
+    currency: str = Field(min_length=3, max_length=3)
+    expires_at: datetime
+    metadata_: dict = Field(default_factory=dict)
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        payload: CheckoutIntentRequest,
+        user: User,
+        sellable_plan: "SellablePlan",
+        entrypoint_session_id: UUID,
+        expires_at: datetime,
+    ) -> "CreateCheckoutSessionInput":
+        return cls(
+            tenant_id=user.tenant_id,
+            region=user.region,
+            user_id=user.id,
+            entrypoint_session_id=entrypoint_session_id,
+            plan_id=sellable_plan.id,
+            status="order_created",
+            amount_minor=sellable_plan.price_amount_minor,
+            currency=sellable_plan.currency,
+            expires_at=expires_at,
+            metadata_={
+                "product_code": payload.product,
+                "plan_code": sellable_plan.code,
+                "scope_type": sellable_plan.scope_type,
+                "auto_renew": payload.auto_renew,
+            },
+        )
+
+
+class CreateOrderInput(OrderingSchema):
+    tenant_id: str
+    region: str
+    order_number: str
+    user_id: UUID
+    checkout_session_id: UUID | None = None
+    entrypoint_session_id: UUID | None = None
+    plan_id: UUID | None = None
+    status: str = "created"
+    amount_minor: int = Field(ge=0)
+    currency: str = Field(min_length=3, max_length=3)
+    tax_amount_minor: int = Field(default=0, ge=0)
+    discount_amount_minor: int = Field(default=0, ge=0)
+    provider: str
+    provider_account_id: UUID
+    merchant_order_id: str
+    provider_invoice_id: str | None = None
+    billing_country: str | None = None
+    region_mismatch_status: str = "none"
+    expires_at: datetime | None = None
+    metadata_: dict = Field(default_factory=dict)
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        payload: CheckoutIntentRequest,
+        user: User,
+        sellable_plan: "SellablePlan",
+        provider_account_id: UUID,
+        provider: str,
+        order_number: str,
+        merchant_order_id: str,
+        checkout_session_id: UUID,
+        entrypoint_session_id: UUID,
+        expires_at: datetime,
+    ) -> "CreateOrderInput":
+        return cls(
+            tenant_id=user.tenant_id,
+            region=user.region,
+            order_number=order_number,
+            user_id=user.id,
+            checkout_session_id=checkout_session_id,
+            entrypoint_session_id=entrypoint_session_id,
+            plan_id=sellable_plan.id,
+            status="pending_payment",
+            amount_minor=sellable_plan.price_amount_minor,
+            currency=sellable_plan.currency,
+            provider=provider,
+            provider_account_id=provider_account_id,
+            merchant_order_id=merchant_order_id,
+            provider_invoice_id=merchant_order_id,
+            expires_at=expires_at,
+            metadata_={
+                "product_code": payload.product,
+                "plan_code": sellable_plan.code,
+                "scope_type": sellable_plan.scope_type,
+                "auto_renew": payload.auto_renew,
+            },
+        )
+
+
+class CreateOrderItemInput(OrderingSchema):
+    order_id: UUID
+    item_type: str
+    product_id: UUID | None = None
+    bundle_id: UUID | None = None
+    plan_id: UUID | None = None
+    product_code_snapshot: str | None = None
+    plan_code_snapshot: str | None = None
+    title_snapshot: str
+    quantity: int = Field(default=1, ge=1)
+    list_amount_minor: int = Field(ge=0)
+    discount_amount_minor: int = Field(default=0, ge=0)
+    unit_amount_minor: int = Field(ge=0)
+    amount_minor: int = Field(ge=0)
+    currency: str = Field(min_length=3, max_length=3)
+    trial_days_snapshot: int = Field(default=0, ge=0)
+    pricing_snapshot: dict = Field(default_factory=dict)
+    metadata_: dict = Field(default_factory=dict)
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        payload: CheckoutIntentRequest,
+        sellable_plan: "SellablePlan",
+        order_id: UUID,
+    ) -> "CreateOrderItemInput":
+        return cls(
+            order_id=order_id,
+            item_type=f"{sellable_plan.scope_type}_plan",
+            product_id=sellable_plan.product_id,
+            bundle_id=sellable_plan.bundle_id,
+            plan_id=sellable_plan.id,
+            product_code_snapshot=(
+                payload.product if sellable_plan.scope_type == PlanScopeType.PRODUCT.value else None
+            ),
+            plan_code_snapshot=sellable_plan.code,
+            title_snapshot=sellable_plan.name,
+            quantity=1,
+            list_amount_minor=sellable_plan.price_amount_minor,
+            discount_amount_minor=0,
+            unit_amount_minor=sellable_plan.price_amount_minor,
+            amount_minor=sellable_plan.price_amount_minor,
+            currency=sellable_plan.currency,
+            trial_days_snapshot=sellable_plan.trial_days,
+            pricing_snapshot=sellable_plan.pricing_snapshot,
+        )
 
 
 class SellablePlan(OrderingSchema):
     id: UUID
+    entrypoint_value: str
     product_id: UUID | None = None
     bundle_id: UUID | None = None
     scope_type: PlanScopeType | str
@@ -151,3 +248,31 @@ class SellablePlan(OrderingSchema):
     currency: str = Field(min_length=3, max_length=3)
     trial_days: int = Field(ge=0)
     billing_period: str
+    pricing_snapshot: dict = Field(default_factory=dict)
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        plan: Plan,
+        entrypoint_value: str,
+    ) -> "SellablePlan":
+        return cls(
+            id=plan.id,
+            entrypoint_value=entrypoint_value,
+            product_id=plan.product_id,
+            bundle_id=plan.bundle_id,
+            scope_type=plan.scope_type,
+            code=plan.code,
+            name=plan.name,
+            price_amount_minor=plan.price_amount_minor,
+            currency=plan.currency,
+            trial_days=plan.trial_days,
+            billing_period=plan.billing_period,
+            pricing_snapshot={
+                "price_amount_minor": plan.price_amount_minor,
+                "currency": plan.currency,
+                "billing_period": plan.billing_period,
+                "scope_type": plan.scope_type,
+            },
+        )
