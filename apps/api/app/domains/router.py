@@ -7,7 +7,7 @@ from app.domains.ordering.router import ordering_router
 api_router = APIRouter(prefix="/api")
 observability_router = APIRouter()
 
-observability_router.include_router(health_router)
 observability_router.include_router(metrics_router)
 
+api_router.include_router(health_router)
 api_router.include_router(ordering_router, prefix="/v1")
