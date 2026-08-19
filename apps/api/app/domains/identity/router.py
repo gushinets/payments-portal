@@ -135,6 +135,7 @@ def get_product_defaults(product_code: str, plan_code: str) -> dict:
     return defaults
 
 
+# преписан на resolve_checkout_sellable_plan
 def get_sellable_plan(db: Session, *, user: User, entrypoint_code: str, plan_code: str) -> dict:
     now = utc_now()
     plan = (

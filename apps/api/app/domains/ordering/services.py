@@ -3,8 +3,16 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from app.domains.billing.schemas import BundleStatus, PlanScopeType, ProductStatus
-from app.domains.ordering.exceptions import SellablePlanResolutionError
+from app.domains.identity.models import User
+from app.domains.ordering.exceptions import (
+    MissingRequiredDocumentsError,
+    SellablePlanResolutionError,
+)
 from app.domains.ordering.schemas import ResolveSellablePlanInput, SellablePlan
+from app.infrastructure.queries.document import (
+    get_accepted_document_version_ids_for_user,
+    get_active_required_documents,
+)
 from app.infrastructure.queries.plan import (
     get_active_plan_by_code,
     get_bundle_by_id,
@@ -60,3 +68,33 @@ def resolve_checkout_sellable_plan(
         )
 
     return SellablePlan.model_validate(plan)
+
+
+def ensure_user_has_accepted_required_documents(
+    db: Session,
+    *,
+    user: User,
+) -> None:
+    required_documents = get_active_required_documents(
+        db,
+        tenant_id=user.tenant_id,
+        region=user.region,
+    )
+    if not required_documents:
+        return
+
+    accepted_version_ids = get_accepted_document_version_ids_for_user(
+        db,
+        user=user,
+        document_version_ids=[document.id for document in required_documents],
+    )
+    missing_documents = [
+        document
+        for document in required_documents
+        if document.id not in accepted_version_ids
+    ]
+    if missing_documents:
+        raise MissingRequiredDocumentsError(
+            user_id=str(user.id),
+            documents=missing_documents,
+        )
