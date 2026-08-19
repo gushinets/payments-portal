@@ -1,7 +1,22 @@
 # Web Agent Guide
 
-Read the root `AGENTS.md`, `docs/product/ru-mvp.md`, and `docs/DESIGN.md` before
-frontend work.
+Read the root `AGENTS.md`, [the `ru` journey](../../docs/product/ru-mvp.md),
+[contours](../../docs/architecture/contours.md),
+[design](../../docs/DESIGN.md), and the
+[web section of coding conventions](../../docs/engineering/CODING_CONVENTIONS.md#web--typescript)
+before frontend work.
+
+## Conventions
+
+- Treat `response.json()`, `JSON.parse`, storage, and query params as
+  `unknown`. `as T` is not validation.
+- HTTP helpers take a decoder or return `unknown`; a generic `T` without a
+  decoder is forbidden. A decoder must fail on mismatch and have a test that
+  rejects an invalid value.
+- Keep API types in `shared/api` or the feature API module; do not copy
+  response types in components.
+- Inspect errors with `ApiError.status` and `detail.code`, never
+  `message.includes(...)`.
 
 ## Boundaries
 
@@ -12,7 +27,8 @@ frontend work.
 
 ## UI rules
 
-- Preserve Russian customer-facing localization.
+- Preserve the current contour's customer-facing locale. The implemented `ru`
+  contour uses Russian.
 - Use Bundle 3 tokens and glass/bento patterns; do not invent replacement tokens.
 - Prefer semantic roles and labels. Add `data-testid` only when a stable semantic
   selector is unavailable.

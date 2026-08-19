@@ -1,7 +1,11 @@
 # RU MVP User Journey and Pages
 
 Status: authoritative implemented-product specification
-Last verified: 2026-07-28
+Last verified: 2026-08-18
+
+This is the implemented journey for contour `ru`. Multi-contour architecture is
+defined in [contours](../architecture/contours.md). Login/registration contour
+confirmation via Region Resolver is planned and is not part of this journey.
 
 ## Goal
 
@@ -26,7 +30,7 @@ CloudPayments checkout, and see provider-confirmed payment state.
 | `/ru/cancellation` | Cancellation and refund terms | Implemented |
 | `/ru/cookies` | Cookie policy | Implemented |
 | `/ru/security` | Information security policy | Implemented |
-| `/en/**` | Global experience | Out of current scope |
+| `/en/**` | Locale experiment, not a contour | Out of current scope |
 
 ## Primary journey
 

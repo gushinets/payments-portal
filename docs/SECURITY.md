@@ -15,7 +15,9 @@ or security purpose requires them, and never add them to metric labels.
 ## Trust boundaries
 
 - Validate HTTP, environment, webhook, and database-boundary data.
-- Verify CloudPayments signatures before trusting provider state.
+- Verify the active payment-provider adapter's authenticity checks before
+  trusting provider state. The implemented `ru` adapter verifies CloudPayments
+  signatures.
 - Treat request IDs and provider metadata as untrusted input with length and
   character limits.
 - Store session tokens only as hashes.

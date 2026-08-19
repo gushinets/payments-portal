@@ -5,3 +5,7 @@ direction, persistence, public interfaces, security posture, or deployment.
 
 Use `NNNN-short-title.md` and include context, decision, consequences, status,
 and superseded decision links.
+
+## Records
+
+- [0001. Multi-contour billing platform](0001-multi-contour-billing.md)
