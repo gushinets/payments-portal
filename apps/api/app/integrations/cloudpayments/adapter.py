@@ -10,6 +10,7 @@ from urllib.parse import parse_qs
 
 from fastapi import Request
 
+from app.core.money import minor_to_decimal
 from app.core.observability import redact
 from app.core.settings import settings
 from app.integrations.cloudpayments.payload import (
@@ -289,7 +290,7 @@ class CloudPaymentsAdapter:
             mode=mode,
             public_identifier=public_identifier,
             amount_minor=checkout.amount_minor,
-            amount=(Decimal(checkout.amount_minor) / Decimal("100")).quantize(Decimal("0.01")),
+            amount=minor_to_decimal(checkout.amount_minor),
             currency=checkout.currency,
             merchant_order_id=checkout.merchant_order_id,
             provider_invoice_id=checkout.provider_invoice_id,

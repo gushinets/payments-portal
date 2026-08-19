@@ -7,15 +7,9 @@ from typing import Any, Literal, Protocol
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.models import PaymentProviderAccount
+from app.payment_providers.exceptions import PaymentProviderConfigurationError
 
 CheckoutExperience = Literal["widget", "redirect", "embedded"]
-
-
-class PaymentProviderConfigurationError(Exception):
-    def __init__(self, code: str) -> None:
-        super().__init__(code)
-        self.code = code
-
 
 class PrepareCheckoutActionInput(BaseModel):
     model_config = ConfigDict(extra="forbid")

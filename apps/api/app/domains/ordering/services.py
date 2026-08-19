@@ -4,6 +4,7 @@ import secrets
 from dataclasses import dataclass
 from datetime import datetime
 
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core.client_info import ClientInfo
@@ -12,6 +13,7 @@ from app.domains.billing.schemas import BundleStatus, PlanScopeType, ProductStat
 from app.domains.identity.models import User
 from app.domains.identity.session import utc_now
 from app.domains.ordering.exceptions import (
+    CheckoutIntentPersistenceError,
     MissingRequiredDocumentsError,
     SellablePlanResolutionError,
 )
@@ -229,9 +231,9 @@ def create_checkout_intent_artifacts(
             product_state.starts_at = now
         db.add(product_state)
         db.commit()
-    except Exception:
+    except SQLAlchemyError as exc:
         db.rollback()
-        raise
+        raise CheckoutIntentPersistenceError() from exc
 
     return CheckoutIntentArtifacts(
         entrypoint_session=entrypoint_session,

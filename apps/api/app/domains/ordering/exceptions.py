@@ -68,3 +68,11 @@ class MissingRequiredDocumentsError(OrderingApplicationError):
                 for document in self.documents
             ],
         }
+
+
+class CheckoutIntentPersistenceError(OrderingApplicationError):
+    code = "checkout_intent_persistence_failed"
+    message = "Checkout intent persistence failed"
+
+    def __init__(self, *, reason: str = "persistence_failed") -> None:
+        super().__init__(reason=reason)

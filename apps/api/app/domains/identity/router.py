@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.core.client_info import ClientInfo, get_client_info
 from app.core.database import get_db
+from app.core.money import minor_to_decimal
 from app.core.observability import record_checkout, traced
 from app.domains.identity.passwords import hash_password, verify_password
 from app.domains.legal.service import (
@@ -634,7 +635,7 @@ def create_checkout_intent(
         "product_state": present_product_state(state, payload.product),
         "checkout": {
             "amount_minor": amount_minor,
-            "amount": round(amount_minor / 100, 2),
+            "amount": minor_to_decimal(amount_minor),
             "currency": currency,
             "action": checkout_action.as_response(),
         },

@@ -6,10 +6,12 @@ from sqlalchemy.orm import Session
 
 from app.core.client_info import ClientInfo, get_client_info
 from app.core.database import get_db
+from app.core.money import minor_to_decimal
 from app.core.observability import record_checkout, traced
 from app.domains.identity.models import AuthSession, User
 from app.domains.identity.session import get_current_session, utc_now
 from app.domains.ordering.exceptions import (
+    CheckoutIntentPersistenceError,
     MissingRequiredDocumentsError,
     SellablePlanResolutionError,
 )
@@ -139,17 +141,24 @@ def create_checkout_intent(
         record_checkout("provider_configuration_error")
         raise HTTPException(status_code=409, detail=exc.code) from exc
 
-    create_checkout_intent_artifacts(
-        db,
-        payload=payload,
-        user=user,
-        client_info=client_info,
-        sellable_plan=sellable_plan,
-        provider_account=provider_account,
-        invoice_id=invoice_id,
-        expires_at=expires_at,
-        checkout_action=checkout_action,
-    )
+    try:
+        create_checkout_intent_artifacts(
+            db,
+            payload=payload,
+            user=user,
+            client_info=client_info,
+            sellable_plan=sellable_plan,
+            provider_account=provider_account,
+            invoice_id=invoice_id,
+            expires_at=expires_at,
+            checkout_action=checkout_action,
+        )
+    except CheckoutIntentPersistenceError as exc:
+        logger.exception(
+            "checkout intent persistence failed",
+            extra={"structured": exc.log_context()},
+        )
+        raise HTTPException(status_code=500, detail=exc.code) from exc
     record_checkout("created")
 
     amount_minor = sellable_plan.price_amount_minor
@@ -161,7 +170,7 @@ def create_checkout_intent(
             },
         "checkout": {
             "amount_minor": amount_minor,
-            "amount": round(amount_minor / 100, 2),
+            "amount": minor_to_decimal(amount_minor),
             "currency": sellable_plan.currency,
             "action": checkout_action.as_response(),
         },
