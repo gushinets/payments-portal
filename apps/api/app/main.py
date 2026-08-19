@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.database import SessionLocal
@@ -13,10 +13,12 @@ from app.core.observability import (
     request_context_middleware,
 )
 from app.core.settings import AppEnv, settings
-from app.domains.router import api_router, observability_router
 from app.domains.identity.password_reset import router as password_reset_router
 from app.domains.identity.router import router as auth_router
 from app.domains.legal.router import router as legal_router
+from app.domains.observability.health import health_router
+from app.domains.observability.metrics import metrics_router
+from app.domains.ordering.router import ordering_router
 from app.integrations.cloudpayments.adapter import cloudpayments_adapter
 from app.integrations.cloudpayments.router import router as cloudpayments_router
 from app.legal_seed import seed_legal_documents
@@ -24,6 +26,12 @@ from app.payment_providers import payment_provider_registry
 
 
 payment_provider_registry.register(cloudpayments_adapter)
+api_router = APIRouter(prefix="/api")
+observability_router = APIRouter()
+
+api_router.include_router(health_router)
+api_router.include_router(ordering_router, prefix="/v1")
+observability_router.include_router(metrics_router)
 
 
 @asynccontextmanager
