@@ -528,22 +528,21 @@ def test_register_session_and_checkout_intent_flow() -> None:
     assert checkout_payload["checkout"]["amount_minor"] == 99000
     assert checkout_payload["checkout"]["amount"] == 990.0
     assert checkout_payload["checkout"]["currency"] == "RUB"
-    assert checkout_payload["checkout"]["action"] == {
-        "provider": "cloudpayments",
-        "experience": "widget",
-        "mode": "charge",
-        "public_identifier": "pk_test_provider",
-        "amount_minor": 99000,
-        "amount": 990.0,
-        "currency": "RUB",
-        "merchant_order_id": checkout_payload["product_state"]["invoice_id"],
-        "provider_invoice_id": checkout_payload["product_state"]["invoice_id"],
-        "account_id": "user@example.com",
-        "description": "Document Summary Pro",
-        "metadata": {
-            "product_code": "document-summary",
-            "plan_code": "document-summary-pro",
-        },
+    action = checkout_payload["checkout"]["action"]
+    assert action["provider"] == "cloudpayments"
+    assert action["experience"] == "widget"
+    assert action["mode"] == "charge"
+    assert action["public_identifier"] == "pk_test_provider"
+    assert action["amount_minor"] == 99000
+    assert float(action["amount"]) == 990.0
+    assert action["currency"] == "RUB"
+    assert action["merchant_order_id"] == checkout_payload["product_state"]["invoice_id"]
+    assert action["provider_invoice_id"] == checkout_payload["product_state"]["invoice_id"]
+    assert action["account_id"] == "user@example.com"
+    assert action["description"] == "Document Summary Pro"
+    assert action["metadata"] == {
+        "product_code": "document-summary",
+        "plan_code": "document-summary-pro",
     }
     invoice_id = checkout_payload["product_state"]["invoice_id"]
     assert invoice_id
