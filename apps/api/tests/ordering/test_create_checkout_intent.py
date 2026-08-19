@@ -466,9 +466,7 @@ def test_create_checkout_intent_snapshots_all_access_catalog_plan(
     product_state = response.json()["product_state"]
     assert product_state["invoice_id"].startswith("all-access-")
     assert product_state["plan_code"] == "all-access-pro-ru"
-    assert response.json()["checkout"]["action"]["merchant_order_id"].startswith(
-        "all-access-"
-    )
+    assert response.json()["checkout"]["action"]["merchant_order_id"].startswith("all-access-")
 
     order = db_session.query(Order).one()
     item = db_session.query(OrderItem).one()
@@ -643,10 +641,7 @@ def test_create_checkout_intent_requires_acceptance_again_when_active_document_v
             assert detail["code"] == "missing_required_documents"
             assert missing_document["document_version_id"] == str(first_document.id)
             assert missing_document["version"] == "2026-07-ru-v1"
-            assert (
-                missing_document["acceptance_text"]
-                == "Я принимаю документ «Публичная оферта»."
-            )
+            assert missing_document["acceptance_text"] == "Я принимаю документ «Публичная оферта»."
             assert "offer" not in missing_document["acceptance_text"]
             assert "2026-07-ru-v1" not in missing_document["acceptance_text"]
             assert missing_document["acceptance_text_hash"]
@@ -662,10 +657,7 @@ def test_create_checkout_intent_requires_acceptance_again_when_active_document_v
                 },
             )
             assert invalid_accept_response.status_code == 400
-            assert (
-                invalid_accept_response.json()["detail"]
-                == "invalid_acceptance_text_hash"
-            )
+            assert invalid_accept_response.json()["detail"] == "invalid_acceptance_text_hash"
 
             accept_first_response = client.post(
                 "/api/legal/acceptances",
@@ -711,9 +703,7 @@ def test_create_checkout_intent_requires_acceptance_again_when_active_document_v
             second_detail = checkout_second_response.json()["detail"]
             second_missing_document = second_detail["documents"][0]
             assert second_detail["code"] == "missing_required_documents"
-            assert second_missing_document["document_version_id"] == str(
-                second_document.id
-            )
+            assert second_missing_document["document_version_id"] == str(second_document.id)
             assert second_missing_document["version"] == "2026-07-ru-v2"
 
             accept_second_response = client.post(
@@ -721,9 +711,7 @@ def test_create_checkout_intent_requires_acceptance_again_when_active_document_v
                 headers={"Authorization": "Bearer legal-token"},
                 json={
                     "document_version_id": str(second_document.id),
-                    "acceptance_text_hash": second_missing_document[
-                        "acceptance_text_hash"
-                    ],
+                    "acceptance_text_hash": second_missing_document["acceptance_text_hash"],
                     "entrypoint_type": "product",
                     "entrypoint_value": "document-summary",
                 },
@@ -741,11 +729,7 @@ def test_create_checkout_intent_requires_acceptance_again_when_active_document_v
             )
             assert retry_second_response.status_code == 200
 
-    acceptances = (
-        db_session.query(DocumentAcceptance)
-        .order_by(DocumentAcceptance.accepted_at)
-        .all()
-    )
+    acceptances = db_session.query(DocumentAcceptance).order_by(DocumentAcceptance.accepted_at).all()
     assert len(acceptances) == 2
     assert {acceptance.version for acceptance in acceptances} == {
         "2026-07-ru-v1",

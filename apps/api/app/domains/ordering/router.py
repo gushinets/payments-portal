@@ -90,13 +90,9 @@ def create_checkout_intent(
                         "version": document.version,
                         "title": document.title,
                         "url_path": document.url_path,
-                        "acceptance_text": build_required_document_acceptance_text(
-                            title=document.title
-                        ),
+                        "acceptance_text": build_required_document_acceptance_text(title=document.title),
                         "acceptance_text_hash": hash_text(
-                            build_required_document_acceptance_text(
-                                title=document.title
-                            )
+                            build_required_document_acceptance_text(title=document.title)
                         ),
                     }
                     for document in exc.documents

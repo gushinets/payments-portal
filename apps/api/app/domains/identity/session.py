@@ -36,7 +36,7 @@ def get_current_session(
     token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
 
     session = db.query(AuthSession).filter(AuthSession.token_hash == token_hash).first()
-    
+
     if session is None or session.revoked_at is not None or as_utc(session.expires_at) <= utc_now():
         raise HTTPException(status_code=401, detail="invalid_session")
 

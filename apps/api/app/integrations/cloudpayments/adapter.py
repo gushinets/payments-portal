@@ -23,9 +23,9 @@ from app.models import PaymentProviderAccount
 from app.payment_providers.contracts import (
     CheckoutAction,
     NormalizedPaymentEvent,
-    PaymentProviderConfigurationError,
     PrepareCheckoutActionInput,
 )
+from app.payment_providers import PaymentProviderConfigurationError
 
 CLOUDPAYMENTS_PROVIDER_CODE = "cloudpayments"
 SUPPORTED_ENDPOINTS = {

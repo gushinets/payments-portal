@@ -131,11 +131,7 @@ def ensure_user_has_accepted_required_documents(
         user=user,
         document_version_ids=[document.id for document in required_documents],
     )
-    missing_documents = [
-        document
-        for document in required_documents
-        if document.id not in accepted_version_ids
-    ]
+    missing_documents = [document for document in required_documents if document.id not in accepted_version_ids]
     if missing_documents:
         record_checkout("missing_required_documents")
         raise MissingRequiredDocumentsError(
