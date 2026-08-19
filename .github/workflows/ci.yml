@@ -243,6 +243,7 @@ jobs:
       - run: poetry --directory apps/api install --with dev --no-root
       - run: npm ci
       - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e:react-runtime
       - run: python scripts/repo.py up
       - run: npm run test:e2e
       - name: Upload browser evidence

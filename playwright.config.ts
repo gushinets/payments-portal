@@ -38,6 +38,7 @@ process.env.PLAYWRIGHT_API_BASE_URL = apiBaseURL;
 
 export default defineConfig({
   testDir: path.join(repositoryRoot, "apps/web/e2e"),
+  testIgnore: "**/react-runtime.spec.ts",
   outputDir: path.join(repositoryRoot, ".harness/playwright-results"),
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),

@@ -17,6 +17,7 @@
     "check:fast": "python scripts/repo.py check --fast",
     "check": "python scripts/repo.py check",
     "test:e2e": "npm exec playwright test -- --config playwright.config.ts",
+    "test:e2e:react-runtime": "npm exec playwright test -- --config playwright.react-runtime.config.ts",
     "playwright:install": "npm exec playwright install chromium",
     "dev:web": "npm --workspace @anytoolai/web run dev",
     "start:web": "npm --workspace @anytoolai/web run start",
