@@ -520,6 +520,7 @@
   "paths": {
     "/api/auth/checkout-intent": {
       "post": {
+        "deprecated": true,
         "operationId": "create_checkout_intent_api_auth_checkout_intent_post",
         "requestBody": {
           "content": {

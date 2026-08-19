@@ -85,7 +85,6 @@ class LoginRequest(BaseModel):
     password: str = Field(min_length=8, max_length=128)
 
 
-# Перенес в ordering/schemas
 class CheckoutIntentRequest(BaseModel):
     product: str
     plan_code: str
@@ -123,7 +122,6 @@ def present_user(user: User) -> dict:
     }
 
 
-# Перенес
 def make_invoice_id(product_code: str) -> str:
     return f"{product_code}-{secrets.token_hex(8)}"
 
@@ -139,7 +137,6 @@ def get_product_defaults(product_code: str, plan_code: str) -> dict:
     return defaults
 
 
-# преписан на resolve_checkout_sellable_plan
 def get_sellable_plan(db: Session, *, user: User, entrypoint_code: str, plan_code: str) -> dict:
     now = utc_now()
     plan = (
@@ -434,7 +431,7 @@ def logout(
     return {"status": "logged_out"}
 
 
-@router.post("/checkout-intent")
+@router.post("/checkout-intent", deprecated=True)
 @traced("billing.checkout_intent.create")
 def create_checkout_intent(
     payload: CheckoutIntentRequest,
