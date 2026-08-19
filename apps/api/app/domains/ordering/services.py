@@ -99,7 +99,7 @@ def resolve_checkout_sellable_plan(
                 payload=payload,
                 plan=plan,
             )
-        entrypoint_value = payload.entrypoint_code
+        entrypoint_value = PlanScopeType.ALL_ACCESS.value
     else:
         raise SellablePlanResolutionError(
             reason="unsupported_scope_type",
