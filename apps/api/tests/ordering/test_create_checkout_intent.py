@@ -99,6 +99,19 @@ def test_create_checkout_intent(db_session: Session) -> None:
         app.dependency_overrides.clear()
 
     assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "pending"
+    assert payload["product_state"]["product_code"] == "document-summary"
+    assert payload["product_state"]["plan_code"] == "document-summary-pro"
+    assert payload["product_state"]["plan_name"] == "Document Summary Pro"
+    assert payload["product_state"]["invoice_id"].startswith("document-summary-")
+    assert payload["product_state"]["transaction_id"] is None
+    assert payload["product_state"]["status"] == "pending"
+    assert payload["product_state"]["starts_at"] is not None
+    assert payload["product_state"]["expires_at"] is None
+    assert payload["checkout"]["amount_minor"] == 99000
+    assert payload["checkout"]["currency"] == "RUB"
+    assert payload["checkout"]["action"]["merchant_order_id"] == payload["product_state"]["invoice_id"]
 
 
 def test_create_checkout_intent_normalizes_all_access_entrypoint_value(db_session: Session) -> None:

@@ -637,6 +637,6 @@ def create_checkout_intent(
             "amount_minor": amount_minor,
             "amount": minor_to_decimal(amount_minor),
             "currency": currency,
-            "action": checkout_action.as_response(),
+            "action": checkout_action,
         },
     }

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Literal, Protocol
 
@@ -23,8 +22,9 @@ class PrepareCheckoutActionInput(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
-@dataclass(frozen=True)
-class CheckoutAction:
+class CheckoutAction(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     provider: str
     experience: CheckoutExperience
     mode: str
@@ -36,23 +36,7 @@ class CheckoutAction:
     provider_invoice_id: str
     account_id: str
     description: str | None = None
-    metadata: dict[str, Any] | None = None
-
-    def as_response(self) -> dict[str, Any]:
-        return {
-            "provider": self.provider,
-            "experience": self.experience,
-            "mode": self.mode,
-            "public_identifier": self.public_identifier,
-            "amount_minor": self.amount_minor,
-            "amount": self.amount,
-            "currency": self.currency,
-            "merchant_order_id": self.merchant_order_id,
-            "provider_invoice_id": self.provider_invoice_id,
-            "account_id": self.account_id,
-            "description": self.description,
-            "metadata": self.metadata or {},
-        }
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 @dataclass(frozen=True)

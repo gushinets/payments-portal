@@ -6,7 +6,6 @@ from sqlalchemy.orm import Session
 
 from app.core.client_info import ClientInfo, get_client_info
 from app.core.database import get_db
-from app.core.money import minor_to_decimal
 from app.core.observability import record_checkout, traced
 from app.domains.identity.models import AuthSession, User
 from app.domains.identity.session import get_current_session, utc_now
@@ -15,7 +14,11 @@ from app.domains.ordering.exceptions import (
     MissingRequiredDocumentsError,
     SellablePlanResolutionError,
 )
-from app.domains.ordering.schemas import CheckoutIntentRequest, ResolveSellablePlanInput
+from app.domains.ordering.schemas import (
+    CheckoutIntentRequest,
+    CheckoutIntentResponse,
+    ResolveSellablePlanInput,
+)
 from app.domains.ordering.services import (
     create_checkout_intent_artifacts,
     ensure_user_has_accepted_required_documents,
@@ -41,7 +44,7 @@ logger = logging.getLogger("Ordering")
 ordering_router = APIRouter(prefix="/ordering", tags=["Ordering"])
 
 
-@ordering_router.post("/checkout/intent")
+@ordering_router.post("/checkout/intent", response_model=CheckoutIntentResponse)
 @traced("billing.checkout_intent.create")
 def create_checkout_intent(
     payload: CheckoutIntentRequest,
@@ -142,7 +145,7 @@ def create_checkout_intent(
         raise HTTPException(status_code=409, detail=exc.code) from exc
 
     try:
-        create_checkout_intent_artifacts(
+        artifacts = create_checkout_intent_artifacts(
             db,
             payload=payload,
             user=user,
@@ -161,17 +164,11 @@ def create_checkout_intent(
         raise HTTPException(status_code=500, detail=exc.code) from exc
     record_checkout("created")
 
-    amount_minor = sellable_plan.price_amount_minor
-    return {
-        "status": "pending",
-        "product_state": {
-                "product_code": payload.product,
-                "status": "pending",
-            },
-        "checkout": {
-            "amount_minor": amount_minor,
-            "amount": minor_to_decimal(amount_minor),
-            "currency": sellable_plan.currency,
-            "action": checkout_action.as_response(),
-        },
-    }
+    return CheckoutIntentResponse.create(
+        product_code=payload.product,
+        plan_name=sellable_plan.name,
+        product_state=artifacts.product_state,
+        amount_minor=sellable_plan.price_amount_minor,
+        currency=sellable_plan.currency,
+        checkout_action=checkout_action,
+    )

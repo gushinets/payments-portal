@@ -1,14 +1,18 @@
 from __future__ import annotations
 
 from datetime import datetime
+from enum import Enum
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.client_info import ClientInfo
+from app.core.money import minor_to_decimal
+from app.domains.billing.models import ProductAccessState
 from app.domains.billing.schemas import PlanScopeType
 from app.domains.identity.models import User
 from app.models import Plan
+from app.payment_providers.contracts import CheckoutAction
 
 
 class CheckoutIntentRequest(BaseModel):
@@ -29,6 +33,22 @@ class ResolveSellablePlanInput(BaseModel):
 
 class OrderingSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True, extra="forbid")
+
+
+class OrderStatusEnum(str, Enum):
+    CREATED = "created"
+    PENDING = "pending"
+    PAID = "paid"
+    FAILED = "failed"
+    CANCELED = "canceled"
+    EXPIRED = "expired"
+
+
+class CheckoutSessionStatusEnum(str, Enum):
+    CREATED = "created"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    EXPIRED = "expired"
 
 
 class CreateEntrypointSessionInput(OrderingSchema):
@@ -275,4 +295,86 @@ class SellablePlan(OrderingSchema):
                 "billing_period": plan.billing_period,
                 "scope_type": plan.scope_type,
             },
+        )
+
+
+class CheckoutIntentProductStateResponse(OrderingSchema):
+    product_code: str
+    plan_code: str | None = None
+    plan_name: str | None = None
+    invoice_id: str | None = None
+    transaction_id: str | None = None
+    status: str
+    starts_at: str | None = None
+    expires_at: str | None = None
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        state: ProductAccessState,
+        product_code: str,
+        plan_name: str,
+    ) -> "CheckoutIntentProductStateResponse":
+        return cls(
+            product_code=product_code,
+            plan_code=state.plan_code,
+            plan_name=plan_name,
+            invoice_id=state.last_invoice_id,
+            transaction_id=state.last_transaction_id,
+            status=state.status,
+            starts_at=state.starts_at.isoformat() if state.starts_at else None,
+            expires_at=state.expires_at.isoformat() if state.expires_at else None,
+        )
+
+
+class CheckoutIntentCheckoutResponse(OrderingSchema):
+    amount_minor: int = Field(ge=0)
+    amount: float
+    currency: str = Field(min_length=3, max_length=3)
+    action: CheckoutAction
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        amount_minor: int,
+        currency: str,
+        action: CheckoutAction,
+    ) -> "CheckoutIntentCheckoutResponse":
+        return cls(
+            amount_minor=amount_minor,
+            amount=minor_to_decimal(amount_minor),
+            currency=currency,
+            action=action,
+        )
+
+
+class CheckoutIntentResponse(OrderingSchema):
+    status: str = "pending"
+    product_state: CheckoutIntentProductStateResponse
+    checkout: CheckoutIntentCheckoutResponse
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        product_code: str,
+        plan_name: str,
+        product_state: ProductAccessState,
+        amount_minor: int,
+        currency: str,
+        checkout_action: CheckoutAction,
+    ) -> "CheckoutIntentResponse":
+        return cls(
+            product_state=CheckoutIntentProductStateResponse.create(
+                state=product_state,
+                product_code=product_code,
+                plan_name=plan_name,
+            ),
+            checkout=CheckoutIntentCheckoutResponse.create(
+                amount_minor=amount_minor,
+                currency=currency,
+                action=checkout_action,
+            ),
         )
