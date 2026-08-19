@@ -1,8 +1,21 @@
 # API Agent Guide
 
 Read the root `AGENTS.md`, `ARCHITECTURE.md`, [contours](../../docs/architecture/contours.md),
-[payment providers](../../docs/architecture/payment-providers.md), and the
-canonical data-model document before backend work.
+[payment providers](../../docs/architecture/payment-providers.md), the
+canonical data-model document, and the
+[API section of coding conventions](../../docs/engineering/CODING_CONVENTIONS.md#api--python)
+before backend work.
+
+## Conventions
+
+- JSON request bodies and ordinary JSON responses use Pydantic models; response
+  schemas are exposed in OpenAPI. Untyped routes belong only on the frozen
+  legacy list or the raw-response list beside the architecture test.
+- Keep `dict[str, Any]` at the provider edge; decode before domain logic.
+- New or changed errors use `detail: {"code": "..."}`. Use `StrEnum` only for
+  states the slice compares or transitions; keep ORM statuses as `Text`.
+- Do not invent fallback domain values. One module owns a given state
+  transition.
 
 ## Boundaries
 

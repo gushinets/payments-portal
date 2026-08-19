@@ -709,6 +709,7 @@ CORE_AUTHORITY_LINKS = {
         ROOT / "docs" / "SECURITY.md",
         ROOT / "docs" / "RELIABILITY.md",
         ROOT / "docs" / "engineering" / "AGENT_WORKFLOW.md",
+        ROOT / "docs" / "engineering" / "CODING_CONVENTIONS.md",
         ROOT / "docs" / "exec-plans",
     ),
     ROOT / "docs" / "README.md": (
@@ -721,6 +722,7 @@ CORE_AUTHORITY_LINKS = {
         ROOT / "docs" / "architecture" / "payment-providers.md",
         ROOT / "docs" / "architecture" / "payment-portal-data-model.md",
         ROOT / "docs" / "engineering" / "AGENT_WORKFLOW.md",
+        ROOT / "docs" / "engineering" / "CODING_CONVENTIONS.md",
         ROOT / "docs" / "RELIABILITY.md",
         ROOT / "docs" / "SECURITY.md",
         ROOT / "docs" / "legal" / "README.md",
