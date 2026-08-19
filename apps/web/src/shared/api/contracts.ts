@@ -4,7 +4,7 @@ export type CheckoutActionContract = {
   mode: string;
   public_identifier?: string | null;
   amount_minor: number;
-  amount: number;
+  amount: number | string;
   currency: string;
   merchant_order_id: string;
   provider_invoice_id: string;
