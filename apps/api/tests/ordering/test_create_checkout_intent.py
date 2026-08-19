@@ -43,7 +43,7 @@ def overridden_db(db_session: Session):
         app.dependency_overrides.clear()
 
 
-def create_client(db_session: Session) -> TestClient:
+def create_client() -> TestClient:
     return TestClient(app)
 
 
@@ -254,7 +254,7 @@ def test_create_checkout_intent(db_session: Session) -> None:
     )
 
     with overridden_db(db_session):
-        with create_client(db_session) as client:
+        with create_client() as client:
             response = post_checkout_intent(
                 client,
                 token="test-ordering-token",
@@ -318,7 +318,7 @@ def test_create_checkout_intent_rejects_missing_cloudpayments_public_terminal_id
 
     with override_settings(settings, cloudpayments_public_id=""):
         with overridden_db(db_session):
-            with create_client(db_session) as client:
+            with create_client() as client:
                 response = post_checkout_intent(
                     client,
                     token="missing-terminal-token",
@@ -348,7 +348,7 @@ def test_create_checkout_intent_supports_two_stage_cloudpayments_widget_mode(
     )
 
     with overridden_db(db_session):
-        with create_client(db_session) as client:
+        with create_client() as client:
             response = post_checkout_intent(
                 client,
                 token="auth-mode-token",
@@ -382,7 +382,7 @@ def test_create_checkout_intent_rejects_plan_provider_currency_mismatch(
     db_session.commit()
 
     with overridden_db(db_session):
-        with create_client(db_session) as client:
+        with create_client() as client:
             response = post_checkout_intent(
                 client,
                 token="currency-mismatch-token",
@@ -409,7 +409,7 @@ def test_create_checkout_intent_snapshots_bundle_catalog_plan(db_session: Sessio
     )
 
     with overridden_db(db_session):
-        with create_client(db_session) as client:
+        with create_client() as client:
             response = post_checkout_intent(
                 client,
                 token="bundle-token",
@@ -450,7 +450,7 @@ def test_create_checkout_intent_snapshots_all_access_catalog_plan(
     )
 
     with overridden_db(db_session):
-        with create_client(db_session) as client:
+        with create_client() as client:
             response = post_checkout_intent(
                 client,
                 token="all-access-token",
@@ -466,9 +466,13 @@ def test_create_checkout_intent_snapshots_all_access_catalog_plan(
     product_state = response.json()["product_state"]
     assert product_state["invoice_id"].startswith("all-access-")
     assert product_state["plan_code"] == "all-access-pro-ru"
+    assert response.json()["checkout"]["action"]["merchant_order_id"].startswith(
+        "all-access-"
+    )
 
     order = db_session.query(Order).one()
     item = db_session.query(OrderItem).one()
+    entrypoint_session = db_session.query(EntrypointSession).one()
     assert order.plan_id == catalog["all_access_plan"].id
     assert order.amount_minor == 198000
     assert item.item_type == "all_access_plan"
@@ -479,37 +483,6 @@ def test_create_checkout_intent_snapshots_all_access_catalog_plan(
     assert item.plan_code_snapshot == "all-access-pro-ru"
     assert item.amount_minor == 198000
     assert item.trial_days_snapshot == 7
-
-
-def test_create_checkout_intent_normalizes_all_access_entrypoint_value(
-    db_session: Session,
-) -> None:
-    seed_catalog(db_session)
-    create_user_with_session(
-        db_session,
-        token="all-access-normalized-token",
-        email="ordering-all-access@example.com",
-    )
-
-    with overridden_db(db_session):
-        with create_client(db_session) as client:
-            response = post_checkout_intent(
-                client,
-                token="all-access-normalized-token",
-                payload={
-                    "product": "all-access",
-                    "plan_code": "all-access-pro-ru",
-                    "entrypoint_type": "catalog",
-                    "auto_renew": True,
-                },
-            )
-
-    assert response.status_code == 200
-    assert response.json()["checkout"]["action"]["merchant_order_id"].startswith(
-        "all-access-"
-    )
-
-    entrypoint_session = db_session.query(EntrypointSession).one()
     assert entrypoint_session.entrypoint_value == "all-access"
 
 
@@ -527,7 +500,7 @@ def test_create_checkout_intent_rejects_inactive_catalog_plan_without_legacy_fal
     db_session.commit()
 
     with overridden_db(db_session):
-        with create_client(db_session) as client:
+        with create_client() as client:
             response = post_checkout_intent(
                 client,
                 token="inactive-plan-token",
@@ -559,7 +532,7 @@ def test_create_checkout_intent_rejects_catalog_plan_outside_validity_window(
     db_session.commit()
 
     with overridden_db(db_session):
-        with create_client(db_session) as client:
+        with create_client() as client:
             response = post_checkout_intent(
                 client,
                 token="expired-plan-token",
@@ -589,7 +562,7 @@ def test_create_checkout_intent_rejects_active_plan_for_inactive_product(
     db_session.commit()
 
     with overridden_db(db_session):
-        with create_client(db_session) as client:
+        with create_client() as client:
             response = post_checkout_intent(
                 client,
                 token="inactive-product-token",
@@ -619,7 +592,7 @@ def test_create_checkout_intent_rejects_active_plan_for_inactive_bundle(
     db_session.commit()
 
     with overridden_db(db_session):
-        with create_client(db_session) as client:
+        with create_client() as client:
             response = post_checkout_intent(
                 client,
                 token="inactive-bundle-token",
@@ -653,7 +626,7 @@ def test_create_checkout_intent_requires_acceptance_again_when_active_document_v
     )
 
     with overridden_db(db_session):
-        with create_client(db_session) as client:
+        with create_client() as client:
             checkout_response = post_checkout_intent(
                 client,
                 token="legal-token",
