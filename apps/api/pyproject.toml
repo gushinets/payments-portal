@@ -7,7 +7,7 @@ package-mode = false
 
 [tool.poetry.dependencies]
 python = ">=3.12,<3.13"
-alembic = "1.18.5"
+alembic = "1.19.1"
 email-validator = "2.3.0"
 fastapi = "0.141.1"
 opentelemetry-api = "1.44.0"
@@ -18,15 +18,15 @@ opentelemetry-sdk = "1.44.0"
 prometheus-client = "0.26.0"
 psycopg = { version = "3.3.4", extras = ["binary"] }
 python-dotenv = "1.2.2"
-sqlalchemy = "2.0.51"
-uvicorn = { version = "0.52.1", extras = ["standard"] }
+sqlalchemy = "2.0.52"
+uvicorn = { version = "0.52.3", extras = ["standard"] }
 pydantic = "2.13.4"
 pydantic-settings = "2.15.0"
 
 [tool.poetry.group.dev.dependencies]
 httpx2 = "2.10.0"
 pytest = "9.1.1"
-ruff = "0.15.22"
+ruff = "0.16.3"
 polyfactory = "3.3.0"
 pytest-cov = "7.1.0"
 
