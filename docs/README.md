@@ -1,7 +1,7 @@
 # Documentation Index
 
 Status: authoritative index
-Last verified: 2026-08-18
+Last verified: 2026-08-19
 
 Start with the smallest document that matches the task.
 
@@ -30,6 +30,7 @@ Start with the smallest document that matches the task.
 - [Development](engineering/DEVELOPMENT.md)
 - [Testing](engineering/TESTING.md)
 - [Agent workflow](engineering/AGENT_WORKFLOW.md)
+- [Coding conventions](engineering/CODING_CONVENTIONS.md)
 - [Reliability](RELIABILITY.md)
 - [Security](SECURITY.md)
 - [Quality score](QUALITY_SCORE.md)
