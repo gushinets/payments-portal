@@ -1,10 +1,22 @@
+import { fixupConfigRules } from "@eslint/compat";
 import nextVitals from "eslint-config-next/core-web-vitals";
+import * as espree from "espree";
+import { defineConfig, globalIgnores } from "eslint/config";
 
-const eslintConfig = [
-  ...nextVitals,
+const eslintConfig = defineConfig([
+  ...fixupConfigRules(nextVitals),
   {
-    ignores: [".next/**", "next-env.d.ts"]
+    files: ["**/*.{js,jsx,mjs,cjs}"],
+    languageOptions: {
+      parser: espree,
+      parserOptions: {
+        ecmaFeatures: {
+          jsx: true
+        }
+      }
+    }
   },
+  globalIgnores([".next/**", "out/**", "build/**", "next-env.d.ts"]),
   {
     files: ["src/app/**/*.{ts,tsx}"],
     rules: {
@@ -61,6 +73,6 @@ const eslintConfig = [
       ]
     }
   }
-];
+]);
 
 export default eslintConfig;
