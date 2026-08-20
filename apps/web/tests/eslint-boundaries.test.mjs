@@ -30,10 +30,15 @@ test("critical Next.js and React Hooks rules remain enabled", async () => {
 });
 
 test("flat config lints ECMAScript modules under ESLint 10", async () => {
+  const config = await eslint.calculateConfigForFile(
+    "tests/BoundaryFixture.mjs"
+  );
   const [result] = await eslint.lintText('export const marker = "ok";', {
     filePath: `${webRoot}/tests/BoundaryFixture.mjs`
   });
 
+  assert.ok(config);
+  assert.equal(config.languageOptions.parser.name, "espree");
   assert.equal(result.errorCount, 0);
   assert.equal(result.warningCount, 0);
 });
