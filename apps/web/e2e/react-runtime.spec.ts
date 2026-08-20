@@ -123,7 +123,11 @@ test("critical client components run without React or hydration warnings", async
   await expect(page.locator("#checkout-form").getByText(email)).toBeVisible();
 
   await page.goto("/ru/account");
-  await expect(page.getByText(email).first()).toBeVisible();
+  const accountMain = page.getByRole("main");
+  await expect(
+    accountMain.getByRole("heading", { name: "Личный кабинет", exact: true })
+  ).toBeVisible();
+  await expect(accountMain.locator(".account-summary-email")).toHaveText(email);
 
   await page.evaluate(
     ({ paymentEmail, paymentInvoice }) => {
