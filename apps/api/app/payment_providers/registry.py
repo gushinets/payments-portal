@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.payment_providers.contracts import PaymentProviderAdapter
+from app.payment_providers.adapter import PaymentProviderAdapter
 
 
 class PaymentProviderRegistry:

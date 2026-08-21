@@ -6,7 +6,7 @@ from typing import Annotated, Any
 from urllib.parse import quote
 
 from dotenv import load_dotenv
-from pydantic import StringConstraints, ValidationInfo, field_validator, model_validator
+from pydantic import Field, StringConstraints, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from app.core.url_validation import validate_production_cors_origin, validate_production_public_url
@@ -42,6 +42,16 @@ class Settings(BaseSettings):
     postgres_port: int
     cloudpayments_public_id: str = ""
     cloudpayments_api_secret: str = ""
+    cloudpayments_api_base_url: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)] = (
+        "https://api.cloudpayments.ru"
+    )
+    cloudpayments_api_timeout_seconds: float = Field(default=10.0, gt=0)
+    cloudpayments_api_connect_timeout_seconds: float = Field(default=3.0, gt=0)
+    cloudpayments_api_read_timeout_seconds: float = Field(default=10.0, gt=0)
+    cloudpayments_api_write_timeout_seconds: float = Field(default=10.0, gt=0)
+    cloudpayments_api_pool_timeout_seconds: float = Field(default=3.0, gt=0)
+    cloudpayments_api_max_retries: int = Field(default=2, ge=0)
+    cloudpayments_api_retry_backoff_seconds: float = Field(default=0.5, ge=0)
     smtp_host: str = ""
     smtp_port: int = 587
     smtp_username: str = ""

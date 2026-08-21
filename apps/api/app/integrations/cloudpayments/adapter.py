@@ -10,6 +10,7 @@ from urllib.parse import parse_qs
 
 from fastapi import Request
 
+from app.core.errors import PaymentProviderConfigurationError
 from app.core.observability import redact
 from app.core.settings import settings
 from app.integrations.cloudpayments.contracts import (
@@ -23,7 +24,6 @@ from app.models import Order, PaymentProviderAccount
 from app.payment_providers.contracts import (
     CheckoutAction,
     NormalizedPaymentEvent,
-    PaymentProviderConfigurationError,
 )
 
 CLOUDPAYMENTS_PROVIDER_CODE = "cloudpayments"
