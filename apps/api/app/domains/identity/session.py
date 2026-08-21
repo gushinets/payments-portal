@@ -3,7 +3,8 @@ from __future__ import annotations
 import hashlib
 from datetime import datetime, timezone
 
-from fastapi import Depends, Header, HTTPException
+from fastapi import Depends, HTTPException
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -11,6 +12,7 @@ from app.models import AuthSession, User
 
 DEFAULT_TENANT_ID = "anytoolai"
 DEFAULT_REGION = "ru"
+bearer_scheme = HTTPBearer(auto_error=False)
 
 
 def utc_now() -> datetime:
@@ -24,16 +26,17 @@ def as_utc(value: datetime) -> datetime:
 
 
 def get_current_session(
-    authorization: str | None = Header(default=None),
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
     db: Session = Depends(get_db),
 ) -> tuple[User, AuthSession]:
-    if not authorization or not authorization.startswith("Bearer "):
+    if credentials is None or credentials.scheme.lower() != "bearer":
         raise HTTPException(status_code=401, detail="missing_session")
 
-    token = authorization.removeprefix("Bearer ").strip()
+    token = credentials.credentials.strip()
     token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
 
     session = db.query(AuthSession).filter(AuthSession.token_hash == token_hash).first()
+
     if session is None or session.revoked_at is not None or as_utc(session.expires_at) <= utc_now():
         raise HTTPException(status_code=401, detail="invalid_session")
 

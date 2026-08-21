@@ -6,7 +6,7 @@ export type CheckoutAction = {
   mode: string;
   public_identifier?: string | null;
   amount_minor: number;
-  amount: number;
+  amount: number | string;
   currency: string;
   merchant_order_id: string;
   provider_invoice_id: string;
@@ -64,6 +64,10 @@ function requireNonEmptyString(value: unknown, code: string): string {
   return value;
 }
 
+function amountFromMinorUnits(amountMinor: number): number {
+  return amountMinor / 100;
+}
+
 function validateCloudPaymentsAction(action: CheckoutAction) {
   if (action.experience !== "widget") {
     throw new Error("unsupported_checkout_experience");
@@ -84,13 +88,14 @@ function validateCloudPaymentsAction(action: CheckoutAction) {
     action.currency,
     "checkout_provider_currency_missing"
   );
-  if (!Number.isFinite(action.amount) || action.amount <= 0) {
-    throw new Error("checkout_provider_amount_invalid");
-  }
   if (!Number.isInteger(action.amount_minor) || action.amount_minor <= 0) {
     throw new Error("checkout_provider_amount_minor_invalid");
   }
-  return { publicId, invoiceId, accountId, currency };
+  const amount = amountFromMinorUnits(action.amount_minor);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error("checkout_provider_amount_invalid");
+  }
+  return { publicId, invoiceId, accountId, currency, amount };
 }
 
 export const cloudPaymentsCheckoutAdapter: CheckoutAdapter = {
@@ -114,7 +119,7 @@ export const cloudPaymentsCheckoutAdapter: CheckoutAdapter = {
       {
         publicId: validated.publicId,
         description: action.description ?? "",
-        amount: action.amount,
+        amount: validated.amount,
         currency: validated.currency,
         invoiceId: validated.invoiceId,
         accountId: validated.accountId,

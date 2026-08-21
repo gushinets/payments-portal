@@ -60,6 +60,209 @@
         "title": "AcceptDocumentRequest",
         "type": "object"
       },
+      "CheckoutAction": {
+        "additionalProperties": false,
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "string"
+          },
+          "amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount",
+            "type": "string"
+          },
+          "amount_minor": {
+            "title": "Amount Minor",
+            "type": "integer"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "experience": {
+            "enum": [
+              "widget",
+              "redirect",
+              "embedded"
+            ],
+            "title": "Experience",
+            "type": "string"
+          },
+          "merchant_order_id": {
+            "title": "Merchant Order Id",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "provider_invoice_id": {
+            "title": "Provider Invoice Id",
+            "type": "string"
+          },
+          "public_identifier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Public Identifier"
+          }
+        },
+        "required": [
+          "provider",
+          "experience",
+          "mode",
+          "public_identifier",
+          "amount_minor",
+          "amount",
+          "currency",
+          "merchant_order_id",
+          "provider_invoice_id",
+          "account_id"
+        ],
+        "title": "CheckoutAction",
+        "type": "object"
+      },
+      "CheckoutIntentCheckoutResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/CheckoutAction"
+          },
+          "amount": {
+            "title": "Amount",
+            "type": "number"
+          },
+          "amount_minor": {
+            "minimum": 0.0,
+            "title": "Amount Minor",
+            "type": "integer"
+          },
+          "currency": {
+            "maxLength": 3,
+            "minLength": 3,
+            "title": "Currency",
+            "type": "string"
+          }
+        },
+        "required": [
+          "amount_minor",
+          "amount",
+          "currency",
+          "action"
+        ],
+        "title": "CheckoutIntentCheckoutResponse",
+        "type": "object"
+      },
+      "CheckoutIntentProductStateResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "invoice_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invoice Id"
+          },
+          "plan_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Code"
+          },
+          "plan_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Name"
+          },
+          "product_code": {
+            "title": "Product Code",
+            "type": "string"
+          },
+          "starts_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts At"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ProductAccessStateStatusEnum"
+          },
+          "transaction_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transaction Id"
+          }
+        },
+        "required": [
+          "product_code",
+          "status"
+        ],
+        "title": "CheckoutIntentProductStateResponse",
+        "type": "object"
+      },
       "CheckoutIntentRequest": {
         "properties": {
           "auto_renew": {
@@ -108,6 +311,28 @@
           "plan_code"
         ],
         "title": "CheckoutIntentRequest",
+        "type": "object"
+      },
+      "CheckoutIntentResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "checkout": {
+            "$ref": "#/components/schemas/CheckoutIntentCheckoutResponse"
+          },
+          "product_state": {
+            "$ref": "#/components/schemas/CheckoutIntentProductStateResponse"
+          },
+          "status": {
+            "default": "pending",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "product_state",
+          "checkout"
+        ],
+        "title": "CheckoutIntentResponse",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -190,6 +415,14 @@
         "title": "PasswordResetRequest",
         "type": "object"
       },
+      "ProductAccessStateStatusEnum": {
+        "enum": [
+          "inactive",
+          "pending"
+        ],
+        "title": "ProductAccessStateStatusEnum",
+        "type": "string"
+      },
       "RegisterRequest": {
         "properties": {
           "email": {
@@ -271,6 +504,12 @@
         "title": "ValidationError",
         "type": "object"
       }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "scheme": "bearer",
+        "type": "http"
+      }
     }
   },
   "info": {
@@ -281,25 +520,8 @@
   "paths": {
     "/api/auth/checkout-intent": {
       "post": {
+        "deprecated": true,
         "operationId": "create_checkout_intent_api_auth_checkout_intent_post",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -330,6 +552,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Create Checkout Intent",
         "tags": [
           "auth"
@@ -378,24 +605,6 @@
     "/api/auth/logout": {
       "post": {
         "operationId": "logout_api_auth_logout_post",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "content": {
@@ -404,18 +613,13 @@
               }
             },
             "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Logout",
         "tags": [
           "auth"
@@ -629,22 +833,6 @@
               ],
               "title": "Product"
             }
-          },
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
           }
         ],
         "responses": {
@@ -667,6 +855,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Session",
         "tags": [
           "auth"
@@ -715,7 +908,7 @@
     },
     "/api/health/live": {
       "get": {
-        "operationId": "liveness_api_health_live_get",
+        "operationId": "health_live_api_health_live_get",
         "responses": {
           "200": {
             "content": {
@@ -726,7 +919,7 @@
             "description": "Successful Response"
           }
         },
-        "summary": "Liveness",
+        "summary": "Health Live",
         "tags": [
           "health"
         ]
@@ -734,7 +927,7 @@
     },
     "/api/health/ready": {
       "get": {
-        "operationId": "readiness_api_health_ready_get",
+        "operationId": "health_ready_api_health_ready_get",
         "responses": {
           "200": {
             "content": {
@@ -745,7 +938,7 @@
             "description": "Successful Response"
           }
         },
-        "summary": "Readiness",
+        "summary": "Health Ready",
         "tags": [
           "health"
         ]
@@ -754,24 +947,6 @@
     "/api/legal/acceptances": {
       "post": {
         "operationId": "accept_document_api_legal_acceptances_post",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -802,6 +977,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Accept Document",
         "tags": [
           "legal"
@@ -856,6 +1036,52 @@
         "summary": "List Required Documents",
         "tags": [
           "legal"
+        ]
+      }
+    },
+    "/api/v1/ordering/checkout/intent": {
+      "post": {
+        "operationId": "create_checkout_intent_api_v1_ordering_checkout_intent_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckoutIntentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckoutIntentResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Checkout Intent",
+        "tags": [
+          "Ordering"
         ]
       }
     }

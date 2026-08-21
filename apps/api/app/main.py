@@ -10,21 +10,28 @@ from app.core.database import SessionLocal
 from app.core.database import engine
 from app.core.observability import (
     configure_observability,
-    metrics_response,
     request_context_middleware,
 )
 from app.core.settings import AppEnv, settings
 from app.domains.identity.password_reset import router as password_reset_router
 from app.domains.identity.router import router as auth_router
 from app.domains.legal.router import router as legal_router
-from app.health import health_router
+from app.domains.observability.health import health_router
+from app.domains.observability.metrics import metrics_router
+from app.domains.ordering.router import ordering_router
 from app.integrations.cloudpayments.adapter import cloudpayments_adapter
 from app.integrations.cloudpayments.router import router as cloudpayments_router
 from app.legal_seed import seed_legal_documents
-from app.payment_providers.registry import payment_provider_registry
+from app.payment_providers import payment_provider_registry
+
 
 payment_provider_registry.register(cloudpayments_adapter)
-metrics_router = APIRouter(prefix="/metrics", tags=["metrics"])
+api_router = APIRouter(prefix="/api")
+observability_router = APIRouter()
+
+api_router.include_router(health_router)
+api_router.include_router(ordering_router, prefix="/v1")
+observability_router.include_router(metrics_router)
 
 
 @asynccontextmanager
@@ -34,11 +41,6 @@ async def lifespan(app: FastAPI):
             seed_legal_documents(db)
 
     yield
-
-
-@metrics_router.get("", include_in_schema=False)
-def metrics():
-    return metrics_response()
 
 
 def get_cors_origins() -> tuple[str, ...]:
@@ -72,12 +74,12 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    app.include_router(api_router)
+    app.include_router(observability_router)
     app.include_router(auth_router)
     app.include_router(password_reset_router)
     app.include_router(legal_router)
     app.include_router(cloudpayments_router)
-    app.include_router(health_router)
-    app.include_router(metrics_router)
     return app
 
 

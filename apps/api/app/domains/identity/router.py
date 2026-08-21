@@ -3,13 +3,16 @@ from __future__ import annotations
 import hashlib
 import secrets
 from datetime import datetime, timedelta
+import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+from app.core.client_info import ClientInfo, get_client_info
 from app.core.database import get_db
+from app.core.money import minor_to_decimal
 from app.core.observability import record_checkout, traced
 from app.domains.identity.passwords import hash_password, verify_password
 from app.domains.legal.service import (
@@ -36,12 +39,16 @@ from app.models import (
     ProductAccessState,
     User,
 )
-from app.payment_providers.accounts import get_or_create_checkout_provider_account
-from app.payment_providers.contracts import PaymentProviderConfigurationError
-from app.payment_providers.registry import (
+from app.payment_providers import (
+    CheckoutProviderUnavailableError,
     PaymentProviderRegistry,
+    PaymentProviderConfigurationError,
     get_payment_provider_registry,
+    get_or_create_checkout_provider_account,
 )
+from app.payment_providers.contracts import PrepareCheckoutActionInput
+
+logger = logging.getLogger("checkout-intent")
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -203,7 +210,7 @@ def present_product_state(state: ProductAccessState | None, product_code: str) -
 @router.post("/register")
 def register(
     payload: RegisterRequest,
-    request: Request,
+    client_info: ClientInfo = Depends(get_client_info),
     db: Session = Depends(get_db),
 ):
     if not payload.personal_consent:
@@ -247,8 +254,8 @@ def register(
         user_id=user.id,
         token_hash=token_hash,
         expires_at=expires_at,
-        ip=request.client.host if request.client else None,
-        user_agent=request.headers.get("user-agent"),
+        ip=client_info.ip,
+        user_agent=client_info.user_agent,
     )
     db.add(session)
     db.commit()
@@ -263,7 +270,7 @@ def register(
 @router.post("/login")
 def login(
     payload: LoginRequest,
-    request: Request,
+    client_info: ClientInfo = Depends(get_client_info),
     db: Session = Depends(get_db),
 ):
     tenant_id = normalize_tenant_id(payload.tenant_id)
@@ -290,8 +297,8 @@ def login(
         user_id=user.id,
         token_hash=token_hash,
         expires_at=expires_at,
-        ip=request.client.host if request.client else None,
-        user_agent=request.headers.get("user-agent"),
+        ip=client_info.ip,
+        user_agent=client_info.user_agent,
     )
     db.add(session)
     db.commit()
@@ -424,11 +431,11 @@ def logout(
     return {"status": "logged_out"}
 
 
-@router.post("/checkout-intent")
+@router.post("/checkout-intent", deprecated=True)
 @traced("billing.checkout_intent.create")
 def create_checkout_intent(
     payload: CheckoutIntentRequest,
-    request: Request,
+    client_info: ClientInfo = Depends(get_client_info),
     current: tuple[User, AuthSession] = Depends(get_current_session),
     db: Session = Depends(get_db),
     providers: PaymentProviderRegistry = Depends(get_payment_provider_registry),
@@ -462,11 +469,18 @@ def create_checkout_intent(
             },
         )
 
-    provider_account, provider_adapter = get_or_create_checkout_provider_account(
-        db,
-        user=user,
-        registry=providers,
-    )
+    try:
+        provider_account, provider_adapter = get_or_create_checkout_provider_account(
+            db,
+            user=user,
+            registry=providers,
+        )
+    except CheckoutProviderUnavailableError as exc:
+        logger.warning(
+            "checkout intent payment provider unavailable",
+            extra={"structured": exc.log_context()},
+        )
+        raise HTTPException(status_code=503, detail=exc.code) from exc
     invoice_id = make_invoice_id(sellable_plan["entrypoint_value"])
     amount_minor = int(sellable_plan["amount_minor"])
     currency = str(sellable_plan["currency"])
@@ -487,8 +501,8 @@ def create_checkout_intent(
         frontend_id=payload.frontend_id or "web_checkout",
         user_id=user.id,
         source_url=payload.source_url,
-        ip=request.client.host if request.client else None,
-        user_agent=request.headers.get("user-agent"),
+        ip=client_info.ip,
+        user_agent=client_info.user_agent,
         metadata_={"plan_code": payload.plan_code, "auto_renew": payload.auto_renew},
     )
     db.add(entrypoint_session)
@@ -542,13 +556,18 @@ def create_checkout_intent(
     try:
         checkout_action = provider_adapter.prepare_checkout_action(
             provider_account=provider_account,
-            order=order,
-            account_id=user.email,
-            description=str(sellable_plan["plan_name"]),
-            metadata={
-                "product_code": payload.product,
-                "plan_code": sellable_plan["plan_code"],
-            },
+            checkout=PrepareCheckoutActionInput(
+                amount_minor=amount_minor,
+                currency=currency,
+                merchant_order_id=invoice_id,
+                provider_invoice_id=invoice_id,
+                account_id=user.email,
+                description=str(sellable_plan["plan_name"]),
+                metadata={
+                    "product_code": payload.product,
+                    "plan_code": sellable_plan["plan_code"],
+                },
+            ),
         )
         order.metadata_ = {
             **order.metadata_,
@@ -613,8 +632,8 @@ def create_checkout_intent(
         "product_state": present_product_state(state, payload.product),
         "checkout": {
             "amount_minor": amount_minor,
-            "amount": round(amount_minor / 100, 2),
+            "amount": minor_to_decimal(amount_minor),
             "currency": currency,
-            "action": checkout_action.as_response(),
+            "action": checkout_action,
         },
     }
