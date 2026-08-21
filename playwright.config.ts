@@ -3,9 +3,7 @@ import path from "node:path";
 import { defineConfig, devices } from "@playwright/test";
 import runtimeEnv from "./playwright.runtime-env.cjs";
 
-const { loadRuntimeEnv } = runtimeEnv as {
-  loadRuntimeEnv: (repositoryRoot: string) => Record<string, string>;
-};
+const { loadRuntimeEnv } = runtimeEnv;
 
 type RuntimeConfig = {
   web_port: number;
