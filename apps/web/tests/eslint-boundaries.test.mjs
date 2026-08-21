@@ -16,6 +16,46 @@ async function restrictedImportMessages(source, relativePath) {
   );
 }
 
+test("web lint uses ESLint 10", () => {
+  assert.match(ESLint.version, /^10\./);
+});
+
+test("critical Next.js and React Hooks rules remain enabled", async () => {
+  const config = await eslint.calculateConfigForFile("src/app/page.tsx");
+
+  assert.ok(config);
+  assert.equal(config.rules["@next/next/no-html-link-for-pages"][0], 2);
+  assert.equal(config.rules["react-hooks/rules-of-hooks"][0], 2);
+  assert.equal(config.rules["react-hooks/exhaustive-deps"][0], 1);
+});
+
+test("flat config lints ECMAScript modules under ESLint 10", async () => {
+  const config = await eslint.calculateConfigForFile(
+    "tests/BoundaryFixture.mjs"
+  );
+  const [result] = await eslint.lintText('export const marker = "ok";', {
+    filePath: `${webRoot}/tests/BoundaryFixture.mjs`
+  });
+
+  assert.ok(config);
+  assert.equal(config.languageOptions.parser.name, "espree");
+  assert.equal(result.errorCount, 0);
+  assert.equal(result.warningCount, 0);
+});
+
+test("flat config parses JSX and applies Next.js rules to JavaScript", async () => {
+  const [result] = await eslint.lintText(
+    'export default function Fixture() { return <img alt="fixture" src="/fixture.png" />; }',
+    { filePath: `${webRoot}/src/app/BoundaryFixture.jsx` }
+  );
+
+  assert.ok(
+    result.messages.some(
+      (message) => message.ruleId === "@next/next/no-img-element"
+    )
+  );
+});
+
 test("shared modules cannot import features", async () => {
   const messages = await restrictedImportMessages(
     'import { products } from "@/features/catalog";',
