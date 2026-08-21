@@ -82,7 +82,7 @@ def test_base_http_payments_api_client_retries_idempotent_requests() -> None:
         nonlocal attempts
         attempts += 1
         if attempts == 1:
-            return httpx.Response(429, json={"Success": False, "Message": "slow down"})
+            return httpx.Response(503, json={"Success": False, "Message": "unavailable"})
         return httpx.Response(200, json={"ok": True})
 
     client = DummyPaymentsApiClient(
@@ -129,6 +129,34 @@ def test_base_http_payments_api_client_does_not_retry_non_idempotent_requests() 
         )
 
     assert attempts == 1
+
+
+def test_base_http_payments_api_client_does_not_retry_rate_limited_requests() -> None:
+    attempts = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        return httpx.Response(429, json={"Success": False, "Message": "slow down"})
+
+    client = DummyPaymentsApiClient(
+        config=PaymentsApiClientConfig(
+            provider="dummy",
+            base_url="https://provider.example",
+            max_retries=2,
+            retry_backoff_seconds=0.0,
+        ),
+        transport=httpx.MockTransport(handler),
+    )
+
+    with pytest.raises(PaymentsRateLimitError) as error:
+        client.send(
+            PaymentsApiRequest(operation="health", path="/health", is_idempotent=True),
+            response_model=DummyResponse,
+        )
+
+    assert attempts == 1
+    assert error.value.retry_disposition.value == "non_retryable"
 
 
 def test_base_http_payments_api_client_maps_timeout_to_custom_error() -> None:

@@ -120,6 +120,7 @@ class BaseHttpPaymentsApiClient(PaymentsApiClient):
                 if self._should_retry(request, attempt, error.retry_disposition):
                     self._sleep_before_retry(attempt)
                     continue
+                self._log_failure(error)
                 raise error from exc
             except httpx.TransportError as exc:
                 error = PaymentsTransportError(
@@ -131,25 +132,26 @@ class BaseHttpPaymentsApiClient(PaymentsApiClient):
                 if self._should_retry(request, attempt, error.retry_disposition):
                     self._sleep_before_retry(attempt)
                     continue
+                self._log_failure(error)
                 raise error from exc
 
             if response.status_code == 401:
-                raise PaymentsAuthenticationError(
+                error = PaymentsAuthenticationError(
                     "payments_api_authentication_error",
                     message_safe="Payment provider authentication failed.",
                     details_safe=self._safe_details(request, attempt=attempt, status_code=response.status_code),
                 )
+                self._log_failure(error)
+                raise error
 
             if response.status_code == 429:
                 error = PaymentsRateLimitError(
                     "payments_api_rate_limited",
-                    retry_disposition=RetryDisposition.RETRYABLE,
+                    retry_disposition=RetryDisposition.NON_RETRYABLE,
                     message_safe="Payment provider rate limit exceeded.",
                     details_safe=self._safe_details(request, attempt=attempt, status_code=response.status_code),
                 )
-                if self._should_retry(request, attempt, error.retry_disposition):
-                    self._sleep_before_retry(attempt)
-                    continue
+                self._log_failure(error)
                 raise error
 
             if 500 <= response.status_code < 600:
@@ -162,15 +164,18 @@ class BaseHttpPaymentsApiClient(PaymentsApiClient):
                 if self._should_retry(request, attempt, error.retry_disposition):
                     self._sleep_before_retry(attempt)
                     continue
+                self._log_failure(error)
                 raise error
 
             if response.is_error:
-                raise PaymentsHttpError(
+                error = PaymentsHttpError(
                     "payments_api_http_error",
                     status_code=response.status_code,
                     message_safe="Payment provider HTTP error.",
                     details_safe=self._safe_details(request, attempt=attempt, status_code=response.status_code),
                 )
+                self._log_failure(error)
+                raise error
 
             return self._validate_response(request, response, response_model=response_model)
 
@@ -250,6 +255,19 @@ class BaseHttpPaymentsApiClient(PaymentsApiClient):
         )
         time.sleep(delay_seconds)
 
+    def _log_failure(self, error: Exception) -> None:
+        details = getattr(error, "details_safe", {})
+        logger.warning(
+            "Payment provider request failed.",
+            extra={
+                "structured": {
+                    "provider": self.config.provider,
+                    "error_type": type(error).__name__,
+                    "details": details,
+                }
+            },
+        )
+
     def _validate_response(
         self,
         request: PaymentsApiRequest,
@@ -260,16 +278,18 @@ class BaseHttpPaymentsApiClient(PaymentsApiClient):
         try:
             payload = response.json()
         except ValueError as exc:
-            raise PaymentsResponseDecodeError(
+            error = PaymentsResponseDecodeError(
                 "payments_api_response_decode_error",
                 message_safe="Payment provider response is not valid JSON.",
                 details_safe=self._safe_details(request, status_code=response.status_code),
-            ) from exc
+            )
+            self._log_failure(error)
+            raise error from exc
 
         try:
             return response_model.model_validate(payload)
         except ValidationError as exc:
-            raise PaymentsResponseValidationError(
+            error = PaymentsResponseValidationError(
                 "payments_api_response_validation_error",
                 message_safe="Payment provider response schema mismatch.",
                 details_safe=self._safe_details(
@@ -277,7 +297,9 @@ class BaseHttpPaymentsApiClient(PaymentsApiClient):
                     status_code=response.status_code,
                     response_payload=redact(payload),
                 ),
-            ) from exc
+            )
+            self._log_failure(error)
+            raise error from exc
 
     def _safe_details(
         self,
