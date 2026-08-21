@@ -126,7 +126,6 @@ class OperationResultMeta(ProviderContractModel):
 class TransactionLookupRequest(ProviderContractModel):
     """Identifiers used to find and reconcile a provider transaction."""
 
-    provider_account_id: str
     provider_payment_id: str | None = None
     provider_invoice_id: str | None = None
     merchant_order_id: str | None = None
@@ -150,7 +149,6 @@ class TransactionLookupResult(ProviderContractModel):
 class RefundRequest(ProviderContractModel):
     """Command payload for issuing a provider refund."""
 
-    provider_account_id: str
     provider_payment_id: str
     amount_minor: int
     amount: Decimal
@@ -176,7 +174,6 @@ class RefundResult(ProviderContractModel):
 class CreateRecurringSubscriptionRequest(ProviderContractModel):
     """Command payload for creating a recurring provider subscription."""
 
-    provider_account_id: str
     payment_method_reference: str
     account_id: str
     description: str
@@ -211,7 +208,6 @@ class CreateRecurringSubscriptionResult(ProviderContractModel):
 class UpdateRecurringSubscriptionRequest(ProviderContractModel):
     """Command payload for updating a recurring provider subscription."""
 
-    provider_account_id: str
     provider_subscription_id: str
     description: str | None = None
     amount_minor: int | None = None
@@ -244,7 +240,6 @@ class UpdateRecurringSubscriptionResult(ProviderContractModel):
 class CancelRecurringSubscriptionRequest(ProviderContractModel):
     """Command payload for canceling a recurring provider subscription."""
 
-    provider_account_id: str
     provider_subscription_id: str
     idempotency_key: str | None = None
 

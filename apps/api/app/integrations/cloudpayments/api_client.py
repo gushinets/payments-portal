@@ -35,6 +35,7 @@ class CloudPaymentsApiResponse(CloudPaymentsResponseModel):
 
 class CloudPaymentsTransactionModel(CloudPaymentsResponseModel):
     transaction_id: int = Field(alias="TransactionId")
+    public_id: str | None = Field(default=None, alias="PublicId")
     invoice_id: str | None = Field(default=None, alias="InvoiceId")
     status: str | None = Field(default=None, alias="Status")
     status_code: int | None = Field(default=None, alias="StatusCode")
