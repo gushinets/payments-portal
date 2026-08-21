@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from decimal import Decimal
 from enum import StrEnum
 from typing import Any, Literal, Protocol
+
+from pydantic import BaseModel, ConfigDict, field_serializer
 
 from app.models import Order, PaymentProviderAccount
 
@@ -62,8 +63,11 @@ class PaymentProviderConfigurationError(Exception):
         self.code = code
 
 
-@dataclass(frozen=True)
-class CheckoutAction:
+class ProviderContractModel(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+
+class CheckoutAction(ProviderContractModel):
     """Data returned to the client to start checkout with a payment provider."""
 
     provider: str
@@ -79,25 +83,17 @@ class CheckoutAction:
     description: str | None = None
     metadata: dict[str, Any] | None = None
 
+    @field_serializer("amount", when_used="json")
+    def serialize_amount(self, value: Decimal) -> float:
+        return float(value)
+
     def as_response(self) -> dict[str, Any]:
-        return {
-            "provider": self.provider,
-            "experience": self.experience,
-            "mode": self.mode,
-            "public_identifier": self.public_identifier,
-            "amount_minor": self.amount_minor,
-            "amount": self.amount,
-            "currency": self.currency,
-            "merchant_order_id": self.merchant_order_id,
-            "provider_invoice_id": self.provider_invoice_id,
-            "account_id": self.account_id,
-            "description": self.description,
-            "metadata": self.metadata or {},
-        }
+        payload = self.model_dump(mode="json")
+        payload["metadata"] = self.metadata or {}
+        return payload
 
 
-@dataclass(frozen=True)
-class NormalizedPaymentEvent:
+class NormalizedPaymentEvent(ProviderContractModel):
     """Safe normalized representation of an incoming provider webhook event."""
 
     endpoint: str
@@ -119,16 +115,14 @@ class NormalizedPaymentEvent:
     error_message: str | None = None
 
 
-@dataclass(frozen=True)
-class ProviderFailure:
+class ProviderFailure(ProviderContractModel):
     """Safe error details returned from a provider operation."""
 
     code: str
     message_safe: str | None = None
 
 
-@dataclass(frozen=True)
-class OperationResultMeta:
+class OperationResultMeta(ProviderContractModel):
     """Shared execution metadata for a server-side provider operation."""
 
     outcome: OperationOutcome
@@ -137,8 +131,7 @@ class OperationResultMeta:
     failure: ProviderFailure | None = None
 
 
-@dataclass(frozen=True)
-class TransactionLookupRequest:
+class TransactionLookupRequest(ProviderContractModel):
     """Identifiers used to find and reconcile a provider transaction."""
 
     provider_account_id: str
@@ -147,8 +140,7 @@ class TransactionLookupRequest:
     merchant_order_id: str | None = None
 
 
-@dataclass(frozen=True)
-class TransactionLookupResult:
+class TransactionLookupResult(ProviderContractModel):
     """Safe normalized result of a provider transaction lookup."""
 
     provider: str
@@ -163,8 +155,7 @@ class TransactionLookupResult:
     meta: OperationResultMeta
 
 
-@dataclass(frozen=True)
-class RefundRequest:
+class RefundRequest(ProviderContractModel):
     """Command payload for issuing a provider refund."""
 
     provider_account_id: str
@@ -176,8 +167,7 @@ class RefundRequest:
     idempotency_key: str | None = None
 
 
-@dataclass(frozen=True)
-class RefundResult:
+class RefundResult(ProviderContractModel):
     """Safe normalized result of a provider refund operation."""
 
     provider: str
@@ -191,8 +181,7 @@ class RefundResult:
     meta: OperationResultMeta
 
 
-@dataclass(frozen=True)
-class CreateRecurringSubscriptionRequest:
+class CreateRecurringSubscriptionRequest(ProviderContractModel):
     """Command payload for creating a recurring provider subscription."""
 
     provider_account_id: str
@@ -211,8 +200,7 @@ class CreateRecurringSubscriptionRequest:
     idempotency_key: str | None = None
 
 
-@dataclass(frozen=True)
-class CreateRecurringSubscriptionResult:
+class CreateRecurringSubscriptionResult(ProviderContractModel):
     """Safe normalized result of recurring subscription creation."""
 
     provider: str
@@ -228,8 +216,7 @@ class CreateRecurringSubscriptionResult:
     meta: OperationResultMeta
 
 
-@dataclass(frozen=True)
-class UpdateRecurringSubscriptionRequest:
+class UpdateRecurringSubscriptionRequest(ProviderContractModel):
     """Command payload for updating a recurring provider subscription."""
 
     provider_account_id: str
@@ -247,8 +234,7 @@ class UpdateRecurringSubscriptionRequest:
     idempotency_key: str | None = None
 
 
-@dataclass(frozen=True)
-class UpdateRecurringSubscriptionResult:
+class UpdateRecurringSubscriptionResult(ProviderContractModel):
     """Safe normalized result of recurring subscription update."""
 
     provider: str
@@ -263,8 +249,7 @@ class UpdateRecurringSubscriptionResult:
     meta: OperationResultMeta
 
 
-@dataclass(frozen=True)
-class CancelRecurringSubscriptionRequest:
+class CancelRecurringSubscriptionRequest(ProviderContractModel):
     """Command payload for canceling a recurring provider subscription."""
 
     provider_account_id: str
@@ -272,8 +257,7 @@ class CancelRecurringSubscriptionRequest:
     idempotency_key: str | None = None
 
 
-@dataclass(frozen=True)
-class CancelRecurringSubscriptionResult:
+class CancelRecurringSubscriptionResult(ProviderContractModel):
     """Safe normalized result of recurring subscription cancellation."""
 
     provider: str
