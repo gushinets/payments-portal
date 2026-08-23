@@ -6,7 +6,7 @@ from typing import Any
 import httpx
 from pydantic import ConfigDict, Field
 
-from app.core.errors import PaymentsOperationDeclinedError
+from app.core.errors import PaymentsOperationDeclinedError, PaymentsResponseValidationError
 from app.core.settings import Settings, settings
 from app.payment_providers.api_client import (
     BaseHttpPaymentsApiClient,
@@ -37,6 +37,9 @@ class CloudPaymentsTransactionModel(CloudPaymentsResponseModel):
     transaction_id: int = Field(alias="TransactionId")
     public_id: str | None = Field(default=None, alias="PublicId")
     invoice_id: str | None = Field(default=None, alias="InvoiceId")
+    operation_type: str | None = Field(default=None, alias="OperationType")
+    transaction_type: int | None = Field(default=None, alias="Type")
+    original_transaction_id: int | None = Field(default=None, alias="OriginalTransactionId")
     status: str | None = Field(default=None, alias="Status")
     status_code: int | None = Field(default=None, alias="StatusCode")
     reason_code: int | None = Field(default=None, alias="ReasonCode")
@@ -125,7 +128,7 @@ class CloudPaymentsApiClient(BaseHttpPaymentsApiClient):
         super().__init__(config=config, transport=transport)
         self.config = config
 
-    def get_transaction(self, *, transaction_id: int) -> CloudPaymentsTransactionResponse:
+    def get_transaction(self, *, transaction_id: int) -> CloudPaymentsTransactionResponse | None:
         response = self.send(
             PaymentsApiRequest(
                 operation="get_transaction",
@@ -135,7 +138,23 @@ class CloudPaymentsApiClient(BaseHttpPaymentsApiClient):
             ),
             response_model=CloudPaymentsTransactionResponse,
         )
+        if self._is_not_found(response):
+            return None
         return self._require_success("get_transaction", response)
+
+    def find_transaction(self, *, invoice_id: str) -> CloudPaymentsTransactionResponse | None:
+        response = self.send(
+            PaymentsApiRequest(
+                operation="find_transaction",
+                path="/v2/payments/find",
+                payload={"InvoiceId": invoice_id},
+                is_idempotent=True,
+            ),
+            response_model=CloudPaymentsTransactionResponse,
+        )
+        if self._is_not_found(response):
+            return None
+        return self._require_success("find_transaction", response)
 
     def refund(
         self,
@@ -162,7 +181,14 @@ class CloudPaymentsApiClient(BaseHttpPaymentsApiClient):
             ),
             response_model=CloudPaymentsRefundResponse,
         )
-        return self._require_success("refund", response)
+        response = self._require_success("refund", response)
+        if response.model is None or response.model.transaction_id <= 0:
+            raise PaymentsResponseValidationError(
+                "payments_api_response_validation_error",
+                message_safe="Payment provider refund response is missing a transaction id.",
+                details_safe={"provider": self.config.provider, "operation": "refund"},
+            )
+        return response
 
     def create_subscription(
         self,
@@ -235,6 +261,12 @@ class CloudPaymentsApiClient(BaseHttpPaymentsApiClient):
 
     def _build_auth(self) -> httpx.Auth | None:
         return httpx.BasicAuth(self.config.public_id, self.config.api_secret)
+
+    @staticmethod
+    def _is_not_found(response: CloudPaymentsApiResponse) -> bool:
+        return (
+            not response.success and response.message is not None and response.message.strip().casefold() == "not found"
+        )
 
     def _require_success(
         self,

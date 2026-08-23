@@ -4,7 +4,7 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, field_serializer
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 CheckoutExperience = Literal["widget", "redirect", "embedded"]
 
@@ -124,11 +124,13 @@ class OperationResultMeta(ProviderContractModel):
 
 
 class TransactionLookupRequest(ProviderContractModel):
-    """Identifiers used to find and reconcile a provider transaction."""
+    """Identifiers and commercial facts used to reconcile a provider transaction."""
 
     provider_payment_id: str | None = None
     provider_invoice_id: str | None = None
     merchant_order_id: str | None = None
+    expected_amount_minor: int = Field(gt=0)
+    expected_currency: str = Field(min_length=3, max_length=3)
 
 
 class TransactionLookupResult(ProviderContractModel):

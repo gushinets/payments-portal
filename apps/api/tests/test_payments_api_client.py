@@ -336,6 +336,70 @@ def test_cloudpayments_client_sends_basic_auth_and_idempotency_header() -> None:
     assert b'"Amount":100' in seen_body
 
 
+def test_cloudpayments_client_finds_transaction_by_invoice_id() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "POST"
+        assert request.url.path == "/v2/payments/find"
+        assert request.read() == b'{"InvoiceId":"inv-1"}'
+        return httpx.Response(
+            200,
+            json={
+                "Success": True,
+                "Message": None,
+                "Model": {"TransactionId": 777, "InvoiceId": "inv-1"},
+            },
+        )
+
+    client = CloudPaymentsApiClient(
+        config=CloudPaymentsApiClientConfig(
+            base_url="https://api.cloudpayments.ru",
+            public_id="pk_test",
+            api_secret="secret_test",
+            max_retries=0,
+        ),
+        transport=httpx.MockTransport(handler),
+    )
+
+    response = client.find_transaction(invoice_id="inv-1")
+
+    assert response is not None
+    assert response.model is not None
+    assert response.model.transaction_id == 777
+
+
+def test_cloudpayments_client_maps_not_found_to_none() -> None:
+    client = CloudPaymentsApiClient(
+        config=CloudPaymentsApiClientConfig(
+            base_url="https://api.cloudpayments.ru",
+            public_id="pk_test",
+            api_secret="secret_test",
+            max_retries=0,
+        ),
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, json={"Success": False, "Message": "Not found"})
+        ),
+    )
+
+    assert client.find_transaction(invoice_id="missing") is None
+
+
+def test_cloudpayments_client_rejects_successful_refund_without_transaction_id() -> None:
+    client = CloudPaymentsApiClient(
+        config=CloudPaymentsApiClientConfig(
+            base_url="https://api.cloudpayments.ru",
+            public_id="pk_test",
+            api_secret="secret_test",
+            max_retries=0,
+        ),
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, json={"Success": True, "Message": None, "Model": None})
+        ),
+    )
+
+    with pytest.raises(PaymentsResponseValidationError):
+        client.refund(transaction_id=455, amount=Decimal("100.00"))
+
+
 def test_cloudpayments_client_raises_declined_error_for_success_false() -> None:
     client = CloudPaymentsApiClient(
         config=CloudPaymentsApiClientConfig(
