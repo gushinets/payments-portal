@@ -272,7 +272,7 @@ Implemented in the current branch:
 
 ### Step 7 — Add observability and opt-in sandbox verification
 
-Status: not started
+Status: completed
 
 Files:
 
@@ -303,6 +303,25 @@ Completion condition:
 
 - Normal test runs remain offline and deterministic, while a maintainer can
   explicitly run the sandbox verification path.
+
+Implemented in the current branch:
+
+- Added one shared span per provider API operation in the transport boundary,
+  with provider, operation, and safe outcome attributes only.
+- Added provider API operation counter and duration histogram labelled only by
+  provider, operation, and the approved safe outcome vocabulary.
+- Recorded final operation outcomes once per logical operation after retries,
+  including timeout, transport, authentication, rate-limit, upstream, HTTP,
+  decode, validation, and CloudPayments operation-declined cases.
+- Logged CloudPayments provider declines once after mapping to
+  `cloudpayments_operation_declined`, without raw provider messages.
+- Extended shared redaction coverage for CloudPayments expiry and token field
+  variants.
+- Added `scripts/cloudpayments_sandbox_verify.py`, gated by
+  `CLOUDPAYMENTS_SANDBOX_VERIFY=1`, with optional lookup, refund, and recurring
+  lifecycle sections driven entirely by environment variables.
+- Kept sandbox verification output to normalized safe provider-adapter results
+  and skip/status summaries.
 
 ## Definition of Done
 
@@ -347,3 +366,42 @@ When the work is complete, add:
 - sandbox verification result or explicit skipped status;
 - Bugbot/security review result and disposition of findings;
 - any remaining non-blocking debt.
+
+Current branch evidence:
+
+- Changed files:
+  `apps/api/app/core/observability.py`,
+  `apps/api/app/payment_providers/api_client.py`,
+  `apps/api/app/integrations/cloudpayments/api_client.py`,
+  `apps/api/tests/test_payments_api_client.py`, and
+  `scripts/cloudpayments_sandbox_verify.py`.
+- Focused tests:
+  `apps/api/.venv/bin/python -m pytest -p no:cacheprovider
+  apps/api/tests/test_payments_api_client.py
+  apps/api/tests/test_cloudpayments_adapter_api.py` passed: 71 tests.
+- Lint/format:
+  `apps/api/.venv/bin/ruff check` and
+  `apps/api/.venv/bin/ruff format --check` passed for changed Python files.
+- Redaction/secrecy coverage:
+  focused tests assert authorization-header log redaction, response-validation
+  payload redaction, CloudPayments token/PAN/cryptogram/CVV/CVC/expiry variants,
+  operation-declined safe metrics, and decline logs without raw provider text.
+- Sandbox verification:
+  `apps/api/.venv/bin/python scripts/cloudpayments_sandbox_verify.py` passed in
+  default skipped mode with `CLOUDPAYMENTS_SANDBOX_VERIFY` unset; live sandbox
+  verification was not run because no explicit sandbox environment variables
+  or credentials were supplied.
+- Broader checks:
+  `npm run test:api` with the system Python failed before collection because
+  `python-dotenv` was unavailable. Retrying with
+  `PATH=apps/api/.venv/bin:$PATH` started the API suite but hung on
+  `apps/api/tests/compatibility/test_app_factory.py::test_app_factory_builds_independent_apps_with_stable_routes`.
+  `npm run check:fast` with the same venv path passed documentation,
+  generation, architecture, ruff, web boundary, web component, and web lint
+  stages, then hit the same app-factory hang in the API fast suite. Full
+  `npm run check` was not run because `check:fast` is blocked by that
+  environment/test hang.
+- Diff hygiene:
+  `git diff --check` passed.
+- Independent Bugbot/security review:
+  not run in this local step; remaining handoff debt before PR.

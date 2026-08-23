@@ -46,6 +46,30 @@ class DummyPaymentsApiClient(BaseHttpPaymentsApiClient):
     pass
 
 
+class _FakeSpan:
+    def __init__(self) -> None:
+        self.attributes: dict[str, str] = {}
+
+    def __enter__(self) -> "_FakeSpan":
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
+        return None
+
+    def set_attribute(self, key: str, value: str) -> None:
+        self.attributes[key] = value
+
+
+class _FakeTracer:
+    def __init__(self, span: _FakeSpan) -> None:
+        self.span = span
+        self.span_names: list[str] = []
+
+    def start_as_current_span(self, span_name: str) -> _FakeSpan:
+        self.span_names.append(span_name)
+        return self.span
+
+
 def test_base_http_payments_api_client_validates_response_model() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/health"
@@ -63,6 +87,112 @@ def test_base_http_payments_api_client_validates_response_model() -> None:
     )
 
     assert response.ok is True
+
+
+def test_base_http_payments_api_client_records_operation_span_and_metrics(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observed: list[dict[str, object]] = []
+    span = _FakeSpan()
+    tracer = _FakeTracer(span)
+
+    def record_provider_api_operation(**kwargs: object) -> None:
+        observed.append(kwargs)
+
+    monkeypatch.setattr("app.payment_providers.api_client.tracer", lambda name: tracer)
+    monkeypatch.setattr(
+        "app.payment_providers.api_client.record_provider_api_operation",
+        record_provider_api_operation,
+    )
+
+    client = DummyPaymentsApiClient(
+        config=PaymentsApiClientConfig(provider="dummy", base_url="https://provider.example"),
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, json={"ok": True})),
+    )
+
+    response = client.send(
+        PaymentsApiRequest(operation="health", path="/health"),
+        response_model=DummyResponse,
+    )
+
+    assert response.ok is True
+    assert tracer.span_names == ["payment_provider.api.operation"]
+    assert span.attributes == {
+        "payment_provider.provider": "dummy",
+        "payment_provider.operation": "health",
+        "payment_provider.outcome": "succeeded",
+    }
+    assert len(observed) == 1
+    assert observed[0]["provider"] == "dummy"
+    assert observed[0]["operation"] == "health"
+    assert observed[0]["outcome"] == "succeeded"
+    assert isinstance(observed[0]["duration_seconds"], float)
+
+
+def test_base_http_payments_api_client_records_final_retry_outcome_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observed: list[dict[str, object]] = []
+    attempts = 0
+
+    def record_provider_api_operation(**kwargs: object) -> None:
+        observed.append(kwargs)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            return httpx.Response(503, json={"Success": False, "Message": "unavailable"})
+        return httpx.Response(200, json={"ok": True})
+
+    monkeypatch.setattr(
+        "app.payment_providers.api_client.record_provider_api_operation",
+        record_provider_api_operation,
+    )
+    client = DummyPaymentsApiClient(
+        config=PaymentsApiClientConfig(
+            provider="dummy",
+            base_url="https://provider.example",
+            max_retries=1,
+            retry_backoff_seconds=0.0,
+        ),
+        transport=httpx.MockTransport(handler),
+    )
+
+    response = client.send(
+        PaymentsApiRequest(operation="health", path="/health", is_idempotent=True),
+        response_model=DummyResponse,
+    )
+
+    assert response.ok is True
+    assert attempts == 2
+    assert [item["outcome"] for item in observed] == ["succeeded"]
+
+
+def test_base_http_payments_api_client_records_failure_outcome(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observed: list[dict[str, object]] = []
+
+    def record_provider_api_operation(**kwargs: object) -> None:
+        observed.append(kwargs)
+
+    monkeypatch.setattr(
+        "app.payment_providers.api_client.record_provider_api_operation",
+        record_provider_api_operation,
+    )
+    client = DummyPaymentsApiClient(
+        config=PaymentsApiClientConfig(provider="dummy", base_url="https://provider.example"),
+        transport=httpx.MockTransport(lambda request: httpx.Response(401, json={"detail": "nope"})),
+    )
+
+    with pytest.raises(PaymentsAuthenticationError):
+        client.send(
+            PaymentsApiRequest(operation="health", path="/health"),
+            response_model=DummyResponse,
+        )
+
+    assert [item["outcome"] for item in observed] == ["authentication_error"]
 
 
 def test_base_http_payments_api_client_raises_authentication_error() -> None:
@@ -403,6 +533,8 @@ def test_cloudpayments_client_rejects_successful_refund_without_transaction_id()
 
 
 def test_cloudpayments_client_raises_declined_error_for_success_false() -> None:
+    records: list[logging.LogRecord] = []
+
     client = CloudPaymentsApiClient(
         config=CloudPaymentsApiClientConfig(
             provider="cloudpayments",
@@ -417,26 +549,65 @@ def test_cloudpayments_client_raises_declined_error_for_success_false() -> None:
     )
 
     with pytest.raises(PaymentsOperationDeclinedError) as error:
-        client.create_subscription(
-            request=CloudPaymentsCreateSubscriptionRequest(
-                Token="tk_test",
-                AccountId="user_1",
-                Description="Monthly plan",
-                Amount=Decimal("399.00"),
-                Currency="RUB",
-                RequireConfirmation=False,
-                StartDate="2026-08-22T00:00:00Z",
-                Interval="Month",
-                Period=1,
-            ),
-            idempotency_key="sub-create-1",
-        )
+        with pytest.MonkeyPatch.context() as monkeypatch:
+            monkeypatch.setattr(
+                "app.payment_providers.api_client.record_provider_api_operation",
+                lambda **kwargs: records.append(logging.makeLogRecord({"structured": kwargs})),
+            )
+            client.create_subscription(
+                request=CloudPaymentsCreateSubscriptionRequest(
+                    Token="tk_test",
+                    AccountId="user_1",
+                    Description="Monthly plan",
+                    Amount=Decimal("399.00"),
+                    Currency="RUB",
+                    RequireConfirmation=False,
+                    StartDate="2026-08-22T00:00:00Z",
+                    Interval="Month",
+                    Period=1,
+                ),
+                idempotency_key="sub-create-1",
+            )
 
     assert error.value.code == "cloudpayments_operation_declined"
     assert error.value.provider == "cloudpayments"
     assert error.value.operation == "create_subscription"
     assert error.value.message_safe == "CloudPayments declined the operation."
     assert "Invalid Amount value" not in str(error.value)
+    assert [record.structured["outcome"] for record in records] == ["operation_declined"]
+
+
+def test_cloudpayments_client_logs_provider_decline_once_safely(caplog: pytest.LogCaptureFixture) -> None:
+    client = CloudPaymentsApiClient(
+        config=CloudPaymentsApiClientConfig(
+            provider="cloudpayments",
+            base_url="https://api.cloudpayments.ru",
+            public_id="pk_test",
+            api_secret="secret_test",
+            max_retries=0,
+        ),
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, json={"Success": False, "Message": "Raw PAN 4111111111111111"})
+        ),
+    )
+
+    with caplog.at_level(logging.WARNING, logger="app.integrations.cloudpayments.api_client"):
+        with pytest.raises(PaymentsOperationDeclinedError):
+            client.cancel_subscription(subscription_id="sc_1", idempotency_key="sub-cancel-raw-message")
+
+    decline_logs = [
+        record
+        for record in caplog.records
+        if record.name == "app.integrations.cloudpayments.api_client"
+        and record.getMessage() == "CloudPayments operation declined."
+    ]
+    assert len(decline_logs) == 1
+    assert decline_logs[0].structured == {
+        "provider": "cloudpayments",
+        "operation": "cancel_subscription",
+        "code": "cloudpayments_operation_declined",
+    }
+    assert "4111111111111111" not in str(decline_logs[0].structured)
 
 
 def test_redact_covers_cloudpayments_sensitive_fields_and_variants() -> None:
@@ -447,7 +618,10 @@ def test_redact_covers_cloudpayments_sensitive_fields_and_variants() -> None:
         "CVV": "123",
         "Cvc": "456",
         "CardMask": "4111 11****** 1111",
+        "CardExpiry": "12/30",
+        "ExpDate": "12/30",
         "ExpirationDate": "12/30",
+        "PaymentToken": "payment-token-value",
         "Token": "token-value",
         "nested": {"api_secret": "nested-secret"},
     }
@@ -461,7 +635,10 @@ def test_redact_covers_cloudpayments_sensitive_fields_and_variants() -> None:
         "CVV": "[redacted]",
         "Cvc": "[redacted]",
         "CardMask": "[redacted]",
+        "CardExpiry": "[redacted]",
+        "ExpDate": "[redacted]",
         "ExpirationDate": "[redacted]",
+        "PaymentToken": "[redacted]",
         "Token": "[redacted]",
         "nested": {"api_secret": "[redacted]"},
     }

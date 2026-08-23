@@ -20,6 +20,8 @@ OTEL_CHECKOUTS = None
 OTEL_LEGAL_ACCEPTANCES = None
 OTEL_WEBHOOKS = None
 OTEL_PASSWORD_RESET_EMAILS = None
+OTEL_PROVIDER_API_OPERATIONS = None
+OTEL_PROVIDER_API_OPERATION_DURATION = None
 REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 SENSITIVE_KEYS = {
     "authorization",
@@ -35,12 +37,21 @@ SENSITIVE_KEYS = {
     "cardlastfour",
     "cardmask",
     "cardexpdate",
+    "cardexpiration",
+    "cardexpirationdate",
+    "cardexpiry",
+    "cardexpirydate",
     "cardtype",
     "cardholdermessage",
+    "cardtoken",
     "expirationdate",
     "expirationdatemonth",
     "expirationdateyear",
+    "expdate",
+    "expiry",
+    "expirydate",
     "pan",
+    "paymenttoken",
     "cvv",
     "cvc",
     "cryptogram",
@@ -125,6 +136,16 @@ try:
         "Password reset email delivery outcomes",
         ("outcome",),
     )
+    PROVIDER_API_OPERATIONS = Counter(
+        "payment_portal_provider_api_operations_total",
+        "Payment provider API operation outcomes",
+        ("provider", "operation", "outcome"),
+    )
+    PROVIDER_API_OPERATION_DURATION = Histogram(
+        "payment_portal_provider_api_operation_duration_seconds",
+        "Payment provider API operation duration",
+        ("provider", "operation", "outcome"),
+    )
 except ImportError:  # pragma: no cover - production dependencies include the package
     CONTENT_TYPE_LATEST = "text/plain; version=0.0.4"
 
@@ -139,6 +160,7 @@ except ImportError:  # pragma: no cover - production dependencies include the pa
             return None
 
     REQUEST_DURATION = CHECKOUTS = LEGAL_ACCEPTANCES = WEBHOOKS = PASSWORD_RESET_EMAILS = _DummyMetric()
+    PROVIDER_API_OPERATIONS = PROVIDER_API_OPERATION_DURATION = _DummyMetric()
 
     def generate_latest() -> bytes:
         return b""
@@ -178,6 +200,22 @@ def record_password_reset_email(outcome: str) -> None:
     PASSWORD_RESET_EMAILS.labels(outcome).inc()
     if OTEL_PASSWORD_RESET_EMAILS is not None:
         OTEL_PASSWORD_RESET_EMAILS.add(1, {"outcome": outcome})
+
+
+def record_provider_api_operation(
+    *,
+    provider: str,
+    operation: str,
+    outcome: str,
+    duration_seconds: float,
+) -> None:
+    PROVIDER_API_OPERATIONS.labels(provider, operation, outcome).inc()
+    PROVIDER_API_OPERATION_DURATION.labels(provider, operation, outcome).observe(duration_seconds)
+    attributes = {"provider": provider, "operation": operation, "outcome": outcome}
+    if OTEL_PROVIDER_API_OPERATIONS is not None:
+        OTEL_PROVIDER_API_OPERATIONS.add(1, attributes)
+    if OTEL_PROVIDER_API_OPERATION_DURATION is not None:
+        OTEL_PROVIDER_API_OPERATION_DURATION.record(duration_seconds, attributes)
 
 
 def tracer(name: str):
@@ -232,6 +270,7 @@ def traced(span_name: str):
 
 def configure_observability(app: FastAPI, engine: object) -> None:
     global OTEL_CHECKOUTS, OTEL_LEGAL_ACCEPTANCES, OTEL_WEBHOOKS, OTEL_PASSWORD_RESET_EMAILS
+    global OTEL_PROVIDER_API_OPERATIONS, OTEL_PROVIDER_API_OPERATION_DURATION
     configure_logging()
     endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "").rstrip("/")
     if not endpoint:
@@ -271,6 +310,10 @@ def configure_observability(app: FastAPI, engine: object) -> None:
         OTEL_LEGAL_ACCEPTANCES = meter.create_counter("payment_portal_legal_acceptances")
         OTEL_WEBHOOKS = meter.create_counter("payment_portal_webhooks")
         OTEL_PASSWORD_RESET_EMAILS = meter.create_counter("payment_portal_password_reset_emails")
+        OTEL_PROVIDER_API_OPERATIONS = meter.create_counter("payment_portal_provider_api_operations")
+        OTEL_PROVIDER_API_OPERATION_DURATION = meter.create_histogram(
+            "payment_portal_provider_api_operation_duration_seconds"
+        )
 
         logger_provider = LoggerProvider(resource=resource)
         logger_provider.add_log_record_processor(

@@ -1,21 +1,24 @@
 from __future__ import annotations
 
+import logging
 from decimal import Decimal
 from typing import Any
 
 import httpx
-from pydantic import ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.errors import PaymentsOperationDeclinedError, PaymentsResponseValidationError
 from app.core.settings import Settings, settings
 from app.payment_providers.api_client import (
     BaseHttpPaymentsApiClient,
+    PaymentsApiOperationOutcome,
     PaymentsApiClientConfig,
     PaymentsApiRequest,
 )
 from app.payment_providers.contracts import ProviderContractModel
 
 CLOUDPAYMENTS_API_PROVIDER_CODE = "cloudpayments"
+logger = logging.getLogger(__name__)
 
 
 class CloudPaymentsApiClientConfig(PaymentsApiClientConfig):
@@ -263,6 +266,15 @@ class CloudPaymentsApiClient(BaseHttpPaymentsApiClient):
     def _build_auth(self) -> httpx.Auth | None:
         return httpx.BasicAuth(self.config.public_id, self.config.api_secret)
 
+    def _outcome_from_response(
+        self,
+        request: PaymentsApiRequest,
+        response: BaseModel,
+    ) -> PaymentsApiOperationOutcome:
+        if isinstance(response, CloudPaymentsApiResponse) and not response.success and not self._is_not_found(response):
+            return PaymentsApiOperationOutcome.OPERATION_DECLINED
+        return super()._outcome_from_response(request, response)
+
     @staticmethod
     def _is_not_found(response: CloudPaymentsApiResponse) -> bool:
         return (
@@ -276,12 +288,23 @@ class CloudPaymentsApiClient(BaseHttpPaymentsApiClient):
     ) -> CloudPaymentsApiResponse:
         if response.success:
             return response
-        raise PaymentsOperationDeclinedError(
+        error = PaymentsOperationDeclinedError(
             "cloudpayments_operation_declined",
             provider=self.config.provider,
             operation=operation,
             message_safe="CloudPayments declined the operation.",
         )
+        logger.warning(
+            "CloudPayments operation declined.",
+            extra={
+                "structured": {
+                    "provider": self.config.provider,
+                    "operation": operation,
+                    "code": error.code,
+                }
+            },
+        )
+        raise error
 
     def _require_subscription_model(
         self,

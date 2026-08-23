@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 from app.core.errors import (
     PaymentsAuthenticationError,
     PaymentsHttpError,
+    PaymentsOperationDeclinedError,
     PaymentsRateLimitError,
     PaymentsResponseDecodeError,
     PaymentsResponseValidationError,
@@ -20,7 +21,7 @@ from app.core.errors import (
     PaymentsTransportError,
     PaymentsUpstreamError,
 )
-from app.core.observability import redact
+from app.core.observability import record_provider_api_operation, redact, tracer
 from app.payment_providers.contracts import RetryDisposition
 
 logger = logging.getLogger(__name__)
@@ -36,6 +37,19 @@ class PaymentsApiRequestMethod(StrEnum):
 class PaymentsApiRequestBodyFormat(StrEnum):
     JSON = "json"
     FORM = "form"
+
+
+class PaymentsApiOperationOutcome(StrEnum):
+    SUCCEEDED = "succeeded"
+    TIMEOUT = "timeout"
+    TRANSPORT_ERROR = "transport_error"
+    AUTHENTICATION_ERROR = "authentication_error"
+    RATE_LIMITED = "rate_limited"
+    UPSTREAM_ERROR = "upstream_error"
+    HTTP_ERROR = "http_error"
+    RESPONSE_DECODE_ERROR = "response_decode_error"
+    RESPONSE_VALIDATION_ERROR = "response_validation_error"
+    OPERATION_DECLINED = "operation_declined"
 
 
 class PaymentsApiClientModel(BaseModel):
@@ -102,6 +116,32 @@ class BaseHttpPaymentsApiClient(PaymentsApiClient):
         self._client.close()
 
     def send(
+        self,
+        request: PaymentsApiRequest,
+        *,
+        response_model: type[ResponseT],
+    ) -> ResponseT:
+        operation_tracer = tracer(__name__)
+        started = time.perf_counter()
+        outcome = PaymentsApiOperationOutcome.TRANSPORT_ERROR
+        with operation_tracer.start_as_current_span("payment_provider.api.operation") as span:
+            self._set_span_attribute(span, "payment_provider.provider", self.config.provider)
+            self._set_span_attribute(span, "payment_provider.operation", request.operation)
+            try:
+                response = self._send_with_retries(request, response_model=response_model)
+            except Exception as exc:
+                outcome = self._outcome_from_exception(exc)
+                self._set_span_attribute(span, "payment_provider.outcome", outcome.value)
+                raise
+            else:
+                outcome = self._outcome_from_response(request, response)
+                self._set_span_attribute(span, "payment_provider.outcome", outcome.value)
+                return response
+            finally:
+                self._record_operation(request, outcome, duration_seconds=time.perf_counter() - started)
+        raise AssertionError("unreachable")
+
+    def _send_with_retries(
         self,
         request: PaymentsApiRequest,
         *,
@@ -192,6 +232,53 @@ class BaseHttpPaymentsApiClient(PaymentsApiClient):
             return self._validate_response(request, response, response_model=response_model)
 
         raise AssertionError("unreachable")
+
+    def _outcome_from_response(
+        self,
+        request: PaymentsApiRequest,
+        response: BaseModel,
+    ) -> PaymentsApiOperationOutcome:
+        return PaymentsApiOperationOutcome.SUCCEEDED
+
+    def _outcome_from_exception(self, exc: Exception) -> PaymentsApiOperationOutcome:
+        if isinstance(exc, PaymentsTimeoutError):
+            return PaymentsApiOperationOutcome.TIMEOUT
+        if isinstance(exc, PaymentsAuthenticationError):
+            return PaymentsApiOperationOutcome.AUTHENTICATION_ERROR
+        if isinstance(exc, PaymentsRateLimitError):
+            return PaymentsApiOperationOutcome.RATE_LIMITED
+        if isinstance(exc, PaymentsUpstreamError):
+            return PaymentsApiOperationOutcome.UPSTREAM_ERROR
+        if isinstance(exc, PaymentsHttpError):
+            return PaymentsApiOperationOutcome.HTTP_ERROR
+        if isinstance(exc, PaymentsResponseDecodeError):
+            return PaymentsApiOperationOutcome.RESPONSE_DECODE_ERROR
+        if isinstance(exc, PaymentsResponseValidationError):
+            return PaymentsApiOperationOutcome.RESPONSE_VALIDATION_ERROR
+        if isinstance(exc, PaymentsOperationDeclinedError):
+            return PaymentsApiOperationOutcome.OPERATION_DECLINED
+        if isinstance(exc, PaymentsTransportError):
+            return PaymentsApiOperationOutcome.TRANSPORT_ERROR
+        return PaymentsApiOperationOutcome.TRANSPORT_ERROR
+
+    def _record_operation(
+        self,
+        request: PaymentsApiRequest,
+        outcome: PaymentsApiOperationOutcome,
+        *,
+        duration_seconds: float,
+    ) -> None:
+        record_provider_api_operation(
+            provider=self.config.provider,
+            operation=request.operation,
+            outcome=outcome.value,
+            duration_seconds=duration_seconds,
+        )
+
+    @staticmethod
+    def _set_span_attribute(span: object, key: str, value: str) -> None:
+        if hasattr(span, "set_attribute"):
+            span.set_attribute(key, value)
 
     def _build_auth(self) -> httpx.Auth | None:
         return None
