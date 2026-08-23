@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from decimal import Decimal
 
 import httpx
@@ -17,7 +18,9 @@ from app.core.errors import (  # noqa: E402
     PaymentsResponseDecodeError,
     PaymentsResponseValidationError,
     PaymentsTimeoutError,
+    PaymentsUpstreamError,
 )
+from app.core.observability import JsonFormatter, redact  # noqa: E402
 from app.integrations.cloudpayments.api_client import (  # noqa: E402
     CloudPaymentsApiClient,
     CloudPaymentsApiClientConfig,
@@ -159,6 +162,97 @@ def test_base_http_payments_api_client_does_not_retry_rate_limited_requests() ->
     assert error.value.retry_disposition.value == "non_retryable"
 
 
+def test_base_http_payments_api_client_does_not_retry_mutation_without_key() -> None:
+    attempts = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        assert "x-request-id" not in request.headers
+        return httpx.Response(503, json={"Success": False, "Message": "unavailable"})
+
+    client = DummyPaymentsApiClient(
+        config=PaymentsApiClientConfig(
+            provider="dummy",
+            base_url="https://provider.example",
+            max_retries=2,
+            retry_backoff_seconds=0.0,
+        ),
+        transport=httpx.MockTransport(handler),
+    )
+
+    with pytest.raises(PaymentsUpstreamError):
+        client.send(
+            PaymentsApiRequest(
+                operation="mutation",
+                path="/mutation",
+                is_idempotent=True,
+                is_mutating=True,
+            ),
+            response_model=DummyResponse,
+        )
+
+    assert attempts == 1
+
+
+def test_cloudpayments_client_retries_mutation_with_stable_request_id() -> None:
+    request_ids: list[str] = []
+    attempts = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        request_ids.append(request.headers["x-request-id"])
+        if attempts == 1:
+            return httpx.Response(503, json={"Success": False, "Message": "unavailable"})
+        return httpx.Response(200, json={"Success": True, "Message": None, "Model": {"TransactionId": 777}})
+
+    client = CloudPaymentsApiClient(
+        config=CloudPaymentsApiClientConfig(
+            provider="cloudpayments",
+            base_url="https://api.cloudpayments.ru",
+            public_id="pk_test",
+            api_secret="secret_test",
+            max_retries=1,
+            retry_backoff_seconds=0.0,
+        ),
+        transport=httpx.MockTransport(handler),
+    )
+
+    response = client.refund(
+        transaction_id=455,
+        amount=Decimal("100.00"),
+        idempotency_key=" refund-455-10000 ",
+    )
+
+    assert response.model is not None
+    assert attempts == 2
+    assert request_ids == ["refund-455-10000", "refund-455-10000"]
+
+
+def test_cloudpayments_client_does_not_send_blank_request_id() -> None:
+    seen_headers: list[dict[str, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_headers.append(dict(request.headers))
+        return httpx.Response(200, json={"Success": True, "Message": None, "Model": {"TransactionId": 777}})
+
+    client = CloudPaymentsApiClient(
+        config=CloudPaymentsApiClientConfig(
+            provider="cloudpayments",
+            base_url="https://api.cloudpayments.ru",
+            public_id="pk_test",
+            api_secret="secret_test",
+            max_retries=0,
+        ),
+        transport=httpx.MockTransport(handler),
+    )
+
+    client.refund(transaction_id=455, amount=Decimal("100.00"), idempotency_key="   ")
+
+    assert "x-request-id" not in seen_headers[0]
+
+
 def test_base_http_payments_api_client_maps_timeout_to_custom_error() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ReadTimeout("timeout", request=request)
@@ -177,6 +271,33 @@ def test_base_http_payments_api_client_maps_timeout_to_custom_error() -> None:
             PaymentsApiRequest(operation="health", path="/health", is_idempotent=True),
             response_model=DummyResponse,
         )
+
+
+def test_base_http_payments_api_client_keeps_component_timeout_bounds() -> None:
+    client = DummyPaymentsApiClient(
+        config=PaymentsApiClientConfig(
+            provider="dummy",
+            base_url="https://provider.example",
+            timeout_seconds=10.0,
+            connect_timeout_seconds=3.0,
+            read_timeout_seconds=10.0,
+            write_timeout_seconds=10.0,
+            pool_timeout_seconds=3.0,
+        ),
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, json={"ok": True})),
+    )
+
+    timeout = client._timeout_for_request(PaymentsApiRequest(operation="health", path="/health", timeout_seconds=30.0))
+
+    assert timeout.connect == 3.0
+    assert timeout.read == 10.0
+    assert timeout.write == 10.0
+    assert timeout.pool == 3.0
+
+
+def test_base_http_payments_api_client_rejects_non_positive_request_timeout() -> None:
+    with pytest.raises(ValidationError):
+        PaymentsApiRequest(operation="health", path="/health", timeout_seconds=0)
 
 
 def test_cloudpayments_client_sends_basic_auth_and_idempotency_header() -> None:
@@ -249,6 +370,55 @@ def test_cloudpayments_client_raises_declined_error_for_success_false() -> None:
     assert error.value.code == "cloudpayments_operation_declined"
     assert error.value.provider == "cloudpayments"
     assert error.value.operation == "create_subscription"
+    assert error.value.message_safe == "CloudPayments declined the operation."
+    assert "Invalid Amount value" not in str(error.value)
+
+
+def test_redact_covers_cloudpayments_sensitive_fields_and_variants() -> None:
+    payload = {
+        "ApiSecret": "api-secret-value",
+        "CardCryptogramPacket": "cryptogram-value",
+        "PAN": "4111111111111111",
+        "CVV": "123",
+        "Cvc": "456",
+        "CardMask": "4111 11****** 1111",
+        "ExpirationDate": "12/30",
+        "Token": "token-value",
+        "nested": {"api_secret": "nested-secret"},
+    }
+
+    safe_payload = redact(payload)
+
+    assert safe_payload == {
+        "ApiSecret": "[redacted]",
+        "CardCryptogramPacket": "[redacted]",
+        "PAN": "[redacted]",
+        "CVV": "[redacted]",
+        "Cvc": "[redacted]",
+        "CardMask": "[redacted]",
+        "ExpirationDate": "[redacted]",
+        "Token": "[redacted]",
+        "nested": {"api_secret": "[redacted]"},
+    }
+
+
+def test_json_formatter_redacts_structured_provider_fields() -> None:
+    record = logging.LogRecord(
+        name="payments",
+        level=logging.WARNING,
+        pathname=__file__,
+        lineno=1,
+        msg="provider failure",
+        args=(),
+        exc_info=None,
+    )
+    record.structured = {"Authorization": "Basic secret", "PAN": "4111111111111111"}
+
+    formatted = JsonFormatter().format(record)
+
+    assert "Basic secret" not in formatted
+    assert "4111111111111111" not in formatted
+    assert "[redacted]" in formatted
 
 
 def test_cloudpayments_client_create_subscription_uses_documented_path() -> None:

@@ -30,18 +30,29 @@ SENSITIVE_KEYS = {
     "password",
     "token",
     "api_secret",
+    "cardcryptogrampacket",
     "cardfirstsix",
     "cardlastfour",
+    "cardmask",
     "cardexpdate",
     "cardtype",
     "cardholdermessage",
+    "expirationdate",
+    "expirationdatemonth",
+    "expirationdateyear",
+    "pan",
+    "cvv",
+    "cvc",
+    "cryptogram",
 }
+NORMALIZED_SENSITIVE_KEYS = {re.sub(r"[^a-z0-9]", "", item.lower()) for item in SENSITIVE_KEYS}
 
 
 def redact(value: Any, key: str = "") -> Any:
     """Return a telemetry-safe representation of nested data."""
 
-    if key.lower().replace("-", "") in {item.replace("-", "") for item in SENSITIVE_KEYS}:
+    normalized_key = re.sub(r"[^a-z0-9]", "", key.lower())
+    if normalized_key in NORMALIZED_SENSITIVE_KEYS:
         return "[redacted]"
     if isinstance(value, Mapping):
         return {str(item_key): redact(item_value, str(item_key)) for item_key, item_value in value.items()}

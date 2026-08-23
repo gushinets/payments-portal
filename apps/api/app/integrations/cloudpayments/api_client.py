@@ -158,6 +158,7 @@ class CloudPaymentsApiClient(BaseHttpPaymentsApiClient):
                 payload=payload,
                 idempotency_key=idempotency_key,
                 is_idempotent=True,
+                is_mutating=True,
             ),
             response_model=CloudPaymentsRefundResponse,
         )
@@ -176,6 +177,7 @@ class CloudPaymentsApiClient(BaseHttpPaymentsApiClient):
                 payload=request.model_dump(mode="json", by_alias=True, exclude_none=True),
                 idempotency_key=idempotency_key,
                 is_idempotent=True,
+                is_mutating=True,
             ),
             response_model=CloudPaymentsSubscriptionResponse,
         )
@@ -194,6 +196,7 @@ class CloudPaymentsApiClient(BaseHttpPaymentsApiClient):
                 payload=request.model_dump(mode="json", by_alias=True, exclude_none=True),
                 idempotency_key=idempotency_key,
                 is_idempotent=True,
+                is_mutating=True,
             ),
             response_model=CloudPaymentsSubscriptionResponse,
         )
@@ -212,6 +215,7 @@ class CloudPaymentsApiClient(BaseHttpPaymentsApiClient):
                 payload={"Id": subscription_id},
                 idempotency_key=idempotency_key,
                 is_idempotent=True,
+                is_mutating=True,
             ),
             response_model=CloudPaymentsVoidResponse,
         )
@@ -243,7 +247,7 @@ class CloudPaymentsApiClient(BaseHttpPaymentsApiClient):
             "cloudpayments_operation_declined",
             provider=self.config.provider,
             operation=operation,
-            message_safe=response.message or "CloudPayments rejected the operation.",
+            message_safe="CloudPayments declined the operation.",
         )
 
 

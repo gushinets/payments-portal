@@ -8,7 +8,7 @@ from enum import StrEnum
 from typing import Any, Protocol, TypeVar
 
 import httpx
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from app.core.errors import (
     PaymentsAuthenticationError,
@@ -43,15 +43,15 @@ class PaymentsApiClientModel(BaseModel):
 
 
 class PaymentsApiClientConfig(PaymentsApiClientModel):
-    provider: str
-    base_url: str
-    timeout_seconds: float = 10.0
-    connect_timeout_seconds: float = 3.0
-    read_timeout_seconds: float = 10.0
-    write_timeout_seconds: float = 10.0
-    pool_timeout_seconds: float = 3.0
-    max_retries: int = 2
-    retry_backoff_seconds: float = 0.5
+    provider: str = Field(min_length=1)
+    base_url: str = Field(min_length=1)
+    timeout_seconds: float = Field(default=10.0, gt=0)
+    connect_timeout_seconds: float = Field(default=3.0, gt=0)
+    read_timeout_seconds: float = Field(default=10.0, gt=0)
+    write_timeout_seconds: float = Field(default=10.0, gt=0)
+    pool_timeout_seconds: float = Field(default=3.0, gt=0)
+    max_retries: int = Field(default=2, ge=0)
+    retry_backoff_seconds: float = Field(default=0.5, ge=0)
 
 
 class PaymentsApiRequest(PaymentsApiClientModel):
@@ -63,7 +63,16 @@ class PaymentsApiRequest(PaymentsApiClientModel):
     body_format: PaymentsApiRequestBodyFormat = PaymentsApiRequestBodyFormat.JSON
     idempotency_key: str | None = None
     is_idempotent: bool = False
-    timeout_seconds: float | None = None
+    is_mutating: bool = False
+    timeout_seconds: float | None = Field(default=None, gt=0)
+
+    @field_validator("idempotency_key")
+    @classmethod
+    def normalize_idempotency_key(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
 
 
 class PaymentsApiClient(Protocol):
@@ -72,8 +81,7 @@ class PaymentsApiClient(Protocol):
         request: PaymentsApiRequest,
         *,
         response_model: type[ResponseT],
-    ) -> ResponseT:
-        ...
+    ) -> ResponseT: ...
 
 
 class BaseHttpPaymentsApiClient(PaymentsApiClient):
@@ -106,8 +114,12 @@ class BaseHttpPaymentsApiClient(PaymentsApiClient):
                     url=request.path,
                     headers=self._build_headers(request),
                     auth=self._build_auth(),
-                    json=self._json_payload(request) if request.body_format == PaymentsApiRequestBodyFormat.JSON else None,
-                    data=self._form_payload(request) if request.body_format == PaymentsApiRequestBodyFormat.FORM else None,
+                    json=self._json_payload(request)
+                    if request.body_format == PaymentsApiRequestBodyFormat.JSON
+                    else None,
+                    data=self._form_payload(request)
+                    if request.body_format == PaymentsApiRequestBodyFormat.FORM
+                    else None,
                     timeout=self._timeout_for_request(request),
                 )
             except httpx.TimeoutException as exc:
@@ -209,7 +221,14 @@ class BaseHttpPaymentsApiClient(PaymentsApiClient):
 
     def _timeout_for_request(self, request: PaymentsApiRequest) -> httpx.Timeout:
         if request.timeout_seconds is not None:
-            return httpx.Timeout(request.timeout_seconds)
+            timeout = request.timeout_seconds
+            return httpx.Timeout(
+                timeout=timeout,
+                connect=min(timeout, self.config.connect_timeout_seconds),
+                read=min(timeout, self.config.read_timeout_seconds),
+                write=min(timeout, self.config.write_timeout_seconds),
+                pool=min(timeout, self.config.pool_timeout_seconds),
+            )
         return self._default_timeout()
 
     def _json_payload(self, request: PaymentsApiRequest) -> dict[str, Any]:
@@ -243,6 +262,7 @@ class BaseHttpPaymentsApiClient(PaymentsApiClient):
     ) -> bool:
         return (
             request.is_idempotent
+            and (not request.is_mutating or request.idempotency_key is not None)
             and retry_disposition == RetryDisposition.RETRYABLE
             and attempt < self.config.max_retries
         )
