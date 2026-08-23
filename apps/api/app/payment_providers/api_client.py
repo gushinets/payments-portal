@@ -10,6 +10,15 @@ from typing import Any, Protocol, TypeVar
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
+from app.core.payment_api_limits import (
+    PAYMENTS_API_MAX_CONNECT_TIMEOUT_SECONDS,
+    PAYMENTS_API_MAX_POOL_TIMEOUT_SECONDS,
+    PAYMENTS_API_MAX_READ_TIMEOUT_SECONDS,
+    PAYMENTS_API_MAX_RETRIES,
+    PAYMENTS_API_MAX_RETRY_BACKOFF_SECONDS,
+    PAYMENTS_API_MAX_TIMEOUT_SECONDS,
+    PAYMENTS_API_MAX_WRITE_TIMEOUT_SECONDS,
+)
 from app.core.errors import (
     PaymentsAuthenticationError,
     PaymentsHttpError,
@@ -59,13 +68,13 @@ class PaymentsApiClientModel(BaseModel):
 class PaymentsApiClientConfig(PaymentsApiClientModel):
     provider: str = Field(min_length=1)
     base_url: str = Field(min_length=1)
-    timeout_seconds: float = Field(default=10.0, gt=0)
-    connect_timeout_seconds: float = Field(default=3.0, gt=0)
-    read_timeout_seconds: float = Field(default=10.0, gt=0)
-    write_timeout_seconds: float = Field(default=10.0, gt=0)
-    pool_timeout_seconds: float = Field(default=3.0, gt=0)
-    max_retries: int = Field(default=2, ge=0)
-    retry_backoff_seconds: float = Field(default=0.5, ge=0)
+    timeout_seconds: float = Field(default=10.0, gt=0, le=PAYMENTS_API_MAX_TIMEOUT_SECONDS)
+    connect_timeout_seconds: float = Field(default=3.0, gt=0, le=PAYMENTS_API_MAX_CONNECT_TIMEOUT_SECONDS)
+    read_timeout_seconds: float = Field(default=10.0, gt=0, le=PAYMENTS_API_MAX_READ_TIMEOUT_SECONDS)
+    write_timeout_seconds: float = Field(default=10.0, gt=0, le=PAYMENTS_API_MAX_WRITE_TIMEOUT_SECONDS)
+    pool_timeout_seconds: float = Field(default=3.0, gt=0, le=PAYMENTS_API_MAX_POOL_TIMEOUT_SECONDS)
+    max_retries: int = Field(default=2, ge=0, le=PAYMENTS_API_MAX_RETRIES)
+    retry_backoff_seconds: float = Field(default=0.5, ge=0, le=PAYMENTS_API_MAX_RETRY_BACKOFF_SECONDS)
 
 
 class PaymentsApiRequest(PaymentsApiClientModel):
@@ -78,7 +87,7 @@ class PaymentsApiRequest(PaymentsApiClientModel):
     idempotency_key: str | None = None
     is_idempotent: bool = False
     is_mutating: bool = False
-    timeout_seconds: float | None = Field(default=None, gt=0)
+    timeout_seconds: float | None = Field(default=None, gt=0, le=PAYMENTS_API_MAX_TIMEOUT_SECONDS)
 
     @field_validator("idempotency_key")
     @classmethod

@@ -6,10 +6,11 @@ from enum import StrEnum
 from typing import Any
 
 import httpx
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.core.errors import PaymentsOperationDeclinedError, PaymentsResponseValidationError
 from app.core.settings import Settings, settings
+from app.core.url_validation import validate_https_origin_url
 from app.payment_providers.api_client import (
     BaseHttpPaymentsApiClient,
     PaymentsApiOperationOutcome,
@@ -26,6 +27,15 @@ class CloudPaymentsApiClientConfig(PaymentsApiClientConfig):
     provider: str = CLOUDPAYMENTS_API_PROVIDER_CODE
     public_id: str
     api_secret: str
+
+    @field_validator("base_url")
+    @classmethod
+    def validate_cloudpayments_base_url(cls, value: str) -> str:
+        return validate_https_origin_url(
+            value,
+            "CloudPayments API base_url",
+            allowed_hostname="api.cloudpayments.ru",
+        )
 
 
 class CloudPaymentsResponseModel(ProviderContractModel):

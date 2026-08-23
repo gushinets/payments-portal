@@ -42,6 +42,7 @@ from app.payment_providers.contracts import (
     CheckoutAction,
     CreateRecurringSubscriptionRequest,
     CreateRecurringSubscriptionResult,
+    OperationResultMeta,
     TransactionLookupRequest,
     TransactionLookupResult,
     NormalizedPaymentEvent,
@@ -195,6 +196,19 @@ def verify_cloudpayments_signature(raw_body: bytes, headers: dict[str, str]) -> 
     return hmac.compare_digest(signature.encode("utf-8"), expected)
 
 
+def _raise_checkout_account_configuration_error(account_error: OperationResultMeta | None) -> None:
+    if account_error is None:
+        return
+    failure = account_error.failure
+    code = failure.code if failure is not None else "cloudpayments_provider_account_invalid"
+    if code == "cloudpayments_public_id_missing":
+        code = "cloudpayments_public_terminal_id_missing"
+    raise PaymentProviderConfigurationError(
+        code,
+        message_safe=failure.message_safe if failure is not None else None,
+    )
+
+
 class CloudPaymentsAdapter:
     provider_code = CLOUDPAYMENTS_PROVIDER_CODE
 
@@ -225,9 +239,13 @@ class CloudPaymentsAdapter:
         mode = str(provider_account.config.get("widget_mode") or "charge")
         if mode not in {"charge", "auth"}:
             raise PaymentProviderConfigurationError("cloudpayments_widget_mode_invalid")
-        public_identifier = provider_account.public_identifier or settings.cloudpayments_public_id or None
-        if public_identifier is None or not public_identifier.strip():
-            raise PaymentProviderConfigurationError("cloudpayments_public_terminal_id_missing")
+        account_error = validate_provider_account_context(
+            provider_account=provider_account,
+            provider_code=self.provider_code,
+            configured_public_id=self._api_client.config.public_id,
+        )
+        _raise_checkout_account_configuration_error(account_error)
+        public_identifier = self._api_client.config.public_id.strip()
         return CheckoutAction(
             provider=self.provider_code,
             experience="widget",

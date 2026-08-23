@@ -70,6 +70,26 @@ class _FakeTracer:
         return self.span
 
 
+def _settings_values(**overrides: object) -> dict[str, object]:
+    values: dict[str, object] = {
+        "_env_file": None,
+        "app_env": "test",
+        "app_public_base_url": "https://payments.example.com",
+        "database_url": "sqlite+pysqlite:///:memory:",
+        "postgres_db": "payments",
+        "postgres_user": "payments",
+        "postgres_password": "secret",
+        "postgres_host": "postgres",
+        "postgres_port": 5432,
+        "cloudpayments_enabled": True,
+        "cloudpayments_public_id": "pk_test",
+        "cloudpayments_api_secret": "secret_test",
+        "cors_allow_origins": ("https://payments.example.com",),
+    }
+    values.update(overrides)
+    return values
+
+
 def test_base_http_payments_api_client_validates_response_model() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/health"
@@ -385,6 +405,33 @@ def test_cloudpayments_client_does_not_send_blank_request_id() -> None:
     assert "x-request-id" not in seen_headers[0]
 
 
+def test_cloudpayments_client_does_not_retry_mutation_without_idempotency_key() -> None:
+    attempts = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        assert "x-request-id" not in request.headers
+        return httpx.Response(503, json={"Success": False, "Message": "unavailable"})
+
+    client = CloudPaymentsApiClient(
+        config=CloudPaymentsApiClientConfig(
+            provider="cloudpayments",
+            base_url="https://api.cloudpayments.ru",
+            public_id="pk_test",
+            api_secret="secret_test",
+            max_retries=2,
+            retry_backoff_seconds=0.0,
+        ),
+        transport=httpx.MockTransport(handler),
+    )
+
+    with pytest.raises(PaymentsUpstreamError):
+        client.refund(transaction_id=455, amount=Decimal("100.00"))
+
+    assert attempts == 1
+
+
 def test_base_http_payments_api_client_maps_timeout_to_custom_error() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ReadTimeout("timeout", request=request)
@@ -430,6 +477,53 @@ def test_base_http_payments_api_client_keeps_component_timeout_bounds() -> None:
 def test_base_http_payments_api_client_rejects_non_positive_request_timeout() -> None:
     with pytest.raises(ValidationError):
         PaymentsApiRequest(operation="health", path="/health", timeout_seconds=0)
+
+
+def test_base_http_payments_api_client_rejects_excessive_request_timeout() -> None:
+    with pytest.raises(ValidationError):
+        PaymentsApiRequest(operation="health", path="/health", timeout_seconds=31.0)
+
+
+@pytest.mark.parametrize(
+    "base_url",
+    [
+        "http://api.cloudpayments.ru",
+        "https://public:secret@api.cloudpayments.ru",
+        "https://provider.example",
+        "https://api.cloudpayments.ru/v1",
+    ],
+)
+def test_cloudpayments_api_client_config_rejects_unsafe_base_url(base_url: str) -> None:
+    with pytest.raises(ValidationError):
+        CloudPaymentsApiClientConfig(
+            base_url=base_url,
+            public_id="pk_test",
+            api_secret="secret_test",
+        )
+
+
+@pytest.mark.parametrize(
+    ("field_name", "value"),
+    [
+        ("timeout_seconds", 31.0),
+        ("connect_timeout_seconds", 11.0),
+        ("read_timeout_seconds", 31.0),
+        ("write_timeout_seconds", 31.0),
+        ("pool_timeout_seconds", 11.0),
+        ("max_retries", 4),
+        ("retry_backoff_seconds", 6.0),
+    ],
+)
+def test_payments_api_client_config_rejects_excessive_timeout_and_retry_values(
+    field_name: str,
+    value: object,
+) -> None:
+    with pytest.raises(ValidationError):
+        PaymentsApiClientConfig(
+            provider="dummy",
+            base_url="https://provider.example",
+            **{field_name: value},
+        )
 
 
 def test_cloudpayments_client_sends_basic_auth_and_idempotency_header() -> None:
@@ -922,21 +1016,7 @@ def test_base_http_payments_api_client_redacts_authorization_header_in_logs(capl
 
 
 def test_build_cloudpayments_api_client_uses_required_settings() -> None:
-    app_settings = Settings(
-        _env_file=None,
-        app_env="test",
-        app_public_base_url="https://payments.example.com",
-        database_url="sqlite+pysqlite:///:memory:",
-        postgres_db="payments",
-        postgres_user="payments",
-        postgres_password="secret",
-        postgres_host="postgres",
-        postgres_port=5432,
-        cloudpayments_enabled=True,
-        cloudpayments_public_id="pk_test",
-        cloudpayments_api_secret="secret_test",
-        cors_allow_origins=("https://payments.example.com",),
-    )
+    app_settings = Settings(**_settings_values())
 
     client = build_cloudpayments_api_client(app_settings=app_settings)
 
@@ -949,19 +1029,38 @@ def test_build_cloudpayments_api_client_uses_required_settings() -> None:
 
 def test_build_cloudpayments_api_client_settings_reject_invalid_timeout() -> None:
     with pytest.raises(ValidationError):
-        Settings(
-            _env_file=None,
-            app_env="test",
-            app_public_base_url="https://payments.example.com",
-            database_url="sqlite+pysqlite:///:memory:",
-            postgres_db="payments",
-            postgres_user="payments",
-            postgres_password="secret",
-            postgres_host="postgres",
-            postgres_port=5432,
-            cloudpayments_enabled=True,
-            cloudpayments_public_id="pk_test",
-            cloudpayments_api_secret="secret_test",
-            cloudpayments_api_timeout_seconds=0,
-            cors_allow_origins=("https://payments.example.com",),
-        )
+        Settings(**_settings_values(cloudpayments_api_timeout_seconds=0))
+
+
+@pytest.mark.parametrize(
+    "base_url",
+    [
+        "http://api.cloudpayments.ru",
+        "https://public:secret@api.cloudpayments.ru",
+        "https://provider.example",
+        "https://api.cloudpayments.ru/v1",
+    ],
+)
+def test_build_cloudpayments_api_client_settings_reject_unsafe_base_url(base_url: str) -> None:
+    with pytest.raises(ValidationError):
+        Settings(**_settings_values(cloudpayments_api_base_url=base_url))
+
+
+@pytest.mark.parametrize(
+    ("field_name", "value"),
+    [
+        ("cloudpayments_api_timeout_seconds", 31.0),
+        ("cloudpayments_api_connect_timeout_seconds", 11.0),
+        ("cloudpayments_api_read_timeout_seconds", 31.0),
+        ("cloudpayments_api_write_timeout_seconds", 31.0),
+        ("cloudpayments_api_pool_timeout_seconds", 11.0),
+        ("cloudpayments_api_max_retries", 4),
+        ("cloudpayments_api_retry_backoff_seconds", 6.0),
+    ],
+)
+def test_build_cloudpayments_api_client_settings_reject_excessive_timeout_and_retry_values(
+    field_name: str,
+    value: object,
+) -> None:
+    with pytest.raises(ValidationError):
+        Settings(**_settings_values(**{field_name: value}))

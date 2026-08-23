@@ -10,6 +10,7 @@ from apps.api.tests.support.settings import configure_api_test_environment
 
 configure_api_test_environment()
 
+from app.core.errors import PaymentProviderConfigurationError  # noqa: E402
 from app.integrations.cloudpayments.adapter import CloudPaymentsAdapter  # noqa: E402
 from app.integrations.cloudpayments.api_client import (  # noqa: E402
     CloudPaymentsApiClient,
@@ -37,6 +38,16 @@ def _provider_account() -> object:
         config = {}
 
     return _ProviderAccount()
+
+
+def _order() -> object:
+    class _Order:
+        amount_minor = 99000
+        currency = "RUB"
+        merchant_order_id = "inv-1"
+        provider_invoice_id = "inv-1"
+
+    return _Order()
 
 
 def _adapter_with_transport(handler: httpx.MockTransport) -> CloudPaymentsAdapter:
@@ -71,6 +82,23 @@ def _create_subscription_request(**overrides: object) -> CreateRecurringSubscrip
     }
     values.update(overrides)
     return CreateRecurringSubscriptionRequest.model_validate(values)
+
+
+def test_cloudpayments_adapter_checkout_rejects_terminal_mismatch() -> None:
+    provider_account = _provider_account()
+    provider_account.public_identifier = "pk_other"
+    adapter = _adapter_with_transport(httpx.MockTransport(lambda request: httpx.Response(500)))
+
+    with pytest.raises(PaymentProviderConfigurationError) as error:
+        adapter.prepare_checkout_action(
+            provider_account=provider_account,  # type: ignore[arg-type]
+            order=_order(),  # type: ignore[arg-type]
+            account_id="user@example.com",
+            description="Document Summary Pro",
+            metadata={"product_code": "document-summary"},
+        )
+
+    assert error.value.code == "cloudpayments_public_id_mismatch"
 
 
 def test_cloudpayments_adapter_lookup_transaction_maps_completed_to_succeeded() -> None:
