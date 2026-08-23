@@ -7,6 +7,7 @@ from app.core.errors import PaymentsError
 from app.integrations.cloudpayments.api_client import (
     CloudPaymentsApiClient,
     CloudPaymentsTransactionModel,
+    CloudPaymentsTransactionStatus,
 )
 from app.models import PaymentProviderAccount
 from app.payment_providers.contracts import (
@@ -18,6 +19,14 @@ from app.payment_providers.contracts import (
 )
 
 FailureMetaFactory = Callable[..., OperationResultMeta]
+
+CLOUDPAYMENTS_TRANSACTION_STATUS_MAP = {
+    CloudPaymentsTransactionStatus.AWAITING_AUTHENTICATION: TransactionStatus.PENDING,
+    CloudPaymentsTransactionStatus.AUTHORIZED: TransactionStatus.AUTHORIZED,
+    CloudPaymentsTransactionStatus.COMPLETED: TransactionStatus.SUCCEEDED,
+    CloudPaymentsTransactionStatus.CANCELLED: TransactionStatus.CANCELED,
+    CloudPaymentsTransactionStatus.DECLINED: TransactionStatus.FAILED,
+}
 
 
 def lookup_transaction(
@@ -136,8 +145,8 @@ def lookup_transaction(
             ),
         )
 
-    amount = _transaction_amount(model)
-    currency = _transaction_currency(model)
+    amount = model.amount
+    currency = model.currency
     return TransactionLookupResult(
         provider=provider_code,
         provider_account_id=str(provider_account.id),
@@ -217,7 +226,7 @@ def _validate_transaction_model(
                 "CloudPayments returned a different invoice id.",
             )
 
-    amount = _transaction_amount(model)
+    amount = model.amount
     amount_minor = _amount_minor(amount)
     if amount_minor is None:
         return (
@@ -230,7 +239,7 @@ def _validate_transaction_model(
             "CloudPayments transaction amount does not match the expected amount.",
         )
 
-    currency = _transaction_currency(model)
+    currency = model.currency
     if currency is None:
         return (
             "cloudpayments_transaction_currency_missing",
@@ -268,37 +277,21 @@ def _validate_transaction_model(
     return None
 
 
-def _transaction_amount(model: CloudPaymentsTransactionModel) -> Decimal | None:
-    if model.amount is not None and model.payment_amount is not None and model.amount != model.payment_amount:
-        return None
-    return model.amount if model.amount is not None else model.payment_amount
-
-
-def _transaction_currency(model: CloudPaymentsTransactionModel) -> str | None:
-    if (
-        model.currency is not None
-        and model.payment_currency is not None
-        and model.currency.strip().upper() != model.payment_currency.strip().upper()
-    ):
-        return None
-    return model.currency if model.currency is not None else model.payment_currency
-
-
 def _map_transaction_status(model: CloudPaymentsTransactionModel) -> TransactionStatus:
-    normalized_status = str(model.status or "").strip().lower().replace("-", "_")
-    if normalized_status == "authorized":
-        return TransactionStatus.AUTHORIZED
-    if normalized_status in {"completed", "succeeded", "success"}:
-        return TransactionStatus.SUCCEEDED
-    if normalized_status in {"cancelled", "canceled"}:
-        return TransactionStatus.CANCELED
-    if normalized_status in {"declined", "failed", "rejected"}:
-        return TransactionStatus.FAILED
-    if normalized_status == "refunded":
-        return TransactionStatus.REFUNDED
-    if normalized_status in {"pending", "created", "in_progress"}:
-        return TransactionStatus.PENDING
-    return TransactionStatus.UNKNOWN
+    provider_status = _cloudpayments_transaction_status(model.status)
+    if provider_status is None:
+        return TransactionStatus.UNKNOWN
+    return CLOUDPAYMENTS_TRANSACTION_STATUS_MAP[provider_status]
+
+
+def _cloudpayments_transaction_status(value: str | None) -> CloudPaymentsTransactionStatus | None:
+    if value is None:
+        return None
+    normalized = value.strip()
+    for status in CloudPaymentsTransactionStatus:
+        if normalized == status.value:
+            return status
+    return None
 
 
 def _amount_minor(amount: Decimal | None) -> int | None:

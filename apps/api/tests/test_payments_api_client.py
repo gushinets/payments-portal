@@ -499,6 +499,40 @@ def test_cloudpayments_client_finds_transaction_by_invoice_id() -> None:
     assert response.model.transaction_id == 777
 
 
+def test_cloudpayments_client_preserves_transaction_model_when_success_false() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v2/payments/find"
+        return httpx.Response(
+            200,
+            json={
+                "Success": False,
+                "Message": None,
+                "Model": {
+                    "TransactionId": 777,
+                    "InvoiceId": "inv-1",
+                    "Status": "Declined",
+                },
+            },
+        )
+
+    client = CloudPaymentsApiClient(
+        config=CloudPaymentsApiClientConfig(
+            base_url="https://api.cloudpayments.ru",
+            public_id="pk_test",
+            api_secret="secret_test",
+            max_retries=0,
+        ),
+        transport=httpx.MockTransport(handler),
+    )
+
+    response = client.find_transaction(invoice_id="inv-1")
+
+    assert response is not None
+    assert response.model is not None
+    assert response.model.transaction_id == 777
+    assert response.model.status == "Declined"
+
+
 def test_cloudpayments_client_maps_not_found_to_none() -> None:
     client = CloudPaymentsApiClient(
         config=CloudPaymentsApiClientConfig(

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from decimal import Decimal
+from enum import StrEnum
 from typing import Any
 
 import httpx
@@ -34,6 +35,14 @@ class CloudPaymentsResponseModel(ProviderContractModel):
 class CloudPaymentsApiResponse(CloudPaymentsResponseModel):
     success: bool = Field(alias="Success")
     message: str | None = Field(alias="Message", default=None)
+
+
+class CloudPaymentsTransactionStatus(StrEnum):
+    AWAITING_AUTHENTICATION = "AwaitingAuthentication"
+    AUTHORIZED = "Authorized"
+    COMPLETED = "Completed"
+    CANCELLED = "Cancelled"
+    DECLINED = "Declined"
 
 
 class CloudPaymentsTransactionModel(CloudPaymentsResponseModel):
@@ -140,7 +149,7 @@ class CloudPaymentsApiClient(BaseHttpPaymentsApiClient):
         )
         if self._is_not_found(response):
             return None
-        return self._require_success("get_transaction", response)
+        return self._transaction_lookup_response("get_transaction", response)
 
     def find_transaction(self, *, invoice_id: str) -> CloudPaymentsTransactionResponse | None:
         response = self.send(
@@ -154,7 +163,7 @@ class CloudPaymentsApiClient(BaseHttpPaymentsApiClient):
         )
         if self._is_not_found(response):
             return None
-        return self._require_success("find_transaction", response)
+        return self._transaction_lookup_response("find_transaction", response)
 
     def refund(
         self,
@@ -271,6 +280,12 @@ class CloudPaymentsApiClient(BaseHttpPaymentsApiClient):
         request: PaymentsApiRequest,
         response: BaseModel,
     ) -> PaymentsApiOperationOutcome:
+        if (
+            isinstance(response, CloudPaymentsTransactionResponse)
+            and request.operation in {"get_transaction", "find_transaction"}
+            and response.model is not None
+        ):
+            return PaymentsApiOperationOutcome.SUCCEEDED
         if isinstance(response, CloudPaymentsApiResponse) and not response.success and not self._is_not_found(response):
             return PaymentsApiOperationOutcome.OPERATION_DECLINED
         return super()._outcome_from_response(request, response)
@@ -305,6 +320,15 @@ class CloudPaymentsApiClient(BaseHttpPaymentsApiClient):
             },
         )
         raise error
+
+    def _transaction_lookup_response(
+        self,
+        operation: str,
+        response: CloudPaymentsTransactionResponse,
+    ) -> CloudPaymentsTransactionResponse:
+        if response.success or response.model is not None:
+            return response
+        return self._require_success(operation, response)
 
     def _require_subscription_model(
         self,

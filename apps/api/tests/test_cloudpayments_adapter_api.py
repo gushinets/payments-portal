@@ -130,6 +130,133 @@ def test_cloudpayments_adapter_lookup_transaction_maps_completed_to_succeeded() 
     assert result.meta.outcome.value == "succeeded"
 
 
+def test_cloudpayments_adapter_lookup_transaction_maps_declined_model_to_failed() -> None:
+    provider_account = _provider_account()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v2/payments/find"
+        return httpx.Response(
+            200,
+            json={
+                "Success": False,
+                "Message": None,
+                "Model": {
+                    "PublicId": "pk_test",
+                    "TransactionId": 897749645,
+                    "InvoiceId": "inv-1",
+                    "OperationType": "Payment",
+                    "Status": "Declined",
+                    "ReasonCode": 5051,
+                    "Amount": 159,
+                    "Currency": "RUB",
+                    "PaymentAmount": 159,
+                    "PaymentCurrency": "RUB",
+                },
+            },
+        )
+
+    adapter = _adapter_with_transport(httpx.MockTransport(handler))
+
+    result = adapter.lookup_transaction(
+        provider_account=provider_account,  # type: ignore[arg-type]
+        request=TransactionLookupRequest(
+            provider_invoice_id="inv-1",
+            merchant_order_id="merchant-1",
+            expected_amount_minor=15900,
+            expected_currency="RUB",
+        ),
+    )
+
+    assert result.provider_payment_id == "897749645"
+    assert result.provider_invoice_id == "inv-1"
+    assert result.status == TransactionStatus.FAILED
+    assert result.amount_minor == 15900
+    assert result.currency == "RUB"
+    assert result.meta.outcome.value == "succeeded"
+
+
+def test_cloudpayments_adapter_lookup_transaction_maps_awaiting_authentication_to_pending() -> None:
+    provider_account = _provider_account()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/payments/get"
+        return httpx.Response(
+            200,
+            json={
+                "Success": True,
+                "Message": None,
+                "Model": {
+                    "PublicId": "pk_test",
+                    "TransactionId": 897749645,
+                    "InvoiceId": "inv-1",
+                    "OperationType": "Payment",
+                    "Status": "AwaitingAuthentication",
+                    "Amount": 159,
+                    "Currency": "RUB",
+                    "PaymentAmount": 159,
+                    "PaymentCurrency": "RUB",
+                },
+            },
+        )
+
+    adapter = _adapter_with_transport(httpx.MockTransport(handler))
+
+    result = adapter.lookup_transaction(
+        provider_account=provider_account,  # type: ignore[arg-type]
+        request=TransactionLookupRequest(
+            provider_payment_id="897749645",
+            provider_invoice_id="inv-1",
+            expected_amount_minor=15900,
+            expected_currency="RUB",
+        ),
+    )
+
+    assert result.status == TransactionStatus.PENDING
+    assert result.meta.outcome.value == "succeeded"
+
+
+def test_cloudpayments_adapter_lookup_uses_order_amount_when_settlement_fields_differ() -> None:
+    provider_account = _provider_account()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/payments/get"
+        return httpx.Response(
+            200,
+            json={
+                "Success": True,
+                "Message": None,
+                "Model": {
+                    "PublicId": "pk_test",
+                    "TransactionId": 897749645,
+                    "InvoiceId": "inv-1",
+                    "OperationType": "Payment",
+                    "Status": "Completed",
+                    "Amount": 159,
+                    "Currency": "RUB",
+                    "PaymentAmount": 2,
+                    "PaymentCurrency": "USD",
+                },
+            },
+        )
+
+    adapter = _adapter_with_transport(httpx.MockTransport(handler))
+
+    result = adapter.lookup_transaction(
+        provider_account=provider_account,  # type: ignore[arg-type]
+        request=TransactionLookupRequest(
+            provider_payment_id="897749645",
+            provider_invoice_id="inv-1",
+            expected_amount_minor=15900,
+            expected_currency="RUB",
+        ),
+    )
+
+    assert result.status == TransactionStatus.SUCCEEDED
+    assert result.amount_minor == 15900
+    assert result.currency == "RUB"
+    assert result.meta.outcome.value == "succeeded"
+
+
 def test_cloudpayments_adapter_lookup_transaction_fallback_maps_upstream_failure() -> None:
     provider_account = _provider_account()
     adapter = CloudPaymentsAdapter(
@@ -393,6 +520,75 @@ def test_cloudpayments_adapter_lookup_rejects_non_payment_operation(operation_ty
     assert result.status == TransactionStatus.UNKNOWN
     assert result.meta.failure is not None
     assert result.meta.failure.code == "cloudpayments_non_payment_operation"
+
+
+@pytest.mark.parametrize("operation_type", ["Refund", "CardPayout"])
+def test_cloudpayments_adapter_lookup_rejects_refund_or_payout_model_when_success_false(
+    operation_type: str,
+) -> None:
+    provider_account = _provider_account()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v2/payments/find"
+        return httpx.Response(
+            200,
+            json={
+                "Success": False,
+                "Message": None,
+                "Model": {
+                    "PublicId": "pk_test",
+                    "TransactionId": 897749645,
+                    "InvoiceId": "inv-1",
+                    "OperationType": operation_type,
+                    "Status": "Completed",
+                    "Amount": 159,
+                    "Currency": "RUB",
+                    "PaymentAmount": 159,
+                    "PaymentCurrency": "RUB",
+                },
+            },
+        )
+
+    adapter = _adapter_with_transport(httpx.MockTransport(handler))
+
+    result = adapter.lookup_transaction(
+        provider_account=provider_account,  # type: ignore[arg-type]
+        request=TransactionLookupRequest(
+            provider_invoice_id="inv-1",
+            expected_amount_minor=15900,
+            expected_currency="RUB",
+        ),
+    )
+
+    assert result.status == TransactionStatus.UNKNOWN
+    assert result.provider_payment_id is None
+    assert result.meta.failure is not None
+    assert result.meta.failure.code == "cloudpayments_non_payment_operation"
+
+
+def test_cloudpayments_adapter_lookup_rejects_missing_model() -> None:
+    provider_account = _provider_account()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/payments/get"
+        return httpx.Response(200, json={"Success": True, "Message": None, "Model": None})
+
+    adapter = _adapter_with_transport(httpx.MockTransport(handler))
+
+    result = adapter.lookup_transaction(
+        provider_account=provider_account,  # type: ignore[arg-type]
+        request=TransactionLookupRequest(
+            provider_payment_id="897749645",
+            provider_invoice_id="inv-1",
+            expected_amount_minor=15900,
+            expected_currency="RUB",
+        ),
+    )
+
+    assert result.status == TransactionStatus.UNKNOWN
+    assert result.provider_payment_id is None
+    assert result.meta.failure is not None
+    assert result.meta.failure.code == "cloudpayments_transaction_lookup_missing_model"
 
 
 def test_cloudpayments_adapter_refund_maps_accepted_response_to_pending() -> None:
