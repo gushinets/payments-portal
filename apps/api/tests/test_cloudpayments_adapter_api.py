@@ -215,6 +215,33 @@ def test_cloudpayments_adapter_lookup_transaction_falls_back_to_invoice_id() -> 
     assert result.meta.outcome.value == "succeeded"
 
 
+def test_cloudpayments_adapter_lookup_transaction_maps_not_found_to_safe_unknown() -> None:
+    provider_account = _provider_account()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/payments/get"
+        return httpx.Response(200, json={"Success": False, "Message": "Not found"})
+
+    adapter = _adapter_with_transport(httpx.MockTransport(handler))
+
+    result = adapter.lookup_transaction(
+        provider_account=provider_account,  # type: ignore[arg-type]
+        request=TransactionLookupRequest(
+            provider_payment_id="897749645",
+            provider_invoice_id="inv-1",
+            expected_amount_minor=15900,
+            expected_currency="RUB",
+        ),
+    )
+
+    assert result.status == TransactionStatus.UNKNOWN
+    assert result.provider_payment_id is None
+    assert result.provider_invoice_id is None
+    assert result.meta.failure is not None
+    assert result.meta.failure.code == "cloudpayments_payment_not_found"
+    assert result.meta.failure.message_safe == "CloudPayments transaction was not found."
+
+
 def test_cloudpayments_adapter_lookup_rejects_amount_mismatch() -> None:
     provider_account = _provider_account()
 
@@ -445,6 +472,93 @@ def test_cloudpayments_adapter_refund_maps_transport_failure_to_retryable_result
     assert result.meta.retry_disposition.value == "retryable"
     assert result.meta.failure is not None
     assert result.meta.failure.code == "payments_api_timeout"
+
+
+def test_cloudpayments_adapter_refund_maps_provider_decline_safely() -> None:
+    provider_account = _provider_account()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/payments/refund"
+        return httpx.Response(
+            200,
+            json={"Success": False, "Message": "Raw provider text with PAN 4111111111111111"},
+        )
+
+    adapter = _adapter_with_transport(httpx.MockTransport(handler))
+
+    result = adapter.refund_payment(
+        provider_account=provider_account,  # type: ignore[arg-type]
+        request=RefundRequest(
+            provider_payment_id="455",
+            amount_minor=10000,
+            amount=Decimal("100.00"),
+            currency="RUB",
+            idempotency_key="refund-455-10000",
+        ),
+    )
+
+    assert result.status == RefundStatus.FAILED
+    assert result.provider_refund_id is None
+    assert result.meta.failure is not None
+    assert result.meta.failure.code == "cloudpayments_operation_declined"
+    assert result.meta.failure.message_safe == "CloudPayments declined the operation."
+    assert "4111111111111111" not in str(result.model_dump())
+
+
+@pytest.mark.parametrize(
+    "response_payload",
+    [
+        {"Success": True, "Message": None, "Model": {}},
+        {"Success": True, "Message": None, "Model": {"TransactionId": "not-an-int"}},
+    ],
+)
+def test_cloudpayments_adapter_refund_maps_schema_mismatch_and_missing_refund_id(
+    response_payload: dict[str, object],
+) -> None:
+    provider_account = _provider_account()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/payments/refund"
+        return httpx.Response(200, json=response_payload)
+
+    adapter = _adapter_with_transport(httpx.MockTransport(handler))
+
+    result = adapter.refund_payment(
+        provider_account=provider_account,  # type: ignore[arg-type]
+        request=RefundRequest(
+            provider_payment_id="455",
+            amount_minor=10000,
+            amount=Decimal("100.00"),
+            currency="RUB",
+            idempotency_key="refund-455-10000",
+        ),
+    )
+
+    assert result.status == RefundStatus.FAILED
+    assert result.provider_refund_id is None
+    assert result.meta.failure is not None
+    assert result.meta.failure.code == "payments_api_response_validation_error"
+
+
+def test_cloudpayments_adapter_refund_maps_response_decode_error() -> None:
+    provider_account = _provider_account()
+    adapter = _adapter_with_transport(httpx.MockTransport(lambda request: httpx.Response(200, text="not-json")))
+
+    result = adapter.refund_payment(
+        provider_account=provider_account,  # type: ignore[arg-type]
+        request=RefundRequest(
+            provider_payment_id="455",
+            amount_minor=10000,
+            amount=Decimal("100.00"),
+            currency="RUB",
+            idempotency_key="refund-455-10000",
+        ),
+    )
+
+    assert result.status == RefundStatus.FAILED
+    assert result.provider_refund_id is None
+    assert result.meta.failure is not None
+    assert result.meta.failure.code == "payments_api_response_decode_error"
 
 
 def test_cloudpayments_adapter_lookup_transaction_rejects_wrong_provider_account_provider() -> None:
@@ -707,6 +821,21 @@ def test_cloudpayments_adapter_recurring_subscription_status_mapping_is_exact(
     assert result.status == expected
 
 
+def test_cloudpayments_adapter_recurring_subscription_rejects_public_id_mismatch() -> None:
+    provider_account = _provider_account()
+    provider_account.public_identifier = "pk_other"
+    adapter = _adapter_with_transport(httpx.MockTransport(lambda request: httpx.Response(500)))
+
+    result = adapter.create_recurring_subscription(
+        provider_account=provider_account,  # type: ignore[arg-type]
+        request=_create_subscription_request(),
+    )
+
+    assert result.status == RecurringSubscriptionStatus.FAILED
+    assert result.meta.failure is not None
+    assert result.meta.failure.code == "cloudpayments_public_id_mismatch"
+
+
 def test_cloudpayments_adapter_create_recurring_subscription_rejects_missing_start_date() -> None:
     provider_account = _provider_account()
 
@@ -801,6 +930,68 @@ def test_cloudpayments_adapter_create_recurring_subscription_maps_schema_mismatc
     result = adapter.create_recurring_subscription(
         provider_account=provider_account,  # type: ignore[arg-type]
         request=_create_subscription_request(),
+    )
+
+    assert result.status == RecurringSubscriptionStatus.FAILED
+    assert result.meta.failure is not None
+    assert result.meta.failure.code == "payments_api_response_validation_error"
+
+
+def test_cloudpayments_adapter_cancel_recurring_subscription_maps_transport_failure() -> None:
+    provider_account = _provider_account()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("timeout", request=request)
+
+    adapter = _adapter_with_transport(httpx.MockTransport(handler))
+
+    result = adapter.cancel_recurring_subscription(
+        provider_account=provider_account,  # type: ignore[arg-type]
+        request=CancelRecurringSubscriptionRequest(
+            provider_subscription_id="sc_1",
+            idempotency_key="sub-cancel-2",
+        ),
+    )
+
+    assert result.status == RecurringSubscriptionStatus.FAILED
+    assert result.meta.retry_disposition.value == "retryable"
+    assert result.meta.failure is not None
+    assert result.meta.failure.code == "payments_api_timeout"
+
+
+def test_cloudpayments_adapter_cancel_recurring_subscription_maps_provider_decline_safely() -> None:
+    provider_account = _provider_account()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"Success": False, "Message": "Do not leak this provider message"})
+
+    adapter = _adapter_with_transport(httpx.MockTransport(handler))
+
+    result = adapter.cancel_recurring_subscription(
+        provider_account=provider_account,  # type: ignore[arg-type]
+        request=CancelRecurringSubscriptionRequest(
+            provider_subscription_id="sc_1",
+            idempotency_key="sub-cancel-3",
+        ),
+    )
+
+    assert result.status == RecurringSubscriptionStatus.FAILED
+    assert result.meta.failure is not None
+    assert result.meta.failure.code == "cloudpayments_operation_declined"
+    assert result.meta.failure.message_safe == "CloudPayments declined the operation."
+    assert "Do not leak this provider message" not in str(result.model_dump())
+
+
+def test_cloudpayments_adapter_cancel_recurring_subscription_maps_schema_mismatch() -> None:
+    provider_account = _provider_account()
+    adapter = _adapter_with_transport(httpx.MockTransport(lambda request: httpx.Response(200, json={"Model": None})))
+
+    result = adapter.cancel_recurring_subscription(
+        provider_account=provider_account,  # type: ignore[arg-type]
+        request=CancelRecurringSubscriptionRequest(
+            provider_subscription_id="sc_1",
+            idempotency_key="sub-cancel-4",
+        ),
     )
 
     assert result.status == RecurringSubscriptionStatus.FAILED

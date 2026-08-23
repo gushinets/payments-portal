@@ -231,7 +231,7 @@ Completion condition:
 
 ### Step 6 — Add focused mocked contract tests
 
-Status: partially implemented; review follow-up required
+Status: completed
 
 Files:
 
@@ -259,6 +259,16 @@ Completion condition:
 
 - Acceptance behavior is demonstrated by isolated deterministic tests without
   real credentials or card data.
+
+Implemented in the current branch:
+
+- Extended deterministic client and adapter contract tests for not-found lookup,
+  refund decline/schema/decode failures, recurring cancel failure paths, and
+  CloudPayments terminal binding.
+- Added redaction assertions for response-validation safe details and structured
+  authorization-header failure logs.
+- Verified provider decline messages remain mapped to safe normalized failures
+  rather than raw provider text.
 
 ### Step 7 — Add observability and opt-in sandbox verification
 

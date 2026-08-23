@@ -656,6 +656,60 @@ def test_base_http_payments_api_client_raises_response_validation_error() -> Non
         )
 
 
+def test_base_http_payments_api_client_redacts_response_payload_in_safe_error_details() -> None:
+    client = DummyPaymentsApiClient(
+        config=PaymentsApiClientConfig(provider="dummy", base_url="https://provider.example"),
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(
+                200,
+                json={
+                    "Token": "token-value",
+                    "PAN": "4111111111111111",
+                    "CardCryptogramPacket": "cryptogram-value",
+                    "CVV": "123",
+                },
+            )
+        ),
+    )
+
+    with pytest.raises(PaymentsResponseValidationError) as error:
+        client.send(
+            PaymentsApiRequest(operation="health", path="/health"),
+            response_model=DummyResponse,
+        )
+
+    assert error.value.details_safe["response_payload"] == {
+        "Token": "[redacted]",
+        "PAN": "[redacted]",
+        "CardCryptogramPacket": "[redacted]",
+        "CVV": "[redacted]",
+    }
+    assert "token-value" not in str(error.value.details_safe)
+    assert "4111111111111111" not in str(error.value.details_safe)
+
+
+def test_base_http_payments_api_client_redacts_authorization_header_in_logs(caplog: pytest.LogCaptureFixture) -> None:
+    client = DummyPaymentsApiClient(
+        config=PaymentsApiClientConfig(provider="dummy", base_url="https://provider.example"),
+        transport=httpx.MockTransport(lambda request: httpx.Response(401, json={"detail": "nope"})),
+    )
+
+    with caplog.at_level(logging.WARNING, logger="app.payment_providers.api_client"):
+        with pytest.raises(PaymentsAuthenticationError):
+            client.send(
+                PaymentsApiRequest(
+                    operation="health",
+                    path="/health",
+                    headers={"Authorization": "Basic secret-value"},
+                ),
+                response_model=DummyResponse,
+            )
+
+    structured = caplog.records[0].structured
+    assert structured["details"]["headers"]["Authorization"] == "[redacted]"
+    assert "secret-value" not in str(structured)
+
+
 def test_build_cloudpayments_api_client_uses_required_settings() -> None:
     app_settings = Settings(
         _env_file=None,
