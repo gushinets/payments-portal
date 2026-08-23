@@ -153,7 +153,7 @@ Completion condition:
 
 ### Step 4 — Implement transaction lookup/reconciliation and refunds
 
-Status: partially implemented; review follow-up required
+Status: completed
 
 Files:
 
@@ -191,7 +191,7 @@ Completion condition:
 
 ### Step 5 — Implement recurring subscription primitives
 
-Status: partially implemented; review follow-up required
+Status: completed
 
 Files:
 

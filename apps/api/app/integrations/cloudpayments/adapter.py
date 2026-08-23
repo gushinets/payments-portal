@@ -12,7 +12,6 @@ from fastapi import Request
 
 from app.core.errors import (
     PaymentProviderConfigurationError,
-    PaymentsError,
 )
 from app.core.observability import redact
 from app.core.settings import settings
@@ -27,17 +26,27 @@ from app.integrations.cloudpayments.contracts import (
 from app.integrations.cloudpayments.payload import get_first
 from app.integrations.cloudpayments.account_validation import validate_provider_account_context
 from app.integrations.cloudpayments.operation_meta import failed_meta, failed_meta_from_error, succeeded_meta
+from app.integrations.cloudpayments.recurring import (
+    cancel_recurring_subscription as cancel_cloudpayments_recurring_subscription,
+    create_recurring_subscription as create_cloudpayments_recurring_subscription,
+    update_recurring_subscription as update_cloudpayments_recurring_subscription,
+)
+from app.integrations.cloudpayments.refunds import refund_payment as refund_cloudpayments_payment
 from app.integrations.cloudpayments.transaction_lookup import lookup_transaction as lookup_cloudpayments_transaction
 from app.models import Order, PaymentProviderAccount
 from app.payment_providers.contracts import (
+    CancelRecurringSubscriptionRequest,
+    CancelRecurringSubscriptionResult,
     RefundRequest,
     RefundResult,
-    RefundStatus,
-    RetryDisposition,
     CheckoutAction,
+    CreateRecurringSubscriptionRequest,
+    CreateRecurringSubscriptionResult,
     TransactionLookupRequest,
     TransactionLookupResult,
     NormalizedPaymentEvent,
+    UpdateRecurringSubscriptionRequest,
+    UpdateRecurringSubscriptionResult,
 )
 
 CLOUDPAYMENTS_PROVIDER_CODE = "cloudpayments"
@@ -262,147 +271,50 @@ class CloudPaymentsAdapter:
         provider_account: PaymentProviderAccount,
         request: RefundRequest,
     ) -> RefundResult:
-        account_error = validate_provider_account_context(
-            provider_account=provider_account,
+        return refund_cloudpayments_payment(
+            api_client=self._api_client,
             provider_code=self.provider_code,
-            configured_public_id=self._api_client.config.public_id,
+            provider_account=provider_account,
+            request=request,
         )
-        if account_error is not None:
-            return RefundResult(
-                provider=self.provider_code,
-                provider_account_id=str(provider_account.id),
-                provider_payment_id=request.provider_payment_id,
-                provider_refund_id=None,
-                status=RefundStatus.FAILED,
-                amount_minor=request.amount_minor,
-                amount=request.amount,
-                currency=request.currency,
-                meta=account_error,
-            )
 
-        if provider_account.default_currency.strip().upper() != request.currency.strip().upper():
-            return RefundResult(
-                provider=self.provider_code,
-                provider_account_id=str(provider_account.id),
-                provider_payment_id=request.provider_payment_id,
-                provider_refund_id=None,
-                status=RefundStatus.FAILED,
-                amount_minor=request.amount_minor,
-                amount=request.amount,
-                currency=request.currency,
-                meta=failed_meta(
-                    code="refund_currency_mismatch",
-                    message_safe="Refund currency does not match provider account default currency.",
-                    retry_disposition=RetryDisposition.NON_RETRYABLE,
-                    idempotency_key=request.idempotency_key,
-                ),
-            )
+    def create_recurring_subscription(
+        self,
+        *,
+        provider_account: PaymentProviderAccount,
+        request: CreateRecurringSubscriptionRequest,
+    ) -> CreateRecurringSubscriptionResult:
+        return create_cloudpayments_recurring_subscription(
+            api_client=self._api_client,
+            provider_code=self.provider_code,
+            provider_account=provider_account,
+            request=request,
+        )
 
-        if request.amount_minor <= 0 or request.amount <= Decimal("0"):
-            return RefundResult(
-                provider=self.provider_code,
-                provider_account_id=str(provider_account.id),
-                provider_payment_id=request.provider_payment_id,
-                provider_refund_id=None,
-                status=RefundStatus.FAILED,
-                amount_minor=request.amount_minor,
-                amount=request.amount,
-                currency=request.currency,
-                meta=failed_meta(
-                    code="refund_amount_invalid",
-                    message_safe="Refund amount must be positive.",
-                    retry_disposition=RetryDisposition.NON_RETRYABLE,
-                    idempotency_key=request.idempotency_key,
-                ),
-            )
+    def update_recurring_subscription(
+        self,
+        *,
+        provider_account: PaymentProviderAccount,
+        request: UpdateRecurringSubscriptionRequest,
+    ) -> UpdateRecurringSubscriptionResult:
+        return update_cloudpayments_recurring_subscription(
+            api_client=self._api_client,
+            provider_code=self.provider_code,
+            provider_account=provider_account,
+            request=request,
+        )
 
-        provider_transaction_id = self._provider_transaction_id(request.provider_payment_id)
-        if provider_transaction_id is None:
-            return RefundResult(
-                provider=self.provider_code,
-                provider_account_id=str(provider_account.id),
-                provider_payment_id=request.provider_payment_id,
-                provider_refund_id=None,
-                status=RefundStatus.FAILED,
-                amount_minor=request.amount_minor,
-                amount=request.amount,
-                currency=request.currency,
-                meta=failed_meta(
-                    code="cloudpayments_transaction_id_required",
-                    message_safe="CloudPayments refund requires provider_payment_id as TransactionId.",
-                    retry_disposition=RetryDisposition.NON_RETRYABLE,
-                    idempotency_key=request.idempotency_key,
-                ),
-            )
-
-        expected_amount_minor = self._amount_minor(request.amount)
-        if expected_amount_minor is None or expected_amount_minor != request.amount_minor:
-            return RefundResult(
-                provider=self.provider_code,
-                provider_account_id=str(provider_account.id),
-                provider_payment_id=request.provider_payment_id,
-                provider_refund_id=None,
-                status=RefundStatus.FAILED,
-                amount_minor=request.amount_minor,
-                amount=request.amount,
-                currency=request.currency,
-                meta=failed_meta(
-                    code="refund_amount_mismatch",
-                    message_safe="Refund amount and amount_minor must match.",
-                    retry_disposition=RetryDisposition.NON_RETRYABLE,
-                    idempotency_key=request.idempotency_key,
-                ),
-            )
-
-        json_data = {"reason": request.reason} if request.reason else None
-        try:
-            response = self._api_client.refund(
-                transaction_id=provider_transaction_id,
-                amount=request.amount,
-                json_data=json_data,
-                idempotency_key=request.idempotency_key,
-            )
-        except PaymentsError as exc:
-            return RefundResult(
-                provider=self.provider_code,
-                provider_account_id=str(provider_account.id),
-                provider_payment_id=request.provider_payment_id,
-                provider_refund_id=None,
-                status=RefundStatus.FAILED,
-                amount_minor=request.amount_minor,
-                amount=request.amount,
-                currency=request.currency,
-                meta=failed_meta_from_error(exc, idempotency_key=request.idempotency_key),
-            )
-
-        if response.model is None or response.model.transaction_id <= 0:
-            return RefundResult(
-                provider=self.provider_code,
-                provider_account_id=str(provider_account.id),
-                provider_payment_id=request.provider_payment_id,
-                provider_refund_id=None,
-                status=RefundStatus.FAILED,
-                amount_minor=request.amount_minor,
-                amount=request.amount,
-                currency=request.currency,
-                meta=failed_meta(
-                    code="payments_api_response_validation_error",
-                    message_safe="CloudPayments refund response is missing a transaction id.",
-                    retry_disposition=RetryDisposition.NON_RETRYABLE,
-                    idempotency_key=request.idempotency_key,
-                ),
-            )
-
-        return RefundResult(
-            provider=self.provider_code,
-            provider_account_id=str(provider_account.id),
-            provider_payment_id=request.provider_payment_id,
-            provider_refund_id=str(response.model.transaction_id),
-            status=RefundStatus.PENDING,
-            amount_minor=request.amount_minor,
-            amount=request.amount,
-            currency=request.currency,
-            meta=succeeded_meta(idempotency_key=request.idempotency_key),
+    def cancel_recurring_subscription(
+        self,
+        *,
+        provider_account: PaymentProviderAccount,
+        request: CancelRecurringSubscriptionRequest,
+    ) -> CancelRecurringSubscriptionResult:
+        return cancel_cloudpayments_recurring_subscription(
+            api_client=self._api_client,
+            provider_code=self.provider_code,
+            provider_account=provider_account,
+            request=request,
         )
 
     async def normalize_webhook_request(
@@ -476,22 +388,6 @@ class CloudPaymentsAdapter:
         if endpoint != "check":
             return 0
         return CLOUDPAYMENTS_RESPONSE_CODES.get(error_code, 13)
-
-    def _provider_transaction_id(self, value: str | None) -> int | None:
-        if value is None:
-            return None
-        normalized = value.strip()
-        if not normalized or not normalized.isdigit():
-            return None
-        return int(normalized)
-
-    def _amount_minor(self, amount: Decimal | None) -> int | None:
-        if amount is None:
-            return None
-        scaled = amount * Decimal("100")
-        if scaled != scaled.to_integral_value():
-            return None
-        return int(scaled)
 
 
 cloudpayments_adapter = CloudPaymentsAdapter(api_client=build_cloudpayments_api_client())

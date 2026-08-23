@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 from decimal import Decimal
 
@@ -25,6 +26,7 @@ from app.integrations.cloudpayments.api_client import (  # noqa: E402
     CloudPaymentsApiClient,
     CloudPaymentsApiClientConfig,
     CloudPaymentsCreateSubscriptionRequest,
+    CloudPaymentsUpdateSubscriptionRequest,
     build_cloudpayments_api_client,
 )
 from app.payment_providers.api_client import (  # noqa: E402
@@ -426,7 +428,6 @@ def test_cloudpayments_client_raises_declined_error_for_success_false() -> None:
                 StartDate="2026-08-22T00:00:00Z",
                 Interval="Month",
                 Period=1,
-                CultureName="ru-RU",
             ),
             idempotency_key="sub-create-1",
         )
@@ -514,13 +515,119 @@ def test_cloudpayments_client_create_subscription_uses_documented_path() -> None
             Interval="Month",
             Period=1,
             CustomerReceipt={"Items": []},
-            CultureName="ru-RU",
         ),
         idempotency_key="sub-create-2",
     )
 
     assert response.model is not None
     assert response.model.subscription_id == "sc_1"
+
+
+def test_cloudpayments_client_update_subscription_uses_documented_path_without_email() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "POST"
+        assert request.url.path == "/subscriptions/update"
+        assert request.headers["x-request-id"] == "sub-update-1"
+        payload = json.loads(request.content.decode("utf-8"))
+        assert "Email" not in payload
+        assert payload == {
+            "Id": "sc_1",
+            "Description": "Updated plan",
+            "Amount": 499,
+            "Currency": "RUB",
+            "RequireConfirmation": False,
+            "StartDate": "2026-09-22T00:00:00Z",
+            "Interval": "Month",
+            "Period": 1,
+            "MaxPeriods": 12,
+            "CustomerReceipt": {"Items": []},
+        }
+        return httpx.Response(200, json={"Success": True, "Message": None, "Model": {"Id": "sc_1"}})
+
+    client = CloudPaymentsApiClient(
+        config=CloudPaymentsApiClientConfig(
+            provider="cloudpayments",
+            base_url="https://api.cloudpayments.ru",
+            public_id="pk_test",
+            api_secret="secret_test",
+            max_retries=0,
+        ),
+        transport=httpx.MockTransport(handler),
+    )
+
+    response = client.update_subscription(
+        request=CloudPaymentsUpdateSubscriptionRequest(
+            Id="sc_1",
+            Description="Updated plan",
+            Amount=Decimal("499.00"),
+            Currency="RUB",
+            RequireConfirmation=False,
+            StartDate="2026-09-22T00:00:00Z",
+            Interval="Month",
+            Period=1,
+            MaxPeriods=12,
+            CustomerReceipt={"Items": []},
+        ),
+        idempotency_key="sub-update-1",
+    )
+
+    assert response.model is not None
+    assert response.model.subscription_id == "sc_1"
+
+
+def test_cloudpayments_client_cancel_subscription_uses_documented_path() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "POST"
+        assert request.url.path == "/subscriptions/cancel"
+        assert request.headers["x-request-id"] == "sub-cancel-1"
+        assert json.loads(request.content.decode("utf-8")) == {"Id": "sc_1"}
+        return httpx.Response(200, json={"Success": True, "Message": None})
+
+    client = CloudPaymentsApiClient(
+        config=CloudPaymentsApiClientConfig(
+            provider="cloudpayments",
+            base_url="https://api.cloudpayments.ru",
+            public_id="pk_test",
+            api_secret="secret_test",
+            max_retries=0,
+        ),
+        transport=httpx.MockTransport(handler),
+    )
+
+    response = client.cancel_subscription(subscription_id="sc_1", idempotency_key="sub-cancel-1")
+
+    assert response.success is True
+
+
+def test_cloudpayments_client_rejects_successful_subscription_without_subscription_id() -> None:
+    client = CloudPaymentsApiClient(
+        config=CloudPaymentsApiClientConfig(
+            provider="cloudpayments",
+            base_url="https://api.cloudpayments.ru",
+            public_id="pk_test",
+            api_secret="secret_test",
+            max_retries=0,
+        ),
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, json={"Success": True, "Message": None, "Model": None})
+        ),
+    )
+
+    with pytest.raises(PaymentsResponseValidationError):
+        client.create_subscription(
+            request=CloudPaymentsCreateSubscriptionRequest(
+                Token="tk_test",
+                AccountId="user_1",
+                Description="Monthly plan",
+                Amount=Decimal("399.00"),
+                Currency="RUB",
+                RequireConfirmation=False,
+                StartDate="2026-08-22T00:00:00Z",
+                Interval="Month",
+                Period=1,
+            ),
+            idempotency_key="sub-create-3",
+        )
 
 
 def test_base_http_payments_api_client_raises_response_decode_error() -> None:

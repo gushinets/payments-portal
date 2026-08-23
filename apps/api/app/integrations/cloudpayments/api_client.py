@@ -98,7 +98,6 @@ class CloudPaymentsCreateSubscriptionRequest(CloudPaymentsResponseModel):
     email: str | None = Field(default=None, alias="Email")
     max_periods: int | None = Field(default=None, alias="MaxPeriods")
     customer_receipt: dict[str, Any] | None = Field(default=None, alias="CustomerReceipt")
-    culture_name: str | None = Field(default=None, alias="CultureName")
 
 
 class CloudPaymentsUpdateSubscriptionRequest(CloudPaymentsResponseModel):
@@ -110,10 +109,8 @@ class CloudPaymentsUpdateSubscriptionRequest(CloudPaymentsResponseModel):
     start_date: str | None = Field(default=None, alias="StartDate")
     interval: str | None = Field(default=None, alias="Interval")
     period: int | None = Field(default=None, alias="Period")
-    email: str | None = Field(default=None, alias="Email")
     max_periods: int | None = Field(default=None, alias="MaxPeriods")
     customer_receipt: dict[str, Any] | None = Field(default=None, alias="CustomerReceipt")
-    culture_name: str | None = Field(default=None, alias="CultureName")
 
 
 class CloudPaymentsApiClient(BaseHttpPaymentsApiClient):
@@ -200,14 +197,16 @@ class CloudPaymentsApiClient(BaseHttpPaymentsApiClient):
             PaymentsApiRequest(
                 operation="create_subscription",
                 path="/subscriptions/create",
-                payload=request.model_dump(mode="json", by_alias=True, exclude_none=True),
+                payload=request.model_dump(mode="python", by_alias=True, exclude_none=True),
                 idempotency_key=idempotency_key,
                 is_idempotent=True,
                 is_mutating=True,
             ),
             response_model=CloudPaymentsSubscriptionResponse,
         )
-        return self._require_success("create_subscription", response)
+        response = self._require_success("create_subscription", response)
+        self._require_subscription_model("create_subscription", response)
+        return response
 
     def update_subscription(
         self,
@@ -219,14 +218,16 @@ class CloudPaymentsApiClient(BaseHttpPaymentsApiClient):
             PaymentsApiRequest(
                 operation="update_subscription",
                 path="/subscriptions/update",
-                payload=request.model_dump(mode="json", by_alias=True, exclude_none=True),
+                payload=request.model_dump(mode="python", by_alias=True, exclude_none=True),
                 idempotency_key=idempotency_key,
                 is_idempotent=True,
                 is_mutating=True,
             ),
             response_model=CloudPaymentsSubscriptionResponse,
         )
-        return self._require_success("update_subscription", response)
+        response = self._require_success("update_subscription", response)
+        self._require_subscription_model("update_subscription", response)
+        return response
 
     def cancel_subscription(
         self,
@@ -280,6 +281,19 @@ class CloudPaymentsApiClient(BaseHttpPaymentsApiClient):
             provider=self.config.provider,
             operation=operation,
             message_safe="CloudPayments declined the operation.",
+        )
+
+    def _require_subscription_model(
+        self,
+        operation: str,
+        response: CloudPaymentsSubscriptionResponse,
+    ) -> None:
+        if response.model is not None and response.model.subscription_id.strip():
+            return
+        raise PaymentsResponseValidationError(
+            "payments_api_response_validation_error",
+            message_safe="Payment provider subscription response is missing a subscription id.",
+            details_safe={"provider": self.config.provider, "operation": operation},
         )
 
 

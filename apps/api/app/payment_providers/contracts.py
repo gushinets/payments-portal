@@ -219,7 +219,6 @@ class UpdateRecurringSubscriptionRequest(ProviderContractModel):
     interval_count: int | None = None
     require_confirmation: bool | None = None
     start_at: str | None = None
-    email: str | None = None
     max_periods: int | None = None
     idempotency_key: str | None = None
 

@@ -16,10 +16,14 @@ from app.integrations.cloudpayments.api_client import (  # noqa: E402
     CloudPaymentsApiClientConfig,
 )
 from app.payment_providers.contracts import (  # noqa: E402
+    CancelRecurringSubscriptionRequest,
+    CreateRecurringSubscriptionRequest,
     RefundRequest,
     RefundStatus,
+    RecurringSubscriptionStatus,
     TransactionLookupRequest,
     TransactionStatus,
+    UpdateRecurringSubscriptionRequest,
 )
 
 
@@ -33,6 +37,40 @@ def _provider_account() -> object:
         config = {}
 
     return _ProviderAccount()
+
+
+def _adapter_with_transport(handler: httpx.MockTransport) -> CloudPaymentsAdapter:
+    return CloudPaymentsAdapter(
+        api_client=CloudPaymentsApiClient(
+            config=CloudPaymentsApiClientConfig(
+                base_url="https://api.cloudpayments.ru",
+                public_id="pk_test",
+                api_secret="secret_test",
+                max_retries=0,
+            ),
+            transport=handler,
+        )
+    )
+
+
+def _create_subscription_request(**overrides: object) -> CreateRecurringSubscriptionRequest:
+    values = {
+        "payment_method_reference": "tk_test",
+        "account_id": "user_1",
+        "description": "Monthly plan",
+        "amount_minor": 39900,
+        "amount": Decimal("399.00"),
+        "currency": "RUB",
+        "interval_unit": "month",
+        "interval_count": 1,
+        "require_confirmation": False,
+        "email": "user@example.com",
+        "start_at": "2026-09-22T00:00:00Z",
+        "max_periods": 12,
+        "idempotency_key": "sub-create-1",
+    }
+    values.update(overrides)
+    return CreateRecurringSubscriptionRequest.model_validate(values)
 
 
 def test_cloudpayments_adapter_lookup_transaction_maps_completed_to_succeeded() -> None:
@@ -512,3 +550,274 @@ def test_cloudpayments_adapter_refund_rejects_currency_mismatch() -> None:
 
     assert result.meta.failure is not None
     assert result.meta.failure.code == "refund_currency_mismatch"
+
+
+def test_cloudpayments_adapter_create_recurring_subscription_maps_success() -> None:
+    provider_account = _provider_account()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/subscriptions/create"
+        assert request.headers["x-request-id"] == "sub-create-1"
+        payload = request.read()
+        assert b'"Token":"tk_test"' in payload
+        assert b'"Interval":"Month"' in payload
+        return httpx.Response(
+            200,
+            json={
+                "Success": True,
+                "Message": None,
+                "Model": {
+                    "Id": "sc_1",
+                    "AccountId": "user_1",
+                    "Amount": 399,
+                    "Currency": "RUB",
+                    "Interval": "Month",
+                    "Period": 1,
+                    "Status": "Active",
+                },
+            },
+        )
+
+    adapter = _adapter_with_transport(httpx.MockTransport(handler))
+
+    result = adapter.create_recurring_subscription(
+        provider_account=provider_account,  # type: ignore[arg-type]
+        request=_create_subscription_request(),
+    )
+
+    assert result.provider_subscription_id == "sc_1"
+    assert result.account_id == "user_1"
+    assert result.status == RecurringSubscriptionStatus.ACTIVE
+    assert result.amount_minor == 39900
+    assert result.currency == "RUB"
+    assert result.interval_unit == "month"
+    assert result.interval_count == 1
+    assert result.meta.outcome.value == "succeeded"
+    assert result.meta.idempotency_key == "sub-create-1"
+
+
+def test_cloudpayments_adapter_update_recurring_subscription_maps_success_without_email() -> None:
+    provider_account = _provider_account()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/subscriptions/update"
+        assert request.headers["x-request-id"] == "sub-update-1"
+        payload = request.read()
+        assert b'"Email"' not in payload
+        assert b'"Description":"Updated plan"' in payload
+        return httpx.Response(
+            200,
+            json={
+                "Success": True,
+                "Message": None,
+                "Model": {
+                    "Id": "sc_1",
+                    "Amount": 499,
+                    "Currency": "RUB",
+                    "Interval": "Week",
+                    "Period": 2,
+                    "Status": "PastDue",
+                },
+            },
+        )
+
+    adapter = _adapter_with_transport(httpx.MockTransport(handler))
+
+    result = adapter.update_recurring_subscription(
+        provider_account=provider_account,  # type: ignore[arg-type]
+        request=UpdateRecurringSubscriptionRequest(
+            provider_subscription_id="sc_1",
+            description="Updated plan",
+            amount_minor=49900,
+            amount=Decimal("499.00"),
+            currency="RUB",
+            interval_unit="week",
+            interval_count=2,
+            require_confirmation=False,
+            start_at="2026-10-22T00:00:00Z",
+            max_periods=6,
+            idempotency_key="sub-update-1",
+        ),
+    )
+
+    assert result.provider_subscription_id == "sc_1"
+    assert result.status == RecurringSubscriptionStatus.PAST_DUE
+    assert result.amount_minor == 49900
+    assert result.interval_unit == "week"
+    assert result.interval_count == 2
+    assert result.meta.outcome.value == "succeeded"
+
+
+def test_cloudpayments_adapter_cancel_recurring_subscription_maps_success_to_canceled() -> None:
+    provider_account = _provider_account()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/subscriptions/cancel"
+        assert request.headers["x-request-id"] == "sub-cancel-1"
+        assert request.read() == b'{"Id":"sc_1"}'
+        return httpx.Response(200, json={"Success": True, "Message": None})
+
+    adapter = _adapter_with_transport(httpx.MockTransport(handler))
+
+    result = adapter.cancel_recurring_subscription(
+        provider_account=provider_account,  # type: ignore[arg-type]
+        request=CancelRecurringSubscriptionRequest(
+            provider_subscription_id="sc_1",
+            idempotency_key="sub-cancel-1",
+        ),
+    )
+
+    assert result.provider_subscription_id == "sc_1"
+    assert result.status == RecurringSubscriptionStatus.CANCELED
+    assert result.meta.outcome.value == "succeeded"
+    assert result.meta.idempotency_key == "sub-cancel-1"
+
+
+@pytest.mark.parametrize(
+    ("provider_status", "expected"),
+    [
+        ("Active", RecurringSubscriptionStatus.ACTIVE),
+        ("PastDue", RecurringSubscriptionStatus.PAST_DUE),
+        ("Cancelled", RecurringSubscriptionStatus.CANCELED),
+        ("Rejected", RecurringSubscriptionStatus.FAILED),
+        ("Expired", RecurringSubscriptionStatus.ENDED),
+        ("active", RecurringSubscriptionStatus.UNKNOWN),
+        ("Paused", RecurringSubscriptionStatus.UNKNOWN),
+    ],
+)
+def test_cloudpayments_adapter_recurring_subscription_status_mapping_is_exact(
+    provider_status: str,
+    expected: RecurringSubscriptionStatus,
+) -> None:
+    provider_account = _provider_account()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"Success": True, "Message": None, "Model": {"Id": "sc_1", "Status": provider_status}},
+        )
+
+    adapter = _adapter_with_transport(httpx.MockTransport(handler))
+
+    result = adapter.create_recurring_subscription(
+        provider_account=provider_account,  # type: ignore[arg-type]
+        request=_create_subscription_request(idempotency_key=f"sub-create-{provider_status}"),
+    )
+
+    assert result.status == expected
+
+
+def test_cloudpayments_adapter_create_recurring_subscription_rejects_missing_start_date() -> None:
+    provider_account = _provider_account()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("provider should not be called")
+
+    adapter = _adapter_with_transport(httpx.MockTransport(handler))
+
+    result = adapter.create_recurring_subscription(
+        provider_account=provider_account,  # type: ignore[arg-type]
+        request=_create_subscription_request(start_at=None),
+    )
+
+    assert result.status == RecurringSubscriptionStatus.FAILED
+    assert result.meta.failure is not None
+    assert result.meta.failure.code == "recurring_start_at_required"
+
+
+def test_cloudpayments_adapter_update_recurring_subscription_rejects_empty_patch() -> None:
+    provider_account = _provider_account()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("provider should not be called")
+
+    adapter = _adapter_with_transport(httpx.MockTransport(handler))
+
+    result = adapter.update_recurring_subscription(
+        provider_account=provider_account,  # type: ignore[arg-type]
+        request=UpdateRecurringSubscriptionRequest(
+            provider_subscription_id="sc_1",
+            idempotency_key="sub-update-empty",
+        ),
+    )
+
+    assert result.status == RecurringSubscriptionStatus.FAILED
+    assert result.meta.failure is not None
+    assert result.meta.failure.code == "recurring_update_patch_empty"
+
+
+def test_cloudpayments_adapter_create_recurring_subscription_maps_transport_failure() -> None:
+    provider_account = _provider_account()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("timeout", request=request)
+
+    adapter = _adapter_with_transport(httpx.MockTransport(handler))
+
+    result = adapter.create_recurring_subscription(
+        provider_account=provider_account,  # type: ignore[arg-type]
+        request=_create_subscription_request(),
+    )
+
+    assert result.status == RecurringSubscriptionStatus.FAILED
+    assert result.meta.retry_disposition.value == "retryable"
+    assert result.meta.failure is not None
+    assert result.meta.failure.code == "payments_api_timeout"
+
+
+def test_cloudpayments_adapter_update_recurring_subscription_maps_provider_decline_safely() -> None:
+    provider_account = _provider_account()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"Success": False, "Message": "Invalid Amount value"})
+
+    adapter = _adapter_with_transport(httpx.MockTransport(handler))
+
+    result = adapter.update_recurring_subscription(
+        provider_account=provider_account,  # type: ignore[arg-type]
+        request=UpdateRecurringSubscriptionRequest(
+            provider_subscription_id="sc_1",
+            amount_minor=49900,
+            amount=Decimal("499.00"),
+            currency="RUB",
+            idempotency_key="sub-update-2",
+        ),
+    )
+
+    assert result.status == RecurringSubscriptionStatus.FAILED
+    assert result.meta.failure is not None
+    assert result.meta.failure.code == "cloudpayments_operation_declined"
+    assert result.meta.failure.message_safe == "CloudPayments declined the operation."
+
+
+def test_cloudpayments_adapter_create_recurring_subscription_maps_schema_mismatch() -> None:
+    provider_account = _provider_account()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"Success": True, "Message": None, "Model": None})
+
+    adapter = _adapter_with_transport(httpx.MockTransport(handler))
+
+    result = adapter.create_recurring_subscription(
+        provider_account=provider_account,  # type: ignore[arg-type]
+        request=_create_subscription_request(),
+    )
+
+    assert result.status == RecurringSubscriptionStatus.FAILED
+    assert result.meta.failure is not None
+    assert result.meta.failure.code == "payments_api_response_validation_error"
+
+
+def test_cloudpayments_adapter_recurring_subscription_rejects_wrong_provider_account_provider() -> None:
+    provider_account = _provider_account()
+    provider_account.provider = "other-provider"
+    adapter = _adapter_with_transport(httpx.MockTransport(lambda request: httpx.Response(500)))
+
+    result = adapter.create_recurring_subscription(
+        provider_account=provider_account,  # type: ignore[arg-type]
+        request=_create_subscription_request(),
+    )
+
+    assert result.status == RecurringSubscriptionStatus.FAILED
+    assert result.meta.failure is not None
+    assert result.meta.failure.code == "provider_account_invalid_provider"
