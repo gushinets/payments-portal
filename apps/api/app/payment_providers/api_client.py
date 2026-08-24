@@ -34,7 +34,7 @@ from app.core.errors import (
 from app.core.observability import record_provider_api_operation, redact, tracer
 from app.payment_providers.contracts import RetryDisposition
 from app.payment_providers.response_summary import PaymentsApiClientModel, PaymentsApiResponseSummary
-from app.payment_providers.timeouts import PaymentsApiRequestDeadline, PaymentsApiTimeoutPolicy
+from app.payment_providers.timeouts import PaymentsApiRequestBudget, PaymentsApiTimeoutPolicy
 
 logger = logging.getLogger(__name__)
 
@@ -164,12 +164,12 @@ class BaseHttpPaymentsApiClient(PaymentsApiClient):
         *,
         response_model: type[ResponseT],
     ) -> ResponseT:
-        deadline = self._deadline_for_request(request)
+        budget = self._budget_for_request(request)
         for attempt in range(self.config.max_retries + 1):
             try:
-                remaining_seconds = deadline.remaining_seconds()
+                remaining_seconds = budget.remaining_seconds()
                 if remaining_seconds <= 0:
-                    error = self._request_deadline_error(request, attempt=attempt)
+                    error = self._request_budget_error(request, attempt=attempt)
                     self._log_failure(error)
                     raise error
                 timeout = self._timeout_for_request(
@@ -189,8 +189,8 @@ class BaseHttpPaymentsApiClient(PaymentsApiClient):
                     else None,
                     timeout=timeout,
                 )
-                if deadline.remaining_seconds() <= 0:
-                    error = self._request_deadline_error(request, attempt=attempt)
+                if budget.remaining_seconds() <= 0:
+                    error = self._request_budget_error(request, attempt=attempt)
                     self._log_failure(error)
                     raise error
             except httpx.TimeoutException as exc:
@@ -201,7 +201,7 @@ class BaseHttpPaymentsApiClient(PaymentsApiClient):
                     details_safe=self._safe_details(request, attempt=attempt, reason="timeout"),
                 )
                 if self._should_retry(request, attempt, error.retry_disposition):
-                    self._sleep_before_retry(request, attempt, deadline=deadline)
+                    self._sleep_before_retry(request, attempt, budget=budget)
                     continue
                 self._log_failure(error)
                 raise error from exc
@@ -213,7 +213,7 @@ class BaseHttpPaymentsApiClient(PaymentsApiClient):
                     details_safe=self._safe_details(request, attempt=attempt, reason=type(exc).__name__),
                 )
                 if self._should_retry(request, attempt, error.retry_disposition):
-                    self._sleep_before_retry(request, attempt, deadline=deadline)
+                    self._sleep_before_retry(request, attempt, budget=budget)
                     continue
                 self._log_failure(error)
                 raise error from exc
@@ -235,7 +235,7 @@ class BaseHttpPaymentsApiClient(PaymentsApiClient):
                     details_safe=self._safe_details(request, attempt=attempt, status_code=response.status_code),
                 )
                 if self._should_retry(request, attempt, error.retry_disposition):
-                    self._sleep_before_retry(request, attempt, deadline=deadline)
+                    self._sleep_before_retry(request, attempt, budget=budget)
                     continue
                 self._log_failure(error)
                 raise error
@@ -248,7 +248,7 @@ class BaseHttpPaymentsApiClient(PaymentsApiClient):
                     details_safe=self._safe_details(request, attempt=attempt, status_code=response.status_code),
                 )
                 if self._should_retry(request, attempt, error.retry_disposition):
-                    self._sleep_before_retry(request, attempt, deadline=deadline)
+                    self._sleep_before_retry(request, attempt, budget=budget)
                     continue
                 self._log_failure(error)
                 raise error
@@ -344,8 +344,8 @@ class BaseHttpPaymentsApiClient(PaymentsApiClient):
             headers["X-Request-ID"] = request.idempotency_key
         return headers
 
-    def _deadline_for_request(self, request: PaymentsApiRequest) -> PaymentsApiRequestDeadline:
-        return self._timeout_policy.deadline_for_request(timeout_seconds=request.timeout_seconds)
+    def _budget_for_request(self, request: PaymentsApiRequest) -> PaymentsApiRequestBudget:
+        return self._timeout_policy.budget_for_request(timeout_seconds=request.timeout_seconds)
 
     def _timeout_for_request(
         self,
@@ -358,7 +358,7 @@ class BaseHttpPaymentsApiClient(PaymentsApiClient):
             remaining_seconds=remaining_seconds,
         )
 
-    def _request_deadline_error(
+    def _request_budget_error(
         self,
         request: PaymentsApiRequest,
         *,
@@ -368,7 +368,7 @@ class BaseHttpPaymentsApiClient(PaymentsApiClient):
             "payments_api_timeout",
             retry_disposition=RetryDisposition.RETRYABLE,
             message_safe="Payment provider request timed out.",
-            details_safe=self._safe_details(request, attempt=attempt, reason="request_deadline"),
+            details_safe=self._safe_details(request, attempt=attempt, reason="request_budget_exhausted"),
         )
 
     def _json_payload(self, request: PaymentsApiRequest) -> dict[str, Any]:
@@ -412,11 +412,11 @@ class BaseHttpPaymentsApiClient(PaymentsApiClient):
         request: PaymentsApiRequest,
         attempt: int,
         *,
-        deadline: PaymentsApiRequestDeadline,
+        budget: PaymentsApiRequestBudget,
     ) -> None:
         delay_seconds = self.config.retry_backoff_seconds * (attempt + 1)
-        if delay_seconds >= deadline.remaining_seconds():
-            error = self._request_deadline_error(request, attempt=attempt)
+        if delay_seconds >= budget.remaining_seconds():
+            error = self._request_budget_error(request, attempt=attempt)
             self._log_failure(error)
             raise error
         logger.warning(

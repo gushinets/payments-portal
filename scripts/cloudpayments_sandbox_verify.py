@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Opt-in CloudPayments sandbox verification for provider-neutral operations."""
+"""Opt-in, read-only CloudPayments verification for provider-neutral operations.
+
+Mutation scenarios are covered by mocked contract tests. This script deliberately
+does not issue refunds or change recurring subscriptions because the provider API
+does not expose a trustworthy way to prove that configured credentials belong to a
+test-mode terminal before a mutation.
+"""
 
 from __future__ import annotations
 
@@ -35,11 +41,7 @@ from app.integrations.cloudpayments.api_client import (  # noqa: E402
     CloudPaymentsApiClientConfig,
 )
 from app.payment_providers.contracts import (  # noqa: E402
-    CancelRecurringSubscriptionRequest,
-    CreateRecurringSubscriptionRequest,
-    RefundRequest,
     TransactionLookupRequest,
-    UpdateRecurringSubscriptionRequest,
 )
 
 
@@ -54,7 +56,6 @@ class SandboxProviderAccount:
     enabled: bool = True
     public_identifier: str = ""
     default_currency: str = "RUB"
-    test_mode: bool = False
     config: dict[str, Any] = field(default_factory=dict)
 
 
@@ -67,20 +68,13 @@ def main() -> int:
         return 0
 
     try:
+        if _destructive_configuration_requested():
+            raise SandboxConfigError("destructive_sandbox_verification_not_supported")
         adapter, provider_account = _build_adapter()
-        _verify_lookup(adapter, provider_account)
-        if _destructive_verify_enabled():
-            _require_test_mode(provider_account)
-            _verify_refund(adapter, provider_account)
-            _verify_recurring_lifecycle(adapter, provider_account)
-        else:
-            _print_safe(
-                "destructive",
-                {
-                    "status": "skipped",
-                    "reason": "CLOUDPAYMENTS_SANDBOX_DESTRUCTIVE_VERIFY is not 1",
-                },
-            )
+        try:
+            _verify_lookup(adapter, provider_account)
+        finally:
+            adapter.close()
     except SandboxConfigError as exc:
         _print_safe("sandbox", {"status": "configuration_error", "code": str(exc)})
         return 2
@@ -93,7 +87,6 @@ def _build_adapter() -> tuple[CloudPaymentsAdapter, SandboxProviderAccount]:
     provider_account = SandboxProviderAccount(
         public_identifier=public_id,
         default_currency=_env("CLOUDPAYMENTS_SANDBOX_CURRENCY") or "RUB",
-        test_mode=_bool_env("CLOUDPAYMENTS_SANDBOX_TEST_MODE"),
     )
     client = CloudPaymentsApiClient(
         config=CloudPaymentsApiClientConfig(
@@ -134,110 +127,6 @@ def _verify_lookup(
     _print_safe("lookup", result.model_dump(mode="json"))
 
 
-def _verify_refund(
-    adapter: CloudPaymentsAdapter, provider_account: SandboxProviderAccount
-) -> None:
-    payment_id = _env("CLOUDPAYMENTS_SANDBOX_REFUND_TRANSACTION_ID")
-    if not payment_id:
-        _print_safe(
-            "refund",
-            {"status": "skipped", "reason": "refund transaction is not configured"},
-        )
-        return
-
-    amount = _decimal_env("CLOUDPAYMENTS_SANDBOX_REFUND_AMOUNT")
-    currency = _required_env("CLOUDPAYMENTS_SANDBOX_REFUND_CURRENCY")
-    result = adapter.refund_payment(
-        provider_account=provider_account,  # type: ignore[arg-type]
-        request=RefundRequest(
-            provider_payment_id=payment_id,
-            amount_minor=_amount_minor(amount),
-            amount=amount,
-            currency=currency,
-            reason=_env("CLOUDPAYMENTS_SANDBOX_REFUND_REASON"),
-            idempotency_key=_required_env(
-                "CLOUDPAYMENTS_SANDBOX_REFUND_IDEMPOTENCY_KEY"
-            ),
-        ),
-    )
-    _print_safe("refund", result.model_dump(mode="json"))
-
-
-def _verify_recurring_lifecycle(
-    adapter: CloudPaymentsAdapter, provider_account: SandboxProviderAccount
-) -> None:
-    token = _env("CLOUDPAYMENTS_SANDBOX_RECURRING_TOKEN")
-    if not token:
-        _print_safe(
-            "recurring",
-            {"status": "skipped", "reason": "recurring token is not configured"},
-        )
-        return
-
-    amount = _decimal_env("CLOUDPAYMENTS_SANDBOX_RECURRING_AMOUNT")
-    currency = _required_env("CLOUDPAYMENTS_SANDBOX_RECURRING_CURRENCY")
-    create_result = adapter.create_recurring_subscription(
-        provider_account=provider_account,  # type: ignore[arg-type]
-        request=CreateRecurringSubscriptionRequest(
-            payment_method_reference=token,
-            account_id=_required_env("CLOUDPAYMENTS_SANDBOX_RECURRING_ACCOUNT_ID"),
-            description=_env("CLOUDPAYMENTS_SANDBOX_RECURRING_DESCRIPTION")
-            or "Sandbox recurring verification",
-            amount_minor=_amount_minor(amount),
-            amount=amount,
-            currency=currency,
-            interval_unit=_env("CLOUDPAYMENTS_SANDBOX_RECURRING_INTERVAL_UNIT")
-            or "month",
-            interval_count=int(
-                _env("CLOUDPAYMENTS_SANDBOX_RECURRING_INTERVAL_COUNT") or "1"
-            ),
-            require_confirmation=_bool_env(
-                "CLOUDPAYMENTS_SANDBOX_RECURRING_REQUIRE_CONFIRMATION"
-            ),
-            email=_env("CLOUDPAYMENTS_SANDBOX_RECURRING_EMAIL"),
-            start_at=_required_env("CLOUDPAYMENTS_SANDBOX_RECURRING_START_AT"),
-            max_periods=_optional_int_env(
-                "CLOUDPAYMENTS_SANDBOX_RECURRING_MAX_PERIODS"
-            ),
-            idempotency_key=_required_env(
-                "CLOUDPAYMENTS_SANDBOX_RECURRING_CREATE_IDEMPOTENCY_KEY"
-            ),
-        ),
-    )
-    _print_safe("recurring_create", create_result.model_dump(mode="json"))
-    subscription_id = create_result.provider_subscription_id
-    if not subscription_id:
-        _print_safe(
-            "recurring_update_cancel",
-            {"status": "skipped", "reason": "subscription was not created"},
-        )
-        return
-
-    update_result = adapter.update_recurring_subscription(
-        provider_account=provider_account,  # type: ignore[arg-type]
-        request=UpdateRecurringSubscriptionRequest(
-            provider_subscription_id=subscription_id,
-            description=_env("CLOUDPAYMENTS_SANDBOX_RECURRING_UPDATE_DESCRIPTION")
-            or "Sandbox recurring verification updated",
-            idempotency_key=_required_env(
-                "CLOUDPAYMENTS_SANDBOX_RECURRING_UPDATE_IDEMPOTENCY_KEY"
-            ),
-        ),
-    )
-    _print_safe("recurring_update", update_result.model_dump(mode="json"))
-
-    cancel_result = adapter.cancel_recurring_subscription(
-        provider_account=provider_account,  # type: ignore[arg-type]
-        request=CancelRecurringSubscriptionRequest(
-            provider_subscription_id=subscription_id,
-            idempotency_key=_required_env(
-                "CLOUDPAYMENTS_SANDBOX_RECURRING_CANCEL_IDEMPOTENCY_KEY"
-            ),
-        ),
-    )
-    _print_safe("recurring_cancel", cancel_result.model_dump(mode="json"))
-
-
 def _env(name: str) -> str:
     return os.getenv(name, "").strip()
 
@@ -257,23 +146,24 @@ def _decimal_env(name: str) -> Decimal:
         raise SandboxConfigError(f"{name}_invalid_decimal") from exc
 
 
-def _optional_int_env(name: str) -> int | None:
-    raw = _env(name)
-    return int(raw) if raw else None
-
-
-def _bool_env(name: str) -> bool:
-    return _env(name).casefold() in {"1", "true", "yes"}
-
-
-def _destructive_verify_enabled() -> bool:
-    return os.getenv("CLOUDPAYMENTS_SANDBOX_DESTRUCTIVE_VERIFY") == "1"
-
-
-def _require_test_mode(provider_account: SandboxProviderAccount) -> None:
-    if provider_account.test_mode:
-        return
-    raise SandboxConfigError("CLOUDPAYMENTS_SANDBOX_TEST_MODE_required_for_destructive_verify")
+def _destructive_configuration_requested() -> bool:
+    if any(
+        name in os.environ
+        for name in (
+            "CLOUDPAYMENTS_SANDBOX_DESTRUCTIVE_VERIFY",
+            "CLOUDPAYMENTS_SANDBOX_TEST_MODE",
+        )
+    ):
+        return True
+    return any(
+        name.startswith(
+            (
+                "CLOUDPAYMENTS_SANDBOX_REFUND_",
+                "CLOUDPAYMENTS_SANDBOX_RECURRING_",
+            )
+        )
+        for name in os.environ
+    )
 
 
 def _amount_minor(amount: Decimal) -> int:

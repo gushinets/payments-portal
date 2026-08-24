@@ -429,4 +429,8 @@ class CloudPaymentsAdapter:
         return CLOUDPAYMENTS_RESPONSE_CODES.get(error_code, 13)
 
 
-cloudpayments_adapter = CloudPaymentsAdapter()
+def get_cloudpayments_adapter(request: Request) -> CloudPaymentsAdapter:
+    try:
+        return request.app.state.cloudpayments_adapter
+    except AttributeError as exc:
+        raise RuntimeError("CloudPayments adapter is not configured for this app") from exc

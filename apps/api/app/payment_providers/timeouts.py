@@ -6,7 +6,14 @@ from dataclasses import dataclass
 import httpx
 
 
-class PaymentsApiRequestDeadline:
+class PaymentsApiRequestBudget:
+    """Wall-clock budget shared by provider attempts and retry backoff.
+
+    The budget limits work between attempts. It cannot interrupt an in-flight
+    synchronous ``httpx.Client.request`` call; HTTPX phase timeouts remain the
+    mechanism that bounds connection, read, write, and pool inactivity.
+    """
+
     def __init__(self, *, timeout_seconds: float) -> None:
         self.expires_at = time.perf_counter() + timeout_seconds
 
@@ -31,8 +38,8 @@ class PaymentsApiTimeoutPolicy:
             pool=self.pool_timeout_seconds,
         )
 
-    def deadline_for_request(self, *, timeout_seconds: float | None) -> PaymentsApiRequestDeadline:
-        return PaymentsApiRequestDeadline(timeout_seconds=self.request_timeout_seconds(timeout_seconds))
+    def budget_for_request(self, *, timeout_seconds: float | None) -> PaymentsApiRequestBudget:
+        return PaymentsApiRequestBudget(timeout_seconds=self.request_timeout_seconds(timeout_seconds))
 
     def request_timeout(
         self,

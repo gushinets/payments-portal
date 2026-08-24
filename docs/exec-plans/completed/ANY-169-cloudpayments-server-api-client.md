@@ -26,7 +26,7 @@ CloudPayments payloads.
 - Refund operations required by the current payment/refund model.
 - Create, update, and cancel recurring subscriptions.
 - Provider-neutral normalized results at the adapter boundary.
-- Mocked contract tests and an opt-in sandbox verification path.
+- Mocked contract tests and an opt-in, read-only sandbox verification path.
 - Provider-operation metrics, tracing, and sanitized failure logging.
 
 ## Non-goals
@@ -73,6 +73,14 @@ CloudPayments payloads.
    not part of the update contract.
 7. Cancel returns an optimistic normalized `CANCELED` result after a successful
    provider response; no read-after-write is required by this task.
+8. Live sandbox verification performs lookup only. Refund and recurring
+   subscription mutations remain covered by mocked contract tests because the
+   provider API does not provide a trustworthy pre-mutation proof that the
+   configured credentials belong to a test-mode terminal.
+9. Provider request timeout configuration is an operation/retry budget shared
+   across attempts and backoff. HTTPX connect/read/write/pool phase timeouts
+   bound inactivity, but a synchronous in-flight request is not cancellable by
+   that budget.
 
 ## Current progress
 
@@ -294,9 +302,9 @@ Required work:
   body into logs, traces, metric labels, or test output.
 - Extend shared redaction for CloudPayments fields including
   `CardCryptogramPacket`, `PAN`, `CVV`, `CVC`, card expiry, and token fields.
-- Add a live verification path gated only by environment variables and off by
-  default. It must cover lookup, refund, and recurring lifecycle where the
-  configured sandbox supports them.
+- Add a live verification path gated by `CLOUDPAYMENTS_SANDBOX_VERIFY=1` and
+  off by default. It must perform lookup only; mutations are covered by mocked
+  contract tests because test-mode terminal ownership cannot be proven safely.
 - Print only normalized safe results from live verification.
 
 Completion condition:
@@ -318,10 +326,15 @@ Implemented in the current branch:
 - Extended shared redaction coverage for CloudPayments expiry and token field
   variants.
 - Added `scripts/cloudpayments_sandbox_verify.py`, gated by
-  `CLOUDPAYMENTS_SANDBOX_VERIFY=1`, with optional lookup, refund, and recurring
-  lifecycle sections driven entirely by environment variables.
+  `CLOUDPAYMENTS_SANDBOX_VERIFY=1`, with an optional read-only lookup driven by
+  environment variables. Legacy destructive settings fail closed before client
+  creation.
 - Kept sandbox verification output to normalized safe provider-adapter results
   and skip/status summaries.
+- Scoped the CloudPayments adapter and provider registry to each FastAPI app;
+  overlapping app lifespans own and close their clients independently.
+- Documented the shared provider operation/retry budget and its limitation that
+  it cannot cancel an in-flight synchronous HTTPX request.
 
 ## Definition of Done
 
@@ -333,7 +346,7 @@ Implemented in the current branch:
   mandatory for retry.
 - Transaction reconciliation validates provider identity and commercial facts.
 - Refund and recurring lifecycle operations have focused mocked tests.
-- Sandbox verification is opt-in and skipped by default.
+- Sandbox verification is opt-in, skipped by default, and read-only.
 
 ## Validation
 
@@ -375,16 +388,25 @@ Current branch evidence:
   `apps/api/app/payment_providers/contracts.py`,
   `apps/api/app/integrations/cloudpayments/api_client.py`,
   `apps/api/app/integrations/cloudpayments/adapter.py`,
+  `apps/api/app/integrations/cloudpayments/router.py`,
   `apps/api/app/integrations/cloudpayments/refunds.py`,
   `apps/api/app/integrations/cloudpayments/recurring.py`,
   `apps/api/app/integrations/cloudpayments/transaction_lookup.py`,
+  `apps/api/app/main.py`,
+  `apps/api/app/payment_providers/registry.py`,
+  `apps/api/app/payment_providers/timeouts.py`,
   `apps/api/tests/test_payments_api_client.py`,
   `apps/api/tests/test_cloudpayments_adapter_api.py`, and
-  `scripts/cloudpayments_sandbox_verify.py`.
+  `apps/api/tests/compatibility/test_app_factory.py`,
+  `apps/api/tests/test_cloudpayments_sandbox_verify.py`,
+  `scripts/cloudpayments_sandbox_verify.py`, and this execution plan.
 - Focused tests:
   `apps/api/.venv/bin/python -m pytest -p no:cacheprovider
   apps/api/tests/test_payments_api_client.py
-  apps/api/tests/test_cloudpayments_adapter_api.py` passed: 71 tests.
+  apps/api/tests/test_cloudpayments_adapter_api.py
+  apps/api/tests/test_cloudpayments_sandbox_verify.py
+  apps/api/tests/compatibility/test_app_factory.py::test_app_factory_overlapping_lifespans_own_cloudpayments_clients`
+  passed: 119 tests.
 - Lint/format:
   `apps/api/.venv/bin/ruff check` and
   `apps/api/.venv/bin/ruff format --check` passed for changed Python files.
@@ -398,15 +420,13 @@ Current branch evidence:
   verification was not run because no explicit sandbox environment variables
   or credentials were supplied.
 - Broader checks:
-  `npm run test:api` with the system Python failed before collection because
-  `python-dotenv` was unavailable. Retrying with
-  `PATH=apps/api/.venv/bin:$PATH` started the API suite but hung on
-  `apps/api/tests/compatibility/test_app_factory.py::test_app_factory_builds_independent_apps_with_stable_routes`.
-  `npm run check:fast` with the same venv path passed documentation,
-  generation, architecture, ruff, web boundary, web component, and web lint
-  stages, then hit the same app-factory hang in the API fast suite. Full
-  `npm run check` was not run because `check:fast` is blocked by that
-  environment/test hang.
+  `PATH=/home/wstanley/www/work_unirec/payments-portal/apps/api/.venv/bin:$PATH
+  npm run test:api` was stopped after 30 seconds while collecting/running
+  `apps/api/tests/compatibility/test_app_factory.py`.
+  `npm run check:fast` and `npm run check` both passed documentation,
+  architecture, API ruff/format, and three web boundary tests, then failed in
+  the pre-existing `apps/web/tests/typescript-tooling.test.mjs` test before
+  reaching the API test stage.
 - Diff hygiene:
   `git diff --check` passed.
 - Independent Bugbot/security review:

@@ -9,7 +9,8 @@ from app.core.database import get_db
 from app.core.observability import record_webhook, traced
 from app.integrations.cloudpayments.adapter import (
     SUPPORTED_ENDPOINTS,
-    cloudpayments_adapter,
+    CloudPaymentsAdapter,
+    get_cloudpayments_adapter,
 )
 from app.integrations.cloudpayments.processing import (
     datetime_now,
@@ -30,6 +31,7 @@ async def receive_cloudpayments_webhook(
     endpoint: str,
     request: Request,
     db: Session = Depends(get_db),
+    cloudpayments_adapter: CloudPaymentsAdapter = Depends(get_cloudpayments_adapter),
 ):
     if endpoint not in SUPPORTED_ENDPOINTS:
         raise HTTPException(status_code=404, detail="Unsupported CloudPayments endpoint")

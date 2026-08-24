@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import Mock
 
 from apps.api.tests.support.settings import configure_api_test_environment
@@ -149,3 +150,35 @@ def test_app_factory_runs_lifespan_once(monkeypatch) -> None:
     assert len(build_calls) == 1
     assert len(seed_calls) == 1
     api_client.close.assert_called_once_with()
+
+
+def test_app_factory_overlapping_lifespans_own_cloudpayments_clients(monkeypatch) -> None:
+    import app.main as main_module
+
+    first_client = Mock()
+    second_client = Mock()
+    clients = iter((first_client, second_client))
+    monkeypatch.setattr(
+        main_module,
+        "build_cloudpayments_api_client",
+        lambda *, app_settings: next(clients),
+    )
+    monkeypatch.setattr(main_module, "seed_legal_documents", lambda session: None)
+
+    first_app = main_module.create_app()
+    second_app = main_module.create_app()
+
+    async def exercise_overlapping_lifespans() -> None:
+        async with main_module.lifespan(first_app):
+            assert first_app.state.cloudpayments_adapter.api_client is first_client
+            async with main_module.lifespan(second_app):
+                assert second_app.state.cloudpayments_adapter.api_client is second_client
+                assert first_client.close.call_count == 0
+                assert second_client.close.call_count == 0
+
+            assert second_client.close.call_count == 1
+            assert first_client.close.call_count == 0
+
+        assert first_client.close.call_count == 1
+
+    asyncio.run(exercise_overlapping_lifespans())

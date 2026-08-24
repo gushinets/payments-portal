@@ -18,18 +18,18 @@ from app.domains.identity.password_reset import router as password_reset_router
 from app.domains.identity.router import router as auth_router
 from app.domains.legal.router import router as legal_router
 from app.health import health_router
-from app.integrations.cloudpayments.adapter import cloudpayments_adapter
+from app.integrations.cloudpayments.adapter import CloudPaymentsAdapter
 from app.integrations.cloudpayments.api_client import build_cloudpayments_api_client
 from app.integrations.cloudpayments.router import router as cloudpayments_router
 from app.legal_seed import seed_legal_documents
-from app.payment_providers.registry import payment_provider_registry
+from app.payment_providers.registry import PaymentProviderRegistry
 
-payment_provider_registry.register(cloudpayments_adapter)
 metrics_router = APIRouter(prefix="/metrics", tags=["metrics"])
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    cloudpayments_adapter: CloudPaymentsAdapter = app.state.cloudpayments_adapter
     api_client = build_cloudpayments_api_client(app_settings=settings)
     cloudpayments_adapter.set_api_client(api_client)
     try:
@@ -68,6 +68,11 @@ def create_app() -> FastAPI:
         version="0.1.0",
         lifespan=lifespan,
     )
+    cloudpayments_adapter = CloudPaymentsAdapter()
+    payment_provider_registry = PaymentProviderRegistry()
+    payment_provider_registry.register(cloudpayments_adapter)
+    app.state.cloudpayments_adapter = cloudpayments_adapter
+    app.state.payment_provider_registry = payment_provider_registry
     app.middleware("http")(request_context_middleware)
 
     app.add_middleware(

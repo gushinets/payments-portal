@@ -478,7 +478,7 @@ def test_base_http_payments_api_client_keeps_component_timeout_bounds() -> None:
     assert timeout.pool == 3.0
 
 
-def test_base_http_payments_api_client_derives_retry_timeout_from_remaining_deadline(
+def test_base_http_payments_api_client_derives_retry_timeout_from_remaining_budget(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     clock_seconds = 100.0
@@ -534,7 +534,7 @@ def test_base_http_payments_api_client_derives_retry_timeout_from_remaining_dead
     }
 
 
-def test_base_http_payments_api_client_rejects_response_after_accumulated_phase_deadline(
+def test_base_http_payments_api_client_rejects_response_after_accumulated_budget(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     clock_seconds = 150.0
@@ -567,10 +567,10 @@ def test_base_http_payments_api_client_rejects_response_after_accumulated_phase_
         )
 
     assert attempts == 1
-    assert error.value.details_safe["reason"] == "request_deadline"
+    assert error.value.details_safe["reason"] == "request_budget_exhausted"
 
 
-def test_base_http_payments_api_client_does_not_retry_when_backoff_exceeds_deadline(
+def test_base_http_payments_api_client_does_not_retry_when_backoff_exceeds_budget(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     clock_seconds = 200.0
@@ -610,7 +610,7 @@ def test_base_http_payments_api_client_does_not_retry_when_backoff_exceeds_deadl
 
     assert attempts == 1
     assert sleep_calls == []
-    assert error.value.details_safe["reason"] == "request_deadline"
+    assert error.value.details_safe["reason"] == "request_budget_exhausted"
 
 
 def test_base_http_payments_api_client_rejects_non_positive_request_timeout() -> None:
