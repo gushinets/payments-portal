@@ -10,21 +10,21 @@ CheckoutExperience = Literal["widget", "redirect", "embedded"]
 
 
 class OperationOutcome(StrEnum):
-    """Итог выполнения операции на стороне провайдера."""
+    """Outcome of a provider-side operation."""
 
     SUCCEEDED = "succeeded"
     FAILED = "failed"
 
 
 class RetryDisposition(StrEnum):
-    """Признак, можно ли безопасно повторить запрос к провайдеру."""
+    """Whether a provider request can be retried safely."""
 
     RETRYABLE = "retryable"
     NON_RETRYABLE = "non_retryable"
 
 
 class TransactionStatus(StrEnum):
-    """Нормализованный статус платежной операции."""
+    """Normalized status of a payment transaction."""
 
     PENDING = "pending"
     AUTHORIZED = "authorized"
@@ -36,7 +36,7 @@ class TransactionStatus(StrEnum):
 
 
 class RefundStatus(StrEnum):
-    """Нормализованный статус возврата."""
+    """Normalized status of a refund."""
 
     PENDING = "pending"
     SUCCEEDED = "succeeded"
@@ -45,7 +45,7 @@ class RefundStatus(StrEnum):
 
 
 class RecurringSubscriptionStatus(StrEnum):
-    """Нормализованный статус регулярного списания."""
+    """Normalized status of a recurring subscription."""
 
     ACTIVE = "active"
     PAST_DUE = "past_due"
