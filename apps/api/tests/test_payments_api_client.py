@@ -741,6 +741,9 @@ def test_cloudpayments_client_logs_provider_decline_once_safely(caplog: pytest.L
 def test_redact_covers_cloudpayments_sensitive_fields_and_variants() -> None:
     payload = {
         "ApiSecret": "api-secret-value",
+        "client_secret": "client-secret-value",
+        "access_token": "access-token-value",
+        "refreshToken": "refresh-token-value",
         "CardCryptogramPacket": "cryptogram-value",
         "PAN": "4111111111111111",
         "CVV": "123",
@@ -751,6 +754,11 @@ def test_redact_covers_cloudpayments_sensitive_fields_and_variants() -> None:
         "ExpirationDate": "12/30",
         "PaymentToken": "payment-token-value",
         "Token": "token-value",
+        "Amount": "399.00",
+        "InvoiceId": "invoice-1",
+        "PaymentAmount": "399.00",
+        "ProviderPaymentId": "payment-1",
+        "PaymentMethod": "card",
         "nested": {"api_secret": "nested-secret"},
     }
 
@@ -758,6 +766,9 @@ def test_redact_covers_cloudpayments_sensitive_fields_and_variants() -> None:
 
     assert safe_payload == {
         "ApiSecret": "[redacted]",
+        "client_secret": "[redacted]",
+        "access_token": "[redacted]",
+        "refreshToken": "[redacted]",
         "CardCryptogramPacket": "[redacted]",
         "PAN": "[redacted]",
         "CVV": "[redacted]",
@@ -768,6 +779,11 @@ def test_redact_covers_cloudpayments_sensitive_fields_and_variants() -> None:
         "ExpirationDate": "[redacted]",
         "PaymentToken": "[redacted]",
         "Token": "[redacted]",
+        "Amount": "[redacted]",
+        "InvoiceId": "[redacted]",
+        "PaymentAmount": "[redacted]",
+        "ProviderPaymentId": "[redacted]",
+        "PaymentMethod": "[redacted]",
         "nested": {"api_secret": "[redacted]"},
     }
 
@@ -961,36 +977,73 @@ def test_base_http_payments_api_client_raises_response_validation_error() -> Non
         )
 
 
-def test_base_http_payments_api_client_redacts_response_payload_in_safe_error_details() -> None:
+def test_base_http_payments_api_client_summarizes_invalid_response_safely(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     client = DummyPaymentsApiClient(
         config=PaymentsApiClientConfig(provider="dummy", base_url="https://provider.example"),
         transport=httpx.MockTransport(
             lambda request: httpx.Response(
                 200,
                 json={
-                    "Token": "token-value",
+                    "Success": True,
+                    "Message": "raw provider message",
+                    "access_token": "access-token-value",
+                    "refreshToken": "refresh-token-value",
+                    "Amount": "399.00",
+                    "InvoiceId": "invoice-1",
+                    "Payment": {"CardLastFour": "1111"},
                     "PAN": "4111111111111111",
-                    "CardCryptogramPacket": "cryptogram-value",
-                    "CVV": "123",
+                    "Model": {"PaymentAmount": "399.00", "ProviderPaymentId": "payment-1"},
                 },
             )
         ),
     )
 
-    with pytest.raises(PaymentsResponseValidationError) as error:
-        client.send(
-            PaymentsApiRequest(operation="health", path="/health"),
-            response_model=DummyResponse,
-        )
+    with caplog.at_level(logging.WARNING, logger="app.payment_providers.api_client"):
+        with pytest.raises(PaymentsResponseValidationError) as error:
+            client.send(
+                PaymentsApiRequest(
+                    operation="health",
+                    path="/health",
+                    headers={
+                        "Authorization": "Basic secret-value",
+                        "X-Access-Token": "request-token-value",
+                    },
+                    payload={"Amount": "399.00", "InvoiceId": "invoice-request-1"},
+                    idempotency_key="refund-payment-1-39900",
+                ),
+                response_model=DummyResponse,
+            )
 
-    assert error.value.details_safe["response_payload"] == {
-        "Token": "[redacted]",
-        "PAN": "[redacted]",
-        "CardCryptogramPacket": "[redacted]",
-        "CVV": "[redacted]",
+    assert "response_payload" not in error.value.details_safe
+    assert error.value.details_safe["response_summary"] == {
+        "json_type": "object",
+        "field_count": 9,
     }
-    assert "token-value" not in str(error.value.details_safe)
-    assert "4111111111111111" not in str(error.value.details_safe)
+    assert error.value.details_safe["headers"] == {
+        "Authorization": "[redacted]",
+        "X-Access-Token": "[redacted]",
+    }
+    assert error.value.details_safe["idempotency_key"] == "[redacted]"
+
+    structured = caplog.records[0].structured
+    assert structured["details"] == error.value.details_safe
+    telemetry_text = str(structured)
+    for raw_value in (
+        "access-token-value",
+        "refresh-token-value",
+        "request-token-value",
+        "secret-value",
+        "399.00",
+        "invoice-1",
+        "invoice-request-1",
+        "payment-1",
+        "refund-payment-1-39900",
+        "4111111111111111",
+        "raw provider message",
+    ):
+        assert raw_value not in telemetry_text
 
 
 def test_base_http_payments_api_client_redacts_authorization_header_in_logs(caplog: pytest.LogCaptureFixture) -> None:

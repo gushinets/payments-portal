@@ -48,6 +48,17 @@ class PaymentsApiRequestBodyFormat(StrEnum):
     FORM = "form"
 
 
+class PaymentsApiJsonType(StrEnum):
+    OBJECT = "object"
+    ARRAY = "array"
+    STRING = "string"
+    NUMBER = "number"
+    BOOLEAN = "boolean"
+    NULL = "null"
+    INVALID = "invalid"
+    UNKNOWN = "unknown"
+
+
 class PaymentsApiOperationOutcome(StrEnum):
     SUCCEEDED = "succeeded"
     TIMEOUT = "timeout"
@@ -75,6 +86,42 @@ class PaymentsApiClientConfig(PaymentsApiClientModel):
     pool_timeout_seconds: float = Field(default=3.0, gt=0, le=PAYMENTS_API_MAX_POOL_TIMEOUT_SECONDS)
     max_retries: int = Field(default=2, ge=0, le=PAYMENTS_API_MAX_RETRIES)
     retry_backoff_seconds: float = Field(default=0.5, ge=0, le=PAYMENTS_API_MAX_RETRY_BACKOFF_SECONDS)
+
+
+class PaymentsApiResponseSummary(PaymentsApiClientModel):
+    json_type: PaymentsApiJsonType
+    body_byte_length: int | None = Field(default=None, ge=0)
+    field_count: int | None = Field(default=None, ge=0)
+    item_count: int | None = Field(default=None, ge=0)
+
+    @classmethod
+    def invalid_json(cls, *, body_byte_length: int) -> "PaymentsApiResponseSummary":
+        return cls(json_type=PaymentsApiJsonType.INVALID, body_byte_length=body_byte_length)
+
+    @classmethod
+    def from_payload(cls, payload: Any) -> "PaymentsApiResponseSummary":
+        json_type = cls._json_type(payload)
+        if isinstance(payload, Mapping):
+            return cls(json_type=json_type, field_count=len(payload))
+        if isinstance(payload, list):
+            return cls(json_type=json_type, item_count=len(payload))
+        return cls(json_type=json_type)
+
+    @staticmethod
+    def _json_type(value: Any) -> PaymentsApiJsonType:
+        if isinstance(value, Mapping):
+            return PaymentsApiJsonType.OBJECT
+        if isinstance(value, list):
+            return PaymentsApiJsonType.ARRAY
+        if value is None:
+            return PaymentsApiJsonType.NULL
+        if isinstance(value, bool):
+            return PaymentsApiJsonType.BOOLEAN
+        if isinstance(value, (int, float)):
+            return PaymentsApiJsonType.NUMBER
+        if isinstance(value, str):
+            return PaymentsApiJsonType.STRING
+        return PaymentsApiJsonType.UNKNOWN
 
 
 class PaymentsApiRequest(PaymentsApiClientModel):
@@ -397,7 +444,13 @@ class BaseHttpPaymentsApiClient(PaymentsApiClient):
             error = PaymentsResponseDecodeError(
                 "payments_api_response_decode_error",
                 message_safe="Payment provider response is not valid JSON.",
-                details_safe=self._safe_details(request, status_code=response.status_code),
+                details_safe=self._safe_details(
+                    request,
+                    status_code=response.status_code,
+                    response_summary=PaymentsApiResponseSummary.invalid_json(
+                        body_byte_length=len(response.content),
+                    ),
+                ),
             )
             self._log_failure(error)
             raise error from exc
@@ -411,7 +464,7 @@ class BaseHttpPaymentsApiClient(PaymentsApiClient):
                 details_safe=self._safe_details(
                     request,
                     status_code=response.status_code,
-                    response_payload=redact(payload),
+                    response_summary=PaymentsApiResponseSummary.from_payload(payload),
                 ),
             )
             self._log_failure(error)
@@ -424,14 +477,14 @@ class BaseHttpPaymentsApiClient(PaymentsApiClient):
         attempt: int | None = None,
         status_code: int | None = None,
         reason: str | None = None,
-        response_payload: Any | None = None,
+        response_summary: PaymentsApiResponseSummary | None = None,
     ) -> dict[str, Any]:
         details: dict[str, Any] = {
             "provider": self.config.provider,
             "operation": request.operation,
             "path": request.path,
             "headers": redact(dict(request.headers)),
-            "idempotency_key": request.idempotency_key,
+            "idempotency_key": redact(request.idempotency_key, "idempotency_key"),
         }
         if attempt is not None:
             details["attempt"] = attempt + 1
@@ -439,6 +492,6 @@ class BaseHttpPaymentsApiClient(PaymentsApiClient):
             details["status_code"] = status_code
         if reason is not None:
             details["reason"] = reason
-        if response_payload is not None:
-            details["response_payload"] = response_payload
+        if response_summary is not None:
+            details["response_summary"] = response_summary.model_dump(mode="json", exclude_none=True)
         return details

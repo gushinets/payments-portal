@@ -29,6 +29,8 @@ SENSITIVE_KEYS = {
     "set-cookie",
     "content-hmac",
     "x-content-hmac",
+    "idempotency_key",
+    "x-request-id",
     "password",
     "token",
     "api_secret",
@@ -57,13 +59,17 @@ SENSITIVE_KEYS = {
     "cryptogram",
 }
 NORMALIZED_SENSITIVE_KEYS = {re.sub(r"[^a-z0-9]", "", item.lower()) for item in SENSITIVE_KEYS}
+SENSITIVE_KEY_MARKERS = ("secret", "token")
+PAYMENT_VALUE_KEY_MARKERS = ("amount", "invoice", "payment")
 
 
 def redact(value: Any, key: str = "") -> Any:
     """Return a telemetry-safe representation of nested data."""
 
     normalized_key = re.sub(r"[^a-z0-9]", "", key.lower())
-    if normalized_key in NORMALIZED_SENSITIVE_KEYS:
+    if normalized_key in NORMALIZED_SENSITIVE_KEYS or any(
+        marker in normalized_key for marker in (*SENSITIVE_KEY_MARKERS, *PAYMENT_VALUE_KEY_MARKERS)
+    ):
         return "[redacted]"
     if isinstance(value, Mapping):
         return {str(item_key): redact(item_value, str(item_key)) for item_key, item_value in value.items()}
