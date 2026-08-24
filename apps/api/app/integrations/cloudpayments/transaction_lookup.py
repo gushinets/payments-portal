@@ -297,7 +297,7 @@ def _cloudpayments_transaction_status(value: str | None) -> CloudPaymentsTransac
 def _amount_minor(amount: Decimal | None) -> int | None:
     if amount is None:
         return None
-    scaled = amount * Decimal("100")
+    scaled = amount * Decimal(100)
     if scaled != scaled.to_integral_value():
         return None
     return int(scaled)
