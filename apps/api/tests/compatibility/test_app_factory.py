@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from unittest.mock import Mock
+
 from apps.api.tests.support.settings import configure_api_test_environment
 from apps.api.tests.support.settings import override_settings
 
@@ -119,14 +121,31 @@ def test_app_factory_runs_lifespan_once(monkeypatch) -> None:
     import app.main as main_module
 
     seed_calls = []
+    api_client = Mock()
+    build_calls = []
     monkeypatch.delenv("SKIP_LEGAL_SEED", raising=False)
+
+    def build_client(*, app_settings):
+        build_calls.append(app_settings)
+        return api_client
+
+    monkeypatch.setattr(
+        main_module,
+        "build_cloudpayments_api_client",
+        build_client,
+    )
     monkeypatch.setattr(
         main_module,
         "seed_legal_documents",
         lambda session: seed_calls.append(session),
     )
 
-    with TestClient(main_module.create_app()) as client:
-        assert client.get("/api/health/live").status_code == 200
+    app = main_module.create_app()
+    assert build_calls == []
 
+    with TestClient(app) as test_client:
+        assert test_client.get("/api/health/live").status_code == 200
+
+    assert len(build_calls) == 1
     assert len(seed_calls) == 1
+    api_client.close.assert_called_once_with()

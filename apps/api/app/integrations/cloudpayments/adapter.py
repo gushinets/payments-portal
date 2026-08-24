@@ -15,10 +15,7 @@ from app.core.errors import (
 )
 from app.core.observability import redact
 from app.core.settings import settings
-from app.integrations.cloudpayments.api_client import (
-    CloudPaymentsApiClient,
-    build_cloudpayments_api_client,
-)
+from app.integrations.cloudpayments.api_client import CloudPaymentsApiClient
 from app.integrations.cloudpayments.contracts import (
     CloudPaymentsWebhookPayload,
     cloudpayments_event_idempotency_key,
@@ -214,8 +211,25 @@ def _raise_checkout_account_configuration_error(account_error: OperationResultMe
 class CloudPaymentsAdapter:
     provider_code = CLOUDPAYMENTS_PROVIDER_CODE
 
-    def __init__(self, *, api_client: CloudPaymentsApiClient) -> None:
+    def __init__(self, *, api_client: CloudPaymentsApiClient | None = None) -> None:
+        self._api_client: CloudPaymentsApiClient | None = None
+        if api_client is not None:
+            self.set_api_client(api_client)
+
+    def set_api_client(self, api_client: CloudPaymentsApiClient) -> None:
         self._api_client = api_client
+
+    def close(self) -> None:
+        api_client = self._api_client
+        self._api_client = None
+        if api_client is not None:
+            api_client.close()
+
+    @property
+    def api_client(self) -> CloudPaymentsApiClient:
+        if self._api_client is None:
+            raise RuntimeError("CloudPayments adapter client is not configured")
+        return self._api_client
 
     def default_account_fields(self, *, tenant_id: str, region: str) -> dict[str, Any]:
         return {
@@ -244,10 +258,10 @@ class CloudPaymentsAdapter:
         account_error = validate_provider_account_context(
             provider_account=provider_account,
             provider_code=self.provider_code,
-            configured_public_id=self._api_client.config.public_id,
+            configured_public_id=settings.cloudpayments_public_id,
         )
         _raise_checkout_account_configuration_error(account_error)
-        public_identifier = self._api_client.config.public_id.strip()
+        public_identifier = settings.cloudpayments_public_id.strip()
         return CheckoutAction(
             provider=self.provider_code,
             experience="widget",
@@ -272,10 +286,10 @@ class CloudPaymentsAdapter:
         account_error = validate_provider_account_context(
             provider_account=provider_account,
             provider_code=self.provider_code,
-            configured_public_id=self._api_client.config.public_id,
+            configured_public_id=self.api_client.config.public_id,
         )
         return lookup_cloudpayments_transaction(
-            api_client=self._api_client,
+            api_client=self.api_client,
             provider_account=provider_account,
             request=request,
             provider_code=self.provider_code,
@@ -292,7 +306,7 @@ class CloudPaymentsAdapter:
         request: RefundRequest,
     ) -> RefundResult:
         return refund_cloudpayments_payment(
-            api_client=self._api_client,
+            api_client=self.api_client,
             provider_code=self.provider_code,
             provider_account=provider_account,
             request=request,
@@ -305,7 +319,7 @@ class CloudPaymentsAdapter:
         request: CreateRecurringSubscriptionRequest,
     ) -> CreateRecurringSubscriptionResult:
         return create_cloudpayments_recurring_subscription(
-            api_client=self._api_client,
+            api_client=self.api_client,
             provider_code=self.provider_code,
             provider_account=provider_account,
             request=request,
@@ -318,7 +332,7 @@ class CloudPaymentsAdapter:
         request: UpdateRecurringSubscriptionRequest,
     ) -> UpdateRecurringSubscriptionResult:
         return update_cloudpayments_recurring_subscription(
-            api_client=self._api_client,
+            api_client=self.api_client,
             provider_code=self.provider_code,
             provider_account=provider_account,
             request=request,
@@ -331,7 +345,7 @@ class CloudPaymentsAdapter:
         request: CancelRecurringSubscriptionRequest,
     ) -> CancelRecurringSubscriptionResult:
         return cancel_cloudpayments_recurring_subscription(
-            api_client=self._api_client,
+            api_client=self.api_client,
             provider_code=self.provider_code,
             provider_account=provider_account,
             request=request,
@@ -415,4 +429,4 @@ class CloudPaymentsAdapter:
         return CLOUDPAYMENTS_RESPONSE_CODES.get(error_code, 13)
 
 
-cloudpayments_adapter = CloudPaymentsAdapter(api_client=build_cloudpayments_api_client())
+cloudpayments_adapter = CloudPaymentsAdapter()

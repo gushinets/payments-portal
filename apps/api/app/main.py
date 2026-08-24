@@ -19,6 +19,7 @@ from app.domains.identity.router import router as auth_router
 from app.domains.legal.router import router as legal_router
 from app.health import health_router
 from app.integrations.cloudpayments.adapter import cloudpayments_adapter
+from app.integrations.cloudpayments.api_client import build_cloudpayments_api_client
 from app.integrations.cloudpayments.router import router as cloudpayments_router
 from app.legal_seed import seed_legal_documents
 from app.payment_providers.registry import payment_provider_registry
@@ -29,11 +30,16 @@ metrics_router = APIRouter(prefix="/metrics", tags=["metrics"])
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    if os.getenv("SKIP_LEGAL_SEED") != "true":
-        with SessionLocal() as db:
-            seed_legal_documents(db)
+    api_client = build_cloudpayments_api_client(app_settings=settings)
+    cloudpayments_adapter.set_api_client(api_client)
+    try:
+        if os.getenv("SKIP_LEGAL_SEED") != "true":
+            with SessionLocal() as db:
+                seed_legal_documents(db)
 
-    yield
+        yield
+    finally:
+        cloudpayments_adapter.close()
 
 
 @metrics_router.get("", include_in_schema=False)

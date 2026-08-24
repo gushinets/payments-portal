@@ -84,6 +84,20 @@ def _create_subscription_request(**overrides: object) -> CreateRecurringSubscrip
     return CreateRecurringSubscriptionRequest.model_validate(values)
 
 
+def test_cloudpayments_adapter_requires_start_before_upstream_use() -> None:
+    adapter = CloudPaymentsAdapter()
+
+    with pytest.raises(RuntimeError, match="not configured"):
+        adapter.lookup_transaction(
+            provider_account=_provider_account(),  # type: ignore[arg-type]
+            request=TransactionLookupRequest(
+                provider_payment_id="897749645",
+                expected_amount_minor=99000,
+                expected_currency="RUB",
+            ),
+        )
+
+
 def test_cloudpayments_adapter_checkout_rejects_terminal_mismatch() -> None:
     provider_account = _provider_account()
     provider_account.public_identifier = "pk_other"
