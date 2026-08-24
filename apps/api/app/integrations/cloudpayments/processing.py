@@ -6,6 +6,12 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.core.time import utc_now
+from app.domains.billing.service import (
+    ActivatePaidPeriodCommand,
+    ApplyRefundCommand,
+    activate_paid_period,
+    apply_refund,
+)
 from app.integrations.cloudpayments.payload import get_first
 from app.integrations.cloudpayments.validation import (
     cancel_validation_error,
@@ -448,6 +454,17 @@ def process_webhook_event(
             event.payment_id = payment.id
             event.currency = effective_currency
             event.status = "processed"
+            if payment.status == "succeeded":
+                activate_paid_period(
+                    db,
+                    ActivatePaidPeriodCommand(
+                        order_id=order.id,
+                        payment_id=payment.id,
+                        webhook_event_id=event.id,
+                        operation_idempotency_key=f"{idempotency_key}:activate",
+                        occurred_at=datetime_now(),
+                    ),
+                )
         event.processed_at = datetime_now()
     elif endpoint == "refund":
         payment = _find_payment(
@@ -479,7 +496,7 @@ def process_webhook_event(
                 db.flush()
                 return event
             assert amount_minor is not None
-            record_refund(
+            refund = record_refund(
                 db,
                 order=order,
                 payment=payment,
@@ -487,6 +504,16 @@ def process_webhook_event(
                 currency=currency if currency is not None else payment.currency,
                 payload=payload,
                 now=datetime_now(),
+            )
+            apply_refund(
+                db,
+                ApplyRefundCommand(
+                    order_id=order.id,
+                    refund_id=refund.id,
+                    amount_minor=refund.amount_minor,
+                    operation_idempotency_key=f"cloudpayments:refund:{refund.id}",
+                    occurred_at=datetime_now(),
+                ),
             )
             event.currency = currency if currency is not None else payment.currency
             event.status = "processed"

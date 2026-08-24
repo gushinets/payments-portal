@@ -129,7 +129,7 @@ References:
   - Every transition locks affected rows and writes one event in the same
     transaction. Duplicate operation keys return the existing outcome.
 
-- [ ] Connect verified initial payment and refund outcomes.
+- [x] Connect verified initial payment and refund outcomes.
   - Stop creating or updating `product_access_states` in checkout.
   - After a verified initial `Pay` or captured `Confirm`, invoke
     `activate_paid_period` with internal identifiers; browser callbacks never

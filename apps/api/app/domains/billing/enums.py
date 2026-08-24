@@ -54,11 +54,19 @@ class SubscriptionEventType(StrEnum):
 
 
 class OrderStatus(StrEnum):
+    PENDING_PAYMENT = "pending_payment"
+    PAYMENT_FAILED = "payment_failed"
     PAID = "paid"
+    CANCELED = "canceled"
+    REFUNDED = "refunded"
+    PARTIALLY_REFUNDED = "partially_refunded"
 
 
 class PaymentStatus(StrEnum):
+    CANCELED = "canceled"
     SUCCEEDED = "succeeded"
+    PARTIALLY_REFUNDED = "partially_refunded"
+    REFUNDED = "refunded"
 
 
 class WebhookEventStatus(StrEnum):
@@ -92,12 +100,19 @@ class EntitlementSource(StrEnum):
     ORDER = "order"
 
 
+class ProductAccessStatus(StrEnum):
+    INACTIVE = "inactive"
+    PENDING = "pending"
+    ACTIVE = "active"
+
+
 __all__ = [
     "BillingPeriod",
     "EntitlementSource",
     "EntitlementStatus",
     "OrderStatus",
     "PaymentStatus",
+    "ProductAccessStatus",
     "ProviderSubscriptionState",
     "SensitiveMetadataKey",
     "SubscriptionEventType",

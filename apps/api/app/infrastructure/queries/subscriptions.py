@@ -34,6 +34,34 @@ def get_active_entitlement(db: Session, subscription_id: uuid.UUID, *, for_updat
     return (query.with_for_update() if for_update else query).first()
 
 
+def get_active_entitlement_for_scope(
+    db: Session,
+    *,
+    tenant_id: str,
+    region: str,
+    user_id: uuid.UUID,
+    scope_type: str,
+    product_id: uuid.UUID | None,
+    bundle_id: uuid.UUID | None,
+    now: datetime,
+) -> Entitlement | None:
+    return (
+        db.query(Entitlement)
+        .filter(
+            Entitlement.tenant_id == tenant_id,
+            Entitlement.region == region,
+            Entitlement.user_id == user_id,
+            Entitlement.scope_type == scope_type,
+            Entitlement.product_id == product_id,
+            Entitlement.bundle_id == bundle_id,
+            Entitlement.status == EntitlementStatus.ACTIVE.value,
+            Entitlement.valid_until > now,
+        )
+        .order_by(Entitlement.valid_until.desc(), Entitlement.created_at.desc())
+        .first()
+    )
+
+
 def get_trial_for_scope(
     db: Session,
     *,
