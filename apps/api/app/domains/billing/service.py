@@ -186,6 +186,7 @@ SUBSCRIPTION_STATUS_TRANSITIONS = {
             SubscriptionStatus.PAUSED,
         }
     ),
+    SubscriptionStatus.CANCELED: frozenset({SubscriptionStatus.EXPIRED}),
 }
 
 

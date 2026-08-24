@@ -173,6 +173,7 @@ def list_due_subscriptions(db: Session, *, now: datetime, batch_size: int) -> li
                     SubscriptionStatus.ACTIVE.value,
                     SubscriptionStatus.PAST_DUE.value,
                     SubscriptionStatus.PAUSED.value,
+                    SubscriptionStatus.CANCELED.value,
                 )
             ),
             Subscription.current_period_end <= now,

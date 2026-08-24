@@ -161,7 +161,7 @@ References:
   - Drop the legacy table and remove its ORM compatibility export after the
     application reads and writes the new model.
 
-- [ ] Add authenticated account read APIs.
+- [x] Add authenticated account read APIs.
   - Add `GET /api/account/subscriptions` and
     `GET /api/account/subscriptions/{subscription_id}`.
   - Return named Pydantic response models containing internal subscription ID,
@@ -171,7 +171,7 @@ References:
   - Do not expose provider account/reference, provider status, payment IDs, or
     webhook IDs.
 
-- [ ] Add expiration maintenance.
+- [x] Add expiration maintenance.
   - Implement an idempotent batch transition using row locks and
     `FOR UPDATE SKIP LOCKED` on PostgreSQL.
   - Add a one-shot CLI with configurable batch size for an external cron or
