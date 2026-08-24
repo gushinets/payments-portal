@@ -474,6 +474,141 @@ def test_base_http_payments_api_client_keeps_component_timeout_bounds() -> None:
     assert timeout.pool == 3.0
 
 
+def test_base_http_payments_api_client_derives_retry_timeout_from_remaining_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock_seconds = 100.0
+    attempts = 0
+    observed_timeouts: list[dict[str, float]] = []
+
+    def perf_counter() -> float:
+        return clock_seconds
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts, clock_seconds
+        attempts += 1
+        observed_timeouts.append(dict(request.extensions["timeout"]))
+        if attempts == 1:
+            clock_seconds += 1.2
+            return httpx.Response(503, json={"Success": False, "Message": "unavailable"})
+        return httpx.Response(200, json={"ok": True})
+
+    monkeypatch.setattr("app.payment_providers.timeouts.time.perf_counter", perf_counter)
+    client = DummyPaymentsApiClient(
+        config=PaymentsApiClientConfig(
+            provider="dummy",
+            base_url="https://provider.example",
+            timeout_seconds=2.0,
+            connect_timeout_seconds=3.0,
+            read_timeout_seconds=10.0,
+            write_timeout_seconds=10.0,
+            pool_timeout_seconds=3.0,
+            max_retries=1,
+            retry_backoff_seconds=0.0,
+        ),
+        transport=httpx.MockTransport(handler),
+    )
+
+    response = client.send(
+        PaymentsApiRequest(operation="health", path="/health", is_idempotent=True),
+        response_model=DummyResponse,
+    )
+
+    assert response.ok is True
+    assert attempts == 2
+    assert observed_timeouts[0] == {
+        "connect": 2.0,
+        "read": 2.0,
+        "write": 2.0,
+        "pool": 2.0,
+    }
+    assert observed_timeouts[1] == {
+        "connect": pytest.approx(0.8),
+        "read": pytest.approx(0.8),
+        "write": pytest.approx(0.8),
+        "pool": pytest.approx(0.8),
+    }
+
+
+def test_base_http_payments_api_client_rejects_response_after_accumulated_phase_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock_seconds = 150.0
+    attempts = 0
+
+    def perf_counter() -> float:
+        return clock_seconds
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts, clock_seconds
+        attempts += 1
+        clock_seconds += 1.1
+        return httpx.Response(200, json={"ok": True})
+
+    monkeypatch.setattr("app.payment_providers.timeouts.time.perf_counter", perf_counter)
+    client = DummyPaymentsApiClient(
+        config=PaymentsApiClientConfig(
+            provider="dummy",
+            base_url="https://provider.example",
+            timeout_seconds=1.0,
+            max_retries=0,
+        ),
+        transport=httpx.MockTransport(handler),
+    )
+
+    with pytest.raises(PaymentsTimeoutError) as error:
+        client.send(
+            PaymentsApiRequest(operation="health", path="/health"),
+            response_model=DummyResponse,
+        )
+
+    assert attempts == 1
+    assert error.value.details_safe["reason"] == "request_deadline"
+
+
+def test_base_http_payments_api_client_does_not_retry_when_backoff_exceeds_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock_seconds = 200.0
+    attempts = 0
+    sleep_calls: list[float] = []
+
+    def perf_counter() -> float:
+        return clock_seconds
+
+    def sleep(seconds: float) -> None:
+        sleep_calls.append(seconds)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts, clock_seconds
+        attempts += 1
+        clock_seconds += 0.6
+        return httpx.Response(503, json={"Success": False, "Message": "unavailable"})
+
+    monkeypatch.setattr("app.payment_providers.timeouts.time.perf_counter", perf_counter)
+    monkeypatch.setattr("app.payment_providers.api_client.time.sleep", sleep)
+    client = DummyPaymentsApiClient(
+        config=PaymentsApiClientConfig(
+            provider="dummy",
+            base_url="https://provider.example",
+            timeout_seconds=1.0,
+            max_retries=1,
+            retry_backoff_seconds=0.5,
+        ),
+        transport=httpx.MockTransport(handler),
+    )
+
+    with pytest.raises(PaymentsTimeoutError) as error:
+        client.send(
+            PaymentsApiRequest(operation="health", path="/health", is_idempotent=True),
+            response_model=DummyResponse,
+        )
+
+    assert attempts == 1
+    assert sleep_calls == []
+    assert error.value.details_safe["reason"] == "request_deadline"
+
+
 def test_base_http_payments_api_client_rejects_non_positive_request_timeout() -> None:
     with pytest.raises(ValidationError):
         PaymentsApiRequest(operation="health", path="/health", timeout_seconds=0)

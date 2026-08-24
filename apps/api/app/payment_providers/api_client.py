@@ -8,7 +8,7 @@ from enum import StrEnum
 from typing import Any, Protocol, TypeVar
 
 import httpx
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from app.core.payment_api_limits import (
     PAYMENTS_API_MAX_CONNECT_TIMEOUT_SECONDS,
@@ -32,6 +32,8 @@ from app.core.errors import (
 )
 from app.core.observability import record_provider_api_operation, redact, tracer
 from app.payment_providers.contracts import RetryDisposition
+from app.payment_providers.response_summary import PaymentsApiClientModel, PaymentsApiResponseSummary
+from app.payment_providers.timeouts import PaymentsApiRequestDeadline, PaymentsApiTimeoutPolicy
 
 logger = logging.getLogger(__name__)
 
@@ -48,17 +50,6 @@ class PaymentsApiRequestBodyFormat(StrEnum):
     FORM = "form"
 
 
-class PaymentsApiJsonType(StrEnum):
-    OBJECT = "object"
-    ARRAY = "array"
-    STRING = "string"
-    NUMBER = "number"
-    BOOLEAN = "boolean"
-    NULL = "null"
-    INVALID = "invalid"
-    UNKNOWN = "unknown"
-
-
 class PaymentsApiOperationOutcome(StrEnum):
     SUCCEEDED = "succeeded"
     TIMEOUT = "timeout"
@@ -72,10 +63,6 @@ class PaymentsApiOperationOutcome(StrEnum):
     OPERATION_DECLINED = "operation_declined"
 
 
-class PaymentsApiClientModel(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-
 class PaymentsApiClientConfig(PaymentsApiClientModel):
     provider: str = Field(min_length=1)
     base_url: str = Field(min_length=1)
@@ -86,42 +73,6 @@ class PaymentsApiClientConfig(PaymentsApiClientModel):
     pool_timeout_seconds: float = Field(default=3.0, gt=0, le=PAYMENTS_API_MAX_POOL_TIMEOUT_SECONDS)
     max_retries: int = Field(default=2, ge=0, le=PAYMENTS_API_MAX_RETRIES)
     retry_backoff_seconds: float = Field(default=0.5, ge=0, le=PAYMENTS_API_MAX_RETRY_BACKOFF_SECONDS)
-
-
-class PaymentsApiResponseSummary(PaymentsApiClientModel):
-    json_type: PaymentsApiJsonType
-    body_byte_length: int | None = Field(default=None, ge=0)
-    field_count: int | None = Field(default=None, ge=0)
-    item_count: int | None = Field(default=None, ge=0)
-
-    @classmethod
-    def invalid_json(cls, *, body_byte_length: int) -> "PaymentsApiResponseSummary":
-        return cls(json_type=PaymentsApiJsonType.INVALID, body_byte_length=body_byte_length)
-
-    @classmethod
-    def from_payload(cls, payload: Any) -> "PaymentsApiResponseSummary":
-        json_type = cls._json_type(payload)
-        if isinstance(payload, Mapping):
-            return cls(json_type=json_type, field_count=len(payload))
-        if isinstance(payload, list):
-            return cls(json_type=json_type, item_count=len(payload))
-        return cls(json_type=json_type)
-
-    @staticmethod
-    def _json_type(value: Any) -> PaymentsApiJsonType:
-        if isinstance(value, Mapping):
-            return PaymentsApiJsonType.OBJECT
-        if isinstance(value, list):
-            return PaymentsApiJsonType.ARRAY
-        if value is None:
-            return PaymentsApiJsonType.NULL
-        if isinstance(value, bool):
-            return PaymentsApiJsonType.BOOLEAN
-        if isinstance(value, (int, float)):
-            return PaymentsApiJsonType.NUMBER
-        if isinstance(value, str):
-            return PaymentsApiJsonType.STRING
-        return PaymentsApiJsonType.UNKNOWN
 
 
 class PaymentsApiRequest(PaymentsApiClientModel):
@@ -162,9 +113,16 @@ class BaseHttpPaymentsApiClient(PaymentsApiClient):
         transport: httpx.BaseTransport | None = None,
     ) -> None:
         self.config = config
+        self._timeout_policy = PaymentsApiTimeoutPolicy(
+            timeout_seconds=config.timeout_seconds,
+            connect_timeout_seconds=config.connect_timeout_seconds,
+            read_timeout_seconds=config.read_timeout_seconds,
+            write_timeout_seconds=config.write_timeout_seconds,
+            pool_timeout_seconds=config.pool_timeout_seconds,
+        )
         self._client = httpx.Client(
             base_url=config.base_url,
-            timeout=self._default_timeout(),
+            timeout=self._timeout_policy.default_timeout(),
             transport=transport,
         )
 
@@ -203,8 +161,18 @@ class BaseHttpPaymentsApiClient(PaymentsApiClient):
         *,
         response_model: type[ResponseT],
     ) -> ResponseT:
+        deadline = self._deadline_for_request(request)
         for attempt in range(self.config.max_retries + 1):
             try:
+                remaining_seconds = deadline.remaining_seconds()
+                if remaining_seconds <= 0:
+                    error = self._request_deadline_error(request, attempt=attempt)
+                    self._log_failure(error)
+                    raise error
+                timeout = self._timeout_for_request(
+                    request,
+                    remaining_seconds=remaining_seconds,
+                )
                 response = self._client.request(
                     method=request.method.value,
                     url=request.path,
@@ -216,8 +184,12 @@ class BaseHttpPaymentsApiClient(PaymentsApiClient):
                     data=self._form_payload(request)
                     if request.body_format == PaymentsApiRequestBodyFormat.FORM
                     else None,
-                    timeout=self._timeout_for_request(request),
+                    timeout=timeout,
                 )
+                if deadline.remaining_seconds() <= 0:
+                    error = self._request_deadline_error(request, attempt=attempt)
+                    self._log_failure(error)
+                    raise error
             except httpx.TimeoutException as exc:
                 error = PaymentsTimeoutError(
                     "payments_api_timeout",
@@ -226,7 +198,7 @@ class BaseHttpPaymentsApiClient(PaymentsApiClient):
                     details_safe=self._safe_details(request, attempt=attempt, reason="timeout"),
                 )
                 if self._should_retry(request, attempt, error.retry_disposition):
-                    self._sleep_before_retry(attempt)
+                    self._sleep_before_retry(request, attempt, deadline=deadline)
                     continue
                 self._log_failure(error)
                 raise error from exc
@@ -238,7 +210,7 @@ class BaseHttpPaymentsApiClient(PaymentsApiClient):
                     details_safe=self._safe_details(request, attempt=attempt, reason=type(exc).__name__),
                 )
                 if self._should_retry(request, attempt, error.retry_disposition):
-                    self._sleep_before_retry(attempt)
+                    self._sleep_before_retry(request, attempt, deadline=deadline)
                     continue
                 self._log_failure(error)
                 raise error from exc
@@ -270,7 +242,7 @@ class BaseHttpPaymentsApiClient(PaymentsApiClient):
                     details_safe=self._safe_details(request, attempt=attempt, status_code=response.status_code),
                 )
                 if self._should_retry(request, attempt, error.retry_disposition):
-                    self._sleep_before_retry(attempt)
+                    self._sleep_before_retry(request, attempt, deadline=deadline)
                     continue
                 self._log_failure(error)
                 raise error
@@ -353,26 +325,32 @@ class BaseHttpPaymentsApiClient(PaymentsApiClient):
             headers["X-Request-ID"] = request.idempotency_key
         return headers
 
-    def _default_timeout(self) -> httpx.Timeout:
-        return httpx.Timeout(
-            timeout=self.config.timeout_seconds,
-            connect=self.config.connect_timeout_seconds,
-            read=self.config.read_timeout_seconds,
-            write=self.config.write_timeout_seconds,
-            pool=self.config.pool_timeout_seconds,
+    def _deadline_for_request(self, request: PaymentsApiRequest) -> PaymentsApiRequestDeadline:
+        return self._timeout_policy.deadline_for_request(timeout_seconds=request.timeout_seconds)
+
+    def _timeout_for_request(
+        self,
+        request: PaymentsApiRequest,
+        *,
+        remaining_seconds: float | None = None,
+    ) -> httpx.Timeout:
+        return self._timeout_policy.request_timeout(
+            timeout_seconds=request.timeout_seconds,
+            remaining_seconds=remaining_seconds,
         )
 
-    def _timeout_for_request(self, request: PaymentsApiRequest) -> httpx.Timeout:
-        if request.timeout_seconds is not None:
-            timeout = request.timeout_seconds
-            return httpx.Timeout(
-                timeout=timeout,
-                connect=min(timeout, self.config.connect_timeout_seconds),
-                read=min(timeout, self.config.read_timeout_seconds),
-                write=min(timeout, self.config.write_timeout_seconds),
-                pool=min(timeout, self.config.pool_timeout_seconds),
-            )
-        return self._default_timeout()
+    def _request_deadline_error(
+        self,
+        request: PaymentsApiRequest,
+        *,
+        attempt: int,
+    ) -> PaymentsTimeoutError:
+        return PaymentsTimeoutError(
+            "payments_api_timeout",
+            retry_disposition=RetryDisposition.RETRYABLE,
+            message_safe="Payment provider request timed out.",
+            details_safe=self._safe_details(request, attempt=attempt, reason="request_deadline"),
+        )
 
     def _json_payload(self, request: PaymentsApiRequest) -> dict[str, Any]:
         return self._normalize_payload(dict(request.payload))
@@ -410,8 +388,18 @@ class BaseHttpPaymentsApiClient(PaymentsApiClient):
             and attempt < self.config.max_retries
         )
 
-    def _sleep_before_retry(self, attempt: int) -> None:
+    def _sleep_before_retry(
+        self,
+        request: PaymentsApiRequest,
+        attempt: int,
+        *,
+        deadline: PaymentsApiRequestDeadline,
+    ) -> None:
         delay_seconds = self.config.retry_backoff_seconds * (attempt + 1)
+        if delay_seconds >= deadline.remaining_seconds():
+            error = self._request_deadline_error(request, attempt=attempt)
+            self._log_failure(error)
+            raise error
         logger.warning(
             "Retrying payment provider request.",
             extra={"structured": {"provider": self.config.provider, "delay_seconds": delay_seconds}},
