@@ -9,7 +9,13 @@ from sqlalchemy.orm import Session
 from app.core.errors import PaymentsError
 from app.integrations.cloudpayments.account_validation import validate_provider_account_context
 from app.integrations.cloudpayments.api_client import CloudPaymentsApiClient
-from app.integrations.cloudpayments.operation_meta import failed_meta, failed_meta_from_error, succeeded_meta
+from app.integrations.cloudpayments.operation_meta import (
+    failed_meta,
+    failed_meta_from_error,
+    has_idempotency_key,
+    idempotency_key_required_meta,
+    succeeded_meta,
+)
 from app.integrations.cloudpayments.payload import get_first
 from app.models import Order, Payment, PaymentProviderAccount, Refund
 from app.payment_providers.contracts import RefundRequest, RefundResult, RefundStatus, RetryDisposition
@@ -40,6 +46,19 @@ def refund_payment(
             amount=request.amount,
             currency=request.currency,
             meta=account_error,
+        )
+
+    if not has_idempotency_key(request.idempotency_key):
+        return RefundResult(
+            provider=provider_code,
+            provider_account_id=str(provider_account.id),
+            provider_payment_id=request.provider_payment_id,
+            provider_refund_id=None,
+            status=RefundStatus.FAILED,
+            amount_minor=request.amount_minor,
+            amount=request.amount,
+            currency=request.currency,
+            meta=idempotency_key_required_meta(),
         )
 
     if provider_account.default_currency.strip().upper() != request.currency.strip().upper():

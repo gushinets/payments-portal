@@ -22,6 +22,7 @@ from app.core.payment_api_limits import (
 from app.core.errors import (
     PaymentsAuthenticationError,
     PaymentsHttpError,
+    PaymentsIdempotencyKeyRequiredError,
     PaymentsOperationDeclinedError,
     PaymentsRateLimitError,
     PaymentsResponseDecodeError,
@@ -58,6 +59,7 @@ class PaymentsApiOperationOutcome(StrEnum):
     RATE_LIMITED = "rate_limited"
     UPSTREAM_ERROR = "upstream_error"
     HTTP_ERROR = "http_error"
+    IDEMPOTENCY_KEY_REQUIRED = "idempotency_key_required"
     RESPONSE_DECODE_ERROR = "response_decode_error"
     RESPONSE_VALIDATION_ERROR = "response_validation_error"
     OPERATION_DECLINED = "operation_declined"
@@ -142,6 +144,7 @@ class BaseHttpPaymentsApiClient(PaymentsApiClient):
             self._set_span_attribute(span, "payment_provider.provider", self.config.provider)
             self._set_span_attribute(span, "payment_provider.operation", request.operation)
             try:
+                self._require_mutation_idempotency_key(request)
                 response = self._send_with_retries(request, response_model=response_model)
             except Exception as exc:
                 outcome = self._outcome_from_exception(exc)
@@ -227,10 +230,13 @@ class BaseHttpPaymentsApiClient(PaymentsApiClient):
             if response.status_code == 429:
                 error = PaymentsRateLimitError(
                     "payments_api_rate_limited",
-                    retry_disposition=RetryDisposition.NON_RETRYABLE,
+                    retry_disposition=RetryDisposition.RETRYABLE,
                     message_safe="Payment provider rate limit exceeded.",
                     details_safe=self._safe_details(request, attempt=attempt, status_code=response.status_code),
                 )
+                if self._should_retry(request, attempt, error.retry_disposition):
+                    self._sleep_before_retry(request, attempt, deadline=deadline)
+                    continue
                 self._log_failure(error)
                 raise error
 
@@ -275,6 +281,8 @@ class BaseHttpPaymentsApiClient(PaymentsApiClient):
             return PaymentsApiOperationOutcome.AUTHENTICATION_ERROR
         if isinstance(exc, PaymentsRateLimitError):
             return PaymentsApiOperationOutcome.RATE_LIMITED
+        if isinstance(exc, PaymentsIdempotencyKeyRequiredError):
+            return PaymentsApiOperationOutcome.IDEMPOTENCY_KEY_REQUIRED
         if isinstance(exc, PaymentsUpstreamError):
             return PaymentsApiOperationOutcome.UPSTREAM_ERROR
         if isinstance(exc, PaymentsHttpError):
@@ -310,6 +318,17 @@ class BaseHttpPaymentsApiClient(PaymentsApiClient):
 
     def _build_auth(self) -> httpx.Auth | None:
         return None
+
+    def _require_mutation_idempotency_key(self, request: PaymentsApiRequest) -> None:
+        if not request.is_mutating or request.idempotency_key is not None:
+            return
+        error = PaymentsIdempotencyKeyRequiredError(
+            "payments_api_idempotency_key_required",
+            message_safe="Payment provider mutation requires an idempotency key.",
+            details_safe=self._safe_details(request),
+        )
+        self._log_failure(error)
+        raise error
 
     def _build_headers(self, request: PaymentsApiRequest) -> dict[str, str]:
         headers = {

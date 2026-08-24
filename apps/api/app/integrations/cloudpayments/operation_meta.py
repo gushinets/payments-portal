@@ -32,6 +32,18 @@ def failed_meta(
     )
 
 
+def idempotency_key_required_meta() -> OperationResultMeta:
+    return failed_meta(
+        code="payments_api_idempotency_key_required",
+        message_safe="Payment provider mutation requires an idempotency key.",
+        retry_disposition=RetryDisposition.NON_RETRYABLE,
+    )
+
+
+def has_idempotency_key(value: str | None) -> bool:
+    return value is not None and bool(value.strip())
+
+
 def failed_meta_from_error(
     error: PaymentsError,
     *,

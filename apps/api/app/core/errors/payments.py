@@ -32,6 +32,10 @@ class PaymentsTimeoutError(PaymentsTransportError):
     pass
 
 
+class PaymentsIdempotencyKeyRequiredError(PaymentsError):
+    pass
+
+
 class PaymentsAuthenticationError(PaymentsError):
     pass
 

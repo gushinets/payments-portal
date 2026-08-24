@@ -54,6 +54,7 @@ class SandboxProviderAccount:
     enabled: bool = True
     public_identifier: str = ""
     default_currency: str = "RUB"
+    test_mode: bool = False
     config: dict[str, Any] = field(default_factory=dict)
 
 
@@ -68,8 +69,18 @@ def main() -> int:
     try:
         adapter, provider_account = _build_adapter()
         _verify_lookup(adapter, provider_account)
-        _verify_refund(adapter, provider_account)
-        _verify_recurring_lifecycle(adapter, provider_account)
+        if _destructive_verify_enabled():
+            _require_test_mode(provider_account)
+            _verify_refund(adapter, provider_account)
+            _verify_recurring_lifecycle(adapter, provider_account)
+        else:
+            _print_safe(
+                "destructive",
+                {
+                    "status": "skipped",
+                    "reason": "CLOUDPAYMENTS_SANDBOX_DESTRUCTIVE_VERIFY is not 1",
+                },
+            )
     except SandboxConfigError as exc:
         _print_safe("sandbox", {"status": "configuration_error", "code": str(exc)})
         return 2
@@ -82,6 +93,7 @@ def _build_adapter() -> tuple[CloudPaymentsAdapter, SandboxProviderAccount]:
     provider_account = SandboxProviderAccount(
         public_identifier=public_id,
         default_currency=_env("CLOUDPAYMENTS_SANDBOX_CURRENCY") or "RUB",
+        test_mode=_bool_env("CLOUDPAYMENTS_SANDBOX_TEST_MODE"),
     )
     client = CloudPaymentsApiClient(
         config=CloudPaymentsApiClientConfig(
@@ -251,7 +263,17 @@ def _optional_int_env(name: str) -> int | None:
 
 
 def _bool_env(name: str) -> bool:
-    return _env(name).casefold() == "true"
+    return _env(name).casefold() in {"1", "true", "yes"}
+
+
+def _destructive_verify_enabled() -> bool:
+    return os.getenv("CLOUDPAYMENTS_SANDBOX_DESTRUCTIVE_VERIFY") == "1"
+
+
+def _require_test_mode(provider_account: SandboxProviderAccount) -> None:
+    if provider_account.test_mode:
+        return
+    raise SandboxConfigError("CLOUDPAYMENTS_SANDBOX_TEST_MODE_required_for_destructive_verify")
 
 
 def _amount_minor(amount: Decimal) -> int:

@@ -9,7 +9,13 @@ from app.integrations.cloudpayments.api_client import (
     CloudPaymentsCreateSubscriptionRequest,
     CloudPaymentsUpdateSubscriptionRequest,
 )
-from app.integrations.cloudpayments.operation_meta import failed_meta, failed_meta_from_error, succeeded_meta
+from app.integrations.cloudpayments.operation_meta import (
+    failed_meta,
+    failed_meta_from_error,
+    has_idempotency_key,
+    idempotency_key_required_meta,
+    succeeded_meta,
+)
 from app.models import PaymentProviderAccount
 from app.payment_providers.contracts import (
     CancelRecurringSubscriptionRequest,
@@ -22,6 +28,11 @@ from app.payment_providers.contracts import (
     UpdateRecurringSubscriptionRequest,
     UpdateRecurringSubscriptionResult,
 )
+
+_MUTABLE_SUBSCRIPTION_STATUSES = {
+    RecurringSubscriptionStatus.ACTIVE,
+    RecurringSubscriptionStatus.PAST_DUE,
+}
 
 
 def create_recurring_subscription(
@@ -42,6 +53,14 @@ def create_recurring_subscription(
             provider_account=provider_account,
             request=request,
             meta=account_error,
+        )
+
+    if not has_idempotency_key(request.idempotency_key):
+        return _create_subscription_failure_result(
+            provider_code=provider_code,
+            provider_account=provider_account,
+            request=request,
+            meta=idempotency_key_required_meta(),
         )
 
     validation_error = _validate_create_subscription_request(
@@ -121,6 +140,14 @@ def update_recurring_subscription(
             meta=account_error,
         )
 
+    if not has_idempotency_key(request.idempotency_key):
+        return _update_subscription_failure_result(
+            provider_code=provider_code,
+            provider_account=provider_account,
+            request=request,
+            meta=idempotency_key_required_meta(),
+        )
+
     validation_error = _validate_update_subscription_request(
         provider_account=provider_account,
         request=request,
@@ -131,6 +158,18 @@ def update_recurring_subscription(
             provider_account=provider_account,
             request=request,
             meta=validation_error,
+        )
+
+    current_subscription_error = _validate_current_subscription_can_be_updated(
+        api_client=api_client,
+        request=request,
+    )
+    if current_subscription_error is not None:
+        return _update_subscription_failure_result(
+            provider_code=provider_code,
+            provider_account=provider_account,
+            request=request,
+            meta=current_subscription_error,
         )
 
     interval = _cloudpayments_interval(request.interval_unit)
@@ -192,6 +231,15 @@ def cancel_recurring_subscription(
             provider_subscription_id=request.provider_subscription_id,
             status=RecurringSubscriptionStatus.FAILED,
             meta=account_error,
+        )
+
+    if not has_idempotency_key(request.idempotency_key):
+        return CancelRecurringSubscriptionResult(
+            provider=provider_code,
+            provider_account_id=str(provider_account.id),
+            provider_subscription_id=request.provider_subscription_id,
+            status=RecurringSubscriptionStatus.FAILED,
+            meta=idempotency_key_required_meta(),
         )
 
     try:
@@ -275,6 +323,35 @@ def _validate_update_subscription_request(
         max_periods=request.max_periods,
         idempotency_key=request.idempotency_key,
     )
+
+
+def _validate_current_subscription_can_be_updated(
+    *,
+    api_client: CloudPaymentsApiClient,
+    request: UpdateRecurringSubscriptionRequest,
+) -> OperationResultMeta | None:
+    try:
+        response = api_client.get_subscription(subscription_id=request.provider_subscription_id)
+    except PaymentsError as exc:
+        return failed_meta_from_error(exc, idempotency_key=request.idempotency_key)
+
+    if response.model is None:
+        return failed_meta(
+            code="payments_api_response_validation_error",
+            message_safe="CloudPayments subscription lookup response is missing a subscription model.",
+            retry_disposition=RetryDisposition.NON_RETRYABLE,
+            idempotency_key=request.idempotency_key,
+        )
+
+    current_status = _map_subscription_status(response.model.status)
+    if current_status not in _MUTABLE_SUBSCRIPTION_STATUSES:
+        return failed_meta(
+            code="recurring_subscription_terminal",
+            message_safe="Recurring subscription update is rejected for a non-mutable provider status.",
+            retry_disposition=RetryDisposition.NON_RETRYABLE,
+            idempotency_key=request.idempotency_key,
+        )
+    return None
 
 
 def _validate_subscription_commercial_fields(

@@ -14,12 +14,12 @@ configure_api_test_environment()
 
 from app.core.errors import (  # noqa: E402
     PaymentsAuthenticationError,
+    PaymentsIdempotencyKeyRequiredError,
     PaymentsOperationDeclinedError,
     PaymentsRateLimitError,
     PaymentsResponseDecodeError,
     PaymentsResponseValidationError,
     PaymentsTimeoutError,
-    PaymentsUpstreamError,
 )
 from app.core.observability import JsonFormatter, redact  # noqa: E402
 from app.integrations.cloudpayments.api_client import (  # noqa: E402
@@ -277,16 +277,17 @@ def test_base_http_payments_api_client_does_not_retry_non_idempotent_requests() 
         transport=httpx.MockTransport(handler),
     )
 
-    with pytest.raises(PaymentsRateLimitError):
+    with pytest.raises(PaymentsRateLimitError) as error:
         client.send(
             PaymentsApiRequest(operation="health", path="/health", is_idempotent=False),
             response_model=DummyResponse,
         )
 
     assert attempts == 1
+    assert error.value.retry_disposition.value == "retryable"
 
 
-def test_base_http_payments_api_client_does_not_retry_rate_limited_requests() -> None:
+def test_base_http_payments_api_client_retries_rate_limited_idempotent_requests() -> None:
     attempts = 0
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -310,8 +311,8 @@ def test_base_http_payments_api_client_does_not_retry_rate_limited_requests() ->
             response_model=DummyResponse,
         )
 
-    assert attempts == 1
-    assert error.value.retry_disposition.value == "non_retryable"
+    assert attempts == 3
+    assert error.value.retry_disposition.value == "retryable"
 
 
 def test_base_http_payments_api_client_does_not_retry_mutation_without_key() -> None:
@@ -333,7 +334,7 @@ def test_base_http_payments_api_client_does_not_retry_mutation_without_key() -> 
         transport=httpx.MockTransport(handler),
     )
 
-    with pytest.raises(PaymentsUpstreamError):
+    with pytest.raises(PaymentsIdempotencyKeyRequiredError) as error:
         client.send(
             PaymentsApiRequest(
                 operation="mutation",
@@ -344,7 +345,8 @@ def test_base_http_payments_api_client_does_not_retry_mutation_without_key() -> 
             response_model=DummyResponse,
         )
 
-    assert attempts == 1
+    assert attempts == 0
+    assert error.value.code == "payments_api_idempotency_key_required"
 
 
 def test_cloudpayments_client_retries_mutation_with_stable_request_id() -> None:
@@ -382,11 +384,12 @@ def test_cloudpayments_client_retries_mutation_with_stable_request_id() -> None:
     assert request_ids == ["refund-455-10000", "refund-455-10000"]
 
 
-def test_cloudpayments_client_does_not_send_blank_request_id() -> None:
-    seen_headers: list[dict[str, str]] = []
+def test_cloudpayments_client_rejects_blank_request_id_for_mutation() -> None:
+    attempts = 0
 
     def handler(request: httpx.Request) -> httpx.Response:
-        seen_headers.append(dict(request.headers))
+        nonlocal attempts
+        attempts += 1
         return httpx.Response(200, json={"Success": True, "Message": None, "Model": {"TransactionId": 777}})
 
     client = CloudPaymentsApiClient(
@@ -400,9 +403,10 @@ def test_cloudpayments_client_does_not_send_blank_request_id() -> None:
         transport=httpx.MockTransport(handler),
     )
 
-    client.refund(transaction_id=455, amount=Decimal("100.00"), idempotency_key="   ")
+    with pytest.raises(PaymentsIdempotencyKeyRequiredError):
+        client.refund(transaction_id=455, amount=Decimal("100.00"), idempotency_key="   ")
 
-    assert "x-request-id" not in seen_headers[0]
+    assert attempts == 0
 
 
 def test_cloudpayments_client_does_not_retry_mutation_without_idempotency_key() -> None:
@@ -426,10 +430,10 @@ def test_cloudpayments_client_does_not_retry_mutation_without_idempotency_key() 
         transport=httpx.MockTransport(handler),
     )
 
-    with pytest.raises(PaymentsUpstreamError):
+    with pytest.raises(PaymentsIdempotencyKeyRequiredError):
         client.refund(transaction_id=455, amount=Decimal("100.00"))
 
-    assert attempts == 1
+    assert attempts == 0
 
 
 def test_base_http_payments_api_client_maps_timeout_to_custom_error() -> None:
@@ -792,7 +796,11 @@ def test_cloudpayments_client_rejects_successful_refund_without_transaction_id()
     )
 
     with pytest.raises(PaymentsResponseValidationError):
-        client.refund(transaction_id=455, amount=Decimal("100.00"))
+        client.refund(
+            transaction_id=455,
+            amount=Decimal("100.00"),
+            idempotency_key="refund-455-10000",
+        )
 
 
 def test_cloudpayments_client_raises_declined_error_for_success_false() -> None:
