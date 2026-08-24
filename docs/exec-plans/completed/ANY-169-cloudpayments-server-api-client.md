@@ -372,8 +372,14 @@ Current branch evidence:
 - Changed files:
   `apps/api/app/core/observability.py`,
   `apps/api/app/payment_providers/api_client.py`,
+  `apps/api/app/payment_providers/contracts.py`,
   `apps/api/app/integrations/cloudpayments/api_client.py`,
-  `apps/api/tests/test_payments_api_client.py`, and
+  `apps/api/app/integrations/cloudpayments/adapter.py`,
+  `apps/api/app/integrations/cloudpayments/refunds.py`,
+  `apps/api/app/integrations/cloudpayments/recurring.py`,
+  `apps/api/app/integrations/cloudpayments/transaction_lookup.py`,
+  `apps/api/tests/test_payments_api_client.py`,
+  `apps/api/tests/test_cloudpayments_adapter_api.py`, and
   `scripts/cloudpayments_sandbox_verify.py`.
 - Focused tests:
   `apps/api/.venv/bin/python -m pytest -p no:cacheprovider
