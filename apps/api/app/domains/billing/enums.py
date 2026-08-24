@@ -36,6 +36,8 @@ class ProviderSubscriptionState(StrEnum):
     ACTIVE = "active"
     PAST_DUE = "past_due"
     CANCELED = "canceled"
+    REJECTED = "rejected"
+    EXPIRED = "expired"
     PAUSED = "paused"
     ENDED = "ended"
 

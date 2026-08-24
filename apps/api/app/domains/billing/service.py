@@ -146,6 +146,8 @@ PROVIDER_SUBSCRIPTION_STATUS_MAP = {
     ProviderSubscriptionState.ACTIVE: SubscriptionStatus.ACTIVE,
     ProviderSubscriptionState.PAST_DUE: SubscriptionStatus.PAST_DUE,
     ProviderSubscriptionState.CANCELED: SubscriptionStatus.CANCELED,
+    ProviderSubscriptionState.REJECTED: SubscriptionStatus.CANCELED,
+    ProviderSubscriptionState.EXPIRED: SubscriptionStatus.CANCELED,
     ProviderSubscriptionState.PAUSED: SubscriptionStatus.PAUSED,
     ProviderSubscriptionState.ENDED: SubscriptionStatus.CANCELED,
 }
@@ -614,6 +616,7 @@ def apply_provider_subscription_state(
     ensure_subscription_status_transition(previous, status)
     subscription.status = status.value
     if status == SubscriptionStatus.CANCELED:
+        subscription.renewal_mode = SubscriptionRenewalMode.MANUAL.value
         subscription.canceled_at = subscription.canceled_at or command.occurred_at
     _write_event(
         db,

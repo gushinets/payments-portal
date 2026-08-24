@@ -140,9 +140,10 @@ References:
     projecting pending state from order/order-item data and paid access from the
     subscription and entitlement records.
 
-- [ ] Provide the stable integration boundary required by ANY-168.
-  - Allow ANY-168 to attach an optional provider subscription reference only
-    through `enable_automatic_renewal`.
+- [x] Expose provider-neutral recurring lifecycle commands for future adapters.
+  - Provide `enable_automatic_renewal` so the later ANY-168 implementation can
+    attach an optional provider subscription reference without writing domain
+    tables directly.
   - Accept normalized renewal success, failure, and recurrent-status commands;
     domain code must not import payment-provider or CloudPayments contracts.
   - Treat `past_due` as a renewal condition without revoking the already paid
@@ -184,7 +185,7 @@ References:
     boundary without presenting CloudPayments as the only possible provider.
   - Run `npm run generate`; do not hand-edit generated schema files.
 
-## ANY-168 Follow-up Contract
+## Contract for the Future ANY-168 Implementation
 
 After ANY-78 is merged, ANY-168 can implement the recurrent flow as follows:
 
