@@ -10,19 +10,41 @@ from urllib.parse import parse_qs
 
 from fastapi import Request
 
+from app.core.errors import (
+    PaymentProviderConfigurationError,
+)
 from app.core.observability import redact
 from app.core.settings import settings
-from app.integrations.cloudpayments.payload import (
-    get_first,
-    normalized_recurrent_status,
-    parse_bool,
-    parse_int,
+from app.integrations.cloudpayments.api_client import CloudPaymentsApiClient
+from app.integrations.cloudpayments.contracts import (
+    CloudPaymentsWebhookPayload,
+    cloudpayments_event_idempotency_key,
 )
+from app.integrations.cloudpayments.payload import get_first
+from app.integrations.cloudpayments.account_validation import validate_provider_account_context
+from app.integrations.cloudpayments.operation_meta import failed_meta, failed_meta_from_error, succeeded_meta
+from app.integrations.cloudpayments.recurring import (
+    cancel_recurring_subscription as cancel_cloudpayments_recurring_subscription,
+    create_recurring_subscription as create_cloudpayments_recurring_subscription,
+    update_recurring_subscription as update_cloudpayments_recurring_subscription,
+)
+from app.integrations.cloudpayments.refunds import refund_payment as refund_cloudpayments_payment
+from app.integrations.cloudpayments.transaction_lookup import lookup_transaction as lookup_cloudpayments_transaction
 from app.models import Order, PaymentProviderAccount
 from app.payment_providers.contracts import (
+    CancelRecurringSubscriptionRequest,
+    CancelRecurringSubscriptionResult,
+    RefundRequest,
+    RefundResult,
     CheckoutAction,
+    CreateRecurringSubscriptionRequest,
+    CreateRecurringSubscriptionResult,
+    OperationResultMeta,
+    TransactionLookupRequest,
+    TransactionLookupResult,
     NormalizedPaymentEvent,
-    PaymentProviderConfigurationError,
+    UpdateRecurringSubscriptionRequest,
+    UpdateRecurringSubscriptionResult,
 )
 
 CLOUDPAYMENTS_PROVIDER_CODE = "cloudpayments"
@@ -48,15 +70,6 @@ CARD_DATA_KEYS = {
     "cvc",
     "pan",
     "token",
-}
-EVENT_TYPES_BY_ENDPOINT = {
-    "check": "payment.check",
-    "pay": "payment.succeeded",
-    "fail": "payment.failed",
-    "refund": "payment.refunded",
-    "confirm": "payment.succeeded",
-    "cancel": "payment.canceled",
-    "recurrent": "subscription.updated",
 }
 CLOUDPAYMENTS_RESPONSE_CODES = {
     "order_not_found": 10,
@@ -137,79 +150,9 @@ def _parse_amount(value: Any) -> Decimal | None:
 def _amount_minor(amount: Decimal | None) -> int | None:
     if amount is None:
         return None
+    if not amount.is_finite():
+        return None
     return int((amount * Decimal("100")).quantize(Decimal("1")))
-
-
-def _provider_event_id(payload: dict[str, Any]) -> str | None:
-    value = get_first(
-        payload,
-        "EventId",
-        "eventId",
-        "NotificationId",
-        "notificationId",
-        "Id",
-        "id",
-    )
-    return str(value) if value is not None else None
-
-
-def _provider_status(payload: dict[str, Any]) -> str:
-    return str(get_first(payload, "Status", "status") or "").lower()
-
-
-def _without_empty_values(payload: dict[str, Any]) -> dict[str, Any]:
-    return {key: value for key, value in payload.items() if value is not None}
-
-
-def _normalized_recurrent_payload(
-    payload: dict[str, Any],
-    *,
-    amount_minor: int | None,
-    currency: str | None,
-) -> dict[str, Any]:
-    interval = get_first(payload, "Interval", "interval")
-    return _without_empty_values(
-        {
-            "subscription_id": get_first(payload, "Id", "id"),
-            "account_id": get_first(payload, "AccountId", "accountId", "account_id"),
-            "email": get_first(payload, "Email", "email"),
-            "description": get_first(payload, "Description", "description"),
-            "status": normalized_recurrent_status(get_first(payload, "Status", "status")),
-            "amount_minor": amount_minor,
-            "currency": currency,
-            "require_confirmation": parse_bool(get_first(payload, "RequireConfirmation", "requireConfirmation")),
-            "start_at": get_first(payload, "StartDate", "startDate", "start_at"),
-            "interval": str(interval).strip().lower() if interval is not None else None,
-            "period": parse_int(get_first(payload, "Period", "period")),
-            "successful_payments_count": parse_int(
-                get_first(
-                    payload,
-                    "SuccessfulTransactionsNumber",
-                    "successfulTransactionsNumber",
-                )
-            ),
-            "failed_payments_count": parse_int(
-                get_first(payload, "FailedTransactionsNumber", "failedTransactionsNumber")
-            ),
-            "max_periods": parse_int(get_first(payload, "MaxPeriods", "maxPeriods")),
-            "last_transaction_at": get_first(
-                payload,
-                "LastTransactionDate",
-                "lastTransactionDate",
-            ),
-            "next_transaction_at": get_first(
-                payload,
-                "NextTransactionDate",
-                "nextTransactionDate",
-            ),
-        }
-    )
-
-
-def _event_type(endpoint: str, payload: dict[str, Any]) -> str:
-    if endpoint == "pay" and _provider_status(payload) == "authorized":
-        return "payment.authorized"
-    return EVENT_TYPES_BY_ENDPOINT.get(endpoint, endpoint)
 
 
 def _event_idempotency_key(
@@ -220,17 +163,14 @@ def _event_idempotency_key(
     refund_id: str | None,
     payload_hash: str,
 ) -> str:
-    if endpoint == "recurrent":
-        return f"{CLOUDPAYMENTS_PROVIDER_CODE}:recurrent:payload:{payload_hash}"
-    if provider_event_id:
-        return f"{CLOUDPAYMENTS_PROVIDER_CODE}:event:{provider_event_id}"
-    if endpoint == "refund" and refund_id:
-        return f"{CLOUDPAYMENTS_PROVIDER_CODE}:refund:{refund_id}"
-    if transaction_id:
-        return f"{CLOUDPAYMENTS_PROVIDER_CODE}:{endpoint}:transaction:{transaction_id}"
-    if invoice_id:
-        return f"{CLOUDPAYMENTS_PROVIDER_CODE}:{endpoint}:invoice:{invoice_id}:{payload_hash}"
-    return f"{CLOUDPAYMENTS_PROVIDER_CODE}:{endpoint}:payload:{payload_hash}"
+    return cloudpayments_event_idempotency_key(
+        endpoint,
+        provider_event_id,
+        invoice_id,
+        transaction_id,
+        refund_id,
+        payload_hash,
+    )
 
 
 def verify_cloudpayments_signature(raw_body: bytes, headers: dict[str, str]) -> bool:
@@ -255,15 +195,48 @@ def verify_cloudpayments_signature(raw_body: bytes, headers: dict[str, str]) -> 
     return hmac.compare_digest(signature.encode("utf-8"), expected)
 
 
+def _raise_checkout_account_configuration_error(account_error: OperationResultMeta | None) -> None:
+    if account_error is None:
+        return
+    failure = account_error.failure
+    code = failure.code if failure is not None else "cloudpayments_provider_account_invalid"
+    if code == "cloudpayments_public_id_missing":
+        code = "cloudpayments_public_terminal_id_missing"
+    raise PaymentProviderConfigurationError(
+        code,
+        message_safe=failure.message_safe if failure is not None else None,
+    )
+
+
 class CloudPaymentsAdapter:
     provider_code = CLOUDPAYMENTS_PROVIDER_CODE
+
+    def __init__(self, *, api_client: CloudPaymentsApiClient | None = None) -> None:
+        self._api_client: CloudPaymentsApiClient | None = None
+        if api_client is not None:
+            self.set_api_client(api_client)
+
+    def set_api_client(self, api_client: CloudPaymentsApiClient) -> None:
+        self._api_client = api_client
+
+    def close(self) -> None:
+        api_client = self._api_client
+        self._api_client = None
+        if api_client is not None:
+            api_client.close()
+
+    @property
+    def api_client(self) -> CloudPaymentsApiClient:
+        if self._api_client is None:
+            raise RuntimeError("CloudPayments adapter client is not configured")
+        return self._api_client
 
     def default_account_fields(self, *, tenant_id: str, region: str) -> dict[str, Any]:
         return {
             "tenant_id": tenant_id,
             "region": region,
             "provider": self.provider_code,
-            "public_identifier": None,
+            "public_identifier": settings.cloudpayments_public_id or None,
             "default_currency": "RUB",
             "enabled": True,
             "test_mode": True,
@@ -282,9 +255,13 @@ class CloudPaymentsAdapter:
         mode = str(provider_account.config.get("widget_mode") or "charge")
         if mode not in {"charge", "auth"}:
             raise PaymentProviderConfigurationError("cloudpayments_widget_mode_invalid")
-        public_identifier = provider_account.public_identifier or settings.cloudpayments_public_id or None
-        if public_identifier is None or not public_identifier.strip():
-            raise PaymentProviderConfigurationError("cloudpayments_public_terminal_id_missing")
+        account_error = validate_provider_account_context(
+            provider_account=provider_account,
+            provider_code=self.provider_code,
+            configured_public_id=settings.cloudpayments_public_id,
+        )
+        _raise_checkout_account_configuration_error(account_error)
+        public_identifier = settings.cloudpayments_public_id.strip()
         return CheckoutAction(
             provider=self.provider_code,
             experience="widget",
@@ -298,6 +275,80 @@ class CloudPaymentsAdapter:
             account_id=account_id,
             description=description,
             metadata=metadata,
+        )
+
+    def lookup_transaction(
+        self,
+        *,
+        provider_account: PaymentProviderAccount,
+        request: TransactionLookupRequest,
+    ) -> TransactionLookupResult:
+        account_error = validate_provider_account_context(
+            provider_account=provider_account,
+            provider_code=self.provider_code,
+            configured_public_id=self.api_client.config.public_id,
+        )
+        return lookup_cloudpayments_transaction(
+            api_client=self.api_client,
+            provider_account=provider_account,
+            request=request,
+            provider_code=self.provider_code,
+            account_error=account_error,
+            failed_meta=failed_meta,
+            failed_meta_from_error=failed_meta_from_error,
+            succeeded_meta=succeeded_meta,
+        )
+
+    def refund_payment(
+        self,
+        *,
+        provider_account: PaymentProviderAccount,
+        request: RefundRequest,
+    ) -> RefundResult:
+        return refund_cloudpayments_payment(
+            api_client=self.api_client,
+            provider_code=self.provider_code,
+            provider_account=provider_account,
+            request=request,
+        )
+
+    def create_recurring_subscription(
+        self,
+        *,
+        provider_account: PaymentProviderAccount,
+        request: CreateRecurringSubscriptionRequest,
+    ) -> CreateRecurringSubscriptionResult:
+        return create_cloudpayments_recurring_subscription(
+            api_client=self.api_client,
+            provider_code=self.provider_code,
+            provider_account=provider_account,
+            request=request,
+        )
+
+    def update_recurring_subscription(
+        self,
+        *,
+        provider_account: PaymentProviderAccount,
+        request: UpdateRecurringSubscriptionRequest,
+    ) -> UpdateRecurringSubscriptionResult:
+        return update_cloudpayments_recurring_subscription(
+            api_client=self.api_client,
+            provider_code=self.provider_code,
+            provider_account=provider_account,
+            request=request,
+        )
+
+    def cancel_recurring_subscription(
+        self,
+        *,
+        provider_account: PaymentProviderAccount,
+        request: CancelRecurringSubscriptionRequest,
+    ) -> CancelRecurringSubscriptionResult:
+        return cancel_cloudpayments_recurring_subscription(
+            api_client=self.api_client,
+            provider_code=self.provider_code,
+            provider_account=provider_account,
+            request=request,
         )
 
     async def normalize_webhook_request(
@@ -322,56 +373,23 @@ class CloudPaymentsAdapter:
             status = "invalid_cloudpayments_signature"
             error_message = "invalid_cloudpayments_signature"
 
-        invoice_id = get_first(payload, "InvoiceId", "invoiceId", "invoice_id")
-        transaction_id = get_first(payload, "TransactionId", "transactionId", "transaction_id")
-        refund_id = get_first(payload, "RefundId", "refundId", "refund_id")
-        if endpoint == "refund":
-            refund_id = refund_id or transaction_id
-            transaction_id = (
-                get_first(
-                    payload,
-                    "PaymentTransactionId",
-                    "paymentTransactionId",
-                    "payment_transaction_id",
-                )
-                or transaction_id
-            )
         amount = _parse_amount(get_first(payload, "Amount", "amount"))
         amount_minor = _amount_minor(amount)
-        currency = get_first(payload, "Currency", "currency")
-        provider_event_id = _provider_event_id(payload)
+        if amount is not None and amount_minor is None:
+            amount = None
+            if status is None:
+                status = "missing_amount"
+                error_message = "missing_amount"
         payload_hash = _payload_hash(raw_body, payload)
         safe_payload = _safe_payload(payload)
-        if endpoint == "recurrent":
-            safe_payload["_normalized"] = _normalized_recurrent_payload(
-                payload,
-                amount_minor=amount_minor,
-                currency=str(currency) if currency is not None else None,
-            )
-
-        return NormalizedPaymentEvent(
+        return CloudPaymentsWebhookPayload.model_validate(payload).to_normalized_event(
             endpoint=endpoint,
-            event_type=_event_type(endpoint, payload),
-            provider_event_id=provider_event_id,
-            idempotency_key=_event_idempotency_key(
-                endpoint,
-                provider_event_id,
-                str(invoice_id) if invoice_id is not None else None,
-                str(transaction_id) if transaction_id is not None else None,
-                str(refund_id) if refund_id is not None else None,
-                payload_hash,
-            ),
             payload_hash=payload_hash,
-            invoice_id=str(invoice_id) if invoice_id is not None else None,
-            transaction_id=str(transaction_id) if transaction_id is not None else None,
-            refund_id=str(refund_id) if refund_id is not None else None,
-            account_id=get_first(payload, "AccountId", "accountId", "account_id"),
-            amount_minor=amount_minor,
-            amount=amount,
-            currency=str(currency) if currency is not None else None,
             safe_payload=safe_payload,
             safe_headers=redact(headers),
             verified=verified,
+            amount_minor=amount_minor,
+            amount=amount,
             error_code=status,
             error_message=error_message,
         )
@@ -411,4 +429,8 @@ class CloudPaymentsAdapter:
         return CLOUDPAYMENTS_RESPONSE_CODES.get(error_code, 13)
 
 
-cloudpayments_adapter = CloudPaymentsAdapter()
+def get_cloudpayments_adapter(request: Request) -> CloudPaymentsAdapter:
+    try:
+        return request.app.state.cloudpayments_adapter
+    except AttributeError as exc:
+        raise RuntimeError("CloudPayments adapter is not configured for this app") from exc

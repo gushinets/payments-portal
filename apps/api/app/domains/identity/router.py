@@ -10,6 +10,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.errors import PaymentProviderConfigurationError
 from app.core.observability import record_checkout, traced
 from app.domains.identity.passwords import hash_password, verify_password
 from app.domains.legal.service import (
@@ -37,7 +38,6 @@ from app.models import (
     User,
 )
 from app.payment_providers.accounts import get_or_create_checkout_provider_account
-from app.payment_providers.contracts import PaymentProviderConfigurationError
 from app.payment_providers.registry import (
     PaymentProviderRegistry,
     get_payment_provider_registry,

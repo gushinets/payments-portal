@@ -5,6 +5,14 @@
       "maxLines": 820,
       "reason": "Temporary aggregate ORM registry includes the ANY-71 catalog baseline; split before adding subscriptions or entitlements."
     },
+    "apps/api/app/payment_providers/api_client.py": {
+      "maxLines": 550,
+      "reason": "Provider HTTP client keeps request deadline, retry, redaction, and idempotency policy together while the provider boundary is under active development."
+    },
+    "apps/api/app/integrations/cloudpayments/recurring.py": {
+      "maxLines": 600,
+      "reason": "CloudPayments recurring operations keep validation, state mapping, and safe result translation together while the recurring provider slice is under active development."
+    },
     "apps/api/app/domains/identity/router.py": {
       "maxLines": 700,
       "reason": "Behavior-preserving transition keeps legacy auth flow together until its product redesign."

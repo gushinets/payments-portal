@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from app.payment_providers.contracts import PaymentProviderAdapter
+from fastapi import Request
+
+from app.payment_providers.adapter import PaymentProviderAdapter
 
 
 class PaymentProviderRegistry:
@@ -22,8 +24,8 @@ class PaymentProviderRegistry:
         return next(iter(self._adapters.values()))
 
 
-payment_provider_registry = PaymentProviderRegistry()
-
-
-def get_payment_provider_registry() -> PaymentProviderRegistry:
-    return payment_provider_registry
+def get_payment_provider_registry(request: Request) -> PaymentProviderRegistry:
+    try:
+        return request.app.state.payment_provider_registry
+    except AttributeError as exc:
+        raise RuntimeError("Payment provider registry is not configured for this app") from exc

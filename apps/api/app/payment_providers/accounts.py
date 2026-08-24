@@ -5,7 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import CountryRegionRule, PaymentProviderAccount, User
-from app.payment_providers.contracts import PaymentProviderAdapter
+from app.payment_providers.adapter import PaymentProviderAdapter
 from app.payment_providers.registry import PaymentProviderRegistry
 
 

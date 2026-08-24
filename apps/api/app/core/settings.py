@@ -6,10 +6,23 @@ from typing import Annotated, Any
 from urllib.parse import quote
 
 from dotenv import load_dotenv
-from pydantic import StringConstraints, ValidationInfo, field_validator, model_validator
+from pydantic import Field, StringConstraints, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
-from app.core.url_validation import validate_production_cors_origin, validate_production_public_url
+from app.core.payment_api_limits import (
+    PAYMENTS_API_MAX_CONNECT_TIMEOUT_SECONDS,
+    PAYMENTS_API_MAX_POOL_TIMEOUT_SECONDS,
+    PAYMENTS_API_MAX_READ_TIMEOUT_SECONDS,
+    PAYMENTS_API_MAX_RETRIES,
+    PAYMENTS_API_MAX_RETRY_BACKOFF_SECONDS,
+    PAYMENTS_API_MAX_TIMEOUT_SECONDS,
+    PAYMENTS_API_MAX_WRITE_TIMEOUT_SECONDS,
+)
+from app.core.url_validation import (
+    validate_https_origin_url,
+    validate_production_cors_origin,
+    validate_production_public_url,
+)
 
 
 def _split_csv_value(raw: str) -> tuple[str, ...]:
@@ -42,6 +55,36 @@ class Settings(BaseSettings):
     postgres_port: int
     cloudpayments_public_id: str = ""
     cloudpayments_api_secret: str = ""
+    cloudpayments_api_base_url: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)] = (
+        "https://api.cloudpayments.ru"
+    )
+    cloudpayments_api_timeout_seconds: float = Field(default=10.0, gt=0, le=PAYMENTS_API_MAX_TIMEOUT_SECONDS)
+    cloudpayments_api_connect_timeout_seconds: float = Field(
+        default=3.0,
+        gt=0,
+        le=PAYMENTS_API_MAX_CONNECT_TIMEOUT_SECONDS,
+    )
+    cloudpayments_api_read_timeout_seconds: float = Field(
+        default=10.0,
+        gt=0,
+        le=PAYMENTS_API_MAX_READ_TIMEOUT_SECONDS,
+    )
+    cloudpayments_api_write_timeout_seconds: float = Field(
+        default=10.0,
+        gt=0,
+        le=PAYMENTS_API_MAX_WRITE_TIMEOUT_SECONDS,
+    )
+    cloudpayments_api_pool_timeout_seconds: float = Field(
+        default=3.0,
+        gt=0,
+        le=PAYMENTS_API_MAX_POOL_TIMEOUT_SECONDS,
+    )
+    cloudpayments_api_max_retries: int = Field(default=2, ge=0, le=PAYMENTS_API_MAX_RETRIES)
+    cloudpayments_api_retry_backoff_seconds: float = Field(
+        default=0.5,
+        ge=0,
+        le=PAYMENTS_API_MAX_RETRY_BACKOFF_SECONDS,
+    )
     smtp_host: str = ""
     smtp_port: int = 587
     smtp_username: str = ""
@@ -71,6 +114,15 @@ class Settings(BaseSettings):
         if info.data.get("app_env") == AppEnv.PRODUCTION:
             return validate_production_public_url(value, "APP_PUBLIC_BASE_URL")
         return value
+
+    @field_validator("cloudpayments_api_base_url")
+    @classmethod
+    def require_cloudpayments_api_origin(cls, value: str) -> str:
+        return validate_https_origin_url(
+            value,
+            "CLOUDPAYMENTS_API_BASE_URL",
+            allowed_hostname="api.cloudpayments.ru",
+        )
 
     @model_validator(mode="before")
     @classmethod

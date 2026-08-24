@@ -3863,6 +3863,35 @@ def test_cloudpayments_form_webhook_preserves_response_and_parsing_contract() ->
     assert event.error_code == "order_not_found"
 
 
+def test_cloudpayments_webhook_rejects_non_finite_amount_without_500() -> None:
+    for amount in ("NaN", "Infinity", "-Infinity"):
+        response = client.post(
+            "/api/cloudpayments/check",
+            headers={"Content-HMAC": "demo-signature"},
+            json={
+                "InvoiceId": f"invoice-{amount}",
+                "TransactionId": f"tx-{amount}",
+                "AccountId": "non-finite-amount@example.com",
+                "Amount": amount,
+                "Currency": "RUB",
+            },
+        )
+
+        assert response.status_code == 200
+        assert response.json() == {"code": 12}
+
+    with SessionLocal() as db:
+        events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
+
+    assert len(events) == 3
+    assert {event.raw_payload["Amount"] for event in events} == {"NaN", "Infinity", "-Infinity"}
+    assert all(event.status == "failed" for event in events)
+    assert all(event.error_code == "missing_amount" for event in events)
+    assert all(event.error_message == "missing_amount" for event in events)
+    assert all(event.amount_minor is None for event in events)
+    assert all(event.amount is None for event in events)
+
+
 def test_malformed_cloudpayments_payload_omits_raw_body() -> None:
     response = client.post(
         "/api/cloudpayments/pay",
