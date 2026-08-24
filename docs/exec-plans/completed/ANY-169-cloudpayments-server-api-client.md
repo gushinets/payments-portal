@@ -1,6 +1,6 @@
 # ANY-169 — CloudPayments Server API Client
 
-Status: active
+Status: completed
 
 ## Objective
 
