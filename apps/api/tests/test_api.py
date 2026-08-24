@@ -36,6 +36,7 @@ from app.models import (  # noqa: E402
     PasswordResetRateLimit,
     Product,
     Refund,
+    Subscription,
     User,
 )
 from app.legal_seed import RU_DOCUMENT_VERSIONS, seed_legal_documents  # noqa: E402
@@ -4050,6 +4051,213 @@ def test_cloudpayments_idempotency_key_fallbacks_are_stable() -> None:
         == "cloudpayments:pay:invoice:invoice-1:hash-1"
     )
     assert _event_idempotency_key("pay", None, None, None, None, "hash-1") == "cloudpayments:pay:payload:hash-1"
+
+
+def test_account_subscriptions_list_returns_only_authenticated_user_subscriptions() -> None:
+    owner_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "account-subscriptions-owner@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    other_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "account-subscriptions-other@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    assert owner_response.status_code == 200
+    assert other_response.status_code == 200
+    token = owner_response.json()["token"]
+    now = datetime.now(timezone.utc)
+
+    with SessionLocal() as db:
+        plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
+        owner = db.query(User).filter(User.email_normalized == "account-subscriptions-owner@example.com").one()
+        other = db.query(User).filter(User.email_normalized == "account-subscriptions-other@example.com").one()
+        provider_account = PaymentProviderAccount(
+            tenant_id=owner.tenant_id,
+            region=owner.region,
+            provider="test-provider",
+            public_identifier="pk_account_subscriptions",
+            default_currency=plan.currency,
+            enabled=True,
+            test_mode=True,
+            config={},
+        )
+        db.add(provider_account)
+        db.flush()
+        owner_subscription = Subscription(
+            tenant_id=owner.tenant_id,
+            region=owner.region,
+            user_id=owner.id,
+            plan_id=plan.id,
+            scope_type=plan.scope_type,
+            product_id=plan.product_id,
+            bundle_id=plan.bundle_id,
+            status="active",
+            renewal_mode="automatic",
+            current_period_start=now,
+            current_period_end=now + timedelta(days=30),
+            provider_account_id=provider_account.id,
+            provider_subscription_id="provider-subscription-hidden",
+        )
+        other_subscription = Subscription(
+            tenant_id=other.tenant_id,
+            region=other.region,
+            user_id=other.id,
+            plan_id=plan.id,
+            scope_type=plan.scope_type,
+            product_id=plan.product_id,
+            bundle_id=plan.bundle_id,
+            status="active",
+            renewal_mode="manual",
+            current_period_start=now,
+            current_period_end=now + timedelta(days=30),
+        )
+        db.add_all([owner_subscription, other_subscription])
+        db.flush()
+        order = Order(
+            tenant_id=owner.tenant_id,
+            region=owner.region,
+            order_number="RU-ACCOUNT-SUBSCRIPTIONS",
+            user_id=owner.id,
+            plan_id=plan.id,
+            status="paid",
+            amount_minor=plan.price_amount_minor,
+            currency=plan.currency,
+            provider=provider_account.provider,
+            provider_account_id=provider_account.id,
+            merchant_order_id="account-subscriptions-order",
+            provider_invoice_id="account-subscriptions-invoice",
+            paid_at=now,
+        )
+        db.add(order)
+        db.flush()
+        db.add(
+            Entitlement(
+                tenant_id=owner.tenant_id,
+                region=owner.region,
+                user_id=owner.id,
+                subscription_id=owner_subscription.id,
+                plan_id=plan.id,
+                scope_type=plan.scope_type,
+                product_id=plan.product_id,
+                bundle_id=plan.bundle_id,
+                status="active",
+                valid_from=now,
+                valid_until=owner_subscription.current_period_end,
+                source="order",
+                order_id=order.id,
+            )
+        )
+        owner_subscription_id = owner_subscription.id
+        other_subscription_id = other_subscription.id
+        db.commit()
+
+    response = client.get(
+        "/api/account/subscriptions",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    assert "provider-subscription-hidden" not in response.text
+    assert "provider_account_id" not in response.text
+    assert "provider_subscription_id" not in response.text
+    assert "payment_id" not in response.text
+    assert "webhook_event_id" not in response.text
+    subscriptions = response.json()["subscriptions"]
+    assert len(subscriptions) == 1
+    assert subscriptions[0]["subscription_id"] == str(owner_subscription_id)
+    assert subscriptions[0]["subscription_id"] != str(other_subscription_id)
+    assert subscriptions[0]["plan"]["code"] == "document-summary-pro"
+    assert subscriptions[0]["scope"]["scope_type"] == "product"
+    assert subscriptions[0]["status"] == "active"
+    assert subscriptions[0]["renewal_mode"] == "automatic"
+    assert subscriptions[0]["entitlement_validity"]["status"] == "active"
+
+
+def test_account_subscription_detail_enforces_authenticated_ownership() -> None:
+    owner_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "account-subscription-detail-owner@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    other_register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "account-subscription-detail-other@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    assert owner_response.status_code == 200
+    assert other_register_response.status_code == 200
+    token = owner_response.json()["token"]
+    now = datetime.now(timezone.utc)
+
+    with SessionLocal() as db:
+        plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
+        owner = db.query(User).filter(User.email_normalized == "account-subscription-detail-owner@example.com").one()
+        other = db.query(User).filter(User.email_normalized == "account-subscription-detail-other@example.com").one()
+        owner_subscription = Subscription(
+            tenant_id=owner.tenant_id,
+            region=owner.region,
+            user_id=owner.id,
+            plan_id=plan.id,
+            scope_type=plan.scope_type,
+            product_id=plan.product_id,
+            bundle_id=plan.bundle_id,
+            status="active",
+            renewal_mode="manual",
+            current_period_start=now,
+            current_period_end=now + timedelta(days=30),
+            cancel_requested_at=now + timedelta(days=1),
+        )
+        other_subscription = Subscription(
+            tenant_id=other.tenant_id,
+            region=other.region,
+            user_id=other.id,
+            plan_id=plan.id,
+            scope_type=plan.scope_type,
+            product_id=plan.product_id,
+            bundle_id=plan.bundle_id,
+            status="active",
+            renewal_mode="manual",
+            current_period_start=now,
+            current_period_end=now + timedelta(days=30),
+        )
+        db.add_all([owner_subscription, other_subscription])
+        db.commit()
+        owner_subscription_id = owner_subscription.id
+        other_subscription_id = other_subscription.id
+
+    response = client.get(
+        f"/api/account/subscriptions/{owner_subscription_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    foreign_response = client.get(
+        f"/api/account/subscriptions/{other_subscription_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["subscription_id"] == str(owner_subscription_id)
+    assert response.json()["cancellation"]["cancel_requested_at"] is not None
+    assert response.json()["cancellation"]["canceled_at"] is None
+    assert foreign_response.status_code == 404
+    assert foreign_response.json()["detail"]["code"] == "subscription_not_found"
 
 
 def test_checkout_requires_acceptance_again_when_active_document_version_changes() -> None:

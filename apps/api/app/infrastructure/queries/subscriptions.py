@@ -14,6 +14,41 @@ def get_subscription_by_id(db: Session, subscription_id: uuid.UUID, *, for_updat
     return (query.with_for_update() if for_update else query).first()
 
 
+def get_account_subscription(
+    db: Session,
+    *,
+    tenant_id: str,
+    region: str,
+    user_id: uuid.UUID,
+    subscription_id: uuid.UUID,
+) -> Subscription | None:
+    return (
+        db.query(Subscription)
+        .filter(
+            Subscription.id == subscription_id,
+            Subscription.tenant_id == tenant_id,
+            Subscription.region == region,
+            Subscription.user_id == user_id,
+        )
+        .first()
+    )
+
+
+def list_account_subscriptions(
+    db: Session, *, tenant_id: str, region: str, user_id: uuid.UUID
+) -> list[Subscription]:
+    return (
+        db.query(Subscription)
+        .filter(
+            Subscription.tenant_id == tenant_id,
+            Subscription.region == region,
+            Subscription.user_id == user_id,
+        )
+        .order_by(Subscription.current_period_end.desc(), Subscription.created_at.desc())
+        .all()
+    )
+
+
 def get_subscription_event_by_operation_key(db: Session, key: str) -> SubscriptionEvent | None:
     return db.query(SubscriptionEvent).filter(SubscriptionEvent.operation_idempotency_key == key).first()
 
@@ -32,6 +67,15 @@ def get_active_entitlement(db: Session, subscription_id: uuid.UUID, *, for_updat
         .order_by(Entitlement.created_at.desc())
     )
     return (query.with_for_update() if for_update else query).first()
+
+
+def get_latest_entitlement_for_subscription(db: Session, subscription_id: uuid.UUID) -> Entitlement | None:
+    return (
+        db.query(Entitlement)
+        .filter(Entitlement.subscription_id == subscription_id)
+        .order_by(Entitlement.created_at.desc())
+        .first()
+    )
 
 
 def get_active_entitlement_for_scope(
