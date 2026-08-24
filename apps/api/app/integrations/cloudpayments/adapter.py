@@ -153,6 +153,8 @@ def _parse_amount(value: Any) -> Decimal | None:
 def _amount_minor(amount: Decimal | None) -> int | None:
     if amount is None:
         return None
+    if not amount.is_finite():
+        return None
     return int((amount * Decimal("100")).quantize(Decimal("1")))
 
 
@@ -359,6 +361,11 @@ class CloudPaymentsAdapter:
 
         amount = _parse_amount(get_first(payload, "Amount", "amount"))
         amount_minor = _amount_minor(amount)
+        if amount is not None and amount_minor is None:
+            amount = None
+            if status is None:
+                status = "missing_amount"
+                error_message = "missing_amount"
         payload_hash = _payload_hash(raw_body, payload)
         safe_payload = _safe_payload(payload)
         return CloudPaymentsWebhookPayload.model_validate(payload).to_normalized_event(
