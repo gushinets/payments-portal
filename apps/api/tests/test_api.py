@@ -518,7 +518,7 @@ def test_register_session_and_checkout_intent_flow() -> None:
         json={
             "product": "document-summary",
             "plan_code": "document-summary-pro",
-            "auto_renew": True,
+            "auto_renew": False,
         },
     )
 
@@ -561,6 +561,94 @@ def test_register_session_and_checkout_intent_flow() -> None:
     assert state.plan_code == "document-summary-pro"
     assert state.status == "pending"
     assert state.last_invoice_id == invoice_id
+
+
+def test_checkout_rejects_automatic_renewal_without_consent() -> None:
+    with SessionLocal() as db:
+        plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
+        plan.renewal_mode = "automatic"
+        db.commit()
+
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "automatic-without-consent@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = register_response.json()["token"]
+
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": True,
+        },
+    )
+
+    assert checkout_response.status_code == 409
+    assert checkout_response.json()["detail"]["code"] == "recurring_consent_required"
+
+
+def test_checkout_persists_exact_recurring_consent_reference() -> None:
+    from app.domains.legal.service import expected_acceptance_text_hash
+
+    with SessionLocal() as db:
+        plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
+        plan.renewal_mode = "automatic"
+        db.commit()
+        legal_entity = create_legal_entity(db)
+        document = create_document_version(
+            db,
+            legal_entity=legal_entity,
+            doc_type="recurring_consent",
+            version="2026-08-recurring-v1",
+            title="Согласие на рекуррентные платежи",
+        )
+
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "automatic-with-consent@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = register_response.json()["token"]
+    acceptance_response = client.post(
+        "/api/legal/acceptances",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "document_version_id": str(document.id),
+            "acceptance_text_hash": expected_acceptance_text_hash(document),
+        },
+    )
+    assert acceptance_response.status_code == 200, acceptance_response.text
+    acceptance_id = acceptance_response.json()["acceptance_id"]
+
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": True,
+            "recurring_consent_acceptance_id": acceptance_id,
+        },
+    )
+
+    assert checkout_response.status_code == 200, checkout_response.text
+    with SessionLocal() as db:
+        checkout = db.query(CheckoutSession).one()
+        order = db.query(Order).one()
+
+    assert checkout.metadata_["recurring_consent_acceptance_id"] == acceptance_id
+    assert order.metadata_["recurring_consent_acceptance_id"] == acceptance_id
 
 
 def test_checkout_rejects_missing_cloudpayments_public_terminal_id() -> None:
@@ -724,7 +812,7 @@ def test_bundle_checkout_snapshots_one_sellable_catalog_plan() -> None:
             "product": "core-tools-bundle",
             "plan_code": "core-tools-bundle-pro-ru",
             "entrypoint_type": "bundle",
-            "auto_renew": True,
+            "auto_renew": False,
         },
     )
 
@@ -771,7 +859,7 @@ def test_all_access_checkout_snapshots_one_sellable_catalog_plan() -> None:
             "product": "all-access",
             "plan_code": "all-access-pro-ru",
             "entrypoint_type": "catalog",
-            "auto_renew": True,
+            "auto_renew": False,
         },
     )
 
@@ -925,7 +1013,7 @@ def test_checkout_rejects_active_plan_for_inactive_bundle() -> None:
             "product": "core-tools-bundle",
             "plan_code": "core-tools-bundle-pro-ru",
             "entrypoint_type": "bundle",
-            "auto_renew": True,
+            "auto_renew": False,
         },
     )
 

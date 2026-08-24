@@ -8,15 +8,16 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.core.time import utc_now
+from app.domains.legal.enums import AcceptanceKind
 from app.models import DocumentAcceptance, DocumentVersion, User
 
 
 ACCEPTANCE_KIND_BY_DOC_TYPE = {
-    "privacy": "privacy_consent",
-    "pd_consent": "privacy_consent",
-    "offer": "terms_acceptance",
-    "recurring_consent": "recurring_consent",
-    "cookies": "cookies",
+    "privacy": AcceptanceKind.PRIVACY_CONSENT.value,
+    "pd_consent": AcceptanceKind.PRIVACY_CONSENT.value,
+    "offer": AcceptanceKind.TERMS_ACCEPTANCE.value,
+    "recurring_consent": AcceptanceKind.RECURRING_CONSENT.value,
+    "cookies": AcceptanceKind.COOKIES.value,
 }
 
 

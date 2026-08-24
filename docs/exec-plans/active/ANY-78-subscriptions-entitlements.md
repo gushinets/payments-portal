@@ -100,7 +100,7 @@ References:
   - Define compared state vocabularies as feature-owned `StrEnum` classes while
     retaining `Text` ORM columns.
 
-- [ ] Persist recurrent consent at checkout.
+- [x] Persist recurrent consent at checkout.
   - When `auto_renew=true`, resolve a valid `recurring_consent` acceptance for
     the authenticated user and current contour.
   - Store the selected acceptance reference on checkout/order state so the
@@ -110,7 +110,7 @@ References:
   - Use test fixtures for the legal document; do not add customer legal source
     in this ticket.
 
-- [ ] Implement the provider-neutral lifecycle service.
+- [x] Implement the provider-neutral lifecycle service.
   - Define validated Pydantic commands for starting a trial, activating a paid
     period, enabling automatic renewal, applying a renewal payment or failure,
     applying normalized provider subscription state, requesting cancellation,

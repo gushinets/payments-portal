@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import secrets
+import uuid
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -12,12 +13,15 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.errors import PaymentProviderConfigurationError
 from app.core.observability import record_checkout, traced
+from app.domains.legal.enums import AcceptanceKind
 from app.domains.identity.passwords import hash_password, verify_password
 from app.domains.legal.service import (
     build_acceptance_text,
     expected_acceptance_text_hash,
     get_missing_required_documents_for_user,
 )
+from app.infrastructure.queries.legal import get_recurring_consent_acceptance
+from app.domains.billing.enums import SubscriptionRenewalMode
 from app.domains.identity.session import (
     DEFAULT_REGION,
     DEFAULT_TENANT_ID,
@@ -82,6 +86,7 @@ class CheckoutIntentRequest(BaseModel):
     product: str
     plan_code: str
     auto_renew: bool = False
+    recurring_consent_acceptance_id: uuid.UUID | None = None
     entrypoint_type: str = "product"
     frontend_id: str | None = None
     source_url: str | None = None
@@ -177,6 +182,7 @@ def get_sellable_plan(db: Session, *, user: User, entrypoint_code: str, plan_cod
         "amount_minor": plan.price_amount_minor,
         "currency": plan.currency,
         "trial_days": plan.trial_days,
+        "renewal_mode": plan.renewal_mode,
         "pricing_snapshot": {
             "price_amount_minor": plan.price_amount_minor,
             "currency": plan.currency,
@@ -440,6 +446,21 @@ def create_checkout_intent(
         entrypoint_code=payload.product,
         plan_code=payload.plan_code,
     )
+    recurring_consent = None
+    if payload.auto_renew:
+        if sellable_plan["renewal_mode"] != SubscriptionRenewalMode.AUTOMATIC.value:
+            raise HTTPException(status_code=409, detail={"code": "automatic_renewal_not_permitted"})
+        if payload.recurring_consent_acceptance_id is None:
+            raise HTTPException(status_code=409, detail={"code": "recurring_consent_required"})
+        recurring_consent = get_recurring_consent_acceptance(
+            db,
+            acceptance_id=payload.recurring_consent_acceptance_id,
+            tenant_id=user.tenant_id,
+            region=user.region,
+            user_id=user.id,
+        )
+        if recurring_consent is None or recurring_consent.acceptance_kind != AcceptanceKind.RECURRING_CONSENT.value:
+            raise HTTPException(status_code=409, detail={"code": "recurring_consent_invalid"})
     missing_documents = get_missing_required_documents_for_user(db, user=user)
     if missing_documents:
         record_checkout("missing_required_documents")
@@ -509,6 +530,7 @@ def create_checkout_intent(
             "plan_code": sellable_plan["plan_code"],
             "scope_type": sellable_plan["scope_type"],
             "auto_renew": payload.auto_renew,
+            "recurring_consent_acceptance_id": str(recurring_consent.id) if recurring_consent else None,
         },
     )
     db.add(checkout_session)
@@ -535,6 +557,7 @@ def create_checkout_intent(
             "plan_code": sellable_plan["plan_code"],
             "scope_type": sellable_plan["scope_type"],
             "auto_renew": payload.auto_renew,
+            "recurring_consent_acceptance_id": str(recurring_consent.id) if recurring_consent else None,
         },
     )
     db.add(order)
