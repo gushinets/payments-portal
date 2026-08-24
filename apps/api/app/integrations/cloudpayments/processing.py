@@ -5,6 +5,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.core.time import utc_now
 from app.integrations.cloudpayments.payload import get_first
 from app.integrations.cloudpayments.validation import (
     cancel_validation_error,
@@ -26,10 +27,7 @@ TERMINAL_ORDER_STATUSES = {"paid", "canceled", "refunded", "partially_refunded"}
 TERMINAL_PAYMENT_STATUSES = {"succeeded", "canceled", "refunded", "partially_refunded"}
 
 
-def datetime_now():
-    from datetime import datetime, timezone
-
-    return datetime.now(timezone.utc)
+datetime_now = utc_now
 
 
 def _parse_data(payload: dict[str, Any]) -> dict[str, Any]:

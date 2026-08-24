@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import hashlib
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.core.time import utc_now
 from app.models import DocumentAcceptance, DocumentVersion, User
 
 
@@ -17,10 +18,6 @@ ACCEPTANCE_KIND_BY_DOC_TYPE = {
     "recurring_consent": "recurring_consent",
     "cookies": "cookies",
 }
-
-
-def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
 
 
 def hash_acceptance_text(value: str) -> str:

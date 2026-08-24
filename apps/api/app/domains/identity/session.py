@@ -7,14 +7,11 @@ from fastapi import Depends, Header, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.time import utc_now
 from app.models import AuthSession, User
 
 DEFAULT_TENANT_ID = "anytoolai"
 DEFAULT_REGION = "ru"
-
-
-def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
 
 
 def as_utc(value: datetime) -> datetime:
