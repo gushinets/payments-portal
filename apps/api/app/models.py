@@ -24,6 +24,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import BigInteger, JSON
 
 from app.core.database import Base
+from app.domains.billing.enums import SubscriptionRenewalMode, SubscriptionStatus
 
 
 json_type = JSON().with_variant(JSONB(), "postgresql")
@@ -533,6 +534,88 @@ class PlanLimit(Base):
     period: Mapped[str] = mapped_column(Text, nullable=False)
     reset_policy: Mapped[str] = mapped_column(Text, nullable=False, default="billing_period")
     overage_policy: Mapped[str] = mapped_column(Text, nullable=False, default="deny")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class Subscription(Base):
+    __tablename__ = "subscriptions"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ("
+            f"'{SubscriptionStatus.TRIALING.value}', '{SubscriptionStatus.ACTIVE.value}', "
+            f"'{SubscriptionStatus.PAST_DUE.value}', '{SubscriptionStatus.CANCELED.value}', "
+            f"'{SubscriptionStatus.EXPIRED.value}', '{SubscriptionStatus.REFUNDED.value}', "
+            f"'{SubscriptionStatus.PAUSED.value}')",
+            name="ck_subscriptions_status",
+        ),
+        CheckConstraint(
+            "renewal_mode IN ("
+            f"'{SubscriptionRenewalMode.MANUAL.value}', '{SubscriptionRenewalMode.AUTOMATIC.value}')",
+            name="ck_subscriptions_renewal_mode",
+        ),
+        CheckConstraint(
+            "(scope_type = 'product' AND product_id IS NOT NULL AND bundle_id IS NULL)"
+            " OR (scope_type = 'bundle' AND product_id IS NULL AND bundle_id IS NOT NULL)"
+            " OR (scope_type = 'all_access' AND product_id IS NULL AND bundle_id IS NULL)",
+            name="ck_subscriptions_scope_references",
+        ),
+        CheckConstraint(
+            "trial_start_at IS NULL OR (trial_end_at IS NOT NULL AND trial_end_at > trial_start_at)",
+            name="ck_subscriptions_trial_period",
+        ),
+        CheckConstraint(
+            "current_period_end > current_period_start",
+            name="ck_subscriptions_current_period",
+        ),
+        Index("ix_subscriptions_user_region_status", "user_id", "region", "status"),
+        Index("ix_subscriptions_plan_id", "plan_id"),
+        Index(
+            "uq_subscriptions_provider_reference",
+            "provider_account_id",
+            "provider_subscription_id",
+            unique=True,
+            postgresql_where=text(
+                "provider_account_id IS NOT NULL AND provider_subscription_id IS NOT NULL"
+            ),
+            sqlite_where=text(
+                "provider_account_id IS NOT NULL AND provider_subscription_id IS NOT NULL"
+            ),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(uuid_type, primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[str] = mapped_column(Text, nullable=False, default="anytoolai", index=True)
+    region: Mapped[str] = mapped_column(ForeignKey("regions.code"), nullable=False, index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    plan_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("plans.id"), nullable=False, index=True)
+    scope_type: Mapped[str] = mapped_column(Text, nullable=False)
+    product_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("products.id"), nullable=True)
+    bundle_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("bundles.id"), nullable=True)
+    status: Mapped[str] = mapped_column(
+        Text, nullable=False, default=SubscriptionStatus.TRIALING.value, index=True
+    )
+    renewal_mode: Mapped[str] = mapped_column(
+        Text, nullable=False, default=SubscriptionRenewalMode.MANUAL.value
+    )
+    trial_start_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    trial_end_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    current_period_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    current_period_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    cancel_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    canceled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    provider_account_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("payment_provider_accounts.id"), nullable=True, index=True
+    )
+    provider_subscription_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    recurring_consent_acceptance_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("document_acceptances.id"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

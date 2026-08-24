@@ -16,7 +16,9 @@ from app.models import (
     Product,
     ProductAccessState,
     Refund,
+    Subscription,
 )
+from app.domains.billing.enums import SubscriptionRenewalMode, SubscriptionStatus
 
 __all__ = [
     "Bundle",
@@ -34,4 +36,7 @@ __all__ = [
     "Product",
     "ProductAccessState",
     "Refund",
+    "Subscription",
+    "SubscriptionRenewalMode",
+    "SubscriptionStatus",
 ]
