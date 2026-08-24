@@ -152,7 +152,7 @@ References:
   - Keep initial payment access independent from recurrent setup: a failed
     provider create operation leaves paid access active and renewal manual.
 
-- [ ] Replace legacy access persistence safely.
+- [x] Replace legacy access persistence safely.
   - Backfill valid active `product_access_states` rows into manual subscriptions,
     entitlements, and `legacy_access_migrated` events.
   - Backfill already elapsed rows as expired and do not migrate pending rows.

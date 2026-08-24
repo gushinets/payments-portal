@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -23,6 +23,7 @@ EXPECTED_REVISION_CHAIN = [
     "20260729_0004",
     "20260824_0005",
     "20260824_0006",
+    "20260824_0007",
 ]
 
 pytestmark = pytest.mark.postgres
@@ -211,6 +212,177 @@ def expected_legal_documents() -> list[dict[str, str]]:
     )
 
 
+def prepare_legacy_access_source(postgres_engine: Engine, database_test_url: URL) -> None:
+    reset_public_schema(postgres_engine)
+    with alembic_test_config(database_test_url) as config:
+        command.upgrade(config, "20260824_0006")
+
+    with postgres_engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO users "
+                "(id, tenant_id, region, email, email_normalized, password_hash) "
+                "VALUES (:id, 'anytoolai', 'ru', 'legacy@example.com', 'legacy@example.com', 'hash')"
+            ),
+            {"id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0001"},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO payment_provider_accounts "
+                "(id, tenant_id, region, provider, default_currency) "
+                "VALUES (:id, 'anytoolai', 'ru', 'cloudpayments', 'RUB')"
+            ),
+            {"id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbb0001"},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO orders "
+                "(id, tenant_id, region, order_number, user_id, plan_id, status, amount_minor, currency, "
+                "provider, provider_account_id, merchant_order_id, provider_invoice_id) "
+                "VALUES (:id, 'anytoolai', 'ru', :order_number, :user_id, :plan_id, 'paid', 99000, 'RUB', "
+                "'cloudpayments', :provider_account_id, :merchant_order_id, :provider_invoice_id)"
+            ),
+            [
+                {
+                    "id": "cccccccc-cccc-4ccc-8ccc-cccccccc0001",
+                    "order_number": "legacy-order-1",
+                    "user_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0001",
+                    "plan_id": "99999999-9999-4999-8999-999999999901",
+                    "provider_account_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbb0001",
+                    "merchant_order_id": "legacy-invoice-1",
+                    "provider_invoice_id": "legacy-invoice-1",
+                },
+                {
+                    "id": "cccccccc-cccc-4ccc-8ccc-cccccccc0002",
+                    "order_number": "legacy-order-2",
+                    "user_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0001",
+                    "plan_id": "99999999-9999-4999-8999-999999999902",
+                    "provider_account_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbb0001",
+                    "merchant_order_id": "legacy-invoice-2",
+                    "provider_invoice_id": "legacy-invoice-2",
+                },
+            ],
+        )
+
+
+def upgrade_legacy_source_to_head(database_test_url: URL) -> None:
+    with alembic_test_config(database_test_url) as config:
+        command.upgrade(config, "head")
+
+
+def test_legacy_access_backfill_migrates_active_expired_and_skips_pending(
+    postgres_engine: Engine,
+    database_test_url: URL,
+) -> None:
+    prepare_legacy_access_source(postgres_engine, database_test_url)
+    now = datetime.now(timezone.utc)
+    with postgres_engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO product_access_states "
+                "(id, user_id, product_code, plan_code, last_invoice_id, status, starts_at, expires_at) "
+                "VALUES "
+                "(1, :user_id, 'document-summary', 'document-summary-pro', 'legacy-invoice-1', 'active', "
+                ":active_start, :active_end), "
+                "(2, :user_id, 'prompt-optimizer', 'prompt-optimizer-pro', 'legacy-invoice-2', 'active', "
+                ":expired_start, :expired_end), "
+                "(3, :user_id, 'pending-only', NULL, NULL, 'pending', NULL, NULL)"
+            ),
+            {
+                "user_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0001",
+                "active_start": now - timedelta(days=2),
+                "active_end": now + timedelta(days=28),
+                "expired_start": now - timedelta(days=31),
+                "expired_end": now - timedelta(days=1),
+            },
+        )
+
+    upgrade_legacy_source_to_head(database_test_url)
+
+    with postgres_engine.connect() as connection:
+        migrated = connection.execute(
+            text(
+                "SELECT s.status AS subscription_status, e.status AS entitlement_status, "
+                "e.expired_at IS NOT NULL AS has_expired_evidence, "
+                "se.event_type, se.next_status, se.operation_idempotency_key, "
+                "se.metadata->>'legacy_access_state_id' AS legacy_id "
+                "FROM subscriptions s "
+                "JOIN entitlements e ON e.subscription_id = s.id "
+                "JOIN subscription_events se ON se.subscription_id = s.id "
+                "ORDER BY legacy_id"
+            )
+        ).mappings().all()
+        table_exists = connection.execute(
+            text("SELECT to_regclass('public.product_access_states')")
+        ).scalar_one()
+
+    assert table_exists is None
+    assert migrated == [
+        {
+            "subscription_status": "active",
+            "entitlement_status": "active",
+            "has_expired_evidence": False,
+            "event_type": "legacy_access_migrated",
+            "next_status": "active",
+            "operation_idempotency_key": "legacy_access_migrated:1",
+            "legacy_id": "1",
+        },
+        {
+            "subscription_status": "expired",
+            "entitlement_status": "expired",
+            "has_expired_evidence": True,
+            "event_type": "legacy_access_migrated",
+            "next_status": "expired",
+            "operation_idempotency_key": "legacy_access_migrated:2",
+            "legacy_id": "2",
+        },
+    ]
+
+
+def test_legacy_access_backfill_aborts_before_drop_on_ambiguous_order(
+    postgres_engine: Engine,
+    database_test_url: URL,
+) -> None:
+    prepare_legacy_access_source(postgres_engine, database_test_url)
+    with postgres_engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO orders "
+                "(id, tenant_id, region, order_number, user_id, plan_id, status, amount_minor, currency, "
+                "provider, provider_account_id, merchant_order_id, provider_invoice_id) "
+                "VALUES (:id, 'anytoolai', 'ru', 'legacy-order-duplicate', :user_id, "
+                "'99999999-9999-4999-8999-999999999901', 'paid', 99000, 'RUB', 'cloudpayments', "
+                ":provider_account_id, 'legacy-invoice-duplicate', 'legacy-invoice-1')"
+            ),
+            {
+                "id": "cccccccc-cccc-4ccc-8ccc-cccccccc0003",
+                "user_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0001",
+                "provider_account_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbb0001",
+            },
+        )
+        connection.execute(
+            text(
+                "INSERT INTO product_access_states "
+                "(id, user_id, product_code, plan_code, last_invoice_id, status, starts_at, expires_at) "
+                "VALUES (1, :user_id, 'document-summary', 'document-summary-pro', 'legacy-invoice-1', "
+                "'active', :starts_at, :expires_at)"
+            ),
+            {
+                "user_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0001",
+                "starts_at": datetime.now(timezone.utc) - timedelta(days=2),
+                "expires_at": datetime.now(timezone.utc) + timedelta(days=28),
+            },
+        )
+
+    with pytest.raises(RuntimeError, match="order_reference_is_unmappable_or_ambiguous"):
+        with alembic_test_config(database_test_url) as config:
+            command.upgrade(config, "head")
+
+    with postgres_engine.connect() as connection:
+        assert connection.execute(text("SELECT count(*) FROM subscriptions")).scalar_one() == 0
+        assert connection.execute(text("SELECT to_regclass('public.product_access_states')")).scalar_one()
+
+
 def test_clean_postgres_alembic_upgrade_and_downgrade(
     postgres_engine: Engine,
     database_test_url: URL,
@@ -234,6 +406,7 @@ def test_clean_postgres_alembic_upgrade_and_downgrade(
     assert "password_reset_rate_limits" in tables
     assert "entitlements" in tables
     assert "subscription_events" in tables
+    assert "product_access_states" not in tables
     assert seeded_legal_documents(postgres_engine) == expected_legal_documents()
     assert_postgres_schema_contract(postgres_engine)
 
@@ -254,6 +427,7 @@ def test_clean_postgres_alembic_upgrade_and_downgrade(
     assert "password_reset_rate_limits" in tables
     assert "entitlements" in tables
     assert "subscription_events" in tables
+    assert "product_access_states" not in tables
     assert alembic_version_count(postgres_engine) == 1
     assert current_alembic_revision(postgres_engine) == EXPECTED_REVISION_CHAIN[-1]
     assert seeded_legal_documents(postgres_engine) == expected_legal_documents()

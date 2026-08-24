@@ -22,6 +22,7 @@ from app.models import (  # noqa: E402
     AuthSession,
     Bundle,
     BundleProduct,
+    Entitlement,
     DocumentAcceptance,
     DocumentVersion,
     LegalEntity,
@@ -33,7 +34,6 @@ from app.models import (  # noqa: E402
     PaymentWebhookEvent,
     Plan,
     PasswordResetRateLimit,
-    ProductAccessState,
     Product,
     Refund,
     User,
@@ -550,17 +550,16 @@ def test_register_session_and_checkout_intent_flow() -> None:
 
     with SessionLocal() as db:
         user = db.query(User).one()
-        state = db.query(ProductAccessState).one()
+        order = db.query(Order).one()
 
     assert user.email == "user@example.com"
     assert user.tenant_id == "anytoolai"
     assert user.region == "ru"
     assert user.email_normalized == "user@example.com"
-    assert state.user_id == user.id
-    assert state.product_code == "document-summary"
-    assert state.plan_code == "document-summary-pro"
-    assert state.status == "pending"
-    assert state.last_invoice_id == invoice_id
+    assert order.user_id == user.id
+    assert order.plan_id is not None
+    assert order.status == "pending_payment"
+    assert order.provider_invoice_id == invoice_id
 
 
 def test_checkout_rejects_automatic_renewal_without_consent() -> None:
@@ -683,7 +682,6 @@ def test_checkout_rejects_missing_cloudpayments_public_terminal_id() -> None:
         with SessionLocal() as db:
             assert db.query(Order).count() == 0
             assert db.query(OrderItem).count() == 0
-            assert db.query(ProductAccessState).count() == 0
     finally:
         object.__setattr__(settings, "cloudpayments_public_id", previous_public_id)
 
@@ -731,7 +729,6 @@ def test_checkout_supports_two_stage_cloudpayments_widget_mode() -> None:
         order = db.query(Order).one()
         assert order.metadata_["payment_mode"] == "auth"
         assert db.query(OrderItem).count() == 1
-        assert db.query(ProductAccessState).count() == 1
 
 
 def test_checkout_rejects_plan_provider_currency_mismatch() -> None:
@@ -785,7 +782,6 @@ def test_checkout_rejects_plan_provider_currency_mismatch() -> None:
     with SessionLocal() as db:
         assert db.query(Order).count() == 0
         assert db.query(OrderItem).count() == 0
-        assert db.query(ProductAccessState).count() == 0
 
 
 def test_bundle_checkout_snapshots_one_sellable_catalog_plan() -> None:
@@ -1836,14 +1832,13 @@ def test_fail_webhook_updates_payment_and_order_without_access_activation() -> N
     with SessionLocal() as db:
         order = db.query(Order).one()
         payment = db.query(Payment).one()
-        state = db.query(ProductAccessState).one()
+        entitlement_count = db.query(Entitlement).count()
 
     assert order.status == "payment_failed"
     assert payment.status == "failed"
     assert payment.failure_code == "5"
     assert payment.failure_message_safe == "Insufficient funds"
-    assert state.status == "pending"
-    assert state.last_transaction_id is None
+    assert entitlement_count == 0
 
 
 def test_signed_check_after_failed_attempt_allows_retry() -> None:

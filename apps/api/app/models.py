@@ -21,7 +21,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import INET, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy.types import BigInteger, JSON
+from sqlalchemy.types import JSON
 
 from app.core.database import Base
 from app.domains.billing.enums import (
@@ -33,7 +33,6 @@ from app.domains.billing.enums import (
 
 
 json_type = JSON().with_variant(JSONB(), "postgresql")
-id_type = BigInteger().with_variant(Integer, "sqlite")
 uuid_type = Uuid(as_uuid=True)
 ip_type = String(45).with_variant(INET(), "postgresql")
 
@@ -953,23 +952,3 @@ class Refund(Base):
     metadata_: Mapped[dict] = mapped_column("metadata", json_type, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
-
-class ProductAccessState(Base):
-    __tablename__ = "product_access_states"
-    __table_args__ = (UniqueConstraint("user_id", "product_code", name="uq_user_product"),)
-
-    id: Mapped[int] = mapped_column(id_type, primary_key=True, autoincrement=True)
-    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
-    product_code: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
-    plan_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    last_invoice_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
-    last_transaction_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    status: Mapped[str] = mapped_column(Text, nullable=False, default="inactive")
-    starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=func.now(),
-        onupdate=func.now(),
-    )
