@@ -338,9 +338,7 @@ def _new_subscription(*, tenant_id: str, region: str, user_id: uuid.UUID, plan: 
 
 
 def _active_entitlement(db: Session, subscription: Subscription) -> Entitlement | None:
-    return (
-        get_active_entitlement(db, subscription.id, for_update=True)
-    )
+    return get_active_entitlement(db, subscription.id, for_update=True)
 
 
 @_transactional
@@ -478,8 +476,10 @@ def activate_paid_period(db: Session, command: ActivatePaidPeriodCommand) -> Sub
                 previous_entitlement.superseded_at = command.occurred_at
     else:
         ensure_subscription_status_transition(subscription.status, SubscriptionStatus.ACTIVE)
-        start = paid_at if subscription.status == SubscriptionStatus.TRIALING.value else max(
-            subscription.current_period_end, paid_at
+        start = (
+            paid_at
+            if subscription.status == SubscriptionStatus.TRIALING.value
+            else max(subscription.current_period_end, paid_at)
         )
         subscription.current_period_start = start
         subscription.current_period_end = _period_end(start, plan)
@@ -603,9 +603,7 @@ def apply_renewal_payment(db: Session, command: ApplyRenewalPaymentCommand) -> S
 
 
 @_transactional
-def apply_provider_subscription_state(
-    db: Session, command: ApplyProviderSubscriptionStateCommand
-) -> Subscription:
+def apply_provider_subscription_state(db: Session, command: ApplyProviderSubscriptionStateCommand) -> Subscription:
     existing_event = _event_for_key(db, command.operation_idempotency_key)
     if existing_event:
         return _subscription_for_event(db, existing_event)
@@ -684,9 +682,7 @@ def apply_refund(db: Session, command: ApplyRefundCommand) -> Subscription:
         subscription=subscription,
         command=command,
         event_type=(
-            SubscriptionEventType.REFUND_APPLIED
-            if full_refund
-            else SubscriptionEventType.PARTIAL_REFUND_APPLIED
+            SubscriptionEventType.REFUND_APPLIED if full_refund else SubscriptionEventType.PARTIAL_REFUND_APPLIED
         ),
         previous_status=previous,
         next_status=subscription.status,

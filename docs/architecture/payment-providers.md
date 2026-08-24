@@ -1,10 +1,11 @@
 # Payment Provider Boundary
 
 Status: authoritative for domain rules; CloudPayments is the only implemented adapter
-Last verified: 2026-08-18
+Last verified: 2026-08-24
 
-Billing owns checkout, orders, payments, refunds, and contour-local access
-state. A payment provider is an adapter registered for the local contour.
+Billing owns checkout, orders, payments, refunds, subscriptions, entitlements,
+and contour-local access state. A payment provider is an adapter registered for
+the local contour.
 
 Provider-neutral modules must not import provider integrations and must not
 branch on provider-specific literals. Checkout selects enabled rows from
@@ -23,10 +24,33 @@ paths on the `ru` API. Those paths are adapter surface, not a billing invariant.
 The implemented shared adapter contract currently covers checkout preparation.
 CloudPayments webhook normalization and responses remain on the concrete
 CloudPayments router and adapter while the provider boundary is under active
-development.
+development. Verified initial payment and refund outcomes enter the
+provider-neutral subscription lifecycle through internal order, payment, refund,
+and webhook identifiers.
 
 Card data is handled by the contour's provider and is never collected or stored
 by this service.
+
+## Subscription and Entitlement Lifecycle
+
+The subscription lifecycle is provider-neutral domain code. It owns trial
+creation, paid-period activation, automatic-renewal attachment, renewal success
+or failure, normalized provider subscription state, cancellation requests,
+refund effects, and expiration. Domain code accepts only internal identifiers,
+local operation idempotency keys, and normalized provider states; it must not
+import provider integrations or branch on provider-specific statuses.
+
+Automatic renewal is manual until the provider adapter has successfully created
+the provider subscription and the domain service attaches the provider account,
+provider subscription reference, and recurring-consent acceptance. Failed
+provider setup does not revoke paid access.
+
+ANY-168 owns the CloudPayments recurrent integration boundary after ANY-78:
+consume the verified initial token only inside the adapter boundary, call the
+provider recurrent APIs, attach the opaque provider reference on success, and
+translate later provider renewal notifications or API results into the
+provider-neutral lifecycle commands. The token must not be persisted, logged,
+stored in normalized safe payloads, or exposed to domain code.
 
 ## Planned
 

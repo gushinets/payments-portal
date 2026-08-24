@@ -106,11 +106,7 @@ def present_account_subscription(
             canceled_at=subscription.canceled_at,
         ),
         entitlement_validity=AccountSubscriptionEntitlementValidityResponse(
-            status=(
-                EntitlementStatus(entitlement.status)
-                if entitlement is not None
-                else None
-            ),
+            status=(EntitlementStatus(entitlement.status) if entitlement is not None else None),
             valid_from=entitlement.valid_from if entitlement is not None else None,
             valid_until=entitlement.valid_until if entitlement is not None else None,
         ),
@@ -130,10 +126,7 @@ def list_subscriptions(
         user_id=user.id,
     )
     return AccountSubscriptionsResponse(
-        subscriptions=[
-            present_account_subscription(db, subscription=subscription)
-            for subscription in subscriptions
-        ]
+        subscriptions=[present_account_subscription(db, subscription=subscription) for subscription in subscriptions]
     )
 
 

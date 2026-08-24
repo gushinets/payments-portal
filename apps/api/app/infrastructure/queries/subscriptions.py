@@ -34,9 +34,7 @@ def get_account_subscription(
     )
 
 
-def list_account_subscriptions(
-    db: Session, *, tenant_id: str, region: str, user_id: uuid.UUID
-) -> list[Subscription]:
+def list_account_subscriptions(db: Session, *, tenant_id: str, region: str, user_id: uuid.UUID) -> list[Subscription]:
     return (
         db.query(Subscription)
         .filter(
@@ -132,7 +130,9 @@ def get_trial_for_scope(
     )
 
 
-def list_active_subscriptions_for_user(db: Session, *, tenant_id: str, region: str, user_id: uuid.UUID) -> list[Subscription]:
+def list_active_subscriptions_for_user(
+    db: Session, *, tenant_id: str, region: str, user_id: uuid.UUID
+) -> list[Subscription]:
     return (
         db.query(Subscription)
         .filter(

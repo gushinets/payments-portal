@@ -17,12 +17,7 @@ def get_payment_for_refund(db: Session, payment_id: uuid.UUID) -> Payment | None
 
 
 def get_latest_payment_for_order(db: Session, order_id: uuid.UUID) -> Payment | None:
-    return (
-        db.query(Payment)
-        .filter(Payment.order_id == order_id)
-        .order_by(Payment.created_at.desc())
-        .first()
-    )
+    return db.query(Payment).filter(Payment.order_id == order_id).order_by(Payment.created_at.desc()).first()
 
 
 def get_refund_by_id(db: Session, refund_id: uuid.UUID, *, for_update: bool = False) -> Refund | None:

@@ -178,7 +178,7 @@ References:
     deployment scheduler.
   - Do not run a periodic loop inside FastAPI workers.
 
-- [ ] Update authoritative and generated documentation.
+- [x] Update authoritative and generated documentation.
   - Mark subscriptions, entitlements, and subscription events as implemented in
     the normative data-model document.
   - Document the provider-neutral lifecycle and the ANY-168 integration

@@ -13,11 +13,7 @@ def get_order_by_id(db: Session, order_id: uuid.UUID, *, for_update: bool = Fals
 
 
 def get_order_item_with_plan(db: Session, order_id: uuid.UUID) -> OrderItem | None:
-    return (
-        db.query(OrderItem)
-        .filter(OrderItem.order_id == order_id, OrderItem.plan_id.is_not(None))
-        .first()
-    )
+    return db.query(OrderItem).filter(OrderItem.order_id == order_id, OrderItem.plan_id.is_not(None)).first()
 
 
 def get_order_item(db: Session, order_id: uuid.UUID) -> OrderItem | None:
@@ -41,14 +37,10 @@ def get_latest_order_for_user_entrypoint(
     )
     if product_id is not None:
         query = query.filter(
-            (OrderItem.product_code_snapshot == entrypoint_code)
-            | (OrderItem.product_id == product_id)
+            (OrderItem.product_code_snapshot == entrypoint_code) | (OrderItem.product_id == product_id)
         )
     elif bundle_id is not None:
-        query = query.filter(
-            (OrderItem.product_code_snapshot == entrypoint_code)
-            | (OrderItem.bundle_id == bundle_id)
-        )
+        query = query.filter((OrderItem.product_code_snapshot == entrypoint_code) | (OrderItem.bundle_id == bundle_id))
     else:
         query = query.filter(OrderItem.item_type == f"{scope_type}_plan")
     return query.first()

@@ -179,6 +179,47 @@ Indexes and constraints:
 - `ix_document_versions_tenant_id`
 - `uq_document_versions_active_doc`
 
+## `entitlements`
+
+| Column | Type | Nullable | Key |
+|---|---|---:|---|
+| `id` | `CHAR(32)` | no | PK |
+| `tenant_id` | `TEXT` | no |  |
+| `region` | `TEXT` | no | FK |
+| `user_id` | `CHAR(32)` | no | FK |
+| `subscription_id` | `CHAR(32)` | no | FK |
+| `plan_id` | `CHAR(32)` | no | FK |
+| `scope_type` | `TEXT` | no |  |
+| `product_id` | `CHAR(32)` | yes | FK |
+| `bundle_id` | `CHAR(32)` | yes | FK |
+| `status` | `TEXT` | no |  |
+| `valid_from` | `DATETIME` | no |  |
+| `valid_until` | `DATETIME` | no |  |
+| `source` | `TEXT` | no |  |
+| `order_id` | `CHAR(32)` | yes | FK |
+| `revoked_at` | `DATETIME` | yes |  |
+| `expired_at` | `DATETIME` | yes |  |
+| `superseded_at` | `DATETIME` | yes |  |
+| `superseded_by_entitlement_id` | `CHAR(32)` | yes | FK |
+| `created_at` | `DATETIME` | no |  |
+| `updated_at` | `DATETIME` | no |  |
+
+Indexes and constraints:
+
+- `ck_entitlements_scope_references`
+- `ck_entitlements_source`
+- `ck_entitlements_source_order`
+- `ck_entitlements_status`
+- `ck_entitlements_valid_period`
+- `ix_entitlements_order_id`
+- `ix_entitlements_plan_id`
+- `ix_entitlements_region`
+- `ix_entitlements_status`
+- `ix_entitlements_subscription_id`
+- `ix_entitlements_tenant_id`
+- `ix_entitlements_user_id`
+- `ix_entitlements_user_region_status`
+
 ## `entrypoint_sessions`
 
 | Column | Type | Nullable | Key |
@@ -552,28 +593,6 @@ Indexes and constraints:
 - `ix_plans_tenant_id`
 - `uq_plans_active_code`
 
-## `product_access_states`
-
-| Column | Type | Nullable | Key |
-|---|---|---:|---|
-| `id` | `BIGINT` | no | PK |
-| `user_id` | `CHAR(32)` | no | FK |
-| `product_code` | `VARCHAR(64)` | no |  |
-| `plan_code` | `VARCHAR(128)` | yes |  |
-| `last_invoice_id` | `VARCHAR(128)` | yes |  |
-| `last_transaction_id` | `VARCHAR(128)` | yes |  |
-| `status` | `TEXT` | no |  |
-| `starts_at` | `DATETIME` | yes |  |
-| `expires_at` | `DATETIME` | yes |  |
-| `updated_at` | `DATETIME` | no |  |
-
-Indexes and constraints:
-
-- `uq_user_product`
-- `ix_product_access_states_last_invoice_id`
-- `ix_product_access_states_product_code`
-- `ix_product_access_states_user_id`
-
 ## `products`
 
 | Column | Type | Nullable | Key |
@@ -639,6 +658,76 @@ Indexes and constraints:
 
 Indexes and constraints:
 
+
+## `subscription_events`
+
+| Column | Type | Nullable | Key |
+|---|---|---:|---|
+| `id` | `CHAR(32)` | no | PK |
+| `subscription_id` | `CHAR(32)` | no | FK |
+| `event_type` | `TEXT` | no |  |
+| `previous_status` | `TEXT` | yes |  |
+| `next_status` | `TEXT` | yes |  |
+| `occurred_at` | `DATETIME` | no |  |
+| `operation_idempotency_key` | `TEXT` | no |  |
+| `order_id` | `CHAR(32)` | yes | FK |
+| `payment_id` | `CHAR(32)` | yes | FK |
+| `refund_id` | `CHAR(32)` | yes | FK |
+| `webhook_event_id` | `CHAR(32)` | yes | FK |
+| `metadata` | `JSON` | no |  |
+
+Indexes and constraints:
+
+- `uq_subscription_events_operation_key`
+- `ix_subscription_events_order_id`
+- `ix_subscription_events_payment_id`
+- `ix_subscription_events_refund_id`
+- `ix_subscription_events_subscription_id`
+- `ix_subscription_events_subscription_occurred_at`
+- `ix_subscription_events_webhook_event_id`
+
+## `subscriptions`
+
+| Column | Type | Nullable | Key |
+|---|---|---:|---|
+| `id` | `CHAR(32)` | no | PK |
+| `tenant_id` | `TEXT` | no |  |
+| `region` | `TEXT` | no | FK |
+| `user_id` | `CHAR(32)` | no | FK |
+| `plan_id` | `CHAR(32)` | no | FK |
+| `scope_type` | `TEXT` | no |  |
+| `product_id` | `CHAR(32)` | yes | FK |
+| `bundle_id` | `CHAR(32)` | yes | FK |
+| `status` | `TEXT` | no |  |
+| `renewal_mode` | `TEXT` | no |  |
+| `trial_start_at` | `DATETIME` | yes |  |
+| `trial_end_at` | `DATETIME` | yes |  |
+| `current_period_start` | `DATETIME` | no |  |
+| `current_period_end` | `DATETIME` | no |  |
+| `cancel_requested_at` | `DATETIME` | yes |  |
+| `canceled_at` | `DATETIME` | yes |  |
+| `provider_account_id` | `CHAR(32)` | yes | FK |
+| `provider_subscription_id` | `TEXT` | yes |  |
+| `recurring_consent_acceptance_id` | `CHAR(32)` | yes | FK |
+| `created_at` | `DATETIME` | no |  |
+| `updated_at` | `DATETIME` | no |  |
+
+Indexes and constraints:
+
+- `ck_subscriptions_current_period`
+- `ck_subscriptions_renewal_mode`
+- `ck_subscriptions_scope_references`
+- `ck_subscriptions_status`
+- `ck_subscriptions_trial_period`
+- `ix_subscriptions_plan_id`
+- `ix_subscriptions_provider_account_id`
+- `ix_subscriptions_recurring_consent_acceptance_id`
+- `ix_subscriptions_region`
+- `ix_subscriptions_status`
+- `ix_subscriptions_tenant_id`
+- `ix_subscriptions_user_id`
+- `ix_subscriptions_user_region_status`
+- `uq_subscriptions_provider_reference`
 
 ## `users`
 

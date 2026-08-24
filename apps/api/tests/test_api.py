@@ -22,6 +22,7 @@ from app.models import (  # noqa: E402
     AuthSession,
     Bundle,
     BundleProduct,
+    CheckoutSession,
     Entitlement,
     DocumentAcceptance,
     DocumentVersion,
@@ -1204,7 +1205,7 @@ def test_signed_check_webhook_rejects_account_and_currency_mismatch() -> None:
         object.__setattr__(settings, "cloudpayments_api_secret", "")
 
 
-def test_successful_pay_webhook_is_saved_without_activating_access() -> None:
+def test_successful_pay_webhook_is_saved_and_activates_access() -> None:
     register_response = client.post(
         "/api/auth/register",
         json={
@@ -1248,8 +1249,8 @@ def test_successful_pay_webhook_is_saved_without_activating_access() -> None:
     status_response = client.get(f"/api/auth/payment-status?invoice_id={invoice_id}&email=user@example.com")
     assert status_response.status_code == 200
     status_payload = status_response.json()
-    assert status_payload["product_state"]["status"] == "pending"
-    assert status_payload["product_state"]["transaction_id"] is None
+    assert status_payload["product_state"]["status"] == "active"
+    assert status_payload["product_state"]["transaction_id"] == "tx-success-1"
     assert status_payload["order"]["status"] == "paid"
     assert status_payload["order"]["paid_at"]
     assert status_payload["payment"]["status"] == "succeeded"
@@ -2618,7 +2619,7 @@ def test_refund_webhook_records_refund_skeleton_and_updates_payment() -> None:
     status_response = client.get(f"/api/auth/payment-status?invoice_id={invoice_id}&email=refund-user@example.com")
     assert status_response.status_code == 200
     status_payload = status_response.json()
-    assert status_payload["product_state"]["status"] == "pending"
+    assert status_payload["product_state"]["status"] == "inactive"
     assert status_payload["order"]["status"] == "refunded"
     assert status_payload["payment"]["status"] == "refunded"
     assert status_payload["payment"]["refunded_amount_minor"] == 99000
@@ -2772,7 +2773,7 @@ def test_distinct_refund_ids_for_same_transaction_are_not_deduplicated() -> None
     )
     assert partial_status_response.status_code == 200
     partial_status_payload = partial_status_response.json()
-    assert partial_status_payload["product_state"]["status"] == "pending"
+    assert partial_status_payload["product_state"]["status"] == "active"
     assert partial_status_payload["order"]["status"] == "partially_refunded"
     assert partial_status_payload["payment"]["status"] == "partially_refunded"
     assert partial_status_payload["payment"]["amount_minor"] == 99000

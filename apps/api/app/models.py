@@ -559,8 +559,7 @@ class Subscription(Base):
             name="ck_subscriptions_status",
         ),
         CheckConstraint(
-            "renewal_mode IN ("
-            f"'{SubscriptionRenewalMode.MANUAL.value}', '{SubscriptionRenewalMode.AUTOMATIC.value}')",
+            f"renewal_mode IN ('{SubscriptionRenewalMode.MANUAL.value}', '{SubscriptionRenewalMode.AUTOMATIC.value}')",
             name="ck_subscriptions_renewal_mode",
         ),
         CheckConstraint(
@@ -578,18 +577,13 @@ class Subscription(Base):
             name="ck_subscriptions_current_period",
         ),
         Index("ix_subscriptions_user_region_status", "user_id", "region", "status"),
-        Index("ix_subscriptions_plan_id", "plan_id"),
         Index(
             "uq_subscriptions_provider_reference",
             "provider_account_id",
             "provider_subscription_id",
             unique=True,
-            postgresql_where=text(
-                "provider_account_id IS NOT NULL AND provider_subscription_id IS NOT NULL"
-            ),
-            sqlite_where=text(
-                "provider_account_id IS NOT NULL AND provider_subscription_id IS NOT NULL"
-            ),
+            postgresql_where=text("provider_account_id IS NOT NULL AND provider_subscription_id IS NOT NULL"),
+            sqlite_where=text("provider_account_id IS NOT NULL AND provider_subscription_id IS NOT NULL"),
         ),
     )
 
@@ -601,12 +595,8 @@ class Subscription(Base):
     scope_type: Mapped[str] = mapped_column(Text, nullable=False)
     product_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("products.id"), nullable=True)
     bundle_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("bundles.id"), nullable=True)
-    status: Mapped[str] = mapped_column(
-        Text, nullable=False, default=SubscriptionStatus.TRIALING.value, index=True
-    )
-    renewal_mode: Mapped[str] = mapped_column(
-        Text, nullable=False, default=SubscriptionRenewalMode.MANUAL.value
-    )
+    status: Mapped[str] = mapped_column(Text, nullable=False, default=SubscriptionStatus.TRIALING.value, index=True)
+    renewal_mode: Mapped[str] = mapped_column(Text, nullable=False, default=SubscriptionRenewalMode.MANUAL.value)
     trial_start_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     trial_end_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     current_period_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -639,8 +629,7 @@ class Entitlement(Base):
             name="ck_entitlements_status",
         ),
         CheckConstraint(
-            "source IN ("
-            f"'{EntitlementSource.TRIAL.value}', '{EntitlementSource.ORDER.value}')",
+            f"source IN ('{EntitlementSource.TRIAL.value}', '{EntitlementSource.ORDER.value}')",
             name="ck_entitlements_source",
         ),
         CheckConstraint(
@@ -660,7 +649,6 @@ class Entitlement(Base):
         Index("ix_entitlements_user_region_status", "user_id", "region", "status"),
         Index("ix_entitlements_subscription_id", "subscription_id"),
         Index("ix_entitlements_plan_id", "plan_id"),
-        Index("ix_entitlements_order_id", "order_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(uuid_type, primary_key=True, default=uuid.uuid4)
@@ -680,9 +668,7 @@ class Entitlement(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     expired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    superseded_by_entitlement_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("entitlements.id"), nullable=True
-    )
+    superseded_by_entitlement_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("entitlements.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -713,9 +699,7 @@ class SubscriptionEvent(Base):
     order_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("orders.id"), nullable=True)
     payment_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("payments.id"), nullable=True)
     refund_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("refunds.id"), nullable=True)
-    webhook_event_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("payment_webhook_events.id"), nullable=True
-    )
+    webhook_event_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("payment_webhook_events.id"), nullable=True)
     metadata_: Mapped[dict] = mapped_column("metadata", json_type, nullable=False, default=dict)
 
 
@@ -951,4 +935,3 @@ class Refund(Base):
     succeeded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     metadata_: Mapped[dict] = mapped_column("metadata", json_type, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-

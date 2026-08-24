@@ -300,21 +300,23 @@ def test_legacy_access_backfill_migrates_active_expired_and_skips_pending(
     upgrade_legacy_source_to_head(database_test_url)
 
     with postgres_engine.connect() as connection:
-        migrated = connection.execute(
-            text(
-                "SELECT s.status AS subscription_status, e.status AS entitlement_status, "
-                "e.expired_at IS NOT NULL AS has_expired_evidence, "
-                "se.event_type, se.next_status, se.operation_idempotency_key, "
-                "se.metadata->>'legacy_access_state_id' AS legacy_id "
-                "FROM subscriptions s "
-                "JOIN entitlements e ON e.subscription_id = s.id "
-                "JOIN subscription_events se ON se.subscription_id = s.id "
-                "ORDER BY legacy_id"
+        migrated = (
+            connection.execute(
+                text(
+                    "SELECT s.status AS subscription_status, e.status AS entitlement_status, "
+                    "e.expired_at IS NOT NULL AS has_expired_evidence, "
+                    "se.event_type, se.next_status, se.operation_idempotency_key, "
+                    "se.metadata->>'legacy_access_state_id' AS legacy_id "
+                    "FROM subscriptions s "
+                    "JOIN entitlements e ON e.subscription_id = s.id "
+                    "JOIN subscription_events se ON se.subscription_id = s.id "
+                    "ORDER BY legacy_id"
+                )
             )
-        ).mappings().all()
-        table_exists = connection.execute(
-            text("SELECT to_regclass('public.product_access_states')")
-        ).scalar_one()
+            .mappings()
+            .all()
+        )
+        table_exists = connection.execute(text("SELECT to_regclass('public.product_access_states')")).scalar_one()
 
     assert table_exists is None
     assert migrated == [

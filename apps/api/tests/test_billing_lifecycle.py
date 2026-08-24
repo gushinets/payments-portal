@@ -49,7 +49,7 @@ def test_provider_state_is_mapped_to_domain_status() -> None:
         ProviderSubscriptionState.ENDED,
     ),
 )
-def test_terminal_provider_states_stop_future_renewal() -> None:
+def test_terminal_provider_states_stop_future_renewal(provider_state: ProviderSubscriptionState) -> None:
     assert subscription_status_from_provider_state(provider_state) == SubscriptionStatus.CANCELED
 
 
