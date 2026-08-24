@@ -21,6 +21,8 @@ EXPECTED_REVISION_CHAIN = [
     "20260707_0002",
     "20260707_0003",
     "20260729_0004",
+    "20260824_0005",
+    "20260824_0006",
 ]
 
 pytestmark = pytest.mark.postgres
@@ -143,9 +145,14 @@ def assert_postgres_schema_contract(postgres_engine: Engine) -> None:
     inspector = inspect(postgres_engine)
     webhook_columns = {column["name"]: column for column in inspector.get_columns("payment_webhook_events")}
     payment_columns = {column["name"]: column for column in inspector.get_columns("payments")}
+    entitlement_columns = {column["name"]: column for column in inspector.get_columns("entitlements")}
+    event_columns = {column["name"]: column for column in inspector.get_columns("subscription_events")}
     assert isinstance(webhook_columns["raw_payload"]["type"], JSONB)
     assert isinstance(webhook_columns["headers"]["type"], JSONB)
     assert isinstance(payment_columns["raw_summary"]["type"], JSONB)
+    assert isinstance(event_columns["metadata"]["type"], JSONB)
+    assert "updated_at" in entitlement_columns
+    assert "updated_at" not in event_columns
 
     payment_foreign_keys = {
         (
@@ -225,6 +232,8 @@ def test_clean_postgres_alembic_upgrade_and_downgrade(
     assert "payment_provider_accounts" in tables
     assert "payment_webhook_events" in tables
     assert "password_reset_rate_limits" in tables
+    assert "entitlements" in tables
+    assert "subscription_events" in tables
     assert seeded_legal_documents(postgres_engine) == expected_legal_documents()
     assert_postgres_schema_contract(postgres_engine)
 
@@ -243,6 +252,8 @@ def test_clean_postgres_alembic_upgrade_and_downgrade(
     assert "plans" in tables
     assert "payment_webhook_events" in tables
     assert "password_reset_rate_limits" in tables
+    assert "entitlements" in tables
+    assert "subscription_events" in tables
     assert alembic_version_count(postgres_engine) == 1
     assert current_alembic_revision(postgres_engine) == EXPECTED_REVISION_CHAIN[-1]
     assert seeded_legal_documents(postgres_engine) == expected_legal_documents()

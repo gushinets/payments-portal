@@ -24,7 +24,12 @@ from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import BigInteger, JSON
 
 from app.core.database import Base
-from app.domains.billing.enums import SubscriptionRenewalMode, SubscriptionStatus
+from app.domains.billing.enums import (
+    EntitlementSource,
+    EntitlementStatus,
+    SubscriptionRenewalMode,
+    SubscriptionStatus,
+)
 
 
 json_type = JSON().with_variant(JSONB(), "postgresql")
@@ -623,6 +628,96 @@ class Subscription(Base):
         server_default=func.now(),
         onupdate=func.now(),
     )
+
+
+class Entitlement(Base):
+    __tablename__ = "entitlements"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ("
+            f"'{EntitlementStatus.ACTIVE.value}', '{EntitlementStatus.EXPIRED.value}', "
+            f"'{EntitlementStatus.REVOKED.value}', '{EntitlementStatus.SUPERSEDED.value}')",
+            name="ck_entitlements_status",
+        ),
+        CheckConstraint(
+            "source IN ("
+            f"'{EntitlementSource.TRIAL.value}', '{EntitlementSource.ORDER.value}')",
+            name="ck_entitlements_source",
+        ),
+        CheckConstraint(
+            "(scope_type = 'product' AND product_id IS NOT NULL AND bundle_id IS NULL)"
+            " OR (scope_type = 'bundle' AND product_id IS NULL AND bundle_id IS NOT NULL)"
+            " OR (scope_type = 'all_access' AND product_id IS NULL AND bundle_id IS NULL)",
+            name="ck_entitlements_scope_references",
+        ),
+        CheckConstraint(
+            "valid_until > valid_from",
+            name="ck_entitlements_valid_period",
+        ),
+        CheckConstraint(
+            "(source = 'trial' AND order_id IS NULL) OR (source = 'order' AND order_id IS NOT NULL)",
+            name="ck_entitlements_source_order",
+        ),
+        Index("ix_entitlements_user_region_status", "user_id", "region", "status"),
+        Index("ix_entitlements_subscription_id", "subscription_id"),
+        Index("ix_entitlements_plan_id", "plan_id"),
+        Index("ix_entitlements_order_id", "order_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(uuid_type, primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[str] = mapped_column(Text, nullable=False, default="anytoolai", index=True)
+    region: Mapped[str] = mapped_column(ForeignKey("regions.code"), nullable=False, index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    subscription_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("subscriptions.id"), nullable=False)
+    plan_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("plans.id"), nullable=False)
+    scope_type: Mapped[str] = mapped_column(Text, nullable=False)
+    product_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("products.id"), nullable=True)
+    bundle_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("bundles.id"), nullable=True)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default=EntitlementStatus.ACTIVE.value, index=True)
+    valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    valid_until: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    source: Mapped[str] = mapped_column(Text, nullable=False)
+    order_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("orders.id"), nullable=True, index=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    superseded_by_entitlement_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("entitlements.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class SubscriptionEvent(Base):
+    __tablename__ = "subscription_events"
+    __table_args__ = (
+        Index("ix_subscription_events_subscription_occurred_at", "subscription_id", "occurred_at"),
+        Index("ix_subscription_events_order_id", "order_id"),
+        Index("ix_subscription_events_payment_id", "payment_id"),
+        Index("ix_subscription_events_refund_id", "refund_id"),
+        Index("ix_subscription_events_webhook_event_id", "webhook_event_id"),
+        UniqueConstraint("operation_idempotency_key", name="uq_subscription_events_operation_key"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(uuid_type, primary_key=True, default=uuid.uuid4)
+    subscription_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("subscriptions.id"), nullable=False, index=True)
+    event_type: Mapped[str] = mapped_column(Text, nullable=False)
+    previous_status: Mapped[str | None] = mapped_column(Text, nullable=True)
+    next_status: Mapped[str | None] = mapped_column(Text, nullable=True)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    operation_idempotency_key: Mapped[str] = mapped_column(Text, nullable=False)
+    order_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("orders.id"), nullable=True)
+    payment_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("payments.id"), nullable=True)
+    refund_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("refunds.id"), nullable=True)
+    webhook_event_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("payment_webhook_events.id"), nullable=True
+    )
+    metadata_: Mapped[dict] = mapped_column("metadata", json_type, nullable=False, default=dict)
 
 
 class EntrypointSession(Base):

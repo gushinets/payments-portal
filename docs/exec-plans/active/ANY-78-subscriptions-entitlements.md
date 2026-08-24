@@ -89,7 +89,7 @@ References:
   - Add database constraints for valid scope references and period ordering.
   - Keep provider status out of the table.
 
-- [ ] Add entitlements and append-only subscription events.
+- [x] Add entitlements and append-only subscription events.
   - Add `entitlements` linked to subscription, plan, user, scope, validity,
     source (`trial` or `order`), optional source order, and revoke, expire, and
     supersede evidence.
@@ -225,3 +225,10 @@ database records, telemetry, exceptions, or logs.
 - Run `npm run test:api` and PostgreSQL migration tests while iterating.
 - Run `npm run check:fast`, followed by the broadest locally supported
   `npm run check`, and record any skipped PostgreSQL or browser checks.
+
+## Follow-up before completion
+
+- Split `apps/api/app/models.py` into bounded modules so the architecture
+  check's file-size limit passes without weakening the guardrail.
+- Run `npm run generate` and commit the updated generated database schema
+  artifact after all planned ORM changes are complete.
