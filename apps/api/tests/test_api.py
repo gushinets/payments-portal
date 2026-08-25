@@ -11,6 +11,7 @@ from apps.api.tests.support.settings import override_settings
 
 configure_api_test_environment()
 
+import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware  # noqa: E402
 
@@ -235,6 +236,39 @@ def accept_document_for_token(
     )
     assert response.status_code == 200, response.text
     return response.json()["acceptance_id"]
+
+
+def create_document_acceptance_row(
+    db,
+    *,
+    document: DocumentVersion,
+    user: User,
+    acceptance_text_hash: str,
+    tenant_id: str | None = None,
+    region: str | None = None,
+    accepted_at: datetime | None = None,
+    entrypoint_value: str | None = None,
+) -> DocumentAcceptance:
+    from app.domains.legal.service import ACCEPTANCE_KIND_BY_DOC_TYPE
+
+    acceptance = DocumentAcceptance(
+        tenant_id=tenant_id or document.tenant_id,
+        region=region or document.region,
+        user_id=user.id,
+        document_version_id=document.id,
+        doc_type=document.doc_type,
+        version=document.version,
+        acceptance_kind=ACCEPTANCE_KIND_BY_DOC_TYPE.get(document.doc_type, "terms_acceptance"),
+        accepted_at=accepted_at or datetime.now(timezone.utc),
+        acceptance_text_hash=acceptance_text_hash,
+        entrypoint_type="product" if entrypoint_value is not None else None,
+        entrypoint_value=entrypoint_value,
+        metadata_={"plan_code": "document-summary-pro"} if entrypoint_value is not None else {},
+    )
+    db.add(acceptance)
+    db.commit()
+    db.refresh(acceptance)
+    return acceptance
 
 
 def seed_catalog(db) -> dict[str, object]:
@@ -4899,6 +4933,341 @@ def test_account_subscription_detail_enforces_authenticated_ownership() -> None:
     assert response.json()["cancellation"]["canceled_at"] is None
     assert foreign_response.status_code == 404
     assert foreign_response.json()["detail"]["code"] == "subscription_not_found"
+
+
+def test_required_document_acceptance_hash_controls_terms_and_personal_consent_gate() -> None:
+    from app.domains.legal.service import expected_acceptance_text_hash
+
+    with SessionLocal() as db:
+        legal_entity = create_legal_entity(db, region="ru")
+        offer_document = create_document_version(
+            db,
+            legal_entity=legal_entity,
+            doc_type="offer",
+            version="2026-08-offer-v1",
+            title="Публичная оферта",
+        )
+        personal_document = create_document_version(
+            db,
+            legal_entity=legal_entity,
+            doc_type="pd_consent",
+            version="2026-08-pd-v1",
+            title="Согласие на обработку персональных данных",
+        )
+        offer_document_id = offer_document.id
+        personal_document_id = personal_document.id
+        offer_hash = expected_acceptance_text_hash(offer_document)
+        personal_hash = expected_acceptance_text_hash(personal_document)
+
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "legal-hash-gate@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = register_response.json()["token"]
+
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": False,
+        },
+    )
+    assert checkout_response.status_code == 409
+    assert {document["document_version_id"] for document in checkout_response.json()["detail"]["documents"]} == {
+        str(offer_document_id),
+        str(personal_document_id),
+    }
+
+    with SessionLocal() as db:
+        user = db.query(User).filter(User.email == "legal-hash-gate@example.com").one()
+        offer_document = db.get(DocumentVersion, offer_document_id)
+        personal_document = db.get(DocumentVersion, personal_document_id)
+        create_document_acceptance_row(
+            db,
+            document=offer_document,
+            user=user,
+            acceptance_text_hash="0" * 64,
+        )
+        create_document_acceptance_row(
+            db,
+            document=personal_document,
+            user=user,
+            acceptance_text_hash=personal_hash,
+        )
+
+    bad_hash_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": False,
+        },
+    )
+    assert bad_hash_response.status_code == 409
+    bad_hash_detail = bad_hash_response.json()["detail"]
+    assert bad_hash_detail["code"] == "missing_required_documents"
+    assert [document["document_version_id"] for document in bad_hash_detail["documents"]] == [str(offer_document_id)]
+
+    with SessionLocal() as db:
+        user = db.query(User).filter(User.email == "legal-hash-gate@example.com").one()
+        offer_document = db.get(DocumentVersion, offer_document_id)
+        create_document_acceptance_row(
+            db,
+            document=offer_document,
+            user=user,
+            acceptance_text_hash=offer_hash,
+        )
+
+    accepted_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": False,
+        },
+    )
+    assert accepted_response.status_code == 200, accepted_response.text
+    with SessionLocal() as db:
+        acceptances = db.query(DocumentAcceptance).all()
+    assert len(acceptances) == 3
+    assert any(acceptance.acceptance_text_hash == "0" * 64 for acceptance in acceptances)
+
+
+def test_required_document_acceptance_scope_and_time_filters_still_apply() -> None:
+    from app.domains.legal.service import expected_acceptance_text_hash
+
+    now = datetime.now(timezone.utc)
+    with SessionLocal() as db:
+        legal_entity = create_legal_entity(db, region="ru")
+        stale_document = create_document_version(
+            db,
+            legal_entity=legal_entity,
+            doc_type="offer",
+            version="2026-08-offer-v0",
+            title="Публичная оферта",
+        )
+        stale_document.is_active = False
+        active_document = create_document_version(
+            db,
+            legal_entity=legal_entity,
+            doc_type="offer",
+            version="2026-08-offer-v1",
+            title="Публичная оферта",
+        )
+        active_document_id = active_document.id
+        stale_document_id = stale_document.id
+        active_hash = expected_acceptance_text_hash(active_document)
+        stale_hash = expected_acceptance_text_hash(stale_document)
+        db.commit()
+
+    owner_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "legal-scope-owner@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    other_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "legal-scope-other@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    assert other_response.status_code == 200
+    token = owner_response.json()["token"]
+
+    with SessionLocal() as db:
+        owner = db.query(User).filter(User.email == "legal-scope-owner@example.com").one()
+        other_user = db.query(User).filter(User.email == "legal-scope-other@example.com").one()
+        active_document = db.get(DocumentVersion, active_document_id)
+        stale_document = db.get(DocumentVersion, stale_document_id)
+        create_document_acceptance_row(
+            db,
+            document=active_document,
+            user=other_user,
+            acceptance_text_hash=active_hash,
+        )
+        create_document_acceptance_row(
+            db,
+            document=active_document,
+            user=owner,
+            tenant_id="other-tenant",
+            acceptance_text_hash=active_hash,
+        )
+        create_document_acceptance_row(
+            db,
+            document=active_document,
+            user=owner,
+            region="eu",
+            acceptance_text_hash=active_hash,
+        )
+        create_document_acceptance_row(
+            db,
+            document=active_document,
+            user=owner,
+            accepted_at=now + timedelta(days=1),
+            acceptance_text_hash=active_hash,
+        )
+        create_document_acceptance_row(
+            db,
+            document=stale_document,
+            user=owner,
+            acceptance_text_hash=stale_hash,
+        )
+
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": False,
+        },
+    )
+    assert checkout_response.status_code == 409
+    detail = checkout_response.json()["detail"]
+    assert detail["code"] == "missing_required_documents"
+    assert [document["document_version_id"] for document in detail["documents"]] == [str(active_document_id)]
+
+
+def test_create_document_acceptance_rejects_substituted_hash_in_endpoint_and_service() -> None:
+    from app.domains.legal.service import (
+        LegalAcceptanceError,
+        create_document_acceptance,
+    )
+
+    with SessionLocal() as db:
+        legal_entity = create_legal_entity(db, region="ru")
+        document = create_document_version(
+            db,
+            legal_entity=legal_entity,
+            doc_type="offer",
+            version="2026-08-offer-v1",
+            title="Публичная оферта",
+        )
+        document_id = document.id
+        with pytest.raises(LegalAcceptanceError) as error:
+            create_document_acceptance(
+                db,
+                document=document,
+                acceptance_text_hash="f" * 64,
+            )
+        assert error.value.code == "invalid_acceptance_text_hash"
+        assert db.query(DocumentAcceptance).count() == 0
+
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "legal-service-hash@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = register_response.json()["token"]
+
+    response = client.post(
+        "/api/legal/acceptances",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "document_version_id": str(document_id),
+            "acceptance_text_hash": "f" * 64,
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "invalid_acceptance_text_hash"
+
+
+def test_automatic_checkout_keeps_recurring_consent_missing_when_hash_is_wrong() -> None:
+    from app.domains.legal.service import expected_acceptance_text_hash
+
+    with SessionLocal() as db:
+        plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
+        plan.renewal_mode = "automatic"
+        legal_entity = create_legal_entity(db)
+        document = create_document_version(
+            db,
+            legal_entity=legal_entity,
+            doc_type="recurring_consent",
+            version="2026-08-recurring-v1",
+            title="Согласие на рекуррентные платежи",
+        )
+        document_id = document.id
+        document_title = document.title
+        document_hash = expected_acceptance_text_hash(document)
+
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "recurring-hash-gate@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = register_response.json()["token"]
+
+    with SessionLocal() as db:
+        user = db.query(User).filter(User.email == "recurring-hash-gate@example.com").one()
+        document = db.get(DocumentVersion, document_id)
+        create_document_acceptance_row(
+            db,
+            document=document,
+            user=user,
+            acceptance_text_hash="1" * 64,
+            entrypoint_value="document-summary",
+        )
+
+    bad_hash_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": True,
+        },
+    )
+    assert bad_hash_response.status_code == 409
+    bad_hash_detail = bad_hash_response.json()["detail"]
+    assert bad_hash_detail["code"] == "missing_required_documents"
+    assert [document["document_version_id"] for document in bad_hash_detail["documents"]] == [str(document_id)]
+
+    acceptance_id = accept_document_for_token(
+        token,
+        document_version_id=document_id,
+        document_title=document_title,
+        entrypoint_value="document-summary",
+    )
+    with SessionLocal() as db:
+        correct_acceptance = db.get(DocumentAcceptance, uuid.UUID(acceptance_id))
+    assert correct_acceptance.acceptance_text_hash == document_hash
+
+    accepted_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": True,
+            "recurring_consent_acceptance_id": acceptance_id,
+        },
+    )
+    assert accepted_response.status_code == 200, accepted_response.text
 
 
 def test_checkout_requires_acceptance_again_when_active_document_version_changes() -> None:

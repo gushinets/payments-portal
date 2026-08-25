@@ -21,6 +21,14 @@ ACCEPTANCE_KIND_BY_DOC_TYPE = {
 }
 
 
+class LegalAcceptanceError(ValueError):
+    """Raised when a legal acceptance cannot be recorded safely."""
+
+    def __init__(self, code: str) -> None:
+        super().__init__(code)
+        self.code = code
+
+
 def hash_acceptance_text(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
@@ -87,10 +95,11 @@ def get_missing_required_documents_for_user(
         return []
 
     accepted_version_kinds = {
-        (row[0], row[1])
+        (row[0], row[1], row[2])
         for row in db.query(
             DocumentAcceptance.document_version_id,
             DocumentAcceptance.acceptance_kind,
+            DocumentAcceptance.acceptance_text_hash,
         )
         .filter(
             DocumentAcceptance.tenant_id == user.tenant_id,
@@ -107,6 +116,7 @@ def get_missing_required_documents_for_user(
         if (
             document.id,
             ACCEPTANCE_KIND_BY_DOC_TYPE.get(document.doc_type, "terms_acceptance"),
+            expected_acceptance_text_hash(document),
         )
         not in accepted_version_kinds
     ]
@@ -210,6 +220,9 @@ def create_document_acceptance(
     metadata: dict[str, Any] | None = None,
     accepted_at: datetime | None = None,
 ) -> DocumentAcceptance:
+    if acceptance_text_hash != expected_acceptance_text_hash(document):
+        raise LegalAcceptanceError("invalid_acceptance_text_hash")
+
     acceptance = DocumentAcceptance(
         tenant_id=document.tenant_id,
         region=document.region,

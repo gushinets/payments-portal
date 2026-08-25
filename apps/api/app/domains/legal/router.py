@@ -15,6 +15,7 @@ from app.domains.identity.session import (
     get_current_session,
 )
 from app.domains.legal.service import (
+    LegalAcceptanceError,
     build_acceptance_text,
     create_document_acceptance,
     expected_acceptance_text_hash,
@@ -92,23 +93,23 @@ def accept_document(
     if document is None:
         record_legal_acceptance("document_not_found")
         raise HTTPException(status_code=404, detail="document_version_not_found")
-    expected_hash = expected_acceptance_text_hash(document)
-    if payload.acceptance_text_hash != expected_hash:
-        record_legal_acceptance("invalid_text_hash")
-        raise HTTPException(status_code=400, detail="invalid_acceptance_text_hash")
 
-    acceptance = create_document_acceptance(
-        db,
-        document=document,
-        user_id=user.id,
-        ip=request.client.host if request.client else None,
-        user_agent=request.headers.get("user-agent"),
-        acceptance_text_hash=payload.acceptance_text_hash,
-        entrypoint_type=payload.entrypoint_type,
-        entrypoint_value=payload.entrypoint_value,
-        source_url=payload.source_url,
-        metadata=payload.metadata,
-    )
+    try:
+        acceptance = create_document_acceptance(
+            db,
+            document=document,
+            user_id=user.id,
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            acceptance_text_hash=payload.acceptance_text_hash,
+            entrypoint_type=payload.entrypoint_type,
+            entrypoint_value=payload.entrypoint_value,
+            source_url=payload.source_url,
+            metadata=payload.metadata,
+        )
+    except LegalAcceptanceError as exc:
+        record_legal_acceptance("invalid_text_hash")
+        raise HTTPException(status_code=400, detail=exc.code) from exc
     db.commit()
     db.refresh(acceptance)
     record_legal_acceptance("accepted")
