@@ -85,15 +85,16 @@ test("legal acceptance gates checkout and webhook state remains authoritative", 
   const beforeState = await beforeWebhook.json();
   expect(beforeState.product_state.status).toBe("pending");
 
+  const transactionId = `tx-${testInfo.project.name}-${testInfo.workerIndex}-${Date.now()}`;
   const webhookPayload = signedCloudpaymentsJson({
-      InvoiceId: invoice,
-      TransactionId: `tx-${Date.now()}`,
-      AccountId: email,
-      Amount: "990.00",
-      Currency: "RUB",
-      Status: "Completed",
-      CardFirstSix: "411111",
-      CardLastFour: "1111"
+    InvoiceId: invoice,
+    TransactionId: transactionId,
+    AccountId: email,
+    Amount: "990.00",
+    Currency: "RUB",
+    Status: "Completed",
+    CardFirstSix: "411111",
+    CardLastFour: "1111"
   });
   const webhook = await api.post("/api/cloudpayments/pay", {
     headers: webhookPayload.headers,
@@ -104,7 +105,8 @@ test("legal acceptance gates checkout and webhook state remains authoritative", 
   const afterWebhook = await api.get(statusPath);
   expect(afterWebhook.ok()).toBeTruthy();
   const finalState = await afterWebhook.json();
-  expect(finalState.product_state.status).toBe("pending");
+  expect(finalState.product_state.status).toBe("active");
+  expect(finalState.product_state.transaction_id).toBe(transactionId);
 
   await testInfo.attach("checkout-webhook-evidence", {
     body: JSON.stringify(
@@ -113,7 +115,7 @@ test("legal acceptance gates checkout and webhook state remains authoritative", 
         invoice,
         beforeWebhook: beforeState,
         afterWebhook: finalState,
-        invariant: "Browser return and current payment webhook do not activate legacy access"
+        invariant: "Browser return remains pending until the verified webhook activates subscription access"
       },
       null,
       2
