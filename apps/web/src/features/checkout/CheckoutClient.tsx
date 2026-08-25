@@ -75,6 +75,11 @@ type RequiredDocument = {
   acceptance_text_hash: string;
 };
 
+type AcceptDocumentResponse = {
+  acceptance_id?: unknown;
+  doc_type?: unknown;
+};
+
 const telegramLoginUrl = process.env.NEXT_PUBLIC_TELEGRAM_LOGIN_URL ?? "";
 const sessionStorageKey = "anytoolai_session_token_v1";
 const sessionChangedEvent = "anytoolai_session_changed";
@@ -97,6 +102,8 @@ export function CheckoutClient({
   );
   const [autoRenew, setAutoRenew] = useState(false);
   const [recurrentConsent, setRecurrentConsent] = useState(false);
+  const [recurringConsentAcceptanceId, setRecurringConsentAcceptanceId] =
+    useState("");
   const [sessionToken, setSessionToken] = useState("");
   const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
   const [productState, setProductState] = useState<ProductState | null>(null);
@@ -109,6 +116,8 @@ export function CheckoutClient({
   const [loading, setLoading] = useState(false);
   const [sessionLoading, setSessionLoading] = useState(false);
   const feedbackRef = useRef<HTMLDivElement | null>(null);
+  const previousSessionUserKeyRef = useRef("");
+  const previousCheckoutContextKeyRef = useRef("");
 
   const knownProductCodes = products.map((product) => product.code);
   const invalidProduct =
@@ -128,6 +137,16 @@ export function CheckoutClient({
     );
   const checkoutAdapterBlocked =
     checkoutAdapterStatus === "loading" || checkoutAdapterStatus === "failed";
+  const sessionUserKey = sessionUser
+    ? `${sessionUser.tenant_id}:${sessionUser.region}:${sessionUser.user_id}`
+    : "";
+  const checkoutContextKey = selectedProduct
+    ? `${selectedProduct.code}:${selectedProduct.plan.code}`
+    : "";
+
+  function clearRecurringConsentEvidence() {
+    setRecurringConsentAcceptanceId("");
+  }
 
   useEffect(() => {
     function syncStoredToken() {
@@ -139,6 +158,7 @@ export function CheckoutClient({
         setSessionToken("");
         setSessionUser(null);
         setProductState(null);
+        clearRecurringConsentEvidence();
         setSessionLoading(false);
       }
     }
@@ -157,6 +177,7 @@ export function CheckoutClient({
       if (!sessionToken) {
         setSessionUser(null);
         setProductState(null);
+        clearRecurringConsentEvidence();
         setSessionLoading(false);
         return;
       }
@@ -177,6 +198,7 @@ export function CheckoutClient({
         setSessionToken("");
         setSessionUser(null);
         setProductState(null);
+        clearRecurringConsentEvidence();
         setNotice(
           "Не удалось проверить текущую сессию. Войдите снова через форму ниже."
         );
@@ -187,6 +209,24 @@ export function CheckoutClient({
 
     void loadSession();
   }, [selectedCode, sessionToken]);
+
+  useEffect(() => {
+    const previousKey = previousSessionUserKeyRef.current;
+    if (previousKey && previousKey !== sessionUserKey) {
+      clearRecurringConsentEvidence();
+      setRecurrentConsent(false);
+    }
+    previousSessionUserKeyRef.current = sessionUserKey;
+  }, [sessionUserKey]);
+
+  useEffect(() => {
+    const previousKey = previousCheckoutContextKeyRef.current;
+    if (previousKey && previousKey !== checkoutContextKey) {
+      clearRecurringConsentEvidence();
+      setRecurrentConsent(false);
+    }
+    previousCheckoutContextKeyRef.current = checkoutContextKey;
+  }, [checkoutContextKey]);
 
   useEffect(() => {
     if (!error && !notice) {
@@ -215,21 +255,75 @@ export function CheckoutClient({
     }
 
     const detail = errorValue.detail;
+    const detailRecord =
+      typeof detail === "object" && detail !== null
+        ? (detail as Record<string, unknown>)
+        : null;
     if (
-      typeof detail === "object" &&
-      detail !== null &&
-      "code" in detail &&
-      "documents" in detail &&
-      detail.code === "missing_required_documents" &&
-      Array.isArray(detail.documents)
+      detailRecord !== null &&
+      detailRecord.code === "missing_required_documents" &&
+      Array.isArray(detailRecord.documents)
     ) {
-      return detail.documents as RequiredDocument[];
+      const documents = detailRecord.documents.filter(isRequiredDocument);
+      return documents.length === detailRecord.documents.length
+        ? documents
+        : null;
     }
 
     return null;
   }
 
+  function isRequiredDocument(value: unknown): value is RequiredDocument {
+    if (typeof value !== "object" || value === null) {
+      return false;
+    }
+    const document = value as Record<string, unknown>;
+    return (
+      typeof document.document_version_id === "string" &&
+      typeof document.doc_type === "string" &&
+      typeof document.version === "string" &&
+      typeof document.title === "string" &&
+      typeof document.url_path === "string" &&
+      typeof document.acceptance_text === "string" &&
+      typeof document.acceptance_text_hash === "string"
+    );
+  }
+
+  function apiErrorCode(errorValue: unknown): string | null {
+    if (!(errorValue instanceof ApiError)) {
+      return null;
+    }
+    const detail = errorValue.detail;
+    if (typeof detail === "string") {
+      return detail;
+    }
+    if (typeof detail === "object" && detail !== null && "code" in detail) {
+      const code = (detail as Record<string, unknown>).code;
+      if (typeof code === "string") {
+        return code;
+      }
+    }
+    return null;
+  }
+
   function checkoutPreparationErrorMessage(errorValue: unknown): string {
+    const code = apiErrorCode(errorValue);
+    if (code === "automatic_renewal_not_permitted") {
+      return "Выбранный тариф не поддерживает автопродление. Отключите автопродление или выберите другой тариф.";
+    }
+    if (code === "recurring_consent_required") {
+      return "Для автопродления нужно принять актуальный документ о регулярных списаниях.";
+    }
+    if (code === "recurring_consent_invalid") {
+      return "Согласие на регулярные списания устарело. Примите актуальный документ ещё раз.";
+    }
+    if (code === "invalid_acceptance_text_hash") {
+      return "Текст согласия изменился. Обновите страницу и попробуйте ещё раз.";
+    }
+    if (code === "missing_required_documents") {
+      return "Перед оплатой нужно принять актуальные юридические документы.";
+    }
+
     if (errorValue instanceof ApiError && errorValue.status === 409) {
       if (
         errorValue.detail === "cloudpayments_public_terminal_id_missing" ||
@@ -255,6 +349,8 @@ export function CheckoutClient({
       setSessionUser(payload.user);
       setMissingDocuments([]);
       setDocumentConsentById({});
+      clearRecurringConsentEvidence();
+      setRecurrentConsent(false);
       showNotice(
         values.mode === "register"
           ? "Аккаунт создан. Теперь можно перейти к оплате."
@@ -287,10 +383,12 @@ export function CheckoutClient({
       setProductState(null);
       setMissingDocuments([]);
       setDocumentConsentById({});
+      clearRecurringConsentEvidence();
+      setRecurrentConsent(false);
     }
   }
 
-  async function goToPaymentResult() {
+  async function goToPaymentResult(recurringAcceptanceIdOverride?: string) {
     setError("");
 
     if (!selectedProduct) {
@@ -324,13 +422,22 @@ export function CheckoutClient({
 
     let checkoutIntent: CheckoutIntentResponse;
     try {
+      const effectiveRecurringConsentAcceptanceId =
+        recurringAcceptanceIdOverride ?? recurringConsentAcceptanceId;
+      const checkoutPayload = {
+        product: selectedProduct.code,
+        plan_code: selectedProduct.plan.code,
+        auto_renew: autoRenew,
+        ...(autoRenew && effectiveRecurringConsentAcceptanceId
+          ? {
+              recurring_consent_acceptance_id:
+                effectiveRecurringConsentAcceptanceId
+            }
+          : {})
+      };
       const payload = await postJson<CheckoutIntentResponse>(
         "/api/auth/checkout-intent",
-        {
-          product: selectedProduct.code,
-          plan_code: selectedProduct.plan.code,
-          auto_renew: autoRenew
-        },
+        checkoutPayload,
         sessionToken
       );
       checkoutIntent = payload;
@@ -342,10 +449,18 @@ export function CheckoutClient({
       if (documents) {
         setMissingDocuments(documents);
         setDocumentConsentById({});
+        if (
+          documents.some((document) => document.doc_type === "recurring_consent")
+        ) {
+          clearRecurringConsentEvidence();
+        }
         showError("Перед оплатой нужно принять актуальные юридические документы.");
         return;
       }
 
+      if (apiErrorCode(requestError) === "recurring_consent_invalid") {
+        clearRecurringConsentEvidence();
+      }
       showError(checkoutPreparationErrorMessage(requestError));
       return;
     }
@@ -414,24 +529,47 @@ export function CheckoutClient({
 
     setLoading(true);
     try {
+      let recurringAcceptanceId = "";
       for (const document of missingDocuments) {
-        await postJson(
+        const acceptance = await postJson<AcceptDocumentResponse>(
           "/api/legal/acceptances",
           {
             document_version_id: document.document_version_id,
             acceptance_text_hash: document.acceptance_text_hash,
             entrypoint_type: "product",
             entrypoint_value: selectedProduct?.code ?? null,
-            source_url: window.location.pathname + window.location.search
+            source_url: window.location.pathname + window.location.search,
+            metadata: {
+              plan_code: selectedProduct?.plan.code ?? null,
+              auto_renew: autoRenew
+            }
           },
           sessionToken
         );
+        if (document.doc_type === "recurring_consent") {
+          if (
+            typeof acceptance.acceptance_id !== "string" ||
+            acceptance.doc_type !== "recurring_consent"
+          ) {
+            throw new Error("recurring_acceptance_missing");
+          }
+          recurringAcceptanceId = acceptance.acceptance_id;
+        }
       }
 
+      if (
+        autoRenew &&
+        missingDocuments.some((document) => document.doc_type === "recurring_consent")
+      ) {
+        if (!recurringAcceptanceId) {
+          throw new Error("recurring_acceptance_missing");
+        }
+        setRecurringConsentAcceptanceId(recurringAcceptanceId);
+      }
       setMissingDocuments([]);
       setDocumentConsentById({});
       showNotice("Документы приняты. Продолжаем оформление оплаты.");
-      await goToPaymentResult();
+      await goToPaymentResult(recurringAcceptanceId || undefined);
     } catch (requestError) {
       if (
         requestError instanceof ApiError &&
@@ -632,6 +770,7 @@ export function CheckoutClient({
                       setAutoRenew(event.target.checked);
                       if (!event.target.checked) {
                         setRecurrentConsent(false);
+                        clearRecurringConsentEvidence();
                       }
                     }}
                   />
@@ -665,7 +804,7 @@ export function CheckoutClient({
                 <button
                   className="btn-primary"
                   type="button"
-                  onClick={goToPaymentResult}
+                  onClick={() => void goToPaymentResult()}
                   disabled={
                     !selectedProduct ||
                     missingDocuments.length > 0 ||

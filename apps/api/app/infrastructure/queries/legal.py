@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.time import utc_now
 from app.domains.legal.enums import AcceptanceKind
-from app.models import DocumentAcceptance
+from app.models import DocumentAcceptance, DocumentVersion
 
 
 def get_document_acceptance_by_id(
@@ -24,15 +24,24 @@ def get_recurring_consent_acceptance(
     region: str,
     user_id: uuid.UUID,
 ) -> DocumentAcceptance | None:
+    now = utc_now()
     return (
         db.query(DocumentAcceptance)
+        .join(DocumentVersion, DocumentVersion.id == DocumentAcceptance.document_version_id)
         .filter(
             DocumentAcceptance.id == acceptance_id,
             DocumentAcceptance.tenant_id == tenant_id,
             DocumentAcceptance.region == region,
             DocumentAcceptance.user_id == user_id,
+            DocumentAcceptance.doc_type == "recurring_consent",
             DocumentAcceptance.acceptance_kind == AcceptanceKind.RECURRING_CONSENT.value,
-            DocumentAcceptance.accepted_at <= utc_now(),
+            DocumentAcceptance.accepted_at <= now,
+            DocumentVersion.tenant_id == tenant_id,
+            DocumentVersion.region == region,
+            DocumentVersion.doc_type == "recurring_consent",
+            DocumentVersion.is_active.is_(True),
+            DocumentVersion.requires_acceptance.is_(True),
+            DocumentVersion.effective_from <= now,
         )
         .first()
     )

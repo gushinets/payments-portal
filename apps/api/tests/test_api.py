@@ -213,6 +213,30 @@ def create_document_version(
     return document
 
 
+def accept_document_for_token(
+    token: str,
+    *,
+    document_version_id: uuid.UUID,
+    document_title: str,
+    entrypoint_value: str | None = None,
+) -> str:
+    from app.domains.legal.service import hash_acceptance_text
+
+    response = client.post(
+        "/api/legal/acceptances",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "document_version_id": str(document_version_id),
+            "acceptance_text_hash": hash_acceptance_text(f"Я принимаю документ «{document_title}»."),
+            "entrypoint_type": "product" if entrypoint_value is not None else None,
+            "entrypoint_value": entrypoint_value,
+            "metadata": {"plan_code": "document-summary-pro"} if entrypoint_value is not None else {},
+        },
+    )
+    assert response.status_code == 200, response.text
+    return response.json()["acceptance_id"]
+
+
 def seed_catalog(db) -> dict[str, object]:
     existing_document_plan = (
         db.query(Plan)
@@ -564,11 +588,98 @@ def test_register_session_and_checkout_intent_flow() -> None:
     assert order.provider_invoice_id == invoice_id
 
 
-def test_checkout_rejects_automatic_renewal_without_consent() -> None:
+def test_manual_checkout_does_not_require_recurring_consent() -> None:
+    with SessionLocal() as db:
+        legal_entity = create_legal_entity(db)
+        create_document_version(
+            db,
+            legal_entity=legal_entity,
+            doc_type="recurring_consent",
+            version="2026-08-recurring-v1",
+            title="Согласие на рекуррентные платежи",
+        )
+
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "manual-without-recurring@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = register_response.json()["token"]
+
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": False,
+        },
+    )
+
+    assert checkout_response.status_code == 200, checkout_response.text
+    with SessionLocal() as db:
+        checkout = db.query(CheckoutSession).one()
+        order = db.query(Order).one()
+
+    assert checkout.metadata_["auto_renew"] is False
+    assert checkout.metadata_["recurring_consent_acceptance_id"] is None
+    assert order.metadata_["auto_renew"] is False
+    assert order.metadata_["recurring_consent_acceptance_id"] is None
+
+
+def test_checkout_rejects_automatic_renewal_for_manual_only_plan() -> None:
+    with SessionLocal() as db:
+        legal_entity = create_legal_entity(db)
+        create_document_version(
+            db,
+            legal_entity=legal_entity,
+            doc_type="recurring_consent",
+            version="2026-08-recurring-v1",
+            title="Согласие на рекуррентные платежи",
+        )
+
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "automatic-manual-only@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = register_response.json()["token"]
+
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": True,
+        },
+    )
+
+    assert checkout_response.status_code == 409
+    assert checkout_response.json()["detail"]["code"] == "automatic_renewal_not_permitted"
+
+
+def test_automatic_checkout_without_acceptance_returns_document_flow() -> None:
     with SessionLocal() as db:
         plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
         plan.renewal_mode = "automatic"
-        db.commit()
+        legal_entity = create_legal_entity(db)
+        document = create_document_version(
+            db,
+            legal_entity=legal_entity,
+            doc_type="recurring_consent",
+            version="2026-08-recurring-v1",
+            title="Согласие на рекуррентные платежи",
+        )
+        document_id = document.id
 
     register_response = client.post(
         "/api/auth/register",
@@ -592,12 +703,68 @@ def test_checkout_rejects_automatic_renewal_without_consent() -> None:
     )
 
     assert checkout_response.status_code == 409
+    detail = checkout_response.json()["detail"]
+    assert detail["code"] == "missing_required_documents"
+    assert detail["documents"] == [
+        {
+            "document_version_id": str(document_id),
+            "doc_type": "recurring_consent",
+            "version": "2026-08-recurring-v1",
+            "title": "Согласие на рекуррентные платежи",
+            "url_path": "/ru/recurring_consent",
+            "acceptance_text": "Я принимаю документ «Согласие на рекуррентные платежи».",
+            "acceptance_text_hash": detail["documents"][0]["acceptance_text_hash"],
+        }
+    ]
+
+
+def test_automatic_checkout_requires_exact_acceptance_id_after_document_acceptance() -> None:
+    with SessionLocal() as db:
+        plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
+        plan.renewal_mode = "automatic"
+        legal_entity = create_legal_entity(db)
+        document = create_document_version(
+            db,
+            legal_entity=legal_entity,
+            doc_type="recurring_consent",
+            version="2026-08-recurring-v1",
+            title="Согласие на рекуррентные платежи",
+        )
+        document_id = document.id
+        document_title = document.title
+
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "automatic-missing-exact-id@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = register_response.json()["token"]
+    accept_document_for_token(
+        token,
+        document_version_id=document_id,
+        document_title=document_title,
+        entrypoint_value="document-summary",
+    )
+
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": True,
+        },
+    )
+
+    assert checkout_response.status_code == 409
     assert checkout_response.json()["detail"]["code"] == "recurring_consent_required"
 
 
 def test_checkout_persists_exact_recurring_consent_reference() -> None:
-    from app.domains.legal.service import expected_acceptance_text_hash
-
     with SessionLocal() as db:
         plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
         plan.renewal_mode = "automatic"
@@ -610,6 +777,8 @@ def test_checkout_persists_exact_recurring_consent_reference() -> None:
             version="2026-08-recurring-v1",
             title="Согласие на рекуррентные платежи",
         )
+        document_id = document.id
+        document_title = document.title
 
     register_response = client.post(
         "/api/auth/register",
@@ -621,16 +790,11 @@ def test_checkout_persists_exact_recurring_consent_reference() -> None:
         },
     )
     token = register_response.json()["token"]
-    acceptance_response = client.post(
-        "/api/legal/acceptances",
-        headers={"Authorization": f"Bearer {token}"},
-        json={
-            "document_version_id": str(document.id),
-            "acceptance_text_hash": expected_acceptance_text_hash(document),
-        },
+    acceptance_id = accept_document_for_token(
+        token,
+        document_version_id=document_id,
+        document_title=document_title,
     )
-    assert acceptance_response.status_code == 200, acceptance_response.text
-    acceptance_id = acceptance_response.json()["acceptance_id"]
 
     checkout_response = client.post(
         "/api/auth/checkout-intent",
@@ -650,6 +814,445 @@ def test_checkout_persists_exact_recurring_consent_reference() -> None:
 
     assert checkout.metadata_["recurring_consent_acceptance_id"] == acceptance_id
     assert order.metadata_["recurring_consent_acceptance_id"] == acceptance_id
+
+
+def test_automatic_checkout_paid_subscription_remains_manual_until_provider_attach() -> None:
+    with SessionLocal() as db:
+        plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
+        plan.renewal_mode = "automatic"
+        legal_entity = create_legal_entity(db)
+        document = create_document_version(
+            db,
+            legal_entity=legal_entity,
+            doc_type="recurring_consent",
+            version="2026-08-recurring-v1",
+            title="Согласие на рекуррентные платежи",
+        )
+        document_id = document.id
+        document_title = document.title
+
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "automatic-manual-until-provider@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = register_response.json()["token"]
+    acceptance_id = accept_document_for_token(
+        token,
+        document_version_id=document_id,
+        document_title=document_title,
+        entrypoint_value="document-summary",
+    )
+
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": True,
+            "recurring_consent_acceptance_id": acceptance_id,
+        },
+    )
+    assert checkout_response.status_code == 200, checkout_response.text
+    invoice_id = checkout_response.json()["product_state"]["invoice_id"]
+
+    webhook_response = client.post(
+        "/api/cloudpayments/pay",
+        json={
+            "InvoiceId": invoice_id,
+            "TransactionId": "tx-auto-renew-initial-payment",
+            "AccountId": "automatic-manual-until-provider@example.com",
+            "Amount": "990.00",
+            "Currency": "RUB",
+            "Status": "Completed",
+        },
+    )
+
+    assert webhook_response.status_code == 200
+    with SessionLocal() as db:
+        order = db.query(Order).one()
+        subscription = db.query(Subscription).one()
+
+    assert order.metadata_["auto_renew"] is True
+    assert order.metadata_["recurring_consent_acceptance_id"] == acceptance_id
+    assert subscription.renewal_mode == "manual"
+    assert subscription.provider_subscription_id is None
+    assert subscription.recurring_consent_acceptance_id is None
+
+
+def test_checkout_rejects_recurring_acceptance_from_another_user() -> None:
+    with SessionLocal() as db:
+        plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
+        plan.renewal_mode = "automatic"
+        legal_entity = create_legal_entity(db)
+        document = create_document_version(
+            db,
+            legal_entity=legal_entity,
+            doc_type="recurring_consent",
+            version="2026-08-recurring-v1",
+            title="Согласие на рекуррентные платежи",
+        )
+        document_id = document.id
+        document_title = document.title
+
+    owner_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "recurring-owner@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    owner_token = owner_response.json()["token"]
+    owner_acceptance_id = accept_document_for_token(
+        owner_token,
+        document_version_id=document_id,
+        document_title=document_title,
+        entrypoint_value="document-summary",
+    )
+
+    buyer_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "recurring-buyer@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    buyer_token = buyer_response.json()["token"]
+    accept_document_for_token(
+        buyer_token,
+        document_version_id=document_id,
+        document_title=document_title,
+        entrypoint_value="document-summary",
+    )
+
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {buyer_token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": True,
+            "recurring_consent_acceptance_id": owner_acceptance_id,
+        },
+    )
+
+    assert checkout_response.status_code == 409
+    assert checkout_response.json()["detail"]["code"] == "recurring_consent_invalid"
+
+
+def test_checkout_rejects_recurring_acceptance_from_another_tenant_or_region() -> None:
+    with SessionLocal() as db:
+        plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
+        plan.renewal_mode = "automatic"
+        legal_entity = create_legal_entity(db)
+        document = create_document_version(
+            db,
+            legal_entity=legal_entity,
+            doc_type="recurring_consent",
+            version="2026-08-recurring-v1",
+            title="Согласие на рекуррентные платежи",
+        )
+        document_id = document.id
+        document_title = document.title
+        foreign_entity = create_legal_entity(db, region="eu")
+        foreign_document = create_document_version(
+            db,
+            legal_entity=foreign_entity,
+            doc_type="recurring_consent",
+            version="2026-08-recurring-v1",
+            title="Recurring consent",
+        )
+        foreign_document_id = foreign_document.id
+        foreign_document_title = foreign_document.title
+
+    buyer_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "recurring-tenant-buyer@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    buyer_token = buyer_response.json()["token"]
+    accept_document_for_token(
+        buyer_token,
+        document_version_id=document_id,
+        document_title=document_title,
+        entrypoint_value="document-summary",
+    )
+
+    foreign_response = client.post(
+        "/api/auth/register",
+        json={
+            "tenant_id": "anytoolai",
+            "region": "eu",
+            "email": "recurring-foreign@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    foreign_token = foreign_response.json()["token"]
+    foreign_acceptance_id = accept_document_for_token(
+        foreign_token,
+        document_version_id=foreign_document_id,
+        document_title=foreign_document_title,
+        entrypoint_value="document-summary",
+    )
+
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {buyer_token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": True,
+            "recurring_consent_acceptance_id": foreign_acceptance_id,
+        },
+    )
+
+    assert checkout_response.status_code == 409
+    assert checkout_response.json()["detail"]["code"] == "recurring_consent_invalid"
+
+
+def test_checkout_rejects_acceptance_with_wrong_kind() -> None:
+    with SessionLocal() as db:
+        plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
+        plan.renewal_mode = "automatic"
+        legal_entity = create_legal_entity(db)
+        recurring_document = create_document_version(
+            db,
+            legal_entity=legal_entity,
+            doc_type="recurring_consent",
+            version="2026-08-recurring-v1",
+            title="Согласие на рекуррентные платежи",
+        )
+        recurring_document_id = recurring_document.id
+        recurring_document_title = recurring_document.title
+        offer_document = create_document_version(
+            db,
+            legal_entity=legal_entity,
+            doc_type="offer",
+            version="2026-08-offer-v1",
+            title="Публичная оферта",
+        )
+        offer_document_id = offer_document.id
+        offer_document_title = offer_document.title
+
+    buyer_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "recurring-wrong-kind@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = buyer_response.json()["token"]
+    accept_document_for_token(
+        token,
+        document_version_id=recurring_document_id,
+        document_title=recurring_document_title,
+        entrypoint_value="document-summary",
+    )
+    wrong_acceptance_id = accept_document_for_token(
+        token,
+        document_version_id=offer_document_id,
+        document_title=offer_document_title,
+        entrypoint_value="document-summary",
+    )
+
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": True,
+            "recurring_consent_acceptance_id": wrong_acceptance_id,
+        },
+    )
+
+    assert checkout_response.status_code == 409
+    assert checkout_response.json()["detail"]["code"] == "recurring_consent_invalid"
+
+
+def test_checkout_rejects_recurring_acceptance_for_another_entrypoint() -> None:
+    with SessionLocal() as db:
+        plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
+        plan.renewal_mode = "automatic"
+        legal_entity = create_legal_entity(db)
+        document = create_document_version(
+            db,
+            legal_entity=legal_entity,
+            doc_type="recurring_consent",
+            version="2026-08-recurring-v1",
+            title="Согласие на рекуррентные платежи",
+        )
+        document_id = document.id
+        document_title = document.title
+
+    buyer_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "recurring-entrypoint@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = buyer_response.json()["token"]
+    wrong_entrypoint_acceptance_id = accept_document_for_token(
+        token,
+        document_version_id=document_id,
+        document_title=document_title,
+        entrypoint_value="prompt-optimizer",
+    )
+
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": True,
+            "recurring_consent_acceptance_id": wrong_entrypoint_acceptance_id,
+        },
+    )
+
+    assert checkout_response.status_code == 409
+    assert checkout_response.json()["detail"]["code"] == "recurring_consent_invalid"
+
+
+def test_checkout_rejects_recurring_acceptance_from_the_future() -> None:
+    with SessionLocal() as db:
+        plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
+        plan.renewal_mode = "automatic"
+        legal_entity = create_legal_entity(db)
+        document = create_document_version(
+            db,
+            legal_entity=legal_entity,
+            doc_type="recurring_consent",
+            version="2026-08-recurring-v1",
+            title="Согласие на рекуррентные платежи",
+        )
+        document_id = document.id
+        document_title = document.title
+
+    buyer_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "recurring-future@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = buyer_response.json()["token"]
+    future_acceptance_id = accept_document_for_token(
+        token,
+        document_version_id=document_id,
+        document_title=document_title,
+        entrypoint_value="document-summary",
+    )
+    accept_document_for_token(
+        token,
+        document_version_id=document_id,
+        document_title=document_title,
+        entrypoint_value="document-summary",
+    )
+
+    with SessionLocal() as db:
+        future_acceptance = db.get(DocumentAcceptance, uuid.UUID(future_acceptance_id))
+        future_acceptance.accepted_at = datetime.now(timezone.utc) + timedelta(days=1)
+        db.commit()
+
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": True,
+            "recurring_consent_acceptance_id": future_acceptance_id,
+        },
+    )
+
+    assert checkout_response.status_code == 409
+    assert checkout_response.json()["detail"]["code"] == "recurring_consent_invalid"
+
+
+def test_checkout_requires_new_recurring_acceptance_when_document_version_changes() -> None:
+    with SessionLocal() as db:
+        plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
+        plan.renewal_mode = "automatic"
+        legal_entity = create_legal_entity(db)
+        first_document = create_document_version(
+            db,
+            legal_entity=legal_entity,
+            doc_type="recurring_consent",
+            version="2026-08-recurring-v1",
+            title="Согласие на рекуррентные платежи",
+        )
+        legal_entity_id = legal_entity.id
+        first_document_id = first_document.id
+        first_document_title = first_document.title
+
+    buyer_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "recurring-stale@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = buyer_response.json()["token"]
+    stale_acceptance_id = accept_document_for_token(
+        token,
+        document_version_id=first_document_id,
+        document_title=first_document_title,
+        entrypoint_value="document-summary",
+    )
+
+    with SessionLocal() as db:
+        first_document = db.get(DocumentVersion, first_document_id)
+        first_document.is_active = False
+        legal_entity = db.get(LegalEntity, legal_entity_id)
+        second_document = create_document_version(
+            db,
+            legal_entity=legal_entity,
+            doc_type="recurring_consent",
+            version="2026-08-recurring-v2",
+            title="Согласие на рекуррентные платежи",
+        )
+        second_document_id = second_document.id
+
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": True,
+            "recurring_consent_acceptance_id": stale_acceptance_id,
+        },
+    )
+
+    assert checkout_response.status_code == 409
+    detail = checkout_response.json()["detail"]
+    assert detail["code"] == "missing_required_documents"
+    assert [document["document_version_id"] for document in detail["documents"]] == [str(second_document_id)]
 
 
 def test_checkout_rejects_missing_cloudpayments_public_terminal_id() -> None:

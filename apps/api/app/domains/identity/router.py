@@ -13,14 +13,12 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.errors import PaymentProviderConfigurationError
 from app.core.observability import record_checkout, traced
-from app.domains.legal.enums import AcceptanceKind
 from app.domains.identity.passwords import hash_password, verify_password
 from app.domains.legal.service import (
-    build_acceptance_text,
-    expected_acceptance_text_hash,
+    get_current_recurring_consent_acceptance,
     get_missing_required_documents_for_user,
+    present_required_document,
 )
-from app.infrastructure.queries.legal import get_recurring_consent_acceptance
 from app.domains.billing.enums import (
     OrderStatus,
     PaymentStatus,
@@ -539,42 +537,44 @@ def create_checkout_intent(
         entrypoint_code=payload.product,
         plan_code=payload.plan_code,
     )
-    recurring_consent = None
+    now = utc_now()
     if payload.auto_renew:
         if sellable_plan["renewal_mode"] != SubscriptionRenewalMode.AUTOMATIC.value:
-            raise HTTPException(status_code=409, detail={"code": "automatic_renewal_not_permitted"})
-        if payload.recurring_consent_acceptance_id is None:
-            raise HTTPException(status_code=409, detail={"code": "recurring_consent_required"})
-        recurring_consent = get_recurring_consent_acceptance(
-            db,
-            acceptance_id=payload.recurring_consent_acceptance_id,
-            tenant_id=user.tenant_id,
-            region=user.region,
-            user_id=user.id,
-        )
-        if recurring_consent is None or recurring_consent.acceptance_kind != AcceptanceKind.RECURRING_CONSENT.value:
-            raise HTTPException(status_code=409, detail={"code": "recurring_consent_invalid"})
-    missing_documents = get_missing_required_documents_for_user(db, user=user)
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "automatic_renewal_not_permitted"},
+            )
+    missing_documents = get_missing_required_documents_for_user(
+        db,
+        user=user,
+        now=now,
+        require_recurring_consent=payload.auto_renew,
+    )
     if missing_documents:
         record_checkout("missing_required_documents")
         raise HTTPException(
             status_code=409,
             detail={
                 "code": "missing_required_documents",
-                "documents": [
-                    {
-                        "document_version_id": str(document.id),
-                        "doc_type": document.doc_type,
-                        "version": document.version,
-                        "title": document.title,
-                        "url_path": document.url_path,
-                        "acceptance_text": build_acceptance_text(document),
-                        "acceptance_text_hash": expected_acceptance_text_hash(document),
-                    }
-                    for document in missing_documents
-                ],
+                "documents": [present_required_document(document) for document in missing_documents],
             },
         )
+
+    recurring_consent = None
+    if payload.auto_renew:
+        if payload.recurring_consent_acceptance_id is None:
+            raise HTTPException(status_code=409, detail={"code": "recurring_consent_required"})
+        recurring_consent = get_current_recurring_consent_acceptance(
+            db,
+            acceptance_id=payload.recurring_consent_acceptance_id,
+            user=user,
+            entrypoint_type=payload.entrypoint_type,
+            entrypoint_value=sellable_plan["entrypoint_value"],
+            plan_code=sellable_plan["plan_code"],
+            now=now,
+        )
+        if recurring_consent is None:
+            raise HTTPException(status_code=409, detail={"code": "recurring_consent_invalid"})
 
     provider_account, provider_adapter = get_or_create_checkout_provider_account(
         db,
@@ -587,7 +587,6 @@ def create_checkout_intent(
     if currency != provider_account.default_currency:
         record_checkout("provider_currency_mismatch")
         raise HTTPException(status_code=409, detail="provider_currency_mismatch")
-    now = utc_now()
     expires_at = now + timedelta(minutes=30)
 
     entrypoint_session = EntrypointSession(
