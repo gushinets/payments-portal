@@ -33,6 +33,10 @@ function configureAutomaticRenewalFixture() {
   const pythonPath = [process.env.PYTHONPATH, `${repositoryRoot}/apps/api`]
     .filter(Boolean)
     .join(":");
+  const fixtureEnv: NodeJS.ProcessEnv = { ...process.env, PYTHONPATH: pythonPath };
+  if (process.env.PLAYWRIGHT_DATABASE_URL) {
+    fixtureEnv.DATABASE_URL = process.env.PLAYWRIGHT_DATABASE_URL;
+  }
   execFileSync(
     process.env.PLAYWRIGHT_PYTHON ?? "python",
     [
@@ -146,7 +150,7 @@ finally:
     ],
     {
       cwd: repositoryRoot,
-      env: { ...process.env, PYTHONPATH: pythonPath },
+      env: fixtureEnv,
       stdio: "pipe"
     }
   );
