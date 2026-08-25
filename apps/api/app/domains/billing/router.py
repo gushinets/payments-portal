@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.time import utc_now
 from app.domains.billing.enums import (
     EntitlementStatus,
     SubscriptionRenewalMode,
@@ -18,7 +19,7 @@ from app.domains.identity.session import get_current_session
 from app.infrastructure.queries.plans import get_plan_by_id
 from app.infrastructure.queries.subscriptions import (
     get_account_subscription,
-    get_latest_entitlement_for_subscription,
+    get_relevant_entitlement_for_subscription,
     list_account_subscriptions,
 )
 from app.models import AuthSession, Entitlement, Plan, Subscription, User
@@ -81,7 +82,7 @@ def present_account_subscription(
     if plan is None:
         raise HTTPException(status_code=500, detail={"code": "subscription_plan_missing"})
 
-    entitlement = entitlement or get_latest_entitlement_for_subscription(db, subscription.id)
+    entitlement = entitlement or get_relevant_entitlement_for_subscription(db, subscription.id, now=utc_now())
     return AccountSubscriptionResponse(
         subscription_id=subscription.id,
         plan=AccountSubscriptionPlanResponse(

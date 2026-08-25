@@ -68,14 +68,16 @@ References:
   creates its recurrent subscription and ANY-168 attaches the provider
   reference through the domain service.
 - A customer may use one trial per exact scope, independent of plan version.
-- A replacement supersedes only an entitlement for the same exact scope: the
-  same product, the same bundle, or all-access. Different scopes may coexist.
+- A replacement supersedes only active or future entitlements for the same exact
+  scope: the same product, the same bundle, or all-access. Different scopes may
+  coexist.
 - Cancellation stops future renewal while paid access remains valid through the
-  current period. A full refund revokes access immediately; a partial refund
-  records an event without changing access.
+  current paid grant. A full refund revokes only entitlements funded by the
+  refunded order/payment; a partial refund records an event without changing
+  access.
 - A provider-neutral cancellation does not block a later full refund. The full
-  refund transition may move a canceled subscription to `refunded`, revokes any
-  active entitlement, and records `refund_applied`.
+  refund transition may move a canceled subscription to `refunded` only when no
+  current or future paid grant remains, and records `refund_applied`.
 - Refund lookup must resolve the subscription from append-only
   `subscription_events` with `event_type=paid_period_activated` and matching
   `order_id`, not from the mutable current entitlement order reference.

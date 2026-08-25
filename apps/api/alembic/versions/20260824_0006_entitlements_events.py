@@ -60,6 +60,8 @@ def upgrade() -> None:
         ("ix_entitlements_region", ["region"]),
         ("ix_entitlements_user_id", ["user_id"]),
         ("ix_entitlements_subscription_id", ["subscription_id"]),
+        ("ix_entitlements_subscription_status_validity", ["subscription_id", "status", "valid_from", "valid_until"]),
+        ("ix_entitlements_order_status_validity", ["order_id", "status", "valid_from", "valid_until"]),
         ("ix_entitlements_plan_id", ["plan_id"]),
         ("ix_entitlements_status", ["status"]),
         ("ix_entitlements_order_id", ["order_id"]),
@@ -79,11 +81,20 @@ def upgrade() -> None:
         sa.Column("payment_id", sa.Uuid(), sa.ForeignKey("payments.id"), nullable=True),
         sa.Column("refund_id", sa.Uuid(), sa.ForeignKey("refunds.id"), nullable=True),
         sa.Column("webhook_event_id", sa.Uuid(), sa.ForeignKey("payment_webhook_events.id"), nullable=True),
-        sa.Column("metadata", postgresql.JSONB(astext_type=sa.Text()), nullable=False, server_default=sa.text("'{}'::jsonb")),
+        sa.Column(
+            "metadata",
+            postgresql.JSONB(astext_type=sa.Text()),
+            nullable=False,
+            server_default=sa.text("'{}'::jsonb"),
+        ),
         sa.UniqueConstraint("operation_idempotency_key", name="uq_subscription_events_operation_key"),
     )
     op.create_index("ix_subscription_events_subscription_id", "subscription_events", ["subscription_id"])
-    op.create_index("ix_subscription_events_subscription_occurred_at", "subscription_events", ["subscription_id", "occurred_at"])
+    op.create_index(
+        "ix_subscription_events_subscription_occurred_at",
+        "subscription_events",
+        ["subscription_id", "occurred_at"],
+    )
     op.create_index("ix_subscription_events_order_id", "subscription_events", ["order_id"])
     op.create_index("ix_subscription_events_payment_id", "subscription_events", ["payment_id"])
     op.create_index("ix_subscription_events_refund_id", "subscription_events", ["refund_id"])
@@ -101,6 +112,8 @@ def downgrade() -> None:
     op.drop_index("ix_entitlements_order_id", table_name="entitlements")
     op.drop_index("ix_entitlements_status", table_name="entitlements")
     op.drop_index("ix_entitlements_plan_id", table_name="entitlements")
+    op.drop_index("ix_entitlements_order_status_validity", table_name="entitlements")
+    op.drop_index("ix_entitlements_subscription_status_validity", table_name="entitlements")
     op.drop_index("ix_entitlements_subscription_id", table_name="entitlements")
     op.drop_index("ix_entitlements_user_id", table_name="entitlements")
     op.drop_index("ix_entitlements_region", table_name="entitlements")

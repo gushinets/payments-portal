@@ -189,10 +189,27 @@ governed by the verified paid period. The subscription stores the exact
 
 `entitlements` are the explicit access grants for a subscription. They snapshot
 the same exact scope as the subscription: direct product, bundle, or all-access.
-The grant records validity, source (`trial` or `order`), optional source order,
-and revoke, expire, or supersede evidence. Replacing access for the same exact
-scope supersedes only the previous entitlement for that scope; other scopes may
-coexist.
+Each paid period is a separate grant with immutable source provenance:
+`source='order'` plus the source `order_id`. Payment and webhook evidence stays
+on the append-only `subscription_events` row for the operation. Ordinary
+renewal creates a new grant and does not rewrite the previous grant's source.
+Replacing access for the same exact scope supersedes the previous active or
+future entitlements for that scope; other scopes may coexist.
+
+Access checks must evaluate the entitlement time range, not only its lifecycle
+status:
+
+```text
+status = active
+AND valid_from <= now
+AND valid_until > now
+```
+
+A future paid entitlement is stored as `active` so refund and audit logic can
+see it, but it does not grant runtime access before `valid_from`. If a refund
+removes the current grant while a future paid grant remains, the subscription
+stays in a non-terminal lifecycle state such as `active`; access remains denied
+until the future grant enters its validity window.
 
 `subscription_events` is append-only audit. It records the event type, previous
 and next subscription status, occurrence time, local operation idempotency key,
@@ -286,10 +303,12 @@ Contour confirmation through Region Resolver at login and registration is
 planned and is not part of the current implemented flow.
 
 Refunds and expiration also change access only through the subscription
-lifecycle. A full refund revokes active entitlement immediately; a partial
-refund records an audit event without changing access. Expiration is a one-shot,
-idempotent maintenance command for an external scheduler, and access evaluation
-must still enforce `valid_until` if that command is delayed.
+lifecycle. A full refund revokes only the entitlement rows funded by the
+refunded order/payment; it must not revoke later paid periods funded by another
+order. A partial refund records an audit event without changing access.
+Expiration is a one-shot, idempotent maintenance command for an external
+scheduler, and access evaluation must still enforce `valid_until` if that
+command is delayed.
 
 ## 6. Implemented catalog and access model
 

@@ -4105,7 +4105,7 @@ def test_account_subscriptions_list_returns_only_authenticated_user_subscription
             status="active",
             renewal_mode="automatic",
             current_period_start=now,
-            current_period_end=now + timedelta(days=30),
+            current_period_end=now + timedelta(days=60),
             provider_account_id=provider_account.id,
             provider_subscription_id="provider-subscription-hidden",
         )
@@ -4153,9 +4153,45 @@ def test_account_subscriptions_list_returns_only_authenticated_user_subscription
                 bundle_id=plan.bundle_id,
                 status="active",
                 valid_from=now,
-                valid_until=owner_subscription.current_period_end,
+                valid_until=now + timedelta(days=30),
                 source="order",
                 order_id=order.id,
+                created_at=now,
+            )
+        )
+        future_order = Order(
+            tenant_id=owner.tenant_id,
+            region=owner.region,
+            order_number="RU-ACCOUNT-SUBSCRIPTIONS-FUTURE",
+            user_id=owner.id,
+            plan_id=plan.id,
+            status="paid",
+            amount_minor=plan.price_amount_minor,
+            currency=plan.currency,
+            provider=provider_account.provider,
+            provider_account_id=provider_account.id,
+            merchant_order_id="account-subscriptions-future-order",
+            provider_invoice_id="account-subscriptions-future-invoice",
+            paid_at=now + timedelta(days=1),
+        )
+        db.add(future_order)
+        db.flush()
+        db.add(
+            Entitlement(
+                tenant_id=owner.tenant_id,
+                region=owner.region,
+                user_id=owner.id,
+                subscription_id=owner_subscription.id,
+                plan_id=plan.id,
+                scope_type=plan.scope_type,
+                product_id=plan.product_id,
+                bundle_id=plan.bundle_id,
+                status="active",
+                valid_from=now + timedelta(days=30),
+                valid_until=now + timedelta(days=60),
+                source="order",
+                order_id=future_order.id,
+                created_at=now + timedelta(minutes=1),
             )
         )
         owner_subscription_id = owner_subscription.id
@@ -4182,6 +4218,7 @@ def test_account_subscriptions_list_returns_only_authenticated_user_subscription
     assert subscriptions[0]["status"] == "active"
     assert subscriptions[0]["renewal_mode"] == "automatic"
     assert subscriptions[0]["entitlement_validity"]["status"] == "active"
+    assert subscriptions[0]["entitlement_validity"]["valid_from"] == now.replace(tzinfo=None).isoformat()
 
 
 def test_account_subscription_detail_enforces_authenticated_ownership() -> None:

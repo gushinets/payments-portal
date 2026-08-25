@@ -212,10 +212,12 @@ Indexes and constraints:
 - `ck_entitlements_status`
 - `ck_entitlements_valid_period`
 - `ix_entitlements_order_id`
+- `ix_entitlements_order_status_validity`
 - `ix_entitlements_plan_id`
 - `ix_entitlements_region`
 - `ix_entitlements_status`
 - `ix_entitlements_subscription_id`
+- `ix_entitlements_subscription_status_validity`
 - `ix_entitlements_tenant_id`
 - `ix_entitlements_user_id`
 - `ix_entitlements_user_region_status`

@@ -55,14 +55,22 @@ def get_subscription_for_event(db: Session, event: SubscriptionEvent) -> Subscri
     return get_subscription_by_id(db, event.subscription_id)
 
 
-def get_active_entitlement(db: Session, subscription_id: uuid.UUID, *, for_update: bool = False) -> Entitlement | None:
+def get_current_entitlement(
+    db: Session,
+    subscription_id: uuid.UUID,
+    *,
+    now: datetime,
+    for_update: bool = False,
+) -> Entitlement | None:
     query = (
         db.query(Entitlement)
         .filter(
             Entitlement.subscription_id == subscription_id,
             Entitlement.status == EntitlementStatus.ACTIVE.value,
+            Entitlement.valid_from <= now,
+            Entitlement.valid_until > now,
         )
-        .order_by(Entitlement.created_at.desc())
+        .order_by(Entitlement.valid_until.desc(), Entitlement.created_at.desc())
     )
     return (query.with_for_update() if for_update else query).first()
 
@@ -71,9 +79,83 @@ def get_latest_entitlement_for_subscription(db: Session, subscription_id: uuid.U
     return (
         db.query(Entitlement)
         .filter(Entitlement.subscription_id == subscription_id)
-        .order_by(Entitlement.created_at.desc())
+        .order_by(Entitlement.valid_until.desc(), Entitlement.valid_from.desc(), Entitlement.created_at.desc())
         .first()
     )
+
+
+def get_relevant_entitlement_for_subscription(
+    db: Session,
+    subscription_id: uuid.UUID,
+    *,
+    now: datetime,
+) -> Entitlement | None:
+    current = get_current_entitlement(db, subscription_id, now=now)
+    if current is not None:
+        return current
+    future = (
+        db.query(Entitlement)
+        .filter(
+            Entitlement.subscription_id == subscription_id,
+            Entitlement.status == EntitlementStatus.ACTIVE.value,
+            Entitlement.valid_from > now,
+        )
+        .order_by(Entitlement.valid_from.asc(), Entitlement.valid_until.asc(), Entitlement.created_at.asc())
+        .first()
+    )
+    return future or get_latest_entitlement_for_subscription(db, subscription_id)
+
+
+def list_entitlements_for_order(
+    db: Session,
+    order_id: uuid.UUID,
+    *,
+    for_update: bool = False,
+) -> list[Entitlement]:
+    query = (
+        db.query(Entitlement)
+        .filter(Entitlement.order_id == order_id)
+        .order_by(Entitlement.valid_from.asc(), Entitlement.created_at.asc())
+    )
+    return (query.with_for_update() if for_update else query).all()
+
+
+def list_active_or_future_entitlements_for_subscription(
+    db: Session,
+    subscription_id: uuid.UUID,
+    *,
+    now: datetime,
+    for_update: bool = False,
+) -> list[Entitlement]:
+    query = (
+        db.query(Entitlement)
+        .filter(
+            Entitlement.subscription_id == subscription_id,
+            Entitlement.status == EntitlementStatus.ACTIVE.value,
+            Entitlement.valid_until > now,
+        )
+        .order_by(Entitlement.valid_from.asc(), Entitlement.created_at.asc())
+    )
+    return (query.with_for_update() if for_update else query).all()
+
+
+def list_due_entitlements_for_subscription(
+    db: Session,
+    subscription_id: uuid.UUID,
+    *,
+    now: datetime,
+    for_update: bool = False,
+) -> list[Entitlement]:
+    query = (
+        db.query(Entitlement)
+        .filter(
+            Entitlement.subscription_id == subscription_id,
+            Entitlement.status == EntitlementStatus.ACTIVE.value,
+            Entitlement.valid_until <= now,
+        )
+        .order_by(Entitlement.valid_until.asc(), Entitlement.created_at.asc())
+    )
+    return (query.with_for_update() if for_update else query).all()
 
 
 def get_active_entitlement_for_scope(
@@ -97,6 +179,7 @@ def get_active_entitlement_for_scope(
             Entitlement.product_id == product_id,
             Entitlement.bundle_id == bundle_id,
             Entitlement.status == EntitlementStatus.ACTIVE.value,
+            Entitlement.valid_from <= now,
             Entitlement.valid_until > now,
         )
         .order_by(Entitlement.valid_until.desc(), Entitlement.created_at.desc())

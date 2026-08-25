@@ -40,6 +40,16 @@ refund effects, and expiration. Domain code accepts only internal identifiers,
 local operation idempotency keys, and normalized provider states; it must not
 import provider integrations or branch on provider-specific statuses.
 
+Every successful initial or renewal payment must enter the lifecycle with a
+persisted internal order, payment, and processed webhook event. The domain
+service rechecks those links before creating access. A paid period creates a new
+entitlement whose source order is not rewritten by later renewals.
+
+Refund effects are provenance-scoped. A full refund revokes only entitlements
+funded by the refunded order/payment and leaves later paid current or future
+entitlements intact. A partial refund records lifecycle audit only, unless a
+future business rule explicitly defines an access reduction.
+
 Automatic renewal is manual until the provider adapter has successfully created
 the provider subscription and the domain service attaches the provider account,
 provider subscription reference, and recurring-consent acceptance. Failed

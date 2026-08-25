@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from pydantic import ValidationError
 
 from app.domains.billing.enums import (
     EntitlementStatus,
@@ -21,12 +22,16 @@ from app.domains.billing.service import (
     SubscriptionLifecycleError,
     activate_paid_period,
     apply_refund,
+    apply_renewal_payment,
     apply_provider_subscription_state,
     ensure_subscription_status_transition,
     expire_due_subscriptions,
     subscription_status_from_provider_state,
 )
-from app.infrastructure.queries.subscriptions import get_subscription_for_order
+from app.infrastructure.queries.subscriptions import (
+    get_active_entitlement_for_scope,
+    get_subscription_for_order,
+)
 from app.models import (
     Entitlement,
     Order,
@@ -180,6 +185,9 @@ def test_renewal_paid_at_must_be_timezone_aware() -> None:
             operation_idempotency_key="renewal-1",
             subscription_id=uuid.uuid4(),
             succeeded=True,
+            order_id=uuid.uuid4(),
+            payment_id=uuid.uuid4(),
+            webhook_event_id=uuid.uuid4(),
             paid_at=datetime(2026, 8, 24, 12, 0),
         )
 
@@ -268,6 +276,35 @@ def _add_verified_paid_order(
     db_session.add(webhook)
     db_session.flush()
     return order, payment, webhook
+
+
+def _add_refund(
+    db_session,
+    *,
+    key: str,
+    order: Order,
+    payment: Payment,
+    account: PaymentProviderAccount,
+    amount_minor: int,
+    occurred_at: datetime,
+    status: str = "succeeded",
+) -> Refund:
+    refund = Refund(
+        tenant_id=order.tenant_id,
+        region=order.region,
+        order_id=order.id,
+        payment_id=payment.id,
+        provider_account_id=account.id,
+        provider_refund_id=f"{key}-refund",
+        status=status,
+        amount_minor=amount_minor,
+        currency=payment.currency,
+        requested_at=occurred_at,
+        succeeded_at=occurred_at if status == "succeeded" else None,
+    )
+    db_session.add(refund)
+    db_session.flush()
+    return refund
 
 
 def test_cumulative_refund_revokes_access(db_session) -> None:
@@ -388,6 +425,8 @@ def test_cumulative_refund_revokes_access(db_session) -> None:
         status="succeeded",
         amount_minor=4000,
         currency="RUB",
+        requested_at=now,
+        succeeded_at=now,
     )
     db_session.add(refund)
     db_session.flush()
@@ -402,7 +441,9 @@ def test_cumulative_refund_revokes_access(db_session) -> None:
         ),
     )
 
+    entitlement = db_session.query(Entitlement).filter(Entitlement.subscription_id == subscription.id).one()
     assert result.status == SubscriptionStatus.REFUNDED.value
+    assert entitlement.status == EntitlementStatus.REVOKED.value
 
 
 def test_full_refund_after_provider_cancellation_revokes_access(db_session) -> None:
@@ -453,6 +494,8 @@ def test_full_refund_after_provider_cancellation_revokes_access(db_session) -> N
         status="succeeded",
         amount_minor=payment.amount_minor,
         currency=payment.currency,
+        requested_at=now + timedelta(minutes=2),
+        succeeded_at=now + timedelta(minutes=2),
     )
     db_session.add(refund)
     db_session.flush()
@@ -483,7 +526,7 @@ def test_full_refund_after_provider_cancellation_revokes_access(db_session) -> N
     assert event.next_status == SubscriptionStatus.REFUNDED.value
 
 
-def test_all_paid_orders_resolve_subscription_and_refund_revokes_current_access(db_session) -> None:
+def test_paid_orders_create_distinct_entitlements_and_refund_uses_order_provenance(db_session) -> None:
     now = datetime.now(timezone.utc)
     plan = (
         db_session.query(Plan)
@@ -519,6 +562,11 @@ def test_all_paid_orders_resolve_subscription_and_refund_revokes_current_access(
             occurred_at=now,
         ),
     )
+    first_paid_entitlements = (
+        db_session.query(Entitlement).filter(Entitlement.subscription_id == first_subscription.id).all()
+    )
+    assert len(first_paid_entitlements) == 1
+    assert first_paid_entitlements[0].order_id == first_order.id
     second_subscription = activate_paid_period(
         db_session,
         ActivatePaidPeriodCommand(
@@ -537,6 +585,17 @@ def test_all_paid_orders_resolve_subscription_and_refund_revokes_current_access(
     assert first_lookup.id == first_subscription.id
     assert second_lookup.id == first_subscription.id
     assert second_subscription.id == first_subscription.id
+    entitlements = (
+        db_session.query(Entitlement)
+        .filter(Entitlement.subscription_id == first_subscription.id)
+        .order_by(Entitlement.valid_from.asc())
+        .all()
+    )
+    assert len(entitlements) == 2
+    first_entitlement, second_entitlement = entitlements
+    assert first_entitlement.order_id == first_order.id
+    assert second_entitlement.order_id == second_order.id
+    assert first_entitlement.valid_until == second_entitlement.valid_from
 
     first_payment.status = "refunded"
     first_payment.refunded_amount_minor = first_payment.amount_minor
@@ -550,6 +609,8 @@ def test_all_paid_orders_resolve_subscription_and_refund_revokes_current_access(
         status="succeeded",
         amount_minor=first_payment.amount_minor,
         currency=first_payment.currency,
+        requested_at=now + timedelta(days=2),
+        succeeded_at=now + timedelta(days=2),
     )
     db_session.add(refund)
     db_session.flush()
@@ -565,10 +626,416 @@ def test_all_paid_orders_resolve_subscription_and_refund_revokes_current_access(
         ),
     )
 
-    entitlement = db_session.query(Entitlement).filter(Entitlement.subscription_id == first_subscription.id).one()
-    assert result.status == SubscriptionStatus.REFUNDED.value
-    assert entitlement.status == EntitlementStatus.REVOKED.value
-    assert entitlement.order_id == second_order.id
+    db_session.refresh(first_entitlement)
+    db_session.refresh(second_entitlement)
+    assert result.status == SubscriptionStatus.ACTIVE.value
+    assert first_entitlement.status == EntitlementStatus.REVOKED.value
+    assert first_entitlement.order_id == first_order.id
+    assert second_entitlement.status == EntitlementStatus.ACTIVE.value
+    assert second_entitlement.order_id == second_order.id
+
+
+def test_partial_refund_records_event_without_revoking_entitlement(db_session) -> None:
+    now = datetime.now(timezone.utc)
+    plan = (
+        db_session.query(Plan)
+        .filter(Plan.tenant_id == "anytoolai", Plan.region == "ru", Plan.price_amount_minor > 0)
+        .first()
+    )
+    assert plan is not None
+    user, account = _add_billing_user_and_account(db_session, "partial-refund-lifecycle")
+    order, payment, webhook = _add_verified_paid_order(
+        db_session,
+        key="partial-refund-lifecycle",
+        user=user,
+        account=account,
+        plan=plan,
+        paid_at=now,
+    )
+    subscription = activate_paid_period(
+        db_session,
+        ActivatePaidPeriodCommand(
+            operation_idempotency_key="partial-refund-lifecycle-activate",
+            order_id=order.id,
+            payment_id=payment.id,
+            webhook_event_id=webhook.id,
+            occurred_at=now,
+        ),
+    )
+    payment.status = "partially_refunded"
+    payment.refunded_amount_minor = payment.amount_minor // 2
+    refund = _add_refund(
+        db_session,
+        key="partial-refund-lifecycle",
+        order=order,
+        payment=payment,
+        account=account,
+        amount_minor=payment.refunded_amount_minor,
+        occurred_at=now + timedelta(minutes=5),
+    )
+
+    result = apply_refund(
+        db_session,
+        ApplyRefundCommand(
+            operation_idempotency_key="partial-refund-lifecycle-apply",
+            order_id=order.id,
+            refund_id=refund.id,
+            amount_minor=refund.amount_minor,
+            occurred_at=now + timedelta(minutes=5),
+        ),
+    )
+
+    entitlement = db_session.query(Entitlement).filter(Entitlement.subscription_id == subscription.id).one()
+    event = (
+        db_session.query(SubscriptionEvent)
+        .filter(SubscriptionEvent.event_type == SubscriptionEventType.PARTIAL_REFUND_APPLIED.value)
+        .one()
+    )
+    assert result.status == SubscriptionStatus.ACTIVE.value
+    assert entitlement.status == EntitlementStatus.ACTIVE.value
+    assert event.refund_id == refund.id
+
+
+def test_access_query_ignores_future_entitlement_until_valid_from(db_session) -> None:
+    now = datetime.now(timezone.utc)
+    plan = (
+        db_session.query(Plan)
+        .filter(Plan.tenant_id == "anytoolai", Plan.region == "ru", Plan.price_amount_minor > 0)
+        .first()
+    )
+    assert plan is not None
+    user, account = _add_billing_user_and_account(db_session, "future-access-query")
+    order, payment, webhook = _add_verified_paid_order(
+        db_session,
+        key="future-access-query",
+        user=user,
+        account=account,
+        plan=plan,
+        paid_at=now,
+    )
+    subscription = activate_paid_period(
+        db_session,
+        ActivatePaidPeriodCommand(
+            operation_idempotency_key="future-access-query-activate",
+            order_id=order.id,
+            payment_id=payment.id,
+            webhook_event_id=webhook.id,
+            occurred_at=now,
+        ),
+    )
+    entitlement = db_session.query(Entitlement).filter(Entitlement.subscription_id == subscription.id).one()
+    entitlement.valid_from = now + timedelta(days=1)
+    entitlement.valid_until = now + timedelta(days=31)
+    db_session.flush()
+
+    current = get_active_entitlement_for_scope(
+        db_session,
+        tenant_id=user.tenant_id,
+        region=user.region,
+        user_id=user.id,
+        scope_type=plan.scope_type,
+        product_id=plan.product_id,
+        bundle_id=plan.bundle_id,
+        now=now,
+    )
+    future_current = get_active_entitlement_for_scope(
+        db_session,
+        tenant_id=user.tenant_id,
+        region=user.region,
+        user_id=user.id,
+        scope_type=plan.scope_type,
+        product_id=plan.product_id,
+        bundle_id=plan.bundle_id,
+        now=now + timedelta(days=2),
+    )
+
+    assert current is None
+    assert future_current is not None
+    assert future_current.id == entitlement.id
+
+
+def test_renewal_success_without_order_payment_webhook_is_rejected() -> None:
+    with pytest.raises(ValidationError) as exc_info:
+        ApplyRenewalPaymentCommand(
+            operation_idempotency_key="renewal-missing-evidence",
+            subscription_id=uuid.uuid4(),
+            succeeded=True,
+        )
+
+    error_text = str(exc_info.value)
+    assert "order_id" in error_text
+    assert "payment_id" in error_text
+    assert "webhook_event_id" in error_text
+
+
+def test_renewal_with_mismatched_payment_order_is_rejected(db_session) -> None:
+    now = datetime.now(timezone.utc)
+    plan = (
+        db_session.query(Plan)
+        .filter(Plan.tenant_id == "anytoolai", Plan.region == "ru", Plan.price_amount_minor > 0)
+        .first()
+    )
+    assert plan is not None
+    user, account = _add_billing_user_and_account(db_session, "renewal-mismatched-payment")
+    first_order, first_payment, first_webhook = _add_verified_paid_order(
+        db_session,
+        key="renewal-mismatched-payment-initial",
+        user=user,
+        account=account,
+        plan=plan,
+        paid_at=now,
+    )
+    subscription = activate_paid_period(
+        db_session,
+        ActivatePaidPeriodCommand(
+            operation_idempotency_key="renewal-mismatched-payment-initial-activate",
+            order_id=first_order.id,
+            payment_id=first_payment.id,
+            webhook_event_id=first_webhook.id,
+            occurred_at=now,
+        ),
+    )
+    renewal_order, renewal_payment, renewal_webhook = _add_verified_paid_order(
+        db_session,
+        key="renewal-mismatched-payment-renewal",
+        user=user,
+        account=account,
+        plan=plan,
+        paid_at=now + timedelta(days=1),
+    )
+    other_order, other_payment, _ = _add_verified_paid_order(
+        db_session,
+        key="renewal-mismatched-payment-other",
+        user=user,
+        account=account,
+        plan=plan,
+        paid_at=now + timedelta(days=2),
+    )
+    assert renewal_payment.order_id == renewal_order.id
+    assert other_payment.order_id == other_order.id
+
+    with pytest.raises(SubscriptionLifecycleError, match="payment_context_missing"):
+        apply_renewal_payment(
+            db_session,
+            ApplyRenewalPaymentCommand(
+                operation_idempotency_key="renewal-mismatched-payment-apply",
+                subscription_id=subscription.id,
+                succeeded=True,
+                order_id=renewal_order.id,
+                payment_id=other_payment.id,
+                webhook_event_id=renewal_webhook.id,
+                occurred_at=now + timedelta(days=1),
+            ),
+        )
+
+
+def test_renewal_with_unprocessed_or_mismatched_webhook_is_rejected(db_session) -> None:
+    now = datetime.now(timezone.utc)
+    plan = (
+        db_session.query(Plan)
+        .filter(Plan.tenant_id == "anytoolai", Plan.region == "ru", Plan.price_amount_minor > 0)
+        .first()
+    )
+    assert plan is not None
+    user, account = _add_billing_user_and_account(db_session, "renewal-webhook-evidence")
+    first_order, first_payment, first_webhook = _add_verified_paid_order(
+        db_session,
+        key="renewal-webhook-evidence-initial",
+        user=user,
+        account=account,
+        plan=plan,
+        paid_at=now,
+    )
+    subscription = activate_paid_period(
+        db_session,
+        ActivatePaidPeriodCommand(
+            operation_idempotency_key="renewal-webhook-evidence-initial-activate",
+            order_id=first_order.id,
+            payment_id=first_payment.id,
+            webhook_event_id=first_webhook.id,
+            occurred_at=now,
+        ),
+    )
+    renewal_order, renewal_payment, unprocessed_webhook = _add_verified_paid_order(
+        db_session,
+        key="renewal-webhook-evidence-unprocessed",
+        user=user,
+        account=account,
+        plan=plan,
+        paid_at=now + timedelta(days=1),
+    )
+    unprocessed_webhook.status = "received"
+    mismatched_order, mismatched_payment, mismatched_webhook = _add_verified_paid_order(
+        db_session,
+        key="renewal-webhook-evidence-mismatched",
+        user=user,
+        account=account,
+        plan=plan,
+        paid_at=now + timedelta(days=2),
+    )
+    mismatched_webhook.order_id = renewal_order.id
+    mismatched_webhook.payment_id = mismatched_payment.id
+    db_session.flush()
+    assert mismatched_order.id != renewal_order.id
+
+    for key, webhook_id in (
+        ("unprocessed", unprocessed_webhook.id),
+        ("mismatched", mismatched_webhook.id),
+    ):
+        with pytest.raises(SubscriptionLifecycleError, match="verified_webhook_missing"):
+            apply_renewal_payment(
+                db_session,
+                ApplyRenewalPaymentCommand(
+                    operation_idempotency_key=f"renewal-webhook-evidence-{key}-apply",
+                    subscription_id=subscription.id,
+                    succeeded=True,
+                    order_id=renewal_order.id,
+                    payment_id=renewal_payment.id,
+                    webhook_event_id=webhook_id,
+                    occurred_at=now + timedelta(days=1),
+                ),
+            )
+
+
+def test_verified_renewal_creates_entitlement_and_is_idempotent(db_session) -> None:
+    now = datetime.now(timezone.utc)
+    plan = (
+        db_session.query(Plan)
+        .filter(Plan.tenant_id == "anytoolai", Plan.region == "ru", Plan.price_amount_minor > 0)
+        .first()
+    )
+    assert plan is not None
+    user, account = _add_billing_user_and_account(db_session, "verified-renewal")
+    first_order, first_payment, first_webhook = _add_verified_paid_order(
+        db_session,
+        key="verified-renewal-initial",
+        user=user,
+        account=account,
+        plan=plan,
+        paid_at=now,
+    )
+    subscription = activate_paid_period(
+        db_session,
+        ActivatePaidPeriodCommand(
+            operation_idempotency_key="verified-renewal-initial-activate",
+            order_id=first_order.id,
+            payment_id=first_payment.id,
+            webhook_event_id=first_webhook.id,
+            occurred_at=now,
+        ),
+    )
+    first_entitlement = db_session.query(Entitlement).filter(Entitlement.subscription_id == subscription.id).one()
+    renewal_order, renewal_payment, renewal_webhook = _add_verified_paid_order(
+        db_session,
+        key="verified-renewal-renewal",
+        user=user,
+        account=account,
+        plan=plan,
+        paid_at=now + timedelta(days=1),
+    )
+    command = ApplyRenewalPaymentCommand(
+        operation_idempotency_key="verified-renewal-apply",
+        subscription_id=subscription.id,
+        succeeded=True,
+        order_id=renewal_order.id,
+        payment_id=renewal_payment.id,
+        webhook_event_id=renewal_webhook.id,
+        occurred_at=now + timedelta(days=1),
+    )
+
+    result = apply_renewal_payment(db_session, command)
+    repeated = apply_renewal_payment(db_session, command)
+
+    entitlements = (
+        db_session.query(Entitlement)
+        .filter(Entitlement.subscription_id == subscription.id)
+        .order_by(Entitlement.valid_from.asc())
+        .all()
+    )
+    renewal_events = (
+        db_session.query(SubscriptionEvent)
+        .filter(
+            SubscriptionEvent.subscription_id == subscription.id,
+            SubscriptionEvent.event_type == SubscriptionEventType.RENEWAL_SUCCEEDED.value,
+        )
+        .all()
+    )
+    assert result.id == subscription.id
+    assert repeated.id == subscription.id
+    assert len(entitlements) == 2
+    assert entitlements[0].id == first_entitlement.id
+    assert entitlements[0].order_id == first_order.id
+    assert entitlements[1].order_id == renewal_order.id
+    assert entitlements[1].valid_from == entitlements[0].valid_until
+    assert len(renewal_events) == 1
+    assert renewal_events[0].order_id == renewal_order.id
+    assert renewal_events[0].payment_id == renewal_payment.id
+    assert renewal_events[0].webhook_event_id == renewal_webhook.id
+
+
+def test_failed_renewal_requires_persisted_failure_evidence(db_session) -> None:
+    now = datetime.now(timezone.utc)
+    plan = (
+        db_session.query(Plan)
+        .filter(Plan.tenant_id == "anytoolai", Plan.region == "ru", Plan.price_amount_minor > 0)
+        .first()
+    )
+    assert plan is not None
+    user, account = _add_billing_user_and_account(db_session, "failed-renewal-evidence")
+    first_order, first_payment, first_webhook = _add_verified_paid_order(
+        db_session,
+        key="failed-renewal-evidence-initial",
+        user=user,
+        account=account,
+        plan=plan,
+        paid_at=now,
+    )
+    subscription = activate_paid_period(
+        db_session,
+        ActivatePaidPeriodCommand(
+            operation_idempotency_key="failed-renewal-evidence-initial-activate",
+            order_id=first_order.id,
+            payment_id=first_payment.id,
+            webhook_event_id=first_webhook.id,
+            occurred_at=now,
+        ),
+    )
+    failed_order, failed_payment, failed_webhook = _add_verified_paid_order(
+        db_session,
+        key="failed-renewal-evidence-renewal",
+        user=user,
+        account=account,
+        plan=plan,
+        paid_at=now + timedelta(days=1),
+    )
+    failed_order.status = "payment_failed"
+    failed_order.paid_at = None
+    failed_payment.status = "failed"
+    db_session.flush()
+
+    result = apply_renewal_payment(
+        db_session,
+        ApplyRenewalPaymentCommand(
+            operation_idempotency_key="failed-renewal-evidence-apply",
+            subscription_id=subscription.id,
+            succeeded=False,
+            order_id=failed_order.id,
+            payment_id=failed_payment.id,
+            webhook_event_id=failed_webhook.id,
+            occurred_at=now + timedelta(days=1),
+        ),
+    )
+
+    event = (
+        db_session.query(SubscriptionEvent)
+        .filter(SubscriptionEvent.event_type == SubscriptionEventType.RENEWAL_FAILED.value)
+        .one()
+    )
+    assert result.status == SubscriptionStatus.PAST_DUE.value
+    assert db_session.query(Entitlement).filter(Entitlement.subscription_id == subscription.id).count() == 1
+    assert event.order_id == failed_order.id
+    assert event.payment_id == failed_payment.id
+    assert event.webhook_event_id == failed_webhook.id
 
 
 def test_replacement_writes_audit_event_and_is_idempotent(db_session) -> None:

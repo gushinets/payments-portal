@@ -648,6 +648,8 @@ class Entitlement(Base):
         ),
         Index("ix_entitlements_user_region_status", "user_id", "region", "status"),
         Index("ix_entitlements_subscription_id", "subscription_id"),
+        Index("ix_entitlements_subscription_status_validity", "subscription_id", "status", "valid_from", "valid_until"),
+        Index("ix_entitlements_order_status_validity", "order_id", "status", "valid_from", "valid_until"),
         Index("ix_entitlements_plan_id", "plan_id"),
     )
 
