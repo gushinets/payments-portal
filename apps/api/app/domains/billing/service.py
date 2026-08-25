@@ -186,7 +186,7 @@ SUBSCRIPTION_STATUS_TRANSITIONS = {
             SubscriptionStatus.PAUSED,
         }
     ),
-    SubscriptionStatus.CANCELED: frozenset({SubscriptionStatus.EXPIRED}),
+    SubscriptionStatus.CANCELED: frozenset({SubscriptionStatus.EXPIRED, SubscriptionStatus.REFUNDED}),
 }
 
 
@@ -467,13 +467,34 @@ def activate_paid_period(db: Session, command: ActivatePaidPeriodCommand) -> Sub
         db.add(subscription)
         db.flush()
         if previous:
-            ensure_subscription_status_transition(previous.status, SubscriptionStatus.CANCELED)
+            replaced_previous_status = previous.status
+            ensure_subscription_status_transition(replaced_previous_status, SubscriptionStatus.CANCELED)
             previous.status = SubscriptionStatus.CANCELED.value
             previous.canceled_at = command.occurred_at
             previous_entitlement = _active_entitlement(db, previous)
             if previous_entitlement:
                 previous_entitlement.status = EntitlementStatus.SUPERSEDED.value
                 previous_entitlement.superseded_at = command.occurred_at
+            replacement_event_key = f"{command.operation_idempotency_key}:subscription-replaced"
+            if _event_for_key(db, replacement_event_key) is None:
+                _write_event(
+                    db,
+                    subscription=previous,
+                    command=LifecycleCommand(
+                        operation_idempotency_key=replacement_event_key,
+                        occurred_at=command.occurred_at,
+                        metadata={
+                            **command.metadata,
+                            "replacement_subscription_id": str(subscription.id),
+                        },
+                    ),
+                    event_type=SubscriptionEventType.SUBSCRIPTION_REPLACED,
+                    previous_status=replaced_previous_status,
+                    next_status=SubscriptionStatus.CANCELED.value,
+                    order_id=order.id,
+                    payment_id=payment.id,
+                    webhook_event_id=command.webhook_event_id,
+                )
     else:
         ensure_subscription_status_transition(subscription.status, SubscriptionStatus.ACTIVE)
         start = (
@@ -716,25 +737,3 @@ def expire_due_subscriptions(db: Session, command: ExpireDueSubscriptionsCommand
             )
     db.flush()
     return subscriptions
-
-
-__all__ = [
-    "ApplyProviderSubscriptionStateCommand",
-    "ApplyRefundCommand",
-    "ApplyRenewalPaymentCommand",
-    "ActivatePaidPeriodCommand",
-    "EnableAutomaticRenewalCommand",
-    "ExpireDueSubscriptionsCommand",
-    "RequestCancellationCommand",
-    "StartTrialCommand",
-    "SubscriptionLifecycleError",
-    "activate_paid_period",
-    "apply_provider_subscription_state",
-    "apply_refund",
-    "apply_renewal_payment",
-    "enable_automatic_renewal",
-    "expire_due_subscriptions",
-    "request_cancellation",
-    "start_trial",
-    "subscription_status_from_provider_state",
-]

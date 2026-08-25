@@ -73,6 +73,16 @@ References:
 - Cancellation stops future renewal while paid access remains valid through the
   current period. A full refund revokes access immediately; a partial refund
   records an event without changing access.
+- A provider-neutral cancellation does not block a later full refund. The full
+  refund transition may move a canceled subscription to `refunded`, revokes any
+  active entitlement, and records `refund_applied`.
+- Refund lookup must resolve the subscription from append-only
+  `subscription_events` with `event_type=paid_period_activated` and matching
+  `order_id`, not from the mutable current entitlement order reference.
+- Replacement writes two independent audit events: the new subscription keeps
+  the original operation key for `paid_period_activated`, and the old
+  subscription receives a deterministic derived-key `subscription_replaced`
+  event with the replacement subscription id in metadata.
 - Expiration is processed by an idempotent one-shot command invoked by an
   external scheduler. Access evaluation always enforces `valid_until` even if
   that command is delayed.
@@ -176,6 +186,9 @@ References:
     `FOR UPDATE SKIP LOCKED` on PostgreSQL.
   - Add a one-shot CLI with configurable batch size for an external cron or
     deployment scheduler.
+  - The CLI explicitly commits after a successful batch so changed subscription,
+    entitlement, and subscription-event rows survive in a new session; failed
+    batches must not commit.
   - Do not run a periodic loop inside FastAPI workers.
 
 - [x] Update authoritative and generated documentation.

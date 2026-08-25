@@ -26,14 +26,28 @@ from app.integrations.cloudpayments import adapter as cloudpayments_adapter_modu
 from app.integrations.cloudpayments.adapter import verify_cloudpayments_signature  # noqa: E402
 from app.integrations.cloudpayments import processing as cloudpayments_processing  # noqa: E402
 from app.core.settings import settings  # noqa: E402
+from app.domains.billing.enums import (  # noqa: E402
+    EntitlementStatus,
+    ProviderSubscriptionState,
+    SubscriptionEventType,
+    SubscriptionStatus,
+)
+from app.domains.billing.service import (  # noqa: E402
+    ApplyProviderSubscriptionStateCommand,
+    apply_provider_subscription_state,
+)
 from app.main import app  # noqa: E402
 from app.models import (  # noqa: E402
+    Entitlement,
     Order,
     Payment,
     PaymentProviderAccount,
     PaymentWebhookEvent,
+    Plan,
     Refund,
     Region,
+    Subscription,
+    SubscriptionEvent,
     User,
 )
 
@@ -114,12 +128,29 @@ def seed_order(
         )
         db.add(provider_account)
         db.flush()
+        plan = Plan(
+            tenant_id="anytoolai",
+            region="ru",
+            code=f"webhook-plan-{invoice_id}",
+            name="Webhook Test Plan",
+            scope_type="all_access",
+            price_amount_minor=99000,
+            currency="RUB",
+            billing_period="month",
+            renewal_mode="manual",
+            trial_days=0,
+            status="active",
+            valid_from=now,
+        )
+        db.add(plan)
+        db.flush()
         db.add(
             Order(
                 tenant_id="anytoolai",
                 region="ru",
                 order_number="RU-TEST-0001",
                 user_id=user.id,
+                plan_id=plan.id,
                 status="pending_payment",
                 amount_minor=99000,
                 currency="RUB",
@@ -478,6 +509,66 @@ def test_cancel_after_refunded_payment_is_ignored_without_refund_mutation(
     ]
     assert events[-1].payment_id == payment.id
     assert events[-1].error_code == "order_already_refunded"
+
+
+def test_full_refund_after_provider_canceled_subscription_is_processed(
+    webhook_database: sessionmaker[Session],
+) -> None:
+    client = TestClient(app, raise_server_exceptions=False)
+    invoice_id = "inv-refund-after-provider-cancel-1"
+    transaction_id = "tx-refund-after-provider-cancel-1"
+    seed_order(webhook_database, invoice_id)
+
+    pay_response = client.post(
+        "/api/cloudpayments/pay",
+        json=paid_payload(invoice_id, transaction_id),
+    )
+    assert pay_response.status_code == 200
+
+    with webhook_database() as db:
+        subscription = db.query(Subscription).one()
+        apply_provider_subscription_state(
+            db,
+            ApplyProviderSubscriptionStateCommand(
+                operation_idempotency_key="webhook-provider-cancel-before-refund",
+                subscription_id=subscription.id,
+                provider_state=ProviderSubscriptionState.CANCELED,
+            ),
+        )
+        db.commit()
+
+    refund_response = client.post(
+        "/api/cloudpayments/refund",
+        json=refund_payload(
+            invoice_id,
+            refund_transaction_id="tx-refund-after-provider-cancel-refund-1",
+            payment_transaction_id=transaction_id,
+            amount="990.00",
+        ),
+    )
+
+    assert refund_response.status_code == 200
+    assert refund_response.json() == {"code": 0}
+    with webhook_database() as db:
+        order = db.query(Order).one()
+        payment = db.query(Payment).one()
+        subscription = db.query(Subscription).one()
+        entitlement = db.query(Entitlement).one()
+        refund_event = (
+            db.query(SubscriptionEvent)
+            .filter(SubscriptionEvent.event_type == SubscriptionEventType.REFUND_APPLIED.value)
+            .one()
+        )
+        webhook_events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
+
+    assert order.status == "refunded"
+    assert payment.status == "refunded"
+    assert payment.refunded_amount_minor == 99000
+    assert subscription.status == SubscriptionStatus.REFUNDED.value
+    assert entitlement.status == EntitlementStatus.REVOKED.value
+    assert refund_event.previous_status == SubscriptionStatus.CANCELED.value
+    assert refund_event.next_status == SubscriptionStatus.REFUNDED.value
+    assert [event.status for event in webhook_events] == ["processed", "processed"]
 
 
 def test_refund_after_canceled_payment_is_rejected_without_refund_mutation(

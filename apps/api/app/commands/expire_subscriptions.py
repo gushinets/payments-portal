@@ -38,6 +38,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     command = ExpireDueSubscriptionsCommand(batch_size=args.batch_size)
     with SessionLocal() as db:
         expired = expire_due_subscriptions(db, command)
+        db.commit()
     print(f"expired_subscriptions={len(expired)}")
     return 0
 

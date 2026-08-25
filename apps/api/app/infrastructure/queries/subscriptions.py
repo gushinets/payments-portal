@@ -5,7 +5,7 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session
 
-from app.domains.billing.enums import EntitlementStatus, SubscriptionStatus
+from app.domains.billing.enums import EntitlementStatus, SubscriptionEventType, SubscriptionStatus
 from app.models import Entitlement, Subscription, SubscriptionEvent
 
 
@@ -156,11 +156,14 @@ def list_active_subscriptions_for_user(
 def get_subscription_for_order(db: Session, order_id: uuid.UUID, *, for_update: bool = False) -> Subscription | None:
     query = (
         db.query(Subscription)
-        .join(Entitlement, Entitlement.subscription_id == Subscription.id)
-        .filter(Entitlement.order_id == order_id)
-        .order_by(Subscription.created_at.desc())
+        .join(SubscriptionEvent, SubscriptionEvent.subscription_id == Subscription.id)
+        .filter(
+            SubscriptionEvent.order_id == order_id,
+            SubscriptionEvent.event_type == SubscriptionEventType.PAID_PERIOD_ACTIVATED.value,
+        )
+        .order_by(SubscriptionEvent.occurred_at.desc(), Subscription.created_at.desc())
     )
-    return (query.with_for_update() if for_update else query).first()
+    return (query.with_for_update(of=Subscription) if for_update else query).first()
 
 
 def list_due_subscriptions(db: Session, *, now: datetime, batch_size: int) -> list[Subscription]:

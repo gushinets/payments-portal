@@ -45,6 +45,7 @@ class ProviderSubscriptionState(StrEnum):
 class SubscriptionEventType(StrEnum):
     TRIAL_STARTED = "trial_started"
     PAID_PERIOD_ACTIVATED = "paid_period_activated"
+    SUBSCRIPTION_REPLACED = "subscription_replaced"
     LEGACY_ACCESS_MIGRATED = "legacy_access_migrated"
     AUTOMATIC_RENEWAL_ENABLED = "automatic_renewal_enabled"
     RENEWAL_SUCCEEDED = "renewal_succeeded"
