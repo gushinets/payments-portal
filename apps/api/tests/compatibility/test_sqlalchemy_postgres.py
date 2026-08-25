@@ -4,17 +4,22 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from alembic.script import ScriptDirectory
 from sqlalchemy import select, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from apps.api.tests.support.postgres import alembic_test_config
 from app.models import AuthSession, Payment, PaymentWebhookEvent, User
 
 pytestmark = pytest.mark.postgres
 
 
 def test_postgres_orm_round_trip_and_rollback(migrated_database: Engine) -> None:
+    with alembic_test_config(migrated_database.url) as config:
+        expected_alembic_head = ScriptDirectory.from_config(config).get_current_head()
+
     assert PaymentWebhookEvent.__table__.c.raw_payload.type.compile(dialect=migrated_database.dialect) == "JSONB"
     payment_id_index = next(
         index for index in Payment.__table__.indexes if index.name == "uq_payments_provider_account_payment_id"
@@ -60,7 +65,7 @@ def test_postgres_orm_round_trip_and_rollback(migrated_database: Engine) -> None
         assert stored_user.email_verified_at == verified_at
         assert stored_auth_session is not None
         assert str(stored_auth_session.ip) == "127.0.0.1"
-        assert session.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "20260729_0004"
+        assert session.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == expected_alembic_head
 
         session.add(
             User(

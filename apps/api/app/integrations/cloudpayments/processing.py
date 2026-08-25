@@ -27,6 +27,7 @@ from app.integrations.cloudpayments.rules import (
     find_default_provider_account,
     payment_schema_error,
 )
+from app.infrastructure.queries.subscriptions import get_subscription_for_order
 from app.models import Order, Payment, PaymentWebhookEvent
 
 TERMINAL_ORDER_STATUSES = {"paid", "canceled", "refunded", "partially_refunded"}
@@ -467,11 +468,7 @@ def process_webhook_event(
                 )
         event.processed_at = datetime_now()
     elif endpoint == "refund":
-        payment = _find_payment(
-            db,
-            order=order,
-            transaction_id=transaction_id,
-        )
+        payment = _find_payment(db, order=order, transaction_id=transaction_id)
         if payment is None:
             event.status = "failed"
             event.error_code = "payment_not_found"
@@ -505,16 +502,17 @@ def process_webhook_event(
                 payload=payload,
                 now=datetime_now(),
             )
-            apply_refund(
-                db,
-                ApplyRefundCommand(
-                    order_id=order.id,
-                    refund_id=refund.id,
-                    amount_minor=refund.amount_minor,
-                    operation_idempotency_key=f"cloudpayments:refund:{refund.id}",
-                    occurred_at=datetime_now(),
-                ),
-            )
+            if order.status != "canceled" or get_subscription_for_order(db, order.id, for_update=True) is not None:
+                apply_refund(
+                    db,
+                    ApplyRefundCommand(
+                        order_id=order.id,
+                        refund_id=refund.id,
+                        amount_minor=refund.amount_minor,
+                        operation_idempotency_key=f"cloudpayments:refund:{refund.id}",
+                        occurred_at=datetime_now(),
+                    ),
+                )
             event.currency = currency if currency is not None else payment.currency
             event.status = "processed"
             event.processed_at = datetime_now()
