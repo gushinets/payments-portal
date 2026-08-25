@@ -232,6 +232,7 @@ def apply_refund(db: Session, command: ApplyRefundCommand) -> Subscription:
             if entitlement.status == EntitlementStatus.ACTIVE.value:
                 entitlement.status = EntitlementStatus.REVOKED.value
                 entitlement.revoked_at = command.occurred_at
+        db.flush()
         remaining_grants = _active_or_future_entitlements(db, subscription, now=command.occurred_at)
         if remaining_grants:
             if subscription.status in {SubscriptionStatus.PAST_DUE.value, SubscriptionStatus.PAUSED.value}:

@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from threading import Barrier
 
 import pytest
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.domains.billing.enums import (
@@ -39,6 +40,11 @@ from app.models import (
 pytestmark = pytest.mark.postgres
 
 
+@pytest.fixture(autouse=True)
+def _migrated_concurrency_database(migrated_database: Engine) -> None:
+    """Run each concurrency test against its own migrated PostgreSQL schema."""
+
+
 def _plan_by_code(session: Session, code: str) -> Plan:
     plan = session.query(Plan).filter(Plan.tenant_id == "anytoolai", Plan.region == "ru", Plan.code == code).one()
     return plan
@@ -55,7 +61,7 @@ def _add_billing_user_and_account(session: Session, key: str) -> tuple[User, Pay
     account = PaymentProviderAccount(
         tenant_id="anytoolai",
         region="ru",
-        provider="test-provider",
+        provider=f"test-provider-{key}",
         public_identifier=f"{key}-account",
         default_currency="RUB",
         enabled=True,
