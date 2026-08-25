@@ -13,13 +13,15 @@ from app.domains.billing.service.commands import (
 )
 from app.domains.billing.service.lifecycle import (
     activate_paid_period,
+    start_trial,
+)
+from app.domains.billing.service.lifecycle_operations import (
     apply_provider_subscription_state,
     apply_refund,
     apply_renewal_payment,
     enable_automatic_renewal,
     expire_due_subscriptions,
     request_cancellation,
-    start_trial,
 )
 from app.domains.billing.service.state_machine import (
     SubscriptionLifecycleError,

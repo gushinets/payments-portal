@@ -24,6 +24,7 @@ EXPECTED_REVISION_CHAIN = [
     "20260824_0005",
     "20260824_0006",
     "20260824_0007",
+    "20260825_0008",
 ]
 
 pytestmark = pytest.mark.postgres
@@ -187,11 +188,23 @@ def assert_postgres_schema_contract(postgres_engine: Engine) -> None:
         "uq_payments_provider_account_payment_id",
         "uq_plans_active_code",
         "uq_refunds_provider_account_refund_id",
+        "uq_subscriptions_live_all_access_scope",
+        "uq_subscriptions_live_bundle_scope",
+        "uq_subscriptions_live_product_scope",
     } <= partial_indexes.keys()
     payment_predicate = " ".join(
         partial_indexes["uq_payments_provider_account_payment_id"].upper().replace("(", " ").replace(")", " ").split()
     )
     assert payment_predicate.endswith("WHERE PROVIDER_PAYMENT_ID IS NOT NULL")
+    for index_name, scope_type in (
+        ("uq_subscriptions_live_all_access_scope", "ALL_ACCESS"),
+        ("uq_subscriptions_live_bundle_scope", "BUNDLE"),
+        ("uq_subscriptions_live_product_scope", "PRODUCT"),
+    ):
+        predicate = " ".join(partial_indexes[index_name].upper().replace("(", " ").replace(")", " ").split())
+        assert f"SCOPE_TYPE = '{scope_type}'" in predicate
+        for status in ("TRIALING", "ACTIVE", "PAST_DUE", "PAUSED"):
+            assert f"'{status}'" in predicate
 
 
 def expected_legal_documents() -> list[dict[str, str]]:
@@ -570,6 +583,41 @@ def test_clean_postgres_alembic_upgrade_and_downgrade(
             },
         ],
     }
+
+
+def test_live_subscription_unique_indexes_are_removed_on_downgrade(
+    postgres_engine: Engine,
+    database_test_url: URL,
+) -> None:
+    reset_public_schema(postgres_engine)
+    index_names = {
+        "uq_subscriptions_live_all_access_scope",
+        "uq_subscriptions_live_bundle_scope",
+        "uq_subscriptions_live_product_scope",
+    }
+
+    with alembic_test_config(database_test_url) as config:
+        command.upgrade(config, "head")
+
+    with postgres_engine.connect() as connection:
+        upgraded_indexes = set(
+            connection.execute(
+                text("SELECT indexname FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'subscriptions'")
+            ).scalars()
+        )
+    assert index_names <= upgraded_indexes
+
+    with alembic_test_config(database_test_url) as config:
+        command.downgrade(config, "20260824_0007")
+
+    with postgres_engine.connect() as connection:
+        downgraded_indexes = set(
+            connection.execute(
+                text("SELECT indexname FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'subscriptions'")
+            ).scalars()
+        )
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "20260824_0007"
+    assert index_names.isdisjoint(downgraded_indexes)
 
 
 def test_active_plan_versions_cannot_overlap(

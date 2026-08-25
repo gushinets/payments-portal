@@ -4,13 +4,23 @@ from enum import StrEnum
 
 
 class SubscriptionStatus(StrEnum):
-    TRIALING = "trialing"
-    ACTIVE = "active"
-    PAST_DUE = "past_due"
-    CANCELED = "canceled"
-    EXPIRED = "expired"
-    REFUNDED = "refunded"
-    PAUSED = "paused"
+    def __new__(cls, value: str, is_live: bool):
+        member = str.__new__(cls, value)
+        member._value_ = value
+        member.is_live = is_live
+        return member
+
+    TRIALING = "trialing", True
+    ACTIVE = "active", True
+    PAST_DUE = "past_due", True
+    CANCELED = "canceled", False
+    EXPIRED = "expired", False
+    REFUNDED = "refunded", False
+    PAUSED = "paused", True
+
+    @classmethod
+    def live_values(cls) -> tuple[str, ...]:
+        return tuple(status.value for status in cls if status.is_live)
 
 
 class SubscriptionScopeType(StrEnum):

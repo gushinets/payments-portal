@@ -1,0 +1,425 @@
+from __future__ import annotations
+
+import time
+import uuid
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta, timezone
+from threading import Barrier
+
+import pytest
+from sqlalchemy.orm import Session, sessionmaker
+
+from app.domains.billing.enums import (
+    EntitlementSource,
+    SubscriptionEventType,
+    SubscriptionRenewalMode,
+    SubscriptionStatus,
+)
+from app.domains.billing.service import (
+    ActivatePaidPeriodCommand,
+    StartTrialCommand,
+    SubscriptionLifecycleError,
+    activate_paid_period,
+    start_trial,
+)
+from app.infrastructure.queries.identity import lock_user_by_id
+from app.models import (
+    Entitlement,
+    Order,
+    Payment,
+    PaymentProviderAccount,
+    PaymentWebhookEvent,
+    Plan,
+    Subscription,
+    SubscriptionEvent,
+    User,
+)
+
+
+pytestmark = pytest.mark.postgres
+
+
+def _plan_by_code(session: Session, code: str) -> Plan:
+    plan = session.query(Plan).filter(Plan.tenant_id == "anytoolai", Plan.region == "ru", Plan.code == code).one()
+    return plan
+
+
+def _add_billing_user_and_account(session: Session, key: str) -> tuple[User, PaymentProviderAccount]:
+    user = User(
+        tenant_id="anytoolai",
+        region="ru",
+        email=f"{key}@example.com",
+        email_normalized=f"{key}@example.com",
+        status="active",
+    )
+    account = PaymentProviderAccount(
+        tenant_id="anytoolai",
+        region="ru",
+        provider="test-provider",
+        public_identifier=f"{key}-account",
+        default_currency="RUB",
+        enabled=True,
+        test_mode=True,
+        config={},
+    )
+    session.add_all([user, account])
+    session.flush()
+    return user, account
+
+
+def _add_verified_paid_order(
+    session: Session,
+    *,
+    key: str,
+    user: User,
+    account: PaymentProviderAccount,
+    plan: Plan,
+    paid_at: datetime,
+) -> tuple[Order, Payment, PaymentWebhookEvent]:
+    order = Order(
+        tenant_id=user.tenant_id,
+        region=user.region,
+        order_number=f"{key}-order",
+        user_id=user.id,
+        plan_id=plan.id,
+        status="paid",
+        amount_minor=plan.price_amount_minor,
+        currency=plan.currency,
+        provider=account.provider,
+        provider_account_id=account.id,
+        merchant_order_id=f"{key}-merchant-order",
+        paid_at=paid_at,
+    )
+    session.add(order)
+    session.flush()
+    payment = Payment(
+        tenant_id=order.tenant_id,
+        region=order.region,
+        order_id=order.id,
+        provider_account_id=account.id,
+        provider=account.provider,
+        provider_payment_id=f"{key}-payment",
+        status="succeeded",
+        amount_minor=order.amount_minor,
+        currency=order.currency,
+        refunded_amount_minor=0,
+        raw_summary={},
+    )
+    session.add(payment)
+    session.flush()
+    webhook = PaymentWebhookEvent(
+        tenant_id=order.tenant_id,
+        region=order.region,
+        provider_account_id=account.id,
+        provider=account.provider,
+        endpoint="pay",
+        idempotency_key=f"{key}-webhook",
+        payload_hash=f"{key}-payload-hash",
+        invoice_id=order.provider_invoice_id,
+        transaction_id=payment.provider_payment_id,
+        order_id=order.id,
+        payment_id=payment.id,
+        amount_minor=order.amount_minor,
+        currency=order.currency,
+        raw_payload={},
+        status="processed",
+        processed_at=paid_at,
+    )
+    session.add(webhook)
+    session.flush()
+    return order, payment, webhook
+
+
+def _seed_paid_orders(
+    session_factory: sessionmaker[Session],
+    *,
+    key: str,
+    plan_codes: tuple[str, ...],
+    paid_at: datetime,
+) -> tuple[uuid.UUID, list[tuple[uuid.UUID, uuid.UUID, uuid.UUID]]]:
+    with session_factory() as session, session.begin():
+        user, account = _add_billing_user_and_account(session, key)
+        order_contexts = []
+        for index, plan_code in enumerate(plan_codes, start=1):
+            plan = _plan_by_code(session, plan_code)
+            order, payment, webhook = _add_verified_paid_order(
+                session,
+                key=f"{key}-{index}",
+                user=user,
+                account=account,
+                plan=plan,
+                paid_at=paid_at + timedelta(minutes=index),
+            )
+            order_contexts.append((order.id, payment.id, webhook.id))
+        return user.id, order_contexts
+
+
+def _with_user_lock_released_after_workers_start(
+    session_factory: sessionmaker[Session],
+    *,
+    user_id: uuid.UUID,
+    workers: int,
+    submit,
+) -> list:
+    blocker = session_factory()
+    blocker.begin()
+    try:
+        assert lock_user_by_id(blocker, user_id) is not None
+        start_barrier = Barrier(workers + 1)
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = [executor.submit(submit, start_barrier, index) for index in range(workers)]
+            start_barrier.wait(timeout=5)
+            time.sleep(0.1)
+            blocker.commit()
+            return [future.result(timeout=10) for future in futures]
+    finally:
+        if blocker.in_transaction():
+            blocker.rollback()
+        blocker.close()
+
+
+def _activate_in_worker(
+    session_factory: sessionmaker[Session],
+    command: ActivatePaidPeriodCommand,
+) -> uuid.UUID:
+    with session_factory() as session:
+        return activate_paid_period(session, command).id
+
+
+def _start_trial_in_worker(
+    session_factory: sessionmaker[Session],
+    command: StartTrialCommand,
+) -> tuple[str, uuid.UUID | str]:
+    with session_factory() as session:
+        try:
+            subscription = start_trial(session, command)
+        except SubscriptionLifecycleError as exc:
+            return "error", str(exc)
+        return "ok", subscription.id
+
+
+def test_parallel_paid_orders_same_scope_share_one_subscription(
+    postgres_session_factory: sessionmaker[Session],
+) -> None:
+    now = datetime(2026, 8, 25, 10, 0, tzinfo=timezone.utc)
+    user_id, order_contexts = _seed_paid_orders(
+        postgres_session_factory,
+        key="concurrent-paid-same-scope",
+        plan_codes=("document-summary-pro", "document-summary-pro"),
+        paid_at=now,
+    )
+    commands = [
+        ActivatePaidPeriodCommand(
+            operation_idempotency_key=f"concurrent-paid-same-scope-{index}",
+            order_id=order_id,
+            payment_id=payment_id,
+            webhook_event_id=webhook_id,
+            occurred_at=now + timedelta(minutes=index),
+        )
+        for index, (order_id, payment_id, webhook_id) in enumerate(order_contexts, start=1)
+    ]
+
+    def submit(barrier: Barrier, index: int) -> uuid.UUID:
+        barrier.wait(timeout=5)
+        return _activate_in_worker(postgres_session_factory, commands[index])
+
+    subscription_ids = _with_user_lock_released_after_workers_start(
+        postgres_session_factory,
+        user_id=user_id,
+        workers=2,
+        submit=submit,
+    )
+
+    order_ids = tuple(context[0] for context in order_contexts)
+    with postgres_session_factory() as session:
+        subscriptions = (
+            session.query(Subscription)
+            .filter(Subscription.user_id == user_id, Subscription.status.in_(SubscriptionStatus.live_values()))
+            .all()
+        )
+        events = (
+            session.query(SubscriptionEvent)
+            .filter(
+                SubscriptionEvent.event_type == SubscriptionEventType.PAID_PERIOD_ACTIVATED.value,
+                SubscriptionEvent.order_id.in_(order_ids),
+            )
+            .all()
+        )
+        entitlements = (
+            session.query(Entitlement)
+            .filter(Entitlement.order_id.in_(order_ids))
+            .order_by(Entitlement.valid_from.asc())
+            .all()
+        )
+
+    assert len(set(subscription_ids)) == 1
+    assert len(subscriptions) == 1
+    assert len(events) == 2
+    assert {event.subscription_id for event in events} == {subscriptions[0].id}
+    assert len(entitlements) == 2
+    assert {entitlement.order_id for entitlement in entitlements} == set(order_ids)
+    assert {entitlement.subscription_id for entitlement in entitlements} == {subscriptions[0].id}
+    assert entitlements[0].valid_until == entitlements[1].valid_from
+
+
+def test_parallel_trials_same_scope_create_one_trial(
+    postgres_session_factory: sessionmaker[Session],
+) -> None:
+    now = datetime(2026, 8, 25, 11, 0, tzinfo=timezone.utc)
+    with postgres_session_factory() as session, session.begin():
+        user, _ = _add_billing_user_and_account(session, "concurrent-trial-same-scope")
+        plan = _plan_by_code(session, "document-summary-pro")
+        user_id = user.id
+        plan_id = plan.id
+    commands = [
+        StartTrialCommand(
+            tenant_id="anytoolai",
+            region="ru",
+            user_id=user_id,
+            plan_id=plan_id,
+            operation_idempotency_key=f"concurrent-trial-same-scope-{index}",
+            occurred_at=now + timedelta(minutes=index),
+        )
+        for index in range(2)
+    ]
+
+    def submit(barrier: Barrier, index: int) -> tuple[str, uuid.UUID | str]:
+        barrier.wait(timeout=5)
+        return _start_trial_in_worker(postgres_session_factory, commands[index])
+
+    results = _with_user_lock_released_after_workers_start(
+        postgres_session_factory,
+        user_id=user_id,
+        workers=2,
+        submit=submit,
+    )
+
+    with postgres_session_factory() as session:
+        trial_subscriptions = (
+            session.query(Subscription)
+            .filter(
+                Subscription.user_id == user_id,
+                Subscription.status == SubscriptionStatus.TRIALING.value,
+            )
+            .all()
+        )
+        trial_entitlements = (
+            session.query(Entitlement)
+            .filter(
+                Entitlement.user_id == user_id,
+                Entitlement.source == EntitlementSource.TRIAL.value,
+            )
+            .all()
+        )
+
+    assert sorted(result[0] for result in results) == ["error", "ok"]
+    assert {result[1] for result in results if result[0] == "error"} == {"trial_already_used_for_scope"}
+    assert len(trial_subscriptions) == 1
+    assert len(trial_entitlements) == 1
+    assert trial_entitlements[0].subscription_id == trial_subscriptions[0].id
+
+
+def test_parallel_paid_orders_different_scopes_create_two_subscriptions(
+    postgres_session_factory: sessionmaker[Session],
+) -> None:
+    now = datetime(2026, 8, 25, 12, 0, tzinfo=timezone.utc)
+    user_id, order_contexts = _seed_paid_orders(
+        postgres_session_factory,
+        key="concurrent-paid-different-scopes",
+        plan_codes=("document-summary-pro", "prompt-optimizer-pro"),
+        paid_at=now,
+    )
+    commands = [
+        ActivatePaidPeriodCommand(
+            operation_idempotency_key=f"concurrent-paid-different-scopes-{index}",
+            order_id=order_id,
+            payment_id=payment_id,
+            webhook_event_id=webhook_id,
+            occurred_at=now + timedelta(minutes=index),
+        )
+        for index, (order_id, payment_id, webhook_id) in enumerate(order_contexts, start=1)
+    ]
+
+    def submit(barrier: Barrier, index: int) -> uuid.UUID:
+        barrier.wait(timeout=5)
+        return _activate_in_worker(postgres_session_factory, commands[index])
+
+    subscription_ids = _with_user_lock_released_after_workers_start(
+        postgres_session_factory,
+        user_id=user_id,
+        workers=2,
+        submit=submit,
+    )
+
+    with postgres_session_factory() as session:
+        subscriptions = (
+            session.query(Subscription)
+            .filter(Subscription.user_id == user_id, Subscription.status.in_(SubscriptionStatus.live_values()))
+            .all()
+        )
+        entitlements = session.query(Entitlement).filter(Entitlement.user_id == user_id).all()
+
+    assert len(set(subscription_ids)) == 2
+    assert len(subscriptions) == 2
+    assert len(entitlements) == 2
+    assert {subscription.product_id for subscription in subscriptions} == {
+        entitlement.product_id for entitlement in entitlements
+    }
+
+
+def test_terminal_subscription_allows_new_subscription_same_scope(
+    postgres_session_factory: sessionmaker[Session],
+) -> None:
+    now = datetime(2026, 8, 25, 13, 0, tzinfo=timezone.utc)
+    with postgres_session_factory() as session, session.begin():
+        user, account = _add_billing_user_and_account(session, "terminal-then-new-same-scope")
+        plan = _plan_by_code(session, "document-summary-pro")
+        terminal = Subscription(
+            tenant_id=user.tenant_id,
+            region=user.region,
+            user_id=user.id,
+            plan_id=plan.id,
+            scope_type=plan.scope_type,
+            product_id=plan.product_id,
+            bundle_id=plan.bundle_id,
+            status=SubscriptionStatus.CANCELED.value,
+            renewal_mode=SubscriptionRenewalMode.MANUAL.value,
+            current_period_start=now - timedelta(days=30),
+            current_period_end=now - timedelta(days=1),
+            canceled_at=now - timedelta(days=1),
+        )
+        session.add(terminal)
+        session.flush()
+        order, payment, webhook = _add_verified_paid_order(
+            session,
+            key="terminal-then-new-same-scope",
+            user=user,
+            account=account,
+            plan=plan,
+            paid_at=now,
+        )
+        user_id = user.id
+        terminal_id = terminal.id
+        command = ActivatePaidPeriodCommand(
+            operation_idempotency_key="terminal-then-new-same-scope-activate",
+            order_id=order.id,
+            payment_id=payment.id,
+            webhook_event_id=webhook.id,
+            occurred_at=now,
+        )
+
+    with postgres_session_factory() as session:
+        new_subscription = activate_paid_period(session, command)
+        new_subscription_id = new_subscription.id
+
+    with postgres_session_factory() as session:
+        subscriptions = session.query(Subscription).filter(Subscription.user_id == user_id).all()
+        live_count = (
+            session.query(Subscription)
+            .filter(Subscription.user_id == user_id, Subscription.status.in_(SubscriptionStatus.live_values()))
+            .count()
+        )
+
+    assert len(subscriptions) == 2
+    assert live_count == 1
+    assert new_subscription_id != terminal_id

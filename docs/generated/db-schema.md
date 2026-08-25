@@ -729,6 +729,9 @@ Indexes and constraints:
 - `ix_subscriptions_tenant_id`
 - `ix_subscriptions_user_id`
 - `ix_subscriptions_user_region_status`
+- `uq_subscriptions_live_all_access_scope`
+- `uq_subscriptions_live_bundle_scope`
+- `uq_subscriptions_live_product_scope`
 - `uq_subscriptions_provider_reference`
 
 ## `users`

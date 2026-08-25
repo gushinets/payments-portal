@@ -893,9 +893,9 @@ def check_docs() -> list[str]:
                 continue
             if not candidate.exists():
                 errors.append(f"Broken link in {path.relative_to(ROOT)}: {target}")
-    model_text = (ROOT / "apps/api/app/models.py").read_text(encoding="utf-8")
+    Base, _ = import_api()
     documented = (ROOT / "docs/architecture/payment-portal-data-model.md").read_text(encoding="utf-8")
-    for table in re.findall(r'__tablename__\s*=\s*"([^"]+)"', model_text):
+    for table in sorted(Base.metadata.tables):
         if f"`{table}`" not in documented:
             errors.append(f"Implemented table missing from canonical data model: {table}")
     if (ROOT / "docs/project").exists() and any((ROOT / "docs/project").iterdir()):

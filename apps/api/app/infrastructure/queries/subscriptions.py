@@ -5,7 +5,11 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session
 
-from app.domains.billing.enums import EntitlementStatus, SubscriptionEventType, SubscriptionStatus
+from app.domains.billing.enums import (
+    EntitlementStatus,
+    SubscriptionEventType,
+    SubscriptionStatus,
+)
 from app.models import Entitlement, Subscription, SubscriptionEvent
 
 
@@ -213,6 +217,33 @@ def get_trial_for_scope(
     )
 
 
+def get_live_subscription_for_scope(
+    db: Session,
+    *,
+    tenant_id: str,
+    region: str,
+    user_id: uuid.UUID,
+    scope_type: str,
+    product_id: uuid.UUID | None,
+    bundle_id: uuid.UUID | None,
+    for_update: bool = False,
+) -> Subscription | None:
+    query = (
+        db.query(Subscription)
+        .filter(
+            Subscription.tenant_id == tenant_id,
+            Subscription.region == region,
+            Subscription.user_id == user_id,
+            Subscription.scope_type == scope_type,
+            Subscription.product_id == product_id,
+            Subscription.bundle_id == bundle_id,
+            Subscription.status.in_(SubscriptionStatus.live_values()),
+        )
+        .order_by(Subscription.created_at.desc())
+    )
+    return (query.with_for_update() if for_update else query).first()
+
+
 def list_active_subscriptions_for_user(
     db: Session, *, tenant_id: str, region: str, user_id: uuid.UUID
 ) -> list[Subscription]:
@@ -222,14 +253,7 @@ def list_active_subscriptions_for_user(
             Subscription.tenant_id == tenant_id,
             Subscription.region == region,
             Subscription.user_id == user_id,
-            Subscription.status.in_(
-                (
-                    SubscriptionStatus.TRIALING.value,
-                    SubscriptionStatus.ACTIVE.value,
-                    SubscriptionStatus.PAST_DUE.value,
-                    SubscriptionStatus.PAUSED.value,
-                )
-            ),
+            Subscription.status.in_(SubscriptionStatus.live_values()),
         )
         .with_for_update()
         .all()
