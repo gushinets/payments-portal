@@ -79,8 +79,9 @@ References:
   refund transition may move a canceled subscription to `refunded` only when no
   current or future paid grant remains, and records `refund_applied`.
 - Refund lookup must resolve the subscription from append-only
-  `subscription_events` with `event_type=paid_period_activated` and matching
-  `order_id`, not from the mutable current entitlement order reference.
+  `subscription_events` with `event_type` in (`paid_period_activated`,
+  `legacy_access_migrated`) and matching `order_id`, not from the mutable
+  current entitlement order reference.
 - Replacement writes two independent audit events: the new subscription keeps
   the original operation key for `paid_period_activated`, and the old
   subscription receives a deterministic derived-key `subscription_replaced`

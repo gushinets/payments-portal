@@ -307,6 +307,63 @@ def _add_refund(
     return refund
 
 
+def _add_legacy_subscription_for_order(
+    db_session,
+    *,
+    key: str,
+    order: Order,
+    payment: Payment,
+    plan: Plan,
+    starts_at: datetime,
+    ends_at: datetime,
+    status: str = SubscriptionStatus.ACTIVE.value,
+) -> tuple[Subscription, Entitlement, SubscriptionEvent]:
+    subscription = Subscription(
+        tenant_id=order.tenant_id,
+        region=order.region,
+        user_id=order.user_id,
+        plan_id=plan.id,
+        scope_type=plan.scope_type,
+        product_id=plan.product_id,
+        bundle_id=plan.bundle_id,
+        status=status,
+        renewal_mode=SubscriptionRenewalMode.MANUAL.value,
+        current_period_start=starts_at,
+        current_period_end=ends_at,
+    )
+    db_session.add(subscription)
+    db_session.flush()
+    entitlement = Entitlement(
+        tenant_id=order.tenant_id,
+        region=order.region,
+        user_id=order.user_id,
+        subscription_id=subscription.id,
+        plan_id=plan.id,
+        scope_type=plan.scope_type,
+        product_id=plan.product_id,
+        bundle_id=plan.bundle_id,
+        status=EntitlementStatus.ACTIVE.value,
+        valid_from=starts_at,
+        valid_until=ends_at,
+        source="order",
+        order_id=order.id,
+    )
+    event = SubscriptionEvent(
+        subscription_id=subscription.id,
+        event_type=SubscriptionEventType.LEGACY_ACCESS_MIGRATED.value,
+        previous_status=None,
+        next_status=status,
+        occurred_at=starts_at,
+        operation_idempotency_key=f"legacy_access_migrated:{key}",
+        order_id=order.id,
+        payment_id=payment.id,
+        metadata_={"legacy_access_state_id": key},
+    )
+    db_session.add_all([entitlement, event])
+    db_session.flush()
+    return subscription, entitlement, event
+
+
 def test_cumulative_refund_revokes_access(db_session) -> None:
     region = "ru"
     tenant_id = "anytoolai"
@@ -524,6 +581,246 @@ def test_full_refund_after_provider_cancellation_revokes_access(db_session) -> N
     assert entitlement.status == EntitlementStatus.REVOKED.value
     assert event.previous_status == SubscriptionStatus.CANCELED.value
     assert event.next_status == SubscriptionStatus.REFUNDED.value
+
+
+def test_full_refund_of_migrated_legacy_access_revokes_entitlement_and_refunds_subscription(db_session) -> None:
+    now = datetime.now(timezone.utc)
+    plan = (
+        db_session.query(Plan)
+        .filter(Plan.tenant_id == "anytoolai", Plan.region == "ru", Plan.price_amount_minor > 0)
+        .first()
+    )
+    assert plan is not None
+    user, account = _add_billing_user_and_account(db_session, "legacy-refund-active")
+    order, payment, _ = _add_verified_paid_order(
+        db_session,
+        key="legacy-refund-active",
+        user=user,
+        account=account,
+        plan=plan,
+        paid_at=now,
+    )
+    subscription, entitlement, migration_event = _add_legacy_subscription_for_order(
+        db_session,
+        key="legacy-refund-active",
+        order=order,
+        payment=payment,
+        plan=plan,
+        starts_at=now,
+        ends_at=now + timedelta(days=30),
+    )
+    payment.status = "refunded"
+    payment.refunded_amount_minor = payment.amount_minor
+    refund = _add_refund(
+        db_session,
+        key="legacy-refund-active",
+        order=order,
+        payment=payment,
+        account=account,
+        amount_minor=payment.amount_minor,
+        occurred_at=now + timedelta(minutes=5),
+    )
+
+    lookup = get_subscription_for_order(db_session, order.id)
+    result = apply_refund(
+        db_session,
+        ApplyRefundCommand(
+            operation_idempotency_key="legacy-refund-active-apply",
+            order_id=order.id,
+            refund_id=refund.id,
+            amount_minor=refund.amount_minor,
+            occurred_at=now + timedelta(minutes=5),
+        ),
+    )
+
+    refund_event = (
+        db_session.query(SubscriptionEvent)
+        .filter(
+            SubscriptionEvent.subscription_id == subscription.id,
+            SubscriptionEvent.event_type == SubscriptionEventType.REFUND_APPLIED.value,
+        )
+        .one()
+    )
+    db_session.refresh(entitlement)
+    assert lookup is not None
+    assert lookup.id == subscription.id
+    assert result.status == SubscriptionStatus.REFUNDED.value
+    assert entitlement.status == EntitlementStatus.REVOKED.value
+    assert migration_event.event_type == SubscriptionEventType.LEGACY_ACCESS_MIGRATED.value
+    assert refund_event.previous_status == SubscriptionStatus.ACTIVE.value
+    assert refund_event.next_status == SubscriptionStatus.REFUNDED.value
+    assert refund_event.order_id == order.id
+    assert refund_event.refund_id == refund.id
+    assert (
+        db_session.query(SubscriptionEvent)
+        .filter(SubscriptionEvent.event_type == SubscriptionEventType.PAID_PERIOD_ACTIVATED.value)
+        .count()
+        == 0
+    )
+
+
+def test_full_refund_of_previously_canceled_legacy_order_revokes_access(db_session) -> None:
+    now = datetime.now(timezone.utc)
+    plan = (
+        db_session.query(Plan)
+        .filter(Plan.tenant_id == "anytoolai", Plan.region == "ru", Plan.price_amount_minor > 0)
+        .first()
+    )
+    assert plan is not None
+    user, account = _add_billing_user_and_account(db_session, "legacy-refund-canceled")
+    order, payment, _ = _add_verified_paid_order(
+        db_session,
+        key="legacy-refund-canceled",
+        user=user,
+        account=account,
+        plan=plan,
+        paid_at=now,
+    )
+    order.status = "canceled"
+    order.canceled_at = now + timedelta(minutes=1)
+    subscription, entitlement, _ = _add_legacy_subscription_for_order(
+        db_session,
+        key="legacy-refund-canceled",
+        order=order,
+        payment=payment,
+        plan=plan,
+        starts_at=now,
+        ends_at=now + timedelta(days=30),
+        status=SubscriptionStatus.CANCELED.value,
+    )
+    payment.status = "refunded"
+    payment.refunded_amount_minor = payment.amount_minor
+    refund = _add_refund(
+        db_session,
+        key="legacy-refund-canceled",
+        order=order,
+        payment=payment,
+        account=account,
+        amount_minor=payment.amount_minor,
+        occurred_at=now + timedelta(minutes=5),
+    )
+
+    result = apply_refund(
+        db_session,
+        ApplyRefundCommand(
+            operation_idempotency_key="legacy-refund-canceled-apply",
+            order_id=order.id,
+            refund_id=refund.id,
+            amount_minor=refund.amount_minor,
+            occurred_at=now + timedelta(minutes=5),
+        ),
+    )
+
+    db_session.refresh(entitlement)
+    assert result.id == subscription.id
+    assert result.status == SubscriptionStatus.REFUNDED.value
+    assert entitlement.status == EntitlementStatus.REVOKED.value
+
+
+def test_partial_refund_of_migrated_legacy_access_does_not_revoke_entitlement(db_session) -> None:
+    now = datetime.now(timezone.utc)
+    plan = (
+        db_session.query(Plan)
+        .filter(Plan.tenant_id == "anytoolai", Plan.region == "ru", Plan.price_amount_minor > 0)
+        .first()
+    )
+    assert plan is not None
+    user, account = _add_billing_user_and_account(db_session, "legacy-partial-refund")
+    order, payment, _ = _add_verified_paid_order(
+        db_session,
+        key="legacy-partial-refund",
+        user=user,
+        account=account,
+        plan=plan,
+        paid_at=now,
+    )
+    subscription, entitlement, _ = _add_legacy_subscription_for_order(
+        db_session,
+        key="legacy-partial-refund",
+        order=order,
+        payment=payment,
+        plan=plan,
+        starts_at=now,
+        ends_at=now + timedelta(days=30),
+    )
+    payment.status = "partially_refunded"
+    payment.refunded_amount_minor = payment.amount_minor // 2
+    refund = _add_refund(
+        db_session,
+        key="legacy-partial-refund",
+        order=order,
+        payment=payment,
+        account=account,
+        amount_minor=payment.refunded_amount_minor,
+        occurred_at=now + timedelta(minutes=5),
+    )
+
+    result = apply_refund(
+        db_session,
+        ApplyRefundCommand(
+            operation_idempotency_key="legacy-partial-refund-apply",
+            order_id=order.id,
+            refund_id=refund.id,
+            amount_minor=refund.amount_minor,
+            occurred_at=now + timedelta(minutes=5),
+        ),
+    )
+
+    event = (
+        db_session.query(SubscriptionEvent)
+        .filter(
+            SubscriptionEvent.subscription_id == subscription.id,
+            SubscriptionEvent.event_type == SubscriptionEventType.PARTIAL_REFUND_APPLIED.value,
+        )
+        .one()
+    )
+    db_session.refresh(entitlement)
+    assert result.status == SubscriptionStatus.ACTIVE.value
+    assert entitlement.status == EntitlementStatus.ACTIVE.value
+    assert event.order_id == order.id
+    assert event.refund_id == refund.id
+
+
+def test_missing_subscription_event_for_paid_refund_is_not_swallowed(db_session) -> None:
+    now = datetime.now(timezone.utc)
+    plan = (
+        db_session.query(Plan)
+        .filter(Plan.tenant_id == "anytoolai", Plan.region == "ru", Plan.price_amount_minor > 0)
+        .first()
+    )
+    assert plan is not None
+    user, account = _add_billing_user_and_account(db_session, "paid-refund-missing-subscription")
+    order, payment, _ = _add_verified_paid_order(
+        db_session,
+        key="paid-refund-missing-subscription",
+        user=user,
+        account=account,
+        plan=plan,
+        paid_at=now,
+    )
+    payment.status = "refunded"
+    payment.refunded_amount_minor = payment.amount_minor
+    refund = _add_refund(
+        db_session,
+        key="paid-refund-missing-subscription",
+        order=order,
+        payment=payment,
+        account=account,
+        amount_minor=payment.amount_minor,
+        occurred_at=now + timedelta(minutes=5),
+    )
+
+    with pytest.raises(SubscriptionLifecycleError, match="subscription_not_found_for_order"):
+        apply_refund(
+            db_session,
+            ApplyRefundCommand(
+                operation_idempotency_key="paid-refund-missing-subscription-apply",
+                order_id=order.id,
+                refund_id=refund.id,
+                amount_minor=refund.amount_minor,
+                occurred_at=now + timedelta(minutes=5),
+            ),
+        )
 
 
 def test_paid_orders_create_distinct_entitlements_and_refund_uses_order_provenance(db_session) -> None:

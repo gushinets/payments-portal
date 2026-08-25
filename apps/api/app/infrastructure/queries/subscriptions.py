@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
+from sqlalchemy import case
 from sqlalchemy.orm import Session
 
 from app.domains.billing.enums import (
@@ -11,6 +12,12 @@ from app.domains.billing.enums import (
     SubscriptionStatus,
 )
 from app.models import Entitlement, Subscription, SubscriptionEvent
+
+
+ORDER_LOOKUP_SUBSCRIPTION_EVENT_TYPES = (
+    SubscriptionEventType.PAID_PERIOD_ACTIVATED.value,
+    SubscriptionEventType.LEGACY_ACCESS_MIGRATED.value,
+)
 
 
 def get_subscription_by_id(db: Session, subscription_id: uuid.UUID, *, for_update: bool = False) -> Subscription | None:
@@ -261,14 +268,24 @@ def list_active_subscriptions_for_user(
 
 
 def get_subscription_for_order(db: Session, order_id: uuid.UUID, *, for_update: bool = False) -> Subscription | None:
+    event_type_rank = case(
+        (SubscriptionEvent.event_type == SubscriptionEventType.PAID_PERIOD_ACTIVATED.value, 0),
+        else_=1,
+    )
     query = (
         db.query(Subscription)
         .join(SubscriptionEvent, SubscriptionEvent.subscription_id == Subscription.id)
         .filter(
             SubscriptionEvent.order_id == order_id,
-            SubscriptionEvent.event_type == SubscriptionEventType.PAID_PERIOD_ACTIVATED.value,
+            SubscriptionEvent.event_type.in_(ORDER_LOOKUP_SUBSCRIPTION_EVENT_TYPES),
         )
-        .order_by(SubscriptionEvent.occurred_at.desc(), Subscription.created_at.desc())
+        .order_by(
+            SubscriptionEvent.occurred_at.desc(),
+            event_type_rank.asc(),
+            SubscriptionEvent.id.desc(),
+            Subscription.created_at.desc(),
+            Subscription.id.desc(),
+        )
     )
     return (query.with_for_update(of=Subscription) if for_update else query).first()
 
