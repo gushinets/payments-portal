@@ -16,10 +16,11 @@ from app.domains.billing.enums import (
     SubscriptionStatus,
 )
 from app.domains.identity.session import get_current_session
-from app.infrastructure.queries.plans import get_plan_by_id
+from app.infrastructure.queries.plans import get_plan_by_id, list_plans_by_ids
 from app.infrastructure.queries.subscriptions import (
     get_account_subscription,
     get_relevant_entitlement_for_subscription,
+    list_relevant_entitlements_for_subscriptions,
     list_account_subscriptions,
 )
 from app.models import AuthSession, Entitlement, Plan, Subscription, User
@@ -71,18 +72,12 @@ class AccountSubscriptionsResponse(BaseModel):
     subscriptions: list[AccountSubscriptionResponse]
 
 
-def present_account_subscription(
-    db: Session,
+def present_loaded_account_subscription(
     *,
     subscription: Subscription,
-    plan: Plan | None = None,
-    entitlement: Entitlement | None = None,
+    plan: Plan,
+    entitlement: Entitlement | None,
 ) -> AccountSubscriptionResponse:
-    plan = plan or get_plan_by_id(db, subscription.plan_id)
-    if plan is None:
-        raise HTTPException(status_code=500, detail={"code": "subscription_plan_missing"})
-
-    entitlement = entitlement or get_relevant_entitlement_for_subscription(db, subscription.id, now=utc_now())
     return AccountSubscriptionResponse(
         subscription_id=subscription.id,
         plan=AccountSubscriptionPlanResponse(
@@ -114,6 +109,21 @@ def present_account_subscription(
     )
 
 
+def present_account_subscription(
+    db: Session,
+    *,
+    subscription: Subscription,
+    plan: Plan | None = None,
+    entitlement: Entitlement | None = None,
+) -> AccountSubscriptionResponse:
+    plan = plan or get_plan_by_id(db, subscription.plan_id)
+    if plan is None:
+        raise HTTPException(status_code=500, detail={"code": "subscription_plan_missing"})
+
+    entitlement = entitlement or get_relevant_entitlement_for_subscription(db, subscription.id, now=utc_now())
+    return present_loaded_account_subscription(subscription=subscription, plan=plan, entitlement=entitlement)
+
+
 @router.get("/subscriptions", response_model=AccountSubscriptionsResponse)
 def list_subscriptions(
     current: tuple[User, AuthSession] = Depends(get_current_session),
@@ -126,9 +136,31 @@ def list_subscriptions(
         region=user.region,
         user_id=user.id,
     )
-    return AccountSubscriptionsResponse(
-        subscriptions=[present_account_subscription(db, subscription=subscription) for subscription in subscriptions]
+    plan_ids = {subscription.plan_id for subscription in subscriptions}
+    plans_by_id = {
+        plan.id: plan for plan in list_plans_by_ids(db, tenant_id=user.tenant_id, region=user.region, plan_ids=plan_ids)
+    }
+    entitlements_by_subscription_id = list_relevant_entitlements_for_subscriptions(
+        db,
+        tenant_id=user.tenant_id,
+        region=user.region,
+        user_id=user.id,
+        subscription_ids={subscription.id for subscription in subscriptions},
+        now=utc_now(),
     )
+    presented_subscriptions: list[AccountSubscriptionResponse] = []
+    for subscription in subscriptions:
+        plan = plans_by_id.get(subscription.plan_id)
+        if plan is None:
+            raise HTTPException(status_code=500, detail={"code": "subscription_plan_missing"})
+        presented_subscriptions.append(
+            present_loaded_account_subscription(
+                subscription=subscription,
+                plan=plan,
+                entitlement=entitlements_by_subscription_id.get(subscription.id),
+            )
+        )
+    return AccountSubscriptionsResponse(subscriptions=presented_subscriptions)
 
 
 @router.get("/subscriptions/{subscription_id}", response_model=AccountSubscriptionResponse)

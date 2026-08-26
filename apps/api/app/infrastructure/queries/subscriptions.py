@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import case
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from app.domains.billing.enums import (
@@ -115,6 +115,68 @@ def get_relevant_entitlement_for_subscription(
         .first()
     )
     return future or get_latest_entitlement_for_subscription(db, subscription_id)
+
+
+def list_relevant_entitlements_for_subscriptions(
+    db: Session,
+    *,
+    tenant_id: str,
+    region: str,
+    user_id: uuid.UUID,
+    subscription_ids: set[uuid.UUID],
+    now: datetime,
+) -> dict[uuid.UUID, Entitlement]:
+    if not subscription_ids:
+        return {}
+
+    current_filter = (
+        (Entitlement.status == EntitlementStatus.ACTIVE.value)
+        & (Entitlement.valid_from <= now)
+        & (Entitlement.valid_until > now)
+    )
+    future_filter = (Entitlement.status == EntitlementStatus.ACTIVE.value) & (Entitlement.valid_from > now)
+    history_filter = ~current_filter & ~future_filter
+    relevance_rank = case(
+        (current_filter, 0),
+        (future_filter, 1),
+        else_=2,
+    )
+    ranked_entitlements = (
+        db.query(
+            Entitlement.id.label("entitlement_id"),
+            Entitlement.subscription_id.label("subscription_id"),
+            func.row_number()
+            .over(
+                partition_by=Entitlement.subscription_id,
+                order_by=(
+                    relevance_rank.asc(),
+                    case((current_filter, Entitlement.valid_until)).desc(),
+                    case((current_filter, Entitlement.created_at)).desc(),
+                    case((future_filter, Entitlement.valid_from)).asc(),
+                    case((future_filter, Entitlement.valid_until)).asc(),
+                    case((future_filter, Entitlement.created_at)).asc(),
+                    case((history_filter, Entitlement.valid_until)).desc(),
+                    case((history_filter, Entitlement.valid_from)).desc(),
+                    case((history_filter, Entitlement.created_at)).desc(),
+                ),
+            )
+            .label("row_number"),
+        )
+        .filter(
+            Entitlement.tenant_id == tenant_id,
+            Entitlement.region == region,
+            Entitlement.user_id == user_id,
+            Entitlement.subscription_id.in_(subscription_ids),
+        )
+        .subquery()
+    )
+    rows = (
+        db.query(Entitlement)
+        .join(ranked_entitlements, Entitlement.id == ranked_entitlements.c.entitlement_id)
+        .filter(ranked_entitlements.c.row_number == 1)
+        .all()
+    )
+    return {entitlement.subscription_id: entitlement for entitlement in rows}
 
 
 def list_entitlements_for_order(

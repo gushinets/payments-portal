@@ -12,9 +12,13 @@ from apps.api.tests.support.settings import override_settings
 configure_api_test_environment()
 
 import pytest  # noqa: E402
+from fastapi import HTTPException  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
+from sqlalchemy import event  # noqa: E402
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware  # noqa: E402
 
+from app.domains.billing.router import get_subscription as get_account_subscription_route  # noqa: E402
+from app.domains.billing.router import list_subscriptions as list_account_subscriptions_route  # noqa: E402
 import app.domains.identity.password_reset as password_reset_router  # noqa: E402
 from app.database import Base, SessionLocal, engine  # noqa: E402
 from app.integrations.cloudpayments import adapter as cloudpayments_adapter_module  # noqa: E402
@@ -4812,6 +4816,382 @@ def test_cloudpayments_idempotency_key_fallbacks_are_stable() -> None:
         == "cloudpayments:pay:invoice:invoice-1:hash-1"
     )
     assert _event_idempotency_key("pay", None, None, None, None, "hash-1") == "cloudpayments:pay:payload:hash-1"
+
+
+ACCOUNT_SUBSCRIPTION_RESPONSE_KEYS = {
+    "subscription_id",
+    "plan",
+    "scope",
+    "status",
+    "renewal_mode",
+    "current_period",
+    "cancellation",
+    "entitlement_validity",
+}
+
+
+def _account_subscription_datetime(value: datetime) -> datetime:
+    return value.replace(tzinfo=None)
+
+
+def _add_account_subscription_user(db, *, email: str) -> tuple[User, AuthSession, Plan]:
+    now = datetime.now(timezone.utc)
+    plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
+    user = User(
+        tenant_id="anytoolai",
+        region="ru",
+        email=email,
+        email_normalized=email,
+        status="active",
+        password_hash="test-password-hash",
+    )
+    db.add(user)
+    db.flush()
+    session = AuthSession(
+        tenant_id=user.tenant_id,
+        region=user.region,
+        user_id=user.id,
+        token_hash=f"test-token-{email}",
+        expires_at=now + timedelta(days=1),
+        last_seen_at=now,
+    )
+    db.add(session)
+    db.flush()
+    return user, session, plan
+
+
+def _add_account_subscription_row(
+    db,
+    *,
+    user: User,
+    plan: Plan,
+    now: datetime,
+    index: int = 0,
+    status: str = "active",
+    plan_id: uuid.UUID | None = None,
+) -> Subscription:
+    subscription = Subscription(
+        tenant_id=user.tenant_id,
+        region=user.region,
+        user_id=user.id,
+        plan_id=plan_id or plan.id,
+        scope_type=plan.scope_type,
+        product_id=plan.product_id,
+        bundle_id=plan.bundle_id,
+        status=status,
+        renewal_mode="manual",
+        current_period_start=now - timedelta(days=index + 1),
+        current_period_end=now + timedelta(days=30 + index),
+        created_at=now + timedelta(seconds=index),
+    )
+    db.add(subscription)
+    db.flush()
+    return subscription
+
+
+def _add_account_entitlement_row(
+    db,
+    *,
+    user: User,
+    plan: Plan,
+    subscription: Subscription,
+    status: str,
+    valid_from: datetime,
+    valid_until: datetime,
+    created_at: datetime,
+) -> Entitlement:
+    entitlement = Entitlement(
+        tenant_id=user.tenant_id,
+        region=user.region,
+        user_id=user.id,
+        subscription_id=subscription.id,
+        plan_id=plan.id,
+        scope_type=plan.scope_type,
+        product_id=plan.product_id,
+        bundle_id=plan.bundle_id,
+        status=status,
+        valid_from=valid_from,
+        valid_until=valid_until,
+        source="trial",
+        created_at=created_at,
+    )
+    db.add(entitlement)
+    return entitlement
+
+
+def _seed_account_subscriptions_for_query_count(
+    db,
+    *,
+    email: str,
+    count: int,
+) -> tuple[uuid.UUID, uuid.UUID]:
+    now = datetime.now(timezone.utc)
+    user, session, plan = _add_account_subscription_user(db, email=email)
+    for index in range(count):
+        subscription = _add_account_subscription_row(
+            db,
+            user=user,
+            plan=plan,
+            now=now,
+            index=index,
+            status="active" if index == 0 else "expired",
+        )
+        _add_account_entitlement_row(
+            db,
+            user=user,
+            plan=plan,
+            subscription=subscription,
+            status="active",
+            valid_from=now - timedelta(days=1),
+            valid_until=now + timedelta(days=30 + index),
+            created_at=now + timedelta(seconds=index),
+        )
+    db.commit()
+    return user.id, session.id
+
+
+def _count_sql_statements(callback) -> tuple[object, int]:
+    statements = []
+
+    def before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+
+    event.listen(engine, "before_cursor_execute", before_cursor_execute)
+    try:
+        result = callback()
+    finally:
+        event.remove(engine, "before_cursor_execute", before_cursor_execute)
+    return result, len(statements)
+
+
+def test_account_subscription_list_and_detail_response_shapes_are_unchanged() -> None:
+    now = datetime.now(timezone.utc)
+    with SessionLocal() as db:
+        user, session, plan = _add_account_subscription_user(
+            db,
+            email="account-subscription-shape@example.com",
+        )
+        subscription = _add_account_subscription_row(db, user=user, plan=plan, now=now)
+        _add_account_entitlement_row(
+            db,
+            user=user,
+            plan=plan,
+            subscription=subscription,
+            status="active",
+            valid_from=now - timedelta(days=1),
+            valid_until=now + timedelta(days=29),
+            created_at=now,
+        )
+        db.commit()
+        user_id = user.id
+        session_id = session.id
+        subscription_id = subscription.id
+
+    with SessionLocal() as db:
+        user = db.get(User, user_id)
+        session = db.get(AuthSession, session_id)
+        list_payload = list_account_subscriptions_route(current=(user, session), db=db).model_dump(mode="json")
+        detail_payload = get_account_subscription_route(
+            subscription_id,
+            current=(user, session),
+            db=db,
+        ).model_dump(mode="json")
+
+    assert set(list_payload) == {"subscriptions"}
+    assert len(list_payload["subscriptions"]) == 1
+    assert list_payload["subscriptions"][0] == detail_payload
+    assert set(detail_payload) == ACCOUNT_SUBSCRIPTION_RESPONSE_KEYS
+    assert set(detail_payload["plan"]) == {"plan_id", "code", "name", "billing_period"}
+    assert set(detail_payload["scope"]) == {"scope_type", "product_id", "bundle_id"}
+    assert set(detail_payload["current_period"]) == {"starts_at", "ends_at"}
+    assert set(detail_payload["cancellation"]) == {"cancel_requested_at", "canceled_at"}
+    assert set(detail_payload["entitlement_validity"]) == {"status", "valid_from", "valid_until"}
+
+
+def test_account_subscription_relevant_entitlement_precedence_is_unchanged() -> None:
+    now = datetime.now(timezone.utc)
+    with SessionLocal() as db:
+        user, session, plan = _add_account_subscription_user(
+            db,
+            email="account-subscription-entitlement-precedence@example.com",
+        )
+        current_subscription = _add_account_subscription_row(db, user=user, plan=plan, now=now, index=0)
+        future_subscription = _add_account_subscription_row(
+            db,
+            user=user,
+            plan=plan,
+            now=now,
+            index=1,
+            status="expired",
+        )
+        history_subscription = _add_account_subscription_row(
+            db,
+            user=user,
+            plan=plan,
+            now=now,
+            index=2,
+            status="expired",
+        )
+        _add_account_entitlement_row(
+            db,
+            user=user,
+            plan=plan,
+            subscription=current_subscription,
+            status="revoked",
+            valid_from=now - timedelta(days=20),
+            valid_until=now - timedelta(days=10),
+            created_at=now - timedelta(days=20),
+        )
+        _add_account_entitlement_row(
+            db,
+            user=user,
+            plan=plan,
+            subscription=current_subscription,
+            status="active",
+            valid_from=now + timedelta(days=1),
+            valid_until=now + timedelta(days=31),
+            created_at=now,
+        )
+        _add_account_entitlement_row(
+            db,
+            user=user,
+            plan=plan,
+            subscription=current_subscription,
+            status="active",
+            valid_from=now - timedelta(days=2),
+            valid_until=now + timedelta(days=5),
+            created_at=now + timedelta(minutes=1),
+        )
+        _add_account_entitlement_row(
+            db,
+            user=user,
+            plan=plan,
+            subscription=current_subscription,
+            status="active",
+            valid_from=now - timedelta(days=1),
+            valid_until=now + timedelta(days=10),
+            created_at=now,
+        )
+        _add_account_entitlement_row(
+            db,
+            user=user,
+            plan=plan,
+            subscription=future_subscription,
+            status="revoked",
+            valid_from=now - timedelta(days=20),
+            valid_until=now - timedelta(days=1),
+            created_at=now - timedelta(days=20),
+        )
+        _add_account_entitlement_row(
+            db,
+            user=user,
+            plan=plan,
+            subscription=future_subscription,
+            status="active",
+            valid_from=now + timedelta(days=2),
+            valid_until=now + timedelta(days=12),
+            created_at=now + timedelta(minutes=2),
+        )
+        _add_account_entitlement_row(
+            db,
+            user=user,
+            plan=plan,
+            subscription=future_subscription,
+            status="active",
+            valid_from=now + timedelta(days=1),
+            valid_until=now + timedelta(days=30),
+            created_at=now + timedelta(minutes=1),
+        )
+        _add_account_entitlement_row(
+            db,
+            user=user,
+            plan=plan,
+            subscription=history_subscription,
+            status="expired",
+            valid_from=now - timedelta(days=20),
+            valid_until=now - timedelta(days=5),
+            created_at=now - timedelta(days=20),
+        )
+        _add_account_entitlement_row(
+            db,
+            user=user,
+            plan=plan,
+            subscription=history_subscription,
+            status="revoked",
+            valid_from=now - timedelta(days=10),
+            valid_until=now - timedelta(days=1),
+            created_at=now - timedelta(days=10),
+        )
+        db.commit()
+        user_id = user.id
+        session_id = session.id
+        current_subscription_id = current_subscription.id
+        future_subscription_id = future_subscription.id
+        history_subscription_id = history_subscription.id
+
+    with SessionLocal() as db:
+        user = db.get(User, user_id)
+        session = db.get(AuthSession, session_id)
+        response = list_account_subscriptions_route(current=(user, session), db=db)
+
+    subscriptions_by_id = {item.subscription_id: item for item in response.subscriptions}
+    assert subscriptions_by_id[
+        current_subscription_id
+    ].entitlement_validity.valid_until == _account_subscription_datetime(now + timedelta(days=10))
+    assert subscriptions_by_id[
+        future_subscription_id
+    ].entitlement_validity.valid_from == _account_subscription_datetime(now + timedelta(days=1))
+    assert subscriptions_by_id[
+        history_subscription_id
+    ].entitlement_validity.valid_until == _account_subscription_datetime(now - timedelta(days=1))
+
+
+def test_account_subscription_list_missing_plan_keeps_existing_error() -> None:
+    now = datetime.now(timezone.utc)
+    with SessionLocal() as db:
+        user, session, plan = _add_account_subscription_user(
+            db,
+            email="account-subscription-missing-plan@example.com",
+        )
+        _add_account_subscription_row(
+            db,
+            user=user,
+            plan=plan,
+            now=now,
+            plan_id=uuid.uuid4(),
+        )
+        db.commit()
+        user_id = user.id
+        session_id = session.id
+
+    with SessionLocal() as db:
+        user = db.get(User, user_id)
+        session = db.get(AuthSession, session_id)
+        with pytest.raises(HTTPException) as exc_info:
+            list_account_subscriptions_route(current=(user, session), db=db)
+
+    assert exc_info.value.status_code == 500
+    assert exc_info.value.detail == {"code": "subscription_plan_missing"}
+
+
+@pytest.mark.parametrize("subscription_count", (1, 20))
+def test_account_subscription_list_sql_queries_stay_constant(subscription_count: int) -> None:
+    with SessionLocal() as db:
+        user_id, session_id = _seed_account_subscriptions_for_query_count(
+            db,
+            email=f"account-subscription-query-count-{subscription_count}@example.com",
+            count=subscription_count,
+        )
+
+    with SessionLocal() as db:
+        user = db.get(User, user_id)
+        session = db.get(AuthSession, session_id)
+        response, query_count = _count_sql_statements(
+            lambda: list_account_subscriptions_route(current=(user, session), db=db)
+        )
+
+    assert len(response.subscriptions) == subscription_count
+    assert query_count == 3
 
 
 def test_account_subscriptions_list_returns_only_authenticated_user_subscriptions() -> None:
