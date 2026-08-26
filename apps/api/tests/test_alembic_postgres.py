@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,7 @@ from sqlalchemy.engine import Engine, URL
 from sqlalchemy.exc import IntegrityError
 
 from apps.api.tests.support.postgres import alembic_test_config, reset_public_schema
+from app.domains.billing.enums import SubscriptionStatus
 
 
 EXPECTED_REVISION_CHAIN = [
@@ -22,10 +24,7 @@ EXPECTED_REVISION_CHAIN = [
     "20260707_0002",
     "20260707_0003",
     "20260729_0004",
-    "20260824_0005",
-    "20260824_0006",
-    "20260825_0008",
-    "20260826_0009",
+    "20260826_0005",
 ]
 
 pytestmark = pytest.mark.postgres
@@ -148,8 +147,68 @@ def assert_postgres_schema_contract(postgres_engine: Engine) -> None:
     inspector = inspect(postgres_engine)
     webhook_columns = {column["name"]: column for column in inspector.get_columns("payment_webhook_events")}
     payment_columns = {column["name"]: column for column in inspector.get_columns("payments")}
+    subscription_columns = {column["name"]: column for column in inspector.get_columns("subscriptions")}
     entitlement_columns = {column["name"]: column for column in inspector.get_columns("entitlements")}
     event_columns = {column["name"]: column for column in inspector.get_columns("subscription_events")}
+    assert set(subscription_columns) == {
+        "id",
+        "tenant_id",
+        "region",
+        "user_id",
+        "plan_id",
+        "scope_type",
+        "product_id",
+        "bundle_id",
+        "status",
+        "renewal_mode",
+        "trial_start_at",
+        "trial_end_at",
+        "current_period_start",
+        "current_period_end",
+        "cancel_requested_at",
+        "canceled_at",
+        "provider_account_id",
+        "provider_subscription_id",
+        "recurring_consent_acceptance_id",
+        "created_at",
+        "updated_at",
+    }
+    assert set(entitlement_columns) == {
+        "id",
+        "tenant_id",
+        "region",
+        "user_id",
+        "subscription_id",
+        "plan_id",
+        "scope_type",
+        "product_id",
+        "bundle_id",
+        "status",
+        "valid_from",
+        "valid_until",
+        "source",
+        "order_id",
+        "revoked_at",
+        "expired_at",
+        "superseded_at",
+        "superseded_by_entitlement_id",
+        "created_at",
+        "updated_at",
+    }
+    assert set(event_columns) == {
+        "id",
+        "subscription_id",
+        "event_type",
+        "previous_status",
+        "next_status",
+        "occurred_at",
+        "operation_idempotency_key",
+        "order_id",
+        "payment_id",
+        "refund_id",
+        "webhook_event_id",
+        "metadata",
+    }
     assert isinstance(webhook_columns["raw_payload"]["type"], JSONB)
     assert isinstance(webhook_columns["headers"]["type"], JSONB)
     assert isinstance(payment_columns["raw_summary"]["type"], JSONB)
@@ -158,6 +217,26 @@ def assert_postgres_schema_contract(postgres_engine: Engine) -> None:
     assert "updated_at" not in event_columns
     plan_check_names = {constraint["name"] for constraint in inspector.get_check_constraints("plans")}
     assert "ck_plans_scope_references" in plan_check_names
+    subscription_check_names = {constraint["name"] for constraint in inspector.get_check_constraints("subscriptions")}
+    assert {
+        "ck_subscriptions_status",
+        "ck_subscriptions_renewal_mode",
+        "ck_subscriptions_scope_references",
+        "ck_subscriptions_trial_period",
+        "ck_subscriptions_current_period",
+    } <= subscription_check_names
+    entitlement_check_names = {constraint["name"] for constraint in inspector.get_check_constraints("entitlements")}
+    assert {
+        "ck_entitlements_status",
+        "ck_entitlements_source",
+        "ck_entitlements_scope_references",
+        "ck_entitlements_valid_period",
+        "ck_entitlements_source_order",
+    } <= entitlement_check_names
+    event_unique_constraints = {
+        constraint["name"] for constraint in inspector.get_unique_constraints("subscription_events")
+    }
+    assert "uq_subscription_events_operation_key" in event_unique_constraints
 
     payment_foreign_keys = {
         (
@@ -194,11 +273,58 @@ def assert_postgres_schema_contract(postgres_engine: Engine) -> None:
         "uq_subscriptions_live_all_access_scope",
         "uq_subscriptions_live_bundle_scope",
         "uq_subscriptions_live_product_scope",
+        "uq_subscriptions_provider_reference",
     } <= partial_indexes.keys()
     payment_predicate = " ".join(
         partial_indexes["uq_payments_provider_account_payment_id"].upper().replace("(", " ").replace(")", " ").split()
     )
     assert payment_predicate.endswith("WHERE PROVIDER_PAYMENT_ID IS NOT NULL")
+    subscription_index_names = {index["name"] for index in inspector.get_indexes("subscriptions")}
+    assert {
+        "ix_subscriptions_tenant_id",
+        "ix_subscriptions_region",
+        "ix_subscriptions_user_id",
+        "ix_subscriptions_user_region_status",
+        "ix_subscriptions_plan_id",
+        "ix_subscriptions_status",
+        "ix_subscriptions_provider_account_id",
+        "ix_subscriptions_recurring_consent_acceptance_id",
+        "uq_subscriptions_provider_reference",
+        "uq_subscriptions_live_all_access_scope",
+        "uq_subscriptions_live_bundle_scope",
+        "uq_subscriptions_live_product_scope",
+    } <= subscription_index_names
+    entitlement_indexes = {
+        index["name"]: tuple(index["column_names"]) for index in inspector.get_indexes("entitlements")
+    }
+    assert {
+        "ix_entitlements_tenant_id": ("tenant_id",),
+        "ix_entitlements_region": ("region",),
+        "ix_entitlements_user_id": ("user_id",),
+        "ix_entitlements_user_region_status": ("user_id", "region", "status"),
+        "ix_entitlements_subscription_id": ("subscription_id",),
+        "ix_entitlements_subscription_status_validity": (
+            "subscription_id",
+            "status",
+            "valid_from",
+            "valid_until",
+        ),
+        "ix_entitlements_order_status_validity": ("order_id", "status", "valid_from", "valid_until"),
+        "ix_entitlements_plan_id": ("plan_id",),
+        "ix_entitlements_status": ("status",),
+        "ix_entitlements_order_id": ("order_id",),
+    }.items() <= entitlement_indexes.items()
+    event_indexes = {
+        index["name"]: tuple(index["column_names"]) for index in inspector.get_indexes("subscription_events")
+    }
+    assert {
+        "ix_subscription_events_subscription_id": ("subscription_id",),
+        "ix_subscription_events_subscription_occurred_at": ("subscription_id", "occurred_at"),
+        "ix_subscription_events_order_id": ("order_id",),
+        "ix_subscription_events_payment_id": ("payment_id",),
+        "ix_subscription_events_refund_id": ("refund_id",),
+        "ix_subscription_events_webhook_event_id": ("webhook_event_id",),
+    }.items() <= event_indexes.items()
     for index_name, scope_type in (
         ("uq_subscriptions_live_all_access_scope", "ALL_ACCESS"),
         ("uq_subscriptions_live_bundle_scope", "BUNDLE"),
@@ -208,6 +334,33 @@ def assert_postgres_schema_contract(postgres_engine: Engine) -> None:
         assert f"SCOPE_TYPE = '{scope_type}'" in predicate
         for status in ("TRIALING", "ACTIVE", "PAST_DUE", "PAUSED"):
             assert f"'{status}'" in predicate
+
+
+def live_subscription_index_predicates(postgres_engine: Engine) -> dict[str, str]:
+    with postgres_engine.connect() as connection:
+        rows = (
+            connection.execute(
+                text(
+                    "SELECT c.relname AS index_name, pg_get_expr(i.indpred, i.indrelid) AS predicate "
+                    "FROM pg_index i "
+                    "JOIN pg_class c ON c.oid = i.indexrelid "
+                    "WHERE c.relname IN ("
+                    "'uq_subscriptions_live_all_access_scope', "
+                    "'uq_subscriptions_live_bundle_scope', "
+                    "'uq_subscriptions_live_product_scope'"
+                    ")"
+                )
+            )
+            .mappings()
+            .all()
+        )
+    return {row["index_name"]: row["predicate"] for row in rows}
+
+
+def live_statuses_from_predicate(predicate: str) -> set[str]:
+    match = re.search(r"status\s*=\s*ANY\s*\(ARRAY\[(?P<statuses>.*?)\]\)", predicate)
+    assert match is not None
+    return set(re.findall(r"'([^']+)'::text", match.group("statuses")))
 
 
 def expected_legal_documents() -> list[dict[str, str]]:
@@ -417,6 +570,73 @@ def test_clean_postgres_alembic_upgrade_and_downgrade(
     }
 
 
+def test_any78_upgrade_downgrade_cycle_preserves_clean_baseline(
+    postgres_engine: Engine,
+    database_test_url: URL,
+) -> None:
+    reset_public_schema(postgres_engine)
+
+    with alembic_test_config(database_test_url) as config:
+        command.upgrade(config, "20260729_0004")
+
+    tables = public_table_names(postgres_engine)
+    assert "product_access_states" in tables
+    assert "subscriptions" not in tables
+    assert "entitlements" not in tables
+    assert "subscription_events" not in tables
+
+    with alembic_test_config(database_test_url) as config:
+        command.upgrade(config, "head")
+
+    tables = public_table_names(postgres_engine)
+    assert "product_access_states" not in tables
+    assert "subscriptions" in tables
+    assert "entitlements" in tables
+    assert "subscription_events" in tables
+    assert current_alembic_revision(postgres_engine) == "20260826_0005"
+    assert_postgres_schema_contract(postgres_engine)
+
+    with alembic_test_config(database_test_url) as config:
+        command.downgrade(config, "20260729_0004")
+
+    tables = public_table_names(postgres_engine)
+    assert "product_access_states" in tables
+    assert "subscriptions" not in tables
+    assert "entitlements" not in tables
+    assert "subscription_events" not in tables
+    assert current_alembic_revision(postgres_engine) == "20260729_0004"
+
+    with alembic_test_config(database_test_url) as config:
+        command.upgrade(config, "head")
+
+    tables = public_table_names(postgres_engine)
+    assert "product_access_states" not in tables
+    assert "subscriptions" in tables
+    assert "entitlements" in tables
+    assert "subscription_events" in tables
+    assert current_alembic_revision(postgres_engine) == "20260826_0005"
+    assert_postgres_schema_contract(postgres_engine)
+
+
+def test_live_subscription_index_predicates_match_runtime_live_statuses(
+    postgres_engine: Engine,
+    database_test_url: URL,
+) -> None:
+    reset_public_schema(postgres_engine)
+
+    with alembic_test_config(database_test_url) as config:
+        command.upgrade(config, "head")
+
+    expected_live_statuses = set(SubscriptionStatus.live_values())
+    predicates = live_subscription_index_predicates(postgres_engine)
+    assert set(predicates) == {
+        "uq_subscriptions_live_all_access_scope",
+        "uq_subscriptions_live_bundle_scope",
+        "uq_subscriptions_live_product_scope",
+    }
+    assert all(live_statuses_from_predicate(predicate) == expected_live_statuses for predicate in predicates.values())
+
+
 def test_live_subscription_unique_indexes_are_removed_on_downgrade(
     postgres_engine: Engine,
     database_test_url: URL,
@@ -440,7 +660,7 @@ def test_live_subscription_unique_indexes_are_removed_on_downgrade(
     assert index_names <= upgraded_indexes
 
     with alembic_test_config(database_test_url) as config:
-        command.downgrade(config, "20260824_0006")
+        command.downgrade(config, "20260729_0004")
 
     with postgres_engine.connect() as connection:
         downgraded_indexes = set(
@@ -448,7 +668,7 @@ def test_live_subscription_unique_indexes_are_removed_on_downgrade(
                 text("SELECT indexname FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'subscriptions'")
             ).scalars()
         )
-        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "20260824_0006"
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "20260729_0004"
     assert index_names.isdisjoint(downgraded_indexes)
 
 
@@ -470,7 +690,7 @@ def test_plan_scope_references_constraint_is_removed_on_downgrade(
     assert "ck_plans_scope_references" in upgraded_constraints
 
     with alembic_test_config(database_test_url) as config:
-        command.downgrade(config, "20260825_0008")
+        command.downgrade(config, "20260729_0004")
 
     with postgres_engine.connect() as connection:
         downgraded_constraints = set(
@@ -478,7 +698,7 @@ def test_plan_scope_references_constraint_is_removed_on_downgrade(
                 text("SELECT conname FROM pg_constraint WHERE conrelid = 'plans'::regclass AND contype = 'c'")
             ).scalars()
         )
-        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "20260825_0008"
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "20260729_0004"
     assert "ck_plans_scope_references" not in downgraded_constraints
 
 
@@ -541,16 +761,15 @@ def test_plan_scope_references_constraint_accepts_only_matching_references(
         "scope_type": scope_type,
         "product_id": references["product_id"] if has_product else None,
         "bundle_id": references["bundle_id"] if has_bundle else None,
-        "valid_from": datetime.now(timezone.utc),
+        "valid_from": datetime.now(UTC),
     }
 
     if is_valid:
         with postgres_engine.begin() as connection:
             connection.execute(insert_plan, values)
     else:
-        with pytest.raises(IntegrityError):
-            with postgres_engine.begin() as connection:
-                connection.execute(insert_plan, values)
+        with pytest.raises(IntegrityError), postgres_engine.begin() as connection:
+            connection.execute(insert_plan, values)
 
 
 def test_plan_scope_references_migration_fails_on_existing_invalid_rows(
@@ -560,7 +779,7 @@ def test_plan_scope_references_migration_fails_on_existing_invalid_rows(
     reset_public_schema(postgres_engine)
 
     with alembic_test_config(database_test_url) as config:
-        command.upgrade(config, "20260825_0008")
+        command.upgrade(config, "20260729_0004")
 
     with postgres_engine.begin() as connection:
         connection.execute(
@@ -574,15 +793,17 @@ def test_plan_scope_references_migration_fails_on_existing_invalid_rows(
                 "'product', NULL, NULL, 100, 'RUB', 'month', 'manual', 0, 'active', :valid_from"
                 ")"
             ),
-            {"valid_from": datetime.now(timezone.utc)},
+            {"valid_from": datetime.now(UTC)},
         )
 
-    with pytest.raises(RuntimeError, match="Cannot add ck_plans_scope_references"):
-        with alembic_test_config(database_test_url) as config:
-            command.upgrade(config, "head")
+    with (
+        pytest.raises(RuntimeError, match="Cannot add ck_plans_scope_references"),
+        alembic_test_config(database_test_url) as config,
+    ):
+        command.upgrade(config, "head")
 
     with postgres_engine.connect() as connection:
-        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "20260825_0008"
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "20260729_0004"
         assert (
             connection.execute(text("SELECT count(*) FROM plans WHERE code = 'invalid-plan-scope'")).scalar_one() == 1
         )
@@ -611,25 +832,24 @@ def test_active_plan_versions_cannot_overlap(
                 {"valid_to": valid_from + timedelta(days=1)},
             )
 
-        with pytest.raises(IntegrityError):
-            with connection.begin():
-                connection.execute(
-                    text(
-                        "INSERT INTO plans ("
-                        "id, tenant_id, region, code, name, scope_type, product_id, "
-                        "price_amount_minor, currency, billing_period, renewal_mode, "
-                        "trial_days, status, valid_from, valid_to"
-                        ") VALUES ("
-                        "'99999999-9999-4999-8999-999999999905', "
-                        "'anytoolai', 'ru', 'document-summary-pro', "
-                        "'Document Summary Pro overlap', 'product', :product_id, "
-                        "99000, 'RUB', 'month', 'manual', 7, 'active', "
-                        ":valid_from, :valid_to"
-                        ")"
-                    ),
-                    {
-                        "product_id": product_id,
-                        "valid_from": valid_from - timedelta(days=1),
-                        "valid_to": valid_from + timedelta(days=2),
-                    },
-                )
+        with pytest.raises(IntegrityError), connection.begin():
+            connection.execute(
+                text(
+                    "INSERT INTO plans ("
+                    "id, tenant_id, region, code, name, scope_type, product_id, "
+                    "price_amount_minor, currency, billing_period, renewal_mode, "
+                    "trial_days, status, valid_from, valid_to"
+                    ") VALUES ("
+                    "'99999999-9999-4999-8999-999999999905', "
+                    "'anytoolai', 'ru', 'document-summary-pro', "
+                    "'Document Summary Pro overlap', 'product', :product_id, "
+                    "99000, 'RUB', 'month', 'manual', 7, 'active', "
+                    ":valid_from, :valid_to"
+                    ")"
+                ),
+                {
+                    "product_id": product_id,
+                    "valid_from": valid_from - timedelta(days=1),
+                    "valid_to": valid_from + timedelta(days=2),
+                },
+            )

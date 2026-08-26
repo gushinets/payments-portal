@@ -169,10 +169,9 @@ References:
   - Stop creating or updating `product_access_states` in application code.
   - Do not perform legacy data backfill because the project has not been
     deployed.
-  - Drop the temporary table from the final ANY-78 schema and remove its ORM
-    compatibility export after the application reads and writes the new model.
-  - Next migration-squash step: the consolidated ANY-78 migration must remove
-    `product_access_states` without data backfill.
+  - Drop the temporary table from the consolidated ANY-78 migration without
+    data backfill and remove its ORM compatibility export after the application
+    reads and writes the new model.
 
 - [x] Add authenticated account read APIs.
   - Add `GET /api/account/subscriptions` and
