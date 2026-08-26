@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.domains.billing.enums import (
     EntitlementSource,
+    EntitlementStatus,
     SubscriptionEventType,
     SubscriptionRenewalMode,
     SubscriptionStatus,
@@ -595,3 +596,127 @@ def test_terminal_subscription_allows_new_subscription_same_scope(
     assert len(subscriptions) == 2
     assert live_count == 1
     assert new_subscription_id != terminal_id
+
+
+def test_parallel_paid_orders_after_canceled_paid_through_create_one_successor_subscription(
+    postgres_session_factory: sessionmaker[Session],
+) -> None:
+    now = datetime(2026, 8, 25, 13, 30, tzinfo=timezone.utc)
+    paid_through = now + timedelta(days=20)
+    with postgres_session_factory() as session, session.begin():
+        user, account = _add_billing_user_and_account(session, "concurrent-canceled-paid-through")
+        plan = _plan_by_code(session, "document-summary-pro")
+        old_order, _, _ = _add_verified_paid_order(
+            session,
+            key="concurrent-canceled-paid-through-old",
+            user=user,
+            account=account,
+            plan=plan,
+            paid_at=now - timedelta(days=10),
+        )
+        old_subscription = Subscription(
+            tenant_id=user.tenant_id,
+            region=user.region,
+            user_id=user.id,
+            plan_id=plan.id,
+            scope_type=plan.scope_type,
+            product_id=plan.product_id,
+            bundle_id=plan.bundle_id,
+            status=SubscriptionStatus.CANCELED.value,
+            renewal_mode=SubscriptionRenewalMode.MANUAL.value,
+            current_period_start=now - timedelta(days=10),
+            current_period_end=paid_through,
+            canceled_at=now,
+        )
+        session.add(old_subscription)
+        session.flush()
+        old_entitlement = Entitlement(
+            tenant_id=user.tenant_id,
+            region=user.region,
+            user_id=user.id,
+            subscription_id=old_subscription.id,
+            plan_id=plan.id,
+            scope_type=plan.scope_type,
+            product_id=plan.product_id,
+            bundle_id=plan.bundle_id,
+            status=EntitlementStatus.ACTIVE.value,
+            valid_from=now - timedelta(days=10),
+            valid_until=paid_through,
+            source=EntitlementSource.ORDER.value,
+            order_id=old_order.id,
+        )
+        session.add(old_entitlement)
+        order_contexts = []
+        for index in range(2):
+            order, payment, webhook = _add_verified_paid_order(
+                session,
+                key=f"concurrent-canceled-paid-through-new-{index}",
+                user=user,
+                account=account,
+                plan=plan,
+                paid_at=now + timedelta(minutes=index),
+            )
+            order_contexts.append((order.id, payment.id, webhook.id))
+        user_id = user.id
+        old_subscription_id = old_subscription.id
+        old_entitlement_id = old_entitlement.id
+    commands = [
+        ActivatePaidPeriodCommand(
+            operation_idempotency_key=f"concurrent-canceled-paid-through-activate-{index}",
+            order_id=order_id,
+            payment_id=payment_id,
+            webhook_event_id=webhook_id,
+            occurred_at=now + timedelta(minutes=index),
+        )
+        for index, (order_id, payment_id, webhook_id) in enumerate(order_contexts)
+    ]
+
+    def submit(barrier: Barrier, index: int) -> uuid.UUID:
+        barrier.wait(timeout=5)
+        return _activate_in_worker(postgres_session_factory, commands[index])
+
+    subscription_ids = _with_user_lock_released_after_workers_start(
+        postgres_session_factory,
+        user_id=user_id,
+        workers=2,
+        submit=submit,
+    )
+
+    order_ids = tuple(context[0] for context in order_contexts)
+    with postgres_session_factory() as session:
+        old_subscription = session.get(Subscription, old_subscription_id)
+        old_entitlement = session.get(Entitlement, old_entitlement_id)
+        live_subscriptions = (
+            session.query(Subscription)
+            .filter(Subscription.user_id == user_id, Subscription.status.in_(SubscriptionStatus.live_values()))
+            .all()
+        )
+        new_entitlements = (
+            session.query(Entitlement)
+            .filter(Entitlement.order_id.in_(order_ids))
+            .order_by(Entitlement.valid_from.asc())
+            .all()
+        )
+        events = (
+            session.query(SubscriptionEvent)
+            .filter(
+                SubscriptionEvent.event_type == SubscriptionEventType.PAID_PERIOD_ACTIVATED.value,
+                SubscriptionEvent.order_id.in_(order_ids),
+            )
+            .all()
+        )
+
+    assert len(set(subscription_ids)) == 1
+    assert old_subscription is not None
+    assert old_subscription.status == SubscriptionStatus.CANCELED.value
+    assert old_entitlement is not None
+    assert old_entitlement.status == EntitlementStatus.ACTIVE.value
+    assert old_entitlement.valid_until == paid_through
+    assert len(live_subscriptions) == 1
+    assert live_subscriptions[0].id in set(subscription_ids)
+    assert len(new_entitlements) == 2
+    assert {entitlement.subscription_id for entitlement in new_entitlements} == {live_subscriptions[0].id}
+    assert new_entitlements[0].valid_from == paid_through
+    assert old_entitlement.valid_until == new_entitlements[0].valid_from
+    assert new_entitlements[0].valid_until == new_entitlements[1].valid_from
+    assert len(events) == 2

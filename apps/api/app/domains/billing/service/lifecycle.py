@@ -41,8 +41,10 @@ from app.infrastructure.queries.identity import lock_user_by_id
 from app.infrastructure.queries.plans import get_plan_by_id
 from app.infrastructure.queries.subscriptions import (
     get_live_subscription_for_scope,
+    get_subscription_by_id,
     get_trial_for_scope,
     list_active_subscriptions_for_user,
+    list_remaining_canceled_entitlements_for_scope,
 )
 
 
@@ -177,6 +179,8 @@ def activate_paid_period(db: Session, command: ActivatePaidPeriodCommand) -> Sub
     subscription = next((item for item in candidates if item.plan_id == plan.id and _scope_matches(item, plan)), None)
     previous_status = subscription.status if subscription is not None else None
     superseded_entitlements: list[Entitlement] = []
+    carry_forward_entitlements: list[Entitlement] = []
+    carry_forward_boundary = paid_at
     if subscription is None:
         previous = next((item for item in candidates if _scope_matches(item, plan)), None)
         replaced_previous_status: str | None = None
@@ -192,12 +196,28 @@ def activate_paid_period(db: Session, command: ActivatePaidPeriodCommand) -> Sub
                         previous_entitlement.status = EntitlementStatus.SUPERSEDED.value
                         previous_entitlement.superseded_at = command.occurred_at
                     db.flush()
+                else:
+                    carry_forward_entitlements = list_remaining_canceled_entitlements_for_scope(
+                        db,
+                        tenant_id=order.tenant_id,
+                        region=order.region,
+                        user_id=order.user_id,
+                        scope_type=scope_type,
+                        product_id=product_id,
+                        bundle_id=bundle_id,
+                        boundary=paid_at,
+                        for_update=True,
+                    )
+                    carry_forward_boundary = max(
+                        (entitlement.valid_until for entitlement in carry_forward_entitlements),
+                        default=paid_at,
+                    )
                 subscription = _new_subscription(
                     tenant_id=order.tenant_id,
                     region=order.region,
                     user_id=order.user_id,
                     plan=plan,
-                    start=paid_at,
+                    start=carry_forward_boundary,
                 )
                 db.add(subscription)
                 db.flush()
@@ -246,6 +266,33 @@ def activate_paid_period(db: Session, command: ActivatePaidPeriodCommand) -> Sub
                         event_type=SubscriptionEventType.SUBSCRIPTION_REPLACED,
                         previous_status=replaced_previous_status,
                         next_status=SubscriptionStatus.CANCELED.value,
+                        order_id=order.id,
+                        payment_id=payment.id,
+                        webhook_event_id=command.webhook_event_id,
+                    )
+            elif carry_forward_entitlements:
+                predecessor = get_subscription_by_id(
+                    db,
+                    carry_forward_entitlements[0].subscription_id,
+                    for_update=True,
+                )
+                replacement_event_key = f"{command.operation_idempotency_key}:subscription-replaced"
+                if predecessor is not None and _event_for_key(db, replacement_event_key) is None:
+                    _write_event(
+                        db,
+                        subscription=predecessor,
+                        command=LifecycleCommand(
+                            operation_idempotency_key=replacement_event_key,
+                            occurred_at=command.occurred_at,
+                            metadata={
+                                **command.metadata,
+                                "replacement_subscription_id": str(subscription.id),
+                                "paid_through_valid_until": carry_forward_boundary.isoformat(),
+                            },
+                        ),
+                        event_type=SubscriptionEventType.SUBSCRIPTION_REPLACED,
+                        previous_status=predecessor.status,
+                        next_status=predecessor.status,
                         order_id=order.id,
                         payment_id=payment.id,
                         webhook_event_id=command.webhook_event_id,

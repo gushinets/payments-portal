@@ -311,6 +311,11 @@ def _add_billing_user_and_account(db_session, key: str) -> tuple[User, PaymentPr
     return user, account
 
 
+def _plan_by_code(db_session, code: str) -> Plan:
+    plan = db_session.query(Plan).filter(Plan.tenant_id == "anytoolai", Plan.region == "ru", Plan.code == code).one()
+    return plan
+
+
 def _add_recurring_consent_acceptance(db_session, *, user: User, key: str) -> DocumentAcceptance:
     document = (
         db_session.query(DocumentVersion)
@@ -1167,6 +1172,290 @@ def test_paid_orders_create_distinct_entitlements_and_refund_uses_order_provenan
     assert second_entitlement.order_id == second_order.id
 
 
+@pytest.mark.postgres
+def test_paid_period_after_canceled_paid_through_scope_starts_at_old_valid_until_and_is_idempotent(db_session) -> None:
+    paid_at = datetime(2026, 8, 25, 12, 0, tzinfo=timezone.utc)
+    paid_through = paid_at + timedelta(days=20)
+    expected_new_period_end = datetime(2026, 10, 14, 12, 0, tzinfo=timezone.utc)
+    plan = _plan_by_code(db_session, "document-summary-pro")
+    user, account = _add_billing_user_and_account(db_session, "canceled-paid-through-carry-forward")
+    old_order, old_payment, old_webhook = _add_verified_paid_order(
+        db_session,
+        key="canceled-paid-through-carry-forward-old",
+        user=user,
+        account=account,
+        plan=plan,
+        paid_at=paid_at - timedelta(days=10),
+    )
+    old_subscription = activate_paid_period(
+        db_session,
+        ActivatePaidPeriodCommand(
+            operation_idempotency_key="canceled-paid-through-carry-forward-old-activate",
+            order_id=old_order.id,
+            payment_id=old_payment.id,
+            webhook_event_id=old_webhook.id,
+            occurred_at=paid_at - timedelta(days=10),
+        ),
+    )
+    old_entitlement = db_session.query(Entitlement).filter(Entitlement.subscription_id == old_subscription.id).one()
+    old_subscription.status = SubscriptionStatus.CANCELED.value
+    old_subscription.canceled_at = paid_at
+    old_subscription.current_period_end = paid_through
+    old_entitlement.valid_until = paid_through
+    db_session.flush()
+    new_order, new_payment, new_webhook = _add_verified_paid_order(
+        db_session,
+        key="canceled-paid-through-carry-forward-new",
+        user=user,
+        account=account,
+        plan=plan,
+        paid_at=paid_at,
+    )
+    command = ActivatePaidPeriodCommand(
+        operation_idempotency_key="canceled-paid-through-carry-forward-new-activate",
+        order_id=new_order.id,
+        payment_id=new_payment.id,
+        webhook_event_id=new_webhook.id,
+        occurred_at=paid_at,
+    )
+
+    new_subscription = activate_paid_period(db_session, command)
+    repeated_subscription = activate_paid_period(db_session, command)
+
+    db_session.refresh(old_subscription)
+    db_session.refresh(old_entitlement)
+    new_entitlement = db_session.query(Entitlement).filter(Entitlement.subscription_id == new_subscription.id).one()
+    successor_event = (
+        db_session.query(SubscriptionEvent)
+        .filter(
+            SubscriptionEvent.subscription_id == old_subscription.id,
+            SubscriptionEvent.event_type == SubscriptionEventType.SUBSCRIPTION_REPLACED.value,
+        )
+        .one()
+    )
+    assert old_subscription.status == SubscriptionStatus.CANCELED.value
+    assert old_entitlement.status == EntitlementStatus.ACTIVE.value
+    assert old_entitlement.valid_until == paid_through
+    assert new_subscription.id != old_subscription.id
+    assert repeated_subscription.id == new_subscription.id
+    assert new_subscription.current_period_start == paid_through
+    assert new_entitlement.valid_from == paid_through
+    assert new_entitlement.valid_until == expected_new_period_end
+    assert old_entitlement.valid_until == new_entitlement.valid_from
+    assert old_entitlement.valid_until <= new_entitlement.valid_from
+    assert successor_event.previous_status == SubscriptionStatus.CANCELED.value
+    assert successor_event.next_status == SubscriptionStatus.CANCELED.value
+    assert successor_event.metadata_ == {
+        "replacement_subscription_id": str(new_subscription.id),
+        "paid_through_valid_until": paid_through.isoformat(),
+    }
+    assert (
+        db_session.query(Entitlement)
+        .filter(Entitlement.order_id == new_order.id, Entitlement.subscription_id == new_subscription.id)
+        .count()
+        == 1
+    )
+
+
+@pytest.mark.postgres
+def test_canceled_expired_entitlement_does_not_shift_new_paid_period(db_session) -> None:
+    paid_at = datetime(2026, 8, 25, 12, 0, tzinfo=timezone.utc)
+    plan = _plan_by_code(db_session, "document-summary-pro")
+    user, account = _add_billing_user_and_account(db_session, "canceled-expired-history")
+    old_order, old_payment, _ = _add_verified_paid_order(
+        db_session,
+        key="canceled-expired-history-old",
+        user=user,
+        account=account,
+        plan=plan,
+        paid_at=paid_at - timedelta(days=40),
+    )
+    old_subscription, old_entitlement, _ = _add_legacy_subscription_for_order(
+        db_session,
+        key="canceled-expired-history-old",
+        order=old_order,
+        payment=old_payment,
+        plan=plan,
+        starts_at=paid_at - timedelta(days=40),
+        ends_at=paid_at - timedelta(days=10),
+        status=SubscriptionStatus.CANCELED.value,
+    )
+    old_entitlement.status = EntitlementStatus.EXPIRED.value
+    old_entitlement.expired_at = paid_at - timedelta(days=10)
+    new_order, new_payment, new_webhook = _add_verified_paid_order(
+        db_session,
+        key="canceled-expired-history-new",
+        user=user,
+        account=account,
+        plan=plan,
+        paid_at=paid_at,
+    )
+
+    new_subscription = activate_paid_period(
+        db_session,
+        ActivatePaidPeriodCommand(
+            operation_idempotency_key="canceled-expired-history-new-activate",
+            order_id=new_order.id,
+            payment_id=new_payment.id,
+            webhook_event_id=new_webhook.id,
+            occurred_at=paid_at,
+        ),
+    )
+
+    new_entitlement = db_session.query(Entitlement).filter(Entitlement.subscription_id == new_subscription.id).one()
+    assert old_subscription.status == SubscriptionStatus.CANCELED.value
+    assert new_subscription.current_period_start == paid_at
+    assert new_entitlement.valid_from == paid_at
+    assert (
+        db_session.query(SubscriptionEvent)
+        .filter(
+            SubscriptionEvent.subscription_id == old_subscription.id,
+            SubscriptionEvent.event_type == SubscriptionEventType.SUBSCRIPTION_REPLACED.value,
+        )
+        .count()
+        == 0
+    )
+
+
+@pytest.mark.postgres
+def test_canceled_paid_through_different_scope_does_not_shift_new_paid_period(db_session) -> None:
+    paid_at = datetime(2026, 8, 25, 12, 0, tzinfo=timezone.utc)
+    plan = _plan_by_code(db_session, "document-summary-pro")
+    other_plan = _plan_by_code(db_session, "prompt-optimizer-pro")
+    user, account = _add_billing_user_and_account(db_session, "canceled-other-scope")
+    old_order, old_payment, _ = _add_verified_paid_order(
+        db_session,
+        key="canceled-other-scope-old",
+        user=user,
+        account=account,
+        plan=other_plan,
+        paid_at=paid_at - timedelta(days=10),
+    )
+    _, old_entitlement, _ = _add_legacy_subscription_for_order(
+        db_session,
+        key="canceled-other-scope-old",
+        order=old_order,
+        payment=old_payment,
+        plan=other_plan,
+        starts_at=paid_at - timedelta(days=10),
+        ends_at=paid_at + timedelta(days=20),
+        status=SubscriptionStatus.CANCELED.value,
+    )
+    new_order, new_payment, new_webhook = _add_verified_paid_order(
+        db_session,
+        key="canceled-other-scope-new",
+        user=user,
+        account=account,
+        plan=plan,
+        paid_at=paid_at,
+    )
+
+    new_subscription = activate_paid_period(
+        db_session,
+        ActivatePaidPeriodCommand(
+            operation_idempotency_key="canceled-other-scope-new-activate",
+            order_id=new_order.id,
+            payment_id=new_payment.id,
+            webhook_event_id=new_webhook.id,
+            occurred_at=paid_at,
+        ),
+    )
+
+    new_entitlement = db_session.query(Entitlement).filter(Entitlement.subscription_id == new_subscription.id).one()
+    assert old_entitlement.status == EntitlementStatus.ACTIVE.value
+    assert new_subscription.current_period_start == paid_at
+    assert new_entitlement.valid_from == paid_at
+
+
+@pytest.mark.postgres
+def test_canceled_paid_through_uses_latest_remaining_same_scope_grant(db_session) -> None:
+    paid_at = datetime(2026, 8, 25, 12, 0, tzinfo=timezone.utc)
+    latest_paid_through = paid_at + timedelta(days=20)
+    plan = _plan_by_code(db_session, "document-summary-pro")
+    user, account = _add_billing_user_and_account(db_session, "canceled-multiple-history")
+    subscription = Subscription(
+        tenant_id=user.tenant_id,
+        region=user.region,
+        user_id=user.id,
+        plan_id=plan.id,
+        scope_type=plan.scope_type,
+        product_id=plan.product_id,
+        bundle_id=plan.bundle_id,
+        status=SubscriptionStatus.CANCELED.value,
+        renewal_mode=SubscriptionRenewalMode.MANUAL.value,
+        current_period_start=paid_at - timedelta(days=60),
+        current_period_end=latest_paid_through,
+        canceled_at=paid_at,
+    )
+    db_session.add(subscription)
+    db_session.flush()
+    for index, (starts_at, ends_at) in enumerate(
+        (
+            (paid_at - timedelta(days=60), paid_at - timedelta(days=30)),
+            (paid_at - timedelta(days=30), paid_at + timedelta(days=5)),
+            (paid_at + timedelta(days=5), latest_paid_through),
+        ),
+        start=1,
+    ):
+        old_order, _, _ = _add_verified_paid_order(
+            db_session,
+            key=f"canceled-multiple-history-old-{index}",
+            user=user,
+            account=account,
+            plan=plan,
+            paid_at=starts_at,
+        )
+        db_session.add(
+            Entitlement(
+                tenant_id=user.tenant_id,
+                region=user.region,
+                user_id=user.id,
+                subscription_id=subscription.id,
+                plan_id=plan.id,
+                scope_type=plan.scope_type,
+                product_id=plan.product_id,
+                bundle_id=plan.bundle_id,
+                status=EntitlementStatus.ACTIVE.value,
+                valid_from=starts_at,
+                valid_until=ends_at,
+                source=EntitlementSource.ORDER.value,
+                order_id=old_order.id,
+            )
+        )
+    new_order, new_payment, new_webhook = _add_verified_paid_order(
+        db_session,
+        key="canceled-multiple-history-new",
+        user=user,
+        account=account,
+        plan=plan,
+        paid_at=paid_at,
+    )
+
+    new_subscription = activate_paid_period(
+        db_session,
+        ActivatePaidPeriodCommand(
+            operation_idempotency_key="canceled-multiple-history-new-activate",
+            order_id=new_order.id,
+            payment_id=new_payment.id,
+            webhook_event_id=new_webhook.id,
+            occurred_at=paid_at,
+        ),
+    )
+
+    entitlements = (
+        db_session.query(Entitlement)
+        .filter(Entitlement.user_id == user.id, Entitlement.status == EntitlementStatus.ACTIVE.value)
+        .order_by(Entitlement.valid_from.asc())
+        .all()
+    )
+    new_entitlement = next(
+        entitlement for entitlement in entitlements if entitlement.subscription_id == new_subscription.id
+    )
+    assert subscription.status == SubscriptionStatus.CANCELED.value
+    assert new_entitlement.valid_from == latest_paid_through
+    assert entitlements[-2].valid_until == new_entitlement.valid_from
+
+
 def test_partial_refund_records_event_without_revoking_entitlement(db_session) -> None:
     now = datetime.now(timezone.utc)
     plan = (
@@ -1762,16 +2051,6 @@ def test_expire_due_subscriptions_batches_canceled_access_and_is_idempotent(db_s
     plan = db_session.query(Plan).filter(Plan.tenant_id == "anytoolai", Plan.region == "ru").first()
     assert plan is not None
 
-    user = User(
-        tenant_id="anytoolai",
-        region="ru",
-        email="expiration-lifecycle@example.com",
-        email_normalized="expiration-lifecycle@example.com",
-        status="active",
-    )
-    db_session.add(user)
-    db_session.flush()
-
     due_subscriptions: list[Subscription] = []
     for index, status in enumerate(
         (
@@ -1780,6 +2059,15 @@ def test_expire_due_subscriptions_batches_canceled_access_and_is_idempotent(db_s
             SubscriptionStatus.PAST_DUE.value,
         )
     ):
+        user = User(
+            tenant_id="anytoolai",
+            region="ru",
+            email=f"expiration-lifecycle-{index}@example.com",
+            email_normalized=f"expiration-lifecycle-{index}@example.com",
+            status="active",
+        )
+        db_session.add(user)
+        db_session.flush()
         period_end = now - timedelta(minutes=index + 1)
         subscription = Subscription(
             tenant_id="anytoolai",
@@ -1814,10 +2102,19 @@ def test_expire_due_subscriptions_batches_canceled_access_and_is_idempotent(db_s
         )
         due_subscriptions.append(subscription)
 
+    future_user = User(
+        tenant_id="anytoolai",
+        region="ru",
+        email="expiration-lifecycle-future@example.com",
+        email_normalized="expiration-lifecycle-future@example.com",
+        status="active",
+    )
+    db_session.add(future_user)
+    db_session.flush()
     future_subscription = Subscription(
         tenant_id="anytoolai",
         region="ru",
-        user_id=user.id,
+        user_id=future_user.id,
         plan_id=plan.id,
         scope_type=plan.scope_type,
         product_id=plan.product_id,
@@ -1847,7 +2144,11 @@ def test_expire_due_subscriptions_batches_canceled_access_and_is_idempotent(db_s
     assert len(second_batch) == 1
     assert third_batch == []
     assert {subscription.status for subscription in due_subscriptions} == {SubscriptionStatus.EXPIRED.value}
-    entitlements = db_session.query(Entitlement).filter(Entitlement.user_id == user.id).all()
+    entitlements = (
+        db_session.query(Entitlement)
+        .filter(Entitlement.subscription_id.in_({subscription.id for subscription in due_subscriptions}))
+        .all()
+    )
     assert {entitlement.status for entitlement in entitlements} == {EntitlementStatus.EXPIRED.value}
     assert all(entitlement.expired_at == now for entitlement in entitlements)
     assert future_subscription.status == SubscriptionStatus.ACTIVE.value

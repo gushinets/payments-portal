@@ -329,6 +329,43 @@ def list_active_subscriptions_for_user(
     )
 
 
+def list_remaining_canceled_entitlements_for_scope(
+    db: Session,
+    *,
+    tenant_id: str,
+    region: str,
+    user_id: uuid.UUID,
+    scope_type: str,
+    product_id: uuid.UUID | None,
+    bundle_id: uuid.UUID | None,
+    boundary: datetime,
+    for_update: bool = False,
+) -> list[Entitlement]:
+    query = (
+        db.query(Entitlement)
+        .join(Subscription, Subscription.id == Entitlement.subscription_id)
+        .filter(
+            Subscription.tenant_id == tenant_id,
+            Subscription.region == region,
+            Subscription.user_id == user_id,
+            Subscription.status == SubscriptionStatus.CANCELED.value,
+            Subscription.scope_type == scope_type,
+            Subscription.product_id == product_id,
+            Subscription.bundle_id == bundle_id,
+            Entitlement.tenant_id == tenant_id,
+            Entitlement.region == region,
+            Entitlement.user_id == user_id,
+            Entitlement.scope_type == scope_type,
+            Entitlement.product_id == product_id,
+            Entitlement.bundle_id == bundle_id,
+            Entitlement.status == EntitlementStatus.ACTIVE.value,
+            Entitlement.valid_until > boundary,
+        )
+        .order_by(Entitlement.valid_until.desc(), Entitlement.valid_from.desc(), Entitlement.created_at.desc())
+    )
+    return (query.with_for_update(of=(Entitlement, Subscription)) if for_update else query).all()
+
+
 def get_subscription_for_order(db: Session, order_id: uuid.UUID, *, for_update: bool = False) -> Subscription | None:
     event_type_rank = case(
         (SubscriptionEvent.event_type == SubscriptionEventType.PAID_PERIOD_ACTIVATED.value, 0),
