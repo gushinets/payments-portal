@@ -1,5 +1,9 @@
 """migrate legacy access state into subscriptions and entitlements
 
+Downgrade recreates only the empty product_access_states schema. It does not
+restore original product_access_states rows or fields, so operators need a
+backup policy before upgrade. This migration is not data-reversible.
+
 Revision ID: 20260824_0007
 Revises: 20260824_0006
 Create Date: 2026-08-24

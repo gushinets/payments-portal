@@ -245,7 +245,4 @@ database records, telemetry, exceptions, or logs.
 
 ## Follow-up before completion
 
-- Split `apps/api/app/models.py` into bounded modules so the architecture
-  check's file-size limit passes without weakening the guardrail.
-- Run `npm run generate` and commit the updated generated database schema
-  artifact after all planned ORM changes are complete.
+No open follow-ups before completion.

@@ -1,10 +1,6 @@
 {
   "defaultMaxLines": 500,
   "exceptions": {
-    "apps/api/app/models.py": {
-      "maxLines": 954,
-      "reason": "ANY-78 temporarily extends the aggregate ORM registry with subscriptions and entitlements; split into bounded ORM modules before the next model expansion."
-    },
     "apps/api/app/payment_providers/api_client.py": {
       "maxLines": 550,
       "reason": "Provider HTTP client keeps request deadline, retry, redaction, and idempotency policy together while the provider boundary is under active development."
@@ -16,10 +12,6 @@
     "apps/api/app/domains/identity/router.py": {
       "maxLines": 711,
       "reason": "Behavior-preserving transition keeps legacy auth flow together until its product redesign; do not add identity routes here without extracting helpers."
-    },
-    "apps/api/app/domains/billing/service.py": {
-      "maxLines": 744,
-      "reason": "ANY-78 keeps the subscription lifecycle transitions in one owner module while the lifecycle stabilizes; split command/contracts or transition helpers before adding new behavior."
     },
     "apps/api/app/integrations/cloudpayments/processing.py": {
       "maxLines": 524,
