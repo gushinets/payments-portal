@@ -69,7 +69,8 @@ allowed. Do not change webhook HTTP paths, HMAC verification, redaction, inbox
 idempotency, or CloudPayments body `code` values. Do not change
 `PaymentProviderAdapter` signatures while adapters are landing. Do not relocate
 checkout-intent JSON fields the widget consumes. Do not expand
-`product_access_states` (legacy; ANY-71 owns entitlements).
+the temporary `product_access_states` projection; ANY-78 removes it in favor of
+subscriptions and entitlements.
 
 **Merge rule:** CloudPayments PRs win. Layering PRs rebase or wait.
 
@@ -123,7 +124,7 @@ flowchart LR
 
 | Action | Meaning |
 |---|---|
-| slice-1 | Move checkout create into billing, including the pending `ProductAccessState` write. Same URL and JSON. No access activation. No `CheckoutSession` lifecycle change. |
+| slice-1 | Move checkout create into billing. In the pre-ANY-78 baseline this included a pending temporary access write; ANY-78 removes that projection. Same URL and JSON. No `CheckoutSession` lifecycle change. |
 | slice-2 | Move Order/Payment/Refund transitions into billing. Integration keeps verify/redact/normalize and CP response mapping. |
 | product | Needs a product/ops decision, not a DDD cleanup. |
 | any-71 | Catalog, subscriptions, entitlements, model split, shim removal. |
@@ -137,10 +138,10 @@ The catalog is a map of smells. It is not a backlog to burn down.
 | Rank | ID | Sev | Action | Problem | Primary files |
 |---:|---|---|---|---|---|
 | 1 | F03 | P1 | slice-2 | CloudPayments processing owns Order/Payment/Refund transitions. Integration should translate into a billing operation. This is the main architectural win. | `integrations/cloudpayments/processing.py`, `refunds.py` |
-| 2 | F02 | P1 | slice-1 | Identity router owns checkout, orders, and access writes. `create_checkout_intent` writes `EntrypointSession`, `CheckoutSession`, `Order`, `OrderItem`, `ProductAccessState`. Checkout sits under `/api/auth` (keep the URL). | `domains/identity/router.py` |
+| 2 | F02 | P1 | slice-1 | Identity router owned checkout, orders, and temporary access writes before ANY-78. `create_checkout_intent` wrote `EntrypointSession`, `CheckoutSession`, `Order`, `OrderItem`, and the temporary access projection. Checkout sits under `/api/auth` (keep the URL). | `domains/identity/router.py` |
 | 3 | F04 | P2 | slice-1 / slice-2 | `process_webhook_event` (~214 lines) and `create_checkout_intent` (~192 lines) concentrate the lifecycle. Size is a symptom; ownership is F02/F03. | identity router, `processing.py` |
 | 4 | F01 | P2 | slice-1 | Billing package is an unused re-export. Empty package is not an incident; the missing application operations are F02/F03. | `domains/billing/models.py` |
-| 5 | F17 | P2 | product | `ProductAccessState` stays `pending` after a paid webhook (documented legacy; E2E asserts it). Account can keep showing pending after pay. Payment-result may show paid from Order/Payment. **Paid and access-active are different facts.** Do not map a succeeded payment to "subscription active" on the read path. Show payment confirmed and access not activated separately. Activation is ANY-71. | identity router, `processing.py`, `AccountClient.tsx`, `checkout-webhook.spec.ts` |
+| 5 | F17 | P2 | product | Before ANY-78, the temporary access projection stayed `pending` after a paid webhook. Payment-result could show paid from Order/Payment. **Paid and access-active are different facts.** ANY-78 replaces that temporary projection with verified subscription and entitlement lifecycle state. | identity router, `processing.py`, `AccountClient.tsx`, `checkout-webhook.spec.ts` |
 | 6 | F16 | P2 | skip | `CheckoutSession` is write-once (`order_created`). Preserve that behavior in slice-1. Do not add a checkout-session lifecycle during the structural move; change status only with a separate product requirement. | identity router, `models.py` |
 | 7 | F23 | P2 | slice-1 | `PRODUCT_DEFAULTS` in the identity router. Move with checkout, do not keep a second catalog in identity. | `identity/router.py` |
 | 8 | F13 | P2 | skip | Commerce HTTP under `/api/auth`. Keep the path. A billing router is not required for slice-1. | `identity/router.py` |
@@ -216,7 +217,7 @@ themselves. Enums/DTOs only for values that slice serializes or transitions.
 
 | Module | What it persists |
 |---|---|
-| `identity/router.py` | User, AuthSession, Plan/Product/Bundle reads, checkout aggregates, ProductAccessState |
+| `identity/router.py` | User, AuthSession, Plan/Product/Bundle reads, checkout aggregates, former temporary access projection |
 | `identity/password_reset.py` | Rate-limit SQL, MagicLinkToken, User, AuthSession revoke |
 | `identity/session.py` | AuthSession lookup + last_seen commit |
 | `legal/router.py` | DocumentVersion load + commit |
@@ -292,9 +293,9 @@ Constraints:
 
 - `POST /api/auth/checkout-intent` stays
 - router validates HTTP and calls billing
-- billing owns `EntrypointSession`, `CheckoutSession`, `Order`, `OrderItem`,
-  and the legacy pending `ProductAccessState` write
-- the pending access row moves with checkout, same behavior, **no activation**
+- billing owns `EntrypointSession`, `CheckoutSession`, `Order`, and `OrderItem`
+- the former pending access projection is removed by ANY-78; no production data
+  backfill is required because deployment has not occurred
 - do not advance `CheckoutSession.status` (keep write-once `order_created`)
 - JSON unchanged
 - Enums/DTOs only for values this slice uses
@@ -321,7 +322,8 @@ enough to rebase:
 - integration keeps provider-specific response mapping
 - run PostgreSQL idempotency and monotonic-transition tests
 
-Do not activate `product_access_states` from this move.
+Do not reactivate the temporary `product_access_states` projection from this
+move.
 
 ### Step 3 — stop and re-evaluate
 
@@ -367,7 +369,8 @@ python -m pytest apps/api/tests/test_cloudpayments_webhook_postgres.py
 
 Do not claim a slice done if CloudPayments characterization tests regress, if
 `docs/generated/openapi.json` drifts from an unintentional contract change, or
-if `product_access_states` is expanded, activated, or treated as a subscription.
+if the removed `product_access_states` projection is expanded, activated, or
+treated as a subscription.
 
 ## Explicit non-goals
 

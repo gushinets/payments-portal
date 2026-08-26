@@ -1,7 +1,7 @@
 """enforce one live subscription per exact scope
 
 Revision ID: 20260825_0008
-Revises: 20260824_0007
+Revises: 20260824_0006
 Create Date: 2026-08-25
 """
 
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 revision = "20260825_0008"
-down_revision = "20260824_0007"
+down_revision = "20260824_0006"
 branch_labels = None
 depends_on = None
 

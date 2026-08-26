@@ -60,7 +60,7 @@ contour is defined in [Region Resolver](region-resolver-contract.md).
 | `payments` | Implemented | Payment attempts and outcomes |
 | `refunds` | Implemented | Full and partial refund records |
 | `payment_webhook_events` | Implemented | Redacted webhook inbox and processing audit |
-| `product_access_states` | Removed by ANY-78 | Legacy access projection migrated into subscriptions and entitlements |
+| `product_access_states` | Removed by ANY-78 | Temporary access projection replaced by subscriptions and entitlements |
 | `products` | Implemented | Billing-visible product catalog |
 | `bundles` | Implemented | Sellable product groups |
 | `bundle_products` | Implemented | Version-aware bundle membership |
@@ -366,8 +366,9 @@ references, payment IDs, webhook IDs, or raw audit payloads.
 - Use JSONB for redacted provider payloads and INET for IP data.
 - Do not add `updated_at` to append-only acceptance, subscription-event, or
   webhook-inbox records.
-- Do not recreate or expand `product_access_states`; legacy rows are migrated
-  into subscriptions, entitlements, and `legacy_access_migrated` events.
+- Do not recreate or expand `product_access_states`; ANY-78 is a clean-baseline
+  implementation with no legacy data backfill because deployment has not
+  occurred.
 - Never place secrets in migrations, seed data, or database configuration rows.
 - Versioned legal source and its generated manifest must match the first-install
   seed exactly.

@@ -14,12 +14,6 @@ from app.domains.billing.enums import (
 from app.models import Entitlement, Subscription, SubscriptionEvent
 
 
-ORDER_LOOKUP_SUBSCRIPTION_EVENT_TYPES = (
-    SubscriptionEventType.PAID_PERIOD_ACTIVATED.value,
-    SubscriptionEventType.LEGACY_ACCESS_MIGRATED.value,
-)
-
-
 def get_subscription_by_id(db: Session, subscription_id: uuid.UUID, *, for_update: bool = False) -> Subscription | None:
     query = db.query(Subscription).filter(Subscription.id == subscription_id)
     return (query.with_for_update() if for_update else query).first()
@@ -376,7 +370,7 @@ def get_subscription_for_order(db: Session, order_id: uuid.UUID, *, for_update: 
         .join(SubscriptionEvent, SubscriptionEvent.subscription_id == Subscription.id)
         .filter(
             SubscriptionEvent.order_id == order_id,
-            SubscriptionEvent.event_type.in_(ORDER_LOOKUP_SUBSCRIPTION_EVENT_TYPES),
+            SubscriptionEvent.event_type == SubscriptionEventType.PAID_PERIOD_ACTIVATED.value,
         )
         .order_by(
             SubscriptionEvent.occurred_at.desc(),

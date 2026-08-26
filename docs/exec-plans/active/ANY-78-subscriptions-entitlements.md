@@ -17,8 +17,9 @@ Payment Portal domain identities.
 ## Verified Baseline
 
 - `subscriptions`, `entitlements`, and `subscription_events` do not exist yet.
-- `product_access_states` is the temporary legacy access projection and must not
-  be expanded.
+- `product_access_states` is the temporary access projection from the
+  pre-deployment baseline and is removed by the clean subscriptions and
+  entitlements baseline.
 - Checkout persists `auto_renew` as metadata, but does not persist explicit
   recurrent-payment consent.
 - Verified payment webhooks update orders and payments but deliberately do not
@@ -78,10 +79,9 @@ References:
 - A provider-neutral cancellation does not block a later full refund. The full
   refund transition may move a canceled subscription to `refunded` only when no
   current or future paid grant remains, and records `refund_applied`.
-- Refund lookup must resolve the subscription from append-only
-  `subscription_events` with `event_type` in (`paid_period_activated`,
-  `legacy_access_migrated`) and matching `order_id`, not from the mutable
-  current entitlement order reference.
+- Refund lookup must resolve the subscription from the append-only
+  `paid_period_activated` subscription event with matching `order_id`, not from
+  the mutable current entitlement order reference.
 - Replacement writes two independent audit events: the new subscription keeps
   the original operation key for `paid_period_activated`, and the old
   subscription receives a deterministic derived-key `subscription_replaced`
@@ -165,14 +165,14 @@ References:
   - Keep initial payment access independent from recurrent setup: a failed
     provider create operation leaves paid access active and renewal manual.
 
-- [x] Replace legacy access persistence safely.
-  - Backfill valid active `product_access_states` rows into manual subscriptions,
-    entitlements, and `legacy_access_migrated` events.
-  - Backfill already elapsed rows as expired and do not migrate pending rows.
-  - Abort migration on an ambiguous or unmappable active row rather than
-    silently losing access.
-  - Drop the legacy table and remove its ORM compatibility export after the
-    application reads and writes the new model.
+- [x] Replace temporary access persistence with a clean baseline.
+  - Stop creating or updating `product_access_states` in application code.
+  - Do not perform legacy data backfill because the project has not been
+    deployed.
+  - Drop the temporary table from the final ANY-78 schema and remove its ORM
+    compatibility export after the application reads and writes the new model.
+  - Next migration-squash step: the consolidated ANY-78 migration must remove
+    `product_access_states` without data backfill.
 
 - [x] Add authenticated account read APIs.
   - Add `GET /api/account/subscriptions` and
@@ -227,8 +227,8 @@ database records, telemetry, exceptions, or logs.
 
 ## Validation Plan
 
-- PostgreSQL migration tests cover clean upgrade/downgrade, constraints,
-  indexes, active/expired legacy backfill, and ambiguous-backfill rejection.
+- PostgreSQL migration tests cover clean upgrade/downgrade, final absence of
+  `product_access_states`, constraints, and indexes.
 - Lifecycle tests cover trial creation and reuse rejection, verified and
   unverified initial payment, duplicate delivery, renewal success and failure,
   consent enforcement, provider-reference attachment, cancellation, partial and

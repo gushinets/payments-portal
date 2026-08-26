@@ -432,7 +432,7 @@ def _add_refund(
     return refund
 
 
-def _add_legacy_subscription_for_order(
+def _add_paid_subscription_for_order(
     db_session,
     *,
     key: str,
@@ -475,14 +475,14 @@ def _add_legacy_subscription_for_order(
     )
     event = SubscriptionEvent(
         subscription_id=subscription.id,
-        event_type=SubscriptionEventType.LEGACY_ACCESS_MIGRATED.value,
+        event_type=SubscriptionEventType.PAID_PERIOD_ACTIVATED.value,
         previous_status=None,
         next_status=status,
         occurred_at=starts_at,
-        operation_idempotency_key=f"legacy_access_migrated:{key}",
+        operation_idempotency_key=f"paid_period_activated:{key}",
         order_id=order.id,
         payment_id=payment.id,
-        metadata_={"legacy_access_state_id": key},
+        metadata_={},
     )
     db_session.add_all([entitlement, event])
     db_session.flush()
@@ -823,7 +823,7 @@ def test_full_refund_after_provider_cancellation_revokes_access(db_session) -> N
     assert event.next_status == SubscriptionStatus.REFUNDED.value
 
 
-def test_full_refund_of_migrated_legacy_access_revokes_entitlement_and_refunds_subscription(db_session) -> None:
+def test_full_refund_of_paid_access_revokes_entitlement_and_refunds_subscription(db_session) -> None:
     now = datetime.now(timezone.utc)
     plan = (
         db_session.query(Plan)
@@ -831,18 +831,18 @@ def test_full_refund_of_migrated_legacy_access_revokes_entitlement_and_refunds_s
         .first()
     )
     assert plan is not None
-    user, account = _add_billing_user_and_account(db_session, "legacy-refund-active")
+    user, account = _add_billing_user_and_account(db_session, "paid-refund-active")
     order, payment, _ = _add_verified_paid_order(
         db_session,
-        key="legacy-refund-active",
+        key="paid-refund-active",
         user=user,
         account=account,
         plan=plan,
         paid_at=now,
     )
-    subscription, entitlement, migration_event = _add_legacy_subscription_for_order(
+    subscription, entitlement, activation_event = _add_paid_subscription_for_order(
         db_session,
-        key="legacy-refund-active",
+        key="paid-refund-active",
         order=order,
         payment=payment,
         plan=plan,
@@ -853,7 +853,7 @@ def test_full_refund_of_migrated_legacy_access_revokes_entitlement_and_refunds_s
     payment.refunded_amount_minor = payment.amount_minor
     refund = _add_refund(
         db_session,
-        key="legacy-refund-active",
+        key="paid-refund-active",
         order=order,
         payment=payment,
         account=account,
@@ -865,7 +865,7 @@ def test_full_refund_of_migrated_legacy_access_revokes_entitlement_and_refunds_s
     result = apply_refund(
         db_session,
         ApplyRefundCommand(
-            operation_idempotency_key="legacy-refund-active-apply",
+            operation_idempotency_key="paid-refund-active-apply",
             order_id=order.id,
             refund_id=refund.id,
             amount_minor=refund.amount_minor,
@@ -886,7 +886,7 @@ def test_full_refund_of_migrated_legacy_access_revokes_entitlement_and_refunds_s
     assert lookup.id == subscription.id
     assert result.status == SubscriptionStatus.REFUNDED.value
     assert entitlement.status == EntitlementStatus.REVOKED.value
-    assert migration_event.event_type == SubscriptionEventType.LEGACY_ACCESS_MIGRATED.value
+    assert activation_event.event_type == SubscriptionEventType.PAID_PERIOD_ACTIVATED.value
     assert refund_event.previous_status == SubscriptionStatus.ACTIVE.value
     assert refund_event.next_status == SubscriptionStatus.REFUNDED.value
     assert refund_event.order_id == order.id
@@ -895,11 +895,11 @@ def test_full_refund_of_migrated_legacy_access_revokes_entitlement_and_refunds_s
         db_session.query(SubscriptionEvent)
         .filter(SubscriptionEvent.event_type == SubscriptionEventType.PAID_PERIOD_ACTIVATED.value)
         .count()
-        == 0
+        == 1
     )
 
 
-def test_full_refund_of_previously_canceled_legacy_order_revokes_access(db_session) -> None:
+def test_full_refund_of_previously_canceled_paid_order_revokes_access(db_session) -> None:
     now = datetime.now(timezone.utc)
     plan = (
         db_session.query(Plan)
@@ -907,10 +907,10 @@ def test_full_refund_of_previously_canceled_legacy_order_revokes_access(db_sessi
         .first()
     )
     assert plan is not None
-    user, account = _add_billing_user_and_account(db_session, "legacy-refund-canceled")
+    user, account = _add_billing_user_and_account(db_session, "paid-refund-canceled")
     order, payment, _ = _add_verified_paid_order(
         db_session,
-        key="legacy-refund-canceled",
+        key="paid-refund-canceled",
         user=user,
         account=account,
         plan=plan,
@@ -918,9 +918,9 @@ def test_full_refund_of_previously_canceled_legacy_order_revokes_access(db_sessi
     )
     order.status = "canceled"
     order.canceled_at = now + timedelta(minutes=1)
-    subscription, entitlement, _ = _add_legacy_subscription_for_order(
+    subscription, entitlement, _ = _add_paid_subscription_for_order(
         db_session,
-        key="legacy-refund-canceled",
+        key="paid-refund-canceled",
         order=order,
         payment=payment,
         plan=plan,
@@ -932,7 +932,7 @@ def test_full_refund_of_previously_canceled_legacy_order_revokes_access(db_sessi
     payment.refunded_amount_minor = payment.amount_minor
     refund = _add_refund(
         db_session,
-        key="legacy-refund-canceled",
+        key="paid-refund-canceled",
         order=order,
         payment=payment,
         account=account,
@@ -943,7 +943,7 @@ def test_full_refund_of_previously_canceled_legacy_order_revokes_access(db_sessi
     result = apply_refund(
         db_session,
         ApplyRefundCommand(
-            operation_idempotency_key="legacy-refund-canceled-apply",
+            operation_idempotency_key="paid-refund-canceled-apply",
             order_id=order.id,
             refund_id=refund.id,
             amount_minor=refund.amount_minor,
@@ -957,7 +957,7 @@ def test_full_refund_of_previously_canceled_legacy_order_revokes_access(db_sessi
     assert entitlement.status == EntitlementStatus.REVOKED.value
 
 
-def test_partial_refund_of_migrated_legacy_access_does_not_revoke_entitlement(db_session) -> None:
+def test_partial_refund_of_paid_access_does_not_revoke_entitlement(db_session) -> None:
     now = datetime.now(timezone.utc)
     plan = (
         db_session.query(Plan)
@@ -965,18 +965,18 @@ def test_partial_refund_of_migrated_legacy_access_does_not_revoke_entitlement(db
         .first()
     )
     assert plan is not None
-    user, account = _add_billing_user_and_account(db_session, "legacy-partial-refund")
+    user, account = _add_billing_user_and_account(db_session, "paid-partial-refund")
     order, payment, _ = _add_verified_paid_order(
         db_session,
-        key="legacy-partial-refund",
+        key="paid-partial-refund",
         user=user,
         account=account,
         plan=plan,
         paid_at=now,
     )
-    subscription, entitlement, _ = _add_legacy_subscription_for_order(
+    subscription, entitlement, _ = _add_paid_subscription_for_order(
         db_session,
-        key="legacy-partial-refund",
+        key="paid-partial-refund",
         order=order,
         payment=payment,
         plan=plan,
@@ -987,7 +987,7 @@ def test_partial_refund_of_migrated_legacy_access_does_not_revoke_entitlement(db
     payment.refunded_amount_minor = payment.amount_minor // 2
     refund = _add_refund(
         db_session,
-        key="legacy-partial-refund",
+        key="paid-partial-refund",
         order=order,
         payment=payment,
         account=account,
@@ -998,7 +998,7 @@ def test_partial_refund_of_migrated_legacy_access_does_not_revoke_entitlement(db
     result = apply_refund(
         db_session,
         ApplyRefundCommand(
-            operation_idempotency_key="legacy-partial-refund-apply",
+            operation_idempotency_key="paid-partial-refund-apply",
             order_id=order.id,
             refund_id=refund.id,
             amount_minor=refund.amount_minor,
@@ -1270,7 +1270,7 @@ def test_canceled_expired_entitlement_does_not_shift_new_paid_period(db_session)
         plan=plan,
         paid_at=paid_at - timedelta(days=40),
     )
-    old_subscription, old_entitlement, _ = _add_legacy_subscription_for_order(
+    old_subscription, old_entitlement, _ = _add_paid_subscription_for_order(
         db_session,
         key="canceled-expired-history-old",
         order=old_order,
@@ -1331,7 +1331,7 @@ def test_canceled_paid_through_different_scope_does_not_shift_new_paid_period(db
         plan=other_plan,
         paid_at=paid_at - timedelta(days=10),
     )
-    _, old_entitlement, _ = _add_legacy_subscription_for_order(
+    _, old_entitlement, _ = _add_paid_subscription_for_order(
         db_session,
         key="canceled-other-scope-old",
         order=old_order,
