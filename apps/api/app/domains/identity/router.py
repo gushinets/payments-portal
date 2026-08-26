@@ -4,6 +4,7 @@ import hashlib
 import secrets
 import uuid
 from datetime import datetime, timedelta
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, EmailStr, Field
@@ -284,7 +285,7 @@ def present_product_state(
 def register(
     payload: RegisterRequest,
     request: Request,
-    db: Session = Depends(get_db),
+    db: Annotated[Session, Depends(get_db)],
 ):
     if not payload.personal_consent:
         raise HTTPException(status_code=400, detail="missing_personal_consent")
@@ -344,7 +345,7 @@ def register(
 def login(
     payload: LoginRequest,
     request: Request,
-    db: Session = Depends(get_db),
+    db: Annotated[Session, Depends(get_db)],
 ):
     tenant_id = normalize_tenant_id(payload.tenant_id)
     region = normalize_region(payload.region)
@@ -385,9 +386,9 @@ def login(
 
 @router.get("/session")
 def get_session(
+    current: Annotated[tuple[User, AuthSession], Depends(get_current_session)],
+    db: Annotated[Session, Depends(get_db)],
     product: str | None = None,
-    current: tuple[User, AuthSession] = Depends(get_current_session),
-    db: Session = Depends(get_db),
 ):
     user, _ = current
 
@@ -404,11 +405,11 @@ def get_session(
 
 @router.get("/payment-status")
 def get_payment_status(
-    invoice_id: str = Query(min_length=1),
-    email: EmailStr = Query(),
-    tenant_id: str = Query(default=DEFAULT_TENANT_ID),
-    region: str = Query(default=DEFAULT_REGION),
-    db: Session = Depends(get_db),
+    invoice_id: Annotated[str, Query(min_length=1)],
+    email: Annotated[EmailStr, Query()],
+    db: Annotated[Session, Depends(get_db)],
+    tenant_id: Annotated[str, Query()] = DEFAULT_TENANT_ID,
+    region: Annotated[str, Query()] = DEFAULT_REGION,
 ):
     normalized_email = normalize_email(str(email))
     user = (
@@ -454,15 +455,18 @@ def get_payment_status(
 
     order_item = get_order_item(db, order.id)
     product_code = order_item.product_code_snapshot if order_item else None
-    if product_code is None and order_item is not None:
-        if order_item.product_id is not None:
-            product = get_product_by_id(db, order_item.product_id)
-            product_code = product.code if product is not None else None
-        elif order_item.bundle_id is not None:
-            bundle = get_bundle_by_id(db, order_item.bundle_id)
-            product_code = bundle.code if bundle is not None else None
-        elif order_item.item_type == f"{SubscriptionScopeType.ALL_ACCESS.value}_plan":
-            product_code = "all-access"
+    if product_code is None and order_item is not None and order_item.product_id is not None:
+        product = get_product_by_id(db, order_item.product_id)
+        product_code = product.code if product is not None else None
+    elif product_code is None and order_item is not None and order_item.bundle_id is not None:
+        bundle = get_bundle_by_id(db, order_item.bundle_id)
+        product_code = bundle.code if bundle is not None else None
+    elif (
+        product_code is None
+        and order_item is not None
+        and order_item.item_type == f"{SubscriptionScopeType.ALL_ACCESS.value}_plan"
+    ):
+        product_code = "all-access"
     if product_code is None:
         raise HTTPException(status_code=404, detail="payment_not_found")
 
@@ -506,8 +510,8 @@ def get_payment_status(
 
 @router.post("/logout")
 def logout(
-    current: tuple[User, AuthSession] = Depends(get_current_session),
-    db: Session = Depends(get_db),
+    current: Annotated[tuple[User, AuthSession], Depends(get_current_session)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     _, session = current
     db.delete(session)
@@ -520,9 +524,9 @@ def logout(
 def create_checkout_intent(
     payload: CheckoutIntentRequest,
     request: Request,
-    current: tuple[User, AuthSession] = Depends(get_current_session),
-    db: Session = Depends(get_db),
-    providers: PaymentProviderRegistry = Depends(get_payment_provider_registry),
+    current: Annotated[tuple[User, AuthSession], Depends(get_current_session)],
+    db: Annotated[Session, Depends(get_db)],
+    providers: Annotated[PaymentProviderRegistry, Depends(get_payment_provider_registry)],
 ):
     user, _ = current
     sellable_plan = get_sellable_plan(
@@ -532,12 +536,11 @@ def create_checkout_intent(
         plan_code=payload.plan_code,
     )
     now = utc_now()
-    if payload.auto_renew:
-        if sellable_plan["renewal_mode"] != SubscriptionRenewalMode.AUTOMATIC.value:
-            raise HTTPException(
-                status_code=409,
-                detail={"code": "automatic_renewal_not_permitted"},
-            )
+    if payload.auto_renew and sellable_plan["renewal_mode"] != SubscriptionRenewalMode.AUTOMATIC.value:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "automatic_renewal_not_permitted"},
+        )
     missing_documents = get_missing_required_documents_for_user(
         db,
         user=user,
@@ -555,9 +558,9 @@ def create_checkout_intent(
         )
 
     recurring_consent = None
+    if payload.auto_renew and payload.recurring_consent_acceptance_id is None:
+        raise HTTPException(status_code=409, detail={"code": "recurring_consent_required"})
     if payload.auto_renew:
-        if payload.recurring_consent_acceptance_id is None:
-            raise HTTPException(status_code=409, detail={"code": "recurring_consent_required"})
         recurring_consent = get_current_recurring_consent_acceptance(
             db,
             acceptance_id=payload.recurring_consent_acceptance_id,

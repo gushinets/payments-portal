@@ -29,11 +29,11 @@ class PaymentsApiResponseSummary(PaymentsApiClientModel):
     item_count: int | None = Field(default=None, ge=0)
 
     @classmethod
-    def invalid_json(cls, *, body_byte_length: int) -> "PaymentsApiResponseSummary":
+    def invalid_json(cls, *, body_byte_length: int) -> PaymentsApiResponseSummary:
         return cls(json_type=PaymentsApiJsonType.INVALID, body_byte_length=body_byte_length)
 
     @classmethod
-    def from_payload(cls, payload: Any) -> "PaymentsApiResponseSummary":
+    def from_payload(cls, payload: Any) -> PaymentsApiResponseSummary:
         json_type = cls._json_type(payload)
         if isinstance(payload, Mapping):
             return cls(json_type=json_type, field_count=len(payload))

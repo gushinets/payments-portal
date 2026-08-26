@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
@@ -30,8 +31,8 @@ logger = logging.getLogger(__name__)
 async def receive_cloudpayments_webhook(
     endpoint: str,
     request: Request,
-    db: Session = Depends(get_db),
-    cloudpayments_adapter: CloudPaymentsAdapter = Depends(get_cloudpayments_adapter),
+    db: Annotated[Session, Depends(get_db)],
+    cloudpayments_adapter: Annotated[CloudPaymentsAdapter, Depends(get_cloudpayments_adapter)],
 ):
     if endpoint not in SUPPORTED_ENDPOINTS:
         raise HTTPException(status_code=404, detail="Unsupported CloudPayments endpoint")

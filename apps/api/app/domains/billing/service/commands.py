@@ -20,7 +20,7 @@ class LifecycleCommand(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
-    def normalize_occurrence(self) -> "LifecycleCommand":
+    def normalize_occurrence(self) -> LifecycleCommand:
         if self.occurred_at is None:
             self.occurred_at = utc_now()
         elif self.occurred_at.tzinfo is None:
@@ -86,7 +86,7 @@ class ExpireDueSubscriptionsCommand(BaseModel):
     batch_size: int = Field(default=100, gt=0, le=1000)
 
     @model_validator(mode="after")
-    def normalize_now(self) -> "ExpireDueSubscriptionsCommand":
+    def normalize_now(self) -> ExpireDueSubscriptionsCommand:
         if self.now is None:
             self.now = utc_now()
         elif self.now.tzinfo is None:

@@ -156,7 +156,7 @@ except ImportError:  # pragma: no cover - production dependencies include the pa
     CONTENT_TYPE_LATEST = "text/plain; version=0.0.4"
 
     class _DummyMetric:
-        def labels(self, *_: object, **__: object) -> "_DummyMetric":
+        def labels(self, *_: object, **__: object) -> _DummyMetric:
             return self
 
         def inc(self, *_: object, **__: object) -> None:
@@ -245,7 +245,7 @@ def traced(span_name: str):
     def decorator(function):
         operation_tracer = tracer(function.__module__)
         signature = inspect.signature(function)
-        resolved_hints = get_type_hints(function)
+        resolved_hints = get_type_hints(function, include_extras=True)
         resolved_signature = signature.replace(
             parameters=[
                 parameter.replace(annotation=resolved_hints.get(name, parameter.annotation))

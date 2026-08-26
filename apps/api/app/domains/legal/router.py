@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
@@ -57,9 +57,9 @@ def present_document(document: DocumentVersion) -> dict:
 
 @router.get("/required-documents")
 def list_required_documents(
-    tenant_id: str = Query(default=DEFAULT_TENANT_ID),
-    region: str = Query(default=DEFAULT_REGION),
-    db: Session = Depends(get_db),
+    db: Annotated[Session, Depends(get_db)],
+    tenant_id: Annotated[str, Query()] = DEFAULT_TENANT_ID,
+    region: Annotated[str, Query()] = DEFAULT_REGION,
 ):
     documents = get_active_required_documents(
         db,
@@ -74,8 +74,8 @@ def list_required_documents(
 def accept_document(
     payload: AcceptDocumentRequest,
     request: Request,
-    current: tuple[User, AuthSession] = Depends(get_current_session),
-    db: Session = Depends(get_db),
+    current: Annotated[tuple[User, AuthSession], Depends(get_current_session)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     user, _ = current
     document = (

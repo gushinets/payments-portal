@@ -45,6 +45,8 @@ all_access_scope_sql = SubscriptionScopeType.ALL_ACCESS.value
 
 
 __all__ = [
+    "JSON",
+    "JSONB",
     "Base",
     "Boolean",
     "CheckConstraint",
@@ -55,8 +57,6 @@ __all__ = [
     "ForeignKey",
     "Index",
     "Integer",
-    "JSON",
-    "JSONB",
     "Mapped",
     "Numeric",
     "String",

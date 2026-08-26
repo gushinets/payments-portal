@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -126,8 +127,8 @@ def present_account_subscription(
 
 @router.get("/subscriptions", response_model=AccountSubscriptionsResponse)
 def list_subscriptions(
-    current: tuple[User, AuthSession] = Depends(get_current_session),
-    db: Session = Depends(get_db),
+    current: Annotated[tuple[User, AuthSession], Depends(get_current_session)],
+    db: Annotated[Session, Depends(get_db)],
 ) -> AccountSubscriptionsResponse:
     user, _ = current
     subscriptions = list_account_subscriptions(
@@ -166,8 +167,8 @@ def list_subscriptions(
 @router.get("/subscriptions/{subscription_id}", response_model=AccountSubscriptionResponse)
 def get_subscription(
     subscription_id: uuid.UUID,
-    current: tuple[User, AuthSession] = Depends(get_current_session),
-    db: Session = Depends(get_db),
+    current: Annotated[tuple[User, AuthSession], Depends(get_current_session)],
+    db: Annotated[Session, Depends(get_db)],
 ) -> AccountSubscriptionResponse:
     user, _ = current
     subscription = get_account_subscription(

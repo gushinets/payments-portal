@@ -4,6 +4,7 @@ import hashlib
 import logging
 import secrets
 from datetime import datetime, timedelta
+from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel, EmailStr, Field
@@ -162,7 +163,7 @@ def request_password_reset(
     payload: PasswordResetRequest,
     request: Request,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
+    db: Annotated[Session, Depends(get_db)],
 ):
     tenant_id = DEFAULT_TENANT_ID
     region = DEFAULT_REGION
@@ -241,7 +242,7 @@ def request_password_reset(
 @router.post("/password-reset/confirm")
 def confirm_password_reset(
     payload: PasswordResetConfirmRequest,
-    db: Session = Depends(get_db),
+    db: Annotated[Session, Depends(get_db)],
 ):
     now = utc_now()
     token_hash = hashlib.sha256(payload.token.encode("utf-8")).hexdigest()
