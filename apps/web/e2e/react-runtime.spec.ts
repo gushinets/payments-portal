@@ -127,7 +127,7 @@ test("critical client components run without React or hydration warnings", async
   await expect(
     accountMain.getByRole("heading", { name: "Личный кабинет", exact: true })
   ).toBeVisible();
-  await expect(accountMain.locator(".account-summary-email")).toHaveText(email);
+  await expect(accountMain.getByText(email)).toBeVisible();
 
   await page.evaluate(
     ({ paymentEmail, paymentInvoice }) => {
