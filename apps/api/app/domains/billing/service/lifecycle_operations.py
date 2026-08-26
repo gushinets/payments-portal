@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.domains.billing.enums import (
@@ -55,6 +56,14 @@ from app.infrastructure.queries.subscriptions import (
 from app.models import Entitlement, Subscription
 
 
+_PROVIDER_SUBSCRIPTION_REFERENCE_INDEX = "uq_subscriptions_provider_reference"
+
+
+def _is_provider_subscription_reference_conflict(error: IntegrityError) -> bool:
+    constraint_name = getattr(getattr(error.orig, "diag", None), "constraint_name", None)
+    return constraint_name == _PROVIDER_SUBSCRIPTION_REFERENCE_INDEX
+
+
 @_transactional
 def enable_automatic_renewal(db: Session, command: EnableAutomaticRenewalCommand) -> Subscription:
     existing_event = _event_for_key(db, command.operation_idempotency_key)
@@ -76,18 +85,24 @@ def enable_automatic_renewal(db: Session, command: EnableAutomaticRenewalCommand
     plan = get_plan_by_id(db, subscription.plan_id, for_update=True)
     if plan is None or plan.renewal_mode != SubscriptionRenewalMode.AUTOMATIC.value:
         raise SubscriptionLifecycleError("automatic_renewal_not_permitted")
-    subscription.provider_account_id = account.id
-    subscription.provider_subscription_id = command.provider_subscription_id
-    subscription.recurring_consent_acceptance_id = acceptance.id
-    subscription.renewal_mode = SubscriptionRenewalMode.AUTOMATIC.value
-    _write_event(
-        db,
-        subscription=subscription,
-        command=command,
-        event_type=SubscriptionEventType.AUTOMATIC_RENEWAL_ENABLED,
-        previous_status=subscription.status,
-        next_status=subscription.status,
-    )
+    try:
+        with db.begin_nested():
+            subscription.provider_account_id = account.id
+            subscription.provider_subscription_id = command.provider_subscription_id
+            subscription.recurring_consent_acceptance_id = acceptance.id
+            subscription.renewal_mode = SubscriptionRenewalMode.AUTOMATIC.value
+            _write_event(
+                db,
+                subscription=subscription,
+                command=command,
+                event_type=SubscriptionEventType.AUTOMATIC_RENEWAL_ENABLED,
+                previous_status=subscription.status,
+                next_status=subscription.status,
+            )
+    except IntegrityError as exc:
+        if not _is_provider_subscription_reference_conflict(exc):
+            raise
+        raise SubscriptionLifecycleError("provider_subscription_reference_conflict") from exc
     return subscription
 
 

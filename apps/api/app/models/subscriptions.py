@@ -152,7 +152,8 @@ class Entitlement(Base):
             name="ck_entitlements_valid_period",
         ),
         CheckConstraint(
-            "(source = 'trial' AND order_id IS NULL) OR (source = 'order' AND order_id IS NOT NULL)",
+            f"(source = '{EntitlementSource.TRIAL.value}' AND order_id IS NULL)"
+            f" OR (source = '{EntitlementSource.ORDER.value}' AND order_id IS NOT NULL)",
             name="ck_entitlements_source_order",
         ),
         Index("ix_entitlements_user_region_status", "user_id", "region", "status"),

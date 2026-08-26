@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -25,6 +26,7 @@ EXPECTED_REVISION_CHAIN = [
     "20260824_0006",
     "20260824_0007",
     "20260825_0008",
+    "20260826_0009",
 ]
 
 pytestmark = pytest.mark.postgres
@@ -155,6 +157,8 @@ def assert_postgres_schema_contract(postgres_engine: Engine) -> None:
     assert isinstance(event_columns["metadata"]["type"], JSONB)
     assert "updated_at" in entitlement_columns
     assert "updated_at" not in event_columns
+    plan_check_names = {constraint["name"] for constraint in inspector.get_check_constraints("plans")}
+    assert "ck_plans_scope_references" in plan_check_names
 
     payment_foreign_keys = {
         (
@@ -618,6 +622,141 @@ def test_live_subscription_unique_indexes_are_removed_on_downgrade(
         )
         assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "20260824_0007"
     assert index_names.isdisjoint(downgraded_indexes)
+
+
+def test_plan_scope_references_constraint_is_removed_on_downgrade(
+    postgres_engine: Engine,
+    database_test_url: URL,
+) -> None:
+    reset_public_schema(postgres_engine)
+
+    with alembic_test_config(database_test_url) as config:
+        command.upgrade(config, "head")
+
+    with postgres_engine.connect() as connection:
+        upgraded_constraints = set(
+            connection.execute(
+                text("SELECT conname FROM pg_constraint WHERE conrelid = 'plans'::regclass AND contype = 'c'")
+            ).scalars()
+        )
+    assert "ck_plans_scope_references" in upgraded_constraints
+
+    with alembic_test_config(database_test_url) as config:
+        command.downgrade(config, "20260825_0008")
+
+    with postgres_engine.connect() as connection:
+        downgraded_constraints = set(
+            connection.execute(
+                text("SELECT conname FROM pg_constraint WHERE conrelid = 'plans'::regclass AND contype = 'c'")
+            ).scalars()
+        )
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "20260825_0008"
+    assert "ck_plans_scope_references" not in downgraded_constraints
+
+
+@pytest.mark.parametrize(
+    ("scope_type", "has_product", "has_bundle", "is_valid"),
+    (
+        ("product", True, False, True),
+        ("product", False, False, False),
+        ("product", True, True, False),
+        ("product", False, True, False),
+        ("bundle", False, True, True),
+        ("bundle", False, False, False),
+        ("bundle", True, True, False),
+        ("bundle", True, False, False),
+        ("all_access", False, False, True),
+        ("all_access", True, False, False),
+        ("all_access", False, True, False),
+        ("all_access", True, True, False),
+    ),
+)
+def test_plan_scope_references_constraint_accepts_only_matching_references(
+    postgres_engine: Engine,
+    database_test_url: URL,
+    scope_type: str,
+    has_product: bool,
+    has_bundle: bool,
+    is_valid: bool,
+) -> None:
+    reset_public_schema(postgres_engine)
+
+    with alembic_test_config(database_test_url) as config:
+        command.upgrade(config, "head")
+
+    with postgres_engine.connect() as connection:
+        references = (
+            connection.execute(
+                text(
+                    "SELECT "
+                    "(SELECT id FROM products ORDER BY code LIMIT 1) AS product_id, "
+                    "(SELECT id FROM bundles ORDER BY code LIMIT 1) AS bundle_id"
+                )
+            )
+            .mappings()
+            .one()
+        )
+        insert_plan = text(
+            "INSERT INTO plans ("
+            "id, tenant_id, region, code, name, scope_type, product_id, bundle_id, "
+            "price_amount_minor, currency, billing_period, renewal_mode, trial_days, status, valid_from"
+            ") VALUES ("
+            ":id, 'anytoolai', 'ru', :code, :name, :scope_type, :product_id, :bundle_id, "
+            "100, 'RUB', 'month', 'manual', 0, 'active', :valid_from"
+            ")"
+        )
+        values = {
+            "id": str(uuid.uuid4()),
+            "code": f"scope-check-{scope_type}-{has_product}-{has_bundle}",
+            "name": "Scope check plan",
+            "scope_type": scope_type,
+            "product_id": references["product_id"] if has_product else None,
+            "bundle_id": references["bundle_id"] if has_bundle else None,
+            "valid_from": datetime.now(timezone.utc),
+        }
+
+        if is_valid:
+            with connection.begin():
+                connection.execute(insert_plan, values)
+        else:
+            with pytest.raises(IntegrityError):
+                with connection.begin():
+                    connection.execute(insert_plan, values)
+
+
+def test_plan_scope_references_migration_fails_on_existing_invalid_rows(
+    postgres_engine: Engine,
+    database_test_url: URL,
+) -> None:
+    reset_public_schema(postgres_engine)
+
+    with alembic_test_config(database_test_url) as config:
+        command.upgrade(config, "20260825_0008")
+
+    with postgres_engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO plans ("
+                "id, tenant_id, region, code, name, scope_type, product_id, bundle_id, "
+                "price_amount_minor, currency, billing_period, renewal_mode, trial_days, status, valid_from"
+                ") VALUES ("
+                "'99999999-9999-4999-8999-999999999905', "
+                "'anytoolai', 'ru', 'invalid-plan-scope', 'Invalid Plan Scope', "
+                "'product', NULL, NULL, 100, 'RUB', 'month', 'manual', 0, 'active', :valid_from"
+                ")"
+            ),
+            {"valid_from": datetime.now(timezone.utc)},
+        )
+
+    with pytest.raises(RuntimeError, match="Cannot add ck_plans_scope_references"):
+        with alembic_test_config(database_test_url) as config:
+            command.upgrade(config, "head")
+
+    with postgres_engine.connect() as connection:
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "20260825_0008"
+        assert (
+            connection.execute(text("SELECT count(*) FROM plans WHERE code = 'invalid-plan-scope'")).scalar_one() == 1
+        )
 
 
 def test_active_plan_versions_cannot_overlap(

@@ -582,6 +582,7 @@ Indexes and constraints:
 Indexes and constraints:
 
 - `ck_plans_price_non_negative`
+- `ck_plans_scope_references`
 - `ck_plans_scope_type`
 - `ck_plans_trial_days_non_negative`
 - `ck_plans_valid_window`

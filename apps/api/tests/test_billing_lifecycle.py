@@ -16,12 +16,14 @@ from app.domains.billing.enums import (
 )
 from app.domains.billing.service import (
     ActivatePaidPeriodCommand,
+    EnableAutomaticRenewalCommand,
     ApplyRefundCommand,
     ApplyProviderSubscriptionStateCommand,
     ApplyRenewalPaymentCommand,
     ExpireDueSubscriptionsCommand,
     SubscriptionLifecycleError,
     activate_paid_period,
+    enable_automatic_renewal,
     apply_refund,
     apply_renewal_payment,
     apply_provider_subscription_state,
@@ -34,6 +36,8 @@ from app.infrastructure.queries.subscriptions import (
     get_subscription_for_order,
 )
 from app.models import (
+    DocumentAcceptance,
+    DocumentVersion,
     Entitlement,
     Order,
     Payment,
@@ -307,6 +311,30 @@ def _add_billing_user_and_account(db_session, key: str) -> tuple[User, PaymentPr
     return user, account
 
 
+def _add_recurring_consent_acceptance(db_session, *, user: User, key: str) -> DocumentAcceptance:
+    document = (
+        db_session.query(DocumentVersion)
+        .filter(DocumentVersion.tenant_id == "anytoolai", DocumentVersion.region == "ru")
+        .first()
+    )
+    assert document is not None
+    acceptance = DocumentAcceptance(
+        tenant_id="anytoolai",
+        region="ru",
+        user_id=user.id,
+        document_version_id=document.id,
+        doc_type=document.doc_type,
+        version=document.version,
+        acceptance_kind="recurring_consent",
+        accepted_at=datetime.now(timezone.utc),
+        acceptance_text_hash=f"{key}-acceptance-hash",
+        metadata_={},
+    )
+    db_session.add(acceptance)
+    db_session.flush()
+    return acceptance
+
+
 def _add_verified_paid_order(
     db_session,
     *,
@@ -454,6 +482,121 @@ def _add_legacy_subscription_for_order(
     db_session.add_all([entitlement, event])
     db_session.flush()
     return subscription, entitlement, event
+
+
+@pytest.mark.postgres
+def test_automatic_renewal_provider_reference_conflict_uses_domain_error_and_savepoint(db_session) -> None:
+    now = datetime.now(timezone.utc)
+    plan = db_session.query(Plan).filter(Plan.tenant_id == "anytoolai", Plan.region == "ru").first()
+    assert plan is not None
+    plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC.value
+    db_session.flush()
+    first_user, account = _add_billing_user_and_account(db_session, "automatic-renewal-reference-first")
+    second_user = User(
+        tenant_id="anytoolai",
+        region="ru",
+        email="automatic-renewal-reference-second@example.com",
+        email_normalized="automatic-renewal-reference-second@example.com",
+        status="active",
+    )
+    db_session.add(second_user)
+    db_session.flush()
+    first_acceptance = _add_recurring_consent_acceptance(
+        db_session,
+        user=first_user,
+        key="automatic-renewal-reference-first",
+    )
+    second_acceptance = _add_recurring_consent_acceptance(
+        db_session,
+        user=second_user,
+        key="automatic-renewal-reference-second",
+    )
+    first_subscription = Subscription(
+        tenant_id="anytoolai",
+        region="ru",
+        user_id=first_user.id,
+        plan_id=plan.id,
+        scope_type=plan.scope_type,
+        product_id=plan.product_id,
+        bundle_id=plan.bundle_id,
+        status=SubscriptionStatus.ACTIVE.value,
+        renewal_mode=SubscriptionRenewalMode.MANUAL.value,
+        current_period_start=now,
+        current_period_end=now + timedelta(days=30),
+    )
+    second_subscription = Subscription(
+        tenant_id="anytoolai",
+        region="ru",
+        user_id=second_user.id,
+        plan_id=plan.id,
+        scope_type=plan.scope_type,
+        product_id=plan.product_id,
+        bundle_id=plan.bundle_id,
+        status=SubscriptionStatus.ACTIVE.value,
+        renewal_mode=SubscriptionRenewalMode.MANUAL.value,
+        current_period_start=now,
+        current_period_end=now + timedelta(days=30),
+    )
+    db_session.add_all([first_subscription, second_subscription])
+    db_session.flush()
+
+    first_command = EnableAutomaticRenewalCommand(
+        operation_idempotency_key="automatic-renewal-reference-first",
+        subscription_id=first_subscription.id,
+        provider_account_id=account.id,
+        provider_subscription_id="provider-reference-shared",
+        recurring_consent_acceptance_id=first_acceptance.id,
+        occurred_at=now,
+    )
+    first_result = enable_automatic_renewal(db_session, first_command)
+    repeated_result = enable_automatic_renewal(db_session, first_command)
+
+    assert first_result.id == first_subscription.id
+    assert repeated_result.id == first_subscription.id
+
+    with pytest.raises(SubscriptionLifecycleError, match="provider_subscription_reference_conflict"):
+        enable_automatic_renewal(
+            db_session,
+            EnableAutomaticRenewalCommand(
+                operation_idempotency_key="automatic-renewal-reference-second-conflict",
+                subscription_id=second_subscription.id,
+                provider_account_id=account.id,
+                provider_subscription_id="provider-reference-shared",
+                recurring_consent_acceptance_id=second_acceptance.id,
+                occurred_at=now,
+            ),
+        )
+
+    db_session.refresh(first_subscription)
+    db_session.refresh(second_subscription)
+    assert first_subscription.provider_subscription_id == "provider-reference-shared"
+    assert first_subscription.renewal_mode == SubscriptionRenewalMode.AUTOMATIC.value
+    assert second_subscription.provider_subscription_id is None
+    assert second_subscription.renewal_mode == SubscriptionRenewalMode.MANUAL.value
+    assert (
+        db_session.query(SubscriptionEvent)
+        .filter(
+            SubscriptionEvent.subscription_id == first_subscription.id,
+            SubscriptionEvent.event_type == SubscriptionEventType.AUTOMATIC_RENEWAL_ENABLED.value,
+        )
+        .count()
+        == 1
+    )
+
+    unique_result = enable_automatic_renewal(
+        db_session,
+        EnableAutomaticRenewalCommand(
+            operation_idempotency_key="automatic-renewal-reference-second-success",
+            subscription_id=second_subscription.id,
+            provider_account_id=account.id,
+            provider_subscription_id="provider-reference-second",
+            recurring_consent_acceptance_id=second_acceptance.id,
+            occurred_at=now,
+        ),
+    )
+
+    assert unique_result.id == second_subscription.id
+    assert unique_result.provider_subscription_id == "provider-reference-second"
 
 
 def test_cumulative_refund_revokes_access(db_session) -> None:

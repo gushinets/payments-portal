@@ -113,6 +113,12 @@ class Plan(Base):
             f"scope_type IN ('{product_scope_sql}', '{bundle_scope_sql}', '{all_access_scope_sql}')",
             name="ck_plans_scope_type",
         ),
+        CheckConstraint(
+            f"(scope_type = '{product_scope_sql}' AND product_id IS NOT NULL AND bundle_id IS NULL)"
+            f" OR (scope_type = '{bundle_scope_sql}' AND product_id IS NULL AND bundle_id IS NOT NULL)"
+            f" OR (scope_type = '{all_access_scope_sql}' AND product_id IS NULL AND bundle_id IS NULL)",
+            name="ck_plans_scope_references",
+        ),
         CheckConstraint("price_amount_minor >= 0", name="ck_plans_price_non_negative"),
         CheckConstraint("trial_days >= 0", name="ck_plans_trial_days_non_negative"),
         CheckConstraint(
