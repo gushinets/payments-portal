@@ -1,6 +1,7 @@
 import { createHmac } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { expect, request as playwrightRequest, test, type APIRequestContext } from "@playwright/test";
 import {
@@ -23,11 +24,24 @@ const automaticRenewalFixtureLockPath = path.join(
 );
 const automaticRenewalFixtureLockTimeoutMs = 90_000;
 const automaticRenewalFixtureLockPollMs = 250;
+const automaticRenewalFixtureOwnerlessGraceMs = 2_000;
+const fixturePythonTimeoutMs = 60_000;
 
 test.setTimeout(60_000);
 
 type AutomaticRenewalFixture = {
   cleanup: () => void;
+};
+
+type LegalAcceptanceResponseLike = {
+  json: () => Promise<unknown>;
+  status: () => number;
+  url: () => string;
+};
+
+type FixturePythonOptions = {
+  killSignal?: NodeJS.Signals | number;
+  timeout?: number;
 };
 
 function signedCloudpaymentsJson(payload: Record<string, unknown>) {
@@ -58,8 +72,37 @@ function isProcessAlive(pid: number) {
   }
 }
 
-function tryClearStaleFixtureLock() {
-  const ownerPath = path.join(automaticRenewalFixtureLockPath, "owner.json");
+function tryRmDir(pathToRemove: string) {
+  try {
+    fs.rmSync(pathToRemove, { force: true, recursive: true });
+  } catch {
+    // Another worker may have acquired or removed the directory.
+  }
+}
+
+function isLockPastGracePeriod(
+  lockPath: string,
+  ownerPath: string,
+  ownerlessGraceMs: number
+) {
+  let lockStat: fs.Stats;
+  try {
+    lockStat = fs.statSync(ownerPath);
+  } catch {
+    try {
+      lockStat = fs.statSync(lockPath);
+    } catch {
+      return false;
+    }
+  }
+  return Date.now() - lockStat.mtimeMs >= ownerlessGraceMs;
+}
+
+function tryClearStaleFixtureLock(
+  lockPath = automaticRenewalFixtureLockPath,
+  ownerlessGraceMs = automaticRenewalFixtureOwnerlessGraceMs
+) {
+  const ownerPath = path.join(lockPath, "owner.json");
   let owner: { pid?: unknown; created_at?: unknown } = {};
   try {
     owner = JSON.parse(fs.readFileSync(ownerPath, "utf8")) as {
@@ -67,6 +110,9 @@ function tryClearStaleFixtureLock() {
       created_at?: unknown;
     };
   } catch {
+    if (isLockPastGracePeriod(lockPath, ownerPath, ownerlessGraceMs)) {
+      tryRmDir(lockPath);
+    }
     return;
   }
 
@@ -74,32 +120,43 @@ function tryClearStaleFixtureLock() {
   if (pid !== null && isProcessAlive(pid)) {
     return;
   }
-  try {
-    fs.rmSync(automaticRenewalFixtureLockPath, { force: true, recursive: true });
-  } catch {
-    // Another worker may have acquired or removed the lock.
-  }
+  tryRmDir(lockPath);
 }
 
-async function acquireAutomaticRenewalFixtureLock() {
+function writeFixtureLockOwner(lockPath: string) {
+  const ownerPath = path.join(lockPath, "owner.json");
+  const tempOwnerPath = path.join(
+    lockPath,
+    `owner.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`
+  );
+  fs.writeFileSync(
+    tempOwnerPath,
+    JSON.stringify({ pid: process.pid, created_at: new Date().toISOString() })
+  );
+  fs.renameSync(tempOwnerPath, ownerPath);
+}
+
+async function acquireAutomaticRenewalFixtureLock(lockPath = automaticRenewalFixtureLockPath) {
   const startedAt = Date.now();
-  fs.mkdirSync(path.dirname(automaticRenewalFixtureLockPath), { recursive: true });
+  fs.mkdirSync(path.dirname(lockPath), { recursive: true });
 
   while (Date.now() - startedAt < automaticRenewalFixtureLockTimeoutMs) {
     try {
-      fs.mkdirSync(automaticRenewalFixtureLockPath);
-      fs.writeFileSync(
-        path.join(automaticRenewalFixtureLockPath, "owner.json"),
-        JSON.stringify({ pid: process.pid, created_at: new Date().toISOString() })
-      );
+      fs.mkdirSync(lockPath);
+      try {
+        writeFixtureLockOwner(lockPath);
+      } catch (error) {
+        tryRmDir(lockPath);
+        throw error;
+      }
       return () => {
-        fs.rmSync(automaticRenewalFixtureLockPath, { force: true, recursive: true });
+        tryRmDir(lockPath);
       };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
         throw error;
       }
-      tryClearStaleFixtureLock();
+      tryClearStaleFixtureLock(lockPath);
       await sleep(automaticRenewalFixtureLockPollMs);
     }
   }
@@ -107,7 +164,11 @@ async function acquireAutomaticRenewalFixtureLock() {
   throw new Error("Timed out waiting for automatic renewal fixture lock");
 }
 
-function runFixturePython(script: string, input?: string) {
+function runFixturePython(
+  script: string,
+  input?: string,
+  options?: FixturePythonOptions
+) {
   const pythonPath = [process.env.PYTHONPATH, `${repositoryRoot}/apps/api`]
     .filter(Boolean)
     .join(":");
@@ -126,7 +187,9 @@ function runFixturePython(script: string, input?: string) {
       encoding: "utf8",
       env: fixtureEnv,
       input,
-      stdio: ["pipe", "pipe", "pipe"]
+      killSignal: options?.killSignal ?? "SIGTERM",
+      stdio: ["pipe", "pipe", "pipe"],
+      timeout: options?.timeout ?? fixturePythonTimeoutMs
     }
   );
 }
@@ -457,6 +520,197 @@ function errorReport(error: unknown) {
   return { value: String(error) };
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+async function collectLegalAcceptanceResponse(
+  response: LegalAcceptanceResponseLike,
+  acceptedDocumentTypes: string[],
+  setRecurringAcceptanceId: (acceptanceId: string) => void
+) {
+  if (!response.url().includes("/api/legal/acceptances") || response.status() >= 400) {
+    return;
+  }
+
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    return;
+  }
+  if (!isRecord(body)) {
+    return;
+  }
+
+  const docType = typeof body.doc_type === "string" ? body.doc_type : "";
+  const acceptanceId =
+    typeof body.acceptance_id === "string" ? body.acceptance_id : "";
+  if (docType) {
+    acceptedDocumentTypes.push(docType);
+  }
+  if (docType === "recurring_consent" && acceptanceId) {
+    setRecurringAcceptanceId(acceptanceId);
+  }
+}
+
+function createTemporaryFixtureLockPath() {
+  return path.join(
+    fs.mkdtempSync(path.join(os.tmpdir(), "automatic-renewal-lock-")),
+    "fixture.lock"
+  );
+}
+
+function makeStale(pathToAge: string) {
+  const staleDate = new Date(
+    Date.now() - automaticRenewalFixtureOwnerlessGraceMs - 10_000
+  );
+  fs.utimesSync(pathToAge, staleDate, staleDate);
+}
+
+test.describe("automatic renewal fixture lock robustness", () => {
+  test.describe.configure({ mode: "serial" });
+
+  test("lock with live PID is not removed", () => {
+    const lockPath = createTemporaryFixtureLockPath();
+    fs.mkdirSync(lockPath, { recursive: true });
+    fs.writeFileSync(
+      path.join(lockPath, "owner.json"),
+      JSON.stringify({ pid: process.pid, created_at: new Date().toISOString() })
+    );
+    makeStale(path.join(lockPath, "owner.json"));
+
+    tryClearStaleFixtureLock(lockPath, 1);
+
+    expect(fs.existsSync(lockPath)).toBeTruthy();
+    tryRmDir(path.dirname(lockPath));
+  });
+
+  test("fresh ownerless lock stays inside grace period", () => {
+    const lockPath = createTemporaryFixtureLockPath();
+    fs.mkdirSync(lockPath, { recursive: true });
+
+    tryClearStaleFixtureLock(lockPath, automaticRenewalFixtureOwnerlessGraceMs);
+
+    expect(fs.existsSync(lockPath)).toBeTruthy();
+    tryRmDir(path.dirname(lockPath));
+  });
+
+  test("stale ownerless lock is removed after grace period", () => {
+    const lockPath = createTemporaryFixtureLockPath();
+    fs.mkdirSync(lockPath, { recursive: true });
+    makeStale(lockPath);
+
+    tryClearStaleFixtureLock(lockPath, 1);
+
+    expect(fs.existsSync(lockPath)).toBeFalsy();
+    tryRmDir(path.dirname(lockPath));
+  });
+
+  test("stale corrupt owner metadata lock is removed after grace period", () => {
+    const lockPath = createTemporaryFixtureLockPath();
+    const ownerPath = path.join(lockPath, "owner.json");
+    fs.mkdirSync(lockPath, { recursive: true });
+    fs.writeFileSync(ownerPath, "not json");
+    makeStale(ownerPath);
+
+    tryClearStaleFixtureLock(lockPath, 1);
+
+    expect(fs.existsSync(lockPath)).toBeFalsy();
+    tryRmDir(path.dirname(lockPath));
+  });
+
+  test("owner write exception does not leave the created lock directory", async () => {
+    const lockPath = createTemporaryFixtureLockPath();
+    const originalRenameSync = fs.renameSync;
+    fs.renameSync = ((oldPath, newPath) => {
+      if (
+        String(oldPath).startsWith(lockPath) &&
+        newPath === path.join(lockPath, "owner.json")
+      ) {
+        throw new Error("synthetic owner write failure");
+      }
+      return originalRenameSync(oldPath, newPath);
+    }) as typeof fs.renameSync;
+
+    try {
+      await expect(acquireAutomaticRenewalFixtureLock(lockPath)).rejects.toThrow(
+        "synthetic owner write failure"
+      );
+      expect(fs.existsSync(lockPath)).toBeFalsy();
+    } finally {
+      fs.renameSync = originalRenameSync;
+      tryRmDir(path.dirname(lockPath));
+    }
+  });
+
+  test("Python subprocess timeout is bounded and caller can release the lock", async () => {
+    const lockPath = createTemporaryFixtureLockPath();
+    const releaseLock = await acquireAutomaticRenewalFixtureLock(lockPath);
+
+    try {
+      expect(() => {
+        runFixturePython("import time; time.sleep(5)", undefined, {
+          killSignal: "SIGTERM",
+          timeout: 50
+        });
+      }).toThrow();
+    } finally {
+      releaseLock();
+    }
+
+    expect(fs.existsSync(lockPath)).toBeFalsy();
+    tryRmDir(path.dirname(lockPath));
+  });
+
+  test("invalid legal acceptance response JSON is ignored", async () => {
+    const acceptedDocumentTypes: string[] = [];
+    let recurringAcceptanceId = "";
+
+    await expect(
+      collectLegalAcceptanceResponse(
+        {
+          json: async () => {
+            throw new Error("invalid json");
+          },
+          status: () => 200,
+          url: () => "http://127.0.0.1:3000/api/legal/acceptances"
+        },
+        acceptedDocumentTypes,
+        (acceptanceId) => {
+          recurringAcceptanceId = acceptanceId;
+        }
+      )
+    ).resolves.toBeUndefined();
+
+    expect(acceptedDocumentTypes).toEqual([]);
+    expect(recurringAcceptanceId).toBe("");
+  });
+
+  test("valid legal acceptance response captures recurring consent metadata", async () => {
+    const acceptedDocumentTypes: string[] = [];
+    let recurringAcceptanceId = "";
+
+    await collectLegalAcceptanceResponse(
+      {
+        json: async () => ({
+          acceptance_id: "acceptance-recurring",
+          doc_type: "recurring_consent"
+        }),
+        status: () => 200,
+        url: () => "http://127.0.0.1:3000/api/legal/acceptances"
+      },
+      acceptedDocumentTypes,
+      (acceptanceId) => {
+        recurringAcceptanceId = acceptanceId;
+      }
+    );
+
+    expect(acceptedDocumentTypes).toEqual(["recurring_consent"]);
+    expect(recurringAcceptanceId).toBe("acceptance-recurring");
+  });
+});
+
 test("legal acceptance gates checkout and webhook state remains authoritative", async ({ page }, testInfo) => {
   const api = await playwrightRequest.newContext({ baseURL: apiBaseURL });
   const email = `agent-${Date.now()}-${testInfo.workerIndex}@example.com`;
@@ -709,16 +963,13 @@ test("automatic renewal checkout uses exact recurring consent acceptance", async
       await route.continue();
     });
     page.on("response", async (response) => {
-      if (!response.url().includes("/api/legal/acceptances") || response.status() >= 400) {
-        return;
-      }
-      const body = (await response.json()) as { acceptance_id?: string; doc_type?: string };
-      if (body.doc_type) {
-        acceptedDocumentTypes.push(body.doc_type);
-      }
-      if (body.doc_type === "recurring_consent" && body.acceptance_id) {
-        recurringAcceptanceId = body.acceptance_id;
-      }
+      await collectLegalAcceptanceResponse(
+        response,
+        acceptedDocumentTypes,
+        (acceptanceId) => {
+          recurringAcceptanceId = acceptanceId;
+        }
+      );
     });
 
     await installProviderUiScriptStub(page);
