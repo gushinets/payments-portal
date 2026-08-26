@@ -696,32 +696,33 @@ def test_plan_scope_references_constraint_accepts_only_matching_references(
             .mappings()
             .one()
         )
-        insert_plan = text(
-            "INSERT INTO plans ("
-            "id, tenant_id, region, code, name, scope_type, product_id, bundle_id, "
-            "price_amount_minor, currency, billing_period, renewal_mode, trial_days, status, valid_from"
-            ") VALUES ("
-            ":id, 'anytoolai', 'ru', :code, :name, :scope_type, :product_id, :bundle_id, "
-            "100, 'RUB', 'month', 'manual', 0, 'active', :valid_from"
-            ")"
-        )
-        values = {
-            "id": str(uuid.uuid4()),
-            "code": f"scope-check-{scope_type}-{has_product}-{has_bundle}",
-            "name": "Scope check plan",
-            "scope_type": scope_type,
-            "product_id": references["product_id"] if has_product else None,
-            "bundle_id": references["bundle_id"] if has_bundle else None,
-            "valid_from": datetime.now(timezone.utc),
-        }
 
-        if is_valid:
-            with connection.begin():
+    insert_plan = text(
+        "INSERT INTO plans ("
+        "id, tenant_id, region, code, name, scope_type, product_id, bundle_id, "
+        "price_amount_minor, currency, billing_period, renewal_mode, trial_days, status, valid_from"
+        ") VALUES ("
+        ":id, 'anytoolai', 'ru', :code, :name, :scope_type, :product_id, :bundle_id, "
+        "100, 'RUB', 'month', 'manual', 0, 'active', :valid_from"
+        ")"
+    )
+    values = {
+        "id": str(uuid.uuid4()),
+        "code": f"scope-check-{scope_type}-{has_product}-{has_bundle}",
+        "name": "Scope check plan",
+        "scope_type": scope_type,
+        "product_id": references["product_id"] if has_product else None,
+        "bundle_id": references["bundle_id"] if has_bundle else None,
+        "valid_from": datetime.now(timezone.utc),
+    }
+
+    if is_valid:
+        with postgres_engine.begin() as connection:
+            connection.execute(insert_plan, values)
+    else:
+        with pytest.raises(IntegrityError):
+            with postgres_engine.begin() as connection:
                 connection.execute(insert_plan, values)
-        else:
-            with pytest.raises(IntegrityError):
-                with connection.begin():
-                    connection.execute(insert_plan, values)
 
 
 def test_plan_scope_references_migration_fails_on_existing_invalid_rows(
