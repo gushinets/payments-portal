@@ -49,8 +49,12 @@ def _transaction(db: Session):
 def _transactional(function):
     @wraps(function)
     def wrapped(db: Session, *args, **kwargs):
+        opened_transaction = not db.in_transaction()
         with _transaction(db):
-            return function(db, *args, **kwargs)
+            result = function(db, *args, **kwargs)
+        if opened_transaction and isinstance(result, Subscription):
+            db.refresh(result)
+        return result
 
     return wrapped
 
