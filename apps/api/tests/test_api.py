@@ -454,6 +454,57 @@ def seed_catalog(db) -> dict[str, object]:
     }
 
 
+def register_test_user(*, email: str, tenant_id: str = "anytoolai", region: str = "ru") -> str:
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "tenant_id": tenant_id,
+            "region": region,
+            "email": email,
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    assert register_response.status_code == 200, register_response.text
+    return register_response.json()["token"]
+
+
+def add_active_entitlement_for_plan(db, *, user: User, plan: Plan) -> Entitlement:
+    now = datetime.now(timezone.utc)
+    subscription = Subscription(
+        tenant_id=plan.tenant_id,
+        region=plan.region,
+        user_id=user.id,
+        plan_id=plan.id,
+        scope_type=plan.scope_type,
+        product_id=plan.product_id,
+        bundle_id=plan.bundle_id,
+        status="active",
+        renewal_mode=plan.renewal_mode,
+        current_period_start=now - timedelta(days=1),
+        current_period_end=now + timedelta(days=30),
+    )
+    db.add(subscription)
+    db.flush()
+    entitlement = Entitlement(
+        tenant_id=plan.tenant_id,
+        region=plan.region,
+        user_id=user.id,
+        subscription_id=subscription.id,
+        plan_id=plan.id,
+        scope_type=plan.scope_type,
+        product_id=plan.product_id,
+        bundle_id=plan.bundle_id,
+        status="active",
+        valid_from=now - timedelta(days=1),
+        valid_until=now + timedelta(days=30),
+        source="trial",
+    )
+    db.add(entitlement)
+    return entitlement
+
+
 def test_liveness_readiness_metrics_and_request_id() -> None:
     request_id = "agent-check-123"
     canonical_live_response = client.get(
@@ -631,6 +682,254 @@ def test_register_session_and_checkout_intent_flow() -> None:
     assert order.plan_id is not None
     assert order.status == "pending_payment"
     assert order.provider_invoice_id == invoice_id
+
+
+def test_session_product_state_uses_user_tenant_product_when_codes_overlap() -> None:
+    token = register_test_user(email="tenant-product-state@example.com")
+
+    with SessionLocal() as db:
+        tenant_b_product = Product(
+            tenant_id="tenant-b",
+            code="shared-product",
+            platform_product_id="tenant-b-shared-product",
+            name="Tenant B Shared Product",
+            status="active",
+        )
+        tenant_a_product = Product(
+            tenant_id="anytoolai",
+            code="shared-product",
+            platform_product_id="tenant-a-shared-product",
+            name="Tenant A Shared Product",
+            status="active",
+        )
+        db.add_all([tenant_b_product, tenant_a_product])
+        db.flush()
+        tenant_a_plan = Plan(
+            tenant_id="anytoolai",
+            region="ru",
+            code="shared-product-pro",
+            name="Shared Product Pro",
+            scope_type="product",
+            product_id=tenant_a_product.id,
+            price_amount_minor=99000,
+            currency="RUB",
+            billing_period="month",
+            renewal_mode="manual",
+            trial_days=7,
+            status="active",
+        )
+        db.add(tenant_a_plan)
+        db.flush()
+        user = db.query(User).filter(User.email_normalized == "tenant-product-state@example.com").one()
+        add_active_entitlement_for_plan(db, user=user, plan=tenant_a_plan)
+        tenant_a_product_id = tenant_a_product.id
+        tenant_b_product_id = tenant_b_product.id
+        db.commit()
+
+    response = client.get(
+        "/api/auth/session?product=shared-product",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert tenant_a_product_id != tenant_b_product_id
+    assert response.status_code == 200
+    assert response.json()["product_state"]["status"] == "active"
+
+
+def test_session_product_state_uses_user_tenant_bundle_when_codes_overlap() -> None:
+    token = register_test_user(email="tenant-bundle-state@example.com")
+
+    with SessionLocal() as db:
+        tenant_b_bundle = Bundle(
+            tenant_id="tenant-b",
+            code="shared-bundle",
+            name="Tenant B Shared Bundle",
+            status="active",
+        )
+        tenant_a_bundle = Bundle(
+            tenant_id="anytoolai",
+            code="shared-bundle",
+            name="Tenant A Shared Bundle",
+            status="active",
+        )
+        db.add_all([tenant_b_bundle, tenant_a_bundle])
+        db.flush()
+        tenant_a_plan = Plan(
+            tenant_id="anytoolai",
+            region="ru",
+            code="shared-bundle-pro",
+            name="Shared Bundle Pro",
+            scope_type="bundle",
+            bundle_id=tenant_a_bundle.id,
+            price_amount_minor=198000,
+            currency="RUB",
+            billing_period="month",
+            renewal_mode="manual",
+            trial_days=7,
+            status="active",
+        )
+        db.add(tenant_a_plan)
+        db.flush()
+        user = db.query(User).filter(User.email_normalized == "tenant-bundle-state@example.com").one()
+        add_active_entitlement_for_plan(db, user=user, plan=tenant_a_plan)
+        tenant_a_bundle_id = tenant_a_bundle.id
+        tenant_b_bundle_id = tenant_b_bundle.id
+        db.commit()
+
+    response = client.get(
+        "/api/auth/session?product=shared-bundle",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert tenant_a_bundle_id != tenant_b_bundle_id
+    assert response.status_code == 200
+    assert response.json()["product_state"]["status"] == "active"
+
+
+def test_session_unknown_product_does_not_use_active_all_access_entitlement() -> None:
+    token = register_test_user(email="unknown-product-all-access@example.com")
+
+    with SessionLocal() as db:
+        all_access_plan = db.query(Plan).filter(Plan.code == "all-access-pro-ru").one()
+        user = db.query(User).filter(User.email_normalized == "unknown-product-all-access@example.com").one()
+        add_active_entitlement_for_plan(db, user=user, plan=all_access_plan)
+        db.commit()
+
+    unknown_response = client.get(
+        "/api/auth/session?product=unknown-code",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    all_access_response = client.get(
+        "/api/auth/session?product=all-access",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert unknown_response.status_code == 200
+    assert unknown_response.json()["product_state"]["status"] == "inactive"
+    assert all_access_response.status_code == 200
+    assert all_access_response.json()["product_state"]["status"] == "active"
+
+
+def test_session_valid_product_entitlement_is_active() -> None:
+    token = register_test_user(email="valid-product-entitlement@example.com")
+
+    with SessionLocal() as db:
+        document_plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
+        user = db.query(User).filter(User.email_normalized == "valid-product-entitlement@example.com").one()
+        add_active_entitlement_for_plan(db, user=user, plan=document_plan)
+        db.commit()
+
+    response = client.get(
+        "/api/auth/session?product=document-summary",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["product_state"]["status"] == "active"
+
+
+def test_session_valid_bundle_entitlement_is_active() -> None:
+    token = register_test_user(email="valid-bundle-entitlement@example.com")
+
+    with SessionLocal() as db:
+        bundle_plan = db.query(Plan).filter(Plan.code == "core-tools-bundle-pro-ru").one()
+        user = db.query(User).filter(User.email_normalized == "valid-bundle-entitlement@example.com").one()
+        add_active_entitlement_for_plan(db, user=user, plan=bundle_plan)
+        db.commit()
+
+    response = client.get(
+        "/api/auth/session?product=core-tools-bundle",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["product_state"]["status"] == "active"
+
+
+def test_session_wrong_tenant_order_does_not_make_product_state_pending() -> None:
+    token = register_test_user(email="wrong-tenant-order@example.com")
+
+    with SessionLocal() as db:
+        user = db.query(User).filter(User.email_normalized == "wrong-tenant-order@example.com").one()
+        tenant_b_product = Product(
+            tenant_id="tenant-b",
+            code="document-summary",
+            platform_product_id="tenant-b-document-summary",
+            name="Tenant B Document Summary",
+            status="active",
+        )
+        provider_account = PaymentProviderAccount(
+            tenant_id="tenant-b",
+            region="ru",
+            provider="tenant-b-cloudpayments",
+            public_identifier="pk_tenant_b",
+            default_currency="RUB",
+            enabled=True,
+            test_mode=True,
+            config={},
+        )
+        db.add_all([tenant_b_product, provider_account])
+        db.flush()
+        tenant_b_plan = Plan(
+            tenant_id="tenant-b",
+            region="ru",
+            code="tenant-b-document-summary-pro",
+            name="Tenant B Document Summary Pro",
+            scope_type="product",
+            product_id=tenant_b_product.id,
+            price_amount_minor=99000,
+            currency="RUB",
+            billing_period="month",
+            renewal_mode="manual",
+            trial_days=7,
+            status="active",
+        )
+        db.add(tenant_b_plan)
+        db.flush()
+        add_active_entitlement_for_plan(db, user=user, plan=tenant_b_plan)
+        order = Order(
+            tenant_id="tenant-b",
+            region="ru",
+            order_number="RU-WRONG-TENANT-ORDER",
+            user_id=user.id,
+            status="pending_payment",
+            amount_minor=99000,
+            currency="RUB",
+            provider=provider_account.provider,
+            provider_account_id=provider_account.id,
+            merchant_order_id="wrong-tenant-order",
+            provider_invoice_id="wrong-tenant-invoice",
+        )
+        db.add(order)
+        db.flush()
+        db.add(
+            OrderItem(
+                order_id=order.id,
+                item_type="product_plan",
+                product_id=tenant_b_product.id,
+                product_code_snapshot="document-summary",
+                title_snapshot="Tenant B Document Summary Pro",
+                quantity=1,
+                list_amount_minor=99000,
+                discount_amount_minor=0,
+                unit_amount_minor=99000,
+                amount_minor=99000,
+                currency="RUB",
+                trial_days_snapshot=7,
+                pricing_snapshot={"scope_type": "product"},
+            )
+        )
+        db.commit()
+
+    response = client.get(
+        "/api/auth/session?product=document-summary",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    product_state = response.json()["product_state"]
+
+    assert response.status_code == 200
+    assert product_state["status"] == "inactive"
+    assert product_state["invoice_id"] is None
 
 
 def test_manual_checkout_does_not_require_recurring_consent() -> None:

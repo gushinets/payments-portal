@@ -218,36 +218,41 @@ def present_product_state(
     order: Order | None = None,
     payment: Payment | None = None,
 ) -> dict:
-    default_plan = PRODUCT_DEFAULTS.get(product_code, {})
     now = utc_now()
-    product = get_product_by_code(db, product_code)
-    bundle = get_bundle_by_code(db, product_code) if product is None else None
-    scope_type = (
-        SubscriptionScopeType.PRODUCT.value
-        if product is not None
-        else SubscriptionScopeType.BUNDLE.value
-        if bundle is not None
-        else SubscriptionScopeType.ALL_ACCESS.value
-    )
-    if order is None:
+    product = get_product_by_code(db, tenant_id=user.tenant_id, code=product_code)
+    bundle = get_bundle_by_code(db, tenant_id=user.tenant_id, code=product_code) if product is None else None
+    default_plan = PRODUCT_DEFAULTS.get(product_code, {}) if product is not None else {}
+    if product is not None:
+        scope_type = SubscriptionScopeType.PRODUCT.value
+    elif bundle is not None:
+        scope_type = SubscriptionScopeType.BUNDLE.value
+    elif product_code == "all-access":
+        scope_type = SubscriptionScopeType.ALL_ACCESS.value
+    else:
+        scope_type = None
+    if scope_type is not None and order is None:
         order = get_latest_order_for_user_entrypoint(
             db,
+            tenant_id=user.tenant_id,
+            region=user.region,
             user_id=user.id,
             product_id=product.id if product is not None else None,
             bundle_id=bundle.id if bundle is not None else None,
             scope_type=scope_type,
             entrypoint_code=product_code,
         )
-    entitlement = get_active_entitlement_for_scope(
-        db,
-        tenant_id=user.tenant_id,
-        region=user.region,
-        user_id=user.id,
-        scope_type=scope_type,
-        product_id=product.id if product is not None else None,
-        bundle_id=bundle.id if bundle is not None else None,
-        now=now,
-    )
+    entitlement = None
+    if scope_type is not None:
+        entitlement = get_active_entitlement_for_scope(
+            db,
+            tenant_id=user.tenant_id,
+            region=user.region,
+            user_id=user.id,
+            scope_type=scope_type,
+            product_id=product.id if product is not None else None,
+            bundle_id=bundle.id if bundle is not None else None,
+            now=now,
+        )
     if entitlement is not None:
         if order is None and entitlement.order_id is not None:
             order = get_order_by_id(db, entitlement.order_id)
@@ -435,23 +440,22 @@ def get_payment_status(
     if order is None:
         raise HTTPException(status_code=404, detail="payment_not_found")
     payment = None
-    if order is not None:
-        payment_query = db.query(Payment).filter(Payment.order_id == order.id)
-        if order.status == OrderStatus.CANCELED.value:
-            payment = (
-                payment_query.filter(
-                    Payment.status.in_(
-                        (
-                            PaymentStatus.SUCCEEDED.value,
-                            PaymentStatus.PARTIALLY_REFUNDED.value,
-                            PaymentStatus.REFUNDED.value,
-                        )
+    payment_query = db.query(Payment).filter(Payment.order_id == order.id)
+    if order.status == OrderStatus.CANCELED.value:
+        payment = (
+            payment_query.filter(
+                Payment.status.in_(
+                    (
+                        PaymentStatus.SUCCEEDED.value,
+                        PaymentStatus.PARTIALLY_REFUNDED.value,
+                        PaymentStatus.REFUNDED.value,
                     )
                 )
-                .order_by(Payment.captured_at.desc(), Payment.created_at.desc())
-                .first()
             )
-        payment = payment or payment_query.order_by(Payment.created_at.desc()).first()
+            .order_by(Payment.captured_at.desc(), Payment.created_at.desc())
+            .first()
+        )
+    payment = payment or payment_query.order_by(Payment.created_at.desc()).first()
 
     order_item = get_order_item(db, order.id)
     product_code = order_item.product_code_snapshot if order_item else None

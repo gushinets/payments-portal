@@ -23,6 +23,8 @@ def get_order_item(db: Session, order_id: uuid.UUID) -> OrderItem | None:
 def get_latest_order_for_user_entrypoint(
     db: Session,
     *,
+    tenant_id: str,
+    region: str,
     user_id: uuid.UUID,
     product_id: uuid.UUID | None,
     bundle_id: uuid.UUID | None,
@@ -32,7 +34,11 @@ def get_latest_order_for_user_entrypoint(
     query = (
         db.query(Order)
         .join(OrderItem, OrderItem.order_id == Order.id)
-        .filter(Order.user_id == user_id)
+        .filter(
+            Order.tenant_id == tenant_id,
+            Order.region == region,
+            Order.user_id == user_id,
+        )
         .order_by(Order.created_at.desc())
     )
     if product_id is not None:
