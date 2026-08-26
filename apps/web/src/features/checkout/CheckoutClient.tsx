@@ -13,9 +13,12 @@ import { ProductCards } from "@/features/catalog";
 import {
   ApiError,
   authErrorMessage,
+  decodeAuthSessionResponse,
   getJson,
   postJson,
-  submitAuth
+  submitAuth,
+  type AuthProductState,
+  type AuthUser
 } from "@/shared/api/auth";
 import { AuthForm, AuthFormSubmitValues, AuthMode } from "@/shared/ui";
 import {
@@ -31,32 +34,8 @@ import {
   getCheckoutAdapter
 } from "./provider-adapters";
 
-type SessionUser = {
-  tenant_id: string;
-  region: string;
-  user_id: string;
-  email: string;
-};
-
-type ProductState = {
-  product_code: string;
-  plan_code?: string | null;
-  plan_name?: string | null;
-  invoice_id?: string | null;
-  transaction_id?: string | null;
-  status: "inactive" | "pending" | "active" | "failed";
-  starts_at?: string | null;
-  expires_at?: string | null;
-};
-
-type SessionResponse = {
-  authenticated: boolean;
-  user: SessionUser;
-  product_state?: ProductState | null;
-};
-
 type CheckoutIntentResponse = {
-  product_state: ProductState;
+  product_state: AuthProductState;
   checkout: {
     amount_minor: number;
     amount: number;
@@ -105,8 +84,10 @@ export function CheckoutClient({
   const [recurringConsentAcceptanceId, setRecurringConsentAcceptanceId] =
     useState("");
   const [sessionToken, setSessionToken] = useState("");
-  const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
-  const [productState, setProductState] = useState<ProductState | null>(null);
+  const [sessionUser, setSessionUser] = useState<AuthUser | null>(null);
+  const [productState, setProductState] = useState<AuthProductState | null>(
+    null
+  );
   const [missingDocuments, setMissingDocuments] = useState<RequiredDocument[]>([]);
   const [documentConsentById, setDocumentConsentById] = useState<
     Record<string, boolean>
@@ -188,7 +169,11 @@ export function CheckoutClient({
         const suffix = selectedCode
           ? `/api/auth/session?product=${encodeURIComponent(selectedCode)}`
           : "/api/auth/session";
-        const payload = await getJson<SessionResponse>(suffix, sessionToken);
+        const payload = await getJson(
+          suffix,
+          sessionToken,
+          decodeAuthSessionResponse
+        );
         setSessionUser(payload.user);
         setProductState(payload.product_state ?? null);
         setNotice("");
@@ -905,7 +890,7 @@ function SubscriptionState({
   state
 }: {
   product?: Product;
-  state: ProductState | null;
+  state: AuthProductState | null;
 }) {
   if (!product) {
     return (

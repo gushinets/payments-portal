@@ -687,6 +687,10 @@ CURRENT_LEGAL_VERSION = re.compile(
 )
 MIGRATION_LEGAL_VERSION = re.compile(r'"version":\s*"([^"]+)"')
 GENERATED_PY_LEGAL_VERSION = re.compile(r"'version':\s*'([^']+)'")
+CANONICAL_METADATA_TABLE_ENTRY = re.compile(
+    r"^\|\s*`(?P<table>[^`|]+)`\s*\|\s*[^|\n]+\|\s*[^|\n]+\|\s*$",
+    re.MULTILINE,
+)
 INITIAL_MIGRATION = (
     ROOT
     / "apps"
@@ -806,10 +810,13 @@ def check_expected_legal_versions(
 
 
 def check_documented_metadata_tables(table_names: Iterable[str], documented: str) -> list[str]:
+    documented_tables = {
+        match.group("table") for match in CANONICAL_METADATA_TABLE_ENTRY.finditer(documented)
+    }
     return [
         f"Implemented table missing from canonical data model: {table}"
         for table in sorted(table_names)
-        if f"`{table}`" not in documented
+        if table not in documented_tables
     ]
 
 

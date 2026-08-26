@@ -78,21 +78,31 @@ def test_migration_legal_version_mismatch_is_rejected() -> None:
     ]
 
 
-def test_undocumented_metadata_table_is_actionable() -> None:
-    assert check_documented_metadata_tables(
-        ["documented_table", "undocumented_table"],
-        "| `documented_table` | Implemented |\n",
-    ) == ["Implemented table missing from canonical data model: undocumented_table"]
-
-
-def test_documented_metadata_table_is_accepted() -> None:
+def test_canonical_metadata_table_entry_is_accepted() -> None:
     assert (
         check_documented_metadata_tables(
             ["documented_table"],
-            "| `documented_table` | Implemented |\n",
+            "| `documented_table` | Implemented | Purpose |\n",
         )
         == []
     )
+
+
+def test_metadata_table_name_only_in_prose_is_still_missing() -> None:
+    assert check_documented_metadata_tables(
+        ["referenced_table"],
+        "The `referenced_table` relation is discussed elsewhere.\n",
+    ) == ["Implemented table missing from canonical data model: referenced_table"]
+
+
+def test_missing_metadata_tables_are_reported_sorted() -> None:
+    assert check_documented_metadata_tables(
+        ["zeta_table", "documented_table", "alpha_table"],
+        "| `documented_table` | Implemented | Purpose |\n",
+    ) == [
+        "Implemented table missing from canonical data model: alpha_table",
+        "Implemented table missing from canonical data model: zeta_table",
+    ]
 
 
 def test_check_docs_uses_imported_metadata_tables(
@@ -122,7 +132,7 @@ def test_check_docs_uses_imported_metadata_tables(
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("", encoding="utf-8")
     (tmp_path / "docs/architecture/payment-portal-data-model.md").write_text(
-        "| `documented_table` | Implemented |\n",
+        "| `documented_table` | Implemented | Purpose |\n",
         encoding="utf-8",
     )
 
@@ -490,6 +500,7 @@ def test_write_runtime_protects_generated_secret_file(
     monkeypatch.setattr(repo, "RUNTIME_JSON", runtime_json)
     monkeypatch.setattr(repo, "RUNTIME_ENV", runtime_env)
     monkeypatch.setattr(repo, "read_dotenv", dict)
+    monkeypatch.delenv("CLOUDPAYMENTS_API_SECRET", raising=False)
 
     repo.write_runtime(
         repo.RuntimeConfig(
