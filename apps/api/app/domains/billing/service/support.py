@@ -265,7 +265,7 @@ def _find_plan_for_order(db: Session, order: Order) -> Plan:
     if plan_id is None:
         item = get_order_item_with_plan(db, order.id)
         plan_id = item.plan_id if item else None
-    plan = get_plan_by_id(db, plan_id, for_update=True) if plan_id else None
+    plan = get_plan_by_id(db, plan_id) if plan_id else None
     if plan is None:
         raise SubscriptionLifecycleError("order_plan_missing")
     return plan

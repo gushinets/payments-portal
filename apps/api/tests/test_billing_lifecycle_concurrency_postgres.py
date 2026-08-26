@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import time
 import uuid
-from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta, timezone
+from concurrent.futures import ThreadPoolExecutor, wait
+from datetime import UTC, datetime, timedelta
 from threading import Barrier, Lock, get_ident
 
 import pytest
@@ -82,7 +82,7 @@ def _add_billing_user_and_account(session: Session, key: str) -> tuple[User, Pay
 
 
 def _add_recurring_consent_acceptance(session: Session, *, user: User, key: str) -> DocumentAcceptance:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     entity = LegalEntity(
         tenant_id=user.tenant_id,
         region=user.region,
@@ -262,7 +262,7 @@ def test_parallel_enable_automatic_renewal_same_key_reuses_event_after_subscript
     postgres_session_factory: sessionmaker[Session],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    now = datetime(2026, 8, 25, 14, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 8, 25, 14, 0, tzinfo=UTC)
     with postgres_session_factory() as session, session.begin():
         user, account = _add_billing_user_and_account(session, "concurrent-enable-automatic-renewal")
         plan = _plan_by_code(session, "document-summary-pro")
@@ -374,7 +374,7 @@ def test_parallel_enable_automatic_renewal_same_key_reuses_event_after_subscript
 def test_parallel_paid_orders_same_scope_share_one_subscription(
     postgres_session_factory: sessionmaker[Session],
 ) -> None:
-    now = datetime(2026, 8, 25, 10, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 8, 25, 10, 0, tzinfo=UTC)
     user_id, order_contexts = _seed_paid_orders(
         postgres_session_factory,
         key="concurrent-paid-same-scope",
@@ -435,10 +435,75 @@ def test_parallel_paid_orders_same_scope_share_one_subscription(
     assert entitlements[0].valid_until == entitlements[1].valid_from
 
 
+def test_parallel_paid_orders_same_plan_different_users_do_not_wait_on_plan_lock(
+    postgres_session_factory: sessionmaker[Session],
+) -> None:
+    now = datetime(2026, 8, 25, 10, 30, tzinfo=UTC)
+    with postgres_session_factory() as session, session.begin():
+        plan = _plan_by_code(session, "document-summary-pro")
+        user_one, account_one = _add_billing_user_and_account(session, "concurrent-same-plan-user-one")
+        user_two, account_two = _add_billing_user_and_account(session, "concurrent-same-plan-user-two")
+        first_order, first_payment, first_webhook = _add_verified_paid_order(
+            session,
+            key="concurrent-same-plan-user-one",
+            user=user_one,
+            account=account_one,
+            plan=plan,
+            paid_at=now,
+        )
+        second_order, second_payment, second_webhook = _add_verified_paid_order(
+            session,
+            key="concurrent-same-plan-user-two",
+            user=user_two,
+            account=account_two,
+            plan=plan,
+            paid_at=now + timedelta(minutes=1),
+        )
+        plan_id = plan.id
+        order_contexts = (
+            (first_order.id, first_payment.id, first_webhook.id),
+            (second_order.id, second_payment.id, second_webhook.id),
+        )
+    commands = [
+        ActivatePaidPeriodCommand(
+            operation_idempotency_key=f"concurrent-same-plan-different-users-{index}",
+            order_id=order_id,
+            payment_id=payment_id,
+            webhook_event_id=webhook_id,
+            occurred_at=now + timedelta(minutes=index),
+        )
+        for index, (order_id, payment_id, webhook_id) in enumerate(order_contexts, start=1)
+    ]
+
+    def submit(barrier: Barrier, index: int) -> uuid.UUID:
+        barrier.wait(timeout=5)
+        return _activate_in_worker(postgres_session_factory, commands[index])
+
+    blocker = postgres_session_factory()
+    blocker.begin()
+    try:
+        assert blocker.query(Plan).filter(Plan.id == plan_id).with_for_update().one() is not None
+        start_barrier = Barrier(3)
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = [executor.submit(submit, start_barrier, index) for index in range(2)]
+            start_barrier.wait(timeout=5)
+            completed, not_done = wait(futures, timeout=2)
+            if not_done:
+                blocker.rollback()
+            assert len(completed) == len(futures)
+            results = [future.result() for future in futures]
+    finally:
+        if blocker.in_transaction():
+            blocker.rollback()
+        blocker.close()
+
+    assert len(set(results)) == 2
+
+
 def test_parallel_trials_same_scope_create_one_trial(
     postgres_session_factory: sessionmaker[Session],
 ) -> None:
-    now = datetime(2026, 8, 25, 11, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 8, 25, 11, 0, tzinfo=UTC)
     with postgres_session_factory() as session, session.begin():
         user, _ = _add_billing_user_and_account(session, "concurrent-trial-same-scope")
         plan = _plan_by_code(session, "document-summary-pro")
@@ -495,7 +560,7 @@ def test_parallel_trials_same_scope_create_one_trial(
 def test_parallel_paid_orders_different_scopes_create_two_subscriptions(
     postgres_session_factory: sessionmaker[Session],
 ) -> None:
-    now = datetime(2026, 8, 25, 12, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 8, 25, 12, 0, tzinfo=UTC)
     user_id, order_contexts = _seed_paid_orders(
         postgres_session_factory,
         key="concurrent-paid-different-scopes",
@@ -543,7 +608,7 @@ def test_parallel_paid_orders_different_scopes_create_two_subscriptions(
 def test_terminal_subscription_allows_new_subscription_same_scope(
     postgres_session_factory: sessionmaker[Session],
 ) -> None:
-    now = datetime(2026, 8, 25, 13, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 8, 25, 13, 0, tzinfo=UTC)
     with postgres_session_factory() as session, session.begin():
         user, account = _add_billing_user_and_account(session, "terminal-then-new-same-scope")
         plan = _plan_by_code(session, "document-summary-pro")
@@ -601,7 +666,7 @@ def test_terminal_subscription_allows_new_subscription_same_scope(
 def test_parallel_paid_orders_after_canceled_paid_through_create_one_successor_subscription(
     postgres_session_factory: sessionmaker[Session],
 ) -> None:
-    now = datetime(2026, 8, 25, 13, 30, tzinfo=timezone.utc)
+    now = datetime(2026, 8, 25, 13, 30, tzinfo=UTC)
     paid_through = now + timedelta(days=20)
     with postgres_session_factory() as session, session.begin():
         user, account = _add_billing_user_and_account(session, "concurrent-canceled-paid-through")

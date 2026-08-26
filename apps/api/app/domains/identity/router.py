@@ -494,9 +494,7 @@ def get_payment_status(
             "currency": order.currency,
             "paid_at": order.paid_at.isoformat() if order.paid_at else None,
             "failed_at": order.failed_at.isoformat() if order.failed_at else None,
-        }
-        if order is not None
-        else None,
+        },
         "payment": {
             "payment_id": str(payment.id),
             "status": payment.status,
