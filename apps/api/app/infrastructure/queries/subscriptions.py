@@ -315,14 +315,11 @@ def list_active_subscriptions_for_user(
     user_id: uuid.UUID,
     for_update: bool = False,
 ) -> list[Subscription]:
-    query = (
-        db.query(Subscription)
-        .filter(
-            Subscription.tenant_id == tenant_id,
-            Subscription.region == region,
-            Subscription.user_id == user_id,
-            Subscription.status.in_(SubscriptionStatus.live_values()),
-        )
+    query = db.query(Subscription).filter(
+        Subscription.tenant_id == tenant_id,
+        Subscription.region == region,
+        Subscription.user_id == user_id,
+        Subscription.status.in_(SubscriptionStatus.live_values()),
     )
     return (query.with_for_update() if for_update else query).all()
 
