@@ -4,7 +4,7 @@ import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
-from threading import Barrier
+from threading import Barrier, Lock, get_ident
 
 import pytest
 from sqlalchemy.engine import Engine
@@ -18,14 +18,21 @@ from app.domains.billing.enums import (
 )
 from app.domains.billing.service import (
     ActivatePaidPeriodCommand,
+    EnableAutomaticRenewalCommand,
     StartTrialCommand,
     SubscriptionLifecycleError,
     activate_paid_period,
+    enable_automatic_renewal,
     start_trial,
 )
+from app.domains.billing.service import lifecycle_operations
 from app.infrastructure.queries.identity import lock_user_by_id
+from app.infrastructure.queries.subscriptions import get_subscription_by_id
 from app.models import (
+    DocumentAcceptance,
+    DocumentVersion,
     Entitlement,
+    LegalEntity,
     Order,
     Payment,
     PaymentProviderAccount,
@@ -71,6 +78,52 @@ def _add_billing_user_and_account(session: Session, key: str) -> tuple[User, Pay
     session.add_all([user, account])
     session.flush()
     return user, account
+
+
+def _add_recurring_consent_acceptance(session: Session, *, user: User, key: str) -> DocumentAcceptance:
+    now = datetime.now(timezone.utc)
+    entity = LegalEntity(
+        tenant_id=user.tenant_id,
+        region=user.region,
+        name=f"{key} legal entity",
+        entity_type="company",
+        legal_address="Test address",
+        support_email="support@example.com",
+        status="active",
+    )
+    session.add(entity)
+    session.flush()
+    document = DocumentVersion(
+        tenant_id=user.tenant_id,
+        region=user.region,
+        legal_entity_id=entity.id,
+        doc_type="recurring_consent",
+        version=f"{key}-v1",
+        title="Согласие на рекуррентные платежи",
+        url_path="/ru/recurring_consent",
+        content_hash=f"sha256:{key}",
+        published_at=now,
+        effective_from=now,
+        is_active=True,
+        requires_acceptance=True,
+    )
+    session.add(document)
+    session.flush()
+    acceptance = DocumentAcceptance(
+        tenant_id=user.tenant_id,
+        region=user.region,
+        user_id=user.id,
+        document_version_id=document.id,
+        doc_type=document.doc_type,
+        version=document.version,
+        acceptance_kind="recurring_consent",
+        accepted_at=now,
+        acceptance_text_hash=f"{key}-acceptance-hash",
+        metadata_={},
+    )
+    session.add(acceptance)
+    session.flush()
+    return acceptance
 
 
 def _add_verified_paid_order(
@@ -202,6 +255,119 @@ def _start_trial_in_worker(
         except SubscriptionLifecycleError as exc:
             return "error", str(exc)
         return "ok", subscription.id
+
+
+def test_parallel_enable_automatic_renewal_same_key_reuses_event_after_subscription_lock(
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime(2026, 8, 25, 14, 0, tzinfo=timezone.utc)
+    with postgres_session_factory() as session, session.begin():
+        user, account = _add_billing_user_and_account(session, "concurrent-enable-automatic-renewal")
+        plan = _plan_by_code(session, "document-summary-pro")
+        plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC.value
+        acceptance = _add_recurring_consent_acceptance(
+            session,
+            user=user,
+            key="concurrent-enable-automatic-renewal",
+        )
+        subscription = Subscription(
+            tenant_id=user.tenant_id,
+            region=user.region,
+            user_id=user.id,
+            plan_id=plan.id,
+            scope_type=plan.scope_type,
+            product_id=plan.product_id,
+            bundle_id=plan.bundle_id,
+            status=SubscriptionStatus.ACTIVE.value,
+            renewal_mode=SubscriptionRenewalMode.MANUAL.value,
+            current_period_start=now,
+            current_period_end=now + timedelta(days=30),
+        )
+        session.add(subscription)
+        session.flush()
+        subscription_id = subscription.id
+        provider_account_id = account.id
+        acceptance_id = acceptance.id
+
+    command = EnableAutomaticRenewalCommand(
+        operation_idempotency_key="concurrent-enable-automatic-renewal",
+        subscription_id=subscription_id,
+        provider_account_id=provider_account_id,
+        provider_subscription_id="provider-concurrent-enable-automatic-renewal",
+        recurring_consent_acceptance_id=acceptance_id,
+        occurred_at=now,
+    )
+    subscription_lock_hold_seconds = 0.2
+    event_check_barrier = Barrier(3)
+    original_event_for_key = lifecycle_operations._event_for_key
+    synchronized_threads: set[int] = set()
+    synchronized_threads_lock = Lock()
+
+    def synchronized_event_for_key(session: Session, key: str) -> SubscriptionEvent | None:
+        event = original_event_for_key(session, key)
+        thread_id = get_ident()
+        should_wait = False
+        with synchronized_threads_lock:
+            if key == command.operation_idempotency_key and event is None and thread_id not in synchronized_threads:
+                synchronized_threads.add(thread_id)
+                should_wait = True
+        if should_wait:
+            event_check_barrier.wait(timeout=5)
+        return event
+
+    monkeypatch.setattr(lifecycle_operations, "_event_for_key", synchronized_event_for_key)
+
+    def submit(barrier: Barrier, _index: int) -> tuple[uuid.UUID, float]:
+        barrier.wait(timeout=5)
+        started_at = time.monotonic()
+        with postgres_session_factory() as session:
+            result = enable_automatic_renewal(session, command)
+        return result.id, time.monotonic() - started_at
+
+    blocker = postgres_session_factory()
+    blocker.begin()
+    try:
+        assert get_subscription_by_id(blocker, subscription_id, for_update=True) is not None
+        start_barrier = Barrier(3)
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = [executor.submit(submit, start_barrier, index) for index in range(2)]
+            start_barrier.wait(timeout=5)
+            event_check_barrier.wait(timeout=5)
+            time.sleep(subscription_lock_hold_seconds)
+            blocker.commit()
+            results = [future.result(timeout=10) for future in futures]
+    finally:
+        if blocker.in_transaction():
+            blocker.rollback()
+        blocker.close()
+
+    with postgres_session_factory() as session:
+        refreshed_subscription = session.get(Subscription, subscription_id)
+        events = (
+            session.query(SubscriptionEvent)
+            .filter(
+                SubscriptionEvent.subscription_id == subscription_id,
+                SubscriptionEvent.event_type == SubscriptionEventType.AUTOMATIC_RENEWAL_ENABLED.value,
+            )
+            .all()
+        )
+        operation_key_count = (
+            session.query(SubscriptionEvent)
+            .filter(SubscriptionEvent.operation_idempotency_key == command.operation_idempotency_key)
+            .count()
+        )
+
+    assert {result[0] for result in results} == {subscription_id}
+    assert len(synchronized_threads) == 2
+    assert all(elapsed >= subscription_lock_hold_seconds for _, elapsed in results)
+    assert refreshed_subscription is not None
+    assert refreshed_subscription.renewal_mode == SubscriptionRenewalMode.AUTOMATIC.value
+    assert refreshed_subscription.provider_account_id == provider_account_id
+    assert refreshed_subscription.provider_subscription_id == command.provider_subscription_id
+    assert refreshed_subscription.recurring_consent_acceptance_id == acceptance_id
+    assert len(events) == 1
+    assert operation_key_count == 1
 
 
 def test_parallel_paid_orders_same_scope_share_one_subscription(

@@ -14,7 +14,7 @@ configure_api_test_environment()
 import pytest  # noqa: E402
 from fastapi import HTTPException  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
-from sqlalchemy import event  # noqa: E402
+from sqlalchemy import event, inspect  # noqa: E402
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware  # noqa: E402
 
 from app.domains.billing.router import get_subscription as get_account_subscription_route  # noqa: E402
@@ -221,18 +221,25 @@ def create_document_version(
 def accept_document_for_token(
     token: str,
     *,
-    document_version_id: uuid.UUID,
-    document_title: str,
+    document: DocumentVersion,
     entrypoint_value: str | None = None,
 ) -> str:
-    from app.domains.legal.service import hash_acceptance_text
+    from app.domains.legal.service import expected_acceptance_text_hash
+
+    document_identity = inspect(document).identity
+    assert document_identity is not None
+    document_id = document_identity[0]
+    with SessionLocal() as db:
+        current_document = db.get(DocumentVersion, document_id)
+        assert current_document is not None
+        acceptance_text_hash = expected_acceptance_text_hash(current_document)
 
     response = client.post(
         "/api/legal/acceptances",
         headers={"Authorization": f"Bearer {token}"},
         json={
-            "document_version_id": str(document_version_id),
-            "acceptance_text_hash": hash_acceptance_text(f"Я принимаю документ «{document_title}»."),
+            "document_version_id": str(document_id),
+            "acceptance_text_hash": acceptance_text_hash,
             "entrypoint_type": "product" if entrypoint_value is not None else None,
             "entrypoint_value": entrypoint_value,
             "metadata": {"plan_code": "document-summary-pro"} if entrypoint_value is not None else {},
@@ -768,8 +775,6 @@ def test_automatic_checkout_requires_exact_acceptance_id_after_document_acceptan
             version="2026-08-recurring-v1",
             title="Согласие на рекуррентные платежи",
         )
-        document_id = document.id
-        document_title = document.title
 
     register_response = client.post(
         "/api/auth/register",
@@ -783,8 +788,7 @@ def test_automatic_checkout_requires_exact_acceptance_id_after_document_acceptan
     token = register_response.json()["token"]
     accept_document_for_token(
         token,
-        document_version_id=document_id,
-        document_title=document_title,
+        document=document,
         entrypoint_value="document-summary",
     )
 
@@ -815,8 +819,6 @@ def test_checkout_persists_exact_recurring_consent_reference() -> None:
             version="2026-08-recurring-v1",
             title="Согласие на рекуррентные платежи",
         )
-        document_id = document.id
-        document_title = document.title
 
     register_response = client.post(
         "/api/auth/register",
@@ -830,8 +832,7 @@ def test_checkout_persists_exact_recurring_consent_reference() -> None:
     token = register_response.json()["token"]
     acceptance_id = accept_document_for_token(
         token,
-        document_version_id=document_id,
-        document_title=document_title,
+        document=document,
     )
 
     checkout_response = client.post(
@@ -866,8 +867,6 @@ def test_automatic_checkout_paid_subscription_remains_manual_until_provider_atta
             version="2026-08-recurring-v1",
             title="Согласие на рекуррентные платежи",
         )
-        document_id = document.id
-        document_title = document.title
 
     register_response = client.post(
         "/api/auth/register",
@@ -881,8 +880,7 @@ def test_automatic_checkout_paid_subscription_remains_manual_until_provider_atta
     token = register_response.json()["token"]
     acceptance_id = accept_document_for_token(
         token,
-        document_version_id=document_id,
-        document_title=document_title,
+        document=document,
         entrypoint_value="document-summary",
     )
 
@@ -935,8 +933,6 @@ def test_checkout_rejects_recurring_acceptance_from_another_user() -> None:
             version="2026-08-recurring-v1",
             title="Согласие на рекуррентные платежи",
         )
-        document_id = document.id
-        document_title = document.title
 
     owner_response = client.post(
         "/api/auth/register",
@@ -950,8 +946,7 @@ def test_checkout_rejects_recurring_acceptance_from_another_user() -> None:
     owner_token = owner_response.json()["token"]
     owner_acceptance_id = accept_document_for_token(
         owner_token,
-        document_version_id=document_id,
-        document_title=document_title,
+        document=document,
         entrypoint_value="document-summary",
     )
 
@@ -967,8 +962,7 @@ def test_checkout_rejects_recurring_acceptance_from_another_user() -> None:
     buyer_token = buyer_response.json()["token"]
     accept_document_for_token(
         buyer_token,
-        document_version_id=document_id,
-        document_title=document_title,
+        document=document,
         entrypoint_value="document-summary",
     )
 
@@ -999,8 +993,6 @@ def test_checkout_rejects_recurring_acceptance_from_another_tenant_or_region() -
             version="2026-08-recurring-v1",
             title="Согласие на рекуррентные платежи",
         )
-        document_id = document.id
-        document_title = document.title
         foreign_entity = create_legal_entity(db, region="eu")
         foreign_document = create_document_version(
             db,
@@ -1009,8 +1001,6 @@ def test_checkout_rejects_recurring_acceptance_from_another_tenant_or_region() -
             version="2026-08-recurring-v1",
             title="Recurring consent",
         )
-        foreign_document_id = foreign_document.id
-        foreign_document_title = foreign_document.title
 
     buyer_response = client.post(
         "/api/auth/register",
@@ -1024,8 +1014,7 @@ def test_checkout_rejects_recurring_acceptance_from_another_tenant_or_region() -
     buyer_token = buyer_response.json()["token"]
     accept_document_for_token(
         buyer_token,
-        document_version_id=document_id,
-        document_title=document_title,
+        document=document,
         entrypoint_value="document-summary",
     )
 
@@ -1043,8 +1032,7 @@ def test_checkout_rejects_recurring_acceptance_from_another_tenant_or_region() -
     foreign_token = foreign_response.json()["token"]
     foreign_acceptance_id = accept_document_for_token(
         foreign_token,
-        document_version_id=foreign_document_id,
-        document_title=foreign_document_title,
+        document=foreign_document,
         entrypoint_value="document-summary",
     )
 
@@ -1075,8 +1063,6 @@ def test_checkout_rejects_acceptance_with_wrong_kind() -> None:
             version="2026-08-recurring-v1",
             title="Согласие на рекуррентные платежи",
         )
-        recurring_document_id = recurring_document.id
-        recurring_document_title = recurring_document.title
         offer_document = create_document_version(
             db,
             legal_entity=legal_entity,
@@ -1084,8 +1070,6 @@ def test_checkout_rejects_acceptance_with_wrong_kind() -> None:
             version="2026-08-offer-v1",
             title="Публичная оферта",
         )
-        offer_document_id = offer_document.id
-        offer_document_title = offer_document.title
 
     buyer_response = client.post(
         "/api/auth/register",
@@ -1099,14 +1083,12 @@ def test_checkout_rejects_acceptance_with_wrong_kind() -> None:
     token = buyer_response.json()["token"]
     accept_document_for_token(
         token,
-        document_version_id=recurring_document_id,
-        document_title=recurring_document_title,
+        document=recurring_document,
         entrypoint_value="document-summary",
     )
     wrong_acceptance_id = accept_document_for_token(
         token,
-        document_version_id=offer_document_id,
-        document_title=offer_document_title,
+        document=offer_document,
         entrypoint_value="document-summary",
     )
 
@@ -1137,8 +1119,6 @@ def test_checkout_rejects_recurring_acceptance_for_another_entrypoint() -> None:
             version="2026-08-recurring-v1",
             title="Согласие на рекуррентные платежи",
         )
-        document_id = document.id
-        document_title = document.title
 
     buyer_response = client.post(
         "/api/auth/register",
@@ -1152,8 +1132,7 @@ def test_checkout_rejects_recurring_acceptance_for_another_entrypoint() -> None:
     token = buyer_response.json()["token"]
     wrong_entrypoint_acceptance_id = accept_document_for_token(
         token,
-        document_version_id=document_id,
-        document_title=document_title,
+        document=document,
         entrypoint_value="prompt-optimizer",
     )
 
@@ -1184,8 +1163,6 @@ def test_checkout_rejects_recurring_acceptance_from_the_future() -> None:
             version="2026-08-recurring-v1",
             title="Согласие на рекуррентные платежи",
         )
-        document_id = document.id
-        document_title = document.title
 
     buyer_response = client.post(
         "/api/auth/register",
@@ -1199,14 +1176,12 @@ def test_checkout_rejects_recurring_acceptance_from_the_future() -> None:
     token = buyer_response.json()["token"]
     future_acceptance_id = accept_document_for_token(
         token,
-        document_version_id=document_id,
-        document_title=document_title,
+        document=document,
         entrypoint_value="document-summary",
     )
     accept_document_for_token(
         token,
-        document_version_id=document_id,
-        document_title=document_title,
+        document=document,
         entrypoint_value="document-summary",
     )
 
@@ -1244,7 +1219,6 @@ def test_checkout_requires_new_recurring_acceptance_when_document_version_change
         )
         legal_entity_id = legal_entity.id
         first_document_id = first_document.id
-        first_document_title = first_document.title
 
     buyer_response = client.post(
         "/api/auth/register",
@@ -1258,8 +1232,7 @@ def test_checkout_requires_new_recurring_acceptance_when_document_version_change
     token = buyer_response.json()["token"]
     stale_acceptance_id = accept_document_for_token(
         token,
-        document_version_id=first_document_id,
-        document_title=first_document_title,
+        document=first_document,
         entrypoint_value="document-summary",
     )
 
@@ -5711,7 +5684,6 @@ def test_automatic_checkout_keeps_recurring_consent_missing_when_hash_is_wrong()
             title="Согласие на рекуррентные платежи",
         )
         document_id = document.id
-        document_title = document.title
         document_hash = expected_acceptance_text_hash(document)
 
     register_response = client.post(
@@ -5728,6 +5700,7 @@ def test_automatic_checkout_keeps_recurring_consent_missing_when_hash_is_wrong()
     with SessionLocal() as db:
         user = db.query(User).filter(User.email == "recurring-hash-gate@example.com").one()
         document = db.get(DocumentVersion, document_id)
+        assert document is not None
         create_document_acceptance_row(
             db,
             document=document,
@@ -5752,8 +5725,7 @@ def test_automatic_checkout_keeps_recurring_consent_missing_when_hash_is_wrong()
 
     acceptance_id = accept_document_for_token(
         token,
-        document_version_id=document_id,
-        document_title=document_title,
+        document=document,
         entrypoint_value="document-summary",
     )
     with SessionLocal() as db:

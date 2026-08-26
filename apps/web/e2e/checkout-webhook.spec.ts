@@ -673,6 +673,8 @@ test("automatic renewal checkout uses exact recurring consent acceptance", async
   let api: APIRequestContext | undefined;
   let fixture: AutomaticRenewalFixture | undefined;
   let testError: unknown;
+  let cleanupError: unknown;
+  let disposeError: unknown;
 
   try {
     fixture = await configureAutomaticRenewalFixture();
@@ -792,11 +794,7 @@ test("automatic renewal checkout uses exact recurring consent acceptance", async
     });
   } catch (error) {
     testError = error;
-    throw error;
   } finally {
-    let cleanupError: unknown;
-    let disposeError: unknown;
-
     try {
       fixture?.cleanup();
     } catch (error) {
@@ -808,23 +806,37 @@ test("automatic renewal checkout uses exact recurring consent acceptance", async
     } catch (error) {
       disposeError = error;
     }
+  }
 
-    if (testError !== undefined && (cleanupError !== undefined || disposeError !== undefined)) {
+  if (testError !== undefined) {
+    if (cleanupError !== undefined || disposeError !== undefined) {
       try {
-        await testInfo.attach("automatic-renewal-original-error", {
-          body: JSON.stringify(errorReport(testError), null, 2),
+        await testInfo.attach("automatic-renewal-cleanup-errors", {
+          body: JSON.stringify(
+            {
+              testError: errorReport(testError),
+              cleanupError: cleanupError === undefined ? undefined : errorReport(cleanupError),
+              disposeError: disposeError === undefined ? undefined : errorReport(disposeError)
+            },
+            null,
+            2
+          ),
           contentType: "application/json"
         });
       } catch {
-        // Preserve the cleanup or dispose failure as the reported error.
+        // Preserve the original test failure as the reported error.
       }
     }
+    throw testError;
+  }
 
-    if (cleanupError !== undefined) {
-      throw cleanupError;
-    }
-    if (disposeError !== undefined) {
-      throw disposeError;
-    }
+  if (cleanupError !== undefined && disposeError !== undefined) {
+    throw new AggregateError([cleanupError, disposeError], "Automatic renewal cleanup and API disposal failed");
+  }
+  if (cleanupError !== undefined) {
+    throw cleanupError;
+  }
+  if (disposeError !== undefined) {
+    throw disposeError;
   }
 });

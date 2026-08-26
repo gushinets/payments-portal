@@ -70,9 +70,14 @@ def enable_automatic_renewal(db: Session, command: EnableAutomaticRenewalCommand
     if existing_event:
         return _subscription_for_event(db, existing_event)
     subscription = get_subscription_by_id(db, command.subscription_id, for_update=True)
+    if subscription is None:
+        raise SubscriptionLifecycleError("automatic_renewal_context_missing")
+    existing_event = _event_for_key(db, command.operation_idempotency_key)
+    if existing_event:
+        return _subscription_for_event(db, existing_event)
     account = get_provider_account_by_id(db, command.provider_account_id, for_update=True)
     acceptance = get_document_acceptance_by_id(db, command.recurring_consent_acceptance_id, for_update=True)
-    if subscription is None or account is None or acceptance is None:
+    if account is None or acceptance is None:
         raise SubscriptionLifecycleError("automatic_renewal_context_missing")
     if subscription.renewal_mode == SubscriptionRenewalMode.AUTOMATIC.value:
         raise SubscriptionLifecycleError("automatic_renewal_already_enabled")

@@ -245,4 +245,4 @@ database records, telemetry, exceptions, or logs.
 
 ## Follow-up before completion
 
-No open follow-ups before completion.
+No additional follow-ups are required for ANY-78 before completion.

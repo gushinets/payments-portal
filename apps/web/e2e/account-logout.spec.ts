@@ -36,7 +36,7 @@ test("account logout performs a full document navigation", async ({ page }, test
 
     await page.goto("/ru/account");
     const accountMain = page.getByRole("main");
-    await expect(accountMain.locator(".account-summary-email")).toHaveText(email);
+    await expect(accountMain.getByText(email, { exact: true })).toBeVisible();
     const loadCountBeforeLogout = await page.evaluate(
       (storageKey) => Number(window.sessionStorage.getItem(storageKey)),
       documentLoadCountKey
