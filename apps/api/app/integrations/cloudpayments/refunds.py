@@ -244,8 +244,14 @@ def record_refund(
     return refund
 
 
+def refund_lifecycle_applies(db: Session, order: Order, *, for_update: bool = False) -> bool:
+    if order.status != "canceled":
+        return True
+    return get_subscription_for_order(db, order.id, for_update=for_update) is not None
+
+
 def _apply_order_refund_status(db: Session, order: Order) -> None:
-    if order.status == "canceled" and get_subscription_for_order(db, order.id) is None:
+    if not refund_lifecycle_applies(db, order):
         return
     captured_payments = (
         db.query(Payment)

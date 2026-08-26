@@ -113,11 +113,9 @@ def lookup_transaction(
             ),
         )
 
-    if (
-        provider_account.public_identifier
-        and model.public_id
-        and provider_account.public_identifier.strip() != model.public_id.strip()
-    ):
+    account_public_id = (provider_account.public_identifier or "").strip()
+    model_public_id = (model.public_id or "").strip()
+    if account_public_id and (not model_public_id or account_public_id != model_public_id):
         return _lookup_failure_result(
             provider_code=provider_code,
             provider_account=provider_account,
