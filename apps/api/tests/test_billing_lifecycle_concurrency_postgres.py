@@ -482,7 +482,7 @@ def test_parallel_paid_orders_same_plan_different_users_do_not_wait_on_plan_lock
     blocker = postgres_session_factory()
     blocker.begin()
     try:
-        assert blocker.query(Plan).filter(Plan.id == plan_id).with_for_update().one() is not None
+        assert blocker.query(Plan).filter(Plan.id == plan_id).with_for_update(key_share=True).one() is not None
         start_barrier = Barrier(3)
         with ThreadPoolExecutor(max_workers=2) as executor:
             futures = [executor.submit(submit, start_barrier, index) for index in range(2)]
