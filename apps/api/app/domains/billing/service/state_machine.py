@@ -21,7 +21,13 @@ PROVIDER_SUBSCRIPTION_STATUS_MAP = {
 
 SUBSCRIPTION_STATUS_TRANSITIONS = {
     SubscriptionStatus.TRIALING: frozenset(
-        {SubscriptionStatus.ACTIVE, SubscriptionStatus.CANCELED, SubscriptionStatus.EXPIRED}
+        {
+            SubscriptionStatus.ACTIVE,
+            SubscriptionStatus.PAST_DUE,
+            SubscriptionStatus.CANCELED,
+            SubscriptionStatus.EXPIRED,
+            SubscriptionStatus.PAUSED,
+        }
     ),
     SubscriptionStatus.ACTIVE: frozenset(
         {

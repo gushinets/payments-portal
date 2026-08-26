@@ -2480,6 +2480,129 @@ def test_fail_webhook_updates_payment_and_order_without_access_activation() -> N
     assert entitlement_count == 0
 
 
+def test_payment_status_projects_product_state_from_final_and_pending_orders() -> None:
+    pending_email = "projection-pending@example.com"
+    pending_invoice_id = create_checkout_invoice(email=pending_email)
+
+    pending_response = client.get(f"/api/auth/payment-status?invoice_id={pending_invoice_id}&email={pending_email}")
+    assert pending_response.status_code == 200
+    pending_payload = pending_response.json()
+    assert pending_payload["product_state"]["status"] == "pending"
+    assert pending_payload["order"]["status"] == "pending_payment"
+
+    with SessionLocal() as db:
+        pending_order = db.query(Order).filter(Order.provider_invoice_id == pending_invoice_id).one()
+        pending_order.status = "created"
+        db.commit()
+
+    created_response = client.get(f"/api/auth/payment-status?invoice_id={pending_invoice_id}&email={pending_email}")
+    assert created_response.status_code == 200
+    created_payload = created_response.json()
+    assert created_payload["product_state"]["status"] == "pending"
+    assert created_payload["order"]["status"] == "created"
+
+    failed_email = "projection-failed@example.com"
+    failed_invoice_id = create_checkout_invoice(email=failed_email)
+    failed_webhook_response = client.post(
+        "/api/cloudpayments/fail",
+        json={
+            "InvoiceId": failed_invoice_id,
+            "TransactionId": "tx-projection-failed",
+            "AccountId": failed_email,
+            "Amount": "990.00",
+            "Currency": "RUB",
+            "ReasonCode": "5",
+            "Reason": "Insufficient funds",
+        },
+    )
+    assert failed_webhook_response.status_code == 200
+
+    failed_response = client.get(f"/api/auth/payment-status?invoice_id={failed_invoice_id}&email={failed_email}")
+    assert failed_response.status_code == 200
+    failed_payload = failed_response.json()
+    assert failed_payload["product_state"]["status"] == "inactive"
+    assert failed_payload["order"]["status"] == "payment_failed"
+    assert failed_payload["payment"]["status"] == "failed"
+
+    active_email = "projection-active@example.com"
+    active_invoice_id = create_checkout_invoice(email=active_email)
+    active_webhook_response = client.post(
+        "/api/cloudpayments/pay",
+        json={
+            "InvoiceId": active_invoice_id,
+            "TransactionId": "tx-projection-active",
+            "AccountId": active_email,
+            "Amount": "990.00",
+            "Currency": "RUB",
+            "Status": "Completed",
+        },
+    )
+    assert active_webhook_response.status_code == 200
+
+    active_response = client.get(f"/api/auth/payment-status?invoice_id={active_invoice_id}&email={active_email}")
+    assert active_response.status_code == 200
+    active_payload = active_response.json()
+    assert active_payload["product_state"]["status"] == "active"
+    assert active_payload["order"]["status"] == "paid"
+    assert active_payload["payment"]["status"] == "succeeded"
+
+    seed_cloudpayments_provider_account(widget_mode="auth")
+    canceled_email = "projection-canceled@example.com"
+    canceled_invoice_id = create_checkout_invoice(email=canceled_email, widget_mode="auth")
+    canceled_webhook_response = client.post(
+        "/api/cloudpayments/cancel",
+        json={
+            "InvoiceId": canceled_invoice_id,
+            "TransactionId": "tx-projection-canceled",
+            "AccountId": canceled_email,
+            "Amount": "990.00",
+            "Currency": "RUB",
+        },
+    )
+    assert canceled_webhook_response.status_code == 200
+
+    canceled_response = client.get(f"/api/auth/payment-status?invoice_id={canceled_invoice_id}&email={canceled_email}")
+    assert canceled_response.status_code == 200
+    canceled_payload = canceled_response.json()
+    assert canceled_payload["product_state"]["status"] == "inactive"
+    assert canceled_payload["order"]["status"] == "canceled"
+    assert canceled_payload["payment"]["status"] == "canceled"
+
+    refunded_email = "projection-refunded@example.com"
+    refunded_invoice_id = create_checkout_invoice(email=refunded_email, widget_mode="auth")
+    confirm_webhook_response = client.post(
+        "/api/cloudpayments/confirm",
+        json={
+            "InvoiceId": refunded_invoice_id,
+            "TransactionId": "tx-projection-refunded",
+            "AccountId": refunded_email,
+            "Amount": "990.00",
+            "Currency": "RUB",
+            "Status": "Completed",
+        },
+    )
+    assert confirm_webhook_response.status_code == 200
+    refund_webhook_response = client.post(
+        "/api/cloudpayments/refund",
+        json={
+            "InvoiceId": refunded_invoice_id,
+            "TransactionId": "tx-projection-refunded",
+            "RefundId": "refund-projection-refunded",
+            "Amount": "990.00",
+            "Currency": "RUB",
+            "Reason": "customer_request",
+        },
+    )
+    assert refund_webhook_response.status_code == 200
+
+    refunded_response = client.get(f"/api/auth/payment-status?invoice_id={refunded_invoice_id}&email={refunded_email}")
+    assert refunded_response.status_code == 200
+    refunded_payload = refunded_response.json()
+    assert refunded_payload["product_state"]["status"] == "inactive"
+    assert refunded_payload["order"]["status"] == "refunded"
+    assert refunded_payload["payment"]["status"] == "refunded"
+
+
 def test_signed_check_after_failed_attempt_allows_retry() -> None:
     require_signed_cloudpayments_webhooks_for_test()
     object.__setattr__(settings, "cloudpayments_enabled", True)

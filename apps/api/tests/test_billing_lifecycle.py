@@ -7,6 +7,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.domains.billing.enums import (
+    EntitlementSource,
     EntitlementStatus,
     ProviderSubscriptionState,
     SubscriptionEventType,
@@ -172,6 +173,97 @@ def test_provider_state_keeps_paid_entitlement_valid(
     assert result.renewal_mode == expected_renewal_mode
     assert entitlement.status == EntitlementStatus.ACTIVE.value
     assert entitlement.valid_until == subscription.current_period_end
+
+
+@pytest.mark.parametrize(
+    ("provider_state", "expected_status"),
+    (
+        (ProviderSubscriptionState.PAST_DUE, SubscriptionStatus.PAST_DUE),
+        (ProviderSubscriptionState.PAUSED, SubscriptionStatus.PAUSED),
+    ),
+)
+@pytest.mark.parametrize("entitlement_source", (EntitlementSource.TRIAL, EntitlementSource.ORDER))
+def test_trialing_provider_state_keeps_current_entitlement_and_is_idempotent(
+    db_session,
+    provider_state: ProviderSubscriptionState,
+    expected_status: SubscriptionStatus,
+    entitlement_source: EntitlementSource,
+) -> None:
+    now = datetime.now(timezone.utc)
+    key = f"trialing-provider-state-{provider_state.value}-{entitlement_source.value}"
+    plan = db_session.query(Plan).filter(Plan.tenant_id == "anytoolai", Plan.region == "ru").first()
+    assert plan is not None
+    user, account = _add_billing_user_and_account(db_session, key)
+    order_id = None
+    if entitlement_source == EntitlementSource.ORDER:
+        order, _, _ = _add_verified_paid_order(
+            db_session,
+            key=key,
+            user=user,
+            account=account,
+            plan=plan,
+            paid_at=now,
+        )
+        order_id = order.id
+    subscription = Subscription(
+        tenant_id="anytoolai",
+        region="ru",
+        user_id=user.id,
+        plan_id=plan.id,
+        scope_type=plan.scope_type,
+        product_id=plan.product_id,
+        bundle_id=plan.bundle_id,
+        status=SubscriptionStatus.TRIALING.value,
+        renewal_mode=SubscriptionRenewalMode.AUTOMATIC.value,
+        current_period_start=now,
+        current_period_end=now + timedelta(days=30),
+    )
+    db_session.add(subscription)
+    db_session.flush()
+    entitlement = Entitlement(
+        tenant_id="anytoolai",
+        region="ru",
+        user_id=user.id,
+        subscription_id=subscription.id,
+        plan_id=plan.id,
+        scope_type=plan.scope_type,
+        product_id=plan.product_id,
+        bundle_id=plan.bundle_id,
+        status=EntitlementStatus.ACTIVE.value,
+        valid_from=now,
+        valid_until=subscription.current_period_end,
+        source=entitlement_source.value,
+        order_id=order_id,
+    )
+    db_session.add(entitlement)
+    db_session.flush()
+
+    command = ApplyProviderSubscriptionStateCommand(
+        operation_idempotency_key=key,
+        subscription_id=subscription.id,
+        provider_state=provider_state,
+        occurred_at=now,
+    )
+    result = apply_provider_subscription_state(db_session, command)
+    repeated = apply_provider_subscription_state(db_session, command)
+
+    events = (
+        db_session.query(SubscriptionEvent)
+        .filter(
+            SubscriptionEvent.subscription_id == subscription.id,
+            SubscriptionEvent.event_type == SubscriptionEventType.PROVIDER_SUBSCRIPTION_STATE_APPLIED.value,
+        )
+        .all()
+    )
+    db_session.refresh(entitlement)
+    assert result.status == expected_status.value
+    assert repeated.id == result.id
+    assert repeated.status == expected_status.value
+    assert entitlement.status == EntitlementStatus.ACTIVE.value
+    assert entitlement.revoked_at is None
+    assert len(events) == 1
+    assert events[0].previous_status == SubscriptionStatus.TRIALING.value
+    assert events[0].next_status == expected_status.value
 
 
 def test_terminal_subscription_cannot_be_reactivated() -> None:

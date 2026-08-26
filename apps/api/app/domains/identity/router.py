@@ -257,16 +257,10 @@ def present_product_state(
     else:
         starts_at = order.created_at if order is not None else None
         expires_at = None
+        pending_order_statuses = {"created", OrderStatus.PENDING_PAYMENT.value}
         status = (
             ProductAccessStatus.PENDING.value
-            if order is not None
-            and order.status
-            not in {
-                OrderStatus.PAID.value,
-                OrderStatus.REFUNDED.value,
-                OrderStatus.PARTIALLY_REFUNDED.value,
-                OrderStatus.CANCELED.value,
-            }
+            if order is not None and order.status in pending_order_statuses
             else ProductAccessStatus.INACTIVE.value
         )
     plan = None

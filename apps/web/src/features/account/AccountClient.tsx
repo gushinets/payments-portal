@@ -69,6 +69,27 @@ function statusLabel(status: ProductState["status"] | undefined): string {
   return "Подписка не активна";
 }
 
+async function fetchSession(token: string, productCode?: string): Promise<SessionResponse> {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(
+    () => controller.abort(),
+    requestTimeoutMs
+  );
+  const productQuery = productCode
+    ? `?product=${encodeURIComponent(productCode)}`
+    : "";
+  const response = await fetch(`${resolveApiBase()}/api/auth/session${productQuery}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    signal: controller.signal
+  }).finally(() => window.clearTimeout(timeoutId));
+
+  if (!response.ok) {
+    throw new Error("session_error");
+  }
+
+  return response.json() as Promise<SessionResponse>;
+}
+
 export function AccountClient() {
   const [email, setEmail] = useState("");
   const [states, setStates] = useState<Record<string, ProductState>>({});
@@ -92,38 +113,32 @@ export function AccountClient() {
       setError("");
 
       try {
-        const payloads = await Promise.all(
-          products.map(async (product) => {
-            const controller = new AbortController();
-            const timeoutId = window.setTimeout(
-              () => controller.abort(),
-              requestTimeoutMs
-            );
-            const response = await fetch(
-              `${resolveApiBase()}/api/auth/session?product=${encodeURIComponent(product.code)}`,
-              {
-                headers: { Authorization: `Bearer ${token}` },
-                signal: controller.signal
-              }
-            ).finally(() => window.clearTimeout(timeoutId));
+        const session = await fetchSession(token);
 
-            if (!response.ok) {
-              throw new Error("session_error");
-            }
+        if (cancelled) {
+          return;
+        }
 
-            return response.json() as Promise<SessionResponse>;
-          })
+        setEmail(session.user.email);
+        setStates({});
+        setLoading(false);
+
+        const payloads = await Promise.allSettled(
+          products.map((product) => fetchSession(token, product.code))
         );
 
         if (cancelled) {
           return;
         }
 
-        setEmail(payloads[0]?.user.email ?? "");
         setStates(
           Object.fromEntries(
             payloads
-              .map((payload) => payload.product_state)
+              .filter(
+                (payload): payload is PromiseFulfilledResult<SessionResponse> =>
+                  payload.status === "fulfilled"
+              )
+              .map((payload) => payload.value.product_state)
               .filter((state): state is ProductState => Boolean(state))
               .map((state) => [state.product_code, state])
           )

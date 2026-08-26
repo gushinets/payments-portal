@@ -52,3 +52,38 @@ it("clears local session state and announces logout", async () => {
   });
   expect(sessionChanged).toHaveBeenCalledOnce();
 });
+
+it("keeps the account summary available when product state loading fails", async () => {
+  const sessionChanged = vi.fn();
+  window.addEventListener("anytoolai_session_changed", sessionChanged);
+  storeSessionToken("session-token");
+  server.use(
+    http.get(`${apiBase}/api/auth/session`, ({ request }) => {
+      expect(request.headers.get("authorization")).toBe("Bearer session-token");
+      const url = new URL(request.url);
+      if (url.searchParams.has("product")) {
+        return new HttpResponse(null, { status: 504 });
+      }
+      return HttpResponse.json({
+        authenticated: true,
+        user: {
+          tenant_id: "anytoolai",
+          region: "ru",
+          user_id: "11111111-1111-4111-8111-111111111111",
+          email: "buyer@example.com"
+        },
+        product_state: null
+      });
+    })
+  );
+
+  render(<AccountClient />);
+
+  expect(await screen.findByText("buyer@example.com")).toBeVisible();
+  expect(screen.getByRole("button", { name: /Выйти/ })).toBeVisible();
+  expect(window.localStorage.getItem("anytoolai_session_token_v1")).toBe(
+    "session-token"
+  );
+  expect(sessionChanged).not.toHaveBeenCalled();
+  window.removeEventListener("anytoolai_session_changed", sessionChanged);
+});
