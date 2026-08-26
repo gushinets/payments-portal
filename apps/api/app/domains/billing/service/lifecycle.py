@@ -174,7 +174,11 @@ def activate_paid_period(db: Session, command: ActivatePaidPeriodCommand) -> Sub
     paid_at = order.paid_at or command.occurred_at
     scope_type, product_id, bundle_id = _scope_values(plan)
     candidates = list_active_subscriptions_for_user(
-        db, tenant_id=order.tenant_id, region=order.region, user_id=order.user_id
+        db,
+        tenant_id=order.tenant_id,
+        region=order.region,
+        user_id=order.user_id,
+        for_update=True,
     )
     subscription = next((item for item in candidates if item.plan_id == plan.id and _scope_matches(item, plan)), None)
     previous_status = subscription.status if subscription is not None else None

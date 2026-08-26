@@ -51,11 +51,11 @@ class PaymentWebhookEvent(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(uuid_type, primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[str] = mapped_column(Text, nullable=False, default="anytoolai", index=True)
-    region: Mapped[str] = mapped_column(ForeignKey("regions.code"), nullable=False, default="ru", index=True)
+    region: Mapped[str] = mapped_column(ForeignKey("regions.code"), nullable=False, index=True)
     provider_account_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("payment_provider_accounts.id"), nullable=True, index=True
     )
-    provider: Mapped[str] = mapped_column(String, nullable=False, default="cloudpayments")
+    provider: Mapped[str] = mapped_column(String, nullable=False)
     endpoint: Mapped[str] = mapped_column(Text, nullable=False)
     event_type: Mapped[str | None] = mapped_column(Text, nullable=True)
     provider_event_id: Mapped[str | None] = mapped_column(Text, nullable=True)

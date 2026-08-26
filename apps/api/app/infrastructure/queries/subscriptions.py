@@ -308,9 +308,14 @@ def get_live_subscription_for_scope(
 
 
 def list_active_subscriptions_for_user(
-    db: Session, *, tenant_id: str, region: str, user_id: uuid.UUID
+    db: Session,
+    *,
+    tenant_id: str,
+    region: str,
+    user_id: uuid.UUID,
+    for_update: bool = False,
 ) -> list[Subscription]:
-    return (
+    query = (
         db.query(Subscription)
         .filter(
             Subscription.tenant_id == tenant_id,
@@ -318,9 +323,8 @@ def list_active_subscriptions_for_user(
             Subscription.user_id == user_id,
             Subscription.status.in_(SubscriptionStatus.live_values()),
         )
-        .with_for_update()
-        .all()
     )
+    return (query.with_for_update() if for_update else query).all()
 
 
 def list_remaining_canceled_entitlements_for_scope(
@@ -361,10 +365,6 @@ def list_remaining_canceled_entitlements_for_scope(
 
 
 def get_subscription_for_order(db: Session, order_id: uuid.UUID, *, for_update: bool = False) -> Subscription | None:
-    event_type_rank = case(
-        (SubscriptionEvent.event_type == SubscriptionEventType.PAID_PERIOD_ACTIVATED.value, 0),
-        else_=1,
-    )
     query = (
         db.query(Subscription)
         .join(SubscriptionEvent, SubscriptionEvent.subscription_id == Subscription.id)
@@ -374,7 +374,6 @@ def get_subscription_for_order(db: Session, order_id: uuid.UUID, *, for_update: 
         )
         .order_by(
             SubscriptionEvent.occurred_at.desc(),
-            event_type_rank.asc(),
             SubscriptionEvent.id.desc(),
             Subscription.created_at.desc(),
             Subscription.id.desc(),
