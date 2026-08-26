@@ -219,6 +219,7 @@ describe("CheckoutClient critical characterization", () => {
           plan_code: "document-summary-pro",
           auto_renew: false
         });
+        expect(body).not.toHaveProperty("recurring_consent_acceptance_id");
         expect(JSON.stringify(body).toLowerCase()).not.toContain("card");
 
         if (checkoutAttempts === 1) {
@@ -321,6 +322,366 @@ describe("CheckoutClient critical characterization", () => {
       email: "buyer@example.com",
       invoiceId: "invoice-after-legal"
     });
+  });
+
+  it("does not start automatic checkout before the local recurring consent checkbox is selected", async () => {
+    const user = userEvent.setup();
+    storeSessionToken("session-token");
+    let checkoutAttempts = 0;
+    server.use(
+      http.get(`${apiBase}/api/auth/session`, () =>
+        HttpResponse.json(sessionResponse("inactive"))
+      ),
+      http.post(`${apiBase}/api/auth/checkout-intent`, () => {
+        checkoutAttempts += 1;
+        return HttpResponse.json({});
+      })
+    );
+
+    await renderCheckoutWithProviderStub();
+
+    expect(await screen.findByText("buyer@example.com")).toBeVisible();
+    await user.click(screen.getByLabelText("Включить автопродление"));
+    await user.click(screen.getByRole("button", { name: /^Оплатить/ }));
+
+    expect(
+      await screen.findByText(/Для автопродления нужно отдельное согласие/)
+    ).toBeVisible();
+    expect(checkoutAttempts).toBe(0);
+  });
+
+  it("stores the recurring acceptance id and repeats checkout with that exact id", async () => {
+    const user = userEvent.setup();
+    storeSessionToken("session-token");
+    const checkoutBodies: Record<string, unknown>[] = [];
+    server.use(
+      http.get(`${apiBase}/api/auth/session`, () =>
+        HttpResponse.json(sessionResponse("inactive"))
+      ),
+      http.post(`${apiBase}/api/auth/checkout-intent`, async ({ request }) => {
+        const body = (await request.json()) as Record<string, unknown>;
+        checkoutBodies.push(body);
+        if (checkoutBodies.length === 1) {
+          expect(body).toEqual({
+            product: "document-summary",
+            plan_code: "document-summary-pro",
+            auto_renew: true
+          });
+          return HttpResponse.json(
+            {
+              detail: {
+                code: "missing_required_documents",
+                documents: [
+                  {
+                    document_version_id: "doc-offer-v1",
+                    doc_type: "offer",
+                    version: "2026-07-11",
+                    title: "Публичная оферта",
+                    url_path: "/ru/offer",
+                    acceptance_text: "Принимаю условия оферты.",
+                    acceptance_text_hash: "hash-offer"
+                  },
+                  {
+                    document_version_id: "doc-recurring-v1",
+                    doc_type: "recurring_consent",
+                    version: "2026-08-25",
+                    title: "Согласие на регулярные списания",
+                    url_path: "/ru/offer",
+                    acceptance_text: "Принимаю регулярные списания.",
+                    acceptance_text_hash: "hash-recurring"
+                  }
+                ]
+              }
+            },
+            { status: 409 }
+          );
+        }
+
+        expect(body).toEqual({
+          product: "document-summary",
+          plan_code: "document-summary-pro",
+          auto_renew: true,
+          recurring_consent_acceptance_id: "acceptance-recurring-v1"
+        });
+        return HttpResponse.json({
+          product_state: {
+            product_code: "document-summary",
+            plan_code: "document-summary-pro",
+            plan_name: "Document Summary Pro",
+            invoice_id: "invoice-after-recurring",
+            transaction_id: null,
+            status: "pending",
+            starts_at: null,
+            expires_at: null
+          },
+          checkout: {
+            amount_minor: 99000,
+            amount: 990,
+            currency: "RUB",
+            action: checkoutAction("invoice-after-recurring")
+          }
+        });
+      }),
+      http.post(`${apiBase}/api/legal/acceptances`, async ({ request }) => {
+        const body = (await request.json()) as Record<string, unknown>;
+        expect(body).toMatchObject({
+          entrypoint_type: "product",
+          entrypoint_value: "document-summary",
+          metadata: {
+            plan_code: "document-summary-pro",
+            auto_renew: true
+          }
+        });
+        if (body.document_version_id === "doc-recurring-v1") {
+          return HttpResponse.json({
+            status: "accepted",
+            acceptance_id: "acceptance-recurring-v1",
+            doc_type: "recurring_consent"
+          });
+        }
+        return HttpResponse.json({
+          status: "accepted",
+          acceptance_id: "acceptance-offer-v1",
+          doc_type: "offer"
+        });
+      })
+    );
+
+    const provider = await renderCheckoutWithProviderStub();
+
+    expect(await screen.findByText("buyer@example.com")).toBeVisible();
+    await user.click(screen.getByLabelText("Включить автопродление"));
+    await user.click(
+      screen.getByLabelText(/Я соглашаюсь на регулярное автоматическое списание/)
+    );
+    await user.click(screen.getByRole("button", { name: /^Оплатить/ }));
+    await user.click(screen.getByLabelText(/Принять документ Публичная оферта/));
+    await user.click(
+      screen.getByLabelText(/Принять документ Согласие на регулярные списания/)
+    );
+    await user.click(
+      screen.getByRole("button", { name: /Принять и продолжить/ })
+    );
+
+    await waitFor(() => expect(provider.payments).toHaveLength(1));
+    expect(checkoutBodies).toHaveLength(2);
+    expect(provider.payments[0]).toMatchObject({
+      invoiceId: "invoice-after-recurring",
+      accountId: "buyer@example.com"
+    });
+  });
+
+  it("clears the recurring acceptance id when auto-renew is turned off", async () => {
+    const user = userEvent.setup();
+    storeSessionToken("session-token");
+    const checkoutBodies: Record<string, unknown>[] = [];
+    server.use(
+      http.get(`${apiBase}/api/auth/session`, () =>
+        HttpResponse.json(sessionResponse("inactive"))
+      ),
+      http.post(`${apiBase}/api/auth/checkout-intent`, async ({ request }) => {
+        const body = (await request.json()) as Record<string, unknown>;
+        checkoutBodies.push(body);
+        if (checkoutBodies.length === 1) {
+          return HttpResponse.json(
+            {
+              detail: {
+                code: "missing_required_documents",
+                documents: [
+                  {
+                    document_version_id: "doc-recurring-v1",
+                    doc_type: "recurring_consent",
+                    version: "2026-08-25",
+                    title: "Согласие на регулярные списания",
+                    url_path: "/ru/offer",
+                    acceptance_text: "Принимаю регулярные списания.",
+                    acceptance_text_hash: "hash-recurring"
+                  }
+                ]
+              }
+            },
+            { status: 409 }
+          );
+        }
+        return HttpResponse.json({
+          product_state: {
+            product_code: "document-summary",
+            plan_code: "document-summary-pro",
+            plan_name: "Document Summary Pro",
+            invoice_id: `invoice-${checkoutBodies.length}`,
+            transaction_id: null,
+            status: "pending",
+            starts_at: null,
+            expires_at: null
+          },
+          checkout: {
+            amount_minor: 99000,
+            amount: 990,
+            currency: "RUB",
+            action: checkoutAction(`invoice-${checkoutBodies.length}`)
+          }
+        });
+      }),
+      http.post(`${apiBase}/api/legal/acceptances`, () =>
+        HttpResponse.json({
+          status: "accepted",
+          acceptance_id: "acceptance-recurring-v1",
+          doc_type: "recurring_consent"
+        })
+      )
+    );
+
+    const provider = await renderCheckoutWithProviderStub();
+
+    expect(await screen.findByText("buyer@example.com")).toBeVisible();
+    await user.click(screen.getByLabelText("Включить автопродление"));
+    await user.click(screen.getByLabelText(/Я соглашаюсь на регулярное автоматическое списание/));
+    await user.click(screen.getByRole("button", { name: /^Оплатить/ }));
+    await user.click(screen.getByLabelText(/Принять документ Согласие на регулярные списания/));
+    await user.click(screen.getByRole("button", { name: /Принять и продолжить/ }));
+    await waitFor(() => expect(provider.payments).toHaveLength(1));
+
+    await user.click(screen.getByLabelText("Включить автопродление"));
+    await user.click(screen.getByRole("button", { name: /^Оплатить/ }));
+
+    await waitFor(() => expect(provider.payments).toHaveLength(2));
+    expect(checkoutBodies[2]).toEqual({
+      product: "document-summary",
+      plan_code: "document-summary-pro",
+      auto_renew: false
+    });
+  });
+
+  it("clears the recurring acceptance id on logout", async () => {
+    const user = userEvent.setup();
+    storeSessionToken("session-token");
+    const checkoutBodies: Record<string, unknown>[] = [];
+    server.use(
+      http.get(`${apiBase}/api/auth/session`, ({ request }) => {
+        expect(request.headers.get("authorization") ?? "").toMatch(/Bearer (session-token|new-session-token)/);
+        return HttpResponse.json(sessionResponse("inactive"));
+      }),
+      http.post(`${apiBase}/api/auth/logout`, () =>
+        HttpResponse.json({ status: "logged_out" })
+      ),
+      http.post(`${apiBase}/api/auth/checkout-intent`, async ({ request }) => {
+        const body = (await request.json()) as Record<string, unknown>;
+        checkoutBodies.push(body);
+        if (checkoutBodies.length === 1) {
+          return HttpResponse.json(
+            {
+              detail: {
+                code: "missing_required_documents",
+                documents: [
+                  {
+                    document_version_id: "doc-recurring-v1",
+                    doc_type: "recurring_consent",
+                    version: "2026-08-25",
+                    title: "Согласие на регулярные списания",
+                    url_path: "/ru/offer",
+                    acceptance_text: "Принимаю регулярные списания.",
+                    acceptance_text_hash: "hash-recurring"
+                  }
+                ]
+              }
+            },
+            { status: 409 }
+          );
+        }
+        if (checkoutBodies.length === 2) {
+          return HttpResponse.json({
+            product_state: {
+              product_code: "document-summary",
+              plan_code: "document-summary-pro",
+              plan_name: "Document Summary Pro",
+              invoice_id: "invoice-before-logout",
+              transaction_id: null,
+              status: "pending",
+              starts_at: null,
+              expires_at: null
+            },
+            checkout: {
+              amount_minor: 99000,
+              amount: 990,
+              currency: "RUB",
+              action: checkoutAction("invoice-before-logout")
+            }
+          });
+        }
+        expect(body).not.toHaveProperty("recurring_consent_acceptance_id");
+        return HttpResponse.json(
+          { detail: { code: "recurring_consent_required" } },
+          { status: 409 }
+        );
+      }),
+      http.post(`${apiBase}/api/legal/acceptances`, () =>
+        HttpResponse.json({
+          status: "accepted",
+          acceptance_id: "acceptance-before-logout",
+          doc_type: "recurring_consent"
+        })
+      )
+    );
+
+    const provider = await renderCheckoutWithProviderStub();
+
+    expect(await screen.findByText("buyer@example.com")).toBeVisible();
+    await user.click(screen.getByLabelText("Включить автопродление"));
+    await user.click(screen.getByLabelText(/Я соглашаюсь на регулярное автоматическое списание/));
+    await user.click(screen.getByRole("button", { name: /^Оплатить/ }));
+    await user.click(screen.getByLabelText(/Принять документ Согласие на регулярные списания/));
+    await user.click(screen.getByRole("button", { name: /Принять и продолжить/ }));
+    await waitFor(() => expect(provider.payments).toHaveLength(1));
+
+    await user.click(screen.getByRole("button", { name: /Выйти/ }));
+    await waitFor(() => {
+      expect(window.localStorage.getItem("anytoolai_session_token_v1")).toBeNull();
+    });
+    window.localStorage.setItem("anytoolai_session_token_v1", "new-session-token");
+    window.dispatchEvent(new Event("anytoolai_session_changed"));
+    expect(await screen.findByText("buyer@example.com")).toBeVisible();
+    await user.click(screen.getByLabelText(/Я соглашаюсь на регулярное автоматическое списание/));
+    await user.click(screen.getByRole("button", { name: /^Оплатить/ }));
+
+    expect(
+      await screen.findByText(/Для автопродления нужно принять актуальный документ/)
+    ).toBeVisible();
+  });
+
+  it.each<[string, RegExp]>([
+    [
+      "automatic_renewal_not_permitted",
+      /Выбранный тариф не поддерживает автопродление/
+    ],
+    [
+      "recurring_consent_required",
+      /Для автопродления нужно принять актуальный документ/
+    ],
+    [
+      "recurring_consent_invalid",
+      /Согласие на регулярные списания устарело/
+    ]
+  ])("shows a specific checkout message for %s", async (code, message) => {
+    const user = userEvent.setup();
+    storeSessionToken("session-token");
+    server.use(
+      http.get(`${apiBase}/api/auth/session`, () =>
+        HttpResponse.json(sessionResponse("inactive"))
+      ),
+      http.post(`${apiBase}/api/auth/checkout-intent`, () =>
+        HttpResponse.json({ detail: { code } }, { status: 409 })
+      )
+    );
+
+    await renderCheckoutWithProviderStub();
+
+    expect(await screen.findByText("buyer@example.com")).toBeVisible();
+    await user.click(screen.getByLabelText("Включить автопродление"));
+    await user.click(screen.getByLabelText(/Я соглашаюсь на регулярное автоматическое списание/));
+    await user.click(screen.getByRole("button", { name: /^Оплатить/ }));
+
+    expect(await screen.findByText(message)).toBeVisible();
+    expect(screen.queryByText("Не удалось подготовить оплату. Попробуйте ещё раз.")).not.toBeInTheDocument();
   });
 
   it("starts the CloudPayments widget in two-stage auth mode", async () => {

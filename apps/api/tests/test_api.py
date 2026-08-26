@@ -11,9 +11,14 @@ from apps.api.tests.support.settings import override_settings
 
 configure_api_test_environment()
 
+import pytest  # noqa: E402
+from fastapi import HTTPException  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
+from sqlalchemy import event, inspect  # noqa: E402
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware  # noqa: E402
 
+from app.domains.billing.router import get_subscription as get_account_subscription_route  # noqa: E402
+from app.domains.billing.router import list_subscriptions as list_account_subscriptions_route  # noqa: E402
 import app.domains.identity.password_reset as password_reset_router  # noqa: E402
 from app.database import Base, SessionLocal, engine  # noqa: E402
 from app.integrations.cloudpayments import adapter as cloudpayments_adapter_module  # noqa: E402
@@ -22,6 +27,8 @@ from app.models import (  # noqa: E402
     AuthSession,
     Bundle,
     BundleProduct,
+    CheckoutSession,
+    Entitlement,
     DocumentAcceptance,
     DocumentVersion,
     LegalEntity,
@@ -33,9 +40,9 @@ from app.models import (  # noqa: E402
     PaymentWebhookEvent,
     Plan,
     PasswordResetRateLimit,
-    ProductAccessState,
     Product,
     Refund,
+    Subscription,
     User,
 )
 from app.legal_seed import RU_DOCUMENT_VERSIONS, seed_legal_documents  # noqa: E402
@@ -211,6 +218,70 @@ def create_document_version(
     return document
 
 
+def accept_document_for_token(
+    token: str,
+    *,
+    document: DocumentVersion,
+    entrypoint_value: str | None = None,
+) -> str:
+    from app.domains.legal.service import expected_acceptance_text_hash
+
+    document_identity = inspect(document).identity
+    assert document_identity is not None
+    document_id = document_identity[0]
+    with SessionLocal() as db:
+        current_document = db.get(DocumentVersion, document_id)
+        assert current_document is not None
+        acceptance_text_hash = expected_acceptance_text_hash(current_document)
+
+    response = client.post(
+        "/api/legal/acceptances",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "document_version_id": str(document_id),
+            "acceptance_text_hash": acceptance_text_hash,
+            "entrypoint_type": "product" if entrypoint_value is not None else None,
+            "entrypoint_value": entrypoint_value,
+            "metadata": {"plan_code": "document-summary-pro"} if entrypoint_value is not None else {},
+        },
+    )
+    assert response.status_code == 200, response.text
+    return response.json()["acceptance_id"]
+
+
+def create_document_acceptance_row(
+    db,
+    *,
+    document: DocumentVersion,
+    user: User,
+    acceptance_text_hash: str,
+    tenant_id: str | None = None,
+    region: str | None = None,
+    accepted_at: datetime | None = None,
+    entrypoint_value: str | None = None,
+) -> DocumentAcceptance:
+    from app.domains.legal.service import ACCEPTANCE_KIND_BY_DOC_TYPE
+
+    acceptance = DocumentAcceptance(
+        tenant_id=tenant_id or document.tenant_id,
+        region=region or document.region,
+        user_id=user.id,
+        document_version_id=document.id,
+        doc_type=document.doc_type,
+        version=document.version,
+        acceptance_kind=ACCEPTANCE_KIND_BY_DOC_TYPE.get(document.doc_type, "terms_acceptance"),
+        accepted_at=accepted_at or datetime.now(timezone.utc),
+        acceptance_text_hash=acceptance_text_hash,
+        entrypoint_type="product" if entrypoint_value is not None else None,
+        entrypoint_value=entrypoint_value,
+        metadata_={"plan_code": "document-summary-pro"} if entrypoint_value is not None else {},
+    )
+    db.add(acceptance)
+    db.commit()
+    db.refresh(acceptance)
+    return acceptance
+
+
 def seed_catalog(db) -> dict[str, object]:
     existing_document_plan = (
         db.query(Plan)
@@ -383,6 +454,57 @@ def seed_catalog(db) -> dict[str, object]:
     }
 
 
+def register_test_user(*, email: str, tenant_id: str = "anytoolai", region: str = "ru") -> str:
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "tenant_id": tenant_id,
+            "region": region,
+            "email": email,
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    assert register_response.status_code == 200, register_response.text
+    return register_response.json()["token"]
+
+
+def add_active_entitlement_for_plan(db, *, user: User, plan: Plan) -> Entitlement:
+    now = datetime.now(timezone.utc)
+    subscription = Subscription(
+        tenant_id=plan.tenant_id,
+        region=plan.region,
+        user_id=user.id,
+        plan_id=plan.id,
+        scope_type=plan.scope_type,
+        product_id=plan.product_id,
+        bundle_id=plan.bundle_id,
+        status="active",
+        renewal_mode=plan.renewal_mode,
+        current_period_start=now - timedelta(days=1),
+        current_period_end=now + timedelta(days=30),
+    )
+    db.add(subscription)
+    db.flush()
+    entitlement = Entitlement(
+        tenant_id=plan.tenant_id,
+        region=plan.region,
+        user_id=user.id,
+        subscription_id=subscription.id,
+        plan_id=plan.id,
+        scope_type=plan.scope_type,
+        product_id=plan.product_id,
+        bundle_id=plan.bundle_id,
+        status="active",
+        valid_from=now - timedelta(days=1),
+        valid_until=now + timedelta(days=30),
+        source="trial",
+    )
+    db.add(entitlement)
+    return entitlement
+
+
 def test_liveness_readiness_metrics_and_request_id() -> None:
     request_id = "agent-check-123"
     canonical_live_response = client.get(
@@ -518,7 +640,7 @@ def test_register_session_and_checkout_intent_flow() -> None:
         json={
             "product": "document-summary",
             "plan_code": "document-summary-pro",
-            "auto_renew": True,
+            "auto_renew": False,
         },
     )
 
@@ -550,17 +672,897 @@ def test_register_session_and_checkout_intent_flow() -> None:
 
     with SessionLocal() as db:
         user = db.query(User).one()
-        state = db.query(ProductAccessState).one()
+        order = db.query(Order).one()
 
     assert user.email == "user@example.com"
     assert user.tenant_id == "anytoolai"
     assert user.region == "ru"
     assert user.email_normalized == "user@example.com"
-    assert state.user_id == user.id
-    assert state.product_code == "document-summary"
-    assert state.plan_code == "document-summary-pro"
-    assert state.status == "pending"
-    assert state.last_invoice_id == invoice_id
+    assert order.user_id == user.id
+    assert order.plan_id is not None
+    assert order.status == "pending_payment"
+    assert order.provider_invoice_id == invoice_id
+
+
+def test_session_product_state_uses_user_tenant_product_when_codes_overlap() -> None:
+    token = register_test_user(email="tenant-product-state@example.com")
+
+    with SessionLocal() as db:
+        tenant_b_product = Product(
+            tenant_id="tenant-b",
+            code="shared-product",
+            platform_product_id="tenant-b-shared-product",
+            name="Tenant B Shared Product",
+            status="active",
+        )
+        tenant_a_product = Product(
+            tenant_id="anytoolai",
+            code="shared-product",
+            platform_product_id="tenant-a-shared-product",
+            name="Tenant A Shared Product",
+            status="active",
+        )
+        db.add_all([tenant_b_product, tenant_a_product])
+        db.flush()
+        tenant_a_plan = Plan(
+            tenant_id="anytoolai",
+            region="ru",
+            code="shared-product-pro",
+            name="Shared Product Pro",
+            scope_type="product",
+            product_id=tenant_a_product.id,
+            price_amount_minor=99000,
+            currency="RUB",
+            billing_period="month",
+            renewal_mode="manual",
+            trial_days=7,
+            status="active",
+        )
+        db.add(tenant_a_plan)
+        db.flush()
+        user = db.query(User).filter(User.email_normalized == "tenant-product-state@example.com").one()
+        add_active_entitlement_for_plan(db, user=user, plan=tenant_a_plan)
+        tenant_a_product_id = tenant_a_product.id
+        tenant_b_product_id = tenant_b_product.id
+        db.commit()
+
+    response = client.get(
+        "/api/auth/session?product=shared-product",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert tenant_a_product_id != tenant_b_product_id
+    assert response.status_code == 200
+    assert response.json()["product_state"]["status"] == "active"
+
+
+def test_session_product_state_uses_user_tenant_bundle_when_codes_overlap() -> None:
+    token = register_test_user(email="tenant-bundle-state@example.com")
+
+    with SessionLocal() as db:
+        tenant_b_bundle = Bundle(
+            tenant_id="tenant-b",
+            code="shared-bundle",
+            name="Tenant B Shared Bundle",
+            status="active",
+        )
+        tenant_a_bundle = Bundle(
+            tenant_id="anytoolai",
+            code="shared-bundle",
+            name="Tenant A Shared Bundle",
+            status="active",
+        )
+        db.add_all([tenant_b_bundle, tenant_a_bundle])
+        db.flush()
+        tenant_a_plan = Plan(
+            tenant_id="anytoolai",
+            region="ru",
+            code="shared-bundle-pro",
+            name="Shared Bundle Pro",
+            scope_type="bundle",
+            bundle_id=tenant_a_bundle.id,
+            price_amount_minor=198000,
+            currency="RUB",
+            billing_period="month",
+            renewal_mode="manual",
+            trial_days=7,
+            status="active",
+        )
+        db.add(tenant_a_plan)
+        db.flush()
+        user = db.query(User).filter(User.email_normalized == "tenant-bundle-state@example.com").one()
+        add_active_entitlement_for_plan(db, user=user, plan=tenant_a_plan)
+        tenant_a_bundle_id = tenant_a_bundle.id
+        tenant_b_bundle_id = tenant_b_bundle.id
+        db.commit()
+
+    response = client.get(
+        "/api/auth/session?product=shared-bundle",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert tenant_a_bundle_id != tenant_b_bundle_id
+    assert response.status_code == 200
+    assert response.json()["product_state"]["status"] == "active"
+
+
+def test_session_unknown_product_does_not_use_active_all_access_entitlement() -> None:
+    token = register_test_user(email="unknown-product-all-access@example.com")
+
+    with SessionLocal() as db:
+        all_access_plan = db.query(Plan).filter(Plan.code == "all-access-pro-ru").one()
+        user = db.query(User).filter(User.email_normalized == "unknown-product-all-access@example.com").one()
+        add_active_entitlement_for_plan(db, user=user, plan=all_access_plan)
+        db.commit()
+
+    unknown_response = client.get(
+        "/api/auth/session?product=unknown-code",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    all_access_response = client.get(
+        "/api/auth/session?product=all-access",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert unknown_response.status_code == 200
+    assert unknown_response.json()["product_state"]["status"] == "inactive"
+    assert all_access_response.status_code == 200
+    assert all_access_response.json()["product_state"]["status"] == "active"
+
+
+def test_session_valid_product_entitlement_is_active() -> None:
+    token = register_test_user(email="valid-product-entitlement@example.com")
+
+    with SessionLocal() as db:
+        document_plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
+        user = db.query(User).filter(User.email_normalized == "valid-product-entitlement@example.com").one()
+        add_active_entitlement_for_plan(db, user=user, plan=document_plan)
+        db.commit()
+
+    response = client.get(
+        "/api/auth/session?product=document-summary",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["product_state"]["status"] == "active"
+
+
+def test_session_valid_bundle_entitlement_is_active() -> None:
+    token = register_test_user(email="valid-bundle-entitlement@example.com")
+
+    with SessionLocal() as db:
+        bundle_plan = db.query(Plan).filter(Plan.code == "core-tools-bundle-pro-ru").one()
+        user = db.query(User).filter(User.email_normalized == "valid-bundle-entitlement@example.com").one()
+        add_active_entitlement_for_plan(db, user=user, plan=bundle_plan)
+        db.commit()
+
+    response = client.get(
+        "/api/auth/session?product=core-tools-bundle",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["product_state"]["status"] == "active"
+
+
+def test_session_wrong_tenant_order_does_not_make_product_state_pending() -> None:
+    token = register_test_user(email="wrong-tenant-order@example.com")
+
+    with SessionLocal() as db:
+        user = db.query(User).filter(User.email_normalized == "wrong-tenant-order@example.com").one()
+        tenant_b_product = Product(
+            tenant_id="tenant-b",
+            code="document-summary",
+            platform_product_id="tenant-b-document-summary",
+            name="Tenant B Document Summary",
+            status="active",
+        )
+        provider_account = PaymentProviderAccount(
+            tenant_id="tenant-b",
+            region="ru",
+            provider="tenant-b-cloudpayments",
+            public_identifier="pk_tenant_b",
+            default_currency="RUB",
+            enabled=True,
+            test_mode=True,
+            config={},
+        )
+        db.add_all([tenant_b_product, provider_account])
+        db.flush()
+        tenant_b_plan = Plan(
+            tenant_id="tenant-b",
+            region="ru",
+            code="tenant-b-document-summary-pro",
+            name="Tenant B Document Summary Pro",
+            scope_type="product",
+            product_id=tenant_b_product.id,
+            price_amount_minor=99000,
+            currency="RUB",
+            billing_period="month",
+            renewal_mode="manual",
+            trial_days=7,
+            status="active",
+        )
+        db.add(tenant_b_plan)
+        db.flush()
+        add_active_entitlement_for_plan(db, user=user, plan=tenant_b_plan)
+        order = Order(
+            tenant_id="tenant-b",
+            region="ru",
+            order_number="RU-WRONG-TENANT-ORDER",
+            user_id=user.id,
+            status="pending_payment",
+            amount_minor=99000,
+            currency="RUB",
+            provider=provider_account.provider,
+            provider_account_id=provider_account.id,
+            merchant_order_id="wrong-tenant-order",
+            provider_invoice_id="wrong-tenant-invoice",
+        )
+        db.add(order)
+        db.flush()
+        db.add(
+            OrderItem(
+                order_id=order.id,
+                item_type="product_plan",
+                product_id=tenant_b_product.id,
+                product_code_snapshot="document-summary",
+                title_snapshot="Tenant B Document Summary Pro",
+                quantity=1,
+                list_amount_minor=99000,
+                discount_amount_minor=0,
+                unit_amount_minor=99000,
+                amount_minor=99000,
+                currency="RUB",
+                trial_days_snapshot=7,
+                pricing_snapshot={"scope_type": "product"},
+            )
+        )
+        db.commit()
+
+    response = client.get(
+        "/api/auth/session?product=document-summary",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    product_state = response.json()["product_state"]
+
+    assert response.status_code == 200
+    assert product_state["status"] == "inactive"
+    assert product_state["invoice_id"] is None
+
+
+def test_manual_checkout_does_not_require_recurring_consent() -> None:
+    with SessionLocal() as db:
+        legal_entity = create_legal_entity(db)
+        create_document_version(
+            db,
+            legal_entity=legal_entity,
+            doc_type="recurring_consent",
+            version="2026-08-recurring-v1",
+            title="Согласие на рекуррентные платежи",
+        )
+
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "manual-without-recurring@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = register_response.json()["token"]
+
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": False,
+        },
+    )
+
+    assert checkout_response.status_code == 200, checkout_response.text
+    with SessionLocal() as db:
+        checkout = db.query(CheckoutSession).one()
+        order = db.query(Order).one()
+
+    assert checkout.metadata_["auto_renew"] is False
+    assert checkout.metadata_["recurring_consent_acceptance_id"] is None
+    assert order.metadata_["auto_renew"] is False
+    assert order.metadata_["recurring_consent_acceptance_id"] is None
+
+
+def test_checkout_rejects_automatic_renewal_for_manual_only_plan() -> None:
+    with SessionLocal() as db:
+        legal_entity = create_legal_entity(db)
+        create_document_version(
+            db,
+            legal_entity=legal_entity,
+            doc_type="recurring_consent",
+            version="2026-08-recurring-v1",
+            title="Согласие на рекуррентные платежи",
+        )
+
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "automatic-manual-only@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = register_response.json()["token"]
+
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": True,
+        },
+    )
+
+    assert checkout_response.status_code == 409
+    assert checkout_response.json()["detail"]["code"] == "automatic_renewal_not_permitted"
+
+
+def test_automatic_checkout_without_acceptance_returns_document_flow() -> None:
+    with SessionLocal() as db:
+        plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
+        plan.renewal_mode = "automatic"
+        legal_entity = create_legal_entity(db)
+        document = create_document_version(
+            db,
+            legal_entity=legal_entity,
+            doc_type="recurring_consent",
+            version="2026-08-recurring-v1",
+            title="Согласие на рекуррентные платежи",
+        )
+        document_id = document.id
+
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "automatic-without-consent@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = register_response.json()["token"]
+
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": True,
+        },
+    )
+
+    assert checkout_response.status_code == 409
+    detail = checkout_response.json()["detail"]
+    assert detail["code"] == "missing_required_documents"
+    assert detail["documents"] == [
+        {
+            "document_version_id": str(document_id),
+            "doc_type": "recurring_consent",
+            "version": "2026-08-recurring-v1",
+            "title": "Согласие на рекуррентные платежи",
+            "url_path": "/ru/recurring_consent",
+            "acceptance_text": "Я принимаю документ «Согласие на рекуррентные платежи».",
+            "acceptance_text_hash": detail["documents"][0]["acceptance_text_hash"],
+        }
+    ]
+
+
+def test_automatic_checkout_requires_exact_acceptance_id_after_document_acceptance() -> None:
+    with SessionLocal() as db:
+        plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
+        plan.renewal_mode = "automatic"
+        legal_entity = create_legal_entity(db)
+        document = create_document_version(
+            db,
+            legal_entity=legal_entity,
+            doc_type="recurring_consent",
+            version="2026-08-recurring-v1",
+            title="Согласие на рекуррентные платежи",
+        )
+
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "automatic-missing-exact-id@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = register_response.json()["token"]
+    accept_document_for_token(
+        token,
+        document=document,
+        entrypoint_value="document-summary",
+    )
+
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": True,
+        },
+    )
+
+    assert checkout_response.status_code == 409
+    assert checkout_response.json()["detail"]["code"] == "recurring_consent_required"
+
+
+def test_checkout_persists_exact_recurring_consent_reference() -> None:
+    with SessionLocal() as db:
+        plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
+        plan.renewal_mode = "automatic"
+        db.commit()
+        legal_entity = create_legal_entity(db)
+        document = create_document_version(
+            db,
+            legal_entity=legal_entity,
+            doc_type="recurring_consent",
+            version="2026-08-recurring-v1",
+            title="Согласие на рекуррентные платежи",
+        )
+
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "automatic-with-consent@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = register_response.json()["token"]
+    acceptance_id = accept_document_for_token(
+        token,
+        document=document,
+    )
+
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": True,
+            "recurring_consent_acceptance_id": acceptance_id,
+        },
+    )
+
+    assert checkout_response.status_code == 200, checkout_response.text
+    with SessionLocal() as db:
+        checkout = db.query(CheckoutSession).one()
+        order = db.query(Order).one()
+
+    assert checkout.metadata_["recurring_consent_acceptance_id"] == acceptance_id
+    assert order.metadata_["recurring_consent_acceptance_id"] == acceptance_id
+
+
+def test_automatic_checkout_paid_subscription_remains_manual_until_provider_attach() -> None:
+    with SessionLocal() as db:
+        plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
+        plan.renewal_mode = "automatic"
+        legal_entity = create_legal_entity(db)
+        document = create_document_version(
+            db,
+            legal_entity=legal_entity,
+            doc_type="recurring_consent",
+            version="2026-08-recurring-v1",
+            title="Согласие на рекуррентные платежи",
+        )
+
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "automatic-manual-until-provider@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = register_response.json()["token"]
+    acceptance_id = accept_document_for_token(
+        token,
+        document=document,
+        entrypoint_value="document-summary",
+    )
+
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": True,
+            "recurring_consent_acceptance_id": acceptance_id,
+        },
+    )
+    assert checkout_response.status_code == 200, checkout_response.text
+    invoice_id = checkout_response.json()["product_state"]["invoice_id"]
+
+    webhook_response = client.post(
+        "/api/cloudpayments/pay",
+        json={
+            "InvoiceId": invoice_id,
+            "TransactionId": "tx-auto-renew-initial-payment",
+            "AccountId": "automatic-manual-until-provider@example.com",
+            "Amount": "990.00",
+            "Currency": "RUB",
+            "Status": "Completed",
+        },
+    )
+
+    assert webhook_response.status_code == 200
+    with SessionLocal() as db:
+        order = db.query(Order).one()
+        subscription = db.query(Subscription).one()
+
+    assert order.metadata_["auto_renew"] is True
+    assert order.metadata_["recurring_consent_acceptance_id"] == acceptance_id
+    assert subscription.renewal_mode == "manual"
+    assert subscription.provider_subscription_id is None
+    assert subscription.recurring_consent_acceptance_id is None
+
+
+def test_checkout_rejects_recurring_acceptance_from_another_user() -> None:
+    with SessionLocal() as db:
+        plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
+        plan.renewal_mode = "automatic"
+        legal_entity = create_legal_entity(db)
+        document = create_document_version(
+            db,
+            legal_entity=legal_entity,
+            doc_type="recurring_consent",
+            version="2026-08-recurring-v1",
+            title="Согласие на рекуррентные платежи",
+        )
+
+    owner_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "recurring-owner@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    owner_token = owner_response.json()["token"]
+    owner_acceptance_id = accept_document_for_token(
+        owner_token,
+        document=document,
+        entrypoint_value="document-summary",
+    )
+
+    buyer_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "recurring-buyer@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    buyer_token = buyer_response.json()["token"]
+    accept_document_for_token(
+        buyer_token,
+        document=document,
+        entrypoint_value="document-summary",
+    )
+
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {buyer_token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": True,
+            "recurring_consent_acceptance_id": owner_acceptance_id,
+        },
+    )
+
+    assert checkout_response.status_code == 409
+    assert checkout_response.json()["detail"]["code"] == "recurring_consent_invalid"
+
+
+def test_checkout_rejects_recurring_acceptance_from_another_tenant_or_region() -> None:
+    with SessionLocal() as db:
+        plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
+        plan.renewal_mode = "automatic"
+        legal_entity = create_legal_entity(db)
+        document = create_document_version(
+            db,
+            legal_entity=legal_entity,
+            doc_type="recurring_consent",
+            version="2026-08-recurring-v1",
+            title="Согласие на рекуррентные платежи",
+        )
+        foreign_entity = create_legal_entity(db, region="eu")
+        foreign_document = create_document_version(
+            db,
+            legal_entity=foreign_entity,
+            doc_type="recurring_consent",
+            version="2026-08-recurring-v1",
+            title="Recurring consent",
+        )
+
+    buyer_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "recurring-tenant-buyer@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    buyer_token = buyer_response.json()["token"]
+    accept_document_for_token(
+        buyer_token,
+        document=document,
+        entrypoint_value="document-summary",
+    )
+
+    foreign_response = client.post(
+        "/api/auth/register",
+        json={
+            "tenant_id": "anytoolai",
+            "region": "eu",
+            "email": "recurring-foreign@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    foreign_token = foreign_response.json()["token"]
+    foreign_acceptance_id = accept_document_for_token(
+        foreign_token,
+        document=foreign_document,
+        entrypoint_value="document-summary",
+    )
+
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {buyer_token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": True,
+            "recurring_consent_acceptance_id": foreign_acceptance_id,
+        },
+    )
+
+    assert checkout_response.status_code == 409
+    assert checkout_response.json()["detail"]["code"] == "recurring_consent_invalid"
+
+
+def test_checkout_rejects_acceptance_with_wrong_kind() -> None:
+    with SessionLocal() as db:
+        plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
+        plan.renewal_mode = "automatic"
+        legal_entity = create_legal_entity(db)
+        recurring_document = create_document_version(
+            db,
+            legal_entity=legal_entity,
+            doc_type="recurring_consent",
+            version="2026-08-recurring-v1",
+            title="Согласие на рекуррентные платежи",
+        )
+        offer_document = create_document_version(
+            db,
+            legal_entity=legal_entity,
+            doc_type="offer",
+            version="2026-08-offer-v1",
+            title="Публичная оферта",
+        )
+
+    buyer_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "recurring-wrong-kind@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = buyer_response.json()["token"]
+    accept_document_for_token(
+        token,
+        document=recurring_document,
+        entrypoint_value="document-summary",
+    )
+    wrong_acceptance_id = accept_document_for_token(
+        token,
+        document=offer_document,
+        entrypoint_value="document-summary",
+    )
+
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": True,
+            "recurring_consent_acceptance_id": wrong_acceptance_id,
+        },
+    )
+
+    assert checkout_response.status_code == 409
+    assert checkout_response.json()["detail"]["code"] == "recurring_consent_invalid"
+
+
+def test_checkout_rejects_recurring_acceptance_for_another_entrypoint() -> None:
+    with SessionLocal() as db:
+        plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
+        plan.renewal_mode = "automatic"
+        legal_entity = create_legal_entity(db)
+        document = create_document_version(
+            db,
+            legal_entity=legal_entity,
+            doc_type="recurring_consent",
+            version="2026-08-recurring-v1",
+            title="Согласие на рекуррентные платежи",
+        )
+
+    buyer_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "recurring-entrypoint@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = buyer_response.json()["token"]
+    wrong_entrypoint_acceptance_id = accept_document_for_token(
+        token,
+        document=document,
+        entrypoint_value="prompt-optimizer",
+    )
+
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": True,
+            "recurring_consent_acceptance_id": wrong_entrypoint_acceptance_id,
+        },
+    )
+
+    assert checkout_response.status_code == 409
+    assert checkout_response.json()["detail"]["code"] == "recurring_consent_invalid"
+
+
+def test_checkout_rejects_recurring_acceptance_from_the_future() -> None:
+    with SessionLocal() as db:
+        plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
+        plan.renewal_mode = "automatic"
+        legal_entity = create_legal_entity(db)
+        document = create_document_version(
+            db,
+            legal_entity=legal_entity,
+            doc_type="recurring_consent",
+            version="2026-08-recurring-v1",
+            title="Согласие на рекуррентные платежи",
+        )
+
+    buyer_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "recurring-future@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = buyer_response.json()["token"]
+    future_acceptance_id = accept_document_for_token(
+        token,
+        document=document,
+        entrypoint_value="document-summary",
+    )
+    accept_document_for_token(
+        token,
+        document=document,
+        entrypoint_value="document-summary",
+    )
+
+    with SessionLocal() as db:
+        future_acceptance = db.get(DocumentAcceptance, uuid.UUID(future_acceptance_id))
+        future_acceptance.accepted_at = datetime.now(timezone.utc) + timedelta(days=1)
+        db.commit()
+
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": True,
+            "recurring_consent_acceptance_id": future_acceptance_id,
+        },
+    )
+
+    assert checkout_response.status_code == 409
+    assert checkout_response.json()["detail"]["code"] == "recurring_consent_invalid"
+
+
+def test_checkout_requires_new_recurring_acceptance_when_document_version_changes() -> None:
+    with SessionLocal() as db:
+        plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
+        plan.renewal_mode = "automatic"
+        legal_entity = create_legal_entity(db)
+        first_document = create_document_version(
+            db,
+            legal_entity=legal_entity,
+            doc_type="recurring_consent",
+            version="2026-08-recurring-v1",
+            title="Согласие на рекуррентные платежи",
+        )
+        legal_entity_id = legal_entity.id
+        first_document_id = first_document.id
+
+    buyer_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "recurring-stale@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = buyer_response.json()["token"]
+    stale_acceptance_id = accept_document_for_token(
+        token,
+        document=first_document,
+        entrypoint_value="document-summary",
+    )
+
+    with SessionLocal() as db:
+        first_document = db.get(DocumentVersion, first_document_id)
+        first_document.is_active = False
+        legal_entity = db.get(LegalEntity, legal_entity_id)
+        second_document = create_document_version(
+            db,
+            legal_entity=legal_entity,
+            doc_type="recurring_consent",
+            version="2026-08-recurring-v2",
+            title="Согласие на рекуррентные платежи",
+        )
+        second_document_id = second_document.id
+
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": True,
+            "recurring_consent_acceptance_id": stale_acceptance_id,
+        },
+    )
+
+    assert checkout_response.status_code == 409
+    detail = checkout_response.json()["detail"]
+    assert detail["code"] == "missing_required_documents"
+    assert [document["document_version_id"] for document in detail["documents"]] == [str(second_document_id)]
 
 
 def test_checkout_rejects_missing_cloudpayments_public_terminal_id() -> None:
@@ -595,7 +1597,6 @@ def test_checkout_rejects_missing_cloudpayments_public_terminal_id() -> None:
         with SessionLocal() as db:
             assert db.query(Order).count() == 0
             assert db.query(OrderItem).count() == 0
-            assert db.query(ProductAccessState).count() == 0
     finally:
         object.__setattr__(settings, "cloudpayments_public_id", previous_public_id)
 
@@ -643,7 +1644,6 @@ def test_checkout_supports_two_stage_cloudpayments_widget_mode() -> None:
         order = db.query(Order).one()
         assert order.metadata_["payment_mode"] == "auth"
         assert db.query(OrderItem).count() == 1
-        assert db.query(ProductAccessState).count() == 1
 
 
 def test_checkout_rejects_plan_provider_currency_mismatch() -> None:
@@ -697,7 +1697,6 @@ def test_checkout_rejects_plan_provider_currency_mismatch() -> None:
     with SessionLocal() as db:
         assert db.query(Order).count() == 0
         assert db.query(OrderItem).count() == 0
-        assert db.query(ProductAccessState).count() == 0
 
 
 def test_bundle_checkout_snapshots_one_sellable_catalog_plan() -> None:
@@ -724,7 +1723,7 @@ def test_bundle_checkout_snapshots_one_sellable_catalog_plan() -> None:
             "product": "core-tools-bundle",
             "plan_code": "core-tools-bundle-pro-ru",
             "entrypoint_type": "bundle",
-            "auto_renew": True,
+            "auto_renew": False,
         },
     )
 
@@ -771,7 +1770,7 @@ def test_all_access_checkout_snapshots_one_sellable_catalog_plan() -> None:
             "product": "all-access",
             "plan_code": "all-access-pro-ru",
             "entrypoint_type": "catalog",
-            "auto_renew": True,
+            "auto_renew": False,
         },
     )
 
@@ -925,7 +1924,7 @@ def test_checkout_rejects_active_plan_for_inactive_bundle() -> None:
             "product": "core-tools-bundle",
             "plan_code": "core-tools-bundle-pro-ru",
             "entrypoint_type": "bundle",
-            "auto_renew": True,
+            "auto_renew": False,
         },
     )
 
@@ -1119,7 +2118,7 @@ def test_signed_check_webhook_rejects_account_and_currency_mismatch() -> None:
         object.__setattr__(settings, "cloudpayments_api_secret", "")
 
 
-def test_successful_pay_webhook_is_saved_without_activating_access() -> None:
+def test_successful_pay_webhook_is_saved_and_activates_access() -> None:
     register_response = client.post(
         "/api/auth/register",
         json={
@@ -1163,8 +2162,8 @@ def test_successful_pay_webhook_is_saved_without_activating_access() -> None:
     status_response = client.get(f"/api/auth/payment-status?invoice_id={invoice_id}&email=user@example.com")
     assert status_response.status_code == 200
     status_payload = status_response.json()
-    assert status_payload["product_state"]["status"] == "pending"
-    assert status_payload["product_state"]["transaction_id"] is None
+    assert status_payload["product_state"]["status"] == "active"
+    assert status_payload["product_state"]["transaction_id"] == "tx-success-1"
     assert status_payload["order"]["status"] == "paid"
     assert status_payload["order"]["paid_at"]
     assert status_payload["payment"]["status"] == "succeeded"
@@ -1748,14 +2747,136 @@ def test_fail_webhook_updates_payment_and_order_without_access_activation() -> N
     with SessionLocal() as db:
         order = db.query(Order).one()
         payment = db.query(Payment).one()
-        state = db.query(ProductAccessState).one()
+        entitlement_count = db.query(Entitlement).count()
 
     assert order.status == "payment_failed"
     assert payment.status == "failed"
     assert payment.failure_code == "5"
     assert payment.failure_message_safe == "Insufficient funds"
-    assert state.status == "pending"
-    assert state.last_transaction_id is None
+    assert entitlement_count == 0
+
+
+def test_payment_status_projects_product_state_from_final_and_pending_orders() -> None:
+    pending_email = "projection-pending@example.com"
+    pending_invoice_id = create_checkout_invoice(email=pending_email)
+
+    pending_response = client.get(f"/api/auth/payment-status?invoice_id={pending_invoice_id}&email={pending_email}")
+    assert pending_response.status_code == 200
+    pending_payload = pending_response.json()
+    assert pending_payload["product_state"]["status"] == "pending"
+    assert pending_payload["order"]["status"] == "pending_payment"
+
+    with SessionLocal() as db:
+        pending_order = db.query(Order).filter(Order.provider_invoice_id == pending_invoice_id).one()
+        pending_order.status = "created"
+        db.commit()
+
+    created_response = client.get(f"/api/auth/payment-status?invoice_id={pending_invoice_id}&email={pending_email}")
+    assert created_response.status_code == 200
+    created_payload = created_response.json()
+    assert created_payload["product_state"]["status"] == "pending"
+    assert created_payload["order"]["status"] == "created"
+
+    failed_email = "projection-failed@example.com"
+    failed_invoice_id = create_checkout_invoice(email=failed_email)
+    failed_webhook_response = client.post(
+        "/api/cloudpayments/fail",
+        json={
+            "InvoiceId": failed_invoice_id,
+            "TransactionId": "tx-projection-failed",
+            "AccountId": failed_email,
+            "Amount": "990.00",
+            "Currency": "RUB",
+            "ReasonCode": "5",
+            "Reason": "Insufficient funds",
+        },
+    )
+    assert failed_webhook_response.status_code == 200
+
+    failed_response = client.get(f"/api/auth/payment-status?invoice_id={failed_invoice_id}&email={failed_email}")
+    assert failed_response.status_code == 200
+    failed_payload = failed_response.json()
+    assert failed_payload["product_state"]["status"] == "inactive"
+    assert failed_payload["order"]["status"] == "payment_failed"
+    assert failed_payload["payment"]["status"] == "failed"
+
+    active_email = "projection-active@example.com"
+    active_invoice_id = create_checkout_invoice(email=active_email)
+    active_webhook_response = client.post(
+        "/api/cloudpayments/pay",
+        json={
+            "InvoiceId": active_invoice_id,
+            "TransactionId": "tx-projection-active",
+            "AccountId": active_email,
+            "Amount": "990.00",
+            "Currency": "RUB",
+            "Status": "Completed",
+        },
+    )
+    assert active_webhook_response.status_code == 200
+
+    active_response = client.get(f"/api/auth/payment-status?invoice_id={active_invoice_id}&email={active_email}")
+    assert active_response.status_code == 200
+    active_payload = active_response.json()
+    assert active_payload["product_state"]["status"] == "active"
+    assert active_payload["order"]["status"] == "paid"
+    assert active_payload["payment"]["status"] == "succeeded"
+
+    seed_cloudpayments_provider_account(widget_mode="auth")
+    canceled_email = "projection-canceled@example.com"
+    canceled_invoice_id = create_checkout_invoice(email=canceled_email, widget_mode="auth")
+    canceled_webhook_response = client.post(
+        "/api/cloudpayments/cancel",
+        json={
+            "InvoiceId": canceled_invoice_id,
+            "TransactionId": "tx-projection-canceled",
+            "AccountId": canceled_email,
+            "Amount": "990.00",
+            "Currency": "RUB",
+        },
+    )
+    assert canceled_webhook_response.status_code == 200
+
+    canceled_response = client.get(f"/api/auth/payment-status?invoice_id={canceled_invoice_id}&email={canceled_email}")
+    assert canceled_response.status_code == 200
+    canceled_payload = canceled_response.json()
+    assert canceled_payload["product_state"]["status"] == "inactive"
+    assert canceled_payload["order"]["status"] == "canceled"
+    assert canceled_payload["payment"]["status"] == "canceled"
+
+    refunded_email = "projection-refunded@example.com"
+    refunded_invoice_id = create_checkout_invoice(email=refunded_email, widget_mode="auth")
+    confirm_webhook_response = client.post(
+        "/api/cloudpayments/confirm",
+        json={
+            "InvoiceId": refunded_invoice_id,
+            "TransactionId": "tx-projection-refunded",
+            "AccountId": refunded_email,
+            "Amount": "990.00",
+            "Currency": "RUB",
+            "Status": "Completed",
+        },
+    )
+    assert confirm_webhook_response.status_code == 200
+    refund_webhook_response = client.post(
+        "/api/cloudpayments/refund",
+        json={
+            "InvoiceId": refunded_invoice_id,
+            "TransactionId": "tx-projection-refunded",
+            "RefundId": "refund-projection-refunded",
+            "Amount": "990.00",
+            "Currency": "RUB",
+            "Reason": "customer_request",
+        },
+    )
+    assert refund_webhook_response.status_code == 200
+
+    refunded_response = client.get(f"/api/auth/payment-status?invoice_id={refunded_invoice_id}&email={refunded_email}")
+    assert refunded_response.status_code == 200
+    refunded_payload = refunded_response.json()
+    assert refunded_payload["product_state"]["status"] == "inactive"
+    assert refunded_payload["order"]["status"] == "refunded"
+    assert refunded_payload["payment"]["status"] == "refunded"
 
 
 def test_signed_check_after_failed_attempt_allows_retry() -> None:
@@ -2534,7 +3655,7 @@ def test_refund_webhook_records_refund_skeleton_and_updates_payment() -> None:
     status_response = client.get(f"/api/auth/payment-status?invoice_id={invoice_id}&email=refund-user@example.com")
     assert status_response.status_code == 200
     status_payload = status_response.json()
-    assert status_payload["product_state"]["status"] == "pending"
+    assert status_payload["product_state"]["status"] == "inactive"
     assert status_payload["order"]["status"] == "refunded"
     assert status_payload["payment"]["status"] == "refunded"
     assert status_payload["payment"]["refunded_amount_minor"] == 99000
@@ -2688,7 +3809,7 @@ def test_distinct_refund_ids_for_same_transaction_are_not_deduplicated() -> None
     )
     assert partial_status_response.status_code == 200
     partial_status_payload = partial_status_response.json()
-    assert partial_status_payload["product_state"]["status"] == "pending"
+    assert partial_status_payload["product_state"]["status"] == "active"
     assert partial_status_payload["order"]["status"] == "partially_refunded"
     assert partial_status_payload["payment"]["status"] == "partially_refunded"
     assert partial_status_payload["payment"]["amount_minor"] == 99000
@@ -3967,6 +5088,960 @@ def test_cloudpayments_idempotency_key_fallbacks_are_stable() -> None:
         == "cloudpayments:pay:invoice:invoice-1:hash-1"
     )
     assert _event_idempotency_key("pay", None, None, None, None, "hash-1") == "cloudpayments:pay:payload:hash-1"
+
+
+ACCOUNT_SUBSCRIPTION_RESPONSE_KEYS = {
+    "subscription_id",
+    "plan",
+    "scope",
+    "status",
+    "renewal_mode",
+    "current_period",
+    "cancellation",
+    "entitlement_validity",
+}
+
+
+def _account_subscription_datetime(value: datetime) -> datetime:
+    return value.replace(tzinfo=None)
+
+
+def _add_account_subscription_user(db, *, email: str) -> tuple[User, AuthSession, Plan]:
+    now = datetime.now(timezone.utc)
+    plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
+    user = User(
+        tenant_id="anytoolai",
+        region="ru",
+        email=email,
+        email_normalized=email,
+        status="active",
+        password_hash="test-password-hash",
+    )
+    db.add(user)
+    db.flush()
+    session = AuthSession(
+        tenant_id=user.tenant_id,
+        region=user.region,
+        user_id=user.id,
+        token_hash=f"test-token-{email}",
+        expires_at=now + timedelta(days=1),
+        last_seen_at=now,
+    )
+    db.add(session)
+    db.flush()
+    return user, session, plan
+
+
+def _add_account_subscription_row(
+    db,
+    *,
+    user: User,
+    plan: Plan,
+    now: datetime,
+    index: int = 0,
+    status: str = "active",
+    plan_id: uuid.UUID | None = None,
+) -> Subscription:
+    subscription = Subscription(
+        tenant_id=user.tenant_id,
+        region=user.region,
+        user_id=user.id,
+        plan_id=plan_id or plan.id,
+        scope_type=plan.scope_type,
+        product_id=plan.product_id,
+        bundle_id=plan.bundle_id,
+        status=status,
+        renewal_mode="manual",
+        current_period_start=now - timedelta(days=index + 1),
+        current_period_end=now + timedelta(days=30 + index),
+        created_at=now + timedelta(seconds=index),
+    )
+    db.add(subscription)
+    db.flush()
+    return subscription
+
+
+def _add_account_entitlement_row(
+    db,
+    *,
+    user: User,
+    plan: Plan,
+    subscription: Subscription,
+    status: str,
+    valid_from: datetime,
+    valid_until: datetime,
+    created_at: datetime,
+) -> Entitlement:
+    entitlement = Entitlement(
+        tenant_id=user.tenant_id,
+        region=user.region,
+        user_id=user.id,
+        subscription_id=subscription.id,
+        plan_id=plan.id,
+        scope_type=plan.scope_type,
+        product_id=plan.product_id,
+        bundle_id=plan.bundle_id,
+        status=status,
+        valid_from=valid_from,
+        valid_until=valid_until,
+        source="trial",
+        created_at=created_at,
+    )
+    db.add(entitlement)
+    return entitlement
+
+
+def _seed_account_subscriptions_for_query_count(
+    db,
+    *,
+    email: str,
+    count: int,
+) -> tuple[uuid.UUID, uuid.UUID]:
+    now = datetime.now(timezone.utc)
+    user, session, plan = _add_account_subscription_user(db, email=email)
+    for index in range(count):
+        subscription = _add_account_subscription_row(
+            db,
+            user=user,
+            plan=plan,
+            now=now,
+            index=index,
+            status="active" if index == 0 else "expired",
+        )
+        _add_account_entitlement_row(
+            db,
+            user=user,
+            plan=plan,
+            subscription=subscription,
+            status="active",
+            valid_from=now - timedelta(days=1),
+            valid_until=now + timedelta(days=30 + index),
+            created_at=now + timedelta(seconds=index),
+        )
+    db.commit()
+    return user.id, session.id
+
+
+def _count_sql_statements(callback) -> tuple[object, int]:
+    statements = []
+
+    def before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+
+    event.listen(engine, "before_cursor_execute", before_cursor_execute)
+    try:
+        result = callback()
+    finally:
+        event.remove(engine, "before_cursor_execute", before_cursor_execute)
+    return result, len(statements)
+
+
+def test_account_subscription_list_and_detail_response_shapes_are_unchanged() -> None:
+    now = datetime.now(timezone.utc)
+    with SessionLocal() as db:
+        user, session, plan = _add_account_subscription_user(
+            db,
+            email="account-subscription-shape@example.com",
+        )
+        subscription = _add_account_subscription_row(db, user=user, plan=plan, now=now)
+        _add_account_entitlement_row(
+            db,
+            user=user,
+            plan=plan,
+            subscription=subscription,
+            status="active",
+            valid_from=now - timedelta(days=1),
+            valid_until=now + timedelta(days=29),
+            created_at=now,
+        )
+        db.commit()
+        user_id = user.id
+        session_id = session.id
+        subscription_id = subscription.id
+
+    with SessionLocal() as db:
+        user = db.get(User, user_id)
+        session = db.get(AuthSession, session_id)
+        list_payload = list_account_subscriptions_route(current=(user, session), db=db).model_dump(mode="json")
+        detail_payload = get_account_subscription_route(
+            subscription_id,
+            current=(user, session),
+            db=db,
+        ).model_dump(mode="json")
+
+    assert set(list_payload) == {"subscriptions"}
+    assert len(list_payload["subscriptions"]) == 1
+    assert list_payload["subscriptions"][0] == detail_payload
+    assert set(detail_payload) == ACCOUNT_SUBSCRIPTION_RESPONSE_KEYS
+    assert set(detail_payload["plan"]) == {"plan_id", "code", "name", "billing_period"}
+    assert set(detail_payload["scope"]) == {"scope_type", "product_id", "bundle_id"}
+    assert set(detail_payload["current_period"]) == {"starts_at", "ends_at"}
+    assert set(detail_payload["cancellation"]) == {"cancel_requested_at", "canceled_at"}
+    assert set(detail_payload["entitlement_validity"]) == {"status", "valid_from", "valid_until"}
+
+
+def test_account_subscription_relevant_entitlement_precedence_is_unchanged() -> None:
+    now = datetime.now(timezone.utc)
+    with SessionLocal() as db:
+        user, session, plan = _add_account_subscription_user(
+            db,
+            email="account-subscription-entitlement-precedence@example.com",
+        )
+        current_subscription = _add_account_subscription_row(db, user=user, plan=plan, now=now, index=0)
+        future_subscription = _add_account_subscription_row(
+            db,
+            user=user,
+            plan=plan,
+            now=now,
+            index=1,
+            status="expired",
+        )
+        history_subscription = _add_account_subscription_row(
+            db,
+            user=user,
+            plan=plan,
+            now=now,
+            index=2,
+            status="expired",
+        )
+        _add_account_entitlement_row(
+            db,
+            user=user,
+            plan=plan,
+            subscription=current_subscription,
+            status="revoked",
+            valid_from=now - timedelta(days=20),
+            valid_until=now - timedelta(days=10),
+            created_at=now - timedelta(days=20),
+        )
+        _add_account_entitlement_row(
+            db,
+            user=user,
+            plan=plan,
+            subscription=current_subscription,
+            status="active",
+            valid_from=now + timedelta(days=1),
+            valid_until=now + timedelta(days=31),
+            created_at=now,
+        )
+        _add_account_entitlement_row(
+            db,
+            user=user,
+            plan=plan,
+            subscription=current_subscription,
+            status="active",
+            valid_from=now - timedelta(days=2),
+            valid_until=now + timedelta(days=5),
+            created_at=now + timedelta(minutes=1),
+        )
+        _add_account_entitlement_row(
+            db,
+            user=user,
+            plan=plan,
+            subscription=current_subscription,
+            status="active",
+            valid_from=now - timedelta(days=1),
+            valid_until=now + timedelta(days=10),
+            created_at=now,
+        )
+        _add_account_entitlement_row(
+            db,
+            user=user,
+            plan=plan,
+            subscription=future_subscription,
+            status="revoked",
+            valid_from=now - timedelta(days=20),
+            valid_until=now - timedelta(days=1),
+            created_at=now - timedelta(days=20),
+        )
+        _add_account_entitlement_row(
+            db,
+            user=user,
+            plan=plan,
+            subscription=future_subscription,
+            status="active",
+            valid_from=now + timedelta(days=2),
+            valid_until=now + timedelta(days=12),
+            created_at=now + timedelta(minutes=2),
+        )
+        _add_account_entitlement_row(
+            db,
+            user=user,
+            plan=plan,
+            subscription=future_subscription,
+            status="active",
+            valid_from=now + timedelta(days=1),
+            valid_until=now + timedelta(days=30),
+            created_at=now + timedelta(minutes=1),
+        )
+        _add_account_entitlement_row(
+            db,
+            user=user,
+            plan=plan,
+            subscription=history_subscription,
+            status="expired",
+            valid_from=now - timedelta(days=20),
+            valid_until=now - timedelta(days=5),
+            created_at=now - timedelta(days=20),
+        )
+        _add_account_entitlement_row(
+            db,
+            user=user,
+            plan=plan,
+            subscription=history_subscription,
+            status="revoked",
+            valid_from=now - timedelta(days=10),
+            valid_until=now - timedelta(days=1),
+            created_at=now - timedelta(days=10),
+        )
+        db.commit()
+        user_id = user.id
+        session_id = session.id
+        current_subscription_id = current_subscription.id
+        future_subscription_id = future_subscription.id
+        history_subscription_id = history_subscription.id
+
+    with SessionLocal() as db:
+        user = db.get(User, user_id)
+        session = db.get(AuthSession, session_id)
+        response = list_account_subscriptions_route(current=(user, session), db=db)
+
+    subscriptions_by_id = {item.subscription_id: item for item in response.subscriptions}
+    assert subscriptions_by_id[
+        current_subscription_id
+    ].entitlement_validity.valid_until == _account_subscription_datetime(now + timedelta(days=10))
+    assert subscriptions_by_id[
+        future_subscription_id
+    ].entitlement_validity.valid_from == _account_subscription_datetime(now + timedelta(days=1))
+    assert subscriptions_by_id[
+        history_subscription_id
+    ].entitlement_validity.valid_until == _account_subscription_datetime(now - timedelta(days=1))
+
+
+def test_account_subscription_list_missing_plan_keeps_existing_error() -> None:
+    now = datetime.now(timezone.utc)
+    with SessionLocal() as db:
+        user, session, plan = _add_account_subscription_user(
+            db,
+            email="account-subscription-missing-plan@example.com",
+        )
+        _add_account_subscription_row(
+            db,
+            user=user,
+            plan=plan,
+            now=now,
+            plan_id=uuid.uuid4(),
+        )
+        db.commit()
+        user_id = user.id
+        session_id = session.id
+
+    with SessionLocal() as db:
+        user = db.get(User, user_id)
+        session = db.get(AuthSession, session_id)
+        with pytest.raises(HTTPException) as exc_info:
+            list_account_subscriptions_route(current=(user, session), db=db)
+
+    assert exc_info.value.status_code == 500
+    assert exc_info.value.detail == {"code": "subscription_plan_missing"}
+
+
+@pytest.mark.parametrize("subscription_count", (1, 20))
+def test_account_subscription_list_sql_queries_stay_constant(subscription_count: int) -> None:
+    with SessionLocal() as db:
+        user_id, session_id = _seed_account_subscriptions_for_query_count(
+            db,
+            email=f"account-subscription-query-count-{subscription_count}@example.com",
+            count=subscription_count,
+        )
+
+    with SessionLocal() as db:
+        user = db.get(User, user_id)
+        session = db.get(AuthSession, session_id)
+        response, query_count = _count_sql_statements(
+            lambda: list_account_subscriptions_route(current=(user, session), db=db)
+        )
+
+    assert len(response.subscriptions) == subscription_count
+    assert query_count == 3
+
+
+def test_account_subscriptions_list_returns_only_authenticated_user_subscriptions() -> None:
+    owner_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "account-subscriptions-owner@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    other_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "account-subscriptions-other@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    assert owner_response.status_code == 200
+    assert other_response.status_code == 200
+    token = owner_response.json()["token"]
+    now = datetime.now(timezone.utc)
+
+    with SessionLocal() as db:
+        plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
+        owner = db.query(User).filter(User.email_normalized == "account-subscriptions-owner@example.com").one()
+        other = db.query(User).filter(User.email_normalized == "account-subscriptions-other@example.com").one()
+        provider_account = PaymentProviderAccount(
+            tenant_id=owner.tenant_id,
+            region=owner.region,
+            provider="test-provider",
+            public_identifier="pk_account_subscriptions",
+            default_currency=plan.currency,
+            enabled=True,
+            test_mode=True,
+            config={},
+        )
+        db.add(provider_account)
+        db.flush()
+        owner_subscription = Subscription(
+            tenant_id=owner.tenant_id,
+            region=owner.region,
+            user_id=owner.id,
+            plan_id=plan.id,
+            scope_type=plan.scope_type,
+            product_id=plan.product_id,
+            bundle_id=plan.bundle_id,
+            status="active",
+            renewal_mode="automatic",
+            current_period_start=now,
+            current_period_end=now + timedelta(days=60),
+            provider_account_id=provider_account.id,
+            provider_subscription_id="provider-subscription-hidden",
+        )
+        other_subscription = Subscription(
+            tenant_id=other.tenant_id,
+            region=other.region,
+            user_id=other.id,
+            plan_id=plan.id,
+            scope_type=plan.scope_type,
+            product_id=plan.product_id,
+            bundle_id=plan.bundle_id,
+            status="active",
+            renewal_mode="manual",
+            current_period_start=now,
+            current_period_end=now + timedelta(days=30),
+        )
+        db.add_all([owner_subscription, other_subscription])
+        db.flush()
+        order = Order(
+            tenant_id=owner.tenant_id,
+            region=owner.region,
+            order_number="RU-ACCOUNT-SUBSCRIPTIONS",
+            user_id=owner.id,
+            plan_id=plan.id,
+            status="paid",
+            amount_minor=plan.price_amount_minor,
+            currency=plan.currency,
+            provider=provider_account.provider,
+            provider_account_id=provider_account.id,
+            merchant_order_id="account-subscriptions-order",
+            provider_invoice_id="account-subscriptions-invoice",
+            paid_at=now,
+        )
+        db.add(order)
+        db.flush()
+        db.add(
+            Entitlement(
+                tenant_id=owner.tenant_id,
+                region=owner.region,
+                user_id=owner.id,
+                subscription_id=owner_subscription.id,
+                plan_id=plan.id,
+                scope_type=plan.scope_type,
+                product_id=plan.product_id,
+                bundle_id=plan.bundle_id,
+                status="active",
+                valid_from=now,
+                valid_until=now + timedelta(days=30),
+                source="order",
+                order_id=order.id,
+                created_at=now,
+            )
+        )
+        future_order = Order(
+            tenant_id=owner.tenant_id,
+            region=owner.region,
+            order_number="RU-ACCOUNT-SUBSCRIPTIONS-FUTURE",
+            user_id=owner.id,
+            plan_id=plan.id,
+            status="paid",
+            amount_minor=plan.price_amount_minor,
+            currency=plan.currency,
+            provider=provider_account.provider,
+            provider_account_id=provider_account.id,
+            merchant_order_id="account-subscriptions-future-order",
+            provider_invoice_id="account-subscriptions-future-invoice",
+            paid_at=now + timedelta(days=1),
+        )
+        db.add(future_order)
+        db.flush()
+        db.add(
+            Entitlement(
+                tenant_id=owner.tenant_id,
+                region=owner.region,
+                user_id=owner.id,
+                subscription_id=owner_subscription.id,
+                plan_id=plan.id,
+                scope_type=plan.scope_type,
+                product_id=plan.product_id,
+                bundle_id=plan.bundle_id,
+                status="active",
+                valid_from=now + timedelta(days=30),
+                valid_until=now + timedelta(days=60),
+                source="order",
+                order_id=future_order.id,
+                created_at=now + timedelta(minutes=1),
+            )
+        )
+        owner_subscription_id = owner_subscription.id
+        other_subscription_id = other_subscription.id
+        db.commit()
+
+    response = client.get(
+        "/api/account/subscriptions",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    assert "provider-subscription-hidden" not in response.text
+    assert "provider_account_id" not in response.text
+    assert "provider_subscription_id" not in response.text
+    assert "payment_id" not in response.text
+    assert "webhook_event_id" not in response.text
+    subscriptions = response.json()["subscriptions"]
+    assert len(subscriptions) == 1
+    assert subscriptions[0]["subscription_id"] == str(owner_subscription_id)
+    assert subscriptions[0]["subscription_id"] != str(other_subscription_id)
+    assert subscriptions[0]["plan"]["code"] == "document-summary-pro"
+    assert subscriptions[0]["scope"]["scope_type"] == "product"
+    assert subscriptions[0]["status"] == "active"
+    assert subscriptions[0]["renewal_mode"] == "automatic"
+    assert subscriptions[0]["entitlement_validity"]["status"] == "active"
+    assert subscriptions[0]["entitlement_validity"]["valid_from"] == now.replace(tzinfo=None).isoformat()
+
+
+def test_account_subscription_detail_enforces_authenticated_ownership() -> None:
+    owner_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "account-subscription-detail-owner@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    other_register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "account-subscription-detail-other@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    assert owner_response.status_code == 200
+    assert other_register_response.status_code == 200
+    token = owner_response.json()["token"]
+    now = datetime.now(timezone.utc)
+
+    with SessionLocal() as db:
+        plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
+        owner = db.query(User).filter(User.email_normalized == "account-subscription-detail-owner@example.com").one()
+        other = db.query(User).filter(User.email_normalized == "account-subscription-detail-other@example.com").one()
+        owner_subscription = Subscription(
+            tenant_id=owner.tenant_id,
+            region=owner.region,
+            user_id=owner.id,
+            plan_id=plan.id,
+            scope_type=plan.scope_type,
+            product_id=plan.product_id,
+            bundle_id=plan.bundle_id,
+            status="active",
+            renewal_mode="manual",
+            current_period_start=now,
+            current_period_end=now + timedelta(days=30),
+            cancel_requested_at=now + timedelta(days=1),
+        )
+        other_subscription = Subscription(
+            tenant_id=other.tenant_id,
+            region=other.region,
+            user_id=other.id,
+            plan_id=plan.id,
+            scope_type=plan.scope_type,
+            product_id=plan.product_id,
+            bundle_id=plan.bundle_id,
+            status="active",
+            renewal_mode="manual",
+            current_period_start=now,
+            current_period_end=now + timedelta(days=30),
+        )
+        db.add_all([owner_subscription, other_subscription])
+        db.commit()
+        owner_subscription_id = owner_subscription.id
+        other_subscription_id = other_subscription.id
+
+    response = client.get(
+        f"/api/account/subscriptions/{owner_subscription_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    foreign_response = client.get(
+        f"/api/account/subscriptions/{other_subscription_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["subscription_id"] == str(owner_subscription_id)
+    assert response.json()["cancellation"]["cancel_requested_at"] is not None
+    assert response.json()["cancellation"]["canceled_at"] is None
+    assert foreign_response.status_code == 404
+    assert foreign_response.json()["detail"]["code"] == "subscription_not_found"
+
+
+def test_required_document_acceptance_hash_controls_terms_and_personal_consent_gate() -> None:
+    from app.domains.legal.service import expected_acceptance_text_hash
+
+    with SessionLocal() as db:
+        legal_entity = create_legal_entity(db, region="ru")
+        offer_document = create_document_version(
+            db,
+            legal_entity=legal_entity,
+            doc_type="offer",
+            version="2026-08-offer-v1",
+            title="Публичная оферта",
+        )
+        personal_document = create_document_version(
+            db,
+            legal_entity=legal_entity,
+            doc_type="pd_consent",
+            version="2026-08-pd-v1",
+            title="Согласие на обработку персональных данных",
+        )
+        offer_document_id = offer_document.id
+        personal_document_id = personal_document.id
+        offer_hash = expected_acceptance_text_hash(offer_document)
+        personal_hash = expected_acceptance_text_hash(personal_document)
+
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "legal-hash-gate@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = register_response.json()["token"]
+
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": False,
+        },
+    )
+    assert checkout_response.status_code == 409
+    assert {document["document_version_id"] for document in checkout_response.json()["detail"]["documents"]} == {
+        str(offer_document_id),
+        str(personal_document_id),
+    }
+
+    with SessionLocal() as db:
+        user = db.query(User).filter(User.email == "legal-hash-gate@example.com").one()
+        offer_document = db.get(DocumentVersion, offer_document_id)
+        personal_document = db.get(DocumentVersion, personal_document_id)
+        create_document_acceptance_row(
+            db,
+            document=offer_document,
+            user=user,
+            acceptance_text_hash="0" * 64,
+        )
+        create_document_acceptance_row(
+            db,
+            document=personal_document,
+            user=user,
+            acceptance_text_hash=personal_hash,
+        )
+
+    bad_hash_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": False,
+        },
+    )
+    assert bad_hash_response.status_code == 409
+    bad_hash_detail = bad_hash_response.json()["detail"]
+    assert bad_hash_detail["code"] == "missing_required_documents"
+    assert [document["document_version_id"] for document in bad_hash_detail["documents"]] == [str(offer_document_id)]
+
+    with SessionLocal() as db:
+        user = db.query(User).filter(User.email == "legal-hash-gate@example.com").one()
+        offer_document = db.get(DocumentVersion, offer_document_id)
+        create_document_acceptance_row(
+            db,
+            document=offer_document,
+            user=user,
+            acceptance_text_hash=offer_hash,
+        )
+
+    accepted_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": False,
+        },
+    )
+    assert accepted_response.status_code == 200, accepted_response.text
+    with SessionLocal() as db:
+        acceptances = db.query(DocumentAcceptance).all()
+    assert len(acceptances) == 3
+    assert any(acceptance.acceptance_text_hash == "0" * 64 for acceptance in acceptances)
+
+
+def test_required_document_acceptance_scope_and_time_filters_still_apply() -> None:
+    from app.domains.legal.service import expected_acceptance_text_hash
+
+    now = datetime.now(timezone.utc)
+    with SessionLocal() as db:
+        legal_entity = create_legal_entity(db, region="ru")
+        stale_document = create_document_version(
+            db,
+            legal_entity=legal_entity,
+            doc_type="offer",
+            version="2026-08-offer-v0",
+            title="Публичная оферта",
+        )
+        stale_document.is_active = False
+        active_document = create_document_version(
+            db,
+            legal_entity=legal_entity,
+            doc_type="offer",
+            version="2026-08-offer-v1",
+            title="Публичная оферта",
+        )
+        active_document_id = active_document.id
+        stale_document_id = stale_document.id
+        active_hash = expected_acceptance_text_hash(active_document)
+        stale_hash = expected_acceptance_text_hash(stale_document)
+        db.commit()
+
+    owner_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "legal-scope-owner@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    other_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "legal-scope-other@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    assert other_response.status_code == 200
+    token = owner_response.json()["token"]
+
+    with SessionLocal() as db:
+        owner = db.query(User).filter(User.email == "legal-scope-owner@example.com").one()
+        other_user = db.query(User).filter(User.email == "legal-scope-other@example.com").one()
+        active_document = db.get(DocumentVersion, active_document_id)
+        stale_document = db.get(DocumentVersion, stale_document_id)
+        create_document_acceptance_row(
+            db,
+            document=active_document,
+            user=other_user,
+            acceptance_text_hash=active_hash,
+        )
+        create_document_acceptance_row(
+            db,
+            document=active_document,
+            user=owner,
+            tenant_id="other-tenant",
+            acceptance_text_hash=active_hash,
+        )
+        create_document_acceptance_row(
+            db,
+            document=active_document,
+            user=owner,
+            region="eu",
+            acceptance_text_hash=active_hash,
+        )
+        create_document_acceptance_row(
+            db,
+            document=active_document,
+            user=owner,
+            accepted_at=now + timedelta(days=1),
+            acceptance_text_hash=active_hash,
+        )
+        create_document_acceptance_row(
+            db,
+            document=stale_document,
+            user=owner,
+            acceptance_text_hash=stale_hash,
+        )
+
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": False,
+        },
+    )
+    assert checkout_response.status_code == 409
+    detail = checkout_response.json()["detail"]
+    assert detail["code"] == "missing_required_documents"
+    assert [document["document_version_id"] for document in detail["documents"]] == [str(active_document_id)]
+
+
+def test_create_document_acceptance_rejects_substituted_hash_in_endpoint_and_service() -> None:
+    from app.domains.legal.service import (
+        LegalAcceptanceError,
+        create_document_acceptance,
+    )
+
+    with SessionLocal() as db:
+        legal_entity = create_legal_entity(db, region="ru")
+        document = create_document_version(
+            db,
+            legal_entity=legal_entity,
+            doc_type="offer",
+            version="2026-08-offer-v1",
+            title="Публичная оферта",
+        )
+        document_id = document.id
+        with pytest.raises(LegalAcceptanceError) as error:
+            create_document_acceptance(
+                db,
+                document=document,
+                acceptance_text_hash="f" * 64,
+            )
+        assert error.value.code == "invalid_acceptance_text_hash"
+        assert db.query(DocumentAcceptance).count() == 0
+
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "legal-service-hash@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = register_response.json()["token"]
+
+    response = client.post(
+        "/api/legal/acceptances",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "document_version_id": str(document_id),
+            "acceptance_text_hash": "f" * 64,
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "invalid_acceptance_text_hash"
+
+
+def test_automatic_checkout_keeps_recurring_consent_missing_when_hash_is_wrong() -> None:
+    from app.domains.legal.service import expected_acceptance_text_hash
+
+    with SessionLocal() as db:
+        plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
+        plan.renewal_mode = "automatic"
+        legal_entity = create_legal_entity(db)
+        document = create_document_version(
+            db,
+            legal_entity=legal_entity,
+            doc_type="recurring_consent",
+            version="2026-08-recurring-v1",
+            title="Согласие на рекуррентные платежи",
+        )
+        document_id = document.id
+        document_hash = expected_acceptance_text_hash(document)
+
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "recurring-hash-gate@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = register_response.json()["token"]
+
+    with SessionLocal() as db:
+        user = db.query(User).filter(User.email == "recurring-hash-gate@example.com").one()
+        document = db.get(DocumentVersion, document_id)
+        assert document is not None
+        create_document_acceptance_row(
+            db,
+            document=document,
+            user=user,
+            acceptance_text_hash="1" * 64,
+            entrypoint_value="document-summary",
+        )
+
+    bad_hash_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": True,
+        },
+    )
+    assert bad_hash_response.status_code == 409
+    bad_hash_detail = bad_hash_response.json()["detail"]
+    assert bad_hash_detail["code"] == "missing_required_documents"
+    assert [document["document_version_id"] for document in bad_hash_detail["documents"]] == [str(document_id)]
+
+    acceptance_id = accept_document_for_token(
+        token,
+        document=document,
+        entrypoint_value="document-summary",
+    )
+    with SessionLocal() as db:
+        correct_acceptance = db.get(DocumentAcceptance, uuid.UUID(acceptance_id))
+    assert correct_acceptance.acceptance_text_hash == document_hash
+
+    accepted_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": True,
+            "recurring_consent_acceptance_id": acceptance_id,
+        },
+    )
+    assert accepted_response.status_code == 200, accepted_response.text
 
 
 def test_checkout_requires_acceptance_again_when_active_document_version_changes() -> None:

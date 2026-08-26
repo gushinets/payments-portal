@@ -5,6 +5,13 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.core.time import utc_now
+from app.domains.billing.service import (
+    ActivatePaidPeriodCommand,
+    ApplyRefundCommand,
+    activate_paid_period,
+    apply_refund,
+)
 from app.integrations.cloudpayments.payload import get_first
 from app.integrations.cloudpayments.validation import (
     cancel_validation_error,
@@ -15,7 +22,7 @@ from app.integrations.cloudpayments.validation import (
     refund_validation_error,
     validation_error_message,
 )
-from app.integrations.cloudpayments.refunds import record_refund
+from app.integrations.cloudpayments.refunds import record_refund, refund_lifecycle_applies
 from app.integrations.cloudpayments.rules import (
     find_default_provider_account,
     payment_schema_error,
@@ -26,10 +33,7 @@ TERMINAL_ORDER_STATUSES = {"paid", "canceled", "refunded", "partially_refunded"}
 TERMINAL_PAYMENT_STATUSES = {"succeeded", "canceled", "refunded", "partially_refunded"}
 
 
-def datetime_now():
-    from datetime import datetime, timezone
-
-    return datetime.now(timezone.utc)
+datetime_now = utc_now
 
 
 def _parse_data(payload: dict[str, Any]) -> dict[str, Any]:
@@ -450,13 +454,20 @@ def process_webhook_event(
             event.payment_id = payment.id
             event.currency = effective_currency
             event.status = "processed"
+            if payment.status == "succeeded":
+                activate_paid_period(
+                    db,
+                    ActivatePaidPeriodCommand(
+                        order_id=order.id,
+                        payment_id=payment.id,
+                        webhook_event_id=event.id,
+                        operation_idempotency_key=f"{idempotency_key}:activate",
+                        occurred_at=datetime_now(),
+                    ),
+                )
         event.processed_at = datetime_now()
     elif endpoint == "refund":
-        payment = _find_payment(
-            db,
-            order=order,
-            transaction_id=transaction_id,
-        )
+        payment = _find_payment(db, order=order, transaction_id=transaction_id)
         if payment is None:
             event.status = "failed"
             event.error_code = "payment_not_found"
@@ -481,7 +492,7 @@ def process_webhook_event(
                 db.flush()
                 return event
             assert amount_minor is not None
-            record_refund(
+            refund = record_refund(
                 db,
                 order=order,
                 payment=payment,
@@ -490,6 +501,17 @@ def process_webhook_event(
                 payload=payload,
                 now=datetime_now(),
             )
+            if refund_lifecycle_applies(db, order, for_update=True):
+                apply_refund(
+                    db,
+                    ApplyRefundCommand(
+                        order_id=order.id,
+                        refund_id=refund.id,
+                        amount_minor=refund.amount_minor,
+                        operation_idempotency_key=f"cloudpayments:refund:{refund.id}",
+                        occurred_at=datetime_now(),
+                    ),
+                )
             event.currency = currency if currency is not None else payment.currency
             event.status = "processed"
             event.processed_at = datetime_now()

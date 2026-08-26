@@ -60,6 +60,230 @@
         "title": "AcceptDocumentRequest",
         "type": "object"
       },
+      "AccountSubscriptionCancellationResponse": {
+        "properties": {
+          "cancel_requested_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cancel Requested At"
+          },
+          "canceled_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canceled At"
+          }
+        },
+        "required": [
+          "cancel_requested_at",
+          "canceled_at"
+        ],
+        "title": "AccountSubscriptionCancellationResponse",
+        "type": "object"
+      },
+      "AccountSubscriptionCurrentPeriodResponse": {
+        "properties": {
+          "ends_at": {
+            "format": "date-time",
+            "title": "Ends At",
+            "type": "string"
+          },
+          "starts_at": {
+            "format": "date-time",
+            "title": "Starts At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "starts_at",
+          "ends_at"
+        ],
+        "title": "AccountSubscriptionCurrentPeriodResponse",
+        "type": "object"
+      },
+      "AccountSubscriptionEntitlementValidityResponse": {
+        "properties": {
+          "status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EntitlementStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "valid_from": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid From"
+          },
+          "valid_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid Until"
+          }
+        },
+        "required": [
+          "status",
+          "valid_from",
+          "valid_until"
+        ],
+        "title": "AccountSubscriptionEntitlementValidityResponse",
+        "type": "object"
+      },
+      "AccountSubscriptionPlanResponse": {
+        "properties": {
+          "billing_period": {
+            "title": "Billing Period",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "plan_id": {
+            "format": "uuid",
+            "title": "Plan Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "plan_id",
+          "code",
+          "name",
+          "billing_period"
+        ],
+        "title": "AccountSubscriptionPlanResponse",
+        "type": "object"
+      },
+      "AccountSubscriptionResponse": {
+        "properties": {
+          "cancellation": {
+            "$ref": "#/components/schemas/AccountSubscriptionCancellationResponse"
+          },
+          "current_period": {
+            "$ref": "#/components/schemas/AccountSubscriptionCurrentPeriodResponse"
+          },
+          "entitlement_validity": {
+            "$ref": "#/components/schemas/AccountSubscriptionEntitlementValidityResponse"
+          },
+          "plan": {
+            "$ref": "#/components/schemas/AccountSubscriptionPlanResponse"
+          },
+          "renewal_mode": {
+            "$ref": "#/components/schemas/SubscriptionRenewalMode"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/AccountSubscriptionScopeResponse"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SubscriptionStatus"
+          },
+          "subscription_id": {
+            "format": "uuid",
+            "title": "Subscription Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "subscription_id",
+          "plan",
+          "scope",
+          "status",
+          "renewal_mode",
+          "current_period",
+          "cancellation",
+          "entitlement_validity"
+        ],
+        "title": "AccountSubscriptionResponse",
+        "type": "object"
+      },
+      "AccountSubscriptionScopeResponse": {
+        "properties": {
+          "bundle_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bundle Id"
+          },
+          "product_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Id"
+          },
+          "scope_type": {
+            "$ref": "#/components/schemas/SubscriptionScopeType"
+          }
+        },
+        "required": [
+          "scope_type",
+          "product_id",
+          "bundle_id"
+        ],
+        "title": "AccountSubscriptionScopeResponse",
+        "type": "object"
+      },
+      "AccountSubscriptionsResponse": {
+        "properties": {
+          "subscriptions": {
+            "items": {
+              "$ref": "#/components/schemas/AccountSubscriptionResponse"
+            },
+            "title": "Subscriptions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "subscriptions"
+        ],
+        "title": "AccountSubscriptionsResponse",
+        "type": "object"
+      },
       "CheckoutIntentRequest": {
         "properties": {
           "auto_renew": {
@@ -91,6 +315,18 @@
             "title": "Product",
             "type": "string"
           },
+          "recurring_consent_acceptance_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recurring Consent Acceptance Id"
+          },
           "source_url": {
             "anyOf": [
               {
@@ -109,6 +345,16 @@
         ],
         "title": "CheckoutIntentRequest",
         "type": "object"
+      },
+      "EntitlementStatus": {
+        "enum": [
+          "active",
+          "expired",
+          "revoked",
+          "superseded"
+        ],
+        "title": "EntitlementStatus",
+        "type": "string"
       },
       "HTTPValidationError": {
         "properties": {
@@ -231,6 +477,36 @@
         "title": "RegisterRequest",
         "type": "object"
       },
+      "SubscriptionRenewalMode": {
+        "enum": [
+          "manual",
+          "automatic"
+        ],
+        "title": "SubscriptionRenewalMode",
+        "type": "string"
+      },
+      "SubscriptionScopeType": {
+        "enum": [
+          "product",
+          "bundle",
+          "all_access"
+        ],
+        "title": "SubscriptionScopeType",
+        "type": "string"
+      },
+      "SubscriptionStatus": {
+        "enum": [
+          "trialing",
+          "active",
+          "past_due",
+          "canceled",
+          "expired",
+          "refunded",
+          "paused"
+        ],
+        "title": "SubscriptionStatus",
+        "type": "string"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -279,6 +555,114 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/account/subscriptions": {
+      "get": {
+        "operationId": "list_subscriptions_api_account_subscriptions_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountSubscriptionsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Subscriptions",
+        "tags": [
+          "account"
+        ]
+      }
+    },
+    "/api/account/subscriptions/{subscription_id}": {
+      "get": {
+        "operationId": "get_subscription_api_account_subscriptions__subscription_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "subscription_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Subscription Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountSubscriptionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Subscription",
+        "tags": [
+          "account"
+        ]
+      }
+    },
     "/api/auth/checkout-intent": {
       "post": {
         "operationId": "create_checkout_intent_api_auth_checkout_intent_post",

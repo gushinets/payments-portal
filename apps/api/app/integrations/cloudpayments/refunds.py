@@ -17,6 +17,7 @@ from app.integrations.cloudpayments.operation_meta import (
     succeeded_meta,
 )
 from app.integrations.cloudpayments.payload import get_first
+from app.infrastructure.queries.subscriptions import get_subscription_for_order
 from app.models import Order, Payment, PaymentProviderAccount, Refund
 from app.payment_providers.contracts import RefundRequest, RefundResult, RefundStatus, RetryDisposition
 
@@ -243,8 +244,14 @@ def record_refund(
     return refund
 
 
+def refund_lifecycle_applies(db: Session, order: Order, *, for_update: bool = False) -> bool:
+    if order.status != "canceled":
+        return True
+    return get_subscription_for_order(db, order.id, for_update=for_update) is not None
+
+
 def _apply_order_refund_status(db: Session, order: Order) -> None:
-    if order.status == "canceled":
+    if not refund_lifecycle_applies(db, order):
         return
     captured_payments = (
         db.query(Payment)

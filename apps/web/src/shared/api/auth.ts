@@ -15,6 +15,23 @@ export type AuthResponse = {
   user: AuthUser;
 };
 
+export type AuthProductState = {
+  product_code: string;
+  plan_code?: string | null;
+  plan_name?: string | null;
+  invoice_id?: string | null;
+  transaction_id?: string | null;
+  status: "inactive" | "pending" | "active" | "failed";
+  starts_at?: string | null;
+  expires_at?: string | null;
+};
+
+export type AuthSessionResponse = {
+  authenticated: boolean;
+  user: AuthUser;
+  product_state?: AuthProductState | null;
+};
+
 export type SubmitAuthValues = {
   mode: AuthMode;
   email: string;
@@ -48,6 +65,8 @@ export class ApiError extends Error {
 const configuredApiBase =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 export const requestTimeoutMs = 5000;
+
+type JsonDecoder<T> = (payload: unknown) => T;
 
 export function resolveApiBase(): string {
   if (typeof window === "undefined") {
@@ -110,7 +129,11 @@ export async function postJson<T>(
   return response.json() as Promise<T>;
 }
 
-export async function getJson<T>(path: string, token: string): Promise<T> {
+export async function getJson<T = unknown>(
+  path: string,
+  token: string,
+  decoder?: JsonDecoder<T>
+): Promise<T> {
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => controller.abort(), requestTimeoutMs);
   const response = await fetch(`${resolveApiBase()}${path}`, {
@@ -124,7 +147,85 @@ export async function getJson<T>(path: string, token: string): Promise<T> {
     throw await makeApiError(response);
   }
 
-  return response.json() as Promise<T>;
+  const payload = (await response.json()) as unknown;
+  return decoder ? decoder(payload) : (payload as T);
+}
+
+export function decodeAuthSessionResponse(payload: unknown): AuthSessionResponse {
+  if (!isRecord(payload)) {
+    throw new Error("invalid_session_response");
+  }
+
+  const authenticated = payload.authenticated;
+  const user = payload.user;
+  const productState = payload.product_state;
+
+  if (typeof authenticated !== "boolean" || !isAuthUser(user)) {
+    throw new Error("invalid_session_response");
+  }
+
+  if (
+    productState !== undefined &&
+    productState !== null &&
+    !isAuthProductState(productState)
+  ) {
+    throw new Error("invalid_session_response");
+  }
+
+  return {
+    authenticated,
+    user,
+    ...(productState !== undefined
+      ? { product_state: productState }
+      : {})
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isAuthUser(value: unknown): value is AuthUser {
+  return (
+    isRecord(value) &&
+    typeof value.tenant_id === "string" &&
+    typeof value.region === "string" &&
+    typeof value.user_id === "string" &&
+    typeof value.email === "string"
+  );
+}
+
+function isAuthProductState(value: unknown): value is AuthProductState {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  const status = value.status;
+  return (
+    typeof value.product_code === "string" &&
+    (value.plan_code === undefined ||
+      value.plan_code === null ||
+      typeof value.plan_code === "string") &&
+    (value.plan_name === undefined ||
+      value.plan_name === null ||
+      typeof value.plan_name === "string") &&
+    (value.invoice_id === undefined ||
+      value.invoice_id === null ||
+      typeof value.invoice_id === "string") &&
+    (value.transaction_id === undefined ||
+      value.transaction_id === null ||
+      typeof value.transaction_id === "string") &&
+    (status === "inactive" ||
+      status === "pending" ||
+      status === "active" ||
+      status === "failed") &&
+    (value.starts_at === undefined ||
+      value.starts_at === null ||
+      typeof value.starts_at === "string") &&
+    (value.expires_at === undefined ||
+      value.expires_at === null ||
+      typeof value.expires_at === "string")
+  );
 }
 
 export async function submitAuth(values: SubmitAuthValues): Promise<AuthResponse> {

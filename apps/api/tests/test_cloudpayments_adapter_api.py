@@ -16,6 +16,14 @@ from app.integrations.cloudpayments.api_client import (  # noqa: E402
     CloudPaymentsApiClient,
     CloudPaymentsApiClientConfig,
 )
+from app.integrations.cloudpayments.operation_meta import (  # noqa: E402
+    failed_meta,
+    failed_meta_from_error,
+    succeeded_meta,
+)
+from app.integrations.cloudpayments.transaction_lookup import (  # noqa: E402
+    lookup_transaction as lookup_cloudpayments_transaction,
+)
 from app.payment_providers.contracts import (  # noqa: E402
     CancelRecurringSubscriptionRequest,
     CreateRecurringSubscriptionRequest,
@@ -62,6 +70,75 @@ def _adapter_with_transport(handler: httpx.MockTransport) -> CloudPaymentsAdapte
             transport=handler,
         )
     )
+
+
+@pytest.mark.parametrize(
+    ("account_public_id", "model_public_id", "expected_status", "expected_failure_code"),
+    [
+        ("pk_test", "pk_test", TransactionStatus.SUCCEEDED, None),
+        ("pk_test", "pk_other", TransactionStatus.UNKNOWN, "cloudpayments_public_id_mismatch"),
+        ("pk_test", None, TransactionStatus.UNKNOWN, "cloudpayments_public_id_mismatch"),
+        ("pk_test", "   ", TransactionStatus.UNKNOWN, "cloudpayments_public_id_mismatch"),
+        (None, None, TransactionStatus.SUCCEEDED, None),
+    ],
+)
+def test_cloudpayments_transaction_lookup_validates_configured_public_id(
+    account_public_id: str | None,
+    model_public_id: str | None,
+    expected_status: TransactionStatus,
+    expected_failure_code: str | None,
+) -> None:
+    provider_account = _provider_account()
+    provider_account.public_identifier = account_public_id
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/payments/get"
+        model: dict[str, object] = {
+            "TransactionId": 897749645,
+            "InvoiceId": "inv-1",
+            "OperationType": "Payment",
+            "Status": "Completed",
+            "ReasonCode": 0,
+            "Amount": 159,
+            "Currency": "RUB",
+            "PaymentAmount": 159,
+            "PaymentCurrency": "RUB",
+        }
+        if model_public_id is not None:
+            model["PublicId"] = model_public_id
+        return httpx.Response(200, json={"Success": True, "Message": None, "Model": model})
+
+    result = lookup_cloudpayments_transaction(
+        api_client=CloudPaymentsApiClient(
+            config=CloudPaymentsApiClientConfig(
+                base_url="https://api.cloudpayments.ru",
+                public_id="pk_test",
+                api_secret="secret_test",
+                max_retries=0,
+            ),
+            transport=httpx.MockTransport(handler),
+        ),
+        provider_account=provider_account,  # type: ignore[arg-type]
+        request=TransactionLookupRequest(
+            provider_payment_id="897749645",
+            provider_invoice_id="inv-1",
+            expected_amount_minor=15900,
+            expected_currency="RUB",
+        ),
+        provider_code="cloudpayments",
+        account_error=None,
+        failed_meta=failed_meta,
+        failed_meta_from_error=failed_meta_from_error,
+        succeeded_meta=succeeded_meta,
+    )
+
+    assert result.status == expected_status
+    if expected_failure_code is None:
+        assert result.meta.outcome.value == "succeeded"
+        assert result.meta.failure is None
+    else:
+        assert result.meta.failure is not None
+        assert result.meta.failure.code == expected_failure_code
 
 
 def _create_subscription_request(**overrides: object) -> CreateRecurringSubscriptionRequest:

@@ -9,6 +9,7 @@ import pytest
 import scripts.repo as repo
 from scripts.repo import (
     canonical_check_environment,
+    check_documented_metadata_tables,
     check_expected_legal_versions,
     check_required_markdown_link_content,
     direct_api_environment,
@@ -75,6 +76,72 @@ def test_migration_legal_version_mismatch_is_rejected() -> None:
         "of 2026-07-11, found 2026-07-11, 2026-07-11, 2026-07-11, "
         "2026-07-11, 2026-07-11"
     ]
+
+
+def test_canonical_metadata_table_entry_is_accepted() -> None:
+    assert (
+        check_documented_metadata_tables(
+            ["documented_table"],
+            "| `documented_table` | Implemented | Purpose |\n",
+        )
+        == []
+    )
+
+
+def test_metadata_table_name_only_in_prose_is_still_missing() -> None:
+    assert check_documented_metadata_tables(
+        ["referenced_table"],
+        "The `referenced_table` relation is discussed elsewhere.\n",
+    ) == ["Implemented table missing from canonical data model: referenced_table"]
+
+
+def test_missing_metadata_tables_are_reported_sorted() -> None:
+    assert check_documented_metadata_tables(
+        ["zeta_table", "documented_table", "alpha_table"],
+        "| `documented_table` | Implemented | Purpose |\n",
+    ) == [
+        "Implemented table missing from canonical data model: alpha_table",
+        "Implemented table missing from canonical data model: zeta_table",
+    ]
+
+
+def test_check_docs_uses_imported_metadata_tables(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    class FakeMetadata:
+        tables = {
+            "documented_table": object(),
+            "metadata_only_table": object(),
+        }
+
+    class FakeBase:
+        metadata = FakeMetadata()
+
+    for required in (
+        "AGENTS.md",
+        "ARCHITECTURE.md",
+        "docs/README.md",
+        "docs/architecture/payment-portal-data-model.md",
+        "docs/architecture/contours.md",
+        "docs/architecture/region-resolver-contract.md",
+        "docs/architecture/payment-providers.md",
+        "docs/product/ru-mvp.md",
+    ):
+        path = tmp_path / required
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("", encoding="utf-8")
+    (tmp_path / "docs/architecture/payment-portal-data-model.md").write_text(
+        "| `documented_table` | Implemented | Purpose |\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(repo, "ROOT", tmp_path)
+    monkeypatch.setattr(repo, "check_knowledge_hierarchy", lambda: [])
+    monkeypatch.setattr(repo, "engineering_markdown_files", lambda: [])
+    monkeypatch.setattr(repo, "import_api", lambda: (FakeBase, object()))
+
+    assert repo.check_docs() == ["Implemented table missing from canonical data model: metadata_only_table"]
 
 
 def test_canonical_checks_use_a_worktree_scoped_temp_directory(tmp_path: Path) -> None:
@@ -433,6 +500,7 @@ def test_write_runtime_protects_generated_secret_file(
     monkeypatch.setattr(repo, "RUNTIME_JSON", runtime_json)
     monkeypatch.setattr(repo, "RUNTIME_ENV", runtime_env)
     monkeypatch.setattr(repo, "read_dotenv", dict)
+    monkeypatch.delenv("CLOUDPAYMENTS_API_SECRET", raising=False)
 
     repo.write_runtime(
         repo.RuntimeConfig(

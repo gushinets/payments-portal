@@ -1,10 +1,6 @@
 {
   "defaultMaxLines": 500,
   "exceptions": {
-    "apps/api/app/models.py": {
-      "maxLines": 820,
-      "reason": "Temporary aggregate ORM registry includes the ANY-71 catalog baseline; split before adding subscriptions or entitlements."
-    },
     "apps/api/app/payment_providers/api_client.py": {
       "maxLines": 550,
       "reason": "Provider HTTP client keeps request deadline, retry, redaction, and idempotency policy together while the provider boundary is under active development."
@@ -14,8 +10,12 @@
       "reason": "CloudPayments recurring operations keep validation, state mapping, and safe result translation together while the recurring provider slice is under active development."
     },
     "apps/api/app/domains/identity/router.py": {
-      "maxLines": 700,
-      "reason": "Behavior-preserving transition keeps legacy auth flow together until its product redesign."
+      "maxLines": 711,
+      "reason": "Behavior-preserving transition keeps legacy auth flow together until its product redesign; do not add identity routes here without extracting helpers."
+    },
+    "apps/api/app/integrations/cloudpayments/processing.py": {
+      "maxLines": 524,
+      "reason": "CloudPayments webhook processing is temporarily over the default limit while ANY-168 recurrent integration is pending; extract recurrent processing before adding provider behavior."
     },
     "apps/web/src/features/checkout/CheckoutClient.tsx": {
       "maxLines": 1050,

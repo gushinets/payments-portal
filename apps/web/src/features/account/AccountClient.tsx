@@ -1,62 +1,24 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowRight, LogOut, UserRound } from "lucide-react";
 import { formatRubles, products } from "@/features/catalog";
+import {
+  decodeAuthSessionResponse,
+  getJson,
+  type AuthProductState,
+  type AuthSessionResponse
+} from "@/shared/api/auth";
 
-type ProductState = {
-  product_code: string;
-  plan_code?: string | null;
-  plan_name?: string | null;
-  invoice_id?: string | null;
-  transaction_id?: string | null;
-  status: "inactive" | "pending" | "active" | "failed";
-  starts_at?: string | null;
-  expires_at?: string | null;
-};
-
-type SessionResponse = {
-  authenticated: boolean;
-  user: {
-    tenant_id: string;
-    region: string;
-    user_id: string;
-    email: string;
-  };
-  product_state?: ProductState | null;
-};
-
-const configuredApiBase =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 const sessionStorageKey = "anytoolai_session_token_v1";
 const sessionChangedEvent = "anytoolai_session_changed";
-const requestTimeoutMs = 5000;
 
-function resolveApiBase(): string {
-  if (typeof window === "undefined") {
-    return configuredApiBase;
-  }
-
-  try {
-    const url = new URL(configuredApiBase);
-    const isLocalApiHost =
-      url.hostname === "localhost" || url.hostname === "127.0.0.1";
-    const isLocalBrowserHost =
-      window.location.hostname === "localhost" ||
-      window.location.hostname === "127.0.0.1";
-
-    if (isLocalApiHost && !isLocalBrowserHost) {
-      url.hostname = window.location.hostname;
-    }
-
-    return url.toString().replace(/\/$/, "");
-  } catch {
-    return configuredApiBase.replace(/\/$/, "");
-  }
-}
-
-function statusLabel(status: ProductState["status"] | undefined): string {
+function statusLabel(
+  status: AuthProductState["status"] | undefined,
+  failedToLoad: boolean,
+  loading: boolean
+): string {
   if (status === "active") {
     return "Подписка активна";
   }
@@ -66,23 +28,67 @@ function statusLabel(status: ProductState["status"] | undefined): string {
   if (status === "failed") {
     return "Платёж не подтверждён";
   }
+  if (loading) {
+    return "Статус загружается";
+  }
+  if (failedToLoad) {
+    return "Статус подписки не загружен";
+  }
   return "Подписка не активна";
+}
+
+function sessionPath(productCode?: string): string {
+  const query = productCode
+    ? `?product=${encodeURIComponent(productCode)}`
+    : "";
+  return `/api/auth/session${query}`;
+}
+
+function accountKey(session: AuthSessionResponse): string {
+  return `${session.user.tenant_id}:${session.user.region}:${session.user.user_id}`;
+}
+
+function requireAuthenticatedSession(
+  session: AuthSessionResponse
+): AuthSessionResponse {
+  if (!session.authenticated) {
+    throw new Error("invalid_session");
+  }
+
+  return session;
 }
 
 export function AccountClient() {
   const [email, setEmail] = useState("");
-  const [states, setStates] = useState<Record<string, ProductState>>({});
+  const [states, setStates] = useState<Record<string, AuthProductState>>({});
+  const [loadingProductCodes, setLoadingProductCodes] = useState<Set<string>>(
+    () => new Set()
+  );
+  const [failedProductCodes, setFailedProductCodes] = useState<Set<string>>(
+    () => new Set()
+  );
+  const [productLoadError, setProductLoadError] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const loadIdRef = useRef(0);
+  const accountKeyRef = useRef("");
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadAccount() {
+      const loadId = loadIdRef.current + 1;
+      loadIdRef.current = loadId;
+      const isCurrentLoad = () => !cancelled && loadIdRef.current === loadId;
       const token = window.localStorage.getItem(sessionStorageKey);
+
       if (!token) {
         setEmail("");
         setStates({});
+        setLoadingProductCodes(new Set());
+        setFailedProductCodes(new Set());
+        setProductLoadError("");
+        accountKeyRef.current = "";
         setLoading(false);
         setError("Войдите в аккаунт, чтобы увидеть статус подписок.");
         return;
@@ -92,52 +98,90 @@ export function AccountClient() {
       setError("");
 
       try {
-        const payloads = await Promise.all(
-          products.map(async (product) => {
-            const controller = new AbortController();
-            const timeoutId = window.setTimeout(
-              () => controller.abort(),
-              requestTimeoutMs
-            );
-            const response = await fetch(
-              `${resolveApiBase()}/api/auth/session?product=${encodeURIComponent(product.code)}`,
-              {
-                headers: { Authorization: `Bearer ${token}` },
-                signal: controller.signal
-              }
-            ).finally(() => window.clearTimeout(timeoutId));
-
-            if (!response.ok) {
-              throw new Error("session_error");
-            }
-
-            return response.json() as Promise<SessionResponse>;
-          })
+        const session = requireAuthenticatedSession(
+          await getJson(sessionPath(), token, decodeAuthSessionResponse)
         );
 
-        if (cancelled) {
+        if (!isCurrentLoad()) {
           return;
         }
 
-        setEmail(payloads[0]?.user.email ?? "");
-        setStates(
-          Object.fromEntries(
-            payloads
-              .map((payload) => payload.product_state)
-              .filter((state): state is ProductState => Boolean(state))
-              .map((state) => [state.product_code, state])
+        const nextAccountKey = accountKey(session);
+        setEmail(session.user.email);
+        if (accountKeyRef.current && accountKeyRef.current !== nextAccountKey) {
+          setStates({});
+        }
+        accountKeyRef.current = nextAccountKey;
+        setLoadingProductCodes(
+          new Set(products.map((product) => product.code))
+        );
+        setLoading(false);
+
+        const payloads = await Promise.allSettled(
+          products.map((product) =>
+            getJson(
+              sessionPath(product.code),
+              token,
+              decodeAuthSessionResponse
+            ).then(requireAuthenticatedSession)
           )
         );
+
+        if (!isCurrentLoad()) {
+          return;
+        }
+
+        const rejectedCodes = new Set(
+          products
+            .filter((_, index) => payloads[index]?.status === "rejected")
+            .map((product) => product.code)
+        );
+        setStates((currentStates) => {
+          const nextStates = { ...currentStates };
+
+          payloads.forEach((payload, index) => {
+            const productCode = products[index]?.code;
+            if (!productCode) {
+              return;
+            }
+
+            if (payload.status === "rejected") {
+              return;
+            }
+
+            const productState = payload.value.product_state;
+            if (productState) {
+              nextStates[productCode] = productState;
+            } else {
+              delete nextStates[productCode];
+            }
+          });
+
+          return nextStates;
+        });
+        setFailedProductCodes(rejectedCodes);
+        setLoadingProductCodes(new Set());
+        setProductLoadError(
+          rejectedCodes.size > 0
+            ? "Не удалось загрузить статусы части подписок. Обновите страницу."
+            : ""
+        );
       } catch {
+        const shouldShowFatalError = isCurrentLoad();
         window.localStorage.removeItem(sessionStorageKey);
         window.dispatchEvent(new Event(sessionChangedEvent));
-        if (!cancelled) {
+        if (shouldShowFatalError && !cancelled) {
           setEmail("");
           setStates({});
+          setLoadingProductCodes(new Set());
+          setFailedProductCodes(new Set());
+          setProductLoadError("");
+          accountKeyRef.current = "";
+          setLoading(false);
           setError("Не удалось загрузить аккаунт. Войдите ещё раз.");
         }
       } finally {
-        if (!cancelled) {
+        if (isCurrentLoad()) {
           setLoading(false);
         }
       }
@@ -205,6 +249,12 @@ export function AccountClient() {
         Здесь отображается текущий аккаунт и статусы подписок по продуктам.
       </p>
 
+      {productLoadError ? (
+        <div className="notice" role="status">
+          {productLoadError}
+        </div>
+      ) : null}
+
       <div className="account-layout">
         <article className="form-panel account-summary-panel">
           <span className="badge badge-live">
@@ -228,6 +278,8 @@ export function AccountClient() {
             const state = states[product.code];
             const isActive = state?.status === "active";
             const isPending = state?.status === "pending";
+            const failedToLoad = failedProductCodes.has(product.code);
+            const productLoading = loadingProductCodes.has(product.code);
 
             return (
               <article className="tool-card" key={product.code}>
@@ -240,7 +292,7 @@ export function AccountClient() {
                         : "badge-demo"
                   }`}
                 >
-                  {statusLabel(state?.status)}
+                  {statusLabel(state?.status, failedToLoad, productLoading)}
                 </span>
                 <h2 style={{ marginTop: 14 }}>{product.name}</h2>
                 <p className="card-copy">{product.tagline}</p>

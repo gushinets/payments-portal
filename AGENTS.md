@@ -57,7 +57,9 @@ document that applies to the current task.
 - Region Resolver is a separate repository. This portal may know only that
   resolver origin, as a planned client. Do not implement the resolver here.
 - Platform Kernel changes belong to `gushinets/anytoolai-platform`.
-- ANY-71 owns planned catalog, subscription, entitlement, and access-API work.
+- ANY-71 owns Payment Portal data-model design and decomposition; implementation
+  is owned by its child tickets: ANY-77 for catalog, ANY-78 for subscriptions
+  and entitlements, and ANY-79 for the private entitlement API.
 - Activate paid access only from a verified webhook, never from a return URL.
 - Never collect card data or log secrets, authorization headers, raw tokens, or
   unredacted payment fields.

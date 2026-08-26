@@ -14,14 +14,25 @@ from app.models import (
     PlanLimit,
     PlanPriceComponent,
     Product,
-    ProductAccessState,
     Refund,
+    Entitlement,
+    Subscription,
+    SubscriptionEvent,
+)
+from app.domains.billing.enums import (
+    EntitlementSource,
+    EntitlementStatus,
+    SubscriptionRenewalMode,
+    SubscriptionStatus,
 )
 
 __all__ = [
     "Bundle",
     "BundleProduct",
     "CheckoutSession",
+    "Entitlement",
+    "EntitlementSource",
+    "EntitlementStatus",
     "EntrypointSession",
     "Order",
     "OrderItem",
@@ -32,6 +43,9 @@ __all__ = [
     "PlanLimit",
     "PlanPriceComponent",
     "Product",
-    "ProductAccessState",
     "Refund",
+    "Subscription",
+    "SubscriptionEvent",
+    "SubscriptionRenewalMode",
+    "SubscriptionStatus",
 ]

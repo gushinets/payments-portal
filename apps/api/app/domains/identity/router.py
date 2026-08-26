@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import hashlib
 import secrets
+import uuid
 from datetime import datetime, timedelta
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, EmailStr, Field
@@ -14,16 +16,37 @@ from app.core.errors import PaymentProviderConfigurationError
 from app.core.observability import record_checkout, traced
 from app.domains.identity.passwords import hash_password, verify_password
 from app.domains.legal.service import (
-    build_acceptance_text,
-    expected_acceptance_text_hash,
+    get_current_recurring_consent_acceptance,
     get_missing_required_documents_for_user,
+    present_required_document,
+)
+from app.domains.billing.enums import (
+    OrderStatus,
+    PaymentStatus,
+    ProductAccessStatus,
+    SubscriptionScopeType,
+    SubscriptionRenewalMode,
 )
 from app.domains.identity.session import (
     DEFAULT_REGION,
     DEFAULT_TENANT_ID,
     get_current_session,
-    utc_now,
 )
+from app.core.time import utc_now
+from app.infrastructure.queries.orders import (
+    get_order_by_id,
+    get_latest_order_for_user_entrypoint,
+    get_order_item,
+)
+from app.infrastructure.queries.payments import get_latest_payment_for_order
+from app.infrastructure.queries.plans import get_plan_by_id
+from app.infrastructure.queries.products import get_product_by_code
+from app.infrastructure.queries.products import (
+    get_bundle_by_code,
+    get_bundle_by_id,
+    get_product_by_id,
+)
+from app.infrastructure.queries.subscriptions import get_active_entitlement_for_scope
 from app.models import (
     AuthSession,
     Bundle,
@@ -34,7 +57,6 @@ from app.models import (
     Payment,
     Plan,
     Product,
-    ProductAccessState,
     User,
 )
 from app.payment_providers.accounts import get_or_create_checkout_provider_account
@@ -82,6 +104,7 @@ class CheckoutIntentRequest(BaseModel):
     product: str
     plan_code: str
     auto_renew: bool = False
+    recurring_consent_acceptance_id: uuid.UUID | None = None
     entrypoint_type: str = "product"
     frontend_id: str | None = None
     source_url: str | None = None
@@ -177,6 +200,7 @@ def get_sellable_plan(db: Session, *, user: User, entrypoint_code: str, plan_cod
         "amount_minor": plan.price_amount_minor,
         "currency": plan.currency,
         "trial_days": plan.trial_days,
+        "renewal_mode": plan.renewal_mode,
         "pricing_snapshot": {
             "price_amount_minor": plan.price_amount_minor,
             "currency": plan.currency,
@@ -186,17 +210,79 @@ def get_sellable_plan(db: Session, *, user: User, entrypoint_code: str, plan_cod
     }
 
 
-def present_product_state(state: ProductAccessState | None, product_code: str) -> dict:
-    default_plan = PRODUCT_DEFAULTS.get(product_code, {})
+def present_product_state(
+    db: Session,
+    *,
+    user: User,
+    product_code: str,
+    order: Order | None = None,
+    payment: Payment | None = None,
+) -> dict:
+    now = utc_now()
+    product = get_product_by_code(db, tenant_id=user.tenant_id, code=product_code)
+    bundle = get_bundle_by_code(db, tenant_id=user.tenant_id, code=product_code) if product is None else None
+    default_plan = PRODUCT_DEFAULTS.get(product_code, {}) if product is not None else {}
+    if product is not None:
+        scope_type = SubscriptionScopeType.PRODUCT.value
+    elif bundle is not None:
+        scope_type = SubscriptionScopeType.BUNDLE.value
+    elif product_code == "all-access":
+        scope_type = SubscriptionScopeType.ALL_ACCESS.value
+    else:
+        scope_type = None
+    if scope_type is not None and order is None:
+        order = get_latest_order_for_user_entrypoint(
+            db,
+            tenant_id=user.tenant_id,
+            region=user.region,
+            user_id=user.id,
+            product_id=product.id if product is not None else None,
+            bundle_id=bundle.id if bundle is not None else None,
+            scope_type=scope_type,
+            entrypoint_code=product_code,
+        )
+    entitlement = None
+    if scope_type is not None:
+        entitlement = get_active_entitlement_for_scope(
+            db,
+            tenant_id=user.tenant_id,
+            region=user.region,
+            user_id=user.id,
+            scope_type=scope_type,
+            product_id=product.id if product is not None else None,
+            bundle_id=bundle.id if bundle is not None else None,
+            now=now,
+        )
+    if entitlement is not None:
+        if order is None and entitlement.order_id is not None:
+            order = get_order_by_id(db, entitlement.order_id)
+        payment = payment or (get_latest_payment_for_order(db, order.id) if order is not None else None)
+        status = ProductAccessStatus.ACTIVE.value
+        starts_at = entitlement.valid_from
+        expires_at = entitlement.valid_until
+    else:
+        starts_at = order.created_at if order is not None else None
+        expires_at = None
+        pending_order_statuses = {"created", OrderStatus.PENDING_PAYMENT.value}
+        status = (
+            ProductAccessStatus.PENDING.value
+            if order is not None and order.status in pending_order_statuses
+            else ProductAccessStatus.INACTIVE.value
+        )
+    plan = None
+    if entitlement is not None:
+        plan = get_plan_by_id(db, entitlement.plan_id)
+    elif order is not None and order.plan_id is not None:
+        plan = get_plan_by_id(db, order.plan_id)
     return {
         "product_code": product_code,
-        "plan_code": state.plan_code if state else default_plan.get("plan_code"),
-        "plan_name": default_plan.get("plan_name"),
-        "invoice_id": state.last_invoice_id if state else None,
-        "transaction_id": state.last_transaction_id if state else None,
-        "status": state.status if state else "inactive",
-        "starts_at": state.starts_at.isoformat() if state and state.starts_at else None,
-        "expires_at": state.expires_at.isoformat() if state and state.expires_at else None,
+        "plan_code": plan.code if plan is not None else default_plan.get("plan_code"),
+        "plan_name": plan.name if plan is not None else default_plan.get("plan_name"),
+        "invoice_id": order.provider_invoice_id if order else None,
+        "transaction_id": payment.provider_payment_id if payment else None,
+        "status": status,
+        "starts_at": starts_at.isoformat() if starts_at else None,
+        "expires_at": expires_at.isoformat() if expires_at else None,
     }
 
 
@@ -204,7 +290,7 @@ def present_product_state(state: ProductAccessState | None, product_code: str) -
 def register(
     payload: RegisterRequest,
     request: Request,
-    db: Session = Depends(get_db),
+    db: Annotated[Session, Depends(get_db)],
 ):
     if not payload.personal_consent:
         raise HTTPException(status_code=400, detail="missing_personal_consent")
@@ -264,7 +350,7 @@ def register(
 def login(
     payload: LoginRequest,
     request: Request,
-    db: Session = Depends(get_db),
+    db: Annotated[Session, Depends(get_db)],
 ):
     tenant_id = normalize_tenant_id(payload.tenant_id)
     region = normalize_region(payload.region)
@@ -305,23 +391,15 @@ def login(
 
 @router.get("/session")
 def get_session(
+    current: Annotated[tuple[User, AuthSession], Depends(get_current_session)],
+    db: Annotated[Session, Depends(get_db)],
     product: str | None = None,
-    current: tuple[User, AuthSession] = Depends(get_current_session),
-    db: Session = Depends(get_db),
 ):
     user, _ = current
 
     product_state = None
     if product:
-        state = (
-            db.query(ProductAccessState)
-            .filter(
-                ProductAccessState.user_id == user.id,
-                ProductAccessState.product_code == product,
-            )
-            .first()
-        )
-        product_state = present_product_state(state, product)
+        product_state = present_product_state(db, user=user, product_code=product)
 
     return {
         "authenticated": True,
@@ -332,11 +410,11 @@ def get_session(
 
 @router.get("/payment-status")
 def get_payment_status(
-    invoice_id: str = Query(min_length=1),
-    email: EmailStr = Query(),
-    tenant_id: str = Query(default=DEFAULT_TENANT_ID),
-    region: str = Query(default=DEFAULT_REGION),
-    db: Session = Depends(get_db),
+    invoice_id: Annotated[str, Query(min_length=1)],
+    email: Annotated[EmailStr, Query()],
+    db: Annotated[Session, Depends(get_db)],
+    tenant_id: Annotated[str, Query()] = DEFAULT_TENANT_ID,
+    region: Annotated[str, Query()] = DEFAULT_REGION,
 ):
     normalized_email = normalize_email(str(email))
     user = (
@@ -351,17 +429,6 @@ def get_payment_status(
     if user is None:
         raise HTTPException(status_code=404, detail="payment_not_found")
 
-    state = (
-        db.query(ProductAccessState)
-        .filter(
-            ProductAccessState.user_id == user.id,
-            ProductAccessState.last_invoice_id == invoice_id,
-        )
-        .first()
-    )
-    if state is None:
-        raise HTTPException(status_code=404, detail="payment_not_found")
-
     order = (
         db.query(Order)
         .filter(
@@ -370,23 +437,55 @@ def get_payment_status(
         )
         .first()
     )
+    if order is None:
+        raise HTTPException(status_code=404, detail="payment_not_found")
     payment = None
-    if order is not None:
-        payment_query = db.query(Payment).filter(Payment.order_id == order.id)
-        if order.status == "canceled":
-            payment = (
-                payment_query.filter(Payment.status.in_(("succeeded", "partially_refunded", "refunded")))
-                .order_by(Payment.captured_at.desc(), Payment.created_at.desc())
-                .first()
+    payment_query = db.query(Payment).filter(Payment.order_id == order.id)
+    if order.status == OrderStatus.CANCELED.value:
+        payment = (
+            payment_query.filter(
+                Payment.status.in_(
+                    (
+                        PaymentStatus.SUCCEEDED.value,
+                        PaymentStatus.PARTIALLY_REFUNDED.value,
+                        PaymentStatus.REFUNDED.value,
+                    )
+                )
             )
-        payment = payment or payment_query.order_by(Payment.created_at.desc()).first()
+            .order_by(Payment.captured_at.desc(), Payment.created_at.desc())
+            .first()
+        )
+    payment = payment or payment_query.order_by(Payment.created_at.desc()).first()
+
+    order_item = get_order_item(db, order.id)
+    product_code = order_item.product_code_snapshot if order_item else None
+    if product_code is None and order_item is not None and order_item.product_id is not None:
+        product = get_product_by_id(db, order_item.product_id)
+        product_code = product.code if product is not None else None
+    elif product_code is None and order_item is not None and order_item.bundle_id is not None:
+        bundle = get_bundle_by_id(db, order_item.bundle_id)
+        product_code = bundle.code if bundle is not None else None
+    elif (
+        product_code is None
+        and order_item is not None
+        and order_item.item_type == f"{SubscriptionScopeType.ALL_ACCESS.value}_plan"
+    ):
+        product_code = "all-access"
+    if product_code is None:
+        raise HTTPException(status_code=404, detail="payment_not_found")
 
     return {
         "tenant_id": user.tenant_id,
         "region": user.region,
         "user_id": str(user.id),
         "email": normalized_email,
-        "product_state": present_product_state(state, state.product_code),
+        "product_state": present_product_state(
+            db,
+            user=user,
+            product_code=product_code,
+            order=order,
+            payment=payment,
+        ),
         "order": {
             "order_id": str(order.id),
             "order_number": order.order_number,
@@ -395,9 +494,7 @@ def get_payment_status(
             "currency": order.currency,
             "paid_at": order.paid_at.isoformat() if order.paid_at else None,
             "failed_at": order.failed_at.isoformat() if order.failed_at else None,
-        }
-        if order is not None
-        else None,
+        },
         "payment": {
             "payment_id": str(payment.id),
             "status": payment.status,
@@ -415,8 +512,8 @@ def get_payment_status(
 
 @router.post("/logout")
 def logout(
-    current: tuple[User, AuthSession] = Depends(get_current_session),
-    db: Session = Depends(get_db),
+    current: Annotated[tuple[User, AuthSession], Depends(get_current_session)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     _, session = current
     db.delete(session)
@@ -429,9 +526,9 @@ def logout(
 def create_checkout_intent(
     payload: CheckoutIntentRequest,
     request: Request,
-    current: tuple[User, AuthSession] = Depends(get_current_session),
-    db: Session = Depends(get_db),
-    providers: PaymentProviderRegistry = Depends(get_payment_provider_registry),
+    current: Annotated[tuple[User, AuthSession], Depends(get_current_session)],
+    db: Annotated[Session, Depends(get_db)],
+    providers: Annotated[PaymentProviderRegistry, Depends(get_payment_provider_registry)],
 ):
     user, _ = current
     sellable_plan = get_sellable_plan(
@@ -440,27 +537,43 @@ def create_checkout_intent(
         entrypoint_code=payload.product,
         plan_code=payload.plan_code,
     )
-    missing_documents = get_missing_required_documents_for_user(db, user=user)
+    now = utc_now()
+    if payload.auto_renew and sellable_plan["renewal_mode"] != SubscriptionRenewalMode.AUTOMATIC.value:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "automatic_renewal_not_permitted"},
+        )
+    missing_documents = get_missing_required_documents_for_user(
+        db,
+        user=user,
+        now=now,
+        require_recurring_consent=payload.auto_renew,
+    )
     if missing_documents:
         record_checkout("missing_required_documents")
         raise HTTPException(
             status_code=409,
             detail={
                 "code": "missing_required_documents",
-                "documents": [
-                    {
-                        "document_version_id": str(document.id),
-                        "doc_type": document.doc_type,
-                        "version": document.version,
-                        "title": document.title,
-                        "url_path": document.url_path,
-                        "acceptance_text": build_acceptance_text(document),
-                        "acceptance_text_hash": expected_acceptance_text_hash(document),
-                    }
-                    for document in missing_documents
-                ],
+                "documents": [present_required_document(document) for document in missing_documents],
             },
         )
+
+    recurring_consent = None
+    if payload.auto_renew and payload.recurring_consent_acceptance_id is None:
+        raise HTTPException(status_code=409, detail={"code": "recurring_consent_required"})
+    if payload.auto_renew:
+        recurring_consent = get_current_recurring_consent_acceptance(
+            db,
+            acceptance_id=payload.recurring_consent_acceptance_id,
+            user=user,
+            entrypoint_type=payload.entrypoint_type,
+            entrypoint_value=sellable_plan["entrypoint_value"],
+            plan_code=sellable_plan["plan_code"],
+            now=now,
+        )
+        if recurring_consent is None:
+            raise HTTPException(status_code=409, detail={"code": "recurring_consent_invalid"})
 
     provider_account, provider_adapter = get_or_create_checkout_provider_account(
         db,
@@ -473,7 +586,6 @@ def create_checkout_intent(
     if currency != provider_account.default_currency:
         record_checkout("provider_currency_mismatch")
         raise HTTPException(status_code=409, detail="provider_currency_mismatch")
-    now = utc_now()
     expires_at = now + timedelta(minutes=30)
 
     entrypoint_session = EntrypointSession(
@@ -509,6 +621,7 @@ def create_checkout_intent(
             "plan_code": sellable_plan["plan_code"],
             "scope_type": sellable_plan["scope_type"],
             "auto_renew": payload.auto_renew,
+            "recurring_consent_acceptance_id": str(recurring_consent.id) if recurring_consent else None,
         },
     )
     db.add(checkout_session)
@@ -535,6 +648,7 @@ def create_checkout_intent(
             "plan_code": sellable_plan["plan_code"],
             "scope_type": sellable_plan["scope_type"],
             "auto_renew": payload.auto_renew,
+            "recurring_consent_acceptance_id": str(recurring_consent.id) if recurring_consent else None,
         },
     )
     db.add(order)
@@ -580,37 +694,12 @@ def create_checkout_intent(
         )
     )
 
-    state = (
-        db.query(ProductAccessState)
-        .filter(
-            ProductAccessState.user_id == user.id,
-            ProductAccessState.product_code == payload.product,
-        )
-        .first()
-    )
-    if state is None:
-        state = ProductAccessState(
-            user_id=user.id,
-            product_code=payload.product,
-            plan_code=sellable_plan["plan_code"],
-            last_invoice_id=invoice_id,
-            status="pending",
-            starts_at=now,
-        )
-    else:
-        state.plan_code = sellable_plan["plan_code"]
-        state.last_invoice_id = invoice_id
-        state.last_transaction_id = None
-        state.status = "pending"
-        state.starts_at = now
-    db.add(state)
     db.commit()
-    db.refresh(state)
     record_checkout("created")
 
     return {
-        "status": "pending",
-        "product_state": present_product_state(state, payload.product),
+        "status": ProductAccessStatus.PENDING.value,
+        "product_state": present_product_state(db, user=user, product_code=payload.product, order=order),
         "checkout": {
             "amount_minor": amount_minor,
             "amount": round(amount_minor / 100, 2),

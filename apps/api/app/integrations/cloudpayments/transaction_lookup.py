@@ -113,18 +113,19 @@ def lookup_transaction(
             ),
         )
 
-    if provider_account.public_identifier and model.public_id:
-        if provider_account.public_identifier.strip() != model.public_id.strip():
-            return _lookup_failure_result(
-                provider_code=provider_code,
-                provider_account=provider_account,
-                request=request,
-                meta=failed_meta(
-                    code="cloudpayments_public_id_mismatch",
-                    message_safe="CloudPayments transaction belongs to a different provider account.",
-                    retry_disposition=RetryDisposition.NON_RETRYABLE,
-                ),
-            )
+    account_public_id = (provider_account.public_identifier or "").strip()
+    model_public_id = (model.public_id or "").strip()
+    if account_public_id and (not model_public_id or account_public_id != model_public_id):
+        return _lookup_failure_result(
+            provider_code=provider_code,
+            provider_account=provider_account,
+            request=request,
+            meta=failed_meta(
+                code="cloudpayments_public_id_mismatch",
+                message_safe="CloudPayments transaction belongs to a different provider account.",
+                retry_disposition=RetryDisposition.NON_RETRYABLE,
+            ),
+        )
 
     validation_error = _validate_transaction_model(
         model=model,
@@ -219,12 +220,11 @@ def _validate_transaction_model(
             "CloudPayments returned a different transaction id.",
         )
 
-    if lookup_invoice_id is not None:
-        if model.invoice_id is None or model.invoice_id.strip() != lookup_invoice_id:
-            return (
-                "cloudpayments_invoice_id_mismatch",
-                "CloudPayments returned a different invoice id.",
-            )
+    if lookup_invoice_id is not None and (model.invoice_id is None or model.invoice_id.strip() != lookup_invoice_id):
+        return (
+            "cloudpayments_invoice_id_mismatch",
+            "CloudPayments returned a different invoice id.",
+        )
 
     amount = model.amount
     amount_minor = _amount_minor(amount)

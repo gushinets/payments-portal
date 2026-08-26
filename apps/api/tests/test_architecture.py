@@ -89,7 +89,7 @@ def test_comments_strings_and_allowed_session_import_pass(tmp_path: Path) -> Non
 def test_provider_neutral_modules_reject_cloudpayments_literal(tmp_path: Path) -> None:
     write_module(
         tmp_path,
-        "apps/api/app/domains/billing/service.py",
+        "apps/api/app/domains/billing/service/lifecycle.py",
         'if provider == "cloudpayments":\n    pass\n',
     )
     write_module(
@@ -101,7 +101,8 @@ def test_provider_neutral_modules_reject_cloudpayments_literal(tmp_path: Path) -
     errors = check_python_boundaries(tmp_path)
 
     assert any(
-        "apps/api/app/domains/billing/service.py contains CloudPayments-specific logic" in error for error in errors
+        "apps/api/app/domains/billing/service/lifecycle.py contains CloudPayments-specific logic" in error
+        for error in errors
     )
     assert any(
         "apps/api/app/payment_providers/accounts.py contains CloudPayments-specific logic" in error for error in errors

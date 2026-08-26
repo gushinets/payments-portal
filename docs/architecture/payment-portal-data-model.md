@@ -1,8 +1,8 @@
 # Payment Portal Data Model and Backend Invariants
 
 Status: normative source of truth
-Version: 0.4
-Last verified against code: 2026-08-18
+Version: 0.5
+Last verified against code: 2026-08-24
 Implementation expansion owner: Linear ANY-71
 
 This document is the primary source of truth for Payment Portal data ownership,
@@ -60,16 +60,16 @@ contour is defined in [Region Resolver](region-resolver-contract.md).
 | `payments` | Implemented | Payment attempts and outcomes |
 | `refunds` | Implemented | Full and partial refund records |
 | `payment_webhook_events` | Implemented | Redacted webhook inbox and processing audit |
-| `product_access_states` | Legacy temporary | Current simplified product payment/access view |
+| `product_access_states` | Removed by ANY-78 | Temporary access projection replaced by subscriptions and entitlements |
 | `products` | Implemented | Billing-visible product catalog |
 | `bundles` | Implemented | Sellable product groups |
 | `bundle_products` | Implemented | Version-aware bundle membership |
 | `plans` | Implemented | Versioned sellable prices and periods |
 | `plan_price_components` | Implemented | Bundle/all-access price calculation snapshot |
 | `plan_limits` | Implemented | Purchased usage limits |
-| `subscriptions` | Planned under ANY-71 | Trial/manual/automatic access lifecycle |
-| `entitlements` | Planned under ANY-71 | Explicit runtime-readable access grants |
-| `subscription_events` | Planned under ANY-71 | Append-only subscription audit |
+| `subscriptions` | Implemented | Trial/manual/automatic access lifecycle |
+| `entitlements` | Implemented | Explicit runtime-readable access grants |
+| `subscription_events` | Implemented | Append-only subscription audit |
 | Fiscal receipt tables | Deferred | Add only with a contour's fiscal-provider requirement |
 | Coupons, wallet, ledger | Deferred | Not required for the implemented `ru` contour |
 | Provider reconciliation runs | Deferred | Add when operational volume requires it |
@@ -174,6 +174,48 @@ payload hash, normalized idempotency key, safe identifiers, amount/currency,
 redacted payload and headers, processing state, and links to normalized order and
 payment records. Raw card fields and secrets are forbidden.
 
+### Subscriptions, entitlements, and access audit
+
+`subscriptions` owns the contour-local access lifecycle for trials, paid periods,
+manual renewal, automatic renewal, cancellation, provider-reference attachment,
+refund outcomes, and expiration. Subscription identity is internal UUID identity;
+provider account and provider subscription IDs are optional opaque references,
+not Payment Portal domain identities.
+
+Automatic renewal can be enabled only after provider setup succeeds. Until then,
+a requested automatic renewal remains a manual subscription with paid access
+governed by the verified paid period. The subscription stores the exact
+`document_acceptances` row used as recurring-consent evidence.
+
+`entitlements` are the explicit access grants for a subscription. They snapshot
+the same exact scope as the subscription: direct product, bundle, or all-access.
+Each paid period is a separate grant with immutable source provenance:
+`source='order'` plus the source `order_id`. Payment and webhook evidence stays
+on the append-only `subscription_events` row for the operation. Ordinary
+renewal creates a new grant and does not rewrite the previous grant's source.
+Replacing access for the same exact scope supersedes the previous active or
+future entitlements for that scope; other scopes may coexist.
+
+Access checks must evaluate the entitlement time range, not only its lifecycle
+status:
+
+```text
+status = active
+AND valid_from <= now
+AND valid_until > now
+```
+
+A future paid entitlement is stored as `active` so refund and audit logic can
+see it, but it does not grant runtime access before `valid_from`. If a refund
+removes the current grant while a future paid grant remains, the subscription
+stays in a non-terminal lifecycle state such as `active`; access remains denied
+until the future grant enters its validity window.
+
+`subscription_events` is append-only audit. It records the event type, previous
+and next subscription status, occurrence time, local operation idempotency key,
+optional order/payment/refund/webhook links, and redacted metadata. It does not
+carry `updated_at`.
+
 ## 4. State models
 
 ### Order
@@ -231,9 +273,7 @@ failed
 Duplicate delivery is a normal provider behavior and must produce an idempotent
 result rather than duplicate domain mutations.
 
-### Planned subscription and entitlement states
-
-These values are normative for ANY-71 but are not implemented by ANY-108:
+### Subscription and entitlement states
 
 ```text
 subscription: trialing | active | past_due | canceled | expired | refunded | paused
@@ -250,20 +290,27 @@ authenticated user
 -> contour payment-provider checkout opened
 -> webhook received, authenticity checked, payload redacted and persisted
 -> payment/order updated idempotently
+-> verified initial payment activates the paid subscription period and entitlement
 -> browser payment-result page polls informational state
 ```
 
 The implemented `ru` adapter opens the CloudPayments widget and verifies
 CloudPayments signatures. That is adapter behavior, not the domain lifecycle.
+The domain lifecycle receives only internal order, payment, webhook, refund, and
+normalized provider-state identifiers. Browser callbacks never activate access.
 
 Contour confirmation through Region Resolver at login and registration is
 planned and is not part of the current implemented flow.
 
-The current legacy `product_access_states` record is not the target entitlement
-model. ANY-108 must not expand it. ANY-71 will replace it with subscriptions and
-entitlements without requiring Platform Kernel to understand payment lifecycle.
+Refunds and expiration also change access only through the subscription
+lifecycle. A full refund revokes only the entitlement rows funded by the
+refunded order/payment; it must not revoke later paid periods funded by another
+order. A partial refund records an audit event without changing access.
+Expiration is a one-shot, idempotent maintenance command for an external
+scheduler, and access evaluation must still enforce `valid_until` if that
+command is delayed.
 
-## 6. Planned ANY-71 model
+## 6. Implemented catalog and access model
 
 ### Catalog and pricing
 
@@ -282,11 +329,11 @@ order creation. Money in the model is always integer minor units plus an ISO
 
 ### Subscriptions and entitlements
 
-`subscriptions` will own trial and paid periods, renewal mode, cancellation, and
-provider subscription identifiers. `entitlements` will be explicit grants with
-scope, validity, source, order, and subscription links. Platform Kernel will read
-entitlements through the future Payment Portal access API and will continue to
-own actual usage counters.
+`subscriptions` own trial and paid periods, renewal mode, cancellation, and
+optional provider subscription references. `entitlements` are explicit grants
+with scope, validity, source, order, and subscription links. Platform Kernel will
+read entitlements through the future Payment Portal access API and will continue
+to own actual usage counters.
 
 Direct product, containing bundle, and all-access grants are the three allowed
 ways for a product access check to succeed.
@@ -306,9 +353,10 @@ The proposed access request includes the identity key, product code, and optiona
 scenario/session context. The response includes allowed state, entitlement and
 subscription identifiers, plan code, validity, scope, and purchased limits.
 
-The interface is planned context only in this repository. Implementation belongs
-to ANY-71 on the Payment Portal side and the separate Platform Kernel repository
-on the consumer side.
+The private Platform Kernel access API is planned context only in this
+repository and is owned by ANY-79. The implemented authenticated account
+subscription APIs are for Payment Portal users and do not expose provider
+references, payment IDs, webhook IDs, or raw audit payloads.
 
 ## 8. Migration and seed rules
 
@@ -318,6 +366,9 @@ on the consumer side.
 - Use JSONB for redacted provider payloads and INET for IP data.
 - Do not add `updated_at` to append-only acceptance, subscription-event, or
   webhook-inbox records.
+- Do not recreate or expand `product_access_states`; ANY-78 is a clean-baseline
+  implementation with no legacy data backfill because deployment has not
+  occurred.
 - Never place secrets in migrations, seed data, or database configuration rows.
 - Versioned legal source and its generated manifest must match the first-install
   seed exactly.
@@ -336,4 +387,4 @@ on the consumer side.
 - Initial bundle/all-access offering and numeric plan limits.
 - Administrative price regeneration and provider reconciliation behavior.
 
-These are not implementation decisions for ANY-108.
+These are not implementation decisions for ANY-78.

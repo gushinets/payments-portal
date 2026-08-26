@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.core.time import utc_now
 from app.integrations.cloudpayments.payload import (
     get_first,
     normalized_recurrent_status,
@@ -56,7 +56,7 @@ def account_mismatch(
 def order_expired(order: Order) -> bool:
     if order.expires_at is None:
         return False
-    now = datetime.now(timezone.utc)
+    now = utc_now()
     expires_at = order.expires_at
     if expires_at.tzinfo is None:
         now = now.replace(tzinfo=None)

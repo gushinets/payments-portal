@@ -26,7 +26,30 @@ function loadRuntimeEnv(repositoryRoot, targetEnv = process.env) {
       targetEnv[key] = value;
     }
   }
+  if (targetEnv.PLAYWRIGHT_DATABASE_URL === undefined || targetEnv.PLAYWRIGHT_DATABASE_URL === "") {
+    const databaseUrl = hostDatabaseUrlFromRuntimeEnv(targetEnv);
+    if (databaseUrl !== null) {
+      targetEnv.PLAYWRIGHT_DATABASE_URL = databaseUrl;
+    }
+  }
   return values;
+}
+
+function hostDatabaseUrlFromRuntimeEnv(targetEnv) {
+  const requiredKeys = [
+    "POSTGRES_DB",
+    "POSTGRES_USER",
+    "POSTGRES_PASSWORD",
+    "POSTGRES_PORT"
+  ];
+  if (requiredKeys.some((key) => targetEnv[key] === undefined || targetEnv[key] === "")) {
+    return null;
+  }
+
+  const user = encodeURIComponent(targetEnv.POSTGRES_USER);
+  const password = encodeURIComponent(targetEnv.POSTGRES_PASSWORD);
+  const database = encodeURIComponent(targetEnv.POSTGRES_DB);
+  return `postgresql+psycopg://${user}:${password}@127.0.0.1:${targetEnv.POSTGRES_PORT}/${database}`;
 }
 
 module.exports = { loadRuntimeEnv, readRuntimeEnv };

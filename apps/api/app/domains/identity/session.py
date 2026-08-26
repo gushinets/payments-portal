@@ -1,31 +1,29 @@
 from __future__ import annotations
 
 import hashlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from typing import Annotated
 
 from fastapi import Depends, Header, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.time import utc_now
 from app.models import AuthSession, User
 
 DEFAULT_TENANT_ID = "anytoolai"
 DEFAULT_REGION = "ru"
 
 
-def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
-
-
 def as_utc(value: datetime) -> datetime:
     if value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc)
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
 
 
 def get_current_session(
-    authorization: str | None = Header(default=None),
-    db: Session = Depends(get_db),
+    db: Annotated[Session, Depends(get_db)],
+    authorization: Annotated[str | None, Header()] = None,
 ) -> tuple[User, AuthSession]:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="missing_session")

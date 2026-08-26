@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
@@ -15,6 +15,7 @@ from app.domains.identity.session import (
     get_current_session,
 )
 from app.domains.legal.service import (
+    LegalAcceptanceError,
     build_acceptance_text,
     create_document_acceptance,
     expected_acceptance_text_hash,
@@ -56,9 +57,9 @@ def present_document(document: DocumentVersion) -> dict:
 
 @router.get("/required-documents")
 def list_required_documents(
-    tenant_id: str = Query(default=DEFAULT_TENANT_ID),
-    region: str = Query(default=DEFAULT_REGION),
-    db: Session = Depends(get_db),
+    db: Annotated[Session, Depends(get_db)],
+    tenant_id: Annotated[str, Query()] = DEFAULT_TENANT_ID,
+    region: Annotated[str, Query()] = DEFAULT_REGION,
 ):
     documents = get_active_required_documents(
         db,
@@ -73,8 +74,8 @@ def list_required_documents(
 def accept_document(
     payload: AcceptDocumentRequest,
     request: Request,
-    current: tuple[User, AuthSession] = Depends(get_current_session),
-    db: Session = Depends(get_db),
+    current: Annotated[tuple[User, AuthSession], Depends(get_current_session)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     user, _ = current
     document = (
@@ -92,23 +93,23 @@ def accept_document(
     if document is None:
         record_legal_acceptance("document_not_found")
         raise HTTPException(status_code=404, detail="document_version_not_found")
-    expected_hash = expected_acceptance_text_hash(document)
-    if payload.acceptance_text_hash != expected_hash:
-        record_legal_acceptance("invalid_text_hash")
-        raise HTTPException(status_code=400, detail="invalid_acceptance_text_hash")
 
-    acceptance = create_document_acceptance(
-        db,
-        document=document,
-        user_id=user.id,
-        ip=request.client.host if request.client else None,
-        user_agent=request.headers.get("user-agent"),
-        acceptance_text_hash=payload.acceptance_text_hash,
-        entrypoint_type=payload.entrypoint_type,
-        entrypoint_value=payload.entrypoint_value,
-        source_url=payload.source_url,
-        metadata=payload.metadata,
-    )
+    try:
+        acceptance = create_document_acceptance(
+            db,
+            document=document,
+            user_id=user.id,
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            acceptance_text_hash=payload.acceptance_text_hash,
+            entrypoint_type=payload.entrypoint_type,
+            entrypoint_value=payload.entrypoint_value,
+            source_url=payload.source_url,
+            metadata=payload.metadata,
+        )
+    except LegalAcceptanceError as exc:
+        record_legal_acceptance("invalid_text_hash")
+        raise HTTPException(status_code=400, detail=exc.code) from exc
     db.commit()
     db.refresh(acceptance)
     record_legal_acceptance("accepted")

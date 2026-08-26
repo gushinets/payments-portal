@@ -687,6 +687,10 @@ CURRENT_LEGAL_VERSION = re.compile(
 )
 MIGRATION_LEGAL_VERSION = re.compile(r'"version":\s*"([^"]+)"')
 GENERATED_PY_LEGAL_VERSION = re.compile(r"'version':\s*'([^']+)'")
+CANONICAL_METADATA_TABLE_ENTRY = re.compile(
+    r"^\|\s*`(?P<table>[^`|]+)`\s*\|\s*[^|\n]+\|\s*[^|\n]+\|\s*$",
+    re.MULTILINE,
+)
 INITIAL_MIGRATION = (
     ROOT
     / "apps"
@@ -805,6 +809,17 @@ def check_expected_legal_versions(
     return errors
 
 
+def check_documented_metadata_tables(table_names: Iterable[str], documented: str) -> list[str]:
+    documented_tables = {
+        match.group("table") for match in CANONICAL_METADATA_TABLE_ENTRY.finditer(documented)
+    }
+    return [
+        f"Implemented table missing from canonical data model: {table}"
+        for table in sorted(table_names)
+        if table not in documented_tables
+    ]
+
+
 def check_knowledge_hierarchy() -> list[str]:
     errors: list[str] = []
     for source, required in CORE_AUTHORITY_LINKS.items():
@@ -893,11 +908,9 @@ def check_docs() -> list[str]:
                 continue
             if not candidate.exists():
                 errors.append(f"Broken link in {path.relative_to(ROOT)}: {target}")
-    model_text = (ROOT / "apps/api/app/models.py").read_text(encoding="utf-8")
+    Base, _ = import_api()
     documented = (ROOT / "docs/architecture/payment-portal-data-model.md").read_text(encoding="utf-8")
-    for table in re.findall(r'__tablename__\s*=\s*"([^"]+)"', model_text):
-        if f"`{table}`" not in documented:
-            errors.append(f"Implemented table missing from canonical data model: {table}")
+    errors.extend(check_documented_metadata_tables(Base.metadata.tables, documented))
     if (ROOT / "docs/project").exists() and any((ROOT / "docs/project").iterdir()):
         errors.append("Superseded docs/project directory still contains files")
     return errors
