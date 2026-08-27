@@ -6,7 +6,7 @@
 | --- | --- |
 | Feature | `ANY-71` |
 | Ticket | `ANY-379` |
-| Overall status | `todo` |
+| Overall status | `done` |
 | Execution order | Sequential only: Step 1 → manual verification → commit → Step 2 |
 | Steps / commits | 2 |
 | Blocks | `ANY-168` |
@@ -223,7 +223,7 @@ fix(legal): fail closed recurring consent scope
 Status:
 
 ```text
-todo
+done
 ```
 
 ---
@@ -506,7 +506,7 @@ fix(billing): revalidate recurring consent on renewal attach
 Status:
 
 ```text
-todo
+done
 ```
 
 ---
