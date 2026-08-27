@@ -28,12 +28,14 @@ from app.domains.billing.service import (
 )
 from app.domains.billing.service import lifecycle
 from app.domains.billing.service import lifecycle_operations
+from app.domains.legal.service import expected_acceptance_text_hash
 from app.infrastructure.queries.identity import lock_user_by_id
 from app.infrastructure.queries.subscriptions import get_subscription_by_id
 from app.models import (
     DocumentAcceptance,
     DocumentVersion,
     Entitlement,
+    EntrypointSession,
     LegalEntity,
     Order,
     Payment,
@@ -82,7 +84,7 @@ def _add_billing_user_and_account(session: Session, key: str) -> tuple[User, Pay
     return user, account
 
 
-def _add_recurring_consent_acceptance(session: Session, *, user: User, key: str) -> DocumentAcceptance:
+def _add_recurring_consent_acceptance(session: Session, *, user: User, key: str, plan_code: str) -> DocumentAcceptance:
     now = datetime.now(UTC)
     entity = LegalEntity(
         tenant_id=user.tenant_id,
@@ -111,17 +113,31 @@ def _add_recurring_consent_acceptance(session: Session, *, user: User, key: str)
     )
     session.add(document)
     session.flush()
+    entrypoint_session = EntrypointSession(
+        tenant_id=user.tenant_id,
+        route_region=user.region,
+        resolved_region=user.region,
+        entrypoint_type="product",
+        entrypoint_value=plan_code,
+        user_id=user.id,
+        metadata_={"plan_code": plan_code},
+    )
+    session.add(entrypoint_session)
+    session.flush()
     acceptance = DocumentAcceptance(
         tenant_id=user.tenant_id,
         region=user.region,
         user_id=user.id,
+        entrypoint_session_id=entrypoint_session.id,
         document_version_id=document.id,
         doc_type=document.doc_type,
         version=document.version,
         acceptance_kind="recurring_consent",
         accepted_at=now,
-        acceptance_text_hash=f"{key}-acceptance-hash",
-        metadata_={},
+        acceptance_text_hash=expected_acceptance_text_hash(document),
+        entrypoint_type="product",
+        entrypoint_value=plan_code,
+        metadata_={"plan_code": plan_code},
     )
     session.add(acceptance)
     session.flush()
@@ -272,7 +288,21 @@ def test_parallel_enable_automatic_renewal_same_key_reuses_event_after_subscript
             session,
             user=user,
             key="concurrent-enable-automatic-renewal",
+            plan_code=plan.code,
         )
+        order, payment, _ = _add_verified_paid_order(
+            session,
+            key="concurrent-enable-automatic-renewal",
+            user=user,
+            account=account,
+            plan=plan,
+            paid_at=now,
+        )
+        order.entrypoint_session_id = acceptance.entrypoint_session_id
+        order.metadata_ = {
+            "auto_renew": True,
+            "recurring_consent_acceptance_id": str(acceptance.id),
+        }
         subscription = Subscription(
             tenant_id=user.tenant_id,
             region=user.region,
@@ -288,13 +318,29 @@ def test_parallel_enable_automatic_renewal_same_key_reuses_event_after_subscript
         )
         session.add(subscription)
         session.flush()
+        session.add(
+            SubscriptionEvent(
+                subscription_id=subscription.id,
+                event_type=SubscriptionEventType.PAID_PERIOD_ACTIVATED.value,
+                previous_status=None,
+                next_status=subscription.status,
+                occurred_at=now,
+                operation_idempotency_key="paid_period_activated:concurrent-enable-automatic-renewal",
+                order_id=order.id,
+                payment_id=payment.id,
+                metadata_={},
+            )
+        )
+        session.flush()
         subscription_id = subscription.id
+        order_id = order.id
         provider_account_id = account.id
         acceptance_id = acceptance.id
 
     command = EnableAutomaticRenewalCommand(
         operation_idempotency_key="concurrent-enable-automatic-renewal",
         subscription_id=subscription_id,
+        order_id=order_id,
         provider_account_id=provider_account_id,
         provider_subscription_id="provider-concurrent-enable-automatic-renewal",
         recurring_consent_acceptance_id=acceptance_id,

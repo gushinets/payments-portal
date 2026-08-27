@@ -55,7 +55,7 @@ Step 2 adds `order_id` to `EnableAutomaticRenewalCommand` to establish the stabl
 
 # Step 1 — Make recurring consent matching fail closed
 
-**Status:** `todo`  
+**Status:** `done`  
 **Commit:** `fix(legal): fail closed recurring consent scope`
 
 ## Prompt
@@ -230,7 +230,7 @@ todo
 
 # Step 2 — Revalidate recurring consent before automatic-renewal attachment
 
-**Status:** `todo`  
+**Status:** `done`  
 **Commit:** `fix(billing): revalidate recurring consent on renewal attach`  
 **Depends on:** Step 1 completed, manually verified, and committed.
 

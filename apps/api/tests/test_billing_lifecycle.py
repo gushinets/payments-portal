@@ -31,6 +31,7 @@ from app.domains.billing.service import (
     expire_due_subscriptions,
     subscription_status_from_provider_state,
 )
+from app.domains.legal.service import expected_acceptance_text_hash
 from app.infrastructure.queries.subscriptions import (
     get_active_entitlement_for_scope,
     get_subscription_for_order,
@@ -39,6 +40,7 @@ from app.models import (
     DocumentAcceptance,
     DocumentVersion,
     Entitlement,
+    EntrypointSession,
     Order,
     OrderItem,
     Payment,
@@ -317,24 +319,52 @@ def _plan_by_code(db_session, code: str) -> Plan:
     return plan
 
 
-def _add_recurring_consent_acceptance(db_session, *, user: User, key: str) -> DocumentAcceptance:
+def _add_recurring_consent_acceptance(
+    db_session,
+    *,
+    user: User,
+    key: str,
+    plan_code: str,
+    entrypoint_type: str = "product",
+    entrypoint_value: str | None = None,
+) -> DocumentAcceptance:
     document = (
         db_session.query(DocumentVersion)
-        .filter(DocumentVersion.tenant_id == "anytoolai", DocumentVersion.region == "ru")
-        .first()
+        .filter(
+            DocumentVersion.tenant_id == user.tenant_id,
+            DocumentVersion.region == user.region,
+            DocumentVersion.doc_type == "recurring_consent",
+            DocumentVersion.is_active.is_(True),
+        )
+        .one()
     )
     assert document is not None
-    acceptance = DocumentAcceptance(
-        tenant_id="anytoolai",
-        region="ru",
+    resolved_entrypoint_value = entrypoint_value or plan_code
+    entrypoint_session = EntrypointSession(
+        tenant_id=user.tenant_id,
+        route_region=user.region,
+        resolved_region=user.region,
+        entrypoint_type=entrypoint_type,
+        entrypoint_value=resolved_entrypoint_value,
         user_id=user.id,
+        metadata_={"plan_code": plan_code},
+    )
+    db_session.add(entrypoint_session)
+    db_session.flush()
+    acceptance = DocumentAcceptance(
+        tenant_id=user.tenant_id,
+        region=user.region,
+        user_id=user.id,
+        entrypoint_session_id=entrypoint_session.id,
         document_version_id=document.id,
         doc_type=document.doc_type,
         version=document.version,
         acceptance_kind="recurring_consent",
         accepted_at=datetime.now(timezone.utc),
-        acceptance_text_hash=f"{key}-acceptance-hash",
-        metadata_={},
+        acceptance_text_hash=expected_acceptance_text_hash(document),
+        entrypoint_type=entrypoint_type,
+        entrypoint_value=resolved_entrypoint_value,
+        metadata_={"plan_code": plan_code, "fixture_key": key},
     )
     db_session.add(acceptance)
     db_session.flush()
@@ -349,12 +379,15 @@ def _add_verified_paid_order(
     account: PaymentProviderAccount,
     plan: Plan,
     paid_at: datetime,
+    entrypoint_session_id: uuid.UUID | None = None,
+    metadata: dict | None = None,
 ) -> tuple[Order, Payment, PaymentWebhookEvent]:
     order = Order(
         tenant_id="anytoolai",
         region="ru",
         order_number=f"{key}-order",
         user_id=user.id,
+        entrypoint_session_id=entrypoint_session_id,
         plan_id=plan.id,
         status="paid",
         amount_minor=plan.price_amount_minor,
@@ -363,6 +396,7 @@ def _add_verified_paid_order(
         provider_account_id=account.id,
         merchant_order_id=f"{key}-merchant-order",
         paid_at=paid_at,
+        metadata_=metadata or {},
     )
     db_session.add(order)
     db_session.flush()
@@ -508,6 +542,46 @@ def _add_paid_subscription_for_order(
     return subscription, entitlement, event
 
 
+def _add_automatic_renewal_context(
+    db_session,
+    *,
+    key: str,
+    user: User,
+    account: PaymentProviderAccount,
+    plan: Plan,
+    now: datetime,
+) -> tuple[DocumentAcceptance, Order, Subscription]:
+    acceptance = _add_recurring_consent_acceptance(
+        db_session,
+        user=user,
+        key=key,
+        plan_code=plan.code,
+    )
+    order, payment, _ = _add_verified_paid_order(
+        db_session,
+        key=key,
+        user=user,
+        account=account,
+        plan=plan,
+        paid_at=now,
+        entrypoint_session_id=acceptance.entrypoint_session_id,
+        metadata={
+            "auto_renew": True,
+            "recurring_consent_acceptance_id": str(acceptance.id),
+        },
+    )
+    subscription, _, _ = _add_paid_subscription_for_order(
+        db_session,
+        key=key,
+        order=order,
+        payment=payment,
+        plan=plan,
+        starts_at=now,
+        ends_at=now + timedelta(days=30),
+    )
+    return acceptance, order, subscription
+
+
 @pytest.mark.postgres
 def test_automatic_renewal_provider_reference_conflict_uses_domain_error_and_savepoint(db_session) -> None:
     now = datetime.now(timezone.utc)
@@ -529,44 +603,63 @@ def test_automatic_renewal_provider_reference_conflict_uses_domain_error_and_sav
         db_session,
         user=first_user,
         key="automatic-renewal-reference-first",
+        plan_code=plan.code,
     )
     second_acceptance = _add_recurring_consent_acceptance(
         db_session,
         user=second_user,
         key="automatic-renewal-reference-second",
+        plan_code=plan.code,
     )
-    first_subscription = Subscription(
-        tenant_id="anytoolai",
-        region="ru",
-        user_id=first_user.id,
-        plan_id=plan.id,
-        scope_type=plan.scope_type,
-        product_id=plan.product_id,
-        bundle_id=plan.bundle_id,
-        status=SubscriptionStatus.ACTIVE.value,
-        renewal_mode=SubscriptionRenewalMode.MANUAL.value,
-        current_period_start=now,
-        current_period_end=now + timedelta(days=30),
+    first_order, first_payment, _ = _add_verified_paid_order(
+        db_session,
+        key="automatic-renewal-reference-first",
+        user=first_user,
+        account=account,
+        plan=plan,
+        paid_at=now,
+        entrypoint_session_id=first_acceptance.entrypoint_session_id,
+        metadata={
+            "auto_renew": True,
+            "recurring_consent_acceptance_id": str(first_acceptance.id),
+        },
     )
-    second_subscription = Subscription(
-        tenant_id="anytoolai",
-        region="ru",
-        user_id=second_user.id,
-        plan_id=plan.id,
-        scope_type=plan.scope_type,
-        product_id=plan.product_id,
-        bundle_id=plan.bundle_id,
-        status=SubscriptionStatus.ACTIVE.value,
-        renewal_mode=SubscriptionRenewalMode.MANUAL.value,
-        current_period_start=now,
-        current_period_end=now + timedelta(days=30),
+    second_order, second_payment, _ = _add_verified_paid_order(
+        db_session,
+        key="automatic-renewal-reference-second",
+        user=second_user,
+        account=account,
+        plan=plan,
+        paid_at=now,
+        entrypoint_session_id=second_acceptance.entrypoint_session_id,
+        metadata={
+            "auto_renew": True,
+            "recurring_consent_acceptance_id": str(second_acceptance.id),
+        },
     )
-    db_session.add_all([first_subscription, second_subscription])
-    db_session.flush()
+    first_subscription, _, _ = _add_paid_subscription_for_order(
+        db_session,
+        key="automatic-renewal-reference-first",
+        order=first_order,
+        payment=first_payment,
+        plan=plan,
+        starts_at=now,
+        ends_at=now + timedelta(days=30),
+    )
+    second_subscription, _, _ = _add_paid_subscription_for_order(
+        db_session,
+        key="automatic-renewal-reference-second",
+        order=second_order,
+        payment=second_payment,
+        plan=plan,
+        starts_at=now,
+        ends_at=now + timedelta(days=30),
+    )
 
     first_command = EnableAutomaticRenewalCommand(
         operation_idempotency_key="automatic-renewal-reference-first",
         subscription_id=first_subscription.id,
+        order_id=first_order.id,
         provider_account_id=account.id,
         provider_subscription_id="provider-reference-shared",
         recurring_consent_acceptance_id=first_acceptance.id,
@@ -584,6 +677,7 @@ def test_automatic_renewal_provider_reference_conflict_uses_domain_error_and_sav
             EnableAutomaticRenewalCommand(
                 operation_idempotency_key="automatic-renewal-reference-second-conflict",
                 subscription_id=second_subscription.id,
+                order_id=second_order.id,
                 provider_account_id=account.id,
                 provider_subscription_id="provider-reference-shared",
                 recurring_consent_acceptance_id=second_acceptance.id,
@@ -612,6 +706,7 @@ def test_automatic_renewal_provider_reference_conflict_uses_domain_error_and_sav
         EnableAutomaticRenewalCommand(
             operation_idempotency_key="automatic-renewal-reference-second-success",
             subscription_id=second_subscription.id,
+            order_id=second_order.id,
             provider_account_id=account.id,
             provider_subscription_id="provider-reference-second",
             recurring_consent_acceptance_id=second_acceptance.id,
@@ -621,6 +716,258 @@ def test_automatic_renewal_provider_reference_conflict_uses_domain_error_and_sav
 
     assert unique_result.id == second_subscription.id
     assert unique_result.provider_subscription_id == "provider-reference-second"
+
+
+def test_automatic_renewal_accepts_exact_paid_checkout_context(db_session) -> None:
+    now = datetime.now(timezone.utc)
+    plan = _plan_by_code(db_session, "document-summary-pro")
+    plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC.value
+    user, account = _add_billing_user_and_account(db_session, "automatic-renewal-valid-context")
+    acceptance, order, subscription = _add_automatic_renewal_context(
+        db_session,
+        key="automatic-renewal-valid-context",
+        user=user,
+        account=account,
+        plan=plan,
+        now=now,
+    )
+
+    result = enable_automatic_renewal(
+        db_session,
+        EnableAutomaticRenewalCommand(
+            operation_idempotency_key="automatic-renewal-valid-context-operation",
+            subscription_id=subscription.id,
+            order_id=order.id,
+            provider_account_id=account.id,
+            provider_subscription_id="provider-valid-context",
+            recurring_consent_acceptance_id=acceptance.id,
+            occurred_at=now,
+        ),
+    )
+
+    assert result.id == subscription.id
+    assert result.renewal_mode == SubscriptionRenewalMode.AUTOMATIC.value
+    assert result.provider_account_id == account.id
+    assert result.provider_subscription_id == "provider-valid-context"
+    assert result.recurring_consent_acceptance_id == acceptance.id
+    event = (
+        db_session.query(SubscriptionEvent)
+        .filter(
+            SubscriptionEvent.subscription_id == subscription.id,
+            SubscriptionEvent.event_type == SubscriptionEventType.AUTOMATIC_RENEWAL_ENABLED.value,
+        )
+        .one()
+    )
+    assert event.order_id == order.id
+
+
+def _assert_automatic_renewal_rejected_without_mutation(
+    db_session,
+    *,
+    subscription: Subscription,
+    command: EnableAutomaticRenewalCommand,
+    expected_error: str,
+) -> None:
+    before = (
+        subscription.renewal_mode,
+        subscription.provider_account_id,
+        subscription.provider_subscription_id,
+        subscription.recurring_consent_acceptance_id,
+    )
+    with pytest.raises(SubscriptionLifecycleError, match=expected_error):
+        enable_automatic_renewal(db_session, command)
+    db_session.refresh(subscription)
+    assert (
+        subscription.renewal_mode,
+        subscription.provider_account_id,
+        subscription.provider_subscription_id,
+        subscription.recurring_consent_acceptance_id,
+    ) == before
+    assert (
+        db_session.query(SubscriptionEvent)
+        .filter(
+            SubscriptionEvent.subscription_id == subscription.id,
+            SubscriptionEvent.event_type == SubscriptionEventType.AUTOMATIC_RENEWAL_ENABLED.value,
+        )
+        .count()
+        == 0
+    )
+
+
+@pytest.mark.parametrize(
+    ("invalid_context", "expected_error"),
+    (
+        ("stale_document", "recurring_consent_invalid"),
+        ("wrong_hash", "recurring_consent_invalid"),
+        ("missing_acceptance_entrypoint", "recurring_consent_invalid"),
+        ("missing_entrypoint_session", "automatic_renewal_context_missing"),
+        ("wrong_plan_code", "recurring_consent_invalid"),
+        ("wrong_entrypoint_type", "recurring_consent_invalid"),
+        ("wrong_entrypoint_value", "recurring_consent_invalid"),
+        ("foreign_user", "recurring_consent_invalid"),
+        ("foreign_contour", "consent_scope_mismatch"),
+    ),
+)
+def test_automatic_renewal_revalidates_persisted_consent_context(
+    db_session,
+    invalid_context: str,
+    expected_error: str,
+) -> None:
+    now = datetime.now(timezone.utc)
+    plan = _plan_by_code(db_session, "document-summary-pro")
+    plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC.value
+    user, account = _add_billing_user_and_account(db_session, f"automatic-renewal-{invalid_context}")
+    acceptance, order, subscription = _add_automatic_renewal_context(
+        db_session,
+        key=f"automatic-renewal-{invalid_context}",
+        user=user,
+        account=account,
+        plan=plan,
+        now=now,
+    )
+
+    if invalid_context == "stale_document":
+        current_document = db_session.get(DocumentVersion, acceptance.document_version_id)
+        assert current_document is not None
+        stale_document = DocumentVersion(
+            tenant_id=current_document.tenant_id,
+            region=current_document.region,
+            legal_entity_id=current_document.legal_entity_id,
+            doc_type=current_document.doc_type,
+            version=f"stale-{invalid_context}",
+            title=current_document.title,
+            url_path=current_document.url_path,
+            content_hash=current_document.content_hash,
+            published_at=now - timedelta(days=2),
+            effective_from=now - timedelta(days=2),
+            is_active=False,
+            requires_acceptance=True,
+        )
+        db_session.add(stale_document)
+        db_session.flush()
+        acceptance.document_version_id = stale_document.id
+        acceptance.acceptance_text_hash = expected_acceptance_text_hash(stale_document)
+    elif invalid_context == "wrong_hash":
+        acceptance.acceptance_text_hash = "wrong-acceptance-text-hash"
+    elif invalid_context == "missing_acceptance_entrypoint":
+        acceptance.entrypoint_type = None
+    elif invalid_context == "missing_entrypoint_session":
+        order.entrypoint_session_id = None
+    elif invalid_context == "wrong_plan_code":
+        acceptance.metadata_ = {"plan_code": "different-plan"}
+    elif invalid_context == "wrong_entrypoint_type":
+        acceptance.entrypoint_type = "bundle"
+    elif invalid_context == "wrong_entrypoint_value":
+        acceptance.entrypoint_value = "different-entrypoint"
+    elif invalid_context == "foreign_user":
+        foreign_user = User(
+            tenant_id=user.tenant_id,
+            region=user.region,
+            email=f"{invalid_context}-foreign@example.com",
+            email_normalized=f"{invalid_context}-foreign@example.com",
+            status="active",
+        )
+        db_session.add(foreign_user)
+        db_session.flush()
+        acceptance.user_id = foreign_user.id
+    elif invalid_context == "foreign_contour":
+        acceptance.region = "eu"
+
+    db_session.flush()
+    _assert_automatic_renewal_rejected_without_mutation(
+        db_session,
+        subscription=subscription,
+        command=EnableAutomaticRenewalCommand(
+            operation_idempotency_key=f"automatic-renewal-{invalid_context}-operation",
+            subscription_id=subscription.id,
+            order_id=order.id,
+            provider_account_id=account.id,
+            provider_subscription_id=f"provider-{invalid_context}",
+            recurring_consent_acceptance_id=acceptance.id,
+            occurred_at=now,
+        ),
+        expected_error=expected_error,
+    )
+
+
+def test_automatic_renewal_rejects_order_not_linked_to_target_subscription(db_session) -> None:
+    now = datetime.now(timezone.utc)
+    plan = _plan_by_code(db_session, "document-summary-pro")
+    plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC.value
+    user, account = _add_billing_user_and_account(db_session, "automatic-renewal-unlinked-order")
+    acceptance, order, subscription = _add_automatic_renewal_context(
+        db_session,
+        key="automatic-renewal-unlinked-order",
+        user=user,
+        account=account,
+        plan=plan,
+        now=now,
+    )
+    unlinked_order, _, _ = _add_verified_paid_order(
+        db_session,
+        key="automatic-renewal-unlinked-order-second",
+        user=user,
+        account=account,
+        plan=plan,
+        paid_at=now,
+        entrypoint_session_id=acceptance.entrypoint_session_id,
+        metadata={
+            "auto_renew": True,
+            "recurring_consent_acceptance_id": str(acceptance.id),
+        },
+    )
+    db_session.flush()
+    _assert_automatic_renewal_rejected_without_mutation(
+        db_session,
+        subscription=subscription,
+        command=EnableAutomaticRenewalCommand(
+            operation_idempotency_key="automatic-renewal-unlinked-order-operation",
+            subscription_id=subscription.id,
+            order_id=unlinked_order.id,
+            provider_account_id=account.id,
+            provider_subscription_id="provider-unlinked-order",
+            recurring_consent_acceptance_id=acceptance.id,
+            occurred_at=now,
+        ),
+        expected_error="automatic_renewal_context_missing",
+    )
+    assert order.id != unlinked_order.id
+
+
+def test_automatic_renewal_rejects_acceptance_not_stored_on_order(db_session) -> None:
+    now = datetime.now(timezone.utc)
+    plan = _plan_by_code(db_session, "document-summary-pro")
+    plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC.value
+    user, account = _add_billing_user_and_account(db_session, "automatic-renewal-acceptance-mismatch")
+    acceptance, order, subscription = _add_automatic_renewal_context(
+        db_session,
+        key="automatic-renewal-acceptance-mismatch",
+        user=user,
+        account=account,
+        plan=plan,
+        now=now,
+    )
+    other_acceptance = _add_recurring_consent_acceptance(
+        db_session,
+        user=user,
+        key="automatic-renewal-acceptance-mismatch-other",
+        plan_code=plan.code,
+    )
+    _assert_automatic_renewal_rejected_without_mutation(
+        db_session,
+        subscription=subscription,
+        command=EnableAutomaticRenewalCommand(
+            operation_idempotency_key="automatic-renewal-acceptance-mismatch-operation",
+            subscription_id=subscription.id,
+            order_id=order.id,
+            provider_account_id=account.id,
+            provider_subscription_id="provider-acceptance-mismatch",
+            recurring_consent_acceptance_id=other_acceptance.id,
+            occurred_at=now,
+        ),
+        expected_error="recurring_consent_invalid",
+    )
+    assert order.metadata_["recurring_consent_acceptance_id"] == str(acceptance.id)
 
 
 def test_cumulative_refund_revokes_access(db_session) -> None:

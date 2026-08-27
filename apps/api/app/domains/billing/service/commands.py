@@ -43,6 +43,7 @@ class ActivatePaidPeriodCommand(LifecycleCommand):
 
 class EnableAutomaticRenewalCommand(LifecycleCommand):
     subscription_id: uuid.UUID
+    order_id: uuid.UUID
     provider_account_id: uuid.UUID
     provider_subscription_id: str = Field(min_length=1, max_length=255)
     recurring_consent_acceptance_id: uuid.UUID
