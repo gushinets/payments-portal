@@ -5,6 +5,7 @@ import hashlib
 import hmac
 import uuid
 from datetime import UTC, datetime, timedelta, timezone
+from typing import Any
 
 from apps.api.tests.support.settings import configure_api_test_environment
 from apps.api.tests.support.settings import override_settings
@@ -222,7 +223,9 @@ def accept_document_for_token(
     token: str,
     *,
     document: DocumentVersion,
-    entrypoint_value: str | None = None,
+    entrypoint_type: str | None = "product",
+    entrypoint_value: str | None = "document-summary",
+    metadata: dict[str, Any] | None = None,
 ) -> str:
     from app.domains.legal.service import expected_acceptance_text_hash
 
@@ -240,9 +243,9 @@ def accept_document_for_token(
         json={
             "document_version_id": str(document_id),
             "acceptance_text_hash": acceptance_text_hash,
-            "entrypoint_type": "product" if entrypoint_value is not None else None,
+            "entrypoint_type": entrypoint_type,
             "entrypoint_value": entrypoint_value,
-            "metadata": {"plan_code": "document-summary-pro"} if entrypoint_value is not None else {},
+            "metadata": metadata if metadata is not None else {"plan_code": "document-summary-pro"},
         },
     )
     assert response.status_code == 200, response.text
@@ -1132,6 +1135,9 @@ def test_checkout_persists_exact_recurring_consent_reference() -> None:
     acceptance_id = accept_document_for_token(
         token,
         document=document,
+        entrypoint_type="product",
+        entrypoint_value="document-summary",
+        metadata={"plan_code": "document-summary-pro"},
     )
 
     checkout_response = client.post(
@@ -1152,6 +1158,62 @@ def test_checkout_persists_exact_recurring_consent_reference() -> None:
 
     assert checkout.metadata_["recurring_consent_acceptance_id"] == acceptance_id
     assert order.metadata_["recurring_consent_acceptance_id"] == acceptance_id
+
+
+@pytest.mark.parametrize(
+    "acceptance_overrides",
+    [
+        pytest.param({"entrypoint_type": None}, id="missing-entrypoint-type"),
+        pytest.param({"entrypoint_value": None}, id="missing-entrypoint-value"),
+        pytest.param({"metadata": {}}, id="missing-plan-code"),
+        pytest.param({"metadata": {"plan_code": 123}}, id="non-string-plan-code"),
+        pytest.param({"metadata": {"plan_code": "prompt-optimizer-pro"}}, id="wrong-plan-code"),
+    ],
+)
+def test_automatic_checkout_rejects_ambiguous_or_wrong_recurring_consent_scope(
+    acceptance_overrides: dict[str, Any],
+) -> None:
+    with SessionLocal() as db:
+        plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
+        plan.renewal_mode = "automatic"
+        legal_entity = create_legal_entity(db)
+        document = create_document_version(
+            db,
+            legal_entity=legal_entity,
+            doc_type="recurring_consent",
+            version="2026-08-recurring-v1",
+            title="Согласие на рекуррентные платежи",
+        )
+
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "recurring-scope@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = register_response.json()["token"]
+    acceptance_id = accept_document_for_token(
+        token,
+        document=document,
+        **acceptance_overrides,
+    )
+
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "product": "document-summary",
+            "plan_code": "document-summary-pro",
+            "auto_renew": True,
+            "recurring_consent_acceptance_id": acceptance_id,
+        },
+    )
+
+    assert checkout_response.status_code == 409
+    assert checkout_response.json()["detail"]["code"] == "recurring_consent_invalid"
 
 
 def test_automatic_checkout_paid_subscription_remains_manual_until_provider_attach() -> None:
