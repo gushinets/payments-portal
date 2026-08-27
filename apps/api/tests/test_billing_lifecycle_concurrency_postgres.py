@@ -84,8 +84,14 @@ def _add_billing_user_and_account(session: Session, key: str) -> tuple[User, Pay
     return user, account
 
 
-def _add_recurring_consent_acceptance(session: Session, *, user: User, key: str, plan_code: str) -> DocumentAcceptance:
-    now = datetime.now(UTC)
+def _add_recurring_consent_acceptance(
+    session: Session,
+    *,
+    user: User,
+    key: str,
+    plan_code: str,
+    accepted_at: datetime,
+) -> DocumentAcceptance:
     entity = LegalEntity(
         tenant_id=user.tenant_id,
         region=user.region,
@@ -106,8 +112,8 @@ def _add_recurring_consent_acceptance(session: Session, *, user: User, key: str,
         title="Согласие на рекуррентные платежи",
         url_path="/ru/recurring_consent",
         content_hash=f"sha256:{key}",
-        published_at=now,
-        effective_from=now,
+        published_at=accepted_at,
+        effective_from=accepted_at,
         is_active=True,
         requires_acceptance=True,
     )
@@ -133,7 +139,7 @@ def _add_recurring_consent_acceptance(session: Session, *, user: User, key: str,
         doc_type=document.doc_type,
         version=document.version,
         acceptance_kind="recurring_consent",
-        accepted_at=now,
+        accepted_at=accepted_at,
         acceptance_text_hash=expected_acceptance_text_hash(document),
         entrypoint_type="product",
         entrypoint_value=plan_code,
@@ -289,6 +295,7 @@ def test_parallel_enable_automatic_renewal_same_key_reuses_event_after_subscript
             user=user,
             key="concurrent-enable-automatic-renewal",
             plan_code=plan.code,
+            accepted_at=now,
         )
         order, payment, _ = _add_verified_paid_order(
             session,

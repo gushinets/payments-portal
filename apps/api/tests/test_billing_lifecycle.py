@@ -41,6 +41,7 @@ from app.models import (
     DocumentVersion,
     Entitlement,
     EntrypointSession,
+    LegalEntity,
     Order,
     OrderItem,
     Payment,
@@ -325,6 +326,7 @@ def _add_recurring_consent_acceptance(
     user: User,
     key: str,
     plan_code: str,
+    accepted_at: datetime,
     entrypoint_type: str = "product",
     entrypoint_value: str | None = None,
 ) -> DocumentAcceptance:
@@ -335,10 +337,39 @@ def _add_recurring_consent_acceptance(
             DocumentVersion.region == user.region,
             DocumentVersion.doc_type == "recurring_consent",
             DocumentVersion.is_active.is_(True),
+            DocumentVersion.requires_acceptance.is_(True),
+            DocumentVersion.effective_from <= accepted_at,
         )
-        .one()
+        .one_or_none()
     )
-    assert document is not None
+    if document is None:
+        entity = LegalEntity(
+            tenant_id=user.tenant_id,
+            region=user.region,
+            name=f"{key} legal entity",
+            entity_type="company",
+            legal_address="Test address",
+            support_email="support@example.com",
+            status="active",
+        )
+        db_session.add(entity)
+        db_session.flush()
+        document = DocumentVersion(
+            tenant_id=user.tenant_id,
+            region=user.region,
+            legal_entity_id=entity.id,
+            doc_type="recurring_consent",
+            version=f"{key}-v1",
+            title="Согласие на рекуррентные платежи",
+            url_path="/ru/recurring_consent",
+            content_hash=f"sha256:{key}",
+            published_at=accepted_at,
+            effective_from=accepted_at,
+            is_active=True,
+            requires_acceptance=True,
+        )
+        db_session.add(document)
+        db_session.flush()
     resolved_entrypoint_value = entrypoint_value or plan_code
     entrypoint_session = EntrypointSession(
         tenant_id=user.tenant_id,
@@ -360,7 +391,7 @@ def _add_recurring_consent_acceptance(
         doc_type=document.doc_type,
         version=document.version,
         acceptance_kind="recurring_consent",
-        accepted_at=datetime.now(timezone.utc),
+        accepted_at=accepted_at,
         acceptance_text_hash=expected_acceptance_text_hash(document),
         entrypoint_type=entrypoint_type,
         entrypoint_value=resolved_entrypoint_value,
@@ -556,6 +587,7 @@ def _add_automatic_renewal_context(
         user=user,
         key=key,
         plan_code=plan.code,
+        accepted_at=now,
     )
     order, payment, _ = _add_verified_paid_order(
         db_session,
@@ -604,12 +636,14 @@ def test_automatic_renewal_provider_reference_conflict_uses_domain_error_and_sav
         user=first_user,
         key="automatic-renewal-reference-first",
         plan_code=plan.code,
+        accepted_at=now,
     )
     second_acceptance = _add_recurring_consent_acceptance(
         db_session,
         user=second_user,
         key="automatic-renewal-reference-second",
         plan_code=plan.code,
+        accepted_at=now,
     )
     first_order, first_payment, _ = _add_verified_paid_order(
         db_session,
@@ -952,6 +986,7 @@ def test_automatic_renewal_rejects_acceptance_not_stored_on_order(db_session) ->
         user=user,
         key="automatic-renewal-acceptance-mismatch-other",
         plan_code=plan.code,
+        accepted_at=now,
     )
     _assert_automatic_renewal_rejected_without_mutation(
         db_session,
