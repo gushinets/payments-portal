@@ -40,6 +40,7 @@ from app.models import (
     DocumentVersion,
     Entitlement,
     Order,
+    OrderItem,
     Payment,
     PaymentProviderAccount,
     PaymentWebhookEvent,
@@ -401,6 +402,24 @@ def _add_verified_paid_order(
     db_session.add(webhook)
     db_session.flush()
     return order, payment, webhook
+
+
+def _assert_no_paid_activation_access_mutation(db_session, *, user: User, order: Order, operation_key: str) -> None:
+    assert db_session.query(Subscription).filter(Subscription.user_id == user.id).count() == 0
+    assert db_session.query(Entitlement).filter(Entitlement.order_id == order.id).count() == 0
+    assert (
+        db_session.query(SubscriptionEvent).filter(SubscriptionEvent.operation_idempotency_key == operation_key).count()
+        == 0
+    )
+    assert (
+        db_session.query(SubscriptionEvent)
+        .filter(
+            SubscriptionEvent.order_id == order.id,
+            SubscriptionEvent.event_type == SubscriptionEventType.PAID_PERIOD_ACTIVATED.value,
+        )
+        .count()
+        == 0
+    )
 
 
 def _add_refund(
@@ -1170,6 +1189,111 @@ def test_paid_orders_create_distinct_entitlements_and_refund_uses_order_provenan
     assert first_entitlement.order_id == first_order.id
     assert second_entitlement.status == EntitlementStatus.ACTIVE.value
     assert second_entitlement.order_id == second_order.id
+
+
+@pytest.mark.parametrize(
+    ("case", "plan_tenant_id", "plan_region"),
+    (
+        ("tenant", "foreign-tenant", "ru"),
+        ("region", "anytoolai", "eu"),
+    ),
+)
+def test_activate_paid_period_rejects_order_plan_scope_mismatch_without_mutation(
+    db_session,
+    case: str,
+    plan_tenant_id: str,
+    plan_region: str,
+) -> None:
+    now = datetime.now(timezone.utc)
+    source_plan = (
+        db_session.query(Plan)
+        .filter(Plan.tenant_id == "anytoolai", Plan.region == "ru", Plan.price_amount_minor > 0)
+        .first()
+    )
+    assert source_plan is not None
+    mismatched_plan = Plan(
+        tenant_id=plan_tenant_id,
+        region=plan_region,
+        code=f"paid-order-scope-mismatch-{case}",
+        name=f"Paid Order Scope Mismatch {case.title()}",
+        scope_type=source_plan.scope_type,
+        product_id=source_plan.product_id,
+        bundle_id=source_plan.bundle_id,
+        price_amount_minor=source_plan.price_amount_minor,
+        currency=source_plan.currency,
+        billing_period=source_plan.billing_period,
+        renewal_mode=source_plan.renewal_mode,
+        trial_days=source_plan.trial_days,
+        status=source_plan.status,
+        valid_from=now,
+    )
+    db_session.add(mismatched_plan)
+    db_session.flush()
+    user, account = _add_billing_user_and_account(db_session, f"paid-order-scope-mismatch-{case}")
+    order, payment, webhook = _add_verified_paid_order(
+        db_session,
+        key=f"paid-order-scope-mismatch-{case}",
+        user=user,
+        account=account,
+        plan=source_plan,
+        paid_at=now,
+    )
+    order.plan_id = mismatched_plan.id
+    db_session.flush()
+    operation_key = f"paid-order-scope-mismatch-{case}-activate"
+
+    with pytest.raises(SubscriptionLifecycleError, match="order_plan_missing"):
+        activate_paid_period(
+            db_session,
+            ActivatePaidPeriodCommand(
+                operation_idempotency_key=operation_key,
+                order_id=order.id,
+                payment_id=payment.id,
+                webhook_event_id=webhook.id,
+                occurred_at=now,
+            ),
+        )
+
+    _assert_no_paid_activation_access_mutation(db_session, user=user, order=order, operation_key=operation_key)
+
+
+def test_activate_paid_period_preserves_missing_order_plan_without_mutation(db_session) -> None:
+    now = datetime.now(timezone.utc)
+    plan = (
+        db_session.query(Plan)
+        .filter(Plan.tenant_id == "anytoolai", Plan.region == "ru", Plan.price_amount_minor > 0)
+        .first()
+    )
+    assert plan is not None
+    user, account = _add_billing_user_and_account(db_session, "missing-order-plan")
+    order, payment, webhook = _add_verified_paid_order(
+        db_session,
+        key="missing-order-plan",
+        user=user,
+        account=account,
+        plan=plan,
+        paid_at=now,
+    )
+    order.plan_id = None
+    db_session.flush()
+    assert (
+        db_session.query(OrderItem).filter(OrderItem.order_id == order.id, OrderItem.plan_id.is_not(None)).count() == 0
+    )
+    operation_key = "missing-order-plan-activate"
+
+    with pytest.raises(SubscriptionLifecycleError, match="order_plan_missing"):
+        activate_paid_period(
+            db_session,
+            ActivatePaidPeriodCommand(
+                operation_idempotency_key=operation_key,
+                order_id=order.id,
+                payment_id=payment.id,
+                webhook_event_id=webhook.id,
+                occurred_at=now,
+            ),
+        )
+
+    _assert_no_paid_activation_access_mutation(db_session, user=user, order=order, operation_key=operation_key)
 
 
 @pytest.mark.postgres
