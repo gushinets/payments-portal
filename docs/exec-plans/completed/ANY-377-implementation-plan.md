@@ -378,9 +378,15 @@ Do not:
 
 ## Automated checks
 
-Do NOT run tests, pytest, linters, formatters, type checkers, generators, migration checks, `npm run check`, `npm run check:fast`, or any other automated verification command.
+During implementation, run the focused regression:
 
-Do not automatically reformat unrelated files.
+pytest apps/api/tests/test_cloudpayments_webhook_postgres.py -k "full_refund_after_subscription_expiration"
+
+Before handoff, run the broadest supported canonical check:
+
+npm run check:fast
+
+If a required check cannot be executed in the current environment, record the skipped check and the reason.
 
 ## After implementation
 
@@ -394,7 +400,7 @@ Report:
 6. how duplicate refund delivery is verified;
 7. the exact checks I should run manually.
 
-Tell me to run these checks manually, but do not run them yourself:
+report the checks executed and their results
 
 ```bash
 pytest apps/api/tests/test_cloudpayments_webhook_postgres.py -k "full_refund_after_subscription_expiration"
