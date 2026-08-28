@@ -16,6 +16,9 @@
     "architecture:check": "python scripts/repo.py architecture check",
     "check:fast": "python scripts/repo.py check --fast",
     "check": "python scripts/repo.py check",
+    "sync:api": "python scripts/repo.py sync-api",
+    "lock:api": "python scripts/repo.py lock-api",
+    "lock:check:api": "python scripts/repo.py check-api-lock",
     "test:e2e": "npm exec playwright test -- --config playwright.config.ts",
     "test:e2e:react-runtime": "npm exec playwright test -- --config playwright.react-runtime.config.ts",
     "playwright:install": "npm exec playwright install chromium",
@@ -26,7 +29,11 @@
     "test:boundaries:web": "npm --workspace @anytoolai/web run test:boundaries",
     "typecheck:web": "npm --workspace @anytoolai/web run typecheck",
     "dev:api": "python scripts/repo.py dev-api",
-    "test:api": "pytest apps/api/tests"
+    "migrate:api": "python scripts/repo.py migrate-api",
+    "test:api:fast": "python scripts/repo.py test api-fast",
+    "test:api:postgres": "python scripts/repo.py test api-postgres",
+    "test:api": "python scripts/repo.py test api",
+    "build:api": "docker compose build api"
   },
   "engines": {
     "node": ">=24.0.0 <25",

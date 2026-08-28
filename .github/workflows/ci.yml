@@ -18,7 +18,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      POETRY_VIRTUALENVS_CREATE: "false"
+      UV_PROJECT_ENVIRONMENT: ${{ github.workspace }}/.venv
+      UV_PYTHON_DOWNLOADS: "never"
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -31,12 +32,16 @@ jobs:
         with:
           node-version: "24"
           cache: npm
-      - name: Install Poetry
-        run: python -m pip install poetry==1.8.4
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.7"
+          enable-cache: true
+          cache-dependency-glob: apps/api/uv.lock
       - name: Validate API dependency lock
-        run: poetry --directory apps/api check --lock
+        run: uv lock --directory apps/api --check
       - name: Install API dependencies
-        run: poetry --directory apps/api install --with dev --no-root
+        run: uv sync --directory apps/api --locked --dev --python 3.12
       - name: Install web dependencies
         run: npm ci
       - name: Run fast checks
@@ -71,7 +76,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      POETRY_VIRTUALENVS_CREATE: "false"
+      UV_PROJECT_ENVIRONMENT: ${{ github.workspace }}/.venv
+      UV_PYTHON_DOWNLOADS: "never"
       CI_ARTIFACTS: .harness/ci
       COMPOSE_PROJECT_NAME: payment-portal-ci-${{ github.run_id }}-${{ github.run_attempt }}
       POSTGRES_DB: payment_portal_test
@@ -108,10 +114,16 @@ jobs:
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
-      - name: Install Poetry
-        run: python -m pip install poetry==1.8.4
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.7"
+          enable-cache: true
+          cache-dependency-glob: apps/api/uv.lock
+      - name: Validate API dependency lock
+        run: uv lock --directory apps/api --check
       - name: Install API dependencies
-        run: poetry --directory apps/api install --with dev --no-root
+        run: uv sync --directory apps/api --locked --dev --python 3.12
       - name: Create private CI environment
         shell: bash
         run: |
@@ -236,7 +248,6 @@ jobs:
   browser:
     runs-on: ubuntu-latest
     env:
-      POETRY_VIRTUALENVS_CREATE: "false"
       PLAYWRIGHT_PROVIDER_UI_STUB: "true"
       CLOUDPAYMENTS_PUBLIC_ID: test-provider-public-id
     steps:
@@ -248,8 +259,6 @@ jobs:
         with:
           node-version: "24"
           cache: npm
-      - run: python -m pip install poetry==1.8.4
-      - run: poetry --directory apps/api install --with dev --no-root
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e:react-runtime
