@@ -12,7 +12,7 @@ every relevant repository change and on a weekly schedule.
 
 ## Decisions
 
-- Dependabot tracks npm, Poetry through the `pip` ecosystem, Dockerfiles,
+- Dependabot tracks npm, uv through the `uv` ecosystem, Dockerfiles,
   Docker Compose, and GitHub Actions weekly.
 - Dependabot PR titles use the `ANY-84 -` prefix so automated updates satisfy
   the repository title gate.

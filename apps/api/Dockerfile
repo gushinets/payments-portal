@@ -1,5 +1,10 @@
 FROM python:3.12-slim@sha256:2c941e860699f878900b0edc2403613c234d4b32eda3cc9fa7036991a2a63c4a AS base
 
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV VIRTUAL_ENV=/opt/api-venv
+ENV PATH="/opt/api-venv/bin:$PATH"
+
 FROM ghcr.io/astral-sh/uv:0.12.7@sha256:95f2aa1fe59274951cfe9b0cbc7972e879ff1004bc8945d130a32eb0dbd85945 AS uv-source
 
 FROM base AS dependency-builder
@@ -7,11 +12,6 @@ FROM base AS dependency-builder
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get upgrade --yes --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
-
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-ENV VIRTUAL_ENV=/opt/api-venv
-ENV PATH="/opt/api-venv/bin:$PATH"
 
 WORKDIR /app
 

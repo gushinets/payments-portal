@@ -1,7 +1,7 @@
 # Development Environment
 
 Status: authoritative
-Last verified: 2026-07-11
+Last verified: 2026-08-28
 
 Use `scripts/repo.py` through root npm commands. It derives a stable worktree ID,
 Compose project, database port, and service ports without sharing state with
@@ -29,24 +29,77 @@ npm run test:api
 
 ## API dependency management
 
-`apps/api/pyproject.toml` and `apps/api/poetry.lock` are the source of truth for
-API dependencies. The API Docker image and repository setup install directly
-from the Poetry lock file.
+The API uses uv `0.12.7`. `apps/api/pyproject.toml` and `apps/api/uv.lock` are
+the dependency source of truth. Repository setup and Docker dependency stages
+use the locked uv file.
 
-The Makefile API targets below are local shortcuts for Unix-compatible shells
-on Linux, macOS, and WSL. They are not a native Windows command interface; use
-WSL for these targets. The root npm commands backed by `scripts/repo.py` remain
-the cross-platform interface for repository setup, checks, and harness control.
+The only canonical local API environment is `<repository>/.venv`. Repository
+tooling selects it explicitly, so do not create `apps/api/.venv` or require
+shell activation. Stale environments are never deleted automatically.
 
-After changing an API dependency, regenerate the lock file:
+After changing an API dependency, update and then check the lock file through
+the root npm aliases:
 
 ```bash
-make lock_api
+npm run lock:api
+npm run lock:check:api
 ```
 
-To synchronize development dependencies into the canonical root virtual
+To synchronize the development dependencies into the canonical root
 environment, run:
 
 ```bash
-make install_api
+npm run sync:api
 ```
+
+The normal repository flow is:
+
+```bash
+npm run repo:doctor
+npm run repo:setup
+npm run repo:up
+```
+
+API runtime, migration, test, and build operations are exposed through the
+root aliases `dev:api`, `migrate:api`, `test:api:fast`, `test:api:postgres`,
+`test:api`, and `build:api`. Repository checks remain `npm run check:fast` and
+`npm run check`.
+
+## Minimal Makefile
+
+The Makefile is not a second command surface. It contains only Unix/WSL
+convenience shortcuts for the local PostgreSQL test server:
+
+```bash
+make test_db_up
+make test_db_stop
+```
+
+The cross-platform equivalents are:
+
+```bash
+python scripts/repo.py test-db up
+python scripts/repo.py test-db stop
+```
+
+Compose owns the PostgreSQL server/container and `repo.py` owns its
+worktree-specific orchestration. pytest owns creation, migration, schema reset,
+and teardown of the disposable `_tests` database; developers must not manually
+create or drop the physical test database.
+
+For PostgreSQL tests, configuration precedence is: explicit
+`TEST_POSTGRES_DATABASE_URL`; complete explicit `POSTGRES_*_TEST` configuration
+(partial configuration fails); then the current worktree runtime configuration
+with its mapped host port and a derived `_tests` database name. Credentials are
+read from the environment and are not documented here.
+
+The normal Unix/WSL PostgreSQL flow is:
+
+```bash
+make test_db_up
+npm run test:api:postgres
+make test_db_stop
+```
+
+The complete backend flow uses `npm run test:api` in the middle. The
+`test:api:fast` alias remains PostgreSQL-independent.

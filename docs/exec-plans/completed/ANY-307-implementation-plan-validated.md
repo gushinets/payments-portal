@@ -7,7 +7,7 @@
 | Project | `Payment portal` |
 | Ticket | `ANY-307` |
 | Validation date | `2026-08-28` |
-| Overall status | Step 1 complete; Step 2 todo |
+| Overall status | Step 1 and Step 2 complete; final verification reported passed; changes uncommitted per request |
 | Execution order | Sequential only: Step 1 → manual verification → commit → Step 2 → final verification → commit |
 | Steps / commits | 2 |
 | Primary scope | Poetry → uv migration for API dependency management and all executable Poetry consumers |
@@ -386,7 +386,7 @@ Do not:
 
 # Step 1 — Atomically migrate API dependency tooling to uv and simplify local command surfaces
 
-**Status:** `done`  
+**Status:** `done`
 **Commit:** `chore(api): migrate dependency management to uv`
 
 ## Prompt
@@ -1078,8 +1078,8 @@ chore(api): migrate dependency management to uv
 
 # Step 2 — Reconcile documentation and final migration evidence
 
-**Status:** `todo`  
-**Commit:** `docs(tooling): document canonical uv workflow`
+**Status:** `done`
+**Commit:** `Not committed (per request)`
 
 ## Prompt
 
@@ -1306,6 +1306,45 @@ Historical migration context may still mention Poetry where historically accurat
 
 Do not rewrite completed historical execution plans just to make global text search return zero results.
 
+## Step 2 implementation evidence
+
+Recorded on 2026-08-28 from the committed Step 1 implementation:
+
+- The final uv version is `0.12.7`. GitHub Actions uses
+  `astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9` (v9.0.0).
+- The dependency-builder uses
+  `ghcr.io/astral-sh/uv:0.12.7@sha256:95f2aa1fe59274951cfe9b0cbc7972e879ff1004bc8945d130a32eb0dbd85945`.
+- The uv lock comparison found no direct dependency version changes. The
+  unconstrained transitive resolutions changed as follows: `charset-normalizer`
+  3.4.9 → 3.5.1, `click` 8.4.2 → 8.5.0, `faker` 40.36.0 → 40.37.0,
+  `googleapis-common-protos` 1.75.1 → 1.75.2, `idna` 3.18 → 3.19,
+  `protobuf` 7.35.1 → 7.36.0, `pygments` 2.20.0 → 2.21.0,
+  `typing-inspection` 0.4.3 → 0.4.4, and `websockets` 17.0.1 → 17.1.
+  These are resolver-selected transitive updates; the old and new lockfiles
+  contain no changed direct constraints. `payments-portal-api` 0.1.0 is uv's
+  root project entry, not a transitive dependency.
+- Repository-managed uv subprocesses use `uv_environment`, which removes
+  ambient `VIRTUAL_ENV`, sets `UV_PROJECT_ENVIRONMENT` to the resolved
+  repository-root `.venv`, sets `UV_PYTHON` to the validated Python 3.12
+  executable, and sets `UV_PYTHON_DOWNLOADS=never`. Docker and CI also disable
+  uv Python downloads explicitly.
+- `repo:setup` validates Python 3.12 and uv, runs the locked development sync
+  into the root `.venv`, preserves `npm ci` and Playwright installation, and
+  regenerates the worktree runtime configuration.
+- The final API npm aliases are `sync:api`, `lock:api`, `lock:check:api`,
+  `dev:api`, `migrate:api`, `test:api:fast`, `test:api:postgres`, `test:api`,
+  and `build:api`. The Makefile contains only `test_db_up` and `test_db_stop`.
+- Local test PostgreSQL startup uses the current worktree's existing Compose
+  `postgres` service, its worktree-specific project and mapped port, and
+  Compose health waiting. `repo.py` starts/stops only that server service and
+  pytest owns the physical `_tests` database lifecycle.
+- CI syncs host API dependencies in `quality` and `production-gate`. Both
+  validate `apps/api/uv.lock` before a locked dev sync into the repository-root
+  `.venv`. The browser job's unused host API dependency installation was
+  removed; `harness-smoke` does not sync API dependencies.
+- Dependabot's API Python ecosystem is `uv`; its schedule, grouping, commit
+  prefix, other ecosystems, and Trivy/security policy remain unchanged.
+
 ## Scope constraints
 
 Do not:
@@ -1337,6 +1376,9 @@ Report:
 10. exact final verification commands.
 
 ## Manual final verification
+
+Verification status recorded on 2026-08-28: user reported that all checks
+passed. The commands were run by the user, not by the implementation agent.
 
 Run manually:
 

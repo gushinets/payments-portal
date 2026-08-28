@@ -33,7 +33,7 @@ them autonomously.
 
 ## Dependency and container scanning
 
-Dependabot checks npm, Poetry, Dockerfile, Docker Compose, and GitHub Actions
+Dependabot checks npm, uv, Dockerfile, Docker Compose, and GitHub Actions
 dependencies weekly. Repository administrators must keep Dependabot alerts and
 security updates enabled in GitHub; those settings are not controlled by
 `.github/dependabot.yml`.

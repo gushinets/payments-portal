@@ -13,7 +13,7 @@ exceptions for unfixed upstream `perl-base` Critical vulnerabilities.
 
 ## Scope and decisions
 
-- Preserve Python 3.12 and the existing Poetry application dependency lock.
+- Preserve Python 3.12 and the existing API application dependency lock.
 - Replace base digest
   `sha256:423ed6ab25b1921a477529254bfeeabf5855151dc2c3141699a1bfc852199fbf`
   with the current multi-architecture `python:3.12-slim` digest
@@ -26,7 +26,8 @@ exceptions for unfixed upstream `perl-base` Critical vulnerabilities.
   baseline, and serves `/health/live` before scanning it in CI.
 - Leave the external `TRIVY_ENFORCE` repository variable unchanged. An
   administrator can enable it only after merge and human exception approval.
-- No API source, migration, web image, Python dependency, or Poetry lock change
+- No API source, migration, web image, Python dependency, or dependency-lock
+  change
   is part of this remediation.
 
 ## Authoritative baseline and upstream status
