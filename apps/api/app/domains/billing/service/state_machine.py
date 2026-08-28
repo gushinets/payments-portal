@@ -60,6 +60,7 @@ SUBSCRIPTION_STATUS_TRANSITIONS = {
         }
     ),
     SubscriptionStatus.CANCELED: frozenset({SubscriptionStatus.EXPIRED, SubscriptionStatus.REFUNDED}),
+    SubscriptionStatus.EXPIRED: frozenset({SubscriptionStatus.REFUNDED}),
 }
 
 

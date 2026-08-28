@@ -34,8 +34,11 @@ from app.domains.billing.enums import (  # noqa: E402
 )
 from app.domains.billing.service import (  # noqa: E402
     ApplyProviderSubscriptionStateCommand,
+    ExpireDueSubscriptionsCommand,
     apply_provider_subscription_state,
+    expire_due_subscriptions,
 )
+from app.infrastructure.queries.subscriptions import get_active_entitlement_for_scope  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import (  # noqa: E402
     Entitlement,
@@ -569,6 +572,167 @@ def test_full_refund_after_provider_canceled_subscription_is_processed(
     assert refund_event.previous_status == SubscriptionStatus.CANCELED.value
     assert refund_event.next_status == SubscriptionStatus.REFUNDED.value
     assert [event.status for event in webhook_events] == ["processed", "processed"]
+
+
+def test_full_refund_after_subscription_expiration_is_processed(
+    monkeypatch: pytest.MonkeyPatch,
+    webhook_database: sessionmaker[Session],
+) -> None:
+    client = TestClient(app, raise_server_exceptions=False)
+    invoice_id = "inv-refund-after-expiration-1"
+    transaction_id = "tx-refund-after-expiration-1"
+    refund_transaction_id = "tx-refund-after-expiration-refund-1"
+    paid_at = datetime(2026, 8, 1, 12, 0, tzinfo=timezone.utc)
+    clock = {"now": paid_at}
+    monkeypatch.setattr(cloudpayments_processing, "datetime_now", lambda: clock["now"])
+    seed_order(webhook_database, invoice_id)
+
+    pay_response = client.post(
+        "/api/cloudpayments/pay",
+        json=paid_payload(invoice_id, transaction_id),
+    )
+    assert pay_response.status_code == 200
+
+    with webhook_database() as db:
+        subscription = db.query(Subscription).one()
+        entitlement = db.query(Entitlement).one()
+        assert subscription.status == SubscriptionStatus.ACTIVE.value
+        assert entitlement.status == EntitlementStatus.ACTIVE.value
+        assert entitlement.source == "order"
+        assert entitlement.valid_from == subscription.current_period_start
+        assert entitlement.valid_until == subscription.current_period_end
+        expiration_at = subscription.current_period_end + timedelta(seconds=1)
+        expired = expire_due_subscriptions(
+            db,
+            ExpireDueSubscriptionsCommand(now=expiration_at),
+        )
+        assert [item.id for item in expired] == [subscription.id]
+        db.commit()
+
+    with webhook_database() as db:
+        subscription = db.query(Subscription).one()
+        entitlement = db.query(Entitlement).one()
+        expiration_events = (
+            db.query(SubscriptionEvent)
+            .filter(
+                SubscriptionEvent.subscription_id == subscription.id,
+                SubscriptionEvent.event_type == SubscriptionEventType.SUBSCRIPTION_EXPIRED.value,
+            )
+            .all()
+        )
+        active_entitlement = get_active_entitlement_for_scope(
+            db,
+            tenant_id=subscription.tenant_id,
+            region=subscription.region,
+            user_id=subscription.user_id,
+            scope_type=subscription.scope_type,
+            product_id=subscription.product_id,
+            bundle_id=subscription.bundle_id,
+            now=expiration_at,
+        )
+
+    assert subscription.status == SubscriptionStatus.EXPIRED.value
+    assert entitlement.status == EntitlementStatus.EXPIRED.value
+    assert entitlement.status != EntitlementStatus.ACTIVE.value
+    assert active_entitlement is None
+    assert len(expiration_events) == 1
+    assert expiration_events[0].previous_status == SubscriptionStatus.ACTIVE.value
+    assert expiration_events[0].next_status == SubscriptionStatus.EXPIRED.value
+
+    refund_at = expiration_at + timedelta(minutes=5)
+    assert paid_at < subscription.current_period_end < expiration_at < refund_at
+    clock["now"] = refund_at
+    refund_json = refund_payload(
+        invoice_id,
+        refund_transaction_id=refund_transaction_id,
+        payment_transaction_id=transaction_id,
+        amount="990.00",
+    )
+    refund_response = client.post("/api/cloudpayments/refund", json=refund_json)
+
+    assert refund_response.status_code == 200
+    assert refund_response.json() == {"code": 0}
+    with webhook_database() as db:
+        order = db.query(Order).one()
+        payment = db.query(Payment).one()
+        refund = db.query(Refund).filter(Refund.provider_refund_id == refund_transaction_id).one()
+        refund_count = db.query(Refund).filter(Refund.provider_refund_id == refund_transaction_id).count()
+        subscription = db.query(Subscription).one()
+        entitlement = db.query(Entitlement).one()
+        expiration_events = (
+            db.query(SubscriptionEvent)
+            .filter(
+                SubscriptionEvent.subscription_id == subscription.id,
+                SubscriptionEvent.event_type == SubscriptionEventType.SUBSCRIPTION_EXPIRED.value,
+            )
+            .all()
+        )
+        refund_events = (
+            db.query(SubscriptionEvent)
+            .filter(
+                SubscriptionEvent.subscription_id == subscription.id,
+                SubscriptionEvent.event_type == SubscriptionEventType.REFUND_APPLIED.value,
+            )
+            .all()
+        )
+        active_entitlement = get_active_entitlement_for_scope(
+            db,
+            tenant_id=subscription.tenant_id,
+            region=subscription.region,
+            user_id=subscription.user_id,
+            scope_type=subscription.scope_type,
+            product_id=subscription.product_id,
+            bundle_id=subscription.bundle_id,
+            now=refund_at,
+        )
+
+    assert order.status == "refunded"
+    assert payment.status == "refunded"
+    assert payment.refunded_amount_minor == 99000
+    assert refund.amount_minor == 99000
+    assert refund_count == 1
+    assert subscription.status == SubscriptionStatus.REFUNDED.value
+    assert entitlement.status == EntitlementStatus.EXPIRED.value
+    assert active_entitlement is None
+    assert len(expiration_events) == 1
+    assert len(refund_events) == 1
+    assert refund_events[0].previous_status == SubscriptionStatus.EXPIRED.value
+    assert refund_events[0].next_status == SubscriptionStatus.REFUNDED.value
+
+    duplicate_refund_response = client.post("/api/cloudpayments/refund", json=refund_json)
+
+    assert duplicate_refund_response.status_code == 200
+    assert duplicate_refund_response.json() == {"code": 0}
+    with webhook_database() as db:
+        subscription = db.query(Subscription).one()
+        entitlement = db.query(Entitlement).one()
+        refund_count = db.query(Refund).filter(Refund.provider_refund_id == refund_transaction_id).count()
+        refund_event_count = (
+            db.query(SubscriptionEvent)
+            .filter(
+                SubscriptionEvent.subscription_id == subscription.id,
+                SubscriptionEvent.event_type == SubscriptionEventType.REFUND_APPLIED.value,
+            )
+            .count()
+        )
+        webhook_events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
+        active_entitlement = get_active_entitlement_for_scope(
+            db,
+            tenant_id=subscription.tenant_id,
+            region=subscription.region,
+            user_id=subscription.user_id,
+            scope_type=subscription.scope_type,
+            product_id=subscription.product_id,
+            bundle_id=subscription.bundle_id,
+            now=refund_at,
+        )
+
+    assert refund_count == 1
+    assert refund_event_count == 1
+    assert subscription.status == SubscriptionStatus.REFUNDED.value
+    assert entitlement.status == EntitlementStatus.EXPIRED.value
+    assert active_entitlement is None
+    assert [event.status for event in webhook_events] == ["processed", "processed", "duplicate"]
 
 
 def test_refund_after_canceled_payment_is_rejected_without_refund_mutation(
