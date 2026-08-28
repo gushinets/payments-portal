@@ -110,6 +110,7 @@ def enable_automatic_renewal(db: Session, command: EnableAutomaticRenewalCommand
         or order.region != subscription.region
         or order.user_id != subscription.user_id
         or order.plan_id != subscription.plan_id
+        or order.provider_account_id != account.id
         or linked_subscription is None
         or linked_subscription.id != command.subscription_id
         or entrypoint_session is None

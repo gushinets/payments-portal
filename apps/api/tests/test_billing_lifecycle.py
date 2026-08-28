@@ -795,6 +795,62 @@ def test_automatic_renewal_accepts_exact_paid_checkout_context(db_session) -> No
     assert event.order_id == order.id
 
 
+def test_automatic_renewal_rejects_same_scope_provider_account_substitution_without_mutation(db_session) -> None:
+    now = datetime.now(timezone.utc)
+    plan = _plan_by_code(db_session, "document-summary-pro")
+    plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC.value
+    user, account = _add_billing_user_and_account(db_session, "automatic-renewal-provider-substitution")
+    acceptance, order, subscription = _add_automatic_renewal_context(
+        db_session,
+        key="automatic-renewal-provider-substitution",
+        user=user,
+        account=account,
+        plan=plan,
+        now=now,
+    )
+    secondary_entity = LegalEntity(
+        tenant_id=account.tenant_id,
+        region=account.region,
+        name="automatic-renewal-provider-substitution legal entity",
+        entity_type="company",
+        legal_address="Test address",
+        support_email="support@example.com",
+        status="active",
+    )
+    db_session.add(secondary_entity)
+    db_session.flush()
+    substituted_account = PaymentProviderAccount(
+        tenant_id=account.tenant_id,
+        region=account.region,
+        legal_entity_id=secondary_entity.id,
+        provider=account.provider,
+        public_identifier="automatic-renewal-provider-substitution-account-b",
+        default_currency=account.default_currency,
+        enabled=True,
+        test_mode=account.test_mode,
+        config={},
+    )
+    db_session.add(substituted_account)
+    db_session.flush()
+    assert order.provider_account_id == account.id
+    assert substituted_account.id != account.id
+
+    _assert_automatic_renewal_rejected_without_mutation(
+        db_session,
+        subscription=subscription,
+        command=EnableAutomaticRenewalCommand(
+            operation_idempotency_key="automatic-renewal-provider-substitution-operation",
+            subscription_id=subscription.id,
+            order_id=order.id,
+            provider_account_id=substituted_account.id,
+            provider_subscription_id="provider-substituted-account",
+            recurring_consent_acceptance_id=acceptance.id,
+            occurred_at=now,
+        ),
+        expected_error="automatic_renewal_context_missing",
+    )
+
+
 def _assert_automatic_renewal_rejected_without_mutation(
     db_session,
     *,
