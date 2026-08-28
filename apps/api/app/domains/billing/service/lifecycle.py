@@ -74,6 +74,9 @@ def start_trial(db: Session, command: StartTrialCommand) -> Subscription:
     user = lock_user_by_id(db, command.user_id)
     if user is None or user.tenant_id != command.tenant_id or user.region != command.region:
         raise SubscriptionLifecycleError("user_not_found")
+    existing_event = _event_for_key(db, command.operation_idempotency_key)
+    if existing_event:
+        return _subscription_for_event(db, existing_event)
     if plan.trial_days <= 0:
         raise SubscriptionLifecycleError("trial_not_available")
 
@@ -170,6 +173,9 @@ def activate_paid_period(db: Session, command: ActivatePaidPeriodCommand) -> Sub
     user = lock_user_by_id(db, order.user_id)
     if user is None or user.tenant_id != order.tenant_id or user.region != order.region:
         raise SubscriptionLifecycleError("user_not_found")
+    existing_event = _event_for_key(db, command.operation_idempotency_key)
+    if existing_event:
+        return _subscription_for_event(db, existing_event)
 
     paid_at = order.paid_at or command.occurred_at
     scope_type, product_id, bundle_id = _scope_values(plan)

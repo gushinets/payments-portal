@@ -26,6 +26,7 @@ from app.domains.billing.service import (
     enable_automatic_renewal,
     start_trial,
 )
+from app.domains.billing.service import lifecycle
 from app.domains.billing.service import lifecycle_operations
 from app.infrastructure.queries.identity import lock_user_by_id
 from app.infrastructure.queries.subscriptions import get_subscription_by_id
@@ -369,6 +370,232 @@ def test_parallel_enable_automatic_renewal_same_key_reuses_event_after_subscript
     assert refreshed_subscription.recurring_consent_acceptance_id == acceptance_id
     assert len(events) == 1
     assert operation_key_count == 1
+
+
+def test_parallel_start_trial_same_key_reuses_event_after_user_lock(
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime(2026, 8, 25, 9, 0, tzinfo=UTC)
+    with postgres_session_factory() as session, session.begin():
+        user, _ = _add_billing_user_and_account(session, "concurrent-trial-same-key")
+        plan = _plan_by_code(session, "document-summary-pro")
+        user_id = user.id
+        plan_id = plan.id
+        scope_type = plan.scope_type
+        product_id = plan.product_id
+        bundle_id = plan.bundle_id
+
+    command = StartTrialCommand(
+        tenant_id="anytoolai",
+        region="ru",
+        user_id=user_id,
+        plan_id=plan_id,
+        operation_idempotency_key="concurrent-trial-same-key",
+        occurred_at=now,
+    )
+    event_check_barrier = Barrier(3)
+    original_event_for_key = lifecycle._event_for_key
+    synchronized_threads: set[int] = set()
+    synchronized_threads_lock = Lock()
+
+    def synchronized_event_for_key(session: Session, key: str) -> SubscriptionEvent | None:
+        event = original_event_for_key(session, key)
+        thread_id = get_ident()
+        should_wait = False
+        with synchronized_threads_lock:
+            if key == command.operation_idempotency_key and event is None and thread_id not in synchronized_threads:
+                synchronized_threads.add(thread_id)
+                should_wait = True
+        if should_wait:
+            event_check_barrier.wait(timeout=5)
+        return event
+
+    monkeypatch.setattr(lifecycle, "_event_for_key", synchronized_event_for_key)
+
+    def submit(barrier: Barrier, _index: int) -> uuid.UUID:
+        barrier.wait(timeout=5)
+        with postgres_session_factory() as session:
+            return start_trial(session, command).id
+
+    blocker = postgres_session_factory()
+    blocker.begin()
+    try:
+        assert lock_user_by_id(blocker, user_id) is not None
+        start_barrier = Barrier(3)
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = [executor.submit(submit, start_barrier, index) for index in range(2)]
+            start_barrier.wait(timeout=5)
+            event_check_barrier.wait(timeout=5)
+            blocker.commit()
+            results = [future.result(timeout=10) for future in futures]
+    finally:
+        if blocker.in_transaction():
+            blocker.rollback()
+        blocker.close()
+
+    with postgres_session_factory() as session:
+        trial_subscriptions = (
+            session.query(Subscription)
+            .filter(
+                Subscription.user_id == user_id,
+                Subscription.status == SubscriptionStatus.TRIALING.value,
+                Subscription.scope_type == scope_type,
+                Subscription.product_id == product_id,
+                Subscription.bundle_id == bundle_id,
+            )
+            .all()
+        )
+        trial_entitlements = (
+            session.query(Entitlement)
+            .filter(
+                Entitlement.user_id == user_id,
+                Entitlement.source == EntitlementSource.TRIAL.value,
+                Entitlement.scope_type == scope_type,
+                Entitlement.product_id == product_id,
+                Entitlement.bundle_id == bundle_id,
+            )
+            .all()
+        )
+        events = (
+            session.query(SubscriptionEvent)
+            .filter(
+                SubscriptionEvent.event_type == SubscriptionEventType.TRIAL_STARTED.value,
+                SubscriptionEvent.operation_idempotency_key == command.operation_idempotency_key,
+            )
+            .all()
+        )
+        operation_key_count = (
+            session.query(SubscriptionEvent)
+            .filter(SubscriptionEvent.operation_idempotency_key == command.operation_idempotency_key)
+            .count()
+        )
+
+    assert len(set(results)) == 1
+    assert len(synchronized_threads) == 2
+    assert len(trial_subscriptions) == 1
+    assert trial_subscriptions[0].id == results[0]
+    assert len(trial_entitlements) == 1
+    assert trial_entitlements[0].subscription_id == trial_subscriptions[0].id
+    assert len(events) == 1
+    assert events[0].subscription_id == trial_subscriptions[0].id
+    assert operation_key_count == 1
+
+
+def test_parallel_activate_paid_period_same_key_reuses_event_after_user_lock(
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime(2026, 8, 25, 9, 30, tzinfo=UTC)
+    with postgres_session_factory() as session, session.begin():
+        user, account = _add_billing_user_and_account(session, "concurrent-paid-same-key")
+        plan = _plan_by_code(session, "document-summary-pro")
+        order, payment, webhook = _add_verified_paid_order(
+            session,
+            key="concurrent-paid-same-key",
+            user=user,
+            account=account,
+            plan=plan,
+            paid_at=now,
+        )
+        user_id = user.id
+        order_id = order.id
+        payment_id = payment.id
+        webhook_id = webhook.id
+        scope_type = plan.scope_type
+        product_id = plan.product_id
+        bundle_id = plan.bundle_id
+
+    command = ActivatePaidPeriodCommand(
+        operation_idempotency_key="concurrent-paid-same-key",
+        order_id=order_id,
+        payment_id=payment_id,
+        webhook_event_id=webhook_id,
+        occurred_at=now,
+    )
+    event_check_barrier = Barrier(3)
+    original_event_for_key = lifecycle._event_for_key
+    synchronized_threads: set[int] = set()
+    synchronized_threads_lock = Lock()
+
+    def synchronized_event_for_key(session: Session, key: str) -> SubscriptionEvent | None:
+        event = original_event_for_key(session, key)
+        thread_id = get_ident()
+        should_wait = False
+        with synchronized_threads_lock:
+            if key == command.operation_idempotency_key and event is None and thread_id not in synchronized_threads:
+                synchronized_threads.add(thread_id)
+                should_wait = True
+        if should_wait:
+            event_check_barrier.wait(timeout=5)
+        return event
+
+    monkeypatch.setattr(lifecycle, "_event_for_key", synchronized_event_for_key)
+
+    def submit(barrier: Barrier, _index: int) -> uuid.UUID:
+        barrier.wait(timeout=5)
+        return _activate_in_worker(postgres_session_factory, command)
+
+    blocker = postgres_session_factory()
+    blocker.begin()
+    try:
+        assert lock_user_by_id(blocker, user_id) is not None
+        start_barrier = Barrier(3)
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = [executor.submit(submit, start_barrier, index) for index in range(2)]
+            start_barrier.wait(timeout=5)
+            event_check_barrier.wait(timeout=5)
+            blocker.commit()
+            results = [future.result(timeout=10) for future in futures]
+    finally:
+        if blocker.in_transaction():
+            blocker.rollback()
+        blocker.close()
+
+    with postgres_session_factory() as session:
+        subscriptions = (
+            session.query(Subscription)
+            .filter(
+                Subscription.user_id == user_id,
+                Subscription.status.in_(SubscriptionStatus.live_values()),
+                Subscription.scope_type == scope_type,
+                Subscription.product_id == product_id,
+                Subscription.bundle_id == bundle_id,
+            )
+            .all()
+        )
+        events = (
+            session.query(SubscriptionEvent)
+            .filter(
+                SubscriptionEvent.event_type == SubscriptionEventType.PAID_PERIOD_ACTIVATED.value,
+                SubscriptionEvent.operation_idempotency_key == command.operation_idempotency_key,
+                SubscriptionEvent.order_id == order_id,
+            )
+            .all()
+        )
+        operation_key_count = (
+            session.query(SubscriptionEvent)
+            .filter(SubscriptionEvent.operation_idempotency_key == command.operation_idempotency_key)
+            .count()
+        )
+        order_entitlements = (
+            session.query(Entitlement)
+            .filter(
+                Entitlement.order_id == order_id,
+                Entitlement.source == EntitlementSource.ORDER.value,
+            )
+            .all()
+        )
+
+    assert len(set(results)) == 1
+    assert len(synchronized_threads) == 2
+    assert len(subscriptions) == 1
+    assert subscriptions[0].id == results[0]
+    assert len(events) == 1
+    assert events[0].subscription_id == subscriptions[0].id
+    assert operation_key_count == 1
+    assert len(order_entitlements) == 1
+    assert order_entitlements[0].subscription_id == subscriptions[0].id
 
 
 def test_parallel_paid_orders_same_scope_share_one_subscription(
