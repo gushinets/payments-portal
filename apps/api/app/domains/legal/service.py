@@ -135,7 +135,8 @@ def is_current_recurring_consent_acceptance(
     effective_at = now or utc_now()
     comparable_effective_at = _as_utc_naive(effective_at)
     document = db.get(DocumentVersion, acceptance.document_version_id)
-    metadata_plan_code = acceptance.metadata_.get("plan_code") if isinstance(acceptance.metadata_, dict) else None
+    metadata = acceptance.metadata_
+    metadata_plan_code = metadata.get("plan_code") if isinstance(metadata, dict) else None
     return not (
         document is None
         or document.tenant_id != user.tenant_id
@@ -144,11 +145,19 @@ def is_current_recurring_consent_acceptance(
         or not document.is_active
         or not document.requires_acceptance
         or _as_utc_naive(document.effective_from) > comparable_effective_at
+        or acceptance.tenant_id != user.tenant_id
+        or acceptance.region != user.region
+        or acceptance.user_id != user.id
+        or acceptance.doc_type != "recurring_consent"
         or acceptance.acceptance_kind != AcceptanceKind.RECURRING_CONSENT.value
+        or _as_utc_naive(acceptance.accepted_at) > comparable_effective_at
         or acceptance.acceptance_text_hash != expected_acceptance_text_hash(document)
-        or (acceptance.entrypoint_type is not None and acceptance.entrypoint_type != entrypoint_type)
-        or (acceptance.entrypoint_value is not None and acceptance.entrypoint_value != entrypoint_value)
-        or (isinstance(metadata_plan_code, str) and metadata_plan_code != plan_code)
+        or acceptance.entrypoint_type != entrypoint_type
+        or acceptance.entrypoint_value != entrypoint_value
+        or not isinstance(metadata, dict)
+        or "plan_code" not in metadata
+        or not isinstance(metadata_plan_code, str)
+        or metadata_plan_code != plan_code
     )
 
 

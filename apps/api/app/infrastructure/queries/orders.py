@@ -4,11 +4,18 @@ import uuid
 
 from sqlalchemy.orm import Session
 
-from app.models import Order, OrderItem
+from app.models import EntrypointSession, Order, OrderItem
 
 
 def get_order_by_id(db: Session, order_id: uuid.UUID, *, for_update: bool = False) -> Order | None:
     query = db.query(Order).filter(Order.id == order_id)
+    return (query.with_for_update() if for_update else query).first()
+
+
+def get_entrypoint_session_by_id(
+    db: Session, entrypoint_session_id: uuid.UUID, *, for_update: bool = False
+) -> EntrypointSession | None:
+    query = db.query(EntrypointSession).filter(EntrypointSession.id == entrypoint_session_id)
     return (query.with_for_update() if for_update else query).first()
 
 

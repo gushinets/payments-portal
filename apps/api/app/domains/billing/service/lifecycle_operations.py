@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.domains.billing.enums import (
     EntitlementSource,
     EntitlementStatus,
+    OrderStatus,
     SubscriptionEventType,
     SubscriptionRenewalMode,
     SubscriptionStatus,
@@ -38,8 +39,10 @@ from app.domains.billing.service.support import (
     _verify_renewal_context,
     _write_event,
 )
+from app.domains.legal.service import is_current_recurring_consent_acceptance
+from app.infrastructure.queries.identity import lock_user_by_id
 from app.infrastructure.queries.legal import get_document_acceptance_by_id
-from app.infrastructure.queries.orders import get_order_by_id
+from app.infrastructure.queries.orders import get_entrypoint_session_by_id, get_order_by_id
 from app.infrastructure.queries.payments import (
     get_payment_for_refund,
     get_provider_account_by_id,
@@ -75,9 +78,10 @@ def enable_automatic_renewal(db: Session, command: EnableAutomaticRenewalCommand
     existing_event = _event_for_key(db, command.operation_idempotency_key)
     if existing_event:
         return _subscription_for_event(db, existing_event)
+    order = get_order_by_id(db, command.order_id, for_update=True)
     account = get_provider_account_by_id(db, command.provider_account_id, for_update=True)
     acceptance = get_document_acceptance_by_id(db, command.recurring_consent_acceptance_id, for_update=True)
-    if account is None or acceptance is None:
+    if order is None or account is None or acceptance is None:
         raise SubscriptionLifecycleError("automatic_renewal_context_missing")
     if subscription.renewal_mode == SubscriptionRenewalMode.AUTOMATIC.value:
         raise SubscriptionLifecycleError("automatic_renewal_already_enabled")
@@ -90,6 +94,48 @@ def enable_automatic_renewal(db: Session, command: EnableAutomaticRenewalCommand
     plan = get_plan_by_id(db, subscription.plan_id, for_update=True)
     if plan is None or plan.renewal_mode != SubscriptionRenewalMode.AUTOMATIC.value:
         raise SubscriptionLifecycleError("automatic_renewal_not_permitted")
+    user = lock_user_by_id(db, subscription.user_id)
+    entrypoint_session = (
+        get_entrypoint_session_by_id(db, order.entrypoint_session_id, for_update=True)
+        if order.entrypoint_session_id is not None
+        else None
+    )
+    linked_subscription = get_subscription_for_order(db, order.id)
+    if (
+        user is None
+        or user.tenant_id != subscription.tenant_id
+        or user.region != subscription.region
+        or order.status != OrderStatus.PAID.value
+        or order.tenant_id != subscription.tenant_id
+        or order.region != subscription.region
+        or order.user_id != subscription.user_id
+        or order.plan_id != subscription.plan_id
+        or order.provider_account_id != account.id
+        or linked_subscription is None
+        or linked_subscription.id != command.subscription_id
+        or entrypoint_session is None
+        or entrypoint_session.tenant_id != subscription.tenant_id
+        or entrypoint_session.resolved_region != subscription.region
+        or entrypoint_session.user_id != subscription.user_id
+    ):
+        raise SubscriptionLifecycleError("automatic_renewal_context_missing")
+    metadata = order.metadata_
+    if (
+        not isinstance(metadata, dict)
+        or metadata.get("auto_renew") is not True
+        or metadata.get("recurring_consent_acceptance_id") != str(command.recurring_consent_acceptance_id)
+    ):
+        raise SubscriptionLifecycleError("recurring_consent_invalid")
+    if not is_current_recurring_consent_acceptance(
+        db,
+        acceptance=acceptance,
+        user=user,
+        entrypoint_type=entrypoint_session.entrypoint_type,
+        entrypoint_value=entrypoint_session.entrypoint_value,
+        plan_code=plan.code,
+        now=command.occurred_at,
+    ):
+        raise SubscriptionLifecycleError("recurring_consent_invalid")
     try:
         with db.begin_nested():
             subscription.provider_account_id = account.id
@@ -103,6 +149,7 @@ def enable_automatic_renewal(db: Session, command: EnableAutomaticRenewalCommand
                 event_type=SubscriptionEventType.AUTOMATIC_RENEWAL_ENABLED,
                 previous_status=subscription.status,
                 next_status=subscription.status,
+                order_id=order.id,
             )
     except IntegrityError as exc:
         if not _is_provider_subscription_reference_conflict(exc):
