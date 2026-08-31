@@ -129,11 +129,22 @@ it("renders products and commercial fields from the catalog API", async () => {
   expect(await screen.findByRole("heading", { name: "Backend Summary" })).toBeVisible();
   expect(screen.getByText(/Тариф:\s*Backend Summary Plan/)).toBeVisible();
   expect(screen.getByText(/1\s250\s₽/)).toBeVisible();
+  expect(screen.getByText("Продление: автоматически")).toBeVisible();
   expect(screen.getByText("14 дней бесплатно")).toBeVisible();
   expect(screen.getByRole("link", { name: /Оформить/ })).toHaveAttribute(
     "href",
     "/ru/auth-checkout?product=document-summary"
   );
+});
+
+it("renders manual renewal mode from the catalog plan", async () => {
+  installCatalogResponse({
+    products: [catalogProduct({ plan: catalogPlan({ renewal_mode: "manual" }) })]
+  });
+
+  render(<CatalogProductsClient />);
+
+  expect(await screen.findByText("Продление: вручную")).toBeVisible();
 });
 
 it("does not require the old hardcoded product list", async () => {
@@ -370,7 +381,7 @@ it("shows current access instead of a purchase CTA", async () => {
 
   expect(await screen.findByText("Доступ уже активен")).toBeVisible();
   expect(screen.getByText("Тариф: Document Summary Pro")).toBeVisible();
-  expect(screen.getByText("Продление: вручную")).toBeVisible();
+  expect(screen.getAllByText("Продление: вручную")).toHaveLength(2);
   expect(screen.getByRole("link", { name: /Личный кабинет/ })).toHaveAttribute(
     "href",
     "/ru/account"

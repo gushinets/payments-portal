@@ -94,6 +94,12 @@ export function ProductCards({
                     / {formatBillingPeriod(product.plan.billing_period)}
                   </span>
                 </div>
+                <div className="muted" style={{ marginTop: 4 }}>
+                  Продление:{" "}
+                  {product.plan.renewal_mode === "automatic"
+                    ? "автоматически"
+                    : "вручную"}
+                </div>
                 <div className="button-row" style={{ marginTop: 0 }}>
                   <span className="badge badge-live">
                     <CheckCircle2 size={12} aria-hidden="true" />
