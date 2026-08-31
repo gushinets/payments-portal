@@ -137,6 +137,7 @@ it("renders products and commercial fields from the catalog API", async () => {
 });
 
 it("does not require the old hardcoded product list", async () => {
+  window.localStorage.removeItem("anytoolai_session_token_v1");
   installCatalogResponse({
     products: [
       catalogProduct({

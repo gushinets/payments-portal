@@ -7,9 +7,6 @@ import {
   WandSparkles
 } from "lucide-react";
 
-export { findProduct, products } from "./legacy";
-export type { Product, ProductCode } from "./legacy";
-
 export const supportEmail = "support@any-tool-ai.ru";
 
 export const seller = {

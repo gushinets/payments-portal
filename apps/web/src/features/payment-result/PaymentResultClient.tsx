@@ -1,14 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ArrowLeft, Clock3, Mail, ShieldCheck, Undo2 } from "lucide-react";
-import {
-  findProduct,
-  formatRubles,
-  supportEmail
-} from "@/features/catalog";
+import { formatRubles, supportEmail } from "@/features/catalog";
 
 type StoredPaymentResult = {
   status?: string;
@@ -17,7 +13,6 @@ type StoredPaymentResult = {
   planName?: string;
   amount?: number;
   currency?: string;
-  priceRub?: number;
   email?: string;
   autoRenew?: boolean;
   invoiceId?: string;
@@ -199,11 +194,6 @@ export function PaymentResultClient() {
     return () => window.clearTimeout(id);
   }, []);
 
-  const product = useMemo(() => {
-    const queryProduct = searchParams.get("product");
-    return queryProduct ? findProduct(queryProduct) : undefined;
-  }, [searchParams]);
-
   const hasResultParams =
     searchParams.has("product") ||
     searchParams.has("status") ||
@@ -222,7 +212,6 @@ export function PaymentResultClient() {
     (hasResultParams ? stored.invoiceId : undefined) ??
     "";
   const planName =
-    product?.plan.name ??
     (hasResultParams ? stored.planName : undefined) ??
     "тариф не выбран";
   const paymentAmountMinor =
@@ -235,8 +224,8 @@ export function PaymentResultClient() {
     paymentAmountMinor !== undefined
       ? paymentAmountMinor / 100
       : hasResultParams
-        ? (stored.amount ?? stored.priceRub ?? product?.plan.priceRub)
-        : product?.plan.priceRub;
+        ? stored.amount
+        : undefined;
   const currency = paymentCurrency ?? stored.currency ?? "RUB";
   const effectiveStatus = status;
 
@@ -395,7 +384,9 @@ export function PaymentResultClient() {
         <div className="tools-grid" style={{ marginTop: 28 }}>
           <div className="feature-card">
             <strong>Продукт</strong>
-            <p className="card-copy">{product?.name ?? "не выбран"}</p>
+            <p className="card-copy">
+              {(hasResultParams ? stored.productName : undefined) ?? "не выбран"}
+            </p>
           </div>
           <div className="feature-card">
             <strong>Тариф</strong>

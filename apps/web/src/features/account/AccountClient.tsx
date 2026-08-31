@@ -3,13 +3,28 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { ArrowRight, LogOut, UserRound } from "lucide-react";
-import { formatRubles, products } from "@/features/catalog";
+import {
+  formatBillingPeriod,
+  formatCatalogPrice,
+  getCatalogProducts,
+  productPresentation,
+  type CatalogProduct
+} from "@/features/catalog";
 import {
   decodeAuthSessionResponse,
   getJson,
   type AuthProductState,
   type AuthSessionResponse
 } from "@/shared/api/auth";
+import {
+  getAccountSubscriptions,
+  hasCurrentProductEntitlement,
+  type AccountSubscription
+} from "@/shared/api/subscriptions";
+import {
+  AccountSubscriptionSummary,
+  formatRussianDate
+} from "./AccountSubscriptionSummary";
 
 const sessionStorageKey = "anytoolai_session_token_v1";
 const sessionChangedEvent = "anytoolai_session_changed";
@@ -17,9 +32,11 @@ const sessionChangedEvent = "anytoolai_session_changed";
 function statusLabel(
   status: AuthProductState["status"] | undefined,
   failedToLoad: boolean,
-  loading: boolean
+  loading: boolean,
+  currentAccess: boolean,
+  subscriptionsLoaded: boolean
 ): string {
-  if (status === "active") {
+  if (currentAccess) {
     return "Подписка активна";
   }
   if (status === "pending") {
@@ -33,6 +50,9 @@ function statusLabel(
   }
   if (failedToLoad) {
     return "Статус подписки не загружен";
+  }
+  if (!subscriptionsLoaded) {
+    return "Проверяем текущую подписку";
   }
   return "Подписка не активна";
 }
@@ -60,6 +80,14 @@ function requireAuthenticatedSession(
 
 export function AccountClient() {
   const [email, setEmail] = useState("");
+  const [catalogProducts, setCatalogProducts] = useState<CatalogProduct[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState(true);
+  const [catalogError, setCatalogError] = useState("");
+  const [subscriptions, setSubscriptions] = useState<AccountSubscription[]>([]);
+  const [subscriptionStatus, setSubscriptionStatus] = useState<
+    "loading" | "loaded" | "error"
+  >("loading");
+  const [subscriptionError, setSubscriptionError] = useState("");
   const [states, setStates] = useState<Record<string, AuthProductState>>({});
   const [loadingProductCodes, setLoadingProductCodes] = useState<Set<string>>(
     () => new Set()
@@ -84,6 +112,12 @@ export function AccountClient() {
 
       if (!token) {
         setEmail("");
+        setCatalogProducts([]);
+        setCatalogLoading(false);
+        setCatalogError("");
+        setSubscriptions([]);
+        setSubscriptionStatus("loading");
+        setSubscriptionError("");
         setStates({});
         setLoadingProductCodes(new Set());
         setFailedProductCodes(new Set());
@@ -96,6 +130,11 @@ export function AccountClient() {
 
       setLoading(true);
       setError("");
+      setCatalogLoading(true);
+      setCatalogError("");
+      setSubscriptions([]);
+      setSubscriptionStatus("loading");
+      setSubscriptionError("");
 
       try {
         const session = requireAuthenticatedSession(
@@ -112,13 +151,63 @@ export function AccountClient() {
           setStates({});
         }
         accountKeyRef.current = nextAccountKey;
+
+        void getAccountSubscriptions(token)
+          .then((response) => {
+            if (!isCurrentLoad()) {
+              return;
+            }
+
+            setSubscriptions(response.subscriptions);
+            setSubscriptionStatus("loaded");
+            setSubscriptionError("");
+          })
+          .catch(() => {
+            if (!isCurrentLoad()) {
+              return;
+            }
+
+            setSubscriptions([]);
+            setSubscriptionStatus("error");
+            setSubscriptionError(
+              "Не удалось проверить текущие подписки. Статус доступа временно недоступен."
+            );
+          });
+
+        const [catalogResult] = await Promise.allSettled([getCatalogProducts()]);
+
+        if (!isCurrentLoad()) {
+          return;
+        }
+
+        const nextCatalogProducts =
+          catalogResult.status === "fulfilled"
+            ? catalogResult.value.products
+            : [];
+        setCatalogProducts(nextCatalogProducts);
+        setCatalogLoading(false);
+        setCatalogError(
+          catalogResult.status === "rejected"
+            ? "Не удалось загрузить каталог. Обновите страницу и попробуйте ещё раз."
+            : ""
+        );
+
+        if (catalogResult.status === "rejected") {
+          setStates({});
+          setLoadingProductCodes(new Set());
+          setFailedProductCodes(new Set());
+          setProductLoadError("");
+          setLoading(false);
+          return;
+        }
+
         setLoadingProductCodes(
-          new Set(products.map((product) => product.code))
+          new Set(nextCatalogProducts.map((product) => product.code))
         );
         setLoading(false);
 
         const payloads = await Promise.allSettled(
-          products.map((product) =>
+          nextCatalogProducts.map((product) =>
             getJson(
               sessionPath(product.code),
               token,
@@ -132,7 +221,7 @@ export function AccountClient() {
         }
 
         const rejectedCodes = new Set(
-          products
+          nextCatalogProducts
             .filter((_, index) => payloads[index]?.status === "rejected")
             .map((product) => product.code)
         );
@@ -140,7 +229,7 @@ export function AccountClient() {
           const nextStates = { ...currentStates };
 
           payloads.forEach((payload, index) => {
-            const productCode = products[index]?.code;
+            const productCode = nextCatalogProducts[index]?.code;
             if (!productCode) {
               return;
             }
@@ -172,6 +261,12 @@ export function AccountClient() {
         window.dispatchEvent(new Event(sessionChangedEvent));
         if (shouldShowFatalError && !cancelled) {
           setEmail("");
+          setCatalogProducts([]);
+          setCatalogLoading(false);
+          setCatalogError("");
+          setSubscriptions([]);
+          setSubscriptionStatus("loading");
+          setSubscriptionError("");
           setStates({});
           setLoadingProductCodes(new Set());
           setFailedProductCodes(new Set());
@@ -254,6 +349,11 @@ export function AccountClient() {
           {productLoadError}
         </div>
       ) : null}
+      {subscriptionError ? (
+        <div className="notice" role="status">
+          {subscriptionError}
+        </div>
+      ) : null}
 
       <div className="account-layout">
         <article className="form-panel account-summary-panel">
@@ -262,9 +362,7 @@ export function AccountClient() {
             Вход выполнен
           </span>
           <h2 style={{ marginTop: 14 }}>Аккаунт</h2>
-          <p className="card-copy account-summary-email">
-            {email}
-          </p>
+          <p className="card-copy account-summary-email">{email}</p>
           <div className="account-summary-actions">
             <button className="btn-secondary" type="button" onClick={logout}>
               <LogOut size={15} aria-hidden="true" />
@@ -274,50 +372,110 @@ export function AccountClient() {
         </article>
 
         <div className="account-products-grid">
-          {products.map((product) => {
-            const state = states[product.code];
-            const isActive = state?.status === "active";
-            const isPending = state?.status === "pending";
-            const failedToLoad = failedProductCodes.has(product.code);
-            const productLoading = loadingProductCodes.has(product.code);
+          {catalogLoading ? (
+            <div className="form-panel" role="status">
+              Загрузка каталога...
+            </div>
+          ) : catalogError ? (
+            <div className="form-panel notice error" role="alert">
+              {catalogError}
+            </div>
+          ) : catalogProducts.length === 0 ? (
+            <div className="form-panel" role="status">
+              Сейчас в каталоге нет доступных продуктов.
+            </div>
+          ) : (
+            catalogProducts.map((product) => {
+              const state = states[product.code];
+              const presentation = productPresentation[product.code];
+              const currentSubscription =
+                subscriptionStatus === "loaded"
+                  ? subscriptions.find((subscription) =>
+                      hasCurrentProductEntitlement(
+                        subscription,
+                        product.product_id,
+                        new Date()
+                      )
+                    )
+                  : undefined;
+              const isActive = Boolean(currentSubscription);
+              const isPending = state?.status === "pending";
+              const failedToLoad = failedProductCodes.has(product.code);
+              const productLoading = loadingProductCodes.has(product.code);
+              const canOfferPurchase =
+                subscriptionStatus === "loaded" || isPending || failedToLoad;
 
-            return (
-              <article className="tool-card" key={product.code}>
-                <span
-                  className={`badge ${
-                    isActive
-                      ? "badge-live"
-                      : isPending
-                        ? "badge-running"
-                        : "badge-demo"
-                  }`}
-                >
-                  {statusLabel(state?.status, failedToLoad, productLoading)}
-                </span>
-                <h2 style={{ marginTop: 14 }}>{product.name}</h2>
-                <p className="card-copy">{product.tagline}</p>
-                <div className="tool-card-bottom">
-                  <div className="price-line">
-                    <strong>{formatRubles(product.plan.priceRub)}</strong>
-                    <span>/ месяц</span>
-                  </div>
-                  {state?.expires_at ? (
-                    <p className="muted" style={{ margin: "0 0 14px" }}>
-                      Действует до{" "}
-                      {new Date(state.expires_at).toLocaleDateString("ru-RU")}
+              return (
+                <article className="tool-card" key={product.code}>
+                  <span
+                    className={`badge ${
+                      isActive
+                        ? "badge-live"
+                        : isPending
+                          ? "badge-running"
+                          : "badge-demo"
+                    }`}
+                  >
+                    {statusLabel(
+                      state?.status,
+                      failedToLoad,
+                      productLoading,
+                      isActive,
+                      subscriptionStatus === "loaded"
+                    )}
+                  </span>
+                  <h2 style={{ marginTop: 14 }}>{product.name}</h2>
+                  {presentation?.tagline || product.description ? (
+                    <p className="card-copy">
+                      {presentation?.tagline ?? product.description}
                     </p>
                   ) : null}
-                  <Link
-                    className={isActive ? "btn-secondary" : "btn-primary"}
-                    href={`/ru/auth-checkout?product=${product.code}`}
-                  >
-                    {isActive ? "Управлять" : "Оформить"}
-                    <ArrowRight size={15} aria-hidden="true" />
-                  </Link>
-                </div>
-              </article>
-            );
-          })}
+                  <div className="tool-card-bottom">
+                    <div className="price-line">
+                      <strong>
+                        {formatCatalogPrice(
+                          product.plan.price_amount_minor,
+                          product.plan.currency
+                        )}
+                      </strong>
+                      <span>
+                        / {formatBillingPeriod(product.plan.billing_period)}
+                      </span>
+                    </div>
+                    {currentSubscription ? (
+                      <AccountSubscriptionSummary
+                        subscription={currentSubscription}
+                      />
+                    ) : state?.expires_at ? (
+                      <p className="muted" style={{ margin: "0 0 14px" }}>
+                        Действует до{" "}
+                        {formatRussianDate(state.expires_at) ?? state.expires_at}
+                      </p>
+                    ) : null}
+                    {isActive ? (
+                      <Link
+                        className="btn-secondary"
+                        href={`/ru/auth-checkout?product=${product.code}`}
+                      >
+                        Управлять <ArrowRight size={15} aria-hidden="true" />
+                      </Link>
+                    ) : canOfferPurchase ? (
+                      <Link
+                        className="btn-primary"
+                        href={`/ru/auth-checkout?product=${product.code}`}
+                      >
+                        Оформить <ArrowRight size={15} aria-hidden="true" />
+                      </Link>
+                    ) : (
+                      <div className="notice" role="status">
+                        Проверяем текущую подписку...
+                      </div>
+                    )}
+                  </div>
+                </article>
+              );
+            })
+          )}
         </div>
       </div>
     </section>
