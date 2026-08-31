@@ -1484,7 +1484,7 @@ def api_test_environment(target: str, environment: dict[str, str]) -> dict[str, 
         return environment
 
     test_database_url_name = "TEST_POSTGRES_DATABASE_URL"
-    if test_database_url_name in environment:
+    if environment.get(test_database_url_name):
         return environment
 
     explicit_names = (

@@ -1451,42 +1451,42 @@ docs(tooling): document canonical uv workflow
 
 The implementation is complete only when all of the following are true:
 
-- [ ] `apps/api/pyproject.toml` uses PEP 621.
-- [ ] `[tool.uv].package = false`.
-- [ ] `[tool.uv].required-version = "==0.12.7"`.
-- [ ] Python remains `>=3.12,<3.13`.
-- [ ] All direct production dependency versions are unchanged.
-- [ ] All direct dev dependency versions are unchanged.
-- [ ] `apps/api/uv.lock` is committed.
-- [ ] `apps/api/poetry.lock` is removed.
-- [ ] No second Python lockfile exists.
-- [ ] Normal local uv sync targets repository-root `.venv` explicitly.
-- [ ] Normal repository tooling does not create `apps/api/.venv`.
-- [ ] Normal API commands do not require shell activation.
-- [ ] `repo:doctor` requires uv and no longer requires Poetry.
-- [ ] `repo:setup` uses locked uv sync.
-- [ ] `npm run test:api` uses `scripts/repo.py test api`.
-- [ ] Fast and PostgreSQL API test aliases are available through npm.
-- [ ] API sync/lock/lock-check/migration/build capabilities are available without Makefile duplication.
-- [ ] Makefile contains only `test_db_up` and `test_db_stop`.
-- [ ] `test_db_up` starts only the current worktree's existing PostgreSQL service and waits for health.
-- [ ] `test_db_stop` stops only that PostgreSQL service and preserves its volume.
-- [ ] Explicit `TEST_POSTGRES_DATABASE_URL` remains highest priority.
-- [ ] Existing explicit `POSTGRES_*_TEST` mode is preserved.
-- [ ] Worktree-local test URL derivation uses a `_tests` database and mapped host port.
-- [ ] pytest remains sole owner of physical test DB create/drop and schema reset/migrations.
-- [ ] CI uses pinned uv `0.12.7` where host API dependencies are required.
-- [ ] CI rejects a stale/missing uv lock.
-- [ ] CI cache invalidation includes `apps/api/uv.lock`.
-- [ ] Unnecessary browser-job host API dependency installation is removed if confirmed unused.
-- [ ] Docker production dependency sync excludes dev dependencies.
-- [ ] Docker development dependency sync includes dev dependencies.
-- [ ] Docker preserves the current Python base image/digest.
-- [ ] Final production image contains neither Poetry nor uv.
-- [ ] Dependabot API Python ecosystem is `uv`.
-- [ ] Dependabot schedule/group/prefix and other ecosystems are unchanged.
-- [ ] Trivy/security policy is unchanged.
-- [ ] Active ANY-84 wording is factually reconciled without expanding its policy.
-- [ ] No Prettier or unrelated frontend tooling is added.
-- [ ] No application/domain/API/OpenAPI/schema behavior changes are introduced.
-- [ ] Linear ANY-307 acceptance criteria are reconciled with the approved minimal-Makefile policy before merge.
+- [x] `apps/api/pyproject.toml` uses PEP 621.
+- [x] `[tool.uv].package = false`.
+- [x] `[tool.uv].required-version = "==0.12.7"`.
+- [x] Python remains `>=3.12,<3.13`.
+- [x] All direct production dependency versions are unchanged.
+- [x] All direct dev dependency versions are unchanged.
+- [x] `apps/api/uv.lock` is committed.
+- [x] `apps/api/poetry.lock` is removed.
+- [x] No second Python lockfile exists.
+- [x] Normal local uv sync targets repository-root `.venv` explicitly.
+- [x] Normal repository tooling does not create `apps/api/.venv`.
+- [x] Normal API commands do not require shell activation.
+- [x] `repo:doctor` requires uv and no longer requires Poetry.
+- [x] `repo:setup` uses locked uv sync.
+- [x] `npm run test:api` uses `scripts/repo.py test api`.
+- [x] Fast and PostgreSQL API test aliases are available through npm.
+- [x] API sync/lock/lock-check/migration/build capabilities are available without Makefile duplication.
+- [x] Makefile contains only `test_db_up` and `test_db_stop`.
+- [x] `test_db_up` starts only the current worktree's existing PostgreSQL service and waits for health.
+- [x] `test_db_stop` stops only that PostgreSQL service and preserves its volume.
+- [x] Explicit `TEST_POSTGRES_DATABASE_URL` remains highest priority.
+- [x] Existing explicit `POSTGRES_*_TEST` mode is preserved.
+- [x] Worktree-local test URL derivation uses a `_tests` database and mapped host port.
+- [x] pytest remains sole owner of physical test DB create/drop and schema reset/migrations.
+- [x] CI uses pinned uv `0.12.7` where host API dependencies are required.
+- [x] CI rejects a stale/missing uv lock.
+- [x] CI cache invalidation includes `apps/api/uv.lock`.
+- [x] Unnecessary browser-job host API dependency installation is removed if confirmed unused.
+- [x] Docker production dependency sync excludes dev dependencies.
+- [x] Docker development dependency sync includes dev dependencies.
+- [x] Docker preserves the current Python base image/digest.
+- [x] Final production image contains neither Poetry nor uv.
+- [x] Dependabot API Python ecosystem is `uv`.
+- [x] Dependabot schedule/group/prefix and other ecosystems are unchanged.
+- [x] Trivy/security policy is unchanged.
+- [x] Active ANY-84 wording is factually reconciled without expanding its policy.
+- [x] No Prettier or unrelated frontend tooling is added.
+- [x] No application/domain/API/OpenAPI/schema behavior changes are introduced.
+- [x] Linear ANY-307 acceptance criteria are reconciled with the approved minimal-Makefile policy before merge.

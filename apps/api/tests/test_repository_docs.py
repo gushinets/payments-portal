@@ -419,6 +419,23 @@ def test_api_test_environment_derives_worktree_test_database_url(monkeypatch) ->
     )
 
 
+def test_api_test_environment_ignores_empty_explicit_url(monkeypatch) -> None:
+    runtime_env = {
+        "POSTGRES_DB": "payments_worktree",
+        "POSTGRES_USER": "anytoolai",
+        "POSTGRES_PASSWORD": "local-password",
+        "POSTGRES_PORT": "32053",
+    }
+    monkeypatch.setattr(repo, "read_runtime_env", lambda: runtime_env)
+    monkeypatch.setattr(repo, "port_is_free", lambda _: False)
+    environment = {"TEST_POSTGRES_DATABASE_URL": ""}
+
+    result = api_test_environment("api", environment)
+
+    assert result["TEST_POSTGRES_DATABASE_URL"] != ""
+    assert result["TEST_POSTGRES_DATABASE_URL"].endswith("/payments_worktree_tests")
+
+
 def test_api_fast_test_environment_does_not_require_postgres(monkeypatch) -> None:
     monkeypatch.setattr(repo, "read_runtime_env", lambda: (_ for _ in ()).throw(AssertionError()))
     monkeypatch.setattr(repo, "port_is_free", lambda _: (_ for _ in ()).throw(AssertionError()))
