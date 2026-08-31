@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -47,6 +47,18 @@ def list_catalog_products(db: Annotated[Session, Depends(get_db)]) -> CatalogPro
         region=DEFAULT_REGION,
         now=utc_now(),
     )
+    seen_product_ids: set[uuid.UUID] = set()
+    for product, _plan in offers:
+        if product.id in seen_product_ids:
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "code": "ambiguous_catalog_product_offer",
+                    "product_code": product.code,
+                },
+            )
+        seen_product_ids.add(product.id)
+
     return CatalogProductsResponse(
         products=[
             CatalogProductResponse(

@@ -559,6 +559,37 @@ def test_catalog_products_returns_persisted_sellable_offers_without_authenticati
     assert products[1]["plan"]["currency"] == "RUB"
 
 
+def test_catalog_products_rejects_ambiguous_product_offers() -> None:
+    with SessionLocal() as db:
+        document_summary = db.query(Product).filter(Product.code == "document-summary").one()
+        db.add(
+            Plan(
+                tenant_id="anytoolai",
+                region="ru",
+                code="document-summary-premium",
+                name="Document Summary Premium",
+                scope_type="product",
+                product_id=document_summary.id,
+                price_amount_minor=149000,
+                currency="RUB",
+                billing_period="month",
+                renewal_mode="manual",
+                trial_days=7,
+                status=PlanStatus.ACTIVE.value,
+                valid_from=datetime.now(timezone.utc) - timedelta(days=1),
+            )
+        )
+        db.commit()
+
+    response = client.get("/api/catalog/products")
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == {
+        "code": "ambiguous_catalog_product_offer",
+        "product_code": "document-summary",
+    }
+
+
 def test_catalog_products_excludes_ineligible_offers() -> None:
     now = datetime.now(timezone.utc)
     with SessionLocal() as db:
