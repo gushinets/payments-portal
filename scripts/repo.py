@@ -15,6 +15,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import tomllib
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, asdict
@@ -23,6 +24,9 @@ from typing import Callable, Iterable
 
 
 ROOT = Path(__file__).resolve().parents[1]
+API_DIR = ROOT / "apps" / "api"
+API_LOCK = API_DIR / "uv.lock"
+REPOSITORY_VENV = ROOT / ".venv"
 HARNESS_DIR = ROOT / ".harness"
 RUNTIME_JSON = HARNESS_DIR / "runtime.json"
 RUNTIME_ENV = HARNESS_DIR / "runtime.env"
@@ -106,6 +110,32 @@ def tool(name: str) -> str:
     if not path:
         raise HarnessError(f"Required executable is missing: {name}")
     return path
+
+
+def python_312_executable() -> str:
+    if sys.version_info[:2] != (3, 12):
+        raise HarnessError(
+            "Python 3.12 is required for repository-managed API operations; "
+            f"found {sys.version.split()[0]}"
+        )
+    return str(Path(sys.executable).resolve())
+
+
+def uv_environment(
+    *,
+    environ: dict[str, str] | None = None,
+    project_environment: Path | None = None,
+    python: str | None = None,
+) -> dict[str, str]:
+    """Build the environment for every repository-managed uv subprocess."""
+    environment = dict(os.environ if environ is None else environ)
+    environment.pop("VIRTUAL_ENV", None)
+    environment["UV_PROJECT_ENVIRONMENT"] = str(
+        (project_environment or (ROOT / ".venv")).resolve()
+    )
+    environment["UV_PYTHON"] = python or python_312_executable()
+    environment["UV_PYTHON_DOWNLOADS"] = "never"
+    return environment
 
 
 def runtime_config(port_offset: int = 0, *, root: Path = ROOT) -> RuntimeConfig:
@@ -396,7 +426,7 @@ def cmd_doctor(_: argparse.Namespace) -> None:
     commands = (
         ["git", "--version"],
         ["python", "--version"],
-        ["poetry", "--version"],
+        ["uv", "--version"],
         ["node", "--version"],
         ["npm", "--version"],
         ["docker", "--version"],
@@ -405,7 +435,23 @@ def cmd_doctor(_: argparse.Namespace) -> None:
         try:
             executable = tool(command[0])
             result = run([executable, *command[1:]], capture=True)
-            print((result.stdout or result.stderr).strip())
+            output = (result.stdout or result.stderr).strip()
+            print(output)
+            if command[0] == "python" and sys.version_info[:2] != (3, 12):
+                failures.append(
+                    "Python 3.12 is required for the repository; "
+                    f"found {sys.version.split()[0]}"
+                )
+            if command[0] == "uv":
+                required_version = tomllib.loads(
+                    (ROOT / "apps/api/pyproject.toml").read_text(encoding="utf-8")
+                )["tool"]["uv"]["required-version"]
+                installed_match = re.search(r"\buv\s+(\d+\.\d+\.\d+)", output)
+                if not installed_match or required_version != f"=={installed_match.group(1)}":
+                    failures.append(
+                        f"Installed uv does not satisfy apps/api/pyproject.toml "
+                        f"required-version {required_version!r}"
+                    )
         except (HarnessError, subprocess.CalledProcessError) as exc:
             failures.append(str(exc))
     try:
@@ -416,11 +462,21 @@ def cmd_doctor(_: argparse.Namespace) -> None:
         ROOT / ".env.example",
         ROOT / "package-lock.json",
         ROOT / "apps/api/pyproject.toml",
-        ROOT / "apps/api/poetry.lock",
+        API_LOCK,
     ]
     for path in required:
         if not path.exists():
             failures.append(f"Missing required file: {path.relative_to(ROOT)}")
+    conflicting_venv = API_DIR / ".venv"
+    if conflicting_venv.exists():
+        failures.append(
+            "Conflicting API environment found at apps/api/.venv; "
+            "repository tooling uses .venv and will not delete either environment"
+        )
+    if REPOSITORY_VENV.exists():
+        print(f"Canonical API environment: {REPOSITORY_VENV.relative_to(ROOT)}")
+    else:
+        print("Canonical API environment: .venv (will be created by repo:setup)")
     config = runtime_config()
     busy = [port for port in runtime_ports(config) if not port_is_free(port)]
     if busy:
@@ -449,37 +505,38 @@ def runtime_ports(config: RuntimeConfig) -> Iterable[int]:
 
 
 def cmd_setup(_: argparse.Namespace) -> None:
-    tool("python")
-    poetry = tool("poetry")
+    python_312_executable()
+    tool("uv")
     tool("npm")
-    venv = ROOT / ".venv"
-    if not venv.exists():
-        run([sys.executable, "-m", "venv", str(venv)])
-    venv_bin = venv / ("Scripts" if os.name == "nt" else "bin")
-    poetry_environment = {
-        **os.environ,
-        "PATH": f"{venv_bin}{os.pathsep}{os.environ.get('PATH', '')}",
-        "POETRY_VIRTUALENVS_CREATE": "false",
-        "VIRTUAL_ENV": str(venv),
-    }
-    run(
-        [
-            poetry,
-            "--directory",
-            "apps/api",
-            "install",
-            "--with",
-            "dev",
-            "--no-root",
-            "--sync",
-        ],
-        env=poetry_environment,
-    )
+    sync_api()
     run([tool("npm"), "ci"])
     run([tool("npm"), "run", "playwright:install"])
     config = runtime_config()
     write_runtime(config)
     print(f"Setup complete for worktree {config.worktree_id}.")
+
+
+def api_uv_command(action: str, *arguments: str) -> list[str]:
+    return [tool("uv"), action, "--directory", str(API_DIR), *arguments]
+
+
+def sync_api() -> None:
+    run(
+        api_uv_command("sync", "--locked", "--dev"),
+        env=uv_environment(),
+    )
+
+
+def cmd_sync_api(_: argparse.Namespace) -> None:
+    sync_api()
+
+
+def cmd_lock_api(_: argparse.Namespace) -> None:
+    run(api_uv_command("lock"), env=uv_environment())
+
+
+def cmd_check_api_lock(_: argparse.Namespace) -> None:
+    run(api_uv_command("lock", "--check"), env=uv_environment())
 
 
 def cmd_up(args: argparse.Namespace) -> None:
@@ -506,6 +563,15 @@ def load_runtime() -> RuntimeConfig:
 def cmd_down(_: argparse.Namespace) -> None:
     config = load_runtime()
     run([*compose_command(config), "down"])
+
+
+def cmd_test_db(args: argparse.Namespace) -> None:
+    config = load_runtime()
+    write_runtime(config)
+    if args.action == "up":
+        run([*compose_command(config), "up", "-d", "--no-deps", "--wait", "postgres"])
+        return
+    run([*compose_command(config), "stop", "postgres"])
 
 
 def cmd_reset(args: argparse.Namespace) -> None:
@@ -1320,10 +1386,16 @@ def cmd_check(args: argparse.Namespace) -> None:
         env=check_env,
     )
     run([tool("npm"), "run", "lint:web"], env=check_env)
-    cmd_test(argparse.Namespace(target="api-fast", junitxml=None))
+    cmd_test(
+        argparse.Namespace(target="api-fast", junitxml=None),
+        environment=check_env,
+    )
     if not args.fast:
         run([tool("npm"), "run", "build:web"], env=check_env)
-        cmd_test(argparse.Namespace(target="api-postgres", junitxml=None))
+        cmd_test(
+            argparse.Namespace(target="api-postgres", junitxml=None),
+            environment=check_env,
+        )
         if os.getenv("RUN_E2E") == "true":
             run([tool("npm"), "run", "test:e2e"], env=check_env)
         else:
@@ -1370,6 +1442,21 @@ def cmd_dev_api(_: argparse.Namespace) -> None:
     )
 
 
+def cmd_migrate_api(_: argparse.Namespace) -> None:
+    run(
+        [
+            sys.executable,
+            "-m",
+            "alembic",
+            "-c",
+            "apps/api/alembic.ini",
+            "upgrade",
+            "head",
+        ],
+        env=direct_api_environment(),
+    )
+
+
 def api_pytest_command(*args: str) -> list[str]:
     return [
         sys.executable,
@@ -1392,8 +1479,67 @@ def api_test_marker_args(target: str) -> list[str]:
     raise HarnessError(f"Unsupported API test target: {target}")
 
 
-def cmd_test(args: argparse.Namespace) -> None:
-    check_env = canonical_check_environment()
+def api_test_environment(target: str, environment: dict[str, str]) -> dict[str, str]:
+    if target == "api-fast":
+        return environment
+
+    test_database_url_name = "TEST_POSTGRES_DATABASE_URL"
+    if environment.get(test_database_url_name):
+        return environment
+
+    explicit_names = (
+        "POSTGRES_USER_TEST",
+        "POSTGRES_PASSWORD_TEST",
+        "POSTGRES_PORT_TEST",
+        "POSTGRES_DB_TEST",
+        "POSTGRES_HOST_TEST",
+    )
+    present_names = [name for name in explicit_names if name in environment]
+    required_names = explicit_names[:4]
+    if present_names:
+        missing_names = [name for name in required_names if not environment.get(name)]
+        if missing_names:
+            raise HarnessError(
+                "Incomplete PostgreSQL test configuration; set "
+                + ", ".join(required_names)
+                + " together, missing: "
+                + ", ".join(missing_names)
+            )
+        return environment
+
+    runtime_env = read_runtime_env()
+    runtime_names = ("POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_PORT")
+    missing_runtime_names = [name for name in runtime_names if not runtime_env.get(name)]
+    if missing_runtime_names:
+        raise HarnessError(
+            "Cannot derive local PostgreSQL test configuration; runtime.env is missing: "
+            + ", ".join(missing_runtime_names)
+        )
+    if port_is_free(int(runtime_env["POSTGRES_PORT"])):
+        raise HarnessError(
+            "Local test PostgreSQL server is not running. Start it with:\n"
+            "  python scripts/repo.py test-db up\n"
+            "Unix/WSL shortcut:\n"
+            "  make test_db_up"
+        )
+
+    database_environment = {
+        **runtime_env,
+        "POSTGRES_DB": f"{runtime_env['POSTGRES_DB']}_tests",
+    }
+    environment[test_database_url_name] = host_database_url_from_runtime(database_environment)
+    return environment
+
+
+def cmd_test(
+    args: argparse.Namespace,
+    *,
+    environment: dict[str, str] | None = None,
+) -> None:
+    check_env = api_test_environment(
+        args.target,
+        canonical_check_environment() if environment is None else environment,
+    )
     command = api_pytest_command(*api_test_marker_args(args.target))
     if args.junitxml:
         command.insert(-1, f"--junitxml={args.junitxml}")
@@ -1405,7 +1551,7 @@ def api_coverage_xml_path() -> Path:
 
 
 def cmd_coverage(args: argparse.Namespace) -> None:
-    check_env = canonical_check_environment()
+    check_env = api_test_environment(args.target, canonical_check_environment())
     coverage_xml = api_coverage_xml_path()
     coverage_xml.parent.mkdir(parents=True, exist_ok=True)
     run(
@@ -1475,6 +1621,9 @@ def build_parser() -> argparse.ArgumentParser:
     up.add_argument("--reuse", action="store_true")
     up.set_defaults(func=cmd_up)
     sub.add_parser("down").set_defaults(func=cmd_down)
+    test_db = sub.add_parser("test-db")
+    test_db.add_argument("action", choices=("up", "stop"))
+    test_db.set_defaults(func=cmd_test_db)
     reset = sub.add_parser("reset")
     reset.add_argument("--confirm", required=True)
     reset.set_defaults(func=cmd_reset)
@@ -1495,7 +1644,7 @@ def build_parser() -> argparse.ArgumentParser:
     lint.add_argument("target", choices=("api",))
     lint.set_defaults(func=cmd_lint)
     test = sub.add_parser("test")
-    test.add_argument("target", choices=("api-fast", "api-postgres"))
+    test.add_argument("target", choices=("api-fast", "api-postgres", "api"))
     test.add_argument("--junitxml")
     test.set_defaults(func=cmd_test)
     coverage = sub.add_parser("coverage")
@@ -1505,6 +1654,10 @@ def build_parser() -> argparse.ArgumentParser:
     check.add_argument("--fast", action="store_true")
     check.set_defaults(func=cmd_check)
     sub.add_parser("dev-api").set_defaults(func=cmd_dev_api)
+    sub.add_parser("sync-api").set_defaults(func=cmd_sync_api)
+    sub.add_parser("lock-api").set_defaults(func=cmd_lock_api)
+    sub.add_parser("check-api-lock").set_defaults(func=cmd_check_api_lock)
+    sub.add_parser("migrate-api").set_defaults(func=cmd_migrate_api)
     sub.add_parser("validate-production-env").set_defaults(func=cmd_validate_production_env)
     title = sub.add_parser("pr-title")
     title.add_argument("title")
@@ -1531,16 +1684,27 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def reexec_in_repository_venv_if_required() -> None:
-    if len(sys.argv) < 2 or sys.argv[1] not in {"check", "coverage", "dev-api", "generate", "lint", "test"}:
+    if len(sys.argv) < 2 or sys.argv[1] not in {
+        "check",
+        "check-api-lock",
+        "coverage",
+        "dev-api",
+        "generate",
+        "lint",
+        "lock-api",
+        "migrate-api",
+        "sync-api",
+        "test",
+    }:
         return
     python = (
-        ROOT / ".venv" / "Scripts" / "python.exe"
+        REPOSITORY_VENV / "Scripts" / "python.exe"
         if os.name == "nt"
-        else ROOT / ".venv" / "bin" / "python"
+        else REPOSITORY_VENV / "bin" / "python"
     )
     if not python.exists():
         return
-    if Path(sys.executable).resolve() == python.resolve():
+    if Path(sys.prefix).resolve() == REPOSITORY_VENV.resolve():
         return
     result = subprocess.run(
         [str(python), str(Path(__file__).resolve()), *sys.argv[1:]],

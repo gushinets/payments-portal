@@ -462,16 +462,62 @@ def test_dotenv_discovery_starts_from_settings_module_tree(
 
 def test_api_test_tooling_stays_out_of_main_dependencies() -> None:
     pyproject = tomllib.loads((API_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    poetry_config = pyproject["tool"]["poetry"]
-    main_dependencies = set(poetry_config["dependencies"])
-    dev_dependencies = set(poetry_config["group"]["dev"]["dependencies"])
+    project = pyproject["project"]
+
+    def package_name(dependency: str) -> str:
+        return dependency.split("==", 1)[0].split("[", 1)[0]
+
+    main_dependencies = {package_name(dependency) for dependency in project["dependencies"]}
+    dev_dependencies = {package_name(dependency) for dependency in pyproject["dependency-groups"]["dev"]}
     test_tooling = {"httpx2", "polyfactory", "pytest", "pytest-cov", "ruff"}
 
     assert test_tooling.isdisjoint(main_dependencies)
-    assert test_tooling.issubset(dev_dependencies)
+    assert test_tooling == dev_dependencies
+
+
+def test_api_project_preserves_python_and_direct_dependency_versions() -> None:
+    pyproject = tomllib.loads((API_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+
+    assert pyproject["project"]["requires-python"] == ">=3.12,<3.13"
+    assert set(pyproject["project"]["dependencies"]) == {
+        "alembic==1.18.5",
+        "email-validator==2.3.0",
+        "fastapi==0.141.1",
+        "httpx==0.28.1",
+        "opentelemetry-api==1.44.0",
+        "opentelemetry-exporter-otlp-proto-http==1.44.0",
+        "opentelemetry-instrumentation-fastapi==0.65b0",
+        "opentelemetry-instrumentation-sqlalchemy==0.65b0",
+        "opentelemetry-sdk==1.44.0",
+        "prometheus-client==0.26.0",
+        "psycopg[binary]==3.3.4",
+        "python-dotenv==1.2.2",
+        "sqlalchemy==2.0.51",
+        "uvicorn[standard]==0.52.1",
+        "pydantic==2.13.4",
+        "pydantic-settings==2.15.0",
+    }
+    assert set(pyproject["dependency-groups"]["dev"]) == {
+        "httpx2==2.10.0",
+        "pytest==9.1.1",
+        "ruff==0.15.22",
+        "polyfactory==3.3.0",
+        "pytest-cov==7.1.0",
+    }
+    assert pyproject["tool"]["uv"] == {
+        "package": False,
+        "required-version": "==0.12.7",
+    }
 
 
 def test_api_production_image_installs_only_main_dependencies() -> None:
     dockerfile = (API_ROOT / "Dockerfile").read_text(encoding="utf-8")
 
-    assert "poetry --directory apps/api install --only main --no-root" in dockerfile
+    assert "uv sync --directory apps/api --locked --no-dev --no-install-project" in dockerfile
+    assert "uv sync --directory apps/api --locked --dev --no-install-project" in dockerfile
+    assert "COPY apps/api/pyproject.toml apps/api/uv.lock ./apps/api/" in dockerfile
+    assert "poetry" not in dockerfile.lower()
+    production_runtime = dockerfile.split("FROM base AS production", 1)[1]
+    assert "uv sync" not in production_runtime.lower()
+    assert "uv-source" not in production_runtime
+    assert "/uv" not in production_runtime

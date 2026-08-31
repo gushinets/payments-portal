@@ -24,6 +24,26 @@ for name, value in DEFAULT_API_TEST_ENV.items():
     os.environ.setdefault(name, value)
 
 
+_POSTGRES_FIXTURES = frozenset(
+    {
+        "database_test_url",
+        "database_admin_url",
+        "postgres_engine",
+        "postgres_session_factory",
+        "migrated_database",
+        "db_session",
+    }
+)
+
+
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """Keep database-backed tests out of the PostgreSQL-independent partition."""
+    postgres_marker = pytest.mark.postgres
+    for item in items:
+        if _POSTGRES_FIXTURES.intersection(item.fixturenames):
+            item.add_marker(postgres_marker)
+
+
 @pytest.fixture(scope="session")
 def database_test_url() -> URL:
     """Resolve the PostgreSQL URL for tests that explicitly require a real DB.

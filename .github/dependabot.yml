@@ -14,7 +14,7 @@ updates:
     commit-message:
       prefix: "ANY-84 -"
 
-  - package-ecosystem: "pip"
+  - package-ecosystem: "uv"
     directory: "/apps/api"
     schedule:
       interval: "weekly"

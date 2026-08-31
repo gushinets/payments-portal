@@ -46,6 +46,60 @@ Runtime state and test evidence are written to the ignored `.harness/`
 directory. Each Git worktree receives an isolated Compose project, database,
 ports, logs, and browser artifacts.
 
+## API development workflow
+
+The API uses uv `0.12.7`. The dependency source of truth is
+`apps/api/pyproject.toml` plus `apps/api/uv.lock`.
+
+Install and verify the required uv version:
+
+```bash
+python -m pip install "uv==0.12.7"
+uv --version
+```
+
+Repository tooling explicitly selects the repository-root `.venv` as the only
+canonical local API environment. Do not create `apps/api/.venv`; normal
+commands do not require shell activation.
+
+Use the root npm aliases for the normal API workflow:
+
+```bash
+npm run sync:api
+npm run lock:api
+npm run lock:check:api
+npm run dev:api
+npm run migrate:api
+npm run test:api:fast
+npm run test:api:postgres
+npm run test:api
+npm run build:api
+```
+
+The API test boundaries are intentional: `test:api:fast` is PostgreSQL-free,
+`test:api:postgres` runs the PostgreSQL tests, and `test:api` runs the complete
+backend suite. Frontend tests and browser E2E remain separate commands.
+
+For local PostgreSQL tests on Unix/WSL, start and stop only the worktree-local
+server through the minimal Makefile shortcuts:
+
+```bash
+make test_db_up
+npm run test:api:postgres
+make test_db_stop
+```
+
+The cross-platform equivalents are `python scripts/repo.py test-db up` and
+`python scripts/repo.py test-db stop`. Compose and `repo.py` own the server
+container; pytest creates, migrates, resets, and drops the disposable
+`_tests` database. Developers must not manually create or drop that database.
+
+Test database configuration takes precedence in this order: an explicit
+`TEST_POSTGRES_DATABASE_URL`; a complete explicit `POSTGRES_*_TEST`
+configuration (partial configuration fails clearly); then the current
+worktree runtime configuration, with the mapped host port and an automatically
+derived database name ending in `_tests`.
+
 ## Runtime baseline
 
 - Node.js: `24.x` LTS for local development, CI, and the production web image.
@@ -87,7 +141,7 @@ npm run dev:api
 npm run lint:web
 npm run build:web
 npm run test:api
-python -m alembic -c apps/api/alembic.ini upgrade head
+npm run migrate:api
 ```
 
 ## Local Compose workflow

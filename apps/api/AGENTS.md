@@ -29,6 +29,20 @@ Domain modules must not import routers or provider integrations. Provider
 payloads must be verified, redacted, normalized, and processed idempotently
 inside the adapter. CloudPayments is the current `ru` adapter.
 
+## Tooling
+
+The API uses uv `0.12.7`, with `apps/api/pyproject.toml` and
+`apps/api/uv.lock` as its dependency source of truth. Repository tooling
+explicitly selects the repository-root `.venv`; do not create `apps/api/.venv`
+or require shell activation. Use the root npm aliases for dependency and API
+operations.
+
+PostgreSQL tests use the current worktree's test server. Start it with
+`make test_db_up` on Unix/WSL or `python scripts/repo.py test-db up`, then run
+the PostgreSQL or complete API test alias and stop it with the matching
+`test_db_stop` command. pytest remains the owner of the physical `_tests`
+database lifecycle.
+
 ## Safety
 
 - Payment success comes only from verified provider state.
@@ -41,7 +55,11 @@ inside the adapter. CloudPayments is the current `ru` adapter.
 ## Checks
 
 ```bash
-npm run test:api
-python scripts/repo.py architecture check
-python -m alembic -c apps/api/alembic.ini upgrade head
+npm run test:api:fast
+npm run architecture:check
+npm run migrate:api
 ```
+
+Use `npm run test:api:postgres` for PostgreSQL-only coverage and
+`npm run test:api` for the complete backend suite after starting the local test
+server or supplying explicit test database configuration.

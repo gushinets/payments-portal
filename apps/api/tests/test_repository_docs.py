@@ -14,10 +14,13 @@ from scripts.repo import (
     check_required_markdown_link_content,
     direct_api_environment,
     host_database_url_from_runtime,
+    api_test_environment,
+    build_parser,
     validate_production_caddy_domain,
     validate_production_deployment_environment,
     resolve_cloudpayments_api_secret,
     resolve_cloudpayments_public_id,
+    uv_environment,
 )
 
 
@@ -308,6 +311,147 @@ def test_host_database_url_from_runtime_url_encodes_credentials() -> None:
         )
         == "postgresql+psycopg://any%2Ftool:secret%20value@127.0.0.1:32053/payments%2Ftest"
     )
+
+
+def test_uv_environment_targets_root_venv_without_activation(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(repo, "ROOT", tmp_path)
+
+    environment = uv_environment(
+        environ={"PATH": "tools", "VIRTUAL_ENV": "/wrong/.venv"},
+        python="/usr/bin/python3.12",
+    )
+
+    assert environment["UV_PROJECT_ENVIRONMENT"] == str((tmp_path / ".venv").resolve())
+    assert environment["UV_PYTHON"] == "/usr/bin/python3.12"
+    assert environment["UV_PYTHON_DOWNLOADS"] == "never"
+    assert "VIRTUAL_ENV" not in environment
+    assert environment["PATH"] == "tools"
+
+
+@pytest.mark.parametrize(
+    ("argv", "expected"),
+    [
+        (["test", "api"], "api"),
+        (["sync-api"], "sync-api"),
+        (["lock-api"], "lock-api"),
+        (["check-api-lock"], "check-api-lock"),
+        (["migrate-api"], "migrate-api"),
+    ],
+)
+def test_repository_parser_accepts_api_tooling_commands(argv: list[str], expected: str) -> None:
+    parsed = build_parser().parse_args(argv)
+    assert parsed.command == expected if expected != "api" else parsed.target == expected
+
+
+def test_test_db_commands_target_only_postgres(monkeypatch) -> None:
+    config = repo.RuntimeConfig(
+        worktree_id="test",
+        compose_project="payments-test",
+        database_name="payments_test",
+        web_port=3000,
+        api_port=8000,
+        postgres_port=5432,
+        grafana_port=3001,
+        loki_port=3100,
+        prometheus_port=9090,
+        tempo_port=3200,
+        otlp_grpc_port=4317,
+        otlp_http_port=4318,
+    )
+    invocations: list[list[str]] = []
+    monkeypatch.setattr(repo, "load_runtime", lambda: config)
+    monkeypatch.setattr(repo, "write_runtime", lambda _: None)
+    monkeypatch.setattr(repo, "compose_command", lambda _: ["docker", "compose"])
+    monkeypatch.setattr(repo, "run", lambda command, **_: invocations.append(command))
+
+    repo.cmd_test_db(argparse.Namespace(action="up"))
+    repo.cmd_test_db(argparse.Namespace(action="stop"))
+
+    assert invocations == [
+        ["docker", "compose", "up", "-d", "--no-deps", "--wait", "postgres"],
+        ["docker", "compose", "stop", "postgres"],
+    ]
+
+
+def test_api_test_environment_preserves_explicit_url(monkeypatch) -> None:
+    environment = {"TEST_POSTGRES_DATABASE_URL": "postgresql+psycopg://explicit/db_tests"}
+    monkeypatch.setattr(repo, "read_runtime_env", lambda: (_ for _ in ()).throw(AssertionError()))
+
+    assert api_test_environment("api-postgres", environment) is environment
+
+
+def test_api_test_environment_preserves_complete_explicit_postgres_configuration(monkeypatch) -> None:
+    environment = {
+        "POSTGRES_USER_TEST": "test-user",
+        "POSTGRES_PASSWORD_TEST": "test-password",
+        "POSTGRES_PORT_TEST": "5432",
+        "POSTGRES_DB_TEST": "payments_test",
+        "POSTGRES_HOST_TEST": "localhost",
+    }
+    monkeypatch.setattr(repo, "read_runtime_env", lambda: (_ for _ in ()).throw(AssertionError()))
+
+    assert api_test_environment("api", environment) is environment
+
+
+def test_api_test_environment_rejects_partial_explicit_postgres_configuration() -> None:
+    with pytest.raises(repo.HarnessError, match="Incomplete PostgreSQL test configuration"):
+        api_test_environment("api-postgres", {"POSTGRES_USER_TEST": "test-user"})
+
+
+def test_api_test_environment_derives_worktree_test_database_url(monkeypatch) -> None:
+    runtime_env = {
+        "POSTGRES_DB": "payments_worktree",
+        "POSTGRES_USER": "anytoolai",
+        "POSTGRES_PASSWORD": "local-password",
+        "POSTGRES_PORT": "32053",
+    }
+    monkeypatch.setattr(repo, "read_runtime_env", lambda: runtime_env)
+    monkeypatch.setattr(repo, "port_is_free", lambda _: False)
+    environment: dict[str, str] = {}
+
+    result = api_test_environment("api", environment)
+
+    assert result["TEST_POSTGRES_DATABASE_URL"] == (
+        "postgresql+psycopg://anytoolai:local-password@127.0.0.1:32053/payments_worktree_tests"
+    )
+
+
+def test_api_test_environment_ignores_empty_explicit_url(monkeypatch) -> None:
+    runtime_env = {
+        "POSTGRES_DB": "payments_worktree",
+        "POSTGRES_USER": "anytoolai",
+        "POSTGRES_PASSWORD": "local-password",
+        "POSTGRES_PORT": "32053",
+    }
+    monkeypatch.setattr(repo, "read_runtime_env", lambda: runtime_env)
+    monkeypatch.setattr(repo, "port_is_free", lambda _: False)
+    environment = {"TEST_POSTGRES_DATABASE_URL": ""}
+
+    result = api_test_environment("api", environment)
+
+    assert result["TEST_POSTGRES_DATABASE_URL"] != ""
+    assert result["TEST_POSTGRES_DATABASE_URL"].endswith("/payments_worktree_tests")
+
+
+def test_api_fast_test_environment_does_not_require_postgres(monkeypatch) -> None:
+    monkeypatch.setattr(repo, "read_runtime_env", lambda: (_ for _ in ()).throw(AssertionError()))
+    monkeypatch.setattr(repo, "port_is_free", lambda _: (_ for _ in ()).throw(AssertionError()))
+
+    assert api_test_environment("api-fast", {}) == {}
+
+
+def test_makefile_contains_only_test_database_shortcuts() -> None:
+    makefile = Path("Makefile").read_text(encoding="utf-8")
+    targets = [
+        line[:-1]
+        for line in makefile.splitlines()
+        if line and not line.startswith((" ", "\t", "#")) and line.endswith(":")
+    ]
+
+    assert targets == ["test_db_up", "test_db_stop"]
 
 
 def test_fast_check_passes_the_scoped_environment_to_every_subprocess(

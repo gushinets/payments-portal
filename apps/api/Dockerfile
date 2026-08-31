@@ -1,35 +1,33 @@
 FROM python:3.12-slim@sha256:2c941e860699f878900b0edc2403613c234d4b32eda3cc9fa7036991a2a63c4a AS base
 
-RUN apt-get update \
-    && DEBIAN_FRONTEND=noninteractive apt-get upgrade --yes --no-install-recommends \
-    && rm -rf /var/lib/apt/lists/*
-
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV VIRTUAL_ENV=/opt/api-venv
 ENV PATH="/opt/api-venv/bin:$PATH"
 
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get upgrade --yes --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
+
+FROM ghcr.io/astral-sh/uv:0.12.7@sha256:95f2aa1fe59274951cfe9b0cbc7972e879ff1004bc8945d130a32eb0dbd85945 AS uv-source
 
 FROM base AS dependency-builder
 
-ARG POETRY_VERSION=1.8.4
+ENV UV_PROJECT_ENVIRONMENT=/opt/api-venv
+ENV UV_PYTHON_DOWNLOADS=never
 
-ENV POETRY_NO_INTERACTION=1
-ENV POETRY_VIRTUALENVS_CREATE=false
-
-RUN pip install --no-cache-dir "poetry==${POETRY_VERSION}" \
-    && python -m venv "$VIRTUAL_ENV"
-
-COPY apps/api/pyproject.toml apps/api/poetry.lock ./apps/api/
+COPY --from=uv-source /uv /uvx /bin/
+COPY apps/api/pyproject.toml apps/api/uv.lock ./apps/api/
 
 FROM dependency-builder AS production-dependencies
 
-RUN poetry --directory apps/api install --only main --no-root
+RUN uv sync --directory apps/api --locked --no-dev --no-install-project
 
 FROM production-dependencies AS development-dependencies
 
-RUN poetry --directory apps/api install --with dev --no-root
+RUN uv sync --directory apps/api --locked --dev --no-install-project
 
 FROM base AS development
 
