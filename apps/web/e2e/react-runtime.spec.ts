@@ -91,6 +91,39 @@ test("critical client components run without React or hydration warnings", async
     });
   });
 
+  await page.route("**/api/catalog/products", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        products: [
+          {
+            product_id: "11111111-1111-4111-8111-111111111111",
+            code: "document-summary",
+            name: "Document Summary",
+            description: "Backend document summary description",
+            plan: {
+              plan_id: "33333333-3333-4333-8333-333333333333",
+              code: "document-summary-pro",
+              name: "Document Summary Pro",
+              price_amount_minor: 99000,
+              currency: "RUB",
+              billing_period: "month",
+              renewal_mode: "manual",
+              trial_days: 7
+            }
+          }
+        ]
+      })
+    });
+  });
+
+  await page.route("**/api/account/subscriptions", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ subscriptions: [] })
+    });
+  });
+
   await page.route("**/api/auth/payment-status?**", async (route) => {
     paymentStatusRequests += 1;
     await route.fulfill({
