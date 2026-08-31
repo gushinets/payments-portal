@@ -82,7 +82,7 @@ services:
       WEB_UPSTREAM: web:3000
 
   observability:
-    image: ${OTEL_LGTM_IMAGE:-grafana/otel-lgtm:0.30.1}
+    image: ${OTEL_LGTM_IMAGE:-grafana/otel-lgtm:0.32.0}
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
