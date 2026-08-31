@@ -405,6 +405,30 @@ it("shows current access and subscription details from a valid entitlement", asy
   expect(card.getByRole("link", { name: /Управлять/ })).toBeVisible();
 });
 
+it("suppresses purchase when product state is active before subscriptions update", async () => {
+  storeSessionToken("session-token");
+  server.use(
+    http.get(`${apiBase}/api/auth/session`, ({ request }) => {
+      const productCode = new URL(request.url).searchParams.get("product");
+      return HttpResponse.json(
+        sessionPayload(
+          productCode === "document-summary"
+            ? productSessionState(productCode, "active")
+            : null
+        )
+      );
+    })
+  );
+
+  render(<AccountClient />);
+
+  await screen.findByRole("heading", { name: "Document Summary" });
+  const card = productCard("Document Summary");
+  expect(await card.findByText("Подписка активна")).toBeVisible();
+  expect(card.queryByRole("link", { name: /Оформить/ })).not.toBeInTheDocument();
+  expect(card.getByRole("link", { name: /Управлять/ })).toBeVisible();
+});
+
 it.each([
   ["expired", "expired", new Date(Date.now() - 86400000), new Date(Date.now() + 86400000)],
   ["revoked", "revoked", new Date(Date.now() - 86400000), new Date(Date.now() + 86400000)],

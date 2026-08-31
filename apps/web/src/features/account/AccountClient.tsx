@@ -398,7 +398,8 @@ export function AccountClient() {
                       )
                     )
                   : undefined;
-              const isActive = Boolean(currentSubscription);
+              const isActive =
+                Boolean(currentSubscription) || state?.status === "active";
               const isPending = state?.status === "pending";
               const failedToLoad = failedProductCodes.has(product.code);
               const productLoading = loadingProductCodes.has(product.code);
