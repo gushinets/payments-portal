@@ -561,7 +561,7 @@ done
 
 # Step 2 — Replace the hardcoded catalog cards with validated backend data
 
-**Status:** `todo`  
+**Status:** `done`  
 **Commit:** `feat(web): load product catalog from backend`  
 **Depends on:** Step 1 completed, manually verified, generated artifacts updated if required, and committed.
 

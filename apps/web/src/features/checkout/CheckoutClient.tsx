@@ -7,9 +7,14 @@ import {
   ArrowRight,
   LogOut,
   MessageCircleMore,
-  ShieldCheck
+  ShieldCheck,
+  Sparkles
 } from "lucide-react";
-import { ProductCards } from "@/features/catalog";
+import {
+  getCatalogProducts,
+  ProductCards,
+  type CatalogProduct
+} from "@/features/catalog";
 import {
   ApiError,
   authErrorMessage,
@@ -24,10 +29,9 @@ import {
 } from "@/shared/api/auth";
 import { AuthForm, AuthFormSubmitValues, AuthMode } from "@/shared/ui";
 import {
-  findProduct,
-  formatRubles,
-  Product,
-  products,
+  formatBillingPeriod,
+  formatCatalogPrice,
+  productPresentation,
   supportEmail
 } from "@/features/catalog";
 import {
@@ -72,9 +76,21 @@ export function CheckoutClient({
   const initialProduct = searchParams.get("product");
   const initialAuthMode = searchParams.get("auth");
   const [selectedCode] = useState(initialProduct ?? "");
+  const [catalogProducts, setCatalogProducts] = useState<CatalogProduct[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState(true);
+  const [catalogError, setCatalogError] = useState(false);
   const selectedProduct = useMemo(
-    () => findProduct(selectedCode),
-    [selectedCode]
+    () => {
+      if (catalogLoading || catalogError) {
+        return undefined;
+      }
+
+      const matches = catalogProducts.filter(
+        (product) => product.code === selectedCode
+      );
+      return matches.length === 1 ? matches[0] : undefined;
+    },
+    [catalogError, catalogLoading, catalogProducts, selectedCode]
   );
   const [mode, setMode] = useState<"login" | "register">(
     initialAuthMode === "login" ? "login" : "register"
@@ -100,17 +116,26 @@ export function CheckoutClient({
   const previousSessionUserKeyRef = useRef("");
   const previousCheckoutContextKeyRef = useRef("");
 
-  const knownProductCodes = products.map((product) => product.code);
   const invalidProduct =
+    !catalogLoading &&
+    !catalogError &&
     initialProduct !== null &&
-    !knownProductCodes.includes(initialProduct as Product["code"]);
-  const needsAuthPrompt = !!selectedProduct && !sessionUser;
-  const forceAuthPrompt = initialAuthMode === "login" && !sessionUser;
-  const [authModalOpen, setAuthModalOpen] = useState(
-    needsAuthPrompt || forceAuthPrompt
-  );
+    !selectedProduct;
+  const needsAuthPrompt =
+    !catalogLoading && !catalogError && !!selectedProduct && !sessionUser;
+  const forceAuthPrompt =
+    !catalogLoading &&
+    !catalogError &&
+    !invalidProduct &&
+    initialAuthMode === "login" &&
+    !sessionUser;
+  const [authModalDismissed, setAuthModalDismissed] = useState(false);
   const showAuthModal =
-    (needsAuthPrompt || forceAuthPrompt) && !sessionLoading && authModalOpen;
+    !catalogLoading &&
+    !catalogError &&
+    (needsAuthPrompt || forceAuthPrompt) &&
+    !sessionLoading &&
+    !authModalDismissed;
   const allMissingDocumentsAccepted =
     missingDocuments.length > 0 &&
     missingDocuments.every(
@@ -128,6 +153,33 @@ export function CheckoutClient({
   function clearRecurringConsentEvidence() {
     setRecurringConsentAcceptanceId("");
   }
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadCatalog() {
+      try {
+        const response = await getCatalogProducts();
+        if (!cancelled) {
+          setCatalogProducts(response.products);
+        }
+      } catch {
+        if (!cancelled) {
+          setCatalogProducts([]);
+          setCatalogError(true);
+        }
+      } finally {
+        if (!cancelled) {
+          setCatalogLoading(false);
+        }
+      }
+    }
+
+    void loadCatalog();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     function syncStoredToken() {
@@ -374,6 +426,10 @@ export function CheckoutClient({
   }
 
   async function goToPaymentResult(recurringAcceptanceIdOverride?: string) {
+    if (productState?.status === "active") {
+      return;
+    }
+
     setError("");
 
     if (!selectedProduct) {
@@ -601,6 +657,26 @@ export function CheckoutClient({
     />
   );
 
+  if (catalogLoading) {
+    return (
+      <section className="page-section compact">
+        <div className="form-panel" role="status">
+          Загрузка каталога...
+        </div>
+      </section>
+    );
+  }
+
+  if (catalogError) {
+    return (
+      <section className="page-section compact">
+        <div className="form-panel notice error" role="alert">
+          Не удалось загрузить каталог. Обновите страницу и попробуйте ещё раз.
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="page-section compact">
       <div className="eyebrow">
@@ -621,228 +697,246 @@ export function CheckoutClient({
       ) : null}
 
       {showAuthModal ? (
-        <>
-          <button
-            className="auth-modal-overlay"
-            type="button"
-            aria-label="Закрыть окно входа"
-            onClick={() => setAuthModalOpen(false)}
-          />
-          <div
-            className="form-panel auth-modal-panel"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Вход или регистрация"
-          >
-            {authForm}
-          </div>
-        </>
-      ) : null}
-
-      <div className="two-column checkout-grid" style={{ marginTop: 28 }}>
-        <div>
-          {selectedProduct ? (
-            <SelectedProductCard product={selectedProduct} />
-          ) : (
-            <div className="form-panel checkout-equal-panel">
-              <h2>Выберите продукт</h2>
-              <p className="card-copy">
-                Откройте нужный сервис, чтобы увидеть тариф, бесплатный лимит и
-                перейти к оформлению.
-              </p>
-              <ProductCards />
-            </div>
-          )}
-        </div>
-
-        <div className="form-panel checkout-equal-panel" id="checkout-form">
-          <div className="form-grid checkout-form-grid">
-            <span className="badge badge-running">
-              <ShieldCheck size={12} aria-hidden="true" />
-              Единый аккаунт
-            </span>
-
-            {needsAuthPrompt && !sessionLoading ? (
-              <div className="notice">
-                Чтобы продолжить оформление, войдите в аккаунт или
-                зарегистрируйтесь.
+            <>
+              <button
+                className="auth-modal-overlay"
+                type="button"
+                aria-label="Закрыть окно входа"
+                onClick={() => setAuthModalDismissed(true)}
+              />
+              <div
+                className="form-panel auth-modal-panel"
+                role="dialog"
+                aria-modal="true"
+                aria-label="Вход или регистрация"
+              >
+                {authForm}
               </div>
-            ) : null}
+            </>
+          ) : null}
 
-            {sessionLoading ? (
-              <div className="notice">Проверяем текущую сессию...</div>
-            ) : sessionUser ? (
-              <>
-                <h2 className="checkout-step-title">1. Аккаунт</h2>
-                <div className="feedback-slot" ref={feedbackRef}>
-                  {notice ? <div className="notice">{notice}</div> : null}
-                  {error ? <div className="notice error">{error}</div> : null}
+          <div className="two-column checkout-grid" style={{ marginTop: 28 }}>
+            <div>
+              {selectedProduct ? (
+                <SelectedProductCard
+                  product={selectedProduct}
+                  state={productState}
+                />
+              ) : (
+                <div className="form-panel checkout-equal-panel">
+                  <h2>Выберите продукт</h2>
+                  <p className="card-copy">
+                    Откройте нужный сервис, чтобы увидеть тариф, бесплатный лимит и
+                    перейти к оформлению.
+                  </p>
+                  <ProductCards products={catalogProducts} />
                 </div>
-                <div className="account-card checkout-account-card">
-                  <div>
-                    <strong>{sessionUser.email}</strong>
-                    <p className="card-copy">
-                      Вы вошли в единый аккаунт платформы.
-                    </p>
+              )}
+            </div>
+
+            <div className="form-panel checkout-equal-panel" id="checkout-form">
+              <div className="form-grid checkout-form-grid">
+                <span className="badge badge-running">
+                  <ShieldCheck size={12} aria-hidden="true" />
+                  Единый аккаунт
+                </span>
+
+                {needsAuthPrompt && !sessionLoading ? (
+                  <div className="notice">
+                    Чтобы продолжить оформление, войдите в аккаунт или
+                    зарегистрируйтесь.
                   </div>
-                  <button className="btn-secondary" type="button" onClick={logout}>
-                    <LogOut size={15} aria-hidden="true" />
-                    Выйти
-                  </button>
-                </div>
+                ) : null}
 
-                <h2 className="checkout-step-title">2. Статус подписки</h2>
-                <SubscriptionState product={selectedProduct} state={productState} />
+                {sessionLoading ? (
+                  <div className="notice">Проверяем текущую сессию...</div>
+                ) : sessionUser ? (
+                  <>
+                    <h2 className="checkout-step-title">1. Аккаунт</h2>
+                    <div className="feedback-slot" ref={feedbackRef}>
+                      {notice ? <div className="notice">{notice}</div> : null}
+                      {error ? <div className="notice error">{error}</div> : null}
+                    </div>
+                    <div className="account-card checkout-account-card">
+                      <div>
+                        <strong>{sessionUser.email}</strong>
+                        <p className="card-copy">
+                          Вы вошли в единый аккаунт платформы.
+                        </p>
+                      </div>
+                      <button className="btn-secondary" type="button" onClick={logout}>
+                        <LogOut size={15} aria-hidden="true" />
+                        Выйти
+                      </button>
+                    </div>
 
-                {missingDocuments.length > 0 ? (
-                  <div className="notice legal-consent-box">
-                    <strong style={{ color: "var(--txt)" }}>
-                      Нужно принять актуальные документы
-                    </strong>
-                    <div className="legal-consent-list">
-                      {missingDocuments.map((document) => (
-                        <div
-                          className="legal-consent-item"
-                          key={document.document_version_id}
-                        >
-                          <input
-                            aria-label={`Принять документ ${document.title}`}
-                            type="checkbox"
-                            checked={
-                              documentConsentById[
-                                document.document_version_id
-                              ] ?? false
-                            }
-                            onChange={(event) =>
-                              setDocumentConsentById((current) => ({
-                                ...current,
-                                [document.document_version_id]:
-                                  event.target.checked
-                              }))
-                            }
-                          />
-                          <div>
-                            <Link
-                              className="inline-link"
-                              href={document.url_path}
-                              target="_blank"
-                              rel="noopener noreferrer"
+                    <h2 className="checkout-step-title">2. Статус подписки</h2>
+                    <SubscriptionState product={selectedProduct} state={productState} />
+
+                    {productState?.status !== "active" ? (
+                      <>
+                        {missingDocuments.length > 0 ? (
+                          <div className="notice legal-consent-box">
+                            <strong style={{ color: "var(--txt)" }}>
+                              Нужно принять актуальные документы
+                            </strong>
+                            <div className="legal-consent-list">
+                              {missingDocuments.map((document) => (
+                                <div
+                                  className="legal-consent-item"
+                                  key={document.document_version_id}
+                                >
+                                  <input
+                                    aria-label={`Принять документ ${document.title}`}
+                                    type="checkbox"
+                                    checked={
+                                      documentConsentById[
+                                        document.document_version_id
+                                      ] ?? false
+                                    }
+                                    onChange={(event) =>
+                                      setDocumentConsentById((current) => ({
+                                        ...current,
+                                        [document.document_version_id]:
+                                          event.target.checked
+                                      }))
+                                    }
+                                  />
+                                  <div>
+                                    <Link
+                                      className="inline-link"
+                                      href={document.url_path}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                    >
+                                      {document.title}
+                                    </Link>
+                                    <p>{document.acceptance_text}</p>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                            <button
+                              className="btn-primary"
+                              type="button"
+                              onClick={acceptRequiredDocumentsAndContinue}
+                              disabled={loading || !allMissingDocumentsAccepted}
                             >
-                              {document.title}
-                            </Link>
-                            <p>{document.acceptance_text}</p>
+                              Принять и продолжить
+                              <ArrowRight size={16} aria-hidden="true" />
+                            </button>
                           </div>
-                        </div>
-                      ))}
+                        ) : null}
+
+                        <label className="checkbox-label">
+                          <input
+                            type="checkbox"
+                            checked={autoRenew}
+                            onChange={(event) => {
+                              setAutoRenew(event.target.checked);
+                              if (!event.target.checked) {
+                                setRecurrentConsent(false);
+                                clearRecurringConsentEvidence();
+                              }
+                            }}
+                          />
+                          <span>Включить автопродление</span>
+                        </label>
+
+                        {autoRenew ? (
+                          <label className="checkbox-label">
+                            <input
+                              type="checkbox"
+                              checked={recurrentConsent}
+                              onChange={(event) =>
+                                setRecurrentConsent(event.target.checked)
+                              }
+                            />
+                            <span>
+                              Я соглашаюсь на регулярное автоматическое списание средств
+                              согласно выбранному тарифу. Подписка продлевается
+                              автоматически до её отмены.
+                            </span>
+                          </label>
+                        ) : null}
+
+                        {checkoutAdapterStatus === "failed" ? (
+                          <div className="notice error">
+                            Не удалось загрузить платёжный виджет. Обновите страницу и
+                            попробуйте ещё раз.
+                          </div>
+                        ) : null}
+
+                        {selectedProduct ? (
+                          <button
+                            className="btn-primary"
+                            type="button"
+                            onClick={() => void goToPaymentResult()}
+                            disabled={
+                              missingDocuments.length > 0 || checkoutAdapterBlocked
+                            }
+                          >
+                            {checkoutAdapterStatus === "loading"
+                              ? "Загрузка оплаты..."
+                              : "Оплатить"}
+                            <ArrowRight size={16} aria-hidden="true" />
+                          </button>
+                        ) : null}
+                      </>
+                    ) : null}
+
+                    {productState?.status === "active" ? (
+                      <Link className="btn-secondary" href="/ru/account">
+                        Перейти в аккаунт
+                        <ArrowRight size={15} aria-hidden="true" />
+                      </Link>
+                    ) : null}
+                  </>
+                ) : (
+                  <>
+                    <h2 className="checkout-step-title">1. Вход или регистрация</h2>
+                    <div className="feedback-slot" ref={feedbackRef}>
+                      {notice ? <div className="notice">{notice}</div> : null}
+                      {error ? <div className="notice error">{error}</div> : null}
+                    </div>
+                    <div className="notice">
+                      Чтобы продолжить оформление, откройте окно входа или
+                      регистрации.
                     </div>
                     <button
                       className="btn-primary"
                       type="button"
-                      onClick={acceptRequiredDocumentsAndContinue}
-                      disabled={loading || !allMissingDocumentsAccepted}
+                      onClick={() => setAuthModalDismissed(false)}
                     >
-                      Принять и продолжить
-                      <ArrowRight size={16} aria-hidden="true" />
+                      Войти или зарегистрироваться
+                      <ArrowRight size={15} aria-hidden="true" />
                     </button>
-                  </div>
-                ) : null}
+                  </>
+                )}
 
-                <label className="checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={autoRenew}
-                    onChange={(event) => {
-                      setAutoRenew(event.target.checked);
-                      if (!event.target.checked) {
-                        setRecurrentConsent(false);
-                        clearRecurringConsentEvidence();
-                      }
-                    }}
-                  />
-                  <span>Включить автопродление</span>
-                </label>
-
-                {autoRenew ? (
-                  <label className="checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={recurrentConsent}
-                      onChange={(event) =>
-                        setRecurrentConsent(event.target.checked)
-                      }
-                    />
-                    <span>
-                      Я соглашаюсь на регулярное автоматическое списание средств
-                      согласно выбранному тарифу. Подписка продлевается
-                      автоматически до её отмены.
-                    </span>
-                  </label>
-                ) : null}
-
-                {checkoutAdapterStatus === "failed" ? (
-                  <div className="notice error">
-                    Не удалось загрузить платёжный виджет. Обновите страницу и
-                    попробуйте ещё раз.
-                  </div>
-                ) : null}
-
-                <button
-                  className="btn-primary"
-                  type="button"
-                  onClick={() => void goToPaymentResult()}
-                  disabled={
-                    !selectedProduct ||
-                    missingDocuments.length > 0 ||
-                    checkoutAdapterBlocked
-                  }
-                >
-                  {checkoutAdapterStatus === "loading"
-                    ? "Загрузка оплаты..."
-                    : "Оплатить"}
-                  <ArrowRight size={16} aria-hidden="true" />
-                </button>
-              </>
-            ) : (
-              <>
-                <h2 className="checkout-step-title">1. Вход или регистрация</h2>
-                <div className="feedback-slot" ref={feedbackRef}>
-                  {notice ? <div className="notice">{notice}</div> : null}
-                  {error ? <div className="notice error">{error}</div> : null}
-                </div>
-                <div className="notice">
-                  Чтобы продолжить оформление, откройте окно входа или
-                  регистрации.
-                </div>
-                <button
-                  className="btn-primary"
-                  type="button"
-                  onClick={() => setAuthModalOpen(true)}
-                >
-                  Войти или зарегистрироваться
-                  <ArrowRight size={15} aria-hidden="true" />
-                </button>
-              </>
-            )}
-
-            <p className="muted" style={{ margin: 0 }}>
-              Поддержка:{" "}
-              <a className="inline-link" href={`mailto:${supportEmail}`}>
-                {supportEmail}
-              </a>
-            </p>
-          </div>
-        </div>
+                <p className="muted" style={{ margin: 0 }}>
+                  Поддержка:{" "}
+                  <a className="inline-link" href={`mailto:${supportEmail}`}>
+                    {supportEmail}
+                  </a>
+                </p>
+              </div>
+            </div>
       </div>
     </section>
   );
 }
 
 function SelectedProductCard({
-  product
+  product,
+  state
 }: {
-  product: Product;
+  product: CatalogProduct;
+  state: AuthProductState | null;
 }) {
-  const Icon = product.Icon;
+  const presentation = productPresentation[product.code];
+  const Icon = presentation?.Icon ?? Sparkles;
+  const productDescription = presentation?.description ?? product.description;
 
   function scrollToForm() {
     document
@@ -855,32 +949,43 @@ function SelectedProductCard({
       <div className="tool-icon-wrap">
         <Icon size={22} aria-hidden="true" />
       </div>
-      <span className="tool-tag">{product.type}</span>
+      {presentation?.type ? <span className="tool-tag">{presentation.type}</span> : null}
       <h2>{product.name}</h2>
       <p className="muted" style={{ margin: "0 0 8px" }}>
-        {product.tagline}
+        {presentation?.tagline}
       </p>
-      <p className="card-copy">{product.description}</p>
-      <ul className="check-list">
-        {product.valuePoints.map((point) => (
-          <li key={point}>{point}</li>
-        ))}
-      </ul>
+      {productDescription ? <p className="card-copy">{productDescription}</p> : null}
+      {presentation?.valuePoints ? (
+        <ul className="check-list">
+          {presentation.valuePoints.map((point) => (
+            <li key={point}>{point}</li>
+          ))}
+        </ul>
+      ) : null}
       <div className="price-line">
-        <strong>{formatRubles(product.plan.priceRub)}</strong>
-        <span>/ месяц</span>
+        <strong>
+          {formatCatalogPrice(
+            product.plan.price_amount_minor,
+            product.plan.currency
+          )}
+        </strong>
+        <span>/ {formatBillingPeriod(product.plan.billing_period)}</span>
       </div>
       <div className="button-row" style={{ marginTop: 0 }}>
         <span className="badge badge-live">
-          Пробный период {product.plan.trialDays} дней
+          Пробный период {product.plan.trial_days} дней
         </span>
-        <span className="badge badge-running">{product.freeLimit}</span>
+        {presentation?.freeLimit ? (
+          <span className="badge badge-running">{presentation.freeLimit}</span>
+        ) : null}
       </div>
-      <div className="button-row">
-        <button className="btn-primary" type="button" onClick={scrollToForm}>
-          Оформить
-        </button>
-      </div>
+      {state?.status === "active" ? null : (
+        <div className="button-row">
+          <button className="btn-primary" type="button" onClick={scrollToForm}>
+            Оформить
+          </button>
+        </div>
+      )}
     </article>
   );
 }
@@ -889,7 +994,7 @@ function SubscriptionState({
   product,
   state
 }: {
-  product?: Product;
+  product?: CatalogProduct;
   state: AuthProductState | null;
 }) {
   if (!product) {
@@ -900,7 +1005,9 @@ function SubscriptionState({
     );
   }
 
+  const presentation = productPresentation[product.code];
   const status = state?.status ?? "inactive";
+  const planName = state?.plan_name ?? product.plan.name;
   const statusText =
     status === "active"
       ? "Подписка активна"
@@ -910,17 +1017,26 @@ function SubscriptionState({
 
   return (
     <div className="notice">
-      <strong style={{ color: "var(--txt)" }}>{product.plan.name}</strong>
+      <strong style={{ color: "var(--txt)" }}>{planName}</strong>
       <br />
       Статус: {statusText}
       <br />
-      Стоимость: {formatRubles(product.plan.priceRub)} / месяц
+      Стоимость: {formatCatalogPrice(
+        product.plan.price_amount_minor,
+        product.plan.currency
+      )} / {formatBillingPeriod(product.plan.billing_period)}
       <br />
-      Бесплатный лимит: {product.freeLimit}
+      Бесплатный лимит: {presentation?.freeLimit ?? "—"}
       {state?.expires_at ? (
         <>
           <br />
           Действует до: {new Date(state.expires_at).toLocaleDateString("ru-RU")}
+        </>
+      ) : null}
+      {status === "active" ? (
+        <>
+          <br />
+          Доступ уже активен. Управление доступно в аккаунте.
         </>
       ) : null}
     </div>
