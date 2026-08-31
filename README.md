@@ -51,6 +51,13 @@ ports, logs, and browser artifacts.
 The API uses uv `0.12.7`. The dependency source of truth is
 `apps/api/pyproject.toml` plus `apps/api/uv.lock`.
 
+Install and verify the required uv version:
+
+```bash
+python -m pip install "uv==0.12.7"
+uv --version
+```
+
 Repository tooling explicitly selects the repository-root `.venv` as the only
 canonical local API environment. Do not create `apps/api/.venv`; normal
 commands do not require shell activation.
@@ -134,7 +141,7 @@ npm run dev:api
 npm run lint:web
 npm run build:web
 npm run test:api
-python -m alembic -c apps/api/alembic.ini upgrade head
+npm run migrate:api
 ```
 
 ## Local Compose workflow
