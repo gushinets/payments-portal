@@ -18,6 +18,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import event, inspect  # noqa: E402
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware  # noqa: E402
 
+from app.domains.billing.enums import PlanStatus, ProductStatus  # noqa: E402
 from app.domains.billing.router import get_subscription as get_account_subscription_route  # noqa: E402
 from app.domains.billing.router import list_subscriptions as list_account_subscriptions_route  # noqa: E402
 import app.domains.identity.password_reset as password_reset_router  # noqa: E402
@@ -525,6 +526,119 @@ def test_liveness_readiness_metrics_and_request_id() -> None:
     assert canonical_ready_response.headers["X-Request-ID"]
     assert metrics_response.status_code == 200
     assert metrics_response.headers["content-type"].startswith("text/plain")
+
+
+def test_catalog_products_returns_persisted_sellable_offers_without_authentication() -> None:
+    with SessionLocal() as db:
+        document_summary = db.query(Product).filter(Product.code == "document-summary").one()
+        document_plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
+        document_summary.name = "Persisted Document Summary"
+        document_summary.description = "Persisted catalog description"
+        document_plan.name = "Persisted Document Summary Pro"
+        db.commit()
+
+    response = client.get("/api/catalog/products")
+
+    assert response.status_code == 200
+    products = response.json()["products"]
+    assert [product["code"] for product in products] == ["document-summary", "prompt-optimizer"]
+    document_product = products[0]
+    assert document_product["name"] == "Persisted Document Summary"
+    assert document_product["description"] == "Persisted catalog description"
+    assert document_product["plan"] == {
+        "plan_id": document_product["plan"]["plan_id"],
+        "code": "document-summary-pro",
+        "name": "Persisted Document Summary Pro",
+        "price_amount_minor": 99000,
+        "currency": "RUB",
+        "billing_period": "month",
+        "renewal_mode": "manual",
+        "trial_days": 7,
+    }
+    assert products[1]["plan"]["price_amount_minor"] == 99000
+    assert products[1]["plan"]["currency"] == "RUB"
+
+
+def test_catalog_products_excludes_ineligible_offers() -> None:
+    now = datetime.now(timezone.utc)
+    with SessionLocal() as db:
+        db.query(Product).filter(Product.code == "document-summary").one().status = ProductStatus.INACTIVE.value
+        db.query(Plan).filter(Plan.code == "prompt-optimizer-pro").one().status = PlanStatus.INACTIVE.value
+
+        future_product = Product(
+            tenant_id="anytoolai",
+            code="future-product",
+            platform_product_id="future-product",
+            name="Future Product",
+            status=ProductStatus.ACTIVE.value,
+        )
+        expired_product = Product(
+            tenant_id="anytoolai",
+            code="expired-product",
+            platform_product_id="expired-product",
+            name="Expired Product",
+            status=ProductStatus.ACTIVE.value,
+        )
+        no_plan_product = Product(
+            tenant_id="anytoolai",
+            code="no-plan-product",
+            platform_product_id="no-plan-product",
+            name="No Plan Product",
+            status=ProductStatus.ACTIVE.value,
+        )
+        db.add_all([future_product, expired_product, no_plan_product])
+        db.flush()
+        db.add_all(
+            [
+                Plan(
+                    tenant_id="anytoolai",
+                    region="ru",
+                    code="future-product-pro",
+                    name="Future Product Pro",
+                    scope_type="product",
+                    product_id=future_product.id,
+                    price_amount_minor=100,
+                    currency="RUB",
+                    billing_period="month",
+                    renewal_mode="manual",
+                    trial_days=0,
+                    status=PlanStatus.ACTIVE.value,
+                    valid_from=now + timedelta(days=1),
+                ),
+                Plan(
+                    tenant_id="anytoolai",
+                    region="ru",
+                    code="expired-product-pro",
+                    name="Expired Product Pro",
+                    scope_type="product",
+                    product_id=expired_product.id,
+                    price_amount_minor=100,
+                    currency="RUB",
+                    billing_period="month",
+                    renewal_mode="manual",
+                    trial_days=0,
+                    status=PlanStatus.ACTIVE.value,
+                    valid_from=now - timedelta(days=2),
+                    valid_to=now - timedelta(days=1),
+                ),
+            ]
+        )
+        db.commit()
+
+    response = client.get("/api/catalog/products")
+
+    assert response.status_code == 200
+    assert response.json() == {"products": []}
+
+
+def test_catalog_products_openapi_uses_named_response_schema() -> None:
+    openapi = app.openapi()
+
+    response_schema = openapi["paths"]["/api/catalog/products"]["get"]["responses"]["200"]["content"][
+        "application/json"
+    ]["schema"]
+
+    assert response_schema == {"$ref": "#/components/schemas/CatalogProductsResponse"}
 
 
 def test_invalid_request_id_is_replaced() -> None:

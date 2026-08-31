@@ -1,4 +1,4 @@
-"""Provider-neutral subscription vocabularies."""
+"""Provider-neutral billing vocabularies."""
 
 from enum import StrEnum
 
@@ -40,6 +40,16 @@ class BillingPeriod(StrEnum):
     YEARS = "years"
     ANNUAL = "annual"
     YEARLY = "yearly"
+
+
+class PlanStatus(StrEnum):
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+
+
+class ProductStatus(StrEnum):
+    ACTIVE = "active"
+    INACTIVE = "inactive"
 
 
 class ProviderSubscriptionState(StrEnum):
@@ -126,7 +136,9 @@ __all__ = [
     "EntitlementStatus",
     "OrderStatus",
     "PaymentStatus",
+    "PlanStatus",
     "ProductAccessStatus",
+    "ProductStatus",
     "ProviderSubscriptionState",
     "SensitiveMetadataKey",
     "SubscriptionEventType",
