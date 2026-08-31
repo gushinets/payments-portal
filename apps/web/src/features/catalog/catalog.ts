@@ -7,6 +7,9 @@ import {
   WandSparkles
 } from "lucide-react";
 
+export { findProduct, products } from "./legacy";
+export type { Product, ProductCode } from "./legacy";
+
 export const supportEmail = "support@any-tool-ai.ru";
 
 export const seller = {
@@ -33,31 +36,17 @@ export const paymentMethods: PaymentMethod[] = [
   { code: "mir", label: "Мир" }
 ];
 
-export type ProductCode = "document-summary" | "prompt-optimizer";
-
-export type Product = {
-  code: ProductCode;
-  name: string;
+export type ProductPresentation = {
   type: string;
   tagline: string;
   description: string;
   valuePoints: string[];
   freeLimit: string;
-  plan: {
-    code: string;
-    name: string;
-    priceRub: number;
-    period: "month";
-    trialDays: number;
-    paymentDescription: string;
-  };
   Icon: typeof FileText;
 };
 
-export const products: Product[] = [
-  {
-    code: "document-summary",
-    name: "Document Summary",
+export const productPresentation: Record<string, ProductPresentation> = {
+  "document-summary": {
     type: "Chrome extension",
     tagline: "Мгновенное краткое содержание любого документа",
     description:
@@ -70,19 +59,9 @@ export const products: Product[] = [
       "Файлы не сохраняются на серверах"
     ],
     freeLimit: "3 summary в месяц",
-    plan: {
-      code: "document-summary-pro",
-      name: "Document Summary Pro",
-      priceRub: 990,
-      period: "month",
-      trialDays: 7,
-      paymentDescription: "Подписка Document Summary Pro на 1 месяц"
-    },
     Icon: FileText
   },
-  {
-    code: "prompt-optimizer",
-    name: "Prompt Optimizer",
+  "prompt-optimizer": {
     type: "Chrome extension",
     tagline: "Улучшение промптов для ИИ в один клик",
     description:
@@ -94,35 +73,27 @@ export const products: Product[] = [
       "Сохраняет готовые промпты в библиотеке"
     ],
     freeLimit: "50 оптимизаций в месяц",
-    plan: {
-      code: "prompt-optimizer-pro",
-      name: "Prompt Optimizer Pro",
-      priceRub: 990,
-      period: "month",
-      trialDays: 7,
-      paymentDescription: "Подписка Prompt Optimizer Pro на 1 месяц"
-    },
     Icon: WandSparkles
   }
-];
+};
 
 export const platformFacts = [
   {
-    label: "Продукта",
-    value: "2",
-    detail: "Document Summary и Prompt Optimizer",
+    label: "Каталог",
+    value: "RU",
+    detail: "Актуальные предложения загружаются из API",
     Icon: Sparkles
   },
   {
-    label: "Бесплатный период",
-    value: "7",
-    detail: "дней до начала оплаты",
+    label: "Тарифы",
+    value: "API",
+    detail: "Цена и условия указаны в карточках",
     Icon: ShieldCheck
   },
   {
-    label: "Бесплатный доступ",
-    value: "3 / 50",
-    detail: "лимиты для двух сервисов",
+    label: "Доступ",
+    value: "1 аккаунт",
+    detail: "Статус подписки проверяется перед оформлением",
     Icon: FileText
   },
   {
@@ -154,14 +125,34 @@ export const platformHighlights = [
   }
 ];
 
-export function findProduct(code: string | null | undefined): Product | undefined {
-  if (!code) {
-    return undefined;
-  }
-
-  return products.find((product) => product.code === code);
-}
-
 export function formatRubles(value: number): string {
   return new Intl.NumberFormat("ru-RU").format(value) + " ₽";
+}
+
+export function formatCatalogPrice(
+  priceAmountMinor: number,
+  currency: string
+): string {
+  if (currency.toUpperCase() !== "RUB") {
+    throw new Error("unsupported_catalog_currency");
+  }
+
+  return formatRubles(priceAmountMinor / 100);
+}
+
+export function formatBillingPeriod(period: string): string {
+  const labels: Record<string, string> = {
+    day: "день",
+    days: "дней",
+    week: "неделю",
+    weeks: "недель",
+    month: "месяц",
+    months: "месяцев",
+    year: "год",
+    years: "лет",
+    annual: "год",
+    yearly: "год"
+  };
+
+  return labels[period] ?? period;
 }

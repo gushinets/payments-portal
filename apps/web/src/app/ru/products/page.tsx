@@ -1,4 +1,4 @@
-import { ProductCards } from "@/features/catalog";
+import { CatalogProductsClient } from "@/features/catalog";
 
 export default function ProductsPage() {
   return (
@@ -13,7 +13,7 @@ export default function ProductsPage() {
           Выберите сервис, сравните возможности и перейдите к оформлению
           подписки.
         </p>
-        <ProductCards />
+        <CatalogProductsClient />
       </section>
     </>
   );

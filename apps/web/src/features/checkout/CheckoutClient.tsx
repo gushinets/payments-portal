@@ -16,6 +16,8 @@ import {
   decodeAuthSessionResponse,
   getJson,
   postJson,
+  sessionChangedEvent,
+  sessionStorageKey,
   submitAuth,
   type AuthProductState,
   type AuthUser
@@ -60,8 +62,6 @@ type AcceptDocumentResponse = {
 };
 
 const telegramLoginUrl = process.env.NEXT_PUBLIC_TELEGRAM_LOGIN_URL ?? "";
-const sessionStorageKey = "anytoolai_session_token_v1";
-const sessionChangedEvent = "anytoolai_session_changed";
 
 export function CheckoutClient({
   checkoutAdapterStatus = "disabled"

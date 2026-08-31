@@ -1,8 +1,7 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
-import { ProductCards } from "@/features/catalog";
 import {
-  formatRubles,
+  CatalogProductsClient,
   platformFacts,
   platformHighlights
 } from "@/features/catalog";
@@ -77,12 +76,12 @@ export default function RuHomePage() {
           <span className="eyebrow-dot" />
           Продукты
         </div>
-        <h2 className="section-title">Два сервиса для повседневной работы</h2>
+        <h2 className="section-title">Сервисы для повседневной работы</h2>
         <p className="section-copy">
-          Оба продукта доступны по подписке за {formatRubles(990)} в месяц с
-          бесплатным периодом 7 дней.
+          Выберите продукт, чтобы увидеть актуальную цену и условия пробного
+          периода в его карточке.
         </p>
-        <ProductCards />
+        <CatalogProductsClient />
       </section>
     </>
   );
