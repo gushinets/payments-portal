@@ -1007,7 +1007,11 @@ function SubscriptionState({
 
   const presentation = productPresentation[product.code];
   const status = state?.status ?? "inactive";
-  const planName = state?.plan_name ?? product.plan.name;
+  const planName =
+    (state?.status === "active" || state?.status === "pending") &&
+    state.plan_name
+      ? state.plan_name
+      : product.plan.name;
   const statusText =
     status === "active"
       ? "Подписка активна"

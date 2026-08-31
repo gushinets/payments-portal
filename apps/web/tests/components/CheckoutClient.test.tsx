@@ -164,6 +164,35 @@ describe("CheckoutClient critical characterization", () => {
     ]);
   });
 
+  it("uses the catalog plan name when inactive session data is stale", async () => {
+    storeSessionToken("session-token");
+    server.use(
+      http.get(`${apiBase}/api/catalog/products`, () =>
+        HttpResponse.json(
+          catalogResponse({}, { name: "Backend Renamed Plan" })
+        )
+      ),
+      http.get(`${apiBase}/api/auth/session`, () =>
+        HttpResponse.json({
+          ...sessionResponse("inactive"),
+          product_state: {
+            ...sessionResponse("inactive").product_state,
+            plan_name: "Old Hardcoded Plan"
+          }
+        })
+      )
+    );
+
+    await renderCheckoutWithProviderStub();
+
+    expect(await screen.findByText("buyer@example.com")).toBeVisible();
+    const subscriptionState = screen.getByRole("heading", {
+      name: "2. Статус подписки"
+    }).nextElementSibling;
+    expect(subscriptionState).toHaveTextContent("Backend Renamed Plan");
+    expect(subscriptionState).not.toHaveTextContent("Old Hardcoded Plan");
+  });
+
   it("keeps checkout controls unavailable while the catalog is loading", async () => {
     setRouteSearchParams("product=does-not-exist");
     server.use(
