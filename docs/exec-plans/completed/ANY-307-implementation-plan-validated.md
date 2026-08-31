@@ -42,36 +42,19 @@ The PostgreSQL helper from the original Step 2 is retained because it closes a r
 
 ---
 
-# Required Linear Reconciliation Before Merge
+# Linear Reconciliation
 
-The current Linear acceptance criteria still explicitly require:
+The ANY-307 Linear acceptance criteria have been reconciled with the approved command policy.
 
-```text
-Makefile commands for install, lock, run, test, and migration use uv or the canonical root environment consistently.
-make build_api succeeds.
-```
+The final policy is:
 
-The approved decision in this revised plan is different:
+- Canonical API install/sync, lock, run, test, migration, and build commands are exposed through root npm scripts and/or `scripts/repo.py`.
+- These commands use the repository-root `.venv` and do not require manual shell activation.
+- Makefile does not duplicate root npm / `scripts/repo.py` commands.
+- Makefile contains only `test_db_up` and `test_db_stop` convenience shortcuts.
+- `npm run build:api` is the canonical API build command.
 
-```text
-scripts/repo.py owns orchestration.
-root npm scripts are the canonical developer aliases.
-Makefile must not duplicate npm/repo.py commands.
-Makefile contains only test_db_up and test_db_stop.
-```
-
-Do not silently implement a result that contradicts the ticket text.
-
-Before merge, reconcile the Linear acceptance criteria so they state the final command policy. The intended replacement is conceptually:
-
-```text
-- Canonical API install/sync, lock, run, test, migration, and build commands are exposed through root npm scripts and/or scripts/repo.py and do not require shell activation.
-- Makefile does not duplicate root npm/repo.py commands.
-- Makefile may contain only Unix/WSL-only shortcuts that have no root npm alias, currently test_db_up and test_db_stop.
-- npm run build:api succeeds.
-```
-
-This plan records the requested architectural decision, but it does not itself mutate the Linear ticket.
+No further Linear reconciliation is required before merge.
 
 ---
 
