@@ -7,7 +7,7 @@
 | Project | `Payment portal` |
 | Ticket | `ANY-307` |
 | Validation date | `2026-08-28` |
-| Overall status | Step 1 and Step 2 complete; final verification reported passed; changes uncommitted per request |
+| Overall status | Step 1 and Step 2 complete; final verification reported passed |
 | Execution order | Sequential only: Step 1 → manual verification → commit → Step 2 → final verification → commit |
 | Steps / commits | 2 |
 | Primary scope | Poetry → uv migration for API dependency management and all executable Poetry consumers |
@@ -1062,7 +1062,7 @@ chore(api): migrate dependency management to uv
 # Step 2 — Reconcile documentation and final migration evidence
 
 **Status:** `done`
-**Commit:** `Not committed (per request)`
+**Commit:** `docs(tooling): document canonical uv workflow`
 
 ## Prompt
 
