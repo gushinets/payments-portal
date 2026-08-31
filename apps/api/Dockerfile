@@ -5,15 +5,15 @@ ENV PYTHONUNBUFFERED=1
 ENV VIRTUAL_ENV=/opt/api-venv
 ENV PATH="/opt/api-venv/bin:$PATH"
 
-FROM ghcr.io/astral-sh/uv:0.12.7@sha256:95f2aa1fe59274951cfe9b0cbc7972e879ff1004bc8945d130a32eb0dbd85945 AS uv-source
-
-FROM base AS dependency-builder
-
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get upgrade --yes --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+
+FROM ghcr.io/astral-sh/uv:0.12.7@sha256:95f2aa1fe59274951cfe9b0cbc7972e879ff1004bc8945d130a32eb0dbd85945 AS uv-source
+
+FROM base AS dependency-builder
 
 ENV UV_PROJECT_ENVIRONMENT=/opt/api-venv
 ENV UV_PYTHON_DOWNLOADS=never

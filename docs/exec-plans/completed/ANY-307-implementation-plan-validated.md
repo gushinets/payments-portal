@@ -1338,10 +1338,11 @@ Recorded on 2026-08-28 from the committed Step 1 implementation:
   `postgres` service, its worktree-specific project and mapped port, and
   Compose health waiting. `repo.py` starts/stops only that server service and
   pytest owns the physical `_tests` database lifecycle.
-- CI syncs host API dependencies in `quality` and `production-gate`. Both
-  validate `apps/api/uv.lock` before a locked dev sync into the repository-root
-  `.venv`. The browser job's unused host API dependency installation was
-  removed; `harness-smoke` does not sync API dependencies.
+- CI syncs host API dependencies in `quality`, `production-gate`, and `browser`.
+  Each validates `apps/api/uv.lock` before a locked sync into the
+  repository-root `.venv`. The browser E2E suite has a host-side API Python
+  fixture and therefore requires the canonical repository-root `.venv`;
+  `harness-smoke` does not sync API dependencies.
 - Dependabot's API Python ecosystem is `uv`; its schedule, grouping, commit
   prefix, other ecosystems, and Trivy/security policy remain unchanged.
 

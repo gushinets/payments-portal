@@ -463,14 +463,16 @@ def test_dotenv_discovery_starts_from_settings_module_tree(
 def test_api_test_tooling_stays_out_of_main_dependencies() -> None:
     pyproject = tomllib.loads((API_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     project = pyproject["project"]
-    main_dependencies = set(project["dependencies"])
-    dev_dependencies = set(pyproject["dependency-groups"]["dev"])
+
+    def package_name(dependency: str) -> str:
+        return dependency.split("==", 1)[0].split("[", 1)[0]
+
+    main_dependencies = {package_name(dependency) for dependency in project["dependencies"]}
+    dev_dependencies = {package_name(dependency) for dependency in pyproject["dependency-groups"]["dev"]}
     test_tooling = {"httpx2", "polyfactory", "pytest", "pytest-cov", "ruff"}
 
     assert test_tooling.isdisjoint(main_dependencies)
-    assert {dependency.split("==", 1)[0] for dependency in test_tooling} == {
-        dependency.split("==", 1)[0] for dependency in dev_dependencies
-    }
+    assert test_tooling == dev_dependencies
 
 
 def test_api_project_preserves_python_and_direct_dependency_versions() -> None:

@@ -1698,13 +1698,13 @@ def reexec_in_repository_venv_if_required() -> None:
     }:
         return
     python = (
-        ROOT / ".venv" / "Scripts" / "python.exe"
+        REPOSITORY_VENV / "Scripts" / "python.exe"
         if os.name == "nt"
-        else ROOT / ".venv" / "bin" / "python"
+        else REPOSITORY_VENV / "bin" / "python"
     )
     if not python.exists():
         return
-    if Path(sys.executable).resolve() == python.resolve():
+    if Path(sys.prefix).resolve() == REPOSITORY_VENV.resolve():
         return
     result = subprocess.run(
         [str(python), str(Path(__file__).resolve()), *sys.argv[1:]],
