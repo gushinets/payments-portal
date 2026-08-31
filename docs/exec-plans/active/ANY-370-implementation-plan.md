@@ -7,7 +7,7 @@
 | Project | `Payment portal` |
 | Ticket | `ANY-370` |
 | Linear status | `In Progress` |
-| Overall implementation status | `todo` |
+| Overall implementation status | `done` |
 | Execution order | Sequential only: Step 1 → manual verification → commit → Step 2 → manual verification → commit → Step 3 → manual verification → commit → Step 4 |
 | Steps / commits | 4 |
 | Database migration | Not required |
@@ -1098,7 +1098,7 @@ done
 
 # Step 3 — Make checkout use the backend catalog offer
 
-**Status:** `todo`  
+**Status:** `done`
 **Commit:** `fix(checkout): use backend catalog offer`  
 **Depends on:** Step 2 completed, manually verified, and committed.
 
@@ -1469,7 +1469,7 @@ done
 
 # Step 4 — Remove remaining hardcoded catalog authority from account and production UI
 
-**Status:** `todo`  
+**Status:** `done`
 **Commit:** `refactor(account): remove hardcoded catalog authority`  
 **Depends on:** Step 3 completed, manually verified, and committed.
 
