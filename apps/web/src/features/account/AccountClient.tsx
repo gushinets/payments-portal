@@ -403,7 +403,7 @@ export function AccountClient() {
               const failedToLoad = failedProductCodes.has(product.code);
               const productLoading = loadingProductCodes.has(product.code);
               const canOfferPurchase =
-                subscriptionStatus === "loaded" || isPending || failedToLoad;
+                subscriptionStatus === "loaded" && !isActive;
 
               return (
                 <article className="tool-card" key={product.code}>

@@ -1,4 +1,4 @@
-import { HttpResponse, delay, http, type JsonBodyType } from "msw";
+import { HttpResponse, http, type JsonBodyType } from "msw";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
@@ -512,11 +512,42 @@ it("handles a subscription decoder failure without enabling purchase", async () 
 
 it("does not expose purchase while subscriptions are loading", async () => {
   storeSessionToken("session-token");
+  let resolveSubscriptions!: () => void;
+  const subscriptionsPending = new Promise<void>((resolve) => {
+    resolveSubscriptions = resolve;
+  });
   server.use(
     http.get(`${apiBase}/api/account/subscriptions`, async () => {
-      await delay(100);
+      await subscriptionsPending;
       return HttpResponse.json({ subscriptions: [] });
     }),
+    http.get(`${apiBase}/api/auth/session`, ({ request }) => {
+      const productCode = new URL(request.url).searchParams.get("product");
+      return HttpResponse.json(
+        productCode === "document-summary"
+          ? sessionPayload(productSessionState(productCode, "pending"))
+          : sessionPayload()
+      );
+    })
+  );
+
+  render(<AccountClient />);
+
+  await screen.findByRole("heading", { name: "Document Summary" });
+  const card = productCard("Document Summary");
+  expect(await card.findByText("Платёж ожидает подтверждения")).toBeVisible();
+  expect(
+    card.queryByRole("link", { name: /Оформить/ })
+  ).not.toBeInTheDocument();
+
+  await act(async () => {
+    resolveSubscriptions();
+  });
+});
+
+it("offers purchase after subscriptions load without a current entitlement", async () => {
+  storeSessionToken("session-token");
+  server.use(
     http.get(`${apiBase}/api/auth/session`, () =>
       HttpResponse.json(sessionPayload())
     )
@@ -524,13 +555,37 @@ it("does not expose purchase while subscriptions are loading", async () => {
 
   render(<AccountClient />);
 
-  const card = await screen.findByRole("heading", { name: "Document Summary" });
-  expect(card.closest("article")).not.toBeNull();
-  expect(
-    within(card.closest("article") as HTMLElement).queryByRole("link", {
-      name: /Оформить/
+  await screen.findByRole("heading", { name: "Document Summary" });
+  const card = productCard("Document Summary");
+  expect(await card.findByText("Подписка не активна")).toBeVisible();
+  expect(card.getByRole("link", { name: /Оформить/ })).toBeVisible();
+});
+
+it("does not expose purchase when subscriptions and product state both fail", async () => {
+  storeSessionToken("session-token");
+  server.use(
+    http.get(
+      `${apiBase}/api/account/subscriptions`,
+      () => new HttpResponse(null, { status: 500 })
+    ),
+    http.get(`${apiBase}/api/auth/session`, ({ request }) => {
+      const productCode = new URL(request.url).searchParams.get("product");
+      return productCode
+        ? new HttpResponse(null, { status: 504 })
+        : HttpResponse.json(sessionPayload());
     })
-  ).not.toBeInTheDocument();
+  );
+
+  render(<AccountClient />);
+
+  expect(
+    await screen.findByText(
+      "Не удалось проверить текущие подписки. Статус доступа временно недоступен."
+    )
+  ).toBeVisible();
+  const card = productCard("Document Summary");
+  expect(await card.findByText("Статус подписки не загружен")).toBeVisible();
+  expect(card.queryByRole("link", { name: /Оформить/ })).not.toBeInTheDocument();
 });
 
 it("keeps base session failure as a fatal account error", async () => {
