@@ -60,6 +60,12 @@ def test_api_image_commands_do_not_run_migrations() -> None:
     assert all("uvicorn" in command for command in commands)
 
 
+def test_dockerignore_excludes_nested_virtualenvs() -> None:
+    patterns = (ROOT / ".dockerignore").read_text(encoding="utf-8").splitlines()
+
+    assert "**/.venv" in patterns
+
+
 def test_production_gate_migrates_database_before_api_smoke(tmp_path: Path) -> None:
     workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
     steps = workflow["jobs"]["production-gate"]["steps"]
