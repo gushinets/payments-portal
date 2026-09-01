@@ -1,5 +1,4 @@
 "use client";
-
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -39,7 +38,7 @@ import {
   CheckoutAdapterStatus,
   getCheckoutAdapter
 } from "./provider-adapters";
-
+import { useCheckoutOwnership } from "./ownership";
 type CheckoutIntentResponse = {
   product_state: AuthProductState;
   checkout: {
@@ -49,7 +48,6 @@ type CheckoutIntentResponse = {
     action: CheckoutAction;
   };
 };
-
 type RequiredDocument = {
   document_version_id: string;
   doc_type: string;
@@ -59,14 +57,11 @@ type RequiredDocument = {
   acceptance_text: string;
   acceptance_text_hash: string;
 };
-
 type AcceptDocumentResponse = {
   acceptance_id?: unknown;
   doc_type?: unknown;
 };
-
 const telegramLoginUrl = process.env.NEXT_PUBLIC_TELEGRAM_LOGIN_URL ?? "";
-
 export function CheckoutClient({
   checkoutAdapterStatus = "disabled"
 }: {
@@ -101,6 +96,8 @@ export function CheckoutClient({
     useState("");
   const [sessionToken, setSessionToken] = useState("");
   const [sessionUser, setSessionUser] = useState<AuthUser | null>(null);
+  const [sessionResolved, setSessionResolved] = useState(false);
+  const ownershipState = useCheckoutOwnership(sessionResolved, sessionToken);
   const [productState, setProductState] = useState<AuthProductState | null>(
     null
   );
@@ -184,6 +181,7 @@ export function CheckoutClient({
   useEffect(() => {
     function syncStoredToken() {
       const storedToken = window.localStorage.getItem(sessionStorageKey) ?? "";
+      setSessionResolved(true);
       if (storedToken) {
         setSessionLoading(true);
         setSessionToken(storedToken);
@@ -729,7 +727,10 @@ export function CheckoutClient({
                     Откройте нужный сервис, чтобы увидеть тариф, бесплатный лимит и
                     перейти к оформлению.
                   </p>
-                  <ProductCards products={catalogProducts} />
+                  <ProductCards
+                    products={catalogProducts}
+                    ownershipState={ownershipState}
+                  />
                 </div>
               )}
             </div>

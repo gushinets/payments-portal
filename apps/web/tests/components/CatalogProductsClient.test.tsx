@@ -65,7 +65,8 @@ function subscriptionPayload(
         scope: {
           scope_type: "product",
           product_id: documentProductId,
-          bundle_id: null
+          bundle_id: null,
+          included_product_ids: []
         },
         status: "active",
         renewal_mode: "manual",
@@ -504,18 +505,49 @@ describe("subscription decoder dates", () => {
   });
 });
 
-it("does not allow bundle scope to grant product access", () => {
+it("allows a current containing bundle to grant product access", () => {
   const subscription = subscriptionPayload({
     scope: {
       scope_type: "bundle",
-      product_id: documentProductId,
-      bundle_id: "55555555-5555-4555-8555-555555555555"
+      product_id: null,
+      bundle_id: "55555555-5555-4555-8555-555555555555",
+      included_product_ids: [documentProductId]
+    }
+  }).subscriptions[0];
+
+  expect(
+    hasCurrentProductEntitlement(subscription, documentProductId)
+  ).toBe(true);
+});
+
+it("does not allow a current non-containing bundle to grant product access", () => {
+  const subscription = subscriptionPayload({
+    scope: {
+      scope_type: "bundle",
+      product_id: null,
+      bundle_id: "55555555-5555-4555-8555-555555555555",
+      included_product_ids: [optimizerProductId]
     }
   }).subscriptions[0];
 
   expect(
     hasCurrentProductEntitlement(subscription, documentProductId)
   ).toBe(false);
+});
+
+it("allows a current all-access entitlement to grant product access", () => {
+  const subscription = subscriptionPayload({
+    scope: {
+      scope_type: "all_access",
+      product_id: null,
+      bundle_id: null,
+      included_product_ids: []
+    }
+  }).subscriptions[0];
+
+  expect(
+    hasCurrentProductEntitlement(subscription, optimizerProductId)
+  ).toBe(true);
 });
 
 it("keeps subscription data scoped to the matching product", () => {

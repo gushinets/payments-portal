@@ -98,6 +98,9 @@ describe("CheckoutClient critical characterization", () => {
     server.use(
       http.get(`${apiBase}/api/catalog/products`, () =>
         HttpResponse.json(catalogResponse())
+      ),
+      http.get(`${apiBase}/api/account/subscriptions`, () =>
+        HttpResponse.json({ subscriptions: [] })
       )
     );
   });
@@ -288,6 +291,119 @@ describe("CheckoutClient critical characterization", () => {
     expect(screen.queryByRole("button", { name: "Оформить" })).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Включить автопродление")).not.toBeInTheDocument();
     expect(checkoutAttempts.count).toBe(0);
+  });
+
+  it("uses authenticated ownership in the product picker without a selected product", async () => {
+    setRouteSearchParams("");
+    storeSessionToken("session-token");
+    server.use(
+      http.get(`${apiBase}/api/auth/session`, () =>
+        HttpResponse.json({
+          authenticated: true,
+          user: sessionUser,
+          product_state: null
+        })
+      ),
+      http.get(`${apiBase}/api/account/subscriptions`, () =>
+        HttpResponse.json({
+          subscriptions: [
+            {
+              subscription_id: "44444444-4444-4444-8444-444444444444",
+              plan: {
+                plan_id: "33333333-3333-4333-8333-333333333333",
+                code: "document-summary-pro",
+                name: "Document Summary Pro",
+                billing_period: "month"
+              },
+              scope: {
+                scope_type: "product",
+                product_id: "11111111-1111-4111-8111-111111111111",
+                bundle_id: null,
+                included_product_ids: []
+              },
+              status: "active",
+              renewal_mode: "manual",
+              current_period: {
+                starts_at: "2026-08-01T00:00:00Z",
+                ends_at: "2026-10-01T00:00:00Z"
+              },
+              cancellation: {
+                cancel_requested_at: null,
+                canceled_at: null
+              },
+              entitlement_validity: {
+                status: "active",
+                valid_from: "2026-08-01T00:00:00Z",
+                valid_until: "2026-10-01T00:00:00Z"
+              }
+            }
+          ]
+        })
+      )
+    );
+
+    await renderCheckoutWithProviderStub();
+
+    const accessState = await screen.findByText("Доступ уже активен");
+    const card = accessState.closest("article");
+    expect(card).not.toBeNull();
+    expect(card).toHaveTextContent("Доступ уже активен");
+    expect(card).not.toHaveTextContent("Оформить");
+  });
+
+  it("withholds the product-picker purchase CTA while ownership is loading", async () => {
+    setRouteSearchParams("");
+    storeSessionToken("session-token");
+    server.use(
+      http.get(`${apiBase}/api/auth/session`, () =>
+        HttpResponse.json({
+          authenticated: true,
+          user: sessionUser,
+          product_state: null
+        })
+      ),
+      http.get(`${apiBase}/api/account/subscriptions`, async () => {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        return HttpResponse.json({ subscriptions: [] });
+      })
+    );
+
+    await renderCheckoutWithProviderStub();
+
+    await screen.findByRole("heading", { name: "Document Summary" });
+    expect(screen.getByText("Проверяем текущую подписку...")).toBeVisible();
+    expect(
+      screen.queryByRole("link", { name: /^Оформить$/ })
+    ).not.toBeInTheDocument();
+  });
+
+  it("withholds the product-picker purchase CTA when ownership loading fails", async () => {
+    setRouteSearchParams("");
+    storeSessionToken("session-token");
+    server.use(
+      http.get(`${apiBase}/api/auth/session`, () =>
+        HttpResponse.json({
+          authenticated: true,
+          user: sessionUser,
+          product_state: null
+        })
+      ),
+      http.get(
+        `${apiBase}/api/account/subscriptions`,
+        () => new HttpResponse(null, { status: 503 })
+      )
+    );
+
+    await renderCheckoutWithProviderStub();
+
+    expect(
+      await screen.findByText(
+        "Не удалось проверить текущие подписки. Оформление временно недоступно."
+      )
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("link", { name: /^Оформить$/ })
+    ).not.toBeInTheDocument();
   });
 
   it("blocks unauthenticated checkout before payment preparation", async () => {

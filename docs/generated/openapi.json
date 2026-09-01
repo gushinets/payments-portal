@@ -244,6 +244,14 @@
             ],
             "title": "Bundle Id"
           },
+          "included_product_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Included Product Ids",
+            "type": "array"
+          },
           "product_id": {
             "anyOf": [
               {
@@ -263,7 +271,8 @@
         "required": [
           "scope_type",
           "product_id",
-          "bundle_id"
+          "bundle_id",
+          "included_product_ids"
         ],
         "title": "AccountSubscriptionScopeResponse",
         "type": "object"

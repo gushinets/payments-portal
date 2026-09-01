@@ -5481,10 +5481,69 @@ def test_account_subscription_list_and_detail_response_shapes_are_unchanged() ->
     assert list_payload["subscriptions"][0] == detail_payload
     assert set(detail_payload) == ACCOUNT_SUBSCRIPTION_RESPONSE_KEYS
     assert set(detail_payload["plan"]) == {"plan_id", "code", "name", "billing_period"}
-    assert set(detail_payload["scope"]) == {"scope_type", "product_id", "bundle_id"}
+    assert set(detail_payload["scope"]) == {
+        "scope_type",
+        "product_id",
+        "bundle_id",
+        "included_product_ids",
+    }
+    assert detail_payload["scope"]["included_product_ids"] == []
     assert set(detail_payload["current_period"]) == {"starts_at", "ends_at"}
     assert set(detail_payload["cancellation"]) == {"cancel_requested_at", "canceled_at"}
     assert set(detail_payload["entitlement_validity"]) == {"status", "valid_from", "valid_until"}
+
+
+def test_account_subscription_projects_current_bundle_membership_product_ids() -> None:
+    now = datetime.now(timezone.utc)
+    with SessionLocal() as db:
+        user, session, _ = _add_account_subscription_user(
+            db,
+            email="account-subscription-bundle-projection@example.com",
+        )
+        bundle_plan = db.query(Plan).filter(Plan.code == "core-tools-bundle-pro-ru").one()
+        subscription = _add_account_subscription_row(
+            db,
+            user=user,
+            plan=bundle_plan,
+            now=now,
+        )
+        _add_account_entitlement_row(
+            db,
+            user=user,
+            plan=bundle_plan,
+            subscription=subscription,
+            status="active",
+            valid_from=now - timedelta(days=1),
+            valid_until=now + timedelta(days=29),
+            created_at=now,
+        )
+        membership_rows = (
+            db.query(BundleProduct)
+            .filter(
+                BundleProduct.bundle_id == bundle_plan.bundle_id,
+                BundleProduct.status == "active",
+                BundleProduct.valid_from <= now,
+                (BundleProduct.valid_to.is_(None) | (BundleProduct.valid_to > now)),
+            )
+            .all()
+        )
+        expected_product_ids = sorted(str(row.product_id) for row in membership_rows)
+        bundle_id = bundle_plan.bundle_id
+        db.commit()
+        user_id = user.id
+        session_id = session.id
+
+    with SessionLocal() as db:
+        user = db.get(User, user_id)
+        session = db.get(AuthSession, session_id)
+        response = list_account_subscriptions_route(current=(user, session), db=db)
+
+    assert len(response.subscriptions) == 1
+    scope = response.subscriptions[0].scope
+    assert scope.scope_type == "bundle"
+    assert scope.product_id is None
+    assert scope.bundle_id == bundle_id
+    assert [str(product_id) for product_id in scope.included_product_ids] == expected_product_ids
 
 
 def test_account_subscription_relevant_entitlement_precedence_is_unchanged() -> None:

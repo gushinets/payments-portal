@@ -93,7 +93,8 @@ function subscriptionPayload(
         scope: {
           scope_type: "product",
           product_id: productId,
-          bundle_id: null
+          bundle_id: null,
+          included_product_ids: []
         },
         status: "active",
         renewal_mode: "automatic",

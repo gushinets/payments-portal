@@ -728,6 +728,7 @@ scope:
   scope_type
   product_id
   bundle_id
+  included_product_ids
 
 status
 renewal_mode
@@ -759,12 +760,22 @@ Add one small shared frontend predicate used later by both catalog and account p
 It must return current access only when:
 
 ```text
-scope_type == "product"
-product_id matches the catalog product
 entitlement_validity.status == "active"
 valid_from <= now
 valid_until > now
 ```
+
+Then evaluate the entitlement scope:
+
+```text
+product -> scope.product_id matches the catalog product
+bundle -> catalog product ID exists in scope.included_product_ids
+all_access -> true
+```
+
+The authenticated subscriptions response projects `included_product_ids` from
+current `bundle_products` membership. Bundle and `all_access` offerings remain
+outside the catalog product-card surface.
 
 Invalid/missing dates must not grant access.
 
@@ -868,7 +879,7 @@ Responsibilities:
 3. check whether an existing session token is present;
 4. if no session token exists, render normal guest purchase actions;
 5. if a session token exists, fetch `/api/account/subscriptions`;
-6. map current direct-product entitlement state to catalog products;
+6. map current product, containing-bundle, and all-access entitlement state to catalog products;
 7. pass decoded data to `ProductCards`.
 
 Do not move checkout behavior into this component.
@@ -916,7 +927,7 @@ Subscriptions successfully loaded + no current entitlement:
 show normal purchase CTA
 ```
 
-Current direct-product entitlement:
+Current entitlement for the product (direct, containing bundle, or all-access):
 
 ```text
 show access/subscription state
@@ -1580,11 +1591,12 @@ once for the authenticated account.
 
 Use it to enrich product cards with subscription-specific data.
 
-Match direct product subscriptions by:
+Match subscriptions by the shared scope-aware ownership predicate:
 
 ```text
-scope.scope_type == "product"
-scope.product_id == catalogProduct.product_id
+product scope: scope.product_id == catalogProduct.product_id
+bundle scope: catalogProduct.product_id exists in scope.included_product_ids
+all_access scope: every catalog product is covered
 ```
 
 Use the shared current-entitlement predicate from Step 2.

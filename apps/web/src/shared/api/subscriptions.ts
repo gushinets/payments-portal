@@ -35,6 +35,7 @@ export type AccountSubscription = {
     scope_type: SubscriptionScopeType;
     product_id: string | null;
     bundle_id: string | null;
+    included_product_ids: string[];
   };
   status: SubscriptionStatus;
   renewal_mode: SubscriptionRenewalMode;
@@ -85,8 +86,6 @@ export function hasCurrentProductEntitlement(
   now = new Date()
 ): boolean {
   if (
-    subscription.scope.scope_type !== "product" ||
-    subscription.scope.product_id !== productId ||
     subscription.entitlement_validity.status !== "active" ||
     subscription.entitlement_validity.valid_from === null ||
     subscription.entitlement_validity.valid_until === null
@@ -98,13 +97,23 @@ export function hasCurrentProductEntitlement(
   const validFromMs = Date.parse(subscription.entitlement_validity.valid_from);
   const validUntilMs = Date.parse(subscription.entitlement_validity.valid_until);
 
-  return (
+  const isCurrent =
     Number.isFinite(nowMs) &&
     Number.isFinite(validFromMs) &&
     Number.isFinite(validUntilMs) &&
     validFromMs <= nowMs &&
-    validUntilMs > nowMs
-  );
+    validUntilMs > nowMs;
+  if (!isCurrent) {
+    return false;
+  }
+
+  if (subscription.scope.scope_type === "product") {
+    return subscription.scope.product_id === productId;
+  }
+  if (subscription.scope.scope_type === "bundle") {
+    return subscription.scope.included_product_ids.includes(productId);
+  }
+  return subscription.scope.scope_type === "all_access";
 }
 
 function decodeAccountSubscription(value: unknown): AccountSubscription {
@@ -169,7 +178,8 @@ function decodeScope(
   if (
     !isScopeType(value.scope_type) ||
     !isNullableString(value.product_id) ||
-    !isNullableString(value.bundle_id)
+    !isNullableString(value.bundle_id) ||
+    !isStringArray(value.included_product_ids)
   ) {
     throw new Error("invalid_subscription_scope");
   }
@@ -177,7 +187,8 @@ function decodeScope(
   return {
     scope_type: value.scope_type,
     product_id: value.product_id,
-    bundle_id: value.bundle_id
+    bundle_id: value.bundle_id,
+    included_product_ids: value.included_product_ids
   };
 }
 
@@ -231,6 +242,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isNullableString(value: unknown): value is string | null {
   return value === null || typeof value === "string";
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
 }
 
 function isSubscriptionStatus(value: unknown): value is SubscriptionStatus {
