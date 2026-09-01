@@ -48,16 +48,20 @@ export async function getCatalogProducts(): Promise<CatalogProductsResponse> {
     requestTimeoutMs
   );
 
-  const response = await fetch(`${resolveApiBase()}/api/catalog/products`, {
-    signal: controller.signal
-  }).finally(() => window.clearTimeout(timeoutId));
+  try {
+    const response = await fetch(`${resolveApiBase()}/api/catalog/products`, {
+      signal: controller.signal
+    });
 
-  if (!response.ok) {
-    throw new Error(`catalog_request_failed:${response.status}`);
+    if (!response.ok) {
+      throw new Error(`catalog_request_failed:${response.status}`);
+    }
+
+    const payload: unknown = await response.json();
+    return decodeCatalogProductsResponse(payload);
+  } finally {
+    window.clearTimeout(timeoutId);
   }
-
-  const payload: unknown = await response.json();
-  return decodeCatalogProductsResponse(payload);
 }
 
 function decodeCatalogProduct(value: unknown): CatalogProduct {

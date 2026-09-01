@@ -531,6 +531,12 @@ it("handles a subscription decoder failure without enabling purchase", async () 
   ).toBeVisible();
   await screen.findByRole("heading", { name: "Document Summary" });
   const card = productCard("Document Summary");
+  expect(
+    card.getByText("Статус подписки недоступен. Обновите страницу.")
+  ).toBeVisible();
+  expect(
+    card.queryByText("Проверяем текущую подписку...")
+  ).not.toBeInTheDocument();
   expect(card.queryByRole("link", { name: /Оформить/ })).not.toBeInTheDocument();
 });
 

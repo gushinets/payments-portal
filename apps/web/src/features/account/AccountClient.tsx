@@ -469,7 +469,9 @@ export function AccountClient() {
                       </Link>
                     ) : (
                       <div className="notice" role="status">
-                        Проверяем текущую подписку...
+                        {subscriptionStatus === "error"
+                          ? "Статус подписки недоступен. Обновите страницу."
+                          : "Проверяем текущую подписку..."}
                       </div>
                     )}
                   </div>

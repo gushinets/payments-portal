@@ -137,7 +137,7 @@ The backend `Product.description` remains part of the API and is used as a fallb
 
 `plan_limits` must not be used as a replacement for the existing free-tier marketing copy. The current paid plans contain limits of `1000`, which are purchased plan limits, not the hardcoded free-tier `3 / 50` copy currently shown by the portal.
 
-### API contract locked for ANY-370
+## API contract locked for ANY-370
 
 Introduce:
 

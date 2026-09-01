@@ -1,11 +1,13 @@
 import { HttpResponse, delay, http, type JsonBodyType } from "msw";
 import { render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   CatalogProductsClient,
   decodeCatalogProductsResponse,
-  formatCatalogPrice
+  formatCatalogPrice,
+  getCatalogProducts
 } from "@/features/catalog";
+import { requestTimeoutMs } from "@/shared/api/auth";
 import {
   decodeAccountSubscriptionsResponse,
   hasCurrentProductEntitlement,
@@ -333,6 +335,39 @@ it("does not send authorization for the public catalog request", async () => {
   render(<CatalogProductsClient />);
 
   expect(await screen.findByRole("heading", { name: "Document Summary" })).toBeVisible();
+});
+
+it("keeps the catalog timeout active while consuming the response body", async () => {
+  vi.useFakeTimers();
+  let requestSignal: AbortSignal | null | undefined;
+  let resolveBody: (value: unknown) => void = () => {};
+  const body = new Promise<unknown>((resolve) => {
+    resolveBody = resolve;
+  });
+  const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(
+    (_input, init) => {
+      requestSignal = init?.signal;
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => body
+      } as Response);
+    }
+  );
+
+  try {
+    const request = getCatalogProducts();
+
+    await vi.advanceTimersByTimeAsync(requestTimeoutMs);
+
+    expect(requestSignal?.aborted).toBe(true);
+    resolveBody({ products: [] });
+    await expect(request).resolves.toEqual({ products: [] });
+  } finally {
+    resolveBody({ products: [] });
+    fetchSpy.mockRestore();
+    vi.useRealTimers();
+  }
 });
 
 it("shows subscription loading and withholds the purchase CTA", async () => {
