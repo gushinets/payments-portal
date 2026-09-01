@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 
 from sqlalchemy.orm import Session
 
-from app.models import Bundle, Product
+from app.domains.billing.enums import PlanStatus, ProductStatus, SubscriptionScopeType
+from app.models import Bundle, Plan, Product
 
 
 def get_product_by_code(db: Session, *, tenant_id: str, code: str) -> Product | None:
@@ -13,6 +15,31 @@ def get_product_by_code(db: Session, *, tenant_id: str, code: str) -> Product | 
 
 def get_product_by_id(db: Session, product_id: uuid.UUID) -> Product | None:
     return db.get(Product, product_id)
+
+
+def list_sellable_product_offers(
+    db: Session,
+    *,
+    tenant_id: str,
+    region: str,
+    now: datetime,
+) -> list[tuple[Product, Plan]]:
+    return (
+        db.query(Product, Plan)
+        .join(Plan, Plan.product_id == Product.id)
+        .filter(
+            Product.tenant_id == tenant_id,
+            Product.status == ProductStatus.ACTIVE.value,
+            Plan.tenant_id == tenant_id,
+            Plan.region == region,
+            Plan.status == PlanStatus.ACTIVE.value,
+            Plan.scope_type == SubscriptionScopeType.PRODUCT.value,
+            Plan.valid_from <= now,
+            (Plan.valid_to.is_(None) | (Plan.valid_to > now)),
+        )
+        .order_by(Product.code.asc(), Plan.code.asc())
+        .all()
+    )
 
 
 def get_bundle_by_code(db: Session, *, tenant_id: str, code: str) -> Bundle | None:

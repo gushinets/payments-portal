@@ -1,6 +1,6 @@
 import { HttpResponse, http } from "msw";
 import { render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { setRouteSearchParams } from "../helpers/navigation";
 import { server } from "../setup/msw-server";
 import { PaymentResultClient } from "@/features/payment-result";
@@ -100,6 +100,29 @@ function lateSucceededPaymentOnCanceledOrderPayload() {
   };
 }
 
+function catalogProductsPayload() {
+  return {
+    products: [
+      {
+        product_id: "11111111-1111-4111-8111-111111111111",
+        code: "document-summary",
+        name: "Backend Document Summary",
+        description: "Backend description",
+        plan: {
+          plan_id: "33333333-3333-4333-8333-333333333333",
+          code: "document-summary-pro",
+          name: "Backend Document Summary Pro",
+          price_amount_minor: 123456,
+          currency: "RUB",
+          billing_period: "month",
+          renewal_mode: "manual",
+          trial_days: 7
+        }
+      }
+    ]
+  };
+}
+
 async function renderPollingResult(finalStatus: "active" | "failed") {
   let attempt = 0;
   const realSetInterval = window.setInterval.bind(window);
@@ -126,6 +149,14 @@ async function renderPollingResult(finalStatus: "active" | "failed") {
 }
 
 describe("PaymentResultClient authoritative status characterization", () => {
+  beforeEach(() => {
+    server.use(
+      http.get(`${apiBase}/api/catalog/products`, () =>
+        HttpResponse.json(catalogProductsPayload())
+      )
+    );
+  });
+
   it("keeps a spoofed success return URL pending without backend state", () => {
     setRouteSearchParams(
       "status=success&product=document-summary&email=buyer%40example.com"
@@ -238,22 +269,99 @@ describe("PaymentResultClient authoritative status characterization", () => {
     expect(screen.queryByText("Платёж подтверждён")).not.toBeInTheDocument();
   });
 
-  it("shows canceled URL fallback when backend payload is unavailable", () => {
-    const fetchSpy = vi.spyOn(globalThis, "fetch");
+  it("uses the backend catalog for canceled URL presentation fallback", async () => {
     setRouteSearchParams("status=canceled&product=document-summary");
 
-    try {
-      render(<PaymentResultClient />);
+    render(<PaymentResultClient />);
 
-      expect(
-        screen.getByRole("heading", { name: "Платёж отменён" })
-      ).toBeVisible();
-      expect(screen.getByText(/Списание не подтверждено/)).toBeVisible();
-      expect(screen.queryByText("Ожидаем подтверждение")).not.toBeInTheDocument();
-      expect(fetchSpy).not.toHaveBeenCalled();
-    } finally {
-      fetchSpy.mockRestore();
-    }
+    expect(
+      screen.getByRole("heading", { name: "Платёж отменён" })
+    ).toBeVisible();
+    expect(screen.getByText(/Списание не подтверждено/)).toBeVisible();
+    expect(await screen.findByText("Backend Document Summary")).toBeVisible();
+    const planCard = screen.getByText(/Backend Document Summary Pro/).closest(
+      ".feature-card"
+    );
+    expect(planCard).toHaveTextContent(/1\s234,56\s₽/);
+    expect(screen.queryByText("Ожидаем подтверждение")).not.toBeInTheDocument();
+  });
+
+  it("keeps payment amount authoritative over catalog price", async () => {
+    server.use(
+      http.get(`${apiBase}/api/auth/payment-status`, () =>
+        HttpResponse.json(canceledPaymentStatusPayload())
+      )
+    );
+    setRouteSearchParams(
+      "status=pending&product=document-summary&email=buyer%40example.com&invoice=invoice-result"
+    );
+
+    render(<PaymentResultClient />);
+
+    const planCard = (await screen.findByText(/Document Summary Pro/))
+      .closest(".feature-card");
+    expect(
+      await screen.findByRole("heading", { name: "Платёж отменён" })
+    ).toBeVisible();
+    expect(planCard).toHaveTextContent(/990\s₽/);
+    expect(planCard).not.toHaveTextContent(/1\s234,56\s₽/);
+  });
+
+  it("prefers the backend payment-status plan name over stored and catalog names", async () => {
+    window.sessionStorage.setItem(
+      "anytoolai_last_payment_result",
+      JSON.stringify({
+        status: "pending",
+        productCode: "document-summary",
+        planName: "Stale Stored Plan",
+        amount: 990,
+        currency: "RUB",
+        email: "buyer@example.com",
+        invoiceId: "invoice-result"
+      })
+    );
+    server.use(
+      http.get(`${apiBase}/api/auth/payment-status`, () =>
+        HttpResponse.json({
+          ...paymentStatusPayload("active"),
+          product_state: {
+            ...paymentStatusPayload("active").product_state,
+            plan_name: "Authoritative Backend Plan"
+          }
+        })
+      )
+    );
+    setRouteSearchParams(
+      "status=pending&product=document-summary&email=buyer%40example.com&invoice=invoice-result"
+    );
+
+    render(<PaymentResultClient />);
+
+    const planCard = await screen.findByText(/Authoritative Backend Plan/);
+    expect(planCard).toBeVisible();
+    expect(planCard).not.toHaveTextContent("Stale Stored Plan");
+    expect(planCard).not.toHaveTextContent("Backend Document Summary Pro");
+  });
+
+  it("keeps the safe fallback UI when the catalog cannot be loaded", async () => {
+    server.use(
+      http.get(
+        `${apiBase}/api/catalog/products`,
+        () => new HttpResponse(null, { status: 503 })
+      )
+    );
+    setRouteSearchParams("status=canceled&product=document-summary");
+
+    render(<PaymentResultClient />);
+
+    expect(
+      screen.getByRole("heading", { name: "Платёж отменён" })
+    ).toBeVisible();
+    expect(screen.getByText(/Списание не подтверждено/)).toBeVisible();
+    await waitFor(() => {
+      expect(screen.getByText("не выбран")).toBeVisible();
+      expect(screen.getByText("тариф не выбран")).toBeVisible();
+    });
   });
 
   it("keeps pending state when payment-status polling aborts", async () => {

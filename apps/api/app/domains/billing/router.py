@@ -23,6 +23,7 @@ from app.infrastructure.queries.subscriptions import (
     get_relevant_entitlement_for_subscription,
     list_relevant_entitlements_for_subscriptions,
     list_account_subscriptions,
+    list_current_bundle_product_ids,
 )
 from app.models import AuthSession, Entitlement, Plan, Subscription, User
 
@@ -40,6 +41,7 @@ class AccountSubscriptionScopeResponse(BaseModel):
     scope_type: SubscriptionScopeType
     product_id: uuid.UUID | None
     bundle_id: uuid.UUID | None
+    included_product_ids: list[uuid.UUID]
 
 
 class AccountSubscriptionCurrentPeriodResponse(BaseModel):
@@ -78,6 +80,7 @@ def present_loaded_account_subscription(
     subscription: Subscription,
     plan: Plan,
     entitlement: Entitlement | None,
+    included_product_ids: list[uuid.UUID] | None = None,
 ) -> AccountSubscriptionResponse:
     return AccountSubscriptionResponse(
         subscription_id=subscription.id,
@@ -91,6 +94,7 @@ def present_loaded_account_subscription(
             scope_type=SubscriptionScopeType(subscription.scope_type),
             product_id=subscription.product_id,
             bundle_id=subscription.bundle_id,
+            included_product_ids=included_product_ids or [],
         ),
         status=SubscriptionStatus(subscription.status),
         renewal_mode=SubscriptionRenewalMode(subscription.renewal_mode),
@@ -121,8 +125,20 @@ def present_account_subscription(
     if plan is None:
         raise HTTPException(status_code=500, detail={"code": "subscription_plan_missing"})
 
-    entitlement = entitlement or get_relevant_entitlement_for_subscription(db, subscription.id, now=utc_now())
-    return present_loaded_account_subscription(subscription=subscription, plan=plan, entitlement=entitlement)
+    now = utc_now()
+    entitlement = entitlement or get_relevant_entitlement_for_subscription(db, subscription.id, now=now)
+    included_product_ids_by_bundle = list_current_bundle_product_ids(
+        db,
+        tenant_id=subscription.tenant_id,
+        bundle_ids={subscription.bundle_id} if subscription.bundle_id is not None else set(),
+        now=now,
+    )
+    return present_loaded_account_subscription(
+        subscription=subscription,
+        plan=plan,
+        entitlement=entitlement,
+        included_product_ids=included_product_ids_by_bundle.get(subscription.bundle_id, []),
+    )
 
 
 @router.get("/subscriptions", response_model=AccountSubscriptionsResponse)
@@ -141,13 +157,20 @@ def list_subscriptions(
     plans_by_id = {
         plan.id: plan for plan in list_plans_by_ids(db, tenant_id=user.tenant_id, region=user.region, plan_ids=plan_ids)
     }
+    now = utc_now()
     entitlements_by_subscription_id = list_relevant_entitlements_for_subscriptions(
         db,
         tenant_id=user.tenant_id,
         region=user.region,
         user_id=user.id,
         subscription_ids={subscription.id for subscription in subscriptions},
-        now=utc_now(),
+        now=now,
+    )
+    included_product_ids_by_bundle = list_current_bundle_product_ids(
+        db,
+        tenant_id=user.tenant_id,
+        bundle_ids={subscription.bundle_id for subscription in subscriptions if subscription.bundle_id is not None},
+        now=now,
     )
     presented_subscriptions: list[AccountSubscriptionResponse] = []
     for subscription in subscriptions:
@@ -159,6 +182,7 @@ def list_subscriptions(
                 subscription=subscription,
                 plan=plan,
                 entitlement=entitlements_by_subscription_id.get(subscription.id),
+                included_product_ids=included_product_ids_by_bundle.get(subscription.bundle_id, []),
             )
         )
     return AccountSubscriptionsResponse(subscriptions=presented_subscriptions)
