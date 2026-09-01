@@ -266,6 +266,7 @@ export function PaymentResultClient() {
     (hasResultParams ? stored.invoiceId : undefined) ??
     "";
   const planName =
+    paymentStatusPayload?.product_state.plan_name ??
     (hasResultParams ? stored.planName : undefined) ??
     catalogProduct?.plan.name ??
     "тариф не выбран";

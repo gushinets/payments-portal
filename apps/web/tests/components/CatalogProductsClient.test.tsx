@@ -134,7 +134,7 @@ it("renders products and commercial fields from the catalog API", async () => {
   expect(screen.getByText(/1\s250\s₽/)).toBeVisible();
   expect(screen.getByText("Продление: автоматически")).toBeVisible();
   expect(screen.getByText("14 дней бесплатно")).toBeVisible();
-  expect(screen.getByRole("link", { name: /Оформить/ })).toHaveAttribute(
+  expect(await screen.findByRole("link", { name: /Оформить/ })).toHaveAttribute(
     "href",
     "/ru/auth-checkout?product=document-summary"
   );
@@ -169,7 +169,7 @@ it("does not require the old hardcoded product list", async () => {
   expect(
     screen.getByText("Description from a product unknown to the RU map")
   ).toBeVisible();
-  expect(screen.getByRole("link", { name: /Оформить/ })).toBeVisible();
+  expect(await screen.findByRole("link", { name: /Оформить/ })).toBeVisible();
 });
 
 it("uses a generic presentation for an unknown product code", async () => {
@@ -186,7 +186,7 @@ it("uses a generic presentation for an unknown product code", async () => {
   render(<CatalogProductsClient />);
 
   expect(await screen.findByRole("heading", { name: "Unknown Product" })).toBeVisible();
-  expect(screen.getByRole("link", { name: /Оформить/ })).toBeVisible();
+  expect(await screen.findByRole("link", { name: /Оформить/ })).toBeVisible();
   expect(screen.queryByText("3 summary в месяц")).not.toBeInTheDocument();
 });
 

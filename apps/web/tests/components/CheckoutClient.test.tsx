@@ -389,6 +389,9 @@ describe("CheckoutClient critical characterization", () => {
           : "All Access Pro"
       );
       expect(subscriptionState).not.toHaveTextContent(/990\s₽/);
+      expect(subscriptionState).not.toHaveTextContent(
+        "Бесплатный лимит: 3 summary в месяц"
+      );
       expect(screen.queryByRole("button", { name: /^Оплатить/ })).not.toBeInTheDocument();
       expect(screen.queryByLabelText("Включить автопродление")).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "Оформить" })).not.toBeInTheDocument();

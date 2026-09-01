@@ -298,13 +298,49 @@ describe("PaymentResultClient authoritative status characterization", () => {
 
     render(<PaymentResultClient />);
 
-    const planCard = (await screen.findByText(/Backend Document Summary Pro/))
+    const planCard = (await screen.findByText(/Document Summary Pro/))
       .closest(".feature-card");
     expect(
       await screen.findByRole("heading", { name: "Платёж отменён" })
     ).toBeVisible();
     expect(planCard).toHaveTextContent(/990\s₽/);
     expect(planCard).not.toHaveTextContent(/1\s234,56\s₽/);
+  });
+
+  it("prefers the backend payment-status plan name over stored and catalog names", async () => {
+    window.sessionStorage.setItem(
+      "anytoolai_last_payment_result",
+      JSON.stringify({
+        status: "pending",
+        productCode: "document-summary",
+        planName: "Stale Stored Plan",
+        amount: 990,
+        currency: "RUB",
+        email: "buyer@example.com",
+        invoiceId: "invoice-result"
+      })
+    );
+    server.use(
+      http.get(`${apiBase}/api/auth/payment-status`, () =>
+        HttpResponse.json({
+          ...paymentStatusPayload("active"),
+          product_state: {
+            ...paymentStatusPayload("active").product_state,
+            plan_name: "Authoritative Backend Plan"
+          }
+        })
+      )
+    );
+    setRouteSearchParams(
+      "status=pending&product=document-summary&email=buyer%40example.com&invoice=invoice-result"
+    );
+
+    render(<PaymentResultClient />);
+
+    const planCard = await screen.findByText(/Authoritative Backend Plan/);
+    expect(planCard).toBeVisible();
+    expect(planCard).not.toHaveTextContent("Stale Stored Plan");
+    expect(planCard).not.toHaveTextContent("Backend Document Summary Pro");
   });
 
   it("keeps the safe fallback UI when the catalog cannot be loaded", async () => {

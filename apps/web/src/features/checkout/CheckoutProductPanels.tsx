@@ -140,8 +140,12 @@ export function SubscriptionState({
           )} / {formatBillingPeriod(product.plan.billing_period)}
         </>
       ) : null}
-      <br />
-      Бесплатный лимит: {presentation?.freeLimit ?? "—"}
+      {accessState.status !== "owned" ? (
+        <>
+          <br />
+          Бесплатный лимит: {presentation?.freeLimit ?? "—"}
+        </>
+      ) : null}
       {expiresAt ? (
         <>
           <br />
