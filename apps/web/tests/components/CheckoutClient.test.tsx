@@ -92,7 +92,10 @@ function sessionResponse(status: "inactive" | "pending" | "active" | "failed") {
   };
 }
 
-function subscriptionResponse(scope: Record<string, unknown>) {
+function subscriptionResponse(
+  scope: Record<string, unknown>,
+  planName = "Document Summary Pro"
+) {
   const now = Date.now();
 
   return {
@@ -102,7 +105,7 @@ function subscriptionResponse(scope: Record<string, unknown>) {
         plan: {
           plan_id: "33333333-3333-4333-8333-333333333333",
           code: "document-summary-pro",
-          name: "Document Summary Pro",
+          name: planName,
           billing_period: "month"
         },
         scope,
@@ -356,7 +359,14 @@ describe("CheckoutClient critical characterization", () => {
           HttpResponse.json(sessionResponse("inactive"))
         ),
         http.get(`${apiBase}/api/account/subscriptions`, () =>
-          HttpResponse.json(subscriptionResponse(scope))
+          HttpResponse.json(
+            subscriptionResponse(
+              scope,
+              scope.scope_type === "bundle"
+                ? "Core Tools Bundle Pro"
+                : "All Access Pro"
+            )
+          )
         ),
         http.post(`${apiBase}/api/auth/checkout-intent`, () => {
           checkoutAttempts.count += 1;
@@ -370,6 +380,15 @@ describe("CheckoutClient critical characterization", () => {
       expect(
         await screen.findByRole("link", { name: /Перейти в аккаунт/ })
       ).toBeVisible();
+      const subscriptionState = screen.getByRole("heading", {
+        name: "2. Статус подписки"
+      }).nextElementSibling;
+      expect(subscriptionState).toHaveTextContent(
+        scope.scope_type === "bundle"
+          ? "Core Tools Bundle Pro"
+          : "All Access Pro"
+      );
+      expect(subscriptionState).not.toHaveTextContent(/990\s₽/);
       expect(screen.queryByRole("button", { name: /^Оплатить/ })).not.toBeInTheDocument();
       expect(screen.queryByLabelText("Включить автопродление")).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "Оформить" })).not.toBeInTheDocument();
@@ -426,6 +445,7 @@ describe("CheckoutClient critical characterization", () => {
   it("uses authenticated ownership in the product picker without a selected product", async () => {
     setRouteSearchParams("");
     storeSessionToken("session-token");
+    const now = Date.now();
     server.use(
       http.get(`${apiBase}/api/auth/session`, () =>
         HttpResponse.json({
@@ -463,8 +483,8 @@ describe("CheckoutClient critical characterization", () => {
               },
               entitlement_validity: {
                 status: "active",
-                valid_from: "2026-08-01T00:00:00Z",
-                valid_until: "2026-10-01T00:00:00Z"
+                valid_from: new Date(now - 86400000).toISOString(),
+                valid_until: new Date(now + 86400000 * 30).toISOString()
               }
             }
           ]

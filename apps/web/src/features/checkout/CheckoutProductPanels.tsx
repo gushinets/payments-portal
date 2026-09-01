@@ -131,11 +131,15 @@ export function SubscriptionState({
       <strong style={{ color: "var(--txt)" }}>{planName}</strong>
       <br />
       Статус: {statusText}
-      <br />
-      Стоимость: {formatCatalogPrice(
-        product.plan.price_amount_minor,
-        product.plan.currency
-      )} / {formatBillingPeriod(product.plan.billing_period)}
+      {accessState.status !== "owned" ? (
+        <>
+          <br />
+          Стоимость: {formatCatalogPrice(
+            product.plan.price_amount_minor,
+            product.plan.currency
+          )} / {formatBillingPeriod(product.plan.billing_period)}
+        </>
+      ) : null}
       <br />
       Бесплатный лимит: {presentation?.freeLimit ?? "—"}
       {expiresAt ? (

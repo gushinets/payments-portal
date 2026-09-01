@@ -240,6 +240,7 @@ test("dynamic catalog exposes semantic loading and error states", async ({ page 
 });
 
 test("authenticated catalog ownership suppresses the purchase CTA", async ({ page }) => {
+  const now = Date.now();
   await page.addInitScript(() => {
     window.localStorage.setItem("anytoolai_session_token_v1", "owned-session");
   });
@@ -299,8 +300,8 @@ test("authenticated catalog ownership suppresses the purchase CTA", async ({ pag
             },
             entitlement_validity: {
               status: "active",
-              valid_from: "2026-08-01T00:00:00Z",
-              valid_until: "2026-10-01T00:00:00Z"
+              valid_from: new Date(now - 86_400_000).toISOString(),
+              valid_until: new Date(now + 30 * 86_400_000).toISOString()
             }
           }
         ]

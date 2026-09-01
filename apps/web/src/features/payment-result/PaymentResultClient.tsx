@@ -4,7 +4,12 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ArrowLeft, Clock3, Mail, ShieldCheck, Undo2 } from "lucide-react";
-import { formatRubles, supportEmail } from "@/features/catalog";
+import {
+  formatRubles,
+  getCatalogProducts,
+  supportEmail,
+  type CatalogProduct
+} from "@/features/catalog";
 
 type StoredPaymentResult = {
   status?: string;
@@ -173,6 +178,9 @@ function formatMinorCurrency(value: number, currency: string): string {
 export function PaymentResultClient() {
   const searchParams = useSearchParams();
   const [stored, setStored] = useState<StoredPaymentResult>({});
+  const [catalogProduct, setCatalogProduct] = useState<CatalogProduct | null>(
+    null
+  );
   const [paymentStatusPayload, setPaymentStatusPayload] =
     useState<PaymentStatusResponse | null>(null);
   const [statusLoading, setStatusLoading] = useState(false);
@@ -199,6 +207,52 @@ export function PaymentResultClient() {
     searchParams.has("status") ||
     searchParams.has("email") ||
     searchParams.has("invoice");
+  const productCode =
+    searchParams.get("product") ??
+    (hasResultParams ? stored.productCode : undefined);
+
+  useEffect(() => {
+    if (
+      !productCode ||
+      (stored.productName &&
+        stored.planName &&
+        stored.amount !== undefined &&
+        stored.currency)
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+    void getCatalogProducts()
+      .then((response) => {
+        if (cancelled) {
+          return;
+        }
+
+        const matchingProducts = response.products.filter(
+          (product) => product.code === productCode
+        );
+        setCatalogProduct(
+          matchingProducts.length === 1 ? matchingProducts[0] : null
+        );
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setCatalogProduct(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    productCode,
+    stored.amount,
+    stored.currency,
+    stored.planName,
+    stored.productName
+  ]);
+
   const status =
     searchParams.get("status") ??
     (hasResultParams ? stored.status : undefined) ??
@@ -213,6 +267,7 @@ export function PaymentResultClient() {
     "";
   const planName =
     (hasResultParams ? stored.planName : undefined) ??
+    catalogProduct?.plan.name ??
     "тариф не выбран";
   const paymentAmountMinor =
     paymentStatusPayload?.payment?.amount_minor ??
@@ -224,9 +279,16 @@ export function PaymentResultClient() {
     paymentAmountMinor !== undefined
       ? paymentAmountMinor / 100
       : hasResultParams
-        ? stored.amount
+        ? stored.amount ??
+          (catalogProduct
+            ? catalogProduct.plan.price_amount_minor / 100
+            : undefined)
         : undefined;
-  const currency = paymentCurrency ?? stored.currency ?? "RUB";
+  const currency =
+    paymentCurrency ??
+    stored.currency ??
+    catalogProduct?.plan.currency ??
+    "RUB";
   const effectiveStatus = status;
 
   useEffect(() => {
@@ -385,7 +447,9 @@ export function PaymentResultClient() {
           <div className="feature-card">
             <strong>Продукт</strong>
             <p className="card-copy">
-              {(hasResultParams ? stored.productName : undefined) ?? "не выбран"}
+              {(hasResultParams ? stored.productName : undefined) ??
+                catalogProduct?.name ??
+                "не выбран"}
             </p>
           </div>
           <div className="feature-card">

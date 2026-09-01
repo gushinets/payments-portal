@@ -1864,9 +1864,11 @@ and authenticated subscription/access presentation is:
 ```text
 GET /api/account/subscriptions
         ↓
-scope.product_id
-        +
 current entitlement validity
+        +
+product scope -> matching product_id
+bundle scope -> product_id in included_product_ids
+all_access -> all catalog products
         ↓
 catalog/account subscription presentation
 ```
@@ -1911,4 +1913,20 @@ No CloudPayments changes exist.
 No Account API from ANY-302 was implemented.
 
 No duplicate-order behavior from ANY-369 was implemented.
+
 ```
+
+## Final validation evidence
+
+Final review-fix validation completed on 2026-09-01:
+
+```text
+npm --workspace @anytoolai/web run test:components -- tests/components/PaymentResultClient.test.tsx
+  14 tests passed
+
+npm --workspace @anytoolai/web run test:components -- tests/components/CheckoutClient.test.tsx
+  32 tests passed
+```
+
+The broader component suite, web typecheck, and `check:fast` were not run in
+this final-fix pass; the manual commands remain the handoff validation below.
