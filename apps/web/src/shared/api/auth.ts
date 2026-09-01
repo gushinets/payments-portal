@@ -62,6 +62,9 @@ export class ApiError extends Error {
   }
 }
 
+export const sessionStorageKey = "anytoolai_session_token_v1";
+export const sessionChangedEvent = "anytoolai_session_changed";
+
 const configuredApiBase =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 export const requestTimeoutMs = 5000;

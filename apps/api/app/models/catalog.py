@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.domains.billing.enums import PlanStatus, ProductStatus
 from app.models._shared import (
     Base,
     CheckConstraint,
@@ -42,7 +43,7 @@ class Product(Base):
     platform_product_id: Mapped[str] = mapped_column(Text, nullable=False)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    status: Mapped[str] = mapped_column(Text, nullable=False, default="active", index=True)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default=ProductStatus.ACTIVE.value, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -134,8 +135,8 @@ class Plan(Base):
             "region",
             "code",
             unique=True,
-            postgresql_where=text("status = 'active' AND valid_to IS NULL"),
-            sqlite_where=text("status = 'active' AND valid_to IS NULL"),
+            postgresql_where=text(f"status = '{PlanStatus.ACTIVE.value}' AND valid_to IS NULL"),
+            sqlite_where=text(f"status = '{PlanStatus.ACTIVE.value}' AND valid_to IS NULL"),
         ),
     )
 
@@ -152,7 +153,7 @@ class Plan(Base):
     billing_period: Mapped[str] = mapped_column(Text, nullable=False)
     renewal_mode: Mapped[str] = mapped_column(Text, nullable=False, default="manual")
     trial_days: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    status: Mapped[str] = mapped_column(Text, nullable=False, default="active", index=True)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default=PlanStatus.ACTIVE.value, index=True)
     valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     valid_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     metadata_: Mapped[dict] = mapped_column("metadata", json_type, nullable=False, default=dict)

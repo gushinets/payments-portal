@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import case, func
+from sqlalchemy import case, func, or_
 from sqlalchemy.orm import Session
 
 from app.domains.billing.enums import (
@@ -11,7 +11,7 @@ from app.domains.billing.enums import (
     SubscriptionEventType,
     SubscriptionStatus,
 )
-from app.models import Entitlement, Subscription, SubscriptionEvent
+from app.models import BundleProduct, Entitlement, Subscription, SubscriptionEvent
 
 
 def get_subscription_by_id(db: Session, subscription_id: uuid.UUID, *, for_update: bool = False) -> Subscription | None:
@@ -50,6 +50,34 @@ def list_account_subscriptions(db: Session, *, tenant_id: str, region: str, user
         .order_by(Subscription.current_period_end.desc(), Subscription.created_at.desc())
         .all()
     )
+
+
+def list_current_bundle_product_ids(
+    db: Session,
+    *,
+    tenant_id: str,
+    bundle_ids: set[uuid.UUID],
+    now: datetime,
+) -> dict[uuid.UUID, list[uuid.UUID]]:
+    if not bundle_ids:
+        return {}
+
+    rows = (
+        db.query(BundleProduct.bundle_id, BundleProduct.product_id)
+        .filter(
+            BundleProduct.tenant_id == tenant_id,
+            BundleProduct.bundle_id.in_(bundle_ids),
+            BundleProduct.status == "active",
+            BundleProduct.valid_from <= now,
+            or_(BundleProduct.valid_to.is_(None), BundleProduct.valid_to > now),
+        )
+        .order_by(BundleProduct.bundle_id.asc(), BundleProduct.product_id.asc())
+        .all()
+    )
+    product_ids_by_bundle: dict[uuid.UUID, list[uuid.UUID]] = {}
+    for bundle_id, product_id in rows:
+        product_ids_by_bundle.setdefault(bundle_id, []).append(product_id)
+    return product_ids_by_bundle
 
 
 def get_subscription_event_by_operation_key(db: Session, key: str) -> SubscriptionEvent | None:

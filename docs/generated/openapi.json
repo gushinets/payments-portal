@@ -244,6 +244,14 @@
             ],
             "title": "Bundle Id"
           },
+          "included_product_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Included Product Ids",
+            "type": "array"
+          },
           "product_id": {
             "anyOf": [
               {
@@ -263,7 +271,8 @@
         "required": [
           "scope_type",
           "product_id",
-          "bundle_id"
+          "bundle_id",
+          "included_product_ids"
         ],
         "title": "AccountSubscriptionScopeResponse",
         "type": "object"
@@ -282,6 +291,125 @@
           "subscriptions"
         ],
         "title": "AccountSubscriptionsResponse",
+        "type": "object"
+      },
+      "BillingPeriod": {
+        "enum": [
+          "day",
+          "days",
+          "week",
+          "weeks",
+          "month",
+          "months",
+          "year",
+          "years",
+          "annual",
+          "yearly"
+        ],
+        "title": "BillingPeriod",
+        "type": "string"
+      },
+      "CatalogPlanResponse": {
+        "properties": {
+          "billing_period": {
+            "$ref": "#/components/schemas/BillingPeriod"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "plan_id": {
+            "format": "uuid",
+            "title": "Plan Id",
+            "type": "string"
+          },
+          "price_amount_minor": {
+            "title": "Price Amount Minor",
+            "type": "integer"
+          },
+          "renewal_mode": {
+            "$ref": "#/components/schemas/SubscriptionRenewalMode"
+          },
+          "trial_days": {
+            "title": "Trial Days",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "plan_id",
+          "code",
+          "name",
+          "price_amount_minor",
+          "currency",
+          "billing_period",
+          "renewal_mode",
+          "trial_days"
+        ],
+        "title": "CatalogPlanResponse",
+        "type": "object"
+      },
+      "CatalogProductResponse": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "plan": {
+            "$ref": "#/components/schemas/CatalogPlanResponse"
+          },
+          "product_id": {
+            "format": "uuid",
+            "title": "Product Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "product_id",
+          "code",
+          "name",
+          "description",
+          "plan"
+        ],
+        "title": "CatalogProductResponse",
+        "type": "object"
+      },
+      "CatalogProductsResponse": {
+        "properties": {
+          "products": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogProductResponse"
+            },
+            "title": "Products",
+            "type": "array"
+          }
+        },
+        "required": [
+          "products"
+        ],
+        "title": "CatalogProductsResponse",
         "type": "object"
       },
       "CheckoutIntentRequest": {
@@ -1054,6 +1182,27 @@
         "summary": "Get Session",
         "tags": [
           "auth"
+        ]
+      }
+    },
+    "/api/catalog/products": {
+      "get": {
+        "operationId": "list_catalog_products_api_catalog_products_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogProductsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Catalog Products",
+        "tags": [
+          "catalog"
         ]
       }
     },
