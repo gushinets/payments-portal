@@ -38,7 +38,11 @@ import {
   CheckoutAdapterStatus,
   getCheckoutAdapter
 } from "./provider-adapters";
-import { useCheckoutOwnership } from "./ownership";
+import {
+  resolveSelectedProductAccess,
+  useCheckoutOwnership,
+  type SelectedProductAccessState
+} from "./ownership";
 type CheckoutIntentResponse = {
   product_state: AuthProductState;
   checkout: {
@@ -146,6 +150,11 @@ export function CheckoutClient({
   const checkoutContextKey = selectedProduct
     ? `${selectedProduct.code}:${selectedProduct.plan.code}`
     : "";
+  const selectedProductAccess = resolveSelectedProductAccess(
+    selectedProduct,
+    productState,
+    ownershipState
+  );
 
   function clearRecurringConsentEvidence() {
     setRecurringConsentAcceptanceId("");
@@ -424,14 +433,22 @@ export function CheckoutClient({
   }
 
   async function goToPaymentResult(recurringAcceptanceIdOverride?: string) {
-    if (productState?.status === "active") {
-      return;
-    }
-
     setError("");
 
     if (!selectedProduct) {
       showError("Выберите продукт для оплаты.");
+      return;
+    }
+
+    if (selectedProductAccess.status === "owned") {
+      return;
+    }
+    if (selectedProductAccess.status === "checking") {
+      showError("Проверяем текущую подписку. Попробуйте ещё раз через несколько секунд.");
+      return;
+    }
+    if (selectedProductAccess.status === "error") {
+      showError(selectedProductAccess.message);
       return;
     }
 
@@ -718,7 +735,7 @@ export function CheckoutClient({
               {selectedProduct ? (
                 <SelectedProductCard
                   product={selectedProduct}
-                  state={productState}
+                  accessState={selectedProductAccess}
                 />
               ) : (
                 <div className="form-panel checkout-equal-panel">
@@ -772,9 +789,13 @@ export function CheckoutClient({
                     </div>
 
                     <h2 className="checkout-step-title">2. Статус подписки</h2>
-                    <SubscriptionState product={selectedProduct} state={productState} />
+                    <SubscriptionState
+                      product={selectedProduct}
+                      state={productState}
+                      accessState={selectedProductAccess}
+                    />
 
-                    {productState?.status !== "active" ? (
+                    {selectedProductAccess.status === "available" ? (
                       <>
                         {missingDocuments.length > 0 ? (
                           <div className="notice legal-consent-box">
@@ -886,11 +907,21 @@ export function CheckoutClient({
                       </>
                     ) : null}
 
-                    {productState?.status === "active" ? (
+                    {selectedProductAccess.status === "owned" ? (
                       <Link className="btn-secondary" href="/ru/account">
                         Перейти в аккаунт
                         <ArrowRight size={15} aria-hidden="true" />
                       </Link>
+                    ) : null}
+
+                    {selectedProductAccess.status === "checking" ? (
+                      <div className="notice" role="status">
+                        Проверяем текущую подписку...
+                      </div>
+                    ) : selectedProductAccess.status === "error" ? (
+                      <div className="notice error" role="alert">
+                        {selectedProductAccess.message}
+                      </div>
                     ) : null}
                   </>
                 ) : (
@@ -930,10 +961,10 @@ export function CheckoutClient({
 
 function SelectedProductCard({
   product,
-  state
+  accessState
 }: {
   product: CatalogProduct;
-  state: AuthProductState | null;
+  accessState: SelectedProductAccessState;
 }) {
   const presentation = productPresentation[product.code];
   const Icon = presentation?.Icon ?? Sparkles;
@@ -980,7 +1011,19 @@ function SelectedProductCard({
           <span className="badge badge-running">{presentation.freeLimit}</span>
         ) : null}
       </div>
-      {state?.status === "active" ? null : (
+      {accessState.status === "owned" ? (
+        <div className="notice">
+          Доступ уже активен. Управление доступно в аккаунте.
+        </div>
+      ) : accessState.status === "checking" ? (
+        <div className="notice" role="status">
+          Проверяем текущую подписку...
+        </div>
+      ) : accessState.status === "error" ? (
+        <div className="notice error" role="alert">
+          {accessState.message}
+        </div>
+      ) : (
         <div className="button-row">
           <button className="btn-primary" type="button" onClick={scrollToForm}>
             Оформить
@@ -993,10 +1036,12 @@ function SelectedProductCard({
 
 function SubscriptionState({
   product,
-  state
+  state,
+  accessState
 }: {
   product?: CatalogProduct;
   state: AuthProductState | null;
+  accessState: SelectedProductAccessState;
 }) {
   if (!product) {
     return (
@@ -1007,12 +1052,19 @@ function SubscriptionState({
   }
 
   const presentation = productPresentation[product.code];
-  const status = state?.status ?? "inactive";
+  const status =
+    accessState.status === "owned" ? "active" : state?.status ?? "inactive";
+  const entitlementPlan =
+    accessState.status === "owned" ? accessState.subscription?.plan : undefined;
+  const entitlementValidUntil =
+    accessState.status === "owned"
+      ? accessState.subscription?.entitlement_validity.valid_until
+      : null;
   const planName =
     (state?.status === "active" || state?.status === "pending") &&
     state.plan_name
       ? state.plan_name
-      : product.plan.name;
+      : entitlementPlan?.name ?? product.plan.name;
   const statusText =
     status === "active"
       ? "Подписка активна"
@@ -1032,10 +1084,13 @@ function SubscriptionState({
       )} / {formatBillingPeriod(product.plan.billing_period)}
       <br />
       Бесплатный лимит: {presentation?.freeLimit ?? "—"}
-      {state?.expires_at ? (
+      {state?.expires_at ?? entitlementValidUntil ? (
         <>
           <br />
-          Действует до: {new Date(state.expires_at).toLocaleDateString("ru-RU")}
+          Действует до:{" "}
+          {new Date(
+            state?.expires_at ?? entitlementValidUntil ?? ""
+          ).toLocaleDateString("ru-RU")}
         </>
       ) : null}
       {status === "active" ? (

@@ -92,6 +92,40 @@ function sessionResponse(status: "inactive" | "pending" | "active" | "failed") {
   };
 }
 
+function subscriptionResponse(scope: Record<string, unknown>) {
+  const now = Date.now();
+
+  return {
+    subscriptions: [
+      {
+        subscription_id: "44444444-4444-4444-8444-444444444444",
+        plan: {
+          plan_id: "33333333-3333-4333-8333-333333333333",
+          code: "document-summary-pro",
+          name: "Document Summary Pro",
+          billing_period: "month"
+        },
+        scope,
+        status: "active",
+        renewal_mode: "manual",
+        current_period: {
+          starts_at: new Date(now - 86400000).toISOString(),
+          ends_at: new Date(now + 86400000 * 30).toISOString()
+        },
+        cancellation: {
+          cancel_requested_at: null,
+          canceled_at: null
+        },
+        entitlement_validity: {
+          status: "active",
+          valid_from: new Date(now - 86400000).toISOString(),
+          valid_until: new Date(now + 86400000 * 30).toISOString()
+        }
+      }
+    ]
+  };
+}
+
 describe("CheckoutClient critical characterization", () => {
   beforeEach(() => {
     setRouteSearchParams("product=document-summary");
@@ -291,6 +325,102 @@ describe("CheckoutClient critical characterization", () => {
     expect(screen.queryByRole("button", { name: "Оформить" })).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Включить автопродление")).not.toBeInTheDocument();
     expect(checkoutAttempts.count).toBe(0);
+  });
+
+  it.each([
+    [
+      "a containing bundle",
+      {
+        scope_type: "bundle",
+        product_id: null,
+        bundle_id: "55555555-5555-4555-8555-555555555555",
+        included_product_ids: ["11111111-1111-4111-8111-111111111111"]
+      }
+    ],
+    [
+      "an all-access entitlement",
+      {
+        scope_type: "all_access",
+        product_id: null,
+        bundle_id: null,
+        included_product_ids: []
+      }
+    ]
+  ])(
+    "blocks selected-product checkout for %s ownership",
+    async (_label, scope) => {
+      storeSessionToken("session-token");
+      const checkoutAttempts = { count: 0 };
+      server.use(
+        http.get(`${apiBase}/api/auth/session`, () =>
+          HttpResponse.json(sessionResponse("inactive"))
+        ),
+        http.get(`${apiBase}/api/account/subscriptions`, () =>
+          HttpResponse.json(subscriptionResponse(scope))
+        ),
+        http.post(`${apiBase}/api/auth/checkout-intent`, () => {
+          checkoutAttempts.count += 1;
+          return HttpResponse.json({});
+        })
+      );
+
+      await renderCheckoutWithProviderStub();
+
+      expect(await screen.findByText("buyer@example.com")).toBeVisible();
+      expect(
+        await screen.findByRole("link", { name: /Перейти в аккаунт/ })
+      ).toBeVisible();
+      expect(screen.queryByRole("button", { name: /^Оплатить/ })).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Включить автопродление")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Оформить" })).not.toBeInTheDocument();
+      expect(checkoutAttempts.count).toBe(0);
+    }
+  );
+
+  it("withholds selected-product checkout controls while ownership is loading", async () => {
+    storeSessionToken("session-token");
+    server.use(
+      http.get(`${apiBase}/api/auth/session`, () =>
+        HttpResponse.json(sessionResponse("inactive"))
+      ),
+      http.get(`${apiBase}/api/account/subscriptions`, async () => {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        return HttpResponse.json({ subscriptions: [] });
+      })
+    );
+
+    await renderCheckoutWithProviderStub();
+
+    expect(await screen.findByText("buyer@example.com")).toBeVisible();
+    expect(
+      await screen.findAllByText("Проверяем текущую подписку...")
+    ).not.toHaveLength(0);
+    expect(screen.queryByRole("button", { name: /^Оплатить/ })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Включить автопродление")).not.toBeInTheDocument();
+  });
+
+  it("withholds selected-product checkout controls when ownership loading fails", async () => {
+    storeSessionToken("session-token");
+    server.use(
+      http.get(`${apiBase}/api/auth/session`, () =>
+        HttpResponse.json(sessionResponse("inactive"))
+      ),
+      http.get(
+        `${apiBase}/api/account/subscriptions`,
+        () => new HttpResponse(null, { status: 503 })
+      )
+    );
+
+    await renderCheckoutWithProviderStub();
+
+    expect(await screen.findByText("buyer@example.com")).toBeVisible();
+    expect(
+      await screen.findAllByText(
+        "Не удалось проверить текущие подписки. Оформление временно недоступно."
+      )
+    ).not.toHaveLength(0);
+    expect(screen.queryByRole("button", { name: /^Оплатить/ })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Включить автопродление")).not.toBeInTheDocument();
   });
 
   it("uses authenticated ownership in the product picker without a selected product", async () => {

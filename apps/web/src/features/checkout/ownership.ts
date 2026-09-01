@@ -2,13 +2,56 @@ import { useEffect, useState } from "react";
 import type { CatalogOwnershipState } from "@/features/catalog";
 import {
   getAccountSubscriptions,
+  hasCurrentProductEntitlement,
+  type AccountSubscription,
   type AccountSubscriptionsResponse
 } from "@/shared/api/subscriptions";
+import type { AuthProductState } from "@/shared/api/auth";
+import type { CatalogProduct } from "@/features/catalog";
 
 type SubscriptionState =
   | { token: string; subscriptions: AccountSubscriptionsResponse["subscriptions"] }
   | { token: string; message: string }
   | null;
+
+export type SelectedProductAccessState =
+  | { status: "available" }
+  | { status: "checking" }
+  | { status: "error"; message: string }
+  | { status: "owned"; subscription?: AccountSubscription };
+
+export function resolveSelectedProductAccess(
+  product: CatalogProduct | undefined,
+  productState: AuthProductState | null,
+  ownershipState: CatalogOwnershipState,
+  now = new Date()
+): SelectedProductAccessState {
+  if (productState?.status === "active") {
+    return { status: "owned" };
+  }
+
+  if (!product || ownershipState.status === "guest") {
+    return { status: "available" };
+  }
+
+  if (
+    ownershipState.status === "checking" ||
+    ownershipState.status === "loading"
+  ) {
+    return { status: "checking" };
+  }
+
+  if (ownershipState.status === "error") {
+    return { status: "error", message: ownershipState.message };
+  }
+
+  const subscription = ownershipState.subscriptions.find((candidate) =>
+    hasCurrentProductEntitlement(candidate, product.product_id, now)
+  );
+  return subscription
+    ? { status: "owned", subscription }
+    : { status: "available" };
+}
 
 export function useCheckoutOwnership(
   sessionResolved: boolean,
