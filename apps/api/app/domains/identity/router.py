@@ -643,7 +643,7 @@ def create_checkout_intent(
         ),
         checkout=CheckoutPaymentResponse(
             amount_minor=amount_minor,
-            amount=float(Decimal(amount_minor) / Decimal("100")),
+            amount=float(Decimal(amount_minor) / Decimal(100)),
             currency=currency,
             action=checkout_action,
         ),
