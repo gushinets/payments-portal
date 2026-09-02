@@ -39,10 +39,13 @@ from app.domains.billing.service.support import (
     _verify_renewal_context,
     _write_event,
 )
-from app.domains.legal.service import is_current_recurring_consent_acceptance
+from app.domains.legal.service import (
+    is_current_legacy_recurring_consent_acceptance,
+    is_current_recurring_consent_acceptance,
+)
 from app.infrastructure.queries.identity import lock_user_by_id
 from app.infrastructure.queries.legal import get_document_acceptance_by_id
-from app.infrastructure.queries.orders import get_entrypoint_session_by_id, get_order_by_id
+from app.infrastructure.queries.orders import get_entrypoint_session_by_id, get_order_by_id, get_order_item_with_plan
 from app.infrastructure.queries.payments import (
     get_payment_for_refund,
     get_provider_account_by_id,
@@ -126,7 +129,7 @@ def enable_automatic_renewal(db: Session, command: EnableAutomaticRenewalCommand
         or metadata.get("recurring_consent_acceptance_id") != str(command.recurring_consent_acceptance_id)
     ):
         raise SubscriptionLifecycleError("recurring_consent_invalid")
-    if not is_current_recurring_consent_acceptance(
+    consent_is_current = is_current_recurring_consent_acceptance(
         db,
         acceptance=acceptance,
         user=user,
@@ -134,7 +137,34 @@ def enable_automatic_renewal(db: Session, command: EnableAutomaticRenewalCommand
         entrypoint_value=entrypoint_session.entrypoint_value,
         plan_id=plan.id,
         now=command.occurred_at,
-    ):
+    )
+    if not consent_is_current:
+        order_metadata = order.metadata_
+        entrypoint_metadata = entrypoint_session.metadata_
+        order_item = get_order_item_with_plan(db, order.id)
+        is_legacy_auto_renew_order = (
+            isinstance(order_metadata, dict)
+            and "plan_id" not in order_metadata
+            and order_metadata.get("auto_renew") is True
+            and order_metadata.get("plan_code") == plan.code
+            and isinstance(entrypoint_metadata, dict)
+            and "plan_id" not in entrypoint_metadata
+            and entrypoint_metadata.get("auto_renew") is True
+            and entrypoint_metadata.get("plan_code") == plan.code
+            and order_item is not None
+            and order_item.plan_id == order.plan_id == plan.id
+            and order_item.plan_code_snapshot == plan.code
+        )
+        consent_is_current = is_legacy_auto_renew_order and is_current_legacy_recurring_consent_acceptance(
+            db,
+            acceptance=acceptance,
+            user=user,
+            entrypoint_type=entrypoint_session.entrypoint_type,
+            entrypoint_value=entrypoint_session.entrypoint_value,
+            plan_code=plan.code,
+            now=command.occurred_at,
+        )
+    if not consent_is_current:
         raise SubscriptionLifecycleError("recurring_consent_invalid")
     try:
         with db.begin_nested():

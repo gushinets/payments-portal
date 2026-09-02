@@ -132,11 +132,60 @@ def is_current_recurring_consent_acceptance(
     plan_id: uuid.UUID,
     now: datetime | None = None,
 ) -> bool:
+    return _is_current_recurring_consent_acceptance_with_metadata(
+        db,
+        acceptance=acceptance,
+        user=user,
+        entrypoint_type=entrypoint_type,
+        entrypoint_value=entrypoint_value,
+        metadata_key="plan_id",
+        metadata_value=str(plan_id),
+        now=now,
+    )
+
+
+def is_current_legacy_recurring_consent_acceptance(
+    db: Session,
+    *,
+    acceptance: DocumentAcceptance,
+    user: User,
+    entrypoint_type: str,
+    entrypoint_value: str,
+    plan_code: str,
+    now: datetime | None = None,
+) -> bool:
+    """Validate the pre-ANY-327 consent shape for an existing order only."""
+    metadata = acceptance.metadata_
+    if not isinstance(metadata, dict) or "plan_id" in metadata:
+        return False
+    return _is_current_recurring_consent_acceptance_with_metadata(
+        db,
+        acceptance=acceptance,
+        user=user,
+        entrypoint_type=entrypoint_type,
+        entrypoint_value=entrypoint_value,
+        metadata_key="plan_code",
+        metadata_value=plan_code,
+        now=now,
+    )
+
+
+def _is_current_recurring_consent_acceptance_with_metadata(
+    db: Session,
+    *,
+    acceptance: DocumentAcceptance,
+    user: User,
+    entrypoint_type: str,
+    entrypoint_value: str,
+    metadata_key: str,
+    metadata_value: str,
+    now: datetime | None = None,
+) -> bool:
     effective_at = now or utc_now()
     comparable_effective_at = _as_utc_naive(effective_at)
     document = db.get(DocumentVersion, acceptance.document_version_id)
     metadata = acceptance.metadata_
-    metadata_plan_id = metadata.get("plan_id") if isinstance(metadata, dict) else None
+    persisted_metadata_value = metadata.get(metadata_key) if isinstance(metadata, dict) else None
     return not (
         document is None
         or document.tenant_id != user.tenant_id
@@ -155,9 +204,9 @@ def is_current_recurring_consent_acceptance(
         or acceptance.entrypoint_type != entrypoint_type
         or acceptance.entrypoint_value != entrypoint_value
         or not isinstance(metadata, dict)
-        or "plan_id" not in metadata
-        or not isinstance(metadata_plan_id, str)
-        or metadata_plan_id != str(plan_id)
+        or metadata_key not in metadata
+        or not isinstance(persisted_metadata_value, str)
+        or persisted_metadata_value != metadata_value
     )
 
 
