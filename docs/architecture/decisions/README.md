@@ -9,3 +9,4 @@ and superseded decision links.
 ## Records
 
 - [0001. Multi-contour billing platform](0001-multi-contour-billing.md)
+- [0002. Plan-based checkout identity](0002-plan-based-checkout-identity.md)

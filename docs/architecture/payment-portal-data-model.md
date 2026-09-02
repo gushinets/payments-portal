@@ -147,9 +147,56 @@ be a separate append-only record rather than mutation of acceptance history.
 
 ### Checkout and orders
 
+The accepted checkout identity decision is recorded in [ADR 0002](decisions/0002-plan-based-checkout-identity.md).
+The catalog returns Product data with the exact currently sellable Plan:
+
+```text
+backend catalog returns Product + exact current Plan
+-> frontend selects Product for UI
+-> frontend submits Plan.id for checkout
+-> backend resolves exact current Plan
+-> backend validates Plan scope/reference shape
+-> backend derives scope and commercial snapshots
+-> order/order_item persist resolved facts
+```
+
+`Plan.id` is the only commercial purchase identity submitted by checkout.
+`Product.code`, `Bundle.code`, and `Plan.code` are readable catalog or
+snapshot data, not generic checkout selectors. The target checkout request
+therefore removes `product` and `plan_code` without compatibility aliases.
+
 An `entrypoint_session` records product/bundle/catalog/paywall context and future
-regional-resolution evidence. A `checkout_session` binds an authenticated user,
-plan reference, amount/currency snapshot, consent readiness, and expiry.
+regional-resolution evidence. It is provenance, not the purchased object:
+`entrypoint_session != purchased object`. For current product navigation,
+`?product=<Product.code>` may remain as UI selection, but it does not authorize
+the purchase. Entrypoint fields never participate in Plan resolution.
+
+A `checkout_session` binds an authenticated user, the exact Plan reference,
+amount/currency snapshot, consent readiness, and expiry. Product, Bundle, and
+scope facts are derived from the resolved Plan. A product-scoped Plan requires
+an active referenced Product and no Bundle reference; a bundle-scoped Plan
+requires an active referenced Bundle and no Product reference; an
+`all_access`-scoped Plan has neither reference. No Product or Bundle is
+synthesized for `all_access` scope, and no `all-access` identity is generated.
+
+The persisted access scope `all_access` is distinct from the removed synthetic
+checkout sentinel `all-access`. `all_access` remains access/scope semantics;
+`all-access` is not checkout vocabulary or a purchase identifier.
+
+Recurring consent is bound to the exact Plan ID plus the existing user, contour,
+current legal document/version/hash, acceptance kind/time, and entrypoint
+dimensions:
+
+```text
+same Plan.id + same user/contour/legal/entrypoint context -> consent may validate
+new Plan.id -> previous recurring consent does not authorize the new Plan
+-> checkout provides a fresh append-only consent path
+```
+
+Provider merchant and invoice IDs are opaque and do not encode catalog, scope,
+or entrypoint strings. Checkout responses are purchase/Plan-oriented while
+preserving the provider-neutral `checkout.amount`, `checkout.currency`, and
+`checkout.action` envelope.
 
 An `order` is the authoritative internal commercial request. It contains the
 user, region, checkout and entrypoint links, amount/currency, provider account,
@@ -318,6 +365,9 @@ command is delayed.
 - `bundles` plus `bundle_products` own explicit bundle membership.
 - `plans` owns versioned scope, region, price, currency, period, renewal mode,
   trial days, validity interval, and status.
+- The backend catalog returns each product with its exact currently sellable
+  Plan ID. Product selection is UI/catalog selection; checkout purchase
+  authority is that Plan ID.
 - `plan_price_components` records source plan prices and discount calculation for
   bundle/all-access plans.
 - `plan_limits` records metric, limit, period, reset, and overage policy.
@@ -336,7 +386,11 @@ read entitlements through the future Payment Portal access API and will continue
 to own actual usage counters.
 
 Direct product, containing bundle, and all-access grants are the three allowed
-ways for a product access check to succeed.
+ways for a product access check to succeed. Final ANY-370 ownership checks may
+therefore block purchase of a selected Product through a direct Product,
+containing Bundle, or `all_access` entitlement. That access decision is
+independent from checkout selection: none of these scopes is a checkout
+purchase identifier, and the client submits only the exact Plan ID.
 
 ## 7. External Platform Kernel boundary
 
