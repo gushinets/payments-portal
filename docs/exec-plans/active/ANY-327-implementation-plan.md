@@ -402,7 +402,7 @@ class CheckoutPurchaseResponse(BaseModel):
 
 class CheckoutPaymentResponse(BaseModel):
     amount_minor: int
-    amount: Decimal
+    amount: float
     currency: str
     action: CheckoutAction
 
@@ -429,18 +429,16 @@ Do not redesign `/api/auth/session` or `/api/auth/payment-status` in this ticket
 
 The current merchant/invoice ID must stop encoding product/entrypoint-like strings.
 
-Use:
+Use an opaque, implementation-defined identifier that carries no catalog, scope, or entrypoint semantics.
 
-```text
-pp-<16 lowercase hex characters>
-```
-
-Equivalent implementation:
+Current implementation:
 
 ```python
 def make_invoice_id() -> str:
-    return f"pp-{secrets.token_hex(8)}"
+    return uuid.uuid4().hex
 ```
+
+The UUID representation is technical infrastructure data, not a Product, Plan, scope, or entrypoint identity.
 
 Do not encode:
 
@@ -991,10 +989,10 @@ Change the generator to:
 
 ```python
 def make_invoice_id() -> str:
-    return f"pp-{secrets.token_hex(8)}"
+    return uuid.uuid4().hex
 ```
 
-No product/bundle/plan/scope/entrypoint string may be embedded in the identifier.
+The identifier must remain opaque. No product/bundle/plan/scope/entrypoint string may be embedded in it; the current UUID-hex representation is an implementation strategy, not a business identity.
 
 ### 8. Derive order/provider metadata from persistence
 
@@ -1043,7 +1041,7 @@ class CheckoutPurchaseResponse(BaseModel):
 
 class CheckoutPaymentResponse(BaseModel):
     amount_minor: int
-    amount: Decimal
+    amount: float
     currency: str
     action: CheckoutAction
 
@@ -1100,7 +1098,7 @@ At minimum cover:
 11. bundle-scoped Plan with invalid/missing/inactive referenced Bundle fails closed;
 12. invalid persisted scope/reference shape fails closed;
 13. persisted `all_access` scope is handled only as a server-derived scope and never causes synthesis/comparison of `all-access`;
-14. invoice ID matches `pp-<16 hex>` and contains no domain code/scope prefix;
+14. invoice ID is opaque and contains no product/bundle/plan/scope/entrypoint strings; the current implementation uses `uuid.uuid4().hex`;
 15. recurring consent for Plan A validates Plan A;
 16. the same acceptance is rejected for another Plan ID, including same-code/different-ID version;
 17. Plan B can reacquire the same current recurring-consent document through the normal missing-document flow;
