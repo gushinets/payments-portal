@@ -66,6 +66,182 @@ def test_dockerignore_excludes_nested_virtualenvs() -> None:
     assert "**/.venv" in patterns
 
 
+def test_browser_evidence_upload_persists_only_playwright_artifacts() -> None:
+    workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["browser"]["steps"]
+    validator = next(step for step in steps if step.get("name") == "Validate browser evidence")
+    upload = next(step for step in steps if step.get("name") == "Upload browser evidence")
+    inputs = upload["with"]
+
+    assert validator["if"] == "always()"
+    assert upload["if"] == "always()"
+    assert inputs["include-hidden-files"] is True
+    assert inputs["if-no-files-found"] == "error"
+    assert set(inputs["path"].splitlines()) == {
+        ".harness/playwright-react-runtime-results/",
+        ".harness/playwright-react-runtime-report/",
+        ".harness/playwright-results/",
+        ".harness/playwright-report/",
+    }
+
+
+def browser_evidence_validator_script() -> str:
+    workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["browser"]["steps"]
+    return next(step["run"] for step in steps if step.get("name") == "Validate browser evidence")
+
+
+def write_browser_evidence_fixture(root: Path, *, attempt_suffix: str = "") -> None:
+    results = root / ".harness/playwright-react-runtime-results"
+    for project in ("desktop-chromium", "mobile-chromium"):
+        project_results = results / f"react-runtime-{project}{attempt_suffix}"
+        project_results.mkdir(parents=True)
+        for screenshot in ("landing", "checkout", "account", "payment-result"):
+            (project_results / f"{screenshot}.png").write_bytes(b"png")
+
+    for report in (
+        ".harness/playwright-react-runtime-report/results.json",
+        ".harness/playwright-react-runtime-report/html/index.html",
+        ".harness/playwright-report/results.json",
+        ".harness/playwright-report/html/index.html",
+    ):
+        path = root / report
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("evidence", encoding="utf-8")
+
+
+def run_browser_evidence_validator(root: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [
+            "bash",
+            "--noprofile",
+            "--norc",
+            "-e",
+            "-o",
+            "pipefail",
+            "-c",
+            browser_evidence_validator_script(),
+        ],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def test_browser_evidence_validator_accepts_complete_evidence(tmp_path: Path) -> None:
+    write_browser_evidence_fixture(tmp_path)
+
+    result = run_browser_evidence_validator(tmp_path)
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_browser_evidence_validator_accepts_complete_retry_evidence(tmp_path: Path) -> None:
+    write_browser_evidence_fixture(tmp_path, attempt_suffix="-retry1")
+
+    result = run_browser_evidence_validator(tmp_path)
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_browser_evidence_validator_accepts_complete_retry_after_incomplete_base(
+    tmp_path: Path,
+) -> None:
+    write_browser_evidence_fixture(tmp_path)
+    (tmp_path / ".harness/playwright-react-runtime-results/react-runtime-desktop-chromium/landing.png").unlink()
+    write_browser_evidence_fixture(tmp_path, attempt_suffix="-retry1")
+
+    result = run_browser_evidence_validator(tmp_path)
+
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("attempt_suffix", ["-retry-backup", "-retry-backup-retry1"])
+def test_browser_evidence_validator_rejects_non_numeric_retry_suffix(tmp_path: Path, attempt_suffix: str) -> None:
+    write_browser_evidence_fixture(tmp_path, attempt_suffix=attempt_suffix)
+
+    result = run_browser_evidence_validator(tmp_path)
+
+    assert result.returncode != 0
+    assert "inspected 0" in result.stdout
+
+
+def test_browser_evidence_validator_rejects_missing_screenshot(tmp_path: Path) -> None:
+    write_browser_evidence_fixture(tmp_path)
+    missing = tmp_path / ".harness/playwright-react-runtime-results/react-runtime-mobile-chromium/checkout.png"
+    missing.unlink()
+
+    result = run_browser_evidence_validator(tmp_path)
+
+    assert result.returncode != 0
+    assert "mobile-chromium/checkout.png" in result.stdout
+
+
+def test_browser_evidence_validator_rejects_screenshots_split_across_attempts(
+    tmp_path: Path,
+) -> None:
+    write_browser_evidence_fixture(tmp_path)
+    (tmp_path / ".harness/playwright-react-runtime-results/react-runtime-desktop-chromium/landing.png").unlink()
+    write_browser_evidence_fixture(tmp_path, attempt_suffix="-retry1")
+    (tmp_path / ".harness/playwright-react-runtime-results/react-runtime-desktop-chromium-retry1/checkout.png").unlink()
+
+    result = run_browser_evidence_validator(tmp_path)
+
+    assert result.returncode != 0
+    assert "desktop-chromium/landing.png" in result.stdout
+    assert "desktop-chromium-retry1/checkout.png" in result.stdout
+
+
+def test_browser_evidence_validator_rejects_empty_screenshot(tmp_path: Path) -> None:
+    write_browser_evidence_fixture(tmp_path)
+    empty = tmp_path / ".harness/playwright-react-runtime-results/react-runtime-mobile-chromium/account.png"
+    empty.write_bytes(b"")
+
+    result = run_browser_evidence_validator(tmp_path)
+
+    assert result.returncode != 0
+    assert "mobile-chromium/account.png" in result.stdout
+
+
+@pytest.mark.parametrize(
+    "masquerade",
+    [
+        ".harness/playwright-react-runtime-results/react-runtime-mobile-chromium/account.png",
+        ".harness/playwright-report/results.json",
+    ],
+)
+def test_browser_evidence_validator_rejects_directory_masquerading_as_file(tmp_path: Path, masquerade: str) -> None:
+    write_browser_evidence_fixture(tmp_path)
+    target = tmp_path / masquerade
+    target.unlink()
+    target.mkdir()
+
+    result = run_browser_evidence_validator(tmp_path)
+
+    assert result.returncode != 0
+    assert masquerade in result.stdout
+
+
+@pytest.mark.parametrize(
+    "missing_report",
+    [
+        ".harness/playwright-react-runtime-report/results.json",
+        ".harness/playwright-react-runtime-report/html/index.html",
+        ".harness/playwright-report/results.json",
+        ".harness/playwright-report/html/index.html",
+    ],
+)
+def test_browser_evidence_validator_rejects_missing_report(tmp_path: Path, missing_report: str) -> None:
+    write_browser_evidence_fixture(tmp_path)
+    (tmp_path / missing_report).unlink()
+
+    result = run_browser_evidence_validator(tmp_path)
+
+    assert result.returncode != 0
+    assert missing_report in result.stdout
+
+
 def test_production_gate_migrates_database_before_api_smoke(tmp_path: Path) -> None:
     workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
     steps = workflow["jobs"]["production-gate"]["steps"]
