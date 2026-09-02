@@ -89,7 +89,7 @@ def _add_recurring_consent_acceptance(
     *,
     user: User,
     key: str,
-    plan_code: str,
+    plan: Plan,
     accepted_at: datetime,
 ) -> DocumentAcceptance:
     entity = LegalEntity(
@@ -124,9 +124,9 @@ def _add_recurring_consent_acceptance(
         route_region=user.region,
         resolved_region=user.region,
         entrypoint_type="product",
-        entrypoint_value=plan_code,
+        entrypoint_value=plan.code,
         user_id=user.id,
-        metadata_={"plan_code": plan_code},
+        metadata_={"plan_id": str(plan.id)},
     )
     session.add(entrypoint_session)
     session.flush()
@@ -142,8 +142,8 @@ def _add_recurring_consent_acceptance(
         accepted_at=accepted_at,
         acceptance_text_hash=expected_acceptance_text_hash(document),
         entrypoint_type="product",
-        entrypoint_value=plan_code,
-        metadata_={"plan_code": plan_code},
+        entrypoint_value=plan.code,
+        metadata_={"plan_id": str(plan.id)},
     )
     session.add(acceptance)
     session.flush()
@@ -294,7 +294,7 @@ def test_parallel_enable_automatic_renewal_same_key_reuses_event_after_subscript
             session,
             user=user,
             key="concurrent-enable-automatic-renewal",
-            plan_code=plan.code,
+            plan=plan,
             accepted_at=now,
         )
         order, payment, _ = _add_verified_paid_order(

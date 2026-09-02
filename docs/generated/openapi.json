@@ -41,6 +41,18 @@
             "title": "Metadata",
             "type": "object"
           },
+          "plan_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Id"
+          },
           "source_url": {
             "anyOf": [
               {
@@ -412,7 +424,103 @@
         "title": "CatalogProductsResponse",
         "type": "object"
       },
+      "CheckoutAction": {
+        "additionalProperties": false,
+        "description": "Data returned to the client to start checkout with a payment provider.",
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "string"
+          },
+          "amount": {
+            "title": "Amount",
+            "type": "number"
+          },
+          "amount_minor": {
+            "title": "Amount Minor",
+            "type": "integer"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "experience": {
+            "enum": [
+              "widget",
+              "redirect",
+              "embedded"
+            ],
+            "title": "Experience",
+            "type": "string"
+          },
+          "merchant_order_id": {
+            "title": "Merchant Order Id",
+            "type": "string"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "provider_invoice_id": {
+            "title": "Provider Invoice Id",
+            "type": "string"
+          },
+          "public_identifier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Public Identifier"
+          }
+        },
+        "required": [
+          "provider",
+          "experience",
+          "mode",
+          "public_identifier",
+          "amount_minor",
+          "amount",
+          "currency",
+          "merchant_order_id",
+          "provider_invoice_id",
+          "account_id"
+        ],
+        "title": "CheckoutAction",
+        "type": "object"
+      },
       "CheckoutIntentRequest": {
+        "additionalProperties": false,
         "properties": {
           "auto_renew": {
             "default": false,
@@ -420,8 +528,11 @@
             "type": "boolean"
           },
           "entrypoint_type": {
-            "default": "product",
             "title": "Entrypoint Type",
+            "type": "string"
+          },
+          "entrypoint_value": {
+            "title": "Entrypoint Value",
             "type": "string"
           },
           "frontend_id": {
@@ -435,12 +546,9 @@
             ],
             "title": "Frontend Id"
           },
-          "plan_code": {
-            "title": "Plan Code",
-            "type": "string"
-          },
-          "product": {
-            "title": "Product",
+          "plan_id": {
+            "format": "uuid",
+            "title": "Plan Id",
             "type": "string"
           },
           "recurring_consent_acceptance_id": {
@@ -468,10 +576,125 @@
           }
         },
         "required": [
-          "product",
-          "plan_code"
+          "plan_id",
+          "entrypoint_type",
+          "entrypoint_value"
         ],
         "title": "CheckoutIntentRequest",
+        "type": "object"
+      },
+      "CheckoutIntentResponse": {
+        "properties": {
+          "checkout": {
+            "$ref": "#/components/schemas/CheckoutPaymentResponse"
+          },
+          "purchase": {
+            "$ref": "#/components/schemas/CheckoutPurchaseResponse"
+          },
+          "status": {
+            "const": "pending",
+            "default": "pending",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "purchase",
+          "checkout"
+        ],
+        "title": "CheckoutIntentResponse",
+        "type": "object"
+      },
+      "CheckoutPaymentResponse": {
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/CheckoutAction"
+          },
+          "amount": {
+            "title": "Amount",
+            "type": "number"
+          },
+          "amount_minor": {
+            "title": "Amount Minor",
+            "type": "integer"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          }
+        },
+        "required": [
+          "amount_minor",
+          "amount",
+          "currency",
+          "action"
+        ],
+        "title": "CheckoutPaymentResponse",
+        "type": "object"
+      },
+      "CheckoutPurchaseResponse": {
+        "properties": {
+          "bundle_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bundle Id"
+          },
+          "invoice_id": {
+            "title": "Invoice Id",
+            "type": "string"
+          },
+          "order_id": {
+            "format": "uuid",
+            "title": "Order Id",
+            "type": "string"
+          },
+          "plan_code": {
+            "title": "Plan Code",
+            "type": "string"
+          },
+          "plan_id": {
+            "format": "uuid",
+            "title": "Plan Id",
+            "type": "string"
+          },
+          "plan_name": {
+            "title": "Plan Name",
+            "type": "string"
+          },
+          "product_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Id"
+          },
+          "scope_type": {
+            "$ref": "#/components/schemas/SubscriptionScopeType"
+          }
+        },
+        "required": [
+          "order_id",
+          "plan_id",
+          "plan_code",
+          "plan_name",
+          "scope_type",
+          "product_id",
+          "bundle_id",
+          "invoice_id"
+        ],
+        "title": "CheckoutPurchaseResponse",
         "type": "object"
       },
       "EntitlementStatus": {
@@ -826,7 +1049,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/CheckoutIntentResponse"
+                }
               }
             },
             "description": "Successful Response"

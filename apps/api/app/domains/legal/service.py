@@ -129,14 +129,63 @@ def is_current_recurring_consent_acceptance(
     user: User,
     entrypoint_type: str,
     entrypoint_value: str,
+    plan_id: uuid.UUID,
+    now: datetime | None = None,
+) -> bool:
+    return _is_current_recurring_consent_acceptance_with_metadata(
+        db,
+        acceptance=acceptance,
+        user=user,
+        entrypoint_type=entrypoint_type,
+        entrypoint_value=entrypoint_value,
+        metadata_key="plan_id",
+        metadata_value=str(plan_id),
+        now=now,
+    )
+
+
+def is_current_legacy_recurring_consent_acceptance(
+    db: Session,
+    *,
+    acceptance: DocumentAcceptance,
+    user: User,
+    entrypoint_type: str,
+    entrypoint_value: str,
     plan_code: str,
+    now: datetime | None = None,
+) -> bool:
+    """Validate the pre-ANY-327 consent shape for an existing order only."""
+    metadata = acceptance.metadata_
+    if not isinstance(metadata, dict) or "plan_id" in metadata:
+        return False
+    return _is_current_recurring_consent_acceptance_with_metadata(
+        db,
+        acceptance=acceptance,
+        user=user,
+        entrypoint_type=entrypoint_type,
+        entrypoint_value=entrypoint_value,
+        metadata_key="plan_code",
+        metadata_value=plan_code,
+        now=now,
+    )
+
+
+def _is_current_recurring_consent_acceptance_with_metadata(
+    db: Session,
+    *,
+    acceptance: DocumentAcceptance,
+    user: User,
+    entrypoint_type: str,
+    entrypoint_value: str,
+    metadata_key: str,
+    metadata_value: str,
     now: datetime | None = None,
 ) -> bool:
     effective_at = now or utc_now()
     comparable_effective_at = _as_utc_naive(effective_at)
     document = db.get(DocumentVersion, acceptance.document_version_id)
     metadata = acceptance.metadata_
-    metadata_plan_code = metadata.get("plan_code") if isinstance(metadata, dict) else None
+    persisted_metadata_value = metadata.get(metadata_key) if isinstance(metadata, dict) else None
     return not (
         document is None
         or document.tenant_id != user.tenant_id
@@ -155,9 +204,9 @@ def is_current_recurring_consent_acceptance(
         or acceptance.entrypoint_type != entrypoint_type
         or acceptance.entrypoint_value != entrypoint_value
         or not isinstance(metadata, dict)
-        or "plan_code" not in metadata
-        or not isinstance(metadata_plan_code, str)
-        or metadata_plan_code != plan_code
+        or metadata_key not in metadata
+        or not isinstance(persisted_metadata_value, str)
+        or persisted_metadata_value != metadata_value
     )
 
 
@@ -174,7 +223,7 @@ def get_current_recurring_consent_acceptance(
     user: User,
     entrypoint_type: str,
     entrypoint_value: str,
-    plan_code: str,
+    plan_id: uuid.UUID,
     now: datetime | None = None,
 ) -> DocumentAcceptance | None:
     effective_at = now or utc_now()
@@ -206,7 +255,7 @@ def get_current_recurring_consent_acceptance(
         user=user,
         entrypoint_type=entrypoint_type,
         entrypoint_value=entrypoint_value,
-        plan_code=plan_code,
+        plan_id=plan_id,
         now=effective_at,
     ):
         return None
@@ -227,10 +276,15 @@ def create_document_acceptance(
     entrypoint_value: str | None = None,
     source_url: str | None = None,
     metadata: dict[str, Any] | None = None,
+    plan_id: uuid.UUID | None = None,
     accepted_at: datetime | None = None,
 ) -> DocumentAcceptance:
     if acceptance_text_hash != expected_acceptance_text_hash(document):
         raise LegalAcceptanceError("invalid_acceptance_text_hash")
+
+    acceptance_metadata = {key: value for key, value in (metadata or {}).items() if key != "plan_id"}
+    if document.doc_type == "recurring_consent" and plan_id is not None:
+        acceptance_metadata["plan_id"] = str(plan_id)
 
     acceptance = DocumentAcceptance(
         tenant_id=document.tenant_id,
@@ -249,7 +303,7 @@ def create_document_acceptance(
         entrypoint_type=entrypoint_type,
         entrypoint_value=entrypoint_value,
         source_url=source_url,
-        metadata_=metadata or {},
+        metadata_=acceptance_metadata,
     )
     db.add(acceptance)
     return acceptance

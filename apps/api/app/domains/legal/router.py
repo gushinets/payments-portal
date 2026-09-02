@@ -22,6 +22,7 @@ from app.domains.legal.service import (
     get_active_required_documents,
     utc_now,
 )
+from app.infrastructure.queries.plans import get_current_sellable_plan
 from app.models import AuthSession, DocumentVersion, User
 
 router = APIRouter(prefix="/api/legal", tags=["legal"])
@@ -30,6 +31,7 @@ router = APIRouter(prefix="/api/legal", tags=["legal"])
 class AcceptDocumentRequest(BaseModel):
     document_version_id: uuid.UUID
     acceptance_text_hash: str = Field(min_length=32, max_length=256)
+    plan_id: uuid.UUID | None = None
     entrypoint_type: str | None = None
     entrypoint_value: str | None = None
     source_url: str | None = None
@@ -94,6 +96,21 @@ def accept_document(
         record_legal_acceptance("document_not_found")
         raise HTTPException(status_code=404, detail="document_version_not_found")
 
+    if document.doc_type == "recurring_consent":
+        if payload.plan_id is None or not payload.entrypoint_type or not payload.entrypoint_value:
+            raise HTTPException(status_code=400, detail={"code": "recurring_consent_context_required"})
+        if (
+            get_current_sellable_plan(
+                db,
+                plan_id=payload.plan_id,
+                tenant_id=user.tenant_id,
+                region=user.region,
+                now=utc_now(),
+            )
+            is None
+        ):
+            raise HTTPException(status_code=400, detail={"code": "recurring_consent_plan_invalid"})
+
     try:
         acceptance = create_document_acceptance(
             db,
@@ -106,6 +123,7 @@ def accept_document(
             entrypoint_value=payload.entrypoint_value,
             source_url=payload.source_url,
             metadata=payload.metadata,
+            plan_id=payload.plan_id,
         )
     except LegalAcceptanceError as exc:
         record_legal_acceptance("invalid_text_hash")

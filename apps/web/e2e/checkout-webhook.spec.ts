@@ -57,6 +57,38 @@ function signedCloudpaymentsJson(payload: Record<string, unknown>) {
   };
 }
 
+async function catalogPlanId(
+  api: APIRequestContext,
+  productCode: string
+): Promise<string> {
+  const response = await api.get("/api/catalog/products");
+  expect(response.ok()).toBeTruthy();
+  const payload = await response.json();
+  const products = (payload as { products?: unknown }).products;
+  if (!Array.isArray(products)) {
+    throw new Error("catalog_products_missing");
+  }
+  const product = products.find(
+    (candidate): candidate is { code: string; plan: { plan_id: string } } => {
+      if (typeof candidate !== "object" || candidate === null) {
+        return false;
+      }
+      const value = candidate as {
+        code?: unknown;
+        plan?: { plan_id?: unknown };
+      };
+      return (
+        value.code === productCode &&
+        typeof value.plan?.plan_id === "string"
+      );
+    }
+  );
+  if (!product) {
+    throw new Error("catalog_product_missing");
+  }
+  return product.plan.plan_id;
+}
+
 function sleep(ms: number) {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
@@ -729,10 +761,17 @@ test("legal acceptance gates checkout and webhook state remains authoritative", 
   const registrationBody = await registration.json();
   const token = registrationBody.token as string;
   const headers = { Authorization: `Bearer ${token}` };
+  const planId = await catalogPlanId(api, product);
 
   const blockedCheckout = await api.post("/api/auth/checkout-intent", {
     headers,
-    data: { product, plan_code: planCode, auto_renew: false }
+    data: {
+      plan_id: planId,
+      auto_renew: false,
+      entrypoint_type: "product",
+      entrypoint_value: product,
+      source_url: "/ru/auth-checkout?product=document-summary"
+    }
   });
   expect(blockedCheckout.status()).toBe(409);
   const blockedBody = await blockedCheckout.json();
@@ -754,11 +793,17 @@ test("legal acceptance gates checkout and webhook state remains authoritative", 
 
   const checkout = await api.post("/api/auth/checkout-intent", {
     headers,
-    data: { product, plan_code: planCode, auto_renew: false }
+    data: {
+      plan_id: planId,
+      auto_renew: false,
+      entrypoint_type: "product",
+      entrypoint_value: product,
+      source_url: "/ru/auth-checkout?product=document-summary"
+    }
   });
   expect(checkout.ok()).toBeTruthy();
   const checkoutBody = await checkout.json();
-  const invoice = checkoutBody.product_state.invoice_id as string;
+  const invoice = checkoutBody.purchase.invoice_id as string;
 
   await page.goto(
     `/ru/payment-result?status=success&product=${product}&plan=${planCode}&email=${encodeURIComponent(email)}&invoice=${invoice}`
@@ -834,10 +879,17 @@ test("provider UI stub success cannot activate access without backend state", as
   const registrationBody = await registration.json();
   const token = registrationBody.token as string;
   const headers = { Authorization: `Bearer ${token}` };
+  const planId = await catalogPlanId(api, product);
 
   const blockedCheckout = await api.post("/api/auth/checkout-intent", {
     headers,
-    data: { product, plan_code: planCode, auto_renew: false }
+    data: {
+      plan_id: planId,
+      auto_renew: false,
+      entrypoint_type: "product",
+      entrypoint_value: product,
+      source_url: "/ru/auth-checkout?product=document-summary"
+    }
   });
   expect(blockedCheckout.status()).toBe(409);
   const blockedBody = await blockedCheckout.json();
@@ -948,6 +1000,7 @@ test("automatic renewal checkout uses exact recurring consent acceptance", async
     expect(registration.ok()).toBeTruthy();
     const registrationBody = await registration.json();
     const token = registrationBody.token as string;
+    const planId = await catalogPlanId(api, product);
 
     const checkoutAttempts: Array<Record<string, unknown>> = [];
     let recurringAcceptanceId = "";
@@ -955,7 +1008,10 @@ test("automatic renewal checkout uses exact recurring consent acceptance", async
     await page.route("**/api/auth/checkout-intent", async (route) => {
       const body = route.request().postDataJSON() as Record<string, unknown>;
       checkoutAttempts.push({
+        plan_id: body.plan_id,
         auto_renew: body.auto_renew,
+        entrypoint_type: body.entrypoint_type,
+        entrypoint_value: body.entrypoint_value,
         hasRecurringAcceptanceId:
           typeof body.recurring_consent_acceptance_id === "string",
         recurring_consent_acceptance_id: body.recurring_consent_acceptance_id
@@ -1000,12 +1056,18 @@ test("automatic renewal checkout uses exact recurring consent acceptance", async
     expect(recurringAcceptanceId).toBeTruthy();
     expect(checkoutAttempts.length).toBeGreaterThanOrEqual(2);
     expect(checkoutAttempts[0]).toMatchObject({
+      plan_id: planId,
       auto_renew: true,
+      entrypoint_type: "product",
+      entrypoint_value: product,
       hasRecurringAcceptanceId: false
     });
     const finalCheckoutAttempt = checkoutAttempts[checkoutAttempts.length - 1];
     expect(finalCheckoutAttempt).toMatchObject({
+      plan_id: planId,
       auto_renew: true,
+      entrypoint_type: "product",
+      entrypoint_value: product,
       hasRecurringAcceptanceId: true,
       recurring_consent_acceptance_id: recurringAcceptanceId
     });

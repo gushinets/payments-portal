@@ -378,7 +378,7 @@ def _add_recurring_consent_acceptance(
         entrypoint_type=entrypoint_type,
         entrypoint_value=resolved_entrypoint_value,
         user_id=user.id,
-        metadata_={"plan_code": plan_code},
+        metadata_={"plan_id": str(_plan_by_code(db_session, plan_code).id)},
     )
     db_session.add(entrypoint_session)
     db_session.flush()
@@ -395,7 +395,7 @@ def _add_recurring_consent_acceptance(
         acceptance_text_hash=expected_acceptance_text_hash(document),
         entrypoint_type=entrypoint_type,
         entrypoint_value=resolved_entrypoint_value,
-        metadata_={"plan_code": plan_code, "fixture_key": key},
+        metadata_={"plan_id": str(_plan_by_code(db_session, plan_code).id), "fixture_key": key},
     )
     db_session.add(acceptance)
     db_session.flush()
@@ -614,6 +614,45 @@ def _add_automatic_renewal_context(
     return acceptance, order, subscription
 
 
+def _mark_legacy_automatic_renewal_context(
+    db_session,
+    *,
+    acceptance: DocumentAcceptance,
+    order: Order,
+    plan: Plan,
+) -> None:
+    acceptance.metadata_ = {"plan_code": plan.code}
+    order.metadata_ = {
+        "plan_code": plan.code,
+        "auto_renew": True,
+        "recurring_consent_acceptance_id": str(acceptance.id),
+    }
+    entrypoint_session = db_session.get(EntrypointSession, acceptance.entrypoint_session_id)
+    assert entrypoint_session is not None
+    entrypoint_session.metadata_ = {"plan_code": plan.code, "auto_renew": True}
+    db_session.add(
+        OrderItem(
+            order_id=order.id,
+            item_type=f"{plan.scope_type}_plan",
+            product_id=plan.product_id,
+            bundle_id=plan.bundle_id,
+            plan_id=plan.id,
+            plan_code_snapshot=plan.code,
+            title_snapshot=plan.name,
+            quantity=1,
+            list_amount_minor=plan.price_amount_minor,
+            discount_amount_minor=0,
+            unit_amount_minor=plan.price_amount_minor,
+            amount_minor=plan.price_amount_minor,
+            currency=plan.currency,
+            trial_days_snapshot=plan.trial_days,
+            pricing_snapshot={},
+            metadata_={},
+        )
+    )
+    db_session.flush()
+
+
 @pytest.mark.postgres
 def test_automatic_renewal_provider_reference_conflict_uses_domain_error_and_savepoint(db_session) -> None:
     now = datetime.now(timezone.utc)
@@ -795,6 +834,103 @@ def test_automatic_renewal_accepts_exact_paid_checkout_context(db_session) -> No
     assert event.order_id == order.id
 
 
+def test_automatic_renewal_accepts_legacy_consent_for_existing_order(db_session) -> None:
+    now = datetime.now(timezone.utc)
+    plan = _plan_by_code(db_session, "document-summary-pro")
+    plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC.value
+    user, account = _add_billing_user_and_account(db_session, "automatic-renewal-legacy-context")
+    acceptance, order, subscription = _add_automatic_renewal_context(
+        db_session,
+        key="automatic-renewal-legacy-context",
+        user=user,
+        account=account,
+        plan=plan,
+        now=now,
+    )
+    _mark_legacy_automatic_renewal_context(
+        db_session,
+        acceptance=acceptance,
+        order=order,
+        plan=plan,
+    )
+
+    result = enable_automatic_renewal(
+        db_session,
+        EnableAutomaticRenewalCommand(
+            operation_idempotency_key="automatic-renewal-legacy-context-operation",
+            subscription_id=subscription.id,
+            order_id=order.id,
+            provider_account_id=account.id,
+            provider_subscription_id="provider-legacy-context",
+            recurring_consent_acceptance_id=acceptance.id,
+            occurred_at=now,
+        ),
+    )
+
+    assert result.id == subscription.id
+    assert result.renewal_mode == SubscriptionRenewalMode.AUTOMATIC.value
+    assert result.provider_subscription_id == "provider-legacy-context"
+    assert result.recurring_consent_acceptance_id == acceptance.id
+
+
+def test_automatic_renewal_legacy_consent_cannot_attach_to_another_plan_version(db_session) -> None:
+    now = datetime.now(timezone.utc)
+    plan = _plan_by_code(db_session, "document-summary-pro")
+    plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC.value
+    user, account = _add_billing_user_and_account(db_session, "automatic-renewal-legacy-plan-version")
+    acceptance, order, subscription = _add_automatic_renewal_context(
+        db_session,
+        key="automatic-renewal-legacy-plan-version",
+        user=user,
+        account=account,
+        plan=plan,
+        now=now,
+    )
+    _mark_legacy_automatic_renewal_context(
+        db_session,
+        acceptance=acceptance,
+        order=order,
+        plan=plan,
+    )
+    other_plan = Plan(
+        tenant_id=plan.tenant_id,
+        region=plan.region,
+        code=plan.code,
+        name="Another plan version",
+        scope_type=plan.scope_type,
+        product_id=plan.product_id,
+        bundle_id=plan.bundle_id,
+        price_amount_minor=plan.price_amount_minor + 100,
+        currency=plan.currency,
+        billing_period=plan.billing_period,
+        renewal_mode=SubscriptionRenewalMode.AUTOMATIC.value,
+        trial_days=plan.trial_days,
+        status="inactive",
+        valid_from=now + timedelta(days=1),
+        metadata_={},
+    )
+    db_session.add(other_plan)
+    db_session.flush()
+    order.plan_id = other_plan.id
+    subscription.plan_id = other_plan.id
+    db_session.flush()
+
+    _assert_automatic_renewal_rejected_without_mutation(
+        db_session,
+        subscription=subscription,
+        command=EnableAutomaticRenewalCommand(
+            operation_idempotency_key="automatic-renewal-legacy-plan-version-operation",
+            subscription_id=subscription.id,
+            order_id=order.id,
+            provider_account_id=account.id,
+            provider_subscription_id="provider-legacy-plan-version",
+            recurring_consent_acceptance_id=acceptance.id,
+            occurred_at=now,
+        ),
+        expected_error="recurring_consent_invalid",
+    )
+
+
 def test_automatic_renewal_rejects_same_scope_provider_account_substitution_without_mutation(db_session) -> None:
     now = datetime.now(timezone.utc)
     plan = _plan_by_code(db_session, "document-summary-pro")
@@ -891,7 +1027,9 @@ def _assert_automatic_renewal_rejected_without_mutation(
         ("wrong_hash", "recurring_consent_invalid"),
         ("missing_acceptance_entrypoint", "recurring_consent_invalid"),
         ("missing_entrypoint_session", "automatic_renewal_context_missing"),
-        ("wrong_plan_code", "recurring_consent_invalid"),
+        ("missing_plan_id", "recurring_consent_invalid"),
+        ("non_string_plan_id", "recurring_consent_invalid"),
+        ("wrong_plan_id", "recurring_consent_invalid"),
         ("wrong_entrypoint_type", "recurring_consent_invalid"),
         ("wrong_entrypoint_value", "recurring_consent_invalid"),
         ("foreign_user", "recurring_consent_invalid"),
@@ -943,8 +1081,12 @@ def test_automatic_renewal_revalidates_persisted_consent_context(
         acceptance.entrypoint_type = None
     elif invalid_context == "missing_entrypoint_session":
         order.entrypoint_session_id = None
-    elif invalid_context == "wrong_plan_code":
-        acceptance.metadata_ = {"plan_code": "different-plan"}
+    elif invalid_context == "missing_plan_id":
+        acceptance.metadata_ = {}
+    elif invalid_context == "non_string_plan_id":
+        acceptance.metadata_ = {"plan_id": 123}
+    elif invalid_context == "wrong_plan_id":
+        acceptance.metadata_ = {"plan_id": str(uuid.uuid4())}
     elif invalid_context == "wrong_entrypoint_type":
         acceptance.entrypoint_type = "bundle"
     elif invalid_context == "wrong_entrypoint_value":

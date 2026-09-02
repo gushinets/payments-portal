@@ -41,7 +41,17 @@ import {
   SubscriptionState
 } from "./CheckoutProductPanels";
 type CheckoutIntentResponse = {
-  product_state: AuthProductState;
+  status: "pending";
+  purchase: {
+    order_id: string;
+    plan_id: string;
+    plan_code: string;
+    plan_name: string;
+    scope_type: "product" | "bundle" | "all_access";
+    product_id: string | null;
+    bundle_id: string | null;
+    invoice_id: string;
+  };
   checkout: {
     amount_minor: number;
     amount: number;
@@ -145,7 +155,7 @@ export function CheckoutClient({
     ? `${sessionUser.tenant_id}:${sessionUser.region}:${sessionUser.user_id}`
     : "";
   const checkoutContextKey = selectedProduct
-    ? `${selectedProduct.code}:${selectedProduct.plan.code}`
+    ? selectedProduct.plan.plan_id
     : "";
   const selectedProductAccess = resolveSelectedProductAccess(
     selectedProduct,
@@ -478,15 +488,17 @@ export function CheckoutClient({
       const effectiveRecurringConsentAcceptanceId =
         recurringAcceptanceIdOverride ?? recurringConsentAcceptanceId;
       const checkoutPayload = {
-        product: selectedProduct.code,
-        plan_code: selectedProduct.plan.code,
+        plan_id: selectedProduct.plan.plan_id,
         auto_renew: autoRenew,
         ...(autoRenew && effectiveRecurringConsentAcceptanceId
           ? {
               recurring_consent_acceptance_id:
                 effectiveRecurringConsentAcceptanceId
             }
-          : {})
+          : {}),
+        entrypoint_type: "product",
+        entrypoint_value: selectedProduct.code,
+        source_url: window.location.pathname + window.location.search
       };
       const payload = await postJson<CheckoutIntentResponse>(
         "/api/auth/checkout-intent",
@@ -494,7 +506,6 @@ export function CheckoutClient({
         sessionToken
       );
       checkoutIntent = payload;
-      setProductState(payload.product_state);
       setMissingDocuments([]);
       setDocumentConsentById({});
     } catch (requestError) {
@@ -527,7 +538,7 @@ export function CheckoutClient({
       currency: checkoutIntent.checkout.currency,
       email: sessionUser.email,
       autoRenew,
-      invoiceId: checkoutIntent.product_state.invoice_id ?? ""
+      invoiceId: checkoutIntent.purchase.invoice_id
     };
 
     window.sessionStorage.setItem(
@@ -556,7 +567,7 @@ export function CheckoutClient({
         productCode: selectedProduct.code,
         planCode: selectedProduct.plan.code,
         email: sessionUser.email,
-        invoiceId: checkoutIntent.product_state.invoice_id ?? ""
+        invoiceId: checkoutIntent.purchase.invoice_id
       });
     } catch {
       window.sessionStorage.removeItem("anytoolai_last_payment_result");
@@ -570,7 +581,7 @@ export function CheckoutClient({
   async function acceptRequiredDocumentsAndContinue() {
     setError("");
 
-    if (!sessionToken) {
+    if (!sessionToken || !selectedProduct) {
       showError("Сначала войдите или зарегистрируйтесь.");
       return;
     }
@@ -589,11 +600,13 @@ export function CheckoutClient({
           {
             document_version_id: document.document_version_id,
             acceptance_text_hash: document.acceptance_text_hash,
+            ...(document.doc_type === "recurring_consent"
+              ? { plan_id: selectedProduct.plan.plan_id }
+              : {}),
             entrypoint_type: "product",
-            entrypoint_value: selectedProduct?.code ?? null,
+            entrypoint_value: selectedProduct.code,
             source_url: window.location.pathname + window.location.search,
             metadata: {
-              plan_code: selectedProduct?.plan.code ?? null,
               auto_renew: autoRenew
             }
           },

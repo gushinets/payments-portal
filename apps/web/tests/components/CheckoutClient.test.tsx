@@ -75,6 +75,38 @@ function checkoutAction(
   };
 }
 
+function checkoutIntentResponse(
+  invoiceId: string,
+  overrides: {
+    planId?: string;
+    planCode?: string;
+    planName?: string;
+    amountMinor?: number;
+    amount?: number;
+    action?: ReturnType<typeof checkoutAction>;
+  } = {}
+) {
+  return {
+    status: "pending",
+    purchase: {
+      order_id: "22222222-2222-4222-8222-222222222222",
+      plan_id: overrides.planId ?? "33333333-3333-4333-8333-333333333333",
+      plan_code: overrides.planCode ?? "document-summary-pro",
+      plan_name: overrides.planName ?? "Document Summary Pro",
+      scope_type: "product",
+      product_id: "11111111-1111-4111-8111-111111111111",
+      bundle_id: null,
+      invoice_id: invoiceId
+    },
+    checkout: {
+      amount_minor: overrides.amountMinor ?? 99000,
+      amount: overrides.amount ?? 990,
+      currency: "RUB",
+      action: overrides.action ?? checkoutAction(invoiceId)
+    }
+  };
+}
+
 function sessionResponse(status: "inactive" | "pending" | "active" | "failed") {
   return {
     authenticated: true,
@@ -165,24 +197,14 @@ describe("CheckoutClient critical characterization", () => {
       ),
       http.post(`${apiBase}/api/auth/checkout-intent`, async ({ request }) => {
         checkoutBodies.push((await request.json()) as Record<string, unknown>);
-        return HttpResponse.json({
-          product_state: {
-            product_code: "document-summary",
-            plan_code: "backend-summary-plan",
-            plan_name: "Backend Summary Plan",
-            invoice_id: "invoice-backend-catalog",
-            transaction_id: null,
-            status: "pending",
-            starts_at: null,
-            expires_at: null
-          },
-          checkout: {
-            amount_minor: 125000,
-            amount: 1250,
-            currency: "RUB",
-            action: checkoutAction("invoice-backend-catalog")
-          }
-        });
+        return HttpResponse.json(
+          checkoutIntentResponse("invoice-backend-catalog", {
+            planCode: "backend-summary-plan",
+            planName: "Backend Summary Plan",
+            amountMinor: 125000,
+            amount: 1250
+          })
+        );
       })
     );
 
@@ -197,9 +219,11 @@ describe("CheckoutClient critical characterization", () => {
     await waitFor(() => expect(provider.payments).toHaveLength(1));
     expect(checkoutBodies).toEqual([
       {
-        product: "document-summary",
-        plan_code: "backend-summary-plan",
-        auto_renew: false
+        plan_id: "33333333-3333-4333-8333-333333333333",
+        auto_renew: false,
+        entrypoint_type: "product",
+        entrypoint_value: "document-summary",
+        source_url: expect.any(String)
       }
     ]);
   });
@@ -705,9 +729,11 @@ describe("CheckoutClient critical characterization", () => {
         checkoutAttempts += 1;
         const body = (await request.json()) as Record<string, unknown>;
         expect(body).toEqual({
-          product: "document-summary",
-          plan_code: "document-summary-pro",
-          auto_renew: false
+          plan_id: "33333333-3333-4333-8333-333333333333",
+          auto_renew: false,
+          entrypoint_type: "product",
+          entrypoint_value: "document-summary",
+          source_url: expect.any(String)
         });
         expect(body).not.toHaveProperty("recurring_consent_acceptance_id");
         expect(JSON.stringify(body).toLowerCase()).not.toContain("card");
@@ -743,24 +769,9 @@ describe("CheckoutClient critical characterization", () => {
           );
         }
 
-        return HttpResponse.json({
-          product_state: {
-            product_code: "document-summary",
-            plan_code: "document-summary-pro",
-            plan_name: "Document Summary Pro",
-            invoice_id: "invoice-after-legal",
-            transaction_id: null,
-            status: "pending",
-            starts_at: null,
-            expires_at: null
-          },
-          checkout: {
-            amount_minor: 99000,
-            amount: 990,
-            currency: "RUB",
-            action: checkoutAction("invoice-after-legal")
-          }
-        });
+        return HttpResponse.json(
+          checkoutIntentResponse("invoice-after-legal")
+        );
       }),
       http.post(`${apiBase}/api/legal/acceptances`, async ({ request }) => {
         const body = (await request.json()) as {
@@ -853,9 +864,11 @@ describe("CheckoutClient critical characterization", () => {
         checkoutBodies.push(body);
         if (checkoutBodies.length === 1) {
           expect(body).toEqual({
-            product: "document-summary",
-            plan_code: "document-summary-pro",
-            auto_renew: true
+            plan_id: "33333333-3333-4333-8333-333333333333",
+            auto_renew: true,
+            entrypoint_type: "product",
+            entrypoint_value: "document-summary",
+            source_url: expect.any(String)
           });
           return HttpResponse.json(
             {
@@ -888,29 +901,16 @@ describe("CheckoutClient critical characterization", () => {
         }
 
         expect(body).toEqual({
-          product: "document-summary",
-          plan_code: "document-summary-pro",
+          plan_id: "33333333-3333-4333-8333-333333333333",
           auto_renew: true,
-          recurring_consent_acceptance_id: "acceptance-recurring-v1"
+          recurring_consent_acceptance_id: "acceptance-recurring-v1",
+          entrypoint_type: "product",
+          entrypoint_value: "document-summary",
+          source_url: expect.any(String)
         });
-        return HttpResponse.json({
-          product_state: {
-            product_code: "document-summary",
-            plan_code: "document-summary-pro",
-            plan_name: "Document Summary Pro",
-            invoice_id: "invoice-after-recurring",
-            transaction_id: null,
-            status: "pending",
-            starts_at: null,
-            expires_at: null
-          },
-          checkout: {
-            amount_minor: 99000,
-            amount: 990,
-            currency: "RUB",
-            action: checkoutAction("invoice-after-recurring")
-          }
-        });
+        return HttpResponse.json(
+          checkoutIntentResponse("invoice-after-recurring")
+        );
       }),
       http.post(`${apiBase}/api/legal/acceptances`, async ({ request }) => {
         const body = (await request.json()) as Record<string, unknown>;
@@ -918,17 +918,22 @@ describe("CheckoutClient critical characterization", () => {
           entrypoint_type: "product",
           entrypoint_value: "document-summary",
           metadata: {
-            plan_code: "document-summary-pro",
             auto_renew: true
           }
         });
+        expect(body).not.toHaveProperty("metadata.plan_code");
         if (body.document_version_id === "doc-recurring-v1") {
+          expect(body).toHaveProperty(
+            "plan_id",
+            "33333333-3333-4333-8333-333333333333"
+          );
           return HttpResponse.json({
             status: "accepted",
             acceptance_id: "acceptance-recurring-v1",
             doc_type: "recurring_consent"
           });
         }
+        expect(body).not.toHaveProperty("plan_id");
         return HttpResponse.json({
           status: "accepted",
           acceptance_id: "acceptance-offer-v1",
@@ -993,24 +998,9 @@ describe("CheckoutClient critical characterization", () => {
             { status: 409 }
           );
         }
-        return HttpResponse.json({
-          product_state: {
-            product_code: "document-summary",
-            plan_code: "document-summary-pro",
-            plan_name: "Document Summary Pro",
-            invoice_id: `invoice-${checkoutBodies.length}`,
-            transaction_id: null,
-            status: "pending",
-            starts_at: null,
-            expires_at: null
-          },
-          checkout: {
-            amount_minor: 99000,
-            amount: 990,
-            currency: "RUB",
-            action: checkoutAction(`invoice-${checkoutBodies.length}`)
-          }
-        });
+        return HttpResponse.json(
+          checkoutIntentResponse(`invoice-${checkoutBodies.length}`)
+        );
       }),
       http.post(`${apiBase}/api/legal/acceptances`, () =>
         HttpResponse.json({
@@ -1036,9 +1026,11 @@ describe("CheckoutClient critical characterization", () => {
 
     await waitFor(() => expect(provider.payments).toHaveLength(2));
     expect(checkoutBodies[2]).toEqual({
-      product: "document-summary",
-      plan_code: "document-summary-pro",
-      auto_renew: false
+      plan_id: "33333333-3333-4333-8333-333333333333",
+      auto_renew: false,
+      entrypoint_type: "product",
+      entrypoint_value: "document-summary",
+      source_url: expect.any(String)
     });
   });
 
@@ -1079,24 +1071,9 @@ describe("CheckoutClient critical characterization", () => {
           );
         }
         if (checkoutBodies.length === 2) {
-          return HttpResponse.json({
-            product_state: {
-              product_code: "document-summary",
-              plan_code: "document-summary-pro",
-              plan_name: "Document Summary Pro",
-              invoice_id: "invoice-before-logout",
-              transaction_id: null,
-              status: "pending",
-              starts_at: null,
-              expires_at: null
-            },
-            checkout: {
-              amount_minor: 99000,
-              amount: 990,
-              currency: "RUB",
-              action: checkoutAction("invoice-before-logout")
-            }
-          });
+          return HttpResponse.json(
+            checkoutIntentResponse("invoice-before-logout")
+          );
         }
         expect(body).not.toHaveProperty("recurring_consent_acceptance_id");
         return HttpResponse.json(
@@ -1182,24 +1159,11 @@ describe("CheckoutClient critical characterization", () => {
         HttpResponse.json(sessionResponse("inactive"))
       ),
       http.post(`${apiBase}/api/auth/checkout-intent`, () =>
-        HttpResponse.json({
-          product_state: {
-            product_code: "document-summary",
-            plan_code: "document-summary-pro",
-            plan_name: "Document Summary Pro",
-            invoice_id: "invoice-auth-mode",
-            transaction_id: null,
-            status: "pending",
-            starts_at: null,
-            expires_at: null
-          },
-          checkout: {
-            amount_minor: 99000,
-            amount: 990,
-            currency: "RUB",
+        HttpResponse.json(
+          checkoutIntentResponse("invoice-auth-mode", {
             action: checkoutAction("invoice-auth-mode", "auth")
-          }
-        })
+          })
+        )
       )
     );
     const provider = await renderCheckoutWithProviderStub();
@@ -1251,24 +1215,7 @@ describe("CheckoutClient critical characterization", () => {
         HttpResponse.json(sessionResponse("inactive"))
       ),
       http.post(`${apiBase}/api/auth/checkout-intent`, () =>
-        HttpResponse.json({
-          product_state: {
-            product_code: "document-summary",
-            plan_code: "document-summary-pro",
-            plan_name: "Document Summary Pro",
-            invoice_id: "invoice-sdk-missing",
-            transaction_id: null,
-            status: "pending",
-            starts_at: null,
-            expires_at: null
-          },
-          checkout: {
-            amount_minor: 99000,
-            amount: 990,
-            currency: "RUB",
-            action: checkoutAction("invoice-sdk-missing")
-          }
-        })
+        HttpResponse.json(checkoutIntentResponse("invoice-sdk-missing"))
       )
     );
     const { CheckoutClient } = await import("@/features/checkout/CheckoutClient");
@@ -1291,24 +1238,11 @@ describe("CheckoutClient critical characterization", () => {
         HttpResponse.json(sessionResponse("inactive"))
       ),
       http.post(`${apiBase}/api/auth/checkout-intent`, () =>
-        HttpResponse.json({
-          product_state: {
-            product_code: "document-summary",
-            plan_code: "document-summary-pro",
-            plan_name: "Document Summary Pro",
-            invoice_id: "invoice-missing-public-id",
-            transaction_id: null,
-            status: "pending",
-            starts_at: null,
-            expires_at: null
-          },
-          checkout: {
-            amount_minor: 99000,
-            amount: 990,
-            currency: "RUB",
+        HttpResponse.json(
+          checkoutIntentResponse("invoice-missing-public-id", {
             action: checkoutAction("invoice-missing-public-id", "charge", null)
-          }
-        })
+          })
+        )
       )
     );
     const provider = await renderCheckoutWithProviderStub();
@@ -1357,24 +1291,11 @@ describe("CheckoutClient critical characterization", () => {
         HttpResponse.json(sessionResponse("inactive"))
       ),
       http.post(`${apiBase}/api/auth/checkout-intent`, () =>
-        HttpResponse.json({
-          product_state: {
-            product_code: "document-summary",
-            plan_code: "document-summary-pro",
-            plan_name: "Document Summary Pro",
-            invoice_id: "invoice-unsupported-mode",
-            transaction_id: null,
-            status: "pending",
-            starts_at: null,
-            expires_at: null
-          },
-          checkout: {
-            amount_minor: 99000,
-            amount: 990,
-            currency: "RUB",
+        HttpResponse.json(
+          checkoutIntentResponse("invoice-unsupported-mode", {
             action: checkoutAction("invoice-unsupported-mode", "unsupported-mode")
-          }
-        })
+          })
+        )
       )
     );
     const provider = await renderCheckoutWithProviderStub();
