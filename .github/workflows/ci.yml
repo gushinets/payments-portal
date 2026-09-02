@@ -276,12 +276,83 @@ jobs:
       - run: npm run test:e2e:react-runtime
       - run: python scripts/repo.py up
       - run: npm run test:e2e
+      - name: Validate browser evidence
+        if: always()
+        shell: bash
+        run: |
+          missing=0
+          results_root=".harness/playwright-react-runtime-results"
+
+          for project in desktop-chromium mobile-chromium; do
+            complete_attempt=0
+            attempts=0
+            missing_files=""
+
+            for attempt_dir in \
+              "$results_root"/*-"$project" \
+              "$results_root"/*-"$project"-retry*; do
+              if [ ! -d "$attempt_dir" ]; then
+                continue
+              fi
+
+              attempt_name="${attempt_dir##*/}"
+              case "$attempt_name" in
+                *-"$project") ;;
+                *-"$project"-retry*)
+                  retry_number="${attempt_name##*-${project}-retry}"
+                  case "$retry_number" in
+                    ""|*[!0-9]*) continue ;;
+                  esac
+                  ;;
+                *) continue ;;
+              esac
+
+              attempts=$((attempts + 1))
+              attempt_complete=1
+              for screenshot in landing checkout account payment-result; do
+                evidence_file="${attempt_dir}/${screenshot}.png"
+                if [ ! -f "$evidence_file" ] || [ ! -s "$evidence_file" ]; then
+                  attempt_complete=0
+                  missing_files="${missing_files} ${evidence_file}"
+                fi
+              done
+
+              if [ "$attempt_complete" -eq 1 ]; then
+                complete_attempt=1
+                break
+              fi
+            done
+
+            if [ "$complete_attempt" -ne 1 ]; then
+              echo "::error::Expected one complete browser evidence attempt for ${project}; inspected ${attempts}.${missing_files}"
+              missing=1
+            fi
+          done
+
+          for report in \
+            ".harness/playwright-react-runtime-report/results.json" \
+            ".harness/playwright-react-runtime-report/html/index.html" \
+            ".harness/playwright-report/results.json" \
+            ".harness/playwright-report/html/index.html"; do
+            if [ ! -f "$report" ] || [ ! -s "$report" ]; then
+              echo "::error::Missing browser evidence file: ${report}"
+              missing=1
+            fi
+          done
+
+          exit "$missing"
       - name: Upload browser evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: playwright-evidence
-          path: .harness/
+          path: |
+            .harness/playwright-react-runtime-results/
+            .harness/playwright-react-runtime-report/
+            .harness/playwright-results/
+            .harness/playwright-report/
+          include-hidden-files: true
+          if-no-files-found: error
       - name: Stop isolated stack
         if: always()
         run: python scripts/repo.py down
