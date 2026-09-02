@@ -2,19 +2,28 @@ from __future__ import annotations
 
 import hashlib
 import secrets
-import uuid
 from datetime import datetime, timedelta
+from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.errors import PaymentProviderConfigurationError
 from app.core.observability import record_checkout, traced
 from app.domains.identity.passwords import hash_password, verify_password
+from app.domains.identity.services.checkout import (
+    CheckoutIntentRequest,
+    CheckoutIntentResponse,
+    CheckoutPaymentResponse,
+    CheckoutPurchaseResponse,
+    get_sellable_plan,
+    make_invoice_id,
+    make_order_number,
+    raise_missing_recurring_consent,
+)
 from app.domains.legal.service import (
     get_current_recurring_consent_acceptance,
     get_missing_required_documents_for_user,
@@ -49,14 +58,11 @@ from app.infrastructure.queries.products import (
 from app.infrastructure.queries.subscriptions import get_active_entitlement_for_scope
 from app.models import (
     AuthSession,
-    Bundle,
     CheckoutSession,
     EntrypointSession,
     Order,
     OrderItem,
     Payment,
-    Plan,
-    Product,
     User,
 )
 from app.payment_providers.accounts import get_or_create_checkout_provider_account
@@ -100,16 +106,6 @@ class LoginRequest(BaseModel):
     password: str = Field(min_length=8, max_length=128)
 
 
-class CheckoutIntentRequest(BaseModel):
-    product: str
-    plan_code: str
-    auto_renew: bool = False
-    recurring_consent_acceptance_id: uuid.UUID | None = None
-    entrypoint_type: str = "product"
-    frontend_id: str | None = None
-    source_url: str | None = None
-
-
 def make_session_token() -> tuple[str, str, datetime]:
     token = secrets.token_urlsafe(32)
     token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
@@ -135,78 +131,6 @@ def present_user(user: User) -> dict:
         "region": user.region,
         "user_id": str(user.id),
         "email": user.email,
-    }
-
-
-def make_invoice_id(product_code: str) -> str:
-    return f"{product_code}-{secrets.token_hex(8)}"
-
-
-def make_order_number(region: str) -> str:
-    return f"{region.upper()}-{utc_now().strftime('%Y%m%d')}-{secrets.token_hex(4).upper()}"
-
-
-def get_product_defaults(product_code: str, plan_code: str) -> dict:
-    defaults = PRODUCT_DEFAULTS.get(product_code)
-    if defaults is None or defaults["plan_code"] != plan_code:
-        raise HTTPException(status_code=400, detail="unknown_product_plan")
-    return defaults
-
-
-def get_sellable_plan(db: Session, *, user: User, entrypoint_code: str, plan_code: str) -> dict:
-    now = utc_now()
-    plan = (
-        db.query(Plan)
-        .filter(
-            Plan.tenant_id == user.tenant_id,
-            Plan.region == user.region,
-            Plan.code == plan_code,
-            Plan.status == "active",
-            Plan.valid_from <= now,
-            or_(Plan.valid_to.is_(None), Plan.valid_to > now),
-        )
-        .order_by(Plan.valid_from.desc(), Plan.created_at.desc())
-        .first()
-    )
-    if plan is None:
-        raise HTTPException(status_code=400, detail="unknown_product_plan")
-
-    product_code = None
-    bundle_code = None
-    if plan.scope_type == "product":
-        product = db.get(Product, plan.product_id) if plan.product_id else None
-        product_code = product.code if product else None
-        if product_code != entrypoint_code or product.status != "active":
-            raise HTTPException(status_code=400, detail="unknown_product_plan")
-    elif plan.scope_type == "bundle":
-        bundle = db.get(Bundle, plan.bundle_id) if plan.bundle_id else None
-        bundle_code = bundle.code if bundle else None
-        if bundle_code != entrypoint_code or bundle.status != "active":
-            raise HTTPException(status_code=400, detail="unknown_product_plan")
-    elif plan.scope_type == "all_access":
-        if entrypoint_code not in {"all-access", plan.code}:
-            raise HTTPException(status_code=400, detail="unknown_product_plan")
-    else:
-        raise HTTPException(status_code=400, detail="unknown_product_plan")
-
-    return {
-        "plan_id": plan.id,
-        "product_id": plan.product_id,
-        "bundle_id": plan.bundle_id,
-        "scope_type": plan.scope_type,
-        "entrypoint_value": product_code or bundle_code or "all-access",
-        "plan_code": plan.code,
-        "plan_name": plan.name,
-        "amount_minor": plan.price_amount_minor,
-        "currency": plan.currency,
-        "trial_days": plan.trial_days,
-        "renewal_mode": plan.renewal_mode,
-        "pricing_snapshot": {
-            "price_amount_minor": plan.price_amount_minor,
-            "currency": plan.currency,
-            "billing_period": plan.billing_period,
-            "scope_type": plan.scope_type,
-        },
     }
 
 
@@ -521,7 +445,7 @@ def logout(
     return {"status": "logged_out"}
 
 
-@router.post("/checkout-intent")
+@router.post("/checkout-intent", response_model=CheckoutIntentResponse)
 @traced("billing.checkout_intent.create")
 def create_checkout_intent(
     payload: CheckoutIntentRequest,
@@ -531,14 +455,14 @@ def create_checkout_intent(
     providers: Annotated[PaymentProviderRegistry, Depends(get_payment_provider_registry)],
 ):
     user, _ = current
+    now = utc_now()
     sellable_plan = get_sellable_plan(
         db,
         user=user,
-        entrypoint_code=payload.product,
-        plan_code=payload.plan_code,
+        plan_id=payload.plan_id,
+        now=now,
     )
-    now = utc_now()
-    if payload.auto_renew and sellable_plan["renewal_mode"] != SubscriptionRenewalMode.AUTOMATIC.value:
+    if payload.auto_renew and sellable_plan.renewal_mode != SubscriptionRenewalMode.AUTOMATIC.value:
         raise HTTPException(
             status_code=409,
             detail={"code": "automatic_renewal_not_permitted"},
@@ -561,28 +485,28 @@ def create_checkout_intent(
 
     recurring_consent = None
     if payload.auto_renew and payload.recurring_consent_acceptance_id is None:
-        raise HTTPException(status_code=409, detail={"code": "recurring_consent_required"})
+        raise_missing_recurring_consent(db, user=user, now=now)
     if payload.auto_renew:
         recurring_consent = get_current_recurring_consent_acceptance(
             db,
             acceptance_id=payload.recurring_consent_acceptance_id,
             user=user,
             entrypoint_type=payload.entrypoint_type,
-            entrypoint_value=sellable_plan["entrypoint_value"],
-            plan_code=sellable_plan["plan_code"],
+            entrypoint_value=payload.entrypoint_value,
+            plan_id=sellable_plan.id,
             now=now,
         )
         if recurring_consent is None:
-            raise HTTPException(status_code=409, detail={"code": "recurring_consent_invalid"})
+            raise_missing_recurring_consent(db, user=user, now=now)
 
     provider_account, provider_adapter = get_or_create_checkout_provider_account(
         db,
         user=user,
         registry=providers,
     )
-    invoice_id = make_invoice_id(sellable_plan["entrypoint_value"])
-    amount_minor = int(sellable_plan["amount_minor"])
-    currency = str(sellable_plan["currency"])
+    invoice_id = make_invoice_id()
+    amount_minor = sellable_plan.price_amount_minor
+    currency = sellable_plan.currency
     if currency != provider_account.default_currency:
         record_checkout("provider_currency_mismatch")
         raise HTTPException(status_code=409, detail="provider_currency_mismatch")
@@ -593,15 +517,20 @@ def create_checkout_intent(
         route_region=user.region,
         resolved_region=user.region,
         entrypoint_type=payload.entrypoint_type,
-        entrypoint_value=sellable_plan["entrypoint_value"],
-        product_id=sellable_plan["product_id"],
-        bundle_id=sellable_plan["bundle_id"],
+        entrypoint_value=payload.entrypoint_value,
+        product_id=sellable_plan.product_id,
+        bundle_id=sellable_plan.bundle_id,
         frontend_id=payload.frontend_id or "web_checkout",
         user_id=user.id,
         source_url=payload.source_url,
         ip=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
-        metadata_={"plan_code": payload.plan_code, "auto_renew": payload.auto_renew},
+        metadata_={
+            "plan_id": str(sellable_plan.id),
+            "plan_code": sellable_plan.code,
+            "scope_type": sellable_plan.scope_type.value,
+            "auto_renew": payload.auto_renew,
+        },
     )
     db.add(entrypoint_session)
     db.flush()
@@ -611,15 +540,16 @@ def create_checkout_intent(
         region=user.region,
         user_id=user.id,
         entrypoint_session_id=entrypoint_session.id,
-        plan_id=sellable_plan["plan_id"],
+        plan_id=sellable_plan.id,
         status="order_created",
         amount_minor=amount_minor,
         currency=currency,
         expires_at=expires_at,
         metadata_={
-            "product_code": payload.product,
-            "plan_code": sellable_plan["plan_code"],
-            "scope_type": sellable_plan["scope_type"],
+            "plan_id": str(sellable_plan.id),
+            "plan_code": sellable_plan.code,
+            "scope_type": sellable_plan.scope_type.value,
+            "product_code": sellable_plan.product_code,
             "auto_renew": payload.auto_renew,
             "recurring_consent_acceptance_id": str(recurring_consent.id) if recurring_consent else None,
         },
@@ -634,7 +564,7 @@ def create_checkout_intent(
         user_id=user.id,
         checkout_session_id=checkout_session.id,
         entrypoint_session_id=entrypoint_session.id,
-        plan_id=sellable_plan["plan_id"],
+        plan_id=sellable_plan.id,
         status="pending_payment",
         amount_minor=amount_minor,
         currency=currency,
@@ -644,9 +574,10 @@ def create_checkout_intent(
         provider_invoice_id=invoice_id,
         expires_at=expires_at,
         metadata_={
-            "product_code": payload.product,
-            "plan_code": sellable_plan["plan_code"],
-            "scope_type": sellable_plan["scope_type"],
+            "plan_id": str(sellable_plan.id),
+            "plan_code": sellable_plan.code,
+            "scope_type": sellable_plan.scope_type.value,
+            "product_code": sellable_plan.product_code,
             "auto_renew": payload.auto_renew,
             "recurring_consent_acceptance_id": str(recurring_consent.id) if recurring_consent else None,
         },
@@ -658,10 +589,12 @@ def create_checkout_intent(
             provider_account=provider_account,
             order=order,
             account_id=user.email,
-            description=str(sellable_plan["plan_name"]),
+            description=sellable_plan.name,
             metadata={
-                "product_code": payload.product,
-                "plan_code": sellable_plan["plan_code"],
+                "plan_id": str(sellable_plan.id),
+                "plan_code": sellable_plan.code,
+                "scope_type": sellable_plan.scope_type.value,
+                "product_code": sellable_plan.product_code,
             },
         )
         order.metadata_ = {
@@ -676,34 +609,42 @@ def create_checkout_intent(
     db.add(
         OrderItem(
             order_id=order.id,
-            item_type=f"{sellable_plan['scope_type']}_plan",
-            product_id=sellable_plan["product_id"],
-            bundle_id=sellable_plan["bundle_id"],
-            plan_id=sellable_plan["plan_id"],
-            product_code_snapshot=payload.product if sellable_plan["scope_type"] == "product" else None,
-            plan_code_snapshot=sellable_plan["plan_code"],
-            title_snapshot=str(sellable_plan["plan_name"]),
+            item_type=f"{sellable_plan.scope_type.value}_plan",
+            product_id=sellable_plan.product_id,
+            bundle_id=sellable_plan.bundle_id,
+            plan_id=sellable_plan.id,
+            product_code_snapshot=sellable_plan.product_code,
+            plan_code_snapshot=sellable_plan.code,
+            title_snapshot=sellable_plan.name,
             quantity=1,
             list_amount_minor=amount_minor,
             discount_amount_minor=0,
             unit_amount_minor=amount_minor,
             amount_minor=amount_minor,
             currency=currency,
-            trial_days_snapshot=int(sellable_plan["trial_days"]),
-            pricing_snapshot=sellable_plan["pricing_snapshot"],
+            trial_days_snapshot=sellable_plan.trial_days,
+            pricing_snapshot=sellable_plan.pricing_snapshot,
         )
     )
 
     db.commit()
     record_checkout("created")
 
-    return {
-        "status": ProductAccessStatus.PENDING.value,
-        "product_state": present_product_state(db, user=user, product_code=payload.product, order=order),
-        "checkout": {
-            "amount_minor": amount_minor,
-            "amount": round(amount_minor / 100, 2),
-            "currency": currency,
-            "action": checkout_action.as_response(),
-        },
-    }
+    return CheckoutIntentResponse(
+        purchase=CheckoutPurchaseResponse(
+            order_id=order.id,
+            plan_id=sellable_plan.id,
+            plan_code=sellable_plan.code,
+            plan_name=sellable_plan.name,
+            scope_type=sellable_plan.scope_type,
+            product_id=sellable_plan.product_id,
+            bundle_id=sellable_plan.bundle_id,
+            invoice_id=invoice_id,
+        ),
+        checkout=CheckoutPaymentResponse(
+            amount_minor=amount_minor,
+            amount=float(Decimal(amount_minor) / Decimal("100")),
+            currency=currency,
+            action=checkout_action,
+        ),
+    )

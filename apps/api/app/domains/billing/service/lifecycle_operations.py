@@ -132,7 +132,7 @@ def enable_automatic_renewal(db: Session, command: EnableAutomaticRenewalCommand
         user=user,
         entrypoint_type=entrypoint_session.entrypoint_type,
         entrypoint_value=entrypoint_session.entrypoint_value,
-        plan_code=plan.code,
+        plan_id=plan.id,
         now=command.occurred_at,
     ):
         raise SubscriptionLifecycleError("recurring_consent_invalid")

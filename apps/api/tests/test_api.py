@@ -96,6 +96,24 @@ def signed_cloudpayments_post(endpoint: str, payload: bytes, *, secret: str = "t
     )
 
 
+def assert_opaque_invoice_id(invoice_id: str) -> None:
+    assert uuid.UUID(invoice_id).hex == invoice_id
+
+
+def plan_id_for_code(plan_code: str, *, tenant_id: str = "anytoolai", region: str = "ru") -> str:
+    with SessionLocal() as db:
+        plan = (
+            db.query(Plan)
+            .filter(
+                Plan.tenant_id == tenant_id,
+                Plan.region == region,
+                Plan.code == plan_code,
+            )
+            .one()
+        )
+        return str(plan.id)
+
+
 def create_checkout_invoice(
     *,
     email: str,
@@ -120,13 +138,14 @@ def create_checkout_invoice(
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
-            "product": product,
-            "plan_code": plan_code,
+            "plan_id": plan_id_for_code(plan_code),
             "auto_renew": False,
+            "entrypoint_type": "product",
+            "entrypoint_value": product,
         },
     )
     assert checkout_response.status_code == 200, checkout_response.text
-    return checkout_response.json()["product_state"]["invoice_id"]
+    return checkout_response.json()["purchase"]["invoice_id"]
 
 
 def seed_cloudpayments_provider_account(
@@ -226,6 +245,7 @@ def accept_document_for_token(
     document: DocumentVersion,
     entrypoint_type: str | None = "product",
     entrypoint_value: str | None = "document-summary",
+    plan_id: str | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> str:
     from app.domains.legal.service import expected_acceptance_text_hash
@@ -237,17 +257,30 @@ def accept_document_for_token(
         current_document = db.get(DocumentVersion, document_id)
         assert current_document is not None
         acceptance_text_hash = expected_acceptance_text_hash(current_document)
+        document_type = current_document.doc_type
+        document_tenant_id = current_document.tenant_id
+        document_region = current_document.region
+
+    acceptance_payload = {
+        "document_version_id": str(document_id),
+        "acceptance_text_hash": acceptance_text_hash,
+        "entrypoint_type": entrypoint_type,
+        "entrypoint_value": entrypoint_value,
+        "metadata": metadata if metadata is not None else {},
+    }
+    if plan_id is not None:
+        acceptance_payload["plan_id"] = plan_id
+    elif document_type == "recurring_consent":
+        acceptance_payload["plan_id"] = plan_id_for_code(
+            "document-summary-pro",
+            tenant_id=document_tenant_id,
+            region=document_region,
+        )
 
     response = client.post(
         "/api/legal/acceptances",
         headers={"Authorization": f"Bearer {token}"},
-        json={
-            "document_version_id": str(document_id),
-            "acceptance_text_hash": acceptance_text_hash,
-            "entrypoint_type": entrypoint_type,
-            "entrypoint_value": entrypoint_value,
-            "metadata": metadata if metadata is not None else {"plan_code": "document-summary-pro"},
-        },
+        json=acceptance_payload,
     )
     assert response.status_code == 200, response.text
     return response.json()["acceptance_id"]
@@ -278,7 +311,7 @@ def create_document_acceptance_row(
         acceptance_text_hash=acceptance_text_hash,
         entrypoint_type="product" if entrypoint_value is not None else None,
         entrypoint_value=entrypoint_value,
-        metadata_={"plan_code": "document-summary-pro"} if entrypoint_value is not None else {},
+        metadata_={"plan_id": plan_id_for_code("document-summary-pro")} if entrypoint_value is not None else {},
     )
     db.add(acceptance)
     db.commit()
@@ -702,8 +735,9 @@ def test_seeded_legal_documents_block_checkout_on_fresh_database() -> None:
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
-            "product": "document-summary",
-            "plan_code": "document-summary-pro",
+            "plan_id": plan_id_for_code("document-summary-pro"),
+            "entrypoint_type": "product",
+            "entrypoint_value": "document-summary",
             "auto_renew": False,
         },
     )
@@ -786,16 +820,21 @@ def test_register_session_and_checkout_intent_flow() -> None:
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
-            "product": "document-summary",
-            "plan_code": "document-summary-pro",
+            "plan_id": plan_id_for_code("document-summary-pro"),
+            "entrypoint_type": "product",
+            "entrypoint_value": "document-summary",
             "auto_renew": False,
         },
     )
 
     assert checkout_response.status_code == 200
     checkout_payload = checkout_response.json()
-    assert checkout_payload["product_state"]["status"] == "pending"
+    assert checkout_payload["status"] == "pending"
+    assert "product_state" not in checkout_payload
+    assert checkout_payload["purchase"]["plan_id"] == plan_id_for_code("document-summary-pro")
+    assert checkout_payload["purchase"]["scope_type"] == "product"
     assert checkout_payload["checkout"]["amount_minor"] == 99000
+    assert isinstance(checkout_payload["checkout"]["amount"], (int, float))
     assert checkout_payload["checkout"]["amount"] == 990.0
     assert checkout_payload["checkout"]["currency"] == "RUB"
     assert checkout_payload["checkout"]["action"] == {
@@ -806,21 +845,24 @@ def test_register_session_and_checkout_intent_flow() -> None:
         "amount_minor": 99000,
         "amount": 990.0,
         "currency": "RUB",
-        "merchant_order_id": checkout_payload["product_state"]["invoice_id"],
-        "provider_invoice_id": checkout_payload["product_state"]["invoice_id"],
+        "merchant_order_id": checkout_payload["purchase"]["invoice_id"],
+        "provider_invoice_id": checkout_payload["purchase"]["invoice_id"],
         "account_id": "user@example.com",
         "description": "Document Summary Pro",
         "metadata": {
+            "plan_id": plan_id_for_code("document-summary-pro"),
             "product_code": "document-summary",
             "plan_code": "document-summary-pro",
+            "scope_type": "product",
         },
     }
-    invoice_id = checkout_payload["product_state"]["invoice_id"]
+    invoice_id = checkout_payload["purchase"]["invoice_id"]
     assert invoice_id
 
     with SessionLocal() as db:
         user = db.query(User).one()
         order = db.query(Order).one()
+        item = db.query(OrderItem).one()
 
     assert user.email == "user@example.com"
     assert user.tenant_id == "anytoolai"
@@ -830,6 +872,73 @@ def test_register_session_and_checkout_intent_flow() -> None:
     assert order.plan_id is not None
     assert order.status == "pending_payment"
     assert order.provider_invoice_id == invoice_id
+    assert item.product_code_snapshot == "document-summary"
+
+
+@pytest.mark.parametrize(
+    ("legacy_selector", "value"),
+    (
+        ("product", "document-summary"),
+        ("plan_code", "document-summary-pro"),
+        ("scope_type", "product"),
+        ("all_access", True),
+    ),
+)
+def test_checkout_rejects_non_plan_purchase_selectors(legacy_selector: str, value: object) -> None:
+    token = register_test_user(email=f"checkout-selector-{legacy_selector}@example.com")
+    payload = {
+        "plan_id": plan_id_for_code("document-summary-pro"),
+        "entrypoint_type": "product",
+        "entrypoint_value": "document-summary",
+        "auto_renew": False,
+        legacy_selector: value,
+    }
+
+    response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json=payload,
+    )
+
+    assert response.status_code == 422
+
+
+def test_checkout_rejects_unknown_or_foreign_plan_id() -> None:
+    token = register_test_user(email="checkout-foreign-plan@example.com")
+    with SessionLocal() as db:
+        product = db.query(Product).filter(Product.code == "document-summary").one()
+        foreign_plan = Plan(
+            tenant_id="foreign-tenant",
+            region="ru",
+            code="foreign-plan",
+            name="Foreign Plan",
+            scope_type="product",
+            product_id=product.id,
+            price_amount_minor=99000,
+            currency="RUB",
+            billing_period="month",
+            renewal_mode="manual",
+            trial_days=0,
+            status="active",
+            valid_from=datetime.now(timezone.utc) - timedelta(minutes=1),
+        )
+        db.add(foreign_plan)
+        db.commit()
+        foreign_plan_id = str(foreign_plan.id)
+
+    for plan_id in (str(uuid.uuid4()), foreign_plan_id):
+        response = client.post(
+            "/api/auth/checkout-intent",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "plan_id": plan_id,
+                "entrypoint_type": "product",
+                "entrypoint_value": "document-summary",
+                "auto_renew": False,
+            },
+        )
+        assert response.status_code == 400
+        assert response.json()["detail"] == "unknown_product_plan"
 
 
 def test_session_product_state_uses_user_tenant_product_when_codes_overlap() -> None:
@@ -1106,8 +1215,9 @@ def test_manual_checkout_does_not_require_recurring_consent() -> None:
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
-            "product": "document-summary",
-            "plan_code": "document-summary-pro",
+            "plan_id": plan_id_for_code("document-summary-pro"),
+            "entrypoint_type": "product",
+            "entrypoint_value": "document-summary",
             "auto_renew": False,
         },
     )
@@ -1149,8 +1259,9 @@ def test_checkout_rejects_automatic_renewal_for_manual_only_plan() -> None:
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
-            "product": "document-summary",
-            "plan_code": "document-summary-pro",
+            "plan_id": plan_id_for_code("document-summary-pro"),
+            "entrypoint_type": "product",
+            "entrypoint_value": "document-summary",
             "auto_renew": True,
         },
     )
@@ -1188,8 +1299,9 @@ def test_automatic_checkout_without_acceptance_returns_document_flow() -> None:
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
-            "product": "document-summary",
-            "plan_code": "document-summary-pro",
+            "plan_id": plan_id_for_code("document-summary-pro"),
+            "entrypoint_type": "product",
+            "entrypoint_value": "document-summary",
             "auto_renew": True,
         },
     )
@@ -1243,14 +1355,16 @@ def test_automatic_checkout_requires_exact_acceptance_id_after_document_acceptan
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
-            "product": "document-summary",
-            "plan_code": "document-summary-pro",
+            "plan_id": plan_id_for_code("document-summary-pro"),
+            "entrypoint_type": "product",
+            "entrypoint_value": "document-summary",
             "auto_renew": True,
         },
     )
 
     assert checkout_response.status_code == 409
-    assert checkout_response.json()["detail"]["code"] == "recurring_consent_required"
+    assert checkout_response.json()["detail"]["code"] == "missing_required_documents"
+    assert checkout_response.json()["detail"]["documents"][0]["doc_type"] == "recurring_consent"
 
 
 def test_checkout_persists_exact_recurring_consent_reference() -> None:
@@ -1289,8 +1403,9 @@ def test_checkout_persists_exact_recurring_consent_reference() -> None:
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
-            "product": "document-summary",
-            "plan_code": "document-summary-pro",
+            "plan_id": plan_id_for_code("document-summary-pro"),
+            "entrypoint_type": "product",
+            "entrypoint_value": "document-summary",
             "auto_renew": True,
             "recurring_consent_acceptance_id": acceptance_id,
         },
@@ -1300,26 +1415,44 @@ def test_checkout_persists_exact_recurring_consent_reference() -> None:
     with SessionLocal() as db:
         checkout = db.query(CheckoutSession).one()
         order = db.query(Order).one()
+        acceptance = db.query(DocumentAcceptance).one()
 
+    assert acceptance.metadata_["plan_id"] == plan_id_for_code("document-summary-pro")
     assert checkout.metadata_["recurring_consent_acceptance_id"] == acceptance_id
     assert order.metadata_["recurring_consent_acceptance_id"] == acceptance_id
 
 
-@pytest.mark.parametrize(
-    "acceptance_overrides",
-    [
-        pytest.param({"entrypoint_type": None}, id="missing-entrypoint-type"),
-        pytest.param({"entrypoint_value": None}, id="missing-entrypoint-value"),
-        pytest.param({"metadata": {}}, id="missing-plan-code"),
-        pytest.param({"metadata": {"plan_code": 123}}, id="non-string-plan-code"),
-        pytest.param({"metadata": {"plan_code": "prompt-optimizer-pro"}}, id="wrong-plan-code"),
-    ],
-)
-def test_automatic_checkout_rejects_ambiguous_or_wrong_recurring_consent_scope(
-    acceptance_overrides: dict[str, Any],
-) -> None:
+def test_non_recurring_acceptance_drops_client_plan_id_metadata() -> None:
+    with SessionLocal() as db:
+        legal_entity = create_legal_entity(db)
+        document = create_document_version(db, legal_entity=legal_entity, doc_type="offer")
+
+    token = register_test_user(email="non-recurring-metadata-spoof@example.com")
+    from app.domains.legal.service import expected_acceptance_text_hash
+
+    response = client.post(
+        "/api/legal/acceptances",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "document_version_id": str(document.id),
+            "acceptance_text_hash": expected_acceptance_text_hash(document),
+            "metadata": {"plan_id": "client-spoof", "client_field": "preserved"},
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    with SessionLocal() as db:
+        acceptance = db.query(DocumentAcceptance).one()
+
+    assert "plan_id" not in acceptance.metadata_
+    assert acceptance.metadata_["client_field"] == "preserved"
+
+
+def test_automatic_checkout_rejects_recurring_consent_for_wrong_plan_id() -> None:
     with SessionLocal() as db:
         plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
+        other_plan = db.query(Plan).filter(Plan.code == "prompt-optimizer-pro").one()
+        other_plan_id = str(other_plan.id)
         plan.renewal_mode = "automatic"
         legal_entity = create_legal_entity(db)
         document = create_document_version(
@@ -1343,22 +1476,209 @@ def test_automatic_checkout_rejects_ambiguous_or_wrong_recurring_consent_scope(
     acceptance_id = accept_document_for_token(
         token,
         document=document,
-        **acceptance_overrides,
+        plan_id=other_plan_id,
     )
 
     checkout_response = client.post(
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
-            "product": "document-summary",
-            "plan_code": "document-summary-pro",
+            "plan_id": plan_id_for_code("document-summary-pro"),
+            "entrypoint_type": "product",
+            "entrypoint_value": "document-summary",
             "auto_renew": True,
             "recurring_consent_acceptance_id": acceptance_id,
         },
     )
 
     assert checkout_response.status_code == 409
-    assert checkout_response.json()["detail"]["code"] == "recurring_consent_invalid"
+    assert checkout_response.json()["detail"]["code"] == "missing_required_documents"
+    assert checkout_response.json()["detail"]["documents"][0]["doc_type"] == "recurring_consent"
+
+
+def test_recurring_consent_requires_typed_plan_and_entrypoint_context() -> None:
+    with SessionLocal() as db:
+        plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
+        plan_id = str(plan.id)
+        legal_entity = create_legal_entity(db)
+        document = create_document_version(
+            db,
+            legal_entity=legal_entity,
+            doc_type="recurring_consent",
+            version="2026-08-recurring-v1",
+            title="Согласие на рекуррентные платежи",
+        )
+
+    token = register_test_user(email="recurring-context-required@example.com")
+    from app.domains.legal.service import expected_acceptance_text_hash
+
+    for missing_field in ("plan_id", "entrypoint_type", "entrypoint_value"):
+        payload = {
+            "document_version_id": str(document.id),
+            "acceptance_text_hash": expected_acceptance_text_hash(document),
+            "plan_id": plan_id,
+            "entrypoint_type": "product",
+            "entrypoint_value": "document-summary",
+        }
+        payload.pop(missing_field)
+        response = client.post(
+            "/api/legal/acceptances",
+            headers={"Authorization": f"Bearer {token}"},
+            json=payload,
+        )
+        assert response.status_code == 400
+        assert response.json()["detail"]["code"] == "recurring_consent_context_required"
+
+
+def test_recurring_consent_metadata_cannot_spoof_typed_plan_id() -> None:
+    with SessionLocal() as db:
+        plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
+        plan_id = str(plan.id)
+        plan.renewal_mode = "automatic"
+        other_plan = db.query(Plan).filter(Plan.code == "prompt-optimizer-pro").one()
+        other_plan_id = str(other_plan.id)
+        legal_entity = create_legal_entity(db)
+        document = create_document_version(
+            db,
+            legal_entity=legal_entity,
+            doc_type="recurring_consent",
+            version="2026-08-recurring-v1",
+            title="Согласие на рекуррентные платежи",
+        )
+
+    token = register_test_user(email="recurring-metadata-spoof@example.com")
+    acceptance_id = accept_document_for_token(
+        token,
+        document=document,
+        plan_id=plan_id,
+        metadata={"plan_id": other_plan_id},
+    )
+    response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "plan_id": plan_id,
+            "entrypoint_type": "product",
+            "entrypoint_value": "document-summary",
+            "auto_renew": True,
+            "recurring_consent_acceptance_id": acceptance_id,
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    with SessionLocal() as db:
+        acceptance = db.query(DocumentAcceptance).one()
+    assert acceptance.metadata_["plan_id"] == plan_id
+
+
+def test_versioned_plans_require_plan_bound_recurring_consent() -> None:
+    now = datetime.now(timezone.utc)
+    with SessionLocal() as db:
+        product = db.query(Product).filter(Product.code == "document-summary").one()
+        plan_a = Plan(
+            tenant_id="anytoolai",
+            region="ru",
+            code="versioned-consent-pro",
+            name="Versioned Consent A",
+            scope_type="product",
+            product_id=product.id,
+            price_amount_minor=99000,
+            currency="RUB",
+            billing_period="month",
+            renewal_mode="automatic",
+            trial_days=7,
+            status=PlanStatus.ACTIVE.value,
+            valid_from=now - timedelta(days=2),
+            valid_to=now + timedelta(days=1),
+            metadata_={},
+        )
+        plan_b = Plan(
+            tenant_id="anytoolai",
+            region="ru",
+            code="versioned-consent-pro",
+            name="Versioned Consent B",
+            scope_type="product",
+            product_id=product.id,
+            price_amount_minor=109000,
+            currency="RUB",
+            billing_period="month",
+            renewal_mode="automatic",
+            trial_days=0,
+            status=PlanStatus.INACTIVE.value,
+            valid_from=now - timedelta(days=1),
+            valid_to=None,
+            metadata_={},
+        )
+        db.add_all([plan_a, plan_b])
+        db.flush()
+        plan_a_id = plan_a.id
+        plan_b_id = plan_b.id
+        assert plan_a.code == plan_b.code
+        assert plan_a_id != plan_b_id
+        db.commit()
+        legal_entity = create_legal_entity(db)
+        document = create_document_version(
+            db,
+            legal_entity=legal_entity,
+            doc_type="recurring_consent",
+            version="2026-08-versioned-recurring-v1",
+            title="Согласие на рекуррентные платежи",
+        )
+
+    token = register_test_user(email="versioned-consent@example.com")
+    acceptance_a_id = accept_document_for_token(
+        token,
+        document=document,
+        plan_id=str(plan_a_id),
+    )
+
+    with SessionLocal() as db:
+        plan_a = db.get(Plan, plan_a_id)
+        plan_b = db.get(Plan, plan_b_id)
+        assert plan_a is not None
+        assert plan_b is not None
+        plan_a.status = PlanStatus.INACTIVE.value
+        db.commit()
+        plan_b.status = PlanStatus.ACTIVE.value
+        db.commit()
+
+    checkout_payload = {
+        "plan_id": str(plan_b_id),
+        "entrypoint_type": "product",
+        "entrypoint_value": "document-summary",
+        "auto_renew": True,
+        "recurring_consent_acceptance_id": acceptance_a_id,
+    }
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json=checkout_payload,
+    )
+
+    assert checkout_response.status_code == 409
+    detail = checkout_response.json()["detail"]
+    assert detail["code"] == "missing_required_documents"
+    assert [document["document_version_id"] for document in detail["documents"]] == [str(document.id)]
+    acceptance_b_id = accept_document_for_token(
+        token,
+        document=document,
+        plan_id=str(plan_b_id),
+    )
+    checkout_payload["recurring_consent_acceptance_id"] = acceptance_b_id
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {token}"},
+        json=checkout_payload,
+    )
+
+    assert checkout_response.status_code == 200, checkout_response.text
+    assert checkout_response.json()["purchase"]["plan_id"] == str(plan_b_id)
+    with SessionLocal() as db:
+        acceptances = db.query(DocumentAcceptance).all()
+    assert {acceptance.metadata_["plan_id"] for acceptance in acceptances} == {
+        str(plan_a_id),
+        str(plan_b_id),
+    }
 
 
 def test_automatic_checkout_paid_subscription_remains_manual_until_provider_attach() -> None:
@@ -1394,14 +1714,15 @@ def test_automatic_checkout_paid_subscription_remains_manual_until_provider_atta
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
-            "product": "document-summary",
-            "plan_code": "document-summary-pro",
+            "plan_id": plan_id_for_code("document-summary-pro"),
+            "entrypoint_type": "product",
+            "entrypoint_value": "document-summary",
             "auto_renew": True,
             "recurring_consent_acceptance_id": acceptance_id,
         },
     )
     assert checkout_response.status_code == 200, checkout_response.text
-    invoice_id = checkout_response.json()["product_state"]["invoice_id"]
+    invoice_id = checkout_response.json()["purchase"]["invoice_id"]
 
     webhook_response = client.post(
         "/api/cloudpayments/pay",
@@ -1476,15 +1797,17 @@ def test_checkout_rejects_recurring_acceptance_from_another_user() -> None:
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {buyer_token}"},
         json={
-            "product": "document-summary",
-            "plan_code": "document-summary-pro",
+            "plan_id": plan_id_for_code("document-summary-pro"),
+            "entrypoint_type": "product",
+            "entrypoint_value": "document-summary",
             "auto_renew": True,
             "recurring_consent_acceptance_id": owner_acceptance_id,
         },
     )
 
     assert checkout_response.status_code == 409
-    assert checkout_response.json()["detail"]["code"] == "recurring_consent_invalid"
+    assert checkout_response.json()["detail"]["code"] == "missing_required_documents"
+    assert checkout_response.json()["detail"]["documents"][0]["doc_type"] == "recurring_consent"
 
 
 def test_checkout_rejects_recurring_acceptance_from_another_tenant_or_region() -> None:
@@ -1507,6 +1830,24 @@ def test_checkout_rejects_recurring_acceptance_from_another_tenant_or_region() -
             version="2026-08-recurring-v1",
             title="Recurring consent",
         )
+        product = db.query(Product).filter(Product.code == "document-summary").one()
+        foreign_plan = Plan(
+            tenant_id="anytoolai",
+            region="eu",
+            code="document-summary-pro",
+            name="Document Summary Pro EU",
+            scope_type="product",
+            product_id=product.id,
+            price_amount_minor=99000,
+            currency="EUR",
+            billing_period="month",
+            renewal_mode="automatic",
+            trial_days=7,
+            status="active",
+            valid_from=datetime.now(timezone.utc) - timedelta(minutes=1),
+        )
+        db.add(foreign_plan)
+        db.commit()
 
     buyer_response = client.post(
         "/api/auth/register",
@@ -1546,15 +1887,17 @@ def test_checkout_rejects_recurring_acceptance_from_another_tenant_or_region() -
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {buyer_token}"},
         json={
-            "product": "document-summary",
-            "plan_code": "document-summary-pro",
+            "plan_id": plan_id_for_code("document-summary-pro"),
+            "entrypoint_type": "product",
+            "entrypoint_value": "document-summary",
             "auto_renew": True,
             "recurring_consent_acceptance_id": foreign_acceptance_id,
         },
     )
 
     assert checkout_response.status_code == 409
-    assert checkout_response.json()["detail"]["code"] == "recurring_consent_invalid"
+    assert checkout_response.json()["detail"]["code"] == "missing_required_documents"
+    assert checkout_response.json()["detail"]["documents"][0]["doc_type"] == "recurring_consent"
 
 
 def test_checkout_rejects_acceptance_with_wrong_kind() -> None:
@@ -1602,15 +1945,17 @@ def test_checkout_rejects_acceptance_with_wrong_kind() -> None:
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
-            "product": "document-summary",
-            "plan_code": "document-summary-pro",
+            "plan_id": plan_id_for_code("document-summary-pro"),
+            "entrypoint_type": "product",
+            "entrypoint_value": "document-summary",
             "auto_renew": True,
             "recurring_consent_acceptance_id": wrong_acceptance_id,
         },
     )
 
     assert checkout_response.status_code == 409
-    assert checkout_response.json()["detail"]["code"] == "recurring_consent_invalid"
+    assert checkout_response.json()["detail"]["code"] == "missing_required_documents"
+    assert checkout_response.json()["detail"]["documents"][0]["doc_type"] == "recurring_consent"
 
 
 def test_checkout_rejects_recurring_acceptance_for_another_entrypoint() -> None:
@@ -1646,15 +1991,17 @@ def test_checkout_rejects_recurring_acceptance_for_another_entrypoint() -> None:
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
-            "product": "document-summary",
-            "plan_code": "document-summary-pro",
+            "plan_id": plan_id_for_code("document-summary-pro"),
+            "entrypoint_type": "product",
+            "entrypoint_value": "document-summary",
             "auto_renew": True,
             "recurring_consent_acceptance_id": wrong_entrypoint_acceptance_id,
         },
     )
 
     assert checkout_response.status_code == 409
-    assert checkout_response.json()["detail"]["code"] == "recurring_consent_invalid"
+    assert checkout_response.json()["detail"]["code"] == "missing_required_documents"
+    assert checkout_response.json()["detail"]["documents"][0]["doc_type"] == "recurring_consent"
 
 
 def test_checkout_rejects_recurring_acceptance_from_the_future() -> None:
@@ -1700,15 +2047,17 @@ def test_checkout_rejects_recurring_acceptance_from_the_future() -> None:
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
-            "product": "document-summary",
-            "plan_code": "document-summary-pro",
+            "plan_id": plan_id_for_code("document-summary-pro"),
+            "entrypoint_type": "product",
+            "entrypoint_value": "document-summary",
             "auto_renew": True,
             "recurring_consent_acceptance_id": future_acceptance_id,
         },
     )
 
     assert checkout_response.status_code == 409
-    assert checkout_response.json()["detail"]["code"] == "recurring_consent_invalid"
+    assert checkout_response.json()["detail"]["code"] == "missing_required_documents"
+    assert checkout_response.json()["detail"]["documents"][0]["doc_type"] == "recurring_consent"
 
 
 def test_checkout_requires_new_recurring_acceptance_when_document_version_changes() -> None:
@@ -1759,8 +2108,9 @@ def test_checkout_requires_new_recurring_acceptance_when_document_version_change
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
-            "product": "document-summary",
-            "plan_code": "document-summary-pro",
+            "plan_id": plan_id_for_code("document-summary-pro"),
+            "entrypoint_type": "product",
+            "entrypoint_value": "document-summary",
             "auto_renew": True,
             "recurring_consent_acceptance_id": stale_acceptance_id,
         },
@@ -1793,8 +2143,9 @@ def test_checkout_rejects_missing_cloudpayments_public_terminal_id() -> None:
             "/api/auth/checkout-intent",
             headers={"Authorization": f"Bearer {token}"},
             json={
-                "product": "document-summary",
-                "plan_code": "document-summary-pro",
+                "plan_id": plan_id_for_code("document-summary-pro"),
+                "entrypoint_type": "product",
+                "entrypoint_value": "document-summary",
                 "auto_renew": False,
             },
         )
@@ -1839,8 +2190,9 @@ def test_checkout_supports_two_stage_cloudpayments_widget_mode() -> None:
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
-            "product": "document-summary",
-            "plan_code": "document-summary-pro",
+            "plan_id": plan_id_for_code("document-summary-pro"),
+            "entrypoint_type": "product",
+            "entrypoint_value": "document-summary",
             "auto_renew": False,
         },
     )
@@ -1893,8 +2245,9 @@ def test_checkout_rejects_plan_provider_currency_mismatch() -> None:
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
-            "product": "document-summary",
-            "plan_code": "document-summary-pro",
+            "plan_id": plan_id_for_code("document-summary-pro"),
+            "entrypoint_type": "product",
+            "entrypoint_value": "document-summary",
             "auto_renew": False,
         },
     )
@@ -1927,16 +2280,16 @@ def test_bundle_checkout_snapshots_one_sellable_catalog_plan() -> None:
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
-            "product": "core-tools-bundle",
-            "plan_code": "core-tools-bundle-pro-ru",
+            "plan_id": plan_id_for_code("core-tools-bundle-pro-ru"),
+            "entrypoint_value": "core-tools-bundle",
             "entrypoint_type": "bundle",
             "auto_renew": False,
         },
     )
 
     assert checkout_response.status_code == 200
-    invoice_id = checkout_response.json()["product_state"]["invoice_id"]
-    assert invoice_id.startswith("core-tools-bundle-")
+    invoice_id = checkout_response.json()["purchase"]["invoice_id"]
+    assert_opaque_invoice_id(invoice_id)
 
     with SessionLocal() as db:
         order = db.query(Order).one()
@@ -1974,17 +2327,18 @@ def test_all_access_checkout_snapshots_one_sellable_catalog_plan() -> None:
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
-            "product": "all-access",
-            "plan_code": "all-access-pro-ru",
+            "plan_id": str(all_access_plan_id),
             "entrypoint_type": "catalog",
+            "entrypoint_value": "campaign",
             "auto_renew": False,
         },
     )
 
     assert checkout_response.status_code == 200
-    product_state = checkout_response.json()["product_state"]
-    assert product_state["invoice_id"].startswith("all-access-")
-    assert product_state["plan_code"] == "all-access-pro-ru"
+    purchase = checkout_response.json()["purchase"]
+    assert_opaque_invoice_id(purchase["invoice_id"])
+    assert purchase["plan_code"] == "all-access-pro-ru"
+    assert purchase["scope_type"] == "all_access"
 
     with SessionLocal() as db:
         order = db.query(Order).one()
@@ -2024,8 +2378,9 @@ def test_checkout_rejects_inactive_catalog_plan_without_legacy_fallback() -> Non
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
-            "product": "document-summary",
-            "plan_code": "document-summary-pro",
+            "plan_id": plan_id_for_code("document-summary-pro"),
+            "entrypoint_type": "product",
+            "entrypoint_value": "document-summary",
             "auto_renew": False,
         },
     )
@@ -2060,8 +2415,9 @@ def test_checkout_rejects_catalog_plan_outside_validity_window() -> None:
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
-            "product": "document-summary",
-            "plan_code": "document-summary-pro",
+            "plan_id": plan_id_for_code("document-summary-pro"),
+            "entrypoint_type": "product",
+            "entrypoint_value": "document-summary",
             "auto_renew": False,
         },
     )
@@ -2094,8 +2450,9 @@ def test_checkout_rejects_active_plan_for_inactive_product() -> None:
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
-            "product": "document-summary",
-            "plan_code": "document-summary-pro",
+            "plan_id": plan_id_for_code("document-summary-pro"),
+            "entrypoint_type": "product",
+            "entrypoint_value": "document-summary",
             "auto_renew": False,
         },
     )
@@ -2128,8 +2485,8 @@ def test_checkout_rejects_active_plan_for_inactive_bundle() -> None:
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
-            "product": "core-tools-bundle",
-            "plan_code": "core-tools-bundle-pro-ru",
+            "plan_id": plan_id_for_code("core-tools-bundle-pro-ru"),
+            "entrypoint_value": "core-tools-bundle",
             "entrypoint_type": "bundle",
             "auto_renew": False,
         },
@@ -2156,12 +2513,13 @@ def test_pay_webhook_amount_mismatch_is_failed_without_order_update() -> None:
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
-            "product": "document-summary",
-            "plan_code": "document-summary-pro",
+            "plan_id": plan_id_for_code("document-summary-pro"),
+            "entrypoint_type": "product",
+            "entrypoint_value": "document-summary",
             "auto_renew": False,
         },
     )
-    invoice_id = checkout_response.json()["product_state"]["invoice_id"]
+    invoice_id = checkout_response.json()["purchase"]["invoice_id"]
 
     webhook_response = client.post(
         "/api/cloudpayments/pay",
@@ -2208,12 +2566,13 @@ def test_signed_check_webhook_validates_order_before_acknowledging() -> None:
             "/api/auth/checkout-intent",
             headers={"Authorization": f"Bearer {token}"},
             json={
-                "product": "document-summary",
-                "plan_code": "document-summary-pro",
+                "plan_id": plan_id_for_code("document-summary-pro"),
+                "entrypoint_type": "product",
+                "entrypoint_value": "document-summary",
                 "auto_renew": False,
             },
         )
-        invoice_id = checkout_response.json()["product_state"]["invoice_id"]
+        invoice_id = checkout_response.json()["purchase"]["invoice_id"]
         valid_payload = (
             b'{"InvoiceId":"' + invoice_id.encode("utf-8") + b'","TransactionId":"tx-check-valid-1",'
             b'"AccountId":"check-user@example.com","Amount":"990.00",'
@@ -2288,12 +2647,13 @@ def test_signed_check_webhook_rejects_account_and_currency_mismatch() -> None:
             "/api/auth/checkout-intent",
             headers={"Authorization": f"Bearer {token}"},
             json={
-                "product": "document-summary",
-                "plan_code": "document-summary-pro",
+                "plan_id": plan_id_for_code("document-summary-pro"),
+                "entrypoint_type": "product",
+                "entrypoint_value": "document-summary",
                 "auto_renew": False,
             },
         )
-        invoice_id = checkout_response.json()["product_state"]["invoice_id"]
+        invoice_id = checkout_response.json()["purchase"]["invoice_id"]
         account_mismatch_payload = (
             b'{"InvoiceId":"' + invoice_id.encode("utf-8") + b'","TransactionId":"tx-check-account-mismatch-1",'
             b'"AccountId":"other@example.com","Amount":"990.00",'
@@ -2341,12 +2701,13 @@ def test_successful_pay_webhook_is_saved_and_activates_access() -> None:
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
-            "product": "document-summary",
-            "plan_code": "document-summary-pro",
+            "plan_id": plan_id_for_code("document-summary-pro"),
+            "entrypoint_type": "product",
+            "entrypoint_value": "document-summary",
             "auto_renew": False,
         },
     )
-    invoice_id = checkout_response.json()["product_state"]["invoice_id"]
+    invoice_id = checkout_response.json()["purchase"]["invoice_id"]
 
     webhook_response = client.post(
         "/api/cloudpayments/pay",
@@ -2883,12 +3244,13 @@ def test_signed_pay_webhook_processes_valid_signature() -> None:
             "/api/auth/checkout-intent",
             headers={"Authorization": f"Bearer {token}"},
             json={
-                "product": "document-summary",
-                "plan_code": "document-summary-pro",
+                "plan_id": plan_id_for_code("document-summary-pro"),
+                "entrypoint_type": "product",
+                "entrypoint_value": "document-summary",
                 "auto_renew": False,
             },
         )
-        invoice_id = checkout_response.json()["product_state"]["invoice_id"]
+        invoice_id = checkout_response.json()["purchase"]["invoice_id"]
         raw_payload = (
             b'{"InvoiceId":"'
             + invoice_id.encode("utf-8")
@@ -2930,12 +3292,13 @@ def test_fail_webhook_updates_payment_and_order_without_access_activation() -> N
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
-            "product": "document-summary",
-            "plan_code": "document-summary-pro",
+            "plan_id": plan_id_for_code("document-summary-pro"),
+            "entrypoint_type": "product",
+            "entrypoint_value": "document-summary",
             "auto_renew": False,
         },
     )
-    invoice_id = checkout_response.json()["product_state"]["invoice_id"]
+    invoice_id = checkout_response.json()["purchase"]["invoice_id"]
 
     response = client.post(
         "/api/cloudpayments/fail",
@@ -3141,12 +3504,13 @@ def test_confirm_and_cancel_notifications_update_two_stage_payment_state() -> No
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
-            "product": "document-summary",
-            "plan_code": "document-summary-pro",
+            "plan_id": plan_id_for_code("document-summary-pro"),
+            "entrypoint_type": "product",
+            "entrypoint_value": "document-summary",
             "auto_renew": False,
         },
     )
-    invoice_id = checkout_response.json()["product_state"]["invoice_id"]
+    invoice_id = checkout_response.json()["purchase"]["invoice_id"]
 
     confirm_response = client.post(
         "/api/cloudpayments/confirm",
@@ -3183,12 +3547,13 @@ def test_confirm_and_cancel_notifications_update_two_stage_payment_state() -> No
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {cancel_token}"},
         json={
-            "product": "prompt-optimizer",
-            "plan_code": "prompt-optimizer-pro",
+            "plan_id": plan_id_for_code("prompt-optimizer-pro"),
+            "entrypoint_type": "product",
+            "entrypoint_value": "prompt-optimizer",
             "auto_renew": False,
         },
     )
-    cancel_invoice_id = cancel_checkout_response.json()["product_state"]["invoice_id"]
+    cancel_invoice_id = cancel_checkout_response.json()["purchase"]["invoice_id"]
 
     cancel_response = client.post(
         "/api/cloudpayments/cancel",
@@ -3400,15 +3765,17 @@ def test_late_pay_or_confirm_does_not_reopen_canceled_order() -> None:
     scenarios = [
         {
             "email": "late-pay-after-cancel@example.com",
-            "product": "document-summary",
-            "plan_code": "document-summary-pro",
+            "plan_id": plan_id_for_code("document-summary-pro"),
+            "entrypoint_type": "product",
+            "entrypoint_value": "document-summary",
             "endpoint": "pay",
             "transaction_id": "tx-late-pay-after-cancel",
         },
         {
             "email": "late-confirm-after-cancel@example.com",
-            "product": "prompt-optimizer",
-            "plan_code": "prompt-optimizer-pro",
+            "plan_id": plan_id_for_code("prompt-optimizer-pro"),
+            "entrypoint_type": "product",
+            "entrypoint_value": "prompt-optimizer",
             "endpoint": "confirm",
             "transaction_id": "tx-late-confirm-after-cancel",
         },
@@ -3429,12 +3796,13 @@ def test_late_pay_or_confirm_does_not_reopen_canceled_order() -> None:
             "/api/auth/checkout-intent",
             headers={"Authorization": f"Bearer {token}"},
             json={
-                "product": scenario["product"],
-                "plan_code": scenario["plan_code"],
+                "plan_id": scenario["plan_id"],
+                "entrypoint_type": scenario["entrypoint_type"],
+                "entrypoint_value": scenario["entrypoint_value"],
                 "auto_renew": False,
             },
         )
-        invoice_id = checkout_response.json()["product_state"]["invoice_id"]
+        invoice_id = checkout_response.json()["purchase"]["invoice_id"]
         base_payload = {
             "InvoiceId": invoice_id,
             "TransactionId": scenario["transaction_id"],
@@ -3490,12 +3858,13 @@ def test_late_fail_webhook_does_not_downgrade_paid_order() -> None:
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
-            "product": "document-summary",
-            "plan_code": "document-summary-pro",
+            "plan_id": plan_id_for_code("document-summary-pro"),
+            "entrypoint_type": "product",
+            "entrypoint_value": "document-summary",
             "auto_renew": False,
         },
     )
-    invoice_id = checkout_response.json()["product_state"]["invoice_id"]
+    invoice_id = checkout_response.json()["purchase"]["invoice_id"]
 
     pay_response = client.post(
         "/api/cloudpayments/pay",
@@ -3781,12 +4150,13 @@ def test_duplicate_success_webhook_does_not_duplicate_payment_or_order_updates()
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
-            "product": "document-summary",
-            "plan_code": "document-summary-pro",
+            "plan_id": plan_id_for_code("document-summary-pro"),
+            "entrypoint_type": "product",
+            "entrypoint_value": "document-summary",
             "auto_renew": False,
         },
     )
-    invoice_id = checkout_response.json()["product_state"]["invoice_id"]
+    invoice_id = checkout_response.json()["purchase"]["invoice_id"]
     payload = {
         "InvoiceId": invoice_id,
         "TransactionId": "tx-duplicate-1",
@@ -3827,12 +4197,13 @@ def test_refund_webhook_records_refund_skeleton_and_updates_payment() -> None:
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
-            "product": "document-summary",
-            "plan_code": "document-summary-pro",
+            "plan_id": plan_id_for_code("document-summary-pro"),
+            "entrypoint_type": "product",
+            "entrypoint_value": "document-summary",
             "auto_renew": False,
         },
     )
-    invoice_id = checkout_response.json()["product_state"]["invoice_id"]
+    invoice_id = checkout_response.json()["purchase"]["invoice_id"]
     client.post(
         "/api/cloudpayments/pay",
         json={
@@ -3980,12 +4351,13 @@ def test_distinct_refund_ids_for_same_transaction_are_not_deduplicated() -> None
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
-            "product": "document-summary",
-            "plan_code": "document-summary-pro",
+            "plan_id": plan_id_for_code("document-summary-pro"),
+            "entrypoint_type": "product",
+            "entrypoint_value": "document-summary",
             "auto_renew": False,
         },
     )
-    invoice_id = checkout_response.json()["product_state"]["invoice_id"]
+    invoice_id = checkout_response.json()["purchase"]["invoice_id"]
     client.post(
         "/api/cloudpayments/pay",
         json={
@@ -4066,12 +4438,13 @@ def test_duplicate_refund_id_with_distinct_event_id_does_not_double_count_refund
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
-            "product": "document-summary",
-            "plan_code": "document-summary-pro",
+            "plan_id": plan_id_for_code("document-summary-pro"),
+            "entrypoint_type": "product",
+            "entrypoint_value": "document-summary",
             "auto_renew": False,
         },
     )
-    invoice_id = checkout_response.json()["product_state"]["invoice_id"]
+    invoice_id = checkout_response.json()["purchase"]["invoice_id"]
     client.post(
         "/api/cloudpayments/pay",
         json={
@@ -6015,8 +6388,9 @@ def test_required_document_acceptance_hash_controls_terms_and_personal_consent_g
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
-            "product": "document-summary",
-            "plan_code": "document-summary-pro",
+            "plan_id": plan_id_for_code("document-summary-pro"),
+            "entrypoint_type": "product",
+            "entrypoint_value": "document-summary",
             "auto_renew": False,
         },
     )
@@ -6047,8 +6421,9 @@ def test_required_document_acceptance_hash_controls_terms_and_personal_consent_g
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
-            "product": "document-summary",
-            "plan_code": "document-summary-pro",
+            "plan_id": plan_id_for_code("document-summary-pro"),
+            "entrypoint_type": "product",
+            "entrypoint_value": "document-summary",
             "auto_renew": False,
         },
     )
@@ -6071,8 +6446,9 @@ def test_required_document_acceptance_hash_controls_terms_and_personal_consent_g
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
-            "product": "document-summary",
-            "plan_code": "document-summary-pro",
+            "plan_id": plan_id_for_code("document-summary-pro"),
+            "entrypoint_type": "product",
+            "entrypoint_value": "document-summary",
             "auto_renew": False,
         },
     )
@@ -6174,8 +6550,9 @@ def test_required_document_acceptance_scope_and_time_filters_still_apply() -> No
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
-            "product": "document-summary",
-            "plan_code": "document-summary-pro",
+            "plan_id": plan_id_for_code("document-summary-pro"),
+            "entrypoint_type": "product",
+            "entrypoint_value": "document-summary",
             "auto_renew": False,
         },
     )
@@ -6278,8 +6655,9 @@ def test_automatic_checkout_keeps_recurring_consent_missing_when_hash_is_wrong()
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
-            "product": "document-summary",
-            "plan_code": "document-summary-pro",
+            "plan_id": plan_id_for_code("document-summary-pro"),
+            "entrypoint_type": "product",
+            "entrypoint_value": "document-summary",
             "auto_renew": True,
         },
     )
@@ -6301,8 +6679,9 @@ def test_automatic_checkout_keeps_recurring_consent_missing_when_hash_is_wrong()
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
-            "product": "document-summary",
-            "plan_code": "document-summary-pro",
+            "plan_id": plan_id_for_code("document-summary-pro"),
+            "entrypoint_type": "product",
+            "entrypoint_value": "document-summary",
             "auto_renew": True,
             "recurring_consent_acceptance_id": acceptance_id,
         },
@@ -6340,8 +6719,9 @@ def test_checkout_requires_acceptance_again_when_active_document_version_changes
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
-            "product": "document-summary",
-            "plan_code": "document-summary-pro",
+            "plan_id": plan_id_for_code("document-summary-pro"),
+            "entrypoint_type": "product",
+            "entrypoint_value": "document-summary",
             "auto_renew": False,
         },
     )
@@ -6387,8 +6767,9 @@ def test_checkout_requires_acceptance_again_when_active_document_version_changes
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
-            "product": "document-summary",
-            "plan_code": "document-summary-pro",
+            "plan_id": plan_id_for_code("document-summary-pro"),
+            "entrypoint_type": "product",
+            "entrypoint_value": "document-summary",
             "auto_renew": False,
         },
     )
@@ -6411,8 +6792,9 @@ def test_checkout_requires_acceptance_again_when_active_document_version_changes
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
-            "product": "document-summary",
-            "plan_code": "document-summary-pro",
+            "plan_id": plan_id_for_code("document-summary-pro"),
+            "entrypoint_type": "product",
+            "entrypoint_value": "document-summary",
             "auto_renew": False,
         },
     )
@@ -6440,8 +6822,9 @@ def test_checkout_requires_acceptance_again_when_active_document_version_changes
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
-            "product": "document-summary",
-            "plan_code": "document-summary-pro",
+            "plan_id": plan_id_for_code("document-summary-pro"),
+            "entrypoint_type": "product",
+            "entrypoint_value": "document-summary",
             "auto_renew": False,
         },
     )

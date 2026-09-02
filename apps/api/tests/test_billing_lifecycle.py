@@ -378,7 +378,7 @@ def _add_recurring_consent_acceptance(
         entrypoint_type=entrypoint_type,
         entrypoint_value=resolved_entrypoint_value,
         user_id=user.id,
-        metadata_={"plan_code": plan_code},
+        metadata_={"plan_id": str(_plan_by_code(db_session, plan_code).id)},
     )
     db_session.add(entrypoint_session)
     db_session.flush()
@@ -395,7 +395,7 @@ def _add_recurring_consent_acceptance(
         acceptance_text_hash=expected_acceptance_text_hash(document),
         entrypoint_type=entrypoint_type,
         entrypoint_value=resolved_entrypoint_value,
-        metadata_={"plan_code": plan_code, "fixture_key": key},
+        metadata_={"plan_id": str(_plan_by_code(db_session, plan_code).id), "fixture_key": key},
     )
     db_session.add(acceptance)
     db_session.flush()
@@ -891,7 +891,9 @@ def _assert_automatic_renewal_rejected_without_mutation(
         ("wrong_hash", "recurring_consent_invalid"),
         ("missing_acceptance_entrypoint", "recurring_consent_invalid"),
         ("missing_entrypoint_session", "automatic_renewal_context_missing"),
-        ("wrong_plan_code", "recurring_consent_invalid"),
+        ("missing_plan_id", "recurring_consent_invalid"),
+        ("non_string_plan_id", "recurring_consent_invalid"),
+        ("wrong_plan_id", "recurring_consent_invalid"),
         ("wrong_entrypoint_type", "recurring_consent_invalid"),
         ("wrong_entrypoint_value", "recurring_consent_invalid"),
         ("foreign_user", "recurring_consent_invalid"),
@@ -943,8 +945,12 @@ def test_automatic_renewal_revalidates_persisted_consent_context(
         acceptance.entrypoint_type = None
     elif invalid_context == "missing_entrypoint_session":
         order.entrypoint_session_id = None
-    elif invalid_context == "wrong_plan_code":
-        acceptance.metadata_ = {"plan_code": "different-plan"}
+    elif invalid_context == "missing_plan_id":
+        acceptance.metadata_ = {}
+    elif invalid_context == "non_string_plan_id":
+        acceptance.metadata_ = {"plan_id": 123}
+    elif invalid_context == "wrong_plan_id":
+        acceptance.metadata_ = {"plan_id": str(uuid.uuid4())}
     elif invalid_context == "wrong_entrypoint_type":
         acceptance.entrypoint_type = "bundle"
     elif invalid_context == "wrong_entrypoint_value":
