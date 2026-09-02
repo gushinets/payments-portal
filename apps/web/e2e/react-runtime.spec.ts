@@ -1,10 +1,31 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page, type TestInfo } from "@playwright/test";
+import { installProviderUiScriptStub } from "./provider-ui-stub";
 
 const sessionTokenStorageKey = "anytoolai_session_token_v1";
 const sessionChangedEvent = "anytoolai_session_changed";
+const cookieNoticeStorageKey = "anytoolai_cookie_notice_v1";
 
 const email = "react-runtime@example.com";
 const invoice = "react-runtime-invoice";
+
+async function captureVisualEvidence(
+  page: Page,
+  testInfo: TestInfo,
+  name: string
+) {
+  await page.locator("nextjs-portal").evaluateAll((portals) => {
+    for (const portal of portals) {
+      portal.remove();
+    }
+  });
+  await page.screenshot({
+    animations: "disabled",
+    caret: "hide",
+    fullPage: true,
+    path: testInfo.outputPath(`${name}.png`),
+    scale: "css"
+  });
+}
 
 function paymentStatusResponse(status: "pending" | "active") {
   const active = status === "active";
@@ -50,7 +71,7 @@ function paymentStatusResponse(status: "pending" | "active") {
 
 test("critical client components run without React or hydration warnings", async ({
   page
-}) => {
+}, testInfo) => {
   const runtimeIssues: string[] = [];
   let paymentStatusRequests = 0;
 
@@ -136,10 +157,18 @@ test("critical client components run without React or hydration warnings", async
     });
   });
 
+  await installProviderUiScriptStub(page);
+
+  await page.addInitScript((storageKey) => {
+    window.localStorage.setItem(storageKey, "accepted");
+  }, cookieNoticeStorageKey);
+
   await page.goto("/ru");
   await expect(page.getByRole("button", { name: "Войти" })).toBeVisible();
+  await expect(page.getByLabel("Уведомление о cookies")).toBeHidden();
   const purchaseLink = page.getByRole("link", { name: "Оформить", exact: true });
   await expect(purchaseLink).toBeVisible();
+  await captureVisualEvidence(page, testInfo, "landing");
   let purchaseLinkReachedByKeyboard = false;
   for (let index = 0; index < 20; index += 1) {
     await page.keyboard.press("Tab");
@@ -165,6 +194,10 @@ test("critical client components run without React or hydration warnings", async
 
   await page.goto("/ru/auth-checkout?product=document-summary");
   await expect(page.locator("#checkout-form").getByText(email)).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Оплатить", exact: true })
+  ).toBeEnabled();
+  await captureVisualEvidence(page, testInfo, "checkout");
 
   await page.goto("/ru/account");
   const accountMain = page.getByRole("main");
@@ -172,6 +205,7 @@ test("critical client components run without React or hydration warnings", async
     accountMain.getByRole("heading", { name: "Личный кабинет", exact: true })
   ).toBeVisible();
   await expect(accountMain.getByText(email)).toBeVisible();
+  await captureVisualEvidence(page, testInfo, "account");
 
   await page.evaluate(
     ({ paymentEmail, paymentInvoice }) => {
@@ -206,6 +240,7 @@ test("critical client components run without React or hydration warnings", async
   await expect(
     page.getByRole("heading", { name: "Оплата подтверждена" })
   ).toBeVisible();
+  await captureVisualEvidence(page, testInfo, "payment-result");
   expect(paymentStatusRequests).toBe(2);
 
   expect(runtimeIssues).toEqual([]);
