@@ -11,38 +11,20 @@ from sqlalchemy.types import Enum as SqlAlchemyEnum
 from sqlalchemy.types import Text
 
 from app.core.database import Base
-from app.domains.billing.enums import (
-    EntitlementStatus as LegacyEntitlementStatus,
-    PaymentStatus as LegacyPaymentStatus,
-    SubscriptionRenewalMode as LegacySubscriptionRenewalMode,
-    SubscriptionScopeType as LegacySubscriptionScopeType,
-    SubscriptionStatus as LegacySubscriptionStatus,
-    WebhookEventStatus,
-)
-from app.domains.legal.enums import AcceptanceKind as LegacyAcceptanceKind
 from app.models import (
     AcceptanceKind,
+    BillingPeriod,
+    BundleProductStatus,
+    BundleStatus,
     CheckoutSessionStatus,
     EntitlementStatus,
+    LegalEntityStatus,
+    LegalEntityType,
+    MagicLinkPurpose,
     OrderStatus,
     PaymentStatus,
     PaymentWebhookEvent,
     PaymentWebhookEventStatus,
-    SubscriptionEvent,
-    SubscriptionEventType,
-    SubscriptionRenewalMode,
-    SubscriptionScopeType,
-    SubscriptionStatus,
-)
-from app.models._shared import PersistedEnumType
-from app.models.commerce import EntrypointSession, Order
-from app.models.enums import (
-    BillingPeriod,
-    BundleProductStatus,
-    BundleStatus,
-    LegalEntityStatus,
-    LegalEntityType,
-    MagicLinkPurpose,
     PlanLimitOveragePolicy,
     PlanLimitResetPolicy,
     PlanPriceComponentType,
@@ -50,8 +32,15 @@ from app.models.enums import (
     ProductStatus,
     RefundStatus,
     RegionStatus,
+    SubscriptionEvent,
+    SubscriptionEventType,
+    SubscriptionRenewalMode,
+    SubscriptionScopeType,
+    SubscriptionStatus,
     UserStatus,
 )
+from app.models._shared import PersistedEnumType
+from app.models.commerce import EntrypointSession, Order
 
 
 def _values(enum_cls: type) -> set[str]:
@@ -144,26 +133,15 @@ def test_subscription_status_live_values_are_preserved() -> None:
     assert SubscriptionStatus.CANCELED.is_live is False
 
 
-def test_compatibility_exports_reference_canonical_classes() -> None:
-    assert LegacyEntitlementStatus is EntitlementStatus
-    assert LegacyPaymentStatus is PaymentStatus
-    assert LegacySubscriptionRenewalMode is SubscriptionRenewalMode
-    assert LegacySubscriptionScopeType is SubscriptionScopeType
-    assert LegacySubscriptionStatus is SubscriptionStatus
-    assert WebhookEventStatus is PaymentWebhookEventStatus
-    assert LegacyAcceptanceKind is AcceptanceKind
-
-
 def test_persisted_enum_type_validates_and_serializes_values() -> None:
     enum_type = PersistedEnumType(PaymentStatus)
 
     assert enum_type.process_bind_param(PaymentStatus.SUCCEEDED, None) == "succeeded"
-    assert enum_type.process_bind_param("succeeded", None) == "succeeded"
     assert enum_type.process_bind_param(None, None) is None
     assert enum_type.process_result_value("succeeded", None) is PaymentStatus.SUCCEEDED
     assert enum_type.process_result_value(None, None) is None
 
-    with pytest.raises(ValueError):
+    with pytest.raises(TypeError):
         enum_type.process_bind_param("unknown", None)
     with pytest.raises(ValueError):
         enum_type.process_result_value("unknown", None)
@@ -194,7 +172,14 @@ def test_public_openapi_enum_names_remain_stable() -> None:
     assert SubscriptionRenewalMode.__name__ == "SubscriptionRenewalMode"
 
 
-def test_enum_backed_orm_round_trip_and_staged_string_binding() -> None:
+def test_persisted_enum_type_rejects_plain_strings() -> None:
+    enum_type = PersistedEnumType(PaymentStatus)
+
+    with pytest.raises(TypeError, match="expected PaymentStatus or None, got str"):
+        enum_type.process_bind_param("succeeded", None)
+
+
+def test_enum_backed_orm_round_trip_and_rejects_plain_string_binding() -> None:
     engine = create_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(engine)
 
@@ -209,22 +194,11 @@ def test_enum_backed_orm_round_trip_and_staged_string_binding() -> None:
             raw_payload={},
             status=PaymentWebhookEventStatus.PROCESSED,
         )
-        string_event = PaymentWebhookEvent(
-            id=uuid.uuid4(),
-            tenant_id="anytoolai",
-            region="ru",
-            provider="test",
-            endpoint="pay",
-            payload_hash="hash-2",
-            raw_payload={},
-            status="received",
-        )
-        session.add_all([event, string_event])
+        session.add(event)
         session.commit()
         session.expire_all()
 
         assert session.get(PaymentWebhookEvent, event.id).status is PaymentWebhookEventStatus.PROCESSED
-        assert session.get(PaymentWebhookEvent, string_event.id).status is PaymentWebhookEventStatus.RECEIVED
 
         invalid_event = PaymentWebhookEvent(
             id=uuid.uuid4(),
@@ -237,7 +211,7 @@ def test_enum_backed_orm_round_trip_and_staged_string_binding() -> None:
             status="not-a-status",
         )
         session.add(invalid_event)
-        with pytest.raises(StatementError):
+        with pytest.raises(StatementError, match="expected PaymentWebhookEventStatus or None, got str"):
             session.commit()
 
 

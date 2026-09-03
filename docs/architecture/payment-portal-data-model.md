@@ -21,6 +21,11 @@ contour is defined in [Region Resolver](region-resolver-contract.md).
   tables carry an immutable creation or occurrence timestamp.
 - Use text plus validated application values or check constraints for evolving
   statuses rather than PostgreSQL enums.
+- `app.models` owns SQLAlchemy models and confirmed closed persisted
+  vocabularies. Persisted Python enums are `StrEnum` values validated at the
+  model boundary; database representation remains `TEXT` or `VARCHAR`.
+- Provider contract enums remain distinct from local persisted enums. Open
+  provider, configuration, and identifier namespaces remain strings.
 - Money uses integer minor units and an ISO 4217 currency code.
 - Provider identifiers are opaque text.
 - Raw provider payloads use JSONB and are redacted before persistence.

@@ -11,8 +11,14 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.models import (
+    AcceptanceKind,
     EntitlementSource,
     EntitlementStatus,
+    LegalEntityStatus,
+    LegalEntityType,
+    OrderStatus,
+    PaymentStatus,
+    PaymentWebhookEventStatus,
     SubscriptionEventType,
     SubscriptionRenewalMode,
     SubscriptionStatus,
@@ -45,6 +51,7 @@ from app.models import (
     Subscription,
     SubscriptionEvent,
     User,
+    UserStatus,
 )
 
 
@@ -67,7 +74,7 @@ def _add_billing_user_and_account(session: Session, key: str) -> tuple[User, Pay
         region="ru",
         email=f"{key}@example.com",
         email_normalized=f"{key}@example.com",
-        status="active",
+        status=UserStatus.ACTIVE,
     )
     account = PaymentProviderAccount(
         tenant_id="anytoolai",
@@ -96,10 +103,10 @@ def _add_recurring_consent_acceptance(
         tenant_id=user.tenant_id,
         region=user.region,
         name=f"{key} legal entity",
-        entity_type="company",
+        entity_type=LegalEntityType.COMPANY,
         legal_address="Test address",
         support_email="support@example.com",
-        status="active",
+        status=LegalEntityStatus.ACTIVE,
     )
     session.add(entity)
     session.flush()
@@ -138,7 +145,7 @@ def _add_recurring_consent_acceptance(
         document_version_id=document.id,
         doc_type=document.doc_type,
         version=document.version,
-        acceptance_kind="recurring_consent",
+        acceptance_kind=AcceptanceKind.RECURRING_CONSENT,
         accepted_at=accepted_at,
         acceptance_text_hash=expected_acceptance_text_hash(document),
         entrypoint_type="product",
@@ -165,7 +172,7 @@ def _add_verified_paid_order(
         order_number=f"{key}-order",
         user_id=user.id,
         plan_id=plan.id,
-        status="paid",
+        status=OrderStatus.PAID,
         amount_minor=plan.price_amount_minor,
         currency=plan.currency,
         provider=account.provider,
@@ -182,7 +189,7 @@ def _add_verified_paid_order(
         provider_account_id=account.id,
         provider=account.provider,
         provider_payment_id=f"{key}-payment",
-        status="succeeded",
+        status=PaymentStatus.SUCCEEDED,
         amount_minor=order.amount_minor,
         currency=order.currency,
         refunded_amount_minor=0,
@@ -205,7 +212,7 @@ def _add_verified_paid_order(
         amount_minor=order.amount_minor,
         currency=order.currency,
         raw_payload={},
-        status="processed",
+        status=PaymentWebhookEventStatus.PROCESSED,
         processed_at=paid_at,
     )
     session.add(webhook)

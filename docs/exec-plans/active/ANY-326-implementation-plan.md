@@ -6,7 +6,7 @@
 | --- | --- |
 | Feature | `ANY-407` |
 | Ticket | `ANY-326` |
-| Overall status | `todo` |
+| Overall status | `done` |
 | Execution order | Sequential only: Step 1 → manual verification → commit → Step 2 → manual verification → commit → Step 3 → manual verification → commit → Step 4 → manual verification → commit → Step 5 |
 | Steps / commits | 5 |
 | Architecture role | Stage 0 / prerequisite for the following ANY-407 domain/application refactoring |
@@ -1882,7 +1882,7 @@ todo
 
 # Step 5 — Remove legacy persisted-enum/model façades and lock the final contract
 
-**Status:** `todo`  
+**Status:** `done`
 **Commit:** `refactor(models): finalize canonical model layer`  
 **Depends on:** Steps 1–4 completed, manually verified, and committed.
 

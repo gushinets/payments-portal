@@ -5,8 +5,19 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from app.commands import expire_subscriptions as cli
-from app.domains.billing.enums import EntitlementStatus, SubscriptionEventType, SubscriptionStatus
-from app.models import Entitlement, Plan, Subscription, SubscriptionEvent, User
+from app.models import (
+    Entitlement,
+    EntitlementSource,
+    EntitlementStatus,
+    Plan,
+    Subscription,
+    SubscriptionEvent,
+    SubscriptionEventType,
+    SubscriptionRenewalMode,
+    SubscriptionStatus,
+    User,
+    UserStatus,
+)
 
 
 def test_expiration_cli_runs_one_batch_with_configured_size(monkeypatch, capsys) -> None:
@@ -84,7 +95,7 @@ def test_expiration_cli_commits_due_subscription_changes(
         region="ru",
         email="expiration-cli@example.com",
         email_normalized="expiration-cli@example.com",
-        status="active",
+        status=UserStatus.ACTIVE,
     )
     db_session.add(user)
     db_session.flush()
@@ -96,8 +107,8 @@ def test_expiration_cli_commits_due_subscription_changes(
         scope_type=plan.scope_type,
         product_id=plan.product_id,
         bundle_id=plan.bundle_id,
-        status=SubscriptionStatus.ACTIVE.value,
-        renewal_mode="manual",
+        status=SubscriptionStatus.ACTIVE,
+        renewal_mode=SubscriptionRenewalMode.MANUAL,
         current_period_start=now - timedelta(days=31),
         current_period_end=now - timedelta(days=1),
     )
@@ -112,10 +123,10 @@ def test_expiration_cli_commits_due_subscription_changes(
         scope_type=plan.scope_type,
         product_id=plan.product_id,
         bundle_id=plan.bundle_id,
-        status=EntitlementStatus.ACTIVE.value,
+        status=EntitlementStatus.ACTIVE,
         valid_from=subscription.current_period_start,
         valid_until=subscription.current_period_end,
-        source="trial",
+        source=EntitlementSource.TRIAL,
     )
     db_session.add(entitlement)
     db_session.flush()
@@ -133,7 +144,7 @@ def test_expiration_cli_commits_due_subscription_changes(
         persisted_event = db.query(SubscriptionEvent).filter(SubscriptionEvent.subscription_id == subscription_id).one()
         assert persisted_subscription is not None
         assert persisted_entitlement is not None
-        assert persisted_subscription.status == SubscriptionStatus.EXPIRED.value
-        assert persisted_entitlement.status == EntitlementStatus.EXPIRED.value
-        assert persisted_event.event_type == SubscriptionEventType.SUBSCRIPTION_EXPIRED.value
+        assert persisted_subscription.status is SubscriptionStatus.EXPIRED
+        assert persisted_entitlement.status is EntitlementStatus.EXPIRED
+        assert persisted_event.event_type is SubscriptionEventType.SUBSCRIPTION_EXPIRED
     assert capsys.readouterr().out == "expired_subscriptions=1\n"

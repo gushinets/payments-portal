@@ -26,12 +26,7 @@ from app.integrations.cloudpayments import adapter as cloudpayments_adapter_modu
 from app.integrations.cloudpayments.adapter import verify_cloudpayments_signature  # noqa: E402
 from app.integrations.cloudpayments import processing as cloudpayments_processing  # noqa: E402
 from app.core.settings import settings  # noqa: E402
-from app.domains.billing.enums import (  # noqa: E402
-    EntitlementStatus,
-    ProviderSubscriptionState,
-    SubscriptionEventType,
-    SubscriptionStatus,
-)
+from app.domains.billing.enums import ProviderSubscriptionState  # noqa: E402
 from app.domains.billing.service import (  # noqa: E402
     ApplyProviderSubscriptionStateCommand,
     ExpireDueSubscriptionsCommand,
@@ -41,7 +36,9 @@ from app.domains.billing.service import (  # noqa: E402
 from app.infrastructure.queries.subscriptions import get_active_entitlement_for_scope  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import (  # noqa: E402
+    BillingPeriod,
     Entitlement,
+    EntitlementStatus,
     Order,
     OrderStatus,
     Payment,
@@ -54,7 +51,11 @@ from app.models import (  # noqa: E402
     Refund,
     Region,
     Subscription,
+    SubscriptionEventType,
+    SubscriptionStatus,
     SubscriptionEvent,
+    SubscriptionRenewalMode,
+    SubscriptionScopeType,
     UserStatus,
     User,
 )
@@ -141,11 +142,11 @@ def seed_order(
             region="ru",
             code=f"webhook-plan-{invoice_id}",
             name="Webhook Test Plan",
-            scope_type="all_access",
+            scope_type=SubscriptionScopeType.ALL_ACCESS,
             price_amount_minor=99000,
             currency="RUB",
-            billing_period="month",
-            renewal_mode="manual",
+            billing_period=BillingPeriod.MONTH,
+            renewal_mode=SubscriptionRenewalMode.MANUAL,
             trial_days=0,
             status=PlanStatus.ACTIVE,
             valid_from=now,
@@ -577,7 +578,7 @@ def test_full_refund_after_provider_canceled_subscription_is_processed(
         entitlement = db.query(Entitlement).one()
         refund_event = (
             db.query(SubscriptionEvent)
-            .filter(SubscriptionEvent.event_type == SubscriptionEventType.REFUND_APPLIED.value)
+            .filter(SubscriptionEvent.event_type == SubscriptionEventType.REFUND_APPLIED)
             .one()
         )
         webhook_events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
@@ -585,10 +586,10 @@ def test_full_refund_after_provider_canceled_subscription_is_processed(
     assert order.status is OrderStatus.REFUNDED
     assert payment.status is PaymentStatus.REFUNDED
     assert payment.refunded_amount_minor == 99000
-    assert subscription.status == SubscriptionStatus.REFUNDED.value
-    assert entitlement.status == EntitlementStatus.REVOKED.value
-    assert refund_event.previous_status == SubscriptionStatus.CANCELED.value
-    assert refund_event.next_status == SubscriptionStatus.REFUNDED.value
+    assert subscription.status is SubscriptionStatus.REFUNDED
+    assert entitlement.status is EntitlementStatus.REVOKED
+    assert refund_event.previous_status is SubscriptionStatus.CANCELED
+    assert refund_event.next_status is SubscriptionStatus.REFUNDED
     assert [event.status for event in webhook_events] == [
         PaymentWebhookEventStatus.PROCESSED,
         PaymentWebhookEventStatus.PROCESSED,
@@ -617,8 +618,8 @@ def test_full_refund_after_subscription_expiration_is_processed(
     with webhook_database() as db:
         subscription = db.query(Subscription).one()
         entitlement = db.query(Entitlement).one()
-        assert subscription.status == SubscriptionStatus.ACTIVE.value
-        assert entitlement.status == EntitlementStatus.ACTIVE.value
+        assert subscription.status is SubscriptionStatus.ACTIVE
+        assert entitlement.status is EntitlementStatus.ACTIVE
         assert entitlement.source == "order"
         assert entitlement.valid_from == subscription.current_period_start
         assert entitlement.valid_until == subscription.current_period_end
@@ -637,7 +638,7 @@ def test_full_refund_after_subscription_expiration_is_processed(
             db.query(SubscriptionEvent)
             .filter(
                 SubscriptionEvent.subscription_id == subscription.id,
-                SubscriptionEvent.event_type == SubscriptionEventType.SUBSCRIPTION_EXPIRED.value,
+                SubscriptionEvent.event_type == SubscriptionEventType.SUBSCRIPTION_EXPIRED,
             )
             .all()
         )
@@ -652,13 +653,13 @@ def test_full_refund_after_subscription_expiration_is_processed(
             now=expiration_at,
         )
 
-    assert subscription.status == SubscriptionStatus.EXPIRED.value
-    assert entitlement.status == EntitlementStatus.EXPIRED.value
-    assert entitlement.status != EntitlementStatus.ACTIVE.value
+    assert subscription.status is SubscriptionStatus.EXPIRED
+    assert entitlement.status is EntitlementStatus.EXPIRED
+    assert entitlement.status is not EntitlementStatus.ACTIVE
     assert active_entitlement is None
     assert len(expiration_events) == 1
-    assert expiration_events[0].previous_status == SubscriptionStatus.ACTIVE.value
-    assert expiration_events[0].next_status == SubscriptionStatus.EXPIRED.value
+    assert expiration_events[0].previous_status is SubscriptionStatus.ACTIVE
+    assert expiration_events[0].next_status is SubscriptionStatus.EXPIRED
 
     refund_at = expiration_at + timedelta(minutes=5)
     assert paid_at < subscription.current_period_end < expiration_at < refund_at
@@ -684,7 +685,7 @@ def test_full_refund_after_subscription_expiration_is_processed(
             db.query(SubscriptionEvent)
             .filter(
                 SubscriptionEvent.subscription_id == subscription.id,
-                SubscriptionEvent.event_type == SubscriptionEventType.SUBSCRIPTION_EXPIRED.value,
+                SubscriptionEvent.event_type == SubscriptionEventType.SUBSCRIPTION_EXPIRED,
             )
             .all()
         )
@@ -692,7 +693,7 @@ def test_full_refund_after_subscription_expiration_is_processed(
             db.query(SubscriptionEvent)
             .filter(
                 SubscriptionEvent.subscription_id == subscription.id,
-                SubscriptionEvent.event_type == SubscriptionEventType.REFUND_APPLIED.value,
+                SubscriptionEvent.event_type == SubscriptionEventType.REFUND_APPLIED,
             )
             .all()
         )
@@ -712,13 +713,13 @@ def test_full_refund_after_subscription_expiration_is_processed(
     assert payment.refunded_amount_minor == 99000
     assert refund.amount_minor == 99000
     assert refund_count == 1
-    assert subscription.status == SubscriptionStatus.REFUNDED.value
-    assert entitlement.status == EntitlementStatus.EXPIRED.value
+    assert subscription.status is SubscriptionStatus.REFUNDED
+    assert entitlement.status is EntitlementStatus.EXPIRED
     assert active_entitlement is None
     assert len(expiration_events) == 1
     assert len(refund_events) == 1
-    assert refund_events[0].previous_status == SubscriptionStatus.EXPIRED.value
-    assert refund_events[0].next_status == SubscriptionStatus.REFUNDED.value
+    assert refund_events[0].previous_status is SubscriptionStatus.EXPIRED
+    assert refund_events[0].next_status is SubscriptionStatus.REFUNDED
 
     duplicate_refund_response = client.post("/api/cloudpayments/refund", json=refund_json)
 
@@ -732,7 +733,7 @@ def test_full_refund_after_subscription_expiration_is_processed(
             db.query(SubscriptionEvent)
             .filter(
                 SubscriptionEvent.subscription_id == subscription.id,
-                SubscriptionEvent.event_type == SubscriptionEventType.REFUND_APPLIED.value,
+                SubscriptionEvent.event_type == SubscriptionEventType.REFUND_APPLIED,
             )
             .count()
         )
@@ -750,8 +751,8 @@ def test_full_refund_after_subscription_expiration_is_processed(
 
     assert refund_count == 1
     assert refund_event_count == 1
-    assert subscription.status == SubscriptionStatus.REFUNDED.value
-    assert entitlement.status == EntitlementStatus.EXPIRED.value
+    assert subscription.status is SubscriptionStatus.REFUNDED
+    assert entitlement.status is EntitlementStatus.EXPIRED
     assert active_entitlement is None
     assert [event.status for event in webhook_events] == [
         PaymentWebhookEventStatus.PROCESSED,

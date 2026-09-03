@@ -11,7 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from apps.api.tests.support.postgres import alembic_test_config
-from app.models import AuthSession, Payment, PaymentWebhookEvent, User
+from app.models import AuthSession, Payment, PaymentWebhookEvent, User, UserStatus
 
 pytestmark = pytest.mark.postgres
 
@@ -37,7 +37,7 @@ def test_postgres_orm_round_trip_and_rollback(migrated_database: Engine) -> None
             email="compatibility@example.com",
             email_normalized="compatibility@example.com",
             email_verified_at=verified_at,
-            status="active",
+            status=UserStatus.ACTIVE,
             metadata_={"source": "sqlalchemy-compatibility"},
         )
         session.add(user)
@@ -73,7 +73,7 @@ def test_postgres_orm_round_trip_and_rollback(migrated_database: Engine) -> None
                 region=stored_user.region,
                 email="COMPATIBILITY@example.com",
                 email_normalized=stored_user.email_normalized,
-                status="active",
+                status=UserStatus.ACTIVE,
                 metadata_={},
             )
         )

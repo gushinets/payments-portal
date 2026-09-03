@@ -11,10 +11,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.domains.billing.enums import (
-    BillingPeriod,
-    SensitiveMetadataKey,
-)
+from app.domains.billing.enums import SensitiveMetadataKey
 from app.domains.billing.service.commands import ApplyRenewalPaymentCommand, LifecycleCommand
 from app.domains.billing.service.state_machine import SubscriptionLifecycleError
 from app.infrastructure.queries.orders import get_order_by_id, get_order_item_with_plan
@@ -28,6 +25,7 @@ from app.infrastructure.queries.subscriptions import (
 )
 from app.infrastructure.queries.webhooks import get_processed_webhook_event
 from app.models import (
+    BillingPeriod,
     Entitlement,
     Order,
     OrderStatus,

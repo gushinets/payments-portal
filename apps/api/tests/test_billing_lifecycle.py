@@ -30,6 +30,7 @@ from app.infrastructure.queries.subscriptions import (
     get_subscription_for_order,
 )
 from app.models import (
+    AcceptanceKind,
     DocumentAcceptance,
     DocumentVersion,
     Entitlement,
@@ -46,10 +47,20 @@ from app.models import (
     SubscriptionEvent,
     EntitlementSource,
     EntitlementStatus,
+    LegalEntityStatus,
+    LegalEntityType,
+    OrderStatus,
+    OrderItemType,
+    PaymentStatus,
+    PaymentWebhookEventStatus,
+    PlanStatus,
+    RefundStatus,
     SubscriptionEventType,
     SubscriptionRenewalMode,
+    SubscriptionScopeType,
     SubscriptionStatus,
     User,
+    UserStatus,
 )
 
 
@@ -100,7 +111,7 @@ def test_provider_state_keeps_paid_entitlement_valid(
         region="ru",
         email="provider-state-lifecycle@example.com",
         email_normalized="provider-state-lifecycle@example.com",
-        status="active",
+        status=UserStatus.ACTIVE,
     )
     db_session.add(user)
     db_session.flush()
@@ -122,7 +133,7 @@ def test_provider_state_keeps_paid_entitlement_valid(
         order_number="provider-state-order",
         user_id=user.id,
         plan_id=plan.id,
-        status="paid",
+        status=OrderStatus.PAID,
         amount_minor=plan.price_amount_minor,
         currency=plan.currency,
         provider="test-provider",
@@ -296,7 +307,7 @@ def _add_billing_user_and_account(db_session, key: str) -> tuple[User, PaymentPr
         region="ru",
         email=f"{key}@example.com",
         email_normalized=f"{key}@example.com",
-        status="active",
+        status=UserStatus.ACTIVE,
     )
     account = PaymentProviderAccount(
         tenant_id="anytoolai",
@@ -345,10 +356,10 @@ def _add_recurring_consent_acceptance(
             tenant_id=user.tenant_id,
             region=user.region,
             name=f"{key} legal entity",
-            entity_type="company",
+            entity_type=LegalEntityType.COMPANY,
             legal_address="Test address",
             support_email="support@example.com",
-            status="active",
+            status=LegalEntityStatus.ACTIVE,
         )
         db_session.add(entity)
         db_session.flush()
@@ -388,7 +399,7 @@ def _add_recurring_consent_acceptance(
         document_version_id=document.id,
         doc_type=document.doc_type,
         version=document.version,
-        acceptance_kind="recurring_consent",
+        acceptance_kind=AcceptanceKind.RECURRING_CONSENT,
         accepted_at=accepted_at,
         acceptance_text_hash=expected_acceptance_text_hash(document),
         entrypoint_type=entrypoint_type,
@@ -418,7 +429,7 @@ def _add_verified_paid_order(
         user_id=user.id,
         entrypoint_session_id=entrypoint_session_id,
         plan_id=plan.id,
-        status="paid",
+        status=OrderStatus.PAID,
         amount_minor=plan.price_amount_minor,
         currency=plan.currency,
         provider="test-provider",
@@ -436,7 +447,7 @@ def _add_verified_paid_order(
         provider_account_id=account.id,
         provider="test-provider",
         provider_payment_id=f"{key}-payment",
-        status="succeeded",
+        status=PaymentStatus.SUCCEEDED,
         amount_minor=order.amount_minor,
         currency=order.currency,
         refunded_amount_minor=0,
@@ -459,7 +470,7 @@ def _add_verified_paid_order(
         amount_minor=order.amount_minor,
         currency=order.currency,
         raw_payload={},
-        status="processed",
+        status=PaymentWebhookEventStatus.PROCESSED,
         processed_at=paid_at,
     )
     db_session.add(webhook)
@@ -494,7 +505,7 @@ def _add_refund(
     account: PaymentProviderAccount,
     amount_minor: int,
     occurred_at: datetime,
-    status: str = "succeeded",
+    status: RefundStatus = RefundStatus.SUCCEEDED,
 ) -> Refund:
     refund = Refund(
         tenant_id=order.tenant_id,
@@ -507,7 +518,7 @@ def _add_refund(
         amount_minor=amount_minor,
         currency=payment.currency,
         requested_at=occurred_at,
-        succeeded_at=occurred_at if status == "succeeded" else None,
+        succeeded_at=occurred_at if status is RefundStatus.SUCCEEDED else None,
     )
     db_session.add(refund)
     db_session.flush()
@@ -631,7 +642,11 @@ def _mark_legacy_automatic_renewal_context(
     db_session.add(
         OrderItem(
             order_id=order.id,
-            item_type=f"{plan.scope_type}_plan",
+            item_type={
+                SubscriptionScopeType.PRODUCT: OrderItemType.PRODUCT_PLAN,
+                SubscriptionScopeType.BUNDLE: OrderItemType.BUNDLE_PLAN,
+                SubscriptionScopeType.ALL_ACCESS: OrderItemType.ALL_ACCESS_PLAN,
+            }[plan.scope_type],
             product_id=plan.product_id,
             bundle_id=plan.bundle_id,
             plan_id=plan.id,
@@ -664,7 +679,7 @@ def test_automatic_renewal_provider_reference_conflict_uses_domain_error_and_sav
         region="ru",
         email="automatic-renewal-reference-second@example.com",
         email_normalized="automatic-renewal-reference-second@example.com",
-        status="active",
+        status=UserStatus.ACTIVE,
     )
     db_session.add(second_user)
     db_session.flush()
@@ -903,7 +918,7 @@ def test_automatic_renewal_legacy_consent_cannot_attach_to_another_plan_version(
         billing_period=plan.billing_period,
         renewal_mode=SubscriptionRenewalMode.AUTOMATIC,
         trial_days=plan.trial_days,
-        status="inactive",
+        status=PlanStatus.INACTIVE,
         valid_from=now + timedelta(days=1),
         metadata_={},
     )
@@ -946,10 +961,10 @@ def test_automatic_renewal_rejects_same_scope_provider_account_substitution_with
         tenant_id=account.tenant_id,
         region=account.region,
         name="automatic-renewal-provider-substitution legal entity",
-        entity_type="company",
+        entity_type=LegalEntityType.COMPANY,
         legal_address="Test address",
         support_email="support@example.com",
-        status="active",
+        status=LegalEntityStatus.ACTIVE,
     )
     db_session.add(secondary_entity)
     db_session.flush()
@@ -1095,7 +1110,7 @@ def test_automatic_renewal_revalidates_persisted_consent_context(
             region=user.region,
             email=f"{invalid_context}-foreign@example.com",
             email_normalized=f"{invalid_context}-foreign@example.com",
-            status="active",
+            status=UserStatus.ACTIVE,
         )
         db_session.add(foreign_user)
         db_session.flush()
@@ -1213,7 +1228,7 @@ def test_cumulative_refund_revokes_access(db_session) -> None:
         region=region,
         email="refund-lifecycle@example.com",
         email_normalized="refund-lifecycle@example.com",
-        status="active",
+        status=UserStatus.ACTIVE,
     )
     account = PaymentProviderAccount(
         tenant_id=tenant_id,
@@ -1234,7 +1249,7 @@ def test_cumulative_refund_revokes_access(db_session) -> None:
         order_number="refund-lifecycle-order",
         user_id=user.id,
         plan_id=plan.id,
-        status="paid",
+        status=OrderStatus.PAID,
         amount_minor=10000,
         currency="RUB",
         provider="test-provider",
@@ -1252,7 +1267,7 @@ def test_cumulative_refund_revokes_access(db_session) -> None:
         provider_account_id=account.id,
         provider="test-provider",
         provider_payment_id="refund-lifecycle-payment",
-        status="succeeded",
+        status=PaymentStatus.SUCCEEDED,
         amount_minor=10000,
         currency="RUB",
         refunded_amount_minor=10000,
@@ -1316,7 +1331,7 @@ def test_cumulative_refund_revokes_access(db_session) -> None:
         payment_id=payment.id,
         provider_account_id=account.id,
         provider_refund_id="refund-lifecycle-refund",
-        status="succeeded",
+        status=RefundStatus.SUCCEEDED,
         amount_minor=4000,
         currency="RUB",
         requested_at=now,
@@ -1376,7 +1391,7 @@ def test_full_refund_after_provider_cancellation_revokes_access(db_session) -> N
             occurred_at=now + timedelta(minutes=1),
         ),
     )
-    payment.status = "refunded"
+    payment.status = PaymentStatus.REFUNDED
     payment.refunded_amount_minor = payment.amount_minor
     refund = Refund(
         tenant_id="anytoolai",
@@ -1385,7 +1400,7 @@ def test_full_refund_after_provider_cancellation_revokes_access(db_session) -> N
         payment_id=payment.id,
         provider_account_id=account.id,
         provider_refund_id="refund-after-provider-cancel-refund",
-        status="succeeded",
+        status=RefundStatus.SUCCEEDED,
         amount_minor=payment.amount_minor,
         currency=payment.currency,
         requested_at=now + timedelta(minutes=2),
@@ -1446,7 +1461,7 @@ def test_full_refund_of_paid_access_revokes_entitlement_and_refunds_subscription
         starts_at=now,
         ends_at=now + timedelta(days=30),
     )
-    payment.status = "refunded"
+    payment.status = PaymentStatus.REFUNDED
     payment.refunded_amount_minor = payment.amount_minor
     refund = _add_refund(
         db_session,
@@ -1513,7 +1528,7 @@ def test_full_refund_of_previously_canceled_paid_order_revokes_access(db_session
         plan=plan,
         paid_at=now,
     )
-    order.status = "canceled"
+    order.status = OrderStatus.CANCELED
     order.canceled_at = now + timedelta(minutes=1)
     subscription, entitlement, _ = _add_paid_subscription_for_order(
         db_session,
@@ -1525,7 +1540,7 @@ def test_full_refund_of_previously_canceled_paid_order_revokes_access(db_session
         ends_at=now + timedelta(days=30),
         status=SubscriptionStatus.CANCELED,
     )
-    payment.status = "refunded"
+    payment.status = PaymentStatus.REFUNDED
     payment.refunded_amount_minor = payment.amount_minor
     refund = _add_refund(
         db_session,
@@ -1580,7 +1595,7 @@ def test_partial_refund_of_paid_access_does_not_revoke_entitlement(db_session) -
         starts_at=now,
         ends_at=now + timedelta(days=30),
     )
-    payment.status = "partially_refunded"
+    payment.status = PaymentStatus.PARTIALLY_REFUNDED
     payment.refunded_amount_minor = payment.amount_minor // 2
     refund = _add_refund(
         db_session,
@@ -1635,7 +1650,7 @@ def test_missing_subscription_event_for_paid_refund_is_not_swallowed(db_session)
         plan=plan,
         paid_at=now,
     )
-    payment.status = "refunded"
+    payment.status = PaymentStatus.REFUNDED
     payment.refunded_amount_minor = payment.amount_minor
     refund = _add_refund(
         db_session,
@@ -1731,7 +1746,7 @@ def test_paid_orders_create_distinct_entitlements_and_refund_uses_order_provenan
     assert second_entitlement.order_id == second_order.id
     assert first_entitlement.valid_until == second_entitlement.valid_from
 
-    first_payment.status = "refunded"
+    first_payment.status = PaymentStatus.REFUNDED
     first_payment.refunded_amount_minor = first_payment.amount_minor
     refund = Refund(
         tenant_id="anytoolai",
@@ -1740,7 +1755,7 @@ def test_paid_orders_create_distinct_entitlements_and_refund_uses_order_provenan
         payment_id=first_payment.id,
         provider_account_id=account.id,
         provider_refund_id="paid-order-lookup-first-refund",
-        status="succeeded",
+        status=RefundStatus.SUCCEEDED,
         amount_minor=first_payment.amount_minor,
         currency=first_payment.currency,
         requested_at=now + timedelta(days=2),
@@ -2185,7 +2200,7 @@ def test_partial_refund_records_event_without_revoking_entitlement(db_session) -
             occurred_at=now,
         ),
     )
-    payment.status = "partially_refunded"
+    payment.status = PaymentStatus.PARTIALLY_REFUNDED
     payment.refunded_amount_minor = payment.amount_minor // 2
     refund = _add_refund(
         db_session,
@@ -2387,7 +2402,7 @@ def test_renewal_with_unprocessed_or_mismatched_webhook_is_rejected(db_session) 
         plan=plan,
         paid_at=now + timedelta(days=1),
     )
-    unprocessed_webhook.status = "received"
+    unprocessed_webhook.status = PaymentWebhookEventStatus.RECEIVED
     mismatched_order, mismatched_payment, mismatched_webhook = _add_verified_paid_order(
         db_session,
         key="renewal-webhook-evidence-mismatched",
@@ -2531,9 +2546,9 @@ def test_failed_renewal_requires_persisted_failure_evidence(db_session) -> None:
         plan=plan,
         paid_at=now + timedelta(days=1),
     )
-    failed_order.status = "payment_failed"
+    failed_order.status = OrderStatus.PAYMENT_FAILED
     failed_order.paid_at = None
-    failed_payment.status = "failed"
+    failed_payment.status = PaymentStatus.FAILED
     db_session.flush()
 
     result = apply_renewal_payment(
@@ -2582,7 +2597,7 @@ def test_replacement_writes_audit_event_and_is_idempotent(db_session) -> None:
         billing_period=original_plan.billing_period,
         renewal_mode=original_plan.renewal_mode,
         trial_days=0,
-        status="active",
+        status=PlanStatus.ACTIVE,
         valid_from=now,
     )
     db_session.add(replacement_plan)
@@ -2687,7 +2702,7 @@ def test_replacement_audit_event_is_written_without_active_entitlement(db_sessio
         billing_period=original_plan.billing_period,
         renewal_mode=original_plan.renewal_mode,
         trial_days=0,
-        status="active",
+        status=PlanStatus.ACTIVE,
         valid_from=now,
     )
     db_session.add(replacement_plan)
@@ -2766,7 +2781,7 @@ def test_expire_due_subscriptions_batches_canceled_access_and_is_idempotent(db_s
             region="ru",
             email=f"expiration-lifecycle-{index}@example.com",
             email_normalized=f"expiration-lifecycle-{index}@example.com",
-            status="active",
+            status=UserStatus.ACTIVE,
         )
         db_session.add(user)
         db_session.flush()
@@ -2809,7 +2824,7 @@ def test_expire_due_subscriptions_batches_canceled_access_and_is_idempotent(db_s
         region="ru",
         email="expiration-lifecycle-future@example.com",
         email_normalized="expiration-lifecycle-future@example.com",
-        status="active",
+        status=UserStatus.ACTIVE,
     )
     db_session.add(future_user)
     db_session.flush()

@@ -327,21 +327,21 @@ def apply_refund(db: Session, command: ApplyRefundCommand) -> Subscription:
     if full_refund:
         refunded_entitlements = list_entitlements_for_order(db, order.id, for_update=True)
         for entitlement in refunded_entitlements:
-            if entitlement.status == EntitlementStatus.ACTIVE.value:
-                entitlement.status = EntitlementStatus.REVOKED.value
+            if entitlement.status == EntitlementStatus.ACTIVE:
+                entitlement.status = EntitlementStatus.REVOKED
                 entitlement.revoked_at = command.occurred_at
         db.flush()
         remaining_grants = _active_or_future_entitlements(db, subscription, now=command.occurred_at)
         if remaining_grants:
-            if subscription.status in {SubscriptionStatus.PAST_DUE.value, SubscriptionStatus.PAUSED.value}:
+            if subscription.status in {SubscriptionStatus.PAST_DUE, SubscriptionStatus.PAUSED}:
                 ensure_subscription_status_transition(previous, SubscriptionStatus.ACTIVE)
-                subscription.status = SubscriptionStatus.ACTIVE.value
+                subscription.status = SubscriptionStatus.ACTIVE
         else:
             ensure_subscription_status_transition(previous, SubscriptionStatus.REFUNDED)
-            subscription.status = SubscriptionStatus.REFUNDED.value
+            subscription.status = SubscriptionStatus.REFUNDED
             current_entitlement = _current_entitlement(db, subscription, now=command.occurred_at)
             if current_entitlement:
-                current_entitlement.status = EntitlementStatus.REVOKED.value
+                current_entitlement.status = EntitlementStatus.REVOKED
                 current_entitlement.revoked_at = command.occurred_at
     _write_event(
         db,

@@ -49,11 +49,7 @@ class PersistedEnumType(TypeDecorator[PersistedEnum]):
             return None
         if isinstance(value, self.enum_cls):
             return value.value
-        if isinstance(value, StrEnum):
-            raise TypeError(f"expected {self.enum_cls.__name__}, got {type(value).__name__}")
-        if isinstance(value, str):
-            return self.enum_cls(value).value
-        raise TypeError(f"expected {self.enum_cls.__name__} or str, got {type(value).__name__}")
+        raise TypeError(f"expected {self.enum_cls.__name__} or None, got {type(value).__name__}")
 
     def process_result_value(self, value: Any, dialect: Any) -> PersistedEnum | None:
         if value is None:

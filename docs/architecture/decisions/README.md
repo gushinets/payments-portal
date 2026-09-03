@@ -10,3 +10,4 @@ and superseded decision links.
 
 - [0001. Multi-contour billing platform](0001-multi-contour-billing.md)
 - [0002. Plan-based checkout identity](0002-plan-based-checkout-identity.md)
+- [0003. Canonical persisted model layer](0003-canonical-persisted-model-layer.md)

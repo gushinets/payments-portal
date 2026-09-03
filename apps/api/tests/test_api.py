@@ -64,6 +64,7 @@ from app.models import (  # noqa: E402
     SubscriptionScopeType,
     SubscriptionStatus,
     User,
+    UserStatus,
 )
 from app.legal_seed import RU_DOCUMENT_VERSIONS, seed_legal_documents  # noqa: E402
 from app.integrations.cloudpayments.adapter import (  # noqa: E402
@@ -5755,7 +5756,7 @@ def _add_account_subscription_user(db, *, email: str) -> tuple[User, AuthSession
         region="ru",
         email=email,
         email_normalized=email,
-        status="active",
+        status=UserStatus.ACTIVE,
         password_hash="test-password-hash",
     )
     db.add(user)
@@ -5955,7 +5956,7 @@ def test_account_subscription_projects_current_bundle_membership_product_ids() -
             db.query(BundleProduct)
             .filter(
                 BundleProduct.bundle_id == bundle_plan.bundle_id,
-                BundleProduct.status == "active",
+                BundleProduct.status == BundleProductStatus.ACTIVE,
                 BundleProduct.valid_from <= now,
                 (BundleProduct.valid_to.is_(None) | (BundleProduct.valid_to > now)),
             )
