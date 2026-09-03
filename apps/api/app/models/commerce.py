@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+from app.models.enums import (
+    CheckoutSessionStatus,
+    OrderItemType,
+    OrderStatus,
+    PaymentStatus,
+    RefundStatus,
+)
 from app.models._shared import (
     Base,
     DateTime,
@@ -7,6 +14,7 @@ from app.models._shared import (
     Index,
     Integer,
     Mapped,
+    PersistedEnumType,
     String,
     Text,
     UniqueConstraint,
@@ -76,7 +84,9 @@ class CheckoutSession(Base):
         ForeignKey("entrypoint_sessions.id"), nullable=True, index=True
     )
     plan_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("plans.id"), nullable=True)
-    status: Mapped[str] = mapped_column(Text, nullable=False, default="created")
+    status: Mapped[CheckoutSessionStatus] = mapped_column(
+        PersistedEnumType(CheckoutSessionStatus), nullable=False, default=CheckoutSessionStatus.CREATED
+    )
     amount_minor: Mapped[int] = mapped_column(Integer, nullable=False)
     currency: Mapped[str] = mapped_column(String(3), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -120,7 +130,9 @@ class Order(Base):
     )
     entrypoint_session_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("entrypoint_sessions.id"), nullable=True)
     plan_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("plans.id"), nullable=True)
-    status: Mapped[str] = mapped_column(Text, nullable=False, default="created", index=True)
+    status: Mapped[OrderStatus] = mapped_column(
+        PersistedEnumType(OrderStatus), nullable=False, default=OrderStatus.CREATED, index=True
+    )
     amount_minor: Mapped[int] = mapped_column(Integer, nullable=False)
     currency: Mapped[str] = mapped_column(String(3), nullable=False)
     tax_amount_minor: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -157,7 +169,7 @@ class OrderItem(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(uuid_type, primary_key=True, default=uuid.uuid4)
     order_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("orders.id"), nullable=False)
-    item_type: Mapped[str] = mapped_column(Text, nullable=False)
+    item_type: Mapped[OrderItemType] = mapped_column(PersistedEnumType(OrderItemType), nullable=False)
     product_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("products.id"), nullable=True)
     bundle_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("bundles.id"), nullable=True)
     plan_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("plans.id"), nullable=True)
@@ -201,7 +213,9 @@ class Payment(Base):
     provider: Mapped[str] = mapped_column(Text, nullable=False)
     provider_payment_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     provider_invoice_id: Mapped[str | None] = mapped_column(Text, nullable=True)
-    status: Mapped[str] = mapped_column(Text, nullable=False, default="created", index=True)
+    status: Mapped[PaymentStatus] = mapped_column(
+        PersistedEnumType(PaymentStatus), nullable=False, default=PaymentStatus.CREATED, index=True
+    )
     amount_minor: Mapped[int] = mapped_column(Integer, nullable=False)
     currency: Mapped[str] = mapped_column(String(3), nullable=False)
     payment_method_type: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -245,7 +259,9 @@ class Refund(Base):
         ForeignKey("payment_provider_accounts.id"), nullable=False, index=True
     )
     provider_refund_id: Mapped[str | None] = mapped_column(Text, nullable=True)
-    status: Mapped[str] = mapped_column(Text, nullable=False, default="requested")
+    status: Mapped[RefundStatus] = mapped_column(
+        PersistedEnumType(RefundStatus), nullable=False, default=RefundStatus.REQUESTED
+    )
     amount_minor: Mapped[int] = mapped_column(Integer, nullable=False)
     currency: Mapped[str] = mapped_column(String(3), nullable=False)
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
