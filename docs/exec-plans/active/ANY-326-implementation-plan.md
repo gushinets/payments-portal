@@ -982,7 +982,7 @@ refactor(models): centralize persisted enum contracts
 Status:
 
 ```text
-todo
+done
 ```
 
 ---
@@ -1279,7 +1279,7 @@ refactor(models): migrate catalog identity and legal vocabularies
 Status:
 
 ```text
-todo
+done
 ```
 
 ---
@@ -1546,7 +1546,7 @@ refactor(billing): use canonical subscription model enums
 Status:
 
 ```text
-todo
+done
 ```
 
 ---
@@ -1875,7 +1875,7 @@ refactor(payments): use canonical commerce model enums
 Status:
 
 ```text
-todo
+done
 ```
 
 ---
@@ -2252,7 +2252,7 @@ refactor(models): finalize canonical model layer
 Status:
 
 ```text
-todo
+done
 ```
 
 ---
