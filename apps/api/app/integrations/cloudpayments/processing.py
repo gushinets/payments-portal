@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -13,6 +12,13 @@ from app.domains.billing.service import (
     apply_refund,
 )
 from app.integrations.cloudpayments.payload import get_first
+from app.integrations.cloudpayments.processing_support import (
+    TERMINAL_ORDER_STATUSES,
+    TERMINAL_PAYMENT_STATUSES,
+    parse_data as _parse_data,
+    safe_summary as _safe_summary,
+    terminal_order_event_error_code as _terminal_order_event_error_code,
+)
 from app.integrations.cloudpayments.validation import (
     cancel_validation_error,
     check_order_state_error,
@@ -27,38 +33,16 @@ from app.integrations.cloudpayments.rules import (
     find_default_provider_account,
     payment_schema_error,
 )
-from app.models import Order, Payment, PaymentWebhookEvent
-
-TERMINAL_ORDER_STATUSES = {"paid", "canceled", "refunded", "partially_refunded"}
-TERMINAL_PAYMENT_STATUSES = {"succeeded", "canceled", "refunded", "partially_refunded"}
-
+from app.models import (
+    Order,
+    OrderStatus,
+    Payment,
+    PaymentStatus,
+    PaymentWebhookEvent,
+    PaymentWebhookEventStatus,
+)
 
 datetime_now = utc_now
-
-
-def _parse_data(payload: dict[str, Any]) -> dict[str, Any]:
-    data = get_first(payload, "Data", "data")
-    if isinstance(data, dict):
-        return data
-    if isinstance(data, str) and data:
-        try:
-            parsed = json.loads(data)
-        except json.JSONDecodeError:
-            return {}
-        return parsed if isinstance(parsed, dict) else {}
-    return {}
-
-
-def _safe_summary(payload: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "invoice_id": get_first(payload, "InvoiceId", "invoiceId", "invoice_id"),
-        "transaction_id": get_first(payload, "TransactionId", "transactionId", "transaction_id"),
-        "account_id": get_first(payload, "AccountId", "accountId", "account_id"),
-        "payment_method_type": get_first(payload, "PaymentMethod", "paymentMethod"),
-        "reason_code": get_first(payload, "ReasonCode", "reasonCode"),
-        "reason": get_first(payload, "Reason", "reason"),
-        "data": {key: value for key, value in data.items() if key in {"product_code", "plan_code", "auto_renew"}},
-    }
 
 
 def find_order(db: Session, invoice_id: str | None, *, for_update: bool = False) -> Order | None:
@@ -119,7 +103,7 @@ def upsert_payment_from_webhook(
             provider=order.provider,
             provider_payment_id=transaction_id,
             provider_invoice_id=invoice_id,
-            status="created",
+            status=PaymentStatus.CREATED,
             amount_minor=amount_minor,
             currency=currency,
             raw_summary={},
@@ -136,31 +120,31 @@ def upsert_payment_from_webhook(
     provider_status = str(get_first(payload, "Status", "status") or "").lower()
     if endpoint == "pay" and provider_status == "authorized":
         if previous_payment_status not in TERMINAL_PAYMENT_STATUSES:
-            payment.status = "authorized"
+            payment.status = PaymentStatus.AUTHORIZED
             payment.authorized_at = payment.authorized_at or now
     elif endpoint in {"pay", "confirm"}:
         if previous_payment_status not in TERMINAL_PAYMENT_STATUSES:
-            payment.status = "succeeded"
+            payment.status = PaymentStatus.SUCCEEDED
             payment.authorized_at = payment.authorized_at or now
             payment.captured_at = payment.captured_at or now
             if update_order_status:
-                order.status = "paid"
+                order.status = OrderStatus.PAID
                 order.paid_at = order.paid_at or now
                 order.failed_at = None
     elif endpoint == "fail":
         if previous_payment_status not in TERMINAL_PAYMENT_STATUSES:
-            payment.status = "failed"
+            payment.status = PaymentStatus.FAILED
             payment.failed_at = payment.failed_at or now
             payment.failure_code = str(get_first(payload, "ReasonCode", "reasonCode") or "")
             payment.failure_message_safe = get_first(payload, "Reason", "reason")
         if order.status not in TERMINAL_ORDER_STATUSES:
-            order.status = "payment_failed"
+            order.status = OrderStatus.PAYMENT_FAILED
             order.failed_at = order.failed_at or now
     elif endpoint == "cancel":
         if previous_payment_status not in TERMINAL_PAYMENT_STATUSES:
-            payment.status = "canceled"
+            payment.status = PaymentStatus.CANCELED
         if order.status not in TERMINAL_ORDER_STATUSES:
-            order.status = "canceled"
+            order.status = OrderStatus.CANCELED
             order.canceled_at = order.canceled_at or now
 
     db.add(payment)
@@ -183,7 +167,7 @@ def fail_webhook_event(
     event = db.get(PaymentWebhookEvent, event_id)
     if event is None:
         raise RuntimeError("payment_webhook_event_missing_after_rollback")
-    event.status = "failed"
+    event.status = PaymentWebhookEventStatus.FAILED
     event.error_code = error_code
     event.error_message = error_message[:1000]
     event.processed_at = datetime_now()
@@ -191,15 +175,6 @@ def fail_webhook_event(
     db.commit()
     db.refresh(event)
     return event
-
-
-def _terminal_order_event_error_code(order: Order) -> str:
-    codes = {
-        "canceled": "order_already_canceled",
-        "refunded": "order_already_refunded",
-        "partially_refunded": "order_already_refunded",
-    }
-    return codes.get(order.status, "order_already_paid")
 
 
 def _handle_pay_or_confirm_for_terminal_order(
@@ -233,18 +208,18 @@ def _handle_pay_or_confirm_for_terminal_order(
             )
             event.payment_id = payment.id
             event.currency = payment.currency
-            event.status = "processed"
+            event.status = PaymentWebhookEventStatus.PROCESSED
             event.processed_at = datetime_now()
             return True
         event.payment_id = payment.id
-        event.status = "ignored"
+        event.status = PaymentWebhookEventStatus.IGNORED
         event.error_code = _terminal_order_event_error_code(order)
         event.error_message = validation_error_message(event.error_code)
         event.processed_at = datetime_now()
         return True
     if not transaction_id:
         event.payment_id = None
-        event.status = "ignored"
+        event.status = PaymentWebhookEventStatus.IGNORED
         event.error_code = _terminal_order_event_error_code(order)
         event.error_message = validation_error_message(event.error_code)
         event.processed_at = datetime_now()
@@ -263,7 +238,7 @@ def _handle_pay_or_confirm_for_terminal_order(
     )
     event.payment_id = payment.id
     event.currency = payment.currency
-    event.status = "processed"
+    event.status = PaymentWebhookEventStatus.PROCESSED
     event.processed_at = datetime_now()
     return True
 
@@ -280,7 +255,7 @@ def _ignore_cancel_for_terminal_order(
         return False
     payment = _find_payment(db, order=order, transaction_id=transaction_id)
     event.payment_id = payment.id if payment is not None else None
-    event.status = "ignored"
+    event.status = PaymentWebhookEventStatus.IGNORED
     event.error_code = _terminal_order_event_error_code(order)
     event.error_message = validation_error_message(event.error_code)
     event.processed_at = datetime_now()
@@ -304,7 +279,7 @@ def process_webhook_event(
     if event is None:
         raise RuntimeError("payment_webhook_event_missing")
 
-    event.status = "processing"
+    event.status = PaymentWebhookEventStatus.PROCESSING
     order = find_order(db, invoice_id, for_update=True)
     if order is not None:
         event.tenant_id = order.tenant_id
@@ -326,18 +301,24 @@ def process_webhook_event(
                 PaymentWebhookEvent.provider_account_id == event.provider_account_id,
                 PaymentWebhookEvent.idempotency_key == idempotency_key,
                 PaymentWebhookEvent.id != event.id,
-                PaymentWebhookEvent.status.in_(("processed", "ignored", "duplicate")),
+                PaymentWebhookEvent.status.in_(
+                    (
+                        PaymentWebhookEventStatus.PROCESSED,
+                        PaymentWebhookEventStatus.IGNORED,
+                        PaymentWebhookEventStatus.DUPLICATE,
+                    )
+                ),
             )
             .first()
         )
 
     if existing_event is not None:
-        event.status = "duplicate"
+        event.status = PaymentWebhookEventStatus.DUPLICATE
         event.processed_at = datetime_now()
         event.order_id = existing_event.order_id
         event.payment_id = existing_event.payment_id
     elif endpoint == "recurrent" and event.provider_account_id is None:
-        event.status = "failed"
+        event.status = PaymentWebhookEventStatus.FAILED
         event.error_code = "provider_account_not_found"
         event.error_message = validation_error_message(event.error_code)
         event.processed_at = datetime_now()
@@ -349,14 +330,14 @@ def process_webhook_event(
             currency=currency,
         )
         if validation_error is None:
-            event.status = "processed"
+            event.status = PaymentWebhookEventStatus.PROCESSED
         else:
-            event.status = "failed"
+            event.status = PaymentWebhookEventStatus.FAILED
             event.error_code = validation_error
             event.error_message = validation_error_message(validation_error)
         event.processed_at = datetime_now()
     elif order is None:
-        event.status = "failed"
+        event.status = PaymentWebhookEventStatus.FAILED
         event.error_code = "order_not_found"
         event.error_message = "No order found for provider invoice"
         event.processed_at = datetime_now()
@@ -378,9 +359,9 @@ def process_webhook_event(
             )
         validation_error = validation_error or check_order_state_error(order)
         if validation_error is None:
-            event.status = "processed"
+            event.status = PaymentWebhookEventStatus.PROCESSED
         else:
-            event.status = "failed"
+            event.status = PaymentWebhookEventStatus.FAILED
             event.error_code = validation_error
             event.error_message = validation_error_message(validation_error)
         event.processed_at = datetime_now()
@@ -417,7 +398,7 @@ def process_webhook_event(
                 currency=currency,
             )
         if validation_error is not None:
-            event.status = "failed"
+            event.status = PaymentWebhookEventStatus.FAILED
             event.error_code = validation_error
             event.error_message = validation_error_message(validation_error)
         elif _handle_pay_or_confirm_for_terminal_order(
@@ -453,8 +434,8 @@ def process_webhook_event(
             )
             event.payment_id = payment.id
             event.currency = effective_currency
-            event.status = "processed"
-            if payment.status == "succeeded":
+            event.status = PaymentWebhookEventStatus.PROCESSED
+            if payment.status == PaymentStatus.SUCCEEDED:
                 activate_paid_period(
                     db,
                     ActivatePaidPeriodCommand(
@@ -469,7 +450,7 @@ def process_webhook_event(
     elif endpoint == "refund":
         payment = _find_payment(db, order=order, transaction_id=transaction_id)
         if payment is None:
-            event.status = "failed"
+            event.status = PaymentWebhookEventStatus.FAILED
             event.error_code = "payment_not_found"
             event.error_message = "No payment found for refund webhook"
             event.processed_at = datetime_now()
@@ -484,7 +465,7 @@ def process_webhook_event(
                 currency=currency,
             )
             if validation_error is not None:
-                event.status = "failed"
+                event.status = PaymentWebhookEventStatus.FAILED
                 event.error_code = validation_error
                 event.error_message = validation_error_message(validation_error)
                 event.processed_at = datetime_now()
@@ -513,7 +494,7 @@ def process_webhook_event(
                     ),
                 )
             event.currency = currency if currency is not None else payment.currency
-            event.status = "processed"
+            event.status = PaymentWebhookEventStatus.PROCESSED
             event.processed_at = datetime_now()
 
     db.add(event)

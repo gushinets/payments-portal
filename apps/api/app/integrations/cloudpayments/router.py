@@ -20,7 +20,7 @@ from app.integrations.cloudpayments.processing import (
     process_webhook_event,
     safe_normalization_error_message,
 )
-from app.models import PaymentWebhookEvent
+from app.models import PaymentWebhookEvent, PaymentWebhookEventStatus
 
 router = APIRouter(prefix="/api/cloudpayments", tags=["cloudpayments"])
 logger = logging.getLogger(__name__)
@@ -64,7 +64,9 @@ async def receive_cloudpayments_webhook(
         currency=normalized_event.currency,
         raw_payload=normalized_event.safe_payload,
         headers=normalized_event.safe_headers,
-        status="failed" if normalized_event.error_message else "received",
+        status=(
+            PaymentWebhookEventStatus.FAILED if normalized_event.error_message else PaymentWebhookEventStatus.RECEIVED
+        ),
         error_code=normalized_event.error_code,
         error_message=normalized_event.error_message,
         processed_at=datetime_now() if normalized_event.error_message else None,

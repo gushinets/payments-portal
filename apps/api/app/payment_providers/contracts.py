@@ -35,7 +35,7 @@ class TransactionStatus(StrEnum):
     UNKNOWN = "unknown"
 
 
-class RefundStatus(StrEnum):
+class ProviderRefundStatus(StrEnum):
     """Normalized status of a refund."""
 
     PENDING = "pending"
@@ -166,7 +166,7 @@ class RefundResult(ProviderContractModel):
     provider_account_id: str
     provider_payment_id: str
     provider_refund_id: str | None
-    status: RefundStatus
+    status: ProviderRefundStatus
     amount_minor: int
     amount: Decimal
     currency: str

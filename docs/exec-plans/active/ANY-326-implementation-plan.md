@@ -1553,7 +1553,7 @@ todo
 
 # Step 4 — Migrate payment, refund and webhook processing
 
-**Status:** `todo`  
+**Status:** `done`  
 **Commit:** `refactor(payments): use canonical commerce model enums`  
 **Depends on:** Steps 1–3 completed, manually verified, and committed.
 

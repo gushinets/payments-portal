@@ -11,9 +11,13 @@ from app.integrations.cloudpayments.payload import (
     parse_bool,
     parse_int,
 )
-from app.models import Order, Payment, User
+from app.models import Order, OrderStatus, Payment, PaymentStatus, User
 
-REFUNDABLE_PAYMENT_STATUSES = {"succeeded", "partially_refunded", "refunded"}
+REFUNDABLE_PAYMENT_STATUSES = {
+    PaymentStatus.SUCCEEDED,
+    PaymentStatus.PARTIALLY_REFUNDED,
+    PaymentStatus.REFUNDED,
+}
 SUPPORTED_RECURRENT_INTERVALS = {"week", "month"}
 
 
@@ -138,7 +142,7 @@ def confirm_validation_error(
 
 
 def check_order_state_error(order: Order) -> str | None:
-    if order.status in {"pending_payment", "payment_failed"}:
+    if order.status in {OrderStatus.PENDING_PAYMENT, OrderStatus.PAYMENT_FAILED}:
         return None
     return "order_not_payable"
 
@@ -220,7 +224,7 @@ def refund_validation_error(
     amount_minor: int | None,
     currency: str | None,
 ) -> str | None:
-    if payment.status == "canceled":
+    if payment.status == PaymentStatus.CANCELED:
         return "payment_already_canceled"
     if payment.status not in REFUNDABLE_PAYMENT_STATUSES:
         return "payment_not_refundable"

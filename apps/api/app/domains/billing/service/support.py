@@ -13,10 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.domains.billing.enums import (
     BillingPeriod,
-    OrderStatus,
-    PaymentStatus,
     SensitiveMetadataKey,
-    WebhookEventStatus,
 )
 from app.domains.billing.service.commands import ApplyRenewalPaymentCommand, LifecycleCommand
 from app.domains.billing.service.state_machine import SubscriptionLifecycleError
@@ -33,8 +30,11 @@ from app.infrastructure.queries.webhooks import get_processed_webhook_event
 from app.models import (
     Entitlement,
     Order,
+    OrderStatus,
     Payment,
+    PaymentStatus,
     PaymentWebhookEvent,
+    PaymentWebhookEventStatus,
     Plan,
     Subscription,
     SubscriptionEvent,
@@ -203,7 +203,7 @@ def _verify_order_payment_webhook(
     webhook = get_processed_webhook_event(db, webhook_event_id)
     if (
         webhook is None
-        or webhook.status != WebhookEventStatus.PROCESSED.value
+        or webhook.status != PaymentWebhookEventStatus.PROCESSED
         or webhook.order_id != order.id
         or webhook.payment_id != payment.id
     ):
@@ -230,7 +230,7 @@ def _verify_successful_payment_context(
         payment_id=payment_id,
         webhook_event_id=webhook_event_id,
     )
-    if order.status != OrderStatus.PAID.value or payment.status != PaymentStatus.SUCCEEDED.value:
+    if order.status != OrderStatus.PAID or payment.status != PaymentStatus.SUCCEEDED:
         raise SubscriptionLifecycleError("payment_not_verified")
     return order, payment, webhook
 
@@ -256,11 +256,11 @@ def _verify_renewal_context(
     if subscription.provider_account_id is not None and order.provider_account_id != subscription.provider_account_id:
         raise SubscriptionLifecycleError("renewal_provider_context_mismatch")
     if command.succeeded:
-        if order.status != OrderStatus.PAID.value or payment.status != PaymentStatus.SUCCEEDED.value:
+        if order.status != OrderStatus.PAID or payment.status != PaymentStatus.SUCCEEDED:
             raise SubscriptionLifecycleError("renewal_payment_not_verified")
-    elif order.status not in {OrderStatus.PAYMENT_FAILED.value, OrderStatus.CANCELED.value} or payment.status not in {
-        PaymentStatus.FAILED.value,
-        PaymentStatus.CANCELED.value,
+    elif order.status not in {OrderStatus.PAYMENT_FAILED, OrderStatus.CANCELED} or payment.status not in {
+        PaymentStatus.FAILED,
+        PaymentStatus.CANCELED,
     }:
         raise SubscriptionLifecycleError("renewal_failure_not_verified")
     return order, payment, webhook

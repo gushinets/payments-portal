@@ -30,7 +30,7 @@ from app.integrations.cloudpayments.recurring import (
 )
 from app.integrations.cloudpayments.refunds import refund_payment as refund_cloudpayments_payment
 from app.integrations.cloudpayments.transaction_lookup import lookup_transaction as lookup_cloudpayments_transaction
-from app.models import Order, PaymentProviderAccount
+from app.models import Order, PaymentProviderAccount, PaymentWebhookEventStatus
 from app.payment_providers.contracts import (
     CancelRecurringSubscriptionRequest,
     CancelRecurringSubscriptionResult,
@@ -422,7 +422,11 @@ class CloudPaymentsAdapter:
         error_code: str | None,
         event_status: str | None = None,
     ) -> int:
-        if error_code is None or event_status in {"processed", "ignored", "duplicate"}:
+        if error_code is None or event_status in {
+            PaymentWebhookEventStatus.PROCESSED,
+            PaymentWebhookEventStatus.IGNORED,
+            PaymentWebhookEventStatus.DUPLICATE,
+        }:
             return 0
         if endpoint != "check":
             return 0

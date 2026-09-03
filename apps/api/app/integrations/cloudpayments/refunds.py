@@ -18,10 +18,27 @@ from app.integrations.cloudpayments.operation_meta import (
 )
 from app.integrations.cloudpayments.payload import get_first
 from app.infrastructure.queries.subscriptions import get_subscription_for_order
-from app.models import Order, Payment, PaymentProviderAccount, Refund
-from app.payment_providers.contracts import RefundRequest, RefundResult, RefundStatus, RetryDisposition
+from app.models import (
+    Order,
+    OrderStatus,
+    Payment,
+    PaymentProviderAccount,
+    PaymentStatus,
+    Refund,
+    RefundStatus,
+)
+from app.payment_providers.contracts import (
+    ProviderRefundStatus,
+    RefundRequest,
+    RefundResult,
+    RetryDisposition,
+)
 
-CAPTURED_PAYMENT_STATUSES = {"succeeded", "refunded", "partially_refunded"}
+CAPTURED_PAYMENT_STATUSES = {
+    PaymentStatus.SUCCEEDED,
+    PaymentStatus.REFUNDED,
+    PaymentStatus.PARTIALLY_REFUNDED,
+}
 
 
 def refund_payment(
@@ -42,7 +59,7 @@ def refund_payment(
             provider_account_id=str(provider_account.id),
             provider_payment_id=request.provider_payment_id,
             provider_refund_id=None,
-            status=RefundStatus.FAILED,
+            status=ProviderRefundStatus.FAILED,
             amount_minor=request.amount_minor,
             amount=request.amount,
             currency=request.currency,
@@ -55,7 +72,7 @@ def refund_payment(
             provider_account_id=str(provider_account.id),
             provider_payment_id=request.provider_payment_id,
             provider_refund_id=None,
-            status=RefundStatus.FAILED,
+            status=ProviderRefundStatus.FAILED,
             amount_minor=request.amount_minor,
             amount=request.amount,
             currency=request.currency,
@@ -68,7 +85,7 @@ def refund_payment(
             provider_account_id=str(provider_account.id),
             provider_payment_id=request.provider_payment_id,
             provider_refund_id=None,
-            status=RefundStatus.FAILED,
+            status=ProviderRefundStatus.FAILED,
             amount_minor=request.amount_minor,
             amount=request.amount,
             currency=request.currency,
@@ -86,7 +103,7 @@ def refund_payment(
             provider_account_id=str(provider_account.id),
             provider_payment_id=request.provider_payment_id,
             provider_refund_id=None,
-            status=RefundStatus.FAILED,
+            status=ProviderRefundStatus.FAILED,
             amount_minor=request.amount_minor,
             amount=request.amount,
             currency=request.currency,
@@ -105,7 +122,7 @@ def refund_payment(
             provider_account_id=str(provider_account.id),
             provider_payment_id=request.provider_payment_id,
             provider_refund_id=None,
-            status=RefundStatus.FAILED,
+            status=ProviderRefundStatus.FAILED,
             amount_minor=request.amount_minor,
             amount=request.amount,
             currency=request.currency,
@@ -124,7 +141,7 @@ def refund_payment(
             provider_account_id=str(provider_account.id),
             provider_payment_id=request.provider_payment_id,
             provider_refund_id=None,
-            status=RefundStatus.FAILED,
+            status=ProviderRefundStatus.FAILED,
             amount_minor=request.amount_minor,
             amount=request.amount,
             currency=request.currency,
@@ -150,7 +167,7 @@ def refund_payment(
             provider_account_id=str(provider_account.id),
             provider_payment_id=request.provider_payment_id,
             provider_refund_id=None,
-            status=RefundStatus.FAILED,
+            status=ProviderRefundStatus.FAILED,
             amount_minor=request.amount_minor,
             amount=request.amount,
             currency=request.currency,
@@ -163,7 +180,7 @@ def refund_payment(
             provider_account_id=str(provider_account.id),
             provider_payment_id=request.provider_payment_id,
             provider_refund_id=None,
-            status=RefundStatus.FAILED,
+            status=ProviderRefundStatus.FAILED,
             amount_minor=request.amount_minor,
             amount=request.amount,
             currency=request.currency,
@@ -180,7 +197,7 @@ def refund_payment(
         provider_account_id=str(provider_account.id),
         provider_payment_id=request.provider_payment_id,
         provider_refund_id=str(response.model.transaction_id),
-        status=RefundStatus.PENDING,
+        status=ProviderRefundStatus.PENDING,
         amount_minor=request.amount_minor,
         amount=request.amount,
         currency=request.currency,
@@ -225,7 +242,7 @@ def record_refund(
         payment_id=payment.id,
         provider_account_id=order.provider_account_id,
         provider_refund_id=str(provider_refund_id) if provider_refund_id else None,
-        status="succeeded",
+        status=RefundStatus.SUCCEEDED,
         amount_minor=amount_minor,
         currency=currency,
         reason=get_first(payload, "Reason", "reason"),
@@ -235,7 +252,11 @@ def record_refund(
     )
     db.add(refund)
     payment.refunded_amount_minor = max(payment.refunded_amount_minor, 0) + amount_minor
-    payment.status = "refunded" if payment.refunded_amount_minor >= payment.amount_minor else "partially_refunded"
+    payment.status = (
+        PaymentStatus.REFUNDED
+        if payment.refunded_amount_minor >= payment.amount_minor
+        else PaymentStatus.PARTIALLY_REFUNDED
+    )
     db.add(payment)
     db.flush()
     _apply_order_refund_status(db, order)
@@ -245,7 +266,7 @@ def record_refund(
 
 
 def refund_lifecycle_applies(db: Session, order: Order, *, for_update: bool = False) -> bool:
-    if order.status != "canceled":
+    if order.status != OrderStatus.CANCELED:
         return True
     return get_subscription_for_order(db, order.id, for_update=for_update) is not None
 
@@ -265,7 +286,11 @@ def _apply_order_refund_status(db: Session, order: Order) -> None:
     refunded_total = sum(max(payment.refunded_amount_minor, 0) for payment in captured_payments)
     if refunded_total <= 0:
         return
-    order.status = "refunded" if captured_total > 0 and refunded_total >= captured_total else "partially_refunded"
+    order.status = (
+        OrderStatus.REFUNDED
+        if captured_total > 0 and refunded_total >= captured_total
+        else OrderStatus.PARTIALLY_REFUNDED
+    )
 
 
 def _provider_transaction_id(value: str | None) -> int | None:

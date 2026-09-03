@@ -5,11 +5,12 @@ from __future__ import annotations
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.domains.billing.enums import OrderStatus
 from app.models import (
     Entitlement,
     EntitlementSource,
     EntitlementStatus,
+    OrderStatus,
+    RefundStatus,
     Subscription,
     SubscriptionEventType,
     SubscriptionRenewalMode,
@@ -108,7 +109,7 @@ def enable_automatic_renewal(db: Session, command: EnableAutomaticRenewalCommand
         user is None
         or user.tenant_id != subscription.tenant_id
         or user.region != subscription.region
-        or order.status != OrderStatus.PAID.value
+        or order.status != OrderStatus.PAID
         or order.tenant_id != subscription.tenant_id
         or order.region != subscription.region
         or order.user_id != subscription.user_id
@@ -308,7 +309,7 @@ def apply_refund(db: Session, command: ApplyRefundCommand) -> Subscription:
         raise SubscriptionLifecycleError("refund_context_missing")
     if refund.amount_minor != command.amount_minor:
         raise SubscriptionLifecycleError("refund_amount_mismatch")
-    if refund.status != "succeeded":
+    if refund.status != RefundStatus.SUCCEEDED:
         raise SubscriptionLifecycleError("refund_not_verified")
     subscription = get_subscription_for_order(db, order.id, for_update=True)
     if subscription is None:

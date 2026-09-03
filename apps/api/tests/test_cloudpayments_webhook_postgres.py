@@ -43,14 +43,19 @@ from app.main import app  # noqa: E402
 from app.models import (  # noqa: E402
     Entitlement,
     Order,
+    OrderStatus,
     Payment,
+    PaymentStatus,
     PaymentProviderAccount,
     PaymentWebhookEvent,
+    PaymentWebhookEventStatus,
     Plan,
+    PlanStatus,
     Refund,
     Region,
     Subscription,
     SubscriptionEvent,
+    UserStatus,
     User,
 )
 
@@ -114,7 +119,7 @@ def seed_order(
             region="ru",
             email="durable-webhook@example.com",
             email_normalized="durable-webhook@example.com",
-            status="active",
+            status=UserStatus.ACTIVE,
             metadata_={},
         )
         db.add(user)
@@ -142,7 +147,7 @@ def seed_order(
             billing_period="month",
             renewal_mode="manual",
             trial_days=0,
-            status="active",
+            status=PlanStatus.ACTIVE,
             valid_from=now,
         )
         db.add(plan)
@@ -154,7 +159,7 @@ def seed_order(
                 order_number="RU-TEST-0001",
                 user_id=user.id,
                 plan_id=plan.id,
-                status="pending_payment",
+                status=OrderStatus.PENDING_PAYMENT,
                 amount_minor=99000,
                 currency="RUB",
                 provider="cloudpayments",
@@ -247,14 +252,14 @@ def test_raw_webhook_event_survives_failed_normalization_and_can_retry(
         order = db.query(Order).one()
         payment_count = db.query(Payment).count()
 
-    assert event.status == "failed"
+    assert event.status is PaymentWebhookEventStatus.FAILED
     assert event.error_code == "normalization_unexpected_error"
     assert "RuntimeError" in event.error_message
     assert "411111" not in event.error_message
     assert event.processed_at
     assert event.raw_payload["CardFirstSix"] == "[redacted]"
     assert event.headers["content-hmac"] == "[redacted]"
-    assert order.status == "pending_payment"
+    assert order.status is OrderStatus.PENDING_PAYMENT
     assert payment_count == 0
 
     monkeypatch.setattr(cloudpayments_processing, "upsert_payment_from_webhook", original_upsert)
@@ -266,8 +271,11 @@ def test_raw_webhook_event_survives_failed_normalization_and_can_retry(
         order = db.query(Order).one()
         payments = db.query(Payment).all()
 
-    assert [event.status for event in events] == ["failed", "processed"]
-    assert order.status == "paid"
+    assert [event.status for event in events] == [
+        PaymentWebhookEventStatus.FAILED,
+        PaymentWebhookEventStatus.PROCESSED,
+    ]
+    assert order.status is OrderStatus.PAID
     assert len(payments) == 1
     assert payments[0].provider_payment_id == "tx-durable-1"
 
@@ -329,11 +337,14 @@ def test_concurrent_duplicate_webhook_is_serialized_with_provider_payment_id(
         order = db.query(Order).one()
         payments = db.query(Payment).all()
 
-    assert sorted(event.status for event in events) == ["duplicate", "processed"]
-    processed_event = next(event for event in events if event.status == "processed")
-    duplicate_event = next(event for event in events if event.status == "duplicate")
+    assert sorted(event.status for event in events) == [
+        PaymentWebhookEventStatus.DUPLICATE,
+        PaymentWebhookEventStatus.PROCESSED,
+    ]
+    processed_event = next(event for event in events if event.status is PaymentWebhookEventStatus.PROCESSED)
+    duplicate_event = next(event for event in events if event.status is PaymentWebhookEventStatus.DUPLICATE)
     assert duplicate_event.payment_id == processed_event.payment_id
-    assert order.status == "paid"
+    assert order.status is OrderStatus.PAID
     assert len(payments) == 1
     assert payments[0].provider_payment_id == "tx-concurrent-1"
 
@@ -411,10 +422,13 @@ def test_signed_duplicate_webhook_is_persisted_once_and_acknowledged_idempotentl
             payments = db.query(Payment).all()
             order = db.query(Order).one()
 
-        assert sorted(event.status for event in events) == ["duplicate", "processed"]
+        assert sorted(event.status for event in events) == [
+            PaymentWebhookEventStatus.DUPLICATE,
+            PaymentWebhookEventStatus.PROCESSED,
+        ]
         assert len(payments) == 1
         assert payments[0].provider_payment_id == "tx-signed-duplicate-1"
-        assert order.status == "paid"
+        assert order.status is OrderStatus.PAID
     finally:
         object.__setattr__(settings, "cloudpayments_enabled", original_enabled)
         object.__setattr__(settings, "cloudpayments_api_secret", original_api_secret)
@@ -450,11 +464,15 @@ def test_cancel_after_paid_payment_is_ignored_without_state_regression(
         payment = db.query(Payment).one()
         events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
 
-    assert order.status == "paid"
+    assert order.status is OrderStatus.PAID
     assert order.canceled_at is None
-    assert payment.status == "succeeded"
+    assert payment.status is PaymentStatus.SUCCEEDED
     assert payment.refunded_amount_minor == 0
-    assert [event.status for event in events] == ["processed", "processed", "ignored"]
+    assert [event.status for event in events] == [
+        PaymentWebhookEventStatus.PROCESSED,
+        PaymentWebhookEventStatus.PROCESSED,
+        PaymentWebhookEventStatus.IGNORED,
+    ]
     assert events[-1].payment_id == payment.id
     assert events[-1].error_code == "order_already_paid"
 
@@ -500,15 +518,15 @@ def test_cancel_after_refunded_payment_is_ignored_without_refund_mutation(
         events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
         refunds = db.query(Refund).all()
 
-    assert order.status == "refunded"
-    assert payment.status == "refunded"
+    assert order.status is OrderStatus.REFUNDED
+    assert payment.status is PaymentStatus.REFUNDED
     assert payment.refunded_amount_minor == 99000
     assert len(refunds) == 1
     assert [event.status for event in events] == [
-        "processed",
-        "processed",
-        "processed",
-        "ignored",
+        PaymentWebhookEventStatus.PROCESSED,
+        PaymentWebhookEventStatus.PROCESSED,
+        PaymentWebhookEventStatus.PROCESSED,
+        PaymentWebhookEventStatus.IGNORED,
     ]
     assert events[-1].payment_id == payment.id
     assert events[-1].error_code == "order_already_refunded"
@@ -564,14 +582,17 @@ def test_full_refund_after_provider_canceled_subscription_is_processed(
         )
         webhook_events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
 
-    assert order.status == "refunded"
-    assert payment.status == "refunded"
+    assert order.status is OrderStatus.REFUNDED
+    assert payment.status is PaymentStatus.REFUNDED
     assert payment.refunded_amount_minor == 99000
     assert subscription.status == SubscriptionStatus.REFUNDED.value
     assert entitlement.status == EntitlementStatus.REVOKED.value
     assert refund_event.previous_status == SubscriptionStatus.CANCELED.value
     assert refund_event.next_status == SubscriptionStatus.REFUNDED.value
-    assert [event.status for event in webhook_events] == ["processed", "processed"]
+    assert [event.status for event in webhook_events] == [
+        PaymentWebhookEventStatus.PROCESSED,
+        PaymentWebhookEventStatus.PROCESSED,
+    ]
 
 
 def test_full_refund_after_subscription_expiration_is_processed(
@@ -686,8 +707,8 @@ def test_full_refund_after_subscription_expiration_is_processed(
             now=refund_at,
         )
 
-    assert order.status == "refunded"
-    assert payment.status == "refunded"
+    assert order.status is OrderStatus.REFUNDED
+    assert payment.status is PaymentStatus.REFUNDED
     assert payment.refunded_amount_minor == 99000
     assert refund.amount_minor == 99000
     assert refund_count == 1
@@ -732,7 +753,11 @@ def test_full_refund_after_subscription_expiration_is_processed(
     assert subscription.status == SubscriptionStatus.REFUNDED.value
     assert entitlement.status == EntitlementStatus.EXPIRED.value
     assert active_entitlement is None
-    assert [event.status for event in webhook_events] == ["processed", "processed", "duplicate"]
+    assert [event.status for event in webhook_events] == [
+        PaymentWebhookEventStatus.PROCESSED,
+        PaymentWebhookEventStatus.PROCESSED,
+        PaymentWebhookEventStatus.DUPLICATE,
+    ]
 
 
 def test_refund_after_canceled_payment_is_rejected_without_refund_mutation(
@@ -771,11 +796,15 @@ def test_refund_after_canceled_payment_is_rejected_without_refund_mutation(
         events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
         refund_count = db.query(Refund).count()
 
-    assert order.status == "canceled"
-    assert payment.status == "canceled"
+    assert order.status is OrderStatus.CANCELED
+    assert payment.status is PaymentStatus.CANCELED
     assert payment.refunded_amount_minor == 0
     assert refund_count == 0
-    assert [event.status for event in events] == ["processed", "processed", "failed"]
+    assert [event.status for event in events] == [
+        PaymentWebhookEventStatus.PROCESSED,
+        PaymentWebhookEventStatus.PROCESSED,
+        PaymentWebhookEventStatus.FAILED,
+    ]
     assert events[-1].payment_id == payment.id
     assert events[-1].error_code == "payment_already_canceled"
 
@@ -815,11 +844,14 @@ def test_refund_after_failed_payment_is_rejected_without_refund_mutation(
         events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
         refund_count = db.query(Refund).count()
 
-    assert order.status == "payment_failed"
-    assert payment.status == "failed"
+    assert order.status is OrderStatus.PAYMENT_FAILED
+    assert payment.status is PaymentStatus.FAILED
     assert payment.refunded_amount_minor == 0
     assert refund_count == 0
-    assert [event.status for event in events] == ["processed", "failed"]
+    assert [event.status for event in events] == [
+        PaymentWebhookEventStatus.PROCESSED,
+        PaymentWebhookEventStatus.FAILED,
+    ]
     assert events[-1].payment_id == payment.id
     assert events[-1].error_code == "payment_not_refundable"
 
@@ -858,13 +890,17 @@ def test_completed_pay_after_auth_cancel_can_be_refunded_without_reopening_order
         refund_count = db.query(Refund).count()
         events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
 
-    assert order.status == "canceled"
+    assert order.status is OrderStatus.CANCELED
     assert [(payment.provider_payment_id, payment.status) for payment in payments] == [
-        ("tx-canceled-attempt-pg-1", "canceled"),
-        ("tx-late-distinct-charge-pg-1", "refunded"),
+        ("tx-canceled-attempt-pg-1", PaymentStatus.CANCELED),
+        ("tx-late-distinct-charge-pg-1", PaymentStatus.REFUNDED),
     ]
     assert refund_count == 1
-    assert [event.status for event in events] == ["processed", "processed", "processed"]
+    assert [event.status for event in events] == [
+        PaymentWebhookEventStatus.PROCESSED,
+        PaymentWebhookEventStatus.PROCESSED,
+        PaymentWebhookEventStatus.PROCESSED,
+    ]
     assert [event.error_code for event in events] == [
         None,
         None,
@@ -913,11 +949,15 @@ def test_excessive_partial_refund_is_rejected_without_refund_total_mutation(
         events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
         refunds = db.query(Refund).all()
 
-    assert order.status == "partially_refunded"
-    assert payment.status == "partially_refunded"
+    assert order.status is OrderStatus.PARTIALLY_REFUNDED
+    assert payment.status is PaymentStatus.PARTIALLY_REFUNDED
     assert payment.refunded_amount_minor == 60000
     assert len(refunds) == 1
-    assert [event.status for event in events] == ["processed", "processed", "failed"]
+    assert [event.status for event in events] == [
+        PaymentWebhookEventStatus.PROCESSED,
+        PaymentWebhookEventStatus.PROCESSED,
+        PaymentWebhookEventStatus.FAILED,
+    ]
     assert events[-1].payment_id == payment.id
     assert events[-1].error_code == "refund_amount_exceeds_payment"
 
@@ -956,10 +996,10 @@ def test_refund_one_of_multiple_successful_payments_keeps_order_partially_refund
         payments = db.query(Payment).order_by(Payment.provider_payment_id).all()
         refund = db.query(Refund).one()
 
-    assert order.status == "partially_refunded"
+    assert order.status is OrderStatus.PARTIALLY_REFUNDED
     assert [(payment.provider_payment_id, payment.status) for payment in payments] == [
-        ("tx-multi-success-refund-pg-1", "refunded"),
-        ("tx-multi-success-refund-pg-2", "succeeded"),
+        ("tx-multi-success-refund-pg-1", PaymentStatus.REFUNDED),
+        ("tx-multi-success-refund-pg-2", PaymentStatus.SUCCEEDED),
     ]
     assert [payment.refunded_amount_minor for payment in payments] == [99000, 0]
     assert refund.provider_refund_id == "tx-multi-success-refund-pg-refund-1"
@@ -1029,6 +1069,9 @@ def test_concurrent_recurrent_duplicate_delivery_is_serialized(
     with webhook_database() as db:
         events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
 
-    assert sorted(event.status for event in events) == ["duplicate", "processed"]
+    assert sorted(event.status for event in events) == [
+        PaymentWebhookEventStatus.DUPLICATE,
+        PaymentWebhookEventStatus.PROCESSED,
+    ]
     assert {event.idempotency_key for event in events} == {"cloudpayments:recurrent:payload:" + events[0].payload_hash}
     assert all(event.provider_account_id is not None for event in events)
