@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from app.domains.billing.enums import ProviderSubscriptionState, SubscriptionStatus
+from app.domains.billing.enums import ProviderSubscriptionState
+from app.models import SubscriptionStatus
 
 
 class SubscriptionLifecycleError(ValueError):
@@ -68,7 +69,7 @@ def subscription_status_from_provider_state(state: ProviderSubscriptionState) ->
     return PROVIDER_SUBSCRIPTION_STATUS_MAP[state]
 
 
-def ensure_subscription_status_transition(current: str, next_status: SubscriptionStatus) -> None:
+def ensure_subscription_status_transition(current: SubscriptionStatus, next_status: SubscriptionStatus) -> None:
     try:
         current_status = SubscriptionStatus(current)
     except ValueError as exc:

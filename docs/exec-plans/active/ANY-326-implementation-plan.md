@@ -610,7 +610,7 @@ Do not:
 
 # Step 1 — Create the canonical persisted enum layer and type the ORM
 
-**Status:** `todo`  
+**Status:** `done`  
 **Commit:** `refactor(models): centralize persisted enum contracts`
 
 ## Prompt
@@ -989,7 +989,7 @@ todo
 
 # Step 2 — Migrate catalog, checkout, identity and legal consumers
 
-**Status:** `todo`  
+**Status:** `done`  
 **Commit:** `refactor(models): migrate catalog identity and legal vocabularies`  
 **Depends on:** Step 1 completed, manually verified, and committed.
 
@@ -1286,7 +1286,7 @@ todo
 
 # Step 3 — Migrate subscription and entitlement lifecycle consumers
 
-**Status:** `todo`  
+**Status:** `done`  
 **Commit:** `refactor(billing): use canonical subscription model enums`  
 **Depends on:** Steps 1–2 completed, manually verified, and committed.
 

@@ -6,14 +6,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from pydantic import ValidationError
 
-from app.domains.billing.enums import (
-    EntitlementSource,
-    EntitlementStatus,
-    ProviderSubscriptionState,
-    SubscriptionEventType,
-    SubscriptionRenewalMode,
-    SubscriptionStatus,
-)
+from app.domains.billing.enums import ProviderSubscriptionState
 from app.domains.billing.service import (
     ActivatePaidPeriodCommand,
     EnableAutomaticRenewalCommand,
@@ -51,6 +44,11 @@ from app.models import (
     Refund,
     Subscription,
     SubscriptionEvent,
+    EntitlementSource,
+    EntitlementStatus,
+    SubscriptionEventType,
+    SubscriptionRenewalMode,
+    SubscriptionStatus,
     User,
 )
 
@@ -77,21 +75,21 @@ def test_terminal_provider_states_stop_future_renewal(provider_state: ProviderSu
     (
         (
             ProviderSubscriptionState.PAST_DUE,
-            SubscriptionStatus.PAST_DUE.value,
-            SubscriptionRenewalMode.AUTOMATIC.value,
+            SubscriptionStatus.PAST_DUE,
+            SubscriptionRenewalMode.AUTOMATIC,
         ),
         (
             ProviderSubscriptionState.REJECTED,
-            SubscriptionStatus.CANCELED.value,
-            SubscriptionRenewalMode.MANUAL.value,
+            SubscriptionStatus.CANCELED,
+            SubscriptionRenewalMode.MANUAL,
         ),
     ),
 )
 def test_provider_state_keeps_paid_entitlement_valid(
     db_session,
     provider_state: ProviderSubscriptionState,
-    expected_status: str,
-    expected_renewal_mode: str,
+    expected_status: SubscriptionStatus,
+    expected_renewal_mode: SubscriptionRenewalMode,
 ) -> None:
     now = datetime.now(timezone.utc)
     plan = db_session.query(Plan).filter(Plan.tenant_id == "anytoolai", Plan.region == "ru").first()
@@ -142,8 +140,8 @@ def test_provider_state_keeps_paid_entitlement_valid(
         scope_type=plan.scope_type,
         product_id=plan.product_id,
         bundle_id=plan.bundle_id,
-        status=SubscriptionStatus.ACTIVE.value,
-        renewal_mode=SubscriptionRenewalMode.AUTOMATIC.value,
+        status=SubscriptionStatus.ACTIVE,
+        renewal_mode=SubscriptionRenewalMode.AUTOMATIC,
         current_period_start=now,
         current_period_end=now + timedelta(days=30),
     )
@@ -158,10 +156,10 @@ def test_provider_state_keeps_paid_entitlement_valid(
         scope_type=plan.scope_type,
         product_id=plan.product_id,
         bundle_id=plan.bundle_id,
-        status=EntitlementStatus.ACTIVE.value,
+        status=EntitlementStatus.ACTIVE,
         valid_from=now,
         valid_until=subscription.current_period_end,
-        source="order",
+        source=EntitlementSource.ORDER,
         order_id=order.id,
     )
     db_session.add(entitlement)
@@ -179,7 +177,7 @@ def test_provider_state_keeps_paid_entitlement_valid(
 
     assert result.status == expected_status
     assert result.renewal_mode == expected_renewal_mode
-    assert entitlement.status == EntitlementStatus.ACTIVE.value
+    assert entitlement.status == EntitlementStatus.ACTIVE
     assert entitlement.valid_until == subscription.current_period_end
 
 
@@ -221,8 +219,8 @@ def test_trialing_provider_state_keeps_current_entitlement_and_is_idempotent(
         scope_type=plan.scope_type,
         product_id=plan.product_id,
         bundle_id=plan.bundle_id,
-        status=SubscriptionStatus.TRIALING.value,
-        renewal_mode=SubscriptionRenewalMode.AUTOMATIC.value,
+        status=SubscriptionStatus.TRIALING,
+        renewal_mode=SubscriptionRenewalMode.AUTOMATIC,
         current_period_start=now,
         current_period_end=now + timedelta(days=30),
     )
@@ -237,10 +235,10 @@ def test_trialing_provider_state_keeps_current_entitlement_and_is_idempotent(
         scope_type=plan.scope_type,
         product_id=plan.product_id,
         bundle_id=plan.bundle_id,
-        status=EntitlementStatus.ACTIVE.value,
+        status=EntitlementStatus.ACTIVE,
         valid_from=now,
         valid_until=subscription.current_period_end,
-        source=entitlement_source.value,
+        source=entitlement_source,
         order_id=order_id,
     )
     db_session.add(entitlement)
@@ -259,24 +257,24 @@ def test_trialing_provider_state_keeps_current_entitlement_and_is_idempotent(
         db_session.query(SubscriptionEvent)
         .filter(
             SubscriptionEvent.subscription_id == subscription.id,
-            SubscriptionEvent.event_type == SubscriptionEventType.PROVIDER_SUBSCRIPTION_STATE_APPLIED.value,
+            SubscriptionEvent.event_type == SubscriptionEventType.PROVIDER_SUBSCRIPTION_STATE_APPLIED,
         )
         .all()
     )
     db_session.refresh(entitlement)
-    assert result.status == expected_status.value
+    assert result.status == expected_status
     assert repeated.id == result.id
-    assert repeated.status == expected_status.value
-    assert entitlement.status == EntitlementStatus.ACTIVE.value
+    assert repeated.status == expected_status
+    assert entitlement.status == EntitlementStatus.ACTIVE
     assert entitlement.revoked_at is None
     assert len(events) == 1
-    assert events[0].previous_status == SubscriptionStatus.TRIALING.value
-    assert events[0].next_status == expected_status.value
+    assert events[0].previous_status == SubscriptionStatus.TRIALING
+    assert events[0].next_status == expected_status
 
 
 def test_terminal_subscription_cannot_be_reactivated() -> None:
     with pytest.raises(SubscriptionLifecycleError, match="invalid_subscription_status_transition"):
-        ensure_subscription_status_transition(SubscriptionStatus.REFUNDED.value, SubscriptionStatus.ACTIVE)
+        ensure_subscription_status_transition(SubscriptionStatus.REFUNDED, SubscriptionStatus.ACTIVE)
 
 
 def test_renewal_paid_at_must_be_timezone_aware() -> None:
@@ -480,7 +478,7 @@ def _assert_no_paid_activation_access_mutation(db_session, *, user: User, order:
         db_session.query(SubscriptionEvent)
         .filter(
             SubscriptionEvent.order_id == order.id,
-            SubscriptionEvent.event_type == SubscriptionEventType.PAID_PERIOD_ACTIVATED.value,
+            SubscriptionEvent.event_type == SubscriptionEventType.PAID_PERIOD_ACTIVATED,
         )
         .count()
         == 0
@@ -525,7 +523,7 @@ def _add_paid_subscription_for_order(
     plan: Plan,
     starts_at: datetime,
     ends_at: datetime,
-    status: str = SubscriptionStatus.ACTIVE.value,
+    status: SubscriptionStatus = SubscriptionStatus.ACTIVE,
 ) -> tuple[Subscription, Entitlement, SubscriptionEvent]:
     subscription = Subscription(
         tenant_id=order.tenant_id,
@@ -536,7 +534,7 @@ def _add_paid_subscription_for_order(
         product_id=plan.product_id,
         bundle_id=plan.bundle_id,
         status=status,
-        renewal_mode=SubscriptionRenewalMode.MANUAL.value,
+        renewal_mode=SubscriptionRenewalMode.MANUAL,
         current_period_start=starts_at,
         current_period_end=ends_at,
     )
@@ -551,15 +549,15 @@ def _add_paid_subscription_for_order(
         scope_type=plan.scope_type,
         product_id=plan.product_id,
         bundle_id=plan.bundle_id,
-        status=EntitlementStatus.ACTIVE.value,
+        status=EntitlementStatus.ACTIVE,
         valid_from=starts_at,
         valid_until=ends_at,
-        source="order",
+        source=EntitlementSource.ORDER,
         order_id=order.id,
     )
     event = SubscriptionEvent(
         subscription_id=subscription.id,
-        event_type=SubscriptionEventType.PAID_PERIOD_ACTIVATED.value,
+        event_type=SubscriptionEventType.PAID_PERIOD_ACTIVATED,
         previous_status=None,
         next_status=status,
         occurred_at=starts_at,
@@ -658,7 +656,7 @@ def test_automatic_renewal_provider_reference_conflict_uses_domain_error_and_sav
     now = datetime.now(timezone.utc)
     plan = db_session.query(Plan).filter(Plan.tenant_id == "anytoolai", Plan.region == "ru").first()
     assert plan is not None
-    plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC.value
+    plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC
     db_session.flush()
     first_user, account = _add_billing_user_and_account(db_session, "automatic-renewal-reference-first")
     second_user = User(
@@ -761,14 +759,14 @@ def test_automatic_renewal_provider_reference_conflict_uses_domain_error_and_sav
     db_session.refresh(first_subscription)
     db_session.refresh(second_subscription)
     assert first_subscription.provider_subscription_id == "provider-reference-shared"
-    assert first_subscription.renewal_mode == SubscriptionRenewalMode.AUTOMATIC.value
+    assert first_subscription.renewal_mode == SubscriptionRenewalMode.AUTOMATIC
     assert second_subscription.provider_subscription_id is None
-    assert second_subscription.renewal_mode == SubscriptionRenewalMode.MANUAL.value
+    assert second_subscription.renewal_mode == SubscriptionRenewalMode.MANUAL
     assert (
         db_session.query(SubscriptionEvent)
         .filter(
             SubscriptionEvent.subscription_id == first_subscription.id,
-            SubscriptionEvent.event_type == SubscriptionEventType.AUTOMATIC_RENEWAL_ENABLED.value,
+            SubscriptionEvent.event_type == SubscriptionEventType.AUTOMATIC_RENEWAL_ENABLED,
         )
         .count()
         == 1
@@ -794,7 +792,7 @@ def test_automatic_renewal_provider_reference_conflict_uses_domain_error_and_sav
 def test_automatic_renewal_accepts_exact_paid_checkout_context(db_session) -> None:
     now = datetime.now(timezone.utc)
     plan = _plan_by_code(db_session, "document-summary-pro")
-    plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC.value
+    plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC
     user, account = _add_billing_user_and_account(db_session, "automatic-renewal-valid-context")
     acceptance, order, subscription = _add_automatic_renewal_context(
         db_session,
@@ -819,7 +817,7 @@ def test_automatic_renewal_accepts_exact_paid_checkout_context(db_session) -> No
     )
 
     assert result.id == subscription.id
-    assert result.renewal_mode == SubscriptionRenewalMode.AUTOMATIC.value
+    assert result.renewal_mode == SubscriptionRenewalMode.AUTOMATIC
     assert result.provider_account_id == account.id
     assert result.provider_subscription_id == "provider-valid-context"
     assert result.recurring_consent_acceptance_id == acceptance.id
@@ -827,7 +825,7 @@ def test_automatic_renewal_accepts_exact_paid_checkout_context(db_session) -> No
         db_session.query(SubscriptionEvent)
         .filter(
             SubscriptionEvent.subscription_id == subscription.id,
-            SubscriptionEvent.event_type == SubscriptionEventType.AUTOMATIC_RENEWAL_ENABLED.value,
+            SubscriptionEvent.event_type == SubscriptionEventType.AUTOMATIC_RENEWAL_ENABLED,
         )
         .one()
     )
@@ -837,7 +835,7 @@ def test_automatic_renewal_accepts_exact_paid_checkout_context(db_session) -> No
 def test_automatic_renewal_accepts_legacy_consent_for_existing_order(db_session) -> None:
     now = datetime.now(timezone.utc)
     plan = _plan_by_code(db_session, "document-summary-pro")
-    plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC.value
+    plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC
     user, account = _add_billing_user_and_account(db_session, "automatic-renewal-legacy-context")
     acceptance, order, subscription = _add_automatic_renewal_context(
         db_session,
@@ -868,7 +866,7 @@ def test_automatic_renewal_accepts_legacy_consent_for_existing_order(db_session)
     )
 
     assert result.id == subscription.id
-    assert result.renewal_mode == SubscriptionRenewalMode.AUTOMATIC.value
+    assert result.renewal_mode == SubscriptionRenewalMode.AUTOMATIC
     assert result.provider_subscription_id == "provider-legacy-context"
     assert result.recurring_consent_acceptance_id == acceptance.id
 
@@ -876,7 +874,7 @@ def test_automatic_renewal_accepts_legacy_consent_for_existing_order(db_session)
 def test_automatic_renewal_legacy_consent_cannot_attach_to_another_plan_version(db_session) -> None:
     now = datetime.now(timezone.utc)
     plan = _plan_by_code(db_session, "document-summary-pro")
-    plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC.value
+    plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC
     user, account = _add_billing_user_and_account(db_session, "automatic-renewal-legacy-plan-version")
     acceptance, order, subscription = _add_automatic_renewal_context(
         db_session,
@@ -903,7 +901,7 @@ def test_automatic_renewal_legacy_consent_cannot_attach_to_another_plan_version(
         price_amount_minor=plan.price_amount_minor + 100,
         currency=plan.currency,
         billing_period=plan.billing_period,
-        renewal_mode=SubscriptionRenewalMode.AUTOMATIC.value,
+        renewal_mode=SubscriptionRenewalMode.AUTOMATIC,
         trial_days=plan.trial_days,
         status="inactive",
         valid_from=now + timedelta(days=1),
@@ -934,7 +932,7 @@ def test_automatic_renewal_legacy_consent_cannot_attach_to_another_plan_version(
 def test_automatic_renewal_rejects_same_scope_provider_account_substitution_without_mutation(db_session) -> None:
     now = datetime.now(timezone.utc)
     plan = _plan_by_code(db_session, "document-summary-pro")
-    plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC.value
+    plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC
     user, account = _add_billing_user_and_account(db_session, "automatic-renewal-provider-substitution")
     acceptance, order, subscription = _add_automatic_renewal_context(
         db_session,
@@ -1013,7 +1011,7 @@ def _assert_automatic_renewal_rejected_without_mutation(
         db_session.query(SubscriptionEvent)
         .filter(
             SubscriptionEvent.subscription_id == subscription.id,
-            SubscriptionEvent.event_type == SubscriptionEventType.AUTOMATIC_RENEWAL_ENABLED.value,
+            SubscriptionEvent.event_type == SubscriptionEventType.AUTOMATIC_RENEWAL_ENABLED,
         )
         .count()
         == 0
@@ -1043,7 +1041,7 @@ def test_automatic_renewal_revalidates_persisted_consent_context(
 ) -> None:
     now = datetime.now(timezone.utc)
     plan = _plan_by_code(db_session, "document-summary-pro")
-    plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC.value
+    plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC
     user, account = _add_billing_user_and_account(db_session, f"automatic-renewal-{invalid_context}")
     acceptance, order, subscription = _add_automatic_renewal_context(
         db_session,
@@ -1125,7 +1123,7 @@ def test_automatic_renewal_revalidates_persisted_consent_context(
 def test_automatic_renewal_rejects_order_not_linked_to_target_subscription(db_session) -> None:
     now = datetime.now(timezone.utc)
     plan = _plan_by_code(db_session, "document-summary-pro")
-    plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC.value
+    plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC
     user, account = _add_billing_user_and_account(db_session, "automatic-renewal-unlinked-order")
     acceptance, order, subscription = _add_automatic_renewal_context(
         db_session,
@@ -1169,7 +1167,7 @@ def test_automatic_renewal_rejects_order_not_linked_to_target_subscription(db_se
 def test_automatic_renewal_rejects_acceptance_not_stored_on_order(db_session) -> None:
     now = datetime.now(timezone.utc)
     plan = _plan_by_code(db_session, "document-summary-pro")
-    plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC.value
+    plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC
     user, account = _add_billing_user_and_account(db_session, "automatic-renewal-acceptance-mismatch")
     acceptance, order, subscription = _add_automatic_renewal_context(
         db_session,
@@ -1271,8 +1269,8 @@ def test_cumulative_refund_revokes_access(db_session) -> None:
         scope_type=plan.scope_type,
         product_id=plan.product_id,
         bundle_id=plan.bundle_id,
-        status=SubscriptionStatus.ACTIVE.value,
-        renewal_mode="manual",
+        status=SubscriptionStatus.ACTIVE,
+        renewal_mode=SubscriptionRenewalMode.MANUAL,
         current_period_start=now,
         current_period_end=now + timedelta(days=30),
     )
@@ -1288,10 +1286,10 @@ def test_cumulative_refund_revokes_access(db_session) -> None:
             scope_type=plan.scope_type,
             product_id=plan.product_id,
             bundle_id=plan.bundle_id,
-            status="active",
+            status=EntitlementStatus.ACTIVE,
             valid_from=now,
             valid_until=now + timedelta(days=30),
-            source="order",
+            source=EntitlementSource.ORDER,
             order_id=order.id,
         )
     )
@@ -1299,9 +1297,9 @@ def test_cumulative_refund_revokes_access(db_session) -> None:
     db_session.add(
         SubscriptionEvent(
             subscription_id=subscription.id,
-            event_type=SubscriptionEventType.PAID_PERIOD_ACTIVATED.value,
+            event_type=SubscriptionEventType.PAID_PERIOD_ACTIVATED,
             previous_status=None,
-            next_status=SubscriptionStatus.ACTIVE.value,
+            next_status=SubscriptionStatus.ACTIVE,
             occurred_at=now,
             operation_idempotency_key="refund-lifecycle-activation",
             order_id=order.id,
@@ -1338,8 +1336,8 @@ def test_cumulative_refund_revokes_access(db_session) -> None:
     )
 
     entitlement = db_session.query(Entitlement).filter(Entitlement.subscription_id == subscription.id).one()
-    assert result.status == SubscriptionStatus.REFUNDED.value
-    assert entitlement.status == EntitlementStatus.REVOKED.value
+    assert result.status == SubscriptionStatus.REFUNDED
+    assert entitlement.status == EntitlementStatus.REVOKED
 
 
 def test_full_refund_after_provider_cancellation_revokes_access(db_session) -> None:
@@ -1412,14 +1410,14 @@ def test_full_refund_after_provider_cancellation_revokes_access(db_session) -> N
         db_session.query(SubscriptionEvent)
         .filter(
             SubscriptionEvent.subscription_id == subscription.id,
-            SubscriptionEvent.event_type == SubscriptionEventType.REFUND_APPLIED.value,
+            SubscriptionEvent.event_type == SubscriptionEventType.REFUND_APPLIED,
         )
         .one()
     )
-    assert result.status == SubscriptionStatus.REFUNDED.value
-    assert entitlement.status == EntitlementStatus.REVOKED.value
-    assert event.previous_status == SubscriptionStatus.CANCELED.value
-    assert event.next_status == SubscriptionStatus.REFUNDED.value
+    assert result.status == SubscriptionStatus.REFUNDED
+    assert entitlement.status == EntitlementStatus.REVOKED
+    assert event.previous_status == SubscriptionStatus.CANCELED
+    assert event.next_status == SubscriptionStatus.REFUNDED
 
 
 def test_full_refund_of_paid_access_revokes_entitlement_and_refunds_subscription(db_session) -> None:
@@ -1476,23 +1474,23 @@ def test_full_refund_of_paid_access_revokes_entitlement_and_refunds_subscription
         db_session.query(SubscriptionEvent)
         .filter(
             SubscriptionEvent.subscription_id == subscription.id,
-            SubscriptionEvent.event_type == SubscriptionEventType.REFUND_APPLIED.value,
+            SubscriptionEvent.event_type == SubscriptionEventType.REFUND_APPLIED,
         )
         .one()
     )
     db_session.refresh(entitlement)
     assert lookup is not None
     assert lookup.id == subscription.id
-    assert result.status == SubscriptionStatus.REFUNDED.value
-    assert entitlement.status == EntitlementStatus.REVOKED.value
-    assert activation_event.event_type == SubscriptionEventType.PAID_PERIOD_ACTIVATED.value
-    assert refund_event.previous_status == SubscriptionStatus.ACTIVE.value
-    assert refund_event.next_status == SubscriptionStatus.REFUNDED.value
+    assert result.status == SubscriptionStatus.REFUNDED
+    assert entitlement.status == EntitlementStatus.REVOKED
+    assert activation_event.event_type == SubscriptionEventType.PAID_PERIOD_ACTIVATED
+    assert refund_event.previous_status == SubscriptionStatus.ACTIVE
+    assert refund_event.next_status == SubscriptionStatus.REFUNDED
     assert refund_event.order_id == order.id
     assert refund_event.refund_id == refund.id
     assert (
         db_session.query(SubscriptionEvent)
-        .filter(SubscriptionEvent.event_type == SubscriptionEventType.PAID_PERIOD_ACTIVATED.value)
+        .filter(SubscriptionEvent.event_type == SubscriptionEventType.PAID_PERIOD_ACTIVATED)
         .count()
         == 1
     )
@@ -1525,7 +1523,7 @@ def test_full_refund_of_previously_canceled_paid_order_revokes_access(db_session
         plan=plan,
         starts_at=now,
         ends_at=now + timedelta(days=30),
-        status=SubscriptionStatus.CANCELED.value,
+        status=SubscriptionStatus.CANCELED,
     )
     payment.status = "refunded"
     payment.refunded_amount_minor = payment.amount_minor
@@ -1552,8 +1550,8 @@ def test_full_refund_of_previously_canceled_paid_order_revokes_access(db_session
 
     db_session.refresh(entitlement)
     assert result.id == subscription.id
-    assert result.status == SubscriptionStatus.REFUNDED.value
-    assert entitlement.status == EntitlementStatus.REVOKED.value
+    assert result.status == SubscriptionStatus.REFUNDED
+    assert entitlement.status == EntitlementStatus.REVOKED
 
 
 def test_partial_refund_of_paid_access_does_not_revoke_entitlement(db_session) -> None:
@@ -1609,13 +1607,13 @@ def test_partial_refund_of_paid_access_does_not_revoke_entitlement(db_session) -
         db_session.query(SubscriptionEvent)
         .filter(
             SubscriptionEvent.subscription_id == subscription.id,
-            SubscriptionEvent.event_type == SubscriptionEventType.PARTIAL_REFUND_APPLIED.value,
+            SubscriptionEvent.event_type == SubscriptionEventType.PARTIAL_REFUND_APPLIED,
         )
         .one()
     )
     db_session.refresh(entitlement)
-    assert result.status == SubscriptionStatus.ACTIVE.value
-    assert entitlement.status == EntitlementStatus.ACTIVE.value
+    assert result.status == SubscriptionStatus.ACTIVE
+    assert entitlement.status == EntitlementStatus.ACTIVE
     assert event.order_id == order.id
     assert event.refund_id == refund.id
 
@@ -1764,10 +1762,10 @@ def test_paid_orders_create_distinct_entitlements_and_refund_uses_order_provenan
 
     db_session.refresh(first_entitlement)
     db_session.refresh(second_entitlement)
-    assert result.status == SubscriptionStatus.ACTIVE.value
-    assert first_entitlement.status == EntitlementStatus.REVOKED.value
+    assert result.status == SubscriptionStatus.ACTIVE
+    assert first_entitlement.status == EntitlementStatus.REVOKED
     assert first_entitlement.order_id == first_order.id
-    assert second_entitlement.status == EntitlementStatus.ACTIVE.value
+    assert second_entitlement.status == EntitlementStatus.ACTIVE
     assert second_entitlement.order_id == second_order.id
 
 
@@ -1902,7 +1900,7 @@ def test_paid_period_after_canceled_paid_through_scope_starts_at_old_valid_until
         ),
     )
     old_entitlement = db_session.query(Entitlement).filter(Entitlement.subscription_id == old_subscription.id).one()
-    old_subscription.status = SubscriptionStatus.CANCELED.value
+    old_subscription.status = SubscriptionStatus.CANCELED
     old_subscription.canceled_at = paid_at
     old_subscription.current_period_end = paid_through
     old_entitlement.valid_until = paid_through
@@ -1933,12 +1931,12 @@ def test_paid_period_after_canceled_paid_through_scope_starts_at_old_valid_until
         db_session.query(SubscriptionEvent)
         .filter(
             SubscriptionEvent.subscription_id == old_subscription.id,
-            SubscriptionEvent.event_type == SubscriptionEventType.SUBSCRIPTION_REPLACED.value,
+            SubscriptionEvent.event_type == SubscriptionEventType.SUBSCRIPTION_REPLACED,
         )
         .one()
     )
-    assert old_subscription.status == SubscriptionStatus.CANCELED.value
-    assert old_entitlement.status == EntitlementStatus.ACTIVE.value
+    assert old_subscription.status == SubscriptionStatus.CANCELED
+    assert old_entitlement.status == EntitlementStatus.ACTIVE
     assert old_entitlement.valid_until == paid_through
     assert new_subscription.id != old_subscription.id
     assert repeated_subscription.id == new_subscription.id
@@ -1947,8 +1945,8 @@ def test_paid_period_after_canceled_paid_through_scope_starts_at_old_valid_until
     assert new_entitlement.valid_until == expected_new_period_end
     assert old_entitlement.valid_until == new_entitlement.valid_from
     assert old_entitlement.valid_until <= new_entitlement.valid_from
-    assert successor_event.previous_status == SubscriptionStatus.CANCELED.value
-    assert successor_event.next_status == SubscriptionStatus.CANCELED.value
+    assert successor_event.previous_status == SubscriptionStatus.CANCELED
+    assert successor_event.next_status == SubscriptionStatus.CANCELED
     assert successor_event.metadata_ == {
         "replacement_subscription_id": str(new_subscription.id),
         "paid_through_valid_until": paid_through.isoformat(),
@@ -1982,9 +1980,9 @@ def test_canceled_expired_entitlement_does_not_shift_new_paid_period(db_session)
         plan=plan,
         starts_at=paid_at - timedelta(days=40),
         ends_at=paid_at - timedelta(days=10),
-        status=SubscriptionStatus.CANCELED.value,
+        status=SubscriptionStatus.CANCELED,
     )
-    old_entitlement.status = EntitlementStatus.EXPIRED.value
+    old_entitlement.status = EntitlementStatus.EXPIRED
     old_entitlement.expired_at = paid_at - timedelta(days=10)
     new_order, new_payment, new_webhook = _add_verified_paid_order(
         db_session,
@@ -2007,14 +2005,14 @@ def test_canceled_expired_entitlement_does_not_shift_new_paid_period(db_session)
     )
 
     new_entitlement = db_session.query(Entitlement).filter(Entitlement.subscription_id == new_subscription.id).one()
-    assert old_subscription.status == SubscriptionStatus.CANCELED.value
+    assert old_subscription.status == SubscriptionStatus.CANCELED
     assert new_subscription.current_period_start == paid_at
     assert new_entitlement.valid_from == paid_at
     assert (
         db_session.query(SubscriptionEvent)
         .filter(
             SubscriptionEvent.subscription_id == old_subscription.id,
-            SubscriptionEvent.event_type == SubscriptionEventType.SUBSCRIPTION_REPLACED.value,
+            SubscriptionEvent.event_type == SubscriptionEventType.SUBSCRIPTION_REPLACED,
         )
         .count()
         == 0
@@ -2043,7 +2041,7 @@ def test_canceled_paid_through_different_scope_does_not_shift_new_paid_period(db
         plan=other_plan,
         starts_at=paid_at - timedelta(days=10),
         ends_at=paid_at + timedelta(days=20),
-        status=SubscriptionStatus.CANCELED.value,
+        status=SubscriptionStatus.CANCELED,
     )
     new_order, new_payment, new_webhook = _add_verified_paid_order(
         db_session,
@@ -2066,7 +2064,7 @@ def test_canceled_paid_through_different_scope_does_not_shift_new_paid_period(db
     )
 
     new_entitlement = db_session.query(Entitlement).filter(Entitlement.subscription_id == new_subscription.id).one()
-    assert old_entitlement.status == EntitlementStatus.ACTIVE.value
+    assert old_entitlement.status == EntitlementStatus.ACTIVE
     assert new_subscription.current_period_start == paid_at
     assert new_entitlement.valid_from == paid_at
 
@@ -2085,8 +2083,8 @@ def test_canceled_paid_through_uses_latest_remaining_same_scope_grant(db_session
         scope_type=plan.scope_type,
         product_id=plan.product_id,
         bundle_id=plan.bundle_id,
-        status=SubscriptionStatus.CANCELED.value,
-        renewal_mode=SubscriptionRenewalMode.MANUAL.value,
+        status=SubscriptionStatus.CANCELED,
+        renewal_mode=SubscriptionRenewalMode.MANUAL,
         current_period_start=paid_at - timedelta(days=60),
         current_period_end=latest_paid_through,
         canceled_at=paid_at,
@@ -2119,10 +2117,10 @@ def test_canceled_paid_through_uses_latest_remaining_same_scope_grant(db_session
                 scope_type=plan.scope_type,
                 product_id=plan.product_id,
                 bundle_id=plan.bundle_id,
-                status=EntitlementStatus.ACTIVE.value,
+                status=EntitlementStatus.ACTIVE,
                 valid_from=starts_at,
                 valid_until=ends_at,
-                source=EntitlementSource.ORDER.value,
+                source=EntitlementSource.ORDER,
                 order_id=old_order.id,
             )
         )
@@ -2148,14 +2146,14 @@ def test_canceled_paid_through_uses_latest_remaining_same_scope_grant(db_session
 
     entitlements = (
         db_session.query(Entitlement)
-        .filter(Entitlement.user_id == user.id, Entitlement.status == EntitlementStatus.ACTIVE.value)
+        .filter(Entitlement.user_id == user.id, Entitlement.status == EntitlementStatus.ACTIVE)
         .order_by(Entitlement.valid_from.asc())
         .all()
     )
     new_entitlement = next(
         entitlement for entitlement in entitlements if entitlement.subscription_id == new_subscription.id
     )
-    assert subscription.status == SubscriptionStatus.CANCELED.value
+    assert subscription.status == SubscriptionStatus.CANCELED
     assert new_entitlement.valid_from == latest_paid_through
     assert entitlements[-2].valid_until == new_entitlement.valid_from
 
@@ -2213,11 +2211,11 @@ def test_partial_refund_records_event_without_revoking_entitlement(db_session) -
     entitlement = db_session.query(Entitlement).filter(Entitlement.subscription_id == subscription.id).one()
     event = (
         db_session.query(SubscriptionEvent)
-        .filter(SubscriptionEvent.event_type == SubscriptionEventType.PARTIAL_REFUND_APPLIED.value)
+        .filter(SubscriptionEvent.event_type == SubscriptionEventType.PARTIAL_REFUND_APPLIED)
         .one()
     )
-    assert result.status == SubscriptionStatus.ACTIVE.value
-    assert entitlement.status == EntitlementStatus.ACTIVE.value
+    assert result.status == SubscriptionStatus.ACTIVE
+    assert entitlement.status == EntitlementStatus.ACTIVE
     assert event.refund_id == refund.id
 
 
@@ -2481,7 +2479,7 @@ def test_verified_renewal_creates_entitlement_and_is_idempotent(db_session) -> N
         db_session.query(SubscriptionEvent)
         .filter(
             SubscriptionEvent.subscription_id == subscription.id,
-            SubscriptionEvent.event_type == SubscriptionEventType.RENEWAL_SUCCEEDED.value,
+            SubscriptionEvent.event_type == SubscriptionEventType.RENEWAL_SUCCEEDED,
         )
         .all()
     )
@@ -2553,10 +2551,10 @@ def test_failed_renewal_requires_persisted_failure_evidence(db_session) -> None:
 
     event = (
         db_session.query(SubscriptionEvent)
-        .filter(SubscriptionEvent.event_type == SubscriptionEventType.RENEWAL_FAILED.value)
+        .filter(SubscriptionEvent.event_type == SubscriptionEventType.RENEWAL_FAILED)
         .one()
     )
-    assert result.status == SubscriptionStatus.PAST_DUE.value
+    assert result.status == SubscriptionStatus.PAST_DUE
     assert db_session.query(Entitlement).filter(Entitlement.subscription_id == subscription.id).count() == 1
     assert event.order_id == failed_order.id
     assert event.payment_id == failed_payment.id
@@ -2635,7 +2633,7 @@ def test_replacement_writes_audit_event_and_is_idempotent(db_session) -> None:
         db_session.query(SubscriptionEvent)
         .filter(
             SubscriptionEvent.subscription_id == old_subscription.id,
-            SubscriptionEvent.event_type == SubscriptionEventType.SUBSCRIPTION_REPLACED.value,
+            SubscriptionEvent.event_type == SubscriptionEventType.SUBSCRIPTION_REPLACED,
         )
         .one()
     )
@@ -2643,17 +2641,17 @@ def test_replacement_writes_audit_event_and_is_idempotent(db_session) -> None:
         db_session.query(SubscriptionEvent)
         .filter(
             SubscriptionEvent.subscription_id == new_subscription.id,
-            SubscriptionEvent.event_type == SubscriptionEventType.PAID_PERIOD_ACTIVATED.value,
+            SubscriptionEvent.event_type == SubscriptionEventType.PAID_PERIOD_ACTIVATED,
         )
         .one()
     )
-    assert old_subscription.status == SubscriptionStatus.CANCELED.value
-    assert new_subscription.status == SubscriptionStatus.ACTIVE.value
+    assert old_subscription.status == SubscriptionStatus.CANCELED
+    assert new_subscription.status == SubscriptionStatus.ACTIVE
     assert repeated_subscription.id == new_subscription.id
-    assert old_entitlement.status == EntitlementStatus.SUPERSEDED.value
+    assert old_entitlement.status == EntitlementStatus.SUPERSEDED
     assert old_entitlement.superseded_by_entitlement_id == new_entitlement.id
-    assert audit_event.previous_status == SubscriptionStatus.ACTIVE.value
-    assert audit_event.next_status == SubscriptionStatus.CANCELED.value
+    assert audit_event.previous_status == SubscriptionStatus.ACTIVE
+    assert audit_event.next_status == SubscriptionStatus.CANCELED
     assert audit_event.order_id == second_order.id
     assert audit_event.payment_id == second_payment.id
     assert audit_event.webhook_event_id == second_webhook.id
@@ -2662,7 +2660,7 @@ def test_replacement_writes_audit_event_and_is_idempotent(db_session) -> None:
     assert paid_event.operation_idempotency_key == "replacement-audit-second-activate"
     assert (
         db_session.query(SubscriptionEvent)
-        .filter(SubscriptionEvent.event_type == SubscriptionEventType.SUBSCRIPTION_REPLACED.value)
+        .filter(SubscriptionEvent.event_type == SubscriptionEventType.SUBSCRIPTION_REPLACED)
         .count()
         == 1
     )
@@ -2722,7 +2720,7 @@ def test_replacement_audit_event_is_written_without_active_entitlement(db_sessio
         ),
     )
     old_entitlement = db_session.query(Entitlement).filter(Entitlement.subscription_id == old_subscription.id).one()
-    old_entitlement.status = EntitlementStatus.REVOKED.value
+    old_entitlement.status = EntitlementStatus.REVOKED
     old_entitlement.revoked_at = now + timedelta(hours=1)
     db_session.flush()
 
@@ -2741,12 +2739,12 @@ def test_replacement_audit_event_is_written_without_active_entitlement(db_sessio
         db_session.query(SubscriptionEvent)
         .filter(
             SubscriptionEvent.subscription_id == old_subscription.id,
-            SubscriptionEvent.event_type == SubscriptionEventType.SUBSCRIPTION_REPLACED.value,
+            SubscriptionEvent.event_type == SubscriptionEventType.SUBSCRIPTION_REPLACED,
         )
         .one()
     )
-    assert old_subscription.status == SubscriptionStatus.CANCELED.value
-    assert new_subscription.status == SubscriptionStatus.ACTIVE.value
+    assert old_subscription.status == SubscriptionStatus.CANCELED
+    assert new_subscription.status == SubscriptionStatus.ACTIVE
     assert audit_event.metadata_ == {"replacement_subscription_id": str(new_subscription.id)}
 
 
@@ -2758,9 +2756,9 @@ def test_expire_due_subscriptions_batches_canceled_access_and_is_idempotent(db_s
     due_subscriptions: list[Subscription] = []
     for index, status in enumerate(
         (
-            SubscriptionStatus.ACTIVE.value,
-            SubscriptionStatus.CANCELED.value,
-            SubscriptionStatus.PAST_DUE.value,
+            SubscriptionStatus.ACTIVE,
+            SubscriptionStatus.CANCELED,
+            SubscriptionStatus.PAST_DUE,
         )
     ):
         user = User(
@@ -2782,7 +2780,7 @@ def test_expire_due_subscriptions_batches_canceled_access_and_is_idempotent(db_s
             product_id=plan.product_id,
             bundle_id=plan.bundle_id,
             status=status,
-            renewal_mode="manual",
+            renewal_mode=SubscriptionRenewalMode.MANUAL,
             current_period_start=period_end - timedelta(days=30),
             current_period_end=period_end,
         )
@@ -2798,10 +2796,10 @@ def test_expire_due_subscriptions_batches_canceled_access_and_is_idempotent(db_s
                 scope_type=plan.scope_type,
                 product_id=plan.product_id,
                 bundle_id=plan.bundle_id,
-                status=EntitlementStatus.ACTIVE.value,
+                status=EntitlementStatus.ACTIVE,
                 valid_from=subscription.current_period_start,
                 valid_until=period_end,
-                source="trial",
+                source=EntitlementSource.TRIAL,
             )
         )
         due_subscriptions.append(subscription)
@@ -2823,8 +2821,8 @@ def test_expire_due_subscriptions_batches_canceled_access_and_is_idempotent(db_s
         scope_type=plan.scope_type,
         product_id=plan.product_id,
         bundle_id=plan.bundle_id,
-        status=SubscriptionStatus.ACTIVE.value,
-        renewal_mode="manual",
+        status=SubscriptionStatus.ACTIVE,
+        renewal_mode=SubscriptionRenewalMode.MANUAL,
         current_period_start=now,
         current_period_end=now + timedelta(days=30),
     )
@@ -2847,13 +2845,13 @@ def test_expire_due_subscriptions_batches_canceled_access_and_is_idempotent(db_s
     assert len(first_batch) == 2
     assert len(second_batch) == 1
     assert third_batch == []
-    assert {subscription.status for subscription in due_subscriptions} == {SubscriptionStatus.EXPIRED.value}
+    assert {subscription.status for subscription in due_subscriptions} == {SubscriptionStatus.EXPIRED}
     entitlements = (
         db_session.query(Entitlement)
         .filter(Entitlement.subscription_id.in_({subscription.id for subscription in due_subscriptions}))
         .all()
     )
-    assert {entitlement.status for entitlement in entitlements} == {EntitlementStatus.EXPIRED.value}
+    assert {entitlement.status for entitlement in entitlements} == {EntitlementStatus.EXPIRED}
     assert all(entitlement.expired_at == now for entitlement in entitlements)
-    assert future_subscription.status == SubscriptionStatus.ACTIVE.value
+    assert future_subscription.status == SubscriptionStatus.ACTIVE
     assert db_session.query(SubscriptionEvent).count() == 3

@@ -6,12 +6,17 @@ from datetime import datetime
 from sqlalchemy import case, func, or_
 from sqlalchemy.orm import Session
 
-from app.domains.billing.enums import (
+from app.models import (
+    BundleProduct,
+    BundleProductStatus,
+    Entitlement,
     EntitlementStatus,
+    Subscription,
+    SubscriptionEvent,
     SubscriptionEventType,
+    SubscriptionScopeType,
     SubscriptionStatus,
 )
-from app.models import BundleProduct, BundleProductStatus, Entitlement, Subscription, SubscriptionEvent, SubscriptionScopeType
 
 
 def get_subscription_by_id(db: Session, subscription_id: uuid.UUID, *, for_update: bool = False) -> Subscription | None:
@@ -99,7 +104,7 @@ def get_current_entitlement(
         db.query(Entitlement)
         .filter(
             Entitlement.subscription_id == subscription_id,
-            Entitlement.status == EntitlementStatus.ACTIVE.value,
+            Entitlement.status == EntitlementStatus.ACTIVE,
             Entitlement.valid_from <= now,
             Entitlement.valid_until > now,
         )
@@ -130,7 +135,7 @@ def get_relevant_entitlement_for_subscription(
         db.query(Entitlement)
         .filter(
             Entitlement.subscription_id == subscription_id,
-            Entitlement.status == EntitlementStatus.ACTIVE.value,
+            Entitlement.status == EntitlementStatus.ACTIVE,
             Entitlement.valid_from > now,
         )
         .order_by(Entitlement.valid_from.asc(), Entitlement.valid_until.asc(), Entitlement.created_at.asc())
@@ -152,11 +157,11 @@ def list_relevant_entitlements_for_subscriptions(
         return {}
 
     current_filter = (
-        (Entitlement.status == EntitlementStatus.ACTIVE.value)
+        (Entitlement.status == EntitlementStatus.ACTIVE)
         & (Entitlement.valid_from <= now)
         & (Entitlement.valid_until > now)
     )
-    future_filter = (Entitlement.status == EntitlementStatus.ACTIVE.value) & (Entitlement.valid_from > now)
+    future_filter = (Entitlement.status == EntitlementStatus.ACTIVE) & (Entitlement.valid_from > now)
     history_filter = ~current_filter & ~future_filter
     relevance_rank = case(
         (current_filter, 0),
@@ -226,7 +231,7 @@ def list_active_or_future_entitlements_for_subscription(
         db.query(Entitlement)
         .filter(
             Entitlement.subscription_id == subscription_id,
-            Entitlement.status == EntitlementStatus.ACTIVE.value,
+            Entitlement.status == EntitlementStatus.ACTIVE,
             Entitlement.valid_until > now,
         )
         .order_by(Entitlement.valid_from.asc(), Entitlement.created_at.asc())
@@ -245,7 +250,7 @@ def list_due_entitlements_for_subscription(
         db.query(Entitlement)
         .filter(
             Entitlement.subscription_id == subscription_id,
-            Entitlement.status == EntitlementStatus.ACTIVE.value,
+            Entitlement.status == EntitlementStatus.ACTIVE,
             Entitlement.valid_until <= now,
         )
         .order_by(Entitlement.valid_until.asc(), Entitlement.created_at.asc())
@@ -273,7 +278,7 @@ def get_active_entitlement_for_scope(
             Entitlement.scope_type == scope_type,
             Entitlement.product_id == product_id,
             Entitlement.bundle_id == bundle_id,
-            Entitlement.status == EntitlementStatus.ACTIVE.value,
+            Entitlement.status == EntitlementStatus.ACTIVE,
             Entitlement.valid_from <= now,
             Entitlement.valid_until > now,
         )
@@ -288,7 +293,7 @@ def get_trial_for_scope(
     tenant_id: str,
     region: str,
     user_id: uuid.UUID,
-    scope_type: str,
+    scope_type: SubscriptionScopeType,
     product_id: uuid.UUID | None,
     bundle_id: uuid.UUID | None,
 ) -> Subscription | None:
@@ -314,7 +319,7 @@ def get_live_subscription_for_scope(
     tenant_id: str,
     region: str,
     user_id: uuid.UUID,
-    scope_type: str,
+    scope_type: SubscriptionScopeType,
     product_id: uuid.UUID | None,
     bundle_id: uuid.UUID | None,
     for_update: bool = False,
@@ -328,7 +333,7 @@ def get_live_subscription_for_scope(
             Subscription.scope_type == scope_type,
             Subscription.product_id == product_id,
             Subscription.bundle_id == bundle_id,
-            Subscription.status.in_(SubscriptionStatus.live_values()),
+            Subscription.status.in_(tuple(status for status in SubscriptionStatus if status.is_live)),
         )
         .order_by(Subscription.created_at.desc())
     )
@@ -347,7 +352,7 @@ def list_active_subscriptions_for_user(
         Subscription.tenant_id == tenant_id,
         Subscription.region == region,
         Subscription.user_id == user_id,
-        Subscription.status.in_(SubscriptionStatus.live_values()),
+        Subscription.status.in_(tuple(status for status in SubscriptionStatus if status.is_live)),
     )
     return (query.with_for_update() if for_update else query).all()
 
@@ -358,7 +363,7 @@ def list_remaining_canceled_entitlements_for_scope(
     tenant_id: str,
     region: str,
     user_id: uuid.UUID,
-    scope_type: str,
+    scope_type: SubscriptionScopeType,
     product_id: uuid.UUID | None,
     bundle_id: uuid.UUID | None,
     boundary: datetime,
@@ -371,7 +376,7 @@ def list_remaining_canceled_entitlements_for_scope(
             Subscription.tenant_id == tenant_id,
             Subscription.region == region,
             Subscription.user_id == user_id,
-            Subscription.status == SubscriptionStatus.CANCELED.value,
+            Subscription.status == SubscriptionStatus.CANCELED,
             Subscription.scope_type == scope_type,
             Subscription.product_id == product_id,
             Subscription.bundle_id == bundle_id,
@@ -381,7 +386,7 @@ def list_remaining_canceled_entitlements_for_scope(
             Entitlement.scope_type == scope_type,
             Entitlement.product_id == product_id,
             Entitlement.bundle_id == bundle_id,
-            Entitlement.status == EntitlementStatus.ACTIVE.value,
+            Entitlement.status == EntitlementStatus.ACTIVE,
             Entitlement.valid_until > boundary,
         )
         .order_by(Entitlement.valid_until.desc(), Entitlement.valid_from.desc(), Entitlement.created_at.desc())
@@ -395,7 +400,7 @@ def get_subscription_for_order(db: Session, order_id: uuid.UUID, *, for_update: 
         .join(SubscriptionEvent, SubscriptionEvent.subscription_id == Subscription.id)
         .filter(
             SubscriptionEvent.order_id == order_id,
-            SubscriptionEvent.event_type == SubscriptionEventType.PAID_PERIOD_ACTIVATED.value,
+            SubscriptionEvent.event_type == SubscriptionEventType.PAID_PERIOD_ACTIVATED,
         )
         .order_by(
             SubscriptionEvent.occurred_at.desc(),
@@ -413,11 +418,11 @@ def list_due_subscriptions(db: Session, *, now: datetime, batch_size: int) -> li
         .filter(
             Subscription.status.in_(
                 (
-                    SubscriptionStatus.TRIALING.value,
-                    SubscriptionStatus.ACTIVE.value,
-                    SubscriptionStatus.PAST_DUE.value,
-                    SubscriptionStatus.PAUSED.value,
-                    SubscriptionStatus.CANCELED.value,
+                    SubscriptionStatus.TRIALING,
+                    SubscriptionStatus.ACTIVE,
+                    SubscriptionStatus.PAST_DUE,
+                    SubscriptionStatus.PAUSED,
+                    SubscriptionStatus.CANCELED,
                 )
             ),
             Subscription.current_period_end <= now,

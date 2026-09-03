@@ -15,10 +15,6 @@ from app.domains.billing.enums import (
     BillingPeriod,
     OrderStatus,
     PaymentStatus,
-    SubscriptionEventType,
-    SubscriptionRenewalMode,
-    SubscriptionScopeType,
-    SubscriptionStatus,
     SensitiveMetadataKey,
     WebhookEventStatus,
 )
@@ -34,7 +30,19 @@ from app.infrastructure.queries.subscriptions import (
     list_active_or_future_entitlements_for_subscription,
 )
 from app.infrastructure.queries.webhooks import get_processed_webhook_event
-from app.models import Entitlement, Order, Payment, PaymentWebhookEvent, Plan, Subscription, SubscriptionEvent
+from app.models import (
+    Entitlement,
+    Order,
+    Payment,
+    PaymentWebhookEvent,
+    Plan,
+    Subscription,
+    SubscriptionEvent,
+    SubscriptionEventType,
+    SubscriptionRenewalMode,
+    SubscriptionScopeType,
+    SubscriptionStatus,
+)
 
 
 @contextmanager
@@ -95,8 +103,8 @@ def _write_event(
     subscription: Subscription,
     command: LifecycleCommand,
     event_type: SubscriptionEventType,
-    previous_status: str | None,
-    next_status: str | None,
+    previous_status: SubscriptionStatus | None,
+    next_status: SubscriptionStatus | None,
     order_id: uuid.UUID | None = None,
     payment_id: uuid.UUID | None = None,
     refund_id: uuid.UUID | None = None,
@@ -104,7 +112,7 @@ def _write_event(
 ) -> SubscriptionEvent:
     event = SubscriptionEvent(
         subscription_id=subscription.id,
-        event_type=event_type.value,
+        event_type=event_type,
         previous_status=previous_status,
         next_status=next_status,
         occurred_at=command.occurred_at,
@@ -152,9 +160,7 @@ def _period_end(start: datetime, plan: Plan) -> datetime:
     return start.replace(year=year, month=month, day=min(start.day, calendar.monthrange(year, month)[1]))
 
 
-def _scope_values(plan: Plan) -> tuple[str, uuid.UUID | None, uuid.UUID | None]:
-    if plan.scope_type not in {scope.value for scope in SubscriptionScopeType}:
-        raise SubscriptionLifecycleError("invalid_plan_scope")
+def _scope_values(plan: Plan) -> tuple[SubscriptionScopeType, uuid.UUID | None, uuid.UUID | None]:
     return plan.scope_type, plan.product_id, plan.bundle_id
 
 
@@ -168,8 +174,8 @@ def _new_subscription(*, tenant_id: str, region: str, user_id: uuid.UUID, plan: 
         scope_type=scope_type,
         product_id=product_id,
         bundle_id=bundle_id,
-        status=SubscriptionStatus.ACTIVE.value,
-        renewal_mode=SubscriptionRenewalMode.MANUAL.value,
+        status=SubscriptionStatus.ACTIVE,
+        renewal_mode=SubscriptionRenewalMode.MANUAL,
         current_period_start=start,
         current_period_end=_period_end(start, plan),
     )
