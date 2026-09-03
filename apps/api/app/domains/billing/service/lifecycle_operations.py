@@ -6,6 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import (
+    AcceptanceKind,
     Entitlement,
     EntitlementSource,
     EntitlementStatus,
@@ -93,7 +94,7 @@ def enable_automatic_renewal(db: Session, command: EnableAutomaticRenewalCommand
         raise SubscriptionLifecycleError("provider_account_scope_mismatch")
     if acceptance.tenant_id != subscription.tenant_id or acceptance.region != subscription.region:
         raise SubscriptionLifecycleError("consent_scope_mismatch")
-    if acceptance.user_id != subscription.user_id or acceptance.acceptance_kind != "recurring_consent":
+    if acceptance.user_id != subscription.user_id or acceptance.acceptance_kind != AcceptanceKind.RECURRING_CONSENT:
         raise SubscriptionLifecycleError("recurring_consent_invalid")
     plan = get_plan_by_id(db, subscription.plan_id, for_update=True)
     if plan is None or plan.renewal_mode != SubscriptionRenewalMode.AUTOMATIC:
