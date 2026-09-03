@@ -18,7 +18,6 @@ from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import event, inspect  # noqa: E402
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware  # noqa: E402
 
-from app.domains.billing.enums import PlanStatus, ProductStatus  # noqa: E402
 from app.domains.billing.router import get_subscription as get_account_subscription_route  # noqa: E402
 from app.domains.billing.router import list_subscriptions as list_account_subscriptions_route  # noqa: E402
 import app.domains.identity.password_reset as password_reset_router  # noqa: E402
@@ -26,25 +25,38 @@ from app.database import Base, SessionLocal, engine  # noqa: E402
 from app.integrations.cloudpayments import adapter as cloudpayments_adapter_module  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import (  # noqa: E402
+    AcceptanceKind,
     AuthSession,
+    BillingPeriod,
     Bundle,
     BundleProduct,
+    BundleProductStatus,
+    BundleStatus,
     CheckoutSession,
     Entitlement,
     DocumentAcceptance,
     DocumentVersion,
     LegalEntity,
+    LegalEntityStatus,
+    LegalEntityType,
+    MagicLinkPurpose,
     MagicLinkToken,
     Order,
     OrderItem,
+    OrderItemType,
+    OrderStatus,
     Payment,
     PaymentProviderAccount,
     PaymentWebhookEvent,
     Plan,
+    PlanStatus,
     PasswordResetRateLimit,
     Product,
+    ProductStatus,
     Refund,
     Subscription,
+    SubscriptionRenewalMode,
+    SubscriptionScopeType,
     User,
 )
 from app.legal_seed import RU_DOCUMENT_VERSIONS, seed_legal_documents  # noqa: E402
@@ -196,10 +208,10 @@ def create_legal_entity(db, *, tenant_id: str = "anytoolai", region: str = "ru")
         tenant_id=tenant_id,
         region=region,
         name=f"AnytoolAI {region.upper()}",
-        entity_type="individual_entrepreneur" if region == "ru" else "merchant_of_record",
+        entity_type=(LegalEntityType.INDIVIDUAL_ENTREPRENEUR if region == "ru" else LegalEntityType.MERCHANT_OF_RECORD),
         legal_address="Draft legal address",
         support_email="support@example.com",
-        status="active",
+        status=LegalEntityStatus.ACTIVE,
     )
     db.add(entity)
     db.commit()
@@ -306,7 +318,7 @@ def create_document_acceptance_row(
         document_version_id=document.id,
         doc_type=document.doc_type,
         version=document.version,
-        acceptance_kind=ACCEPTANCE_KIND_BY_DOC_TYPE.get(document.doc_type, "terms_acceptance"),
+        acceptance_kind=ACCEPTANCE_KIND_BY_DOC_TYPE.get(document.doc_type, AcceptanceKind.TERMS_ACCEPTANCE),
         accepted_at=accepted_at or datetime.now(timezone.utc),
         acceptance_text_hash=acceptance_text_hash,
         entrypoint_type="product" if entrypoint_value is not None else None,
@@ -389,20 +401,20 @@ def seed_catalog(db) -> dict[str, object]:
         code="document-summary",
         platform_product_id="document-summary",
         name="Document Summary",
-        status="active",
+        status=ProductStatus.ACTIVE,
     )
     prompt_optimizer = Product(
         tenant_id="anytoolai",
         code="prompt-optimizer",
         platform_product_id="prompt-optimizer",
         name="Prompt Optimizer",
-        status="active",
+        status=ProductStatus.ACTIVE,
     )
     bundle = Bundle(
         tenant_id="anytoolai",
         code="core-tools-bundle",
         name="Core Tools Bundle",
-        status="active",
+        status=BundleStatus.ACTIVE,
     )
     db.add_all([document_summary, prompt_optimizer, bundle])
     db.flush()
@@ -412,13 +424,13 @@ def seed_catalog(db) -> dict[str, object]:
                 tenant_id="anytoolai",
                 bundle_id=bundle.id,
                 product_id=document_summary.id,
-                status="active",
+                status=BundleProductStatus.ACTIVE,
             ),
             BundleProduct(
                 tenant_id="anytoolai",
                 bundle_id=bundle.id,
                 product_id=prompt_optimizer.id,
-                status="active",
+                status=BundleProductStatus.ACTIVE,
             ),
         ]
     )
@@ -427,55 +439,55 @@ def seed_catalog(db) -> dict[str, object]:
         region="ru",
         code="document-summary-pro",
         name="Document Summary Pro",
-        scope_type="product",
+        scope_type=SubscriptionScopeType.PRODUCT,
         product_id=document_summary.id,
         price_amount_minor=99000,
         currency="RUB",
-        billing_period="month",
-        renewal_mode="manual",
+        billing_period=BillingPeriod.MONTH,
+        renewal_mode=SubscriptionRenewalMode.MANUAL,
         trial_days=7,
-        status="active",
+        status=PlanStatus.ACTIVE,
     )
     prompt_plan = Plan(
         tenant_id="anytoolai",
         region="ru",
         code="prompt-optimizer-pro",
         name="Prompt Optimizer Pro",
-        scope_type="product",
+        scope_type=SubscriptionScopeType.PRODUCT,
         product_id=prompt_optimizer.id,
         price_amount_minor=99000,
         currency="RUB",
-        billing_period="month",
-        renewal_mode="manual",
+        billing_period=BillingPeriod.MONTH,
+        renewal_mode=SubscriptionRenewalMode.MANUAL,
         trial_days=7,
-        status="active",
+        status=PlanStatus.ACTIVE,
     )
     bundle_plan = Plan(
         tenant_id="anytoolai",
         region="ru",
         code="core-tools-bundle-pro-ru",
         name="Core Tools Bundle Pro RU",
-        scope_type="bundle",
+        scope_type=SubscriptionScopeType.BUNDLE,
         bundle_id=bundle.id,
         price_amount_minor=198000,
         currency="RUB",
-        billing_period="month",
-        renewal_mode="manual",
+        billing_period=BillingPeriod.MONTH,
+        renewal_mode=SubscriptionRenewalMode.MANUAL,
         trial_days=7,
-        status="active",
+        status=PlanStatus.ACTIVE,
     )
     all_access_plan = Plan(
         tenant_id="anytoolai",
         region="ru",
         code="all-access-pro-ru",
         name="All Access Pro RU",
-        scope_type="all_access",
+        scope_type=SubscriptionScopeType.ALL_ACCESS,
         price_amount_minor=198000,
         currency="RUB",
-        billing_period="month",
-        renewal_mode="manual",
+        billing_period=BillingPeriod.MONTH,
+        renewal_mode=SubscriptionRenewalMode.MANUAL,
         trial_days=7,
-        status="active",
+        status=PlanStatus.ACTIVE,
         metadata_={"included_product_codes": ["document-summary", "prompt-optimizer"]},
     )
     db.add_all([document_plan, prompt_plan, bundle_plan, all_access_plan])
@@ -601,14 +613,14 @@ def test_catalog_products_rejects_ambiguous_product_offers() -> None:
                 region="ru",
                 code="document-summary-premium",
                 name="Document Summary Premium",
-                scope_type="product",
+                scope_type=SubscriptionScopeType.PRODUCT,
                 product_id=document_summary.id,
                 price_amount_minor=149000,
                 currency="RUB",
-                billing_period="month",
-                renewal_mode="manual",
+                billing_period=BillingPeriod.MONTH,
+                renewal_mode=SubscriptionRenewalMode.MANUAL,
                 trial_days=7,
-                status=PlanStatus.ACTIVE.value,
+                status=PlanStatus.ACTIVE,
                 valid_from=datetime.now(timezone.utc) - timedelta(days=1),
             )
         )
@@ -626,29 +638,29 @@ def test_catalog_products_rejects_ambiguous_product_offers() -> None:
 def test_catalog_products_excludes_ineligible_offers() -> None:
     now = datetime.now(timezone.utc)
     with SessionLocal() as db:
-        db.query(Product).filter(Product.code == "document-summary").one().status = ProductStatus.INACTIVE.value
-        db.query(Plan).filter(Plan.code == "prompt-optimizer-pro").one().status = PlanStatus.INACTIVE.value
+        db.query(Product).filter(Product.code == "document-summary").one().status = ProductStatus.INACTIVE
+        db.query(Plan).filter(Plan.code == "prompt-optimizer-pro").one().status = PlanStatus.INACTIVE
 
         future_product = Product(
             tenant_id="anytoolai",
             code="future-product",
             platform_product_id="future-product",
             name="Future Product",
-            status=ProductStatus.ACTIVE.value,
+            status=ProductStatus.ACTIVE,
         )
         expired_product = Product(
             tenant_id="anytoolai",
             code="expired-product",
             platform_product_id="expired-product",
             name="Expired Product",
-            status=ProductStatus.ACTIVE.value,
+            status=ProductStatus.ACTIVE,
         )
         no_plan_product = Product(
             tenant_id="anytoolai",
             code="no-plan-product",
             platform_product_id="no-plan-product",
             name="No Plan Product",
-            status=ProductStatus.ACTIVE.value,
+            status=ProductStatus.ACTIVE,
         )
         db.add_all([future_product, expired_product, no_plan_product])
         db.flush()
@@ -659,14 +671,14 @@ def test_catalog_products_excludes_ineligible_offers() -> None:
                     region="ru",
                     code="future-product-pro",
                     name="Future Product Pro",
-                    scope_type="product",
+                    scope_type=SubscriptionScopeType.PRODUCT,
                     product_id=future_product.id,
                     price_amount_minor=100,
                     currency="RUB",
-                    billing_period="month",
-                    renewal_mode="manual",
+                    billing_period=BillingPeriod.MONTH,
+                    renewal_mode=SubscriptionRenewalMode.MANUAL,
                     trial_days=0,
-                    status=PlanStatus.ACTIVE.value,
+                    status=PlanStatus.ACTIVE,
                     valid_from=now + timedelta(days=1),
                 ),
                 Plan(
@@ -674,14 +686,14 @@ def test_catalog_products_excludes_ineligible_offers() -> None:
                     region="ru",
                     code="expired-product-pro",
                     name="Expired Product Pro",
-                    scope_type="product",
+                    scope_type=SubscriptionScopeType.PRODUCT,
                     product_id=expired_product.id,
                     price_amount_minor=100,
                     currency="RUB",
-                    billing_period="month",
-                    renewal_mode="manual",
+                    billing_period=BillingPeriod.MONTH,
+                    renewal_mode=SubscriptionRenewalMode.MANUAL,
                     trial_days=0,
-                    status=PlanStatus.ACTIVE.value,
+                    status=PlanStatus.ACTIVE,
                     valid_from=now - timedelta(days=2),
                     valid_to=now - timedelta(days=1),
                 ),
@@ -870,7 +882,7 @@ def test_register_session_and_checkout_intent_flow() -> None:
     assert user.email_normalized == "user@example.com"
     assert order.user_id == user.id
     assert order.plan_id is not None
-    assert order.status == "pending_payment"
+    assert order.status == OrderStatus.PENDING_PAYMENT
     assert order.provider_invoice_id == invoice_id
     assert item.product_code_snapshot == "document-summary"
 
@@ -912,14 +924,14 @@ def test_checkout_rejects_unknown_or_foreign_plan_id() -> None:
             region="ru",
             code="foreign-plan",
             name="Foreign Plan",
-            scope_type="product",
+            scope_type=SubscriptionScopeType.PRODUCT,
             product_id=product.id,
             price_amount_minor=99000,
             currency="RUB",
-            billing_period="month",
-            renewal_mode="manual",
+            billing_period=BillingPeriod.MONTH,
+            renewal_mode=SubscriptionRenewalMode.MANUAL,
             trial_days=0,
-            status="active",
+            status=PlanStatus.ACTIVE,
             valid_from=datetime.now(timezone.utc) - timedelta(minutes=1),
         )
         db.add(foreign_plan)
@@ -950,14 +962,14 @@ def test_session_product_state_uses_user_tenant_product_when_codes_overlap() -> 
             code="shared-product",
             platform_product_id="tenant-b-shared-product",
             name="Tenant B Shared Product",
-            status="active",
+            status=ProductStatus.ACTIVE,
         )
         tenant_a_product = Product(
             tenant_id="anytoolai",
             code="shared-product",
             platform_product_id="tenant-a-shared-product",
             name="Tenant A Shared Product",
-            status="active",
+            status=ProductStatus.ACTIVE,
         )
         db.add_all([tenant_b_product, tenant_a_product])
         db.flush()
@@ -966,14 +978,14 @@ def test_session_product_state_uses_user_tenant_product_when_codes_overlap() -> 
             region="ru",
             code="shared-product-pro",
             name="Shared Product Pro",
-            scope_type="product",
+            scope_type=SubscriptionScopeType.PRODUCT,
             product_id=tenant_a_product.id,
             price_amount_minor=99000,
             currency="RUB",
-            billing_period="month",
-            renewal_mode="manual",
+            billing_period=BillingPeriod.MONTH,
+            renewal_mode=SubscriptionRenewalMode.MANUAL,
             trial_days=7,
-            status="active",
+            status=PlanStatus.ACTIVE,
         )
         db.add(tenant_a_plan)
         db.flush()
@@ -1001,13 +1013,13 @@ def test_session_product_state_uses_user_tenant_bundle_when_codes_overlap() -> N
             tenant_id="tenant-b",
             code="shared-bundle",
             name="Tenant B Shared Bundle",
-            status="active",
+            status=BundleStatus.ACTIVE,
         )
         tenant_a_bundle = Bundle(
             tenant_id="anytoolai",
             code="shared-bundle",
             name="Tenant A Shared Bundle",
-            status="active",
+            status=BundleStatus.ACTIVE,
         )
         db.add_all([tenant_b_bundle, tenant_a_bundle])
         db.flush()
@@ -1016,14 +1028,14 @@ def test_session_product_state_uses_user_tenant_bundle_when_codes_overlap() -> N
             region="ru",
             code="shared-bundle-pro",
             name="Shared Bundle Pro",
-            scope_type="bundle",
+            scope_type=SubscriptionScopeType.BUNDLE,
             bundle_id=tenant_a_bundle.id,
             price_amount_minor=198000,
             currency="RUB",
-            billing_period="month",
-            renewal_mode="manual",
+            billing_period=BillingPeriod.MONTH,
+            renewal_mode=SubscriptionRenewalMode.MANUAL,
             trial_days=7,
-            status="active",
+            status=PlanStatus.ACTIVE,
         )
         db.add(tenant_a_plan)
         db.flush()
@@ -1113,7 +1125,7 @@ def test_session_wrong_tenant_order_does_not_make_product_state_pending() -> Non
             code="document-summary",
             platform_product_id="tenant-b-document-summary",
             name="Tenant B Document Summary",
-            status="active",
+            status=ProductStatus.ACTIVE,
         )
         provider_account = PaymentProviderAccount(
             tenant_id="tenant-b",
@@ -1132,14 +1144,14 @@ def test_session_wrong_tenant_order_does_not_make_product_state_pending() -> Non
             region="ru",
             code="tenant-b-document-summary-pro",
             name="Tenant B Document Summary Pro",
-            scope_type="product",
+            scope_type=SubscriptionScopeType.PRODUCT,
             product_id=tenant_b_product.id,
             price_amount_minor=99000,
             currency="RUB",
-            billing_period="month",
-            renewal_mode="manual",
+            billing_period=BillingPeriod.MONTH,
+            renewal_mode=SubscriptionRenewalMode.MANUAL,
             trial_days=7,
-            status="active",
+            status=PlanStatus.ACTIVE,
         )
         db.add(tenant_b_plan)
         db.flush()
@@ -1149,7 +1161,7 @@ def test_session_wrong_tenant_order_does_not_make_product_state_pending() -> Non
             region="ru",
             order_number="RU-WRONG-TENANT-ORDER",
             user_id=user.id,
-            status="pending_payment",
+            status=OrderStatus.PENDING_PAYMENT,
             amount_minor=99000,
             currency="RUB",
             provider=provider_account.provider,
@@ -1162,7 +1174,7 @@ def test_session_wrong_tenant_order_does_not_make_product_state_pending() -> Non
         db.add(
             OrderItem(
                 order_id=order.id,
-                item_type="product_plan",
+                item_type=OrderItemType.PRODUCT_PLAN,
                 product_id=tenant_b_product.id,
                 product_code_snapshot="document-summary",
                 title_snapshot="Tenant B Document Summary Pro",
@@ -1273,7 +1285,7 @@ def test_checkout_rejects_automatic_renewal_for_manual_only_plan() -> None:
 def test_automatic_checkout_without_acceptance_returns_document_flow() -> None:
     with SessionLocal() as db:
         plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
-        plan.renewal_mode = "automatic"
+        plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC
         legal_entity = create_legal_entity(db)
         document = create_document_version(
             db,
@@ -1325,7 +1337,7 @@ def test_automatic_checkout_without_acceptance_returns_document_flow() -> None:
 def test_automatic_checkout_requires_exact_acceptance_id_after_document_acceptance() -> None:
     with SessionLocal() as db:
         plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
-        plan.renewal_mode = "automatic"
+        plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC
         legal_entity = create_legal_entity(db)
         document = create_document_version(
             db,
@@ -1370,7 +1382,7 @@ def test_automatic_checkout_requires_exact_acceptance_id_after_document_acceptan
 def test_checkout_persists_exact_recurring_consent_reference() -> None:
     with SessionLocal() as db:
         plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
-        plan.renewal_mode = "automatic"
+        plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC
         db.commit()
         legal_entity = create_legal_entity(db)
         document = create_document_version(
@@ -1453,7 +1465,7 @@ def test_automatic_checkout_rejects_recurring_consent_for_wrong_plan_id() -> Non
         plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
         other_plan = db.query(Plan).filter(Plan.code == "prompt-optimizer-pro").one()
         other_plan_id = str(other_plan.id)
-        plan.renewal_mode = "automatic"
+        plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC
         legal_entity = create_legal_entity(db)
         document = create_document_version(
             db,
@@ -1534,7 +1546,7 @@ def test_recurring_consent_metadata_cannot_spoof_typed_plan_id() -> None:
     with SessionLocal() as db:
         plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
         plan_id = str(plan.id)
-        plan.renewal_mode = "automatic"
+        plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC
         other_plan = db.query(Plan).filter(Plan.code == "prompt-optimizer-pro").one()
         other_plan_id = str(other_plan.id)
         legal_entity = create_legal_entity(db)
@@ -1580,14 +1592,14 @@ def test_versioned_plans_require_plan_bound_recurring_consent() -> None:
             region="ru",
             code="versioned-consent-pro",
             name="Versioned Consent A",
-            scope_type="product",
+            scope_type=SubscriptionScopeType.PRODUCT,
             product_id=product.id,
             price_amount_minor=99000,
             currency="RUB",
-            billing_period="month",
-            renewal_mode="automatic",
+            billing_period=BillingPeriod.MONTH,
+            renewal_mode=SubscriptionRenewalMode.AUTOMATIC,
             trial_days=7,
-            status=PlanStatus.ACTIVE.value,
+            status=PlanStatus.ACTIVE,
             valid_from=now - timedelta(days=2),
             valid_to=now + timedelta(days=1),
             metadata_={},
@@ -1597,14 +1609,14 @@ def test_versioned_plans_require_plan_bound_recurring_consent() -> None:
             region="ru",
             code="versioned-consent-pro",
             name="Versioned Consent B",
-            scope_type="product",
+            scope_type=SubscriptionScopeType.PRODUCT,
             product_id=product.id,
             price_amount_minor=109000,
             currency="RUB",
-            billing_period="month",
-            renewal_mode="automatic",
+            billing_period=BillingPeriod.MONTH,
+            renewal_mode=SubscriptionRenewalMode.AUTOMATIC,
             trial_days=0,
-            status=PlanStatus.INACTIVE.value,
+            status=PlanStatus.INACTIVE,
             valid_from=now - timedelta(days=1),
             valid_to=None,
             metadata_={},
@@ -1637,9 +1649,9 @@ def test_versioned_plans_require_plan_bound_recurring_consent() -> None:
         plan_b = db.get(Plan, plan_b_id)
         assert plan_a is not None
         assert plan_b is not None
-        plan_a.status = PlanStatus.INACTIVE.value
+        plan_a.status = PlanStatus.INACTIVE
         db.commit()
-        plan_b.status = PlanStatus.ACTIVE.value
+        plan_b.status = PlanStatus.ACTIVE
         db.commit()
 
     checkout_payload = {
@@ -1684,7 +1696,7 @@ def test_versioned_plans_require_plan_bound_recurring_consent() -> None:
 def test_automatic_checkout_paid_subscription_remains_manual_until_provider_attach() -> None:
     with SessionLocal() as db:
         plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
-        plan.renewal_mode = "automatic"
+        plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC
         legal_entity = create_legal_entity(db)
         document = create_document_version(
             db,
@@ -1751,7 +1763,7 @@ def test_automatic_checkout_paid_subscription_remains_manual_until_provider_atta
 def test_checkout_rejects_recurring_acceptance_from_another_user() -> None:
     with SessionLocal() as db:
         plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
-        plan.renewal_mode = "automatic"
+        plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC
         legal_entity = create_legal_entity(db)
         document = create_document_version(
             db,
@@ -1813,7 +1825,7 @@ def test_checkout_rejects_recurring_acceptance_from_another_user() -> None:
 def test_checkout_rejects_recurring_acceptance_from_another_tenant_or_region() -> None:
     with SessionLocal() as db:
         plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
-        plan.renewal_mode = "automatic"
+        plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC
         legal_entity = create_legal_entity(db)
         document = create_document_version(
             db,
@@ -1836,14 +1848,14 @@ def test_checkout_rejects_recurring_acceptance_from_another_tenant_or_region() -
             region="eu",
             code="document-summary-pro",
             name="Document Summary Pro EU",
-            scope_type="product",
+            scope_type=SubscriptionScopeType.PRODUCT,
             product_id=product.id,
             price_amount_minor=99000,
             currency="EUR",
-            billing_period="month",
-            renewal_mode="automatic",
+            billing_period=BillingPeriod.MONTH,
+            renewal_mode=SubscriptionRenewalMode.AUTOMATIC,
             trial_days=7,
-            status="active",
+            status=PlanStatus.ACTIVE,
             valid_from=datetime.now(timezone.utc) - timedelta(minutes=1),
         )
         db.add(foreign_plan)
@@ -1903,7 +1915,7 @@ def test_checkout_rejects_recurring_acceptance_from_another_tenant_or_region() -
 def test_checkout_rejects_acceptance_with_wrong_kind() -> None:
     with SessionLocal() as db:
         plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
-        plan.renewal_mode = "automatic"
+        plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC
         legal_entity = create_legal_entity(db)
         recurring_document = create_document_version(
             db,
@@ -1961,7 +1973,7 @@ def test_checkout_rejects_acceptance_with_wrong_kind() -> None:
 def test_checkout_rejects_recurring_acceptance_for_another_entrypoint() -> None:
     with SessionLocal() as db:
         plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
-        plan.renewal_mode = "automatic"
+        plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC
         legal_entity = create_legal_entity(db)
         document = create_document_version(
             db,
@@ -2007,7 +2019,7 @@ def test_checkout_rejects_recurring_acceptance_for_another_entrypoint() -> None:
 def test_checkout_rejects_recurring_acceptance_from_the_future() -> None:
     with SessionLocal() as db:
         plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
-        plan.renewal_mode = "automatic"
+        plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC
         legal_entity = create_legal_entity(db)
         document = create_document_version(
             db,
@@ -2063,7 +2075,7 @@ def test_checkout_rejects_recurring_acceptance_from_the_future() -> None:
 def test_checkout_requires_new_recurring_acceptance_when_document_version_changes() -> None:
     with SessionLocal() as db:
         plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
-        plan.renewal_mode = "automatic"
+        plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC
         legal_entity = create_legal_entity(db)
         first_document = create_document_version(
             db,
@@ -2297,7 +2309,7 @@ def test_bundle_checkout_snapshots_one_sellable_catalog_plan() -> None:
 
     assert order.plan_id == bundle_plan_id
     assert order.amount_minor == 198000
-    assert item.item_type == "bundle_plan"
+    assert item.item_type == OrderItemType.BUNDLE_PLAN
     assert item.plan_id == bundle_plan_id
     assert item.bundle_id == bundle_id
     assert item.product_id is None
@@ -2346,7 +2358,7 @@ def test_all_access_checkout_snapshots_one_sellable_catalog_plan() -> None:
 
     assert order.plan_id == all_access_plan_id
     assert order.amount_minor == 198000
-    assert item.item_type == "all_access_plan"
+    assert item.item_type == OrderItemType.ALL_ACCESS_PLAN
     assert item.plan_id == all_access_plan_id
     assert item.bundle_id is None
     assert item.product_id is None
@@ -2359,7 +2371,7 @@ def test_all_access_checkout_snapshots_one_sellable_catalog_plan() -> None:
 def test_checkout_rejects_inactive_catalog_plan_without_legacy_fallback() -> None:
     with SessionLocal() as db:
         plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
-        plan.status = "inactive"
+        plan.status = PlanStatus.INACTIVE
         db.add(plan)
         db.commit()
 
@@ -2431,7 +2443,7 @@ def test_checkout_rejects_catalog_plan_outside_validity_window() -> None:
 def test_checkout_rejects_active_plan_for_inactive_product() -> None:
     with SessionLocal() as db:
         product = db.query(Product).filter(Product.code == "document-summary").one()
-        product.status = "inactive"
+        product.status = ProductStatus.INACTIVE
         db.add(product)
         db.commit()
 
@@ -2466,7 +2478,7 @@ def test_checkout_rejects_active_plan_for_inactive_product() -> None:
 def test_checkout_rejects_active_plan_for_inactive_bundle() -> None:
     with SessionLocal() as db:
         bundle = db.query(Bundle).filter(Bundle.code == "core-tools-bundle").one()
-        bundle.status = "inactive"
+        bundle.status = BundleStatus.INACTIVE
         db.add(bundle)
         db.commit()
 
@@ -3338,7 +3350,7 @@ def test_payment_status_projects_product_state_from_final_and_pending_orders() -
 
     with SessionLocal() as db:
         pending_order = db.query(Order).filter(Order.provider_invoice_id == pending_invoice_id).one()
-        pending_order.status = "created"
+        pending_order.status = OrderStatus.CREATED
         db.commit()
 
     created_response = client.get(f"/api/auth/payment-status?invoice_id={pending_invoice_id}&email={pending_email}")
@@ -5185,7 +5197,7 @@ def test_password_reset_email_token_and_session_revocation(monkeypatch) -> None:
 
     with SessionLocal() as db:
         stored_token = db.query(MagicLinkToken).one()
-        assert stored_token.purpose == "password_reset"
+        assert stored_token.purpose == MagicLinkPurpose.PASSWORD_RESET
         assert stored_token.token_hash
         assert stored_token.token_hash != reset_token
         assert len(stored_token.token_hash) == 64
@@ -5241,7 +5253,7 @@ def test_password_reset_request_does_not_reveal_unknown_email(monkeypatch) -> No
 
     with SessionLocal() as db:
         stored_token = db.query(MagicLinkToken).one()
-        assert stored_token.purpose == "password_reset"
+        assert stored_token.purpose == MagicLinkPurpose.PASSWORD_RESET
         assert stored_token.email_normalized.startswith("password-reset-decoy:")
 
 
@@ -5460,7 +5472,7 @@ def test_password_reset_request_prunes_expired_reset_tokens() -> None:
                 region="ru",
                 email_normalized="password-reset-decoy:expired",
                 token_hash=hashlib.sha256(b"expired-reset-token").hexdigest(),
-                purpose="password_reset",
+                purpose=MagicLinkPurpose.PASSWORD_RESET,
                 expires_at=now - timedelta(minutes=1),
             )
         )
@@ -6616,7 +6628,7 @@ def test_automatic_checkout_keeps_recurring_consent_missing_when_hash_is_wrong()
 
     with SessionLocal() as db:
         plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
-        plan.renewal_mode = "automatic"
+        plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC
         legal_entity = create_legal_entity(db)
         document = create_document_version(
             db,

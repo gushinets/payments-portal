@@ -11,7 +11,7 @@ from app.domains.billing.enums import (
     SubscriptionEventType,
     SubscriptionStatus,
 )
-from app.models import BundleProduct, Entitlement, Subscription, SubscriptionEvent
+from app.models import BundleProduct, BundleProductStatus, Entitlement, Subscription, SubscriptionEvent, SubscriptionScopeType
 
 
 def get_subscription_by_id(db: Session, subscription_id: uuid.UUID, *, for_update: bool = False) -> Subscription | None:
@@ -67,7 +67,7 @@ def list_current_bundle_product_ids(
         .filter(
             BundleProduct.tenant_id == tenant_id,
             BundleProduct.bundle_id.in_(bundle_ids),
-            BundleProduct.status == "active",
+            BundleProduct.status == BundleProductStatus.ACTIVE,
             BundleProduct.valid_from <= now,
             or_(BundleProduct.valid_to.is_(None), BundleProduct.valid_to > now),
         )
@@ -259,7 +259,7 @@ def get_active_entitlement_for_scope(
     tenant_id: str,
     region: str,
     user_id: uuid.UUID,
-    scope_type: str,
+    scope_type: SubscriptionScopeType,
     product_id: uuid.UUID | None,
     bundle_id: uuid.UUID | None,
     now: datetime,

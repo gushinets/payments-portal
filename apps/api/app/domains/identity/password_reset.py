@@ -23,12 +23,12 @@ from app.domains.identity.session import (
     DEFAULT_TENANT_ID,
     utc_now,
 )
-from app.models import AuthSession, MagicLinkToken, User
+from app.models import AuthSession, MagicLinkPurpose, MagicLinkToken, User, UserStatus
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 PASSWORD_RESET_TTL_MINUTES = 30
-PASSWORD_RESET_PURPOSE = "password_reset"
+PASSWORD_RESET_PURPOSE = MagicLinkPurpose.PASSWORD_RESET
 PASSWORD_RESET_RATE_LIMIT_WINDOW_MINUTES = 15
 PASSWORD_RESET_ACCOUNT_RATE_LIMIT_MAX = 5
 PASSWORD_RESET_IP_RATE_LIMIT_MAX = 20
@@ -203,7 +203,7 @@ def request_password_reset(
             User.tenant_id == tenant_id,
             User.region == region,
             User.email_normalized == normalized_email,
-            User.status == "active",
+            User.status == UserStatus.ACTIVE,
         )
         .first()
     )
@@ -278,7 +278,7 @@ def confirm_password_reset(
             User.tenant_id == reset_token.tenant_id,
             User.region == reset_token.region,
             User.email_normalized == reset_token.email_normalized,
-            User.status == "active",
+            User.status == UserStatus.ACTIVE,
         )
         .first()
     )

@@ -5,8 +5,7 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session
 
-from app.domains.billing.enums import PlanStatus
-from app.models import Plan
+from app.models import Plan, PlanStatus
 
 
 def get_plan_by_id(db: Session, plan_id: uuid.UUID, *, for_update: bool = False) -> Plan | None:
@@ -28,7 +27,7 @@ def get_current_sellable_plan(
             Plan.id == plan_id,
             Plan.tenant_id == tenant_id,
             Plan.region == region,
-            Plan.status == PlanStatus.ACTIVE.value,
+            Plan.status == PlanStatus.ACTIVE,
             Plan.valid_from <= now,
             (Plan.valid_to.is_(None) | (Plan.valid_to > now)),
         )

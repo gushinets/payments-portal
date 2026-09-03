@@ -9,9 +9,9 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.time import utc_now
-from app.domains.billing.enums import BillingPeriod, SubscriptionRenewalMode
 from app.domains.identity.session import DEFAULT_REGION, DEFAULT_TENANT_ID
 from app.infrastructure.queries.products import list_sellable_product_offers
+from app.models import BillingPeriod, SubscriptionRenewalMode
 
 router = APIRouter(prefix="/api/catalog", tags=["catalog"])
 
@@ -72,8 +72,8 @@ def list_catalog_products(db: Annotated[Session, Depends(get_db)]) -> CatalogPro
                     name=plan.name,
                     price_amount_minor=plan.price_amount_minor,
                     currency=plan.currency,
-                    billing_period=BillingPeriod(plan.billing_period),
-                    renewal_mode=SubscriptionRenewalMode(plan.renewal_mode),
+                    billing_period=plan.billing_period,
+                    renewal_mode=plan.renewal_mode,
                     trial_days=plan.trial_days,
                 ),
             )

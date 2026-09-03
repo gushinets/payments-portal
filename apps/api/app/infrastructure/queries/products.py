@@ -5,8 +5,7 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session
 
-from app.domains.billing.enums import PlanStatus, ProductStatus, SubscriptionScopeType
-from app.models import Bundle, Plan, Product
+from app.models import Bundle, Plan, PlanStatus, Product, ProductStatus, SubscriptionScopeType
 
 
 def get_product_by_code(db: Session, *, tenant_id: str, code: str) -> Product | None:
@@ -29,11 +28,11 @@ def list_sellable_product_offers(
         .join(Plan, Plan.product_id == Product.id)
         .filter(
             Product.tenant_id == tenant_id,
-            Product.status == ProductStatus.ACTIVE.value,
+            Product.status == ProductStatus.ACTIVE,
             Plan.tenant_id == tenant_id,
             Plan.region == region,
-            Plan.status == PlanStatus.ACTIVE.value,
-            Plan.scope_type == SubscriptionScopeType.PRODUCT.value,
+            Plan.status == PlanStatus.ACTIVE,
+            Plan.scope_type == SubscriptionScopeType.PRODUCT,
             Plan.valid_from <= now,
             (Plan.valid_to.is_(None) | (Plan.valid_to > now)),
         )
