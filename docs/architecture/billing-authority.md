@@ -14,26 +14,50 @@ model ownership.
 
 ### CURRENT
 
-The implemented `ru` contour is a Portal-managed direct-provider flow. Payment
-Portal orchestrates checkout and the local billing lifecycle, uses the
-CloudPayments widget and direct API, accepts verified CloudPayments webhooks,
-and derives local entitlements. Platform Kernel consumes those entitlements.
+Payment Portal is under development and is not running as a production billing
+service. The implemented `ru` code contains a Portal-managed direct-provider
+flow: Payment Portal orchestrates checkout and the local billing lifecycle,
+uses the CloudPayments widget and direct API, accepts verified CloudPayments
+webhooks, and derives local entitlements. There are no production
+CloudPayments subscribers or subscriptions to migrate. Platform Kernel
+consumes those entitlements.
 
 ### TARGET
 
-Payment Portal can support either a Portal-managed direct-provider flow or an
-external-billing-managed flow. In the external flow, the external billing
-system owns its external lifecycle, Payment Portal projects verified facts into
-normalized local billing records, and Payment Portal applies its entitlement
-rules. One subscription has one billing owner.
+The target architecture supports an external-billing-managed flow. In that
+flow, the external billing system owns its external lifecycle, Payment Portal
+projects verified facts into normalized local billing records, and Payment
+Portal applies its entitlement rules. The architecture also permits a Portal-
+managed direct-provider flow when that is the selected active model.
+
+The durable ownership invariant is: **each subscription and its billing
+lifecycle has exactly one billing owner: either Payment Portal in a
+Portal-managed direct-provider flow, or one external billing system in an
+external-billing-managed flow.** Billing ownership belongs to the managed
+lifecycle, not to the contour. Contour enablement or deployment configuration
+may select one concrete active billing model and integration for the deployed
+product; this does not require multiple simultaneously active billing owners or
+production billing integrations.
+
+This target meaning does not assert current persistence readiness. The
+implemented `Order` and `Payment` schema still requires direct-provider account
+references and other provider-oriented fields and constraints. `Subscription`
+allows nullable provider references, but there is no general external-billing
+ownership or external-ID mapping representation. As detailed in the
+[data-model persistence clarification](payment-portal-data-model.md#persistence-readiness-for-external-billing),
+a concrete external-billing integration may require separately approved minimal
+schema adaptation; ANY-411 does not decide it.
 
 ### TRANSITIONAL
 
-The current direct CloudPayments implementation remains supported while its
-broad provider abstractions and mixed package responsibilities are narrowed by
-separately approved work. Transitional code describes what exists; it must not
-be copied as the target design, and this document does not authorize its
-removal.
+Under ANY-407, the current direct CloudPayments implementation remains as a
+transitional Portal-managed capability until separately approved architecture
+or refactoring work determines whether it is still needed. Transitional code
+describes what exists; it does not imply production use, must not be copied as
+the target external-billing design, and is not removed or refactored by this
+decision. Because there are no production CloudPayments subscriptions, this
+document defines no CloudPayments-to-external-billing migration or coexistence
+mechanism.
 
 ## Terminology
 
@@ -48,8 +72,8 @@ removal.
 - **External-billing-managed flow:** an external billing system owns the
   external lifecycle; Payment Portal sends commands and projects authoritative
   facts locally.
-- **Billing owner:** the single authority allowed to manage one subscription's
-  billing lifecycle. This document does not choose its persisted
+- **Billing owner:** the single authority allowed to manage one subscription
+  and its billing lifecycle. This document does not choose its persisted
   representation.
 - **Command:** an outbound request or intention. A successful call is not final
   billing-state authority.
@@ -250,6 +274,8 @@ This architecture decision does not introduce a `BillingSystemAdapter`, a
 provider capability hierarchy, an external-customer table, an external-
 subscription table, a billing-owner field or enum, a vendor DTO, or a
 persistence representation for ownership. It does not select a future vendor,
-move packages, change FastAPI dependency injection, remove `app.state`, or
-remove CloudPayments. Concrete interfaces and schemas must follow an actual
+move packages, change FastAPI dependency injection, remove `app.state`, remove
+CloudPayments, require multiple active billing integrations for one contour,
+create fake payment-provider accounts for external billing, or define migration
+or coexistence rules. Concrete interfaces and schemas must follow an actual
 consumer and separately approved implementation scope.

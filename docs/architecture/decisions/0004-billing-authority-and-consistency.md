@@ -11,11 +11,15 @@ Preserves: [ADR 0002](0002-plan-based-checkout-identity.md) and
 
 ## Context
 
-The current `ru` implementation is a Portal-managed billing flow: Payment
-Portal orchestrates billing and reaches CloudPayments through a direct payment
-provider adapter. That implementation does not define the architecture for a
-future integration with a system that owns its own customer, invoice, payment,
-and subscription lifecycle.
+Payment Portal is under development and is not running as a production billing
+service. The current `ru` implementation contains a Portal-managed billing
+flow: Payment Portal orchestrates billing and reaches CloudPayments through a
+direct payment provider adapter. There are no production CloudPayments
+subscribers or subscriptions to migrate. Current product planning anticipates
+an external-billing-managed launch, but that is planning context rather than an
+architectural invariant. The existing implementation does not define the
+architecture for a system that owns its own customer, invoice, payment, and
+subscription lifecycle.
 
 Treating such an external billing system as another `PaymentProviderAdapter`
 would obscure which system is authoritative, create competing lifecycle state,
@@ -41,12 +45,16 @@ The two billing flows are distinct:
   lifecycle. It is not a `PaymentProviderAdapter` and must not be registered in
   `PaymentProviderRegistry`. Local `Order`, `Payment`, and `Subscription`
   records are normalized projections used by Payment Portal, not a competing
-  source of truth.
+  source of truth. This is a target semantic decision, not a claim that the
+  current direct-provider-shaped physical schema can represent an arbitrary
+  external billing system without separately approved persistence adaptation.
 
-Each subscription has exactly one billing owner: either Payment Portal or one
-external billing system. Ownership is never last-write-wins. This ADR defines
-the invariant but does not choose a database representation, field, enum, or
-external-customer schema for it.
+Each subscription and its billing lifecycle has exactly one billing owner:
+either Payment Portal in a Portal-managed direct-provider flow, or one external
+billing system in an external-billing-managed flow. Ownership is never
+last-write-wins. This invariant applies to the managed lifecycle, not to the
+contour, and this ADR does not choose a database representation, field, enum,
+or external-customer schema for it.
 
 An outbound REST command records intent; a successful response does not confirm
 payment, subscription activation, or entitlement activation. For an external
@@ -68,18 +76,24 @@ Integration boundary. Authentication or authenticity verification, decoding,
 validation, and necessary redaction precede normalization into typed internal
 contracts consumed by Application and Domain logic.
 
-The existing direct CloudPayments implementation remains a transitional
-Portal-managed flow and is not changed by this decision. Its removal, if
-approved separately, is independent from introducing an external-billing
-integration.
+Under ANY-407, the existing direct CloudPayments implementation remains a
+transitional Portal-managed capability until separately approved architecture
+or refactoring work determines whether it is still needed. Its presence does
+not imply production use, and it is not removed, refactored, or decommissioned
+by this decision. With no production CloudPayments subscriptions to migrate,
+this ADR defines no CloudPayments-to-external-billing migration or coexistence
+mechanism.
 
 ## Relationship to existing decisions
 
 This ADR amends only ADR-0001's universal assumption that each contour
 registers a payment-provider adapter. ADR-0001's one-contour-per-production-
 instance isolation, local data-plane boundaries, and separate Region Resolver
-remain authoritative. A contour must have an explicit billing owner and
-integration, but that integration need not be a direct provider adapter.
+remain authoritative. Contour enablement or deployment configuration may
+select one concrete active billing model and integration for the deployed
+product. That selection does not make the contour the billing owner, does not
+make one owner a permanent property of the contour, and does not require
+multiple simultaneously active billing owners or production integrations.
 
 ADR-0002 remains unchanged: exact persisted `Plan.id` is purchase identity,
 access scope is backend-derived, and external/provider identifiers are opaque.
@@ -88,8 +102,9 @@ contract and its closed persisted vocabularies.
 
 ## Consequences
 
-- Future external-billing work must preserve one billing owner per subscription
-  and normalize authoritative external facts before local transitions.
+- Future external-billing work must preserve exactly one billing owner for each
+  subscription and its billing lifecycle, and normalize authoritative external
+  facts before local transitions.
 - Payment Portal remains the only billing-side authority for entitlements, so
   Platform Kernel has one local access contract regardless of billing owner.
 - Direct-provider and external-billing capabilities may evolve independently;
@@ -98,6 +113,8 @@ contract and its closed persisted vocabularies.
   competing state machines or last-write-wins updates.
 - No runtime behavior, persistence schema, vendor selection, or external-
   billing interface is introduced by this decision.
+- Any future migration or coexistence requirement needs separate explicit
+  approval; this ADR does not design one.
 
 The detailed authority, terminology, trust-boundary, and transitional package
 mapping are documented in

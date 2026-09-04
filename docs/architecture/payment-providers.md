@@ -5,8 +5,8 @@ Last verified: 2026-09-04
 
 This document covers only the **Portal-managed direct payment-provider flow**:
 Payment Portal orchestrates billing and calls a payment or acquiring provider
-through `PaymentProviderAdapter`. CloudPayments is the current `ru`
-implementation.
+through `PaymentProviderAdapter`. CloudPayments is the adapter in the current
+`ru` implementation.
 
 An **external billing system** owns its own external customer, invoice, payment,
 and subscription lifecycle. It is a separate authority boundary, is not a
@@ -24,9 +24,11 @@ into billing operations.
 
 ## Implemented
 
-CloudPayments is the registered adapter for the `ru` contour. Browser checkout
-uses the CloudPayments widget. Notifications arrive at CloudPayments HTTP
-paths on the `ru` API. Those paths are adapter surface, not a billing invariant.
+CloudPayments is registered in the current `ru` implementation. Browser
+checkout uses the CloudPayments widget. Notifications arrive at CloudPayments
+HTTP paths on the `ru` API. Those paths are adapter surface, not a billing
+invariant. Payment Portal is not yet a production billing service, and there
+are no production CloudPayments subscribers or subscriptions.
 
 The implemented shared adapter contract currently covers checkout preparation.
 CloudPayments webhook normalization and responses remain on the concrete
@@ -72,13 +74,22 @@ stored in normalized safe payloads, or exposed to domain code.
 
 ## Planned
 
-Future contour enablement must explicitly choose its billing owner and
-integration. A Portal-managed contour may configure provider accounts and
-register a direct-provider adapter. An external-billing-managed contour will use
+Contour enablement or deployment configuration may select one concrete active
+billing model and integration for the deployed product. If the selected model
+is Portal-managed, it may configure provider accounts and register a direct-
+provider adapter. If the selected model is external-billing-managed, it uses
 the integration defined by its own implementation ticket, not this adapter
-boundary. The first-install seed names `paddle` as
+boundary. The selection does not make the contour the owner of subscription
+billing lifecycles and does not require multiple simultaneously active billing
+owners or production integrations. The first-install seed names `paddle` as
 `default_payment_provider` for DE and ES; that value is not an accepted
-Merchant of Record, billing-owner, or EU-provider decision.
+Merchant of Record, active billing model, or EU-provider decision.
+
+Under ANY-407, the CloudPayments implementation remains as transitional code
+until separately approved work determines whether it is still needed. It must
+not be removed or refactored here, and no production migration or coexistence
+mechanism is required while there are no production CloudPayments
+subscriptions.
 
 Do not add a second production adapter without an explicit contour-enablement
 ticket.

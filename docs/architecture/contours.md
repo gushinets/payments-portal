@@ -72,7 +72,9 @@ This is implementation debt, not permission to deploy a shared data plane.
 ## Current vs planned product surface
 
 Implemented today: `ru` web routes, `docs/legal/ru`, CloudPayments, and `ru`
-defaults in the web and API. See [RU MVP journey](../product/ru-mvp.md).
+defaults in the web and API. These are implementation surfaces in a product
+that is still under development, not evidence of a production CloudPayments
+billing deployment. See [RU MVP journey](../product/ru-mvp.md).
 
 Planned, not implemented:
 
@@ -80,7 +82,7 @@ Planned, not implemented:
   literal;
 - login/registration contour confirmation via Region Resolver;
 - `eu` and `us` legal trees, operators, catalogs, and explicitly selected
-  billing integrations/owners;
+  billing integrations;
 - per-contour data planes and residency.
 
 Do not add `/en` or other locales as a substitute for a contour. Locale is
@@ -101,12 +103,13 @@ Enabling a contour requires a dedicated ticket. Minimum set:
    document-set, or locale variants only after ANY-71 defines the required
    dimension. The current pipeline and renderer are hardcoded to
    `docs/legal/ru`.
-5. An explicitly configured billing owner and integration. For a
-   Portal-managed direct-provider flow, this includes enabled
+5. One concrete active billing model and integration selected for the deployed
+   product. For a Portal-managed direct-provider flow, this includes enabled
    `payment_provider_accounts`, adapter registration, credentials, and
    provider-specific webhook routes. For an external-billing-managed flow, the
    owning implementation ticket must define the integration; contour
-   enablement does not invent it here.
+   enablement does not invent it here. This selection is deployment
+   configuration, not an assignment of billing ownership to the contour.
 6. Catalog and plans in the contour's supported currencies.
 7. Contour locale and routes in the web application.
 8. Isolated data plane and provider webhook URLs on that plane.
@@ -118,13 +121,20 @@ Enabling a contour requires a dedicated ticket. Minimum set:
 ## Billing ownership and integration
 
 Checkout, orders, payments, and refunds belong to billing and are contour-local.
-The current `ru` contour uses the Portal-managed direct CloudPayments flow: its
-payment provider is selected from local `payment_provider_accounts`, and
-provider-specific verification stays in the adapter. Other contours do not
-inherently require a `PaymentProviderAdapter`; each must explicitly configure
-either a Portal-managed direct-provider integration or an
-external-billing-managed integration. In the latter model, the external system
-owns its external lifecycle while this contour stores only normalized local
-projections and remains authoritative for local entitlements. See
+The current `ru` implementation contains the transitional Portal-managed direct
+CloudPayments flow: its payment provider is selected from local
+`payment_provider_accounts`, and provider-specific verification stays in the
+adapter. Payment Portal is not yet a production billing service, and there are
+no production CloudPayments subscriptions to migrate. Under ANY-407, the code
+remains in place until later approved architecture or refactoring work
+determines whether it is still needed; its presence does not imply production
+use.
+
+Contour enablement or deployment configuration may select one concrete active
+billing model and integration for the deployed product. The durable ownership
+invariant instead applies to each subscription and its billing lifecycle, which
+has exactly one billing owner. This does not require a contour to support
+multiple simultaneously active billing owners or production integrations, and
+it defines no migration or coexistence mechanism. See
 [payment providers](payment-providers.md) and
 [billing authority](billing-authority.md).

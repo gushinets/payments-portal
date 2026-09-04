@@ -5,14 +5,16 @@ Version: 0.6
 Last verified against code: 2026-09-04
 Implementation expansion owner: Linear ANY-71
 
-This document is the primary source of truth for Payment Portal data ownership,
-state transitions, persistence rules, and the boundary with Platform Kernel.
-The generated schema documents what exists in code; this document explains what
-that schema means and distinguishes current implementation from planned work.
-Contour isolation is defined in [contours](contours.md). Provider adapters are
-defined for the Portal-managed direct-provider flow in
-[payment providers](payment-providers.md). Billing ownership and external
-lifecycle authority are defined in
+This document is the canonical persistence reference for Payment Portal. It
+defines persisted model semantics, local state representation, persistence
+rules, implemented table meaning, and local state-transition representation
+where applicable. The generated schema documents what exists in code; this
+document explains what that schema means and distinguishes current
+implementation from planned work. Contour isolation is defined in
+[contours](contours.md). Provider adapters are defined for the Portal-managed
+direct-provider flow in [payment providers](payment-providers.md). Billing
+lifecycle authority and ownership are defined by
+[ADR 0004](decisions/0004-billing-authority-and-consistency.md) and expanded in
 [Billing Authority and Consistency](billing-authority.md). Browser routing to
 another contour is defined in [Region Resolver](region-resolver-contract.md).
 
@@ -89,6 +91,28 @@ another contour is defined in [Region Resolver](region-resolver-contract.md).
 Exact implemented columns and indexes are generated in
 [`docs/generated/db-schema.md`](../generated/db-schema.md). Any implemented ORM
 table missing from the table above is a documentation-check failure.
+
+### Persistence readiness for external billing
+
+- **CURRENT physical persistence:** The implemented schema remains primarily
+  shaped around the Portal-managed direct-provider flow. `Order` and `Payment`
+  both require a `provider_account_id` foreign key to
+  `payment_provider_accounts` and a `provider`; `Order` also requires
+  `merchant_order_id`, and their relevant uniqueness and lookup constraints are
+  provider-oriented. `Subscription` permits nullable provider references, but
+  the schema has no general external-billing ownership or external-ID mapping
+  representation. External billing must not be represented by creating fake
+  `payment_provider_accounts` rows.
+- **TARGET semantics:** Where appropriate in an external-billing-managed flow,
+  local `Order`, `Payment`, and `Subscription` records serve as normalized
+  Payment Portal projections of authoritative external billing facts. This
+  semantic role does not mean that the current physical schema can represent an
+  arbitrary external billing system without adaptation.
+- **FUTURE implementation:** A concrete external-billing integration may need
+  separately approved persistence adaptation, such as external-ID mappings,
+  ownership representation, changed or nullable references, or another minimal
+  schema change. ANY-411 intentionally does not choose that representation or
+  implement any such change.
 
 ## 3. Current implemented model
 
@@ -215,8 +239,10 @@ In the current Portal-managed flow, an `order` is the authoritative internal
 commercial request. It contains the user, region, checkout and entrypoint links,
 amount/currency, provider account, merchant/provider identifiers, timestamps,
 and region-mismatch state. In an external-billing-managed flow, the local
-`Order` is instead a normalized projection of the externally owned lifecycle;
-this documentation change introduces no new columns or mapping tables.
+`Order` is instead intended to serve, where appropriate, as a normalized
+projection of the externally owned lifecycle; the target meaning does not claim
+that the current physical fields can represent that flow without separately
+approved adaptation.
 
 `order_items` preserves the commercial facts shown at checkout: item type,
 product/bundle/plan identifiers, names and codes, quantities, prices, discounts,

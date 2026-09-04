@@ -33,14 +33,22 @@ flowchart LR
   Web -. "planned contour switch" .-> Resolver
 ```
 
-This diagram is **CURRENT**: the implemented `ru` contour uses the
-Portal-managed direct CloudPayments flow. The **TARGET** architecture supports
-either that ownership model or an external-billing-managed flow in which the
+This diagram shows **CURRENT IMPLEMENTATION CODE**, not a production billing
+deployment. Payment Portal is still under development and has no production
+CloudPayments subscribers or subscriptions. The implemented `ru` code contains
+a Portal-managed direct CloudPayments flow. Under ANY-407, that capability
+remains **TRANSITIONAL** until separately approved architecture and refactoring
+work determines whether it is still needed; its presence does not commit the
+product to using CloudPayments in production.
+
+The expected launch model is an external-billing-managed flow, in which the
 external system owns its external customer, invoice, payment, and subscription
-lifecycle and the Portal stores normalized local projections. The existing
-broad provider abstractions and mixed package responsibilities are
-**TRANSITIONAL**; they remain accurate current implementation details but are
-not the model for external billing. See
+lifecycle and the Portal stores normalized local projections. The architecture
+also continues to support the transitional Portal-managed flow. In either
+model, each subscription and its billing lifecycle has exactly one billing
+owner. No CloudPayments-to-external-billing migration or coexistence mechanism
+is required or defined while there are no production subscriptions to migrate.
+See
 [Billing Authority and Consistency](docs/architecture/billing-authority.md).
 
 ## Current domains
@@ -53,9 +61,9 @@ not the model for external billing. See
   actions selected through `payment_provider_accounts`; webhook normalization
   remains provider-adapter-specific. This boundary does not represent an
   external billing system.
-- **CloudPayments integration** — the currently registered adapter for the `ru`
-  contour: request validation, redaction, idempotency keys, response formatting,
-  and translation into billing operations.
+- **CloudPayments integration** — the adapter registered in the current `ru`
+  implementation: request validation, redaction, idempotency keys, response
+  formatting, and translation into billing operations.
 
 The target logical API dependency direction is:
 
