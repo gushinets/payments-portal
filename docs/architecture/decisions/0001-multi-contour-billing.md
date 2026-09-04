@@ -3,6 +3,11 @@
 Status: accepted
 Date: 2026-08-18
 
+Amendment: [ADR 0004](0004-billing-authority-and-consistency.md) supersedes
+only the assumption that every contour registers a payment-provider adapter.
+The contour-isolation and Region Resolver decisions in this ADR remain in
+force.
+
 ## Context
 
 The implemented product is the `ru` contour with CloudPayments. Billing, provider
