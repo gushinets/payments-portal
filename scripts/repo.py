@@ -1183,6 +1183,10 @@ def check_canonical_persisted_model_layer(root: Path = ROOT) -> list[str]:
         relative = path.relative_to(root).as_posix()
         try:
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            resolved_imports = {
+                imported.line: imported.targets
+                for imported in resolve_python_imports(path, app_root)
+            }
         except SyntaxError as error:
             errors.append(
                 f"{relative}:{error.lineno or 1} cannot be parsed for canonical model-layer checks"
@@ -1199,46 +1203,61 @@ def check_canonical_persisted_model_layer(root: Path = ROOT) -> list[str]:
 
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
-                imported_modules = (alias.name for alias in node.names)
-            elif isinstance(node, ast.ImportFrom):
-                imported_modules = ()
-                module = node.module or ""
-                if module_matches(module, "app.domains.billing.models") or (
-                    module == "app.domains.billing"
-                    and any(alias.name == "models" for alias in node.names)
+                imported_targets = tuple(alias.name for alias in node.names)
+                if any(
+                    module_matches(target, "app.domains.billing.models")
+                    for target in imported_targets
                 ):
                     errors.append(
                         f"{relative}:{node.lineno} imports ORM models through "
                         "app.domains.billing.models; import them from app.models"
                     )
-                elif module == "app.domains.legal.enums":
+                if any(
+                    module_matches(target, "app.domains.legal.enums")
+                    for target in imported_targets
+                ):
                     errors.append(
                         f"{relative}:{node.lineno} imports the removed legal enum façade; "
                         "import persisted enums from app.models"
                     )
-                elif module == "app.domains.billing.enums" or (
-                    module == "app.domains.billing"
-                    and any(alias.name == "enums" for alias in node.names)
-                ):
-                    for alias in node.names:
-                        if alias.name in REMOVED_BILLING_ENUM_FACADE_NAMES or alias.name == "enums":
-                            errors.append(
-                                f"{relative}:{node.lineno} imports {alias.name} through the removed "
-                                "billing enum façade; import it from app.models"
-                            )
-            else:
                 continue
 
-            for imported_module in imported_modules:
-                if module_matches(imported_module, "app.domains.billing.models"):
+            if not isinstance(node, ast.ImportFrom):
+                continue
+
+            imported_targets = resolved_imports.get(node.lineno, ())
+            if any(
+                module_matches(target, "app.domains.billing.models")
+                for target in imported_targets
+            ):
+                errors.append(
+                    f"{relative}:{node.lineno} imports ORM models through "
+                    "app.domains.billing.models; import them from app.models"
+                )
+            if any(
+                module_matches(target, "app.domains.legal.enums")
+                for target in imported_targets
+            ):
+                errors.append(
+                    f"{relative}:{node.lineno} imports the removed legal enum façade; "
+                    "import persisted enums from app.models"
+                )
+
+            billing_enum_module = "app.domains.billing.enums"
+            if billing_enum_module in imported_targets:
+                for alias in node.names:
+                    if alias.name == "enums":
+                        errors.append(
+                            f"{relative}:{node.lineno} imports {alias.name} through the removed "
+                            "billing enum façade; import it from app.models"
+                        )
+            for alias in node.names:
+                if alias.name in REMOVED_BILLING_ENUM_FACADE_NAMES and (
+                    f"{billing_enum_module}.{alias.name}" in imported_targets
+                ):
                     errors.append(
-                        f"{relative}:{node.lineno} imports ORM models through "
-                        "app.domains.billing.models; import them from app.models"
-                    )
-                if module_matches(imported_module, "app.domains.legal.enums"):
-                    errors.append(
-                        f"{relative}:{node.lineno} imports the removed legal enum façade; "
-                        "import persisted enums from app.models"
+                        f"{relative}:{node.lineno} imports {alias.name} through the removed "
+                        "billing enum façade; import it from app.models"
                     )
 
     return errors

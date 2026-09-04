@@ -84,6 +84,45 @@ def test_canonical_persisted_model_guard_allows_unrelated_provider_enum(tmp_path
     assert check_canonical_persisted_model_layer(tmp_path) == []
 
 
+def test_canonical_persisted_model_guard_rejects_relative_billing_model_import(tmp_path: Path) -> None:
+    _write_api_source(tmp_path, "domains/checkout/feature.py", "from ..billing.models import Order\n")
+
+    errors = check_canonical_persisted_model_layer(tmp_path)
+
+    assert any("imports ORM models through app.domains.billing.models" in error for error in errors)
+
+
+def test_canonical_persisted_model_guard_rejects_relative_billing_enum_import(tmp_path: Path) -> None:
+    _write_api_source(tmp_path, "domains/checkout/feature.py", "from ..billing.enums import PaymentStatus\n")
+
+    errors = check_canonical_persisted_model_layer(tmp_path)
+
+    assert any("imports PaymentStatus through the removed billing enum façade" in error for error in errors)
+
+
+def test_canonical_persisted_model_guard_rejects_relative_legal_enum_import(tmp_path: Path) -> None:
+    _write_api_source(tmp_path, "domains/checkout/feature.py", "from ..legal.enums import AcceptanceKind\n")
+
+    errors = check_canonical_persisted_model_layer(tmp_path)
+
+    assert any("imports the removed legal enum façade" in error for error in errors)
+
+
+def test_canonical_persisted_model_guard_allows_relative_provider_enum_import(tmp_path: Path) -> None:
+    _write_api_source(
+        tmp_path,
+        "domains/billing/enums.py",
+        "from enum import StrEnum\n\nclass ProviderSubscriptionState(StrEnum):\n    ACTIVE = 'active'\n",
+    )
+    _write_api_source(
+        tmp_path,
+        "domains/checkout/feature.py",
+        "from ..billing.enums import ProviderSubscriptionState\n",
+    )
+
+    assert check_canonical_persisted_model_layer(tmp_path) == []
+
+
 def test_consistent_knowledge_fixture_passes() -> None:
     root = Path("repository").resolve()
     source = root / "AGENTS.md"
