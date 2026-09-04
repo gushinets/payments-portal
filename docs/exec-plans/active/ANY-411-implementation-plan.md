@@ -1602,7 +1602,7 @@ docs(engineering): codify billing authority rules
 
 # Step 4 — Guard the architecture knowledge graph
 
-**Status:** `todo`
+**Status:** `done`
 
 ## Goal
 

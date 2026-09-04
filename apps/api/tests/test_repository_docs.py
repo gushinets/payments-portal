@@ -162,6 +162,67 @@ def test_missing_core_authority_link_is_actionable() -> None:
     ) == [f"Missing core authority link in AGENTS.md: {Path('docs') / 'PRODUCT.md'}"]
 
 
+@pytest.mark.parametrize(
+    ("source_relative", "target_relative"),
+    [
+        ("AGENTS.md", "docs/architecture/billing-authority.md"),
+        ("apps/api/AGENTS.md", "docs/architecture/billing-authority.md"),
+        ("ARCHITECTURE.md", "docs/architecture/billing-authority.md"),
+        ("docs/README.md", "docs/architecture/billing-authority.md"),
+        (
+            "docs/architecture/payment-providers.md",
+            "docs/architecture/billing-authority.md",
+        ),
+        (
+            "docs/architecture/decisions/0001-multi-contour-billing.md",
+            "docs/architecture/decisions/0004-billing-authority-and-consistency.md",
+        ),
+        (
+            "docs/architecture/decisions/README.md",
+            "docs/architecture/decisions/0004-billing-authority-and-consistency.md",
+        ),
+        (
+            "docs/architecture/billing-authority.md",
+            "docs/architecture/decisions/0001-multi-contour-billing.md",
+        ),
+        (
+            "docs/architecture/billing-authority.md",
+            "docs/architecture/decisions/0002-plan-based-checkout-identity.md",
+        ),
+        (
+            "docs/architecture/billing-authority.md",
+            "docs/architecture/decisions/0003-canonical-persisted-model-layer.md",
+        ),
+        (
+            "docs/architecture/billing-authority.md",
+            "docs/architecture/decisions/0004-billing-authority-and-consistency.md",
+        ),
+    ],
+)
+def test_billing_authority_graph_is_guarded_and_consistent(
+    source_relative: str,
+    target_relative: str,
+) -> None:
+    source = repo.ROOT / source_relative
+    target = repo.ROOT / target_relative
+
+    assert target in repo.CORE_AUTHORITY_LINKS[source]
+    assert repo.check_required_markdown_links(source, [target]) == []
+
+
+def test_missing_billing_authority_link_is_actionable() -> None:
+    root = Path("repository").resolve()
+    source = root / "apps" / "api" / "AGENTS.md"
+    authority = root / "docs" / "architecture" / "billing-authority.md"
+
+    assert check_required_markdown_link_content(
+        source,
+        "# API Agent Guide\n",
+        [authority],
+        root=root,
+    ) == ["Missing core authority link in apps/api/AGENTS.md: docs/architecture/billing-authority.md"]
+
+
 def test_stale_documented_legal_version_is_rejected() -> None:
     errors = check_expected_legal_versions("2026-07-11", [("docs/README.md", ["2026-07-02"], 1)])
 
