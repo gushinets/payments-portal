@@ -1304,7 +1304,7 @@ docs(architecture): align billing ownership documentation
 
 # Step 3 — Align agent rules, engineering conventions and cross-cutting authority docs
 
-**Status:** `todo`
+**Status:** `done`
 
 ## Goal
 

@@ -1,16 +1,22 @@
 # Reliability Requirements
 
 Status: authoritative
-Last verified: 2026-07-11
+Last verified: 2026-09-04
 
 ## Critical paths
 
 - API liveness must not depend on PostgreSQL; readiness must.
-- Checkout creation must be idempotent at provider-facing boundaries.
-- Webhook receipt must be stored before normalized processing completes.
-- Duplicate provider events must not duplicate payment, refund, or order changes.
-- A late failure must not downgrade a confirmed paid order.
-- Return-page state is informational and never payment authority.
+- Checkout creation and outbound billing commands must be idempotent at
+  external boundaries.
+- Webhook receipt must be durably stored before normalized processing completes.
+- Duplicate authoritative billing facts must not duplicate payment, refund,
+  subscription, order, or entitlement changes.
+- A late authoritative fact must not downgrade confirmed state.
+- Verified webhook and future reconciliation facts must feed the same local
+  transition path; reconciliation must not become a competing state machine.
+- Browser return-page state is informational and never billing authority.
+- In the current CloudPayments flow, authoritative facts arrive through verified
+  webhooks.
 
 ## Agent-verifiable signals
 
@@ -25,5 +31,6 @@ Last verified: 2026-07-11
 
 Development environments must be isolated by worktree and safely disposable.
 Production migrations are forward-only after the corrected initial baseline is
-frozen. Recovery instructions must never suggest treating the return URL as a
-substitute for provider reconciliation.
+frozen. Recovery instructions must never suggest treating the return URL as an
+authoritative billing fact or as a substitute for verified webhook processing
+or reconciliation.
