@@ -1,17 +1,22 @@
 # Payment Portal Data Model and Backend Invariants
 
 Status: normative source of truth
-Version: 0.5
-Last verified against code: 2026-08-24
+Version: 0.7
+Last verified against code: 2026-09-04
 Implementation expansion owner: Linear ANY-71
 
-This document is the primary source of truth for Payment Portal data ownership,
-state transitions, persistence rules, and the boundary with Platform Kernel.
-The generated schema documents what exists in code; this document explains what
-that schema means and distinguishes current implementation from planned work.
-Contour isolation is defined in [contours](contours.md). Provider adapters are
-defined in [payment providers](payment-providers.md). Browser routing to another
-contour is defined in [Region Resolver](region-resolver-contract.md).
+This document is the canonical persistence reference for Payment Portal. It
+defines persisted model semantics, local state representation, persistence
+rules, implemented table meaning, and local state-transition representation
+where applicable. The generated schema documents what exists in code; this
+document explains what that schema means and distinguishes current
+implementation from planned work. Contour isolation is defined in
+[contours](contours.md). Provider adapters are defined for the Portal-managed
+direct-provider flow in [payment providers](payment-providers.md). Billing
+lifecycle authority and ownership are defined by
+[ADR 0004](decisions/0004-billing-authority-and-consistency.md) and expanded in
+[Billing Authority and Consistency](billing-authority.md). Browser routing to
+another contour is defined in [Region Resolver](region-resolver-contract.md).
 
 ## 1. Locked decisions
 
@@ -33,11 +38,17 @@ contour is defined in [Region Resolver](region-resolver-contract.md).
   `us`. A production instance stores and serves exactly one contour.
 - Identity is `tenant_id + region + user_id` and is independent across
   contours. The same email on two contours is two accounts on two data planes.
-- Payment Portal owns identity, legal, catalog, orders, payments, subscriptions,
-  and entitlements. Platform Kernel owns runtime sessions, jobs, actions,
-  provider calls, artifacts, events, and usage consumption.
-- Paid access is activated only from a verified webhook or verified server-side
-  provider state, never from a browser return URL.
+- Payment Portal owns identity, legal and catalog semantics, entitlement rules,
+  local purchase intent / commercial `Order`, and local entitlements. In the
+  current Portal-managed direct-provider flow it also owns the billing
+  lifecycle. Under external billing, the external system owns its external
+  customer, invoice, payment, and subscription lifecycle, while Portal
+  `Payment` and `Subscription` records are normalized local projections. An
+  external invoice identifier may be correlated with the Portal-owned order.
+  Platform Kernel owns runtime sessions, jobs, actions, provider calls,
+  artifacts, events, and usage consumption.
+- Paid access is activated only from a verified authoritative billing fact,
+  never from a browser return URL or outbound command result.
 - Payment Portal stores purchased limits; Platform Kernel stores usage.
 - A free trial is modeled as subscription plus entitlement without order/payment.
 - Bundle and all-access offerings are independent sellable plans whose final
@@ -57,7 +68,7 @@ contour is defined in [Region Resolver](region-resolver-contract.md).
 | `auth_sessions` | Implemented | Hashed login sessions |
 | `magic_link_tokens` | Implemented | Hash-only password-reset token storage |
 | `password_reset_rate_limits` | Implemented | Shared password-reset throttling counters |
-| `payment_provider_accounts` | Implemented | Non-secret regional provider configuration |
+| `payment_provider_accounts` | Implemented | Non-secret regional direct-provider configuration for the Portal-managed flow |
 | `entrypoint_sessions` | Implemented schema | Product/paywall entry context |
 | `checkout_sessions` | Implemented | Checkout preparation state |
 | `orders` | Implemented | Internal commercial order |
@@ -83,14 +94,40 @@ Exact implemented columns and indexes are generated in
 [`docs/generated/db-schema.md`](../generated/db-schema.md). Any implemented ORM
 table missing from the table above is a documentation-check failure.
 
+### Persistence readiness for external billing
+
+- **CURRENT physical persistence:** The implemented schema remains primarily
+  shaped around the Portal-managed direct-provider flow. `Order` and `Payment`
+  both require a `provider_account_id` foreign key to
+  `payment_provider_accounts` and a `provider`; `Order` also requires
+  `merchant_order_id`, and their relevant uniqueness and lookup constraints are
+  provider-oriented. `Subscription` permits nullable provider references, but
+  the schema has no general external-billing ownership or external-ID mapping
+  representation. External billing must not be represented by creating fake
+  `payment_provider_accounts` rows.
+- **TARGET semantics:** In the external-billing-managed flow, Payment Portal
+  creates and owns the local purchase intent / commercial `Order` before the
+  external billing command. Local `Payment` and `Subscription` records serve as
+  normalized Payment Portal projections of authoritative external billing
+  facts, and an external invoice identifier may be correlated with the Portal-
+  owned order. The current physical `Order` schema remains direct-provider-
+  shaped and may require later adaptation; this document does not choose that
+  adaptation.
+- **FUTURE implementation:** A concrete external-billing integration may need
+  separately approved persistence adaptation, such as external-ID mappings,
+  ownership representation, changed or nullable references, or another minimal
+  schema change. ANY-411 intentionally does not choose that representation or
+  implement any such change.
+
 ## 3. Current implemented model
 
 ### Contour configuration
 
-`regions.code` is the contour key. Identity, legal, payment, and access records
+`regions.code` is the contour key. Identity, legal, billing, and access records
 carry that contour. `country_region_rules` lists countries that belong to the
 **local** contour: market enablement, override policy, document set, and default
-provider.
+provider. The default-provider fields configure the current Portal-managed
+direct-provider flow; they do not define a universal external-billing model.
 
 The implemented product is the `ru` contour. The first-install seed also inserts
 an `eu` region and DE/ES country rules into the same database. That seed is not
@@ -203,9 +240,16 @@ or entrypoint strings. Checkout responses are purchase/Plan-oriented while
 preserving the provider-neutral `checkout.amount`, `checkout.currency`, and
 `checkout.action` envelope.
 
-An `order` is the authoritative internal commercial request. It contains the
-user, region, checkout and entrypoint links, amount/currency, provider account,
-merchant/provider identifiers, timestamps, and region-mismatch state.
+In both billing flows, an `order` is the Portal-owned local purchase intent /
+commercial request. It is created after resolving the exact `Plan.id` and
+validating the authenticated user, legal, entrypoint, and local commercial
+context, before any external billing command. The current physical record
+contains the user, region, checkout and entrypoint links, amount/currency,
+provider account, merchant/provider identifiers, timestamps, and region-
+mismatch state because the schema is still shaped for the direct-provider flow.
+An external-billing-managed integration may correlate its invoice identifier
+with this Portal-owned order, but adapting the physical fields belongs to later
+persistence/integration work.
 
 `order_items` preserves the commercial facts shown at checkout: item type,
 product/bundle/plan identifiers, names and codes, quantities, prices, discounts,
@@ -228,11 +272,15 @@ payment records. Raw card fields and secrets are forbidden.
 
 ### Subscriptions, entitlements, and access audit
 
-`subscriptions` owns the contour-local access lifecycle for trials, paid periods,
-manual renewal, automatic renewal, cancellation, provider-reference attachment,
-refund outcomes, and expiration. Subscription identity is internal UUID identity;
-provider account and provider subscription IDs are optional opaque references,
-not Payment Portal domain identities.
+`subscriptions` represents the contour-local, access-facing lifecycle for
+trials, paid periods, manual renewal, automatic renewal, cancellation,
+provider-reference attachment, refund outcomes, and expiration. In the current
+Portal-managed flow, Payment Portal owns that billing lifecycle. In an
+external-billing-managed flow, the external system owns its external
+subscription lifecycle and the local `Subscription` is a normalized projection
+used by Portal entitlement rules. Subscription identity is internal UUID
+identity; provider account and provider subscription IDs are optional opaque
+references, not Payment Portal domain identities.
 
 Automatic renewal can be enabled only after provider setup succeeds. Until then,
 a requested automatic renewal remains a manual subscription with paid access
@@ -285,9 +333,12 @@ partially_refunded
 region_mismatch
 ```
 
-Only verified provider state may set `paid`. `region_mismatch` blocks future
-entitlement creation on this instance and is a Region Resolver redirect signal,
-not a local rewrite onto another contour.
+Only an authoritative normalized fact backed by the billing owner may set
+`paid`. For the current Portal-managed flow, that is verified provider state.
+For external billing, integration policy determines whether an authenticated
+webhook payload is semantically sufficient or point reconciliation is required.
+`region_mismatch` blocks future entitlement creation on this instance and is a
+Region Resolver redirect signal, not a local rewrite onto another contour.
 
 ### Payment
 
@@ -308,8 +359,9 @@ For the implemented `ru` CloudPayments charge mode, the expected terminal
 transition is `created -> succeeded` or `created -> failed`. Authorization mode
 may persist `created -> authorized`; a later `confirm`, `fail`, or `cancel`
 webhook moves it to `succeeded`, `failed`, or `canceled`. A late failure must not
-downgrade an already successful payment or paid order. Other contours will use
-the same payment states through their own adapters.
+downgrade an already successful payment or paid order. Future billing
+integrations may project authoritative facts into the same local payment
+states; a contour is not required to register a direct-provider adapter.
 
 ### Webhook event
 
@@ -332,7 +384,7 @@ subscription: trialing | active | past_due | canceled | expired | refunded | pau
 entitlement: active | expired | revoked | superseded
 ```
 
-## 5. Current payment lifecycle
+## 5. CURRENT: Portal-managed payment lifecycle
 
 ```text
 authenticated user
@@ -361,6 +413,30 @@ order. A partial refund records an audit event without changing access.
 Expiration is a one-shot, idempotent maintenance command for an external
 scheduler, and access evaluation must still enforce `valid_until` if that
 command is delayed.
+
+### TARGET: external-billing-managed lifecycle
+
+The sole long-term production target is an external-billing-managed lifecycle.
+Payment Portal first creates and persists its local purchase intent / commercial
+order. The external billing system owns its external customer, invoice, payment,
+and subscription lifecycle. Authenticated webhooks are the primary asynchronous
+notification mechanism, but authenticity alone is not semantic authority. After
+authenticity verification, validation, and normalization, integration policy
+decides whether the webhook payload's completeness and currentness guarantees
+are sufficient to produce an authoritative normalized fact; otherwise the
+webhook triggers point reconciliation and verified server-side state produces
+that fact. Both fact sources must converge through the same normalized local
+transition rules. An outbound command result is not payment,
+subscription, or entitlement authority.
+
+The existing `orders` remain Portal-owned commercial intents, while `payments`
+and `subscriptions` may be normalized local projections for entitlement
+processing. Payment Portal remains authoritative for catalog semantics,
+entitlement rules, and `entitlements`, and Platform Kernel continues to consume
+only those local entitlements. This target description adds no external-
+customer table, external-subscription table, billing-owner field or enum,
+adapter, mapping schema, or other implemented persistence, and does not choose
+how the direct-provider-shaped `orders` table is later adapted.
 
 ## 6. Implemented catalog and access model
 
@@ -434,12 +510,14 @@ references, payment IDs, webhook IDs, or raw audit payloads.
 
 ## 9. Unresolved product decisions owned by ANY-71
 
-- Retention for raw webhook payloads, IP, user agent, and acceptance evidence.
+- Retention for separately approved integration-specific webhook payload data,
+  IP, user agent, and acceptance evidence.
 - Whether billing address or payer profile is required.
-- Merchant of Record, assigned countries, and payment provider for `eu` and for
-  `us`, plus whether either contour needs country-specific legal document sets.
-  The seed `paddle` and `default_document_set` values for DE/ES are not those
-  decisions.
+- Concrete external-billing integration and Merchant of Record, assigned
+  countries, and whether `eu` or `us` needs country-specific legal document
+  sets. A future production direct-provider model would require a new explicit
+  architecture decision. The seed `paddle` and `default_document_set` values
+  for DE/ES are not those decisions.
 - How the required customer country is declared, verified, and updated inside a
   multi-country contour. Resolver geo is only a routing suggestion; contour
   enablement must define the country used to select legal and provider rules.

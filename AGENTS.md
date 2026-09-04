@@ -20,7 +20,10 @@ document that applies to the current task.
 - [docs/architecture/region-resolver-contract.md](docs/architecture/region-resolver-contract.md)
   — planned Region Resolver consumer rules.
 - [docs/architecture/payment-providers.md](docs/architecture/payment-providers.md)
-  — provider-neutral billing and adapters.
+  — Portal-managed direct-provider billing and adapters.
+- [docs/architecture/billing-authority.md](docs/architecture/billing-authority.md)
+  — billing ownership, authoritative facts, trust boundaries, and entitlement
+  authority.
 - [docs/architecture/payment-portal-data-model.md](docs/architecture/payment-portal-data-model.md)
   — normative Payment Portal data and backend invariants.
 - [docs/product/ru-mvp.md](docs/product/ru-mvp.md) — implemented `ru` journey
@@ -51,7 +54,11 @@ document that applies to the current task.
   enables another contour. Do not ship `eu` or `us` product surface without
   that ticket.
 - Domain architecture is multi-contour. Do not document or encode CloudPayments
-  or `ru` as the only possible provider or contour in billing design.
+  or `ru` as the only possible billing integration or contour.
+- A direct payment provider and an external billing system are different
+  boundaries. Do not model external billing as another
+  `PaymentProviderAdapter`. CloudPayments is the current transitional
+  Portal-managed direct-provider implementation.
 - A production instance serves one contour. It must not persist other contours'
   base URLs, users, or legal records, and must not call another contour's API.
 - Region Resolver is a separate repository. This portal may know only that
@@ -60,7 +67,13 @@ document that applies to the current task.
 - ANY-71 owns Payment Portal data-model design and decomposition; implementation
   is owned by its child tickets: ANY-77 for catalog, ANY-78 for subscriptions
   and entitlements, and ANY-79 for the private entitlement API.
-- Activate paid access only from a verified webhook, never from a return URL.
+- Payment Portal owns local entitlements, and Platform Kernel consumes them as
+  access authority. Raw external contracts and vendor status vocabularies stop
+  at the Integration boundary.
+- Paid access changes only from verified authoritative billing facts, never
+  from a browser return URL. Current CloudPayments obtains those facts through
+  verified webhooks; future reconciliation may also provide verified facts but
+  must feed the same local transition path.
 - Never collect card data or log secrets, authorization headers, raw tokens, or
   unredacted payment fields.
 - Legal pages are drafts; do not present them as legally approved.

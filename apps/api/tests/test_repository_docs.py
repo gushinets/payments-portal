@@ -162,6 +162,98 @@ def test_missing_core_authority_link_is_actionable() -> None:
     ) == [f"Missing core authority link in AGENTS.md: {Path('docs') / 'PRODUCT.md'}"]
 
 
+@pytest.mark.parametrize(
+    ("source_relative", "target_relative"),
+    [
+        ("AGENTS.md", "docs/architecture/billing-authority.md"),
+        ("apps/api/AGENTS.md", "docs/architecture/billing-authority.md"),
+        ("ARCHITECTURE.md", "docs/architecture/billing-authority.md"),
+        ("docs/README.md", "docs/architecture/billing-authority.md"),
+        (
+            "docs/architecture/payment-providers.md",
+            "docs/architecture/billing-authority.md",
+        ),
+        (
+            "docs/architecture/decisions/0001-multi-contour-billing.md",
+            "docs/architecture/decisions/0004-billing-authority-and-consistency.md",
+        ),
+        (
+            "docs/architecture/decisions/README.md",
+            "docs/architecture/decisions/0004-billing-authority-and-consistency.md",
+        ),
+        (
+            "docs/architecture/billing-authority.md",
+            "docs/architecture/decisions/0001-multi-contour-billing.md",
+        ),
+        (
+            "docs/architecture/billing-authority.md",
+            "docs/architecture/decisions/0002-plan-based-checkout-identity.md",
+        ),
+        (
+            "docs/architecture/billing-authority.md",
+            "docs/architecture/decisions/0003-canonical-persisted-model-layer.md",
+        ),
+        (
+            "docs/architecture/billing-authority.md",
+            "docs/architecture/decisions/0004-billing-authority-and-consistency.md",
+        ),
+    ],
+)
+def test_billing_authority_graph_is_guarded_and_consistent(
+    source_relative: str,
+    target_relative: str,
+) -> None:
+    source = repo.ROOT / source_relative
+    target = repo.ROOT / target_relative
+
+    assert target in repo.CORE_AUTHORITY_LINKS[source]
+    assert repo.check_required_markdown_links(source, [target]) == []
+
+
+def test_adr_0001_keeps_distinct_billing_integration_boundaries() -> None:
+    adr = repo.ROOT / "docs/architecture/decisions/0001-multi-contour-billing.md"
+    content = " ".join(adr.read_text(encoding="utf-8").split())
+
+    assert "Portal-managed direct-provider flow" in content
+    assert "external-billing-managed flow" in content
+    assert "does not register a `PaymentProviderAdapter`" in content
+
+    assert "Each contour registers its own payment-provider adapter." not in content
+
+
+def test_billing_consistency_docs_require_retry_safe_unknown_outcomes() -> None:
+    reliability = (repo.ROOT / "docs/RELIABILITY.md").read_text(encoding="utf-8")
+    authority = (repo.ROOT / "docs/architecture/billing-authority.md").read_text(encoding="utf-8")
+
+    assert "retry-safe orchestration" in reliability
+    assert "do not assume every external command is idempotent" in reliability
+    assert "outbound billing commands must be idempotent" not in reliability
+    assert "A timeout or lost response is not confirmed success and not confirmed failure" in authority
+    assert "multiple plausible matches are ambiguous and fail closed" in authority
+
+
+def test_security_docs_keep_durable_webhook_receipt_safe_by_construction() -> None:
+    security = (repo.ROOT / "docs/SECURITY.md").read_text(encoding="utf-8")
+
+    assert "whitelist and redact data before storage" in security
+    assert "Never persist raw query-string secrets" in security
+
+
+def test_missing_billing_authority_link_is_actionable() -> None:
+    root = Path("repository").resolve()
+    source_relative = Path("apps") / "api" / "AGENTS.md"
+    target_relative = Path("docs") / "architecture" / "billing-authority.md"
+    source = root / source_relative
+    authority = root / target_relative
+
+    assert check_required_markdown_link_content(
+        source,
+        "# API Agent Guide\n",
+        [authority],
+        root=root,
+    ) == [f"Missing core authority link in {source_relative}: {target_relative}"]
+
+
 def test_stale_documented_legal_version_is_rejected() -> None:
     errors = check_expected_legal_versions("2026-07-11", [("docs/README.md", ["2026-07-02"], 1)])
 

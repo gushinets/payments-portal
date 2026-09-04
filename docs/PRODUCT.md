@@ -1,16 +1,26 @@
 # Product Scope
 
 Status: authoritative
-Last verified: 2026-08-18
+Last verified: 2026-09-04
 
 Payment Portal is the identity, legal-consent, checkout, and access-entry
 service for AnytoolAI products, deployed as one **contour** (compliance zone)
-per production instance. Planned contours are `ru`, `eu`, and `us`.
+per production instance. The target contour set is `ru`, `eu`, and `us`; `ru`
+is implemented, while `eu` and `us` remain planned.
 
-The current release is the `ru` contour for Document Summary and Prompt
-Optimizer, with CloudPayments as the `ru` adapter.
+The implemented product surface is the `ru` contour for Document Summary and
+Prompt Optimizer. Payment Portal is still under development and is not running
+as a production billing service. CloudPayments exists in the current code as a
+transitional Portal-managed direct-provider capability retained under ANY-407;
+there are no production CloudPayments subscribers or subscriptions to migrate.
+The sole long-term production target is an external-billing-managed flow. The
+current direct-provider code remains supported while required by current code,
+operations, obligations, or safe cutover, but it is not a co-equal future
+production target.
 
 Contour architecture is defined in [contours](architecture/contours.md).
+Billing ownership and authoritative facts are defined in
+[billing authority](architecture/billing-authority.md).
 Implemented `ru` screens are defined in [RU MVP journey](product/ru-mvp.md).
 
 ## Implemented
@@ -23,6 +33,9 @@ Implemented `ru` screens are defined in [RU MVP journey](product/ru-mvp.md).
 - Checkout sessions, orders, order items, payment attempts, refunds, and a
   CloudPayments webhook inbox.
 - CloudPayments signature checking, payload redaction, and idempotent processing.
+- Catalog products, plans, bundles, and limits implemented under ANY-77.
+- Local subscriptions, entitlement rules, entitlements, and subscription audit
+  implemented under ANY-78.
 - PostgreSQL first-install schema and legal metadata seed.
 
 ## Planned
@@ -30,9 +43,11 @@ Implemented `ru` screens are defined in [RU MVP journey](product/ru-mvp.md).
 - Login and registration confirm the contour using the Region Resolver list of
   deployed contours, then stay on this instance or leave through the resolver.
 - Isolated `eu` and `us` deployments, legal trees, operators, catalogs, and
-  provider adapters. Those markets are not implemented product surface.
-- Catalog, plans, subscriptions, entitlements, and the Payment Portal access API
-  are tracked by Linear ANY-71 and its subtickets.
+  external-billing integrations selected for each contour. Those markets are
+  not implemented product surface; the concrete external-billing integration
+  for those deployed products is not selected here.
+- The private regional entitlement/access API for Platform Kernel is planned
+  under ANY-79.
 - Workflow execution, scenario runtime, artifacts, and usage accounting belong to
   the separate Platform Kernel repository.
 
@@ -41,9 +56,15 @@ Implemented `ru` screens are defined in [RU MVP journey](product/ru-mvp.md).
 - A production instance serves one contour and does not know other contours'
   customers or base URLs.
 - A browser return URL never confirms payment or activates access.
-- Only verified provider webhooks may advance payment state.
+- Paid access advances only from verified authoritative billing facts. The
+  current transitional CloudPayments integration policy accepts its verified,
+  normalized webhook outcomes as those facts. For external billing,
+  authentication alone is not semantic authority: integration policy decides
+  whether the webhook payload is sufficient or must trigger point
+  reconciliation, and both fact sources feed the same local transition path.
 - This service never collects or stores card data. Card data is handled by the
-  contour's payment provider.
+  responsible external payment boundary; the transitional direct-provider
+  implementation delegates it to CloudPayments.
 - Legal drafts are not represented as counsel-approved documents.
 - Product and plan identifiers must remain stable across web, payment metadata,
   and future Platform Kernel integration.

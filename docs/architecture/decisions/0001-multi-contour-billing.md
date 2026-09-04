@@ -3,6 +3,11 @@
 Status: accepted
 Date: 2026-08-18
 
+Amendment: [ADR 0004](0004-billing-authority-and-consistency.md) supersedes
+only the assumption that every contour registers a payment-provider adapter.
+The contour-isolation and Region Resolver decisions in this ADR remain in
+force.
+
 ## Context
 
 The implemented product is the `ru` contour with CloudPayments. Billing, provider
@@ -33,9 +38,11 @@ a global URL map.
   render the deployed-contour list at login and registration. Switching contour
   leaves this instance through the resolver. Provider webhooks never go through
   the resolver.
-- Billing domain code stays provider-neutral. Each contour registers its own
+- Billing domain code stays provider-neutral. For a Portal-managed
+  direct-provider flow, the deployed Payment Portal instance registers a
   payment-provider adapter. CloudPayments is the current `ru` adapter, not the
-  system boundary.
+  system boundary. An external-billing-managed flow uses its own integration
+  boundary and does not register a `PaymentProviderAdapter`.
 
 ## Consequences
 

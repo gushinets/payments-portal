@@ -5,13 +5,19 @@ service for AnytoolAI products. Each production deployment is one contour
 (compliance zone). This repository currently ships the `ru` contour.
 
 It contains a Next.js web application, a FastAPI API, PostgreSQL persistence,
-and the `ru` CloudPayments adapter. Platform Kernel code is maintained in the
-separate
+and the `ru` CloudPayments adapter. Catalog products and plans, local
+subscriptions, entitlement rules, entitlements, and subscription audit are
+implemented. The private regional entitlement/access API for Platform Kernel
+is still planned. Platform Kernel code is maintained in the separate
 [anytoolai-platform](https://github.com/gushinets/anytoolai-platform) repository.
-Planned Payment Portal catalog, subscription, and entitlement work is tracked by
-[Linear ANY-71](https://linear.app/paveldik/issue/ANY-71/prorabotat-model-dannyh-payment-portal).
-Contour and Region Resolver architecture is documented in
-[ARCHITECTURE.md](ARCHITECTURE.md).
+
+Payment Portal is still under development and is not running as a production
+billing service. Direct CloudPayments support is a transitional Portal-managed
+direct-provider capability; there are no production CloudPayments subscribers
+or subscriptions to migrate, and the product will most likely launch with an
+external billing system. See the current [product scope](docs/PRODUCT.md),
+[billing authority](docs/architecture/billing-authority.md), and contour and
+Region Resolver architecture in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Start here
 
@@ -207,8 +213,10 @@ from `POSTGRES_*` so PostgreSQL initialization and API migrations cannot drift.
 Keep `.env.production` outside Git and use `.env.production.example` only as a
 template.
 
-Never commit production secrets. Card data is handled by the contour's payment
-provider and must not be collected or stored by this repository.
+Never commit production secrets. Card data is handled by the responsible
+external payment boundary and must not be collected or stored by this
+repository. For the current transitional direct-provider flow, that boundary
+is CloudPayments.
 
 ## Current limitations
 
@@ -216,6 +224,6 @@ provider and must not be collected or stored by this repository.
 - Password-based demo authentication with SMTP-backed password reset;
   production email verification is planned.
 - Contour confirmation via Region Resolver is planned and not implemented.
-- Payment confirmation is webhook-driven, but the target subscription and
-  entitlement model belongs to ANY-71 and is not implemented here yet.
+- The private regional entitlement/access API for Platform Kernel is planned
+  and not implemented yet.
 - Legal documents are drafts until reviewed and approved by counsel.
