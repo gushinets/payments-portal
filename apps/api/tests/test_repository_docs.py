@@ -210,6 +210,17 @@ def test_billing_authority_graph_is_guarded_and_consistent(
     assert repo.check_required_markdown_links(source, [target]) == []
 
 
+def test_adr_0001_keeps_distinct_billing_integration_boundaries() -> None:
+    adr = repo.ROOT / "docs/architecture/decisions/0001-multi-contour-billing.md"
+    content = " ".join(adr.read_text(encoding="utf-8").split())
+
+    assert "Portal-managed direct-provider flow" in content
+    assert "external-billing-managed flow" in content
+    assert "does not register a `PaymentProviderAdapter`" in content
+
+    assert "Each contour registers its own payment-provider adapter." not in content
+
+
 def test_missing_billing_authority_link_is_actionable() -> None:
     root = Path("repository").resolve()
     source_relative = Path("apps") / "api" / "AGENTS.md"

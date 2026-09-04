@@ -1606,7 +1606,7 @@ docs(engineering): codify billing authority rules
 
 ## Goal
 
-Minimally enforce the new normative documents through the existing documentation-check mechanism without introducing premature AST guards for layers that do not yet physically exist in the codebase.
+Minimally enforce the new normative documents through the existing documentation-check mechanism: guard the authority-link graph and the resolved core Billing Authority semantics without introducing premature AST guards for layers that do not yet physically exist in the codebase.
 
 ## Scope / affected code
 
@@ -1642,10 +1642,15 @@ At minimum guard that:
 
 Use existing helpers such as the current authority-link/Markdown-link checks where possible.
 
+Add only a small number of focused semantic assertions that keep ADR-0001's
+provider-adapter registration scoped to a Portal-managed direct-provider flow
+and keep an external-billing-managed flow outside `PaymentProviderAdapter`.
+
 Tests should cover:
 
 - valid new authority graph passes;
 - missing required billing-authority link produces an actionable error.
+- the resolved ADR-0001 direct-provider and external-billing boundary semantics remain present.
 
 Avoid brittle assertions for entire paragraphs or exact prose.
 
@@ -1675,7 +1680,7 @@ Those are already useful and do not need redesign.
 ## Invariants
 
 - Existing architecture guards continue to pass unchanged.
-- New guard covers documentation authority links only.
+- New guards cover the documentation authority-link graph plus focused semantic assertions for the resolved Billing Authority invariants.
 - No production behavior changes.
 - No target package structure is enforced before it exists.
 - No prose parser or custom architecture framework is introduced.
@@ -1700,7 +1705,7 @@ Implement only Step 4 of the approved `ANY-411` architecture-documentation plan.
 
 Steps 1-3 are complete. The new Billing Authority ADR/documentation is now the normative architecture source, and existing architecture/product/agent/convention documents have been aligned.
 
-Goal: minimally guard the new architecture documentation relationships using the repository's existing documentation-check infrastructure.
+Goal: minimally guard the new architecture documentation relationships and the resolved core Billing Authority semantics using the repository's existing documentation-check infrastructure.
 
 Work primarily in:
 
@@ -1728,11 +1733,12 @@ Implementation requirements:
 5. Add focused tests in `apps/api/tests/test_repository_docs.py` proving:
    - the new authority graph is accepted;
    - omission of a required billing-authority link produces an actionable error.
-6. Avoid tests that snapshot whole Markdown documents or assert large exact prose blocks.
-7. Do not change the existing AST dependency boundaries simply because the target documentation now names Presentation/Application/Domain/Persistence/Integrations/Core/Composition. The current physical code still has explicitly documented transitional exceptions.
-8. Preserve the existing canonical persisted-model guards from ANY-326.
-9. Preserve existing CloudPayments/provider-neutral AST guards.
-10. No database, API, generated-file, application-runtime, or frontend changes are allowed.
+6. Add a small number of focused semantic assertions proving that ADR-0001 keeps adapter registration scoped to a Portal-managed direct-provider flow and that an external-billing-managed flow does not register or use `PaymentProviderAdapter`.
+7. Avoid tests that snapshot whole Markdown documents or assert large exact prose blocks.
+8. Do not change the existing AST dependency boundaries simply because the target documentation now names Presentation/Application/Domain/Persistence/Integrations/Core/Composition. The current physical code still has explicitly documented transitional exceptions.
+9. Preserve the existing canonical persisted-model guards from ANY-326.
+10. Preserve existing CloudPayments/provider-neutral AST guards.
+11. No database, API, generated-file, application-runtime, or frontend changes are allowed.
 
 Implement only this step. Follow the decisions defined in this prompt.
 
@@ -1755,9 +1761,10 @@ Do not create commits.
 After implementation:
 1. report every changed file;
 2. list the exact new documentation relationships being guarded;
-3. confirm that no new target-layer AST rule was introduced;
-4. confirm that existing architecture guards were preserved;
-5. report the exact manual verification commands I should run.
+3. state the exact Billing Authority semantic regression being guarded;
+4. confirm that no new target-layer AST rule was introduced;
+5. confirm that existing architecture guards were preserved;
+6. report the exact manual verification commands I should run.
 
 If the current repository materially contradicts an assumption required by this step, stop and describe the contradiction instead of inventing a new solution.
 
@@ -1789,6 +1796,7 @@ Step is complete when:
 
 - deleting/breaking the required billing-authority links, including the root and API agent-guide links, would fail the existing docs check;
 - the new ADR is mechanically part of the documented authority graph;
+- reverting ADR-0001 to the universal provider-adapter model would fail the focused semantic regression test;
 - existing AST boundaries still pass;
 - no premature target-layer guard has been added;
 - the full repository check passes.
