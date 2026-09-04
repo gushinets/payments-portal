@@ -84,10 +84,11 @@ The contradiction appears in several authoritative places:
 - `payment-portal-data-model.md` states Portal ownership of orders/payments/subscriptions without distinguishing authoritative Portal-managed state from an external system's authoritative lifecycle and local projections. 
 - `PRODUCT.md` similarly describes future contours in terms of provider adapters. 
 
-The target model must instead support two distinct flows:
+The architecture must distinguish the current transitional flow from the sole
+long-term production target:
 
 ```text
-Portal-managed billing flow
+CURRENT / TRANSITIONAL Portal-managed billing flow
 Payment Portal
     ↓
 PaymentProviderAdapter
@@ -98,12 +99,20 @@ payment provider
 and:
 
 ```text
-External-billing-managed flow
+TARGET external-billing-managed flow
 Payment Portal Application
-    ↓ command
+    ↓ create/persist Portal-owned purchase intent / commercial order
+    ↓ external billing command
 external billing system
-    ↓ authoritative webhook / reconciliation
-normalized local projections
+    ↓ authenticated webhook notification
+authenticity verification and validation / normalization
+    ↓
+integration policy
+    ├── sufficient payload → authoritative normalized fact
+    └── insufficient payload → point reconciliation
+                              → authoritative normalized fact
+    ↓ same local transition path
+normalized local Payment / Subscription projections
     ↓
 Portal entitlement rules
     ↓
@@ -111,6 +120,9 @@ local entitlements
 ```
 
 An external billing system is **not** another implementation of `PaymentProviderAdapter`.
+Portal-managed direct-provider billing is not a co-equal future production
+target. Reintroducing it as one would require a new explicit architecture
+decision.
 
 ---
 
@@ -132,7 +144,8 @@ The following ownership must be fixed as the normative rule.
 | External invoice lifecycle | external billing system |
 | External payment lifecycle | external billing system |
 | External subscription lifecycle | external billing system |
-| Local `Order`/`Payment`/`Subscription` under external billing | normalized projections used by Payment Portal |
+| Local purchase intent / commercial `Order` | Payment Portal |
+| Local `Payment`/`Subscription` under external billing | normalized projections used by Payment Portal |
 | Vendor HTTP schema/status vocabulary | owning Integration only |
 
 For an externally managed subscription:
@@ -140,11 +153,15 @@ For an externally managed subscription:
 ```text
 external billing state
         ↓
-verified fact
+authenticated notification or verified server-side state
+        ↓
+integration-policy decision and normalization
+        ↓
+authoritative normalized fact
         ↓
 normalized Payment Portal transition
         ↓
-local Order / Payment / Subscription projection
+local Payment / Subscription projection correlated with the Portal-owned order
         ↓
 Payment Portal entitlement rules
         ↓
@@ -197,16 +214,39 @@ An outbound command is not confirmation of a billing state transition.
 Target external flow:
 
 ```text
-1. Persist/find local idempotent operation
+1. Persist/find local operation or purchase intent
 2. Commit local intent
 3. Send external command
-4. Persist external command result/mapping
-5. Commit
-6. Wait for verified authoritative fact
-   or reconcile after uncertain/missing delivery
-7. Apply the same local transition path
-8. Recalculate affected entitlements
+4. If a reliable result is available, persist the result/mapping and commit
+5. If the response is lost or times out, keep the outcome unresolved
+6. Reconcile before deciding whether another external command is safe
+7. Authenticate and validate the webhook notification
+8. Let integration policy decide whether the payload's semantic
+   completeness/currentness is sufficient; otherwise perform point
+   reconciliation
+9. Produce an authoritative normalized fact from the sufficient webhook payload
+   or verified server-side external state
+10. Apply the same local transition path
+11. Recalculate affected entitlements
 ```
+
+The architectural invariant is retry-safe orchestration, not universal external
+command idempotency. Use provider or vendor idempotency features when available,
+but do not assume every external API offers them. A timeout or lost response is
+neither confirmed success nor confirmed failure; it is an unknown external
+outcome and must not be blindly retried.
+
+Recovery after an uncertain create or update has three architectural outcomes:
+
+```text
+no unambiguous external match -> unknown -> remain unresolved and reconcile later / follow an approved safe recovery policy
+exactly one unambiguous correlated external object -> recovered
+multiple plausible matches -> ambiguous -> fail closed for manual review / repair; do not issue another create automatically
+```
+
+Concrete lookup fields, timing, eventual-consistency behavior, and matching
+strategy belong to the future integration implementation. ANY-411 does not add
+persisted unknown/ambiguous states or a universal vendor lookup algorithm.
 
 Therefore:
 
@@ -217,9 +257,15 @@ external REST 200
 != entitlement activation
 ```
 
-Verified webhook is the primary asynchronous fact.
+An authenticated webhook is the primary asynchronous notification mechanism,
+but authenticity alone does not make every payload semantically authoritative.
+Integration policy decides whether authenticity plus the integration's
+completeness/currentness guarantees are sufficient to produce an authoritative
+normalized fact. Otherwise the webhook triggers point reconciliation, and
+verified server-side external state produces that fact.
 
-Reconciliation is a recovery path for the same authoritative lifecycle and must converge through the same local transition logic.
+Webhook-derived and reconciliation-derived authoritative facts must converge
+through the same local transition logic.
 
 There must not be:
 
@@ -673,15 +719,20 @@ ru Payment Portal
 
 ### TARGET
 
-Durable architecture future integrations must respect.
+The sole long-term production architecture future integrations must respect.
 
 Example:
 
 ```text
-external billing owns external lifecycle
-→ Portal stores normalized local projection
+Portal owns the local purchase intent / commercial order
+→ external billing command / external billing lifecycle
+→ external billing owns invoice/payment/subscription lifecycle
+→ Portal stores normalized Payment / Subscription projections
 → Portal derives local entitlements
 ```
+
+Portal-managed direct-provider billing is not a co-equal TARGET. Reintroducing
+it as a future production model requires a new explicit architecture decision.
 
 ### TRANSITIONAL
 
@@ -741,7 +792,10 @@ Success of the command call is not final billing-state authority.
 
 ### Authoritative fact
 
-A verified fact from the owning billing source, normally webhook delivery or verified reconciliation result.
+A normalized fact backed by the owning billing source. An authenticated webhook
+payload is sufficient only when integration policy confirms that its semantic
+completeness/currentness guarantees are adequate; otherwise verified
+server-side reconciliation state is required.
 
 ### Normalized local projection
 
@@ -887,7 +941,10 @@ ADR must establish:
 
 - Payment Portal ownership of identity, catalog semantics, entitlement rules and local entitlements;
 - external billing ownership of its external customer/invoice/payment/subscription lifecycle;
-- local `Order`/`Payment`/`Subscription` as normalized projections for the external-billing-managed flow;
+- Payment Portal ownership of the local purchase intent / commercial `Order`
+  created before the external command;
+- local `Payment`/`Subscription` as normalized projections for the
+  external-billing-managed flow;
 - Platform Kernel consuming only local entitlements;
 - explicit distinction between:
   - Portal-managed direct payment provider;
@@ -896,12 +953,23 @@ ADR must establish:
 - external billing systems are not registered in `PaymentProviderRegistry`;
 - one subscription has exactly one billing owner;
 - outbound REST command success is not final billing authority;
-- verified webhooks are the primary asynchronous facts;
-- reconciliation feeds the same local transition path;
+- orchestration is retry-safe without assuming every external command is
+  idempotent; a timeout or lost response remains unknown and is reconciled
+  before retry;
+- an ambiguous external match fails closed for manual review or repair and does
+  not cause another automatic create;
+- authenticated webhooks are the primary asynchronous notifications, while
+  integration policy determines whether a payload is sufficient for an
+  authoritative normalized fact or must trigger point reconciliation;
+- webhook-derived and reconciliation-derived facts feed the same local
+  transition path;
 - no last-write-wins;
 - email is not billing identity;
 - raw vendor payloads/statuses do not become Application/Domain contracts;
 - direct CloudPayments remains transitional and separately removable.
+- external-billing-managed is the sole long-term production TARGET; the current
+  direct-provider flow is not a co-equal future target, and reintroducing it as
+  one requires a new explicit architecture decision.
 
 ADR relationship:
 
@@ -990,21 +1058,41 @@ Follow these locked decisions:
 
 1. Payment Portal owns Anytool identity, catalog semantics, entitlement rules, and local entitlements.
 2. An external billing system owns its external customer, invoice, payment, and subscription lifecycle.
-3. For an external-billing-managed flow, local `Order`, `Payment`, and `Subscription` records are normalized local projections, not a competing source of truth.
+3. For an external-billing-managed flow, Payment Portal owns the local purchase
+   intent / commercial `Order` created before the external command. Local
+   `Payment` and `Subscription` records are normalized projections, not a
+   competing source of truth. An external invoice identifier may be correlated
+   with the Portal-owned order. This step does not change the physical schema.
 4. Platform Kernel consumes local Payment Portal entitlements only.
 5. A direct payment provider and an external billing system are different architectural concepts.
 6. `PaymentProviderAdapter` and `PaymentProviderRegistry` apply only to the Portal-managed direct-provider flow. An external billing system must not be modeled as another `PaymentProviderAdapter`.
 7. One subscription has exactly one billing owner. Do not choose a database representation for billing ownership in this step.
 8. An outbound REST command/result is not final payment/subscription authority.
-9. Verified webhooks are the primary asynchronous billing facts. Reconciliation is a recovery path and must converge through the same future local transition rules, not a second state machine.
-10. Do not allow a last-write-wins ownership model.
-11. Billing identity/correlation must not rely on email alone. Current CloudPayments `AccountId=email` is transitional legacy and must not be copied into the target design.
-12. Raw HTTP/vendor payloads and vendor-specific statuses must stop at the Integration boundary and be normalized before Application/Domain use.
-13. Direct CloudPayments remains the current transitional Portal-managed implementation and is not removed by this work.
-14. ADR-0004 must explicitly amend only the universal payment-adapter assumption in ADR-0001 while preserving ADR-0001 contour isolation. Add a minimal amendment note/link in ADR-0001 pointing to ADR-0004; do not otherwise rewrite ADR-0001.
-15. Preserve ADR-0002 exactly: `Plan.id` is purchase identity, access scope is backend-derived, external/provider IDs remain opaque.
-16. Preserve ADR-0003 exactly: `app.models` owns the canonical persisted model contract.
-17. Do not invent `BillingSystemAdapter`, external-customer tables, billing-owner fields/enums, vendor DTOs, or another speculative abstraction.
+9. Application orchestration must be retry-safe without assuming external
+   command idempotency. Provider/vendor idempotency features are used when
+   available. A timeout or lost response remains an unknown outcome and must be
+   reconciled before retry; an ambiguous external match fails closed for manual
+   review or repair without another automatic create. Do not choose persistence
+   representation or a concrete lookup algorithm in this step.
+10. Authenticated webhooks are the primary asynchronous billing notifications.
+   Integration policy decides whether authenticity plus semantic
+   completeness/currentness makes the payload sufficient for an authoritative
+   normalized fact; otherwise the webhook triggers point reconciliation.
+   Webhook-derived and reconciliation-derived facts converge through the same
+   future local transition rules, not a second state machine.
+11. Do not allow a last-write-wins ownership model.
+12. Billing identity/correlation must not rely on email alone. Current CloudPayments `AccountId=email` is transitional legacy and must not be copied into the target design.
+13. Raw HTTP/vendor payloads and vendor-specific statuses must stop at the Integration boundary and be normalized before Application/Domain use.
+14. Durable webhook receipt persists only whitelisted/redacted metadata and safe
+    normalized recovery fields, never arbitrary raw requests or secrets merely
+    for durability.
+15. Direct CloudPayments remains the current transitional Portal-managed implementation and is not removed by this work.
+    It is not a co-equal future production target; reintroducing that model
+    requires a new explicit architecture decision.
+16. ADR-0004 must explicitly amend only the universal payment-adapter assumption in ADR-0001 while preserving ADR-0001 contour isolation. Add a minimal amendment note/link in ADR-0001 pointing to ADR-0004; do not otherwise rewrite ADR-0001.
+17. Preserve ADR-0002 exactly: `Plan.id` is purchase identity, access scope is backend-derived, external/provider IDs remain opaque.
+18. Preserve ADR-0003 exactly: `app.models` owns the canonical persisted model contract.
+19. Do not invent `BillingSystemAdapter`, external-customer tables, billing-owner fields/enums, vendor DTOs, or another speculative abstraction.
 
 `billing-authority.md` must clearly distinguish CURRENT, TARGET, and TRANSITIONAL architecture and include:
 
@@ -1116,7 +1204,7 @@ Explicitly separate:
 
 ```text
 CURRENT: ru + direct CloudPayments
-TARGET: Portal-managed or external-billing-managed ownership
+TARGET: external-billing-managed ownership only
 TRANSITIONAL: current broad provider abstractions/mixed boundaries
 ```
 
@@ -1180,7 +1268,11 @@ Clarify:
 
 - current direct CloudPayments flow remains implemented;
 - `payment_provider_accounts` belongs to the direct provider flow;
-- external billing can own external lifecycle while Portal models are local normalized projections;
+- Portal owns the local purchase intent / commercial `Order`, while external
+  billing owns its invoice/payment/subscription lifecycle and local `Payment`
+  and `Subscription` models may be normalized projections;
+- the current physical `Order` schema is direct-provider-shaped and any later
+  adaptation is deliberately left to persistence/integration work;
 - Portal remains authority for entitlement rules/entitlements;
 - no new tables or mappings are being introduced by this architecture documentation step.
 
@@ -1228,9 +1320,16 @@ Locked decisions:
 1. `ARCHITECTURE.md` remains a truthful current-state map. Do not pretend external billing is already implemented.
 2. Clearly distinguish CURRENT, TARGET, and TRANSITIONAL behavior where needed.
 3. Current `ru` uses the Portal-managed direct CloudPayments flow.
+   This is CURRENT / TRANSITIONAL; the sole long-term production TARGET is
+   external-billing-managed.
 4. `PaymentProviderAdapter` is only the Portal-managed direct-provider boundary.
 5. An external billing system is a separate authority boundary and is not registered in `PaymentProviderRegistry`.
-6. External billing owns its external customer/invoice/payment/subscription lifecycle; Portal `Order`/`Payment`/`Subscription` records become normalized local projections for that flow.
+6. Payment Portal owns the local purchase intent / commercial `Order` created
+   before the external command. External billing owns its external
+   customer/invoice/payment/subscription lifecycle; Portal `Payment` and
+   `Subscription` records become normalized local projections for that flow.
+   The current physical `Order` schema may require later adaptation, which this
+   step does not choose.
 7. Payment Portal still owns identity, catalog semantics, entitlement rules, and local entitlements.
 8. Platform Kernel still consumes local entitlements only.
 9. Preserve the full ADR-0001 contour/data-plane isolation model.
@@ -1425,6 +1524,14 @@ Preserve:
 - redaction;
 - card-data rules.
 
+Define durable webhook receipt as safe-by-construction persistence. Whitelist or
+redact before persistence and store only metadata and safe normalized fields
+required for inbox processing, idempotency, correlation, reconciliation, and
+processing audit. Durability must not imply storing raw query-string secrets,
+authorization or webhook secrets, unrestricted headers, or unrestricted
+sensitive payloads. Additional payload persistence requires a separately
+approved integration-specific need, security treatment, and retention rule.
+
 ### `RELIABILITY.md`
 
 Generalize provider-specific reliability rules to authoritative billing facts where appropriate.
@@ -1433,6 +1540,10 @@ Record:
 
 ```text
 webhook receipt is durable before processing
+receipt persistence is whitelisted/redacted rather than an arbitrary raw request
+outbound orchestration is retry-safe; external commands are not assumed idempotent
+timeout or lost response is unknown and requires reconciliation before retry
+ambiguous external identity fails closed for manual review or repair
 duplicate facts must be idempotent
 late facts must not downgrade confirmed state
 reconciliation cannot be a competing state machine
@@ -1526,10 +1637,24 @@ Locked decisions:
 11. Do not require mass typing changes in untouched files.
 12. Do not introduce mypy, pyright, basedpyright, or another type checker.
 13. Product/Security/Reliability wording should refer to verified authoritative billing facts where the rule is generic, while explicitly preserving current CloudPayments behavior where the document describes CURRENT implementation.
-14. Replace any generic agent rule that says paid access can advance only from a verified webhook with the broader authority invariant: paid access changes only from verified authoritative billing facts. For CURRENT CloudPayments, those facts arrive through verified webhooks; future reconciliation may also supply verified authoritative facts, but only through the same local transition path.
+14. Replace any generic agent rule that says paid access can advance only from a
+    verified webhook with the broader authority invariant: paid access changes
+    only from verified authoritative billing facts. For CURRENT CloudPayments,
+    the integration policy treats verified, normalized webhook outcomes as
+    authoritative. For external billing, authenticity alone is insufficient:
+    integration policy decides whether the validated/normalized webhook payload
+    is semantically complete and current enough or must trigger point
+    reconciliation. Both fact sources use the same local transition path.
 15. Browser return URLs remain informational and cannot activate access.
-16. Webhook authenticity verification, sensitive-data redaction, and durable/idempotent processing constraints remain in force.
-17. Reconciliation must eventually feed the same local transitions as webhook facts; document the invariant only, do not design or implement reconciliation here.
+16. Webhook authenticity verification, sensitive-data redaction, and
+    durable/idempotent processing constraints remain in force. Durable receipt
+    means persisting only whitelisted/redacted metadata and safe normalized
+    recovery fields, not arbitrary raw requests or secrets.
+17. Billing orchestration is retry-safe without assuming external command
+    idempotency. Timeout or lost response is unknown and requires reconciliation
+    before retry; ambiguous external identity fails closed for manual review or
+    repair without another automatic create.
+18. Reconciliation must eventually feed the same local transitions as webhook facts; document the invariant only, do not design or implement reconciliation here.
 
 In `docs/README.md`, document the architecture knowledge-source roles:
 
@@ -1839,7 +1964,8 @@ Retained:
 - `Plan.id` purchase identity;
 - contour isolation;
 - Platform Kernel entitlement boundary;
-- verified webhook trust principle;
+- authenticated-webhook notification plus integration-policy-dependent
+  semantic authority;
 - CloudPayments signature verification/redaction;
 - current architecture AST guards;
 - current documentation guard harness;
@@ -1852,7 +1978,8 @@ Identified and explicitly assigned to implementation steps:
 
 - universal `PaymentProviderAdapter` architecture;
 - universal future provider-adapter assumption;
-- Portal ownership wording that does not distinguish external authority/local projection;
+- wording that incorrectly groups the Portal-owned `Order` with external
+  `Payment`/`Subscription` projections;
 - provider-only trust vocabulary;
 - provider-only `dict[str, Any]` language;
 - missing Python annotation ratchet;

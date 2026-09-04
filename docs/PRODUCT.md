@@ -13,7 +13,10 @@ Prompt Optimizer. Payment Portal is still under development and is not running
 as a production billing service. CloudPayments exists in the current code as a
 transitional Portal-managed direct-provider capability retained under ANY-407;
 there are no production CloudPayments subscribers or subscriptions to migrate.
-The product will most likely launch with an external billing system.
+The sole long-term production target is an external-billing-managed flow. The
+current direct-provider code remains supported while required by current code,
+operations, obligations, or safe cutover, but it is not a co-equal future
+production target.
 
 Contour architecture is defined in [contours](architecture/contours.md).
 Billing ownership and authoritative facts are defined in
@@ -40,9 +43,9 @@ Implemented `ru` screens are defined in [RU MVP journey](product/ru-mvp.md).
 - Login and registration confirm the contour using the Region Resolver list of
   deployed contours, then stay on this instance or leave through the resolver.
 - Isolated `eu` and `us` deployments, legal trees, operators, catalogs, and
-  billing integrations selected for each contour. Those markets are not
-  implemented product surface; the active billing model and integration for
-  those deployed products are not selected here.
+  external-billing integrations selected for each contour. Those markets are
+  not implemented product surface; the concrete external-billing integration
+  for those deployed products is not selected here.
 - The private regional entitlement/access API for Platform Kernel is planned
   under ANY-79.
 - Workflow execution, scenario runtime, artifacts, and usage accounting belong to
@@ -54,8 +57,11 @@ Implemented `ru` screens are defined in [RU MVP journey](product/ru-mvp.md).
   customers or base URLs.
 - A browser return URL never confirms payment or activates access.
 - Paid access advances only from verified authoritative billing facts. The
-  current transitional CloudPayments implementation accepts those facts
-  through verified webhooks.
+  current transitional CloudPayments integration policy accepts its verified,
+  normalized webhook outcomes as those facts. For external billing,
+  authentication alone is not semantic authority: integration policy decides
+  whether the webhook payload is sufficient or must trigger point
+  reconciliation, and both fact sources feed the same local transition path.
 - This service never collects or stores card data. Card data is handled by the
   responsible external payment boundary; the transitional direct-provider
   implementation delegates it to CloudPayments.

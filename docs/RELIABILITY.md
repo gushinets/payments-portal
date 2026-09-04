@@ -6,9 +6,23 @@ Last verified: 2026-09-04
 ## Critical paths
 
 - API liveness must not depend on PostgreSQL; readiness must.
-- Checkout creation and outbound billing commands must be idempotent at
-  external boundaries.
-- Webhook receipt must be durably stored before normalized processing completes.
+- Billing must use retry-safe orchestration. Persist or find the local operation
+  or purchase intent and commit it before issuing an external command; persist a
+  reliable result and mapping afterward. Use provider idempotency features when
+  available, but do not assume every external command is idempotent.
+- A timeout or lost response is neither confirmed success nor confirmed failure:
+  the external outcome is unknown. Reconcile before deciding whether another
+  command is safe; never automatically issue a duplicate create after an
+  uncertain outcome.
+- Recovery succeeds only when correlation finds exactly one unambiguous external
+  object. No unambiguous match remains unknown for later reconciliation or
+  another approved safe recovery policy. Multiple plausible matches are
+  ambiguous and must fail closed for manual review or repair, without another
+  automatic create.
+- Webhook receipt must be durably stored before normalized processing completes,
+  using only whitelisted or redacted metadata and safe normalized fields needed
+  for inbox processing, idempotency, correlation, reconciliation, and processing
+  audit. Durability does not require persisting the complete raw HTTP request.
 - Duplicate authoritative billing facts must not duplicate payment, refund,
   subscription, order, or entitlement changes.
 - Stale, duplicate, reordered, or conflicting authoritative billing facts must

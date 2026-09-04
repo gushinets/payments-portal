@@ -103,16 +103,18 @@ Enabling a contour requires a dedicated ticket. Minimum set:
    document-set, or locale variants only after ANY-71 defines the required
    dimension. The current pipeline and renderer are hardcoded to
    `docs/legal/ru`.
-5. One concrete active billing model and integration selected for the deployed
-   product. For a Portal-managed direct-provider flow, this includes enabled
-   `payment_provider_accounts`, adapter registration, credentials, and
-   provider-specific webhook routes. For an external-billing-managed flow, the
-   owning implementation ticket must define the integration; contour
-   enablement does not invent it here. This selection is deployment
-   configuration, not an assignment of billing ownership to the contour.
+5. One concrete external-billing integration selected for the deployed product,
+   as required by the sole long-term production target. Its owning
+   implementation ticket must define the integration; contour enablement does
+   not invent it here. A current/transitional Portal-managed direct-provider
+   flow may additionally retain enabled `payment_provider_accounts`, adapter
+   registration, credentials, and provider-specific webhook routes while
+   required by current code, operations, obligations, or cutover. Configuration
+   is not an assignment of billing ownership to the contour and does not make
+   direct-provider billing a co-equal target.
 6. Catalog and plans in the contour's supported currencies.
 7. Contour locale and routes in the web application.
-8. Isolated data plane and provider webhook URLs on that plane.
+8. Isolated data plane and billing-notification URLs on that plane.
 9. Region Resolver registry entry with the public ISO country mapping and the
    Payment Portal, Application Portal, and Platform Kernel API base URLs. At
    deployment, the Resolver country mappings for a contour must equal that
@@ -126,15 +128,18 @@ CloudPayments flow: its payment provider is selected from local
 `payment_provider_accounts`, and provider-specific verification stays in the
 adapter. Payment Portal is not yet a production billing service, and there are
 no production CloudPayments subscriptions to migrate. Under ANY-407, the code
-remains in place until later approved architecture or refactoring work
-determines whether it is still needed; its presence does not imply production
-use.
+remains in place while required by current code, operations, obligations, or
+safe cutover; its presence does not imply production use or make direct-provider
+billing part of the long-term target.
 
-Contour enablement or deployment configuration may select one concrete active
-billing model and integration for the deployed product. The durable ownership
-invariant instead applies to each subscription and its billing lifecycle, which
-has exactly one billing owner. This does not require a contour to support
-multiple simultaneously active billing owners or production integrations, and
-it defines no migration or coexistence mechanism. See
+The long-term production target requires contour enablement or deployment
+configuration to select one concrete external-billing integration for the
+deployed product. A current/transitional direct-provider integration may remain
+only while required; reintroducing it as a future production model requires a
+new explicit architecture decision. The durable ownership invariant applies to
+each subscription and its billing lifecycle, which has exactly one billing
+owner. This does not require a contour to support multiple simultaneously active
+billing owners or production integrations, and it defines no migration or
+coexistence mechanism. See
 [payment providers](payment-providers.md) and
 [billing authority](billing-authority.md).

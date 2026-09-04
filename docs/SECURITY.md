@@ -12,6 +12,21 @@ and private billing or payment configuration before logging or tracing.
 Email and IP data are personal data. Record them only where the documented legal
 or security purpose requires them, and never add them to metric labels.
 
+## Durable webhook receipt
+
+Webhook receipt must be durable before normalized processing completes, but the
+default persistence boundary must whitelist and redact data before storage. Store
+only whitelisted or redacted metadata and safe normalized fields that the
+concrete integration actually requires, such as the integration identifier,
+event type, safe external identifiers, timestamps, hashes, normalized idempotency
+keys, processing state, and safe normalized recovery fields.
+
+Never persist raw query-string secrets, authorization or webhook secrets,
+unrestricted raw headers, or unrestricted sensitive payloads merely to make
+receipt durable. A concrete integration may persist additional payload data only
+under a separately approved integration-specific requirement that defines its
+need, security treatment, and retention.
+
 ## Trust boundaries
 
 - Validate HTTP, environment, webhook, and database-boundary data.

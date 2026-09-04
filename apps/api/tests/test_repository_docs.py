@@ -221,6 +221,24 @@ def test_adr_0001_keeps_distinct_billing_integration_boundaries() -> None:
     assert "Each contour registers its own payment-provider adapter." not in content
 
 
+def test_billing_consistency_docs_require_retry_safe_unknown_outcomes() -> None:
+    reliability = (repo.ROOT / "docs/RELIABILITY.md").read_text(encoding="utf-8")
+    authority = (repo.ROOT / "docs/architecture/billing-authority.md").read_text(encoding="utf-8")
+
+    assert "retry-safe orchestration" in reliability
+    assert "do not assume every external command is idempotent" in reliability
+    assert "outbound billing commands must be idempotent" not in reliability
+    assert "A timeout or lost response is not confirmed success and not confirmed failure" in authority
+    assert "multiple plausible matches are ambiguous and fail closed" in authority
+
+
+def test_security_docs_keep_durable_webhook_receipt_safe_by_construction() -> None:
+    security = (repo.ROOT / "docs/SECURITY.md").read_text(encoding="utf-8")
+
+    assert "whitelist and redact data before storage" in security
+    assert "Never persist raw query-string secrets" in security
+
+
 def test_missing_billing_authority_link_is_actionable() -> None:
     root = Path("repository").resolve()
     source_relative = Path("apps") / "api" / "AGENTS.md"

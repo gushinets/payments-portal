@@ -6,7 +6,9 @@ Last verified: 2026-09-04
 This document covers only the **Portal-managed direct payment-provider flow**:
 Payment Portal orchestrates billing and calls a payment or acquiring provider
 through `PaymentProviderAdapter`. CloudPayments is the adapter in the current
-`ru` implementation.
+`ru` implementation. This flow is CURRENT / TRANSITIONAL. It remains supported
+while required by current code, operations, obligations, or safe cutover, but it
+is not a co-equal long-term production target.
 
 An **external billing system** owns its own external customer, invoice, payment,
 and subscription lifecycle. It is a separate authority boundary, is not a
@@ -74,25 +76,27 @@ stored in normalized safe payloads, or exposed to domain code.
 
 ## Planned
 
-Contour enablement or deployment configuration may select one concrete active
-billing model and integration for the deployed product. If the selected model
-is Portal-managed, it may configure provider accounts and register a direct-
-provider adapter. If the selected model is external-billing-managed, it uses
-the integration defined by its own implementation ticket, not this adapter
-boundary. The selection does not make the contour the owner of subscription
+The sole long-term production target is external-billing-managed and uses the
+integration defined by its own implementation ticket, not this adapter
+boundary. Deployment configuration selects the concrete external-billing
+integration; it does not freely choose Portal-managed direct-provider billing
+as a co-equal target. Provider accounts and direct-provider adapter registration
+remain relevant only to the current/transitional flow while it is still
+required. The selection does not make the contour the owner of subscription
 billing lifecycles and does not require multiple simultaneously active billing
 owners or production integrations. The first-install seed names `paddle` as
-`default_payment_provider` for DE and ES; that value is not an accepted
-Merchant of Record, active billing model, or EU-provider decision.
+`default_payment_provider` for DE and ES; that value is not an accepted Merchant
+of Record, active billing model, or EU-provider decision.
 
 Under ANY-407, the CloudPayments implementation remains as transitional code
-until separately approved work determines whether it is still needed. It must
-not be removed or refactored here, and no production migration or coexistence
-mechanism is required while there are no production CloudPayments
-subscriptions.
+while required by current code, operations, obligations, or safe cutover. It
+must not be removed or refactored here, and no production migration or
+coexistence mechanism is required while there are no production CloudPayments
+subscriptions. Reintroducing Portal-managed direct-provider billing as a future
+production model requires a new explicit architecture decision.
 
-Do not add a second production adapter without an explicit contour-enablement
-ticket.
+Do not add a future production direct-provider adapter without both a new
+explicit architecture decision and a contour-enablement ticket.
 
 Define the smallest shared webhook contract only when the active Linear provider
 work or a second provider needs it. Do not treat the current checkout protocol
