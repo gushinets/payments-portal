@@ -18,9 +18,9 @@ Payment Portal is under development and is not running as a production billing
 service. The implemented `ru` code contains a Portal-managed direct-provider
 flow: Payment Portal orchestrates checkout and the local billing lifecycle,
 uses the CloudPayments widget and direct API, accepts verified CloudPayments
-webhooks, and derives local entitlements. There are no production
-CloudPayments subscribers or subscriptions to migrate. Platform Kernel
-consumes those entitlements.
+webhooks, and derives and persists local entitlements. There are no production
+CloudPayments subscribers or subscriptions to migrate. The private regional
+entitlement/access API for Platform Kernel is still planned under ANY-79.
 
 ### TARGET
 
@@ -28,7 +28,9 @@ The target architecture supports an external-billing-managed flow. In that
 flow, the external billing system owns its external lifecycle, Payment Portal
 projects verified facts into normalized local billing records, and Payment
 Portal applies its entitlement rules. The architecture also permits a Portal-
-managed direct-provider flow when that is the selected active model.
+managed direct-provider flow when that is the selected active model. Platform
+Kernel is the intended consumer of Payment Portal's local entitlements through
+the planned private entitlement/access API.
 
 The durable ownership invariant is: **each subscription and its billing
 lifecycle has exactly one billing owner: either Payment Portal in a

@@ -5,7 +5,8 @@ Last verified: 2026-09-04
 
 Payment Portal is the identity, legal-consent, checkout, and access-entry
 service for AnytoolAI products, deployed as one **contour** (compliance zone)
-per production instance. Planned contours are `ru`, `eu`, and `us`.
+per production instance. The target contour set is `ru`, `eu`, and `us`; `ru`
+is implemented, while `eu` and `us` remain planned.
 
 The implemented product surface is the `ru` contour for Document Summary and
 Prompt Optimizer. Payment Portal is still under development and is not running
@@ -29,6 +30,9 @@ Implemented `ru` screens are defined in [RU MVP journey](product/ru-mvp.md).
 - Checkout sessions, orders, order items, payment attempts, refunds, and a
   CloudPayments webhook inbox.
 - CloudPayments signature checking, payload redaction, and idempotent processing.
+- Catalog products, plans, bundles, and limits implemented under ANY-77.
+- Local subscriptions, entitlement rules, entitlements, and subscription audit
+  implemented under ANY-78.
 - PostgreSQL first-install schema and legal metadata seed.
 
 ## Planned
@@ -39,8 +43,8 @@ Implemented `ru` screens are defined in [RU MVP journey](product/ru-mvp.md).
   billing integrations selected for each contour. Those markets are not
   implemented product surface; the active billing model and integration for
   those deployed products are not selected here.
-- Catalog, plans, subscriptions, entitlements, and the Payment Portal access API
-  are tracked by Linear ANY-71 and its subtickets.
+- The private regional entitlement/access API for Platform Kernel is planned
+  under ANY-79.
 - Workflow execution, scenario runtime, artifacts, and usage accounting belong to
   the separate Platform Kernel repository.
 

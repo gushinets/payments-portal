@@ -93,13 +93,18 @@ contract. An external billing system is a separate authority boundary and is
 not registered in `PaymentProviderRegistry`. Core configuration, database,
 logging, telemetry, and security helpers are shared infrastructure.
 
-These directions are mechanically enforced with Python AST analysis. Routers
-share authentication through session or service modules rather than importing
-one another. `app.models` is the canonical persisted model layer: SQLAlchemy
-models and closed persisted vocabularies are imported from its explicit public
-exports, while model modules import canonical enums directly from
-`app.models.enums`. Provider contract enums and open/provider/configuration
-identifiers remain owned by their boundaries and are not persisted model enums.
+Python AST analysis currently enforces selected dependency constraints in the
+transitional package tree, including core/domain-to-integration restrictions,
+router import boundaries, and provider-neutrality rules. It does not
+mechanically enforce the complete target logical layering above;
+Presentation/Application/Domain/Persistence/Integration is not yet fully
+represented by the physical packages. Routers share authentication through
+session or service modules rather than importing one another. `app.models` is
+the canonical persisted model layer: SQLAlchemy models and closed persisted
+vocabularies are imported from its explicit public exports, while model modules
+import canonical enums directly from `app.models.enums`. Provider contract
+enums and open/provider/configuration identifiers remain owned by their
+boundaries and are not persisted model enums.
 
 The web dependency direction is:
 

@@ -11,7 +11,11 @@ Last verified: 2026-09-04
 - Webhook receipt must be durably stored before normalized processing completes.
 - Duplicate authoritative billing facts must not duplicate payment, refund,
   subscription, order, or entitlement changes.
-- A late authoritative fact must not downgrade confirmed state.
+- Stale, duplicate, reordered, or conflicting authoritative billing facts must
+  not blindly overwrite newer confirmed state. Explicit transition and
+  idempotency rules must reject or ignore them, or trigger reconciliation.
+- Valid later lifecycle facts, including refunds, disputes, cancellations, and
+  expirations, must remain able to perform their legitimate transitions.
 - Verified webhook and future reconciliation facts must feed the same local
   transition path; reconciliation must not become a competing state machine.
 - Browser return-page state is informational and never billing authority.
