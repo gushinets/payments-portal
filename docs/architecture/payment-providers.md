@@ -1,11 +1,18 @@
-# Payment Provider Boundary
+# Portal-Managed Payment Provider Boundary
 
-Status: authoritative for domain rules; CloudPayments is the only implemented adapter
-Last verified: 2026-08-24
+Status: authoritative for the direct-provider boundary; CloudPayments is the only implemented adapter
+Last verified: 2026-09-04
 
-Billing owns checkout, orders, payments, refunds, subscriptions, entitlements,
-and contour-local access state. A payment provider is an adapter registered for
-the local contour.
+This document covers only the **Portal-managed direct payment-provider flow**:
+Payment Portal orchestrates billing and calls a payment or acquiring provider
+through `PaymentProviderAdapter`. CloudPayments is the current `ru`
+implementation.
+
+An **external billing system** owns its own external customer, invoice, payment,
+and subscription lifecycle. It is a separate authority boundary, is not a
+payment-provider adapter, and must not be registered in
+`PaymentProviderRegistry`. The normative distinction and target flow are in
+[Billing Authority and Consistency](billing-authority.md).
 
 Provider-neutral modules must not import provider integrations and must not
 branch on provider-specific literals. Checkout selects enabled rows from
@@ -31,14 +38,15 @@ and webhook identifiers.
 Card data is handled by the contour's provider and is never collected or stored
 by this service.
 
-## Subscription and Entitlement Lifecycle
+## Current Subscription and Entitlement Lifecycle
 
-The subscription lifecycle is provider-neutral domain code. It owns trial
-creation, paid-period activation, automatic-renewal attachment, renewal success
-or failure, normalized provider subscription state, cancellation requests,
-refund effects, and expiration. Domain code accepts only internal identifiers,
-local operation idempotency keys, and normalized provider states; it must not
-import provider integrations or branch on provider-specific statuses.
+In the current Portal-managed flow, the subscription lifecycle is
+provider-neutral domain code. It owns trial creation, paid-period activation,
+automatic-renewal attachment, renewal success or failure, normalized provider
+subscription state, cancellation requests, refund effects, and expiration.
+Domain code accepts only internal identifiers, local operation idempotency keys,
+and normalized provider states; it must not import provider integrations or
+branch on provider-specific statuses.
 
 Every successful initial or renewal payment must enter the lifecycle with a
 persisted internal order, payment, and processed webhook event. The domain
@@ -64,9 +72,13 @@ stored in normalized safe payloads, or exposed to domain code.
 
 ## Planned
 
-`eu` and `us` will register their own adapters when those contours are enabled.
-The first-install seed names `paddle` as `default_payment_provider` for DE and
-ES. That value is not an accepted Merchant of Record or EU-provider decision.
+Future contour enablement must explicitly choose its billing owner and
+integration. A Portal-managed contour may configure provider accounts and
+register a direct-provider adapter. An external-billing-managed contour will use
+the integration defined by its own implementation ticket, not this adapter
+boundary. The first-install seed names `paddle` as
+`default_payment_provider` for DE and ES; that value is not an accepted
+Merchant of Record, billing-owner, or EU-provider decision.
 
 Do not add a second production adapter without an explicit contour-enablement
 ticket.
@@ -75,7 +87,7 @@ Define the smallest shared webhook contract only when the active Linear provider
 work or a second provider needs it. Do not treat the current checkout protocol
 as an already complete webhook plug-in boundary.
 
-## Authority
+## Direct-provider authority
 
 - Payment success comes only from verified provider state, never from a browser
   return URL.
@@ -85,5 +97,6 @@ as an already complete webhook plug-in boundary.
 - Webhooks hit the local contour API directly. Region Resolver is not a proxy.
 
 Current CloudPayments landing work is described by ANY-165, ANY-166, and
-ANY-167. Those plans do not make CloudPayments the only provider the domain
-may ever use.
+ANY-167. Those plans describe the current Portal-managed implementation; they
+do not make CloudPayments the only possible direct provider or make this
+adapter contract the universal billing architecture.

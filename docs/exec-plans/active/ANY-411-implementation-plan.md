@@ -1087,7 +1087,7 @@ docs(architecture): define billing authority model
 
 # Step 2 — Align core architecture and billing documentation
 
-**Status:** `todo`
+**Status:** `done`
 
 ## Goal
 

@@ -1,7 +1,7 @@
 # Contours
 
 Status: authoritative target architecture; implemented product remains `ru`
-Last verified: 2026-08-18
+Last verified: 2026-09-04
 
 A **contour** is the compliance zone in which this Payment Portal is deployed.
 It may serve any number of countries assigned to that zone. It is not a locale,
@@ -16,6 +16,8 @@ for server-side validation and market configuration.
 
 Normative decision: [ADR 0001](decisions/0001-multi-contour-billing.md).
 Region routing: [Region Resolver contract](region-resolver-contract.md).
+Billing ownership: [ADR 0004](decisions/0004-billing-authority-and-consistency.md)
+and [Billing Authority and Consistency](billing-authority.md).
 
 ## Planned contours
 
@@ -53,7 +55,7 @@ No user or payment data may be silently replicated between contour data planes.
 | Countries in this contour | `country_region_rules.country_code` |
 | Seller / operator | `legal_entities` keyed by contour |
 | Legal pack | `document_versions` keyed by contour |
-| Payment provider account | `payment_provider_accounts` keyed by contour |
+| Direct payment provider account | `payment_provider_accounts` keyed by contour for the Portal-managed flow |
 | Customer-facing locale | `regions.default_locale` and web routes; not the contour key |
 
 The first-install migration currently inserts both `ru` and `eu` plus DE/ES
@@ -77,7 +79,8 @@ Planned, not implemented:
 - instance contour taken from deployment configuration rather than a `ru`
   literal;
 - login/registration contour confirmation via Region Resolver;
-- `eu` and `us` legal trees, operators, catalogs, and provider adapters;
+- `eu` and `us` legal trees, operators, catalogs, and explicitly selected
+  billing integrations/owners;
 - per-contour data planes and residency.
 
 Do not add `/en` or other locales as a substitute for a contour. Locale is
@@ -98,8 +101,12 @@ Enabling a contour requires a dedicated ticket. Minimum set:
    document-set, or locale variants only after ANY-71 defines the required
    dimension. The current pipeline and renderer are hardcoded to
    `docs/legal/ru`.
-5. Enabled `payment_provider_accounts`, adapter registration, credentials, and
-   provider-specific webhook routes.
+5. An explicitly configured billing owner and integration. For a
+   Portal-managed direct-provider flow, this includes enabled
+   `payment_provider_accounts`, adapter registration, credentials, and
+   provider-specific webhook routes. For an external-billing-managed flow, the
+   owning implementation ticket must define the integration; contour
+   enablement does not invent it here.
 6. Catalog and plans in the contour's supported currencies.
 7. Contour locale and routes in the web application.
 8. Isolated data plane and provider webhook URLs on that plane.
@@ -108,9 +115,16 @@ Enabling a contour requires a dedicated ticket. Minimum set:
    deployment, the Resolver country mappings for a contour must equal that
    contour's enabled local country rules.
 
-## Billing and providers
+## Billing ownership and integration
 
 Checkout, orders, payments, and refunds belong to billing and are contour-local.
-The payment provider is selected from local `payment_provider_accounts`.
-Provider-specific verification stays in the adapter. See
-[payment providers](payment-providers.md).
+The current `ru` contour uses the Portal-managed direct CloudPayments flow: its
+payment provider is selected from local `payment_provider_accounts`, and
+provider-specific verification stays in the adapter. Other contours do not
+inherently require a `PaymentProviderAdapter`; each must explicitly configure
+either a Portal-managed direct-provider integration or an
+external-billing-managed integration. In the latter model, the external system
+owns its external lifecycle while this contour stores only normalized local
+projections and remains authoritative for local entitlements. See
+[payment providers](payment-providers.md) and
+[billing authority](billing-authority.md).
