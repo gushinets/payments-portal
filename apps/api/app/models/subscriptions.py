@@ -1,16 +1,21 @@
 from __future__ import annotations
 
+from app.models.enums import (
+    EntitlementSource,
+    EntitlementStatus,
+    SubscriptionEventType,
+    SubscriptionRenewalMode,
+    SubscriptionScopeType,
+    SubscriptionStatus,
+)
 from app.models._shared import (
     Base,
     CheckConstraint,
     DateTime,
-    EntitlementSource,
-    EntitlementStatus,
     ForeignKey,
     Index,
     Mapped,
-    SubscriptionRenewalMode,
-    SubscriptionStatus,
+    PersistedEnumType,
     Text,
     UniqueConstraint,
     all_access_scope_sql,
@@ -101,11 +106,15 @@ class Subscription(Base):
     region: Mapped[str] = mapped_column(ForeignKey("regions.code"), nullable=False, index=True)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     plan_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("plans.id"), nullable=False, index=True)
-    scope_type: Mapped[str] = mapped_column(Text, nullable=False)
+    scope_type: Mapped[SubscriptionScopeType] = mapped_column(PersistedEnumType(SubscriptionScopeType), nullable=False)
     product_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("products.id"), nullable=True)
     bundle_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("bundles.id"), nullable=True)
-    status: Mapped[str] = mapped_column(Text, nullable=False, default=SubscriptionStatus.TRIALING.value, index=True)
-    renewal_mode: Mapped[str] = mapped_column(Text, nullable=False, default=SubscriptionRenewalMode.MANUAL.value)
+    status: Mapped[SubscriptionStatus] = mapped_column(
+        PersistedEnumType(SubscriptionStatus), nullable=False, default=SubscriptionStatus.TRIALING, index=True
+    )
+    renewal_mode: Mapped[SubscriptionRenewalMode] = mapped_column(
+        PersistedEnumType(SubscriptionRenewalMode), nullable=False, default=SubscriptionRenewalMode.MANUAL
+    )
     trial_start_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     trial_end_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     current_period_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -169,13 +178,15 @@ class Entitlement(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     subscription_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("subscriptions.id"), nullable=False)
     plan_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("plans.id"), nullable=False)
-    scope_type: Mapped[str] = mapped_column(Text, nullable=False)
+    scope_type: Mapped[SubscriptionScopeType] = mapped_column(PersistedEnumType(SubscriptionScopeType), nullable=False)
     product_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("products.id"), nullable=True)
     bundle_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("bundles.id"), nullable=True)
-    status: Mapped[str] = mapped_column(Text, nullable=False, default=EntitlementStatus.ACTIVE.value, index=True)
+    status: Mapped[EntitlementStatus] = mapped_column(
+        PersistedEnumType(EntitlementStatus), nullable=False, default=EntitlementStatus.ACTIVE, index=True
+    )
     valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     valid_until: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    source: Mapped[str] = mapped_column(Text, nullable=False)
+    source: Mapped[EntitlementSource] = mapped_column(PersistedEnumType(EntitlementSource), nullable=False)
     order_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("orders.id"), nullable=True, index=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     expired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -203,9 +214,11 @@ class SubscriptionEvent(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(uuid_type, primary_key=True, default=uuid.uuid4)
     subscription_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("subscriptions.id"), nullable=False, index=True)
-    event_type: Mapped[str] = mapped_column(Text, nullable=False)
-    previous_status: Mapped[str | None] = mapped_column(Text, nullable=True)
-    next_status: Mapped[str | None] = mapped_column(Text, nullable=True)
+    event_type: Mapped[SubscriptionEventType] = mapped_column(PersistedEnumType(SubscriptionEventType), nullable=False)
+    previous_status: Mapped[SubscriptionStatus | None] = mapped_column(
+        PersistedEnumType(SubscriptionStatus), nullable=True
+    )
+    next_status: Mapped[SubscriptionStatus | None] = mapped_column(PersistedEnumType(SubscriptionStatus), nullable=True)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     operation_idempotency_key: Mapped[str] = mapped_column(Text, nullable=False)
     order_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("orders.id"), nullable=True)

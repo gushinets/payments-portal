@@ -29,13 +29,7 @@ from app.domains.legal.service import (
     get_missing_required_documents_for_user,
     present_required_document,
 )
-from app.domains.billing.enums import (
-    OrderStatus,
-    PaymentStatus,
-    ProductAccessStatus,
-    SubscriptionScopeType,
-    SubscriptionRenewalMode,
-)
+from app.domains.billing.enums import ProductAccessStatus
 from app.domains.identity.session import (
     DEFAULT_REGION,
     DEFAULT_TENANT_ID,
@@ -59,11 +53,18 @@ from app.infrastructure.queries.subscriptions import get_active_entitlement_for_
 from app.models import (
     AuthSession,
     CheckoutSession,
+    CheckoutSessionStatus,
     EntrypointSession,
     Order,
     OrderItem,
+    OrderItemType,
+    OrderStatus,
     Payment,
+    PaymentStatus,
+    SubscriptionRenewalMode,
+    SubscriptionScopeType,
     User,
+    UserStatus,
 )
 from app.payment_providers.accounts import get_or_create_checkout_provider_account
 from app.payment_providers.registry import (
@@ -147,11 +148,11 @@ def present_product_state(
     bundle = get_bundle_by_code(db, tenant_id=user.tenant_id, code=product_code) if product is None else None
     default_plan = PRODUCT_DEFAULTS.get(product_code, {}) if product is not None else {}
     if product is not None:
-        scope_type = SubscriptionScopeType.PRODUCT.value
+        scope_type = SubscriptionScopeType.PRODUCT
     elif bundle is not None:
-        scope_type = SubscriptionScopeType.BUNDLE.value
+        scope_type = SubscriptionScopeType.BUNDLE
     elif product_code == "all-access":
-        scope_type = SubscriptionScopeType.ALL_ACCESS.value
+        scope_type = SubscriptionScopeType.ALL_ACCESS
     else:
         scope_type = None
     if scope_type is not None and order is None:
@@ -187,7 +188,7 @@ def present_product_state(
     else:
         starts_at = order.created_at if order is not None else None
         expires_at = None
-        pending_order_statuses = {"created", OrderStatus.PENDING_PAYMENT.value}
+        pending_order_statuses = {OrderStatus.CREATED, OrderStatus.PENDING_PAYMENT}
         status = (
             ProductAccessStatus.PENDING.value
             if order is not None and order.status in pending_order_statuses
@@ -243,7 +244,7 @@ def register(
         email_normalized=normalized_email,
         password_hash=hash_password(payload.password),
         email_verified_at=utc_now(),
-        status="active",
+        status=UserStatus.ACTIVE,
         last_login_at=utc_now(),
     )
     db.add(user)
@@ -365,14 +366,14 @@ def get_payment_status(
         raise HTTPException(status_code=404, detail="payment_not_found")
     payment = None
     payment_query = db.query(Payment).filter(Payment.order_id == order.id)
-    if order.status == OrderStatus.CANCELED.value:
+    if order.status == OrderStatus.CANCELED:
         payment = (
             payment_query.filter(
                 Payment.status.in_(
                     (
-                        PaymentStatus.SUCCEEDED.value,
-                        PaymentStatus.PARTIALLY_REFUNDED.value,
-                        PaymentStatus.REFUNDED.value,
+                        PaymentStatus.SUCCEEDED,
+                        PaymentStatus.PARTIALLY_REFUNDED,
+                        PaymentStatus.REFUNDED,
                     )
                 )
             )
@@ -389,11 +390,7 @@ def get_payment_status(
     elif product_code is None and order_item is not None and order_item.bundle_id is not None:
         bundle = get_bundle_by_id(db, order_item.bundle_id)
         product_code = bundle.code if bundle is not None else None
-    elif (
-        product_code is None
-        and order_item is not None
-        and order_item.item_type == f"{SubscriptionScopeType.ALL_ACCESS.value}_plan"
-    ):
+    elif product_code is None and order_item is not None and order_item.item_type == OrderItemType.ALL_ACCESS_PLAN:
         product_code = "all-access"
     if product_code is None:
         raise HTTPException(status_code=404, detail="payment_not_found")
@@ -462,7 +459,7 @@ def create_checkout_intent(
         plan_id=payload.plan_id,
         now=now,
     )
-    if payload.auto_renew and sellable_plan.renewal_mode != SubscriptionRenewalMode.AUTOMATIC.value:
+    if payload.auto_renew and sellable_plan.renewal_mode != SubscriptionRenewalMode.AUTOMATIC:
         raise HTTPException(
             status_code=409,
             detail={"code": "automatic_renewal_not_permitted"},
@@ -541,7 +538,7 @@ def create_checkout_intent(
         user_id=user.id,
         entrypoint_session_id=entrypoint_session.id,
         plan_id=sellable_plan.id,
-        status="order_created",
+        status=CheckoutSessionStatus.ORDER_CREATED,
         amount_minor=amount_minor,
         currency=currency,
         expires_at=expires_at,
@@ -565,7 +562,7 @@ def create_checkout_intent(
         checkout_session_id=checkout_session.id,
         entrypoint_session_id=entrypoint_session.id,
         plan_id=sellable_plan.id,
-        status="pending_payment",
+        status=OrderStatus.PENDING_PAYMENT,
         amount_minor=amount_minor,
         currency=currency,
         provider=provider_account.provider,
@@ -609,7 +606,11 @@ def create_checkout_intent(
     db.add(
         OrderItem(
             order_id=order.id,
-            item_type=f"{sellable_plan.scope_type.value}_plan",
+            item_type={
+                SubscriptionScopeType.PRODUCT: OrderItemType.PRODUCT_PLAN,
+                SubscriptionScopeType.BUNDLE: OrderItemType.BUNDLE_PLAN,
+                SubscriptionScopeType.ALL_ACCESS: OrderItemType.ALL_ACCESS_PLAN,
+            }[sellable_plan.scope_type],
             product_id=sellable_plan.product_id,
             bundle_id=sellable_plan.bundle_id,
             plan_id=sellable_plan.id,

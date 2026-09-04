@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.models.enums import MagicLinkPurpose, RegionStatus, UserStatus
 from app.models._shared import (
     Base,
     Boolean,
@@ -8,6 +9,7 @@ from app.models._shared import (
     Index,
     Integer,
     Mapped,
+    PersistedEnumType,
     String,
     Text,
     UniqueConstraint,
@@ -29,7 +31,9 @@ class Region(Base):
     residency_zone: Mapped[str] = mapped_column(Text, nullable=False)
     default_currency: Mapped[str] = mapped_column(String(3), nullable=False)
     default_locale: Mapped[str] = mapped_column(Text, nullable=False)
-    status: Mapped[str] = mapped_column(Text, nullable=False, default="active")
+    status: Mapped[RegionStatus] = mapped_column(
+        PersistedEnumType(RegionStatus), nullable=False, default=RegionStatus.ACTIVE
+    )
 
 
 class CountryRegionRule(Base):
@@ -62,7 +66,9 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(320), nullable=False)
     email_normalized: Mapped[str] = mapped_column(String(320), nullable=False, index=True)
     email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    status: Mapped[str] = mapped_column(Text, nullable=False, default="active", index=True)
+    status: Mapped[UserStatus] = mapped_column(
+        PersistedEnumType(UserStatus), nullable=False, default=UserStatus.ACTIVE, index=True
+    )
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     password_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
     metadata_: Mapped[dict] = mapped_column("metadata", json_type, nullable=False, default=dict)
@@ -99,7 +105,7 @@ class MagicLinkToken(Base):
     region: Mapped[str] = mapped_column(ForeignKey("regions.code"), nullable=False, index=True)
     email_normalized: Mapped[str] = mapped_column(String(320), nullable=False, index=True)
     token_hash: Mapped[str] = mapped_column(Text, nullable=False, unique=True, index=True)
-    purpose: Mapped[str] = mapped_column(Text, nullable=False)
+    purpose: Mapped[MagicLinkPurpose] = mapped_column(PersistedEnumType(MagicLinkPurpose), nullable=False)
     entrypoint_session_id: Mapped[uuid.UUID | None] = mapped_column(uuid_type, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

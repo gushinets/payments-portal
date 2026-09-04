@@ -16,7 +16,7 @@ from sqlalchemy.engine import Engine, URL
 from sqlalchemy.exc import IntegrityError
 
 from apps.api.tests.support.postgres import alembic_test_config, reset_public_schema
-from app.domains.billing.enums import SubscriptionStatus
+from app.models import SubscriptionStatus
 
 
 EXPECTED_REVISION_CHAIN = [

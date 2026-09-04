@@ -10,9 +10,15 @@ import pytest
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.domains.billing.enums import (
+from app.models import (
+    AcceptanceKind,
     EntitlementSource,
     EntitlementStatus,
+    LegalEntityStatus,
+    LegalEntityType,
+    OrderStatus,
+    PaymentStatus,
+    PaymentWebhookEventStatus,
     SubscriptionEventType,
     SubscriptionRenewalMode,
     SubscriptionStatus,
@@ -45,6 +51,7 @@ from app.models import (
     Subscription,
     SubscriptionEvent,
     User,
+    UserStatus,
 )
 
 
@@ -67,7 +74,7 @@ def _add_billing_user_and_account(session: Session, key: str) -> tuple[User, Pay
         region="ru",
         email=f"{key}@example.com",
         email_normalized=f"{key}@example.com",
-        status="active",
+        status=UserStatus.ACTIVE,
     )
     account = PaymentProviderAccount(
         tenant_id="anytoolai",
@@ -96,10 +103,10 @@ def _add_recurring_consent_acceptance(
         tenant_id=user.tenant_id,
         region=user.region,
         name=f"{key} legal entity",
-        entity_type="company",
+        entity_type=LegalEntityType.COMPANY,
         legal_address="Test address",
         support_email="support@example.com",
-        status="active",
+        status=LegalEntityStatus.ACTIVE,
     )
     session.add(entity)
     session.flush()
@@ -138,7 +145,7 @@ def _add_recurring_consent_acceptance(
         document_version_id=document.id,
         doc_type=document.doc_type,
         version=document.version,
-        acceptance_kind="recurring_consent",
+        acceptance_kind=AcceptanceKind.RECURRING_CONSENT,
         accepted_at=accepted_at,
         acceptance_text_hash=expected_acceptance_text_hash(document),
         entrypoint_type="product",
@@ -165,7 +172,7 @@ def _add_verified_paid_order(
         order_number=f"{key}-order",
         user_id=user.id,
         plan_id=plan.id,
-        status="paid",
+        status=OrderStatus.PAID,
         amount_minor=plan.price_amount_minor,
         currency=plan.currency,
         provider=account.provider,
@@ -182,7 +189,7 @@ def _add_verified_paid_order(
         provider_account_id=account.id,
         provider=account.provider,
         provider_payment_id=f"{key}-payment",
-        status="succeeded",
+        status=PaymentStatus.SUCCEEDED,
         amount_minor=order.amount_minor,
         currency=order.currency,
         refunded_amount_minor=0,
@@ -205,7 +212,7 @@ def _add_verified_paid_order(
         amount_minor=order.amount_minor,
         currency=order.currency,
         raw_payload={},
-        status="processed",
+        status=PaymentWebhookEventStatus.PROCESSED,
         processed_at=paid_at,
     )
     session.add(webhook)
@@ -289,7 +296,7 @@ def test_parallel_enable_automatic_renewal_same_key_reuses_event_after_subscript
     with postgres_session_factory() as session, session.begin():
         user, account = _add_billing_user_and_account(session, "concurrent-enable-automatic-renewal")
         plan = _plan_by_code(session, "document-summary-pro")
-        plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC.value
+        plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC
         acceptance = _add_recurring_consent_acceptance(
             session,
             user=user,
@@ -318,8 +325,8 @@ def test_parallel_enable_automatic_renewal_same_key_reuses_event_after_subscript
             scope_type=plan.scope_type,
             product_id=plan.product_id,
             bundle_id=plan.bundle_id,
-            status=SubscriptionStatus.ACTIVE.value,
-            renewal_mode=SubscriptionRenewalMode.MANUAL.value,
+            status=SubscriptionStatus.ACTIVE,
+            renewal_mode=SubscriptionRenewalMode.MANUAL,
             current_period_start=now,
             current_period_end=now + timedelta(days=30),
         )
@@ -328,7 +335,7 @@ def test_parallel_enable_automatic_renewal_same_key_reuses_event_after_subscript
         session.add(
             SubscriptionEvent(
                 subscription_id=subscription.id,
-                event_type=SubscriptionEventType.PAID_PERIOD_ACTIVATED.value,
+                event_type=SubscriptionEventType.PAID_PERIOD_ACTIVATED,
                 previous_status=None,
                 next_status=subscription.status,
                 occurred_at=now,
@@ -403,7 +410,7 @@ def test_parallel_enable_automatic_renewal_same_key_reuses_event_after_subscript
             session.query(SubscriptionEvent)
             .filter(
                 SubscriptionEvent.subscription_id == subscription_id,
-                SubscriptionEvent.event_type == SubscriptionEventType.AUTOMATIC_RENEWAL_ENABLED.value,
+                SubscriptionEvent.event_type == SubscriptionEventType.AUTOMATIC_RENEWAL_ENABLED,
             )
             .all()
         )
@@ -417,7 +424,7 @@ def test_parallel_enable_automatic_renewal_same_key_reuses_event_after_subscript
     assert len(synchronized_threads) == 2
     assert all(elapsed >= subscription_lock_hold_seconds for _, elapsed in results)
     assert refreshed_subscription is not None
-    assert refreshed_subscription.renewal_mode == SubscriptionRenewalMode.AUTOMATIC.value
+    assert refreshed_subscription.renewal_mode == SubscriptionRenewalMode.AUTOMATIC
     assert refreshed_subscription.provider_account_id == provider_account_id
     assert refreshed_subscription.provider_subscription_id == command.provider_subscription_id
     assert refreshed_subscription.recurring_consent_acceptance_id == acceptance_id
@@ -492,7 +499,7 @@ def test_parallel_start_trial_same_key_reuses_event_after_user_lock(
             session.query(Subscription)
             .filter(
                 Subscription.user_id == user_id,
-                Subscription.status == SubscriptionStatus.TRIALING.value,
+                Subscription.status == SubscriptionStatus.TRIALING,
                 Subscription.scope_type == scope_type,
                 Subscription.product_id == product_id,
                 Subscription.bundle_id == bundle_id,
@@ -503,7 +510,7 @@ def test_parallel_start_trial_same_key_reuses_event_after_user_lock(
             session.query(Entitlement)
             .filter(
                 Entitlement.user_id == user_id,
-                Entitlement.source == EntitlementSource.TRIAL.value,
+                Entitlement.source == EntitlementSource.TRIAL,
                 Entitlement.scope_type == scope_type,
                 Entitlement.product_id == product_id,
                 Entitlement.bundle_id == bundle_id,
@@ -513,7 +520,7 @@ def test_parallel_start_trial_same_key_reuses_event_after_user_lock(
         events = (
             session.query(SubscriptionEvent)
             .filter(
-                SubscriptionEvent.event_type == SubscriptionEventType.TRIAL_STARTED.value,
+                SubscriptionEvent.event_type == SubscriptionEventType.TRIAL_STARTED,
                 SubscriptionEvent.operation_idempotency_key == command.operation_idempotency_key,
             )
             .all()
@@ -610,7 +617,7 @@ def test_parallel_activate_paid_period_same_key_reuses_event_after_user_lock(
             session.query(Subscription)
             .filter(
                 Subscription.user_id == user_id,
-                Subscription.status.in_(SubscriptionStatus.live_values()),
+                Subscription.status.in_(tuple(status for status in SubscriptionStatus if status.is_live)),
                 Subscription.scope_type == scope_type,
                 Subscription.product_id == product_id,
                 Subscription.bundle_id == bundle_id,
@@ -620,7 +627,7 @@ def test_parallel_activate_paid_period_same_key_reuses_event_after_user_lock(
         events = (
             session.query(SubscriptionEvent)
             .filter(
-                SubscriptionEvent.event_type == SubscriptionEventType.PAID_PERIOD_ACTIVATED.value,
+                SubscriptionEvent.event_type == SubscriptionEventType.PAID_PERIOD_ACTIVATED,
                 SubscriptionEvent.operation_idempotency_key == command.operation_idempotency_key,
                 SubscriptionEvent.order_id == order_id,
             )
@@ -635,7 +642,7 @@ def test_parallel_activate_paid_period_same_key_reuses_event_after_user_lock(
             session.query(Entitlement)
             .filter(
                 Entitlement.order_id == order_id,
-                Entitlement.source == EntitlementSource.ORDER.value,
+                Entitlement.source == EntitlementSource.ORDER,
             )
             .all()
         )
@@ -687,13 +694,16 @@ def test_parallel_paid_orders_same_scope_share_one_subscription(
     with postgres_session_factory() as session:
         subscriptions = (
             session.query(Subscription)
-            .filter(Subscription.user_id == user_id, Subscription.status.in_(SubscriptionStatus.live_values()))
+            .filter(
+                Subscription.user_id == user_id,
+                Subscription.status.in_(tuple(status for status in SubscriptionStatus if status.is_live)),
+            )
             .all()
         )
         events = (
             session.query(SubscriptionEvent)
             .filter(
-                SubscriptionEvent.event_type == SubscriptionEventType.PAID_PERIOD_ACTIVATED.value,
+                SubscriptionEvent.event_type == SubscriptionEventType.PAID_PERIOD_ACTIVATED,
                 SubscriptionEvent.order_id.in_(order_ids),
             )
             .all()
@@ -817,7 +827,7 @@ def test_parallel_trials_same_scope_create_one_trial(
             session.query(Subscription)
             .filter(
                 Subscription.user_id == user_id,
-                Subscription.status == SubscriptionStatus.TRIALING.value,
+                Subscription.status == SubscriptionStatus.TRIALING,
             )
             .all()
         )
@@ -825,7 +835,7 @@ def test_parallel_trials_same_scope_create_one_trial(
             session.query(Entitlement)
             .filter(
                 Entitlement.user_id == user_id,
-                Entitlement.source == EntitlementSource.TRIAL.value,
+                Entitlement.source == EntitlementSource.TRIAL,
             )
             .all()
         )
@@ -872,7 +882,10 @@ def test_parallel_paid_orders_different_scopes_create_two_subscriptions(
     with postgres_session_factory() as session:
         subscriptions = (
             session.query(Subscription)
-            .filter(Subscription.user_id == user_id, Subscription.status.in_(SubscriptionStatus.live_values()))
+            .filter(
+                Subscription.user_id == user_id,
+                Subscription.status.in_(tuple(status for status in SubscriptionStatus if status.is_live)),
+            )
             .all()
         )
         entitlements = session.query(Entitlement).filter(Entitlement.user_id == user_id).all()
@@ -900,8 +913,8 @@ def test_terminal_subscription_allows_new_subscription_same_scope(
             scope_type=plan.scope_type,
             product_id=plan.product_id,
             bundle_id=plan.bundle_id,
-            status=SubscriptionStatus.CANCELED.value,
-            renewal_mode=SubscriptionRenewalMode.MANUAL.value,
+            status=SubscriptionStatus.CANCELED,
+            renewal_mode=SubscriptionRenewalMode.MANUAL,
             current_period_start=now - timedelta(days=30),
             current_period_end=now - timedelta(days=1),
             canceled_at=now - timedelta(days=1),
@@ -934,7 +947,10 @@ def test_terminal_subscription_allows_new_subscription_same_scope(
         subscriptions = session.query(Subscription).filter(Subscription.user_id == user_id).all()
         live_count = (
             session.query(Subscription)
-            .filter(Subscription.user_id == user_id, Subscription.status.in_(SubscriptionStatus.live_values()))
+            .filter(
+                Subscription.user_id == user_id,
+                Subscription.status.in_(tuple(status for status in SubscriptionStatus if status.is_live)),
+            )
             .count()
         )
 
@@ -967,8 +983,8 @@ def test_parallel_paid_orders_after_canceled_paid_through_create_one_successor_s
             scope_type=plan.scope_type,
             product_id=plan.product_id,
             bundle_id=plan.bundle_id,
-            status=SubscriptionStatus.CANCELED.value,
-            renewal_mode=SubscriptionRenewalMode.MANUAL.value,
+            status=SubscriptionStatus.CANCELED,
+            renewal_mode=SubscriptionRenewalMode.MANUAL,
             current_period_start=now - timedelta(days=10),
             current_period_end=paid_through,
             canceled_at=now,
@@ -984,10 +1000,10 @@ def test_parallel_paid_orders_after_canceled_paid_through_create_one_successor_s
             scope_type=plan.scope_type,
             product_id=plan.product_id,
             bundle_id=plan.bundle_id,
-            status=EntitlementStatus.ACTIVE.value,
+            status=EntitlementStatus.ACTIVE,
             valid_from=now - timedelta(days=10),
             valid_until=paid_through,
-            source=EntitlementSource.ORDER.value,
+            source=EntitlementSource.ORDER,
             order_id=old_order.id,
         )
         session.add(old_entitlement)
@@ -1033,7 +1049,10 @@ def test_parallel_paid_orders_after_canceled_paid_through_create_one_successor_s
         old_entitlement = session.get(Entitlement, old_entitlement_id)
         live_subscriptions = (
             session.query(Subscription)
-            .filter(Subscription.user_id == user_id, Subscription.status.in_(SubscriptionStatus.live_values()))
+            .filter(
+                Subscription.user_id == user_id,
+                Subscription.status.in_(tuple(status for status in SubscriptionStatus if status.is_live)),
+            )
             .all()
         )
         new_entitlements = (
@@ -1045,7 +1064,7 @@ def test_parallel_paid_orders_after_canceled_paid_through_create_one_successor_s
         events = (
             session.query(SubscriptionEvent)
             .filter(
-                SubscriptionEvent.event_type == SubscriptionEventType.PAID_PERIOD_ACTIVATED.value,
+                SubscriptionEvent.event_type == SubscriptionEventType.PAID_PERIOD_ACTIVATED,
                 SubscriptionEvent.order_id.in_(order_ids),
             )
             .all()
@@ -1053,9 +1072,9 @@ def test_parallel_paid_orders_after_canceled_paid_through_create_one_successor_s
 
     assert len(set(subscription_ids)) == 1
     assert old_subscription is not None
-    assert old_subscription.status == SubscriptionStatus.CANCELED.value
+    assert old_subscription.status == SubscriptionStatus.CANCELED
     assert old_entitlement is not None
-    assert old_entitlement.status == EntitlementStatus.ACTIVE.value
+    assert old_entitlement.status == EntitlementStatus.ACTIVE
     assert old_entitlement.valid_until == paid_through
     assert len(live_subscriptions) == 1
     assert live_subscriptions[0].id in set(subscription_ids)

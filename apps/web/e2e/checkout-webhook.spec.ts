@@ -236,7 +236,14 @@ import json
 import uuid
 
 from app.database import SessionLocal
-from app.models import DocumentVersion, LegalEntity, Plan
+from app.models import (
+    DocumentVersion,
+    LegalEntity,
+    LegalEntityStatus,
+    LegalEntityType,
+    Plan,
+    SubscriptionRenewalMode,
+)
 
 FIXTURE_ENTITY_ID = uuid.UUID("77777777-7777-4777-8777-777777777777")
 FIXTURE_DOCUMENT_ID = uuid.UUID("77777777-7777-4777-8777-777777777778")
@@ -245,12 +252,12 @@ FIXTURE_ENTITY_VALUES = {
     "tenant_id": "anytoolai",
     "region": "ru",
     "name": "AnytoolAI RU E2E",
-    "entity_type": "individual_entrepreneur",
+    "entity_type": LegalEntityType.INDIVIDUAL_ENTREPRENEUR,
     "tax_id": None,
     "registration_id": None,
     "legal_address": "E2E legal address",
     "support_email": "support@example.com",
-    "status": "active",
+    "status": LegalEntityStatus.ACTIVE,
 }
 FIXTURE_DOCUMENT_VALUES = {
     "tenant_id": "anytoolai",
@@ -352,7 +359,7 @@ try:
         },
     }
 
-    plan.renewal_mode = "automatic"
+    plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC
 
     if entity is None:
         entity = LegalEntity(id=FIXTURE_ENTITY_ID, **FIXTURE_ENTITY_VALUES)
@@ -392,18 +399,27 @@ import json
 import uuid
 
 from app.database import SessionLocal
-from app.models import DocumentAcceptance, DocumentVersion, LegalEntity, PaymentProviderAccount, Plan
+from app.models import (
+    DocumentAcceptance,
+    DocumentVersion,
+    LegalEntity,
+    LegalEntityStatus,
+    LegalEntityType,
+    PaymentProviderAccount,
+    Plan,
+    SubscriptionRenewalMode,
+)
 
 FIXTURE_ENTITY_VALUES = {
     "tenant_id": "anytoolai",
     "region": "ru",
     "name": "AnytoolAI RU E2E",
-    "entity_type": "individual_entrepreneur",
+    "entity_type": LegalEntityType.INDIVIDUAL_ENTREPRENEUR,
     "tax_id": None,
     "registration_id": None,
     "legal_address": "E2E legal address",
     "support_email": "support@example.com",
-    "status": "active",
+    "status": LegalEntityStatus.ACTIVE,
 }
 FIXTURE_DOCUMENT_VALUES = {
     "tenant_id": "anytoolai",
@@ -432,12 +448,12 @@ def restore_entity(entity, values):
     entity.tenant_id = values["tenant_id"]
     entity.region = values["region"]
     entity.name = values["name"]
-    entity.entity_type = values["entity_type"]
+    entity.entity_type = LegalEntityType(values["entity_type"])
     entity.tax_id = values["tax_id"]
     entity.registration_id = values["registration_id"]
     entity.legal_address = values["legal_address"]
     entity.support_email = values["support_email"]
-    entity.status = values["status"]
+    entity.status = LegalEntityStatus(values["status"])
 
 
 def restore_document(document, values):
@@ -463,7 +479,7 @@ db = SessionLocal()
 try:
     plan = db.get(Plan, parse_uuid(snapshot["plan"]["id"]))
     if plan is not None:
-        plan.renewal_mode = snapshot["plan"]["renewal_mode"]
+        plan.renewal_mode = SubscriptionRenewalMode(snapshot["plan"]["renewal_mode"])
 
     fixture_document = db.get(DocumentVersion, fixture_document_id)
     if snapshot["created"]["document_version"] and fixture_document is not None:
@@ -499,12 +515,12 @@ try:
                 tenant_id=snapshot["legal_entity"]["tenant_id"],
                 region=snapshot["legal_entity"]["region"],
                 name=snapshot["legal_entity"]["name"],
-                entity_type=snapshot["legal_entity"]["entity_type"],
+                entity_type=LegalEntityType(snapshot["legal_entity"]["entity_type"]),
                 tax_id=snapshot["legal_entity"]["tax_id"],
                 registration_id=snapshot["legal_entity"]["registration_id"],
                 legal_address=snapshot["legal_entity"]["legal_address"],
                 support_email=snapshot["legal_entity"]["support_email"],
-                status=snapshot["legal_entity"]["status"],
+                status=LegalEntityStatus(snapshot["legal_entity"]["status"]),
             )
             db.add(entity)
         else:

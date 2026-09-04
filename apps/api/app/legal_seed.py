@@ -6,7 +6,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 from app.generated.legal_manifest import LEGAL_MANIFEST
-from app.models import DocumentVersion, LegalEntity
+from app.models import DocumentVersion, LegalEntity, LegalEntityStatus, LegalEntityType
 
 DEFAULT_TENANT_ID = LEGAL_MANIFEST["tenantId"]
 RU_LEGAL_ENTITY_ID = uuid.UUID(LEGAL_MANIFEST["legalEntityId"])
@@ -17,12 +17,12 @@ RU_LEGAL_ENTITY = {
     "tenant_id": DEFAULT_TENANT_ID,
     "region": "ru",
     "name": "ИП Говоров Роман Стальевич",
-    "entity_type": "individual_entrepreneur",
+    "entity_type": LegalEntityType.INDIVIDUAL_ENTREPRENEUR,
     "tax_id": "143509640374",
     "registration_id": "314547633100101",
     "legal_address": "630091 , Новосибирская область, г. Новосибирск",
     "support_email": "support@any-tool-ai.ru",
-    "status": "active",
+    "status": LegalEntityStatus.ACTIVE,
 }
 
 RU_DOCUMENT_VERSIONS = [

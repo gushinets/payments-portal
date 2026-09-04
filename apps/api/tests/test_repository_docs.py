@@ -9,6 +9,7 @@ import pytest
 import scripts.repo as repo
 from scripts.repo import (
     canonical_check_environment,
+    check_canonical_persisted_model_layer,
     check_documented_metadata_tables,
     check_expected_legal_versions,
     check_required_markdown_link_content,
@@ -22,6 +23,104 @@ from scripts.repo import (
     resolve_cloudpayments_public_id,
     uv_environment,
 )
+
+
+def _write_api_source(root: Path, relative: str, source: str) -> None:
+    path = root / "apps/api/app" / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(source, encoding="utf-8")
+
+
+def test_canonical_persisted_model_guard_rejects_billing_model_facade(tmp_path: Path) -> None:
+    _write_api_source(tmp_path, "domains/billing/models.py", "from app.models import Order\n")
+
+    errors = check_canonical_persisted_model_layer(tmp_path)
+
+    assert any("domains/billing/models.py is forbidden" in error for error in errors)
+
+
+def test_canonical_persisted_model_guard_rejects_billing_model_import(tmp_path: Path) -> None:
+    _write_api_source(tmp_path, "feature.py", "from app.domains.billing.models import Order\n")
+
+    errors = check_canonical_persisted_model_layer(tmp_path)
+
+    assert any("imports ORM models through app.domains.billing.models" in error for error in errors)
+
+
+def test_canonical_persisted_model_guard_rejects_duplicate_enum_definition(tmp_path: Path) -> None:
+    _write_api_source(tmp_path, "feature.py", "class PaymentStatus: pass\n")
+
+    errors = check_canonical_persisted_model_layer(tmp_path)
+
+    assert any("defines protected persisted enum PaymentStatus" in error for error in errors)
+
+
+def test_canonical_persisted_model_guard_rejects_removed_enum_facades(tmp_path: Path) -> None:
+    _write_api_source(
+        tmp_path,
+        "feature.py",
+        "from app.domains.billing.enums import PaymentStatus\nfrom app.domains.legal.enums import AcceptanceKind\n",
+    )
+
+    errors = check_canonical_persisted_model_layer(tmp_path)
+
+    assert any("imports PaymentStatus through the removed billing enum façade" in error for error in errors)
+    assert any("imports the removed legal enum façade" in error for error in errors)
+
+
+def test_canonical_persisted_model_guard_allows_canonical_definition(tmp_path: Path) -> None:
+    _write_api_source(tmp_path, "models/enums.py", "class PaymentStatus: pass\n")
+
+    assert check_canonical_persisted_model_layer(tmp_path) == []
+
+
+def test_canonical_persisted_model_guard_allows_unrelated_provider_enum(tmp_path: Path) -> None:
+    _write_api_source(
+        tmp_path,
+        "domains/billing/enums.py",
+        "from enum import StrEnum\n\nclass ProviderSubscriptionState(StrEnum):\n    ACTIVE = 'active'\n",
+    )
+
+    assert check_canonical_persisted_model_layer(tmp_path) == []
+
+
+def test_canonical_persisted_model_guard_rejects_relative_billing_model_import(tmp_path: Path) -> None:
+    _write_api_source(tmp_path, "domains/checkout/feature.py", "from ..billing.models import Order\n")
+
+    errors = check_canonical_persisted_model_layer(tmp_path)
+
+    assert any("imports ORM models through app.domains.billing.models" in error for error in errors)
+
+
+def test_canonical_persisted_model_guard_rejects_relative_billing_enum_import(tmp_path: Path) -> None:
+    _write_api_source(tmp_path, "domains/checkout/feature.py", "from ..billing.enums import PaymentStatus\n")
+
+    errors = check_canonical_persisted_model_layer(tmp_path)
+
+    assert any("imports PaymentStatus through the removed billing enum façade" in error for error in errors)
+
+
+def test_canonical_persisted_model_guard_rejects_relative_legal_enum_import(tmp_path: Path) -> None:
+    _write_api_source(tmp_path, "domains/checkout/feature.py", "from ..legal.enums import AcceptanceKind\n")
+
+    errors = check_canonical_persisted_model_layer(tmp_path)
+
+    assert any("imports the removed legal enum façade" in error for error in errors)
+
+
+def test_canonical_persisted_model_guard_allows_relative_provider_enum_import(tmp_path: Path) -> None:
+    _write_api_source(
+        tmp_path,
+        "domains/billing/enums.py",
+        "from enum import StrEnum\n\nclass ProviderSubscriptionState(StrEnum):\n    ACTIVE = 'active'\n",
+    )
+    _write_api_source(
+        tmp_path,
+        "domains/checkout/feature.py",
+        "from ..billing.enums import ProviderSubscriptionState\n",
+    )
+
+    assert check_canonical_persisted_model_layer(tmp_path) == []
 
 
 def test_consistent_knowledge_fixture_passes() -> None:

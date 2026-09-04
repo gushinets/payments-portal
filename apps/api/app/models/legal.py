@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.models.enums import AcceptanceKind, LegalEntityStatus, LegalEntityType
 from app.models._shared import (
     Base,
     Boolean,
@@ -7,6 +8,7 @@ from app.models._shared import (
     ForeignKey,
     Index,
     Mapped,
+    PersistedEnumType,
     Text,
     UniqueConstraint,
     datetime,
@@ -28,12 +30,14 @@ class LegalEntity(Base):
     tenant_id: Mapped[str] = mapped_column(Text, nullable=False, default="anytoolai", index=True)
     region: Mapped[str] = mapped_column(ForeignKey("regions.code"), nullable=False, index=True)
     name: Mapped[str] = mapped_column(Text, nullable=False)
-    entity_type: Mapped[str] = mapped_column(Text, nullable=False)
+    entity_type: Mapped[LegalEntityType] = mapped_column(PersistedEnumType(LegalEntityType), nullable=False)
     tax_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     registration_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     legal_address: Mapped[str] = mapped_column(Text, nullable=False)
     support_email: Mapped[str] = mapped_column(Text, nullable=False)
-    status: Mapped[str] = mapped_column(Text, nullable=False, default="active", index=True)
+    status: Mapped[LegalEntityStatus] = mapped_column(
+        PersistedEnumType(LegalEntityStatus), nullable=False, default=LegalEntityStatus.ACTIVE, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -120,7 +124,7 @@ class DocumentAcceptance(Base):
     )
     doc_type: Mapped[str] = mapped_column(Text, nullable=False, index=True)
     version: Mapped[str] = mapped_column(Text, nullable=False)
-    acceptance_kind: Mapped[str] = mapped_column(Text, nullable=False)
+    acceptance_kind: Mapped[AcceptanceKind] = mapped_column(PersistedEnumType(AcceptanceKind), nullable=False)
     accepted_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
     )

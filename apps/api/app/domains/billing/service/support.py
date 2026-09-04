@@ -11,17 +11,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.domains.billing.enums import (
-    BillingPeriod,
-    OrderStatus,
-    PaymentStatus,
-    SubscriptionEventType,
-    SubscriptionRenewalMode,
-    SubscriptionScopeType,
-    SubscriptionStatus,
-    SensitiveMetadataKey,
-    WebhookEventStatus,
-)
+from app.domains.billing.enums import SensitiveMetadataKey
 from app.domains.billing.service.commands import ApplyRenewalPaymentCommand, LifecycleCommand
 from app.domains.billing.service.state_machine import SubscriptionLifecycleError
 from app.infrastructure.queries.orders import get_order_by_id, get_order_item_with_plan
@@ -34,7 +24,23 @@ from app.infrastructure.queries.subscriptions import (
     list_active_or_future_entitlements_for_subscription,
 )
 from app.infrastructure.queries.webhooks import get_processed_webhook_event
-from app.models import Entitlement, Order, Payment, PaymentWebhookEvent, Plan, Subscription, SubscriptionEvent
+from app.models import (
+    BillingPeriod,
+    Entitlement,
+    Order,
+    OrderStatus,
+    Payment,
+    PaymentStatus,
+    PaymentWebhookEvent,
+    PaymentWebhookEventStatus,
+    Plan,
+    Subscription,
+    SubscriptionEvent,
+    SubscriptionEventType,
+    SubscriptionRenewalMode,
+    SubscriptionScopeType,
+    SubscriptionStatus,
+)
 
 
 @contextmanager
@@ -95,8 +101,8 @@ def _write_event(
     subscription: Subscription,
     command: LifecycleCommand,
     event_type: SubscriptionEventType,
-    previous_status: str | None,
-    next_status: str | None,
+    previous_status: SubscriptionStatus | None,
+    next_status: SubscriptionStatus | None,
     order_id: uuid.UUID | None = None,
     payment_id: uuid.UUID | None = None,
     refund_id: uuid.UUID | None = None,
@@ -104,7 +110,7 @@ def _write_event(
 ) -> SubscriptionEvent:
     event = SubscriptionEvent(
         subscription_id=subscription.id,
-        event_type=event_type.value,
+        event_type=event_type,
         previous_status=previous_status,
         next_status=next_status,
         occurred_at=command.occurred_at,
@@ -152,9 +158,7 @@ def _period_end(start: datetime, plan: Plan) -> datetime:
     return start.replace(year=year, month=month, day=min(start.day, calendar.monthrange(year, month)[1]))
 
 
-def _scope_values(plan: Plan) -> tuple[str, uuid.UUID | None, uuid.UUID | None]:
-    if plan.scope_type not in {scope.value for scope in SubscriptionScopeType}:
-        raise SubscriptionLifecycleError("invalid_plan_scope")
+def _scope_values(plan: Plan) -> tuple[SubscriptionScopeType, uuid.UUID | None, uuid.UUID | None]:
     return plan.scope_type, plan.product_id, plan.bundle_id
 
 
@@ -168,8 +172,8 @@ def _new_subscription(*, tenant_id: str, region: str, user_id: uuid.UUID, plan: 
         scope_type=scope_type,
         product_id=product_id,
         bundle_id=bundle_id,
-        status=SubscriptionStatus.ACTIVE.value,
-        renewal_mode=SubscriptionRenewalMode.MANUAL.value,
+        status=SubscriptionStatus.ACTIVE,
+        renewal_mode=SubscriptionRenewalMode.MANUAL,
         current_period_start=start,
         current_period_end=_period_end(start, plan),
     )
@@ -197,7 +201,7 @@ def _verify_order_payment_webhook(
     webhook = get_processed_webhook_event(db, webhook_event_id)
     if (
         webhook is None
-        or webhook.status != WebhookEventStatus.PROCESSED.value
+        or webhook.status != PaymentWebhookEventStatus.PROCESSED
         or webhook.order_id != order.id
         or webhook.payment_id != payment.id
     ):
@@ -224,7 +228,7 @@ def _verify_successful_payment_context(
         payment_id=payment_id,
         webhook_event_id=webhook_event_id,
     )
-    if order.status != OrderStatus.PAID.value or payment.status != PaymentStatus.SUCCEEDED.value:
+    if order.status != OrderStatus.PAID or payment.status != PaymentStatus.SUCCEEDED:
         raise SubscriptionLifecycleError("payment_not_verified")
     return order, payment, webhook
 
@@ -250,11 +254,11 @@ def _verify_renewal_context(
     if subscription.provider_account_id is not None and order.provider_account_id != subscription.provider_account_id:
         raise SubscriptionLifecycleError("renewal_provider_context_mismatch")
     if command.succeeded:
-        if order.status != OrderStatus.PAID.value or payment.status != PaymentStatus.SUCCEEDED.value:
+        if order.status != OrderStatus.PAID or payment.status != PaymentStatus.SUCCEEDED:
             raise SubscriptionLifecycleError("renewal_payment_not_verified")
-    elif order.status not in {OrderStatus.PAYMENT_FAILED.value, OrderStatus.CANCELED.value} or payment.status not in {
-        PaymentStatus.FAILED.value,
-        PaymentStatus.CANCELED.value,
+    elif order.status not in {OrderStatus.PAYMENT_FAILED, OrderStatus.CANCELED} or payment.status not in {
+        PaymentStatus.FAILED,
+        PaymentStatus.CANCELED,
     }:
         raise SubscriptionLifecycleError("renewal_failure_not_verified")
     return order, payment, webhook

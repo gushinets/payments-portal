@@ -24,11 +24,12 @@ from app.integrations.cloudpayments.operation_meta import (  # noqa: E402
 from app.integrations.cloudpayments.transaction_lookup import (  # noqa: E402
     lookup_transaction as lookup_cloudpayments_transaction,
 )
+from app.models import RefundStatus as PersistedRefundStatus  # noqa: E402
 from app.payment_providers.contracts import (  # noqa: E402
     CancelRecurringSubscriptionRequest,
     CreateRecurringSubscriptionRequest,
+    ProviderRefundStatus,
     RefundRequest,
-    RefundStatus,
     RecurringSubscriptionStatus,
     TransactionLookupRequest,
     TransactionStatus,
@@ -748,7 +749,7 @@ def test_cloudpayments_adapter_refund_maps_accepted_response_to_pending() -> Non
     )
 
     assert result.provider_refund_id == "568"
-    assert result.status == RefundStatus.PENDING
+    assert result.status == ProviderRefundStatus.PENDING
     assert result.meta.outcome.value == "succeeded"
     assert result.meta.idempotency_key == "refund-455-10000"
 
@@ -782,7 +783,7 @@ def test_cloudpayments_adapter_refund_maps_transport_failure_to_retryable_result
         ),
     )
 
-    assert result.status == RefundStatus.FAILED
+    assert result.status == ProviderRefundStatus.FAILED
     assert result.meta.outcome.value == "failed"
     assert result.meta.retry_disposition.value == "retryable"
     assert result.meta.failure is not None
@@ -811,7 +812,7 @@ def test_cloudpayments_adapter_refund_rejects_missing_idempotency_key_before_pro
     )
 
     assert attempts == 0
-    assert result.status == RefundStatus.FAILED
+    assert result.status == ProviderRefundStatus.FAILED
     assert result.meta.retry_disposition.value == "non_retryable"
     assert result.meta.failure is not None
     assert result.meta.failure.code == "payments_api_idempotency_key_required"
@@ -840,7 +841,7 @@ def test_cloudpayments_adapter_refund_maps_provider_decline_safely() -> None:
         ),
     )
 
-    assert result.status == RefundStatus.FAILED
+    assert result.status == ProviderRefundStatus.FAILED
     assert result.provider_refund_id is None
     assert result.meta.failure is not None
     assert result.meta.failure.code == "cloudpayments_operation_declined"
@@ -877,7 +878,7 @@ def test_cloudpayments_adapter_refund_maps_schema_mismatch_and_missing_refund_id
         ),
     )
 
-    assert result.status == RefundStatus.FAILED
+    assert result.status == ProviderRefundStatus.FAILED
     assert result.provider_refund_id is None
     assert result.meta.failure is not None
     assert result.meta.failure.code == "payments_api_response_validation_error"
@@ -898,10 +899,14 @@ def test_cloudpayments_adapter_refund_maps_response_decode_error() -> None:
         ),
     )
 
-    assert result.status == RefundStatus.FAILED
+    assert result.status == ProviderRefundStatus.FAILED
     assert result.provider_refund_id is None
     assert result.meta.failure is not None
     assert result.meta.failure.code == "payments_api_response_decode_error"
+
+
+def test_provider_and_persisted_refund_statuses_are_distinct() -> None:
+    assert PersistedRefundStatus is not ProviderRefundStatus
 
 
 def test_cloudpayments_adapter_lookup_transaction_rejects_wrong_provider_account_provider() -> None:

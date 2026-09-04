@@ -40,6 +40,38 @@ GENERATED_LEGAL_JSON = ROOT / "apps" / "web" / "src" / "generated" / "legal-mani
 API_TEST_PATH = "apps/api/tests"
 LEGAL_DOCS_ROOT = ROOT / "docs" / "legal" / "ru"
 
+CANONICAL_PERSISTED_ENUM_NAMES = frozenset(
+    {
+        "ProductStatus",
+        "BundleStatus",
+        "BundleProductStatus",
+        "PlanStatus",
+        "SubscriptionScopeType",
+        "BillingPeriod",
+        "SubscriptionRenewalMode",
+        "PlanPriceComponentType",
+        "PlanLimitResetPolicy",
+        "PlanLimitOveragePolicy",
+        "CheckoutSessionStatus",
+        "OrderStatus",
+        "OrderItemType",
+        "PaymentStatus",
+        "RefundStatus",
+        "PaymentWebhookEventStatus",
+        "SubscriptionStatus",
+        "EntitlementStatus",
+        "EntitlementSource",
+        "SubscriptionEventType",
+        "RegionStatus",
+        "UserStatus",
+        "MagicLinkPurpose",
+        "LegalEntityStatus",
+        "LegalEntityType",
+        "AcceptanceKind",
+    }
+)
+REMOVED_BILLING_ENUM_FACADE_NAMES = CANONICAL_PERSISTED_ENUM_NAMES | {"WebhookEventStatus"}
+
 
 class HarnessError(RuntimeError):
     pass
@@ -1133,8 +1165,107 @@ def check_python_boundaries(root: Path = ROOT) -> list[str]:
     return errors
 
 
+def check_canonical_persisted_model_layer(root: Path = ROOT) -> list[str]:
+    """Protect the final ANY-326 model ownership and import boundary."""
+    app_root = root / "apps/api/app"
+    if not app_root.exists():
+        return []
+
+    errors: list[str] = []
+    billing_model_facade = app_root / "domains/billing/models.py"
+    canonical_enum_module = (app_root / "models/enums.py").resolve()
+    if billing_model_facade.exists():
+        errors.append(
+            "apps/api/app/domains/billing/models.py is forbidden; import ORM models from app.models"
+        )
+
+    for path in sorted(app_root.rglob("*.py")):
+        relative = path.relative_to(root).as_posix()
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            resolved_imports = {
+                imported.line: imported.targets
+                for imported in resolve_python_imports(path, app_root)
+            }
+        except SyntaxError as error:
+            errors.append(
+                f"{relative}:{error.lineno or 1} cannot be parsed for canonical model-layer checks"
+            )
+            continue
+
+        if path.resolve() != canonical_enum_module:
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ClassDef) and node.name in CANONICAL_PERSISTED_ENUM_NAMES:
+                    errors.append(
+                        f"{relative}:{node.lineno} defines protected persisted enum {node.name}; "
+                        "define it only in apps/api/app/models/enums.py"
+                    )
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported_targets = tuple(alias.name for alias in node.names)
+                if any(
+                    module_matches(target, "app.domains.billing.models")
+                    for target in imported_targets
+                ):
+                    errors.append(
+                        f"{relative}:{node.lineno} imports ORM models through "
+                        "app.domains.billing.models; import them from app.models"
+                    )
+                if any(
+                    module_matches(target, "app.domains.legal.enums")
+                    for target in imported_targets
+                ):
+                    errors.append(
+                        f"{relative}:{node.lineno} imports the removed legal enum façade; "
+                        "import persisted enums from app.models"
+                    )
+                continue
+
+            if not isinstance(node, ast.ImportFrom):
+                continue
+
+            imported_targets = resolved_imports.get(node.lineno, ())
+            if any(
+                module_matches(target, "app.domains.billing.models")
+                for target in imported_targets
+            ):
+                errors.append(
+                    f"{relative}:{node.lineno} imports ORM models through "
+                    "app.domains.billing.models; import them from app.models"
+                )
+            if any(
+                module_matches(target, "app.domains.legal.enums")
+                for target in imported_targets
+            ):
+                errors.append(
+                    f"{relative}:{node.lineno} imports the removed legal enum façade; "
+                    "import persisted enums from app.models"
+                )
+
+            billing_enum_module = "app.domains.billing.enums"
+            if billing_enum_module in imported_targets:
+                for alias in node.names:
+                    if alias.name == "enums":
+                        errors.append(
+                            f"{relative}:{node.lineno} imports {alias.name} through the removed "
+                            "billing enum façade; import it from app.models"
+                        )
+            for alias in node.names:
+                if alias.name in REMOVED_BILLING_ENUM_FACADE_NAMES and (
+                    f"{billing_enum_module}.{alias.name}" in imported_targets
+                ):
+                    errors.append(
+                        f"{relative}:{node.lineno} imports {alias.name} through the removed "
+                        "billing enum façade; import it from app.models"
+                    )
+
+    return errors
+
+
 def cmd_architecture(_: argparse.Namespace) -> None:
     errors = check_python_boundaries()
+    errors.extend(check_canonical_persisted_model_layer())
     limits = json.loads((ROOT / "architecture-limits.json").read_text(encoding="utf-8"))
     default_limit = int(limits["defaultMaxLines"])
     exceptions = limits["exceptions"]

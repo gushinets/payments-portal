@@ -11,10 +11,18 @@ from sqlalchemy.orm import Session
 
 from app.core.observability import record_checkout
 from app.core.time import utc_now
-from app.domains.billing.enums import ProductStatus, SubscriptionScopeType
 from app.domains.legal.service import get_active_required_documents, present_required_document
 from app.infrastructure.queries.plans import get_current_sellable_plan
-from app.models import Bundle, Product, User
+from app.models import (
+    BillingPeriod,
+    Bundle,
+    BundleStatus,
+    Product,
+    ProductStatus,
+    SubscriptionRenewalMode,
+    SubscriptionScopeType,
+    User,
+)
 from app.payment_providers.contracts import CheckoutAction
 
 
@@ -43,8 +51,8 @@ class ResolvedCheckoutPlan(BaseModel):
     price_amount_minor: int
     currency: str
     trial_days: int
-    billing_period: str
-    renewal_mode: str
+    billing_period: BillingPeriod
+    renewal_mode: SubscriptionRenewalMode
     pricing_snapshot: dict
 
 
@@ -91,10 +99,7 @@ def get_sellable_plan(db: Session, *, user: User, plan_id: uuid.UUID, now: datet
     if plan is None:
         raise HTTPException(status_code=400, detail="unknown_product_plan")
 
-    try:
-        scope_type = SubscriptionScopeType(plan.scope_type)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail="unknown_product_plan") from exc
+    scope_type = plan.scope_type
 
     product_code = None
     if scope_type is SubscriptionScopeType.PRODUCT:
@@ -105,7 +110,7 @@ def get_sellable_plan(db: Session, *, user: User, plan_id: uuid.UUID, now: datet
             .filter(
                 Product.id == plan.product_id,
                 Product.tenant_id == user.tenant_id,
-                Product.status == ProductStatus.ACTIVE.value,
+                Product.status == ProductStatus.ACTIVE,
             )
             .first()
         )
@@ -120,7 +125,7 @@ def get_sellable_plan(db: Session, *, user: User, plan_id: uuid.UUID, now: datet
             .filter(
                 Bundle.id == plan.bundle_id,
                 Bundle.tenant_id == user.tenant_id,
-                Bundle.status == "active",
+                Bundle.status == BundleStatus.ACTIVE,
             )
             .first()
         )

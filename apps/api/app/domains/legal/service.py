@@ -8,16 +8,15 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.core.time import utc_now
-from app.domains.legal.enums import AcceptanceKind
-from app.models import DocumentAcceptance, DocumentVersion, User
+from app.models import AcceptanceKind, DocumentAcceptance, DocumentVersion, User
 
 
 ACCEPTANCE_KIND_BY_DOC_TYPE = {
-    "privacy": AcceptanceKind.PRIVACY_CONSENT.value,
-    "pd_consent": AcceptanceKind.PRIVACY_CONSENT.value,
-    "offer": AcceptanceKind.TERMS_ACCEPTANCE.value,
-    "recurring_consent": AcceptanceKind.RECURRING_CONSENT.value,
-    "cookies": AcceptanceKind.COOKIES.value,
+    "privacy": AcceptanceKind.PRIVACY_CONSENT,
+    "pd_consent": AcceptanceKind.PRIVACY_CONSENT,
+    "offer": AcceptanceKind.TERMS_ACCEPTANCE,
+    "recurring_consent": AcceptanceKind.RECURRING_CONSENT,
+    "cookies": AcceptanceKind.COOKIES,
 }
 
 
@@ -115,7 +114,7 @@ def get_missing_required_documents_for_user(
         for document in required_documents
         if (
             document.id,
-            ACCEPTANCE_KIND_BY_DOC_TYPE.get(document.doc_type, "terms_acceptance"),
+            ACCEPTANCE_KIND_BY_DOC_TYPE.get(document.doc_type, AcceptanceKind.TERMS_ACCEPTANCE),
             expected_acceptance_text_hash(document),
         )
         not in accepted_version_kinds
@@ -198,7 +197,7 @@ def _is_current_recurring_consent_acceptance_with_metadata(
         or acceptance.region != user.region
         or acceptance.user_id != user.id
         or acceptance.doc_type != "recurring_consent"
-        or acceptance.acceptance_kind != AcceptanceKind.RECURRING_CONSENT.value
+        or acceptance.acceptance_kind != AcceptanceKind.RECURRING_CONSENT
         or _as_utc_naive(acceptance.accepted_at) > comparable_effective_at
         or acceptance.acceptance_text_hash != expected_acceptance_text_hash(document)
         or acceptance.entrypoint_type != entrypoint_type
@@ -236,7 +235,7 @@ def get_current_recurring_consent_acceptance(
             DocumentAcceptance.region == user.region,
             DocumentAcceptance.user_id == user.id,
             DocumentAcceptance.doc_type == "recurring_consent",
-            DocumentAcceptance.acceptance_kind == AcceptanceKind.RECURRING_CONSENT.value,
+            DocumentAcceptance.acceptance_kind == AcceptanceKind.RECURRING_CONSENT,
             DocumentAcceptance.accepted_at <= effective_at,
             DocumentVersion.tenant_id == user.tenant_id,
             DocumentVersion.region == user.region,
@@ -295,7 +294,7 @@ def create_document_acceptance(
         document_version_id=document.id,
         doc_type=document.doc_type,
         version=document.version,
-        acceptance_kind=ACCEPTANCE_KIND_BY_DOC_TYPE.get(document.doc_type, "terms_acceptance"),
+        acceptance_kind=ACCEPTANCE_KIND_BY_DOC_TYPE.get(document.doc_type, AcceptanceKind.TERMS_ACCEPTANCE),
         accepted_at=accepted_at or utc_now(),
         ip=ip,
         user_agent=user_agent,

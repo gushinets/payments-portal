@@ -7,14 +7,15 @@ from datetime import timedelta
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.domains.billing.enums import (
+from app.models import (
+    Entitlement,
     EntitlementSource,
     EntitlementStatus,
-    SubscriptionRenewalMode,
+    Subscription,
     SubscriptionEventType,
+    SubscriptionRenewalMode,
     SubscriptionStatus,
 )
-from app.models import Entitlement, Subscription
 from app.domains.billing.service.commands import (
     ActivatePaidPeriodCommand,
     LifecycleCommand,
@@ -115,8 +116,8 @@ def start_trial(db: Session, command: StartTrialCommand) -> Subscription:
         scope_type=scope_type,
         product_id=product_id,
         bundle_id=bundle_id,
-        status=SubscriptionStatus.TRIALING.value,
-        renewal_mode=SubscriptionRenewalMode.MANUAL.value,
+        status=SubscriptionStatus.TRIALING,
+        renewal_mode=SubscriptionRenewalMode.MANUAL,
         trial_start_at=start,
         trial_end_at=start + timedelta(days=plan.trial_days),
         current_period_start=start,
@@ -139,10 +140,10 @@ def start_trial(db: Session, command: StartTrialCommand) -> Subscription:
         scope_type=plan.scope_type,
         product_id=plan.product_id,
         bundle_id=plan.bundle_id,
-        status=EntitlementStatus.ACTIVE.value,
+        status=EntitlementStatus.ACTIVE,
         valid_from=start,
         valid_until=subscription.current_period_end,
-        source=EntitlementSource.TRIAL.value,
+        source=EntitlementSource.TRIAL,
     )
     db.add(entitlement)
     _write_event(
@@ -193,17 +194,17 @@ def activate_paid_period(db: Session, command: ActivatePaidPeriodCommand) -> Sub
     carry_forward_boundary = paid_at
     if subscription is None:
         previous = next((item for item in candidates if _scope_matches(item, plan)), None)
-        replaced_previous_status: str | None = None
+        replaced_previous_status: SubscriptionStatus | None = None
         try:
             with db.begin_nested():
                 if previous:
                     replaced_previous_status = previous.status
                     ensure_subscription_status_transition(replaced_previous_status, SubscriptionStatus.CANCELED)
-                    previous.status = SubscriptionStatus.CANCELED.value
+                    previous.status = SubscriptionStatus.CANCELED
                     previous.canceled_at = command.occurred_at
                     superseded_entitlements = _active_or_future_entitlements(db, previous, now=command.occurred_at)
                     for previous_entitlement in superseded_entitlements:
-                        previous_entitlement.status = EntitlementStatus.SUPERSEDED.value
+                        previous_entitlement.status = EntitlementStatus.SUPERSEDED
                         previous_entitlement.superseded_at = command.occurred_at
                     db.flush()
                 else:
@@ -251,12 +252,12 @@ def activate_paid_period(db: Session, command: ActivatePaidPeriodCommand) -> Sub
             ensure_subscription_status_transition(subscription.status, SubscriptionStatus.ACTIVE)
             start = (
                 paid_at
-                if subscription.status == SubscriptionStatus.TRIALING.value
+                if subscription.status == SubscriptionStatus.TRIALING
                 else max(subscription.current_period_end, paid_at)
             )
             subscription.current_period_start = start
             subscription.current_period_end = _period_end(start, plan)
-            subscription.status = SubscriptionStatus.ACTIVE.value
+            subscription.status = SubscriptionStatus.ACTIVE
         else:
             if previous:
                 assert replaced_previous_status is not None
@@ -275,7 +276,7 @@ def activate_paid_period(db: Session, command: ActivatePaidPeriodCommand) -> Sub
                         ),
                         event_type=SubscriptionEventType.SUBSCRIPTION_REPLACED,
                         previous_status=replaced_previous_status,
-                        next_status=SubscriptionStatus.CANCELED.value,
+                        next_status=SubscriptionStatus.CANCELED,
                         order_id=order.id,
                         payment_id=payment.id,
                         webhook_event_id=command.webhook_event_id,
@@ -311,12 +312,12 @@ def activate_paid_period(db: Session, command: ActivatePaidPeriodCommand) -> Sub
         ensure_subscription_status_transition(subscription.status, SubscriptionStatus.ACTIVE)
         start = (
             paid_at
-            if subscription.status == SubscriptionStatus.TRIALING.value
+            if subscription.status == SubscriptionStatus.TRIALING
             else max(subscription.current_period_end, paid_at)
         )
         subscription.current_period_start = start
         subscription.current_period_end = _period_end(start, plan)
-        subscription.status = SubscriptionStatus.ACTIVE.value
+        subscription.status = SubscriptionStatus.ACTIVE
 
     subscription.current_period_start = subscription.current_period_start or paid_at
     entitlement = Entitlement(
@@ -328,10 +329,10 @@ def activate_paid_period(db: Session, command: ActivatePaidPeriodCommand) -> Sub
         scope_type=plan.scope_type,
         product_id=plan.product_id,
         bundle_id=plan.bundle_id,
-        status=EntitlementStatus.ACTIVE.value,
+        status=EntitlementStatus.ACTIVE,
         valid_from=subscription.current_period_start,
         valid_until=subscription.current_period_end,
-        source=EntitlementSource.ORDER.value,
+        source=EntitlementSource.ORDER,
         order_id=order.id,
     )
     db.add(entitlement)

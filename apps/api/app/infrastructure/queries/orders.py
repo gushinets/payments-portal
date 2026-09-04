@@ -4,7 +4,7 @@ import uuid
 
 from sqlalchemy.orm import Session
 
-from app.models import EntrypointSession, Order, OrderItem
+from app.models import EntrypointSession, Order, OrderItem, OrderItemType, SubscriptionScopeType
 
 
 def get_order_by_id(db: Session, order_id: uuid.UUID, *, for_update: bool = False) -> Order | None:
@@ -35,7 +35,7 @@ def get_latest_order_for_user_entrypoint(
     user_id: uuid.UUID,
     product_id: uuid.UUID | None,
     bundle_id: uuid.UUID | None,
-    scope_type: str,
+    scope_type: SubscriptionScopeType,
     entrypoint_code: str,
 ) -> Order | None:
     query = (
@@ -55,5 +55,12 @@ def get_latest_order_for_user_entrypoint(
     elif bundle_id is not None:
         query = query.filter((OrderItem.product_code_snapshot == entrypoint_code) | (OrderItem.bundle_id == bundle_id))
     else:
-        query = query.filter(OrderItem.item_type == f"{scope_type}_plan")
+        query = query.filter(
+            OrderItem.item_type
+            == {
+                SubscriptionScopeType.PRODUCT: OrderItemType.PRODUCT_PLAN,
+                SubscriptionScopeType.BUNDLE: OrderItemType.BUNDLE_PLAN,
+                SubscriptionScopeType.ALL_ACCESS: OrderItemType.ALL_ACCESS_PLAN,
+            }[scope_type]
+        )
     return query.first()

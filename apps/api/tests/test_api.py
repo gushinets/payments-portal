@@ -18,7 +18,6 @@ from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import event, inspect  # noqa: E402
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware  # noqa: E402
 
-from app.domains.billing.enums import PlanStatus, ProductStatus  # noqa: E402
 from app.domains.billing.router import get_subscription as get_account_subscription_route  # noqa: E402
 from app.domains.billing.router import list_subscriptions as list_account_subscriptions_route  # noqa: E402
 import app.domains.identity.password_reset as password_reset_router  # noqa: E402
@@ -26,26 +25,46 @@ from app.database import Base, SessionLocal, engine  # noqa: E402
 from app.integrations.cloudpayments import adapter as cloudpayments_adapter_module  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import (  # noqa: E402
+    AcceptanceKind,
     AuthSession,
+    BillingPeriod,
     Bundle,
     BundleProduct,
+    BundleProductStatus,
+    BundleStatus,
     CheckoutSession,
     Entitlement,
+    EntitlementSource,
+    EntitlementStatus,
     DocumentAcceptance,
     DocumentVersion,
     LegalEntity,
+    LegalEntityStatus,
+    LegalEntityType,
+    MagicLinkPurpose,
     MagicLinkToken,
     Order,
     OrderItem,
+    OrderItemType,
+    OrderStatus,
     Payment,
     PaymentProviderAccount,
+    PaymentStatus,
     PaymentWebhookEvent,
+    PaymentWebhookEventStatus,
     Plan,
+    PlanStatus,
     PasswordResetRateLimit,
     Product,
+    ProductStatus,
     Refund,
+    RefundStatus,
     Subscription,
+    SubscriptionRenewalMode,
+    SubscriptionScopeType,
+    SubscriptionStatus,
     User,
+    UserStatus,
 )
 from app.legal_seed import RU_DOCUMENT_VERSIONS, seed_legal_documents  # noqa: E402
 from app.integrations.cloudpayments.adapter import (  # noqa: E402
@@ -196,10 +215,10 @@ def create_legal_entity(db, *, tenant_id: str = "anytoolai", region: str = "ru")
         tenant_id=tenant_id,
         region=region,
         name=f"AnytoolAI {region.upper()}",
-        entity_type="individual_entrepreneur" if region == "ru" else "merchant_of_record",
+        entity_type=(LegalEntityType.INDIVIDUAL_ENTREPRENEUR if region == "ru" else LegalEntityType.MERCHANT_OF_RECORD),
         legal_address="Draft legal address",
         support_email="support@example.com",
-        status="active",
+        status=LegalEntityStatus.ACTIVE,
     )
     db.add(entity)
     db.commit()
@@ -306,7 +325,7 @@ def create_document_acceptance_row(
         document_version_id=document.id,
         doc_type=document.doc_type,
         version=document.version,
-        acceptance_kind=ACCEPTANCE_KIND_BY_DOC_TYPE.get(document.doc_type, "terms_acceptance"),
+        acceptance_kind=ACCEPTANCE_KIND_BY_DOC_TYPE.get(document.doc_type, AcceptanceKind.TERMS_ACCEPTANCE),
         accepted_at=accepted_at or datetime.now(timezone.utc),
         acceptance_text_hash=acceptance_text_hash,
         entrypoint_type="product" if entrypoint_value is not None else None,
@@ -389,20 +408,20 @@ def seed_catalog(db) -> dict[str, object]:
         code="document-summary",
         platform_product_id="document-summary",
         name="Document Summary",
-        status="active",
+        status=ProductStatus.ACTIVE,
     )
     prompt_optimizer = Product(
         tenant_id="anytoolai",
         code="prompt-optimizer",
         platform_product_id="prompt-optimizer",
         name="Prompt Optimizer",
-        status="active",
+        status=ProductStatus.ACTIVE,
     )
     bundle = Bundle(
         tenant_id="anytoolai",
         code="core-tools-bundle",
         name="Core Tools Bundle",
-        status="active",
+        status=BundleStatus.ACTIVE,
     )
     db.add_all([document_summary, prompt_optimizer, bundle])
     db.flush()
@@ -412,13 +431,13 @@ def seed_catalog(db) -> dict[str, object]:
                 tenant_id="anytoolai",
                 bundle_id=bundle.id,
                 product_id=document_summary.id,
-                status="active",
+                status=BundleProductStatus.ACTIVE,
             ),
             BundleProduct(
                 tenant_id="anytoolai",
                 bundle_id=bundle.id,
                 product_id=prompt_optimizer.id,
-                status="active",
+                status=BundleProductStatus.ACTIVE,
             ),
         ]
     )
@@ -427,55 +446,55 @@ def seed_catalog(db) -> dict[str, object]:
         region="ru",
         code="document-summary-pro",
         name="Document Summary Pro",
-        scope_type="product",
+        scope_type=SubscriptionScopeType.PRODUCT,
         product_id=document_summary.id,
         price_amount_minor=99000,
         currency="RUB",
-        billing_period="month",
-        renewal_mode="manual",
+        billing_period=BillingPeriod.MONTH,
+        renewal_mode=SubscriptionRenewalMode.MANUAL,
         trial_days=7,
-        status="active",
+        status=PlanStatus.ACTIVE,
     )
     prompt_plan = Plan(
         tenant_id="anytoolai",
         region="ru",
         code="prompt-optimizer-pro",
         name="Prompt Optimizer Pro",
-        scope_type="product",
+        scope_type=SubscriptionScopeType.PRODUCT,
         product_id=prompt_optimizer.id,
         price_amount_minor=99000,
         currency="RUB",
-        billing_period="month",
-        renewal_mode="manual",
+        billing_period=BillingPeriod.MONTH,
+        renewal_mode=SubscriptionRenewalMode.MANUAL,
         trial_days=7,
-        status="active",
+        status=PlanStatus.ACTIVE,
     )
     bundle_plan = Plan(
         tenant_id="anytoolai",
         region="ru",
         code="core-tools-bundle-pro-ru",
         name="Core Tools Bundle Pro RU",
-        scope_type="bundle",
+        scope_type=SubscriptionScopeType.BUNDLE,
         bundle_id=bundle.id,
         price_amount_minor=198000,
         currency="RUB",
-        billing_period="month",
-        renewal_mode="manual",
+        billing_period=BillingPeriod.MONTH,
+        renewal_mode=SubscriptionRenewalMode.MANUAL,
         trial_days=7,
-        status="active",
+        status=PlanStatus.ACTIVE,
     )
     all_access_plan = Plan(
         tenant_id="anytoolai",
         region="ru",
         code="all-access-pro-ru",
         name="All Access Pro RU",
-        scope_type="all_access",
+        scope_type=SubscriptionScopeType.ALL_ACCESS,
         price_amount_minor=198000,
         currency="RUB",
-        billing_period="month",
-        renewal_mode="manual",
+        billing_period=BillingPeriod.MONTH,
+        renewal_mode=SubscriptionRenewalMode.MANUAL,
         trial_days=7,
-        status="active",
+        status=PlanStatus.ACTIVE,
         metadata_={"included_product_codes": ["document-summary", "prompt-optimizer"]},
     )
     db.add_all([document_plan, prompt_plan, bundle_plan, all_access_plan])
@@ -517,7 +536,7 @@ def add_active_entitlement_for_plan(db, *, user: User, plan: Plan) -> Entitlemen
         scope_type=plan.scope_type,
         product_id=plan.product_id,
         bundle_id=plan.bundle_id,
-        status="active",
+        status=SubscriptionStatus.ACTIVE,
         renewal_mode=plan.renewal_mode,
         current_period_start=now - timedelta(days=1),
         current_period_end=now + timedelta(days=30),
@@ -533,10 +552,10 @@ def add_active_entitlement_for_plan(db, *, user: User, plan: Plan) -> Entitlemen
         scope_type=plan.scope_type,
         product_id=plan.product_id,
         bundle_id=plan.bundle_id,
-        status="active",
+        status=EntitlementStatus.ACTIVE,
         valid_from=now - timedelta(days=1),
         valid_until=now + timedelta(days=30),
-        source="trial",
+        source=EntitlementSource.TRIAL,
     )
     db.add(entitlement)
     return entitlement
@@ -601,14 +620,14 @@ def test_catalog_products_rejects_ambiguous_product_offers() -> None:
                 region="ru",
                 code="document-summary-premium",
                 name="Document Summary Premium",
-                scope_type="product",
+                scope_type=SubscriptionScopeType.PRODUCT,
                 product_id=document_summary.id,
                 price_amount_minor=149000,
                 currency="RUB",
-                billing_period="month",
-                renewal_mode="manual",
+                billing_period=BillingPeriod.MONTH,
+                renewal_mode=SubscriptionRenewalMode.MANUAL,
                 trial_days=7,
-                status=PlanStatus.ACTIVE.value,
+                status=PlanStatus.ACTIVE,
                 valid_from=datetime.now(timezone.utc) - timedelta(days=1),
             )
         )
@@ -626,29 +645,29 @@ def test_catalog_products_rejects_ambiguous_product_offers() -> None:
 def test_catalog_products_excludes_ineligible_offers() -> None:
     now = datetime.now(timezone.utc)
     with SessionLocal() as db:
-        db.query(Product).filter(Product.code == "document-summary").one().status = ProductStatus.INACTIVE.value
-        db.query(Plan).filter(Plan.code == "prompt-optimizer-pro").one().status = PlanStatus.INACTIVE.value
+        db.query(Product).filter(Product.code == "document-summary").one().status = ProductStatus.INACTIVE
+        db.query(Plan).filter(Plan.code == "prompt-optimizer-pro").one().status = PlanStatus.INACTIVE
 
         future_product = Product(
             tenant_id="anytoolai",
             code="future-product",
             platform_product_id="future-product",
             name="Future Product",
-            status=ProductStatus.ACTIVE.value,
+            status=ProductStatus.ACTIVE,
         )
         expired_product = Product(
             tenant_id="anytoolai",
             code="expired-product",
             platform_product_id="expired-product",
             name="Expired Product",
-            status=ProductStatus.ACTIVE.value,
+            status=ProductStatus.ACTIVE,
         )
         no_plan_product = Product(
             tenant_id="anytoolai",
             code="no-plan-product",
             platform_product_id="no-plan-product",
             name="No Plan Product",
-            status=ProductStatus.ACTIVE.value,
+            status=ProductStatus.ACTIVE,
         )
         db.add_all([future_product, expired_product, no_plan_product])
         db.flush()
@@ -659,14 +678,14 @@ def test_catalog_products_excludes_ineligible_offers() -> None:
                     region="ru",
                     code="future-product-pro",
                     name="Future Product Pro",
-                    scope_type="product",
+                    scope_type=SubscriptionScopeType.PRODUCT,
                     product_id=future_product.id,
                     price_amount_minor=100,
                     currency="RUB",
-                    billing_period="month",
-                    renewal_mode="manual",
+                    billing_period=BillingPeriod.MONTH,
+                    renewal_mode=SubscriptionRenewalMode.MANUAL,
                     trial_days=0,
-                    status=PlanStatus.ACTIVE.value,
+                    status=PlanStatus.ACTIVE,
                     valid_from=now + timedelta(days=1),
                 ),
                 Plan(
@@ -674,14 +693,14 @@ def test_catalog_products_excludes_ineligible_offers() -> None:
                     region="ru",
                     code="expired-product-pro",
                     name="Expired Product Pro",
-                    scope_type="product",
+                    scope_type=SubscriptionScopeType.PRODUCT,
                     product_id=expired_product.id,
                     price_amount_minor=100,
                     currency="RUB",
-                    billing_period="month",
-                    renewal_mode="manual",
+                    billing_period=BillingPeriod.MONTH,
+                    renewal_mode=SubscriptionRenewalMode.MANUAL,
                     trial_days=0,
-                    status=PlanStatus.ACTIVE.value,
+                    status=PlanStatus.ACTIVE,
                     valid_from=now - timedelta(days=2),
                     valid_to=now - timedelta(days=1),
                 ),
@@ -870,7 +889,7 @@ def test_register_session_and_checkout_intent_flow() -> None:
     assert user.email_normalized == "user@example.com"
     assert order.user_id == user.id
     assert order.plan_id is not None
-    assert order.status == "pending_payment"
+    assert order.status == OrderStatus.PENDING_PAYMENT
     assert order.provider_invoice_id == invoice_id
     assert item.product_code_snapshot == "document-summary"
 
@@ -912,14 +931,14 @@ def test_checkout_rejects_unknown_or_foreign_plan_id() -> None:
             region="ru",
             code="foreign-plan",
             name="Foreign Plan",
-            scope_type="product",
+            scope_type=SubscriptionScopeType.PRODUCT,
             product_id=product.id,
             price_amount_minor=99000,
             currency="RUB",
-            billing_period="month",
-            renewal_mode="manual",
+            billing_period=BillingPeriod.MONTH,
+            renewal_mode=SubscriptionRenewalMode.MANUAL,
             trial_days=0,
-            status="active",
+            status=PlanStatus.ACTIVE,
             valid_from=datetime.now(timezone.utc) - timedelta(minutes=1),
         )
         db.add(foreign_plan)
@@ -950,14 +969,14 @@ def test_session_product_state_uses_user_tenant_product_when_codes_overlap() -> 
             code="shared-product",
             platform_product_id="tenant-b-shared-product",
             name="Tenant B Shared Product",
-            status="active",
+            status=ProductStatus.ACTIVE,
         )
         tenant_a_product = Product(
             tenant_id="anytoolai",
             code="shared-product",
             platform_product_id="tenant-a-shared-product",
             name="Tenant A Shared Product",
-            status="active",
+            status=ProductStatus.ACTIVE,
         )
         db.add_all([tenant_b_product, tenant_a_product])
         db.flush()
@@ -966,14 +985,14 @@ def test_session_product_state_uses_user_tenant_product_when_codes_overlap() -> 
             region="ru",
             code="shared-product-pro",
             name="Shared Product Pro",
-            scope_type="product",
+            scope_type=SubscriptionScopeType.PRODUCT,
             product_id=tenant_a_product.id,
             price_amount_minor=99000,
             currency="RUB",
-            billing_period="month",
-            renewal_mode="manual",
+            billing_period=BillingPeriod.MONTH,
+            renewal_mode=SubscriptionRenewalMode.MANUAL,
             trial_days=7,
-            status="active",
+            status=PlanStatus.ACTIVE,
         )
         db.add(tenant_a_plan)
         db.flush()
@@ -1001,13 +1020,13 @@ def test_session_product_state_uses_user_tenant_bundle_when_codes_overlap() -> N
             tenant_id="tenant-b",
             code="shared-bundle",
             name="Tenant B Shared Bundle",
-            status="active",
+            status=BundleStatus.ACTIVE,
         )
         tenant_a_bundle = Bundle(
             tenant_id="anytoolai",
             code="shared-bundle",
             name="Tenant A Shared Bundle",
-            status="active",
+            status=BundleStatus.ACTIVE,
         )
         db.add_all([tenant_b_bundle, tenant_a_bundle])
         db.flush()
@@ -1016,14 +1035,14 @@ def test_session_product_state_uses_user_tenant_bundle_when_codes_overlap() -> N
             region="ru",
             code="shared-bundle-pro",
             name="Shared Bundle Pro",
-            scope_type="bundle",
+            scope_type=SubscriptionScopeType.BUNDLE,
             bundle_id=tenant_a_bundle.id,
             price_amount_minor=198000,
             currency="RUB",
-            billing_period="month",
-            renewal_mode="manual",
+            billing_period=BillingPeriod.MONTH,
+            renewal_mode=SubscriptionRenewalMode.MANUAL,
             trial_days=7,
-            status="active",
+            status=PlanStatus.ACTIVE,
         )
         db.add(tenant_a_plan)
         db.flush()
@@ -1113,7 +1132,7 @@ def test_session_wrong_tenant_order_does_not_make_product_state_pending() -> Non
             code="document-summary",
             platform_product_id="tenant-b-document-summary",
             name="Tenant B Document Summary",
-            status="active",
+            status=ProductStatus.ACTIVE,
         )
         provider_account = PaymentProviderAccount(
             tenant_id="tenant-b",
@@ -1132,14 +1151,14 @@ def test_session_wrong_tenant_order_does_not_make_product_state_pending() -> Non
             region="ru",
             code="tenant-b-document-summary-pro",
             name="Tenant B Document Summary Pro",
-            scope_type="product",
+            scope_type=SubscriptionScopeType.PRODUCT,
             product_id=tenant_b_product.id,
             price_amount_minor=99000,
             currency="RUB",
-            billing_period="month",
-            renewal_mode="manual",
+            billing_period=BillingPeriod.MONTH,
+            renewal_mode=SubscriptionRenewalMode.MANUAL,
             trial_days=7,
-            status="active",
+            status=PlanStatus.ACTIVE,
         )
         db.add(tenant_b_plan)
         db.flush()
@@ -1149,7 +1168,7 @@ def test_session_wrong_tenant_order_does_not_make_product_state_pending() -> Non
             region="ru",
             order_number="RU-WRONG-TENANT-ORDER",
             user_id=user.id,
-            status="pending_payment",
+            status=OrderStatus.PENDING_PAYMENT,
             amount_minor=99000,
             currency="RUB",
             provider=provider_account.provider,
@@ -1162,7 +1181,7 @@ def test_session_wrong_tenant_order_does_not_make_product_state_pending() -> Non
         db.add(
             OrderItem(
                 order_id=order.id,
-                item_type="product_plan",
+                item_type=OrderItemType.PRODUCT_PLAN,
                 product_id=tenant_b_product.id,
                 product_code_snapshot="document-summary",
                 title_snapshot="Tenant B Document Summary Pro",
@@ -1273,7 +1292,7 @@ def test_checkout_rejects_automatic_renewal_for_manual_only_plan() -> None:
 def test_automatic_checkout_without_acceptance_returns_document_flow() -> None:
     with SessionLocal() as db:
         plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
-        plan.renewal_mode = "automatic"
+        plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC
         legal_entity = create_legal_entity(db)
         document = create_document_version(
             db,
@@ -1325,7 +1344,7 @@ def test_automatic_checkout_without_acceptance_returns_document_flow() -> None:
 def test_automatic_checkout_requires_exact_acceptance_id_after_document_acceptance() -> None:
     with SessionLocal() as db:
         plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
-        plan.renewal_mode = "automatic"
+        plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC
         legal_entity = create_legal_entity(db)
         document = create_document_version(
             db,
@@ -1370,7 +1389,7 @@ def test_automatic_checkout_requires_exact_acceptance_id_after_document_acceptan
 def test_checkout_persists_exact_recurring_consent_reference() -> None:
     with SessionLocal() as db:
         plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
-        plan.renewal_mode = "automatic"
+        plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC
         db.commit()
         legal_entity = create_legal_entity(db)
         document = create_document_version(
@@ -1453,7 +1472,7 @@ def test_automatic_checkout_rejects_recurring_consent_for_wrong_plan_id() -> Non
         plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
         other_plan = db.query(Plan).filter(Plan.code == "prompt-optimizer-pro").one()
         other_plan_id = str(other_plan.id)
-        plan.renewal_mode = "automatic"
+        plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC
         legal_entity = create_legal_entity(db)
         document = create_document_version(
             db,
@@ -1534,7 +1553,7 @@ def test_recurring_consent_metadata_cannot_spoof_typed_plan_id() -> None:
     with SessionLocal() as db:
         plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
         plan_id = str(plan.id)
-        plan.renewal_mode = "automatic"
+        plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC
         other_plan = db.query(Plan).filter(Plan.code == "prompt-optimizer-pro").one()
         other_plan_id = str(other_plan.id)
         legal_entity = create_legal_entity(db)
@@ -1580,14 +1599,14 @@ def test_versioned_plans_require_plan_bound_recurring_consent() -> None:
             region="ru",
             code="versioned-consent-pro",
             name="Versioned Consent A",
-            scope_type="product",
+            scope_type=SubscriptionScopeType.PRODUCT,
             product_id=product.id,
             price_amount_minor=99000,
             currency="RUB",
-            billing_period="month",
-            renewal_mode="automatic",
+            billing_period=BillingPeriod.MONTH,
+            renewal_mode=SubscriptionRenewalMode.AUTOMATIC,
             trial_days=7,
-            status=PlanStatus.ACTIVE.value,
+            status=PlanStatus.ACTIVE,
             valid_from=now - timedelta(days=2),
             valid_to=now + timedelta(days=1),
             metadata_={},
@@ -1597,14 +1616,14 @@ def test_versioned_plans_require_plan_bound_recurring_consent() -> None:
             region="ru",
             code="versioned-consent-pro",
             name="Versioned Consent B",
-            scope_type="product",
+            scope_type=SubscriptionScopeType.PRODUCT,
             product_id=product.id,
             price_amount_minor=109000,
             currency="RUB",
-            billing_period="month",
-            renewal_mode="automatic",
+            billing_period=BillingPeriod.MONTH,
+            renewal_mode=SubscriptionRenewalMode.AUTOMATIC,
             trial_days=0,
-            status=PlanStatus.INACTIVE.value,
+            status=PlanStatus.INACTIVE,
             valid_from=now - timedelta(days=1),
             valid_to=None,
             metadata_={},
@@ -1637,9 +1656,9 @@ def test_versioned_plans_require_plan_bound_recurring_consent() -> None:
         plan_b = db.get(Plan, plan_b_id)
         assert plan_a is not None
         assert plan_b is not None
-        plan_a.status = PlanStatus.INACTIVE.value
+        plan_a.status = PlanStatus.INACTIVE
         db.commit()
-        plan_b.status = PlanStatus.ACTIVE.value
+        plan_b.status = PlanStatus.ACTIVE
         db.commit()
 
     checkout_payload = {
@@ -1684,7 +1703,7 @@ def test_versioned_plans_require_plan_bound_recurring_consent() -> None:
 def test_automatic_checkout_paid_subscription_remains_manual_until_provider_attach() -> None:
     with SessionLocal() as db:
         plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
-        plan.renewal_mode = "automatic"
+        plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC
         legal_entity = create_legal_entity(db)
         document = create_document_version(
             db,
@@ -1751,7 +1770,7 @@ def test_automatic_checkout_paid_subscription_remains_manual_until_provider_atta
 def test_checkout_rejects_recurring_acceptance_from_another_user() -> None:
     with SessionLocal() as db:
         plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
-        plan.renewal_mode = "automatic"
+        plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC
         legal_entity = create_legal_entity(db)
         document = create_document_version(
             db,
@@ -1813,7 +1832,7 @@ def test_checkout_rejects_recurring_acceptance_from_another_user() -> None:
 def test_checkout_rejects_recurring_acceptance_from_another_tenant_or_region() -> None:
     with SessionLocal() as db:
         plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
-        plan.renewal_mode = "automatic"
+        plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC
         legal_entity = create_legal_entity(db)
         document = create_document_version(
             db,
@@ -1836,14 +1855,14 @@ def test_checkout_rejects_recurring_acceptance_from_another_tenant_or_region() -
             region="eu",
             code="document-summary-pro",
             name="Document Summary Pro EU",
-            scope_type="product",
+            scope_type=SubscriptionScopeType.PRODUCT,
             product_id=product.id,
             price_amount_minor=99000,
             currency="EUR",
-            billing_period="month",
-            renewal_mode="automatic",
+            billing_period=BillingPeriod.MONTH,
+            renewal_mode=SubscriptionRenewalMode.AUTOMATIC,
             trial_days=7,
-            status="active",
+            status=PlanStatus.ACTIVE,
             valid_from=datetime.now(timezone.utc) - timedelta(minutes=1),
         )
         db.add(foreign_plan)
@@ -1903,7 +1922,7 @@ def test_checkout_rejects_recurring_acceptance_from_another_tenant_or_region() -
 def test_checkout_rejects_acceptance_with_wrong_kind() -> None:
     with SessionLocal() as db:
         plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
-        plan.renewal_mode = "automatic"
+        plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC
         legal_entity = create_legal_entity(db)
         recurring_document = create_document_version(
             db,
@@ -1961,7 +1980,7 @@ def test_checkout_rejects_acceptance_with_wrong_kind() -> None:
 def test_checkout_rejects_recurring_acceptance_for_another_entrypoint() -> None:
     with SessionLocal() as db:
         plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
-        plan.renewal_mode = "automatic"
+        plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC
         legal_entity = create_legal_entity(db)
         document = create_document_version(
             db,
@@ -2007,7 +2026,7 @@ def test_checkout_rejects_recurring_acceptance_for_another_entrypoint() -> None:
 def test_checkout_rejects_recurring_acceptance_from_the_future() -> None:
     with SessionLocal() as db:
         plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
-        plan.renewal_mode = "automatic"
+        plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC
         legal_entity = create_legal_entity(db)
         document = create_document_version(
             db,
@@ -2063,7 +2082,7 @@ def test_checkout_rejects_recurring_acceptance_from_the_future() -> None:
 def test_checkout_requires_new_recurring_acceptance_when_document_version_changes() -> None:
     with SessionLocal() as db:
         plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
-        plan.renewal_mode = "automatic"
+        plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC
         legal_entity = create_legal_entity(db)
         first_document = create_document_version(
             db,
@@ -2297,7 +2316,7 @@ def test_bundle_checkout_snapshots_one_sellable_catalog_plan() -> None:
 
     assert order.plan_id == bundle_plan_id
     assert order.amount_minor == 198000
-    assert item.item_type == "bundle_plan"
+    assert item.item_type == OrderItemType.BUNDLE_PLAN
     assert item.plan_id == bundle_plan_id
     assert item.bundle_id == bundle_id
     assert item.product_id is None
@@ -2346,7 +2365,7 @@ def test_all_access_checkout_snapshots_one_sellable_catalog_plan() -> None:
 
     assert order.plan_id == all_access_plan_id
     assert order.amount_minor == 198000
-    assert item.item_type == "all_access_plan"
+    assert item.item_type == OrderItemType.ALL_ACCESS_PLAN
     assert item.plan_id == all_access_plan_id
     assert item.bundle_id is None
     assert item.product_id is None
@@ -2359,7 +2378,7 @@ def test_all_access_checkout_snapshots_one_sellable_catalog_plan() -> None:
 def test_checkout_rejects_inactive_catalog_plan_without_legacy_fallback() -> None:
     with SessionLocal() as db:
         plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
-        plan.status = "inactive"
+        plan.status = PlanStatus.INACTIVE
         db.add(plan)
         db.commit()
 
@@ -2431,7 +2450,7 @@ def test_checkout_rejects_catalog_plan_outside_validity_window() -> None:
 def test_checkout_rejects_active_plan_for_inactive_product() -> None:
     with SessionLocal() as db:
         product = db.query(Product).filter(Product.code == "document-summary").one()
-        product.status = "inactive"
+        product.status = ProductStatus.INACTIVE
         db.add(product)
         db.commit()
 
@@ -2466,7 +2485,7 @@ def test_checkout_rejects_active_plan_for_inactive_product() -> None:
 def test_checkout_rejects_active_plan_for_inactive_bundle() -> None:
     with SessionLocal() as db:
         bundle = db.query(Bundle).filter(Bundle.code == "core-tools-bundle").one()
-        bundle.status = "inactive"
+        bundle.status = BundleStatus.INACTIVE
         db.add(bundle)
         db.commit()
 
@@ -2539,9 +2558,9 @@ def test_pay_webhook_amount_mismatch_is_failed_without_order_update() -> None:
         event = db.query(PaymentWebhookEvent).one()
         order = db.query(Order).one()
 
-    assert event.status == "failed"
+    assert event.status is PaymentWebhookEventStatus.FAILED
     assert event.error_code == "amount_mismatch"
-    assert order.status == "pending_payment"
+    assert order.status is OrderStatus.PENDING_PAYMENT
     assert db.query(Payment).count() == 0
 
 
@@ -2611,15 +2630,15 @@ def test_signed_check_webhook_validates_order_before_acknowledging() -> None:
             order = db.query(Order).one()
 
         assert [event.status for event in events] == [
-            "processed",
-            "failed",
-            "failed",
-            "failed",
+            PaymentWebhookEventStatus.PROCESSED,
+            PaymentWebhookEventStatus.FAILED,
+            PaymentWebhookEventStatus.FAILED,
+            PaymentWebhookEventStatus.FAILED,
         ]
         assert events[1].error_code == "amount_mismatch"
         assert events[2].error_code == "order_not_found"
         assert events[3].error_code == "missing_transaction_id"
-        assert order.status == "pending_payment"
+        assert order.status is OrderStatus.PENDING_PAYMENT
     finally:
         allow_unsigned_cloudpayments_webhooks_for_test()
         object.__setattr__(settings, "cloudpayments_enabled", False)
@@ -2745,12 +2764,12 @@ def test_successful_pay_webhook_is_saved_and_activates_access() -> None:
     assert event.endpoint == "pay"
     assert event.invoice_id == invoice_id
     assert event.transaction_id == "tx-success-1"
-    assert event.status == "processed"
+    assert event.status is PaymentWebhookEventStatus.PROCESSED
     assert event.order_id == order.id
     assert event.payment_id == payment.id
-    assert order.status == "paid"
+    assert order.status is OrderStatus.PAID
     assert order.provider_invoice_id == invoice_id
-    assert payment.status == "succeeded"
+    assert payment.status is PaymentStatus.SUCCEEDED
     assert payment.provider_payment_id == "tx-success-1"
     assert payment.amount_minor == 99000
     assert "CardFirstSix" not in payment.raw_summary
@@ -2786,9 +2805,9 @@ def test_charge_pay_rejects_missing_declined_and_unknown_statuses() -> None:
         events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
         payment_count = db.query(Payment).count()
 
-    assert [order.status for order in orders] == ["pending_payment"] * len(scenarios)
+    assert [order.status for order in orders] == [OrderStatus.PENDING_PAYMENT] * len(scenarios)
     assert payment_count == 0
-    assert [event.status for event in events] == ["failed"] * len(scenarios)
+    assert [event.status for event in events] == [PaymentWebhookEventStatus.FAILED] * len(scenarios)
     assert {event.error_code for event in events} == {"payment_schema_mismatch"}
 
 
@@ -2817,11 +2836,11 @@ def test_auth_mode_completed_pay_marks_order_paid() -> None:
         payment = db.query(Payment).one()
         event = db.query(PaymentWebhookEvent).one()
 
-    assert order.status == "paid"
+    assert order.status is OrderStatus.PAID
     assert order.paid_at
-    assert payment.status == "succeeded"
+    assert payment.status is PaymentStatus.SUCCEEDED
     assert payment.captured_at
-    assert event.status == "processed"
+    assert event.status is PaymentWebhookEventStatus.PROCESSED
     assert event.event_type == "payment.succeeded"
 
 
@@ -2852,9 +2871,9 @@ def test_authorized_pay_requires_confirm_or_cancel_to_reach_terminal_state() -> 
             db.query(PaymentWebhookEvent).filter(PaymentWebhookEvent.transaction_id == "tx-dms-confirm-1").one()
         )
 
-    assert authorized_order.status == "pending_payment"
+    assert authorized_order.status is OrderStatus.PENDING_PAYMENT
     assert authorized_order.paid_at is None
-    assert authorized_payment.status == "authorized"
+    assert authorized_payment.status is PaymentStatus.AUTHORIZED
     assert authorized_payment.authorized_at
     assert authorized_payment.captured_at is None
     assert authorized_event.event_type == "payment.authorized"
@@ -2883,9 +2902,9 @@ def test_authorized_pay_requires_confirm_or_cancel_to_reach_terminal_state() -> 
             .one()
         )
 
-    assert confirmed_order.status == "paid"
+    assert confirmed_order.status is OrderStatus.PAID
     assert confirmed_order.paid_at
-    assert confirmed_payment.status == "succeeded"
+    assert confirmed_payment.status is PaymentStatus.SUCCEEDED
     assert confirmed_payment.captured_at
     assert confirmed_event.event_type == "payment.succeeded"
 
@@ -2969,12 +2988,12 @@ def test_check_webhook_validates_snapshotted_payment_schema() -> None:
         orders = db.query(Order).order_by(Order.created_at).all()
         events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
 
-    assert [order.status for order in orders] == ["pending_payment"] * len(scenarios)
+    assert [order.status for order in orders] == [OrderStatus.PENDING_PAYMENT] * len(scenarios)
     assert [event.status for event in events] == [
-        "failed",
-        "failed",
-        "failed",
-        "processed",
+        PaymentWebhookEventStatus.FAILED,
+        PaymentWebhookEventStatus.FAILED,
+        PaymentWebhookEventStatus.FAILED,
+        PaymentWebhookEventStatus.PROCESSED,
     ]
     assert [event.error_code for event in events] == [expected_error for _, _, expected_error in responses]
 
@@ -3027,16 +3046,16 @@ def test_late_confirm_captures_existing_authorized_payment_after_order_is_paid()
         payments = db.query(Payment).order_by(Payment.provider_payment_id).all()
         events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
 
-    assert order.status == "paid"
+    assert order.status is OrderStatus.PAID
     assert order.paid_at
     assert [(payment.provider_payment_id, payment.status) for payment in payments] == [
-        ("tx-second-auth-confirm-1", "succeeded"),
-        ("tx-second-auth-confirm-2", "succeeded"),
+        ("tx-second-auth-confirm-1", PaymentStatus.SUCCEEDED),
+        ("tx-second-auth-confirm-2", PaymentStatus.SUCCEEDED),
     ]
     assert all(payment.authorized_at for payment in payments)
     assert all(payment.captured_at for payment in payments)
     assert [event.endpoint for event in events] == ["pay", "pay", "confirm", "confirm"]
-    assert [event.status for event in events] == ["processed"] * 4
+    assert [event.status for event in events] == [PaymentWebhookEventStatus.PROCESSED] * 4
     assert [event.payment_id for event in events[2:]] == [payment.id for payment in payments]
 
 
@@ -3074,12 +3093,15 @@ def test_authorized_pay_can_be_canceled_with_provider_cancel_payload() -> None:
         payment = db.query(Payment).one()
         events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
 
-    assert order.status == "canceled"
+    assert order.status is OrderStatus.CANCELED
     assert order.canceled_at
     assert order.paid_at is None
-    assert payment.status == "canceled"
+    assert payment.status is PaymentStatus.CANCELED
     assert payment.currency == "RUB"
-    assert [event.status for event in events] == ["processed", "processed"]
+    assert [event.status for event in events] == [
+        PaymentWebhookEventStatus.PROCESSED,
+        PaymentWebhookEventStatus.PROCESSED,
+    ]
 
 
 def test_two_stage_notifications_are_rejected_for_charge_orders() -> None:
@@ -3109,9 +3131,12 @@ def test_two_stage_notifications_are_rejected_for_charge_orders() -> None:
         events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
         payment_count = db.query(Payment).count()
 
-    assert [order.status for order in orders] == ["pending_payment", "pending_payment"]
+    assert [order.status for order in orders] == [OrderStatus.PENDING_PAYMENT, OrderStatus.PENDING_PAYMENT]
     assert payment_count == 0
-    assert [event.status for event in events] == ["failed", "failed"]
+    assert [event.status for event in events] == [
+        PaymentWebhookEventStatus.FAILED,
+        PaymentWebhookEventStatus.FAILED,
+    ]
     assert {event.error_code for event in events} == {"payment_schema_mismatch"}
 
 
@@ -3156,13 +3181,13 @@ def test_legacy_orders_without_payment_mode_snapshot_default_to_charge_schema() 
         events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
         payment_count = db.query(Payment).count()
 
-    assert order.status == "pending_payment"
+    assert order.status is OrderStatus.PENDING_PAYMENT
     assert payment_count == 0
     assert [event.status for event in events] == [
-        "failed",
-        "failed",
-        "failed",
-        "failed",
+        PaymentWebhookEventStatus.FAILED,
+        PaymentWebhookEventStatus.FAILED,
+        PaymentWebhookEventStatus.FAILED,
+        PaymentWebhookEventStatus.FAILED,
     ]
     assert {event.error_code for event in events} == {"payment_schema_mismatch"}
 
@@ -3214,9 +3239,9 @@ def test_verified_late_pay_and_confirm_after_checkout_expiry_remain_authoritativ
                 order = db.query(Order).filter(Order.provider_invoice_id == invoice_id).one()
                 payment = db.query(Payment).filter(Payment.provider_payment_id == scenario["transaction_id"]).one()
 
-            assert order.status == "paid"
+            assert order.status is OrderStatus.PAID
             assert order.paid_at
-            assert payment.status == "succeeded"
+            assert payment.status is PaymentStatus.SUCCEEDED
     finally:
         allow_unsigned_cloudpayments_webhooks_for_test()
         object.__setattr__(settings, "cloudpayments_enabled", False)
@@ -3267,10 +3292,10 @@ def test_signed_pay_webhook_processes_valid_signature() -> None:
             event = db.query(PaymentWebhookEvent).one()
             payment = db.query(Payment).one()
 
-        assert event.status == "processed"
+        assert event.status is PaymentWebhookEventStatus.PROCESSED
         assert event.raw_payload["CardFirstSix"] == "[redacted]"
         assert event.raw_payload["Token"] == "[redacted]"  # noqa: S105
-        assert payment.status == "succeeded"
+        assert payment.status is PaymentStatus.SUCCEEDED
     finally:
         allow_unsigned_cloudpayments_webhooks_for_test()
         object.__setattr__(settings, "cloudpayments_enabled", False)
@@ -3319,8 +3344,8 @@ def test_fail_webhook_updates_payment_and_order_without_access_activation() -> N
         payment = db.query(Payment).one()
         entitlement_count = db.query(Entitlement).count()
 
-    assert order.status == "payment_failed"
-    assert payment.status == "failed"
+    assert order.status is OrderStatus.PAYMENT_FAILED
+    assert payment.status is PaymentStatus.FAILED
     assert payment.failure_code == "5"
     assert payment.failure_message_safe == "Insufficient funds"
     assert entitlement_count == 0
@@ -3338,7 +3363,7 @@ def test_payment_status_projects_product_state_from_final_and_pending_orders() -
 
     with SessionLocal() as db:
         pending_order = db.query(Order).filter(Order.provider_invoice_id == pending_invoice_id).one()
-        pending_order.status = "created"
+        pending_order.status = OrderStatus.CREATED
         db.commit()
 
     created_response = client.get(f"/api/auth/payment-status?invoice_id={pending_invoice_id}&email={pending_email}")
@@ -3478,9 +3503,12 @@ def test_signed_check_after_failed_attempt_allows_retry() -> None:
             order = db.query(Order).one()
             events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
 
-        assert order.status == "payment_failed"
+        assert order.status is OrderStatus.PAYMENT_FAILED
         assert [event.endpoint for event in events] == ["fail", "check"]
-        assert [event.status for event in events] == ["processed", "processed"]
+        assert [event.status for event in events] == [
+            PaymentWebhookEventStatus.PROCESSED,
+            PaymentWebhookEventStatus.PROCESSED,
+        ]
         assert events[1].error_code is None
     finally:
         allow_unsigned_cloudpayments_webhooks_for_test()
@@ -3530,8 +3558,8 @@ def test_confirm_and_cancel_notifications_update_two_stage_payment_state() -> No
         confirmed_order = db.query(Order).one()
         confirmed_payment = db.query(Payment).one()
 
-    assert confirmed_order.status == "paid"
-    assert confirmed_payment.status == "succeeded"
+    assert confirmed_order.status is OrderStatus.PAID
+    assert confirmed_payment.status is PaymentStatus.SUCCEEDED
 
     register_cancel_response = client.post(
         "/api/auth/register",
@@ -3572,9 +3600,9 @@ def test_confirm_and_cancel_notifications_update_two_stage_payment_state() -> No
         canceled_order = db.query(Order).filter(Order.provider_invoice_id == cancel_invoice_id).one()
         canceled_payment = db.query(Payment).filter(Payment.provider_payment_id == "tx-cancel-1").one()
 
-    assert canceled_order.status == "canceled"
+    assert canceled_order.status is OrderStatus.CANCELED
     assert canceled_order.canceled_at
-    assert canceled_payment.status == "canceled"
+    assert canceled_payment.status is PaymentStatus.CANCELED
 
 
 def test_confirm_notification_accepts_missing_account_id() -> None:
@@ -3602,9 +3630,9 @@ def test_confirm_notification_accepts_missing_account_id() -> None:
         payment = db.query(Payment).one()
         event = db.query(PaymentWebhookEvent).one()
 
-    assert order.status == "paid"
-    assert payment.status == "succeeded"
-    assert event.status == "processed"
+    assert order.status is OrderStatus.PAID
+    assert payment.status is PaymentStatus.SUCCEEDED
+    assert event.status is PaymentWebhookEventStatus.PROCESSED
     assert event.error_code is None
 
 
@@ -3644,11 +3672,11 @@ def test_confirm_notification_rejects_partial_capture_amount() -> None:
         payment = db.query(Payment).one()
         confirm_event = db.query(PaymentWebhookEvent).filter(PaymentWebhookEvent.endpoint == "confirm").one()
 
-    assert order.status == "pending_payment"
-    assert payment.status == "authorized"
+    assert order.status is OrderStatus.PENDING_PAYMENT
+    assert payment.status is PaymentStatus.AUTHORIZED
     assert payment.amount_minor == 99000
     assert payment.captured_at is None
-    assert confirm_event.status == "failed"
+    assert confirm_event.status is PaymentWebhookEventStatus.FAILED
     assert confirm_event.amount_minor == 45000
     assert confirm_event.error_code == "amount_mismatch"
 
@@ -3689,11 +3717,11 @@ def test_confirm_notification_rejects_amount_above_authorization() -> None:
         payment = db.query(Payment).one()
         confirm_event = db.query(PaymentWebhookEvent).filter(PaymentWebhookEvent.endpoint == "confirm").one()
 
-    assert order.status == "pending_payment"
-    assert payment.status == "authorized"
+    assert order.status is OrderStatus.PENDING_PAYMENT
+    assert payment.status is PaymentStatus.AUTHORIZED
     assert payment.amount_minor == 99000
     assert payment.captured_at is None
-    assert confirm_event.status == "failed"
+    assert confirm_event.status is PaymentWebhookEventStatus.FAILED
     assert confirm_event.error_code == "amount_mismatch"
 
 
@@ -3719,10 +3747,10 @@ def test_cancel_webhook_accepts_provider_payload_without_currency_or_account() -
         payment = db.query(Payment).one()
         event = db.query(PaymentWebhookEvent).one()
 
-    assert order.status == "canceled"
-    assert payment.status == "canceled"
+    assert order.status is OrderStatus.CANCELED
+    assert payment.status is PaymentStatus.CANCELED
     assert payment.currency == "RUB"
-    assert event.status == "processed"
+    assert event.status is PaymentWebhookEventStatus.PROCESSED
 
 
 def test_state_changing_notifications_require_transaction_id() -> None:
@@ -3754,8 +3782,8 @@ def test_state_changing_notifications_require_transaction_id() -> None:
             event = db.query(PaymentWebhookEvent).filter(PaymentWebhookEvent.invoice_id == invoice_id).one()
             payment_count = db.query(Payment).filter(Payment.order_id == order.id).count()
 
-        assert order.status == "pending_payment"
-        assert event.status == "failed"
+        assert order.status is OrderStatus.PENDING_PAYMENT
+        assert event.status is PaymentWebhookEventStatus.FAILED
         assert event.error_code == "missing_transaction_id"
         assert payment_count == 0
 
@@ -3834,12 +3862,15 @@ def test_late_pay_or_confirm_does_not_reopen_canceled_order() -> None:
                 .all()
             )
 
-        assert order.status == "canceled"
+        assert order.status is OrderStatus.CANCELED
         assert order.paid_at is None
         assert order.canceled_at
-        assert payment.status == "canceled"
+        assert payment.status is PaymentStatus.CANCELED
         assert [event.endpoint for event in events] == ["cancel", scenario["endpoint"]]
-        assert [event.status for event in events] == ["processed", "ignored"]
+        assert [event.status for event in events] == [
+            PaymentWebhookEventStatus.PROCESSED,
+            PaymentWebhookEventStatus.IGNORED,
+        ]
         assert events[1].error_code == "order_already_canceled"
 
 
@@ -3896,10 +3927,10 @@ def test_late_fail_webhook_does_not_downgrade_paid_order() -> None:
         order = db.query(Order).one()
         payments = db.query(Payment).order_by(Payment.created_at).all()
 
-    assert order.status == "paid"
+    assert order.status is OrderStatus.PAID
     assert order.paid_at
     assert order.failed_at is None
-    assert [payment.status for payment in payments] == ["succeeded", "failed"]
+    assert [payment.status for payment in payments] == [PaymentStatus.SUCCEEDED, PaymentStatus.FAILED]
 
 
 def test_late_fail_webhook_does_not_downgrade_canceled_order() -> None:
@@ -3948,12 +3979,16 @@ def test_late_fail_webhook_does_not_downgrade_canceled_order() -> None:
         payment = db.query(Payment).one()
         events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
 
-    assert order.status == "canceled"
+    assert order.status is OrderStatus.CANCELED
     assert order.canceled_at
     assert order.failed_at is None
-    assert payment.status == "canceled"
+    assert payment.status is PaymentStatus.CANCELED
     assert payment.failed_at is None
-    assert [event.status for event in events] == ["processed", "processed", "processed"]
+    assert [event.status for event in events] == [
+        PaymentWebhookEventStatus.PROCESSED,
+        PaymentWebhookEventStatus.PROCESSED,
+        PaymentWebhookEventStatus.PROCESSED,
+    ]
 
 
 def test_late_distinct_pay_is_persisted_without_reopening_paid_order() -> None:
@@ -4002,14 +4037,18 @@ def test_late_distinct_pay_is_persisted_without_reopening_paid_order() -> None:
         payments = db.query(Payment).order_by(Payment.created_at).all()
         events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
 
-    assert order.status == "paid"
+    assert order.status is OrderStatus.PAID
     assert order.paid_at
     assert [(payment.provider_payment_id, payment.status) for payment in payments] == [
-        ("tx-first-success-1", "succeeded"),
-        ("tx-second-success-1", "succeeded"),
+        ("tx-first-success-1", PaymentStatus.SUCCEEDED),
+        ("tx-second-success-1", PaymentStatus.SUCCEEDED),
     ]
     assert [event.endpoint for event in events] == ["pay", "check", "pay"]
-    assert [event.status for event in events] == ["processed", "failed", "processed"]
+    assert [event.status for event in events] == [
+        PaymentWebhookEventStatus.PROCESSED,
+        PaymentWebhookEventStatus.FAILED,
+        PaymentWebhookEventStatus.PROCESSED,
+    ]
     assert events[1].error_code == "order_not_payable"
     assert events[2].payment_id == payments[1].id
     assert events[2].error_code is None
@@ -4068,13 +4107,17 @@ def test_payment_status_surfaces_late_charge_on_canceled_order_after_later_fail(
         payments = db.query(Payment).order_by(Payment.provider_payment_id).all()
         events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
 
-    assert order.status == "canceled"
+    assert order.status is OrderStatus.CANCELED
     assert [(payment.provider_payment_id, payment.status) for payment in payments] == [
-        ("tx-canceled-attempt", "canceled"),
-        ("tx-late-distinct-charge", "succeeded"),
-        ("tx-late-distinct-fail", "failed"),
+        ("tx-canceled-attempt", PaymentStatus.CANCELED),
+        ("tx-late-distinct-charge", PaymentStatus.SUCCEEDED),
+        ("tx-late-distinct-fail", PaymentStatus.FAILED),
     ]
-    assert [event.status for event in events] == ["processed", "processed", "processed"]
+    assert [event.status for event in events] == [
+        PaymentWebhookEventStatus.PROCESSED,
+        PaymentWebhookEventStatus.PROCESSED,
+        PaymentWebhookEventStatus.PROCESSED,
+    ]
     assert [event.error_code for event in events] == [
         None,
         None,
@@ -4126,10 +4169,10 @@ def test_refund_one_of_multiple_successful_payments_keeps_order_partially_refund
         payments = db.query(Payment).order_by(Payment.provider_payment_id).all()
         refund = db.query(Refund).one()
 
-    assert order.status == "partially_refunded"
+    assert order.status is OrderStatus.PARTIALLY_REFUNDED
     assert [(payment.provider_payment_id, payment.status) for payment in payments] == [
-        ("tx-multi-success-refund-1", "refunded"),
-        ("tx-multi-success-refund-2", "succeeded"),
+        ("tx-multi-success-refund-1", PaymentStatus.REFUNDED),
+        ("tx-multi-success-refund-2", PaymentStatus.SUCCEEDED),
     ]
     assert [payment.refunded_amount_minor for payment in payments] == [99000, 0]
     assert refund.provider_refund_id == "refund-multi-success-1"
@@ -4178,7 +4221,10 @@ def test_duplicate_success_webhook_does_not_duplicate_payment_or_order_updates()
 
     assert order_count == 1
     assert len(payments) == 1
-    assert [event.status for event in events] == ["processed", "duplicate"]
+    assert [event.status for event in events] == [
+        PaymentWebhookEventStatus.PROCESSED,
+        PaymentWebhookEventStatus.DUPLICATE,
+    ]
     assert events[1].payment_id == payments[0].id
 
 
@@ -4244,10 +4290,10 @@ def test_refund_webhook_records_refund_skeleton_and_updates_payment() -> None:
         refund = db.query(Refund).one()
         events = db.query(PaymentWebhookEvent).all()
 
-    assert order.status == "refunded"
-    assert payment.status == "refunded"
+    assert order.status is OrderStatus.REFUNDED
+    assert payment.status is PaymentStatus.REFUNDED
     assert payment.refunded_amount_minor == 99000
-    assert refund.status == "succeeded"
+    assert refund.status is RefundStatus.SUCCEEDED
     assert refund.provider_refund_id == "refund-1"
     assert len(events) == 2
 
@@ -4284,11 +4330,11 @@ def test_refund_webhook_accepts_provider_payload_without_currency_or_refund_id()
         refund = db.query(Refund).one()
         refund_event = db.query(PaymentWebhookEvent).filter(PaymentWebhookEvent.endpoint == "refund").one()
 
-    assert payment.status == "partially_refunded"
+    assert payment.status is PaymentStatus.PARTIALLY_REFUNDED
     assert payment.refunded_amount_minor == 40000
     assert refund.provider_refund_id == "tx-provider-refund-id"
     assert refund.currency == "RUB"
-    assert refund_event.status == "processed"
+    assert refund_event.status is PaymentWebhookEventStatus.PROCESSED
     assert refund_event.transaction_id == "tx-provider-refund-original"
 
 
@@ -4327,11 +4373,11 @@ def test_refund_webhook_rejects_failed_payment_without_refund_mutation() -> None
         events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
         refund_count = db.query(Refund).count()
 
-    assert order.status == "payment_failed"
-    assert payment.status == "failed"
+    assert order.status is OrderStatus.PAYMENT_FAILED
+    assert payment.status is PaymentStatus.FAILED
     assert payment.refunded_amount_minor == 0
     assert refund_count == 0
-    assert [event.status for event in events] == ["processed", "failed"]
+    assert [event.status for event in events] == [PaymentWebhookEventStatus.PROCESSED, PaymentWebhookEventStatus.FAILED]
     assert events[-1].payment_id == payment.id
     assert events[-1].error_code == "payment_not_refundable"
 
@@ -4413,14 +4459,18 @@ def test_distinct_refund_ids_for_same_transaction_are_not_deduplicated() -> None
         refunds = db.query(Refund).order_by(Refund.provider_refund_id).all()
         events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
 
-    assert order.status == "refunded"
-    assert payment.status == "refunded"
+    assert order.status is OrderStatus.REFUNDED
+    assert payment.status is PaymentStatus.REFUNDED
     assert payment.refunded_amount_minor == 99000
     assert [refund.provider_refund_id for refund in refunds] == [
         "refund-part-1",
         "refund-part-2",
     ]
-    assert [event.status for event in events] == ["processed", "processed", "processed"]
+    assert [event.status for event in events] == [
+        PaymentWebhookEventStatus.PROCESSED,
+        PaymentWebhookEventStatus.PROCESSED,
+        PaymentWebhookEventStatus.PROCESSED,
+    ]
 
 
 def test_duplicate_refund_id_with_distinct_event_id_does_not_double_count_refund() -> None:
@@ -4481,10 +4531,14 @@ def test_duplicate_refund_id_with_distinct_event_id_does_not_double_count_refund
         refunds = db.query(Refund).all()
         events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
 
-    assert payment.status == "partially_refunded"
+    assert payment.status is PaymentStatus.PARTIALLY_REFUNDED
     assert payment.refunded_amount_minor == 40000
     assert len(refunds) == 1
-    assert [event.status for event in events] == ["processed", "processed", "processed"]
+    assert [event.status for event in events] == [
+        PaymentWebhookEventStatus.PROCESSED,
+        PaymentWebhookEventStatus.PROCESSED,
+        PaymentWebhookEventStatus.PROCESSED,
+    ]
 
 
 def test_partial_refunds_cannot_exceed_original_payment_amount() -> None:
@@ -4530,10 +4584,14 @@ def test_partial_refunds_cannot_exceed_original_payment_amount() -> None:
         refunds = db.query(Refund).all()
         events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
 
-    assert payment.status == "partially_refunded"
+    assert payment.status is PaymentStatus.PARTIALLY_REFUNDED
     assert payment.refunded_amount_minor == 70000
     assert len(refunds) == 1
-    assert [event.status for event in events] == ["processed", "processed", "failed"]
+    assert [event.status for event in events] == [
+        PaymentWebhookEventStatus.PROCESSED,
+        PaymentWebhookEventStatus.PROCESSED,
+        PaymentWebhookEventStatus.FAILED,
+    ]
     assert events[-1].error_code == "refund_amount_exceeds_payment"
 
 
@@ -4568,7 +4626,7 @@ def test_recurrent_webhook_is_persisted_for_downstream_subscription_handling() -
     assert event.endpoint == "recurrent"
     assert event.event_type == "subscription.updated"
     assert event.provider_event_id == "sub_1"
-    assert event.status == "processed"
+    assert event.status is PaymentWebhookEventStatus.PROCESSED
     assert event.raw_payload["CardLastFour"] == "[redacted]"
     assert event.raw_payload["Token"] == "[redacted]"  # noqa: S105
     assert event.raw_payload["_normalized"] == {
@@ -4606,7 +4664,7 @@ def test_recurrent_webhook_requires_an_enabled_provider_account() -> None:
     with SessionLocal() as db:
         event = db.query(PaymentWebhookEvent).one()
 
-    assert event.status == "failed"
+    assert event.status is PaymentWebhookEventStatus.FAILED
     assert event.provider_account_id is None
     assert event.error_code == "provider_account_not_found"
 
@@ -4895,7 +4953,7 @@ def test_recurrent_webhook_validates_required_provider_fields() -> None:
     with SessionLocal() as db:
         events = db.query(PaymentWebhookEvent).all()
 
-    assert [event.status for event in events] == ["failed"] * len(scenarios)
+    assert [event.status for event in events] == [PaymentWebhookEventStatus.FAILED] * len(scenarios)
     events_by_provider_event_id = {
         event.provider_event_id: event for event in events if event.provider_event_id is not None
     }
@@ -5013,7 +5071,11 @@ def test_recurrent_duplicate_delivery_uses_payload_idempotency_not_subscription_
         events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
         provider_account = db.query(PaymentProviderAccount).one()
 
-    assert [event.status for event in events] == ["processed", "duplicate", "processed"]
+    assert [event.status for event in events] == [
+        PaymentWebhookEventStatus.PROCESSED,
+        PaymentWebhookEventStatus.DUPLICATE,
+        PaymentWebhookEventStatus.PROCESSED,
+    ]
     assert [event.provider_account_id for event in events] == [
         provider_account.id,
         provider_account.id,
@@ -5185,7 +5247,7 @@ def test_password_reset_email_token_and_session_revocation(monkeypatch) -> None:
 
     with SessionLocal() as db:
         stored_token = db.query(MagicLinkToken).one()
-        assert stored_token.purpose == "password_reset"
+        assert stored_token.purpose == MagicLinkPurpose.PASSWORD_RESET
         assert stored_token.token_hash
         assert stored_token.token_hash != reset_token
         assert len(stored_token.token_hash) == 64
@@ -5241,7 +5303,7 @@ def test_password_reset_request_does_not_reveal_unknown_email(monkeypatch) -> No
 
     with SessionLocal() as db:
         stored_token = db.query(MagicLinkToken).one()
-        assert stored_token.purpose == "password_reset"
+        assert stored_token.purpose == MagicLinkPurpose.PASSWORD_RESET
         assert stored_token.email_normalized.startswith("password-reset-decoy:")
 
 
@@ -5460,7 +5522,7 @@ def test_password_reset_request_prunes_expired_reset_tokens() -> None:
                 region="ru",
                 email_normalized="password-reset-decoy:expired",
                 token_hash=hashlib.sha256(b"expired-reset-token").hexdigest(),
-                purpose="password_reset",
+                purpose=MagicLinkPurpose.PASSWORD_RESET,
                 expires_at=now - timedelta(minutes=1),
             )
         )
@@ -5530,7 +5592,7 @@ def test_cloudpayments_webhook_is_saved_without_secret_hmac() -> None:
     assert event.currency == "RUB"
     assert event.raw_payload["CardFirstSix"] == "[redacted]"
     assert event.headers["content-hmac"] == "[redacted]"
-    assert event.status == "failed"
+    assert event.status is PaymentWebhookEventStatus.FAILED
     assert event.error_code == "order_not_found"
 
 
@@ -5560,7 +5622,7 @@ def test_cloudpayments_form_webhook_preserves_response_and_parsing_contract() ->
     assert event.amount_minor == 99000
     assert event.currency == "RUB"
     assert event.raw_payload["CardFirstSix"] == "[redacted]"
-    assert event.status == "failed"
+    assert event.status is PaymentWebhookEventStatus.FAILED
     assert event.error_code == "order_not_found"
 
 
@@ -5586,7 +5648,7 @@ def test_cloudpayments_webhook_rejects_non_finite_amount_without_500() -> None:
 
     assert len(events) == 3
     assert {event.raw_payload["Amount"] for event in events} == {"NaN", "Infinity", "-Infinity"}
-    assert all(event.status == "failed" for event in events)
+    assert all(event.status is PaymentWebhookEventStatus.FAILED for event in events)
     assert all(event.error_code == "missing_amount" for event in events)
     assert all(event.error_message == "missing_amount" for event in events)
     assert all(event.amount_minor is None for event in events)
@@ -5606,7 +5668,7 @@ def test_malformed_cloudpayments_payload_omits_raw_body() -> None:
     with SessionLocal() as db:
         event = db.query(PaymentWebhookEvent).one()
 
-    assert event.status == "failed"
+    assert event.status is PaymentWebhookEventStatus.FAILED
     assert event.error_code == "payload_parse_error"
     assert event.raw_payload == {"_raw": "[omitted: payload_parse_error]"}
     assert "411111" not in str(event.raw_payload)
@@ -5626,7 +5688,7 @@ def test_cloudpayments_webhook_rejects_non_object_json_payload() -> None:
     with SessionLocal() as db:
         event = db.query(PaymentWebhookEvent).one()
 
-    assert event.status == "failed"
+    assert event.status is PaymentWebhookEventStatus.FAILED
     assert event.error_code == "payload_parse_error"
     assert event.raw_payload == {"_raw": "[omitted: payload_parse_error]"}
 
@@ -5694,7 +5756,7 @@ def _add_account_subscription_user(db, *, email: str) -> tuple[User, AuthSession
         region="ru",
         email=email,
         email_normalized=email,
-        status="active",
+        status=UserStatus.ACTIVE,
         password_hash="test-password-hash",
     )
     db.add(user)
@@ -5719,7 +5781,7 @@ def _add_account_subscription_row(
     plan: Plan,
     now: datetime,
     index: int = 0,
-    status: str = "active",
+    status: SubscriptionStatus = SubscriptionStatus.ACTIVE,
     plan_id: uuid.UUID | None = None,
 ) -> Subscription:
     subscription = Subscription(
@@ -5731,7 +5793,7 @@ def _add_account_subscription_row(
         product_id=plan.product_id,
         bundle_id=plan.bundle_id,
         status=status,
-        renewal_mode="manual",
+        renewal_mode=SubscriptionRenewalMode.MANUAL,
         current_period_start=now - timedelta(days=index + 1),
         current_period_end=now + timedelta(days=30 + index),
         created_at=now + timedelta(seconds=index),
@@ -5747,7 +5809,7 @@ def _add_account_entitlement_row(
     user: User,
     plan: Plan,
     subscription: Subscription,
-    status: str,
+    status: EntitlementStatus,
     valid_from: datetime,
     valid_until: datetime,
     created_at: datetime,
@@ -5764,7 +5826,7 @@ def _add_account_entitlement_row(
         status=status,
         valid_from=valid_from,
         valid_until=valid_until,
-        source="trial",
+        source=EntitlementSource.TRIAL,
         created_at=created_at,
     )
     db.add(entitlement)
@@ -5786,14 +5848,14 @@ def _seed_account_subscriptions_for_query_count(
             plan=plan,
             now=now,
             index=index,
-            status="active" if index == 0 else "expired",
+            status=SubscriptionStatus.ACTIVE if index == 0 else SubscriptionStatus.EXPIRED,
         )
         _add_account_entitlement_row(
             db,
             user=user,
             plan=plan,
             subscription=subscription,
-            status="active",
+            status=EntitlementStatus.ACTIVE,
             valid_from=now - timedelta(days=1),
             valid_until=now + timedelta(days=30 + index),
             created_at=now + timedelta(seconds=index),
@@ -5829,7 +5891,7 @@ def test_account_subscription_list_and_detail_response_shapes_are_unchanged() ->
             user=user,
             plan=plan,
             subscription=subscription,
-            status="active",
+            status=EntitlementStatus.ACTIVE,
             valid_from=now - timedelta(days=1),
             valid_until=now + timedelta(days=29),
             created_at=now,
@@ -5885,7 +5947,7 @@ def test_account_subscription_projects_current_bundle_membership_product_ids() -
             user=user,
             plan=bundle_plan,
             subscription=subscription,
-            status="active",
+            status=EntitlementStatus.ACTIVE,
             valid_from=now - timedelta(days=1),
             valid_until=now + timedelta(days=29),
             created_at=now,
@@ -5894,7 +5956,7 @@ def test_account_subscription_projects_current_bundle_membership_product_ids() -
             db.query(BundleProduct)
             .filter(
                 BundleProduct.bundle_id == bundle_plan.bundle_id,
-                BundleProduct.status == "active",
+                BundleProduct.status == BundleProductStatus.ACTIVE,
                 BundleProduct.valid_from <= now,
                 (BundleProduct.valid_to.is_(None) | (BundleProduct.valid_to > now)),
             )
@@ -5933,7 +5995,7 @@ def test_account_subscription_relevant_entitlement_precedence_is_unchanged() -> 
             plan=plan,
             now=now,
             index=1,
-            status="expired",
+            status=SubscriptionStatus.EXPIRED,
         )
         history_subscription = _add_account_subscription_row(
             db,
@@ -5941,14 +6003,14 @@ def test_account_subscription_relevant_entitlement_precedence_is_unchanged() -> 
             plan=plan,
             now=now,
             index=2,
-            status="expired",
+            status=SubscriptionStatus.EXPIRED,
         )
         _add_account_entitlement_row(
             db,
             user=user,
             plan=plan,
             subscription=current_subscription,
-            status="revoked",
+            status=EntitlementStatus.REVOKED,
             valid_from=now - timedelta(days=20),
             valid_until=now - timedelta(days=10),
             created_at=now - timedelta(days=20),
@@ -5958,7 +6020,7 @@ def test_account_subscription_relevant_entitlement_precedence_is_unchanged() -> 
             user=user,
             plan=plan,
             subscription=current_subscription,
-            status="active",
+            status=EntitlementStatus.ACTIVE,
             valid_from=now + timedelta(days=1),
             valid_until=now + timedelta(days=31),
             created_at=now,
@@ -5968,7 +6030,7 @@ def test_account_subscription_relevant_entitlement_precedence_is_unchanged() -> 
             user=user,
             plan=plan,
             subscription=current_subscription,
-            status="active",
+            status=EntitlementStatus.ACTIVE,
             valid_from=now - timedelta(days=2),
             valid_until=now + timedelta(days=5),
             created_at=now + timedelta(minutes=1),
@@ -5978,7 +6040,7 @@ def test_account_subscription_relevant_entitlement_precedence_is_unchanged() -> 
             user=user,
             plan=plan,
             subscription=current_subscription,
-            status="active",
+            status=EntitlementStatus.ACTIVE,
             valid_from=now - timedelta(days=1),
             valid_until=now + timedelta(days=10),
             created_at=now,
@@ -5988,7 +6050,7 @@ def test_account_subscription_relevant_entitlement_precedence_is_unchanged() -> 
             user=user,
             plan=plan,
             subscription=future_subscription,
-            status="revoked",
+            status=EntitlementStatus.REVOKED,
             valid_from=now - timedelta(days=20),
             valid_until=now - timedelta(days=1),
             created_at=now - timedelta(days=20),
@@ -5998,7 +6060,7 @@ def test_account_subscription_relevant_entitlement_precedence_is_unchanged() -> 
             user=user,
             plan=plan,
             subscription=future_subscription,
-            status="active",
+            status=EntitlementStatus.ACTIVE,
             valid_from=now + timedelta(days=2),
             valid_until=now + timedelta(days=12),
             created_at=now + timedelta(minutes=2),
@@ -6008,7 +6070,7 @@ def test_account_subscription_relevant_entitlement_precedence_is_unchanged() -> 
             user=user,
             plan=plan,
             subscription=future_subscription,
-            status="active",
+            status=EntitlementStatus.ACTIVE,
             valid_from=now + timedelta(days=1),
             valid_until=now + timedelta(days=30),
             created_at=now + timedelta(minutes=1),
@@ -6018,7 +6080,7 @@ def test_account_subscription_relevant_entitlement_precedence_is_unchanged() -> 
             user=user,
             plan=plan,
             subscription=history_subscription,
-            status="expired",
+            status=EntitlementStatus.EXPIRED,
             valid_from=now - timedelta(days=20),
             valid_until=now - timedelta(days=5),
             created_at=now - timedelta(days=20),
@@ -6028,7 +6090,7 @@ def test_account_subscription_relevant_entitlement_precedence_is_unchanged() -> 
             user=user,
             plan=plan,
             subscription=history_subscription,
-            status="revoked",
+            status=EntitlementStatus.REVOKED,
             valid_from=now - timedelta(days=10),
             valid_until=now - timedelta(days=1),
             created_at=now - timedelta(days=10),
@@ -6153,8 +6215,8 @@ def test_account_subscriptions_list_returns_only_authenticated_user_subscription
             scope_type=plan.scope_type,
             product_id=plan.product_id,
             bundle_id=plan.bundle_id,
-            status="active",
-            renewal_mode="automatic",
+            status=SubscriptionStatus.ACTIVE,
+            renewal_mode=SubscriptionRenewalMode.AUTOMATIC,
             current_period_start=now,
             current_period_end=now + timedelta(days=60),
             provider_account_id=provider_account.id,
@@ -6168,8 +6230,8 @@ def test_account_subscriptions_list_returns_only_authenticated_user_subscription
             scope_type=plan.scope_type,
             product_id=plan.product_id,
             bundle_id=plan.bundle_id,
-            status="active",
-            renewal_mode="manual",
+            status=SubscriptionStatus.ACTIVE,
+            renewal_mode=SubscriptionRenewalMode.MANUAL,
             current_period_start=now,
             current_period_end=now + timedelta(days=30),
         )
@@ -6181,7 +6243,7 @@ def test_account_subscriptions_list_returns_only_authenticated_user_subscription
             order_number="RU-ACCOUNT-SUBSCRIPTIONS",
             user_id=owner.id,
             plan_id=plan.id,
-            status="paid",
+            status=OrderStatus.PAID,
             amount_minor=plan.price_amount_minor,
             currency=plan.currency,
             provider=provider_account.provider,
@@ -6202,10 +6264,10 @@ def test_account_subscriptions_list_returns_only_authenticated_user_subscription
                 scope_type=plan.scope_type,
                 product_id=plan.product_id,
                 bundle_id=plan.bundle_id,
-                status="active",
+                status=EntitlementStatus.ACTIVE,
                 valid_from=now,
                 valid_until=now + timedelta(days=30),
-                source="order",
+                source=EntitlementSource.ORDER,
                 order_id=order.id,
                 created_at=now,
             )
@@ -6216,7 +6278,7 @@ def test_account_subscriptions_list_returns_only_authenticated_user_subscription
             order_number="RU-ACCOUNT-SUBSCRIPTIONS-FUTURE",
             user_id=owner.id,
             plan_id=plan.id,
-            status="paid",
+            status=OrderStatus.PAID,
             amount_minor=plan.price_amount_minor,
             currency=plan.currency,
             provider=provider_account.provider,
@@ -6237,10 +6299,10 @@ def test_account_subscriptions_list_returns_only_authenticated_user_subscription
                 scope_type=plan.scope_type,
                 product_id=plan.product_id,
                 bundle_id=plan.bundle_id,
-                status="active",
+                status=EntitlementStatus.ACTIVE,
                 valid_from=now + timedelta(days=30),
                 valid_until=now + timedelta(days=60),
-                source="order",
+                source=EntitlementSource.ORDER,
                 order_id=future_order.id,
                 created_at=now + timedelta(minutes=1),
             )
@@ -6308,8 +6370,8 @@ def test_account_subscription_detail_enforces_authenticated_ownership() -> None:
             scope_type=plan.scope_type,
             product_id=plan.product_id,
             bundle_id=plan.bundle_id,
-            status="active",
-            renewal_mode="manual",
+            status=SubscriptionStatus.ACTIVE,
+            renewal_mode=SubscriptionRenewalMode.MANUAL,
             current_period_start=now,
             current_period_end=now + timedelta(days=30),
             cancel_requested_at=now + timedelta(days=1),
@@ -6322,8 +6384,8 @@ def test_account_subscription_detail_enforces_authenticated_ownership() -> None:
             scope_type=plan.scope_type,
             product_id=plan.product_id,
             bundle_id=plan.bundle_id,
-            status="active",
-            renewal_mode="manual",
+            status=SubscriptionStatus.ACTIVE,
+            renewal_mode=SubscriptionRenewalMode.MANUAL,
             current_period_start=now,
             current_period_end=now + timedelta(days=30),
         )
@@ -6616,7 +6678,7 @@ def test_automatic_checkout_keeps_recurring_consent_missing_when_hash_is_wrong()
 
     with SessionLocal() as db:
         plan = db.query(Plan).filter(Plan.code == "document-summary-pro").one()
-        plan.renewal_mode = "automatic"
+        plan.renewal_mode = SubscriptionRenewalMode.AUTOMATIC
         legal_entity = create_legal_entity(db)
         document = create_document_version(
             db,
@@ -6954,7 +7016,7 @@ def test_cloudpayments_webhook_rejects_invalid_signature_when_secret_is_set() ->
     with SessionLocal() as db:
         event = db.query(PaymentWebhookEvent).one()
 
-    assert event.status == "failed"
+    assert event.status is PaymentWebhookEventStatus.FAILED
     assert event.error_message == "invalid_cloudpayments_signature"
     assert event.processed_at
 
@@ -7031,7 +7093,11 @@ def test_new_cloudpayments_webhook_types_reject_unsigned_disabled_mode() -> None
         events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
 
     assert [event.endpoint for event in events] == ["confirm", "cancel", "recurrent"]
-    assert [event.status for event in events] == ["failed", "failed", "failed"]
+    assert [event.status for event in events] == [
+        PaymentWebhookEventStatus.FAILED,
+        PaymentWebhookEventStatus.FAILED,
+        PaymentWebhookEventStatus.FAILED,
+    ]
     assert {event.error_code for event in events} == {"invalid_cloudpayments_signature"}
 
 

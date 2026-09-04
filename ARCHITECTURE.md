@@ -64,8 +64,11 @@ and security helpers are shared infrastructure.
 
 These directions are mechanically enforced with Python AST analysis. Routers
 share authentication through session or service modules rather than importing
-one another. The aggregate `app.models` module and the top-level compatibility
-exports remain allowed until the model transition owned by ANY-71.
+one another. `app.models` is the canonical persisted model layer: SQLAlchemy
+models and closed persisted vocabularies are imported from its explicit public
+exports, while model modules import canonical enums directly from
+`app.models.enums`. Provider contract enums and open/provider/configuration
+identifiers remain owned by their boundaries and are not persisted model enums.
 
 The web dependency direction is:
 

@@ -10,11 +10,16 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.time import utc_now
-from app.domains.billing.enums import (
+from app.models import (
+    AuthSession,
+    Entitlement,
     EntitlementStatus,
+    Plan,
+    Subscription,
     SubscriptionRenewalMode,
     SubscriptionScopeType,
     SubscriptionStatus,
+    User,
 )
 from app.domains.identity.session import get_current_session
 from app.infrastructure.queries.plans import get_plan_by_id, list_plans_by_ids
@@ -25,7 +30,6 @@ from app.infrastructure.queries.subscriptions import (
     list_account_subscriptions,
     list_current_bundle_product_ids,
 )
-from app.models import AuthSession, Entitlement, Plan, Subscription, User
 
 router = APIRouter(prefix="/api/account", tags=["account"])
 
@@ -91,13 +95,13 @@ def present_loaded_account_subscription(
             billing_period=plan.billing_period,
         ),
         scope=AccountSubscriptionScopeResponse(
-            scope_type=SubscriptionScopeType(subscription.scope_type),
+            scope_type=subscription.scope_type,
             product_id=subscription.product_id,
             bundle_id=subscription.bundle_id,
             included_product_ids=included_product_ids or [],
         ),
-        status=SubscriptionStatus(subscription.status),
-        renewal_mode=SubscriptionRenewalMode(subscription.renewal_mode),
+        status=subscription.status,
+        renewal_mode=subscription.renewal_mode,
         current_period=AccountSubscriptionCurrentPeriodResponse(
             starts_at=subscription.current_period_start,
             ends_at=subscription.current_period_end,
@@ -107,7 +111,7 @@ def present_loaded_account_subscription(
             canceled_at=subscription.canceled_at,
         ),
         entitlement_validity=AccountSubscriptionEntitlementValidityResponse(
-            status=(EntitlementStatus(entitlement.status) if entitlement is not None else None),
+            status=(entitlement.status if entitlement is not None else None),
             valid_from=entitlement.valid_from if entitlement is not None else None,
             valid_until=entitlement.valid_until if entitlement is not None else None,
         ),

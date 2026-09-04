@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.models.enums import PaymentWebhookEventStatus
 from app.models._shared import (
     Base,
     DateTime,
@@ -8,6 +9,7 @@ from app.models._shared import (
     Index,
     Integer,
     Mapped,
+    PersistedEnumType,
     Numeric,
     String,
     Text,
@@ -73,6 +75,8 @@ class PaymentWebhookEvent(Base):
     headers: Mapped[dict | None] = mapped_column(json_type, nullable=True)
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    status: Mapped[str] = mapped_column(Text, nullable=False, default="received")
+    status: Mapped[PaymentWebhookEventStatus] = mapped_column(
+        PersistedEnumType(PaymentWebhookEventStatus), nullable=False, default=PaymentWebhookEventStatus.RECEIVED
+    )
     error_code: Mapped[str | None] = mapped_column(Text, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)

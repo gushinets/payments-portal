@@ -5,10 +5,14 @@ from __future__ import annotations
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.domains.billing.enums import (
+from app.models import (
+    AcceptanceKind,
+    Entitlement,
     EntitlementSource,
     EntitlementStatus,
     OrderStatus,
+    RefundStatus,
+    Subscription,
     SubscriptionEventType,
     SubscriptionRenewalMode,
     SubscriptionStatus,
@@ -59,8 +63,6 @@ from app.infrastructure.queries.subscriptions import (
     list_due_subscriptions,
     list_entitlements_for_order,
 )
-from app.models import Entitlement, Subscription
-
 
 _PROVIDER_SUBSCRIPTION_REFERENCE_INDEX = "uq_subscriptions_provider_reference"
 
@@ -86,16 +88,16 @@ def enable_automatic_renewal(db: Session, command: EnableAutomaticRenewalCommand
     acceptance = get_document_acceptance_by_id(db, command.recurring_consent_acceptance_id, for_update=True)
     if order is None or account is None or acceptance is None:
         raise SubscriptionLifecycleError("automatic_renewal_context_missing")
-    if subscription.renewal_mode == SubscriptionRenewalMode.AUTOMATIC.value:
+    if subscription.renewal_mode == SubscriptionRenewalMode.AUTOMATIC:
         raise SubscriptionLifecycleError("automatic_renewal_already_enabled")
     if account.tenant_id != subscription.tenant_id or account.region != subscription.region:
         raise SubscriptionLifecycleError("provider_account_scope_mismatch")
     if acceptance.tenant_id != subscription.tenant_id or acceptance.region != subscription.region:
         raise SubscriptionLifecycleError("consent_scope_mismatch")
-    if acceptance.user_id != subscription.user_id or acceptance.acceptance_kind != "recurring_consent":
+    if acceptance.user_id != subscription.user_id or acceptance.acceptance_kind != AcceptanceKind.RECURRING_CONSENT:
         raise SubscriptionLifecycleError("recurring_consent_invalid")
     plan = get_plan_by_id(db, subscription.plan_id, for_update=True)
-    if plan is None or plan.renewal_mode != SubscriptionRenewalMode.AUTOMATIC.value:
+    if plan is None or plan.renewal_mode != SubscriptionRenewalMode.AUTOMATIC:
         raise SubscriptionLifecycleError("automatic_renewal_not_permitted")
     user = lock_user_by_id(db, subscription.user_id)
     entrypoint_session = (
@@ -108,7 +110,7 @@ def enable_automatic_renewal(db: Session, command: EnableAutomaticRenewalCommand
         user is None
         or user.tenant_id != subscription.tenant_id
         or user.region != subscription.region
-        or order.status != OrderStatus.PAID.value
+        or order.status != OrderStatus.PAID
         or order.tenant_id != subscription.tenant_id
         or order.region != subscription.region
         or order.user_id != subscription.user_id
@@ -171,7 +173,7 @@ def enable_automatic_renewal(db: Session, command: EnableAutomaticRenewalCommand
             subscription.provider_account_id = account.id
             subscription.provider_subscription_id = command.provider_subscription_id
             subscription.recurring_consent_acceptance_id = acceptance.id
-            subscription.renewal_mode = SubscriptionRenewalMode.AUTOMATIC.value
+            subscription.renewal_mode = SubscriptionRenewalMode.AUTOMATIC
             _write_event(
                 db,
                 subscription=subscription,
@@ -207,7 +209,7 @@ def apply_renewal_payment(db: Session, command: ApplyRenewalPaymentCommand) -> S
         start = max(subscription.current_period_end, paid_at)
         subscription.current_period_start = start
         subscription.current_period_end = _period_end(start, order_plan)
-        subscription.status = SubscriptionStatus.ACTIVE.value
+        subscription.status = SubscriptionStatus.ACTIVE
         db.add(
             Entitlement(
                 tenant_id=subscription.tenant_id,
@@ -218,17 +220,17 @@ def apply_renewal_payment(db: Session, command: ApplyRenewalPaymentCommand) -> S
                 scope_type=subscription.scope_type,
                 product_id=subscription.product_id,
                 bundle_id=subscription.bundle_id,
-                status=EntitlementStatus.ACTIVE.value,
+                status=EntitlementStatus.ACTIVE,
                 valid_from=subscription.current_period_start,
                 valid_until=subscription.current_period_end,
-                source=EntitlementSource.ORDER.value,
+                source=EntitlementSource.ORDER,
                 order_id=order.id,
             )
         )
         event_type = SubscriptionEventType.RENEWAL_SUCCEEDED
     else:
         ensure_subscription_status_transition(previous, SubscriptionStatus.PAST_DUE)
-        subscription.status = SubscriptionStatus.PAST_DUE.value
+        subscription.status = SubscriptionStatus.PAST_DUE
         event_type = SubscriptionEventType.RENEWAL_FAILED
     _write_event(
         db,
@@ -255,9 +257,9 @@ def apply_provider_subscription_state(db: Session, command: ApplyProviderSubscri
     previous = subscription.status
     status = subscription_status_from_provider_state(command.provider_state)
     ensure_subscription_status_transition(previous, status)
-    subscription.status = status.value
+    subscription.status = status
     if status == SubscriptionStatus.CANCELED:
-        subscription.renewal_mode = SubscriptionRenewalMode.MANUAL.value
+        subscription.renewal_mode = SubscriptionRenewalMode.MANUAL
         subscription.canceled_at = subscription.canceled_at or command.occurred_at
     _write_event(
         db,
@@ -265,7 +267,7 @@ def apply_provider_subscription_state(db: Session, command: ApplyProviderSubscri
         command=command,
         event_type=SubscriptionEventType.PROVIDER_SUBSCRIPTION_STATE_APPLIED,
         previous_status=previous,
-        next_status=status.value,
+        next_status=status,
     )
     return subscription
 
@@ -279,10 +281,10 @@ def request_cancellation(db: Session, command: RequestCancellationCommand) -> Su
     if subscription is None:
         raise SubscriptionLifecycleError("subscription_not_found")
     if subscription.status not in {
-        SubscriptionStatus.TRIALING.value,
-        SubscriptionStatus.ACTIVE.value,
-        SubscriptionStatus.PAST_DUE.value,
-        SubscriptionStatus.PAUSED.value,
+        SubscriptionStatus.TRIALING,
+        SubscriptionStatus.ACTIVE,
+        SubscriptionStatus.PAST_DUE,
+        SubscriptionStatus.PAUSED,
     }:
         raise SubscriptionLifecycleError("subscription_cannot_be_canceled")
     subscription.cancel_requested_at = command.occurred_at
@@ -308,7 +310,7 @@ def apply_refund(db: Session, command: ApplyRefundCommand) -> Subscription:
         raise SubscriptionLifecycleError("refund_context_missing")
     if refund.amount_minor != command.amount_minor:
         raise SubscriptionLifecycleError("refund_amount_mismatch")
-    if refund.status != "succeeded":
+    if refund.status != RefundStatus.SUCCEEDED:
         raise SubscriptionLifecycleError("refund_not_verified")
     subscription = get_subscription_for_order(db, order.id, for_update=True)
     if subscription is None:
@@ -326,21 +328,21 @@ def apply_refund(db: Session, command: ApplyRefundCommand) -> Subscription:
     if full_refund:
         refunded_entitlements = list_entitlements_for_order(db, order.id, for_update=True)
         for entitlement in refunded_entitlements:
-            if entitlement.status == EntitlementStatus.ACTIVE.value:
-                entitlement.status = EntitlementStatus.REVOKED.value
+            if entitlement.status == EntitlementStatus.ACTIVE:
+                entitlement.status = EntitlementStatus.REVOKED
                 entitlement.revoked_at = command.occurred_at
         db.flush()
         remaining_grants = _active_or_future_entitlements(db, subscription, now=command.occurred_at)
         if remaining_grants:
-            if subscription.status in {SubscriptionStatus.PAST_DUE.value, SubscriptionStatus.PAUSED.value}:
+            if subscription.status in {SubscriptionStatus.PAST_DUE, SubscriptionStatus.PAUSED}:
                 ensure_subscription_status_transition(previous, SubscriptionStatus.ACTIVE)
-                subscription.status = SubscriptionStatus.ACTIVE.value
+                subscription.status = SubscriptionStatus.ACTIVE
         else:
             ensure_subscription_status_transition(previous, SubscriptionStatus.REFUNDED)
-            subscription.status = SubscriptionStatus.REFUNDED.value
+            subscription.status = SubscriptionStatus.REFUNDED
             current_entitlement = _current_entitlement(db, subscription, now=command.occurred_at)
             if current_entitlement:
-                current_entitlement.status = EntitlementStatus.REVOKED.value
+                current_entitlement.status = EntitlementStatus.REVOKED
                 current_entitlement.revoked_at = command.occurred_at
     _write_event(
         db,
@@ -363,14 +365,14 @@ def expire_due_subscriptions(db: Session, command: ExpireDueSubscriptionsCommand
     for subscription in subscriptions:
         previous_status = subscription.status
         ensure_subscription_status_transition(previous_status, SubscriptionStatus.EXPIRED)
-        subscription.status = SubscriptionStatus.EXPIRED.value
+        subscription.status = SubscriptionStatus.EXPIRED
         for entitlement in list_due_entitlements_for_subscription(
             db,
             subscription.id,
             now=command.now,
             for_update=True,
         ):
-            entitlement.status = EntitlementStatus.EXPIRED.value
+            entitlement.status = EntitlementStatus.EXPIRED
             entitlement.expired_at = command.now
         event_key = f"subscription-expired:{subscription.id}:{subscription.current_period_end.isoformat()}"
         event = _event_for_key(db, event_key)
