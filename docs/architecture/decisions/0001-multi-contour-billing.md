@@ -38,9 +38,11 @@ a global URL map.
   render the deployed-contour list at login and registration. Switching contour
   leaves this instance through the resolver. Provider webhooks never go through
   the resolver.
-- Billing domain code stays provider-neutral. Each contour registers its own
+- Billing domain code stays provider-neutral. For a Portal-managed
+  direct-provider flow, the deployed Payment Portal instance registers a
   payment-provider adapter. CloudPayments is the current `ru` adapter, not the
-  system boundary.
+  system boundary. An external-billing-managed flow uses its own integration
+  boundary and does not register a `PaymentProviderAdapter`.
 
 ## Consequences
 
