@@ -212,15 +212,17 @@ def test_billing_authority_graph_is_guarded_and_consistent(
 
 def test_missing_billing_authority_link_is_actionable() -> None:
     root = Path("repository").resolve()
-    source = root / "apps" / "api" / "AGENTS.md"
-    authority = root / "docs" / "architecture" / "billing-authority.md"
+    source_relative = Path("apps") / "api" / "AGENTS.md"
+    target_relative = Path("docs") / "architecture" / "billing-authority.md"
+    source = root / source_relative
+    authority = root / target_relative
 
     assert check_required_markdown_link_content(
         source,
         "# API Agent Guide\n",
         [authority],
         root=root,
-    ) == ["Missing core authority link in apps/api/AGENTS.md: docs/architecture/billing-authority.md"]
+    ) == [f"Missing core authority link in {source_relative}: {target_relative}"]
 
 
 def test_stale_documented_legal_version_is_rejected() -> None:

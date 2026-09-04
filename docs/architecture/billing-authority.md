@@ -154,6 +154,15 @@ accepted. They do not confirm payment, subscription activation, or entitlement
 activation. Local intent and external mappings must be idempotent, but the
 authoritative transition follows a verified fact from the billing owner.
 
+Application owns orchestration of the database transaction boundaries around
+external commands. External HTTP or other network calls must not execute while
+a database transaction is open. When a flow requires local intent or
+idempotency state before an external command, that state must be durably
+persisted before the call; the external result and any resulting mapping must
+be persisted using an appropriate subsequent transaction boundary. This is an
+architectural invariant and does not require transaction-handling runtime
+changes in this decision.
+
 Verified webhooks are the primary asynchronous facts. Reconciliation recovers
 from missing, delayed, or uncertain delivery. Both sources must normalize into
 the same future local transition rules so retries and reordered delivery
