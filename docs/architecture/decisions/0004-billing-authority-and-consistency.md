@@ -36,8 +36,8 @@ entitlement rules, and local entitlements. Platform Kernel consumes those local
 entitlements only; it does not derive access from provider or external billing
 state.
 
-The long-term production **TARGET** is the external-billing-managed flow. The
-Portal-managed direct-provider flow is **CURRENT / TRANSITIONAL**, not a
+The sole long-term production **TARGET** is the external-billing-managed flow.
+The Portal-managed direct-provider flow is **CURRENT / TRANSITIONAL**, not a
 co-equal future production target:
 
 - In a **Portal-managed direct-provider flow**, Payment Portal orchestrates the
@@ -58,12 +58,17 @@ co-equal future production target:
   an arbitrary external billing system without separately approved persistence
   adaptation.
 
-Each subscription and its billing lifecycle has exactly one billing owner:
-either Payment Portal in a Portal-managed direct-provider flow, or one external
-billing system in an external-billing-managed flow. Ownership is never
-last-write-wins. This invariant applies to the managed lifecycle, not to the
-contour, and this ADR does not choose a database representation, field, enum,
-or external-customer schema for it.
+A `Subscription` that participates in a billing lifecycle has exactly one
+billing owner at a time: Payment Portal in the current/transitional Portal-
+managed direct-provider flow, or one external billing system in the long-term
+external-billing target. A Portal-only access lifecycle, such as a locally
+granted free trial without an external billing lifecycle, remains Portal-owned
+and does not require an external billing owner. Delegating such an access-only
+lifecycle to an external billing system would require a separate explicit
+product/integration decision. Ownership is never last-write-wins. This invariant
+applies to the billing lifecycle, not to the contour, and this ADR does not
+choose a database representation, field, enum, or external-customer schema for
+it.
 
 An outbound REST command records intent; a successful response does not confirm
 payment, subscription activation, or entitlement activation. External commands
@@ -138,9 +143,13 @@ contract and its closed persisted vocabularies.
 
 ## Consequences
 
-- Future external-billing work must preserve exactly one billing owner for each
-  subscription and its billing lifecycle, and normalize authoritative external
-  facts before local transitions.
+- Future external-billing work must preserve exactly one external billing owner
+  at a time for each subscription that participates in its billing lifecycle,
+  and normalize authoritative external facts before local transitions.
+- Portal-only access lifecycles, including locally granted free trials without
+  an external billing lifecycle, remain Portal-owned and do not require an
+  external billing owner. Delegating one requires a separate explicit
+  product/integration decision.
 - Future external-billing work must preserve the Portal-owned local purchase
   intent / commercial order created before the external billing command.
 - Future command orchestration must remain retry-safe without assuming external

@@ -33,14 +33,18 @@ records and applies its entitlement rules. Platform Kernel is the intended
 consumer of Payment Portal's local entitlements through the planned private
 entitlement/access API.
 
-The durable ownership invariant is: **each subscription and its billing
-lifecycle has exactly one billing owner.** In the long-term target that owner is
-one external billing system. The current/transitional direct-provider flow has
-Payment Portal as its billing owner only while that flow remains required.
-Billing ownership belongs to the managed lifecycle, not to the contour.
-Deployment configuration selects the concrete target external-billing
-integration; it does not freely choose Portal-managed direct-provider billing as
-a co-equal long-term model.
+The durable ownership invariant is: **a `Subscription` that participates in a
+billing lifecycle has exactly one billing owner at a time.** In the long-term
+target, that billing lifecycle is owned by one external billing system. The
+current/transitional direct-provider flow has Payment Portal as its billing
+owner only while that flow remains required. A Portal-only access lifecycle,
+such as a locally granted free trial without an external billing lifecycle,
+remains Portal-owned and does not require an external billing owner. Delegating
+such an access-only lifecycle to an external billing system would require a
+separate explicit product/integration decision. Billing ownership belongs to
+the billing lifecycle, not to the contour. Deployment configuration selects
+the concrete target external-billing integration; it does not freely choose
+Portal-managed direct-provider billing as a co-equal long-term model.
 
 This target meaning does not assert current persistence readiness. The
 implemented `Order` and `Payment` schema still requires direct-provider account
@@ -78,9 +82,10 @@ to-external-billing migration or coexistence mechanism.
   external lifecycle; Payment Portal owns the preceding local purchase intent /
   commercial order, sends commands, and projects authoritative payment and
   subscription facts locally.
-- **Billing owner:** the single authority allowed to manage one subscription
-  and its billing lifecycle. This document does not choose its persisted
-  representation.
+- **Billing owner:** the single authority allowed to manage a subscription's
+  billing lifecycle when that subscription participates in one. A Portal-only
+  access lifecycle is not required to have an external billing owner. This
+  document does not choose a persisted representation.
 - **Command:** an outbound request or intention. A successful call is not final
   billing-state authority, and the external command is not assumed to be
   idempotent.

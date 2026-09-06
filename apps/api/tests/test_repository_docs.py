@@ -221,6 +221,39 @@ def test_adr_0001_keeps_distinct_billing_integration_boundaries() -> None:
     assert "Each contour registers its own payment-provider adapter." not in content
 
 
+def test_billing_docs_keep_target_and_access_only_ownership_distinct() -> None:
+    target_docs = (
+        "README.md",
+        "ARCHITECTURE.md",
+        "docs/architecture/billing-authority.md",
+        "docs/architecture/decisions/0004-billing-authority-and-consistency.md",
+    )
+    ownership_docs = (
+        "ARCHITECTURE.md",
+        "docs/architecture/billing-authority.md",
+        "docs/architecture/decisions/0004-billing-authority-and-consistency.md",
+        "docs/architecture/contours.md",
+    )
+
+    def normalized(relative: str) -> str:
+        content = (repo.ROOT / relative).read_text(encoding="utf-8")
+        return " ".join(content.replace("**", "").replace("`", "").lower().split())
+
+    for relative in target_docs:
+        assert "sole long-term production target is the external-billing-managed flow" in normalized(relative)
+
+    assert "most likely launch" not in normalized("README.md")
+    assert "expected launch model" not in normalized("ARCHITECTURE.md")
+
+    for relative in ownership_docs:
+        content = normalized(relative)
+        assert "subscription that participates in a billing lifecycle" in content
+        assert "exactly one billing owner at a time" in content
+        assert "portal-only access lifecycle" in content
+        assert "does not require an external billing owner" in content
+        assert "each subscription and its billing lifecycle has exactly one billing owner" not in content
+
+
 def test_billing_consistency_docs_require_retry_safe_unknown_outcomes() -> None:
     reliability = (repo.ROOT / "docs/RELIABILITY.md").read_text(encoding="utf-8")
     authority = (repo.ROOT / "docs/architecture/billing-authority.md").read_text(encoding="utf-8")

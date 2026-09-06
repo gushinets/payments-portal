@@ -41,14 +41,16 @@ remains **TRANSITIONAL** until separately approved architecture and refactoring
 work determines whether it is still needed; its presence does not commit the
 product to using CloudPayments in production.
 
-The expected launch model is an external-billing-managed flow, in which the
-external system owns its external customer, invoice, payment, and subscription
-lifecycle and the Portal stores normalized local projections. The architecture
-also continues to support the transitional Portal-managed flow. In either
-model, each subscription and its billing lifecycle has exactly one billing
-owner. No CloudPayments-to-external-billing migration or coexistence mechanism
-is required or defined while there are no production subscriptions to migrate.
-See
+The sole long-term production target is the external-billing-managed flow, in
+which the external system owns its external customer, invoice, payment, and
+subscription lifecycle and the Portal stores normalized local projections. The
+current Portal-managed flow remains documented and supported only as a
+transitional capability. A `Subscription` that participates in a billing
+lifecycle has exactly one billing owner at a time. A Portal-only access
+lifecycle, such as a locally granted free trial without an external billing
+lifecycle, remains Portal-owned and does not require an external billing owner.
+No CloudPayments-to-external-billing migration or coexistence mechanism is
+required or defined while there are no production subscriptions to migrate. See
 [Billing Authority and Consistency](docs/architecture/billing-authority.md).
 
 ## Current domains

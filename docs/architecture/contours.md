@@ -137,9 +137,11 @@ configuration to select one concrete external-billing integration for the
 deployed product. A current/transitional direct-provider integration may remain
 only while required; reintroducing it as a future production model requires a
 new explicit architecture decision. The durable ownership invariant applies to
-each subscription and its billing lifecycle, which has exactly one billing
-owner. This does not require a contour to support multiple simultaneously active
-billing owners or production integrations, and it defines no migration or
-coexistence mechanism. See
+a `Subscription` that participates in a billing lifecycle, which has exactly
+one billing owner at a time. A Portal-only access lifecycle, such as a locally
+granted free trial without an external billing lifecycle, remains Portal-owned
+and does not require an external billing owner. This does not require a contour
+to support multiple simultaneously active billing owners or production
+integrations, and it defines no migration or coexistence mechanism. See
 [payment providers](payment-providers.md) and
 [billing authority](billing-authority.md).

@@ -14,8 +14,8 @@ is still planned. Platform Kernel code is maintained in the separate
 Payment Portal is still under development and is not running as a production
 billing service. Direct CloudPayments support is a transitional Portal-managed
 direct-provider capability; there are no production CloudPayments subscribers
-or subscriptions to migrate, and the product will most likely launch with an
-external billing system. See the current [product scope](docs/PRODUCT.md),
+or subscriptions to migrate. The sole long-term production target is the
+external-billing-managed flow. See the current [product scope](docs/PRODUCT.md),
 [billing authority](docs/architecture/billing-authority.md), and contour and
 Region Resolver architecture in [ARCHITECTURE.md](ARCHITECTURE.md).
 

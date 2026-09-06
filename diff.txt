@@ -1,0 +1,287 @@
+diff --git a/ARCHITECTURE.md b/ARCHITECTURE.md
+index 3fa2707..d51e222 100644
+--- a/ARCHITECTURE.md
++++ b/ARCHITECTURE.md
+@@ -41,14 +41,16 @@ remains **TRANSITIONAL** until separately approved architecture and refactoring
+ work determines whether it is still needed; its presence does not commit the
+ product to using CloudPayments in production.
+ 
+-The expected launch model is an external-billing-managed flow, in which the
+-external system owns its external customer, invoice, payment, and subscription
+-lifecycle and the Portal stores normalized local projections. The architecture
+-also continues to support the transitional Portal-managed flow. In either
+-model, each subscription and its billing lifecycle has exactly one billing
+-owner. No CloudPayments-to-external-billing migration or coexistence mechanism
+-is required or defined while there are no production subscriptions to migrate.
+-See
++The sole long-term production target is the external-billing-managed flow, in
++which the external system owns its external customer, invoice, payment, and
++subscription lifecycle and the Portal stores normalized local projections. The
++current Portal-managed flow remains documented and supported only as a
++transitional capability. A `Subscription` that participates in a billing
++lifecycle has exactly one billing owner at a time. A Portal-only access
++lifecycle, such as a locally granted free trial without an external billing
++lifecycle, remains Portal-owned and does not require an external billing owner.
++No CloudPayments-to-external-billing migration or coexistence mechanism is
++required or defined while there are no production subscriptions to migrate. See
+ [Billing Authority and Consistency](docs/architecture/billing-authority.md).
+ 
+ ## Current domains
+diff --git a/README.md b/README.md
+index 5a27918..a2032a8 100644
+--- a/README.md
++++ b/README.md
+@@ -14,8 +14,8 @@ is still planned. Platform Kernel code is maintained in the separate
+ Payment Portal is still under development and is not running as a production
+ billing service. Direct CloudPayments support is a transitional Portal-managed
+ direct-provider capability; there are no production CloudPayments subscribers
+-or subscriptions to migrate, and the product will most likely launch with an
+-external billing system. See the current [product scope](docs/PRODUCT.md),
++or subscriptions to migrate. The sole long-term production target is the
++external-billing-managed flow. See the current [product scope](docs/PRODUCT.md),
+ [billing authority](docs/architecture/billing-authority.md), and contour and
+ Region Resolver architecture in [ARCHITECTURE.md](ARCHITECTURE.md).
+ 
+diff --git a/apps/api/tests/test_repository_docs.py b/apps/api/tests/test_repository_docs.py
+index 8f3f82e..13009f9 100644
+--- a/apps/api/tests/test_repository_docs.py
++++ b/apps/api/tests/test_repository_docs.py
+@@ -221,6 +221,39 @@ def test_adr_0001_keeps_distinct_billing_integration_boundaries() -> None:
+     assert "Each contour registers its own payment-provider adapter." not in content
+ 
+ 
++def test_billing_docs_keep_target_and_access_only_ownership_distinct() -> None:
++    target_docs = (
++        "README.md",
++        "ARCHITECTURE.md",
++        "docs/architecture/billing-authority.md",
++        "docs/architecture/decisions/0004-billing-authority-and-consistency.md",
++    )
++    ownership_docs = (
++        "ARCHITECTURE.md",
++        "docs/architecture/billing-authority.md",
++        "docs/architecture/decisions/0004-billing-authority-and-consistency.md",
++        "docs/architecture/contours.md",
++    )
++
++    def normalized(relative: str) -> str:
++        content = (repo.ROOT / relative).read_text(encoding="utf-8")
++        return " ".join(content.replace("**", "").replace("`", "").lower().split())
++
++    for relative in target_docs:
++        assert "sole long-term production target is the external-billing-managed flow" in normalized(relative)
++
++    assert "most likely launch" not in normalized("README.md")
++    assert "expected launch model" not in normalized("ARCHITECTURE.md")
++
++    for relative in ownership_docs:
++        content = normalized(relative)
++        assert "subscription that participates in a billing lifecycle" in content
++        assert "exactly one billing owner at a time" in content
++        assert "portal-only access lifecycle" in content
++        assert "does not require an external billing owner" in content
++        assert "each subscription and its billing lifecycle has exactly one billing owner" not in content
++
++
+ def test_billing_consistency_docs_require_retry_safe_unknown_outcomes() -> None:
+     reliability = (repo.ROOT / "docs/RELIABILITY.md").read_text(encoding="utf-8")
+     authority = (repo.ROOT / "docs/architecture/billing-authority.md").read_text(encoding="utf-8")
+diff --git a/docs/architecture/billing-authority.md b/docs/architecture/billing-authority.md
+index a3c2825..1b6749e 100644
+--- a/docs/architecture/billing-authority.md
++++ b/docs/architecture/billing-authority.md
+@@ -33,14 +33,18 @@ records and applies its entitlement rules. Platform Kernel is the intended
+ consumer of Payment Portal's local entitlements through the planned private
+ entitlement/access API.
+ 
+-The durable ownership invariant is: **each subscription and its billing
+-lifecycle has exactly one billing owner.** In the long-term target that owner is
+-one external billing system. The current/transitional direct-provider flow has
+-Payment Portal as its billing owner only while that flow remains required.
+-Billing ownership belongs to the managed lifecycle, not to the contour.
+-Deployment configuration selects the concrete target external-billing
+-integration; it does not freely choose Portal-managed direct-provider billing as
+-a co-equal long-term model.
++The durable ownership invariant is: **a `Subscription` that participates in a
++billing lifecycle has exactly one billing owner at a time.** In the long-term
++target, that billing lifecycle is owned by one external billing system. The
++current/transitional direct-provider flow has Payment Portal as its billing
++owner only while that flow remains required. A Portal-only access lifecycle,
++such as a locally granted free trial without an external billing lifecycle,
++remains Portal-owned and does not require an external billing owner. Delegating
++such an access-only lifecycle to an external billing system would require a
++separate explicit product/integration decision. Billing ownership belongs to
++the billing lifecycle, not to the contour. Deployment configuration selects
++the concrete target external-billing integration; it does not freely choose
++Portal-managed direct-provider billing as a co-equal long-term model.
+ 
+ This target meaning does not assert current persistence readiness. The
+ implemented `Order` and `Payment` schema still requires direct-provider account
+@@ -78,9 +82,10 @@ to-external-billing migration or coexistence mechanism.
+   external lifecycle; Payment Portal owns the preceding local purchase intent /
+   commercial order, sends commands, and projects authoritative payment and
+   subscription facts locally.
+-- **Billing owner:** the single authority allowed to manage one subscription
+-  and its billing lifecycle. This document does not choose its persisted
+-  representation.
++- **Billing owner:** the single authority allowed to manage a subscription's
++  billing lifecycle when that subscription participates in one. A Portal-only
++  access lifecycle is not required to have an external billing owner. This
++  document does not choose a persisted representation.
+ - **Command:** an outbound request or intention. A successful call is not final
+   billing-state authority, and the external command is not assumed to be
+   idempotent.
+diff --git a/docs/architecture/contours.md b/docs/architecture/contours.md
+index 66a3523..bc5bdfa 100644
+--- a/docs/architecture/contours.md
++++ b/docs/architecture/contours.md
+@@ -137,9 +137,11 @@ configuration to select one concrete external-billing integration for the
+ deployed product. A current/transitional direct-provider integration may remain
+ only while required; reintroducing it as a future production model requires a
+ new explicit architecture decision. The durable ownership invariant applies to
+-each subscription and its billing lifecycle, which has exactly one billing
+-owner. This does not require a contour to support multiple simultaneously active
+-billing owners or production integrations, and it defines no migration or
+-coexistence mechanism. See
++a `Subscription` that participates in a billing lifecycle, which has exactly
++one billing owner at a time. A Portal-only access lifecycle, such as a locally
++granted free trial without an external billing lifecycle, remains Portal-owned
++and does not require an external billing owner. This does not require a contour
++to support multiple simultaneously active billing owners or production
++integrations, and it defines no migration or coexistence mechanism. See
+ [payment providers](payment-providers.md) and
+ [billing authority](billing-authority.md).
+diff --git a/docs/architecture/decisions/0004-billing-authority-and-consistency.md b/docs/architecture/decisions/0004-billing-authority-and-consistency.md
+index 90db563..56775b8 100644
+--- a/docs/architecture/decisions/0004-billing-authority-and-consistency.md
++++ b/docs/architecture/decisions/0004-billing-authority-and-consistency.md
+@@ -36,8 +36,8 @@ entitlement rules, and local entitlements. Platform Kernel consumes those local
+ entitlements only; it does not derive access from provider or external billing
+ state.
+ 
+-The long-term production **TARGET** is the external-billing-managed flow. The
+-Portal-managed direct-provider flow is **CURRENT / TRANSITIONAL**, not a
++The sole long-term production **TARGET** is the external-billing-managed flow.
++The Portal-managed direct-provider flow is **CURRENT / TRANSITIONAL**, not a
+ co-equal future production target:
+ 
+ - In a **Portal-managed direct-provider flow**, Payment Portal orchestrates the
+@@ -58,12 +58,17 @@ co-equal future production target:
+   an arbitrary external billing system without separately approved persistence
+   adaptation.
+ 
+-Each subscription and its billing lifecycle has exactly one billing owner:
+-either Payment Portal in a Portal-managed direct-provider flow, or one external
+-billing system in an external-billing-managed flow. Ownership is never
+-last-write-wins. This invariant applies to the managed lifecycle, not to the
+-contour, and this ADR does not choose a database representation, field, enum,
+-or external-customer schema for it.
++A `Subscription` that participates in a billing lifecycle has exactly one
++billing owner at a time: Payment Portal in the current/transitional Portal-
++managed direct-provider flow, or one external billing system in the long-term
++external-billing target. A Portal-only access lifecycle, such as a locally
++granted free trial without an external billing lifecycle, remains Portal-owned
++and does not require an external billing owner. Delegating such an access-only
++lifecycle to an external billing system would require a separate explicit
++product/integration decision. Ownership is never last-write-wins. This invariant
++applies to the billing lifecycle, not to the contour, and this ADR does not
++choose a database representation, field, enum, or external-customer schema for
++it.
+ 
+ An outbound REST command records intent; a successful response does not confirm
+ payment, subscription activation, or entitlement activation. External commands
+@@ -138,9 +143,13 @@ contract and its closed persisted vocabularies.
+ 
+ ## Consequences
+ 
+-- Future external-billing work must preserve exactly one billing owner for each
+-  subscription and its billing lifecycle, and normalize authoritative external
+-  facts before local transitions.
++- Future external-billing work must preserve exactly one external billing owner
++  at a time for each subscription that participates in its billing lifecycle,
++  and normalize authoritative external facts before local transitions.
++- Portal-only access lifecycles, including locally granted free trials without
++  an external billing lifecycle, remain Portal-owned and do not require an
++  external billing owner. Delegating one requires a separate explicit
++  product/integration decision.
+ - Future external-billing work must preserve the Portal-owned local purchase
+   intent / commercial order created before the external billing command.
+ - Future command orchestration must remain retry-safe without assuming external
+diff --git a/docs/exec-plans/active/ANY-411-implementation-plan.md b/docs/exec-plans/active/ANY-411-implementation-plan.md
+index 2868dd0..484feb3 100644
+--- a/docs/exec-plans/active/ANY-411-implementation-plan.md
++++ b/docs/exec-plans/active/ANY-411-implementation-plan.md
+@@ -177,20 +177,16 @@ The external system does not write entitlements and Platform Kernel does not que
+ The durable invariant is:
+ 
+ ```text
+-one subscription → one billing owner
++a subscription participating in a billing lifecycle → one billing owner at a time
+ ```
+ 
+-Conceptually the owner is either:
+-
+-```text
+-Portal-managed
+-```
+-
+-or:
+-
+-```text
+-external billing system X
+-```
++In the sole long-term production target, that billing lifecycle is owned by one
++external billing system. Payment Portal remains the billing owner only for the
++current/transitional direct-provider flow while it exists. A Portal-only access
++lifecycle, such as a locally granted free trial without an external billing
++lifecycle, remains Portal-owned and does not require an external billing owner.
++Delegating such an access-only lifecycle requires a separate explicit
++product/integration decision.
+ 
+ ANY-411 must **not** choose the eventual database representation.
+ 
+@@ -780,7 +776,9 @@ The external billing system owns the external lifecycle; Portal sends commands a
+ 
+ ### Billing owner
+ 
+-The single authority allowed to manage one subscription's billing lifecycle.
++The single authority allowed to manage a subscription's billing lifecycle when
++that subscription participates in one. A Portal-only access lifecycle does not
++require an external billing owner.
+ 
+ No persisted representation is chosen in Step 1.
+ 
+@@ -951,7 +949,9 @@ ADR must establish:
+   - external billing system;
+ - `PaymentProviderAdapter` applies only to the Portal-managed provider flow;
+ - external billing systems are not registered in `PaymentProviderRegistry`;
+-- one subscription has exactly one billing owner;
++- a subscription that participates in a billing lifecycle has exactly one
++  billing owner at a time, while a Portal-only access lifecycle does not require
++  an external billing owner;
+ - outbound REST command success is not final billing authority;
+ - orchestration is retry-safe without assuming every external command is
+   idempotent; a timeout or lost response remains unknown and is reconciled
+@@ -1066,7 +1066,11 @@ Follow these locked decisions:
+ 4. Platform Kernel consumes local Payment Portal entitlements only.
+ 5. A direct payment provider and an external billing system are different architectural concepts.
+ 6. `PaymentProviderAdapter` and `PaymentProviderRegistry` apply only to the Portal-managed direct-provider flow. An external billing system must not be modeled as another `PaymentProviderAdapter`.
+-7. One subscription has exactly one billing owner. Do not choose a database representation for billing ownership in this step.
++7. A `Subscription` that participates in a billing lifecycle has exactly one
++   billing owner at a time. A Portal-only access lifecycle, such as a locally
++   granted free trial without an external billing lifecycle, remains Portal-
++   owned and does not require an external billing owner. Do not choose a
++   database representation for billing ownership in this step.
+ 8. An outbound REST command/result is not final payment/subscription authority.
+ 9. Application orchestration must be retry-safe without assuming external
+    command idempotency. Provider/vendor idempotency features are used when
+@@ -1714,7 +1718,8 @@ Step is complete when:
+ - provider vs external-billing terminology is consistent;
+ - source roles are explicit;
+ - Python typing ratchet is documented;
+-- security/reliability rules cover either billing ownership model;
++- security/reliability rules cover the long-term external-billing target and
++  the current/transitional Portal-managed flow;
+ - no runtime/toolchain dependency changed.
+ 
+ ## Proposed commit

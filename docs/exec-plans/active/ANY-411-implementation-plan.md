@@ -177,20 +177,16 @@ The external system does not write entitlements and Platform Kernel does not que
 The durable invariant is:
 
 ```text
-one subscription → one billing owner
+a subscription participating in a billing lifecycle → one billing owner at a time
 ```
 
-Conceptually the owner is either:
-
-```text
-Portal-managed
-```
-
-or:
-
-```text
-external billing system X
-```
+In the sole long-term production target, that billing lifecycle is owned by one
+external billing system. Payment Portal remains the billing owner only for the
+current/transitional direct-provider flow while it exists. A Portal-only access
+lifecycle, such as a locally granted free trial without an external billing
+lifecycle, remains Portal-owned and does not require an external billing owner.
+Delegating such an access-only lifecycle requires a separate explicit
+product/integration decision.
 
 ANY-411 must **not** choose the eventual database representation.
 
@@ -780,7 +776,9 @@ The external billing system owns the external lifecycle; Portal sends commands a
 
 ### Billing owner
 
-The single authority allowed to manage one subscription's billing lifecycle.
+The single authority allowed to manage a subscription's billing lifecycle when
+that subscription participates in one. A Portal-only access lifecycle does not
+require an external billing owner.
 
 No persisted representation is chosen in Step 1.
 
@@ -951,7 +949,9 @@ ADR must establish:
   - external billing system;
 - `PaymentProviderAdapter` applies only to the Portal-managed provider flow;
 - external billing systems are not registered in `PaymentProviderRegistry`;
-- one subscription has exactly one billing owner;
+- a subscription that participates in a billing lifecycle has exactly one
+  billing owner at a time, while a Portal-only access lifecycle does not require
+  an external billing owner;
 - outbound REST command success is not final billing authority;
 - orchestration is retry-safe without assuming every external command is
   idempotent; a timeout or lost response remains unknown and is reconciled
@@ -1066,7 +1066,11 @@ Follow these locked decisions:
 4. Platform Kernel consumes local Payment Portal entitlements only.
 5. A direct payment provider and an external billing system are different architectural concepts.
 6. `PaymentProviderAdapter` and `PaymentProviderRegistry` apply only to the Portal-managed direct-provider flow. An external billing system must not be modeled as another `PaymentProviderAdapter`.
-7. One subscription has exactly one billing owner. Do not choose a database representation for billing ownership in this step.
+7. A `Subscription` that participates in a billing lifecycle has exactly one
+   billing owner at a time. A Portal-only access lifecycle, such as a locally
+   granted free trial without an external billing lifecycle, remains Portal-
+   owned and does not require an external billing owner. Do not choose a
+   database representation for billing ownership in this step.
 8. An outbound REST command/result is not final payment/subscription authority.
 9. Application orchestration must be retry-safe without assuming external
    command idempotency. Provider/vendor idempotency features are used when
@@ -1714,7 +1718,8 @@ Step is complete when:
 - provider vs external-billing terminology is consistent;
 - source roles are explicit;
 - Python typing ratchet is documented;
-- security/reliability rules cover either billing ownership model;
+- security/reliability rules cover the long-term external-billing target and
+  the current/transitional Portal-managed flow;
 - no runtime/toolchain dependency changed.
 
 ## Proposed commit
