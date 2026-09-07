@@ -41,7 +41,7 @@ Before executing Step 1, verify only that PR #78 is final/accepted and that its 
 The repository already has:
 
 - neutral `AppError` carrying:
-  - `code`;
+  - optional `code`;
   - `message_safe`;
   - `details_safe`;
 - payment/provider errors with established retry disposition and safe diagnostics;
@@ -93,7 +93,9 @@ The arrows above describe propagation, not dependency direction.
    - explicitly allowlisted public detail fields.
 7. `details_safe` means safe diagnostic metadata; it must **not** automatically be serialized to clients.
 8. No global error-code registry is introduced.
-9. No class-per-error-code hierarchy is introduced.
+9. No global class-per-API-code hierarchy is introduced. Concrete semantic
+   exception types are appropriate for the reviewed checkout/password-reset
+   slice when they represent Application/Domain failure meaning.
 10. Existing `SubscriptionLifecycleError` and `LegalAcceptanceError` remain unchanged because they are already transport-neutral and have no current need for forced migration to `AppError`.
 11. Existing provider retryability, idempotency, redaction, exception chaining and unresolved/ambiguous-result semantics remain mechanically unchanged.
 12. Existing HTTP statuses and machine-readable codes remain the same in the reviewed API slice.
@@ -383,18 +385,40 @@ Primary files:
 
 ## Implementation decisions
 
-Add a feature-owned transport-neutral exception:
+Add feature-owned transport-neutral exceptions:
 
 ```python
 class CheckoutError(AppError):
     ...
+
+
+class UnknownProductPlanError(CheckoutError):
+    ...
+
+
+class AutomaticRenewalNotPermittedError(CheckoutError):
+    ...
+
+
+class MissingRequiredDocumentsError(CheckoutError):
+    ...
+
+
+class RecurringConsentRequiredError(CheckoutError):
+    ...
+
+
+class ProviderCurrencyMismatchError(CheckoutError):
+    ...
 ```
 
-Do not create one class per checkout code.
+These concrete types represent the reviewed checkout failure meanings. They
+must not define HTTP status, public API code, or user-facing messages.
+`MissingRequiredDocumentsError` requires its existing documents payload in its
+constructor and stores it as safe internal details.
 
-`CheckoutError` carries existing stable codes through normal `AppError` fields.
-
-Migrate application/business checkout errors to `CheckoutError`.
+Migrate application/business checkout errors to the corresponding concrete
+`CheckoutError` subclasses.
 
 The reviewed checkout codes are:
 
@@ -410,11 +434,12 @@ The reviewed checkout codes are:
 
 Specifically:
 
-- `get_sellable_plan()` raises `CheckoutError("unknown_product_plan")`;
+- `get_sellable_plan()` raises `UnknownProductPlanError()`;
 - `raise_missing_recurring_consent()` raises transport-neutral checkout errors;
 - `missing_required_documents` preserves the existing public `documents` data via safe internal details.
 
-For the checkout route, replace the listed business `HTTPException` branches with `CheckoutError`.
+For the checkout route, replace the listed business `HTTPException` branches
+with the corresponding concrete `CheckoutError` subclasses.
 
 Do not move route/request mechanics out of the router.
 
@@ -430,7 +455,8 @@ Register a central handler for `AppError` from the application composition root 
 
 The handler must:
 
-- explicitly map current `CheckoutError` codes to their existing HTTP statuses;
+- explicitly map the concrete current checkout exception types to their
+  existing HTTP statuses and public codes;
 - return structured:
   ```json
   {"detail": {"code": "..."}}
@@ -506,9 +532,13 @@ Step 1 is assumed complete: AppError remains in `app.core.errors`, and payment-s
 
 Follow these decisions exactly.
 
-1. Add `app.domains.identity.errors.CheckoutError` as a small AppError subclass. Do not create one exception class per code and do not put HTTP status information on the exception.
+1. Add `app.domains.identity.errors.CheckoutError` and the reviewed concrete
+   semantic checkout subclasses. Do not put HTTP status information on the
+   exceptions or turn this into a repository-wide class-per-API-code rule.
 2. Remove FastAPI/HTTPException usage from `app.domains.identity.services.checkout`.
-3. Replace the service-level checkout HTTP failures with CheckoutError while preserving the existing codes and behavior:
+3. Replace the service-level checkout HTTP failures with the corresponding
+   concrete CheckoutError subclasses while preserving the existing public
+   codes and behavior:
    - unknown_product_plan -> HTTP 400 at the presentation boundary;
    - missing_required_documents -> HTTP 409 and preserve the current documents payload;
    - recurring_consent_required -> HTTP 409.
@@ -519,7 +549,9 @@ Follow these decisions exactly.
 5. Do not alter the existing PaymentProviderConfigurationError compatibility mapping in the router apart from using its Step-1 import location.
 6. Add a small presentation-boundary module `apps/api/app/http_errors.py`.
 7. Register a central FastAPI handler for AppError from `create_app()`.
-8. The handler must explicitly map the current CheckoutError codes to their existing HTTP statuses and return `{"detail":{"code":"..."}}`.
+8. The handler must explicitly map the current concrete CheckoutError types
+   to their existing HTTP statuses and public codes, returning
+   `{"detail":{"code":"..."}}`.
 9. Preserve `missing_required_documents` as `{"detail":{"code":"missing_required_documents","documents":[...]}}`.
 10. Never blindly expose AppError.details_safe or message_safe. Only the currently public `documents` field may be copied from CheckoutError safe details.
 11. An AppError not explicitly mapped by the current presentation rules must fail closed as HTTP 500 with a generic structured internal error code. Do not expose its internal/provider code by default.
@@ -625,14 +657,22 @@ Do not replace native FastAPI validation 422 responses.
 
 ### Password reset
 
-Add one feature-level transport-neutral type:
+Add the feature-level transport-neutral exception family:
 
 ```python
 class PasswordResetError(AppError):
     ...
+
+
+class PasswordResetRateLimitedError(PasswordResetError):
+    ...
+
+
+class InvalidOrExpiredResetTokenError(PasswordResetError):
+    ...
 ```
 
-Use it for current business failures:
+Use the concrete types for current business failures:
 
 | Code | Status |
 | --- | ---: |
@@ -645,7 +685,8 @@ The request route must preserve its rollback-before-propagation behavior when th
 
 All invalid/expired-token branches must continue to be deliberately indistinguishable from one another.
 
-Extend the existing central `AppError` presentation mapper with only these two current PasswordResetError mappings.
+Extend the existing central `AppError` presentation mapper with only these
+two current concrete PasswordResetError mappings.
 
 Do not expose internal token/user existence information.
 
@@ -699,10 +740,14 @@ Register/login:
 4. Do not modify FastAPI/Pydantic 422 validation responses.
 
 Password reset:
-5. Add a small `PasswordResetError` AppError subclass in the existing identity error module. Do not create one class per code.
-6. `enforce_password_reset_rate_limit()` must raise PasswordResetError with code `password_reset_rate_limited` instead of HTTPException.
+5. Add the `PasswordResetError` parent and the two concrete semantic
+   subclasses in the existing identity error module. Do not turn this into a
+   repository-wide class-per-API-code rule.
+6. `enforce_password_reset_rate_limit()` must raise
+   `PasswordResetRateLimitedError()` instead of HTTPException.
 7. Preserve the request route's rollback behavior before the rate-limit error propagates. Replace the current narrow `except HTTPException` rollback catch for this path with `except PasswordResetError`; call `db.rollback()` and re-raise. Do not broaden the catch to `Exception`.
-8. All current invalid/expired reset-token branches must raise PasswordResetError with code `invalid_or_expired_reset_token`.
+8. All current invalid/expired reset-token branches must raise
+   `InvalidOrExpiredResetTokenError()`.
 9. Extend the central presentation mapper with:
    - password_reset_rate_limited -> HTTP 429
    - invalid_or_expired_reset_token -> HTTP 400
@@ -1091,7 +1136,14 @@ Document:
 #### Domain/Application
 
 - own business/application failure meaning;
-- exceptions carry stable internal codes and safe diagnostics where justified;
+- may represent reviewed failure meaning with concrete semantic exception
+  types, or carry stable internal codes and safe diagnostics where justified;
+- `AppError.code` is optional and remains available where a stable internal
+  code is justified, especially for existing integration/provider errors;
+- the reviewed checkout/password-reset slice uses concrete semantic exception
+  types rather than a generic exception plus a string code;
+- this is not a rule to create classes for every API code throughout the
+  repository, and no global error-code registry is introduced;
 - no FastAPI/HTTP status/vendor response dependency.
 
 #### Integrations/provider boundary

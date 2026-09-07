@@ -9,23 +9,29 @@ from fastapi.responses import JSONResponse
 from starlette.responses import Response
 
 from app.core.errors import AppError
-from app.domains.identity.errors import CheckoutError, PasswordResetError
+from app.domains.identity.errors import (
+    AutomaticRenewalNotPermittedError,
+    InvalidOrExpiredResetTokenError,
+    MissingRequiredDocumentsError,
+    PasswordResetRateLimitedError,
+    ProviderCurrencyMismatchError,
+    RecurringConsentRequiredError,
+    UnknownProductPlanError,
+)
 
 
 logger = logging.getLogger("payment_portal.http")
 INTERNAL_ERROR_CODE = "internal_server_error"
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 APPLICATION_ROOT = Path(__file__).resolve().parent
-CHECKOUT_ERROR_STATUS_CODES = {
-    "unknown_product_plan": 400,
-    "automatic_renewal_not_permitted": 409,
-    "missing_required_documents": 409,
-    "recurring_consent_required": 409,
-    "provider_currency_mismatch": 409,
-}
-PASSWORD_RESET_ERROR_STATUS_CODES = {
-    "password_reset_rate_limited": 429,
-    "invalid_or_expired_reset_token": 400,
+HTTP_ERROR_RESPONSES: dict[type[AppError], tuple[int, str]] = {
+    UnknownProductPlanError: (400, "unknown_product_plan"),
+    AutomaticRenewalNotPermittedError: (409, "automatic_renewal_not_permitted"),
+    MissingRequiredDocumentsError: (409, "missing_required_documents"),
+    RecurringConsentRequiredError: (409, "recurring_consent_required"),
+    ProviderCurrencyMismatchError: (409, "provider_currency_mismatch"),
+    PasswordResetRateLimitedError: (429, "password_reset_rate_limited"),
+    InvalidOrExpiredResetTokenError: (400, "invalid_or_expired_reset_token"),
 }
 
 
@@ -58,7 +64,7 @@ def _log_internal_failure(request: Request, error: BaseException) -> None:
     route = _matched_route_template(request)
     if route is not None:
         structured["route"] = route
-    if isinstance(error, AppError):
+    if isinstance(error, AppError) and error.code is not None:
         structured["error_code"] = error.code
     location = _application_failure_location(error)
     if location is not None:
@@ -74,21 +80,13 @@ def _internal_server_error_response() -> JSONResponse:
 
 
 def app_error_handler(request: Request, error: AppError) -> JSONResponse:
-    if isinstance(error, CheckoutError):
-        status_code = CHECKOUT_ERROR_STATUS_CODES.get(error.code)
-        if status_code is not None:
-            detail: dict[str, object] = {"code": error.code}
-            if error.code == "missing_required_documents" and "documents" in error.details_safe:
-                detail["documents"] = error.details_safe["documents"]
-            return JSONResponse(status_code=status_code, content={"detail": detail})
-
-    if isinstance(error, PasswordResetError):
-        status_code = PASSWORD_RESET_ERROR_STATUS_CODES.get(error.code)
-        if status_code is not None:
-            return JSONResponse(
-                status_code=status_code,
-                content={"detail": {"code": error.code}},
-            )
+    spec = HTTP_ERROR_RESPONSES.get(type(error))
+    if spec is not None:
+        status_code, public_code = spec
+        detail: dict[str, object] = {"code": public_code}
+        if isinstance(error, MissingRequiredDocumentsError):
+            detail["documents"] = error.details_safe["documents"]
+        return JSONResponse(status_code=status_code, content={"detail": detail})
 
     _log_internal_failure(request, error)
     return _internal_server_error_response()

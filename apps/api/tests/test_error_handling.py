@@ -8,9 +8,27 @@ from fastapi.testclient import TestClient
 from starlette.requests import Request
 
 from app.core.errors import AppError
-from app.domains.identity.errors import CheckoutError, PasswordResetError
+from app.domains.identity.errors import (
+    AutomaticRenewalNotPermittedError,
+    CheckoutError,
+    InvalidOrExpiredResetTokenError,
+    MissingRequiredDocumentsError,
+    PasswordResetError,
+    PasswordResetRateLimitedError,
+    ProviderCurrencyMismatchError,
+    RecurringConsentRequiredError,
+    UnknownProductPlanError,
+)
 from app.http_errors import app_error_handler
 from app.main import create_app
+
+
+class UnmappedCheckoutError(CheckoutError):
+    pass
+
+
+class UnmappedPasswordResetError(PasswordResetError):
+    pass
 
 
 def make_request() -> Request:
@@ -32,31 +50,31 @@ def test_create_app_registers_the_central_app_error_handler() -> None:
 
 
 @pytest.mark.parametrize(
-    ("code", "status_code"),
+    ("error", "status_code", "code"),
     [
-        ("unknown_product_plan", 400),
-        ("automatic_renewal_not_permitted", 409),
-        ("recurring_consent_required", 409),
-        ("provider_currency_mismatch", 409),
+        (UnknownProductPlanError(), 400, "unknown_product_plan"),
+        (AutomaticRenewalNotPermittedError(), 409, "automatic_renewal_not_permitted"),
+        (RecurringConsentRequiredError(), 409, "recurring_consent_required"),
+        (ProviderCurrencyMismatchError(), 409, "provider_currency_mismatch"),
     ],
 )
-def test_checkout_app_errors_use_structured_code(code: str, status_code: int) -> None:
-    response = app_error_handler(make_request(), CheckoutError(code))
+def test_checkout_app_errors_use_structured_code(
+    error: CheckoutError,
+    status_code: int,
+    code: str,
+) -> None:
+    response = app_error_handler(make_request(), error)
 
     assert response.status_code == status_code
     assert json.loads(response.body) == {"detail": {"code": code}}
 
 
 def test_missing_documents_are_the_only_safe_details_exposed() -> None:
+    error = MissingRequiredDocumentsError([{"document_version_id": "document-id"}])
+    error.details_safe["internal"] = "must not be exposed"
     response = app_error_handler(
         make_request(),
-        CheckoutError(
-            "missing_required_documents",
-            details_safe={
-                "documents": [{"document_version_id": "document-id"}],
-                "internal": "must not be exposed",
-            },
-        ),
+        error,
     )
 
     assert response.status_code == 409
@@ -83,7 +101,14 @@ def test_unmapped_app_errors_fail_closed_with_generic_detail() -> None:
 
 
 def test_unmapped_checkout_errors_fail_closed_with_generic_detail() -> None:
-    response = app_error_handler(make_request(), CheckoutError("unsupported_checkout_code"))
+    response = app_error_handler(make_request(), UnmappedCheckoutError())
+
+    assert response.status_code == 500
+    assert json.loads(response.body) == {"detail": {"code": "internal_server_error"}}
+
+
+def test_unmapped_password_reset_errors_fail_closed_with_generic_detail() -> None:
+    response = app_error_handler(make_request(), UnmappedPasswordResetError())
 
     assert response.status_code == 500
     assert json.loads(response.body) == {"detail": {"code": "internal_server_error"}}
@@ -108,6 +133,19 @@ def test_unmapped_app_error_logs_one_bounded_failure(caplog: pytest.LogCaptureFi
     assert diagnostics[0].structured["error_code"] == "provider_secret_error"
     assert secret_message not in caplog.text
     assert "secret-token" not in caplog.text
+
+
+def test_semantic_app_error_logs_type_without_null_error_code(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with caplog.at_level(logging.ERROR, logger="payment_portal.http"):
+        response = app_error_handler(make_request(), UnmappedCheckoutError())
+
+    diagnostics = [record for record in caplog.records if record.getMessage() == "http_internal_failure"]
+    assert response.status_code == 500
+    assert len(diagnostics) == 1
+    assert diagnostics[0].structured["error_type"] == "UnmappedCheckoutError"
+    assert "error_code" not in diagnostics[0].structured
 
 
 def test_unexpected_failures_are_converted_and_logged_safely(
@@ -159,8 +197,8 @@ def test_unexpected_failures_are_converted_and_logged_safely(
 @pytest.mark.parametrize(
     ("error", "status_code", "code"),
     [
-        (PasswordResetError("password_reset_rate_limited"), 429, "password_reset_rate_limited"),
-        (PasswordResetError("invalid_or_expired_reset_token"), 400, "invalid_or_expired_reset_token"),
+        (PasswordResetRateLimitedError(), 429, "password_reset_rate_limited"),
+        (InvalidOrExpiredResetTokenError(), 400, "invalid_or_expired_reset_token"),
     ],
 )
 def test_password_reset_app_errors_use_structured_code(

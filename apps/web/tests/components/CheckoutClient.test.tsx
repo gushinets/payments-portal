@@ -1151,6 +1151,36 @@ describe("CheckoutClient critical characterization", () => {
     expect(screen.queryByText("Не удалось подготовить оплату. Попробуйте ещё раз.")).not.toBeInTheDocument();
   });
 
+  it("does not classify a checkout code when the HTTP status is wrong", async () => {
+    const user = userEvent.setup();
+    storeSessionToken("session-token");
+    server.use(
+      http.get(`${apiBase}/api/auth/session`, () =>
+        HttpResponse.json(sessionResponse("inactive"))
+      ),
+      http.post(`${apiBase}/api/auth/checkout-intent`, () =>
+        HttpResponse.json(
+          { detail: { code: "automatic_renewal_not_permitted" } },
+          { status: 400 }
+        )
+      )
+    );
+
+    await renderCheckoutWithProviderStub();
+
+    expect(await screen.findByText("buyer@example.com")).toBeVisible();
+    await user.click(screen.getByLabelText("Включить автопродление"));
+    await user.click(screen.getByLabelText(/Я соглашаюсь на регулярное автоматическое списание/));
+    await user.click(screen.getByRole("button", { name: /^Оплатить/ }));
+
+    expect(
+      await screen.findByText("Не удалось подготовить оплату. Попробуйте ещё раз.")
+    ).toBeVisible();
+    expect(
+      screen.queryByText(/Выбранный тариф не поддерживает автопродление/)
+    ).not.toBeInTheDocument();
+  });
+
   it("starts the CloudPayments widget in two-stage auth mode", async () => {
     const user = userEvent.setup();
     storeSessionToken("session-token");

@@ -123,9 +123,17 @@ directions and rejects deep alias imports.
 
 Core owns only neutral shared error primitives, including `AppError`. It does
 not own feature-specific error vocabularies. Application and Domain own
-business and use-case failure meaning; their exceptions may carry stable
-internal codes and safe diagnostics where justified, but do not depend on
-FastAPI, HTTP status codes, or vendor response semantics.
+business and use-case failure meaning. Their exceptions may use concrete
+semantic types and may carry stable internal codes and safe diagnostics where
+justified, but do not depend on FastAPI, HTTP status codes, or vendor response
+semantics. `AppError.code` is optional: it remains available for justified
+stable internal codes, especially existing integration/provider errors, while
+semantic no-code exceptions use their type as their internal identity.
+
+The reviewed checkout/password-reset slice uses concrete semantic exception
+types rather than a generic exception plus a string code. This is not a rule
+to create a class for every API code throughout the repository, and it does
+not introduce a global error-code registry.
 
 Integrations and the payment-provider boundary normalize vendor failures while
 preserving retryability, idempotency, and unknown or ambiguous-outcome

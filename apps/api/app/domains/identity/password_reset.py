@@ -17,7 +17,11 @@ from app.core.password_reset_email import (
     build_password_reset_url,
     send_password_reset_email,
 )
-from app.domains.identity.errors import PasswordResetError
+from app.domains.identity.errors import (
+    InvalidOrExpiredResetTokenError,
+    PasswordResetError,
+    PasswordResetRateLimitedError,
+)
 from app.domains.identity.passwords import hash_password
 from app.domains.identity.session import (
     DEFAULT_REGION,
@@ -109,7 +113,7 @@ def enforce_password_reset_rate_limit(*, db: Session, key: str, limit: int, now:
         {"key": key, "now": now, "expires_at": expires_at},
     ).scalar_one()
     if attempts > limit:
-        raise PasswordResetError("password_reset_rate_limited")
+        raise PasswordResetRateLimitedError()
 
 
 def prune_expired_password_reset_rate_limits(*, db: Session, now: datetime) -> None:
@@ -259,7 +263,7 @@ def confirm_password_reset(
     )
     if claimed != 1:
         db.rollback()
-        raise PasswordResetError("invalid_or_expired_reset_token")
+        raise InvalidOrExpiredResetTokenError()
 
     reset_token = (
         db.query(MagicLinkToken)
@@ -271,7 +275,7 @@ def confirm_password_reset(
     )
     if reset_token is None:
         db.rollback()
-        raise PasswordResetError("invalid_or_expired_reset_token")
+        raise InvalidOrExpiredResetTokenError()
 
     user = (
         db.query(User)
@@ -285,7 +289,7 @@ def confirm_password_reset(
     )
     if user is None:
         db.rollback()
-        raise PasswordResetError("invalid_or_expired_reset_token")
+        raise InvalidOrExpiredResetTokenError()
 
     user.password_hash = hash_password(payload.password)
     db.add(user)
