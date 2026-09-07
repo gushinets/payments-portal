@@ -15,6 +15,7 @@ import {
 } from "@/features/catalog";
 import {
   ApiError,
+  apiErrorCode,
   authErrorMessage,
   decodeAuthSessionResponse,
   getJson,
@@ -340,23 +341,6 @@ export function CheckoutClient({
     );
   }
 
-  function apiErrorCode(errorValue: unknown): string | null {
-    if (!(errorValue instanceof ApiError)) {
-      return null;
-    }
-    const detail = errorValue.detail;
-    if (typeof detail === "string") {
-      return detail;
-    }
-    if (typeof detail === "object" && detail !== null && "code" in detail) {
-      const code = (detail as Record<string, unknown>).code;
-      if (typeof code === "string") {
-        return code;
-      }
-    }
-    return null;
-  }
-
   function checkoutPreparationErrorMessage(errorValue: unknown): string {
     const code = apiErrorCode(errorValue);
     if (code === "automatic_renewal_not_permitted") {
@@ -639,6 +623,7 @@ export function CheckoutClient({
     } catch (requestError) {
       if (
         requestError instanceof ApiError &&
+        requestError.status === 400 &&
         requestError.detail === "invalid_acceptance_text_hash"
       ) {
         showError("Текст согласия изменился. Обновите страницу и попробуйте ещё раз.");

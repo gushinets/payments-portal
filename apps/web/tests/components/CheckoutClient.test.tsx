@@ -1257,7 +1257,10 @@ describe("CheckoutClient critical characterization", () => {
     expect(readStoredPaymentResult()).toBeNull();
   });
 
-  it("shows an actionable error when backend rejects provider configuration", async () => {
+  it.each([
+    "cloudpayments_public_terminal_id_missing",
+    "cloudpayments_widget_mode_invalid"
+  ])("shows an actionable error when backend rejects provider configuration: %s", async (code) => {
     const user = userEvent.setup();
     storeSessionToken("session-token");
     server.use(
@@ -1266,7 +1269,7 @@ describe("CheckoutClient critical characterization", () => {
       ),
       http.post(`${apiBase}/api/auth/checkout-intent`, () =>
         HttpResponse.json(
-          { detail: "cloudpayments_public_terminal_id_missing" },
+          { detail: code },
           { status: 409 }
         )
       )
@@ -1281,6 +1284,53 @@ describe("CheckoutClient critical characterization", () => {
     ).toBeVisible();
     expect(provider.payments).toHaveLength(0);
     expect(readStoredPaymentResult()).toBeNull();
+  });
+
+  it("keeps the legacy legal acceptance error compatibility branch", async () => {
+    const user = userEvent.setup();
+    storeSessionToken("session-token");
+    server.use(
+      http.get(`${apiBase}/api/auth/session`, () =>
+        HttpResponse.json(sessionResponse("inactive"))
+      ),
+      http.post(`${apiBase}/api/auth/checkout-intent`, () =>
+        HttpResponse.json(
+          {
+            detail: {
+              code: "missing_required_documents",
+              documents: [
+                {
+                  document_version_id: "doc-offer-v1",
+                  doc_type: "offer",
+                  version: "2026-07-11",
+                  title: "Публичная оферта",
+                  url_path: "/ru/offer",
+                  acceptance_text: "Принимаю условия оферты.",
+                  acceptance_text_hash: "hash-offer"
+                }
+              ]
+            }
+          },
+          { status: 409 }
+        )
+      ),
+      http.post(`${apiBase}/api/legal/acceptances`, () =>
+        HttpResponse.json(
+          { detail: "invalid_acceptance_text_hash" },
+          { status: 400 }
+        )
+      )
+    );
+    await renderCheckoutWithProviderStub();
+
+    expect(await screen.findByText("buyer@example.com")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: /^Оплатить/ }));
+    await user.click(screen.getByLabelText(/Принять документ Публичная оферта/));
+    await user.click(screen.getByRole("button", { name: /Принять и продолжить/ }));
+
+    expect(
+      await screen.findByText("Текст согласия изменился. Обновите страницу и попробуйте ещё раз.")
+    ).toBeVisible();
   });
 
   it("recovers when the provider adapter throws while starting checkout", async () => {
