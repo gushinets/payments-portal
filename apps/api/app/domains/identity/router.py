@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.payment_providers.errors import PaymentProviderConfigurationError
 from app.core.observability import record_checkout, traced
+from app.domains.identity.errors import CheckoutError
 from app.domains.identity.passwords import hash_password, verify_password
 from app.domains.identity.services.checkout import (
     CheckoutIntentRequest,
@@ -460,10 +461,7 @@ def create_checkout_intent(
         now=now,
     )
     if payload.auto_renew and sellable_plan.renewal_mode != SubscriptionRenewalMode.AUTOMATIC:
-        raise HTTPException(
-            status_code=409,
-            detail={"code": "automatic_renewal_not_permitted"},
-        )
+        raise CheckoutError("automatic_renewal_not_permitted")
     missing_documents = get_missing_required_documents_for_user(
         db,
         user=user,
@@ -472,10 +470,9 @@ def create_checkout_intent(
     )
     if missing_documents:
         record_checkout("missing_required_documents")
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "code": "missing_required_documents",
+        raise CheckoutError(
+            "missing_required_documents",
+            details_safe={
                 "documents": [present_required_document(document) for document in missing_documents],
             },
         )
@@ -506,7 +503,7 @@ def create_checkout_intent(
     currency = sellable_plan.currency
     if currency != provider_account.default_currency:
         record_checkout("provider_currency_mismatch")
-        raise HTTPException(status_code=409, detail="provider_currency_mismatch")
+        raise CheckoutError("provider_currency_mismatch")
     expires_at = now + timedelta(minutes=30)
 
     entrypoint_session = EntrypointSession(

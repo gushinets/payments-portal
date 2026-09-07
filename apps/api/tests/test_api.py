@@ -957,7 +957,7 @@ def test_checkout_rejects_unknown_or_foreign_plan_id() -> None:
             },
         )
         assert response.status_code == 400
-        assert response.json()["detail"] == "unknown_product_plan"
+        assert response.json()["detail"] == {"code": "unknown_product_plan"}
 
 
 def test_session_product_state_uses_user_tenant_product_when_codes_overlap() -> None:
@@ -2272,7 +2272,7 @@ def test_checkout_rejects_plan_provider_currency_mismatch() -> None:
     )
 
     assert checkout_response.status_code == 409
-    assert checkout_response.json()["detail"] == "provider_currency_mismatch"
+    assert checkout_response.json()["detail"] == {"code": "provider_currency_mismatch"}
     with SessionLocal() as db:
         assert db.query(Order).count() == 0
         assert db.query(OrderItem).count() == 0
@@ -2405,7 +2405,7 @@ def test_checkout_rejects_inactive_catalog_plan_without_legacy_fallback() -> Non
     )
 
     assert checkout_response.status_code == 400
-    assert checkout_response.json()["detail"] == "unknown_product_plan"
+    assert checkout_response.json()["detail"] == {"code": "unknown_product_plan"}
     with SessionLocal() as db:
         assert db.query(Order).count() == 0
 
@@ -2442,7 +2442,7 @@ def test_checkout_rejects_catalog_plan_outside_validity_window() -> None:
     )
 
     assert checkout_response.status_code == 400
-    assert checkout_response.json()["detail"] == "unknown_product_plan"
+    assert checkout_response.json()["detail"] == {"code": "unknown_product_plan"}
     with SessionLocal() as db:
         assert db.query(Order).count() == 0
 
@@ -2477,7 +2477,7 @@ def test_checkout_rejects_active_plan_for_inactive_product() -> None:
     )
 
     assert checkout_response.status_code == 400
-    assert checkout_response.json()["detail"] == "unknown_product_plan"
+    assert checkout_response.json()["detail"] == {"code": "unknown_product_plan"}
     with SessionLocal() as db:
         assert db.query(Order).count() == 0
 
@@ -2512,7 +2512,7 @@ def test_checkout_rejects_active_plan_for_inactive_bundle() -> None:
     )
 
     assert checkout_response.status_code == 400
-    assert checkout_response.json()["detail"] == "unknown_product_plan"
+    assert checkout_response.json()["detail"] == {"code": "unknown_product_plan"}
     with SessionLocal() as db:
         assert db.query(Order).count() == 0
 

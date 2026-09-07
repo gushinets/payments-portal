@@ -88,6 +88,32 @@ def test_layer_specific_router_rules_are_enforced(tmp_path: Path) -> None:
     assert any("integration-to-domain-router dependency" in error for error in errors)
 
 
+def test_domain_service_trees_reject_fastapi_and_starlette_dependencies(tmp_path: Path) -> None:
+    write_module(
+        tmp_path,
+        "apps/api/app/domains/identity/services/checkout.py",
+        "from fastapi import HTTPException\n",
+    )
+    write_module(
+        tmp_path,
+        "apps/api/app/domains/billing/service/reconciliation.py",
+        "from starlette.requests import Request\n",
+    )
+
+    errors = check_python_boundaries(tmp_path)
+
+    assert any(
+        "apps/api/app/domains/identity/services/checkout.py:1 imports fastapi" in error
+        and "domain service/application-to-transport dependency" in error
+        for error in errors
+    )
+    assert any(
+        "apps/api/app/domains/billing/service/reconciliation.py:1 imports starlette" in error
+        and "domain service/application-to-transport dependency" in error
+        for error in errors
+    )
+
+
 def test_comments_strings_and_allowed_session_import_pass(tmp_path: Path) -> None:
     write_module(
         tmp_path,

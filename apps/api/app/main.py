@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.database import SessionLocal
 from app.core.database import engine
+from app.core.errors import AppError
 from app.core.observability import (
     configure_observability,
     metrics_response,
@@ -20,6 +21,7 @@ from app.domains.identity.password_reset import router as password_reset_router
 from app.domains.identity.router import router as auth_router
 from app.domains.legal.router import router as legal_router
 from app.health import health_router
+from app.http_errors import app_error_handler
 from app.integrations.cloudpayments.adapter import CloudPaymentsAdapter
 from app.integrations.cloudpayments.api_client import build_cloudpayments_api_client
 from app.integrations.cloudpayments.router import router as cloudpayments_router
@@ -76,6 +78,7 @@ def create_app() -> FastAPI:
     app.state.cloudpayments_adapter = cloudpayments_adapter
     app.state.payment_provider_registry = payment_provider_registry
     app.middleware("http")(request_context_middleware)
+    app.add_exception_handler(AppError, app_error_handler)
 
     app.add_middleware(
         CORSMiddleware,

@@ -5,12 +5,12 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.core.observability import record_checkout
 from app.core.time import utc_now
+from app.domains.identity.errors import CheckoutError
 from app.domains.legal.service import get_active_required_documents, present_required_document
 from app.infrastructure.queries.plans import get_current_sellable_plan
 from app.models import (
@@ -97,14 +97,14 @@ def get_sellable_plan(db: Session, *, user: User, plan_id: uuid.UUID, now: datet
         now=now,
     )
     if plan is None:
-        raise HTTPException(status_code=400, detail="unknown_product_plan")
+        raise CheckoutError("unknown_product_plan")
 
     scope_type = plan.scope_type
 
     product_code = None
     if scope_type is SubscriptionScopeType.PRODUCT:
         if plan.product_id is None or plan.bundle_id is not None:
-            raise HTTPException(status_code=400, detail="unknown_product_plan")
+            raise CheckoutError("unknown_product_plan")
         product = (
             db.query(Product)
             .filter(
@@ -115,11 +115,11 @@ def get_sellable_plan(db: Session, *, user: User, plan_id: uuid.UUID, now: datet
             .first()
         )
         if product is None:
-            raise HTTPException(status_code=400, detail="unknown_product_plan")
+            raise CheckoutError("unknown_product_plan")
         product_code = product.code
     elif scope_type is SubscriptionScopeType.BUNDLE:
         if plan.product_id is not None or plan.bundle_id is None:
-            raise HTTPException(status_code=400, detail="unknown_product_plan")
+            raise CheckoutError("unknown_product_plan")
         bundle = (
             db.query(Bundle)
             .filter(
@@ -130,9 +130,9 @@ def get_sellable_plan(db: Session, *, user: User, plan_id: uuid.UUID, now: datet
             .first()
         )
         if bundle is None:
-            raise HTTPException(status_code=400, detail="unknown_product_plan")
+            raise CheckoutError("unknown_product_plan")
     elif plan.product_id is not None or plan.bundle_id is not None:
-        raise HTTPException(status_code=400, detail="unknown_product_plan")
+        raise CheckoutError("unknown_product_plan")
 
     return ResolvedCheckoutPlan(
         id=plan.id,
@@ -169,11 +169,10 @@ def raise_missing_recurring_consent(db: Session, *, user: User, now: datetime) -
     ]
     if recurring_documents:
         record_checkout("missing_required_documents")
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "code": "missing_required_documents",
+        raise CheckoutError(
+            "missing_required_documents",
+            details_safe={
                 "documents": [present_required_document(document) for document in recurring_documents],
             },
         )
-    raise HTTPException(status_code=409, detail={"code": "recurring_consent_required"})
+    raise CheckoutError("recurring_consent_required")

@@ -135,7 +135,7 @@ The arrows above describe propagation, not dependency direction.
 
 # Step 1 — Move payment error ownership out of Core
 
-**Status:** `todo`
+**Status:** `done`
 
 ## Goal
 
@@ -352,7 +352,7 @@ Step 1 is complete when:
 
 # Step 2 — Establish central AppError HTTP mapping for checkout
 
-**Status:** `todo`
+**Status:** `done`
 
 ## Goal
 
