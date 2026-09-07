@@ -2,6 +2,7 @@
 
 Read the root `AGENTS.md`, `ARCHITECTURE.md`, [contours](../../docs/architecture/contours.md),
 [payment providers](../../docs/architecture/payment-providers.md), the
+[billing authority](../../docs/architecture/billing-authority.md), the
 canonical data-model document, and the
 [API section of coding conventions](../../docs/engineering/CODING_CONVENTIONS.md#api--python)
 before backend work.
@@ -11,23 +12,42 @@ before backend work.
 - JSON request bodies and ordinary JSON responses use Pydantic models; response
   schemas are exposed in OpenAPI. Untyped routes belong only on the frozen
   legacy list or the raw-response list beside the architecture test.
-- Keep `dict[str, Any]` at the provider edge; decode before domain logic.
+- Keep `dict[str, Any]` only at an untrusted external/integration edge; decode
+  to a validated internal type before Application or Domain logic.
 - New or changed errors use `detail: {"code": "..."}`. Use `StrEnum` only for
-  states the slice compares or transitions; keep ORM statuses as `Text`.
+  states the slice compares or transitions. Persisted Python attributes use
+  the canonical enums exported by `app.models`, while physical evolving
+  database status columns remain `TEXT`/`VARCHAR`.
+- New or materially changed Python functions and methods must have explicit
+  parameter and return annotations. Untouched code does not require a typing
+  sweep.
 - Do not invent fallback domain values. One module owns a given state
   transition.
 
 ## Boundaries
 
-- `core` contains configuration, database, logging, telemetry, and shared
-  security helpers.
-- `domains` contains identity, legal, and billing models and behavior.
-- `integrations` translates provider-specific input into domain operations.
-- Routers validate HTTP input and delegate to services.
+These are logical responsibilities; current physical packages are transitional
+and do not yet map one-to-one to every layer:
 
-Domain modules must not import routers or provider integrations. Provider
-payloads must be verified, redacted, normalized, and processed idempotently
-inside the adapter. CloudPayments is the current `ru` adapter.
+- **Presentation** owns HTTP, webhook, CLI, and job entrypoints and delegates to
+  Application use cases.
+- **Application** owns use-case orchestration, transaction boundaries,
+  idempotency, recovery, and normalized internal contracts.
+- **Domain** owns business invariants, valid transitions, and entitlement
+  rules without transport, vendor, or persistence dependencies.
+- **Persistence / Infrastructure** owns database mechanics used by Application,
+  not billing or entitlement decisions.
+- **Integrations** own external protocols, authenticity checks, parsing,
+  redaction, vendor vocabularies, and normalization, not a second local state
+  machine.
+- **Core / Composition** owns shared infrastructure and concrete wiring, not
+  business logic.
+
+Domain modules must not import routers or external integrations. Raw external
+payloads must be authenticated or verified, validated, redacted, and
+normalized at the owning Integration boundary. CloudPayments is the current
+`ru` direct-provider integration; an external billing system is a distinct
+boundary and is not another `PaymentProviderAdapter`.
 
 ## Tooling
 
@@ -45,7 +65,9 @@ database lifecycle.
 
 ## Safety
 
-- Payment success comes only from verified provider state.
+- Paid access changes only from verified authoritative billing facts. Current
+  CloudPayments supplies those facts through verified webhooks; a browser
+  return remains informational.
 - Never log authentication tokens, authorization headers, secrets, card fields,
   or unredacted webhook bodies.
 - Legal acceptance records are append-only.

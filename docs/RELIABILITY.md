@@ -1,16 +1,57 @@
 # Reliability Requirements
 
 Status: authoritative
-Last verified: 2026-07-11
+Last verified: 2026-09-04
 
 ## Critical paths
 
 - API liveness must not depend on PostgreSQL; readiness must.
-- Checkout creation must be idempotent at provider-facing boundaries.
-- Webhook receipt must be stored before normalized processing completes.
-- Duplicate provider events must not duplicate payment, refund, or order changes.
-- A late failure must not downgrade a confirmed paid order.
-- Return-page state is informational and never payment authority.
+- Billing must use retry-safe orchestration. Persist or find the local operation
+  or purchase intent and commit it before issuing an external command; persist a
+  reliable result and mapping afterward. Use provider idempotency features when
+  available, but do not assume every external command is idempotent.
+- A Portal-initiated commercial purchase or change must validate the exact
+  `Plan.id`, user, legal, entrypoint, and commercial context and persist its
+  Portal-owned purchase intent / commercial `Order` before the external
+  commercial command. A commercial `Order` is not required for unrelated
+  external billing operations: customer provisioning may correlate through the
+  existing Portal `User`, durable operation, and external mapping, while an
+  externally initiated or scheduled renewal is projected or reconciled from
+  authoritative external facts.
+- A timeout or lost response is neither confirmed success nor confirmed failure:
+  the external outcome is unknown. Reconcile before deciding whether another
+  command is safe; never automatically issue a duplicate create after an
+  uncertain outcome.
+- Recovery succeeds only when correlation finds exactly one unambiguous external
+  object. No unambiguous match remains unknown for later reconciliation or
+  another approved safe recovery policy. Multiple plausible matches are
+  ambiguous and must fail closed for manual review or repair, without another
+  automatic create.
+- A valid webhook notification must be authenticated and minimally validated,
+  reduced to a whitelisted or redacted inbox record, and durably persisted
+  before the external request is acknowledged according to integration policy.
+  Processing, retry, and reconciliation then belong to Payment Portal. Once
+  receipt is durable, correctness must not depend on the external billing system
+  retrying an application-level HTTP failure. Concrete acknowledgement codes and
+  external retry policies remain integration-specific. Durability does not
+  require persisting the complete raw HTTP request.
+- Duplicate authoritative billing facts must not duplicate payment, refund,
+  subscription, order, or entitlement changes.
+- Stale, duplicate, reordered, or conflicting authoritative billing facts must
+  not blindly overwrite newer confirmed state. Explicit transition and
+  idempotency rules must reject or ignore them, or trigger reconciliation.
+- Valid later lifecycle facts, including refunds, disputes, cancellations, and
+  expirations, must remain able to perform their legitimate transitions.
+- Verified webhook and future reconciliation facts must feed the same local
+  transition path; reconciliation must not become a competing state machine.
+- Every external-billing integration must define recovery or reconciliation for
+  externally authoritative state changes whose notifications are completely
+  missed. Correctness must not depend solely on webhook delivery. The concrete
+  mechanism, cadence, cursor, pagination, scheduler, and storage remain outside
+  ANY-411.
+- Browser return-page state is informational and never billing authority.
+- In the current CloudPayments flow, authoritative facts arrive through verified
+  webhooks.
 
 ## Agent-verifiable signals
 
@@ -25,5 +66,6 @@ Last verified: 2026-07-11
 
 Development environments must be isolated by worktree and safely disposable.
 Production migrations are forward-only after the corrected initial baseline is
-frozen. Recovery instructions must never suggest treating the return URL as a
-substitute for provider reconciliation.
+frozen. Recovery instructions must never suggest treating the return URL as an
+authoritative billing fact or as a substitute for verified webhook processing
+or reconciliation.

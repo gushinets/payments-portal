@@ -1,7 +1,7 @@
 # Coding Conventions
 
 Status: authoritative
-Last verified: 2026-08-19
+Last verified: 2026-09-04
 
 How to write **new and changed** code so types, states, and trust boundaries
 stay explicit. This is not a backlog and not a mass-migration plan.
@@ -9,6 +9,8 @@ stay explicit. This is not a backlog and not a mass-migration plan.
 Related documents:
 
 - [Architecture](../../ARCHITECTURE.md) — dependency direction and ownership
+- [Billing authority](../architecture/billing-authority.md) — billing ownership,
+  authoritative facts, and Integration trust boundaries
 - [Data model](../architecture/payment-portal-data-model.md) — persistence
   invariants
 - [DDD-lite audit](../architecture/ddd-lite-audit.md) — smell catalog; not a
@@ -20,6 +22,11 @@ Related documents:
 
 Rules apply to new and changed code. Fixing existing debt requires its own
 Linear ticket. Do not expand a feature PR into a conventions cleanup.
+
+All new or materially changed Python functions and methods must have explicit
+parameter and return annotations. Untouched Python code does not require a
+typing migration, and this ratchet does not introduce or require a
+type-checking tool.
 
 When the OpenAPI guardrail lands, two route lists live **next to that
 architecture test**, not in this file:
@@ -60,12 +67,16 @@ unsafe-assertion rule as `error` only after current `json()` /
    must expose a named response schema through `response_model=` **or** a
    Pydantic return annotation. Check the generated OpenAPI schema, not the
    keyword alone.
-2. `dict[str, Any]` is allowed only at the provider boundary. Convert to a
-   validated model before business logic.
+2. `dict[str, Any]` is allowed only at a genuinely untrusted raw external or
+   Integration boundary. Convert to a validated internal model before
+   Application or Domain logic.
 3. Use `StrEnum` for states the slice compares or transitions. A one-off
    discriminator may stay `Literal`.
-4. ORM columns keep evolving statuses as `Text`. Do not introduce PostgreSQL
-   enums. See the [data model](../architecture/payment-portal-data-model.md).
+4. Persisted Python attributes use the canonical enums exported by
+   `app.models`. Physical PostgreSQL columns keep evolving statuses as
+   `TEXT`/`VARCHAR`; that storage choice does not permit callers to bypass the
+   canonical enums with raw strings. Do not introduce PostgreSQL enums. See the
+   [data model](../architecture/payment-portal-data-model.md).
 5. Transitions for one state live in one owner module. See
    [architecture](../../ARCHITECTURE.md) and the
    [data model](../architecture/payment-portal-data-model.md).

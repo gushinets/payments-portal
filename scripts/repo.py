@@ -805,6 +805,7 @@ CORE_AUTHORITY_LINKS = {
         ROOT / "docs" / "architecture" / "contours.md",
         ROOT / "docs" / "architecture" / "region-resolver-contract.md",
         ROOT / "docs" / "architecture" / "payment-providers.md",
+        ROOT / "docs" / "architecture" / "billing-authority.md",
         ROOT / "docs" / "architecture" / "payment-portal-data-model.md",
         ROOT / "docs" / "product" / "ru-mvp.md",
         ROOT / "docs" / "DESIGN.md",
@@ -822,6 +823,7 @@ CORE_AUTHORITY_LINKS = {
         ROOT / "docs" / "architecture" / "contours.md",
         ROOT / "docs" / "architecture" / "region-resolver-contract.md",
         ROOT / "docs" / "architecture" / "payment-providers.md",
+        ROOT / "docs" / "architecture" / "billing-authority.md",
         ROOT / "docs" / "architecture" / "payment-portal-data-model.md",
         ROOT / "docs" / "engineering" / "AGENT_WORKFLOW.md",
         ROOT / "docs" / "engineering" / "CODING_CONVENTIONS.md",
@@ -829,6 +831,51 @@ CORE_AUTHORITY_LINKS = {
         ROOT / "docs" / "SECURITY.md",
         ROOT / "docs" / "legal" / "README.md",
         ROOT / "docs" / "exec-plans" / "README.md",
+    ),
+    ROOT / "apps" / "api" / "AGENTS.md": (
+        ROOT / "docs" / "architecture" / "billing-authority.md",
+    ),
+    ROOT / "ARCHITECTURE.md": (
+        ROOT / "docs" / "architecture" / "billing-authority.md",
+    ),
+    ROOT / "docs" / "architecture" / "payment-providers.md": (
+        ROOT / "docs" / "architecture" / "billing-authority.md",
+    ),
+    ROOT / "docs" / "architecture" / "decisions" / "0001-multi-contour-billing.md": (
+        ROOT
+        / "docs"
+        / "architecture"
+        / "decisions"
+        / "0004-billing-authority-and-consistency.md",
+    ),
+    ROOT / "docs" / "architecture" / "decisions" / "README.md": (
+        ROOT
+        / "docs"
+        / "architecture"
+        / "decisions"
+        / "0004-billing-authority-and-consistency.md",
+    ),
+    ROOT / "docs" / "architecture" / "billing-authority.md": (
+        ROOT
+        / "docs"
+        / "architecture"
+        / "decisions"
+        / "0001-multi-contour-billing.md",
+        ROOT
+        / "docs"
+        / "architecture"
+        / "decisions"
+        / "0002-plan-based-checkout-identity.md",
+        ROOT
+        / "docs"
+        / "architecture"
+        / "decisions"
+        / "0003-canonical-persisted-model-layer.md",
+        ROOT
+        / "docs"
+        / "architecture"
+        / "decisions"
+        / "0004-billing-authority-and-consistency.md",
     ),
 }
 

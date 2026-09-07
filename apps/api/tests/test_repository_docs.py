@@ -162,6 +162,177 @@ def test_missing_core_authority_link_is_actionable() -> None:
     ) == [f"Missing core authority link in AGENTS.md: {Path('docs') / 'PRODUCT.md'}"]
 
 
+@pytest.mark.parametrize(
+    ("source_relative", "target_relative"),
+    [
+        ("AGENTS.md", "docs/architecture/billing-authority.md"),
+        ("apps/api/AGENTS.md", "docs/architecture/billing-authority.md"),
+        ("ARCHITECTURE.md", "docs/architecture/billing-authority.md"),
+        ("docs/README.md", "docs/architecture/billing-authority.md"),
+        (
+            "docs/architecture/payment-providers.md",
+            "docs/architecture/billing-authority.md",
+        ),
+        (
+            "docs/architecture/decisions/0001-multi-contour-billing.md",
+            "docs/architecture/decisions/0004-billing-authority-and-consistency.md",
+        ),
+        (
+            "docs/architecture/decisions/README.md",
+            "docs/architecture/decisions/0004-billing-authority-and-consistency.md",
+        ),
+        (
+            "docs/architecture/billing-authority.md",
+            "docs/architecture/decisions/0001-multi-contour-billing.md",
+        ),
+        (
+            "docs/architecture/billing-authority.md",
+            "docs/architecture/decisions/0002-plan-based-checkout-identity.md",
+        ),
+        (
+            "docs/architecture/billing-authority.md",
+            "docs/architecture/decisions/0003-canonical-persisted-model-layer.md",
+        ),
+        (
+            "docs/architecture/billing-authority.md",
+            "docs/architecture/decisions/0004-billing-authority-and-consistency.md",
+        ),
+    ],
+)
+def test_billing_authority_graph_is_guarded_and_consistent(
+    source_relative: str,
+    target_relative: str,
+) -> None:
+    source = repo.ROOT / source_relative
+    target = repo.ROOT / target_relative
+
+    assert target in repo.CORE_AUTHORITY_LINKS[source]
+    assert repo.check_required_markdown_links(source, [target]) == []
+
+
+def test_adr_0001_keeps_distinct_billing_integration_boundaries() -> None:
+    adr = repo.ROOT / "docs/architecture/decisions/0001-multi-contour-billing.md"
+    content = " ".join(adr.read_text(encoding="utf-8").split())
+
+    assert "Portal-managed direct-provider flow" in content
+    assert "external-billing-managed flow" in content
+    assert "does not register a `PaymentProviderAdapter`" in content
+
+    assert "Each contour registers its own payment-provider adapter." not in content
+
+
+def test_billing_docs_keep_target_and_access_only_ownership_distinct() -> None:
+    target_docs = (
+        "README.md",
+        "ARCHITECTURE.md",
+        "docs/architecture/billing-authority.md",
+        "docs/architecture/decisions/0004-billing-authority-and-consistency.md",
+    )
+    ownership_docs = (
+        "ARCHITECTURE.md",
+        "docs/architecture/billing-authority.md",
+        "docs/architecture/decisions/0004-billing-authority-and-consistency.md",
+        "docs/architecture/contours.md",
+    )
+
+    def normalized(relative: str) -> str:
+        content = (repo.ROOT / relative).read_text(encoding="utf-8")
+        return " ".join(content.replace("**", "").replace("`", "").lower().split())
+
+    for relative in target_docs:
+        assert "sole long-term production target is the external-billing-managed flow" in normalized(relative)
+
+    assert "most likely launch" not in normalized("README.md")
+    assert "expected launch model" not in normalized("ARCHITECTURE.md")
+
+    for relative in ownership_docs:
+        content = normalized(relative)
+        assert "subscription that participates in a billing lifecycle" in content
+        assert "exactly one billing owner at a time" in content
+        assert "portal-only access lifecycle" in content
+        assert "does not require an external billing owner" in content
+        assert "each subscription and its billing lifecycle has exactly one billing owner" not in content
+
+
+def test_billing_consistency_docs_require_retry_safe_unknown_outcomes() -> None:
+    reliability = (repo.ROOT / "docs/RELIABILITY.md").read_text(encoding="utf-8")
+    authority = (repo.ROOT / "docs/architecture/billing-authority.md").read_text(encoding="utf-8")
+
+    assert "retry-safe orchestration" in reliability
+    assert "do not assume every external command is idempotent" in reliability
+    assert "outbound billing commands must be idempotent" not in reliability
+    assert "A timeout or lost response is not confirmed success and not confirmed failure" in authority
+    assert "multiple plausible matches are ambiguous and fail closed" in authority
+
+
+def test_billing_docs_separate_external_service_financial_and_entitlement_state() -> None:
+    authority = (repo.ROOT / "docs/architecture/billing-authority.md").read_text(encoding="utf-8")
+    data_model = (repo.ROOT / "docs/architecture/payment-portal-data-model.md").read_text(encoding="utf-8")
+
+    for content in (authority, data_model):
+        normalized = " ".join(content.replace("`", "").lower().split())
+        assert "external subscription or service state, confirmed financial or payment state" in normalized
+        assert "local entitlement are distinct" in normalized or "local entitlement are separate concerns" in normalized
+        assert "vendor" in normalized
+        assert "single vendor field" in normalized or "single field" in normalized
+        assert "directly grant access" in normalized or "directly creates an entitlement" in normalized
+        assert "entitlement policy" in normalized
+
+
+def test_billing_docs_scope_commercial_orders_to_commercial_intent() -> None:
+    authority = (repo.ROOT / "docs/architecture/billing-authority.md").read_text(encoding="utf-8")
+    reliability = (repo.ROOT / "docs/RELIABILITY.md").read_text(encoding="utf-8")
+    authority_normalized = " ".join(authority.replace("`", "").lower().split())
+    reliability_normalized = " ".join(reliability.replace("`", "").lower().split())
+
+    assert "the commercial order rule is not universal" in authority_normalized
+    assert "portal-initiated commercial purchase or change" in authority_normalized
+    assert "without a prerequisite portal order" in authority_normalized
+    assert "a commercial order is not required for unrelated external billing operations" in reliability_normalized
+
+
+def test_billing_docs_require_missed_notification_recovery() -> None:
+    authority = (repo.ROOT / "docs/architecture/billing-authority.md").read_text(encoding="utf-8")
+    reliability = (repo.ROOT / "docs/RELIABILITY.md").read_text(encoding="utf-8")
+
+    for content in (authority, reliability):
+        normalized = " ".join(content.lower().split())
+        assert "notifications are completely missed" in normalized
+        assert "correctness must not depend solely on webhook delivery" in normalized
+
+
+def test_reliability_docs_acknowledge_only_after_durable_webhook_receipt() -> None:
+    reliability = (repo.ROOT / "docs/RELIABILITY.md").read_text(encoding="utf-8")
+    normalized = " ".join(reliability.lower().split())
+
+    assert normalized.index("authenticated and minimally validated") < normalized.index("durably persisted")
+    assert normalized.index("durably persisted") < normalized.index("acknowledged according to integration policy")
+    assert "processing, retry, and reconciliation then belong to payment portal" in normalized
+    assert "retrying an application-level http failure" in normalized
+
+
+def test_security_docs_keep_durable_webhook_receipt_safe_by_construction() -> None:
+    security = (repo.ROOT / "docs/SECURITY.md").read_text(encoding="utf-8")
+
+    assert "whitelist and redact data before storage" in security
+    assert "Never persist raw query-string secrets" in security
+
+
+def test_missing_billing_authority_link_is_actionable() -> None:
+    root = Path("repository").resolve()
+    source_relative = Path("apps") / "api" / "AGENTS.md"
+    target_relative = Path("docs") / "architecture" / "billing-authority.md"
+    source = root / source_relative
+    authority = root / target_relative
+
+    assert check_required_markdown_link_content(
+        source,
+        "# API Agent Guide\n",
+        [authority],
+        root=root,
+    ) == [f"Missing core authority link in {source_relative}: {target_relative}"]
+
+
 def test_stale_documented_legal_version_is_rejected() -> None:
     errors = check_expected_legal_versions("2026-07-11", [("docs/README.md", ["2026-07-02"], 1)])
 
