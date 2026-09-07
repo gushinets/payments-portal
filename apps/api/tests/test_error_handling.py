@@ -21,6 +21,7 @@ from app.domains.identity.errors import (
 )
 from app.http_errors import app_error_handler
 from app.main import create_app
+from app.payment_providers.registry import PaymentProviderRegistry
 
 
 class UnmappedCheckoutError(CheckoutError):
@@ -181,16 +182,52 @@ def test_unexpected_failures_are_converted_and_logged_safely(
     assert structured["method"] == "GET"
     assert structured["route"] == "/test-unexpected/{request_value}"
     assert structured["error_type"] == "RuntimeError"
-    assert set(structured["failure_location"]) == {"module", "function", "line"}
-    assert str(structured["failure_location"]["module"]).startswith("apps/api/app/")
-    assert isinstance(structured["failure_location"]["function"], str)
-    assert isinstance(structured["failure_location"]["line"], int)
+    assert "failure_location" not in structured
+    assert "unexpected_failure_middleware" not in str(structured)
     assert secret_message not in caplog.text
     assert request_value not in caplog.text
     assert "query-secret-value" not in caplog.text
     assert "header-secret-value" not in caplog.text
     assert "local_secret" not in caplog.text
     assert "raise RuntimeError" not in caplog.text
+    assert "Traceback (most recent call last)" not in caplog.text
+
+
+def test_unexpected_failures_from_application_code_identify_the_origin_safely(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    secret_message = "unexpected secret token: do-not-log"
+
+    def raise_application_failure() -> None:
+        PaymentProviderRegistry().get(secret_message)
+
+    application = create_app()
+    application.add_api_route(
+        "/test-application-failure",
+        raise_application_failure,
+        methods=["GET"],
+    )
+
+    with caplog.at_level(logging.ERROR, logger="payment_portal.http"):
+        response = TestClient(application).get(
+            "/test-application-failure",
+            headers={"Authorization": "Bearer header-secret-value"},
+        )
+
+    diagnostics = [record for record in caplog.records if record.getMessage() == "http_internal_failure"]
+    assert response.status_code == 500
+    assert response.json() == {"detail": {"code": "internal_server_error"}}
+    assert response.headers["X-Request-ID"]
+    assert len(diagnostics) == 1
+    structured = diagnostics[0].structured
+    assert structured["error_type"] == "LookupError"
+    assert set(structured["failure_location"]) == {"module", "function", "line"}
+    assert structured["failure_location"]["module"] == "apps/api/app/payment_providers/registry.py"
+    assert structured["failure_location"]["function"] == "get"
+    assert isinstance(structured["failure_location"]["line"], int)
+    assert "unexpected_failure_middleware" not in str(structured)
+    assert secret_message not in caplog.text
+    assert "header-secret-value" not in caplog.text
     assert "Traceback (most recent call last)" not in caplog.text
 
 

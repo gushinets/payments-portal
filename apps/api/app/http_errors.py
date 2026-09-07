@@ -24,6 +24,7 @@ logger = logging.getLogger("payment_portal.http")
 INTERNAL_ERROR_CODE = "internal_server_error"
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 APPLICATION_ROOT = Path(__file__).resolve().parent
+HTTP_ERRORS_MODULE = Path(__file__).resolve()
 HTTP_ERROR_RESPONSES: dict[type[AppError], tuple[int, str]] = {
     UnknownProductPlanError: (400, "unknown_product_plan"),
     AutomaticRenewalNotPermittedError: (409, "automatic_renewal_not_permitted"),
@@ -46,7 +47,7 @@ def _application_failure_location(error: BaseException) -> dict[str, object] | N
     traceback = error.__traceback__
     while traceback is not None:
         filename = Path(traceback.tb_frame.f_code.co_filename).resolve()
-        if filename.is_relative_to(APPLICATION_ROOT):
+        if filename.is_relative_to(APPLICATION_ROOT) and filename != HTTP_ERRORS_MODULE:
             location = {
                 "module": filename.relative_to(REPOSITORY_ROOT).as_posix(),
                 "function": traceback.tb_frame.f_code.co_name,
