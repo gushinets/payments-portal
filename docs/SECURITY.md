@@ -14,9 +14,10 @@ or security purpose requires them, and never add them to metric labels.
 
 ## Durable webhook receipt
 
-Webhook receipt must be durable before normalized processing completes, but the
-default persistence boundary must whitelist and redact data before storage. Store
-only whitelisted or redacted metadata and safe normalized fields that the
+After authentication and minimal validation, webhook receipt must be durable
+before external acknowledgement and subsequent normalized processing, but the
+default persistence boundary must whitelist and redact data before storage.
+Store only whitelisted or redacted metadata and safe normalized fields that the
 concrete integration actually requires, such as the integration identifier,
 event type, safe external identifiers, timestamps, hashes, normalized idempotency
 keys, processing state, and safe normalized recovery fields.

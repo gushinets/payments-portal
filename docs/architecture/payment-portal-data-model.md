@@ -39,14 +39,14 @@ another contour is defined in [Region Resolver](region-resolver-contract.md).
 - Identity is `tenant_id + region + user_id` and is independent across
   contours. The same email on two contours is two accounts on two data planes.
 - Payment Portal owns identity, legal and catalog semantics, entitlement rules,
-  local purchase intent / commercial `Order`, and local entitlements. In the
-  current Portal-managed direct-provider flow it also owns the billing
-  lifecycle. Under external billing, the external system owns its external
-  customer, invoice, payment, and subscription lifecycle, while Portal
+  Portal-initiated commercial purchase intent / `Order`, and local
+  entitlements. In the current Portal-managed direct-provider flow it also owns
+  the billing lifecycle. Under external billing, the external system owns its
+  external customer, invoice, payment, and subscription lifecycle, while Portal
   `Payment` and `Subscription` records are normalized local projections. An
-  external invoice identifier may be correlated with the Portal-owned order.
-  Platform Kernel owns runtime sessions, jobs, actions, provider calls,
-  artifacts, events, and usage consumption.
+  external invoice identifier may be correlated with the applicable Portal-
+  owned order. Platform Kernel owns runtime sessions, jobs, actions, provider
+  calls, artifacts, events, and usage consumption.
 - Paid access is activated only from a verified authoritative billing fact,
   never from a browser return URL or outbound command result.
 - Payment Portal stores purchased limits; Platform Kernel stores usage.
@@ -106,13 +106,18 @@ table missing from the table above is a documentation-check failure.
   representation. External billing must not be represented by creating fake
   `payment_provider_accounts` rows.
 - **TARGET semantics:** In the external-billing-managed flow, Payment Portal
-  creates and owns the local purchase intent / commercial `Order` before the
-  external billing command. Local `Payment` and `Subscription` records serve as
-  normalized Payment Portal projections of authoritative external billing
-  facts, and an external invoice identifier may be correlated with the Portal-
-  owned order. The current physical `Order` schema remains direct-provider-
-  shaped and may require later adaptation; this document does not choose that
-  adaptation.
+  persists and commits a local operation or purchase intent, as applicable,
+  before an external command. A Portal-initiated commercial purchase or change
+  requires a Portal-owned purchase intent / commercial `Order` before the
+  external commercial command. Unrelated operations, including external-
+  customer provisioning for an existing Portal `User`, do not require an
+  invented `Order`; externally initiated or scheduled renewals are projected or
+  reconciled from authoritative facts without a prerequisite Portal `Order`.
+  Local `Payment` and `Subscription` records serve as normalized Payment Portal
+  projections of authoritative external billing facts. The current physical
+  schema remains direct-provider-shaped and may require later adaptation; this
+  document does not choose a generic-operation or projection-provenance
+  representation.
 - **FUTURE implementation:** A concrete external-billing integration may need
   separately approved persistence adaptation, such as external-ID mappings,
   ownership representation, changed or nullable references, or another minimal
@@ -240,10 +245,11 @@ or entrypoint strings. Checkout responses are purchase/Plan-oriented while
 preserving the provider-neutral `checkout.amount`, `checkout.currency`, and
 `checkout.action` envelope.
 
-In both billing flows, an `order` is the Portal-owned local purchase intent /
-commercial request. It is created after resolving the exact `Plan.id` and
-validating the authenticated user, legal, entrypoint, and local commercial
-context, before any external billing command. The current physical record
+For a Portal-initiated commercial purchase or change in either billing flow, an
+`order` is the Portal-owned local purchase intent / commercial request. It is
+created after resolving the exact `Plan.id` and validating the authenticated
+user, legal, entrypoint, and local commercial context, before the external
+commercial command. The current physical record
 contains the user, region, checkout and entrypoint links, amount/currency,
 provider account, merchant/provider identifiers, timestamps, and region-
 mismatch state because the schema is still shaped for the direct-provider flow.
@@ -281,6 +287,14 @@ subscription lifecycle and the local `Subscription` is a normalized projection
 used by Portal entitlement rules. Subscription identity is internal UUID
 identity; provider account and provider subscription IDs are optional opaque
 references, not Payment Portal domain identities.
+
+External subscription or service state, confirmed financial or payment state,
+and local entitlement are separate concerns. No vendor `active`, `unblocked`,
+payment-status, account-balance, or other single field directly creates an
+entitlement. The Integration boundary supplies normalized authoritative facts;
+Payment Portal's entitlement policy evaluates the applicable facts and decides
+whether access is granted, retained, changed, or revoked. This document does not
+fix the future fact set or entitlement algorithm.
 
 Automatic renewal can be enabled only after provider setup succeeds. Until then,
 a requested automatic renewal remains a manual subscription with paid access
@@ -417,17 +431,22 @@ command is delayed.
 ### TARGET: external-billing-managed lifecycle
 
 The sole long-term production target is an external-billing-managed lifecycle.
-Payment Portal first creates and persists its local purchase intent / commercial
-order. The external billing system owns its external customer, invoice, payment,
-and subscription lifecycle. Authenticated webhooks are the primary asynchronous
+Payment Portal first persists and commits a local operation or purchase intent,
+as applicable. A Portal-initiated commercial purchase or change requires its
+Portal-owned commercial `Order`; customer provisioning and externally initiated
+or scheduled renewals do not acquire an invented prerequisite `Order`. The
+external billing system owns its external customer, invoice, payment, and
+subscription lifecycle. Authenticated webhooks are the primary asynchronous
 notification mechanism, but authenticity alone is not semantic authority. After
 authenticity verification, validation, and normalization, integration policy
 decides whether the webhook payload's completeness and currentness guarantees
 are sufficient to produce an authoritative normalized fact; otherwise the
 webhook triggers point reconciliation and verified server-side state produces
 that fact. Both fact sources must converge through the same normalized local
-transition rules. An outbound command result is not payment,
-subscription, or entitlement authority.
+transition rules. Every external-billing integration must also recover
+externally authoritative changes whose notifications are completely missed;
+correctness must not depend solely on webhook delivery. An outbound command
+result is not payment, subscription, or entitlement authority.
 
 The existing `orders` remain Portal-owned commercial intents, while `payments`
 and `subscriptions` may be normalized local projections for entitlement

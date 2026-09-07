@@ -265,6 +265,52 @@ def test_billing_consistency_docs_require_retry_safe_unknown_outcomes() -> None:
     assert "multiple plausible matches are ambiguous and fail closed" in authority
 
 
+def test_billing_docs_separate_external_service_financial_and_entitlement_state() -> None:
+    authority = (repo.ROOT / "docs/architecture/billing-authority.md").read_text(encoding="utf-8")
+    data_model = (repo.ROOT / "docs/architecture/payment-portal-data-model.md").read_text(encoding="utf-8")
+
+    for content in (authority, data_model):
+        normalized = " ".join(content.replace("`", "").lower().split())
+        assert "external subscription or service state, confirmed financial or payment state" in normalized
+        assert "local entitlement are distinct" in normalized or "local entitlement are separate concerns" in normalized
+        assert "vendor" in normalized
+        assert "single vendor field" in normalized or "single field" in normalized
+        assert "directly grant access" in normalized or "directly creates an entitlement" in normalized
+        assert "entitlement policy" in normalized
+
+
+def test_billing_docs_scope_commercial_orders_to_commercial_intent() -> None:
+    authority = (repo.ROOT / "docs/architecture/billing-authority.md").read_text(encoding="utf-8")
+    reliability = (repo.ROOT / "docs/RELIABILITY.md").read_text(encoding="utf-8")
+    authority_normalized = " ".join(authority.replace("`", "").lower().split())
+    reliability_normalized = " ".join(reliability.replace("`", "").lower().split())
+
+    assert "the commercial order rule is not universal" in authority_normalized
+    assert "portal-initiated commercial purchase or change" in authority_normalized
+    assert "without a prerequisite portal order" in authority_normalized
+    assert "a commercial order is not required for unrelated external billing operations" in reliability_normalized
+
+
+def test_billing_docs_require_missed_notification_recovery() -> None:
+    authority = (repo.ROOT / "docs/architecture/billing-authority.md").read_text(encoding="utf-8")
+    reliability = (repo.ROOT / "docs/RELIABILITY.md").read_text(encoding="utf-8")
+
+    for content in (authority, reliability):
+        normalized = " ".join(content.lower().split())
+        assert "notifications are completely missed" in normalized
+        assert "correctness must not depend solely on webhook delivery" in normalized
+
+
+def test_reliability_docs_acknowledge_only_after_durable_webhook_receipt() -> None:
+    reliability = (repo.ROOT / "docs/RELIABILITY.md").read_text(encoding="utf-8")
+    normalized = " ".join(reliability.lower().split())
+
+    assert normalized.index("authenticated and minimally validated") < normalized.index("durably persisted")
+    assert normalized.index("durably persisted") < normalized.index("acknowledged according to integration policy")
+    assert "processing, retry, and reconciliation then belong to payment portal" in normalized
+    assert "retrying an application-level http failure" in normalized
+
+
 def test_security_docs_keep_durable_webhook_receipt_safe_by_construction() -> None:
     security = (repo.ROOT / "docs/SECURITY.md").read_text(encoding="utf-8")
 
