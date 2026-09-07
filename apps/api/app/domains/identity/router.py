@@ -219,9 +219,9 @@ def register(
     db: Annotated[Session, Depends(get_db)],
 ):
     if not payload.personal_consent:
-        raise HTTPException(status_code=400, detail="missing_personal_consent")
+        raise HTTPException(status_code=400, detail={"code": "missing_personal_consent"})
     if not payload.offer_consent:
-        raise HTTPException(status_code=400, detail="missing_offer_consent")
+        raise HTTPException(status_code=400, detail={"code": "missing_offer_consent"})
 
     tenant_id = normalize_tenant_id(payload.tenant_id)
     region = normalize_region(payload.region)
@@ -236,7 +236,7 @@ def register(
         .first()
     )
     if existing is not None:
-        raise HTTPException(status_code=409, detail="email_already_registered")
+        raise HTTPException(status_code=409, detail={"code": "email_already_registered"})
 
     user = User(
         tenant_id=tenant_id,
@@ -291,7 +291,7 @@ def login(
         .first()
     )
     if user is None or user.password_hash is None or not verify_password(payload.password, user.password_hash):
-        raise HTTPException(status_code=401, detail="invalid_credentials")
+        raise HTTPException(status_code=401, detail={"code": "invalid_credentials"})
 
     user.last_login_at = utc_now()
     db.add(user)

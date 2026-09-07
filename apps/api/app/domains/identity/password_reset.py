@@ -6,7 +6,7 @@ import secrets
 from datetime import datetime, timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -17,6 +17,7 @@ from app.core.password_reset_email import (
     build_password_reset_url,
     send_password_reset_email,
 )
+from app.domains.identity.errors import PasswordResetError
 from app.domains.identity.passwords import hash_password
 from app.domains.identity.session import (
     DEFAULT_REGION,
@@ -108,7 +109,7 @@ def enforce_password_reset_rate_limit(*, db: Session, key: str, limit: int, now:
         {"key": key, "now": now, "expires_at": expires_at},
     ).scalar_one()
     if attempts > limit:
-        raise HTTPException(status_code=429, detail="password_reset_rate_limited")
+        raise PasswordResetError("password_reset_rate_limited")
 
 
 def prune_expired_password_reset_rate_limits(*, db: Session, now: datetime) -> None:
@@ -193,7 +194,7 @@ def request_password_reset(
             now=now,
         )
         db.commit()
-    except HTTPException:
+    except PasswordResetError:
         db.rollback()
         raise
     token, token_hash, expires_at = make_password_reset_token()
@@ -258,7 +259,7 @@ def confirm_password_reset(
     )
     if claimed != 1:
         db.rollback()
-        raise HTTPException(status_code=400, detail="invalid_or_expired_reset_token")
+        raise PasswordResetError("invalid_or_expired_reset_token")
 
     reset_token = (
         db.query(MagicLinkToken)
@@ -270,7 +271,7 @@ def confirm_password_reset(
     )
     if reset_token is None:
         db.rollback()
-        raise HTTPException(status_code=400, detail="invalid_or_expired_reset_token")
+        raise PasswordResetError("invalid_or_expired_reset_token")
 
     user = (
         db.query(User)
@@ -284,7 +285,7 @@ def confirm_password_reset(
     )
     if user is None:
         db.rollback()
-        raise HTTPException(status_code=400, detail="invalid_or_expired_reset_token")
+        raise PasswordResetError("invalid_or_expired_reset_token")
 
     user.password_hash = hash_password(payload.password)
     db.add(user)

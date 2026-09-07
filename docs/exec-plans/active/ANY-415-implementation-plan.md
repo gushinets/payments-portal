@@ -576,7 +576,7 @@ Step 2 is complete when:
 
 # Step 3 — Normalize auth and password-reset error contracts
 
-**Status:** `todo`
+**Status:** `done`
 
 ## Goal
 

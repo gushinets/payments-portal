@@ -6,7 +6,7 @@ import pytest
 from starlette.requests import Request
 
 from app.core.errors import AppError
-from app.domains.identity.errors import CheckoutError
+from app.domains.identity.errors import CheckoutError, PasswordResetError
 from app.http_errors import app_error_handler
 from app.main import create_app
 
@@ -85,3 +85,21 @@ def test_unmapped_checkout_errors_fail_closed_with_generic_detail() -> None:
 
     assert response.status_code == 500
     assert json.loads(response.body) == {"detail": {"code": "internal_error"}}
+
+
+@pytest.mark.parametrize(
+    ("error", "status_code", "code"),
+    [
+        (PasswordResetError("password_reset_rate_limited"), 429, "password_reset_rate_limited"),
+        (PasswordResetError("invalid_or_expired_reset_token"), 400, "invalid_or_expired_reset_token"),
+    ],
+)
+def test_password_reset_app_errors_use_structured_code(
+    error: PasswordResetError,
+    status_code: int,
+    code: str,
+) -> None:
+    response = app_error_handler(make_request(), error)
+
+    assert response.status_code == status_code
+    assert json.loads(response.body) == {"detail": {"code": code}}
