@@ -10,7 +10,7 @@ from apps.api.tests.support.settings import configure_api_test_environment
 
 configure_api_test_environment()
 
-from app.core.errors import PaymentProviderConfigurationError  # noqa: E402
+from app.payment_providers.errors import PaymentProviderConfigurationError  # noqa: E402
 from app.integrations.cloudpayments.adapter import CloudPaymentsAdapter  # noqa: E402
 from app.integrations.cloudpayments.api_client import (  # noqa: E402
     CloudPaymentsApiClient,

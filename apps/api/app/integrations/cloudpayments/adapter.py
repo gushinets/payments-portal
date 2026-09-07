@@ -10,7 +10,7 @@ from urllib.parse import parse_qs
 
 from fastapi import Request
 
-from app.core.errors import (
+from app.payment_providers.errors import (
     PaymentProviderConfigurationError,
 )
 from app.core.observability import redact

@@ -12,7 +12,7 @@ from apps.api.tests.support.settings import configure_api_test_environment
 
 configure_api_test_environment()
 
-from app.core.errors import (  # noqa: E402
+from app.payment_providers.errors import (  # noqa: E402
     PaymentsAuthenticationError,
     PaymentsIdempotencyKeyRequiredError,
     PaymentsOperationDeclinedError,

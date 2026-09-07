@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.core.errors import PaymentsError, PaymentsTransportError
+from app.payment_providers.errors import PaymentsError, PaymentsTransportError
 from app.payment_providers.contracts import (
     OperationOutcome,
     OperationResultMeta,

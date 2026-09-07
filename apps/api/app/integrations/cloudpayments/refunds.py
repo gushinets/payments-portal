@@ -6,7 +6,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.core.errors import PaymentsError
+from app.payment_providers.errors import PaymentsError
 from app.integrations.cloudpayments.account_validation import validate_provider_account_context
 from app.integrations.cloudpayments.api_client import CloudPaymentsApiClient
 from app.integrations.cloudpayments.operation_meta import (

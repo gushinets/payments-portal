@@ -1160,7 +1160,8 @@ def check_python_boundaries(root: Path = ROOT) -> list[str]:
                     (
                         "core dependency direction",
                         lambda target: module_matches(target, "app.domains")
-                        or module_matches(target, "app.integrations"),
+                        or module_matches(target, "app.integrations")
+                        or module_matches(target, "app.payment_providers"),
                         "move the dependency to wiring or shared core infrastructure",
                     )
                 )

@@ -42,6 +42,20 @@ def test_ast_import_forms_are_rejected_with_actionable_errors(tmp_path: Path) ->
     )
 
 
+def test_core_to_payment_provider_dependency_is_rejected(tmp_path: Path) -> None:
+    write_module(
+        tmp_path,
+        "apps/api/app/core/errors.py",
+        "from app.payment_providers import errors\n",
+    )
+
+    assert check_python_boundaries(tmp_path) == [
+        "apps/api/app/core/errors.py:1 imports app.payment_providers; "
+        "violates core dependency direction; move the dependency to wiring or "
+        "shared core infrastructure (see ARCHITECTURE.md)"
+    ]
+
+
 def test_relative_router_import_is_rejected(tmp_path: Path) -> None:
     write_module(
         tmp_path,

@@ -19,7 +19,7 @@ from app.core.payment_api_limits import (
     PAYMENTS_API_MAX_TIMEOUT_SECONDS,
     PAYMENTS_API_MAX_WRITE_TIMEOUT_SECONDS,
 )
-from app.core.errors import (
+from app.payment_providers.errors import (
     PaymentsAuthenticationError,
     PaymentsHttpError,
     PaymentsIdempotencyKeyRequiredError,

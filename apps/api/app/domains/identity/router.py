@@ -11,7 +11,7 @@ from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.errors import PaymentProviderConfigurationError
+from app.payment_providers.errors import PaymentProviderConfigurationError
 from app.core.observability import record_checkout, traced
 from app.domains.identity.passwords import hash_password, verify_password
 from app.domains.identity.services.checkout import (
