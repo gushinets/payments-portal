@@ -62,6 +62,26 @@ Last verified: 2026-09-04
 - Critical browser journeys fail on unexpected console errors, failed application
   requests, or error spans.
 
+## HTTP failure boundary
+
+Mapped application errors retain their existing public status and structured
+error contract. Unmapped `AppError` values and unexpected application failures
+return only the generic structured response
+`{"detail":{"code":"internal_server_error"}}` with HTTP 500; internal
+codes, diagnostics, and provider details are not serialized.
+
+Unexpected application failures are converted by the Presentation middleware
+while request-ID context is active. The boundary emits exactly one bounded
+application-level failure diagnostic. It may record the request ID through the
+existing logging context, HTTP method, matched route template, exception type,
+and one application-owned failure location/fingerprint containing only a
+repository-relative module/file identifier, function name, and line number.
+It never records source text, locals, arguments, exception messages, raw
+traceback text, request bodies, response bodies, URLs/query values, headers,
+cookies, authorization data, provider payloads, secrets, or
+card/token/payment values. The existing request-completion log remains a
+separate request lifecycle record. Sentry and new monitoring are deferred.
+
 ## Recovery
 
 Development environments must be isolated by worktree and safely disposable.

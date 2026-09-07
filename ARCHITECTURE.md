@@ -119,6 +119,35 @@ cross-feature dependencies import public feature entrypoints; code within one
 feature uses relative imports for its internal modules. ESLint enforces these
 directions and rejects deep alias imports.
 
+## Error ownership and HTTP failure boundary
+
+Core owns only neutral shared error primitives, including `AppError`. It does
+not own feature-specific error vocabularies. Application and Domain own
+business and use-case failure meaning; their exceptions may carry stable
+internal codes and safe diagnostics where justified, but do not depend on
+FastAPI, HTTP status codes, or vendor response semantics.
+
+Integrations and the payment-provider boundary normalize vendor failures while
+preserving retryability, idempotency, and unknown or ambiguous-outcome
+semantics. Raw vendor responses and status vocabularies are not
+Application/Domain error contracts.
+
+Presentation owns HTTP status mapping and public error DTO/body shape. Only
+explicitly allowlisted safe fields are serialized, and changed public errors
+use structured `detail.code`. The frontend branches on `ApiError.status` and
+structured `detail.code`; it does not parse serialized exception text.
+
+Unexpected application failures are converted by the Presentation HTTP
+middleware to a generic structured 500 response. The boundary emits one
+bounded application-level diagnostic while request-ID context is active. The
+diagnostic may include the request ID supplied by the logging context, method,
+matched route template, exception type, and one application-owned
+failure-location fingerprint containing only a repository-relative module/file
+identifier, function name, and line number. It never includes source text,
+locals, arguments, exception messages, raw traceback text, request inputs,
+provider payloads, secrets, or payment data. Sentry and new monitoring remain
+outside this architecture decision.
+
 ## Authoritative details
 
 - [Contours](docs/architecture/contours.md)

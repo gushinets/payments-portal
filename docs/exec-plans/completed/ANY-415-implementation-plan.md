@@ -6,7 +6,7 @@
 | --- | --- |
 | Feature | `ANY-407` |
 | Ticket | `ANY-415` |
-| Overall status | `todo` |
+| Overall status | `done` |
 | Execution order | Sequential only: Step 1 → verification → commit → Step 2 → … → Step 5 |
 | Steps / commits | 5 |
 | Prerequisite | **Hard execution gate:** final accepted/merged result of `ANY-411` / PR #78. This plan may be reviewed/approved before merge, but Step 1 must not start before that gate is satisfied. |
@@ -756,7 +756,7 @@ Step 3 is complete when:
 
 # Step 4 — Stop frontend error-message parsing
 
-**Status:** `todo`
+**Status:** `done`
 
 ## Goal
 
@@ -957,7 +957,7 @@ Step 4 is complete when:
 
 # Step 5 — Add the safe unexpected-failure boundary and document the contract
 
-**Status:** `todo`
+**Status:** `done`
 
 ## Goal
 

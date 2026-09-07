@@ -339,12 +339,12 @@ and retention rule.
 
 | Layer | Owns | Must not own or depend on |
 | --- | --- | --- |
-| Presentation | HTTP, webhook, CLI and job entrypoints; request/response contracts; authentication context; boundary decoding and error mapping; invoking Application use cases | Billing state machines, transaction orchestration, arbitrary ORM mutation, concrete external workflows |
-| Application | Use cases, commands and queries, orchestration, transaction boundaries, idempotency and recovery, normalized internal contracts, calls to required persistence and integration capabilities | FastAPI, routers, raw payloads, vendor DTOs or vendor status strings |
-| Domain | Business invariants, valid transitions, and entitlement rules independent of transport and vendor protocol | FastAPI, HTTP, provider clients, vendor schemas, SQLAlchemy sessions, observability SDKs |
+| Presentation | HTTP, webhook, CLI and job entrypoints; request/response contracts; authentication context; boundary decoding and error mapping; invoking Application use cases; generic unexpected-failure conversion | Billing state machines, transaction orchestration, arbitrary ORM mutation, concrete external workflows |
+| Application | Use cases, commands and queries, orchestration, transaction boundaries, idempotency and recovery, normalized internal contracts, calls to required persistence and integration capabilities; business failure meaning | FastAPI, routers, HTTP status codes, raw payloads, vendor DTOs or vendor status strings |
+| Domain | Business invariants, valid transitions, and entitlement rules independent of transport and vendor protocol; domain failure meaning | FastAPI, HTTP, provider clients, vendor schemas, SQLAlchemy sessions, observability SDKs |
 | Persistence / Infrastructure | SQLAlchemy queries, loading and saving, locking, and other persistence mechanics used by Application | Payment lifecycle, entitlement, or billing-ownership decisions |
 | Integrations | External protocols and clients, authentication/signature verification, parsing, redaction, vendor DTOs, normalization, and command mapping | A second local state machine, arbitrary local ORM mutation, or entitlement decisions |
-| Core | Configuration, session factories, logging, tracing and metrics infrastructure, generic security helpers, time and infrastructure utilities | Shared business logic or inward dependencies on billing domains and integrations |
+| Core | Configuration, session factories, logging, tracing and metrics infrastructure, generic security helpers, time and infrastructure utilities, neutral shared error primitives | Feature-specific error vocabularies, shared business logic, or inward dependencies on billing domains and integrations |
 | Composition / Wiring | Constructing concrete adapters and clients, lifecycle wiring, and binding implementations to capabilities | Business decisions or a deep runtime service locator |
 
 The normative logical dependency direction is:
@@ -361,6 +361,30 @@ The target logical model does not require speculative package creation or one
 repository per ORM model. `app.models` remains the canonical persisted model
 contract established by ADR-0003; no second pure-domain entity model is
 introduced.
+
+## Error contracts and unexpected failures
+
+Application and Domain exceptions are transport-neutral. They may carry stable
+internal codes and safe diagnostics where justified, but never FastAPI types,
+HTTP status codes, or vendor response semantics. Integrations normalize
+provider failures at their boundary and preserve retryability, idempotency, and
+unknown or ambiguous-outcome semantics; raw vendor responses and status
+vocabularies do not become Application/Domain contracts.
+
+Presentation maps internal failures to HTTP statuses and public response
+bodies. Only explicitly allowlisted safe fields are serialized, and changed
+public errors use structured `detail.code`. Frontend consumers branch on
+`ApiError.status` and structured `detail.code`, not serialized exception text.
+
+An unexpected application failure is converted by the Presentation middleware
+to a generic structured HTTP 500 response. While request-ID context is active,
+the boundary emits one bounded application-level diagnostic. It may include
+the request ID from logging context, HTTP method, matched route template,
+exception type, and one application-owned failure-location fingerprint with
+only a repository-relative module/file identifier, function name, and line
+number. It must not include source text, locals, arguments, exception
+messages, raw traceback text, request inputs, provider payloads, secrets, or
+card/token/payment values. New monitoring or Sentry is outside this boundary.
 
 ## Current package mapping
 

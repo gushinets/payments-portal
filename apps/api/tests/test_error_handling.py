@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import logging
 
 import pytest
+from fastapi.testclient import TestClient
 from starlette.requests import Request
 
 from app.core.errors import AppError
@@ -77,14 +79,81 @@ def test_unmapped_app_errors_fail_closed_with_generic_detail() -> None:
     )
 
     assert response.status_code == 500
-    assert json.loads(response.body) == {"detail": {"code": "internal_error"}}
+    assert json.loads(response.body) == {"detail": {"code": "internal_server_error"}}
 
 
 def test_unmapped_checkout_errors_fail_closed_with_generic_detail() -> None:
     response = app_error_handler(make_request(), CheckoutError("unsupported_checkout_code"))
 
     assert response.status_code == 500
-    assert json.loads(response.body) == {"detail": {"code": "internal_error"}}
+    assert json.loads(response.body) == {"detail": {"code": "internal_server_error"}}
+
+
+def test_unmapped_app_error_logs_one_bounded_failure(caplog: pytest.LogCaptureFixture) -> None:
+    secret_message = "provider secret must not be logged"
+    error = AppError(
+        "provider_secret_error",
+        message_safe=secret_message,
+        details_safe={"authorization": "Bearer secret-token"},
+    )
+
+    with caplog.at_level(logging.ERROR, logger="payment_portal.http"):
+        response = app_error_handler(make_request(), error)
+
+    diagnostics = [record for record in caplog.records if record.getMessage() == "http_internal_failure"]
+    assert response.status_code == 500
+    assert json.loads(response.body) == {"detail": {"code": "internal_server_error"}}
+    assert len(diagnostics) == 1
+    assert diagnostics[0].structured["error_type"] == "AppError"
+    assert diagnostics[0].structured["error_code"] == "provider_secret_error"
+    assert secret_message not in caplog.text
+    assert "secret-token" not in caplog.text
+
+
+def test_unexpected_failures_are_converted_and_logged_safely(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    secret_message = "unexpected secret token: do-not-log"
+    request_value = "request-secret-value"
+
+    def raise_unexpected_failure(request_value: str) -> None:
+        local_secret = "local-secret-value"
+        del local_secret
+        raise RuntimeError(secret_message)
+
+    application = create_app()
+    application.add_api_route(
+        "/test-unexpected/{request_value}",
+        raise_unexpected_failure,
+        methods=["GET"],
+    )
+
+    with caplog.at_level(logging.ERROR, logger="payment_portal.http"):
+        response = TestClient(application).get(
+            f"/test-unexpected/{request_value}?query_secret=query-secret-value",
+            headers={"Authorization": "Bearer header-secret-value"},
+        )
+
+    diagnostics = [record for record in caplog.records if record.getMessage() == "http_internal_failure"]
+    assert response.status_code == 500
+    assert response.json() == {"detail": {"code": "internal_server_error"}}
+    assert response.headers["X-Request-ID"]
+    assert len(diagnostics) == 1
+    structured = diagnostics[0].structured
+    assert structured["method"] == "GET"
+    assert structured["route"] == "/test-unexpected/{request_value}"
+    assert structured["error_type"] == "RuntimeError"
+    assert set(structured["failure_location"]) == {"module", "function", "line"}
+    assert str(structured["failure_location"]["module"]).startswith("apps/api/app/")
+    assert isinstance(structured["failure_location"]["function"], str)
+    assert isinstance(structured["failure_location"]["line"], int)
+    assert secret_message not in caplog.text
+    assert request_value not in caplog.text
+    assert "query-secret-value" not in caplog.text
+    assert "header-secret-value" not in caplog.text
+    assert "local_secret" not in caplog.text
+    assert "raise RuntimeError" not in caplog.text
+    assert "Traceback (most recent call last)" not in caplog.text
 
 
 @pytest.mark.parametrize(
