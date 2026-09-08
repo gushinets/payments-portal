@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import secrets
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -78,6 +79,7 @@ from app.payment_providers.registry import (
 )
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+logger = logging.getLogger(__name__)
 
 SESSION_TTL_DAYS = 30
 PRODUCT_DEFAULTS = {
@@ -624,7 +626,9 @@ def create_checkout_intent(
         )
     )
 
+    order_id = str(order.id)
     db.commit()
+    logger.info("billing_checkout_committed", extra={"structured": {"order_id": order_id}})
     record_checkout("created")
 
     return CheckoutIntentResponse(
