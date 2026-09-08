@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import os
 import stat
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -23,6 +26,147 @@ from scripts.repo import (
     resolve_cloudpayments_public_id,
     uv_environment,
 )
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "## Linear issue\nhttps://linear.app/paveldik/issue/ANY-337",
+        "## Linear issue\nhttps://linear.app/paveldik/issue/ANY-337/add-validation\n",
+        "## Linear issue\n[Ticket](https://linear.app/paveldik/issue/ANY-337)\n",
+        "## Linear issue\n<https://linear.app/paveldik/issue/ANY-337>\n",
+        "## Summary\nhttps://example.com\n## Linear issue\n"
+        "https://linear.app/paveldik/issue/ANY-337\n## Debt\n"
+        "https://linear.app/paveldik/issue/ANY-999/other\n",
+        "## Linear issue\nhttps://linear.app/paveldik/issue/ANY-337\nhttps://example.com\uff0fabc",
+    ],
+)
+def test_pr_metadata_accepts_matching_issue(body: str) -> None:
+    repo.validate_pr_metadata("ANY-337 - Add validation", body)
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        "337 - Add validation",
+        "ANY-0 - Add validation",
+        "ANY-337",
+        "ANY-337 -",
+        "ANY-337 - ",
+        "ANY-337 -  summary",
+        "ANY-abc - Add validation",
+        "ANY-0337 - Add validation",
+        "ANY-337: Add validation",
+        "ANY-337 - summary\n",
+    ],
+)
+def test_pr_metadata_rejects_invalid_title(title: str) -> None:
+    with pytest.raises(repo.HarnessError, match="Invalid PR title.*Required format"):
+        repo.validate_pr_metadata(title, "## Linear issue\nhttps://linear.app/paveldik/issue/ANY-337")
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "",
+        "## Summary\nhttps://linear.app/paveldik/issue/ANY-337",
+        "## Linear issue\n## Linear issue\n",
+        "```md\n## Linear issue\nhttps://linear.app/paveldik/issue/ANY-337\n```",
+    ],
+)
+def test_pr_metadata_requires_one_rendered_section(body: str) -> None:
+    with pytest.raises(repo.HarnessError, match="exactly one rendered '## Linear issue' section"):
+        repo.validate_pr_metadata("ANY-337 - Add validation", body)
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        "",
+        "ANY-337",
+        "https://linear.app/other/issue/ANY-337",
+        "https://example.com/paveldik/issue/ANY-337",
+        "http://linear.app/paveldik/issue/ANY-337",
+        "https://linear.app.evil.test/paveldik/issue/ANY-337",
+        "https://linear.app/paveldik/issue/ANY-337oops",
+        "[Ticket](https://linear.app/paveldik/issue/ANY-337(extra))",
+        "https://linear.app/paveldik/issue/ANY-0",
+        "https://linear.app/paveldik/issue/ANY-337\nhttps://linear.app/paveldik/issue/ANY-338",
+        "https://linear.app/paveldik/issue/ANY-337\nhttps://linear.app/paveldik/issue/ANY-337",
+        "https://linear.app/paveldik/issue/ANY-337\nhttps://linear.app/other/issue/ANY-338",
+        "## Summary\nhttps://linear.app/paveldik/issue/ANY-337",
+        "```\nhttps://linear.app/paveldik/issue/ANY-337\n```",
+    ],
+)
+def test_pr_metadata_requires_one_full_linear_url(content: str) -> None:
+    with pytest.raises(repo.HarnessError, match="exactly one full Linear issue URL"):
+        repo.validate_pr_metadata("ANY-337 - Add validation", "## Linear issue\n" + content)
+
+
+@pytest.mark.parametrize("fence", ["```", "~~~", "````", "~~~~"])
+@pytest.mark.parametrize("real_issue", ["ANY-337", "ANY-338"])
+def test_pr_metadata_uses_real_section_after_fenced_markdown(fence: str, real_issue: str) -> None:
+    body = (
+        f"{fence}md\n## Linear issue\nhttps://linear.app/paveldik/issue/ANY-337/fake\n"
+        f"{fence}\n\n## Linear issue\nhttps://linear.app/paveldik/issue/{real_issue}/real\n"
+    )
+    if real_issue == "ANY-337":
+        repo.validate_pr_metadata("ANY-337 - Add validation", body)
+    else:
+        with pytest.raises(repo.HarnessError, match="ANY-337 does not match Linear URL issue ANY-338"):
+            repo.validate_pr_metadata("ANY-337 - Add validation", body)
+
+
+def test_pr_metadata_ignores_different_issue_in_fenced_section() -> None:
+    repo.validate_pr_metadata(
+        "ANY-337 - Add validation",
+        "```md\n## Linear issue\nhttps://linear.app/paveldik/issue/ANY-999/fake\n```\n"
+        "## Linear issue\nhttps://linear.app/paveldik/issue/ANY-337/real",
+    )
+
+
+@pytest.mark.parametrize("closing", ["~~~", "``", "```not-a-close"])
+def test_pr_metadata_does_not_close_fence_with_invalid_marker(closing: str) -> None:
+    body = f"```md\n{closing}\n## Linear issue\nhttps://linear.app/paveldik/issue/ANY-337"
+    with pytest.raises(repo.HarnessError, match="exactly one rendered"):
+        repo.validate_pr_metadata("ANY-337 - Add validation", body)
+
+
+@pytest.mark.parametrize(
+    ("title", "body", "exit_code", "message"),
+    [
+        (
+            "ANY-337 - Add validation",
+            "## Linear issue\nhttps://linear.app/paveldik/issue/ANY-337",
+            0,
+            "PR metadata is valid.",
+        ),
+        ("ANY-0 - Invalid", "", 1, "Invalid PR title"),
+        ("ANY-337 - Missing section", "", 1, "exactly one rendered"),
+        (
+            "ANY-337 - Mismatch",
+            "## Linear issue\nhttps://linear.app/paveldik/issue/ANY-338",
+            1,
+            "ANY-337 does not match Linear URL issue ANY-338",
+        ),
+    ],
+)
+def test_pr_metadata_cli_reports_validation_without_traceback(
+    title: str,
+    body: str,
+    exit_code: int,
+    message: str,
+) -> None:
+    result = subprocess.run(
+        [sys.executable, str(repo.ROOT / "scripts/repo.py"), "pr-metadata"],
+        env={**os.environ, "PR_TITLE": title, "PR_BODY": body},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == exit_code
+    assert message in result.stdout + result.stderr
+    assert "Traceback" not in result.stderr
 
 
 def _write_api_source(root: Path, relative: str, source: str) -> None:

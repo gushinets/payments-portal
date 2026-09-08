@@ -1,4 +1,4 @@
-name: Linear PR title
+name: Linear PR metadata
 
 on:
   pull_request:
@@ -8,6 +8,7 @@ permissions:
   contents: read
 
 jobs:
+  # Keep the required status-check context configured in the main ruleset.
   validate:
     runs-on: ubuntu-latest
     steps:
@@ -17,7 +18,8 @@ jobs:
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
-      - name: Validate title
+      - name: Validate Linear PR metadata
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
-        run: python scripts/repo.py pr-title "$PR_TITLE"
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: python scripts/repo.py pr-metadata

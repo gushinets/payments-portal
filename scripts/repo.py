@@ -1387,13 +1387,72 @@ def cmd_harness_smoke(_: argparse.Namespace) -> None:
     print("Harness smoke check passed.")
 
 
-def cmd_pr_title(args: argparse.Namespace) -> None:
-    pattern = re.compile(r"^ANY-[1-9][0-9]* - \S.*$")
-    if not pattern.fullmatch(args.title):
+def without_fenced_code_blocks(markdown: str) -> str:
+    rendered_lines: list[str] = []
+    fence = ""
+    for line in markdown.splitlines():
+        marker = re.fullmatch(r" {0,3}(`{3,}|~{3,})(.*)", line)
+        if fence:
+            if (
+                marker
+                and marker[1][0] == fence[0]
+                and len(marker[1]) >= len(fence)
+                and not marker[2].strip()
+            ):
+                fence = ""
+            rendered_lines.append("")
+        elif marker and (marker[1][0] != "`" or "`" not in marker[2]):
+            fence = marker[1]
+            rendered_lines.append("")
+        else:
+            rendered_lines.append(line)
+    return "\n".join(rendered_lines)
+
+
+def validate_pr_metadata(title: str, body: str) -> None:
+    title_match = re.fullmatch(r"(ANY-[1-9][0-9]*) - \S.*", title)
+    if title_match is None:
         raise HarnessError(
             'Invalid PR title. Required format: "ANY-<number> - <summary>"'
         )
-    print("PR title is valid.")
+
+    sections = re.findall(
+        r"^## Linear issue[ \t]*(?:\n|$)(.*?)(?=^#{1,2}(?:[ \t]|$)|\Z)",
+        without_fenced_code_blocks(body),
+        re.MULTILINE | re.DOTALL,
+    )
+    if len(sections) != 1:
+        raise HarnessError(
+            "The PR body must contain exactly one rendered '## Linear issue' section."
+        )
+
+    urls = re.findall(r"https?://[^\s<>]+", sections[0])
+    linear_urls = [
+        url.rstrip(")") for url in urls
+        if re.match(r"https?://linear\.app(?:/|:|$)", url, re.IGNORECASE)
+    ]
+    issue = (
+        re.fullmatch(
+            r"https://linear\.app/paveldik/issue/(ANY-[1-9][0-9]*)(?:/[A-Za-z0-9_-]+)?/?",
+            linear_urls[0],
+        )
+        if len(linear_urls) == 1 else None
+    )
+    if issue is None:
+        raise HarnessError(
+            "The PR body must contain exactly one full Linear issue URL in "
+            "the '## Linear issue' section: https://linear.app/paveldik/issue/ANY-<number> "
+            "(optional /slug)."
+        )
+    if title_match[1] != issue[1]:
+        raise HarnessError(
+            f"PR title issue {title_match[1]} does not match Linear URL issue {issue[1]}."
+        )
+
+
+def cmd_pr_metadata(args: argparse.Namespace) -> None:
+    validate_pr_metadata(args.title, args.body)
+    print("PR metadata is valid.")
 
 
 def cmd_validate_production_env(_: argparse.Namespace) -> None:
@@ -1852,9 +1911,10 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("check-api-lock").set_defaults(func=cmd_check_api_lock)
     sub.add_parser("migrate-api").set_defaults(func=cmd_migrate_api)
     sub.add_parser("validate-production-env").set_defaults(func=cmd_validate_production_env)
-    title = sub.add_parser("pr-title")
-    title.add_argument("title")
-    title.set_defaults(func=cmd_pr_title)
+    metadata = sub.add_parser("pr-metadata")
+    metadata.add_argument("--title", default=os.environ.get("PR_TITLE", ""))
+    metadata.add_argument("--body", default=os.environ.get("PR_BODY", ""))
+    metadata.set_defaults(func=cmd_pr_metadata)
     trivy = sub.add_parser("trivy")
     trivy.add_argument(
         "action",
