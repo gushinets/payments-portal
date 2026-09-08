@@ -44,6 +44,9 @@ The repository already has:
   - optional `code`;
   - `message_safe`;
   - `details_safe`;
+- `AppError.code` may remain optional for semantic domain/application errors;
+  `PaymentsError` and the existing payment/provider hierarchy continue to
+  require a machine-readable `code: str`;
 - payment/provider errors with established retry disposition and safe diagnostics;
 - exception chaining around provider transport/decoding failures;
 - redaction and provider-operation telemetry;

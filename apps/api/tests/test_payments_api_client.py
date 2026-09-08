@@ -13,7 +13,9 @@ from apps.api.tests.support.settings import configure_api_test_environment
 configure_api_test_environment()
 
 from app.payment_providers.errors import (  # noqa: E402
+    PaymentProviderConfigurationError,
     PaymentsAuthenticationError,
+    PaymentsError,
     PaymentsIdempotencyKeyRequiredError,
     PaymentsOperationDeclinedError,
     PaymentsRateLimitError,
@@ -44,6 +46,27 @@ class DummyResponse(PaymentsApiClientModel):
 
 class DummyPaymentsApiClient(BaseHttpPaymentsApiClient):
     pass
+
+
+@pytest.mark.parametrize(
+    "error_type",
+    [
+        PaymentProviderConfigurationError,
+        PaymentsIdempotencyKeyRequiredError,
+        PaymentsAuthenticationError,
+        PaymentsResponseDecodeError,
+        PaymentsResponseValidationError,
+    ],
+)
+def test_payments_error_subclasses_require_code(
+    error_type: type[PaymentsError],
+) -> None:
+    with pytest.raises(TypeError):
+        error_type()
+
+    error = error_type("provider_error")
+
+    assert error.code == "provider_error"
 
 
 class _FakeSpan:
