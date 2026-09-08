@@ -9,8 +9,9 @@ import os
 import re
 import time
 import uuid
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from typing import Any, get_type_hints
+from urllib.parse import urlsplit, urlunsplit
 
 from fastapi import FastAPI, Request, Response
 
@@ -61,11 +62,24 @@ SENSITIVE_KEYS = {
 NORMALIZED_SENSITIVE_KEYS = {re.sub(r"[^a-z0-9]", "", item.lower()) for item in SENSITIVE_KEYS}
 SENSITIVE_KEY_MARKERS = ("secret", "token")
 PAYMENT_VALUE_KEY_MARKERS = ("amount", "invoice", "payment")
+LOCAL_PAYMENT_ID_KEY = "payment_id"
 
 
 def redact(value: Any, key: str = "") -> Any:
     """Return a telemetry-safe representation of nested data."""
 
+    if key == LOCAL_PAYMENT_ID_KEY:
+        if value is None:
+            return None
+        if isinstance(value, uuid.UUID):
+            return str(value)
+        if isinstance(value, str):
+            try:
+                uuid.UUID(value)
+            except ValueError:
+                return "[redacted]"
+            return value
+        return "[redacted]"
     normalized_key = re.sub(r"[^a-z0-9]", "", key.lower())
     if normalized_key in NORMALIZED_SENSITIVE_KEYS or any(
         marker in normalized_key for marker in (*SENSITIVE_KEY_MARKERS, *PAYMENT_VALUE_KEY_MARKERS)
@@ -274,6 +288,36 @@ def traced(span_name: str):
     return decorator
 
 
+def _strip_query(value: Any) -> str:
+    if not isinstance(value, str):
+        return ""
+    parsed = urlsplit(value)
+    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "", parsed.fragment))
+
+
+def _clear_query(_: Any) -> str:
+    return ""
+
+
+HTTP_SERVER_SPAN_ATTRIBUTE_SANITIZERS: Mapping[str, Callable[[Any], str]] = {
+    "http.target": _strip_query,
+    "http.url": _strip_query,
+    "url.full": _strip_query,
+    "url.query": _clear_query,
+}
+
+
+def _sanitize_http_server_span(span: Any, _scope: Mapping[str, Any]) -> None:
+    """Remove request query values from the active HTTP server span."""
+
+    attributes = getattr(span, "attributes", None)
+    if not isinstance(attributes, Mapping):
+        return
+    for attribute, sanitizer in HTTP_SERVER_SPAN_ATTRIBUTE_SANITIZERS.items():
+        if attribute in attributes:
+            span.set_attribute(attribute, sanitizer(attributes[attribute]))
+
+
 def configure_observability(app: FastAPI, engine: object) -> None:
     global OTEL_CHECKOUTS, OTEL_LEGAL_ACCEPTANCES, OTEL_WEBHOOKS, OTEL_PASSWORD_RESET_EMAILS
     global OTEL_PROVIDER_API_OPERATIONS, OTEL_PROVIDER_API_OPERATION_DURATION
@@ -327,13 +371,16 @@ def configure_observability(app: FastAPI, engine: object) -> None:
         )
         set_logger_provider(logger_provider)
         logging.getLogger().addHandler(LoggingHandler(level=logging.NOTSET, logger_provider=logger_provider))
-        FastAPIInstrumentor.instrument_app(app)
+        FastAPIInstrumentor.instrument_app(app, server_request_hook=_sanitize_http_server_span)
         SQLAlchemyInstrumentor().instrument(engine=engine)
     except (ImportError, RuntimeError):
         logging.getLogger(__name__).exception("observability_initialization_failed")
 
 
-async def request_context_middleware(request: Request, call_next):
+async def request_context_middleware(
+    request: Request,
+    call_next: Callable[[Request], Awaitable[Response]],
+) -> Response:
     supplied = request.headers.get("x-request-id", "")
     request_id = supplied if REQUEST_ID_PATTERN.fullmatch(supplied) else uuid.uuid4().hex
     token = request_id_context.set(request_id)
@@ -346,7 +393,9 @@ async def request_context_middleware(request: Request, call_next):
         return response
     finally:
         route = request.scope.get("route")
-        route_path = getattr(route, "path", request.url.path)
+        route_path = getattr(route, "path", None)
+        if not isinstance(route_path, str):
+            route_path = "unmatched"
         REQUEST_DURATION.labels(request.method, route_path, str(status)).observe(time.perf_counter() - started)
         logging.getLogger("payment_portal.http").info(
             "http_request_complete request_id=%s",

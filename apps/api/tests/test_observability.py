@@ -1,0 +1,204 @@
+from __future__ import annotations
+
+import asyncio
+import logging
+import uuid
+
+import httpx
+import pytest
+from fastapi import FastAPI
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from opentelemetry.trace import SpanKind
+
+from app.core import observability
+from app.core.observability import JsonFormatter, redact
+
+
+async def _get(
+    application: FastAPI,
+    path: str,
+    headers: dict[str, str] | None = None,
+) -> httpx.Response:
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=application),
+        base_url="http://testserver",
+    ) as client:
+        return await client.get(path, headers=headers)
+
+
+class RecordingMetric:
+    def __init__(self) -> None:
+        self.labels_seen: list[tuple[object, ...]] = []
+
+    def labels(self, *labels: object) -> RecordingMetric:
+        self.labels_seen.append(labels)
+        return self
+
+    def observe(self, _: float) -> None:
+        return None
+
+
+def test_redact_preserves_only_the_local_payment_id_exception() -> None:
+    local_payment_id = "123e4567-e89b-12d3-a456-426614174000"
+    payload = {
+        "payment_id": local_payment_id,
+        "order_id": "order-local-1",
+        "subscription_id": "subscription-local-1",
+        "provider_payment_id": "provider-payment-1",
+        "PaymentId": "provider-payment-variant-1",
+        "invoice_id": "invoice-1",
+        "authorization": "Bearer secret",
+        "CardFirstSix": "411111",
+        "CardLastFour": "1111",
+    }
+
+    assert redact(payload) == {
+        "payment_id": local_payment_id,
+        "order_id": "order-local-1",
+        "subscription_id": "subscription-local-1",
+        "provider_payment_id": "[redacted]",
+        "PaymentId": "[redacted]",
+        "invoice_id": "[redacted]",
+        "authorization": "[redacted]",
+        "CardFirstSix": "[redacted]",
+        "CardLastFour": "[redacted]",
+    }
+    assert redact(uuid.UUID(local_payment_id), "payment_id") == local_payment_id
+    assert redact(None, "payment_id") is None
+    assert redact("not-a-uuid", "payment_id") == "[redacted]"
+    assert redact({"value": local_payment_id}, "payment_id") == "[redacted]"
+
+
+def test_json_formatter_keeps_request_id_text_searchable() -> None:
+    record = logging.LogRecord(
+        name="payment_portal.http",
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=1,
+        msg="http_request_complete request_id=%s",
+        args=("request.lookup-123",),
+        exc_info=None,
+    )
+    record.structured = {"method": "GET", "route": "/health", "status": 200}
+
+    assert "http_request_complete request_id=request.lookup-123" in JsonFormatter().format(record)
+
+
+def test_http_server_span_sanitizer_strips_and_clears_query_attributes() -> None:
+    class Span:
+        def __init__(self) -> None:
+            self.attributes = {
+                "http.target": "/items/local-item-123?query_secret=unique-query-secret-437",
+                "http.url": "https://example.test/items/local-item-123?query_secret=unique-query-secret-437",
+                "url.full": "https://example.test/items/local-item-123?query_secret=unique-query-secret-437",
+                "url.query": "query_secret=unique-query-secret-437",
+            }
+
+        def set_attribute(self, key: str, value: str) -> None:
+            self.attributes[key] = value
+
+    span = Span()
+    observability._sanitize_http_server_span(span, {})
+
+    assert span.attributes == {
+        "http.target": "/items/local-item-123",
+        "http.url": "https://example.test/items/local-item-123",
+        "url.full": "https://example.test/items/local-item-123",
+        "url.query": "",
+    }
+
+
+def test_http_server_span_sanitizer_ignores_missing_or_non_mapping_attributes() -> None:
+    class SpanWithoutAttributes:
+        attributes = "not-a-mapping"
+
+    observability._sanitize_http_server_span(object(), {})
+    observability._sanitize_http_server_span(SpanWithoutAttributes(), {})
+
+
+def test_request_telemetry_uses_unmatched_sentinel_and_bounded_metric_labels(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    metric = RecordingMetric()
+    monkeypatch.setattr(observability, "REQUEST_DURATION", metric)
+    application = FastAPI()
+    application.middleware("http")(observability.request_context_middleware)
+
+    @application.get("/items/{item_id}")
+    async def get_item(item_id: str) -> dict[str, str]:
+        return {"item_id": item_id}
+
+    with caplog.at_level(logging.INFO, logger="payment_portal.http"):
+        unmatched_path = "/not-a-route/business-id-123"
+        assert asyncio.run(_get(application, unmatched_path)).status_code == 404
+        matched_response = asyncio.run(
+            _get(application, "/items/business-id-123", headers={"X-Request-ID": "request.lookup-123"})
+        )
+        assert matched_response.status_code == 200
+        assert matched_response.headers["X-Request-ID"] == "request.lookup-123"
+
+    completion = [record for record in caplog.records if record.getMessage().startswith("http_request_complete")]
+    assert completion[0].structured["route"] == "unmatched"
+    assert unmatched_path not in str(completion[0].structured)
+    assert completion[1].structured["route"] == "/items/{item_id}"
+    assert completion[1].getMessage() == "http_request_complete request_id=request.lookup-123"
+    assert metric.labels_seen == [
+        ("GET", "unmatched", "404"),
+        ("GET", "/items/{item_id}", "200"),
+    ]
+
+
+def test_http_server_span_query_values_are_sanitized_without_header_capture() -> None:
+    exporter = InMemorySpanExporter()
+    tracer_provider = TracerProvider()
+    tracer_provider.add_span_processor(SimpleSpanProcessor(exporter))
+    application = FastAPI()
+
+    @application.get("/items/{item_id}")
+    async def get_item(item_id: str) -> dict[str, str]:
+        return {"item_id": item_id}
+
+    FastAPIInstrumentor.instrument_app(
+        application,
+        server_request_hook=observability._sanitize_http_server_span,
+        tracer_provider=tracer_provider,
+    )
+    try:
+        query_secret = "unique-query-secret-437"
+        header_secret = "unique-header-secret-437"
+        assert (
+            asyncio.run(
+                _get(
+                    application,
+                    f"/items/local-item-123?query_secret={query_secret}",
+                    headers={"X-Observability-Marker": header_secret},
+                )
+            ).status_code
+            == 200
+        )
+        tracer_provider.force_flush()
+
+        server_spans = [span for span in exporter.get_finished_spans() if span.kind is SpanKind.SERVER]
+        assert len(server_spans) == 1
+        span_attributes = server_spans[0].attributes
+        assert query_secret not in repr(dict(span_attributes))
+        assert header_secret not in repr(dict(span_attributes))
+        for attribute in observability.HTTP_SERVER_SPAN_ATTRIBUTE_SANITIZERS:
+            if attribute in span_attributes:
+                assert query_secret not in str(span_attributes[attribute])
+        if "url.query" in span_attributes:
+            assert span_attributes["url.query"] == ""
+        assert span_attributes["http.route"] == "/items/{item_id}"
+        path_bearing_attributes = {
+            attribute: value
+            for attribute, value in span_attributes.items()
+            if attribute in {"http.target", "http.url", "url.full", "url.path"}
+            and "/items/local-item-123" in str(value)
+        }
+        assert path_bearing_attributes
+    finally:
+        FastAPIInstrumentor.uninstrument_app(application)
