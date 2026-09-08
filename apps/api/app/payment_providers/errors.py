@@ -8,7 +8,14 @@ from app.payment_providers.contracts import RetryDisposition
 
 
 class PaymentsError(AppError):
-    pass
+    def __init__(
+        self,
+        code: str,
+        *,
+        message_safe: str | None = None,
+        details_safe: Mapping[str, Any] | None = None,
+    ) -> None:
+        super().__init__(code, message_safe=message_safe, details_safe=details_safe)
 
 
 class PaymentProviderConfigurationError(PaymentsError):

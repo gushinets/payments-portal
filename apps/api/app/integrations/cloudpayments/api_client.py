@@ -8,7 +8,7 @@ from typing import Any
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.core.errors import PaymentsOperationDeclinedError, PaymentsResponseValidationError
+from app.payment_providers.errors import PaymentsOperationDeclinedError, PaymentsResponseValidationError
 from app.core.settings import Settings, settings
 from app.core.url_validation import validate_https_origin_url
 from app.payment_providers.api_client import (

@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.database import SessionLocal
 from app.core.database import engine
+from app.core.errors import AppError
 from app.core.observability import (
     configure_observability,
     metrics_response,
@@ -20,6 +21,7 @@ from app.domains.identity.password_reset import router as password_reset_router
 from app.domains.identity.router import router as auth_router
 from app.domains.legal.router import router as legal_router
 from app.health import health_router
+from app.http_errors import app_error_handler, unexpected_failure_middleware
 from app.integrations.cloudpayments.adapter import CloudPaymentsAdapter
 from app.integrations.cloudpayments.api_client import build_cloudpayments_api_client
 from app.integrations.cloudpayments.router import router as cloudpayments_router
@@ -75,7 +77,12 @@ def create_app() -> FastAPI:
     payment_provider_registry.register(cloudpayments_adapter)
     app.state.cloudpayments_adapter = cloudpayments_adapter
     app.state.payment_provider_registry = payment_provider_registry
+    # Middleware is inserted in reverse registration order: request context
+    # must wrap the unexpected-failure boundary so it can add X-Request-ID to
+    # the converted response and record request completion.
+    app.middleware("http")(unexpected_failure_middleware)
     app.middleware("http")(request_context_middleware)
+    app.add_exception_handler(AppError, app_error_handler)
 
     app.add_middleware(
         CORSMiddleware,

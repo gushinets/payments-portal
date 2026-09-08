@@ -15,6 +15,7 @@ import {
 } from "@/features/catalog";
 import {
   ApiError,
+  apiErrorCode,
   authErrorMessage,
   decodeAuthSessionResponse,
   getJson,
@@ -340,38 +341,40 @@ export function CheckoutClient({
     );
   }
 
-  function apiErrorCode(errorValue: unknown): string | null {
-    if (!(errorValue instanceof ApiError)) {
-      return null;
-    }
-    const detail = errorValue.detail;
-    if (typeof detail === "string") {
-      return detail;
-    }
-    if (typeof detail === "object" && detail !== null && "code" in detail) {
-      const code = (detail as Record<string, unknown>).code;
-      if (typeof code === "string") {
-        return code;
-      }
-    }
-    return null;
-  }
-
   function checkoutPreparationErrorMessage(errorValue: unknown): string {
-    const code = apiErrorCode(errorValue);
-    if (code === "automatic_renewal_not_permitted") {
+    if (
+      errorValue instanceof ApiError &&
+      errorValue.status === 409 &&
+      apiErrorCode(errorValue) === "automatic_renewal_not_permitted"
+    ) {
       return "Выбранный тариф не поддерживает автопродление. Отключите автопродление или выберите другой тариф.";
     }
-    if (code === "recurring_consent_required") {
+    if (
+      errorValue instanceof ApiError &&
+      errorValue.status === 409 &&
+      apiErrorCode(errorValue) === "recurring_consent_required"
+    ) {
       return "Для автопродления нужно принять актуальный документ о регулярных списаниях.";
     }
-    if (code === "recurring_consent_invalid") {
+    if (
+      errorValue instanceof ApiError &&
+      errorValue.status === 409 &&
+      apiErrorCode(errorValue) === "recurring_consent_invalid"
+    ) {
       return "Согласие на регулярные списания устарело. Примите актуальный документ ещё раз.";
     }
-    if (code === "invalid_acceptance_text_hash") {
+    if (
+      errorValue instanceof ApiError &&
+      errorValue.status === 400 &&
+      apiErrorCode(errorValue) === "invalid_acceptance_text_hash"
+    ) {
       return "Текст согласия изменился. Обновите страницу и попробуйте ещё раз.";
     }
-    if (code === "missing_required_documents") {
+    if (
+      errorValue instanceof ApiError &&
+      errorValue.status === 409 &&
+      apiErrorCode(errorValue) === "missing_required_documents"
+    ) {
       return "Перед оплатой нужно принять актуальные юридические документы.";
     }
 
@@ -522,7 +525,11 @@ export function CheckoutClient({
         return;
       }
 
-      if (apiErrorCode(requestError) === "recurring_consent_invalid") {
+      if (
+        requestError instanceof ApiError &&
+        requestError.status === 409 &&
+        apiErrorCode(requestError) === "recurring_consent_invalid"
+      ) {
         clearRecurringConsentEvidence();
       }
       showError(checkoutPreparationErrorMessage(requestError));
@@ -639,6 +646,7 @@ export function CheckoutClient({
     } catch (requestError) {
       if (
         requestError instanceof ApiError &&
+        requestError.status === 400 &&
         requestError.detail === "invalid_acceptance_text_hash"
       ) {
         showError("Текст согласия изменился. Обновите страницу и попробуйте ещё раз.");

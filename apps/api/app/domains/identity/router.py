@@ -11,8 +11,13 @@ from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.errors import PaymentProviderConfigurationError
+from app.payment_providers.errors import PaymentProviderConfigurationError
 from app.core.observability import record_checkout, traced
+from app.domains.identity.errors import (
+    AutomaticRenewalNotPermittedError,
+    MissingRequiredDocumentsError,
+    ProviderCurrencyMismatchError,
+)
 from app.domains.identity.passwords import hash_password, verify_password
 from app.domains.identity.services.checkout import (
     CheckoutIntentRequest,
@@ -218,9 +223,9 @@ def register(
     db: Annotated[Session, Depends(get_db)],
 ):
     if not payload.personal_consent:
-        raise HTTPException(status_code=400, detail="missing_personal_consent")
+        raise HTTPException(status_code=400, detail={"code": "missing_personal_consent"})
     if not payload.offer_consent:
-        raise HTTPException(status_code=400, detail="missing_offer_consent")
+        raise HTTPException(status_code=400, detail={"code": "missing_offer_consent"})
 
     tenant_id = normalize_tenant_id(payload.tenant_id)
     region = normalize_region(payload.region)
@@ -235,7 +240,7 @@ def register(
         .first()
     )
     if existing is not None:
-        raise HTTPException(status_code=409, detail="email_already_registered")
+        raise HTTPException(status_code=409, detail={"code": "email_already_registered"})
 
     user = User(
         tenant_id=tenant_id,
@@ -290,7 +295,7 @@ def login(
         .first()
     )
     if user is None or user.password_hash is None or not verify_password(payload.password, user.password_hash):
-        raise HTTPException(status_code=401, detail="invalid_credentials")
+        raise HTTPException(status_code=401, detail={"code": "invalid_credentials"})
 
     user.last_login_at = utc_now()
     db.add(user)
@@ -460,10 +465,7 @@ def create_checkout_intent(
         now=now,
     )
     if payload.auto_renew and sellable_plan.renewal_mode != SubscriptionRenewalMode.AUTOMATIC:
-        raise HTTPException(
-            status_code=409,
-            detail={"code": "automatic_renewal_not_permitted"},
-        )
+        raise AutomaticRenewalNotPermittedError()
     missing_documents = get_missing_required_documents_for_user(
         db,
         user=user,
@@ -472,13 +474,7 @@ def create_checkout_intent(
     )
     if missing_documents:
         record_checkout("missing_required_documents")
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "code": "missing_required_documents",
-                "documents": [present_required_document(document) for document in missing_documents],
-            },
-        )
+        raise MissingRequiredDocumentsError([present_required_document(document) for document in missing_documents])
 
     recurring_consent = None
     if payload.auto_renew and payload.recurring_consent_acceptance_id is None:
@@ -506,7 +502,7 @@ def create_checkout_intent(
     currency = sellable_plan.currency
     if currency != provider_account.default_currency:
         record_checkout("provider_currency_mismatch")
-        raise HTTPException(status_code=409, detail="provider_currency_mismatch")
+        raise ProviderCurrencyMismatchError()
     expires_at = now + timedelta(minutes=30)
 
     entrypoint_session = EntrypointSession(

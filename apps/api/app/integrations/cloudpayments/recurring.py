@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from app.core.errors import PaymentsError
+from app.payment_providers.errors import PaymentsError
 from app.integrations.cloudpayments.account_validation import validate_provider_account_context
 from app.integrations.cloudpayments.api_client import (
     CloudPaymentsApiClient,

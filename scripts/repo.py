@@ -1136,6 +1136,11 @@ def check_python_boundaries(root: Path = ROOT) -> list[str]:
         in_integrations = path_parts[0] == "integrations"
         in_provider_neutral_payment = path_parts[0] == "payment_providers"
         is_domain_service_or_model = in_domains and path.name in {"service.py", "models.py"}
+        is_domain_service_tree = (
+            in_domains
+            and len(path_parts) >= 3
+            and path_parts[2] in {"service.py", "service", "services", "application"}
+        )
         is_router = path.name == "router.py"
         source = path.read_text(encoding="utf-8")
         if (in_domains or in_provider_neutral_payment) and "cloudpayments" in source.lower():
@@ -1160,7 +1165,8 @@ def check_python_boundaries(root: Path = ROOT) -> list[str]:
                     (
                         "core dependency direction",
                         lambda target: module_matches(target, "app.domains")
-                        or module_matches(target, "app.integrations"),
+                        or module_matches(target, "app.integrations")
+                        or module_matches(target, "app.payment_providers"),
                         "move the dependency to wiring or shared core infrastructure",
                     )
                 )
@@ -1178,6 +1184,15 @@ def check_python_boundaries(root: Path = ROOT) -> list[str]:
                         "domain service/model-to-router dependency",
                         router_module,
                         "import a service, model, contract, or session dependency instead of a router",
+                    )
+                )
+            if is_domain_service_tree:
+                rules.append(
+                    (
+                        "domain service/application-to-transport dependency",
+                        lambda target: module_matches(target, "fastapi")
+                        or module_matches(target, "starlette"),
+                        "keep FastAPI and Starlette dependencies in presentation modules",
                     )
                 )
             if in_integrations:

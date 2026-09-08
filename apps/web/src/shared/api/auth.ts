@@ -62,6 +62,14 @@ export class ApiError extends Error {
   }
 }
 
+export function apiErrorCode(error: unknown): string | null {
+  if (!(error instanceof ApiError) || !isRecord(error.detail)) {
+    return null;
+  }
+
+  return typeof error.detail.code === "string" ? error.detail.code : null;
+}
+
 export const sessionStorageKey = "anytoolai_session_token_v1";
 export const sessionChangedEvent = "anytoolai_session_changed";
 
@@ -266,22 +274,37 @@ export function authErrorMessage(
   requestError: unknown,
   fallback = "Не удалось выполнить авторизацию. Попробуйте ещё раз."
 ): string {
-  const message =
-    requestError instanceof Error ? requestError.message : "auth_error";
+  const code = apiErrorCode(requestError);
 
-  if (message.includes("409")) {
+  if (
+    requestError instanceof ApiError &&
+    requestError.status === 409 &&
+    code === "email_already_registered"
+  ) {
     return "Аккаунт с таким email уже существует. Попробуйте войти.";
   }
 
-  if (message.includes("401")) {
+  if (
+    requestError instanceof ApiError &&
+    requestError.status === 401 &&
+    code === "invalid_credentials"
+  ) {
     return "Неверный email или пароль.";
   }
 
-  if (message.includes("missing_personal_consent")) {
+  if (
+    requestError instanceof ApiError &&
+    requestError.status === 400 &&
+    code === "missing_personal_consent"
+  ) {
     return "Нужно дать согласие на обработку персональных данных.";
   }
 
-  if (message.includes("missing_offer_consent")) {
+  if (
+    requestError instanceof ApiError &&
+    requestError.status === 400 &&
+    code === "missing_offer_consent"
+  ) {
     return "Нужно принять условия оферты.";
   }
 
@@ -289,14 +312,17 @@ export function authErrorMessage(
 }
 
 export function passwordResetErrorMessage(requestError: unknown): string {
-  const message =
-    requestError instanceof Error ? requestError.message : "password_reset_error";
+  const code = apiErrorCode(requestError);
 
-  if (message.includes("invalid_or_expired_reset_token")) {
+  if (
+    requestError instanceof ApiError &&
+    requestError.status === 400 &&
+    code === "invalid_or_expired_reset_token"
+  ) {
     return "Ссылка недействительна или срок её действия истёк. Запросите новую ссылку.";
   }
 
-  if (message.includes("422")) {
+  if (requestError instanceof ApiError && requestError.status === 422) {
     return "Проверьте email и пароль. Пароль должен содержать не менее 8 символов.";
   }
 

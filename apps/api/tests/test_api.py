@@ -957,7 +957,7 @@ def test_checkout_rejects_unknown_or_foreign_plan_id() -> None:
             },
         )
         assert response.status_code == 400
-        assert response.json()["detail"] == "unknown_product_plan"
+        assert response.json()["detail"] == {"code": "unknown_product_plan"}
 
 
 def test_session_product_state_uses_user_tenant_product_when_codes_overlap() -> None:
@@ -2272,7 +2272,7 @@ def test_checkout_rejects_plan_provider_currency_mismatch() -> None:
     )
 
     assert checkout_response.status_code == 409
-    assert checkout_response.json()["detail"] == "provider_currency_mismatch"
+    assert checkout_response.json()["detail"] == {"code": "provider_currency_mismatch"}
     with SessionLocal() as db:
         assert db.query(Order).count() == 0
         assert db.query(OrderItem).count() == 0
@@ -2405,7 +2405,7 @@ def test_checkout_rejects_inactive_catalog_plan_without_legacy_fallback() -> Non
     )
 
     assert checkout_response.status_code == 400
-    assert checkout_response.json()["detail"] == "unknown_product_plan"
+    assert checkout_response.json()["detail"] == {"code": "unknown_product_plan"}
     with SessionLocal() as db:
         assert db.query(Order).count() == 0
 
@@ -2442,7 +2442,7 @@ def test_checkout_rejects_catalog_plan_outside_validity_window() -> None:
     )
 
     assert checkout_response.status_code == 400
-    assert checkout_response.json()["detail"] == "unknown_product_plan"
+    assert checkout_response.json()["detail"] == {"code": "unknown_product_plan"}
     with SessionLocal() as db:
         assert db.query(Order).count() == 0
 
@@ -2477,7 +2477,7 @@ def test_checkout_rejects_active_plan_for_inactive_product() -> None:
     )
 
     assert checkout_response.status_code == 400
-    assert checkout_response.json()["detail"] == "unknown_product_plan"
+    assert checkout_response.json()["detail"] == {"code": "unknown_product_plan"}
     with SessionLocal() as db:
         assert db.query(Order).count() == 0
 
@@ -2512,7 +2512,7 @@ def test_checkout_rejects_active_plan_for_inactive_bundle() -> None:
     )
 
     assert checkout_response.status_code == 400
-    assert checkout_response.json()["detail"] == "unknown_product_plan"
+    assert checkout_response.json()["detail"] == {"code": "unknown_product_plan"}
     with SessionLocal() as db:
         assert db.query(Order).count() == 0
 
@@ -5137,6 +5137,39 @@ def test_same_email_cannot_register_twice_in_same_region() -> None:
 
     assert first_response.status_code == 200
     assert second_response.status_code == 409
+    assert second_response.json() == {"detail": {"code": "email_already_registered"}}
+
+
+def test_selected_auth_failures_use_structured_error_codes() -> None:
+    missing_personal_consent = client.post(
+        "/api/auth/register",
+        json={
+            "email": "missing-personal-consent@example.com",
+            "password": "very-secret-password",
+            "personal_consent": False,
+            "offer_consent": True,
+        },
+    )
+    missing_offer_consent = client.post(
+        "/api/auth/register",
+        json={
+            "email": "missing-offer-consent@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": False,
+        },
+    )
+    invalid_login = client.post(
+        "/api/auth/login",
+        json={"email": "missing@example.com", "password": "wrong-password"},
+    )
+
+    assert missing_personal_consent.status_code == 400
+    assert missing_personal_consent.json() == {"detail": {"code": "missing_personal_consent"}}
+    assert missing_offer_consent.status_code == 400
+    assert missing_offer_consent.json() == {"detail": {"code": "missing_offer_consent"}}
+    assert invalid_login.status_code == 401
+    assert invalid_login.json() == {"detail": {"code": "invalid_credentials"}}
 
 
 def test_auth_sessions_store_only_token_hash() -> None:
@@ -5282,7 +5315,7 @@ def test_password_reset_email_token_and_session_revocation(monkeypatch) -> None:
         json={"token": reset_token, "password": "another-password-123"},
     )
     assert reuse_response.status_code == 400
-    assert reuse_response.json()["detail"] == "invalid_or_expired_reset_token"
+    assert reuse_response.json() == {"detail": {"code": "invalid_or_expired_reset_token"}}
 
 
 def test_password_reset_request_does_not_reveal_unknown_email(monkeypatch) -> None:
@@ -5345,7 +5378,7 @@ def test_password_reset_request_derives_scope_server_side_for_rate_limits() -> N
         },
     )
     assert limited_response.status_code == 429
-    assert limited_response.json()["detail"] == "password_reset_rate_limited"
+    assert limited_response.json() == {"detail": {"code": "password_reset_rate_limited"}}
 
     with SessionLocal() as db:
         assert db.query(MagicLinkToken).count() == password_reset_router.PASSWORD_RESET_IP_RATE_LIMIT_MAX
@@ -5370,7 +5403,7 @@ def test_password_reset_request_is_rate_limited_per_account() -> None:
         json={"email": "probe@example.com"},
     )
     assert limited_response.status_code == 429
-    assert limited_response.json()["detail"] == "password_reset_rate_limited"
+    assert limited_response.json() == {"detail": {"code": "password_reset_rate_limited"}}
 
 
 def test_password_reset_account_limit_does_not_rollback_ip_counter() -> None:
@@ -5443,7 +5476,7 @@ def test_password_reset_confirm_invalidates_other_outstanding_reset_tokens(
         json={"token": second_token, "password": "another-password-123"},
     )
     assert second_confirm_response.status_code == 400
-    assert second_confirm_response.json()["detail"] == "invalid_or_expired_reset_token"
+    assert second_confirm_response.json() == {"detail": {"code": "invalid_or_expired_reset_token"}}
 
 
 def test_password_reset_request_is_rate_limited_per_ip_across_emails() -> None:
@@ -5459,7 +5492,7 @@ def test_password_reset_request_is_rate_limited_per_ip_across_emails() -> None:
         json={"email": "another-probe@example.com"},
     )
     assert limited_response.status_code == 429
-    assert limited_response.json()["detail"] == "password_reset_rate_limited"
+    assert limited_response.json() == {"detail": {"code": "password_reset_rate_limited"}}
 
 
 def test_password_reset_rate_limit_window_resets_after_expiry() -> None:

@@ -42,6 +42,20 @@ def test_ast_import_forms_are_rejected_with_actionable_errors(tmp_path: Path) ->
     )
 
 
+def test_core_to_payment_provider_dependency_is_rejected(tmp_path: Path) -> None:
+    write_module(
+        tmp_path,
+        "apps/api/app/core/errors.py",
+        "from app.payment_providers import errors\n",
+    )
+
+    assert check_python_boundaries(tmp_path) == [
+        "apps/api/app/core/errors.py:1 imports app.payment_providers; "
+        "violates core dependency direction; move the dependency to wiring or "
+        "shared core infrastructure (see ARCHITECTURE.md)"
+    ]
+
+
 def test_relative_router_import_is_rejected(tmp_path: Path) -> None:
     write_module(
         tmp_path,
@@ -72,6 +86,58 @@ def test_layer_specific_router_rules_are_enforced(tmp_path: Path) -> None:
 
     assert any("domain service/model-to-router dependency" in error for error in errors)
     assert any("integration-to-domain-router dependency" in error for error in errors)
+
+
+def test_domain_service_trees_reject_fastapi_and_starlette_dependencies(tmp_path: Path) -> None:
+    write_module(
+        tmp_path,
+        "apps/api/app/domains/identity/services/checkout.py",
+        "from fastapi import HTTPException\n",
+    )
+    write_module(
+        tmp_path,
+        "apps/api/app/domains/billing/service/reconciliation.py",
+        "from starlette.requests import Request\n",
+    )
+
+    errors = check_python_boundaries(tmp_path)
+
+    assert any(
+        "apps/api/app/domains/identity/services/checkout.py:1 imports fastapi" in error
+        and "domain service/application-to-transport dependency" in error
+        for error in errors
+    )
+    assert any(
+        "apps/api/app/domains/billing/service/reconciliation.py:1 imports starlette" in error
+        and "domain service/application-to-transport dependency" in error
+        for error in errors
+    )
+
+
+def test_domain_application_trees_reject_fastapi_and_starlette_dependencies(tmp_path: Path) -> None:
+    write_module(
+        tmp_path,
+        "apps/api/app/domains/identity/application/checkout.py",
+        "from fastapi import HTTPException\n",
+    )
+    write_module(
+        tmp_path,
+        "apps/api/app/domains/billing/application/reconciliation.py",
+        "from starlette.requests import Request\n",
+    )
+
+    errors = check_python_boundaries(tmp_path)
+
+    assert any(
+        "apps/api/app/domains/identity/application/checkout.py:1 imports fastapi" in error
+        and "domain service/application-to-transport dependency" in error
+        for error in errors
+    )
+    assert any(
+        "apps/api/app/domains/billing/application/reconciliation.py:1 imports starlette" in error
+        and "domain service/application-to-transport dependency" in error
+        for error in errors
+    )
 
 
 def test_comments_strings_and_allowed_session_import_pass(tmp_path: Path) -> None:
