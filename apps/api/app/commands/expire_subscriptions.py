@@ -7,6 +7,8 @@ import logging
 from collections.abc import Sequence
 from uuid import uuid4
 
+from sqlalchemy import inspect
+
 from app.core.database import SessionLocal
 from app.core.observability import configure_logging
 from app.domains.billing.service import (
@@ -62,9 +64,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             raise
         for subscription in expired:
+            identity = inspect(subscription).identity
+            if identity is None:
+                raise RuntimeError("subscription returned without a persisted identity")
             logger.info(
                 "subscription_expiry_transition_committed",
-                extra={"structured": {"run_id": run_id, "subscription_id": str(subscription.id)}},
+                extra={"structured": {"run_id": run_id, "subscription_id": str(identity[0])}},
             )
         logger.info(
             "subscription_expiry_run_succeeded",

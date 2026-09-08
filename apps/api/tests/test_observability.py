@@ -3,18 +3,20 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
+from types import SimpleNamespace
 
 import httpx
 import pytest
 from fastapi import FastAPI
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace import Event, TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
-from opentelemetry.trace import SpanKind
+from opentelemetry.trace import SpanKind, StatusCode
 
 from app.core import observability
 from app.core.observability import JsonFormatter, redact
+from app.http_errors import unexpected_failure_middleware
 
 
 async def _get(
@@ -39,6 +41,49 @@ class RecordingMetric:
 
     def observe(self, _: float) -> None:
         return None
+
+
+def assert_span_does_not_expose(span: object, marker: str) -> None:
+    attributes = getattr(span, "attributes")
+    events = getattr(span, "events")
+    status = getattr(span, "status")
+
+    assert marker not in repr(dict(attributes))
+    assert marker not in (status.description or "")
+    for event in events:
+        event_attributes = event.attributes or {}
+        assert marker not in event.name
+        assert marker not in repr(dict(event_attributes))
+        assert "exception.stacktrace" not in event_attributes
+
+
+@pytest.mark.parametrize(
+    ("marker", "event"),
+    [
+        ("unique-event-name-marker-437", Event(name="unique-event-name-marker-437")),
+        (
+            "unique-event-attribute-marker-437",
+            Event(name="exception", attributes={"exception.message": "unique-event-attribute-marker-437"}),
+        ),
+    ],
+    ids=["event-name", "exception-message"],
+)
+def test_assert_span_does_not_expose_rejects_event_markers(marker: str, event: Event) -> None:
+    span = SimpleNamespace(
+        attributes={},
+        events=(event,),
+        status=SimpleNamespace(description=None),
+    )
+
+    assert "exception.stacktrace" not in (event.attributes or {})
+    with pytest.raises(AssertionError):
+        assert_span_does_not_expose(span, marker)
+
+
+def make_tracer_provider(exporter: InMemorySpanExporter) -> TracerProvider:
+    tracer_provider = TracerProvider()
+    tracer_provider.add_span_processor(SimpleSpanProcessor(exporter))
+    return tracer_provider
 
 
 def test_redact_preserves_only_the_local_payment_id_exception() -> None:
@@ -91,9 +136,9 @@ def test_http_server_span_sanitizer_strips_and_clears_query_attributes() -> None
     class Span:
         def __init__(self) -> None:
             self.attributes = {
-                "http.target": "/items/local-item-123?query_secret=unique-query-secret-437",
-                "http.url": "https://example.test/items/local-item-123?query_secret=unique-query-secret-437",
-                "url.full": "https://example.test/items/local-item-123?query_secret=unique-query-secret-437",
+                "http.target": "/items/local-item-123?query_secret=unique-query-secret-437#fragment-secret",
+                "http.url": "https://example.test/items/local-item-123?query_secret=unique-query-secret-437#fragment-secret",
+                "url.full": "https://example.test/items/local-item-123?query_secret=unique-query-secret-437#fragment-secret",
                 "url.query": "query_secret=unique-query-secret-437",
             }
 
@@ -109,6 +154,94 @@ def test_http_server_span_sanitizer_strips_and_clears_query_attributes() -> None
         "url.full": "https://example.test/items/local-item-123",
         "url.query": "",
     }
+
+
+def test_traced_sync_and_async_exceptions_keep_safe_error_spans_and_chaining(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    exporter = InMemorySpanExporter()
+    tracer_provider = make_tracer_provider(exporter)
+    monkeypatch.setattr(observability, "tracer", lambda _: tracer_provider.get_tracer("test.traced"))
+    marker = "unique-traced-exception-secret-437"
+
+    @observability.traced("test.sync_failure")
+    def sync_failure() -> None:
+        try:
+            raise RuntimeError(marker)
+        except RuntimeError as inner:
+            raise ValueError("safe outer failure") from inner
+
+    @observability.traced("test.async_failure")
+    async def async_failure() -> None:
+        try:
+            raise RuntimeError(marker)
+        except RuntimeError as inner:
+            raise ValueError("safe outer failure") from inner
+
+    with pytest.raises(ValueError) as sync_error:
+        sync_failure()
+    with pytest.raises(ValueError) as async_error:
+        asyncio.run(async_failure())
+
+    for error in (sync_error.value, async_error.value):
+        assert isinstance(error.__cause__, RuntimeError)
+        assert error.__cause__.args == (marker,)
+        assert error.__context__ is error.__cause__
+        assert error.__traceback__ is not None
+
+    tracer_provider.force_flush()
+    spans = {span.name: span for span in exporter.get_finished_spans()}
+    assert set(spans) == {"test.sync_failure", "test.async_failure"}
+    for span in spans.values():
+        assert span.status.status_code is StatusCode.ERROR
+        assert span.status.description is None
+        assert_span_does_not_expose(span, marker)
+
+
+def test_http_failure_containing_traced_exception_does_not_leak_chained_secret(
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    exporter = InMemorySpanExporter()
+    tracer_provider = make_tracer_provider(exporter)
+    monkeypatch.setattr(observability, "tracer", lambda _: tracer_provider.get_tracer("test.http_failure"))
+    marker = "unique-http-exception-secret-437"
+    application = FastAPI()
+    application.middleware("http")(unexpected_failure_middleware)
+    application.middleware("http")(observability.request_context_middleware)
+
+    @observability.traced("test.http_failure_operation")
+    async def http_failure() -> None:
+        try:
+            raise RuntimeError(marker)
+        except RuntimeError as inner:
+            raise ValueError("safe outer failure") from inner
+
+    application.add_api_route("/test-traced-failure", http_failure, methods=["GET"])
+    FastAPIInstrumentor.instrument_app(application, tracer_provider=tracer_provider)
+    try:
+        with caplog.at_level(logging.ERROR, logger="payment_portal.http"):
+            response = asyncio.run(_get(application, "/test-traced-failure?query_secret=query-secret-437"))
+
+        assert response.status_code == 500
+        assert response.headers["X-Request-ID"]
+        assert marker not in caplog.text
+        tracer_provider.force_flush()
+        spans = exporter.get_finished_spans()
+        assert {span.name for span in spans} >= {
+            "test.http_failure_operation",
+            "GET /test-traced-failure",
+        }
+        for span in spans:
+            assert_span_does_not_expose(span, marker)
+        operation_span = next(span for span in spans if span.name == "test.http_failure_operation")
+        assert operation_span.status.status_code is StatusCode.ERROR
+        assert operation_span.status.description is None
+        server_span = next(span for span in spans if span.name == "GET /test-traced-failure")
+        assert server_span.status.status_code is StatusCode.ERROR
+        assert server_span.status.description is None
+    finally:
+        FastAPIInstrumentor.uninstrument_app(application)
 
 
 def test_http_server_span_sanitizer_ignores_missing_or_non_mapping_attributes() -> None:
@@ -169,36 +302,42 @@ def test_http_server_span_query_values_are_sanitized_without_header_capture() ->
     )
     try:
         query_secret = "unique-query-secret-437"
+        fragment_secret = "private-marker"
         header_secret = "unique-header-secret-437"
-        assert (
-            asyncio.run(
-                _get(
-                    application,
-                    f"/items/local-item-123?query_secret={query_secret}",
-                    headers={"X-Observability-Marker": header_secret},
-                )
-            ).status_code
-            == 200
-        )
+        for query in (query_secret, "%23" + fragment_secret):
+            assert (
+                asyncio.run(
+                    _get(
+                        application,
+                        f"/items/local-item-123?query_secret={query}",
+                        headers={"X-Observability-Marker": header_secret},
+                    )
+                ).status_code
+                == 200
+            )
         tracer_provider.force_flush()
 
         server_spans = [span for span in exporter.get_finished_spans() if span.kind is SpanKind.SERVER]
-        assert len(server_spans) == 1
-        span_attributes = server_spans[0].attributes
-        assert query_secret not in repr(dict(span_attributes))
-        assert header_secret not in repr(dict(span_attributes))
-        for attribute in observability.HTTP_SERVER_SPAN_ATTRIBUTE_SANITIZERS:
-            if attribute in span_attributes:
-                assert query_secret not in str(span_attributes[attribute])
-        if "url.query" in span_attributes:
-            assert span_attributes["url.query"] == ""
-        assert span_attributes["http.route"] == "/items/{item_id}"
-        path_bearing_attributes = {
-            attribute: value
-            for attribute, value in span_attributes.items()
-            if attribute in {"http.target", "http.url", "url.full", "url.path"}
-            and "/items/local-item-123" in str(value)
-        }
-        assert path_bearing_attributes
+        assert len(server_spans) == 2
+        for span in server_spans:
+            span_attributes = span.attributes
+            assert query_secret not in repr(dict(span_attributes))
+            assert fragment_secret not in repr(dict(span_attributes))
+            assert "%23private-marker" not in repr(dict(span_attributes))
+            assert header_secret not in repr(dict(span_attributes))
+            for attribute in observability.HTTP_SERVER_SPAN_ATTRIBUTE_SANITIZERS:
+                if attribute in span_attributes:
+                    assert "?" not in str(span_attributes[attribute])
+                    assert "#" not in str(span_attributes[attribute])
+            if "url.query" in span_attributes:
+                assert span_attributes["url.query"] == ""
+            assert span_attributes["http.route"] == "/items/{item_id}"
+            path_bearing_attributes = {
+                attribute: value
+                for attribute, value in span_attributes.items()
+                if attribute in {"http.target", "http.url", "url.full", "url.path"}
+                and "/items/local-item-123" in str(value)
+            }
+            assert path_bearing_attributes
     finally:
         FastAPIInstrumentor.uninstrument_app(application)

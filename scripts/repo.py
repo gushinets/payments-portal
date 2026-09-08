@@ -1687,6 +1687,7 @@ def cmd_dev_api(_: argparse.Namespace) -> None:
             "uvicorn",
             "app.main:app",
             "--reload",
+            "--no-access-log",
             "--app-dir",
             "apps/api",
         ],

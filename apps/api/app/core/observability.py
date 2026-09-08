@@ -253,6 +253,19 @@ def tracer(name: str):
         return _DummyTracer()
 
 
+def _set_span_error_status(span: Any) -> None:
+    if span is None:
+        return
+    try:
+        from opentelemetry.trace import Status, StatusCode
+    except ImportError:  # pragma: no cover - production dependencies include the package
+        return
+    try:
+        span.set_status(Status(StatusCode.ERROR))
+    except Exception:  # pragma: no cover - tracing must not mask the application error
+        return
+
+
 def traced(span_name: str):
     """Decorate a sync or async application operation with a named span."""
 
@@ -271,16 +284,32 @@ def traced(span_name: str):
 
             @functools.wraps(function)
             async def async_wrapper(*args, **kwargs):
-                with operation_tracer.start_as_current_span(span_name):
-                    return await function(*args, **kwargs)
+                with operation_tracer.start_as_current_span(
+                    span_name,
+                    record_exception=False,
+                    set_status_on_exception=False,
+                ) as span:
+                    try:
+                        return await function(*args, **kwargs)
+                    except BaseException:
+                        _set_span_error_status(span)
+                        raise
 
             setattr(async_wrapper, "__signature__", resolved_signature)
             return async_wrapper
 
         @functools.wraps(function)
         def sync_wrapper(*args, **kwargs):
-            with operation_tracer.start_as_current_span(span_name):
-                return function(*args, **kwargs)
+            with operation_tracer.start_as_current_span(
+                span_name,
+                record_exception=False,
+                set_status_on_exception=False,
+            ) as span:
+                try:
+                    return function(*args, **kwargs)
+                except BaseException:
+                    _set_span_error_status(span)
+                    raise
 
         setattr(sync_wrapper, "__signature__", resolved_signature)
         return sync_wrapper
@@ -292,7 +321,7 @@ def _strip_query(value: Any) -> str:
     if not isinstance(value, str):
         return ""
     parsed = urlsplit(value)
-    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "", parsed.fragment))
+    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "", ""))
 
 
 def _clear_query(_: Any) -> str:
