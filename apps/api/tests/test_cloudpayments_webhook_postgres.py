@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import logging
 import threading
 import time
 from collections.abc import Iterator
@@ -216,8 +217,101 @@ def refund_payload(
     }
 
 
+def test_processed_webhook_emits_safe_durable_diagnostic(
+    caplog: pytest.LogCaptureFixture,
+    webhook_database: sessionmaker[Session],
+) -> None:
+    client = TestClient(app, raise_server_exceptions=False)
+    invoice_id = "inv-diagnostic-success-1"
+    transaction_id = "tx-diagnostic-success-1"
+    payload = {
+        **paid_payload(invoice_id, transaction_id),
+        "PayloadMarker": "raw-payload-marker-success",
+    }
+    seed_order(webhook_database, invoice_id)
+
+    with caplog.at_level(logging.INFO, logger="app.integrations.cloudpayments.router"):
+        response = client.post("/api/cloudpayments/pay", json=payload)
+
+    assert response.status_code == 200
+    with webhook_database() as db:
+        event = db.query(PaymentWebhookEvent).one()
+
+    diagnostics = [record for record in caplog.records if record.getMessage() == "cloudpayments_webhook_processed"]
+    assert len(diagnostics) == 1
+    assert diagnostics[0].levelno == logging.INFO
+    assert diagnostics[0].structured == {
+        "endpoint": "pay",
+        "status": "processed",
+        "webhook_event_id": str(event.id),
+        "order_id": str(event.order_id),
+        "payment_id": str(event.payment_id),
+    }
+    diagnostic_output = f"{diagnostics[0].getMessage()} {diagnostics[0].structured}"
+    for marker in (
+        invoice_id,
+        transaction_id,
+        "durable-webhook@example.com",
+        "990.00",
+        payload["PayloadMarker"],
+    ):
+        assert marker not in diagnostic_output
+
+
+def test_persisted_normalization_failure_emits_safe_diagnostic(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    webhook_database: sessionmaker[Session],
+) -> None:
+    client = TestClient(app, raise_server_exceptions=False)
+    invoice_id = "inv-diagnostic-validation-1"
+    transaction_id = "tx-diagnostic-validation-1"
+    seed_order(webhook_database, invoice_id)
+    monkeypatch.setattr(
+        cloudpayments_adapter_module,
+        "verify_cloudpayments_signature",
+        lambda _raw_body, _headers: False,
+    )
+    payload = {
+        **paid_payload(invoice_id, transaction_id),
+        "PayloadMarker": "raw-payload-marker-validation",
+    }
+
+    with caplog.at_level(logging.INFO, logger="app.integrations.cloudpayments.router"):
+        response = client.post(
+            "/api/cloudpayments/pay",
+            headers={"Content-HMAC": "provider-signature-marker"},
+            json=payload,
+        )
+
+    assert response.status_code == 400
+    with webhook_database() as db:
+        event = db.query(PaymentWebhookEvent).one()
+
+    diagnostics = [record for record in caplog.records if record.getMessage() == "cloudpayments_webhook_processed"]
+    assert len(diagnostics) == 1
+    assert diagnostics[0].levelno == logging.WARNING
+    assert diagnostics[0].structured == {
+        "endpoint": "pay",
+        "status": "failed",
+        "error_code": "invalid_cloudpayments_signature",
+        "webhook_event_id": str(event.id),
+        "order_id": str(event.order_id),
+    }
+    diagnostic_output = f"{diagnostics[0].getMessage()} {diagnostics[0].structured}"
+    for marker in (
+        invoice_id,
+        transaction_id,
+        "durable-webhook@example.com",
+        "provider-signature-marker",
+        payload["PayloadMarker"],
+    ):
+        assert marker not in diagnostic_output
+
+
 def test_raw_webhook_event_survives_failed_normalization_and_can_retry(
     monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
     webhook_database: sessionmaker[Session],
 ) -> None:
     client = TestClient(app, raise_server_exceptions=False)
@@ -241,11 +335,12 @@ def test_raw_webhook_event_survives_failed_normalization_and_can_retry(
         "Status": "Completed",
         "CardFirstSix": "411111",
     }
-    failed_response = client.post(
-        "/api/cloudpayments/pay",
-        headers={"Content-HMAC": "demo-secret-header"},
-        json=payload,
-    )
+    with caplog.at_level(logging.INFO, logger="app.integrations.cloudpayments.router"):
+        failed_response = client.post(
+            "/api/cloudpayments/pay",
+            headers={"Content-HMAC": "demo-secret-header"},
+            json=payload,
+        )
 
     assert failed_response.status_code == 500
     with webhook_database() as db:
@@ -262,6 +357,26 @@ def test_raw_webhook_event_survives_failed_normalization_and_can_retry(
     assert event.headers["content-hmac"] == "[redacted]"
     assert order.status is OrderStatus.PENDING_PAYMENT
     assert payment_count == 0
+    diagnostics = [record for record in caplog.records if record.getMessage() == "cloudpayments_webhook_processed"]
+    assert len(diagnostics) == 1
+    assert diagnostics[0].levelno == logging.WARNING
+    assert diagnostics[0].structured == {
+        "endpoint": "pay",
+        "status": "failed",
+        "error_code": "normalization_unexpected_error",
+        "webhook_event_id": str(event.id),
+        "order_id": str(event.order_id),
+    }
+    diagnostic_output = f"{diagnostics[0].getMessage()} {diagnostics[0].structured}"
+    for marker in (
+        "tx-durable-1",
+        invoice_id,
+        "demo-secret-header",
+        "4111111111111111",
+        "forced normalization error with card 4111111111111111",
+        "durable-webhook@example.com",
+    ):
+        assert marker not in diagnostic_output
 
     monkeypatch.setattr(cloudpayments_processing, "upsert_payment_from_webhook", original_upsert)
     retry_response = client.post("/api/cloudpayments/pay", json=payload)
