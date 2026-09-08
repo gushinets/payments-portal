@@ -1,7 +1,7 @@
 # Security Requirements
 
 Status: authoritative
-Last verified: 2026-09-04
+Last verified: 2026-09-08
 
 ## Sensitive data
 
@@ -11,6 +11,39 @@ and private billing or payment configuration before logging or tracing.
 
 Email and IP data are personal data. Record them only where the documented legal
 or security purpose requires them, and never add them to metric labels.
+
+## Telemetry correlation and emission
+
+The following are local Payment Portal identifiers that may be emitted in the
+approved bounded diagnostics when their flow provides a concrete incident
+lookup: `order_id`, `payment_id`, `subscription_id`, `webhook_event_id`, and
+`run_id`. They are diagnostic references only and must never become metric
+labels. `refund_id` is a local durable business and audit lookup reference
+already available through lifecycle data such as `SubscriptionEvent`; it is not
+a new ANY-437 telemetry emission.
+
+Keep these categories distinct:
+
+- Local IDs identify a durable Payment Portal record without exposing provider
+  or customer data.
+- Durable local references, including `refund_id`, are looked up in persisted
+  lifecycle and audit records rather than inferred from telemetry alone.
+- Provider transaction IDs, provider invoice IDs, email, user-provided account
+  identifiers, authorization or token data, card data, arbitrary headers or
+  query values, raw payloads, amounts, and raw exception text are not telemetry
+  correlation keys.
+
+Redaction is defense in depth, not permission to put unsafe data into a log
+message or arbitrary logging extra. Critical diagnostics must be safe at the
+emission site: use static event/message names and explicitly selected bounded
+structured fields. Do not interpolate provider values, payloads, secrets, or
+error text into free-form messages. The new bounded business diagnostics do not
+use raw exception text or `exc_info`.
+
+Automatic HTTP tracing must retain useful path and route identification without
+retaining arbitrary query values. Arbitrary request-header capture is not
+enabled. Business/entity identifiers remain in logs or durable records where
+needed for incident reconstruction, never in metric labels.
 
 ## Durable webhook receipt
 
