@@ -243,7 +243,12 @@ jobs:
       - if: runner.os == 'Windows'
         run: node --test apps/web/tests/typescript-tooling.test.mjs
       - run: python scripts/repo.py harness-smoke
-      - run: python scripts/repo.py pr-title "ANY-108 - Validate harness"
+      - run: python scripts/repo.py pr-metadata
+        env:
+          PR_TITLE: ANY-108 - Validate harness
+          PR_BODY: |
+            ## Linear issue
+            https://linear.app/paveldik/issue/ANY-108
 
   browser:
     runs-on: ubuntu-latest

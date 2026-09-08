@@ -6,7 +6,7 @@ Pattern: ^ANY-[1-9][0-9]* - \S.*$
 
 ## Linear issue
 
-<!-- Full URL is required. Do not invent a ticket number. -->
+<!-- Exactly one full Linear issue URL is required and must match the PR title issue. Do not invent a ticket number. -->
 
 https://linear.app/paveldik/issue/ANY-000/replace-with-real-issue
 
