@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
+from uuid import uuid4
 
 import pytest
 
@@ -20,12 +23,21 @@ from app.models import (
 )
 
 
-def test_expiration_cli_runs_one_batch_with_configured_size(monkeypatch, capsys) -> None:
+@pytest.fixture(autouse=True)
+def _keep_pytest_logging_capture(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(cli, "configure_logging", lambda: None)
+
+
+def test_expiration_cli_runs_one_batch_with_configured_size(monkeypatch, capsys, caplog) -> None:
     captured: dict[str, object] = {}
+    timeline: list[str] = []
+    expired_subscriptions = [SimpleNamespace(id=uuid4()), SimpleNamespace(id=uuid4())]
+
+    class TimelineHandler(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            timeline.append(record.getMessage())
 
     class FakeSession:
-        committed = False
-
         def __enter__(self):
             return self
 
@@ -33,31 +45,61 @@ def test_expiration_cli_runs_one_batch_with_configured_size(monkeypatch, capsys)
             return None
 
         def commit(self) -> None:
-            self.committed = True
+            raise AssertionError("the CLI must not commit outside the lifecycle operation")
 
     def fake_expire(db, command):
-        captured["db"] = db
         captured["command"] = command
-        return [object(), object()]
+        timeline.append("lifecycle_called")
+        timeline.append("lifecycle_returned")
+        return expired_subscriptions
 
     monkeypatch.setattr(cli, "SessionLocal", lambda: FakeSession())
     monkeypatch.setattr(cli, "expire_due_subscriptions", fake_expire)
+    handler = TimelineHandler()
+    cli.logger.addHandler(handler)
 
-    assert cli.main(["--batch-size", "37"]) == 0
+    try:
+        with caplog.at_level(logging.INFO, logger=cli.logger.name):
+            assert cli.main(["--batch-size", "37"]) == 0
+    finally:
+        cli.logger.removeHandler(handler)
 
     command = captured["command"]
     assert isinstance(command, cli.ExpireDueSubscriptionsCommand)
     assert command.batch_size == 37
-    assert getattr(captured["db"], "committed") is True
+    assert timeline == [
+        "subscription_expiry_run_started",
+        "lifecycle_called",
+        "lifecycle_returned",
+        "subscription_expiry_transition_committed",
+        "subscription_expiry_transition_committed",
+        "subscription_expiry_run_succeeded",
+    ]
+    assert not [record for record in caplog.records if record.getMessage() == "subscription_expiry_run_failed"]
+    events = [record for record in caplog.records if record.getMessage().startswith("subscription_expiry_")]
+    assert [record.getMessage() for record in events] == [
+        "subscription_expiry_run_started",
+        "subscription_expiry_transition_committed",
+        "subscription_expiry_transition_committed",
+        "subscription_expiry_run_succeeded",
+    ]
+    run_ids = {record.structured["run_id"] for record in events}
+    assert len(run_ids) == 1
+    run_id = next(iter(run_ids))
+    assert events[0].structured == {"run_id": run_id, "batch_size": 37}
+    assert [record.structured for record in events[1:3]] == [
+        {"run_id": run_id, "subscription_id": str(subscription.id)} for subscription in expired_subscriptions
+    ]
+    assert events[3].structured == {
+        "run_id": run_id,
+        "batch_size": 37,
+        "expired_count": 2,
+    }
     assert capsys.readouterr().out == "expired_subscriptions=2\n"
 
 
-def test_expiration_cli_does_not_commit_on_failure(monkeypatch) -> None:
-    captured: dict[str, object] = {}
-
+def test_expiration_cli_does_not_commit_on_failure(monkeypatch, caplog) -> None:
     class FakeSession:
-        committed = False
-
         def __enter__(self):
             return self
 
@@ -65,25 +107,36 @@ def test_expiration_cli_does_not_commit_on_failure(monkeypatch) -> None:
             return None
 
         def commit(self) -> None:
-            self.committed = True
+            raise AssertionError("the CLI must not commit outside the lifecycle operation")
 
     def fake_expire(db, command):
-        captured["db"] = db
         raise RuntimeError("forced expiration failure")
 
     monkeypatch.setattr(cli, "SessionLocal", lambda: FakeSession())
     monkeypatch.setattr(cli, "expire_due_subscriptions", fake_expire)
 
-    with pytest.raises(RuntimeError, match="forced expiration failure"):
-        cli.main(["--batch-size", "37"])
+    with caplog.at_level(logging.INFO, logger=cli.logger.name):
+        with pytest.raises(RuntimeError, match="forced expiration failure"):
+            cli.main(["--batch-size", "37"])
 
-    assert getattr(captured["db"], "committed") is False
+    events = [record for record in caplog.records if record.getMessage().startswith("subscription_expiry_")]
+    assert [record.getMessage() for record in events] == [
+        "subscription_expiry_run_started",
+        "subscription_expiry_run_failed",
+    ]
+    assert events[1].structured == {
+        "run_id": events[0].structured["run_id"],
+        "batch_size": 37,
+        "error_type": "RuntimeError",
+    }
+    assert "forced expiration failure" not in caplog.text
 
 
 @pytest.mark.postgres
 def test_expiration_cli_commits_due_subscription_changes(
     monkeypatch,
     capsys,
+    caplog,
     db_session,
     postgres_session_factory,
 ) -> None:
@@ -136,7 +189,20 @@ def test_expiration_cli_commits_due_subscription_changes(
 
     monkeypatch.setattr(cli, "SessionLocal", postgres_session_factory)
 
-    assert cli.main(["--batch-size", "1"]) == 0
+    with caplog.at_level(logging.INFO, logger=cli.logger.name):
+        assert cli.main(["--batch-size", "1"]) == 0
+
+    diagnostics = [
+        record for record in caplog.records if record.getMessage() == "subscription_expiry_transition_committed"
+    ]
+    assert len(diagnostics) == 1
+    assert diagnostics[0].structured["subscription_id"] == str(subscription_id)
+    run_started = next(record for record in caplog.records if record.getMessage() == "subscription_expiry_run_started")
+    run_succeeded = next(
+        record for record in caplog.records if record.getMessage() == "subscription_expiry_run_succeeded"
+    )
+    assert diagnostics[0].structured["run_id"] == run_started.structured["run_id"] == run_succeeded.structured["run_id"]
+    assert run_succeeded.structured["expired_count"] == 1
 
     with postgres_session_factory() as db:
         persisted_subscription = db.get(Subscription, subscription_id)
