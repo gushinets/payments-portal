@@ -1139,7 +1139,7 @@ def check_python_boundaries(root: Path = ROOT) -> list[str]:
         is_domain_service_tree = (
             in_domains
             and len(path_parts) >= 3
-            and path_parts[2] in {"service.py", "service", "services"}
+            and path_parts[2] in {"service.py", "service", "services", "application"}
         )
         is_router = path.name == "router.py"
         source = path.read_text(encoding="utf-8")
