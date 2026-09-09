@@ -462,6 +462,35 @@ def test_security_docs_keep_durable_webhook_receipt_safe_by_construction() -> No
     assert "Never persist raw query-string secrets" in security
 
 
+def test_observability_docs_preserve_correlation_and_ownership_contract() -> None:
+    reliability = (repo.ROOT / "docs/RELIABILITY.md").read_text(encoding="utf-8")
+    security = (repo.ROOT / "docs/SECURITY.md").read_text(encoding="utf-8")
+    reliability_normalized = " ".join(reliability.replace("`", "").lower().split())
+    security_normalized = " ".join(security.replace("`", "").lower().split())
+
+    for local_id in ("order_id", "payment_id", "subscription_id", "webhook_event_id", "run_id"):
+        assert local_id in reliability_normalized
+    assert "must never be metric labels" in reliability_normalized
+    for local_id in ("order_id", "payment_id", "subscription_id", "webhook_event_id", "run_id"):
+        assert local_id in security_normalized
+    assert "must never become metric labels" in security_normalized
+    assert "refund_id remains a local durable business and audit lookup reference" in reliability_normalized
+    assert "not a new any-437 telemetry emission" in security_normalized
+
+    assert "production monitoring and alerting work" in reliability_normalized
+    assert "belongs to any-86" in reliability_normalized
+    assert "sentry remains outside any-437 scope as a separate follow-up" in reliability_normalized
+
+    assert (
+        "a failed run starts with subscription_expiry_run_started and ends with subscription_expiry_run_failed"
+        in reliability_normalized
+    )
+    assert (
+        "must not emit subscription_expiry_transition_committed or subscription_expiry_run_succeeded"
+        in reliability_normalized
+    )
+
+
 def test_missing_billing_authority_link_is_actionable() -> None:
     root = Path("repository").resolve()
     source_relative = Path("apps") / "api" / "AGENTS.md"

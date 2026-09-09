@@ -1,7 +1,7 @@
 # Reliability Requirements
 
 Status: authoritative
-Last verified: 2026-09-04
+Last verified: 2026-09-08
 
 ## Critical paths
 
@@ -61,6 +61,84 @@ Last verified: 2026-09-04
 - Traces cover HTTP, checkout, legal acceptance, database, and webhook work.
 - Critical browser journeys fail on unexpected console errors, failed application
   requests, or error spans.
+
+## Observability and correlation contract
+
+Signals have distinct responsibilities:
+
+- Metrics report bounded rates, outcomes, and durations. They are not a
+  business-record lookup index.
+- Traces show the operation chain across the HTTP request, application work,
+  database instrumentation, and provider calls.
+- Structured logs provide bounded incident-local detail, including selected
+  local diagnostic IDs.
+- Persisted billing state and events remain the authoritative business record.
+
+For an HTTP incident, start with the validated `request_id` and the active
+trace/span IDs. Follow the relevant business diagnostic to a local Payment
+Portal identifier, then use that identifier to locate the durable record:
+
+```text
+request_id / trace_id
+    -> local business diagnostic
+    -> order_id / payment_id / webhook_event_id / subscription_id
+    -> persisted Payment Portal records and events
+```
+
+The current local identifiers emitted or preserved by the ANY-437 telemetry
+paths are `order_id`, `payment_id`, `subscription_id`, `webhook_event_id`, and
+`run_id`. They are local Payment Portal identifiers and must never be metric
+labels. `refund_id` remains a local durable business and audit lookup reference
+available through existing lifecycle data such as `SubscriptionEvent`; ANY-437
+does not add a separate refund diagnostic merely for uniformity.
+
+The representative incident journeys are:
+
+1. Checkout to order: find the request/trace, then the post-commit
+   `billing_checkout_committed` diagnostic and its local `order_id`. Follow the
+   order to its payment, webhook, and provider-operation records as applicable.
+2. Webhook to local billing state: find the request/trace, then the durable
+   `cloudpayments_webhook_processed` diagnostic. Its `webhook_event_id`, and
+   any available `order_id` or `payment_id`, lead to the persisted
+   `PaymentWebhookEvent` and existing lifecycle/audit records. Persisted status
+   and error code distinguish duplicate, stale, or conflicting outcomes without
+   creating separate diagnostic families.
+3. Provider timeout or ambiguous outcome: use the provider operation span and
+   bounded provider/operation/outcome metrics, then inspect the surrounding
+   request trace and local durable state. A timeout or lost response is
+   ambiguous, not confirmed failure; reconcile before deciding whether another
+   command is safe and never blindly retry a possibly completed command.
+4. Scheduled expiry to subscription event: follow
+   `subscription_expiry_run_started` through its `run_id` to each
+   `subscription_expiry_transition_committed` and the durable
+   `SubscriptionEvent`, then to `subscription_expiry_run_succeeded`. A failed
+   run starts with `subscription_expiry_run_started` and ends with
+   `subscription_expiry_run_failed` with the run ID, batch size, and exception
+   type; it must not emit `subscription_expiry_transition_committed` or
+   `subscription_expiry_run_succeeded`. After the lifecycle operation returns,
+   a missing persisted identity is reported separately as
+   `subscription_expiry_diagnostic_invariant_violated`. The lifecycle changes are already committed at this point, so `subscription_expiry_run_failed` is not emitted, although the CLI still propagates the diagnostic invariant exception.
+
+Scheduled expiry is not an HTTP request and does not reuse request context. Its
+`run_id` is generated for that command invocation only. The committed
+transition diagnostics are emitted after the current lifecycle operation
+returns successfully; for this fresh-session CLI path, that return follows the
+existing lifecycle-owned transaction commit.
+
+## Telemetry backend boundary
+
+The application supports OTLP export when the deployment configures an OTLP
+endpoint. The repository's local and agent Compose environments provide the
+existing development observability stack where configured. The production
+observability backend, retention, dashboards, alerts, and operational runbooks
+are deployment/environment-owned. Production monitoring and alerting work,
+including HetrixTools checks, belongs to ANY-86 and is outside this contract.
+Sentry remains outside ANY-437 scope as a separate follow-up and is not part of
+the current error or observability architecture.
+
+Current HTTP, billing, webhook, and provider metrics retain bounded label sets.
+Local business/entity IDs, provider transaction or invoice IDs, email, and
+other request or payload values are forbidden as metric labels.
 
 ## HTTP failure boundary
 

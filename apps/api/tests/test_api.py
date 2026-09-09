@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import logging
 import uuid
 from datetime import UTC, datetime, timedelta, timezone
 from typing import Any
@@ -16,6 +17,7 @@ import pytest  # noqa: E402
 from fastapi import HTTPException  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import event, inspect  # noqa: E402
+from sqlalchemy.orm import Session as SQLAlchemySession  # noqa: E402
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware  # noqa: E402
 
 from app.domains.billing.router import get_subscription as get_account_subscription_route  # noqa: E402
@@ -892,6 +894,78 @@ def test_register_session_and_checkout_intent_flow() -> None:
     assert order.status == OrderStatus.PENDING_PAYMENT
     assert order.provider_invoice_id == invoice_id
     assert item.product_code_snapshot == "document-summary"
+
+
+def test_checkout_commit_emits_safe_local_order_diagnostic(caplog: pytest.LogCaptureFixture) -> None:
+    email = "checkout-observability@example.com"
+    token = register_test_user(email=email)
+
+    with caplog.at_level(logging.INFO):
+        response = client.post(
+            "/api/auth/checkout-intent",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "plan_id": plan_id_for_code("document-summary-pro"),
+                "entrypoint_type": "product",
+                "entrypoint_value": "document-summary",
+                "auto_renew": False,
+            },
+        )
+
+    assert response.status_code == 200, response.text
+    order_id = response.json()["purchase"]["order_id"]
+    diagnostics = [record for record in caplog.records if record.getMessage() == "billing_checkout_committed"]
+
+    assert len(diagnostics) == 1
+    assert diagnostics[0].structured == {"order_id": order_id}
+    assert email not in str(diagnostics[0].structured)
+    assert "document-summary" not in str(diagnostics[0].structured)
+    assert "cloudpayments" not in str(diagnostics[0].structured)
+
+    with SessionLocal() as db:
+        assert str(db.query(Order).one().id) == order_id
+
+
+def test_checkout_commit_failure_does_not_emit_committed_diagnostic(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    token = register_test_user(email="checkout-commit-failure@example.com")
+
+    original_commit = SQLAlchemySession.commit
+    checkout_commit_attempted = False
+
+    def fail_checkout_durability_commit(session: SQLAlchemySession) -> None:
+        nonlocal checkout_commit_attempted
+        # The auth dependency commits last_seen_at separately; the flushed Order
+        # identifies the checkout transaction's actual durability boundary.
+        has_checkout_order = any(isinstance(entity, Order) for entity in session.identity_map.values())
+        if has_checkout_order:
+            checkout_commit_attempted = True
+            raise RuntimeError("checkout commit failure secret")
+        original_commit(session)
+
+    monkeypatch.setattr(SQLAlchemySession, "commit", fail_checkout_durability_commit)
+
+    with caplog.at_level(logging.INFO):
+        response = client.post(
+            "/api/auth/checkout-intent",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "plan_id": plan_id_for_code("document-summary-pro"),
+                "entrypoint_type": "product",
+                "entrypoint_value": "document-summary",
+                "auto_renew": False,
+            },
+        )
+
+    assert response.status_code == 500
+    assert checkout_commit_attempted
+    assert not [record for record in caplog.records if record.getMessage() == "billing_checkout_committed"]
+    assert "checkout commit failure secret" not in caplog.text
+
+    with SessionLocal() as db:
+        assert db.query(Order).count() == 0
 
 
 @pytest.mark.parametrize(

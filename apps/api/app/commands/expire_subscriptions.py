@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import logging
 from collections.abc import Sequence
+from uuid import uuid4
+
+from sqlalchemy import inspect
 
 from app.core.database import SessionLocal
+from app.core.observability import configure_logging
 from app.domains.billing.service import (
     ExpireDueSubscriptionsCommand,
     expire_due_subscriptions,
@@ -13,6 +18,7 @@ from app.domains.billing.service import (
 
 
 MAX_BATCH_SIZE = 1000
+logger = logging.getLogger(__name__)
 
 
 def _batch_size(value: str) -> int:
@@ -34,11 +40,60 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    configure_logging()
     args = build_parser().parse_args(argv)
     command = ExpireDueSubscriptionsCommand(batch_size=args.batch_size)
+    run_id = str(uuid4())
+    logger.info(
+        "subscription_expiry_run_started",
+        extra={"structured": {"run_id": run_id, "batch_size": command.batch_size}},
+    )
     with SessionLocal() as db:
-        expired = expire_due_subscriptions(db, command)
-        db.commit()
+        try:
+            expired = expire_due_subscriptions(db, command)
+        except Exception as error:
+            logger.error(
+                "subscription_expiry_run_failed",
+                extra={
+                    "structured": {
+                        "run_id": run_id,
+                        "batch_size": command.batch_size,
+                        "error_type": type(error).__name__,
+                    }
+                },
+            )
+            raise
+        subscription_ids: list[str] = []
+        for subscription in expired:
+            identity = inspect(subscription).identity
+            if identity is None:
+                logger.error(
+                    "subscription_expiry_diagnostic_invariant_violated",
+                    extra={
+                        "structured": {
+                            "run_id": run_id,
+                            "batch_size": command.batch_size,
+                            "invariant": "missing_persisted_identity",
+                        }
+                    },
+                )
+                raise RuntimeError("subscription returned without a persisted identity")
+            subscription_ids.append(str(identity[0]))
+        for subscription_id in subscription_ids:
+            logger.info(
+                "subscription_expiry_transition_committed",
+                extra={"structured": {"run_id": run_id, "subscription_id": subscription_id}},
+            )
+        logger.info(
+            "subscription_expiry_run_succeeded",
+            extra={
+                "structured": {
+                    "run_id": run_id,
+                    "batch_size": command.batch_size,
+                    "expired_count": len(expired),
+                }
+            },
+        )
     print(f"expired_subscriptions={len(expired)}")
     return 0
 

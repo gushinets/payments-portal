@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -53,11 +55,46 @@ def test_api_healthcheck_uses_canonical_readiness(path: str) -> None:
 
 def test_api_image_commands_do_not_run_migrations() -> None:
     dockerfile = (ROOT / "apps/api/Dockerfile").read_text(encoding="utf-8")
-    commands = [line for line in dockerfile.splitlines() if line.startswith("CMD ")]
+    commands = [json.loads(line.removeprefix("CMD ")) for line in dockerfile.splitlines() if line.startswith("CMD ")]
 
     assert len(commands) == 2
-    assert all("alembic" not in command for command in commands)
-    assert all("uvicorn" in command for command in commands)
+    for command in commands:
+        assert command[:2] == ["sh", "-c"]
+        launch = command[2]
+        assert "alembic" not in launch
+        assert "python -m uvicorn app.main:app" in launch
+        assert "--no-access-log" in launch.split(" && exec ", 1)[1].split()
+
+
+def test_production_runtime_verification_disables_access_logging() -> None:
+    script = (ROOT / "security/trivy/verify-api-runtime.sh").read_text(encoding="utf-8")
+
+    assert "python -m uvicorn app.main:app" in script
+    assert "--no-access-log" in script
+
+
+def test_dev_api_command_disables_access_logging(monkeypatch: pytest.MonkeyPatch) -> None:
+    from scripts import repo
+
+    invocations: list[list[str]] = []
+    controlled_environment = {"APP_ENV": "development", "DATABASE_URL": "sqlite://"}
+    monkeypatch.setattr(repo, "direct_api_environment", lambda: controlled_environment)
+    monkeypatch.setattr(repo, "run", lambda command, **_: invocations.append(command))
+
+    repo.cmd_dev_api(None)
+
+    assert invocations == [
+        [
+            sys.executable,
+            "-m",
+            "uvicorn",
+            "app.main:app",
+            "--reload",
+            "--no-access-log",
+            "--app-dir",
+            "apps/api",
+        ]
+    ]
 
 
 def test_dockerignore_excludes_nested_virtualenvs() -> None:

@@ -9,7 +9,7 @@ import os
 import re
 import time
 import uuid
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from typing import Any, get_type_hints
 
 from fastapi import FastAPI, Request, Response
@@ -61,11 +61,24 @@ SENSITIVE_KEYS = {
 NORMALIZED_SENSITIVE_KEYS = {re.sub(r"[^a-z0-9]", "", item.lower()) for item in SENSITIVE_KEYS}
 SENSITIVE_KEY_MARKERS = ("secret", "token")
 PAYMENT_VALUE_KEY_MARKERS = ("amount", "invoice", "payment")
+LOCAL_PAYMENT_ID_KEY = "payment_id"
 
 
 def redact(value: Any, key: str = "") -> Any:
     """Return a telemetry-safe representation of nested data."""
 
+    if key == LOCAL_PAYMENT_ID_KEY:
+        if value is None:
+            return None
+        if isinstance(value, uuid.UUID):
+            return str(value)
+        if isinstance(value, str):
+            try:
+                uuid.UUID(value)
+            except ValueError:
+                return "[redacted]"
+            return value
+        return "[redacted]"
     normalized_key = re.sub(r"[^a-z0-9]", "", key.lower())
     if normalized_key in NORMALIZED_SENSITIVE_KEYS or any(
         marker in normalized_key for marker in (*SENSITIVE_KEY_MARKERS, *PAYMENT_VALUE_KEY_MARKERS)
@@ -239,10 +252,27 @@ def tracer(name: str):
         return _DummyTracer()
 
 
-def traced(span_name: str):
+def _set_span_error_status(span: Any, error: Exception) -> None:
+    if span is None:
+        return
+    try:
+        from opentelemetry.trace import Status, StatusCode
+    except ImportError:  # pragma: no cover - production dependencies include the package
+        return
+    try:
+        span.set_status(Status(StatusCode.ERROR))
+    except Exception:  # pragma: no cover - tracing must not mask the application error
+        pass
+    try:
+        span.set_attribute("error.type", type(error).__name__)
+    except Exception:  # pragma: no cover - tracing must not mask the application error
+        pass
+
+
+def traced(span_name: str) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """Decorate a sync or async application operation with a named span."""
 
-    def decorator(function):
+    def decorator(function: Callable[..., Any]) -> Callable[..., Any]:
         operation_tracer = tracer(function.__module__)
         signature = inspect.signature(function)
         resolved_hints = get_type_hints(function, include_extras=True)
@@ -256,22 +286,70 @@ def traced(span_name: str):
         if inspect.iscoroutinefunction(function):
 
             @functools.wraps(function)
-            async def async_wrapper(*args, **kwargs):
-                with operation_tracer.start_as_current_span(span_name):
-                    return await function(*args, **kwargs)
+            async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
+                with operation_tracer.start_as_current_span(
+                    span_name,
+                    record_exception=False,
+                    set_status_on_exception=False,
+                ) as span:
+                    try:
+                        return await function(*args, **kwargs)
+                    except Exception as error:
+                        _set_span_error_status(span, error)
+                        raise
 
             setattr(async_wrapper, "__signature__", resolved_signature)
             return async_wrapper
 
         @functools.wraps(function)
-        def sync_wrapper(*args, **kwargs):
-            with operation_tracer.start_as_current_span(span_name):
-                return function(*args, **kwargs)
+        def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
+            with operation_tracer.start_as_current_span(
+                span_name,
+                record_exception=False,
+                set_status_on_exception=False,
+            ) as span:
+                try:
+                    return function(*args, **kwargs)
+                except Exception as error:
+                    _set_span_error_status(span, error)
+                    raise
 
         setattr(sync_wrapper, "__signature__", resolved_signature)
         return sync_wrapper
 
     return decorator
+
+
+def _strip_query(value: Any) -> str:
+    if not isinstance(value, str):
+        return ""
+    return value.split("?", 1)[0].split("#", 1)[0]
+
+
+def _clear_query(_: Any) -> str:
+    return ""
+
+
+HTTP_SERVER_SPAN_ATTRIBUTE_SANITIZERS: Mapping[str, Callable[[Any], str]] = {
+    "http.target": _strip_query,
+    "http.url": _strip_query,
+    "url.full": _strip_query,
+    "url.query": _clear_query,
+}
+
+
+def _sanitize_http_server_span(span: Any, _scope: Mapping[str, Any]) -> None:
+    """Remove request query values from the active HTTP server span."""
+
+    attributes = getattr(span, "attributes", None)
+    if not isinstance(attributes, Mapping):
+        return
+    for attribute, sanitizer in HTTP_SERVER_SPAN_ATTRIBUTE_SANITIZERS.items():
+        if attribute in attributes:
+            try:
+                span.set_attribute(attribute, sanitizer(attributes[attribute]))
+            except Exception:  # pragma: no cover - telemetry must not mask the application result
+                continue
 
 
 def configure_observability(app: FastAPI, engine: object) -> None:
@@ -327,13 +405,16 @@ def configure_observability(app: FastAPI, engine: object) -> None:
         )
         set_logger_provider(logger_provider)
         logging.getLogger().addHandler(LoggingHandler(level=logging.NOTSET, logger_provider=logger_provider))
-        FastAPIInstrumentor.instrument_app(app)
+        FastAPIInstrumentor.instrument_app(app, server_request_hook=_sanitize_http_server_span)
         SQLAlchemyInstrumentor().instrument(engine=engine)
     except (ImportError, RuntimeError):
         logging.getLogger(__name__).exception("observability_initialization_failed")
 
 
-async def request_context_middleware(request: Request, call_next):
+async def request_context_middleware(
+    request: Request,
+    call_next: Callable[[Request], Awaitable[Response]],
+) -> Response:
     supplied = request.headers.get("x-request-id", "")
     request_id = supplied if REQUEST_ID_PATTERN.fullmatch(supplied) else uuid.uuid4().hex
     token = request_id_context.set(request_id)
@@ -346,7 +427,9 @@ async def request_context_middleware(request: Request, call_next):
         return response
     finally:
         route = request.scope.get("route")
-        route_path = getattr(route, "path", request.url.path)
+        route_path = getattr(route, "path", None)
+        if not isinstance(route_path, str):
+            route_path = "unmatched"
         REQUEST_DURATION.labels(request.method, route_path, str(status)).observe(time.perf_counter() - started)
         logging.getLogger("payment_portal.http").info(
             "http_request_complete request_id=%s",

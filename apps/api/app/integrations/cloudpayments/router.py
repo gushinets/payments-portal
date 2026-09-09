@@ -26,6 +26,25 @@ router = APIRouter(prefix="/api/cloudpayments", tags=["cloudpayments"])
 logger = logging.getLogger(__name__)
 
 
+def _log_webhook_processed(event: PaymentWebhookEvent) -> None:
+    structured: dict[str, str] = {
+        "endpoint": event.endpoint,
+        "status": event.status.value,
+        "webhook_event_id": str(event.id),
+    }
+    if event.error_code is not None:
+        structured["error_code"] = event.error_code
+    if event.order_id is not None:
+        structured["order_id"] = str(event.order_id)
+    if event.payment_id is not None:
+        structured["payment_id"] = str(event.payment_id)
+
+    if event.status is PaymentWebhookEventStatus.FAILED:
+        logger.warning("cloudpayments_webhook_processed", extra={"structured": structured})
+    else:
+        logger.info("cloudpayments_webhook_processed", extra={"structured": structured})
+
+
 @router.post("/{endpoint}")
 @traced("cloudpayments.webhook.process")
 async def receive_cloudpayments_webhook(
@@ -102,28 +121,11 @@ async def receive_cloudpayments_webhook(
                 error_message=safe_normalization_error_message(exc),
             )
             record_webhook(endpoint, event.status)
-            logger.warning(
-                "cloudpayments_webhook_error endpoint=%s status=%s error_code=%s error=%s transaction_id=%s invoice_id=%s",
-                endpoint,
-                event.status,
-                event.error_code,
-                event.error_message,
-                event.transaction_id,
-                event.invoice_id,
-            )
+            _log_webhook_processed(event)
             raise HTTPException(status_code=500, detail="webhook_normalization_failed") from exc
 
     record_webhook(endpoint, event.status)
-
-    if normalized_event.error_message:
-        logger.warning(
-            "cloudpayments_webhook_error endpoint=%s status=%s error=%s transaction_id=%s invoice_id=%s",
-            endpoint,
-            event.status,
-            normalized_event.error_message,
-            event.transaction_id,
-            event.invoice_id,
-        )
+    _log_webhook_processed(event)
 
     if normalized_event.error_message == "invalid_cloudpayments_signature":
         raise HTTPException(
