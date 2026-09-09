@@ -3,9 +3,11 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import json
 import logging
 import uuid
 from datetime import UTC, datetime, timedelta, timezone
+from io import StringIO
 from typing import Any
 
 from apps.api.tests.support.settings import configure_api_test_environment
@@ -16,6 +18,10 @@ configure_api_test_environment()
 import pytest  # noqa: E402
 from fastapi import HTTPException  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor  # noqa: E402
+from opentelemetry.sdk.trace import TracerProvider  # noqa: E402
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor  # noqa: E402
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter  # noqa: E402
 from sqlalchemy import event, inspect  # noqa: E402
 from sqlalchemy.orm import Session as SQLAlchemySession  # noqa: E402
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware  # noqa: E402
@@ -23,9 +29,11 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware  # noqa: E40
 from app.domains.billing.router import get_subscription as get_account_subscription_route  # noqa: E402
 from app.domains.billing.router import list_subscriptions as list_account_subscriptions_route  # noqa: E402
 import app.domains.identity.password_reset as password_reset_router  # noqa: E402
+from app.core.observability import JsonFormatter  # noqa: E402
 from app.database import Base, SessionLocal, engine  # noqa: E402
 from app.integrations.cloudpayments import adapter as cloudpayments_adapter_module  # noqa: E402
-from app.main import app  # noqa: E402
+from app.integrations.cloudpayments import router as cloudpayments_router_module  # noqa: E402
+from app.main import app, create_app  # noqa: E402
 from app.models import (  # noqa: E402
     AcceptanceKind,
     AuthSession,
@@ -2636,6 +2644,52 @@ def test_pay_webhook_amount_mismatch_is_failed_without_order_update() -> None:
     assert event.error_code == "amount_mismatch"
     assert order.status is OrderStatus.PENDING_PAYMENT
     assert db.query(Payment).count() == 0
+
+
+def test_cloudpayments_worker_preserves_request_and_trace_log_context() -> None:
+    exporter = InMemorySpanExporter()
+    tracer_provider = TracerProvider()
+    tracer_provider.add_span_processor(SimpleSpanProcessor(exporter))
+    application = create_app()
+    FastAPIInstrumentor.instrument_app(application, tracer_provider=tracer_provider)
+
+    output = StringIO()
+    handler = logging.StreamHandler(output)
+    handler.setFormatter(JsonFormatter())
+    webhook_logger = cloudpayments_router_module.logger
+    previous_level = webhook_logger.level
+    webhook_logger.setLevel(logging.INFO)
+    webhook_logger.addHandler(handler)
+    request_id = "cloudpayments-worker-correlation-454"
+    traced_client = TestClient(application)
+    try:
+        response = traced_client.post(
+            "/api/cloudpayments/pay",
+            headers={"X-Request-ID": request_id},
+            json={"InvoiceId": "missing-order-for-correlation-test"},
+        )
+
+        assert response.status_code == 200
+        assert response.headers["X-Request-ID"] == request_id
+        diagnostic = json.loads(output.getvalue().splitlines()[-1])
+        assert diagnostic["message"] == "cloudpayments_webhook_processed"
+        assert diagnostic["request_id"] == request_id
+        assert len(diagnostic["trace_id"]) == 32
+        assert len(diagnostic["span_id"]) == 16
+
+        tracer_provider.force_flush()
+        spans = exporter.get_finished_spans()
+        assert any(
+            f"{span.context.trace_id:032x}" == diagnostic["trace_id"]
+            and f"{span.context.span_id:016x}" == diagnostic["span_id"]
+            for span in spans
+        )
+    finally:
+        traced_client.close()
+        webhook_logger.removeHandler(handler)
+        webhook_logger.setLevel(previous_level)
+        handler.close()
+        FastAPIInstrumentor.uninstrument_app(application)
 
 
 def test_signed_check_webhook_validates_order_before_acknowledging() -> None:
