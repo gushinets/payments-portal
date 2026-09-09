@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import logging
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.observability import record_webhook, traced
+from app.http_dependencies import get_raw_request_body
 from app.integrations.cloudpayments.adapter import (
     SUPPORTED_ENDPOINTS,
     CloudPaymentsAdapter,
@@ -45,19 +46,19 @@ def _log_webhook_processed(event: PaymentWebhookEvent) -> None:
         logger.info("cloudpayments_webhook_processed", extra={"structured": structured})
 
 
-@router.post("/{endpoint}")
+@router.post("/{endpoint}", response_model=None)
 @traced("cloudpayments.webhook.process")
-async def receive_cloudpayments_webhook(
+def receive_cloudpayments_webhook(
     endpoint: str,
     request: Request,
+    raw_body: Annotated[bytes, Depends(get_raw_request_body)],
     db: Annotated[Session, Depends(get_db)],
     cloudpayments_adapter: Annotated[CloudPaymentsAdapter, Depends(get_cloudpayments_adapter)],
-):
+) -> dict[str, Any]:
     if endpoint not in SUPPORTED_ENDPOINTS:
         raise HTTPException(status_code=404, detail="Unsupported CloudPayments endpoint")
 
-    raw_body = await request.body()
-    normalized_event = await cloudpayments_adapter.normalize_webhook_request(
+    normalized_event = cloudpayments_adapter.normalize_webhook_request(
         endpoint=endpoint,
         request=request,
         raw_body=raw_body,

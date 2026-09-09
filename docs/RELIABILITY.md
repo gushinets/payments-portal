@@ -1,7 +1,7 @@
 # Reliability Requirements
 
 Status: authoritative
-Last verified: 2026-09-08
+Last verified: 2026-09-09
 
 ## Critical paths
 
@@ -52,6 +52,28 @@ Last verified: 2026-09-08
 - Browser return-page state is informational and never billing authority.
 - In the current CloudPayments flow, authoritative facts arrive through verified
   webhooks.
+
+## Framework worker execution
+
+FastAPI/Starlette framework worker capacity is finite and shared. Synchronous
+database and application flows run through normal `def` endpoints, and an
+async framework boundary delegates a complete resource-owning synchronous unit
+through the framework worker mechanism when blocking work is unavoidable. Do
+not add unbounded blocking work, unbounded retries, or blocking retry sleeps.
+
+Current synchronous provider integrations retain bounded timeout and retry
+budgets. Cancellation of the request or async waiter does not imply that work
+already running in a synchronous worker can be forcibly stopped. Resource
+ownership must therefore remain inside the delegated synchronous unit, and
+request ID plus trace/span/log context must remain correlated across the
+framework worker boundary.
+
+Scheduled subscription expiry remains a synchronous CLI. Password-reset email
+delivery remains its existing synchronous framework background task. Neither
+surface establishes a generic durable job or worker system. Moving the current
+CloudPayments cleanup through a framework worker is transitional runtime
+safety while that integration remains registered; it is not permanent provider
+lifecycle architecture.
 
 ## Agent-verifiable signals
 

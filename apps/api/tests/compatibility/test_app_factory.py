@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import Mock
+from unittest.mock import MagicMock, Mock
 
 from apps.api.tests.support.settings import configure_api_test_environment
 from apps.api.tests.support.settings import override_settings
 
 configure_api_test_environment(APP_ENV="development")
 
+import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 
@@ -118,28 +119,64 @@ def test_app_factory_uses_explicit_cors_origins_in_test_mode() -> None:
     assert "access-control-allow-origin" not in localhost_response.headers
 
 
-def test_app_factory_runs_lifespan_once(monkeypatch) -> None:
+def test_app_factory_runs_lifespan_once(monkeypatch: pytest.MonkeyPatch) -> None:
     import app.main as main_module
 
-    seed_calls = []
+    lifecycle_events: list[str] = []
+    session = object()
+    session_context = MagicMock()
     api_client = Mock()
-    build_calls = []
+    build_calls: list[object] = []
     monkeypatch.delenv("SKIP_LEGAL_SEED", raising=False)
 
-    def build_client(*, app_settings):
+    def assert_no_running_loop() -> None:
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        raise AssertionError("synchronous lifespan work must execute outside the event loop")
+
+    def build_client(*, app_settings: object) -> Mock:
         build_calls.append(app_settings)
         return api_client
 
+    def create_session() -> MagicMock:
+        assert_no_running_loop()
+        lifecycle_events.append("session_created")
+        return session_context
+
+    def enter_session() -> object:
+        assert_no_running_loop()
+        lifecycle_events.append("session_entered")
+        return session
+
+    def exit_session(
+        exc_type: object,
+        exc_value: object,
+        traceback: object,
+    ) -> None:
+        assert_no_running_loop()
+        lifecycle_events.append("session_closed")
+
+    def seed_documents(received_session: object) -> None:
+        assert_no_running_loop()
+        assert received_session is session
+        lifecycle_events.append("documents_seeded")
+
+    def close_client() -> None:
+        assert_no_running_loop()
+        lifecycle_events.append("client_closed")
+
+    session_context.__enter__.side_effect = enter_session
+    session_context.__exit__.side_effect = exit_session
+    api_client.close.side_effect = close_client
     monkeypatch.setattr(
         main_module,
         "build_cloudpayments_api_client",
         build_client,
     )
-    monkeypatch.setattr(
-        main_module,
-        "seed_legal_documents",
-        lambda session: seed_calls.append(session),
-    )
+    monkeypatch.setattr(main_module, "SessionLocal", create_session)
+    monkeypatch.setattr(main_module, "seed_legal_documents", seed_documents)
 
     app = main_module.create_app()
     assert build_calls == []
@@ -148,7 +185,13 @@ def test_app_factory_runs_lifespan_once(monkeypatch) -> None:
         assert test_client.get("/api/health/live").status_code == 200
 
     assert len(build_calls) == 1
-    assert len(seed_calls) == 1
+    assert lifecycle_events == [
+        "session_created",
+        "session_entered",
+        "documents_seeded",
+        "session_closed",
+        "client_closed",
+    ]
     api_client.close.assert_called_once_with()
 
 

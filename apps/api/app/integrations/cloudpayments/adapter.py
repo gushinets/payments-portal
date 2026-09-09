@@ -101,7 +101,7 @@ def _flatten_form_payload(raw_body: bytes) -> dict[str, Any]:
     return {key: values[0] if len(values) == 1 else values for key, values in parsed.items()}
 
 
-async def _parse_payload(request: Request, raw_body: bytes) -> dict[str, Any]:
+def _parse_payload(request: Request, raw_body: bytes) -> dict[str, Any]:
     content_type = request.headers.get("content-type", "")
     if "application/json" in content_type:
         if not raw_body:
@@ -351,7 +351,7 @@ class CloudPaymentsAdapter:
             request=request,
         )
 
-    async def normalize_webhook_request(
+    def normalize_webhook_request(
         self,
         *,
         endpoint: str,
@@ -362,7 +362,7 @@ class CloudPaymentsAdapter:
         status = None
         error_message = None
         try:
-            payload = await _parse_payload(request, raw_body)
+            payload = _parse_payload(request, raw_body)
         except Exception as exc:
             payload = {"_raw": "[omitted: payload_parse_error]"}
             status = "payload_parse_error"
