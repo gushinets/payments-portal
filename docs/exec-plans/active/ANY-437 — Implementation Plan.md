@@ -148,7 +148,25 @@ Use existing request/application/provider spans.
 
 Add no generic tracing abstraction.
 
-The only shared trace change required is preventing arbitrary query values from remaining in automatically generated server-span attributes.
+> **Step 0 revision — shared `@traced` exception policy (implementation/review evidence, 2026-09-09).** The reviewed implementation exposed a material privacy gap that was not covered by the original locked decision: OpenTelemetry 1.44 records ordinary uncaught exceptions by default, including exception message and stacktrace, and sets a status description from the exception text; the current SQLAlchemy engine has `hide_parameters=False`, so a `StatementError` string can contain bound parameters. The current `@traced` consumers include checkout creation, legal acceptance, and CloudPayments webhook processing; each can propagate database, provider, or untrusted-input failures while handling payment/account/request data. This is a narrow revision of the shared exception-handling decision caused by implementation/review evidence. It does not revise the query-sanitization decision or any other approved plan research.
+
+For every span created by the shared `@traced` decorator:
+
+- suppress automatic exception event recording and automatic status descriptions;
+- for an ordinary `Exception`, preserve failure visibility with `StatusCode.ERROR` and a safe low-cardinality `error.type` span attribute containing only the exception class name;
+- do not record exception messages, stacktraces, exception objects, or chained exception text in the span;
+- for direct `BaseException` control-flow failures, including cancellation, re-raise without changing span status or adding an event, matching OpenTelemetry's default control-flow semantics;
+- preserve exception propagation and chaining.
+
+This policy is global to the shared decorator because all current direct
+production consumers have the same privacy-sensitive application-operation
+boundary; a narrower consumer allowlist would add an omission risk without
+providing a safer current path. It applies to named `@traced` application
+spans only. Existing provider-operation spans, HTTP instrumentation, and
+SQLAlchemy instrumentation are not redesigned by this revision. The bounded
+HTTP failure diagnostic remains the single raw-safe unexpected-error owner;
+existing provider-operation spans/metrics and bounded business diagnostics
+remain the other failure-visibility paths, with no duplicate exception event.
 
 ### Metrics
 
@@ -287,6 +305,12 @@ Regression-only inspection if necessary:
    - Inspect directly relevant current files only as needed to apply this step.
    - If the current code materially contradicts a locked decision below, stop and report the contradiction instead of inventing a new design.
 
+1a. **[REVISED BY STEP 0 — implementation/review evidence]** Apply the shared `@traced` exception policy defined in the Signal ownership / Traces section above.
+   - Start named operation spans with automatic exception event recording and automatic status descriptions disabled.
+   - For ordinary `Exception`, set status `ERROR` without a description and add only the low-cardinality exception class name as `error.type`.
+   - For direct `BaseException` control-flow failures, including cancellation, preserve OpenTelemetry's no-event/no-status-mutation behavior and re-raise unchanged.
+   - Do not change provider API tracing that is already classified as sufficient, and do not add raw exception telemetry as a replacement.
+
 2. Add one narrow exact-key redaction exception only for local `payment_id`.
    - The current broad `"payment"` marker would otherwise redact this local Payment Portal identifier.
    - Check this exact key before the broad payment-value marker.
@@ -317,6 +341,9 @@ Regression-only inspection if necessary:
    - Do not enable arbitrary request-header capture.
 
 8. Add focused tests proving:
+   - ordinary sync and async `@traced` failures propagate with their original chaining, produce `ERROR` status plus safe `error.type`, and contain no exception event, status description, message, or stacktrace;
+   - direct `BaseException`/cancellation failures propagate without changing the named span status or adding an exception event;
+   - a representative database/provider-shaped exception marker cannot enter the named span through status descriptions, events, attributes, or chained exception text;
    - local `payment_id` survives `redact()` despite the broad payment marker;
    - other local IDs that do not require a special exception retain their existing safe behavior;
    - provider/external/payment/security values remain redacted;
@@ -341,6 +368,7 @@ Regression-only inspection if necessary:
 - No raw query/header/payload values are intentionally exported.
 - No new generic observability framework is introduced.
 - Unexpected HTTP exceptions still produce one bounded diagnostic only.
+- Named `@traced` application spans never export raw exception messages or stacktraces; ordinary failures remain visible only through `ERROR` status and safe low-cardinality `error.type`, while direct `BaseException` control-flow failures do not mutate span error state.
 
 **Out of scope**
 
@@ -1001,6 +1029,7 @@ Update `docs/RELIABILITY.md` with:
 
 - metrics = low-cardinality rates/outcomes/durations;
 - traces = operation chain;
+- named `@traced` application spans suppress automatic exception events and status descriptions; ordinary failures remain visible only through `ERROR` plus safe low-cardinality `error.type`, while direct `BaseException`/cancellation control-flow is left unmarked;
 - structured logs = bounded incident details and local diagnostic IDs;
 - database events/state = durable billing truth.
 
@@ -1057,7 +1086,8 @@ Update `docs/SECURITY.md` with:
 - source-level telemetry rule:
   redaction is defense-in-depth and is not permission to put secrets/PII/provider payload/error text into message bodies or arbitrary logging extras;
 - static messages for critical failure diagnostics;
-- no raw exception text/`exc_info` for the new bounded business diagnostics.
+- no raw exception text/`exc_info` for the new bounded business diagnostics;
+- the revised shared `@traced` policy: named application spans suppress automatic exception events and status descriptions, use only safe low-cardinality `error.type` for ordinary failures, and leave direct `BaseException`/cancellation control-flow unmarked.
 
 Do not document speculative future job/provider designs.
 
