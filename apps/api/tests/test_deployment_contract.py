@@ -66,10 +66,19 @@ def test_api_image_commands_do_not_run_migrations() -> None:
         assert "--no-access-log" in launch.split(" && exec ", 1)[1].split()
 
 
+def test_production_runtime_verification_disables_access_logging() -> None:
+    script = (ROOT / "security/trivy/verify-api-runtime.sh").read_text(encoding="utf-8")
+
+    assert "python -m uvicorn app.main:app" in script
+    assert "--no-access-log" in script
+
+
 def test_dev_api_command_disables_access_logging(monkeypatch: pytest.MonkeyPatch) -> None:
     from scripts import repo
 
     invocations: list[list[str]] = []
+    controlled_environment = {"APP_ENV": "development", "DATABASE_URL": "sqlite://"}
+    monkeypatch.setattr(repo, "direct_api_environment", lambda: controlled_environment)
     monkeypatch.setattr(repo, "run", lambda command, **_: invocations.append(command))
 
     repo.cmd_dev_api(None)

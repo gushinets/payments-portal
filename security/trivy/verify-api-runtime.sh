@@ -48,7 +48,7 @@ container_id=$(docker run --detach --publish 127.0.0.1::8000 \
   "$image_ref" \
   python -m uvicorn app.main:app --app-dir apps/api \
   --host 0.0.0.0 --port 8000 --proxy-headers \
-  --forwarded-allow-ips 127.0.0.1 --log-level warning)
+  --forwarded-allow-ips 127.0.0.1 --no-access-log --log-level warning)
 
 endpoint=$(docker port "$container_id" 8000/tcp)
 response=""

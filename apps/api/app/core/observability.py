@@ -11,7 +11,6 @@ import time
 import uuid
 from collections.abc import Awaitable, Callable, Mapping
 from typing import Any, get_type_hints
-from urllib.parse import urlsplit, urlunsplit
 
 from fastapi import FastAPI, Request, Response
 
@@ -253,7 +252,7 @@ def tracer(name: str):
         return _DummyTracer()
 
 
-def _set_span_error_status(span: Any) -> None:
+def _set_span_error_status(span: Any, error: Exception) -> None:
     if span is None:
         return
     try:
@@ -263,13 +262,17 @@ def _set_span_error_status(span: Any) -> None:
     try:
         span.set_status(Status(StatusCode.ERROR))
     except Exception:  # pragma: no cover - tracing must not mask the application error
-        return
+        pass
+    try:
+        span.set_attribute("error.type", type(error).__name__)
+    except Exception:  # pragma: no cover - tracing must not mask the application error
+        pass
 
 
-def traced(span_name: str):
+def traced(span_name: str) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """Decorate a sync or async application operation with a named span."""
 
-    def decorator(function):
+    def decorator(function: Callable[..., Any]) -> Callable[..., Any]:
         operation_tracer = tracer(function.__module__)
         signature = inspect.signature(function)
         resolved_hints = get_type_hints(function, include_extras=True)
@@ -283,7 +286,7 @@ def traced(span_name: str):
         if inspect.iscoroutinefunction(function):
 
             @functools.wraps(function)
-            async def async_wrapper(*args, **kwargs):
+            async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
                 with operation_tracer.start_as_current_span(
                     span_name,
                     record_exception=False,
@@ -291,15 +294,15 @@ def traced(span_name: str):
                 ) as span:
                     try:
                         return await function(*args, **kwargs)
-                    except BaseException:
-                        _set_span_error_status(span)
+                    except Exception as error:
+                        _set_span_error_status(span, error)
                         raise
 
             setattr(async_wrapper, "__signature__", resolved_signature)
             return async_wrapper
 
         @functools.wraps(function)
-        def sync_wrapper(*args, **kwargs):
+        def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
             with operation_tracer.start_as_current_span(
                 span_name,
                 record_exception=False,
@@ -307,8 +310,8 @@ def traced(span_name: str):
             ) as span:
                 try:
                     return function(*args, **kwargs)
-                except BaseException:
-                    _set_span_error_status(span)
+                except Exception as error:
+                    _set_span_error_status(span, error)
                     raise
 
         setattr(sync_wrapper, "__signature__", resolved_signature)
@@ -320,8 +323,7 @@ def traced(span_name: str):
 def _strip_query(value: Any) -> str:
     if not isinstance(value, str):
         return ""
-    parsed = urlsplit(value)
-    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "", ""))
+    return value.split("?", 1)[0].split("#", 1)[0]
 
 
 def _clear_query(_: Any) -> str:
@@ -344,7 +346,10 @@ def _sanitize_http_server_span(span: Any, _scope: Mapping[str, Any]) -> None:
         return
     for attribute, sanitizer in HTTP_SERVER_SPAN_ATTRIBUTE_SANITIZERS.items():
         if attribute in attributes:
-            span.set_attribute(attribute, sanitizer(attributes[attribute]))
+            try:
+                span.set_attribute(attribute, sanitizer(attributes[attribute]))
+            except Exception:  # pragma: no cover - telemetry must not mask the application result
+                continue
 
 
 def configure_observability(app: FastAPI, engine: object) -> None:

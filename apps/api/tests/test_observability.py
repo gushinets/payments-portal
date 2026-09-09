@@ -195,7 +195,42 @@ def test_traced_sync_and_async_exceptions_keep_safe_error_spans_and_chaining(
     for span in spans.values():
         assert span.status.status_code is StatusCode.ERROR
         assert span.status.description is None
+        assert dict(span.attributes) == {"error.type": "ValueError"}
+        assert span.events == ()
         assert_span_does_not_expose(span, marker)
+
+
+def test_traced_control_flow_failures_keep_spans_unmarked(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    exporter = InMemorySpanExporter()
+    tracer_provider = make_tracer_provider(exporter)
+    monkeypatch.setattr(observability, "tracer", lambda _: tracer_provider.get_tracer("test.control_flow"))
+
+    class ControlFlowSignal(BaseException):
+        pass
+
+    @observability.traced("test.sync_control_flow")
+    def sync_control_flow() -> None:
+        raise ControlFlowSignal()
+
+    @observability.traced("test.async_control_flow")
+    async def async_control_flow() -> None:
+        raise asyncio.CancelledError()
+
+    with pytest.raises(ControlFlowSignal):
+        sync_control_flow()
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(async_control_flow())
+
+    tracer_provider.force_flush()
+    spans = {span.name: span for span in exporter.get_finished_spans()}
+    assert set(spans) == {"test.sync_control_flow", "test.async_control_flow"}
+    for span in spans.values():
+        assert span.status.status_code is StatusCode.UNSET
+        assert span.status.description is None
+        assert dict(span.attributes) == {}
+        assert span.events == ()
 
 
 def test_http_failure_containing_traced_exception_does_not_leak_chained_secret(
@@ -237,6 +272,8 @@ def test_http_failure_containing_traced_exception_does_not_leak_chained_secret(
         operation_span = next(span for span in spans if span.name == "test.http_failure_operation")
         assert operation_span.status.status_code is StatusCode.ERROR
         assert operation_span.status.description is None
+        assert dict(operation_span.attributes) == {"error.type": "ValueError"}
+        assert operation_span.events == ()
         server_span = next(span for span in spans if span.name == "GET /test-traced-failure")
         assert server_span.status.status_code is StatusCode.ERROR
         assert server_span.status.description is None
@@ -304,26 +341,31 @@ def test_http_server_span_query_values_are_sanitized_without_header_capture() ->
         query_secret = "unique-query-secret-437"
         fragment_secret = "private-marker"
         header_secret = "unique-header-secret-437"
-        for query in (query_secret, "%23" + fragment_secret):
+        malformed_target = "http://testserver//[?custom=review-query-marker-437"
+        requests = (
+            (f"/items/local-item-123?query_secret={query_secret}", 200),
+            (f"/items/local-item-123?query_secret=%23{fragment_secret}", 200),
+            (malformed_target, 404),
+        )
+        for request_target, expected_status in requests:
             assert (
                 asyncio.run(
                     _get(
                         application,
-                        f"/items/local-item-123?query_secret={query}",
+                        request_target,
                         headers={"X-Observability-Marker": header_secret},
                     )
                 ).status_code
-                == 200
+                == expected_status
             )
         tracer_provider.force_flush()
 
         server_spans = [span for span in exporter.get_finished_spans() if span.kind is SpanKind.SERVER]
-        assert len(server_spans) == 2
+        assert len(server_spans) == 3
         for span in server_spans:
             span_attributes = span.attributes
-            assert query_secret not in repr(dict(span_attributes))
-            assert fragment_secret not in repr(dict(span_attributes))
-            assert "%23private-marker" not in repr(dict(span_attributes))
+            for marker in (query_secret, fragment_secret, "%23" + fragment_secret, "review-query-marker-437"):
+                assert_span_does_not_expose(span, marker)
             assert header_secret not in repr(dict(span_attributes))
             for attribute in observability.HTTP_SERVER_SPAN_ATTRIBUTE_SANITIZERS:
                 if attribute in span_attributes:
@@ -331,13 +373,13 @@ def test_http_server_span_query_values_are_sanitized_without_header_capture() ->
                     assert "#" not in str(span_attributes[attribute])
             if "url.query" in span_attributes:
                 assert span_attributes["url.query"] == ""
-            assert span_attributes["http.route"] == "/items/{item_id}"
-            path_bearing_attributes = {
-                attribute: value
-                for attribute, value in span_attributes.items()
-                if attribute in {"http.target", "http.url", "url.full", "url.path"}
-                and "/items/local-item-123" in str(value)
-            }
-            assert path_bearing_attributes
+            if span_attributes.get("http.route") == "/items/{item_id}":
+                path_bearing_attributes = {
+                    attribute: value
+                    for attribute, value in span_attributes.items()
+                    if attribute in {"http.target", "http.url", "url.full", "url.path"}
+                    and "/items/local-item-123" in str(value)
+                }
+                assert path_bearing_attributes
     finally:
         FastAPIInstrumentor.uninstrument_app(application)
