@@ -7,7 +7,7 @@
 | Parent | `ANY-407` |
 | Ticket | `ANY-454` |
 | ANY-407 step | Step 4 — Sync / Async Architecture |
-| Plan status | `reviewed / conditionally approved; execution blocked by ANY-437 merge + narrow post-merge revalidation` |
+| Plan status | `done` |
 | Execution model | `Domain / Application / Persistence → sync-first`; `async → only unavoidable framework / genuinely awaitable I/O boundaries` |
 | Migration intent | **Not an async migration. The application remains synchronous.** |
 | Implementation order | predecessor gate → Step 1 → manual verification → commit → Step 2 → manual verification → commit → Step 3 → manual verification → commit → final verification |
@@ -374,7 +374,7 @@ The following findings are intentionally **not** part of ANY-454:
 
 # Step 1 — Establish the shared raw-body boundary and make CloudPayments webhook processing synchronous
 
-**Status:** `todo`
+**Status:** `done`
 
 ## Goal
 
@@ -655,7 +655,7 @@ Step 1 is complete when:
 
 # Step 2 — Remove blocking synchronous work from FastAPI lifespan
 
-**Status:** `todo`
+**Status:** `done`
 
 ## Goal
 
@@ -854,7 +854,7 @@ Step 2 is complete when:
 
 # Step 3 — Codify and narrowly guard the sync-first execution policy
 
-**Status:** `todo`
+**Status:** `done`
 
 ## Goal
 
