@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import os
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.concurrency import run_in_threadpool
 
 from app.core.database import SessionLocal
 from app.core.database import engine
@@ -31,19 +33,23 @@ from app.payment_providers.registry import PaymentProviderRegistry
 metrics_router = APIRouter(prefix="/metrics", tags=["metrics"])
 
 
+def _seed_legal_documents_sync() -> None:
+    with SessionLocal() as db:
+        seed_legal_documents(db)
+
+
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     cloudpayments_adapter: CloudPaymentsAdapter = app.state.cloudpayments_adapter
     api_client = build_cloudpayments_api_client(app_settings=settings)
     cloudpayments_adapter.set_api_client(api_client)
     try:
         if os.getenv("SKIP_LEGAL_SEED") != "true":
-            with SessionLocal() as db:
-                seed_legal_documents(db)
+            await run_in_threadpool(_seed_legal_documents_sync)
 
         yield
     finally:
-        cloudpayments_adapter.close()
+        await run_in_threadpool(cloudpayments_adapter.close)
 
 
 @metrics_router.get("", include_in_schema=False)
