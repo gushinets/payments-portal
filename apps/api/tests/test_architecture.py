@@ -1,10 +1,17 @@
 from __future__ import annotations
 
+import inspect
 import os
 from pathlib import Path
 
 os.environ["DATABASE_URL"] = "sqlite+pysqlite:///:memory:"
 
+from fastapi.routing import APIRoute
+
+from app.http_dependencies import get_raw_request_body
+from app.integrations.cloudpayments.adapter import CloudPaymentsAdapter
+from app.integrations.cloudpayments.router import router as cloudpayments_router
+from app.main import app
 from scripts.repo import check_python_boundaries
 
 
@@ -12,6 +19,21 @@ def write_module(root: Path, relative: str, source: str) -> None:
     path = root / relative
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(source, encoding="utf-8")
+
+
+def test_cloudpayments_webhook_keeps_shared_async_body_and_sync_processing_boundary() -> None:
+    route = next(
+        route
+        for route in cloudpayments_router.routes
+        if isinstance(route, APIRoute) and route.path == "/api/cloudpayments/{endpoint}"
+    )
+    dependencies = {dependency.name: dependency.call for dependency in route.dependant.dependencies}
+
+    assert "/api/cloudpayments/{endpoint}" in app.openapi()["paths"]
+    assert not inspect.iscoroutinefunction(route.endpoint)
+    assert dependencies["raw_body"] is get_raw_request_body
+    assert inspect.iscoroutinefunction(get_raw_request_body)
+    assert not inspect.iscoroutinefunction(CloudPaymentsAdapter.normalize_webhook_request)
 
 
 def test_ast_import_forms_are_rejected_with_actionable_errors(tmp_path: Path) -> None:

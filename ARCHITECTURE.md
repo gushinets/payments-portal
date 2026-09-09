@@ -1,7 +1,7 @@
 # Payment Portal Architecture
 
 Status: authoritative current-state map
-Last verified: 2026-09-04
+Last verified: 2026-09-09
 
 ## System boundary
 
@@ -107,6 +107,49 @@ vocabularies are imported from its explicit public exports, while model modules
 import canonical enums directly from `app.models.enums`. Provider contract
 enums and open/provider/configuration identifiers remain owned by their
 boundaries and are not persisted model enums.
+
+## Runtime execution model
+
+ANY-454 is not an async migration. Payment Portal remains sync-first. Domain,
+Application, Persistence, synchronous SQLAlchemy, and current synchronous
+integrations use ordinary synchronous functions. Async is limited to
+unavoidable FastAPI/ASGI framework boundaries or concrete genuinely awaitable
+outer I/O.
+
+Current blocking database and application flows use normal synchronous
+FastAPI `def` endpoints so the framework owns worker dispatch. Blocking
+SQLAlchemy operations, synchronous HTTP clients, sleeps, and similar work must
+not execute directly on an event-loop path. If an async framework boundary
+must invoke blocking work, it passes a complete resource-owning synchronous
+unit through the framework worker mechanism. It must not create a
+request-scoped resource such as a SQLAlchemy `Session` and then move that
+resource through a manually introduced thread bridge. Execution modality does
+not justify duplicate sync/async application services or generic sync/async
+adapters.
+
+Async request and error middleware, FastAPI lifespan coordination, and the
+shared exact-body dependency are valid framework boundaries. The current
+provider server client, password-reset background callback, scheduled expiry
+CLI, provider-neutral business operations, and Application, Domain, and
+Persistence code remain synchronous. The `traced()` helper supports both sync
+and async callables because it is boundary-neutral observability infrastructure,
+not because application code should become async.
+
+Exact raw request bytes are a Presentation/HTTP concern. A route with a concrete
+exact-bytes requirement, such as webhook signature verification, uses the
+shared `get_raw_request_body()` dependency. Integration routers do not create
+their own `await request.body()` readers when that dependency satisfies the
+requirement. The dependency only awaits the ASGI body and returns its bytes; it
+does not parse payloads, verify signatures, apply provider logic, access
+persistence, define logging policy, or call Application or Domain code.
+Ordinary JSON APIs continue to use FastAPI/Pydantic request models. The shared
+dependency is not a general async application abstraction.
+
+CloudPayments and its lifespan cleanup remain transitional current
+implementation details, not permanent provider lifecycle architecture. A
+future integration chooses sync or async according to its actual outer I/O
+client and keeps that modality at the integration boundary rather than
+propagating it into Application, Domain, or Persistence.
 
 The web dependency direction is:
 

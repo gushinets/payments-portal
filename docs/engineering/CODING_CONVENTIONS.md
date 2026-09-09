@@ -1,7 +1,7 @@
 # Coding Conventions
 
 Status: authoritative
-Last verified: 2026-09-04
+Last verified: 2026-09-09
 
 How to write **new and changed** code so types, states, and trust boundaries
 stay explicit. This is not a backlog and not a mass-migration plan.
@@ -85,6 +85,31 @@ unsafe-assertion rule as `error` only after current `json()` /
 7. New or changed API errors use `detail: {"code": "<stable_id>"}`. String
    `detail` is legacy and migrates with the slice that touches it. Codes are
    feature-owned and stable; do not require a feature-name prefix.
+8. Application, Domain, Persistence, synchronous SQLAlchemy, and current
+   synchronous integrations default to ordinary synchronous functions. Use
+   `async def` only when that exact boundary must await framework operations or
+   genuinely asynchronous outer I/O. A future integration may select either
+   modality from its actual I/O client, but must not propagate it into
+   Application, Domain, or Persistence.
+9. Use normal FastAPI `def` endpoints for flows built on synchronous database or
+   network libraries. Never execute blocking SQLAlchemy, synchronous HTTP
+   clients, blocking sleeps, or similar work directly on an event-loop path.
+10. Exact raw request bytes are a Presentation/HTTP concern. Routes with a
+    concrete exact-bytes requirement reuse
+    `app.http_dependencies.get_raw_request_body`; integration routers do not
+    create local body readers when it applies. The dependency owns only ASGI
+    body acquisition. Ordinary JSON APIs continue to use FastAPI/Pydantic
+    request models rather than manual raw-body parsing.
+11. When an async framework boundary must invoke blocking work, send a complete
+    resource-owning synchronous unit through the framework worker mechanism.
+    Do not create a request-scoped resource such as a SQLAlchemy `Session` and
+    move it through a manually introduced thread bridge.
+12. Do not use `asyncio.run()` to bridge application layers, create duplicate
+    sync/async application services, or introduce generic sync/async adapters.
+13. Request ID and trace/span/log context must remain correlated across
+    framework worker boundaries. New or materially changed functions retain
+    explicit parameter and return annotations without unintentionally changing
+    FastAPI response-model inference.
 
 ## Web / TypeScript
 
