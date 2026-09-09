@@ -471,6 +471,9 @@ def test_observability_docs_preserve_correlation_and_ownership_contract() -> Non
     for local_id in ("order_id", "payment_id", "subscription_id", "webhook_event_id", "run_id"):
         assert local_id in reliability_normalized
     assert "must never be metric labels" in reliability_normalized
+    for local_id in ("order_id", "payment_id", "subscription_id", "webhook_event_id", "run_id"):
+        assert local_id in security_normalized
+    assert "must never become metric labels" in security_normalized
     assert "refund_id remains a local durable business and audit lookup reference" in reliability_normalized
     assert "not a new any-437 telemetry emission" in security_normalized
 

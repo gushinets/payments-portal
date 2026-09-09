@@ -119,9 +119,11 @@ def test_expiration_cli_does_not_commit_on_failure(monkeypatch, caplog) -> None:
     monkeypatch.setattr(cli, "SessionLocal", lambda: FakeSession())
     monkeypatch.setattr(cli, "expire_due_subscriptions", fake_expire)
 
-    with caplog.at_level(logging.INFO, logger=cli.logger.name):
-        with pytest.raises(RuntimeError, match="forced expiration failure"):
-            cli.main(["--batch-size", "37"])
+    with (
+        caplog.at_level(logging.INFO, logger=cli.logger.name),
+        pytest.raises(RuntimeError, match="forced expiration failure"),
+    ):
+        cli.main(["--batch-size", "37"])
 
     events = [record for record in caplog.records if record.getMessage().startswith("subscription_expiry_")]
     assert [record.getMessage() for record in events] == [
@@ -158,9 +160,8 @@ def test_expiration_cli_validates_all_ids_before_emitting_transitions(monkeypatc
     monkeypatch.setattr(cli, "expire_due_subscriptions", fake_expire)
 
     failure_text = "subscription returned without a persisted identity"
-    with caplog.at_level(logging.INFO, logger=cli.logger.name):
-        with pytest.raises(RuntimeError, match=failure_text):
-            cli.main(["--batch-size", "37"])
+    with caplog.at_level(logging.INFO, logger=cli.logger.name), pytest.raises(RuntimeError, match=failure_text):
+        cli.main(["--batch-size", "37"])
 
     events = [record for record in caplog.records if record.getMessage().startswith("subscription_expiry_")]
     assert [record.getMessage() for record in events] == [
