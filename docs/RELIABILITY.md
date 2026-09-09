@@ -115,7 +115,9 @@ The representative incident journeys are:
    run starts with `subscription_expiry_run_started` and ends with
    `subscription_expiry_run_failed` with the run ID, batch size, and exception
    type; it must not emit `subscription_expiry_transition_committed` or
-   `subscription_expiry_run_succeeded`.
+   `subscription_expiry_run_succeeded`. After the lifecycle operation returns,
+   a missing persisted identity is reported separately as
+   `subscription_expiry_diagnostic_invariant_violated`. The lifecycle changes are already committed at this point, so `subscription_expiry_run_failed` is not emitted, although the CLI still propagates the diagnostic invariant exception.
 
 Scheduled expiry is not an HTTP request and does not reuse request context. Its
 `run_id` is generated for that command invocation only. The committed

@@ -138,7 +138,7 @@ def test_expiration_cli_does_not_commit_on_failure(monkeypatch, caplog) -> None:
     assert "forced expiration failure" not in caplog.text
 
 
-def test_expiration_cli_validates_all_ids_before_emitting_transitions(monkeypatch, caplog) -> None:
+def test_expiration_cli_reports_missing_identity_as_diagnostic_invariant(monkeypatch, caplog) -> None:
     valid_subscription = Subscription(id=uuid4())
     make_transient_to_detached(valid_subscription)
     invalid_subscription = Subscription()
@@ -166,13 +166,14 @@ def test_expiration_cli_validates_all_ids_before_emitting_transitions(monkeypatc
     events = [record for record in caplog.records if record.getMessage().startswith("subscription_expiry_")]
     assert [record.getMessage() for record in events] == [
         "subscription_expiry_run_started",
-        "subscription_expiry_run_failed",
+        "subscription_expiry_diagnostic_invariant_violated",
     ]
     assert events[1].structured == {
         "run_id": events[0].structured["run_id"],
         "batch_size": 37,
-        "error_type": "RuntimeError",
+        "invariant": "missing_persisted_identity",
     }
+    assert "subscription_expiry_run_failed" not in caplog.text
     assert "subscription_expiry_transition_committed" not in caplog.text
     assert "subscription_expiry_run_succeeded" not in caplog.text
     assert failure_text not in caplog.text
