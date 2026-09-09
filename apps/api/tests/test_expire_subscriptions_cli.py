@@ -136,6 +136,47 @@ def test_expiration_cli_does_not_commit_on_failure(monkeypatch, caplog) -> None:
     assert "forced expiration failure" not in caplog.text
 
 
+def test_expiration_cli_validates_all_ids_before_emitting_transitions(monkeypatch, caplog) -> None:
+    valid_subscription = Subscription(id=uuid4())
+    make_transient_to_detached(valid_subscription)
+    invalid_subscription = Subscription()
+
+    class FakeSession:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback) -> None:
+            return None
+
+        def commit(self) -> None:
+            raise AssertionError("the CLI must not commit outside the lifecycle operation")
+
+    def fake_expire(db, command):
+        return [valid_subscription, invalid_subscription]
+
+    monkeypatch.setattr(cli, "SessionLocal", lambda: FakeSession())
+    monkeypatch.setattr(cli, "expire_due_subscriptions", fake_expire)
+
+    failure_text = "subscription returned without a persisted identity"
+    with caplog.at_level(logging.INFO, logger=cli.logger.name):
+        with pytest.raises(RuntimeError, match=failure_text):
+            cli.main(["--batch-size", "37"])
+
+    events = [record for record in caplog.records if record.getMessage().startswith("subscription_expiry_")]
+    assert [record.getMessage() for record in events] == [
+        "subscription_expiry_run_started",
+        "subscription_expiry_run_failed",
+    ]
+    assert events[1].structured == {
+        "run_id": events[0].structured["run_id"],
+        "batch_size": 37,
+        "error_type": "RuntimeError",
+    }
+    assert "subscription_expiry_transition_committed" not in caplog.text
+    assert "subscription_expiry_run_succeeded" not in caplog.text
+    assert failure_text not in caplog.text
+
+
 @pytest.mark.postgres
 def test_expiration_cli_commits_due_subscription_changes(
     monkeypatch,

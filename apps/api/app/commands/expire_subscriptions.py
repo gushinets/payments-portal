@@ -51,6 +51,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     with SessionLocal() as db:
         try:
             expired = expire_due_subscriptions(db, command)
+            subscription_ids: list[str] = []
+            for subscription in expired:
+                identity = inspect(subscription).identity
+                if identity is None:
+                    raise RuntimeError("subscription returned without a persisted identity")
+                subscription_ids.append(str(identity[0]))
         except Exception as error:
             logger.error(
                 "subscription_expiry_run_failed",
@@ -63,13 +69,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 },
             )
             raise
-        for subscription in expired:
-            identity = inspect(subscription).identity
-            if identity is None:
-                raise RuntimeError("subscription returned without a persisted identity")
+        for subscription_id in subscription_ids:
             logger.info(
                 "subscription_expiry_transition_committed",
-                extra={"structured": {"run_id": run_id, "subscription_id": str(identity[0])}},
+                extra={"structured": {"run_id": run_id, "subscription_id": subscription_id}},
             )
         logger.info(
             "subscription_expiry_run_succeeded",
