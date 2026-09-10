@@ -492,6 +492,7 @@ def test_api_project_preserves_python_and_direct_dependency_versions() -> None:
         "prometheus-client==0.26.0",
         "psycopg[binary]==3.3.4",
         "python-dotenv==1.2.2",
+        "sentry-sdk==2.69.1",
         "sqlalchemy==2.0.51",
         "uvicorn[standard]==0.52.1",
         "pydantic==2.13.4",

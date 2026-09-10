@@ -91,6 +91,8 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     smtp_from_email: str = "support@any-tool-ai.ru"
     smtp_use_tls: bool = True
+    sentry_dsn: Annotated[str, StringConstraints(strip_whitespace=True)] = ""
+    sentry_release: Annotated[str, StringConstraints(strip_whitespace=True)] = ""
 
     @field_validator("cloudpayments_enabled", "smtp_use_tls", mode="before")
     @classmethod
@@ -170,6 +172,12 @@ class Settings(BaseSettings):
                 raise ValueError("CLOUDPAYMENTS_PUBLIC_ID is required when CLOUDPAYMENTS_ENABLED=true")
             if not self.cloudpayments_api_secret.strip():
                 raise ValueError("CLOUDPAYMENTS_API_SECRET is required when CLOUDPAYMENTS_ENABLED=true")
+        return self
+
+    @model_validator(mode="after")
+    def require_sentry_release_when_enabled(self) -> Settings:
+        if self.sentry_dsn and not self.sentry_release:
+            raise ValueError("SENTRY_RELEASE is required when SENTRY_DSN is configured")
         return self
 
 
