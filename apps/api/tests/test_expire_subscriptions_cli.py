@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta, timezone
+from unittest.mock import Mock
 from uuid import uuid4
 
 import pytest
@@ -9,6 +10,7 @@ from sqlalchemy import event, inspect
 from sqlalchemy.orm import Session, make_transient_to_detached
 
 from app.commands import expire_subscriptions as cli
+from app.infrastructure import sentry as sentry_reporting
 from app.models import (
     Entitlement,
     EntitlementSource,
@@ -27,11 +29,13 @@ from app.models import (
 @pytest.fixture(autouse=True)
 def _keep_pytest_logging_capture(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(cli, "configure_logging", lambda: None)
+    monkeypatch.setattr(cli, "configure_sentry", lambda _settings: None)
 
 
 def test_expiration_cli_runs_one_batch_with_configured_size(monkeypatch, capsys, caplog) -> None:
     captured: dict[str, object] = {}
     timeline: list[str] = []
+    report_exception = Mock()
     expired_subscriptions = [Subscription(id=uuid4()), Subscription(id=uuid4())]
     for subscription in expired_subscriptions:
         make_transient_to_detached(subscription)
@@ -57,8 +61,15 @@ def test_expiration_cli_runs_one_batch_with_configured_size(monkeypatch, capsys,
         timeline.append("lifecycle_returned")
         return expired_subscriptions
 
+    def fake_configure_sentry(app_settings) -> None:
+        assert app_settings is cli.settings
+        timeline.append("sentry_configured")
+
+    monkeypatch.setattr(cli, "configure_logging", lambda: timeline.append("logging_configured"))
+    monkeypatch.setattr(cli, "configure_sentry", fake_configure_sentry)
     monkeypatch.setattr(cli, "SessionLocal", lambda: FakeSession())
     monkeypatch.setattr(cli, "expire_due_subscriptions", fake_expire)
+    monkeypatch.setattr(cli, "report_exception", report_exception)
     handler = TimelineHandler()
     cli.logger.addHandler(handler)
 
@@ -72,6 +83,8 @@ def test_expiration_cli_runs_one_batch_with_configured_size(monkeypatch, capsys,
     assert isinstance(command, cli.ExpireDueSubscriptionsCommand)
     assert command.batch_size == 37
     assert timeline == [
+        "logging_configured",
+        "sentry_configured",
         "subscription_expiry_run_started",
         "lifecycle_called",
         "lifecycle_returned",
@@ -100,9 +113,13 @@ def test_expiration_cli_runs_one_batch_with_configured_size(monkeypatch, capsys,
         "expired_count": 2,
     }
     assert capsys.readouterr().out == "expired_subscriptions=2\n"
+    report_exception.assert_not_called()
 
 
 def test_expiration_cli_does_not_commit_on_failure(monkeypatch, caplog) -> None:
+    original_error = RuntimeError("forced expiration failure")
+    report_exception = Mock()
+
     class FakeSession:
         def __enter__(self):
             return self
@@ -114,17 +131,19 @@ def test_expiration_cli_does_not_commit_on_failure(monkeypatch, caplog) -> None:
             raise AssertionError("the CLI must not commit outside the lifecycle operation")
 
     def fake_expire(db, command):
-        raise RuntimeError("forced expiration failure")
+        raise original_error
 
     monkeypatch.setattr(cli, "SessionLocal", lambda: FakeSession())
     monkeypatch.setattr(cli, "expire_due_subscriptions", fake_expire)
+    monkeypatch.setattr(cli, "report_exception", report_exception)
 
     with (
         caplog.at_level(logging.INFO, logger=cli.logger.name),
-        pytest.raises(RuntimeError, match="forced expiration failure"),
+        pytest.raises(RuntimeError, match="forced expiration failure") as raised,
     ):
         cli.main(["--batch-size", "37"])
 
+    assert raised.value is original_error
     events = [record for record in caplog.records if record.getMessage().startswith("subscription_expiry_")]
     assert [record.getMessage() for record in events] == [
         "subscription_expiry_run_started",
@@ -136,9 +155,16 @@ def test_expiration_cli_does_not_commit_on_failure(monkeypatch, caplog) -> None:
         "error_type": "RuntimeError",
     }
     assert "forced expiration failure" not in caplog.text
+    report_exception.assert_called_once_with(
+        original_error,
+        operation=cli.Operation.EXPIRE_SUBSCRIPTIONS,
+        run_id=events[0].structured["run_id"],
+        batch_size=37,
+    )
 
 
 def test_expiration_cli_reports_missing_identity_as_diagnostic_invariant(monkeypatch, caplog) -> None:
+    report_exception = Mock()
     valid_subscription = Subscription(id=uuid4())
     make_transient_to_detached(valid_subscription)
     invalid_subscription = Subscription()
@@ -158,10 +184,24 @@ def test_expiration_cli_reports_missing_identity_as_diagnostic_invariant(monkeyp
 
     monkeypatch.setattr(cli, "SessionLocal", lambda: FakeSession())
     monkeypatch.setattr(cli, "expire_due_subscriptions", fake_expire)
+    monkeypatch.setattr(cli, "report_exception", report_exception)
 
     failure_text = "subscription returned without a persisted identity"
-    with caplog.at_level(logging.INFO, logger=cli.logger.name), pytest.raises(RuntimeError, match=failure_text):
+    with (
+        caplog.at_level(logging.INFO, logger=cli.logger.name),
+        pytest.raises(RuntimeError, match=failure_text) as raised,
+    ):
         cli.main(["--batch-size", "37"])
+
+    traceback = raised.value.__traceback__
+    assert traceback is not None
+    traceback_frames = []
+    while traceback is not None:
+        traceback_frames.append(traceback.tb_frame)
+        traceback = traceback.tb_next
+    assert any(
+        frame.f_code.co_filename == cli.__file__ and frame.f_code.co_name == "main" for frame in traceback_frames
+    )
 
     events = [record for record in caplog.records if record.getMessage().startswith("subscription_expiry_")]
     assert [record.getMessage() for record in events] == [
@@ -177,6 +217,53 @@ def test_expiration_cli_reports_missing_identity_as_diagnostic_invariant(monkeyp
     assert "subscription_expiry_transition_committed" not in caplog.text
     assert "subscription_expiry_run_succeeded" not in caplog.text
     assert failure_text not in caplog.text
+    report_exception.assert_called_once_with(
+        raised.value,
+        operation=cli.Operation.EXPIRE_SUBSCRIPTIONS,
+        failure_category=cli.FailureCategory.CONSISTENCY_INVARIANT_VIOLATION,
+        run_id=events[0].structured["run_id"],
+        batch_size=37,
+        invariant=cli.MISSING_PERSISTED_IDENTITY_INVARIANT,
+    )
+
+
+def test_sentry_reporting_failure_does_not_replace_expiration_failure(monkeypatch, caplog) -> None:
+    original_error = RuntimeError("forced expiration failure")
+
+    class FakeSession:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback) -> None:
+            return None
+
+    def fake_expire(db, command):
+        raise original_error
+
+    def fail_capture_exception(*args, **kwargs):
+        raise RuntimeError("forced Sentry failure")
+
+    monkeypatch.setattr(cli, "SessionLocal", lambda: FakeSession())
+    monkeypatch.setattr(cli, "expire_due_subscriptions", fake_expire)
+    monkeypatch.setattr(sentry_reporting.sentry_sdk, "capture_exception", fail_capture_exception)
+
+    with (
+        caplog.at_level(logging.INFO, logger=cli.logger.name),
+        pytest.raises(RuntimeError, match="forced expiration failure") as raised,
+    ):
+        cli.main(["--batch-size", "37"])
+
+    assert raised.value is original_error
+    events = [record for record in caplog.records if record.getMessage().startswith("subscription_expiry_")]
+    assert [record.getMessage() for record in events] == [
+        "subscription_expiry_run_started",
+        "subscription_expiry_run_failed",
+    ]
+    assert events[1].structured == {
+        "run_id": events[0].structured["run_id"],
+        "batch_size": 37,
+        "error_type": "RuntimeError",
+    }
 
 
 @pytest.mark.postgres

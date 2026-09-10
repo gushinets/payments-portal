@@ -11,13 +11,21 @@ from sqlalchemy import inspect
 
 from app.core.database import SessionLocal
 from app.core.observability import configure_logging
+from app.core.settings import settings
 from app.domains.billing.service import (
     ExpireDueSubscriptionsCommand,
     expire_due_subscriptions,
 )
+from app.infrastructure.sentry import (
+    FailureCategory,
+    Operation,
+    configure_sentry,
+    report_exception,
+)
 
 
 MAX_BATCH_SIZE = 1000
+MISSING_PERSISTED_IDENTITY_INVARIANT = "missing_persisted_identity"
 logger = logging.getLogger(__name__)
 
 
@@ -41,6 +49,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     configure_logging()
+    configure_sentry(settings)
     args = build_parser().parse_args(argv)
     command = ExpireDueSubscriptionsCommand(batch_size=args.batch_size)
     run_id = str(uuid4())
@@ -62,6 +71,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                     }
                 },
             )
+            report_exception(
+                error,
+                operation=Operation.EXPIRE_SUBSCRIPTIONS,
+                run_id=run_id,
+                batch_size=command.batch_size,
+            )
             raise
         subscription_ids: list[str] = []
         for subscription in expired:
@@ -73,11 +88,22 @@ def main(argv: Sequence[str] | None = None) -> int:
                         "structured": {
                             "run_id": run_id,
                             "batch_size": command.batch_size,
-                            "invariant": "missing_persisted_identity",
+                            "invariant": MISSING_PERSISTED_IDENTITY_INVARIANT,
                         }
                     },
                 )
-                raise RuntimeError("subscription returned without a persisted identity")
+                try:
+                    raise RuntimeError("subscription returned without a persisted identity")
+                except RuntimeError as error:
+                    report_exception(
+                        error,
+                        operation=Operation.EXPIRE_SUBSCRIPTIONS,
+                        failure_category=FailureCategory.CONSISTENCY_INVARIANT_VIOLATION,
+                        run_id=run_id,
+                        batch_size=command.batch_size,
+                        invariant=MISSING_PERSISTED_IDENTITY_INVARIANT,
+                    )
+                    raise
             subscription_ids.append(str(identity[0]))
         for subscription_id in subscription_ids:
             logger.info(
