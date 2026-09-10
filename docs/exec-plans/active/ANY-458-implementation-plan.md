@@ -6,7 +6,7 @@
 |---|---|
 | Feature | `ANY-407` |
 | Ticket | `ANY-458` |
-| Overall status | `todo` |
+| Overall status | `done` |
 | Execution order | Sequential only: Step 1 → verification → commit → Step 2 → … → Step 4 |
 | Steps / commits | 4 |
 | Prerequisite | `ANY-437` merged into `main` — **satisfied** |
@@ -403,10 +403,17 @@ The SDK configuration must make that ownership explicit rather than relying on d
 traces_sample_rate=0.0
 profiles_sample_rate=0.0
 enable_logs=False
-enable_metrics=False
+before_send_metric=_drop_metric
 propagate_traces=False
 auto_session_tracking=False
 ```
+
+For the pinned Sentry SDK `2.69.1`, `_drop_metric` is an application-owned
+callback that returns `None`, so metric telemetry is dropped before delivery.
+The final configuration intentionally does not pass `enable_metrics=False`:
+that option is ineffective in this SDK version and emits an SDK warning. This
+SDK-specific correction does not change ownership; Prometheus/OpenTelemetry
+remain the metrics owners and Sentry Metrics remain disabled/out of scope.
 
 Do not use deprecated `enable_tracing=False`.
 
@@ -485,7 +492,7 @@ The following are locked adapter policy, not deployment settings, and therefore 
 traces_sample_rate=0.0
 profiles_sample_rate=0.0
 enable_logs=False
-enable_metrics=False
+before_send_metric=_drop_metric
 propagate_traces=False
 auto_session_tracking=False
 ```
@@ -552,7 +559,7 @@ Direct links can be added later if deployment provides a stable supported query 
 
 # Step 1 — Establish the privacy-safe Sentry infrastructure and event contract
 
-**Status:** `todo`
+**Status:** `done`
 
 ## Goal
 
@@ -661,11 +668,15 @@ Test-only support under `apps/api/tests/support/` may be added only if a minimal
     traces_sample_rate=0.0
     profiles_sample_rate=0.0
     enable_logs=False
-    enable_metrics=False
+    before_send_metric=_drop_metric
     propagate_traces=False
     auto_session_tracking=False
     sample_rate=1.0
     ```
+
+    `_drop_metric` must return `None`, hard-dropping Sentry metric telemetry
+    before delivery. Intentionally do not pass `enable_metrics=False`; it is
+    ineffective and produces a warning with the pinned SDK `2.69.1`.
 
 12. Explicitly install only `AtexitIntegration`.
 
@@ -796,7 +807,8 @@ Test-only support under `apps/api/tests/support/` may be added only if a minimal
     - Sentry DSN/release are resolved by the existing `Settings` model and the adapter does not perform direct Sentry env lookup;
     - Sentry DSN requires explicit release;
     - enabled configuration has no default/auto integrations;
-    - Sentry logs, metrics, trace propagation, tracing sampling, profiling sampling and auto session tracking are explicitly disabled;
+    - Sentry logs, trace propagation, tracing sampling, profiling sampling and auto session tracking are explicitly disabled;
+    - `enable_metrics` is not configured, `before_send_metric` uses the application-owned drop callback, the callback returns `None`, and metric telemetry cannot produce a Sentry envelope item;
     - `LoggingIntegration`, `ExcepthookIntegration`, FastAPI/Starlette, SQLAlchemy and HTTPX are not enabled;
     - safe `AtexitIntegration` is enabled;
     - error tracing/performance is disabled;
@@ -892,7 +904,7 @@ Follow these decisions exactly:
    - `traces_sample_rate=0.0`
    - `profiles_sample_rate=0.0`
    - `enable_logs=False`
-   - `enable_metrics=False`
+   - `before_send_metric=_drop_metric`, with the callback returning `None`
    - `propagate_traces=False`
    - `auto_session_tracking=False`
    - error `sample_rate=1.0`
@@ -910,7 +922,7 @@ Follow these decisions exactly:
 23. Treat configuration and reporting failures differently: `SENTRY_DSN` without `SENTRY_RELEASE` must fail fast during `Settings` validation; SDK init/capture/transport failures after valid configuration must fail safe.
 24. Make Sentry reporting fail-safe. An SDK/reporting failure must never replace the original application failure. If a bounded diagnostic is emitted for a reporting failure, log only a static event and reporting exception type.
 25. Add focused `apps/api/tests/test_sentry_reporting.py` tests. Use a test-only SDK transport or equivalent mechanism to inspect the final sanitized captured event without any network request. Do not add a production transport abstraction solely for tests.
-26. Tests must verify Settings-owned DSN/release behavior, disabled configuration, explicit release validation, no adapter-side direct Sentry env lookup, disabled default/auto integrations, explicitly disabled logs/metrics/tracing sampling/profiling sampling/trace propagation/session tracking, only safe shutdown integration, exactly one error event, the exact top-level/subfield allowlist (including preserved `event_id`), absence of transaction/log events, privacy scrubbing, preserved safe stack/cause, exact context-value validation, safe correlation context, stable grouping inputs, and fail-safe reporting.
+26. Tests must verify Settings-owned DSN/release behavior, disabled configuration, explicit release validation, no adapter-side direct Sentry env lookup, disabled default/auto integrations, explicitly disabled logs/tracing sampling/profiling sampling/trace propagation/session tracking, `enable_metrics` absent from the configured options, metric telemetry hard-dropped by the `before_send_metric` callback, only safe shutdown integration, exactly one error event, the exact top-level/subfield allowlist (including preserved `event_id`), absence of transaction/log events, privacy scrubbing, preserved safe stack/cause, exact context-value validation, safe correlation context, stable grouping inputs, and fail-safe reporting.
 
 Implement only this step.
 Follow the decisions defined in this prompt.
@@ -964,7 +976,7 @@ uv run ruff format --check app/core/settings.py app/infrastructure/sentry.py tes
 
 # Step 2 — Integrate Sentry with the single HTTP failure boundary
 
-**Status:** `todo`
+**Status:** `done`
 
 ## Goal
 
@@ -1247,7 +1259,7 @@ uv run ruff format --check app/main.py app/http_errors.py tests/test_error_handl
 
 # Step 3 — Add Sentry reporting to the scheduled subscription-expiry boundary
 
-**Status:** `todo`
+**Status:** `done`
 
 ## Goal
 
@@ -1488,7 +1500,7 @@ If the then-current focused CLI test selection requires the repository PostgreSQ
 
 # Step 4 — Lock deployment, architecture, privacy and investigation contracts
 
-**Status:** `todo`
+**Status:** `done`
 
 ## Goal
 
@@ -1978,4 +1990,4 @@ Every material implementation decision required by the execution model is fixed 
 - architecture enforcement;
 - operational investigation path.
 
-Execution can therefore proceed sequentially without a second broad research/design phase.
+Execution was completed sequentially without requiring a second broad research/design phase.
