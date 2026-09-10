@@ -1131,6 +1131,7 @@ def check_python_boundaries(root: Path = ROOT) -> list[str]:
     for path in sorted(app_root.rglob("*.py")):
         relative = path.relative_to(root).as_posix()
         path_parts = path.relative_to(app_root).parts
+        is_sentry_adapter = path_parts == ("infrastructure", "sentry.py")
         in_core = path_parts[0] == "core"
         in_domains = path_parts[0] == "domains"
         in_integrations = path_parts[0] == "integrations"
@@ -1160,6 +1161,14 @@ def check_python_boundaries(root: Path = ROOT) -> list[str]:
 
         for imported in imports:
             rules: list[tuple[str, Callable[[str], bool], str]] = []
+            if not is_sentry_adapter:
+                rules.append(
+                    (
+                        "Sentry SDK adapter boundary",
+                        lambda target: module_matches(target, "sentry_sdk"),
+                        "import app.infrastructure.sentry instead",
+                    )
+                )
             if in_core:
                 rules.append(
                     (

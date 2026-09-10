@@ -32,6 +32,8 @@ x-api-environment: &api-environment
   FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-*}
   OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
   OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-payment-portal-api}
+  SENTRY_DSN: ${SENTRY_DSN:-}
+  SENTRY_RELEASE: ${SENTRY_RELEASE:-}
 
 services:
   postgres:

@@ -97,6 +97,11 @@ def event_payload(transport: RecordingTransport) -> dict[str, object]:
     return transport.items[0][1]
 
 
+def test_canonical_pytest_environment_disables_real_sentry() -> None:
+    assert os.environ["SENTRY_DSN"] == ""
+    assert os.environ["SENTRY_RELEASE"] == ""
+
+
 def test_empty_dsn_is_a_real_noop() -> None:
     with patch.object(sentry_reporting.sentry_sdk, "init") as init:
         configure_sentry(make_settings(sentry_dsn="", sentry_release=""))

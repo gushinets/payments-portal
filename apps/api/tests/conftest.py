@@ -20,6 +20,8 @@ from .support.settings import DEFAULT_API_TEST_ENV
 
 
 load_dotenv()
+os.environ["SENTRY_DSN"] = ""
+os.environ["SENTRY_RELEASE"] = ""
 for name, value in DEFAULT_API_TEST_ENV.items():
     os.environ.setdefault(name, value)
 

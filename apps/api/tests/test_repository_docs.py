@@ -479,7 +479,11 @@ def test_observability_docs_preserve_correlation_and_ownership_contract() -> Non
 
     assert "production monitoring and alerting work" in reliability_normalized
     assert "belongs to any-86" in reliability_normalized
-    assert "sentry remains outside any-437 scope as a separate follow-up" in reliability_normalized
+    assert "sentry is a separate optional outbound backend application-error destination" in reliability_normalized
+    assert (
+        "does not replace the otlp backend, json logs, prometheus/opentelemetry metrics, or persisted state"
+        in reliability_normalized
+    )
 
     assert (
         "a failed run starts with subscription_expiry_run_started and ends with subscription_expiry_run_failed"

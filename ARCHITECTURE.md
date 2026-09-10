@@ -196,8 +196,28 @@ matched route template, exception type, and one application-owned
 failure-location fingerprint containing only a repository-relative module/file
 identifier, function name, and line number. It never includes source text,
 locals, arguments, exception messages, raw traceback text, request inputs,
-provider payloads, secrets, or payment data. Sentry and new monitoring remain
-outside this architecture decision.
+provider payloads, secrets, or payment data.
+
+Reportable failures follow the same ownership direction:
+
+```text
+Domain/Application
+    -> semantic errors
+
+outer Presentation/process boundary
+    -> structured diagnostic
+    -> explicit Sentry report according to policy
+```
+
+The outer boundary owns at most one explicit report while preserving the
+application log as an independent diagnostic signal. Mapped expected business
+errors are not Sentry issues. Errors carry semantic meaning rather than Sentry
+flags, and Domain/Application remain independent from Sentry. Direct
+`sentry_sdk` imports are restricted to `app/infrastructure/sentry.py`; boundary
+callers and composition roots use that application-owned adapter. Sentry is the
+backend application-failure investigation entry point, not a replacement for
+OpenTelemetry traces, bounded JSON logs, Prometheus/OpenTelemetry metrics, or
+persisted business state.
 
 ## Authoritative details
 
