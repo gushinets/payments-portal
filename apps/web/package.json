@@ -38,6 +38,6 @@
     "msw": "^2.7.0",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "vite": "^7.3.6",
-    "vitest": "^3.2.7"
+    "vitest": "^4.1.11"
   }
 }
