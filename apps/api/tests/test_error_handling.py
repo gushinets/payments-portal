@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import json
 import logging
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -20,6 +23,7 @@ from app.domains.identity.errors import (
     UnknownProductPlanError,
 )
 from app.http_errors import app_error_handler
+from app.infrastructure.sentry import Operation
 from app.main import create_app
 from app.payment_providers.registry import PaymentProviderRegistry
 
@@ -40,6 +44,7 @@ def make_request() -> Request:
             "path": "/api/auth/checkout-intent",
             "headers": [],
             "query_string": b"",
+            "route": SimpleNamespace(path="/api/auth/checkout-intent"),
         }
     )
 
@@ -48,6 +53,12 @@ def test_create_app_registers_the_central_app_error_handler() -> None:
     application = create_app()
 
     assert application.exception_handlers[AppError] is app_error_handler
+
+
+def test_sentry_is_configured_after_observability_at_the_composition_root() -> None:
+    source = Path(create_app.__code__.co_filename).read_text(encoding="utf-8")
+
+    assert source.rfind("configure_observability(app, engine)") < source.rfind("configure_sentry(settings)")
 
 
 @pytest.mark.parametrize(
@@ -64,19 +75,22 @@ def test_checkout_app_errors_use_structured_code(
     status_code: int,
     code: str,
 ) -> None:
-    response = app_error_handler(make_request(), error)
+    with patch("app.http_errors.report_exception") as report_exception:
+        response = app_error_handler(make_request(), error)
 
     assert response.status_code == status_code
     assert json.loads(response.body) == {"detail": {"code": code}}
+    report_exception.assert_not_called()
 
 
 def test_missing_documents_are_the_only_safe_details_exposed() -> None:
     error = MissingRequiredDocumentsError([{"document_version_id": "document-id"}])
     error.details_safe["internal"] = "must not be exposed"
-    response = app_error_handler(
-        make_request(),
-        error,
-    )
+    with patch("app.http_errors.report_exception") as report_exception:
+        response = app_error_handler(
+            make_request(),
+            error,
+        )
 
     assert response.status_code == 409
     assert json.loads(response.body) == {
@@ -85,34 +99,44 @@ def test_missing_documents_are_the_only_safe_details_exposed() -> None:
             "documents": [{"document_version_id": "document-id"}],
         }
     }
+    report_exception.assert_not_called()
 
 
 def test_unmapped_app_errors_fail_closed_with_generic_detail() -> None:
-    response = app_error_handler(
-        make_request(),
-        AppError(
-            "provider_secret_error",
-            message_safe="internal provider message",
-            details_safe={"token": "secret-token"},
-        ),
+    error = AppError(
+        "provider_secret_error",
+        message_safe="internal provider message",
+        details_safe={"token": "secret-token"},
     )
+    with patch("app.http_errors.report_exception") as report_exception:
+        response = app_error_handler(make_request(), error)
 
     assert response.status_code == 500
     assert json.loads(response.body) == {"detail": {"code": "internal_server_error"}}
+    report_exception.assert_called_once()
+    assert report_exception.call_args.args == (error,)
 
 
 def test_unmapped_checkout_errors_fail_closed_with_generic_detail() -> None:
-    response = app_error_handler(make_request(), UnmappedCheckoutError())
+    error = UnmappedCheckoutError()
+    with patch("app.http_errors.report_exception") as report_exception:
+        response = app_error_handler(make_request(), error)
 
     assert response.status_code == 500
     assert json.loads(response.body) == {"detail": {"code": "internal_server_error"}}
+    report_exception.assert_called_once()
+    assert report_exception.call_args.args == (error,)
 
 
 def test_unmapped_password_reset_errors_fail_closed_with_generic_detail() -> None:
-    response = app_error_handler(make_request(), UnmappedPasswordResetError())
+    error = UnmappedPasswordResetError()
+    with patch("app.http_errors.report_exception") as report_exception:
+        response = app_error_handler(make_request(), error)
 
     assert response.status_code == 500
     assert json.loads(response.body) == {"detail": {"code": "internal_server_error"}}
+    report_exception.assert_called_once()
+    assert report_exception.call_args.args == (error,)
 
 
 def test_unmapped_app_error_logs_one_bounded_failure(caplog: pytest.LogCaptureFixture) -> None:
@@ -123,7 +147,10 @@ def test_unmapped_app_error_logs_one_bounded_failure(caplog: pytest.LogCaptureFi
         details_safe={"authorization": "Bearer secret-token"},
     )
 
-    with caplog.at_level(logging.ERROR, logger="payment_portal.http"):
+    with (
+        patch("app.http_errors.report_exception") as report_exception,
+        caplog.at_level(logging.ERROR, logger="payment_portal.http"),
+    ):
         response = app_error_handler(make_request(), error)
 
     diagnostics = [record for record in caplog.records if record.getMessage() == "http_internal_failure"]
@@ -132,6 +159,14 @@ def test_unmapped_app_error_logs_one_bounded_failure(caplog: pytest.LogCaptureFi
     assert len(diagnostics) == 1
     assert diagnostics[0].structured["error_type"] == "AppError"
     assert diagnostics[0].structured["error_code"] == "provider_secret_error"
+    report_exception.assert_called_once_with(
+        error,
+        operation=Operation.HTTP_REQUEST,
+        method="POST",
+        route="/api/auth/checkout-intent",
+        error_code="provider_secret_error",
+        failure_location=None,
+    )
     assert secret_message not in caplog.text
     assert "secret-token" not in caplog.text
 
@@ -139,14 +174,26 @@ def test_unmapped_app_error_logs_one_bounded_failure(caplog: pytest.LogCaptureFi
 def test_semantic_app_error_logs_type_without_null_error_code(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    with caplog.at_level(logging.ERROR, logger="payment_portal.http"):
-        response = app_error_handler(make_request(), UnmappedCheckoutError())
+    error = UnmappedCheckoutError()
+    with (
+        patch("app.http_errors.report_exception") as report_exception,
+        caplog.at_level(logging.ERROR, logger="payment_portal.http"),
+    ):
+        response = app_error_handler(make_request(), error)
 
     diagnostics = [record for record in caplog.records if record.getMessage() == "http_internal_failure"]
     assert response.status_code == 500
     assert len(diagnostics) == 1
     assert diagnostics[0].structured["error_type"] == "UnmappedCheckoutError"
     assert "error_code" not in diagnostics[0].structured
+    report_exception.assert_called_once_with(
+        error,
+        operation=Operation.HTTP_REQUEST,
+        method="POST",
+        route="/api/auth/checkout-intent",
+        error_code=None,
+        failure_location=None,
+    )
 
 
 def test_unexpected_failures_are_converted_and_logged_safely(
@@ -154,11 +201,14 @@ def test_unexpected_failures_are_converted_and_logged_safely(
 ) -> None:
     secret_message = "unexpected secret token: do-not-log"
     request_value = "request-secret-value"
+    raised_errors: list[RuntimeError] = []
 
     def raise_unexpected_failure(request_value: str) -> None:
         local_secret = "local-secret-value"
         del local_secret
-        raise RuntimeError(secret_message)
+        error = RuntimeError(secret_message)
+        raised_errors.append(error)
+        raise error
 
     application = create_app()
     application.add_api_route(
@@ -167,7 +217,10 @@ def test_unexpected_failures_are_converted_and_logged_safely(
         methods=["GET"],
     )
 
-    with caplog.at_level(logging.ERROR, logger="payment_portal.http"):
+    with (
+        patch("app.http_errors.report_exception") as report_exception,
+        caplog.at_level(logging.ERROR, logger="payment_portal.http"),
+    ):
         response = TestClient(application).get(
             f"/test-unexpected/{request_value}?query_secret=query-secret-value",
             headers={"Authorization": "Bearer header-secret-value"},
@@ -191,6 +244,15 @@ def test_unexpected_failures_are_converted_and_logged_safely(
     assert "local_secret" not in caplog.text
     assert "raise RuntimeError" not in caplog.text
     assert "Traceback (most recent call last)" not in caplog.text
+    assert len(raised_errors) == 1
+    report_exception.assert_called_once_with(
+        raised_errors[0],
+        operation=Operation.HTTP_REQUEST,
+        method="GET",
+        route="/test-unexpected/{request_value}",
+        error_code=None,
+        failure_location=None,
+    )
 
 
 def test_unexpected_failures_from_application_code_identify_the_origin_safely(
@@ -208,7 +270,10 @@ def test_unexpected_failures_from_application_code_identify_the_origin_safely(
         methods=["GET"],
     )
 
-    with caplog.at_level(logging.ERROR, logger="payment_portal.http"):
+    with (
+        patch("app.http_errors.report_exception") as report_exception,
+        caplog.at_level(logging.ERROR, logger="payment_portal.http"),
+    ):
         response = TestClient(application).get(
             "/test-application-failure",
             headers={"Authorization": "Bearer header-secret-value"},
@@ -225,6 +290,16 @@ def test_unexpected_failures_from_application_code_identify_the_origin_safely(
     assert structured["failure_location"]["module"] == "apps/api/app/payment_providers/registry.py"
     assert structured["failure_location"]["function"] == "get"
     assert isinstance(structured["failure_location"]["line"], int)
+    reported_error = report_exception.call_args.args[0]
+    assert isinstance(reported_error, LookupError)
+    report_exception.assert_called_once_with(
+        reported_error,
+        operation=Operation.HTTP_REQUEST,
+        method="GET",
+        route="/test-application-failure",
+        error_code=None,
+        failure_location=structured["failure_location"],
+    )
     assert "unexpected_failure_middleware" not in str(structured)
     assert secret_message not in caplog.text
     assert "header-secret-value" not in caplog.text
@@ -243,7 +318,9 @@ def test_password_reset_app_errors_use_structured_code(
     status_code: int,
     code: str,
 ) -> None:
-    response = app_error_handler(make_request(), error)
+    with patch("app.http_errors.report_exception") as report_exception:
+        response = app_error_handler(make_request(), error)
 
     assert response.status_code == status_code
     assert json.loads(response.body) == {"detail": {"code": code}}
+    report_exception.assert_not_called()
