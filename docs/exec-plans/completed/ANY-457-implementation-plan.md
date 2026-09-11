@@ -7,7 +7,7 @@
 | Project | `Payment portal` |
 | Parent | `ANY-407` — target Payment Portal architecture |
 | Ticket | `ANY-457` — Deactivate CloudPayments Runtime and Frontend Checkout |
-| Overall status | `todo` |
+| Overall status | `done` |
 | Architectural position | Transitional deactivation gate after ANY-407 Step 4 and before Step 5 |
 | Required predecessor | `ANY-454` completed and present in `main` |
 | Blocks | `ANY-455` — Establish Persistence Boundary |
@@ -274,16 +274,16 @@ Required user behavior:
 - do not manufacture a replacement billing flow;
 - do not add a fake success path.
 
-Suggested copy:
+Suggested localized copy (English meaning):
 
 ```text
-Оплата временно недоступна. Попробуйте позже.
+Payment is temporarily unavailable. Please try again later.
 ```
 
-Button copy may be:
+Button copy may be (English meaning):
 
 ```text
-Оплата недоступна
+Payment unavailable
 ```
 
 Preserve current catalog, auth, session, account, ownership, and legal-document behavior unrelated to initiating payment.
@@ -333,7 +333,7 @@ No compatibility API should be invented for hypothetical traffic that does not e
 
 # Step 1 — Remove CloudPayments from backend composition and routing
 
-**Status:** `todo`  
+**Status:** `done`  
 **Commit:** `feat(api): deactivate CloudPayments runtime`
 
 ## Goal
@@ -485,7 +485,7 @@ Normal FastAPI composition has no active CloudPayments adapter/client and no Clo
 
 # Step 2 — Align backend checkout/tests with the deactivated default runtime
 
-**Status:** `todo`  
+**Status:** `done`  
 **Commit:** `test(api): align checkout with deactivated provider runtime`
 
 ## Goal
@@ -617,7 +617,7 @@ Default application tests now describe the deactivated runtime, while retained C
 
 # Step 3 — Remove CloudPayments from supported runtime configuration and repository harness
 
-**Status:** `todo`  
+**Status:** `done`  
 **Commit:** `chore(runtime): remove CloudPayments from supported configuration`
 
 ## Goal
@@ -781,7 +781,7 @@ Supported Portal startup/harness/Compose configuration no longer contains a Clou
 
 # Step 4 — Make frontend checkout explicitly unavailable and stop all payment preparation
 
-**Status:** `todo`  
+**Status:** `done`  
 **Commit:** `feat(web): show checkout unavailable without CloudPayments`
 
 ## Goal
@@ -866,7 +866,7 @@ Required outcome:
 2. Retain the CloudPayments adapter implementation and type declarations unless a tiny removal is strictly required; this ticket does not physically delete broad provider code.
 3. With no registered required adapter, the checkout page must not render the CloudPayments script.
 4. Treat checkoutAdapterStatus === "disabled" as an explicit terminal unavailable state.
-5. Show neutral Russian copy such as "Оплата временно недоступна. Попробуйте позже." and use a disabled/unavailable payment action.
+5. Show neutral temporary-unavailable copy in the current customer locale and use a disabled/unavailable payment action.
 6. goToPaymentResult() must short-circuit before POST /api/auth/checkout-intent when checkout is disabled.
 7. Do not write payment-result session storage, resolve/start an adapter, or attempt any provider action while disabled.
 8. Ensure a stale missing-document payment-continuation state cannot call /api/legal/acceptances and continue payment while checkout is disabled.
@@ -909,7 +909,7 @@ Browser checkout contains no active CloudPayments adapter/script and does not cr
 
 # Step 5 — Replace active CloudPayments browser E2E with the deactivated checkout contract
 
-**Status:** `todo`  
+**Status:** `done`  
 **Commit:** `test(e2e): cover unavailable checkout without CloudPayments`
 
 ## Goal
@@ -1018,7 +1018,7 @@ Browser E2E now proves the supported deactivated checkout contract, the React-ru
 
 # Step 6 — Update sources of truth, generated API contract, and run final verification
 
-**Status:** `todo`  
+**Status:** `done`  
 **Commit:** `docs: document CloudPayments runtime deactivation`
 
 ## Goal

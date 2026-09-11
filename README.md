@@ -5,19 +5,22 @@ service for AnytoolAI products. Each production deployment is one contour
 (compliance zone). This repository currently ships the `ru` contour.
 
 It contains a Next.js web application, a FastAPI API, PostgreSQL persistence,
-and the `ru` CloudPayments adapter. Catalog products and plans, local
+and retained CloudPayments integration source. Catalog products and plans, local
 subscriptions, entitlement rules, entitlements, and subscription audit are
 implemented. The private regional entitlement/access API for Platform Kernel
 is still planned. Platform Kernel code is maintained in the separate
 [anytoolai-platform](https://github.com/gushinets/anytoolai-platform) repository.
 
 Payment Portal is still under development and is not running as a production
-billing service. Direct CloudPayments support is a transitional Portal-managed
-direct-provider capability; there are no production CloudPayments subscribers
-or subscriptions to migrate. The sole long-term production target is the
-external-billing-managed flow. See the current [product scope](docs/PRODUCT.md),
-[billing authority](docs/architecture/billing-authority.md), and contour and
-Region Resolver architecture in [ARCHITECTURE.md](ARCHITECTURE.md).
+billing service. CloudPayments implementation and persistence source is
+retained for transitional cleanup, but normal backend and frontend runtime no
+longer initializes, registers, loads, or invokes it. Checkout is temporarily
+unavailable until a separately selected and implemented billing integration
+exists; there are no production CloudPayments subscribers or subscriptions to
+migrate. The sole long-term production target is the external-billing-managed
+flow. See the current [product scope](docs/PRODUCT.md), [billing
+authority](docs/architecture/billing-authority.md), and contour and Region
+Resolver architecture in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Start here
 
@@ -130,7 +133,8 @@ recreate the development database with `npm run repo:reset` or
 
 - `apps/web` — Next.js portal UI. Current routes are the `ru` contour and its
   legal-page renderer.
-- `apps/api` — FastAPI identity, legal, checkout, payment, and webhook API.
+- `apps/api` — FastAPI identity, legal, checkout, and payment API. Retained
+  CloudPayments source is not mounted in normal runtime.
 - `apps/api/alembic` — PostgreSQL schema and first-install legal seed.
 - `docs` — authoritative product, architecture, design, reliability, security,
   legal, planning, and generated documentation.
@@ -219,8 +223,8 @@ template.
 
 Never commit production secrets. Card data is handled by the responsible
 external payment boundary and must not be collected or stored by this
-repository. For the current transitional direct-provider flow, that boundary
-is CloudPayments.
+repository. No direct payment provider is active in normal runtime; retained
+CloudPayments source is not a current payment boundary.
 
 ## Current limitations
 
@@ -230,4 +234,6 @@ is CloudPayments.
 - Contour confirmation via Region Resolver is planned and not implemented.
 - The private regional entitlement/access API for Platform Kernel is planned
   and not implemented yet.
+- Checkout is deliberately unavailable until a billing integration is selected
+  and implemented for the normal runtime.
 - Legal documents are drafts until reviewed and approved by counsel.

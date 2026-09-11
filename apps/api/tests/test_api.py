@@ -6,6 +6,7 @@ import hmac
 import json
 import logging
 import uuid
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta, timezone
 from io import StringIO
 from typing import Any
@@ -14,7 +15,7 @@ from unittest.mock import Mock
 from apps.api.tests.support.settings import configure_api_test_environment
 from apps.api.tests.support.settings import override_settings
 
-configure_api_test_environment(CLOUDPAYMENTS_PUBLIC_ID="pk_test_provider")
+configure_api_test_environment()
 
 import pytest  # noqa: E402
 from fastapi import HTTPException  # noqa: E402
@@ -98,6 +99,12 @@ client = TestClient(app)
 cloudpayments_app = create_retained_cloudpayments_test_app()
 cloudpayments_client = TestClient(cloudpayments_app)
 _original_verify_cloudpayments_signature = verify_cloudpayments_signature
+
+
+@pytest.fixture(scope="module", autouse=True)
+def retained_cloudpayments_settings() -> Iterator[None]:
+    with override_settings(settings, cloudpayments_public_id="pk_test_provider"):
+        yield
 
 
 def _verified_webhook_for_test(raw_body: bytes, headers: dict[str, str]) -> bool:

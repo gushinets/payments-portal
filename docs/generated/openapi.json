@@ -1431,46 +1431,6 @@
         ]
       }
     },
-    "/api/cloudpayments/{endpoint}": {
-      "post": {
-        "operationId": "receive_cloudpayments_webhook_api_cloudpayments__endpoint__post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "endpoint",
-            "required": true,
-            "schema": {
-              "title": "Endpoint",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Receive Cloudpayments Webhook",
-        "tags": [
-          "cloudpayments"
-        ]
-      }
-    },
     "/api/health/live": {
       "get": {
         "operationId": "liveness_api_health_live_get",
