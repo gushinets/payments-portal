@@ -117,6 +117,13 @@ class Settings(BaseSettings):
             return validate_production_public_url(value, "APP_PUBLIC_BASE_URL")
         return value
 
+    @field_validator("sentry_dsn")
+    @classmethod
+    def require_https_sentry_dsn_in_production(cls, value: str, info: ValidationInfo) -> str:
+        if value and info.data.get("app_env") == AppEnv.PRODUCTION:
+            return validate_production_public_url(value, "SENTRY_DSN")
+        return value
+
     @field_validator("cloudpayments_api_base_url")
     @classmethod
     def require_cloudpayments_api_origin(cls, value: str) -> str:

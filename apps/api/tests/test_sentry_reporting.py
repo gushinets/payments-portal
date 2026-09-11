@@ -40,6 +40,7 @@ from apps.api.tests.support.settings import DEFAULT_API_TEST_ENV
 
 
 TEST_DSN = "http://public@example.test/1"
+HTTPS_TEST_DSN = "https://public@example.test/1"
 TEST_RELEASE = "payments-portal-api@458"
 TRACE_ID = "0123456789abcdef0123456789abcdef"
 SPAN_ID = "0123456789abcdef"
@@ -74,6 +75,15 @@ def make_settings(**overrides: object) -> Settings:
         "sentry_release": TEST_RELEASE,
     }
     return Settings(**(values | overrides))
+
+
+def make_production_settings(**overrides: object) -> Settings:
+    return make_settings(
+        app_env=AppEnv.PRODUCTION,
+        app_public_base_url="https://payments.example.com",
+        cors_allow_origins=("https://payments.example.com",),
+        **overrides,
+    )
 
 
 def sentry_options() -> dict[str, object]:
@@ -137,6 +147,33 @@ def test_settings_require_release_when_sentry_is_enabled() -> None:
         make_settings(sentry_release="   ")
 
     assert "SENTRY_RELEASE is required when SENTRY_DSN is configured" in str(error.value)
+
+
+def test_settings_reject_http_sentry_dsn_in_production() -> None:
+    with pytest.raises(ValidationError) as error:
+        make_production_settings(sentry_dsn=TEST_DSN)
+
+    assert "SENTRY_DSN must use https in production" in str(error.value)
+
+
+def test_settings_accept_https_sentry_dsn_in_production() -> None:
+    settings = make_production_settings(sentry_dsn=HTTPS_TEST_DSN)
+
+    assert settings.sentry_dsn == HTTPS_TEST_DSN
+
+
+@pytest.mark.parametrize("app_env", [AppEnv.DEVELOPMENT, AppEnv.TEST])
+def test_settings_allow_http_sentry_dsn_outside_production(app_env: AppEnv) -> None:
+    settings = make_settings(app_env=app_env, sentry_dsn=TEST_DSN)
+
+    assert settings.sentry_dsn == TEST_DSN
+
+
+def test_settings_allow_empty_sentry_dsn_in_production() -> None:
+    settings = make_production_settings(sentry_dsn="", sentry_release="")
+
+    assert settings.sentry_dsn == ""
+    assert settings.sentry_release == ""
 
 
 def test_enabled_configuration_allows_only_safe_shutdown_integration(
