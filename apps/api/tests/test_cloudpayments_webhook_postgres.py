@@ -37,7 +37,6 @@ from app.domains.billing.service import (  # noqa: E402
     expire_due_subscriptions,
 )
 from app.infrastructure.queries.subscriptions import get_active_entitlement_for_scope  # noqa: E402
-from app.main import app  # noqa: E402
 from app.models import (  # noqa: E402
     BillingPeriod,
     Entitlement,
@@ -62,6 +61,10 @@ from app.models import (  # noqa: E402
     UserStatus,
     User,
 )
+from apps.api.tests.support.cloudpayments import create_retained_cloudpayments_test_app  # noqa: E402
+
+
+app = create_retained_cloudpayments_test_app()
 
 
 @pytest.fixture
