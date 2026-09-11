@@ -29,12 +29,12 @@ monitoring outside this repository's local Compose assumptions.
 
 Production exposes optional `SENTRY_DSN` and `SENTRY_RELEASE` values to the
 shared API/migration environment. An empty DSN keeps Sentry disabled; when a
-deployment supplies a DSN, it must also supply the immutable release identifier
-through `SENTRY_RELEASE`. `APP_ENV` remains the Sentry environment source and
-`OTEL_SERVICE_NAME` remains the service-identity source. The repository does not
-hardcode a DSN, discover releases from container git state, or expose separate
-Sentry enablement, environment, service, sampling, debug, Spotlight, metrics,
-or logging switches.
+production deployment supplies a DSN, it must use HTTPS and must also supply
+the immutable release identifier through `SENTRY_RELEASE`. `APP_ENV` remains
+the Sentry environment source and `OTEL_SERVICE_NAME` remains the
+service-identity source. The repository does not hardcode a DSN, discover
+releases from container git state, or expose separate Sentry enablement,
+environment, service, sampling, debug, Spotlight, metrics, or logging switches.
 
 Sentry is an optional outbound backend application-error destination, separate
 from the optional OTLP telemetry backend. It does not own or receive tracing,

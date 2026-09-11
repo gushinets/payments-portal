@@ -6,7 +6,7 @@
 |---|---|
 | Feature | `ANY-407` |
 | Ticket | `ANY-458` |
-| Overall status | `todo` — post-review remediation in progress |
+| Overall status | `done` |
 | Execution order | Sequential only: Step 1 → verification → commit → Step 2 → … → Step 4 |
 | Steps / commits | 4 |
 | Prerequisite | `ANY-437` merged into `main` — **satisfied** |
@@ -218,12 +218,6 @@ Enable only `AtexitIntegration` for transport shutdown/flush, using a silent cal
 
 This means the application owns exactly where an exception becomes a Sentry event.
 
-The centralized HTTP failure middleware remains the ordinary reporting
-boundary. If an existing outer boundary catches a reportable exception and
-converts or absorbs it before that middleware can observe it, that boundary
-owns exactly one explicit report before conversion/absorption. This narrow rule
-does not permit arbitrary Sentry calls from Domain/Application business logic.
-
 ## 2.3 Error-reporting policy
 
 Use one small closed infrastructure-owned category vocabulary:
@@ -234,14 +228,6 @@ integration_failure
 unknown_external_outcome
 unexpected_exception
 consistency_invariant_violation
-```
-
-Use the closed operation vocabulary:
-
-```text
-HTTP_REQUEST          -> "http_request"
-EXPIRE_SUBSCRIPTIONS  -> "expire_subscriptions"
-PASSWORD_RESET_EMAIL  -> "password_reset_email"
 ```
 
 Classification policy:
@@ -345,12 +331,6 @@ Sentry remains useful because the event retains:
 - function names;
 - line numbers;
 - safe cause/chaining structure.
-
-Safe repository-relative Windows filenames normalize `\` separators to `/`
-before component validation. Raw absolute, rooted, drive-qualified and UNC
-paths remain forbidden, as do traversal (`.` / `..`) and empty path
-components. This normalization is deterministic and does not use filesystem
-resolution.
 
 It must not retain:
 
@@ -475,11 +455,6 @@ When `SENTRY_DSN` is empty:
 When `SENTRY_DSN` is configured:
 
 - `SENTRY_RELEASE` is required;
-- production requires the DSN to pass the existing production public-URL
-  policy, including HTTPS; an empty production DSN remains disabled;
-- development/test may use HTTP DSNs for controlled local/test transports;
-- a Sentry DSN is not treated as an origin URL because it contains credentials
-  and a project path;
 - deployment/CI owns the release value;
 - runtime git revision discovery must not be used.
 
@@ -661,7 +636,6 @@ Test-only support under `apps/api/tests/support/` may be added only if a minimal
    ```text
    HTTP_REQUEST          -> "http_request"
    EXPIRE_SUBSCRIPTIONS  -> "expire_subscriptions"
-   PASSWORD_RESET_EMAIL  -> "password_reset_email"
    ```
 
    `report_exception(...)` must not accept arbitrary free-form operation strings.
@@ -909,7 +883,7 @@ Follow these decisions exactly:
    - `unknown_external_outcome`
    - `unexpected_exception`
    - `consistency_invariant_violation`
-   Also define the closed operation vocabulary for this ticket: `http_request`, `expire_subscriptions`, and `password_reset_email`. Do not accept arbitrary free-form operation tags.
+   Also define the closed operation vocabulary for this ticket: `http_request` and `expire_subscriptions`. Do not accept arbitrary free-form operation tags.
 9. Implement semantic classification without parsing messages:
    - `PaymentsOperationDeclinedError` => not reportable
    - `PaymentsTimeoutError` => `unknown_external_outcome`
@@ -1907,86 +1881,6 @@ ANY-458 is complete when:
 ## Proposed commit
 
 `chore(api): lock Sentry operational contract`
-
----
-
-# Post-review remediation — PR #92
-
-**Status:** `todo`
-
-The original implementation Steps 1–4 remain completed and approved. PR #92
-review identified four bounded corrections; they are executed sequentially
-without reopening the runtime architecture:
-
-| Remediation | Status | Scope |
-|---|---|---|
-| R1 | `done` | Record the approved review corrections in this plan |
-| R2 | `todo` | Require HTTPS for configured production Sentry DSNs |
-| R3 | `todo` | Normalize safe Windows-relative stack filenames |
-| R4 | `todo` | Report webhook processing failure before HTTP conversion |
-| R5 | `todo` | Report absorbed password-reset email delivery failure |
-| R6 | `todo` | Final contract/documentation alignment |
-
-## Locked review corrections
-
-### Production DSN transport
-
-An empty production `SENTRY_DSN` remains valid and keeps Sentry disabled. A
-configured production DSN must pass the existing
-`validate_production_public_url(...)` policy and therefore use HTTPS.
-Development/test may retain HTTP DSNs for controlled local/test transports.
-Do not use the origin-only validator: Sentry DSNs contain credentials and a
-project path. The existing explicit-release requirement remains unchanged.
-
-### Platform-neutral stack filenames
-
-Safe repository-relative Windows filenames such as
-`app\payment_providers\registry.py` normalize to
-`app/payment_providers/registry.py`. Raw absolute, rooted, drive-qualified and
-UNC paths must still be rejected. After separator normalization, traversal,
-`.` / `..`, duplicate/empty components, whitespace and control characters must
-also be rejected. The sanitizer remains a deterministic positive allowlist and
-must not use host-dependent filesystem resolution.
-
-### Existing catch-and-convert/absorb boundaries
-
-The centralized HTTP failure middleware remains the default owner of HTTP
-failure reporting. An existing outer boundary that catches a reportable
-exception and converts or absorbs it before the middleware can observe it must
-make exactly one explicit report before conversion/absorption. This is a narrow
-boundary rule, not permission to report from Domain/Application business logic.
-
-The existing CloudPayments webhook catch-and-convert boundary reports the
-original processing exception after preserving failed durable webhook state and
-the existing bounded diagnostic, but before its existing `HTTPException(500)`.
-It reuses `Operation.HTTP_REQUEST`, `request.method`, the static route template
-`/api/cloudpayments/{endpoint}`, and the stable error code
-`normalization_unexpected_error`. It does not override classification or pass
-the runtime endpoint, payload, headers, provider/customer/payment identifiers,
-or durable entity IDs. CloudPayments behavior, transactions, contracts, and
-response semantics remain unchanged; redesign/decommission is separate work.
-
-The existing `send_password_reset_email_safely(...)` callback is an outer
-background-process boundary because it intentionally absorbs SMTP/email
-delivery exceptions to preserve the accepted HTTP response. It reports the
-same exception exactly once using:
-
-```text
-operation=Operation.PASSWORD_RESET_EMAIL
-failure_category=FailureCategory.INTEGRATION_FAILURE
-```
-
-The existing failed metric, warning diagnostic, return behavior, and execution
-model remain unchanged. No email address, reset URL, reset token, SMTP
-credential, message body, user/customer identifier, exception message, local,
-or other request data may enter the Sentry reporting arguments or event.
-
-### Rejected non-blocking review nit
-
-Do not introduce a new production composition-root callable solely to make the
-source-order test for `configure_observability(...)` /
-`configure_sentry(...)` easier to mock. The current ordering is approved; this
-CodeRabbit maintainability nit is not part of remediation.
 
 ---
 

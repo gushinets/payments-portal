@@ -159,6 +159,13 @@ The representative incident journeys are:
    a missing persisted identity is reported separately as
    `subscription_expiry_diagnostic_invariant_violated`. The lifecycle changes are already committed at this point, so `subscription_expiry_run_failed` is not emitted, although the CLI still propagates the diagnostic invariant exception.
 
+5. Password-reset email delivery: the existing background callback intentionally
+   absorbs delivery exceptions so the accepted HTTP response remains unchanged.
+   It preserves the failed metric and bounded warning, and reports the same
+   exception exactly once as the `password_reset_email` operation with the
+   `integration_failure` category. The report carries no email address, reset
+   URL, token, SMTP data, message content, or other email-specific context.
+
 Scheduled expiry is not an HTTP request and does not reuse request context. Its
 `run_id` is generated for that command invocation only. The committed
 transition diagnostics are emitted after the current lifecycle operation

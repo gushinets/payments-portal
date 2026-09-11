@@ -209,6 +209,14 @@ outer Presentation/process boundary
     -> explicit Sentry report according to policy
 ```
 
+The centralized HTTP failure boundary is the default owner of HTTP failure
+reporting. When an existing outer boundary catches a reportable exception and
+converts or absorbs it before that centralized boundary can observe it, the
+catching boundary owns exactly one explicit report before conversion or
+absorption. This applies to the existing CloudPayments webhook conversion and
+password-reset email background callback. It does not change the dependency
+direction or permit Sentry reporting from Domain/Application business logic.
+
 The outer boundary owns at most one explicit report while preserving the
 application log as an independent diagnostic signal. Mapped expected business
 errors are not Sentry issues. Errors carry semantic meaning rather than Sentry
