@@ -77,6 +77,19 @@ def test_settings_require_critical_environment_values_when_environment_is_absent
     }
 
 
+def test_default_api_test_environment_clears_legacy_cloudpayments_values(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in (
+        "CLOUDPAYMENTS_ENABLED",
+        "CLOUDPAYMENTS_PUBLIC_ID",
+        "CLOUDPAYMENTS_API_SECRET",
+    ):
+        monkeypatch.setenv(name, "stale-value")
+
+    configure_api_test_environment()
+
+    assert not any(name.startswith("CLOUDPAYMENTS_") for name in os.environ)
+
+
 @pytest.mark.parametrize("app_env", ["development", "test", "production"])
 def test_settings_accept_supported_app_environments(app_env: str) -> None:
     environment = {

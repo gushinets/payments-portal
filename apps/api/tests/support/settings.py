@@ -22,11 +22,19 @@ DEFAULT_API_TEST_ENV = {
 }
 
 
+def clear_cloudpayments_test_environment() -> None:
+    """Keep default API tests isolated from legacy provider environment values."""
+    for name in tuple(os.environ):
+        if name.startswith("CLOUDPAYMENTS_"):
+            os.environ.pop(name, None)
+
+
 def api_test_environment(**overrides: str) -> dict[str, str]:
     return {**DEFAULT_API_TEST_ENV, **overrides}
 
 
 def configure_api_test_environment(**overrides: str) -> None:
+    clear_cloudpayments_test_environment()
     os.environ.update(api_test_environment(**overrides))
 
 

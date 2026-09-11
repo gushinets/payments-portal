@@ -1644,9 +1644,11 @@ def host_database_url_from_runtime(env: dict[str, str]) -> str:
 
 
 def direct_api_environment(*, environ: dict[str, str] | None = None) -> dict[str, str]:
-    base_environment = dict(os.environ if environ is None else environ)
-    local_env = read_dotenv()
-    runtime_env = read_runtime_env()
+    base_environment = _without_cloudpayments_environment(
+        dict(os.environ if environ is None else environ)
+    )
+    local_env = _without_cloudpayments_environment(read_dotenv())
+    runtime_env = _without_cloudpayments_environment(read_runtime_env())
     defaults = {
         **runtime_env,
         **local_env,
@@ -1658,6 +1660,14 @@ def direct_api_environment(*, environ: dict[str, str] | None = None) -> dict[str
     defaults.setdefault("CORS_ALLOW_ORIGINS", defaults.get("APP_PUBLIC_BASE_URL", "http://localhost:3000"))
     defaults.setdefault("SKIP_LEGAL_SEED", "true")
     return defaults
+
+
+def _without_cloudpayments_environment(environment: dict[str, str]) -> dict[str, str]:
+    return {
+        name: value
+        for name, value in environment.items()
+        if not name.startswith("CLOUDPAYMENTS_")
+    }
 
 
 def cmd_dev_api(_: argparse.Namespace) -> None:

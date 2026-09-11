@@ -715,6 +715,25 @@ def test_direct_api_environment_preserves_process_overrides(
     assert environment["DATABASE_URL"] == "sqlite:///process.db"
 
 
+def test_direct_api_environment_excludes_cloudpayments_from_all_sources(monkeypatch) -> None:
+    runtime_env = {
+        "APP_ENV": "development",
+        "APP_PUBLIC_BASE_URL": "http://localhost:39000",
+        "CORS_ALLOW_ORIGINS": "http://localhost:39000",
+        "POSTGRES_DB": "payments_test",
+        "POSTGRES_USER": "anytoolai",
+        "POSTGRES_PASSWORD": "anytoolai-local-only",
+        "POSTGRES_PORT": "32053",
+        "CLOUDPAYMENTS_PUBLIC_ID": "pk_runtime",
+    }
+    monkeypatch.setattr(repo, "read_dotenv", lambda: {"CLOUDPAYMENTS_API_SECRET": "secret-dotenv"})
+    monkeypatch.setattr(repo, "read_runtime_env", lambda: runtime_env)
+
+    environment = direct_api_environment(environ={"CLOUDPAYMENTS_ENABLED": "true"})
+
+    assert not any(name.startswith("CLOUDPAYMENTS_") for name in environment)
+
+
 def test_direct_api_environment_keeps_host_database_url_over_local_dotenv(
     monkeypatch,
 ) -> None:
