@@ -268,6 +268,34 @@ def test_exception_classification_is_semantic(
     assert classify_exception(error) is expected
 
 
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (r"app\payment_providers\registry.py", "app/payment_providers/registry.py"),
+        (r"tests\test_sentry_reporting.py", "tests/test_sentry_reporting.py"),
+    ],
+)
+def test_repository_relative_path_normalizes_safe_windows_paths(value: str, expected: str) -> None:
+    assert sentry_reporting._repository_relative_path(value, maximum_length=512) == expected
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        r"C:\secret\file.py",
+        r"C:secret\file.py",
+        r"\\server\share\file.py",
+        r"\rooted\file.py",
+        "/absolute/file.py",
+        "../secret.py",
+        r"app\..\secret.py",
+        r"app\\file.py",
+    ],
+)
+def test_repository_relative_path_rejects_unsafe_paths(value: str) -> None:
+    assert sentry_reporting._repository_relative_path(value, maximum_length=512) is None
+
+
 def capture_correlated_failure(
     *,
     request_id: str = "request.safe-458",

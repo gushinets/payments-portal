@@ -261,13 +261,14 @@ def _failure_location(value: object) -> dict[str, object] | None:
 def _repository_relative_path(value: object, *, maximum_length: int) -> str | None:
     if not isinstance(value, str) or not value or len(value) > maximum_length:
         return None
-    if value.startswith(("/", "\\")) or "\\" in value or re.match(r"^[A-Za-z]:", value):
+    if value.startswith(("/", "\\")) or re.match(r"^[A-Za-z]:", value):
         return None
-    if any(part in {"", ".", ".."} for part in value.split("/")):
+    normalized = value.replace("\\", "/")
+    if any(part in {"", ".", ".."} for part in normalized.split("/")):
         return None
-    if any(character.isspace() or ord(character) < 32 for character in value):
+    if any(character.isspace() or ord(character) < 32 for character in normalized):
         return None
-    return value
+    return normalized
 
 
 def _before_send(
