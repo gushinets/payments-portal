@@ -9,6 +9,7 @@ import uuid
 from datetime import UTC, datetime, timedelta, timezone
 from io import StringIO
 from typing import Any
+from unittest.mock import Mock
 
 from apps.api.tests.support.settings import configure_api_test_environment
 from apps.api.tests.support.settings import override_settings
@@ -5708,19 +5709,41 @@ def test_password_reset_email_delivery_disabled_is_observable(monkeypatch, caplo
 
 
 def test_password_reset_email_delivery_failure_is_observable(monkeypatch, caplog) -> None:
+    original_error = TimeoutError("synthetic timeout with reset-token-secret")
+    record_password_reset_email = Mock()
+    report_exception = Mock()
+
     def fail_delivery(email: str, url: str) -> bool:
-        raise TimeoutError("synthetic timeout")
+        raise original_error
 
     monkeypatch.setattr(password_reset_router, "send_password_reset_email", fail_delivery)
+    monkeypatch.setattr(password_reset_router, "record_password_reset_email", record_password_reset_email)
+    monkeypatch.setattr(password_reset_router, "report_exception", report_exception)
 
     with caplog.at_level("WARNING", logger="payment_portal.identity.password_reset"):
-        password_reset_router.send_password_reset_email_safely(
+        result = password_reset_router.send_password_reset_email_safely(
             "reset-user@example.com",
-            "http://localhost/reset",
+            "http://localhost/reset?token=reset-token-secret",
         )
 
-    assert "password_reset_email_delivery_failed" in caplog.text
-    assert caplog.records[-1].structured["reason"] == "TimeoutError"
+    assert result is None
+    assert password_reset_router.Operation.PASSWORD_RESET_EMAIL.value == "password_reset_email"
+    record_password_reset_email.assert_called_once_with("failed")
+    report_exception.assert_called_once_with(
+        original_error,
+        operation=password_reset_router.Operation.PASSWORD_RESET_EMAIL,
+        failure_category=password_reset_router.FailureCategory.INTEGRATION_FAILURE,
+    )
+    diagnostics = [record for record in caplog.records if record.getMessage() == "password_reset_email_delivery_failed"]
+    assert len(diagnostics) == 1
+    assert diagnostics[0].structured == {"outcome": "failed", "reason": "TimeoutError"}
+    for marker in (
+        "reset-user@example.com",
+        "http://localhost/reset?token=reset-token-secret",
+        "reset-token-secret",
+        str(original_error),
+    ):
+        assert marker not in caplog.text
 
 
 def test_cloudpayments_webhook_is_saved_without_secret_hmac() -> None:

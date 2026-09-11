@@ -57,6 +57,7 @@ class FailureCategory(StrEnum):
 class Operation(StrEnum):
     HTTP_REQUEST = "http_request"
     EXPIRE_SUBSCRIPTIONS = "expire_subscriptions"
+    PASSWORD_RESET_EMAIL = "password_reset_email"
 
 
 def classify_exception(error: Exception) -> FailureCategory | None:
