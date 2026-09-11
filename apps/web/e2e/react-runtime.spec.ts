@@ -192,11 +192,20 @@ test("critical client components run without React or hydration warnings", async
   await page.goto("/ru/auth-checkout?product=document-summary");
   await expect(page.locator("#checkout-form").getByText(email)).toBeVisible();
   await expect(
-    page.getByText("Оплата временно недоступна. Попробуйте позже.")
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Оплата недоступна", exact: true })
-  ).toBeDisabled();
+    page
+      .locator("#checkout-form")
+      .getByRole("status")
+      .filter({
+        hasText: "Оплата временно недоступна. Попробуйте позже."
+      })
+  ).toContainText("Оплата временно недоступна. Попробуйте позже.");
+  const paymentButton = page.getByRole("button", {
+    name: "Оплата недоступна",
+    exact: true
+  });
+  await expect(paymentButton).toBeDisabled();
+  await paymentButton.focus();
+  await expect(paymentButton).not.toBeFocused();
   await captureVisualEvidence(page, testInfo, "checkout");
 
   await page.goto("/ru/account");
