@@ -133,9 +133,7 @@ export const cloudPaymentsCheckoutAdapter: CheckoutAdapter = {
   }
 };
 
-const checkoutAdapters = new Map<string, CheckoutAdapter>([
-  [cloudPaymentsCheckoutAdapter.provider, cloudPaymentsCheckoutAdapter]
-]);
+const checkoutAdapters = new Map<string, CheckoutAdapter>();
 
 export function getCheckoutAdapter(provider: string): CheckoutAdapter | null {
   return checkoutAdapters.get(provider) ?? null;

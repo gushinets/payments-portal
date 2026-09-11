@@ -15,14 +15,18 @@ DEFAULT_API_TEST_ENV = {
     "POSTGRES_PASSWORD": "anytoolai",
     "POSTGRES_HOST": "postgres",
     "POSTGRES_PORT": "5432",
-    "CLOUDPAYMENTS_ENABLED": "false",
     "CORS_ALLOW_ORIGINS": "http://localhost:3000",
-    "CLOUDPAYMENTS_API_SECRET": "",
-    "CLOUDPAYMENTS_PUBLIC_ID": "pk_test_provider",
     "SENTRY_DSN": "",
     "SENTRY_RELEASE": "",
     "SKIP_LEGAL_SEED": "true",
 }
+
+
+def clear_cloudpayments_test_environment() -> None:
+    """Keep default API tests isolated from legacy provider environment values."""
+    for name in tuple(os.environ):
+        if name.startswith("CLOUDPAYMENTS_"):
+            os.environ.pop(name, None)
 
 
 def api_test_environment(**overrides: str) -> dict[str, str]:
@@ -30,6 +34,7 @@ def api_test_environment(**overrides: str) -> dict[str, str]:
 
 
 def configure_api_test_environment(**overrides: str) -> None:
+    clear_cloudpayments_test_environment()
     os.environ.update(api_test_environment(**overrides))
 
 

@@ -45,10 +45,29 @@ function catalogResponse(
 
 async function renderCheckoutWithProviderStub() {
   vi.resetModules();
+  vi.doMock("@/features/checkout/provider-adapters", async () => {
+    const actual = await vi.importActual<
+      typeof import("@/features/checkout/provider-adapters")
+    >("@/features/checkout/provider-adapters");
+    return {
+      ...actual,
+      getCheckoutAdapter: (provider: string) =>
+        provider === "cloudpayments"
+          ? actual.cloudPaymentsCheckoutAdapter
+          : null
+    };
+  });
   const provider = installProviderUiStub();
   const { CheckoutClient } = await import("@/features/checkout/CheckoutClient");
   render(<CheckoutClient checkoutAdapterStatus="ready" />);
   return provider;
+}
+
+async function renderCheckoutWithoutProvider() {
+  vi.resetModules();
+  vi.doUnmock("@/features/checkout/provider-adapters");
+  const { CheckoutClient } = await import("@/features/checkout/CheckoutClient");
+  return render(<CheckoutClient checkoutAdapterStatus="disabled" />);
 }
 
 function checkoutAction(
@@ -1233,6 +1252,102 @@ describe("CheckoutClient critical characterization", () => {
 
     expect(checkoutAttempts).toBe(0);
     expect(readStoredPaymentResult()).toBeNull();
+  });
+
+  it("shows checkout unavailable and does not prepare payment when adapters are disabled", async () => {
+    const user = userEvent.setup();
+    storeSessionToken("session-token");
+    let checkoutAttempts = 0;
+    const provider = installProviderUiStub();
+    server.use(
+      http.get(`${apiBase}/api/auth/session`, () =>
+        HttpResponse.json(sessionResponse("inactive"))
+      ),
+      http.post(`${apiBase}/api/auth/checkout-intent`, () => {
+        checkoutAttempts += 1;
+        return HttpResponse.json(checkoutIntentResponse("invoice-disabled"));
+      })
+    );
+
+    await renderCheckoutWithoutProvider();
+
+    expect(
+      await screen.findByText("Оплата временно недоступна. Попробуйте позже.")
+    ).toBeVisible();
+    const checkoutButton = await screen.findByRole("button", {
+      name: "Оплата недоступна"
+    });
+    expect(checkoutButton).toBeDisabled();
+    await user.click(checkoutButton);
+
+    expect(checkoutAttempts).toBe(0);
+    expect(provider.payments).toHaveLength(0);
+    expect(readStoredPaymentResult()).toBeNull();
+  });
+
+  it("blocks stale legal-document continuation while checkout is disabled", async () => {
+    const user = userEvent.setup();
+    storeSessionToken("session-token");
+    let acceptanceAttempts = 0;
+    server.use(
+      http.get(`${apiBase}/api/auth/session`, () =>
+        HttpResponse.json(sessionResponse("inactive"))
+      ),
+      http.post(`${apiBase}/api/auth/checkout-intent`, () =>
+        HttpResponse.json(
+          {
+            detail: {
+              code: "missing_required_documents",
+              documents: [
+                {
+                  document_version_id: "doc-offer-v1",
+                  doc_type: "offer",
+                  version: "2026-07-11",
+                  title: "Публичная оферта",
+                  url_path: "/ru/offer",
+                  acceptance_text: "Принимаю условия оферты.",
+                  acceptance_text_hash: "hash-offer"
+                }
+              ]
+            }
+          },
+          { status: 409 }
+        )
+      ),
+      http.post(`${apiBase}/api/legal/acceptances`, () => {
+        acceptanceAttempts += 1;
+        return HttpResponse.json({ status: "accepted" });
+      })
+    );
+
+    vi.resetModules();
+    vi.doMock("@/features/checkout/provider-adapters", async () => {
+      const actual = await vi.importActual<
+        typeof import("@/features/checkout/provider-adapters")
+      >("@/features/checkout/provider-adapters");
+      return {
+        ...actual,
+        getCheckoutAdapter: (provider: string) =>
+          provider === "cloudpayments"
+            ? actual.cloudPaymentsCheckoutAdapter
+            : null
+      };
+    });
+    const { CheckoutClient } = await import("@/features/checkout/CheckoutClient");
+    const view = render(<CheckoutClient checkoutAdapterStatus="ready" />);
+
+    expect(await screen.findByText("buyer@example.com")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: /^Оплатить/ }));
+    await user.click(screen.getByLabelText(/Принять документ Публичная оферта/));
+
+    view.rerender(<CheckoutClient checkoutAdapterStatus="disabled" />);
+    const continueButton = await screen.findByRole("button", {
+      name: /Принять и продолжить/
+    });
+    expect(continueButton).toBeDisabled();
+    await user.click(continueButton);
+
+    expect(acceptanceAttempts).toBe(0);
   });
 
   it("fails explicitly when the selected provider SDK is unavailable", async () => {

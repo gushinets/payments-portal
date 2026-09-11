@@ -37,7 +37,6 @@ from app.domains.billing.service import (  # noqa: E402
     expire_due_subscriptions,
 )
 from app.infrastructure.queries.subscriptions import get_active_entitlement_for_scope  # noqa: E402
-from app.main import app  # noqa: E402
 from app.models import (  # noqa: E402
     BillingPeriod,
     Entitlement,
@@ -62,6 +61,10 @@ from app.models import (  # noqa: E402
     UserStatus,
     User,
 )
+from apps.api.tests.support.cloudpayments import create_retained_cloudpayments_test_app  # noqa: E402
+
+
+app = create_retained_cloudpayments_test_app()
 
 
 @pytest.fixture
@@ -487,9 +490,7 @@ def test_signed_duplicate_webhook_is_persisted_once_and_acknowledged_idempotentl
         "verify_cloudpayments_signature",
         verify_cloudpayments_signature,
     )
-    original_enabled = settings.cloudpayments_enabled
     original_api_secret = settings.cloudpayments_api_secret
-    object.__setattr__(settings, "cloudpayments_enabled", True)
     object.__setattr__(settings, "cloudpayments_api_secret", "test-secret")
     invoice_id = "inv-signed-duplicate-1"
     seed_order(webhook_database, invoice_id)
@@ -559,7 +560,6 @@ def test_signed_duplicate_webhook_is_persisted_once_and_acknowledged_idempotentl
         assert payments[0].provider_payment_id == "tx-signed-duplicate-1"
         assert order.status is OrderStatus.PAID
     finally:
-        object.__setattr__(settings, "cloudpayments_enabled", original_enabled)
         object.__setattr__(settings, "cloudpayments_api_secret", original_api_secret)
 
 

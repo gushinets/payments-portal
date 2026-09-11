@@ -86,7 +86,6 @@ jobs:
       WEB_PORT: "3000"
       NEXT_PUBLIC_API_BASE_URL: https://payments.example.test
       CORS_ALLOW_ORIGINS: https://payments.example.test
-      CLOUDPAYMENTS_ENABLED: "false"
       APP_ENV: production
       APP_PUBLIC_BASE_URL: https://payments.example.test
       CADDY_DOMAIN: payments.example.test
@@ -148,7 +147,6 @@ jobs:
             echo "WEB_PORT=$WEB_PORT"
             echo "NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL"
             echo "CORS_ALLOW_ORIGINS=$CORS_ALLOW_ORIGINS"
-            echo "CLOUDPAYMENTS_ENABLED=$CLOUDPAYMENTS_ENABLED"
             echo "CADDY_DOMAIN=$CADDY_DOMAIN"
           } > "$ci_env"
           echo "CI_ENV_FILE=$ci_env" >> "$GITHUB_ENV"
@@ -255,8 +253,6 @@ jobs:
     env:
       UV_PROJECT_ENVIRONMENT: ${{ github.workspace }}/.venv
       UV_PYTHON_DOWNLOADS: "never"
-      PLAYWRIGHT_PROVIDER_UI_STUB: "true"
-      CLOUDPAYMENTS_PUBLIC_ID: test-provider-public-id
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0

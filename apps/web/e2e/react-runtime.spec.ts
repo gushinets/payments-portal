@@ -1,5 +1,4 @@
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
-import { installProviderUiScriptStub } from "./provider-ui-stub";
 
 const sessionTokenStorageKey = "anytoolai_session_token_v1";
 const sessionChangedEvent = "anytoolai_session_changed";
@@ -157,8 +156,6 @@ test("critical client components run without React or hydration warnings", async
     });
   });
 
-  await installProviderUiScriptStub(page);
-
   await page.addInitScript((storageKey) => {
     window.localStorage.setItem(storageKey, "accepted");
   }, cookieNoticeStorageKey);
@@ -195,8 +192,20 @@ test("critical client components run without React or hydration warnings", async
   await page.goto("/ru/auth-checkout?product=document-summary");
   await expect(page.locator("#checkout-form").getByText(email)).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Оплатить", exact: true })
-  ).toBeEnabled();
+    page
+      .locator("#checkout-form")
+      .getByRole("status")
+      .filter({
+        hasText: "Оплата временно недоступна. Попробуйте позже."
+      })
+  ).toContainText("Оплата временно недоступна. Попробуйте позже.");
+  const paymentButton = page.getByRole("button", {
+    name: "Оплата недоступна",
+    exact: true
+  });
+  await expect(paymentButton).toBeDisabled();
+  await paymentButton.focus();
+  await expect(paymentButton).not.toBeFocused();
   await captureVisualEvidence(page, testInfo, "checkout");
 
   await page.goto("/ru/account");

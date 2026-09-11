@@ -1,0 +1,45 @@
+diff --git a/apps/api/tests/compatibility/test_python_dependency_contracts.py b/apps/api/tests/compatibility/test_python_dependency_contracts.py
+index d06d73b..b3a0985 100644
+--- a/apps/api/tests/compatibility/test_python_dependency_contracts.py
++++ b/apps/api/tests/compatibility/test_python_dependency_contracts.py
+@@ -77,17 +77,19 @@ def test_settings_require_critical_environment_values_when_environment_is_absent
+     }
+ 
+ 
+-def test_default_api_test_environment_clears_legacy_cloudpayments_values(monkeypatch: pytest.MonkeyPatch) -> None:
+-    for name in (
+-        "CLOUDPAYMENTS_ENABLED",
+-        "CLOUDPAYMENTS_PUBLIC_ID",
+-        "CLOUDPAYMENTS_API_SECRET",
++def test_default_api_test_environment_clears_legacy_cloudpayments_values() -> None:
++    with patch.dict(
++        os.environ,
++        {
++            "CLOUDPAYMENTS_ENABLED": "stale-value",
++            "CLOUDPAYMENTS_PUBLIC_ID": "stale-value",
++            "CLOUDPAYMENTS_API_SECRET": "stale-value",
++        },
++        clear=True,
+     ):
+-        monkeypatch.setenv(name, "stale-value")
+-
+-    configure_api_test_environment()
++        configure_api_test_environment()
+ 
+-    assert not any(name.startswith("CLOUDPAYMENTS_") for name in os.environ)
++        assert not any(name.startswith("CLOUDPAYMENTS_") for name in os.environ)
+ 
+ 
+ @pytest.mark.parametrize("app_env", ["development", "test", "production"])
+diff --git a/security/trivy/verify-api-runtime.sh b/security/trivy/verify-api-runtime.sh
+index 073e1ef..9c8cf9e 100755
+--- a/security/trivy/verify-api-runtime.sh
++++ b/security/trivy/verify-api-runtime.sh
+@@ -41,7 +41,6 @@ container_id=$(docker run --detach --publish 127.0.0.1::8000 \
+   --env POSTGRES_PASSWORD=anytoolai \
+   --env POSTGRES_HOST=postgres \
+   --env POSTGRES_PORT=5432 \
+-  --env CLOUDPAYMENTS_ENABLED=false \
+   --env CORS_ALLOW_ORIGINS=http://localhost:3000 \
+   --env SKIP_LEGAL_SEED=true \
+   --env OTEL_SDK_DISABLED=true \

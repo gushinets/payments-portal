@@ -31,7 +31,6 @@ os.environ.setdefault("POSTGRES_USER", "payments")
 os.environ.setdefault("POSTGRES_PASSWORD", "payments")
 os.environ.setdefault("POSTGRES_HOST", "localhost")
 os.environ.setdefault("POSTGRES_PORT", "5432")
-os.environ.setdefault("CLOUDPAYMENTS_ENABLED", "false")
 os.environ.setdefault("CORS_ALLOW_ORIGINS", "http://localhost:3000")
 
 from app.core.observability import redact  # noqa: E402

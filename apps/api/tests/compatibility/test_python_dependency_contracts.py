@@ -73,9 +73,23 @@ def test_settings_require_critical_environment_values_when_environment_is_absent
         "postgres_password",
         "postgres_host",
         "postgres_port",
-        "cloudpayments_enabled",
         "cors_allow_origins",
     }
+
+
+def test_default_api_test_environment_clears_legacy_cloudpayments_values() -> None:
+    with patch.dict(
+        os.environ,
+        {
+            "CLOUDPAYMENTS_ENABLED": "stale-value",
+            "CLOUDPAYMENTS_PUBLIC_ID": "stale-value",
+            "CLOUDPAYMENTS_API_SECRET": "stale-value",
+        },
+        clear=True,
+    ):
+        configure_api_test_environment()
+
+        assert not any(name.startswith("CLOUDPAYMENTS_") for name in os.environ)
 
 
 @pytest.mark.parametrize("app_env", ["development", "test", "production"])
@@ -92,7 +106,8 @@ def test_settings_accept_supported_app_environments(app_env: str) -> None:
     assert loaded_settings.app_env == AppEnv(app_env)
     assert loaded_settings.app_public_base_url == "https://payments.example.com"
     assert loaded_settings.database_url == "sqlite+pysqlite:///:memory:"
-    assert loaded_settings.cloudpayments_enabled is False
+    assert loaded_settings.cloudpayments_public_id == ""
+    assert loaded_settings.cloudpayments_api_secret == ""
     assert loaded_settings.cors_allow_origins == ("https://payments.example.com",)
     assert loaded_settings.smtp_host == ""
     assert loaded_settings.smtp_port == 587
@@ -113,31 +128,20 @@ def test_settings_accept_supported_app_environments(app_env: str) -> None:
         ("", False),
     ],
 )
-def test_settings_preserve_legacy_boolean_parsing(
+def test_settings_preserve_smtp_boolean_parsing(
     raw_value: str,
     expected: bool,
 ) -> None:
-    cloudpayments_credentials = (
-        {
-            "CLOUDPAYMENTS_PUBLIC_ID": "pk_test_provider",
-            "CLOUDPAYMENTS_API_SECRET": "secret-test-provider",
-        }
-        if expected
-        else {}
-    )
     with patch.dict(
         os.environ,
         {
             **DEFAULT_API_TEST_ENV,
-            **cloudpayments_credentials,
-            "CLOUDPAYMENTS_ENABLED": raw_value,
             "SMTP_USE_TLS": raw_value,
         },
         clear=True,
     ):
         loaded_settings = Settings(_env_file=None)
 
-    assert loaded_settings.cloudpayments_enabled is expected
     assert loaded_settings.smtp_use_tls is expected
 
 
@@ -158,7 +162,6 @@ def test_settings_preserve_dotenv_parsing_and_process_environment_precedence(
                 "POSTGRES_PORT=5432",
                 "CLOUDPAYMENTS_PUBLIC_ID=pk_from_dotenv",
                 "CLOUDPAYMENTS_API_SECRET=secret-from-dotenv",
-                "CLOUDPAYMENTS_ENABLED=true",
                 'CORS_ALLOW_ORIGINS="https://web.example, https://admin.example"',
                 "SMTP_HOST=smtp.dotenv.example",
                 "SMTP_PORT=2525",
@@ -187,7 +190,6 @@ def test_settings_preserve_dotenv_parsing_and_process_environment_precedence(
     assert loaded_settings.database_url == "sqlite+pysqlite:///from-dotenv.db"
     assert loaded_settings.cloudpayments_public_id == "pk_from_dotenv"
     assert loaded_settings.cloudpayments_api_secret == "secret-from-dotenv"
-    assert loaded_settings.cloudpayments_enabled is True
     assert loaded_settings.cors_allow_origins == (
         "https://web.example",
         "https://admin.example",
@@ -252,7 +254,6 @@ def test_settings_reject_unsupported_app_environment(app_env: str) -> None:
         ("POSTGRES_PASSWORD", "postgres_password"),
         ("POSTGRES_HOST", "postgres_host"),
         ("POSTGRES_PORT", "postgres_port"),
-        ("CLOUDPAYMENTS_ENABLED", "cloudpayments_enabled"),
         ("CORS_ALLOW_ORIGINS", "cors_allow_origins"),
     ],
 )
@@ -349,29 +350,12 @@ def test_settings_reject_forbidden_production_cors_origins(origin: str) -> None:
     )
 
 
-@pytest.mark.parametrize("empty_name", ["CLOUDPAYMENTS_PUBLIC_ID", "CLOUDPAYMENTS_API_SECRET"])
-def test_settings_reject_empty_cloudpayments_credentials_when_provider_is_enabled(empty_name: str) -> None:
-    environment = {
-        **DEFAULT_API_TEST_ENV,
-        "CLOUDPAYMENTS_ENABLED": "true",
-        "CLOUDPAYMENTS_PUBLIC_ID": "pk_test_provider",
-        "CLOUDPAYMENTS_API_SECRET": "secret-test-provider",
-    }
-    environment[empty_name] = ""
-    with patch.dict(os.environ, environment, clear=True):
-        with pytest.raises(ValidationError) as error:
-            Settings(_env_file=None)
-
-    assert f"{empty_name} is required when CLOUDPAYMENTS_ENABLED=true" in str(error.value)
-
-
 def test_settings_validation_messages_do_not_include_sensitive_values() -> None:
     environment = {
         **DEFAULT_API_TEST_ENV,
         "APP_ENV": "production",
         "APP_PUBLIC_BASE_URL": "http://secret-host.example/app",
         "DATABASE_URL": "postgresql+psycopg://secret-user:secret-password@db.example/payments",
-        "CLOUDPAYMENTS_ENABLED": "true",
         "CLOUDPAYMENTS_PUBLIC_ID": "pk_secret_public_id",
         "CLOUDPAYMENTS_API_SECRET": "secret-cloudpayments-api-key",
     }
@@ -390,6 +374,10 @@ def test_settings_validation_messages_do_not_include_sensitive_values() -> None:
 def test_settings_do_not_expose_configurable_default_scope() -> None:
     assert "default_tenant_id" not in Settings.model_fields
     assert "default_region" not in Settings.model_fields
+
+
+def test_settings_do_not_expose_cloudpayments_activation() -> None:
+    assert "cloudpayments_enabled" not in Settings.model_fields
 
 
 def test_identity_default_scope_stays_aligned_with_ru_seed_data() -> None:

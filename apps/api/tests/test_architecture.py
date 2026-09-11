@@ -21,7 +21,7 @@ def write_module(root: Path, relative: str, source: str) -> None:
     path.write_text(source, encoding="utf-8")
 
 
-def test_cloudpayments_webhook_keeps_shared_async_body_and_sync_processing_boundary() -> None:
+def test_retained_cloudpayments_webhook_keeps_shared_async_body_and_sync_processing_boundary() -> None:
     route = next(
         route
         for route in cloudpayments_router.routes
@@ -29,7 +29,7 @@ def test_cloudpayments_webhook_keeps_shared_async_body_and_sync_processing_bound
     )
     dependencies = {dependency.name: dependency.call for dependency in route.dependant.dependencies}
 
-    assert "/api/cloudpayments/{endpoint}" in app.openapi()["paths"]
+    assert "/api/cloudpayments/{endpoint}" not in app.openapi()["paths"]
     assert not inspect.iscoroutinefunction(route.endpoint)
     assert dependencies["raw_body"] is get_raw_request_body
     assert inspect.iscoroutinefunction(get_raw_request_body)

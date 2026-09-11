@@ -74,6 +74,8 @@ type AcceptDocumentResponse = {
   doc_type?: unknown;
 };
 const telegramLoginUrl = process.env.NEXT_PUBLIC_TELEGRAM_LOGIN_URL ?? "";
+const checkoutUnavailableMessage =
+  "Оплата временно недоступна. Попробуйте позже.";
 export function CheckoutClient({
   checkoutAdapterStatus = "disabled"
 }: {
@@ -151,7 +153,9 @@ export function CheckoutClient({
       (document) => documentConsentById[document.document_version_id]
     );
   const checkoutAdapterBlocked =
-    checkoutAdapterStatus === "loading" || checkoutAdapterStatus === "failed";
+    checkoutAdapterStatus === "disabled" ||
+    checkoutAdapterStatus === "loading" ||
+    checkoutAdapterStatus === "failed";
   const sessionUserKey = sessionUser
     ? `${sessionUser.tenant_id}:${sessionUser.region}:${sessionUser.user_id}`
     : "";
@@ -445,6 +449,11 @@ export function CheckoutClient({
   async function goToPaymentResult(recurringAcceptanceIdOverride?: string) {
     setError("");
 
+    if (checkoutAdapterStatus === "disabled") {
+      showNotice(checkoutUnavailableMessage);
+      return;
+    }
+
     if (!selectedProduct) {
       showError("Выберите продукт для оплаты.");
       return;
@@ -587,6 +596,11 @@ export function CheckoutClient({
 
   async function acceptRequiredDocumentsAndContinue() {
     setError("");
+
+    if (checkoutAdapterStatus === "disabled") {
+      showNotice(checkoutUnavailableMessage);
+      return;
+    }
 
     if (!sessionToken || !selectedProduct) {
       showError("Сначала войдите или зарегистрируйтесь.");
@@ -777,6 +791,12 @@ export function CheckoutClient({
                   Единый аккаунт
                 </span>
 
+                {checkoutAdapterStatus === "disabled" ? (
+                  <div className="notice" role="status">
+                    {checkoutUnavailableMessage}
+                  </div>
+                ) : null}
+
                 {needsAuthPrompt && !sessionLoading ? (
                   <div className="notice">
                     Чтобы продолжить оформление, войдите в аккаунт или
@@ -860,7 +880,11 @@ export function CheckoutClient({
                               className="btn-primary"
                               type="button"
                               onClick={acceptRequiredDocumentsAndContinue}
-                              disabled={loading || !allMissingDocumentsAccepted}
+                              disabled={
+                                loading ||
+                                !allMissingDocumentsAccepted ||
+                                checkoutAdapterStatus === "disabled"
+                              }
                             >
                               Принять и продолжить
                               <ArrowRight size={16} aria-hidden="true" />
@@ -916,7 +940,9 @@ export function CheckoutClient({
                               missingDocuments.length > 0 || checkoutAdapterBlocked
                             }
                           >
-                            {checkoutAdapterStatus === "loading"
+                            {checkoutAdapterStatus === "disabled"
+                              ? "Оплата недоступна"
+                              : checkoutAdapterStatus === "loading"
                               ? "Загрузка оплаты..."
                               : "Оплатить"}
                             <ArrowRight size={16} aria-hidden="true" />
