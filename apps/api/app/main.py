@@ -24,6 +24,7 @@ from app.domains.identity.router import router as auth_router
 from app.domains.legal.router import router as legal_router
 from app.health import health_router
 from app.http_errors import app_error_handler, unexpected_failure_middleware
+from app.infrastructure.sentry import configure_sentry
 from app.integrations.cloudpayments.adapter import CloudPaymentsAdapter
 from app.integrations.cloudpayments.api_client import build_cloudpayments_api_client
 from app.integrations.cloudpayments.router import router as cloudpayments_router
@@ -111,3 +112,4 @@ def create_app() -> FastAPI:
 
 app = create_app()
 configure_observability(app, engine)
+configure_sentry(settings)

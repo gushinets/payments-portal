@@ -196,8 +196,36 @@ matched route template, exception type, and one application-owned
 failure-location fingerprint containing only a repository-relative module/file
 identifier, function name, and line number. It never includes source text,
 locals, arguments, exception messages, raw traceback text, request inputs,
-provider payloads, secrets, or payment data. Sentry and new monitoring remain
-outside this architecture decision.
+provider payloads, secrets, or payment data.
+
+Reportable failures follow the same ownership direction:
+
+```text
+Domain/Application
+    -> semantic errors
+
+outer Presentation/process boundary
+    -> structured diagnostic
+    -> explicit Sentry report according to policy
+```
+
+The centralized HTTP failure boundary is the default owner of HTTP failure
+reporting. When an existing outer boundary catches a reportable exception and
+converts or absorbs it before that centralized boundary can observe it, the
+catching boundary owns exactly one explicit report before conversion or
+absorption. This applies to the existing CloudPayments webhook conversion and
+password-reset email background callback. It does not change the dependency
+direction or permit Sentry reporting from Domain/Application business logic.
+
+The outer boundary owns at most one explicit report while preserving the
+application log as an independent diagnostic signal. Mapped expected business
+errors are not Sentry issues. Errors carry semantic meaning rather than Sentry
+flags, and Domain/Application remain independent from Sentry. Direct
+`sentry_sdk` imports are restricted to `app/infrastructure/sentry.py`; boundary
+callers and composition roots use that application-owned adapter. Sentry is the
+backend application-failure investigation entry point, not a replacement for
+OpenTelemetry traces, bounded JSON logs, Prometheus/OpenTelemetry metrics, or
+persisted business state.
 
 ## Authoritative details
 

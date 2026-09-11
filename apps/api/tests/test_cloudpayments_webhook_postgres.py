@@ -9,6 +9,7 @@ import time
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
+from unittest.mock import Mock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -26,6 +27,7 @@ from app.core.database import Base, get_db  # noqa: E402
 from app.integrations.cloudpayments import adapter as cloudpayments_adapter_module  # noqa: E402
 from app.integrations.cloudpayments.adapter import verify_cloudpayments_signature  # noqa: E402
 from app.integrations.cloudpayments import processing as cloudpayments_processing  # noqa: E402
+from app.integrations.cloudpayments import router as cloudpayments_router  # noqa: E402
 from app.core.settings import settings  # noqa: E402
 from app.domains.billing.enums import ProviderSubscriptionState  # noqa: E402
 from app.domains.billing.service import (  # noqa: E402
@@ -319,12 +321,15 @@ def test_raw_webhook_event_survives_failed_normalization_and_can_retry(
     seed_order(webhook_database, invoice_id)
 
     original_upsert = cloudpayments_processing.upsert_payment_from_webhook
+    original_error = RuntimeError("forced normalization error with card 4111111111111111")
+    report_exception = Mock()
 
     def raising_upsert(*args, **kwargs):
         original_upsert(*args, **kwargs)
-        raise RuntimeError("forced normalization error with card 4111111111111111")
+        raise original_error
 
     monkeypatch.setattr(cloudpayments_processing, "upsert_payment_from_webhook", raising_upsert)
+    monkeypatch.setattr(cloudpayments_router, "report_exception", report_exception)
 
     payload = {
         "InvoiceId": invoice_id,
@@ -343,6 +348,14 @@ def test_raw_webhook_event_survives_failed_normalization_and_can_retry(
         )
 
     assert failed_response.status_code == 500
+    assert failed_response.json() == {"detail": "webhook_normalization_failed"}
+    report_exception.assert_called_once_with(
+        original_error,
+        operation=cloudpayments_router.Operation.HTTP_REQUEST,
+        method="POST",
+        route="/api/cloudpayments/{endpoint}",
+        error_code="normalization_unexpected_error",
+    )
     with webhook_database() as db:
         event = db.query(PaymentWebhookEvent).one()
         order = db.query(Order).one()

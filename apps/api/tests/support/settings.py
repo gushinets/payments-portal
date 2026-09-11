@@ -19,6 +19,8 @@ DEFAULT_API_TEST_ENV = {
     "CORS_ALLOW_ORIGINS": "http://localhost:3000",
     "CLOUDPAYMENTS_API_SECRET": "",
     "CLOUDPAYMENTS_PUBLIC_ID": "pk_test_provider",
+    "SENTRY_DSN": "",
+    "SENTRY_RELEASE": "",
     "SKIP_LEGAL_SEED": "true",
 }
 
