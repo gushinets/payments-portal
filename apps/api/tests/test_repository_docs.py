@@ -22,8 +22,6 @@ from scripts.repo import (
     build_parser,
     validate_production_caddy_domain,
     validate_production_deployment_environment,
-    resolve_cloudpayments_api_secret,
-    resolve_cloudpayments_public_id,
     uv_environment,
 )
 
@@ -678,7 +676,6 @@ def test_direct_api_environment_uses_host_database_url_from_runtime(
         "POSTGRES_USER": "anytoolai",
         "POSTGRES_PASSWORD": "anytoolai-local-only",
         "POSTGRES_PORT": "32053",
-        "CLOUDPAYMENTS_ENABLED": "false",
     }
     monkeypatch.setattr(repo, "read_dotenv", dict)
     monkeypatch.setattr(repo, "read_runtime_env", lambda: runtime_env)
@@ -703,7 +700,6 @@ def test_direct_api_environment_preserves_process_overrides(
         "POSTGRES_USER": "anytoolai",
         "POSTGRES_PASSWORD": "anytoolai-local-only",
         "POSTGRES_PORT": "32053",
-        "CLOUDPAYMENTS_ENABLED": "false",
     }
     monkeypatch.setattr(repo, "read_dotenv", lambda: {"LOG_LEVEL": "DEBUG", "DATABASE_URL": "sqlite:///dotenv.db"})
     monkeypatch.setattr(repo, "read_runtime_env", lambda: runtime_env)
@@ -730,7 +726,6 @@ def test_direct_api_environment_keeps_host_database_url_over_local_dotenv(
         "POSTGRES_USER": "anytoolai",
         "POSTGRES_PASSWORD": "anytoolai-local-only",
         "POSTGRES_PORT": "32053",
-        "CLOUDPAYMENTS_ENABLED": "false",
     }
     monkeypatch.setattr(
         repo,
@@ -1015,72 +1010,7 @@ def test_api_coverage_writes_xml_to_stable_harness_path(
     ]
 
 
-def test_cloudpayments_public_id_uses_process_environment_first() -> None:
-    value = resolve_cloudpayments_public_id(
-        {"CLOUDPAYMENTS_PUBLIC_ID": "pk_from_dotenv"},
-        environ={"CLOUDPAYMENTS_PUBLIC_ID": "pk_from_process"},
-    )
-
-    assert value == "pk_from_process"
-
-
-def test_cloudpayments_public_id_uses_dotenv_fallback() -> None:
-    value = resolve_cloudpayments_public_id(
-        {"CLOUDPAYMENTS_PUBLIC_ID": "pk_from_dotenv"},
-        environ={},
-    )
-
-    assert value == "pk_from_dotenv"
-
-
-def test_cloudpayments_public_id_defaults_empty_when_missing() -> None:
-    value = resolve_cloudpayments_public_id({}, environ={})
-
-    assert value == ""
-
-
-def test_cloudpayments_public_id_ignores_legacy_next_public_value() -> None:
-    value = resolve_cloudpayments_public_id(
-        {"NEXT_PUBLIC_CLOUDPAYMENTS_PUBLIC_ID": "pk_legacy_dotenv"},
-        environ={"NEXT_PUBLIC_CLOUDPAYMENTS_PUBLIC_ID": "pk_legacy_process"},
-    )
-
-    assert value == ""
-
-
-def test_cloudpayments_api_secret_uses_process_environment_first() -> None:
-    value = resolve_cloudpayments_api_secret(
-        {"CLOUDPAYMENTS_API_SECRET": "secret_from_dotenv"},
-        environ={"CLOUDPAYMENTS_API_SECRET": "secret_from_process"},
-    )
-
-    assert value == "secret_from_process"
-
-
-def test_cloudpayments_api_secret_uses_dotenv_before_runtime_fallback() -> None:
-    value = resolve_cloudpayments_api_secret(
-        {"CLOUDPAYMENTS_API_SECRET": "secret_from_dotenv"},
-        environ={},
-    )
-
-    assert value == "secret_from_dotenv"
-
-
-def test_cloudpayments_api_secret_skips_empty_values_before_fallback() -> None:
-    dotenv_value = resolve_cloudpayments_api_secret(
-        {"CLOUDPAYMENTS_API_SECRET": "secret_from_dotenv"},
-        environ={"CLOUDPAYMENTS_API_SECRET": ""},
-    )
-    fallback_value = resolve_cloudpayments_api_secret(
-        {"CLOUDPAYMENTS_API_SECRET": ""},
-        environ={"CLOUDPAYMENTS_API_SECRET": ""},
-    )
-
-    assert dotenv_value == "secret_from_dotenv"
-    assert fallback_value == "test-cloudpayments-signing-key"
-
-
-def test_write_runtime_protects_generated_secret_file(
+def test_write_runtime_excludes_cloudpayments_configuration(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
@@ -1090,8 +1020,18 @@ def test_write_runtime_protects_generated_secret_file(
     monkeypatch.setattr(repo, "HARNESS_DIR", harness_dir)
     monkeypatch.setattr(repo, "RUNTIME_JSON", runtime_json)
     monkeypatch.setattr(repo, "RUNTIME_ENV", runtime_env)
-    monkeypatch.setattr(repo, "read_dotenv", dict)
-    monkeypatch.delenv("CLOUDPAYMENTS_API_SECRET", raising=False)
+    monkeypatch.setattr(
+        repo,
+        "read_dotenv",
+        lambda: {
+            "CLOUDPAYMENTS_PUBLIC_ID": "pk_from_dotenv",
+            "CLOUDPAYMENTS_API_SECRET": "secret-from-dotenv",
+            "CLOUDPAYMENTS_ENABLED": "true",
+        },
+    )
+    monkeypatch.setenv("CLOUDPAYMENTS_PUBLIC_ID", "pk_from_process")
+    monkeypatch.setenv("CLOUDPAYMENTS_API_SECRET", "secret-from-process")
+    monkeypatch.setenv("CLOUDPAYMENTS_ENABLED", "true")
 
     repo.write_runtime(
         repo.RuntimeConfig(
@@ -1112,8 +1052,11 @@ def test_write_runtime_protects_generated_secret_file(
 
     assert stat.S_IMODE(harness_dir.stat().st_mode) == 0o700
     assert stat.S_IMODE(runtime_env.stat().st_mode) == 0o600
-    assert "APP_ENV=development" in runtime_env.read_text(encoding="utf-8")
-    assert "CLOUDPAYMENTS_API_SECRET=test-cloudpayments-signing-key" in (runtime_env.read_text(encoding="utf-8"))
+    runtime_contents = runtime_env.read_text(encoding="utf-8")
+    assert "APP_ENV=development" in runtime_contents
+    assert "CLOUDPAYMENTS_PUBLIC_ID" not in runtime_contents
+    assert "CLOUDPAYMENTS_API_SECRET" not in runtime_contents
+    assert "CLOUDPAYMENTS_ENABLED" not in runtime_contents
 
 
 def test_write_runtime_does_not_leave_secret_when_protection_fails(
@@ -1126,8 +1069,7 @@ def test_write_runtime_does_not_leave_secret_when_protection_fails(
     monkeypatch.setattr(repo, "HARNESS_DIR", harness_dir)
     monkeypatch.setattr(repo, "RUNTIME_JSON", runtime_json)
     monkeypatch.setattr(repo, "RUNTIME_ENV", runtime_env)
-    monkeypatch.setattr(repo, "read_dotenv", dict)
-    monkeypatch.setenv("CLOUDPAYMENTS_API_SECRET", "super-secret")
+    monkeypatch.setattr(repo, "read_dotenv", lambda: {"SMTP_PASSWORD": "super-secret"})
 
     def fail_protection(path: Path) -> None:
         assert path.read_text(encoding="utf-8") == ""

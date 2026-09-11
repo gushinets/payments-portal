@@ -490,9 +490,7 @@ def test_signed_duplicate_webhook_is_persisted_once_and_acknowledged_idempotentl
         "verify_cloudpayments_signature",
         verify_cloudpayments_signature,
     )
-    original_enabled = settings.cloudpayments_enabled
     original_api_secret = settings.cloudpayments_api_secret
-    object.__setattr__(settings, "cloudpayments_enabled", True)
     object.__setattr__(settings, "cloudpayments_api_secret", "test-secret")
     invoice_id = "inv-signed-duplicate-1"
     seed_order(webhook_database, invoice_id)
@@ -562,7 +560,6 @@ def test_signed_duplicate_webhook_is_persisted_once_and_acknowledged_idempotentl
         assert payments[0].provider_payment_id == "tx-signed-duplicate-1"
         assert order.status is OrderStatus.PAID
     finally:
-        object.__setattr__(settings, "cloudpayments_enabled", original_enabled)
         object.__setattr__(settings, "cloudpayments_api_secret", original_api_secret)
 
 

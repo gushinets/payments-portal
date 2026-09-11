@@ -64,7 +64,6 @@ def make_settings(**overrides: object) -> Settings:
         "app_env": AppEnv.TEST,
         "app_public_base_url": "http://localhost:3000",
         "database_url": "sqlite+pysqlite:///:memory:",
-        "cloudpayments_enabled": False,
         "cors_allow_origins": ("http://localhost:3000",),
         "postgres_db": "anytoolai_test",
         "postgres_user": "anytoolai",

@@ -182,8 +182,12 @@ return HTTP 404.
 Local API configuration uses the same environment variable names as production,
 with development values supplied by `.env.example`, local `.env`, or the
 worktree harness. Set `APP_ENV=development` for local Compose and keep
-`DATABASE_URL`, `APP_PUBLIC_BASE_URL`, `CORS_ALLOW_ORIGINS`, and
-`CLOUDPAYMENTS_ENABLED` explicit.
+`DATABASE_URL`, `APP_PUBLIC_BASE_URL`, and `CORS_ALLOW_ORIGINS` explicit.
+
+CloudPayments credentials and activation flags are not part of normal Portal
+startup. The retained `scripts/cloudpayments_sandbox_verify.py` script accepts
+`CLOUDPAYMENTS_PUBLIC_ID` and `CLOUDPAYMENTS_API_SECRET` only when an operator
+explicitly opts into legacy/manual CloudPayments sandbox verification.
 
 ## Production Compose workflow
 
@@ -205,9 +209,9 @@ Next.js production image. External monitors such as HetrixTools can use
 Set `APP_ENV=production` in the external production env file. Production uses
 the same variable names as local development, but required API values must be
 provided explicitly; `docker-compose.prod.yml` does not provide fallback values
-for `APP_ENV`, `APP_PUBLIC_BASE_URL`, `CORS_ALLOW_ORIGINS`, or
-`CLOUDPAYMENTS_ENABLED`, and it also requires explicit `POSTGRES_DB`,
-`POSTGRES_USER`, `POSTGRES_PASSWORD`, `CADDY_DOMAIN`, and
+for `APP_ENV`, `APP_PUBLIC_BASE_URL`, or `CORS_ALLOW_ORIGINS`, and it also
+requires explicit `POSTGRES_DB`, `POSTGRES_USER`,
+`POSTGRES_PASSWORD`, `CADDY_DOMAIN`, and
 `NEXT_PUBLIC_API_BASE_URL`. Production Compose derives the API `DATABASE_URL`
 from `POSTGRES_*` so PostgreSQL initialization and API migrations cannot drift.
 Keep `.env.production` outside Git and use `.env.production.example` only as a

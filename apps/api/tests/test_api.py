@@ -14,7 +14,7 @@ from unittest.mock import Mock
 from apps.api.tests.support.settings import configure_api_test_environment
 from apps.api.tests.support.settings import override_settings
 
-configure_api_test_environment()
+configure_api_test_environment(CLOUDPAYMENTS_PUBLIC_ID="pk_test_provider")
 
 import pytest  # noqa: E402
 from fastapi import HTTPException  # noqa: E402
@@ -218,7 +218,6 @@ def seed_cloudpayments_provider_account(
 
 def setup_function() -> None:
     allow_unsigned_cloudpayments_webhooks_for_test()
-    object.__setattr__(settings, "cloudpayments_enabled", False)
     object.__setattr__(settings, "cloudpayments_api_secret", "")
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
@@ -2734,7 +2733,6 @@ def test_signed_check_webhook_validates_order_before_acknowledging() -> None:
     from app.settings import settings  # noqa: E402
 
     require_signed_cloudpayments_webhooks_for_test()
-    object.__setattr__(settings, "cloudpayments_enabled", True)
     object.__setattr__(settings, "cloudpayments_api_secret", "test-secret")
     try:
         register_response = cloudpayments_client.post(
@@ -2807,7 +2805,6 @@ def test_signed_check_webhook_validates_order_before_acknowledging() -> None:
         assert order.status is OrderStatus.PENDING_PAYMENT
     finally:
         allow_unsigned_cloudpayments_webhooks_for_test()
-        object.__setattr__(settings, "cloudpayments_enabled", False)
         object.__setattr__(settings, "cloudpayments_api_secret", "")
 
 
@@ -2815,7 +2812,6 @@ def test_signed_check_webhook_rejects_account_and_currency_mismatch() -> None:
     from app.settings import settings  # noqa: E402
 
     require_signed_cloudpayments_webhooks_for_test()
-    object.__setattr__(settings, "cloudpayments_enabled", True)
     object.__setattr__(settings, "cloudpayments_api_secret", "test-secret")
     try:
         register_response = cloudpayments_client.post(
@@ -2866,7 +2862,6 @@ def test_signed_check_webhook_rejects_account_and_currency_mismatch() -> None:
         ]
     finally:
         allow_unsigned_cloudpayments_webhooks_for_test()
-        object.__setattr__(settings, "cloudpayments_enabled", False)
         object.__setattr__(settings, "cloudpayments_api_secret", "")
 
 
@@ -3364,7 +3359,6 @@ def test_verified_late_pay_and_confirm_after_checkout_expiry_remain_authoritativ
     from app.settings import settings  # noqa: E402
 
     require_signed_cloudpayments_webhooks_for_test()
-    object.__setattr__(settings, "cloudpayments_enabled", True)
     object.__setattr__(settings, "cloudpayments_api_secret", "test-secret")
     try:
         scenarios = [
@@ -3412,7 +3406,6 @@ def test_verified_late_pay_and_confirm_after_checkout_expiry_remain_authoritativ
             assert payment.status is PaymentStatus.SUCCEEDED
     finally:
         allow_unsigned_cloudpayments_webhooks_for_test()
-        object.__setattr__(settings, "cloudpayments_enabled", False)
         object.__setattr__(settings, "cloudpayments_api_secret", "")
 
 
@@ -3420,7 +3413,6 @@ def test_signed_pay_webhook_processes_valid_signature() -> None:
     from app.settings import settings  # noqa: E402
 
     require_signed_cloudpayments_webhooks_for_test()
-    object.__setattr__(settings, "cloudpayments_enabled", True)
     object.__setattr__(settings, "cloudpayments_api_secret", "test-secret")
     try:
         register_response = cloudpayments_client.post(
@@ -3466,7 +3458,6 @@ def test_signed_pay_webhook_processes_valid_signature() -> None:
         assert payment.status is PaymentStatus.SUCCEEDED
     finally:
         allow_unsigned_cloudpayments_webhooks_for_test()
-        object.__setattr__(settings, "cloudpayments_enabled", False)
         object.__setattr__(settings, "cloudpayments_api_secret", "")
 
 
@@ -3656,7 +3647,6 @@ def test_payment_status_projects_product_state_from_final_and_pending_orders() -
 
 def test_signed_check_after_failed_attempt_allows_retry() -> None:
     require_signed_cloudpayments_webhooks_for_test()
-    object.__setattr__(settings, "cloudpayments_enabled", True)
     object.__setattr__(settings, "cloudpayments_api_secret", "test-secret")
     try:
         invoice_id = create_checkout_invoice(email="retry-after-fail@example.com")
@@ -3692,7 +3682,6 @@ def test_signed_check_after_failed_attempt_allows_retry() -> None:
         assert events[1].error_code is None
     finally:
         allow_unsigned_cloudpayments_webhooks_for_test()
-        object.__setattr__(settings, "cloudpayments_enabled", False)
         object.__setattr__(settings, "cloudpayments_api_secret", "")
 
 
@@ -7261,11 +7250,10 @@ def test_cloudpayments_webhook_rejects_invalid_signature_when_secret_is_set() ->
     assert event.processed_at
 
 
-def test_cloudpayments_webhook_rejects_missing_secret_when_provider_is_enabled() -> None:
+def test_cloudpayments_webhook_rejects_missing_secret() -> None:
     require_signed_cloudpayments_webhooks_for_test()
     from app.settings import settings  # noqa: E402
 
-    object.__setattr__(settings, "cloudpayments_enabled", True)
     object.__setattr__(settings, "cloudpayments_api_secret", "")
 
     response = cloudpayments_client.post(
@@ -7282,10 +7270,8 @@ def test_cloudpayments_webhook_rejects_missing_secret_when_provider_is_enabled()
     assert response.status_code == 400
     assert response.json()["detail"] == "invalid_cloudpayments_signature"
 
-    object.__setattr__(settings, "cloudpayments_enabled", False)
 
-
-def test_new_cloudpayments_webhook_types_reject_unsigned_disabled_mode() -> None:
+def test_new_cloudpayments_webhook_types_reject_unsigned_without_secret() -> None:
     require_signed_cloudpayments_webhooks_for_test()
 
     scenarios = [
@@ -7347,7 +7333,6 @@ def test_cloudpayments_webhook_rejects_non_ascii_signature_without_500() -> None
     secret = "test-secret"
     from app.settings import settings  # noqa: E402
 
-    object.__setattr__(settings, "cloudpayments_enabled", True)
     object.__setattr__(settings, "cloudpayments_api_secret", secret)
     payload = b'{"InvoiceId":"invoice-non-ascii","Amount":"1490.00","Currency":"RUB"}'
     valid_signature = base64.b64encode(hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).digest()).decode(
@@ -7362,5 +7347,4 @@ def test_cloudpayments_webhook_rejects_non_ascii_signature_without_500() -> None
         is False
     )
 
-    object.__setattr__(settings, "cloudpayments_enabled", False)
     object.__setattr__(settings, "cloudpayments_api_secret", "")

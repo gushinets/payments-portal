@@ -46,7 +46,6 @@ class Settings(BaseSettings):
     app_env: AppEnv
     app_public_base_url: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
     database_url: Annotated[str, StringConstraints(strip_whitespace=True)] = ""
-    cloudpayments_enabled: bool
     cors_allow_origins: Annotated[tuple[str, ...], NoDecode]
     postgres_db: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
     postgres_user: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
@@ -94,9 +93,9 @@ class Settings(BaseSettings):
     sentry_dsn: Annotated[str, StringConstraints(strip_whitespace=True)] = ""
     sentry_release: Annotated[str, StringConstraints(strip_whitespace=True)] = ""
 
-    @field_validator("cloudpayments_enabled", "smtp_use_tls", mode="before")
+    @field_validator("smtp_use_tls", mode="before")
     @classmethod
-    def parse_legacy_bool(cls, value: Any) -> bool:
+    def parse_smtp_use_tls(cls, value: Any) -> bool:
         if isinstance(value, str):
             return value.lower() == "true"
         return bool(value)
@@ -171,15 +170,6 @@ class Settings(BaseSettings):
         if info.data.get("app_env") == AppEnv.PRODUCTION:
             return tuple(validate_production_cors_origin(origin) for origin in value)
         return value
-
-    @model_validator(mode="after")
-    def require_cloudpayments_credentials_when_enabled(self) -> Settings:
-        if self.cloudpayments_enabled:
-            if not self.cloudpayments_public_id.strip():
-                raise ValueError("CLOUDPAYMENTS_PUBLIC_ID is required when CLOUDPAYMENTS_ENABLED=true")
-            if not self.cloudpayments_api_secret.strip():
-                raise ValueError("CLOUDPAYMENTS_API_SECRET is required when CLOUDPAYMENTS_ENABLED=true")
-        return self
 
     @model_validator(mode="after")
     def require_sentry_release_when_enabled(self) -> Settings:

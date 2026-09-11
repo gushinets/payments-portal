@@ -104,7 +104,6 @@ def _settings_values(**overrides: object) -> dict[str, object]:
         "postgres_password": "secret",
         "postgres_host": "postgres",
         "postgres_port": 5432,
-        "cloudpayments_enabled": True,
         "cloudpayments_public_id": "pk_test",
         "cloudpayments_api_secret": "secret_test",
         "cors_allow_origins": ("https://payments.example.com",),

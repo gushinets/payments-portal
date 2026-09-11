@@ -86,7 +86,6 @@ jobs:
       WEB_PORT: "3000"
       NEXT_PUBLIC_API_BASE_URL: https://payments.example.test
       CORS_ALLOW_ORIGINS: https://payments.example.test
-      CLOUDPAYMENTS_ENABLED: "false"
       APP_ENV: production
       APP_PUBLIC_BASE_URL: https://payments.example.test
       CADDY_DOMAIN: payments.example.test
@@ -148,7 +147,6 @@ jobs:
             echo "WEB_PORT=$WEB_PORT"
             echo "NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL"
             echo "CORS_ALLOW_ORIGINS=$CORS_ALLOW_ORIGINS"
-            echo "CLOUDPAYMENTS_ENABLED=$CLOUDPAYMENTS_ENABLED"
             echo "CADDY_DOMAIN=$CADDY_DOMAIN"
           } > "$ci_env"
           echo "CI_ENV_FILE=$ci_env" >> "$GITHUB_ENV"
