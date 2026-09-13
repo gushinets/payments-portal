@@ -50,8 +50,9 @@ Last verified: 2026-09-10
   mechanism, cadence, cursor, pagination, scheduler, and storage remain outside
   ANY-411.
 - Browser return-page state is informational and never billing authority.
-- In the current CloudPayments flow, authoritative facts arrive through verified
-  webhooks.
+- No CloudPayments flow is active in normal runtime. Any future active billing
+  integration must obtain authoritative facts through authenticated,
+  validated integration facts and reconciliation as required.
 
 ## Framework worker execution
 
@@ -61,19 +62,19 @@ async framework boundary delegates a complete resource-owning synchronous unit
 through the framework worker mechanism when blocking work is unavoidable. Do
 not add unbounded blocking work, unbounded retries, or blocking retry sleeps.
 
-Current synchronous provider integrations retain bounded timeout and retry
-budgets. Cancellation of the request or async waiter does not imply that work
-already running in a synchronous worker can be forcibly stopped. Resource
-ownership must therefore remain inside the delegated synchronous unit, and
-request ID plus trace/span/log context must remain correlated across the
-framework worker boundary.
+Retained synchronous provider integrations have bounded timeout and retry
+budgets in their source code. They are not active normal-runtime paths.
+Cancellation of the request or async waiter does not imply that work already
+running in a synchronous worker can be forcibly stopped. Resource ownership
+must therefore remain inside the delegated synchronous unit, and request ID
+plus trace/span/log context must remain correlated across the framework worker
+boundary.
 
 Scheduled subscription expiry remains a synchronous CLI. Password-reset email
 delivery remains its existing synchronous framework background task. Neither
-surface establishes a generic durable job or worker system. Moving the current
-CloudPayments cleanup through a framework worker is transitional runtime
-safety while that integration remains registered; it is not permanent provider
-lifecycle architecture.
+surface establishes a generic durable job or worker system. Retained
+CloudPayments cleanup source is not normal-runtime work and is not permanent
+provider lifecycle architecture.
 
 ## Agent-verifiable signals
 
@@ -127,12 +128,14 @@ The representative incident journeys are:
 1. Checkout to order: find the request/trace, then the post-commit
    `billing_checkout_committed` diagnostic and its local `order_id`. Follow the
    order to its payment, webhook, and provider-operation records as applicable.
-2. Webhook to local billing state: find the request/trace, then the durable
-   `cloudpayments_webhook_processed` diagnostic. Its `webhook_event_id`, and
-   any available `order_id` or `payment_id`, lead to the persisted
-   `PaymentWebhookEvent` and existing lifecycle/audit records. Persisted status
-   and error code distinguish duplicate, stale, or conflicting outcomes without
-   creating separate diagnostic families.
+2. Retained provider webhook source to local billing state: when analyzing
+   retained legacy records or source, use the durable
+   `cloudpayments_webhook_processed` diagnostic, if present. Its
+   `webhook_event_id`, and any available `order_id` or `payment_id`, lead to the
+   persisted `PaymentWebhookEvent` and existing lifecycle/audit records.
+   Persisted status and error code distinguish duplicate, stale, or conflicting
+   outcomes without creating separate diagnostic families. The retained route
+   is not reachable in normal runtime.
 3. Provider timeout or ambiguous outcome: use the provider operation span and
    bounded provider/operation/outcome metrics, then inspect the surrounding
    request trace and local durable state. A timeout or lost response is

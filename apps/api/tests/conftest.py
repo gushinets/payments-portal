@@ -16,10 +16,11 @@ from .support.postgres import (
     run_migrations,
     validate_test_database_url,
 )
-from .support.settings import DEFAULT_API_TEST_ENV
+from .support.settings import DEFAULT_API_TEST_ENV, clear_cloudpayments_test_environment
 
 
 load_dotenv()
+clear_cloudpayments_test_environment()
 os.environ["SENTRY_DSN"] = ""
 os.environ["SENTRY_RELEASE"] = ""
 for name, value in DEFAULT_API_TEST_ENV.items():

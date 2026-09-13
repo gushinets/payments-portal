@@ -10,13 +10,13 @@ is implemented, while `eu` and `us` remain planned.
 
 The implemented product surface is the `ru` contour for Document Summary and
 Prompt Optimizer. Payment Portal is still under development and is not running
-as a production billing service. CloudPayments exists in the current code as a
-transitional Portal-managed direct-provider capability retained under ANY-407;
-there are no production CloudPayments subscribers or subscriptions to migrate.
-The sole long-term production target is an external-billing-managed flow. The
-current direct-provider code remains supported while required by current code,
-operations, obligations, or safe cutover, but it is not a co-equal future
-production target.
+as a production billing service. CloudPayments implementation and persistence
+source is retained under ANY-407 for later evidence-based cleanup, but normal
+backend and frontend runtime no longer initializes, registers, loads, or invokes
+it. Checkout is temporarily unavailable until a separately selected and
+implemented billing integration exists. There are no production CloudPayments
+subscribers or subscriptions to migrate. The sole long-term production target
+is an external-billing-managed flow.
 
 Contour architecture is defined in [contours](architecture/contours.md).
 Billing ownership and authoritative facts are defined in
@@ -30,9 +30,8 @@ Implemented `ru` screens are defined in [RU MVP journey](product/ru-mvp.md).
 - Password-based demo registration, sessions, and email password reset. The
   form does not yet confirm contour with Region Resolver.
 - Versioned `ru` legal-document metadata and append-only acceptance records.
-- Checkout sessions, orders, order items, payment attempts, refunds, and a
-  CloudPayments webhook inbox.
-- CloudPayments signature checking, payload redaction, and idempotent processing.
+- Checkout sessions, orders, order items, payment attempts, refunds, and the
+  retained provider-oriented persistence schema.
 - Catalog products, plans, bundles, and limits implemented under ANY-77.
 - Local subscriptions, entitlement rules, entitlements, and subscription audit
   implemented under ANY-78.
@@ -56,15 +55,16 @@ Implemented `ru` screens are defined in [RU MVP journey](product/ru-mvp.md).
 - A production instance serves one contour and does not know other contours'
   customers or base URLs.
 - A browser return URL never confirms payment or activates access.
-- Paid access advances only from verified authoritative billing facts. The
-  current transitional CloudPayments integration policy accepts its verified,
-  normalized webhook outcomes as those facts. For external billing,
-  authentication alone is not semantic authority: integration policy decides
-  whether the webhook payload is sufficient or must trigger point
-  reconciliation, and both fact sources feed the same local transition path.
+- Paid access advances only from verified authoritative billing facts. Normal
+  runtime has no active CloudPayments fact path. For any future external
+  billing integration, authentication alone is not semantic authority:
+  integration policy decides whether the external fact is sufficient or must
+  trigger point reconciliation, and both fact sources feed the same local
+  transition path.
 - This service never collects or stores card data. Card data is handled by the
-  responsible external payment boundary; the transitional direct-provider
-  implementation delegates it to CloudPayments.
+  responsible external payment boundary.
+- Checkout remains deliberately unavailable until a billing integration is
+  selected and implemented for normal runtime.
 - Legal drafts are not represented as counsel-approved documents.
 - Product and plan identifiers must remain stable across web, payment metadata,
   and future Platform Kernel integration.

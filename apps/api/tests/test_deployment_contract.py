@@ -72,6 +72,34 @@ def test_production_sentry_configuration_is_optional_and_minimal() -> None:
     "path",
     ["docker-compose.yml", "docker-compose.prod.yml", "docker-compose.agent.yml"],
 )
+def test_normal_api_compose_environment_excludes_cloudpayments(path: str) -> None:
+    api_environment = load_compose(path)["services"]["api"]["environment"]
+
+    assert not {key for key in api_environment if key.startswith("CLOUDPAYMENTS_")}
+
+
+@pytest.mark.parametrize("path", [".env.example", ".env.production.example"])
+def test_supported_environment_examples_exclude_cloudpayments(path: str) -> None:
+    example = load_env_example(path)
+
+    assert not {key for key in example if key.startswith("CLOUDPAYMENTS_")}
+
+
+def test_production_ci_environment_excludes_cloudpayments() -> None:
+    workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
+    production_gate = workflow["jobs"]["production-gate"]
+    create_environment_script = next(
+        step["run"] for step in production_gate["steps"] if step.get("name") == "Create private CI environment"
+    )
+
+    assert not {key for key in production_gate["env"] if key.startswith("CLOUDPAYMENTS_")}
+    assert "CLOUDPAYMENTS_" not in create_environment_script
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["docker-compose.yml", "docker-compose.prod.yml", "docker-compose.agent.yml"],
+)
 def test_api_healthcheck_uses_canonical_readiness(path: str) -> None:
     api = load_compose(path)["services"]["api"]
 

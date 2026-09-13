@@ -10,8 +10,9 @@ confirmation via Region Resolver is planned and is not part of this journey.
 ## Goal
 
 A user arriving from an AnytoolAI product can understand the relevant product,
-create or enter an account, accept the current RU legal documents, initiate a
-CloudPayments checkout, and see provider-confirmed payment state.
+create or enter an account, accept the current RU legal documents, and see
+that checkout is temporarily unavailable until a billing integration is
+selected and implemented.
 
 ## Current routes
 
@@ -41,17 +42,12 @@ CloudPayments checkout, and see provider-confirmed payment state.
 4. A returning user who forgot their password can request an email reset link
    and set a new password from `/ru/reset-password`.
 5. Registration requires explicit personal-data and offer confirmation.
-6. Checkout asks the API for a checkout intent.
-7. If an active required legal version has not been accepted, the API returns
-   each missing document and its acceptance text hash.
-8. The user explicitly accepts every required version; the API writes append-only
-   acceptance evidence.
-9. The checkout intent creates pending commercial state.
-10. In configured mode, the CloudPayments widget handles payment. Demo mode still
-   produces only pending/informational browser state.
-11. The payment-result page polls API state. It never declares payment success
-    solely because the browser returned from the provider.
-12. Verified webhook delivery updates order and payment state idempotently.
+6. The checkout surface reports that payment is temporarily unavailable because
+   no direct payment provider is registered in normal runtime.
+7. The disabled payment action does not request a checkout intent, write payment
+   result state, load a provider widget, or start provider work.
+8. The payment-result page remains informational and never declares payment
+   success solely because the browser returned from a provider.
 
 ## Returning user
 
@@ -76,7 +72,8 @@ database catalog and plan model.
 - Required acceptance checkboxes are never preselected.
 - Automatic-renewal consent is separate from general legal acceptance.
 - The cookie banner stores only the user's local choice in the current MVP.
-- Payment method marks are shown only for configured/represented methods.
+- Payment method marks are shown only for configured/represented methods; no
+  payment method is active in the current checkout runtime.
 
 ## Page states
 
@@ -88,9 +85,8 @@ product introduction
 authentication
 missing legal acceptances
 account/product state
-checkout preparation
-pending provider confirmation
-provider-confirmed result
+checkout unavailable
+informational payment-result state
 ```
 
 Planned trial, subscription, entitlement, bundle, all-access, and Platform
@@ -100,8 +96,9 @@ Kernel handoff behavior belongs to ANY-71 or the external Platform Kernel repo.
 
 - Invalid product codes do not produce checkout state.
 - Authentication errors are actionable and do not expose sensitive detail.
-- Checkout is blocked until every current required legal version is accepted.
-- A changed active document version requires a new acceptance.
-- Duplicate or late webhooks preserve valid terminal state.
+- Checkout is explicitly unavailable when no direct payment provider is
+  registered, and its disabled action cannot initiate payment preparation.
+- A browser return never activates access or substitutes for authoritative
+  billing facts.
 - No card data is stored or logged.
 - Desktop and mobile routes pass browser smoke and accessibility checks.

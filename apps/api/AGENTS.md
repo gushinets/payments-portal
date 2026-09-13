@@ -45,9 +45,10 @@ and do not yet map one-to-one to every layer:
 
 Domain modules must not import routers or external integrations. Raw external
 payloads must be authenticated or verified, validated, redacted, and
-normalized at the owning Integration boundary. CloudPayments is the current
-`ru` direct-provider integration; an external billing system is a distinct
-boundary and is not another `PaymentProviderAdapter`.
+normalized at the owning Integration boundary. CloudPayments source is retained
+for transitional cleanup but is not registered or used by normal `ru` runtime;
+an external billing system is a distinct boundary and is not another
+`PaymentProviderAdapter`.
 
 ## Tooling
 
@@ -65,9 +66,10 @@ database lifecycle.
 
 ## Safety
 
-- Paid access changes only from verified authoritative billing facts. Current
-  CloudPayments supplies those facts through verified webhooks; a browser
-  return remains informational.
+- Paid access changes only from verified authoritative billing facts. Normal
+  runtime has no CloudPayments callback path; a browser return remains
+  informational, and any future billing integration must supply authenticated,
+  validated authoritative facts.
 - Never log authentication tokens, authorization headers, secrets, card fields,
   or unredacted webhook bodies.
 - Legal acceptance records are append-only.

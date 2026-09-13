@@ -7,10 +7,11 @@ Last verified: 2026-09-09
 
 This repository owns identity, legal-document and acceptance records, catalog
 semantics, entitlement rules, local entitlements, and the payment portal UI for
-**one contour per production instance**. In the current direct-provider flow it
-also orchestrates checkout, orders, payments, subscriptions, and provider
-webhooks. It does not own workflow execution, scenario runtime, artifacts, or
-usage consumption. Those belong to the separate Platform Kernel repository.
+**one contour per production instance**. It owns checkout and local billing
+records, while normal runtime has no active direct payment provider. Retained
+provider/webhook source is not part of normal application composition. It does
+not own workflow execution, scenario runtime, artifacts, or usage consumption.
+Those belong to the separate Platform Kernel repository.
 
 The implemented instance is the `ru` contour. Target contours are `ru`, `eu`,
 and `us`. See [contours](docs/architecture/contours.md).
@@ -27,25 +28,23 @@ flowchart LR
   Browser --> Web["Next.js web"]
   Web --> API["FastAPI API"]
   API --> DB[("PostgreSQL")]
-  Web --> Provider["CloudPayments"]
-  Provider -->|"verified webhook"| API
   API -. "future access contract" .-> PK["Platform Kernel in this contour"]
   Web -. "planned contour switch" .-> Resolver
 ```
 
 This diagram shows **CURRENT IMPLEMENTATION CODE**, not a production billing
 deployment. Payment Portal is still under development and has no production
-CloudPayments subscribers or subscriptions. The implemented `ru` code contains
-a Portal-managed direct CloudPayments flow. Under ANY-407, that capability
-remains **TRANSITIONAL** until separately approved architecture and refactoring
-work determines whether it is still needed; its presence does not commit the
-product to using CloudPayments in production.
+CloudPayments subscribers or subscriptions. The retained `ru` code contains
+transitional direct-provider source and persistence, but normal backend and
+frontend runtime does not initialize, register, load, or invoke CloudPayments.
+Checkout is deliberately unavailable until a separately selected and
+implemented billing integration exists.
 
 The sole long-term production target is the external-billing-managed flow, in
 which the external system owns its external customer, invoice, payment, and
 subscription lifecycle and the Portal stores normalized local projections. The
-current Portal-managed flow remains documented and supported only as a
-transitional capability. A `Subscription` that participates in a billing
+retained Portal-managed source remains documented only for later cleanup. A
+`Subscription` that participates in a billing
 lifecycle has exactly one billing owner at a time. A Portal-only access
 lifecycle, such as a locally granted free trial without an external billing
 lifecycle, remains Portal-owned and does not require an external billing owner.
@@ -59,13 +58,13 @@ required or defined while there are no production subscriptions to migrate. See
 - **Legal** — legal entities, document versions, and append-only acceptances.
 - **Billing** — entrypoints, checkout sessions, orders, items, payments,
   refunds, webhook inbox, subscriptions, entitlements, and subscription audit.
-- **Portal-managed payment provider boundary** — direct-provider checkout
-  actions selected through `payment_provider_accounts`; webhook normalization
-  remains provider-adapter-specific. This boundary does not represent an
-  external billing system.
-- **CloudPayments integration** — the adapter registered in the current `ru`
-  implementation: request validation, redaction, idempotency keys, response
-  formatting, and translation into billing operations.
+- **Portal-managed payment provider boundary** — the retained direct-provider
+  contract for a separately enabled integration; normal runtime has no
+  registered provider and generic checkout fails closed. This boundary does
+  not represent an external billing system.
+- **CloudPayments integration** — retained source for request validation,
+  redaction, idempotency keys, response formatting, and translation into
+  billing operations; it is not registered or mounted in normal runtime.
 
 The target logical API dependency direction is:
 
@@ -87,13 +86,14 @@ transitional package mapping are recorded in
 Repositories remain selective boundaries for real persistence complexity, not
 a requirement for every model.
 
-For the current Portal-managed direct-provider flow, provider adapters are
-registered at the API composition root by provider code. Provider-neutral
-modules do not import provider integrations or branch on provider-specific
-literals; they select enabled provider accounts and use the registered adapter
-contract. An external billing system is a separate authority boundary and is
-not registered in `PaymentProviderRegistry`. Core configuration, database,
-logging, telemetry, and security helpers are shared infrastructure.
+When a direct-provider integration is explicitly enabled, provider adapters are
+registered at the API composition root by provider code. In the current normal
+runtime the registry is empty, so generic checkout fails closed and the
+frontend checkout is unavailable. Provider-neutral modules do not import
+provider integrations or branch on provider-specific literals. An external
+billing system is a separate authority boundary and is not registered in
+`PaymentProviderRegistry`. Core configuration, database, logging, telemetry,
+and security helpers are shared infrastructure.
 
 Python AST analysis currently enforces selected dependency constraints in the
 transitional package tree, including core/domain-to-integration restrictions,
@@ -128,9 +128,9 @@ not justify duplicate sync/async application services or generic sync/async
 adapters.
 
 Async request and error middleware, FastAPI lifespan coordination, and the
-shared exact-body dependency are valid framework boundaries. The current
-provider server client, password-reset background callback, scheduled expiry
-CLI, provider-neutral business operations, and Application, Domain, and
+shared exact-body dependency are valid framework boundaries. Retained provider
+source, the password-reset background callback, scheduled expiry CLI,
+provider-neutral business operations, and Application, Domain, and
 Persistence code remain synchronous. The `traced()` helper supports both sync
 and async callables because it is boundary-neutral observability infrastructure,
 not because application code should become async.
@@ -145,11 +145,11 @@ persistence, define logging policy, or call Application or Domain code.
 Ordinary JSON APIs continue to use FastAPI/Pydantic request models. The shared
 dependency is not a general async application abstraction.
 
-CloudPayments and its lifespan cleanup remain transitional current
-implementation details, not permanent provider lifecycle architecture. A
-future integration chooses sync or async according to its actual outer I/O
-client and keeps that modality at the integration boundary rather than
-propagating it into Application, Domain, or Persistence.
+CloudPayments source and its legacy lifecycle cleanup remain retained
+transitional code, not active provider lifecycle architecture. A future
+integration chooses sync or async according to its actual outer I/O client and
+keeps that modality at the integration boundary rather than propagating it
+into Application, Domain, or Persistence.
 
 The web dependency direction is:
 
@@ -213,9 +213,10 @@ The centralized HTTP failure boundary is the default owner of HTTP failure
 reporting. When an existing outer boundary catches a reportable exception and
 converts or absorbs it before that centralized boundary can observe it, the
 catching boundary owns exactly one explicit report before conversion or
-absorption. This applies to the existing CloudPayments webhook conversion and
-password-reset email background callback. It does not change the dependency
-direction or permit Sentry reporting from Domain/Application business logic.
+absorption. This applies to retained CloudPayments webhook conversion source
+and the password-reset email background callback; the retained webhook source
+is not mounted in normal runtime. It does not change the dependency direction
+or permit Sentry reporting from Domain/Application business logic.
 
 The outer boundary owns at most one explicit report while preserving the
 application log as an independent diagnostic signal. Mapped expected business

@@ -91,8 +91,10 @@ need, security treatment, and retention.
 
 - Validate HTTP, environment, webhook, and database-boundary data.
 - Verify authenticity at every external billing or payment Integration before
-  trusting external state. The implemented `ru` CloudPayments integration
-  verifies webhook signatures.
+  trusting external state. Retained CloudPayments source verifies webhook
+  signatures, but its router is not mounted in normal runtime and is not a
+  current billing-fact processing path. Any future active integration must
+  preserve this invariant.
 - Treat request IDs and external billing or payment metadata as untrusted input
   with length and character limits.
 - Store session tokens only as hashes.
