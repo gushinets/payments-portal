@@ -2,12 +2,14 @@
 
 ## Plan overview
 
+**Overall status:** `done`
+
 | Step | Result | Status |
 |---|---|---|
-| 1 | Legal SQLAlchemy query/load mechanics moved behind existing Infrastructure query boundary | `todo` |
-| 2 | Active Identity read/query mechanics moved behind focused query helpers | `todo` |
-| 3 | Password Reset raw SQL and atomic/bulk DML moved into focused Persistence capability | `todo` |
-| 4 | Persistence Boundary documented, guarded, and fully verified | `todo` |
+| 1 | Legal SQLAlchemy query/load mechanics moved behind existing Infrastructure query boundary | `done` |
+| 2 | Active Identity read/query mechanics moved behind focused query helpers | `done` |
+| 3 | Password Reset raw SQL and atomic/bulk DML moved into focused Persistence capability | `done` |
+| 4 | Persistence Boundary documented, guarded, and fully verified | `done` |
 
 Execution order:
 
@@ -295,7 +297,7 @@ ANY-455 must not implement:
 
 ### Step 1 — Move Legal query/load mechanics into Infrastructure
 
-**Status:** `todo`
+**Status:** `done`
 
 **Goal**  
 Remove SQLAlchemy query/load composition from the active Legal service and acceptance route while preserving all legal/business behavior and transaction semantics.
@@ -463,7 +465,7 @@ uv run pytest tests/test_billing_lifecycle.py -k "consent or automatic_renewal"
 
 ### Step 2 — Isolate active Identity read/query mechanics
 
-**Status:** `todo`
+**Status:** `done`
 
 **Goal**  
 Remove confirmed SQLAlchemy read-query construction from active Identity/session/checkout/status paths without turning Identity into a repository architecture or redesigning its Presentation/Application structure.
@@ -675,7 +677,7 @@ uv run pytest tests/test_api.py -k "register or login or session or payment_stat
 
 ### Step 3 — Extract Password Reset atomic persistence operations
 
-**Status:** `todo`
+**Status:** `done`
 
 **Goal**  
 Remove PostgreSQL/raw SQL and SQLAlchemy bulk-DML mechanics from Password Reset while preserving its security policy, anti-enumeration behavior and exact transaction sequence.
@@ -899,7 +901,7 @@ The new persistence regression test must use the repository PostgreSQL fixtures/
 
 ### Step 4 — Document and guard the selective Persistence Boundary
 
-**Status:** `todo`
+**Status:** `done`
 
 **Goal**  
 Record the boundary established by Steps 1–3 as authoritative architecture, add a narrow semantic regression guard, and perform final ticket verification.
