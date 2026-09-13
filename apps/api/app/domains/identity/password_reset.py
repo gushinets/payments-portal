@@ -28,6 +28,7 @@ from app.domains.identity.session import (
     DEFAULT_TENANT_ID,
     utc_now,
 )
+from app.infrastructure.sentry import FailureCategory, Operation, report_exception
 from app.models import AuthSession, MagicLinkPurpose, MagicLinkToken, User, UserStatus
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -147,6 +148,11 @@ def send_password_reset_email_safely(email: str, reset_url: str) -> None:
                     "reason": error.__class__.__name__,
                 }
             },
+        )
+        report_exception(
+            error,
+            operation=Operation.PASSWORD_RESET_EMAIL,
+            failure_category=FailureCategory.INTEGRATION_FAILURE,
         )
         return
 

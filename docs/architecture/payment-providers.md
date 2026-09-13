@@ -1,14 +1,15 @@
 # Portal-Managed Payment Provider Boundary
 
-Status: authoritative for the direct-provider boundary; CloudPayments is the only implemented adapter
+Status: authoritative for the retained direct-provider boundary; no provider is active in normal runtime
 Last verified: 2026-09-04
 
 This document covers only the **Portal-managed direct payment-provider flow**:
 Payment Portal orchestrates billing and calls a payment or acquiring provider
-through `PaymentProviderAdapter`. CloudPayments is the adapter in the current
-`ru` implementation. This flow is CURRENT / TRANSITIONAL. It remains supported
-while required by current code, operations, obligations, or safe cutover, but it
-is not a co-equal long-term production target.
+through `PaymentProviderAdapter`. CloudPayments is the retained implementation
+source for the `ru` contour. This flow is TRANSITIONAL and deactivated in
+normal runtime: no adapter is registered, checkout fails closed, and the
+frontend does not load or invoke a provider. It is not a co-equal long-term
+production target.
 
 An **external billing system** owns its own external customer, invoice, payment,
 and subscription lifecycle. It is a separate authority boundary, is not a
@@ -17,34 +18,36 @@ payment-provider adapter, and must not be registered in
 [Billing Authority and Consistency](billing-authority.md).
 
 Provider-neutral modules must not import provider integrations and must not
-branch on provider-specific literals. Checkout selects enabled rows from
-`payment_provider_accounts` and calls the registered checkout adapter contract.
+branch on provider-specific literals. When a direct provider is explicitly
+enabled, checkout selects its enabled account and calls the registered adapter
+contract; normal runtime currently has no registered provider and fails closed.
 
 Adapters own request validation, signature or authenticity checks, payload
 redaction, idempotency keys, provider response formatting, and translation
 into billing operations.
 
-## Implemented
+## Retained implementation source
 
-CloudPayments is registered in the current `ru` implementation. Browser
-checkout uses the CloudPayments widget. Notifications arrive at CloudPayments
-HTTP paths on the `ru` API. Those paths are adapter surface, not a billing
-invariant. Payment Portal is not yet a production billing service, and there
-are no production CloudPayments subscribers or subscriptions.
+The CloudPayments adapter, router, persistence schema, and migration source are
+retained for later evidence-based cleanup. They are not registered, mounted,
+loaded, or invoked by normal backend or frontend runtime. The normal checkout
+registry is empty, generic checkout fails closed, and no CloudPayments HTTP
+callback path is exposed by normal application composition. Payment Portal is
+not yet a production billing service, and there are no production CloudPayments
+subscribers or subscriptions.
 
-The implemented shared adapter contract currently covers checkout preparation.
-CloudPayments webhook normalization and responses remain on the concrete
-CloudPayments router and adapter while the provider boundary is under active
-development. Verified initial payment and refund outcomes enter the
-provider-neutral subscription lifecycle through internal order, payment, refund,
-and webhook identifiers.
+The retained shared adapter contract covers the historical direct-provider
+checkout and lifecycle source. The retained CloudPayments webhook
+normalization and response code is not a current billing-fact path. Any future
+active integration must define its own authenticated, validated authoritative
+fact and local transition contract.
 
 Card data is handled by the contour's provider and is never collected or stored
 by this service.
 
-## Current Subscription and Entitlement Lifecycle
+## Retained Subscription and Entitlement Lifecycle
 
-In the current Portal-managed flow, the subscription lifecycle is
+In the retained Portal-managed source, the subscription lifecycle is
 provider-neutral domain code. It owns trial creation, paid-period activation,
 automatic-renewal attachment, renewal success or failure, normalized provider
 subscription state, cancellation requests, refund effects, and expiration.
@@ -67,12 +70,11 @@ the provider subscription and the domain service attaches the provider account,
 provider subscription reference, and recurring-consent acceptance. Failed
 provider setup does not revoke paid access.
 
-ANY-168 owns the CloudPayments recurrent integration boundary after ANY-78:
-consume the verified initial token only inside the adapter boundary, call the
-provider recurrent APIs, attach the opaque provider reference on success, and
-translate later provider renewal notifications or API results into the
-provider-neutral lifecycle commands. The token must not be persisted, logged,
-stored in normalized safe payloads, or exposed to domain code.
+The retained CloudPayments recurrent integration source is not an active normal
+runtime path. Any future recurrent integration must consume credentials only
+inside its own integration boundary and translate authenticated authoritative
+facts into provider-neutral lifecycle commands. Tokens must not be persisted,
+logged, stored in normalized safe payloads, or exposed to domain code.
 
 ## Planned
 
@@ -81,19 +83,19 @@ integration defined by its own implementation ticket, not this adapter
 boundary. Deployment configuration selects the concrete external-billing
 integration; it does not freely choose Portal-managed direct-provider billing
 as a co-equal target. Provider accounts and direct-provider adapter registration
-remain relevant only to the current/transitional flow while it is still
-required. The selection does not make the contour the owner of subscription
+remain relevant only to retained source and a separately approved active
+flow. The selection does not make the contour the owner of subscription
 billing lifecycles and does not require multiple simultaneously active billing
 owners or production integrations. The first-install seed names `paddle` as
 `default_payment_provider` for DE and ES; that value is not an accepted Merchant
 of Record, active billing model, or EU-provider decision.
 
-Under ANY-407, the CloudPayments implementation remains as transitional code
-while required by current code, operations, obligations, or safe cutover. It
-must not be removed or refactored here, and no production migration or
-coexistence mechanism is required while there are no production CloudPayments
-subscriptions. Reintroducing Portal-managed direct-provider billing as a future
-production model requires a new explicit architecture decision.
+Under ANY-407, the CloudPayments implementation remains as retained
+transitional code for later evidence-based cleanup. It must not be removed or
+refactored here, and no production migration or coexistence mechanism is
+required while there are no production CloudPayments subscriptions.
+Reintroducing Portal-managed direct-provider billing as a future production
+model requires a new explicit architecture decision.
 
 Do not add a future production direct-provider adapter without both a new
 explicit architecture decision and a contour-enablement ticket.
@@ -102,16 +104,18 @@ Define the smallest shared webhook contract only when the active Linear provider
 work or a second provider needs it. Do not treat the current checkout protocol
 as an already complete webhook plug-in boundary.
 
-## Direct-provider authority
+## Retained direct-provider authority
 
 - Payment success comes only from verified provider state, never from a browser
   return URL.
 - Duplicate provider deliveries must not duplicate domain mutations.
 - A late failure must not downgrade a confirmed paid order or successful
   payment.
-- Webhooks hit the local contour API directly. Region Resolver is not a proxy.
+- In a separately active direct-provider flow, webhooks hit the local contour
+  API directly; Region Resolver is not a proxy. The retained CloudPayments
+  callback route is not mounted in normal runtime.
 
-Current CloudPayments landing work is described by ANY-165, ANY-166, and
-ANY-167. Those plans describe the current Portal-managed implementation; they
-do not make CloudPayments the only possible direct provider or make this
-adapter contract the universal billing architecture.
+Historical CloudPayments landing work is described by ANY-165, ANY-166, and
+ANY-167. Those plans describe retained source and do not make CloudPayments an
+active runtime provider, the only possible direct provider, or this adapter
+contract the universal billing architecture.

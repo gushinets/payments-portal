@@ -18,6 +18,7 @@ from app.domains.identity.errors import (
     RecurringConsentRequiredError,
     UnknownProductPlanError,
 )
+from app.infrastructure.sentry import Operation, report_exception
 
 
 logger = logging.getLogger("payment_portal.http")
@@ -57,7 +58,7 @@ def _application_failure_location(error: BaseException) -> dict[str, object] | N
     return location
 
 
-def _log_internal_failure(request: Request, error: BaseException) -> None:
+def _report_internal_failure(request: Request, error: Exception) -> None:
     structured: dict[str, object] = {
         "method": request.method,
         "error_type": type(error).__name__,
@@ -71,6 +72,14 @@ def _log_internal_failure(request: Request, error: BaseException) -> None:
     if location is not None:
         structured["failure_location"] = location
     logger.error("http_internal_failure", extra={"structured": structured})
+    report_exception(
+        error,
+        operation=Operation.HTTP_REQUEST,
+        method=request.method,
+        route=route,
+        error_code=error.code if isinstance(error, AppError) else None,
+        failure_location=location,
+    )
 
 
 def _internal_server_error_response() -> JSONResponse:
@@ -89,7 +98,7 @@ def app_error_handler(request: Request, error: AppError) -> JSONResponse:
             detail["documents"] = error.details_safe["documents"]
         return JSONResponse(status_code=status_code, content={"detail": detail})
 
-    _log_internal_failure(request, error)
+    _report_internal_failure(request, error)
     return _internal_server_error_response()
 
 
@@ -100,5 +109,5 @@ async def unexpected_failure_middleware(
     try:
         return await call_next(request)
     except Exception as error:
-        _log_internal_failure(request, error)
+        _report_internal_failure(request, error)
         return _internal_server_error_response()

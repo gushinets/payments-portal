@@ -272,27 +272,6 @@ def validate_production_deployment_environment(*, environ: dict[str, str] | None
     validate_production_caddy_domain(environment.get("CADDY_DOMAIN", ""))
 
 
-def resolve_cloudpayments_public_id(
-    local_env: dict[str, str], *, environ: dict[str, str] | None = None
-) -> str:
-    environment = os.environ if environ is None else environ
-    return environment.get(
-        "CLOUDPAYMENTS_PUBLIC_ID",
-        local_env.get("CLOUDPAYMENTS_PUBLIC_ID", ""),
-    )
-
-
-def resolve_cloudpayments_api_secret(
-    local_env: dict[str, str], *, environ: dict[str, str] | None = None
-) -> str:
-    environment = os.environ if environ is None else environ
-    return (
-        environment.get("CLOUDPAYMENTS_API_SECRET")
-        or local_env.get("CLOUDPAYMENTS_API_SECRET")
-        or "test-cloudpayments-signing-key"
-    )
-
-
 def protect_private_directory(
     path: Path,
     *,
@@ -391,8 +370,6 @@ def write_runtime(config: RuntimeConfig) -> None:
     caddy_origin = f"http://localhost:{runtime_caddy_port(config)}"
     local_env = read_dotenv()
     app_public_base_url = local_env.get("APP_PUBLIC_BASE_URL", caddy_origin)
-    cloudpayments_public_id = resolve_cloudpayments_public_id(local_env)
-    cloudpayments_api_secret = resolve_cloudpayments_api_secret(local_env)
     cors_allow_origins = caddy_origin
     if app_public_base_url != caddy_origin:
         cors_allow_origins = f"{caddy_origin},{app_public_base_url}"
@@ -428,9 +405,6 @@ def write_runtime(config: RuntimeConfig) -> None:
         "OTLP_HTTP_PORT": str(config.otlp_http_port),
         "OTEL_EXPORTER_OTLP_ENDPOINT": "http://observability:4318",
         "OTEL_SERVICE_NAME": "payment-portal-api",
-        "CLOUDPAYMENTS_PUBLIC_ID": cloudpayments_public_id,
-        "CLOUDPAYMENTS_API_SECRET": cloudpayments_api_secret,
-        "CLOUDPAYMENTS_ENABLED": "false",
     }
     write_protected_runtime_env_file(
         RUNTIME_ENV,
@@ -680,7 +654,6 @@ def import_api() -> tuple[object, object]:
     os.environ.setdefault("POSTGRES_PASSWORD", "anytoolai")
     os.environ.setdefault("POSTGRES_HOST", "postgres")
     os.environ.setdefault("POSTGRES_PORT", "5432")
-    os.environ.setdefault("CLOUDPAYMENTS_ENABLED", "false")
     os.environ.setdefault("CORS_ALLOW_ORIGINS", "http://localhost:3000")
     os.environ.setdefault("SKIP_LEGAL_SEED", "true")
     from app.database import Base  # type: ignore
@@ -1131,6 +1104,7 @@ def check_python_boundaries(root: Path = ROOT) -> list[str]:
     for path in sorted(app_root.rglob("*.py")):
         relative = path.relative_to(root).as_posix()
         path_parts = path.relative_to(app_root).parts
+        is_sentry_adapter = path_parts == ("infrastructure", "sentry.py")
         in_core = path_parts[0] == "core"
         in_domains = path_parts[0] == "domains"
         in_integrations = path_parts[0] == "integrations"
@@ -1160,6 +1134,14 @@ def check_python_boundaries(root: Path = ROOT) -> list[str]:
 
         for imported in imports:
             rules: list[tuple[str, Callable[[str], bool], str]] = []
+            if not is_sentry_adapter:
+                rules.append(
+                    (
+                        "Sentry SDK adapter boundary",
+                        lambda target: module_matches(target, "sentry_sdk"),
+                        "import app.infrastructure.sentry instead",
+                    )
+                )
             if in_core:
                 rules.append(
                     (
@@ -1662,9 +1644,11 @@ def host_database_url_from_runtime(env: dict[str, str]) -> str:
 
 
 def direct_api_environment(*, environ: dict[str, str] | None = None) -> dict[str, str]:
-    base_environment = dict(os.environ if environ is None else environ)
-    local_env = read_dotenv()
-    runtime_env = read_runtime_env()
+    base_environment = _without_cloudpayments_environment(
+        dict(os.environ if environ is None else environ)
+    )
+    local_env = _without_cloudpayments_environment(read_dotenv())
+    runtime_env = _without_cloudpayments_environment(read_runtime_env())
     defaults = {
         **runtime_env,
         **local_env,
@@ -1673,10 +1657,17 @@ def direct_api_environment(*, environ: dict[str, str] | None = None) -> dict[str
     }
     defaults.setdefault("APP_ENV", "development")
     defaults.setdefault("APP_PUBLIC_BASE_URL", "http://localhost:3000")
-    defaults.setdefault("CLOUDPAYMENTS_ENABLED", "false")
     defaults.setdefault("CORS_ALLOW_ORIGINS", defaults.get("APP_PUBLIC_BASE_URL", "http://localhost:3000"))
     defaults.setdefault("SKIP_LEGAL_SEED", "true")
     return defaults
+
+
+def _without_cloudpayments_environment(environment: dict[str, str]) -> dict[str, str]:
+    return {
+        name: value
+        for name, value in environment.items()
+        if not name.startswith("CLOUDPAYMENTS_")
+    }
 
 
 def cmd_dev_api(_: argparse.Namespace) -> None:

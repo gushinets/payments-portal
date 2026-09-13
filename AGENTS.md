@@ -57,8 +57,9 @@ document that applies to the current task.
   or `ru` as the only possible billing integration or contour.
 - A direct payment provider and an external billing system are different
   boundaries. Do not model external billing as another
-  `PaymentProviderAdapter`. CloudPayments is the current transitional
-  Portal-managed direct-provider implementation.
+  `PaymentProviderAdapter`. CloudPayments source is retained as a transitional
+  Portal-managed implementation, but normal runtime does not register or use
+  it.
 - A production instance serves one contour. It must not persist other contours'
   base URLs, users, or legal records, and must not call another contour's API.
 - Region Resolver is a separate repository. This portal may know only that
@@ -71,9 +72,9 @@ document that applies to the current task.
   access authority. Raw external contracts and vendor status vocabularies stop
   at the Integration boundary.
 - Paid access changes only from verified authoritative billing facts, never
-  from a browser return URL. Current CloudPayments obtains those facts through
-  verified webhooks; future reconciliation may also provide verified facts but
-  must feed the same local transition path.
+  from a browser return URL. Normal runtime has no active CloudPayments fact
+  path; any future billing integration must authenticate and validate its
+  authoritative facts and feed the local transition path.
 - Never collect card data or log secrets, authorization headers, raw tokens, or
   unredacted payment fields.
 - Legal pages are drafts; do not present them as legally approved.

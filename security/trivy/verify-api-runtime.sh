@@ -41,7 +41,6 @@ container_id=$(docker run --detach --publish 127.0.0.1::8000 \
   --env POSTGRES_PASSWORD=anytoolai \
   --env POSTGRES_HOST=postgres \
   --env POSTGRES_PORT=5432 \
-  --env CLOUDPAYMENTS_ENABLED=false \
   --env CORS_ALLOW_ORIGINS=http://localhost:3000 \
   --env SKIP_LEGAL_SEED=true \
   --env OTEL_SDK_DISABLED=true \

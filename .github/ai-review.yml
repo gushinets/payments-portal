@@ -1,0 +1,15 @@
+version: 1
+primary_ci_workflow: CI
+policy:
+  always:
+    - AGENTS.md
+    - docs/engineering/CODING_CONVENTIONS.md
+  scoped:
+    - paths:
+        - apps/api/**
+      include:
+        - apps/api/AGENTS.md
+    - paths:
+        - apps/web/**
+      include:
+        - apps/web/AGENTS.md

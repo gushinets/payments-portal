@@ -1,7 +1,7 @@
 # Reliability Requirements
 
 Status: authoritative
-Last verified: 2026-09-09
+Last verified: 2026-09-10
 
 ## Critical paths
 
@@ -50,8 +50,9 @@ Last verified: 2026-09-09
   mechanism, cadence, cursor, pagination, scheduler, and storage remain outside
   ANY-411.
 - Browser return-page state is informational and never billing authority.
-- In the current CloudPayments flow, authoritative facts arrive through verified
-  webhooks.
+- No CloudPayments flow is active in normal runtime. Any future active billing
+  integration must obtain authoritative facts through authenticated,
+  validated integration facts and reconciliation as required.
 
 ## Framework worker execution
 
@@ -61,19 +62,19 @@ async framework boundary delegates a complete resource-owning synchronous unit
 through the framework worker mechanism when blocking work is unavoidable. Do
 not add unbounded blocking work, unbounded retries, or blocking retry sleeps.
 
-Current synchronous provider integrations retain bounded timeout and retry
-budgets. Cancellation of the request or async waiter does not imply that work
-already running in a synchronous worker can be forcibly stopped. Resource
-ownership must therefore remain inside the delegated synchronous unit, and
-request ID plus trace/span/log context must remain correlated across the
-framework worker boundary.
+Retained synchronous provider integrations have bounded timeout and retry
+budgets in their source code. They are not active normal-runtime paths.
+Cancellation of the request or async waiter does not imply that work already
+running in a synchronous worker can be forcibly stopped. Resource ownership
+must therefore remain inside the delegated synchronous unit, and request ID
+plus trace/span/log context must remain correlated across the framework worker
+boundary.
 
 Scheduled subscription expiry remains a synchronous CLI. Password-reset email
 delivery remains its existing synchronous framework background task. Neither
-surface establishes a generic durable job or worker system. Moving the current
-CloudPayments cleanup through a framework worker is transitional runtime
-safety while that integration remains registered; it is not permanent provider
-lifecycle architecture.
+surface establishes a generic durable job or worker system. Retained
+CloudPayments cleanup source is not normal-runtime work and is not permanent
+provider lifecycle architecture.
 
 ## Agent-verifiable signals
 
@@ -88,24 +89,32 @@ lifecycle architecture.
 
 Signals have distinct responsibilities:
 
+- Sentry is the primary error-issue entry point for reportable backend
+  application failures. It provides the failure category, sanitized stack, and
+  release needed to begin investigation.
 - Metrics report bounded rates, outcomes, and durations. They are not a
-  business-record lookup index.
-- Traces show the operation chain across the HTTP request, application work,
-  database instrumentation, and provider calls.
+  business-record lookup index; Prometheus and OpenTelemetry remain the metrics
+  owners.
+- OpenTelemetry traces show the operation chain across the HTTP request,
+  application work, database instrumentation, and provider calls.
 - Structured logs provide bounded incident-local detail, including selected
   local diagnostic IDs.
 - Persisted billing state and events remain the authoritative business record.
 
-For an HTTP incident, start with the validated `request_id` and the active
-trace/span IDs. Follow the relevant business diagnostic to a local Payment
-Portal identifier, then use that identifier to locate the durable record:
+For a reportable HTTP incident, start in Sentry and use its bounded correlation
+context to move into the existing telemetry and durable-state trail:
 
 ```text
-request_id / trace_id
-    -> local business diagnostic
-    -> order_id / payment_id / webhook_event_id / subscription_id
+Sentry
+    -> request_id / trace_id
+    -> trace and structured-log backend
+    -> approved local Payment Portal diagnostic IDs
     -> persisted Payment Portal records and events
 ```
+
+The trace/span IDs and validated `request_id` correlate the issue with the
+operation trace and bounded JSON diagnostics. Those diagnostics, not the Sentry
+event, provide approved local entity IDs for locating durable records.
 
 The current local identifiers emitted or preserved by the ANY-437 telemetry
 paths are `order_id`, `payment_id`, `subscription_id`, `webhook_event_id`, and
@@ -119,19 +128,31 @@ The representative incident journeys are:
 1. Checkout to order: find the request/trace, then the post-commit
    `billing_checkout_committed` diagnostic and its local `order_id`. Follow the
    order to its payment, webhook, and provider-operation records as applicable.
-2. Webhook to local billing state: find the request/trace, then the durable
-   `cloudpayments_webhook_processed` diagnostic. Its `webhook_event_id`, and
-   any available `order_id` or `payment_id`, lead to the persisted
-   `PaymentWebhookEvent` and existing lifecycle/audit records. Persisted status
-   and error code distinguish duplicate, stale, or conflicting outcomes without
-   creating separate diagnostic families.
+2. Retained provider webhook source to local billing state: when analyzing
+   retained legacy records or source, use the durable
+   `cloudpayments_webhook_processed` diagnostic, if present. Its
+   `webhook_event_id`, and any available `order_id` or `payment_id`, lead to the
+   persisted `PaymentWebhookEvent` and existing lifecycle/audit records.
+   Persisted status and error code distinguish duplicate, stale, or conflicting
+   outcomes without creating separate diagnostic families. The retained route
+   is not reachable in normal runtime.
 3. Provider timeout or ambiguous outcome: use the provider operation span and
    bounded provider/operation/outcome metrics, then inspect the surrounding
    request trace and local durable state. A timeout or lost response is
    ambiguous, not confirmed failure; reconcile before deciding whether another
    command is safe and never blindly retry a possibly completed command.
-4. Scheduled expiry to subscription event: follow
-   `subscription_expiry_run_started` through its `run_id` to each
+4. Scheduled expiry to subscription event: start with the Sentry issue for a
+   reportable failure and follow:
+
+   ```text
+   Sentry
+       -> run_id
+       -> subscription-expiry diagnostics
+       -> subscription_id
+       -> SubscriptionEvent and persisted state
+   ```
+
+   Follow `subscription_expiry_run_started` through its `run_id` to each
    `subscription_expiry_transition_committed` and the durable
    `SubscriptionEvent`, then to `subscription_expiry_run_succeeded`. A failed
    run starts with `subscription_expiry_run_started` and ends with
@@ -140,6 +161,13 @@ The representative incident journeys are:
    `subscription_expiry_run_succeeded`. After the lifecycle operation returns,
    a missing persisted identity is reported separately as
    `subscription_expiry_diagnostic_invariant_violated`. The lifecycle changes are already committed at this point, so `subscription_expiry_run_failed` is not emitted, although the CLI still propagates the diagnostic invariant exception.
+
+5. Password-reset email delivery: the existing background callback intentionally
+   absorbs delivery exceptions so the accepted HTTP response remains unchanged.
+   It preserves the failed metric and bounded warning, and reports the same
+   exception exactly once as the `password_reset_email` operation with the
+   `integration_failure` category. The report carries no email address, reset
+   URL, token, SMTP data, message content, or other email-specific context.
 
 Scheduled expiry is not an HTTP request and does not reuse request context. Its
 `run_id` is generated for that command invocation only. The committed
@@ -152,11 +180,21 @@ existing lifecycle-owned transaction commit.
 The application supports OTLP export when the deployment configures an OTLP
 endpoint. The repository's local and agent Compose environments provide the
 existing development observability stack where configured. The production
-observability backend, retention, dashboards, alerts, and operational runbooks
-are deployment/environment-owned. Production monitoring and alerting work,
-including HetrixTools checks, belongs to ANY-86 and is outside this contract.
-Sentry remains outside ANY-437 scope as a separate follow-up and is not part of
-the current error or observability architecture.
+trace/log backend, retention, dashboards, alerts, and operational runbooks are
+deployment/environment-owned. The repository has no stable production
+trace/log query base-URL contract, so Sentry events intentionally do not invent
+direct Grafana, Tempo, or Loki links. Production monitoring and alerting work,
+including broad availability and
+HetrixTools checks, belongs to ANY-86 and remains outside this contract.
+
+Sentry is a separate optional outbound backend application-error destination.
+It does not receive application logs, metrics, tracing, or profiling and does
+not replace the OTLP backend, JSON logs, Prometheus/OpenTelemetry metrics, or
+persisted state. Operators must enable project-side data scrubbing, disable or
+scrub IP collection according to policy, and configure useful notifications
+for new or regressed production issues. Those project settings are operator
+actions, not runtime automation or general alerting infrastructure in this
+repository.
 
 Current HTTP, billing, webhook, and provider metrics retain bounded label sets.
 Local business/entity IDs, provider transaction or invoice IDs, email, and
@@ -180,7 +218,10 @@ It never records source text, locals, arguments, exception messages, raw
 traceback text, request bodies, response bodies, URLs/query values, headers,
 cookies, authorization data, provider payloads, secrets, or
 card/token/payment values. The existing request-completion log remains a
-separate request lifecycle record. Sentry and new monitoring are deferred.
+separate request lifecycle record. The same outer failure boundary may also
+make at most one explicit report through the application-owned Sentry adapter;
+framework auto-capture and logging-to-Sentry are disabled so they cannot create
+a second issue.
 
 ## Recovery
 
