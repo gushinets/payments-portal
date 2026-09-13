@@ -1,7 +1,7 @@
 # Coding Conventions
 
 Status: authoritative
-Last verified: 2026-09-09
+Last verified: 2026-09-13
 
 How to write **new and changed** code so types, states, and trust boundaries
 stay explicit. This is not a backlog and not a mass-migration plan.
@@ -110,6 +110,33 @@ unsafe-assertion rule as `error` only after current `json()` /
     framework worker boundaries. New or materially changed functions retain
     explicit parameter and return annotations without unintentionally changing
     FastAPI response-model inference.
+
+### API persistence
+
+1. `app.models` is the canonical persisted ORM model contract. Use its models
+   and closed persisted vocabularies; do not create parallel domain entities
+   merely to hide SQLAlchemy.
+2. Put concern-oriented SQLAlchemy read mechanics in
+   `app.infrastructure.queries`: query construction, filtering, joins,
+   ordering, loading strategy, and row locking. Prefer focused functions or
+   query objects when sufficient; do not require a repository per model or
+   table.
+3. Reserve `app.infrastructure.persistence` for focused storage-specific write
+   mechanics justified by an active use case, such as raw SQL, bulk DML,
+   PostgreSQL-specific atomic operations, physical constraint interpretation,
+   or storage-specific savepoint behavior.
+4. Application retains business decisions and canonical ORM state transitions.
+   A SQLAlchemy `Session` may pass through Application or session orchestration.
+   Do not add wrappers whose only purpose is replacing `db.add(entity)`,
+   `db.delete(entity)`, or direct canonical model mutation.
+5. Transaction ownership, commit/rollback policy, general flush policy,
+   idempotency, retry/recovery, lock ordering, outbox/inbox, and reconciliation
+   remain deferred to ANY-407 Step 6.
+6. Retained CloudPayments/direct-provider persistence is transitional legacy,
+   not the template for future external billing. Generic persistence helpers
+   remain provider-neutral and independent of retained provider code; do not
+   promote CloudPayments-only behavior into them merely to preserve legacy
+   callers.
 
 ## Web / TypeScript
 

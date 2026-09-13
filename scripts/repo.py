@@ -1109,6 +1109,11 @@ def check_python_boundaries(root: Path = ROOT) -> list[str]:
         in_domains = path_parts[0] == "domains"
         in_integrations = path_parts[0] == "integrations"
         in_provider_neutral_payment = path_parts[0] == "payment_providers"
+        in_persistence_infrastructure = (
+            len(path_parts) >= 2
+            and path_parts[0] == "infrastructure"
+            and path_parts[1] in {"persistence", "queries"}
+        )
         is_domain_service_or_model = in_domains and path.name in {"service.py", "models.py"}
         is_domain_service_tree = (
             in_domains
@@ -1184,6 +1189,20 @@ def check_python_boundaries(root: Path = ROOT) -> list[str]:
                         lambda target: module_matches(target, "app.domains")
                         and router_module(target),
                         "call a domain service instead of importing a domain router",
+                    )
+                )
+            if in_persistence_infrastructure:
+                rules.append(
+                    (
+                        "persistence dependency direction",
+                        lambda target: (
+                            module_matches(target, "fastapi")
+                            or module_matches(target, "starlette")
+                            or module_matches(target, "app.domains")
+                            or module_matches(target, "app.integrations")
+                            or module_matches(target, "app.payment_providers")
+                        ),
+                        "keep persistence dependent only on models and neutral infrastructure",
                     )
                 )
             if is_router:

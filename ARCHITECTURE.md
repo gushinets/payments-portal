@@ -1,7 +1,7 @@
 # Payment Portal Architecture
 
 Status: authoritative current-state map
-Last verified: 2026-09-09
+Last verified: 2026-09-13
 
 ## System boundary
 
@@ -83,8 +83,44 @@ concrete implementations. This is the target logical model, not a claim that
 the current physical package tree fully conforms. Current exceptions and the
 transitional package mapping are recorded in
 [Billing Authority and Consistency](docs/architecture/billing-authority.md).
-Repositories remain selective boundaries for real persistence complexity, not
-a requirement for every model.
+The selective persistence rules are defined below; they do not require a
+repository for every model.
+
+## Persistence boundary
+
+`app.models` is the canonical persisted ORM model contract. Persistence code
+and its consumers use those SQLAlchemy models and closed persisted
+vocabularies directly; this architecture does not introduce a parallel set of
+pure-domain entities.
+
+`app.infrastructure.queries` is the concern-oriented boundary for SQLAlchemy
+read mechanics, including query construction, filtering, joins, ordering,
+loading strategy, and requested row locking. Focused functions or query
+objects are the default when sufficient. Repository classes are not required
+per entity or table.
+
+`app.infrastructure.persistence` is reserved for focused write or storage
+mechanics whose complexity justifies a separate capability: raw SQL, bulk
+DML, PostgreSQL-specific atomic operations, physical database constraint
+interpretation, or storage-specific savepoint behavior required by an active
+use case. Application owns business decisions and canonical ORM entity state
+transitions. A SQLAlchemy `Session` may still pass through Application or
+session orchestration at this architecture stage. Simple `db.add(entity)`,
+`db.delete(entity)`, canonical ORM mutation, or equivalent enlistment does not
+require an artificial repository wrapper.
+
+Transaction ownership, commit and rollback policy, general flush policy,
+idempotency, retries and recovery, global lock ordering, outbox/inbox, and
+reconciliation remain responsibilities of ANY-407 Step 6. This persistence
+boundary does not redesign them.
+
+Retained CloudPayments and direct-provider persistence is transitional legacy
+expected to be physically decommissioned later. It is not the architectural
+template for future external billing, and new generic persistence boundaries
+must remain independent of it so they do not make that removal harder. When an
+active generic consumer and retained provider code share a helper, the helper
+remains provider-neutral; CloudPayments-only semantics are not promoted into
+the generic boundary merely to preserve legacy code.
 
 When a direct-provider integration is explicitly enabled, provider adapters are
 registered at the API composition root by provider code. In the current normal
@@ -97,7 +133,8 @@ and security helpers are shared infrastructure.
 
 Python AST analysis currently enforces selected dependency constraints in the
 transitional package tree, including core/domain-to-integration restrictions,
-router import boundaries, and provider-neutrality rules. It does not
+persistence-to-outward-layer restrictions, router import boundaries, and
+provider-neutrality rules. It does not
 mechanically enforce the complete target logical layering above;
 Presentation/Application/Domain/Persistence/Integration is not yet fully
 represented by the physical packages. Routers share authentication through
