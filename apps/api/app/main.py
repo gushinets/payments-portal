@@ -24,9 +24,7 @@ from app.domains.identity.router import router as auth_router
 from app.domains.legal.router import router as legal_router
 from app.health import health_router
 from app.http_errors import app_error_handler, unexpected_failure_middleware
-from app.integrations.cloudpayments.adapter import CloudPaymentsAdapter
-from app.integrations.cloudpayments.api_client import build_cloudpayments_api_client
-from app.integrations.cloudpayments.router import router as cloudpayments_router
+from app.infrastructure.sentry import configure_sentry
 from app.legal_seed import seed_legal_documents
 from app.payment_providers.registry import PaymentProviderRegistry
 
@@ -39,17 +37,11 @@ def _seed_legal_documents_sync() -> None:
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    cloudpayments_adapter: CloudPaymentsAdapter = app.state.cloudpayments_adapter
-    api_client = build_cloudpayments_api_client(app_settings=settings)
-    cloudpayments_adapter.set_api_client(api_client)
-    try:
-        if os.getenv("SKIP_LEGAL_SEED") != "true":
-            await run_in_threadpool(_seed_legal_documents_sync)
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    if os.getenv("SKIP_LEGAL_SEED") != "true":
+        await run_in_threadpool(_seed_legal_documents_sync)
 
-        yield
-    finally:
-        await run_in_threadpool(cloudpayments_adapter.close)
+    yield
 
 
 @metrics_router.get("", include_in_schema=False)
@@ -78,11 +70,7 @@ def create_app() -> FastAPI:
         version="0.1.0",
         lifespan=lifespan,
     )
-    cloudpayments_adapter = CloudPaymentsAdapter()
-    payment_provider_registry = PaymentProviderRegistry()
-    payment_provider_registry.register(cloudpayments_adapter)
-    app.state.cloudpayments_adapter = cloudpayments_adapter
-    app.state.payment_provider_registry = payment_provider_registry
+    app.state.payment_provider_registry = PaymentProviderRegistry()
     # Middleware is inserted in reverse registration order: request context
     # must wrap the unexpected-failure boundary so it can add X-Request-ID to
     # the converted response and record request completion.
@@ -103,7 +91,6 @@ def create_app() -> FastAPI:
     app.include_router(catalog_router)
     app.include_router(password_reset_router)
     app.include_router(legal_router)
-    app.include_router(cloudpayments_router)
     app.include_router(health_router)
     app.include_router(metrics_router)
     return app
@@ -111,3 +98,4 @@ def create_app() -> FastAPI:
 
 app = create_app()
 configure_observability(app, engine)
+configure_sentry(settings)

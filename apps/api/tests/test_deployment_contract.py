@@ -17,6 +17,16 @@ def load_compose(path: str) -> dict:
     return yaml.safe_load((ROOT / path).read_text(encoding="utf-8"))
 
 
+def load_env_example(path: str) -> dict[str, str]:
+    entries = {}
+    for line in (ROOT / path).read_text(encoding="utf-8").splitlines():
+        if line and not line.startswith("#"):
+            key, separator, value = line.partition("=")
+            if separator:
+                entries[key] = value
+    return entries
+
+
 def write_executable(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
     path.chmod(0o755)
@@ -41,6 +51,49 @@ def test_migration_service_gates_api_startup(path: str) -> None:
     ]
     assert migrate["environment"] == api["environment"]
     assert api["depends_on"]["migrate"]["condition"] == "service_completed_successfully"
+
+
+def test_production_sentry_configuration_is_optional_and_minimal() -> None:
+    expected_keys = {"SENTRY_DSN", "SENTRY_RELEASE"}
+    example = load_env_example(".env.production.example")
+    services = load_compose("docker-compose.prod.yml")["services"]
+    api_environment = services["api"]["environment"]
+
+    assert {key for key in example if key.startswith("SENTRY_")} == expected_keys
+    assert example["SENTRY_DSN"] == ""
+    assert example["SENTRY_RELEASE"] == ""
+    assert {key for key in api_environment if key.startswith("SENTRY_")} == expected_keys
+    assert api_environment["SENTRY_DSN"] == "${SENTRY_DSN:-}"
+    assert api_environment["SENTRY_RELEASE"] == "${SENTRY_RELEASE:-}"
+    assert services["migrate"]["environment"] == api_environment
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["docker-compose.yml", "docker-compose.prod.yml", "docker-compose.agent.yml"],
+)
+def test_normal_api_compose_environment_excludes_cloudpayments(path: str) -> None:
+    api_environment = load_compose(path)["services"]["api"]["environment"]
+
+    assert not {key for key in api_environment if key.startswith("CLOUDPAYMENTS_")}
+
+
+@pytest.mark.parametrize("path", [".env.example", ".env.production.example"])
+def test_supported_environment_examples_exclude_cloudpayments(path: str) -> None:
+    example = load_env_example(path)
+
+    assert not {key for key in example if key.startswith("CLOUDPAYMENTS_")}
+
+
+def test_production_ci_environment_excludes_cloudpayments() -> None:
+    workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
+    production_gate = workflow["jobs"]["production-gate"]
+    create_environment_script = next(
+        step["run"] for step in production_gate["steps"] if step.get("name") == "Create private CI environment"
+    )
+
+    assert not {key for key in production_gate["env"] if key.startswith("CLOUDPAYMENTS_")}
+    assert "CLOUDPAYMENTS_" not in create_environment_script
 
 
 @pytest.mark.parametrize(

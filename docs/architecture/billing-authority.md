@@ -15,12 +15,14 @@ model ownership.
 ### CURRENT
 
 Payment Portal is under development and is not running as a production billing
-service. The implemented `ru` code contains a Portal-managed direct-provider
-flow: Payment Portal orchestrates checkout and the local billing lifecycle,
-uses the CloudPayments widget and direct API, accepts verified CloudPayments
-webhooks, and derives and persists local entitlements. There are no production
-CloudPayments subscribers or subscriptions to migrate. The private regional
-entitlement/access API for Platform Kernel is still planned under ANY-79.
+service. The retained `ru` code contains a Portal-managed direct-provider
+implementation and persistence source, but normal backend and frontend runtime
+does not initialize, register, load, or invoke CloudPayments. The checkout is
+temporarily unavailable, generic checkout fails closed when no direct provider
+is registered, and the normal application composition does not expose the
+CloudPayments callback path. There are no production CloudPayments subscribers
+or subscriptions to migrate. The private regional entitlement/access API for
+Platform Kernel is still planned under ANY-79.
 
 ### TARGET
 
@@ -48,8 +50,8 @@ operations or future projection provenance.
 The durable ownership invariant is: **a `Subscription` that participates in a
 billing lifecycle has exactly one billing owner at a time.** In the long-term
 target, that billing lifecycle is owned by one external billing system. The
-current/transitional direct-provider flow has Payment Portal as its billing
-owner only while that flow remains required. A Portal-only access lifecycle,
+retained direct-provider source models Payment Portal as its billing owner
+only if that flow is explicitly reactivated. A Portal-only access lifecycle,
 such as a locally granted free trial without an external billing lifecycle,
 remains Portal-owned and does not require an external billing owner. Delegating
 such an access-only lifecycle to an external billing system would require a
@@ -70,11 +72,14 @@ schema adaptation, including adaptation of the current direct-provider-shaped
 
 ### TRANSITIONAL
 
-Under ANY-407, the current direct CloudPayments implementation remains as a
-transitional Portal-managed capability while required by current code,
-operations, obligations, or safe cutover. Transitional code describes what
-exists; it does not imply production use, must not be copied as the target
-external-billing design, and is not removed or refactored by this decision.
+Under ANY-407, the direct CloudPayments implementation, persistence schema, and
+local development/test records remain as retained transitional source for
+later evidence-based cleanup. Transitional code describes what remains in the
+repository; it does not imply active runtime or production use, must not be
+copied as the target external-billing design, and is not removed or refactored
+by this decision.
+ANY-455 must evaluate active generic persistence separately from retained legacy
+CloudPayments persistence and schema, which have no normal-runtime consumer.
 Reintroducing Portal-managed direct-provider billing as a future production
 model requires a new explicit architecture decision. Because there are no
 production CloudPayments subscriptions, this document defines no CloudPayments-
@@ -83,7 +88,7 @@ to-external-billing migration or coexistence mechanism.
 ## Terminology
 
 - **Payment provider:** a direct payment or acquiring provider used by a
-  Portal-managed flow. CloudPayments is the current example. It may be hidden
+  Portal-managed flow. CloudPayments is the retained example. It may be hidden
   behind `PaymentProviderAdapter`.
 - **External billing system:** a system authoritative for its external
   customer, invoice, payment, and subscription lifecycle. It is not a
@@ -132,7 +137,7 @@ to-external-billing migration or coexistence mechanism.
 | Local entitlements | Payment Portal |
 | Runtime access decision | Payment Portal entitlements consumed by Platform Kernel |
 | Workflow execution and usage consumption | Platform Kernel |
-| Direct CloudPayments orchestration | Payment Portal while the transitional Portal-managed flow exists |
+| Direct CloudPayments orchestration | None in normal runtime; retained source only |
 | Local purchase intent / commercial `Order` | Payment Portal |
 | External customer lifecycle | Owning external billing system |
 | External invoice lifecycle | Owning external billing system |
@@ -143,7 +148,7 @@ to-external-billing migration or coexistence mechanism.
 
 ## Billing flows
 
-### Portal-managed direct-provider flow
+### Retained Portal-managed direct-provider flow (not active in normal runtime)
 
 ```text
 Payment Portal
@@ -155,8 +160,10 @@ Payment Portal
     -> local entitlement
 ```
 
-Payment Portal owns and orchestrates this billing lifecycle. The current
-CloudPayments integration is this kind of flow.
+The retained CloudPayments source models this Portal-managed lifecycle. It is
+not initialized, registered, mounted, or invoked by normal runtime. A future
+active direct-provider flow would require a separate explicit architecture and
+implementation decision.
 
 ### External-billing-managed commercial purchase or change
 
@@ -285,9 +292,9 @@ only after the payload's authenticity and context are validated. Opaque
 external identifiers remain opaque, as required by ADR-0002.
 
 Email may be customer or contact data, but it is not billing identity and
-cannot be the sole correlation key. The current CloudPayments use of
-`AccountId=email` is transitional legacy behavior. It remains unchanged in the
-current runtime and must not be copied into an external-billing design.
+cannot be the sole correlation key. The retained CloudPayments use of
+`AccountId=email` is transitional legacy source behavior and is not a current
+runtime contract. It must not be copied into an external-billing design.
 
 ## Trust boundary
 
@@ -325,6 +332,9 @@ Once a valid notification has been durably received, correctness must not depend
 on the external billing system retrying an application-level HTTP failure.
 Payment Portal owns subsequent processing, retry, and recovery. Concrete HTTP
 acknowledgement codes and external retry policies remain integration-specific.
+
+This generic sequence applies only to an explicitly active integration. The
+retained CloudPayments callback source is not mounted in normal runtime.
 
 Durable webhook receipt does not mean persisting the complete raw HTTP request.
 Before persistence, the Integration boundary whitelists or redacts the metadata
@@ -390,11 +400,11 @@ card/token/payment values. New monitoring or Sentry is outside this boundary.
 
 | Current package or module | Logical role and status |
 | --- | --- |
-| `app.main` | Composition root that constructs CloudPayments and the provider registry, wires routers, and owns application lifespan. |
+| `app.main` | Composition root that owns normal application lifespan and the empty direct-provider registry; retained CloudPayments source is not wired into normal runtime. |
 | `app.models` | Canonical persisted model contract. It remains in place and must not be duplicated. |
 | `app.infrastructure.queries` | Useful persistence extraction for repeated or query-specific access; it does not require repositories for every table. |
-| `app.integrations.cloudpayments` | Current external boundary for CloudPayments parsing, signature verification, redaction, validation, and normalization. Some processing responsibilities remain transitional. |
-| `app.payment_providers` | Current/transitional direct-provider contract. Its meaning is limited to Portal-managed direct-provider flows and it is not part of the long-term target. |
+| `app.integrations.cloudpayments` | Retained external boundary for CloudPayments parsing, signature verification, redaction, validation, and normalization; it is not a normal-runtime callback path. |
+| `app.payment_providers` | Retained direct-provider contract. Its meaning is limited to Portal-managed direct-provider flows and it is not part of the long-term target or active normal runtime. |
 | `app.domains.identity.router` | Presentation entrypoint with known transitional checkout orchestration responsibilities. |
 
 Existing architecture guards that prevent reverse dependencies and
@@ -404,10 +414,11 @@ implements the target logical layers.
 
 ## Known transitional exceptions
 
-- `domains/identity/router.py` resolves plans, legal state, provider account and
-  adapter, and manages order/session work inside the checkout HTTP route. It
-  also supplies `user.email` as CloudPayments `account_id`. Future work may
-  establish an Application boundary; this step does not move the code.
+- `domains/identity/router.py` retains checkout and provider-neutral commercial
+  orchestration responsibilities, but normal runtime fails closed when no
+  provider is registered. Retained source supplies `user.email` as the legacy
+  CloudPayments `account_id`; future work may establish an Application
+  boundary, but this step does not move the code.
 - `integrations/cloudpayments/processing.py` both interprets provider input and
   performs SQLAlchemy queries, direct `Order` and `Payment` mutation, and
   subscription transitions. This is known mixed responsibility and is not
@@ -416,13 +427,13 @@ implements the target logical layers.
   checkout, transaction lookup, refunds, and recurring operations. It remains
   the Portal-managed boundary and is not generalized into an external-billing
   adapter.
-- `app.state` provides current adapter lookup and may remain as transitional
-  wiring. This document does not select a replacement dependency-injection
-  architecture.
-- CloudPayments `AccountId=email` is current transitional correlation behavior,
-  not a target identity pattern.
+- `app.state` may retain adapter lookup as transitional wiring, but normal
+  runtime has no registered direct provider. This document does not select a
+  replacement dependency-injection architecture.
+- CloudPayments `AccountId=email` is retained transitional source behavior, not
+  a current runtime contract or target identity pattern.
 
-These exceptions describe the current implementation and do not authorize
+These exceptions describe retained implementation source and do not authorize
 their removal in this step.
 
 ## Deliberate non-decisions

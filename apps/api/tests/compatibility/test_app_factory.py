@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import MagicMock, Mock
+from unittest.mock import MagicMock
 
 from apps.api.tests.support.settings import configure_api_test_environment
 from apps.api.tests.support.settings import override_settings
@@ -125,8 +125,6 @@ def test_app_factory_runs_lifespan_once(monkeypatch: pytest.MonkeyPatch) -> None
     lifecycle_events: list[str] = []
     session = object()
     session_context = MagicMock()
-    api_client = Mock()
-    build_calls: list[object] = []
     monkeypatch.delenv("SKIP_LEGAL_SEED", raising=False)
 
     def assert_no_running_loop() -> None:
@@ -135,10 +133,6 @@ def test_app_factory_runs_lifespan_once(monkeypatch: pytest.MonkeyPatch) -> None
         except RuntimeError:
             return
         raise AssertionError("synchronous lifespan work must execute outside the event loop")
-
-    def build_client(*, app_settings: object) -> Mock:
-        build_calls.append(app_settings)
-        return api_client
 
     def create_session() -> MagicMock:
         assert_no_running_loop()
@@ -163,65 +157,19 @@ def test_app_factory_runs_lifespan_once(monkeypatch: pytest.MonkeyPatch) -> None
         assert received_session is session
         lifecycle_events.append("documents_seeded")
 
-    def close_client() -> None:
-        assert_no_running_loop()
-        lifecycle_events.append("client_closed")
-
     session_context.__enter__.side_effect = enter_session
     session_context.__exit__.side_effect = exit_session
-    api_client.close.side_effect = close_client
-    monkeypatch.setattr(
-        main_module,
-        "build_cloudpayments_api_client",
-        build_client,
-    )
     monkeypatch.setattr(main_module, "SessionLocal", create_session)
     monkeypatch.setattr(main_module, "seed_legal_documents", seed_documents)
 
     app = main_module.create_app()
-    assert build_calls == []
 
     with TestClient(app) as test_client:
         assert test_client.get("/api/health/live").status_code == 200
 
-    assert len(build_calls) == 1
     assert lifecycle_events == [
         "session_created",
         "session_entered",
         "documents_seeded",
         "session_closed",
-        "client_closed",
     ]
-    api_client.close.assert_called_once_with()
-
-
-def test_app_factory_overlapping_lifespans_own_cloudpayments_clients(monkeypatch) -> None:
-    import app.main as main_module
-
-    first_client = Mock()
-    second_client = Mock()
-    clients = iter((first_client, second_client))
-    monkeypatch.setattr(
-        main_module,
-        "build_cloudpayments_api_client",
-        lambda *, app_settings: next(clients),
-    )
-    monkeypatch.setattr(main_module, "seed_legal_documents", lambda session: None)
-
-    first_app = main_module.create_app()
-    second_app = main_module.create_app()
-
-    async def exercise_overlapping_lifespans() -> None:
-        async with main_module.lifespan(first_app):
-            assert first_app.state.cloudpayments_adapter.api_client is first_client
-            async with main_module.lifespan(second_app):
-                assert second_app.state.cloudpayments_adapter.api_client is second_client
-                assert first_client.close.call_count == 0
-                assert second_client.close.call_count == 0
-
-            assert second_client.close.call_count == 1
-            assert first_client.close.call_count == 0
-
-        assert first_client.close.call_count == 1
-
-    asyncio.run(exercise_overlapping_lifespans())

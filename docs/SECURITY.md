@@ -1,7 +1,7 @@
 # Security Requirements
 
 Status: authoritative
-Last verified: 2026-09-08
+Last verified: 2026-09-10
 
 ## Sensitive data
 
@@ -45,6 +45,32 @@ retaining arbitrary query values. Arbitrary request-header capture is not
 enabled. Business/entity identifiers remain in logs or durable records where
 needed for incident reconstruction, never in metric labels.
 
+## Sentry event privacy contract
+
+Sentry receives only explicitly allowlisted backend application-failure data:
+
+- release, application environment, and service identity;
+- failure category, stable operation, and exception type;
+- sanitized stack locations and safe exception-cause structure;
+- validated request, trace, span, and scheduled-run correlation IDs;
+- the matched route template and approved application failure location; and
+- explicitly allowlisted static or bounded diagnostic fields such as an
+  invariant identifier or batch size.
+
+Sentry events must not contain raw exception messages, locals, source-code
+context, request or response bodies, raw URL or path values, query values,
+headers, cookies, user or email data, IP data, provider payloads or external
+provider identifiers, authorization data, tokens, card data, or payment values.
+High-cardinality request, trace, span, and run IDs are contexts only; they must
+not become tags or fingerprints.
+
+Application-owned allowlisting and scrubbing before an event leaves the process
+is the primary privacy control. Sentry project data scrubbing and disabled or
+policy-compliant IP collection are required defense in depth, not permission to
+send forbidden data. Operators must also configure useful project notifications
+for new or regressed production issues; project provisioning and notification
+automation are outside this repository.
+
 ## Durable webhook receipt
 
 After authentication and minimal validation, webhook receipt must be durable
@@ -65,8 +91,10 @@ need, security treatment, and retention.
 
 - Validate HTTP, environment, webhook, and database-boundary data.
 - Verify authenticity at every external billing or payment Integration before
-  trusting external state. The implemented `ru` CloudPayments integration
-  verifies webhook signatures.
+  trusting external state. Retained CloudPayments source verifies webhook
+  signatures, but its router is not mounted in normal runtime and is not a
+  current billing-fact processing path. Any future active integration must
+  preserve this invariant.
 - Treat request IDs and external billing or payment metadata as untrusted input
   with length and character limits.
 - Store session tokens only as hashes.

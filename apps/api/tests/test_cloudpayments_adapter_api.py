@@ -7,6 +7,7 @@ import httpx
 import pytest
 
 from apps.api.tests.support.settings import configure_api_test_environment
+from apps.api.tests.support.settings import override_settings
 
 configure_api_test_environment()
 
@@ -35,6 +36,7 @@ from app.payment_providers.contracts import (  # noqa: E402
     TransactionStatus,
     UpdateRecurringSubscriptionRequest,
 )
+from app.settings import settings  # noqa: E402
 
 
 def _provider_account() -> object:
@@ -181,14 +183,15 @@ def test_cloudpayments_adapter_checkout_rejects_terminal_mismatch() -> None:
     provider_account.public_identifier = "pk_other"
     adapter = _adapter_with_transport(httpx.MockTransport(lambda request: httpx.Response(500)))
 
-    with pytest.raises(PaymentProviderConfigurationError) as error:
-        adapter.prepare_checkout_action(
-            provider_account=provider_account,  # type: ignore[arg-type]
-            order=_order(),  # type: ignore[arg-type]
-            account_id="user@example.com",
-            description="Document Summary Pro",
-            metadata={"product_code": "document-summary"},
-        )
+    with override_settings(settings, cloudpayments_public_id="pk_test"):
+        with pytest.raises(PaymentProviderConfigurationError) as error:
+            adapter.prepare_checkout_action(
+                provider_account=provider_account,  # type: ignore[arg-type]
+                order=_order(),  # type: ignore[arg-type]
+                account_id="user@example.com",
+                description="Document Summary Pro",
+                metadata={"product_code": "document-summary"},
+            )
 
     assert error.value.code == "cloudpayments_public_id_mismatch"
 

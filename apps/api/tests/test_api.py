@@ -6,9 +6,11 @@ import hmac
 import json
 import logging
 import uuid
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta, timezone
 from io import StringIO
 from typing import Any
+from unittest.mock import Mock
 
 from apps.api.tests.support.settings import configure_api_test_environment
 from apps.api.tests.support.settings import override_settings
@@ -33,7 +35,7 @@ from app.core.observability import JsonFormatter  # noqa: E402
 from app.database import Base, SessionLocal, engine  # noqa: E402
 from app.integrations.cloudpayments import adapter as cloudpayments_adapter_module  # noqa: E402
 from app.integrations.cloudpayments import router as cloudpayments_router_module  # noqa: E402
-from app.main import app, create_app  # noqa: E402
+from app.main import create_app  # noqa: E402
 from app.models import (  # noqa: E402
     AcceptanceKind,
     AuthSession,
@@ -48,6 +50,7 @@ from app.models import (  # noqa: E402
     EntitlementStatus,
     DocumentAcceptance,
     DocumentVersion,
+    EntrypointSession,
     LegalEntity,
     LegalEntityStatus,
     LegalEntityType,
@@ -88,10 +91,20 @@ from app.integrations.cloudpayments.payload import (  # noqa: E402
     parse_int,
 )
 from app.settings import settings  # noqa: E402
+from apps.api.tests.support.cloudpayments import create_retained_cloudpayments_test_app  # noqa: E402
 
 
+app = create_app()
 client = TestClient(app)
+cloudpayments_app = create_retained_cloudpayments_test_app()
+cloudpayments_client = TestClient(cloudpayments_app)
 _original_verify_cloudpayments_signature = verify_cloudpayments_signature
+
+
+@pytest.fixture(scope="module", autouse=True)
+def retained_cloudpayments_settings() -> Iterator[None]:
+    with override_settings(settings, cloudpayments_public_id="pk_test_provider"):
+        yield
 
 
 def _verified_webhook_for_test(raw_body: bytes, headers: dict[str, str]) -> bool:
@@ -115,7 +128,7 @@ def cloudpayments_signature(raw_body: bytes, secret: str = "test-secret") -> str
 
 
 def signed_cloudpayments_post(endpoint: str, payload: bytes, *, secret: str = "test-secret"):
-    return client.post(
+    return cloudpayments_client.post(
         f"/api/cloudpayments/{endpoint}",
         headers={
             "Content-HMAC": cloudpayments_signature(payload, secret),
@@ -152,7 +165,7 @@ def create_checkout_invoice(
 ) -> str:
     if widget_mode != "charge":
         seed_cloudpayments_provider_account(widget_mode=widget_mode)
-    register_response = client.post(
+    register_response = cloudpayments_client.post(
         "/api/auth/register",
         json={
             "email": email,
@@ -163,7 +176,7 @@ def create_checkout_invoice(
     )
     assert register_response.status_code == 200, register_response.text
     token = register_response.json()["token"]
-    checkout_response = client.post(
+    checkout_response = cloudpayments_client.post(
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
@@ -212,7 +225,6 @@ def seed_cloudpayments_provider_account(
 
 def setup_function() -> None:
     allow_unsigned_cloudpayments_webhooks_for_test()
-    object.__setattr__(settings, "cloudpayments_enabled", False)
     object.__setattr__(settings, "cloudpayments_api_secret", "")
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
@@ -812,7 +824,7 @@ def test_legal_seed_replaces_existing_active_document_type() -> None:
 
 
 def test_register_session_and_checkout_intent_flow() -> None:
-    register_response = client.post(
+    register_response = cloudpayments_client.post(
         "/api/auth/register",
         json={
             "email": "user@example.com",
@@ -831,7 +843,7 @@ def test_register_session_and_checkout_intent_flow() -> None:
     assert register_payload["user"]["user_id"]
     token = register_payload["token"]
 
-    session_response = client.get(
+    session_response = cloudpayments_client.get(
         "/api/auth/session?product=document-summary",
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -845,7 +857,7 @@ def test_register_session_and_checkout_intent_flow() -> None:
     assert session_payload["user"]["user_id"] == register_payload["user"]["user_id"]
     assert session_payload["product_state"]["status"] == "inactive"
 
-    checkout_response = client.post(
+    checkout_response = cloudpayments_client.post(
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
@@ -904,12 +916,44 @@ def test_register_session_and_checkout_intent_flow() -> None:
     assert item.product_code_snapshot == "document-summary"
 
 
+def test_normal_app_checkout_fails_closed_without_creating_provider_state() -> None:
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "provider-unavailable@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    assert register_response.status_code == 200, register_response.text
+
+    checkout_response = client.post(
+        "/api/auth/checkout-intent",
+        headers={"Authorization": f"Bearer {register_response.json()['token']}"},
+        json={
+            "plan_id": plan_id_for_code("document-summary-pro"),
+            "entrypoint_type": "product",
+            "entrypoint_value": "document-summary",
+            "auto_renew": False,
+        },
+    )
+
+    assert checkout_response.status_code == 503
+    assert checkout_response.json()["detail"] == "payment_provider_unavailable"
+    with SessionLocal() as db:
+        assert db.query(PaymentProviderAccount).count() == 0
+        assert db.query(EntrypointSession).count() == 0
+        assert db.query(CheckoutSession).count() == 0
+        assert db.query(Order).count() == 0
+
+
 def test_checkout_commit_emits_safe_local_order_diagnostic(caplog: pytest.LogCaptureFixture) -> None:
     email = "checkout-observability@example.com"
     token = register_test_user(email=email)
 
     with caplog.at_level(logging.INFO):
-        response = client.post(
+        response = cloudpayments_client.post(
             "/api/auth/checkout-intent",
             headers={"Authorization": f"Bearer {token}"},
             json={
@@ -956,7 +1000,7 @@ def test_checkout_commit_failure_does_not_emit_committed_diagnostic(
     monkeypatch.setattr(SQLAlchemySession, "commit", fail_checkout_durability_commit)
 
     with caplog.at_level(logging.INFO):
-        response = client.post(
+        response = cloudpayments_client.post(
             "/api/auth/checkout-intent",
             headers={"Authorization": f"Bearer {token}"},
             json={
@@ -1301,7 +1345,7 @@ def test_manual_checkout_does_not_require_recurring_consent() -> None:
             title="Согласие на рекуррентные платежи",
         )
 
-    register_response = client.post(
+    register_response = cloudpayments_client.post(
         "/api/auth/register",
         json={
             "email": "manual-without-recurring@example.com",
@@ -1312,7 +1356,7 @@ def test_manual_checkout_does_not_require_recurring_consent() -> None:
     )
     token = register_response.json()["token"]
 
-    checkout_response = client.post(
+    checkout_response = cloudpayments_client.post(
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
@@ -1482,7 +1526,7 @@ def test_checkout_persists_exact_recurring_consent_reference() -> None:
             title="Согласие на рекуррентные платежи",
         )
 
-    register_response = client.post(
+    register_response = cloudpayments_client.post(
         "/api/auth/register",
         json={
             "email": "automatic-with-consent@example.com",
@@ -1500,7 +1544,7 @@ def test_checkout_persists_exact_recurring_consent_reference() -> None:
         metadata={"plan_code": "document-summary-pro"},
     )
 
-    checkout_response = client.post(
+    checkout_response = cloudpayments_client.post(
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
@@ -1654,7 +1698,7 @@ def test_recurring_consent_metadata_cannot_spoof_typed_plan_id() -> None:
         plan_id=plan_id,
         metadata={"plan_id": other_plan_id},
     )
-    response = client.post(
+    response = cloudpayments_client.post(
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
@@ -1750,7 +1794,7 @@ def test_versioned_plans_require_plan_bound_recurring_consent() -> None:
         "auto_renew": True,
         "recurring_consent_acceptance_id": acceptance_a_id,
     }
-    checkout_response = client.post(
+    checkout_response = cloudpayments_client.post(
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json=checkout_payload,
@@ -1766,7 +1810,7 @@ def test_versioned_plans_require_plan_bound_recurring_consent() -> None:
         plan_id=str(plan_b_id),
     )
     checkout_payload["recurring_consent_acceptance_id"] = acceptance_b_id
-    checkout_response = client.post(
+    checkout_response = cloudpayments_client.post(
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json=checkout_payload,
@@ -1795,7 +1839,7 @@ def test_automatic_checkout_paid_subscription_remains_manual_until_provider_atta
             title="Согласие на рекуррентные платежи",
         )
 
-    register_response = client.post(
+    register_response = cloudpayments_client.post(
         "/api/auth/register",
         json={
             "email": "automatic-manual-until-provider@example.com",
@@ -1811,7 +1855,7 @@ def test_automatic_checkout_paid_subscription_remains_manual_until_provider_atta
         entrypoint_value="document-summary",
     )
 
-    checkout_response = client.post(
+    checkout_response = cloudpayments_client.post(
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
@@ -1825,7 +1869,7 @@ def test_automatic_checkout_paid_subscription_remains_manual_until_provider_atta
     assert checkout_response.status_code == 200, checkout_response.text
     invoice_id = checkout_response.json()["purchase"]["invoice_id"]
 
-    webhook_response = client.post(
+    webhook_response = cloudpayments_client.post(
         "/api/cloudpayments/pay",
         json={
             "InvoiceId": invoice_id,
@@ -2229,7 +2273,7 @@ def test_checkout_rejects_missing_cloudpayments_public_terminal_id() -> None:
     previous_public_id = settings.cloudpayments_public_id
     object.__setattr__(settings, "cloudpayments_public_id", "")
     try:
-        register_response = client.post(
+        register_response = cloudpayments_client.post(
             "/api/auth/register",
             json={
                 "email": "missing-terminal@example.com",
@@ -2240,7 +2284,7 @@ def test_checkout_rejects_missing_cloudpayments_public_terminal_id() -> None:
         )
         token = register_response.json()["token"]
 
-        checkout_response = client.post(
+        checkout_response = cloudpayments_client.post(
             "/api/auth/checkout-intent",
             headers={"Authorization": f"Bearer {token}"},
             json={
@@ -2276,7 +2320,7 @@ def test_checkout_supports_two_stage_cloudpayments_widget_mode() -> None:
         )
         db.commit()
 
-    register_response = client.post(
+    register_response = cloudpayments_client.post(
         "/api/auth/register",
         json={
             "email": "auth-mode@example.com",
@@ -2287,7 +2331,7 @@ def test_checkout_supports_two_stage_cloudpayments_widget_mode() -> None:
     )
     token = register_response.json()["token"]
 
-    checkout_response = client.post(
+    checkout_response = cloudpayments_client.post(
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
@@ -2331,7 +2375,7 @@ def test_checkout_rejects_plan_provider_currency_mismatch() -> None:
         )
         db.commit()
 
-    register_response = client.post(
+    register_response = cloudpayments_client.post(
         "/api/auth/register",
         json={
             "email": "currency-mismatch@example.com",
@@ -2342,7 +2386,7 @@ def test_checkout_rejects_plan_provider_currency_mismatch() -> None:
     )
     token = register_response.json()["token"]
 
-    checkout_response = client.post(
+    checkout_response = cloudpayments_client.post(
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
@@ -2366,7 +2410,7 @@ def test_bundle_checkout_snapshots_one_sellable_catalog_plan() -> None:
         bundle_plan_id = catalog["bundle_plan"].id
         bundle_id = catalog["bundle"].id
 
-    register_response = client.post(
+    register_response = cloudpayments_client.post(
         "/api/auth/register",
         json={
             "email": "bundle-user@example.com",
@@ -2377,7 +2421,7 @@ def test_bundle_checkout_snapshots_one_sellable_catalog_plan() -> None:
     )
     token = register_response.json()["token"]
 
-    checkout_response = client.post(
+    checkout_response = cloudpayments_client.post(
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
@@ -2413,7 +2457,7 @@ def test_all_access_checkout_snapshots_one_sellable_catalog_plan() -> None:
         catalog = seed_catalog(db)
         all_access_plan_id = catalog["all_access_plan"].id
 
-    register_response = client.post(
+    register_response = cloudpayments_client.post(
         "/api/auth/register",
         json={
             "email": "all-access-user@example.com",
@@ -2424,7 +2468,7 @@ def test_all_access_checkout_snapshots_one_sellable_catalog_plan() -> None:
     )
     token = register_response.json()["token"]
 
-    checkout_response = client.post(
+    checkout_response = cloudpayments_client.post(
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
@@ -2600,7 +2644,7 @@ def test_checkout_rejects_active_plan_for_inactive_bundle() -> None:
 
 
 def test_pay_webhook_amount_mismatch_is_failed_without_order_update() -> None:
-    register_response = client.post(
+    register_response = cloudpayments_client.post(
         "/api/auth/register",
         json={
             "email": "mismatch-user@example.com",
@@ -2610,7 +2654,7 @@ def test_pay_webhook_amount_mismatch_is_failed_without_order_update() -> None:
         },
     )
     token = register_response.json()["token"]
-    checkout_response = client.post(
+    checkout_response = cloudpayments_client.post(
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
@@ -2622,7 +2666,7 @@ def test_pay_webhook_amount_mismatch_is_failed_without_order_update() -> None:
     )
     invoice_id = checkout_response.json()["purchase"]["invoice_id"]
 
-    webhook_response = client.post(
+    webhook_response = cloudpayments_client.post(
         "/api/cloudpayments/pay",
         json={
             "InvoiceId": invoice_id,
@@ -2650,7 +2694,7 @@ def test_cloudpayments_worker_preserves_request_and_trace_log_context() -> None:
     exporter = InMemorySpanExporter()
     tracer_provider = TracerProvider()
     tracer_provider.add_span_processor(SimpleSpanProcessor(exporter))
-    application = create_app()
+    application = create_retained_cloudpayments_test_app()
     FastAPIInstrumentor.instrument_app(application, tracer_provider=tracer_provider)
 
     output = StringIO()
@@ -2696,10 +2740,9 @@ def test_signed_check_webhook_validates_order_before_acknowledging() -> None:
     from app.settings import settings  # noqa: E402
 
     require_signed_cloudpayments_webhooks_for_test()
-    object.__setattr__(settings, "cloudpayments_enabled", True)
     object.__setattr__(settings, "cloudpayments_api_secret", "test-secret")
     try:
-        register_response = client.post(
+        register_response = cloudpayments_client.post(
             "/api/auth/register",
             json={
                 "email": "check-user@example.com",
@@ -2709,7 +2752,7 @@ def test_signed_check_webhook_validates_order_before_acknowledging() -> None:
             },
         )
         token = register_response.json()["token"]
-        checkout_response = client.post(
+        checkout_response = cloudpayments_client.post(
             "/api/auth/checkout-intent",
             headers={"Authorization": f"Bearer {token}"},
             json={
@@ -2769,7 +2812,6 @@ def test_signed_check_webhook_validates_order_before_acknowledging() -> None:
         assert order.status is OrderStatus.PENDING_PAYMENT
     finally:
         allow_unsigned_cloudpayments_webhooks_for_test()
-        object.__setattr__(settings, "cloudpayments_enabled", False)
         object.__setattr__(settings, "cloudpayments_api_secret", "")
 
 
@@ -2777,10 +2819,9 @@ def test_signed_check_webhook_rejects_account_and_currency_mismatch() -> None:
     from app.settings import settings  # noqa: E402
 
     require_signed_cloudpayments_webhooks_for_test()
-    object.__setattr__(settings, "cloudpayments_enabled", True)
     object.__setattr__(settings, "cloudpayments_api_secret", "test-secret")
     try:
-        register_response = client.post(
+        register_response = cloudpayments_client.post(
             "/api/auth/register",
             json={
                 "email": "check-account-user@example.com",
@@ -2790,7 +2831,7 @@ def test_signed_check_webhook_rejects_account_and_currency_mismatch() -> None:
             },
         )
         token = register_response.json()["token"]
-        checkout_response = client.post(
+        checkout_response = cloudpayments_client.post(
             "/api/auth/checkout-intent",
             headers={"Authorization": f"Bearer {token}"},
             json={
@@ -2828,12 +2869,11 @@ def test_signed_check_webhook_rejects_account_and_currency_mismatch() -> None:
         ]
     finally:
         allow_unsigned_cloudpayments_webhooks_for_test()
-        object.__setattr__(settings, "cloudpayments_enabled", False)
         object.__setattr__(settings, "cloudpayments_api_secret", "")
 
 
 def test_successful_pay_webhook_is_saved_and_activates_access() -> None:
-    register_response = client.post(
+    register_response = cloudpayments_client.post(
         "/api/auth/register",
         json={
             "email": "user@example.com",
@@ -2844,7 +2884,7 @@ def test_successful_pay_webhook_is_saved_and_activates_access() -> None:
     )
     token = register_response.json()["token"]
 
-    checkout_response = client.post(
+    checkout_response = cloudpayments_client.post(
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
@@ -2856,7 +2896,7 @@ def test_successful_pay_webhook_is_saved_and_activates_access() -> None:
     )
     invoice_id = checkout_response.json()["purchase"]["invoice_id"]
 
-    webhook_response = client.post(
+    webhook_response = cloudpayments_client.post(
         "/api/cloudpayments/pay",
         json={
             "InvoiceId": invoice_id,
@@ -2874,7 +2914,9 @@ def test_successful_pay_webhook_is_saved_and_activates_access() -> None:
 
     assert webhook_response.status_code == 200
 
-    status_response = client.get(f"/api/auth/payment-status?invoice_id={invoice_id}&email=user@example.com")
+    status_response = cloudpayments_client.get(
+        f"/api/auth/payment-status?invoice_id={invoice_id}&email=user@example.com"
+    )
     assert status_response.status_code == 200
     status_payload = status_response.json()
     assert status_payload["product_state"]["status"] == "active"
@@ -2923,7 +2965,7 @@ def test_charge_pay_rejects_missing_declined_and_unknown_statuses() -> None:
         if provider_status is not None:
             payload["Status"] = provider_status
 
-        response = client.post("/api/cloudpayments/pay", json=payload)
+        response = cloudpayments_client.post("/api/cloudpayments/pay", json=payload)
 
         assert response.status_code == 200
         assert response.json() == {"code": 0}
@@ -2945,7 +2987,7 @@ def test_auth_mode_completed_pay_marks_order_paid() -> None:
         widget_mode="auth",
     )
 
-    completed_pay_response = client.post(
+    completed_pay_response = cloudpayments_client.post(
         "/api/cloudpayments/pay",
         json={
             "InvoiceId": invoice_id,
@@ -2978,7 +3020,7 @@ def test_authorized_pay_requires_confirm_or_cancel_to_reach_terminal_state() -> 
         widget_mode="auth",
     )
 
-    pay_response = client.post(
+    pay_response = cloudpayments_client.post(
         "/api/cloudpayments/pay",
         json={
             "InvoiceId": invoice_id,
@@ -3006,7 +3048,7 @@ def test_authorized_pay_requires_confirm_or_cancel_to_reach_terminal_state() -> 
     assert authorized_payment.captured_at is None
     assert authorized_event.event_type == "payment.authorized"
 
-    confirm_response = client.post(
+    confirm_response = cloudpayments_client.post(
         "/api/cloudpayments/confirm",
         json={
             "InvoiceId": invoice_id,
@@ -3100,7 +3142,7 @@ def test_check_webhook_validates_snapshotted_payment_schema() -> None:
         }
         if provider_status is not None:
             payload["Status"] = provider_status
-        response = client.post("/api/cloudpayments/check", json=payload)
+        response = cloudpayments_client.post("/api/cloudpayments/check", json=payload)
         responses.append((response, expected_response, expected_error))
 
     assert [response.status_code for response, _, _ in responses] == [
@@ -3131,7 +3173,7 @@ def test_late_confirm_captures_existing_authorized_payment_after_order_is_paid()
     invoice_id = create_checkout_invoice(email=email, widget_mode="auth")
 
     authorized_responses = [
-        client.post(
+        cloudpayments_client.post(
             "/api/cloudpayments/pay",
             json={
                 "InvoiceId": invoice_id,
@@ -3145,7 +3187,7 @@ def test_late_confirm_captures_existing_authorized_payment_after_order_is_paid()
         for transaction_id in ("tx-second-auth-confirm-1", "tx-second-auth-confirm-2")
     ]
     confirm_responses = [
-        client.post(
+        cloudpayments_client.post(
             "/api/cloudpayments/confirm",
             json={
                 "InvoiceId": invoice_id,
@@ -3192,7 +3234,7 @@ def test_authorized_pay_can_be_canceled_with_provider_cancel_payload() -> None:
         email="dms-cancel-user@example.com",
         widget_mode="auth",
     )
-    pay_response = client.post(
+    pay_response = cloudpayments_client.post(
         "/api/cloudpayments/pay",
         json={
             "InvoiceId": invoice_id,
@@ -3204,7 +3246,7 @@ def test_authorized_pay_can_be_canceled_with_provider_cancel_payload() -> None:
         },
     )
 
-    cancel_response = client.post(
+    cancel_response = cloudpayments_client.post(
         "/api/cloudpayments/cancel",
         json={
             "InvoiceId": invoice_id,
@@ -3240,7 +3282,7 @@ def test_two_stage_notifications_are_rejected_for_charge_orders() -> None:
 
     for endpoint, email, transaction_id in scenarios:
         invoice_id = create_checkout_invoice(email=email)
-        response = client.post(
+        response = cloudpayments_client.post(
             f"/api/cloudpayments/{endpoint}",
             json={
                 "InvoiceId": invoice_id,
@@ -3295,7 +3337,7 @@ def test_legacy_orders_without_payment_mode_snapshot_default_to_charge_schema() 
         }
         if provider_status is not None:
             payload["Status"] = provider_status
-        responses.append(client.post(f"/api/cloudpayments/{endpoint}", json=payload))
+        responses.append(cloudpayments_client.post(f"/api/cloudpayments/{endpoint}", json=payload))
 
     assert [response.status_code for response in responses] == [200, 200, 200, 200]
     assert [response.json() for response in responses] == [
@@ -3324,7 +3366,6 @@ def test_verified_late_pay_and_confirm_after_checkout_expiry_remain_authoritativ
     from app.settings import settings  # noqa: E402
 
     require_signed_cloudpayments_webhooks_for_test()
-    object.__setattr__(settings, "cloudpayments_enabled", True)
     object.__setattr__(settings, "cloudpayments_api_secret", "test-secret")
     try:
         scenarios = [
@@ -3372,7 +3413,6 @@ def test_verified_late_pay_and_confirm_after_checkout_expiry_remain_authoritativ
             assert payment.status is PaymentStatus.SUCCEEDED
     finally:
         allow_unsigned_cloudpayments_webhooks_for_test()
-        object.__setattr__(settings, "cloudpayments_enabled", False)
         object.__setattr__(settings, "cloudpayments_api_secret", "")
 
 
@@ -3380,10 +3420,9 @@ def test_signed_pay_webhook_processes_valid_signature() -> None:
     from app.settings import settings  # noqa: E402
 
     require_signed_cloudpayments_webhooks_for_test()
-    object.__setattr__(settings, "cloudpayments_enabled", True)
     object.__setattr__(settings, "cloudpayments_api_secret", "test-secret")
     try:
-        register_response = client.post(
+        register_response = cloudpayments_client.post(
             "/api/auth/register",
             json={
                 "email": "signed-pay-user@example.com",
@@ -3393,7 +3432,7 @@ def test_signed_pay_webhook_processes_valid_signature() -> None:
             },
         )
         token = register_response.json()["token"]
-        checkout_response = client.post(
+        checkout_response = cloudpayments_client.post(
             "/api/auth/checkout-intent",
             headers={"Authorization": f"Bearer {token}"},
             json={
@@ -3426,12 +3465,11 @@ def test_signed_pay_webhook_processes_valid_signature() -> None:
         assert payment.status is PaymentStatus.SUCCEEDED
     finally:
         allow_unsigned_cloudpayments_webhooks_for_test()
-        object.__setattr__(settings, "cloudpayments_enabled", False)
         object.__setattr__(settings, "cloudpayments_api_secret", "")
 
 
 def test_fail_webhook_updates_payment_and_order_without_access_activation() -> None:
-    register_response = client.post(
+    register_response = cloudpayments_client.post(
         "/api/auth/register",
         json={
             "email": "fail-user@example.com",
@@ -3441,7 +3479,7 @@ def test_fail_webhook_updates_payment_and_order_without_access_activation() -> N
         },
     )
     token = register_response.json()["token"]
-    checkout_response = client.post(
+    checkout_response = cloudpayments_client.post(
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
@@ -3453,7 +3491,7 @@ def test_fail_webhook_updates_payment_and_order_without_access_activation() -> N
     )
     invoice_id = checkout_response.json()["purchase"]["invoice_id"]
 
-    response = client.post(
+    response = cloudpayments_client.post(
         "/api/cloudpayments/fail",
         json={
             "InvoiceId": invoice_id,
@@ -3483,7 +3521,9 @@ def test_payment_status_projects_product_state_from_final_and_pending_orders() -
     pending_email = "projection-pending@example.com"
     pending_invoice_id = create_checkout_invoice(email=pending_email)
 
-    pending_response = client.get(f"/api/auth/payment-status?invoice_id={pending_invoice_id}&email={pending_email}")
+    pending_response = cloudpayments_client.get(
+        f"/api/auth/payment-status?invoice_id={pending_invoice_id}&email={pending_email}"
+    )
     assert pending_response.status_code == 200
     pending_payload = pending_response.json()
     assert pending_payload["product_state"]["status"] == "pending"
@@ -3494,7 +3534,9 @@ def test_payment_status_projects_product_state_from_final_and_pending_orders() -
         pending_order.status = OrderStatus.CREATED
         db.commit()
 
-    created_response = client.get(f"/api/auth/payment-status?invoice_id={pending_invoice_id}&email={pending_email}")
+    created_response = cloudpayments_client.get(
+        f"/api/auth/payment-status?invoice_id={pending_invoice_id}&email={pending_email}"
+    )
     assert created_response.status_code == 200
     created_payload = created_response.json()
     assert created_payload["product_state"]["status"] == "pending"
@@ -3502,7 +3544,7 @@ def test_payment_status_projects_product_state_from_final_and_pending_orders() -
 
     failed_email = "projection-failed@example.com"
     failed_invoice_id = create_checkout_invoice(email=failed_email)
-    failed_webhook_response = client.post(
+    failed_webhook_response = cloudpayments_client.post(
         "/api/cloudpayments/fail",
         json={
             "InvoiceId": failed_invoice_id,
@@ -3516,7 +3558,9 @@ def test_payment_status_projects_product_state_from_final_and_pending_orders() -
     )
     assert failed_webhook_response.status_code == 200
 
-    failed_response = client.get(f"/api/auth/payment-status?invoice_id={failed_invoice_id}&email={failed_email}")
+    failed_response = cloudpayments_client.get(
+        f"/api/auth/payment-status?invoice_id={failed_invoice_id}&email={failed_email}"
+    )
     assert failed_response.status_code == 200
     failed_payload = failed_response.json()
     assert failed_payload["product_state"]["status"] == "inactive"
@@ -3525,7 +3569,7 @@ def test_payment_status_projects_product_state_from_final_and_pending_orders() -
 
     active_email = "projection-active@example.com"
     active_invoice_id = create_checkout_invoice(email=active_email)
-    active_webhook_response = client.post(
+    active_webhook_response = cloudpayments_client.post(
         "/api/cloudpayments/pay",
         json={
             "InvoiceId": active_invoice_id,
@@ -3538,7 +3582,9 @@ def test_payment_status_projects_product_state_from_final_and_pending_orders() -
     )
     assert active_webhook_response.status_code == 200
 
-    active_response = client.get(f"/api/auth/payment-status?invoice_id={active_invoice_id}&email={active_email}")
+    active_response = cloudpayments_client.get(
+        f"/api/auth/payment-status?invoice_id={active_invoice_id}&email={active_email}"
+    )
     assert active_response.status_code == 200
     active_payload = active_response.json()
     assert active_payload["product_state"]["status"] == "active"
@@ -3548,7 +3594,7 @@ def test_payment_status_projects_product_state_from_final_and_pending_orders() -
     seed_cloudpayments_provider_account(widget_mode="auth")
     canceled_email = "projection-canceled@example.com"
     canceled_invoice_id = create_checkout_invoice(email=canceled_email, widget_mode="auth")
-    canceled_webhook_response = client.post(
+    canceled_webhook_response = cloudpayments_client.post(
         "/api/cloudpayments/cancel",
         json={
             "InvoiceId": canceled_invoice_id,
@@ -3560,7 +3606,9 @@ def test_payment_status_projects_product_state_from_final_and_pending_orders() -
     )
     assert canceled_webhook_response.status_code == 200
 
-    canceled_response = client.get(f"/api/auth/payment-status?invoice_id={canceled_invoice_id}&email={canceled_email}")
+    canceled_response = cloudpayments_client.get(
+        f"/api/auth/payment-status?invoice_id={canceled_invoice_id}&email={canceled_email}"
+    )
     assert canceled_response.status_code == 200
     canceled_payload = canceled_response.json()
     assert canceled_payload["product_state"]["status"] == "inactive"
@@ -3569,7 +3617,7 @@ def test_payment_status_projects_product_state_from_final_and_pending_orders() -
 
     refunded_email = "projection-refunded@example.com"
     refunded_invoice_id = create_checkout_invoice(email=refunded_email, widget_mode="auth")
-    confirm_webhook_response = client.post(
+    confirm_webhook_response = cloudpayments_client.post(
         "/api/cloudpayments/confirm",
         json={
             "InvoiceId": refunded_invoice_id,
@@ -3581,7 +3629,7 @@ def test_payment_status_projects_product_state_from_final_and_pending_orders() -
         },
     )
     assert confirm_webhook_response.status_code == 200
-    refund_webhook_response = client.post(
+    refund_webhook_response = cloudpayments_client.post(
         "/api/cloudpayments/refund",
         json={
             "InvoiceId": refunded_invoice_id,
@@ -3594,7 +3642,9 @@ def test_payment_status_projects_product_state_from_final_and_pending_orders() -
     )
     assert refund_webhook_response.status_code == 200
 
-    refunded_response = client.get(f"/api/auth/payment-status?invoice_id={refunded_invoice_id}&email={refunded_email}")
+    refunded_response = cloudpayments_client.get(
+        f"/api/auth/payment-status?invoice_id={refunded_invoice_id}&email={refunded_email}"
+    )
     assert refunded_response.status_code == 200
     refunded_payload = refunded_response.json()
     assert refunded_payload["product_state"]["status"] == "inactive"
@@ -3604,7 +3654,6 @@ def test_payment_status_projects_product_state_from_final_and_pending_orders() -
 
 def test_signed_check_after_failed_attempt_allows_retry() -> None:
     require_signed_cloudpayments_webhooks_for_test()
-    object.__setattr__(settings, "cloudpayments_enabled", True)
     object.__setattr__(settings, "cloudpayments_api_secret", "test-secret")
     try:
         invoice_id = create_checkout_invoice(email="retry-after-fail@example.com")
@@ -3640,13 +3689,12 @@ def test_signed_check_after_failed_attempt_allows_retry() -> None:
         assert events[1].error_code is None
     finally:
         allow_unsigned_cloudpayments_webhooks_for_test()
-        object.__setattr__(settings, "cloudpayments_enabled", False)
         object.__setattr__(settings, "cloudpayments_api_secret", "")
 
 
 def test_confirm_and_cancel_notifications_update_two_stage_payment_state() -> None:
     seed_cloudpayments_provider_account(widget_mode="auth")
-    register_response = client.post(
+    register_response = cloudpayments_client.post(
         "/api/auth/register",
         json={
             "email": "confirm-cancel-user@example.com",
@@ -3656,7 +3704,7 @@ def test_confirm_and_cancel_notifications_update_two_stage_payment_state() -> No
         },
     )
     token = register_response.json()["token"]
-    checkout_response = client.post(
+    checkout_response = cloudpayments_client.post(
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
@@ -3668,7 +3716,7 @@ def test_confirm_and_cancel_notifications_update_two_stage_payment_state() -> No
     )
     invoice_id = checkout_response.json()["purchase"]["invoice_id"]
 
-    confirm_response = client.post(
+    confirm_response = cloudpayments_client.post(
         "/api/cloudpayments/confirm",
         json={
             "InvoiceId": invoice_id,
@@ -3689,7 +3737,7 @@ def test_confirm_and_cancel_notifications_update_two_stage_payment_state() -> No
     assert confirmed_order.status is OrderStatus.PAID
     assert confirmed_payment.status is PaymentStatus.SUCCEEDED
 
-    register_cancel_response = client.post(
+    register_cancel_response = cloudpayments_client.post(
         "/api/auth/register",
         json={
             "email": "cancel-user@example.com",
@@ -3699,7 +3747,7 @@ def test_confirm_and_cancel_notifications_update_two_stage_payment_state() -> No
         },
     )
     cancel_token = register_cancel_response.json()["token"]
-    cancel_checkout_response = client.post(
+    cancel_checkout_response = cloudpayments_client.post(
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {cancel_token}"},
         json={
@@ -3711,7 +3759,7 @@ def test_confirm_and_cancel_notifications_update_two_stage_payment_state() -> No
     )
     cancel_invoice_id = cancel_checkout_response.json()["purchase"]["invoice_id"]
 
-    cancel_response = client.post(
+    cancel_response = cloudpayments_client.post(
         "/api/cloudpayments/cancel",
         json={
             "InvoiceId": cancel_invoice_id,
@@ -3740,7 +3788,7 @@ def test_confirm_notification_accepts_missing_account_id() -> None:
         widget_mode="auth",
     )
 
-    response = client.post(
+    response = cloudpayments_client.post(
         "/api/cloudpayments/confirm",
         json={
             "InvoiceId": invoice_id,
@@ -3769,7 +3817,7 @@ def test_confirm_notification_rejects_partial_capture_amount() -> None:
         email="partial-confirm-user@example.com",
         widget_mode="auth",
     )
-    pay_response = client.post(
+    pay_response = cloudpayments_client.post(
         "/api/cloudpayments/pay",
         json={
             "InvoiceId": invoice_id,
@@ -3780,7 +3828,7 @@ def test_confirm_notification_rejects_partial_capture_amount() -> None:
             "Status": "Authorized",
         },
     )
-    confirm_response = client.post(
+    confirm_response = cloudpayments_client.post(
         "/api/cloudpayments/confirm",
         json={
             "InvoiceId": invoice_id,
@@ -3814,7 +3862,7 @@ def test_confirm_notification_rejects_amount_above_authorization() -> None:
         email="excessive-confirm-user@example.com",
         widget_mode="auth",
     )
-    pay_response = client.post(
+    pay_response = cloudpayments_client.post(
         "/api/cloudpayments/pay",
         json={
             "InvoiceId": invoice_id,
@@ -3825,7 +3873,7 @@ def test_confirm_notification_rejects_amount_above_authorization() -> None:
             "Status": "Authorized",
         },
     )
-    confirm_response = client.post(
+    confirm_response = cloudpayments_client.post(
         "/api/cloudpayments/confirm",
         json={
             "InvoiceId": invoice_id,
@@ -3859,7 +3907,7 @@ def test_cancel_webhook_accepts_provider_payload_without_currency_or_account() -
         widget_mode="auth",
     )
 
-    cancel_response = client.post(
+    cancel_response = cloudpayments_client.post(
         "/api/cloudpayments/cancel",
         json={
             "InvoiceId": invoice_id,
@@ -3892,7 +3940,7 @@ def test_state_changing_notifications_require_transaction_id() -> None:
 
     for endpoint, email, extra_payload in scenarios:
         invoice_id = create_checkout_invoice(email=email, widget_mode="auth")
-        response = client.post(
+        response = cloudpayments_client.post(
             f"/api/cloudpayments/{endpoint}",
             json={
                 "InvoiceId": invoice_id,
@@ -3938,7 +3986,7 @@ def test_late_pay_or_confirm_does_not_reopen_canceled_order() -> None:
     ]
 
     for scenario in scenarios:
-        register_response = client.post(
+        register_response = cloudpayments_client.post(
             "/api/auth/register",
             json={
                 "email": scenario["email"],
@@ -3948,7 +3996,7 @@ def test_late_pay_or_confirm_does_not_reopen_canceled_order() -> None:
             },
         )
         token = register_response.json()["token"]
-        checkout_response = client.post(
+        checkout_response = cloudpayments_client.post(
             "/api/auth/checkout-intent",
             headers={"Authorization": f"Bearer {token}"},
             json={
@@ -3967,8 +4015,8 @@ def test_late_pay_or_confirm_does_not_reopen_canceled_order() -> None:
             "Currency": "RUB",
         }
 
-        cancel_response = client.post("/api/cloudpayments/cancel", json=base_payload)
-        late_response = client.post(
+        cancel_response = cloudpayments_client.post("/api/cloudpayments/cancel", json=base_payload)
+        late_response = cloudpayments_client.post(
             f"/api/cloudpayments/{scenario['endpoint']}",
             json={
                 **base_payload,
@@ -4003,7 +4051,7 @@ def test_late_pay_or_confirm_does_not_reopen_canceled_order() -> None:
 
 
 def test_late_fail_webhook_does_not_downgrade_paid_order() -> None:
-    register_response = client.post(
+    register_response = cloudpayments_client.post(
         "/api/auth/register",
         json={
             "email": "late-fail-user@example.com",
@@ -4013,7 +4061,7 @@ def test_late_fail_webhook_does_not_downgrade_paid_order() -> None:
         },
     )
     token = register_response.json()["token"]
-    checkout_response = client.post(
+    checkout_response = cloudpayments_client.post(
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
@@ -4025,7 +4073,7 @@ def test_late_fail_webhook_does_not_downgrade_paid_order() -> None:
     )
     invoice_id = checkout_response.json()["purchase"]["invoice_id"]
 
-    pay_response = client.post(
+    pay_response = cloudpayments_client.post(
         "/api/cloudpayments/pay",
         json={
             "InvoiceId": invoice_id,
@@ -4036,7 +4084,7 @@ def test_late_fail_webhook_does_not_downgrade_paid_order() -> None:
             "Status": "Completed",
         },
     )
-    fail_response = client.post(
+    fail_response = cloudpayments_client.post(
         "/api/cloudpayments/fail",
         json={
             "InvoiceId": invoice_id,
@@ -4066,7 +4114,7 @@ def test_late_fail_webhook_does_not_downgrade_canceled_order() -> None:
         email="late-fail-canceled-user@example.com",
         widget_mode="auth",
     )
-    authorized_response = client.post(
+    authorized_response = cloudpayments_client.post(
         "/api/cloudpayments/pay",
         json={
             "InvoiceId": invoice_id,
@@ -4077,7 +4125,7 @@ def test_late_fail_webhook_does_not_downgrade_canceled_order() -> None:
             "Status": "Authorized",
         },
     )
-    cancel_response = client.post(
+    cancel_response = cloudpayments_client.post(
         "/api/cloudpayments/cancel",
         json={
             "InvoiceId": invoice_id,
@@ -4085,7 +4133,7 @@ def test_late_fail_webhook_does_not_downgrade_canceled_order() -> None:
             "Amount": "990.00",
         },
     )
-    late_fail_response = client.post(
+    late_fail_response = cloudpayments_client.post(
         "/api/cloudpayments/fail",
         json={
             "InvoiceId": invoice_id,
@@ -4121,7 +4169,7 @@ def test_late_fail_webhook_does_not_downgrade_canceled_order() -> None:
 
 def test_late_distinct_pay_is_persisted_without_reopening_paid_order() -> None:
     invoice_id = create_checkout_invoice(email="second-charge-user@example.com")
-    first_response = client.post(
+    first_response = cloudpayments_client.post(
         "/api/cloudpayments/pay",
         json={
             "InvoiceId": invoice_id,
@@ -4132,7 +4180,7 @@ def test_late_distinct_pay_is_persisted_without_reopening_paid_order() -> None:
             "Status": "Completed",
         },
     )
-    check_response = client.post(
+    check_response = cloudpayments_client.post(
         "/api/cloudpayments/check",
         json={
             "InvoiceId": invoice_id,
@@ -4143,7 +4191,7 @@ def test_late_distinct_pay_is_persisted_without_reopening_paid_order() -> None:
             "Status": "Completed",
         },
     )
-    late_pay_response = client.post(
+    late_pay_response = cloudpayments_client.post(
         "/api/cloudpayments/pay",
         json={
             "InvoiceId": invoice_id,
@@ -4187,7 +4235,7 @@ def test_payment_status_surfaces_late_charge_on_canceled_order_after_later_fail(
         email="late-charge-refund@example.com",
         widget_mode="auth",
     )
-    cancel_response = client.post(
+    cancel_response = cloudpayments_client.post(
         "/api/cloudpayments/cancel",
         json={
             "InvoiceId": invoice_id,
@@ -4195,7 +4243,7 @@ def test_payment_status_surfaces_late_charge_on_canceled_order_after_later_fail(
             "Amount": "990.00",
         },
     )
-    late_pay_response = client.post(
+    late_pay_response = cloudpayments_client.post(
         "/api/cloudpayments/pay",
         json={
             "InvoiceId": invoice_id,
@@ -4206,7 +4254,7 @@ def test_payment_status_surfaces_late_charge_on_canceled_order_after_later_fail(
             "Status": "Completed",
         },
     )
-    late_fail_response = client.post(
+    late_fail_response = cloudpayments_client.post(
         "/api/cloudpayments/fail",
         json={
             "InvoiceId": invoice_id,
@@ -4218,7 +4266,7 @@ def test_payment_status_surfaces_late_charge_on_canceled_order_after_later_fail(
             "Reason": "Insufficient funds",
         },
     )
-    status_response = client.get(
+    status_response = cloudpayments_client.get(
         f"/api/auth/payment-status?invoice_id={invoice_id}&email=late-charge-refund@example.com"
     )
 
@@ -4255,7 +4303,7 @@ def test_payment_status_surfaces_late_charge_on_canceled_order_after_later_fail(
 
 def test_refund_one_of_multiple_successful_payments_keeps_order_partially_refunded() -> None:
     invoice_id = create_checkout_invoice(email="multi-success-refund-user@example.com")
-    first_pay_response = client.post(
+    first_pay_response = cloudpayments_client.post(
         "/api/cloudpayments/pay",
         json={
             "InvoiceId": invoice_id,
@@ -4266,7 +4314,7 @@ def test_refund_one_of_multiple_successful_payments_keeps_order_partially_refund
             "Status": "Completed",
         },
     )
-    second_pay_response = client.post(
+    second_pay_response = cloudpayments_client.post(
         "/api/cloudpayments/pay",
         json={
             "InvoiceId": invoice_id,
@@ -4277,7 +4325,7 @@ def test_refund_one_of_multiple_successful_payments_keeps_order_partially_refund
             "Status": "Completed",
         },
     )
-    refund_response = client.post(
+    refund_response = cloudpayments_client.post(
         "/api/cloudpayments/refund",
         json={
             "InvoiceId": invoice_id,
@@ -4307,7 +4355,7 @@ def test_refund_one_of_multiple_successful_payments_keeps_order_partially_refund
 
 
 def test_duplicate_success_webhook_does_not_duplicate_payment_or_order_updates() -> None:
-    register_response = client.post(
+    register_response = cloudpayments_client.post(
         "/api/auth/register",
         json={
             "email": "duplicate-user@example.com",
@@ -4317,7 +4365,7 @@ def test_duplicate_success_webhook_does_not_duplicate_payment_or_order_updates()
         },
     )
     token = register_response.json()["token"]
-    checkout_response = client.post(
+    checkout_response = cloudpayments_client.post(
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
@@ -4337,8 +4385,8 @@ def test_duplicate_success_webhook_does_not_duplicate_payment_or_order_updates()
         "Status": "Completed",
     }
 
-    first_response = client.post("/api/cloudpayments/pay", json=payload)
-    second_response = client.post("/api/cloudpayments/pay", json=payload)
+    first_response = cloudpayments_client.post("/api/cloudpayments/pay", json=payload)
+    second_response = cloudpayments_client.post("/api/cloudpayments/pay", json=payload)
 
     assert first_response.status_code == 200
     assert second_response.status_code == 200
@@ -4357,7 +4405,7 @@ def test_duplicate_success_webhook_does_not_duplicate_payment_or_order_updates()
 
 
 def test_refund_webhook_records_refund_skeleton_and_updates_payment() -> None:
-    register_response = client.post(
+    register_response = cloudpayments_client.post(
         "/api/auth/register",
         json={
             "email": "refund-user@example.com",
@@ -4367,7 +4415,7 @@ def test_refund_webhook_records_refund_skeleton_and_updates_payment() -> None:
         },
     )
     token = register_response.json()["token"]
-    checkout_response = client.post(
+    checkout_response = cloudpayments_client.post(
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
@@ -4378,7 +4426,7 @@ def test_refund_webhook_records_refund_skeleton_and_updates_payment() -> None:
         },
     )
     invoice_id = checkout_response.json()["purchase"]["invoice_id"]
-    client.post(
+    cloudpayments_client.post(
         "/api/cloudpayments/pay",
         json={
             "InvoiceId": invoice_id,
@@ -4390,7 +4438,7 @@ def test_refund_webhook_records_refund_skeleton_and_updates_payment() -> None:
         },
     )
 
-    refund_response = client.post(
+    refund_response = cloudpayments_client.post(
         "/api/cloudpayments/refund",
         json={
             "InvoiceId": invoice_id,
@@ -4404,7 +4452,9 @@ def test_refund_webhook_records_refund_skeleton_and_updates_payment() -> None:
 
     assert refund_response.status_code == 200
 
-    status_response = client.get(f"/api/auth/payment-status?invoice_id={invoice_id}&email=refund-user@example.com")
+    status_response = cloudpayments_client.get(
+        f"/api/auth/payment-status?invoice_id={invoice_id}&email=refund-user@example.com"
+    )
     assert status_response.status_code == 200
     status_payload = status_response.json()
     assert status_payload["product_state"]["status"] == "inactive"
@@ -4428,7 +4478,7 @@ def test_refund_webhook_records_refund_skeleton_and_updates_payment() -> None:
 
 def test_refund_webhook_accepts_provider_payload_without_currency_or_refund_id() -> None:
     invoice_id = create_checkout_invoice(email="provider-refund-user@example.com")
-    client.post(
+    cloudpayments_client.post(
         "/api/cloudpayments/pay",
         json={
             "InvoiceId": invoice_id,
@@ -4440,7 +4490,7 @@ def test_refund_webhook_accepts_provider_payload_without_currency_or_refund_id()
         },
     )
 
-    refund_response = client.post(
+    refund_response = cloudpayments_client.post(
         "/api/cloudpayments/refund",
         json={
             "InvoiceId": invoice_id,
@@ -4468,7 +4518,7 @@ def test_refund_webhook_accepts_provider_payload_without_currency_or_refund_id()
 
 def test_refund_webhook_rejects_failed_payment_without_refund_mutation() -> None:
     invoice_id = create_checkout_invoice(email="refund-failed-user@example.com")
-    fail_response = client.post(
+    fail_response = cloudpayments_client.post(
         "/api/cloudpayments/fail",
         json={
             "InvoiceId": invoice_id,
@@ -4480,7 +4530,7 @@ def test_refund_webhook_rejects_failed_payment_without_refund_mutation() -> None
             "Reason": "Insufficient funds",
         },
     )
-    refund_response = client.post(
+    refund_response = cloudpayments_client.post(
         "/api/cloudpayments/refund",
         json={
             "InvoiceId": invoice_id,
@@ -4511,7 +4561,7 @@ def test_refund_webhook_rejects_failed_payment_without_refund_mutation() -> None
 
 
 def test_distinct_refund_ids_for_same_transaction_are_not_deduplicated() -> None:
-    register_response = client.post(
+    register_response = cloudpayments_client.post(
         "/api/auth/register",
         json={
             "email": "multi-refund-user@example.com",
@@ -4521,7 +4571,7 @@ def test_distinct_refund_ids_for_same_transaction_are_not_deduplicated() -> None
         },
     )
     token = register_response.json()["token"]
-    checkout_response = client.post(
+    checkout_response = cloudpayments_client.post(
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
@@ -4532,7 +4582,7 @@ def test_distinct_refund_ids_for_same_transaction_are_not_deduplicated() -> None
         },
     )
     invoice_id = checkout_response.json()["purchase"]["invoice_id"]
-    client.post(
+    cloudpayments_client.post(
         "/api/cloudpayments/pay",
         json={
             "InvoiceId": invoice_id,
@@ -4544,7 +4594,7 @@ def test_distinct_refund_ids_for_same_transaction_are_not_deduplicated() -> None
         },
     )
 
-    first_refund_response = client.post(
+    first_refund_response = cloudpayments_client.post(
         "/api/cloudpayments/refund",
         json={
             "InvoiceId": invoice_id,
@@ -4557,7 +4607,7 @@ def test_distinct_refund_ids_for_same_transaction_are_not_deduplicated() -> None
     )
     assert first_refund_response.status_code == 200
 
-    partial_status_response = client.get(
+    partial_status_response = cloudpayments_client.get(
         f"/api/auth/payment-status?invoice_id={invoice_id}&email=multi-refund-user@example.com"
     )
     assert partial_status_response.status_code == 200
@@ -4568,7 +4618,7 @@ def test_distinct_refund_ids_for_same_transaction_are_not_deduplicated() -> None
     assert partial_status_payload["payment"]["amount_minor"] == 99000
     assert partial_status_payload["payment"]["refunded_amount_minor"] == 40000
 
-    second_refund_response = client.post(
+    second_refund_response = cloudpayments_client.post(
         "/api/cloudpayments/refund",
         json={
             "InvoiceId": invoice_id,
@@ -4602,7 +4652,7 @@ def test_distinct_refund_ids_for_same_transaction_are_not_deduplicated() -> None
 
 
 def test_duplicate_refund_id_with_distinct_event_id_does_not_double_count_refund() -> None:
-    register_response = client.post(
+    register_response = cloudpayments_client.post(
         "/api/auth/register",
         json={
             "email": "duplicate-refund-user@example.com",
@@ -4612,7 +4662,7 @@ def test_duplicate_refund_id_with_distinct_event_id_does_not_double_count_refund
         },
     )
     token = register_response.json()["token"]
-    checkout_response = client.post(
+    checkout_response = cloudpayments_client.post(
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
@@ -4623,7 +4673,7 @@ def test_duplicate_refund_id_with_distinct_event_id_does_not_double_count_refund
         },
     )
     invoice_id = checkout_response.json()["purchase"]["invoice_id"]
-    client.post(
+    cloudpayments_client.post(
         "/api/cloudpayments/pay",
         json={
             "InvoiceId": invoice_id,
@@ -4643,11 +4693,11 @@ def test_duplicate_refund_id_with_distinct_event_id_does_not_double_count_refund
         "Reason": "customer_request",
     }
 
-    first_refund_response = client.post(
+    first_refund_response = cloudpayments_client.post(
         "/api/cloudpayments/refund",
         json={**refund_payload, "EventId": "refund-event-1"},
     )
-    second_refund_response = client.post(
+    second_refund_response = cloudpayments_client.post(
         "/api/cloudpayments/refund",
         json={**refund_payload, "EventId": "refund-event-2"},
     )
@@ -4671,7 +4721,7 @@ def test_duplicate_refund_id_with_distinct_event_id_does_not_double_count_refund
 
 def test_partial_refunds_cannot_exceed_original_payment_amount() -> None:
     invoice_id = create_checkout_invoice(email="refund-bound-user@example.com")
-    client.post(
+    cloudpayments_client.post(
         "/api/cloudpayments/pay",
         json={
             "InvoiceId": invoice_id,
@@ -4683,7 +4733,7 @@ def test_partial_refunds_cannot_exceed_original_payment_amount() -> None:
         },
     )
 
-    first_refund_response = client.post(
+    first_refund_response = cloudpayments_client.post(
         "/api/cloudpayments/refund",
         json={
             "InvoiceId": invoice_id,
@@ -4693,7 +4743,7 @@ def test_partial_refunds_cannot_exceed_original_payment_amount() -> None:
             "Currency": "RUB",
         },
     )
-    excessive_refund_response = client.post(
+    excessive_refund_response = cloudpayments_client.post(
         "/api/cloudpayments/refund",
         json={
             "InvoiceId": invoice_id,
@@ -4725,7 +4775,7 @@ def test_partial_refunds_cannot_exceed_original_payment_amount() -> None:
 
 def test_recurrent_webhook_is_persisted_for_downstream_subscription_handling() -> None:
     seed_cloudpayments_provider_account()
-    response = client.post(
+    response = cloudpayments_client.post(
         "/api/cloudpayments/recurrent",
         json={
             "Id": "sub_1",
@@ -4775,7 +4825,7 @@ def test_recurrent_webhook_is_persisted_for_downstream_subscription_handling() -
 
 
 def test_recurrent_webhook_requires_an_enabled_provider_account() -> None:
-    response = client.post(
+    response = cloudpayments_client.post(
         "/api/cloudpayments/recurrent",
         json={
             "Id": "sub_without_account",
@@ -5073,7 +5123,10 @@ def test_recurrent_webhook_validates_required_provider_fields() -> None:
             scenario_payload["Id"] = f"sub_required_fields_{index}"
         scenario_payloads.append((name, error_code, expected_code, scenario_payload))
 
-    responses = [client.post("/api/cloudpayments/recurrent", json=payload) for _, _, _, payload in scenario_payloads]
+    responses = [
+        cloudpayments_client.post("/api/cloudpayments/recurrent", json=payload)
+        for _, _, _, payload in scenario_payloads
+    ]
 
     assert [response.json()["code"] for response in responses] == [
         expected_code for _, _, expected_code, _ in scenario_payloads
@@ -5118,11 +5171,11 @@ def test_recurrent_terminal_statuses_and_schedule_are_normalized() -> None:
         "NextTransactionDate": "2026-09-07 00:00:00",
     }
 
-    rejected_response = client.post(
+    rejected_response = cloudpayments_client.post(
         "/api/cloudpayments/recurrent",
         json={**base_payload, "Status": "Rejected"},
     )
-    expired_response = client.post(
+    expired_response = cloudpayments_client.post(
         "/api/cloudpayments/recurrent",
         json={**base_payload, "Status": "Expired"},
     )
@@ -5188,9 +5241,9 @@ def test_recurrent_duplicate_delivery_uses_payload_idempotency_not_subscription_
     }
     cancelled_payload = {**active_payload, "Status": "Cancelled"}
 
-    first_response = client.post("/api/cloudpayments/recurrent", json=active_payload)
-    duplicate_response = client.post("/api/cloudpayments/recurrent", json=active_payload)
-    status_change_response = client.post("/api/cloudpayments/recurrent", json=cancelled_payload)
+    first_response = cloudpayments_client.post("/api/cloudpayments/recurrent", json=active_payload)
+    duplicate_response = cloudpayments_client.post("/api/cloudpayments/recurrent", json=active_payload)
+    status_change_response = cloudpayments_client.post("/api/cloudpayments/recurrent", json=cancelled_payload)
 
     assert first_response.status_code == 200
     assert duplicate_response.status_code == 200
@@ -5708,23 +5761,45 @@ def test_password_reset_email_delivery_disabled_is_observable(monkeypatch, caplo
 
 
 def test_password_reset_email_delivery_failure_is_observable(monkeypatch, caplog) -> None:
+    original_error = TimeoutError("synthetic timeout with reset-token-secret")
+    record_password_reset_email = Mock()
+    report_exception = Mock()
+
     def fail_delivery(email: str, url: str) -> bool:
-        raise TimeoutError("synthetic timeout")
+        raise original_error
 
     monkeypatch.setattr(password_reset_router, "send_password_reset_email", fail_delivery)
+    monkeypatch.setattr(password_reset_router, "record_password_reset_email", record_password_reset_email)
+    monkeypatch.setattr(password_reset_router, "report_exception", report_exception)
 
     with caplog.at_level("WARNING", logger="payment_portal.identity.password_reset"):
-        password_reset_router.send_password_reset_email_safely(
+        result = password_reset_router.send_password_reset_email_safely(
             "reset-user@example.com",
-            "http://localhost/reset",
+            "http://localhost/reset?token=reset-token-secret",
         )
 
-    assert "password_reset_email_delivery_failed" in caplog.text
-    assert caplog.records[-1].structured["reason"] == "TimeoutError"
+    assert result is None
+    assert password_reset_router.Operation.PASSWORD_RESET_EMAIL.value == "password_reset_email"
+    record_password_reset_email.assert_called_once_with("failed")
+    report_exception.assert_called_once_with(
+        original_error,
+        operation=password_reset_router.Operation.PASSWORD_RESET_EMAIL,
+        failure_category=password_reset_router.FailureCategory.INTEGRATION_FAILURE,
+    )
+    diagnostics = [record for record in caplog.records if record.getMessage() == "password_reset_email_delivery_failed"]
+    assert len(diagnostics) == 1
+    assert diagnostics[0].structured == {"outcome": "failed", "reason": "TimeoutError"}
+    for marker in (
+        "reset-user@example.com",
+        "http://localhost/reset?token=reset-token-secret",
+        "reset-token-secret",
+        str(original_error),
+    ):
+        assert marker not in caplog.text
 
 
 def test_cloudpayments_webhook_is_saved_without_secret_hmac() -> None:
-    response = client.post(
+    response = cloudpayments_client.post(
         "/api/cloudpayments/pay",
         headers={"Content-HMAC": "demo-signature"},
         json={
@@ -5758,7 +5833,7 @@ def test_cloudpayments_webhook_is_saved_without_secret_hmac() -> None:
 
 
 def test_cloudpayments_form_webhook_preserves_response_and_parsing_contract() -> None:
-    response = client.post(
+    response = cloudpayments_client.post(
         "/api/cloudpayments/pay",
         headers={"Content-HMAC": "demo-signature"},
         data={
@@ -5789,7 +5864,7 @@ def test_cloudpayments_form_webhook_preserves_response_and_parsing_contract() ->
 
 def test_cloudpayments_webhook_rejects_non_finite_amount_without_500() -> None:
     for amount in ("NaN", "Infinity", "-Infinity"):
-        response = client.post(
+        response = cloudpayments_client.post(
             "/api/cloudpayments/check",
             headers={"Content-HMAC": "demo-signature"},
             json={
@@ -5817,7 +5892,7 @@ def test_cloudpayments_webhook_rejects_non_finite_amount_without_500() -> None:
 
 
 def test_malformed_cloudpayments_payload_omits_raw_body() -> None:
-    response = client.post(
+    response = cloudpayments_client.post(
         "/api/cloudpayments/pay",
         headers={"Content-HMAC": "demo-signature", "Content-Type": "application/json"},
         content='{"InvoiceId":"invoice-raw","CardFirstSix":"411111","Token":"secret-token"',
@@ -5837,7 +5912,7 @@ def test_malformed_cloudpayments_payload_omits_raw_body() -> None:
 
 
 def test_cloudpayments_webhook_rejects_non_object_json_payload() -> None:
-    response = client.post(
+    response = cloudpayments_client.post(
         "/api/cloudpayments/pay",
         headers={"Content-HMAC": "demo-signature", "Content-Type": "application/json"},
         content='["not-a-provider-object"]',
@@ -5855,7 +5930,7 @@ def test_cloudpayments_webhook_rejects_non_object_json_payload() -> None:
 
 
 def test_cloudpayments_payload_redaction_recurses_through_lists() -> None:
-    response = client.post(
+    response = cloudpayments_client.post(
         "/api/cloudpayments/pay",
         json={
             "InvoiceId": "invoice-list-redaction",
@@ -6596,7 +6671,7 @@ def test_required_document_acceptance_hash_controls_terms_and_personal_consent_g
         offer_hash = expected_acceptance_text_hash(offer_document)
         personal_hash = expected_acceptance_text_hash(personal_document)
 
-    register_response = client.post(
+    register_response = cloudpayments_client.post(
         "/api/auth/register",
         json={
             "email": "legal-hash-gate@example.com",
@@ -6607,7 +6682,7 @@ def test_required_document_acceptance_hash_controls_terms_and_personal_consent_g
     )
     token = register_response.json()["token"]
 
-    checkout_response = client.post(
+    checkout_response = cloudpayments_client.post(
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
@@ -6640,7 +6715,7 @@ def test_required_document_acceptance_hash_controls_terms_and_personal_consent_g
             acceptance_text_hash=personal_hash,
         )
 
-    bad_hash_response = client.post(
+    bad_hash_response = cloudpayments_client.post(
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
@@ -6665,7 +6740,7 @@ def test_required_document_acceptance_hash_controls_terms_and_personal_consent_g
             acceptance_text_hash=offer_hash,
         )
 
-    accepted_response = client.post(
+    accepted_response = cloudpayments_client.post(
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
@@ -6851,7 +6926,7 @@ def test_automatic_checkout_keeps_recurring_consent_missing_when_hash_is_wrong()
         document_id = document.id
         document_hash = expected_acceptance_text_hash(document)
 
-    register_response = client.post(
+    register_response = cloudpayments_client.post(
         "/api/auth/register",
         json={
             "email": "recurring-hash-gate@example.com",
@@ -6874,7 +6949,7 @@ def test_automatic_checkout_keeps_recurring_consent_missing_when_hash_is_wrong()
             entrypoint_value="document-summary",
         )
 
-    bad_hash_response = client.post(
+    bad_hash_response = cloudpayments_client.post(
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
@@ -6898,7 +6973,7 @@ def test_automatic_checkout_keeps_recurring_consent_missing_when_hash_is_wrong()
         correct_acceptance = db.get(DocumentAcceptance, uuid.UUID(acceptance_id))
     assert correct_acceptance.acceptance_text_hash == document_hash
 
-    accepted_response = client.post(
+    accepted_response = cloudpayments_client.post(
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
@@ -6924,7 +6999,7 @@ def test_checkout_requires_acceptance_again_when_active_document_version_changes
         legal_entity_id = legal_entity.id
         first_document_id = first_document.id
 
-    register_response = client.post(
+    register_response = cloudpayments_client.post(
         "/api/auth/register",
         json={
             "email": "legal-user@example.com",
@@ -6938,7 +7013,7 @@ def test_checkout_requires_acceptance_again_when_active_document_version_changes
     with SessionLocal() as db:
         assert db.query(DocumentAcceptance).count() == 0
 
-    checkout_response = client.post(
+    checkout_response = cloudpayments_client.post(
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
@@ -6959,7 +7034,7 @@ def test_checkout_requires_acceptance_again_when_active_document_version_changes
     assert "2026-07-ru-v1" not in missing_document["acceptance_text"]
     assert missing_document["acceptance_text_hash"]
 
-    invalid_accept_response = client.post(
+    invalid_accept_response = cloudpayments_client.post(
         "/api/legal/acceptances",
         headers={"Authorization": f"Bearer {token}"},
         json={
@@ -6973,7 +7048,7 @@ def test_checkout_requires_acceptance_again_when_active_document_version_changes
     assert invalid_accept_response.status_code == 400
     assert invalid_accept_response.json()["detail"] == "invalid_acceptance_text_hash"
 
-    accept_first_response = client.post(
+    accept_first_response = cloudpayments_client.post(
         "/api/legal/acceptances",
         headers={"Authorization": f"Bearer {token}"},
         json={
@@ -6986,7 +7061,7 @@ def test_checkout_requires_acceptance_again_when_active_document_version_changes
 
     assert accept_first_response.status_code == 200
 
-    retry_first_response = client.post(
+    retry_first_response = cloudpayments_client.post(
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
@@ -7011,7 +7086,7 @@ def test_checkout_requires_acceptance_again_when_active_document_version_changes
         )
         second_document_id = second_document.id
 
-    checkout_second_response = client.post(
+    checkout_second_response = cloudpayments_client.post(
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
@@ -7028,7 +7103,7 @@ def test_checkout_requires_acceptance_again_when_active_document_version_changes
     assert second_missing_document["document_version_id"] == str(second_document_id)
     assert second_missing_document["version"] == "2026-07-ru-v2"
 
-    accept_response = client.post(
+    accept_response = cloudpayments_client.post(
         "/api/legal/acceptances",
         headers={"Authorization": f"Bearer {token}"},
         json={
@@ -7041,7 +7116,7 @@ def test_checkout_requires_acceptance_again_when_active_document_version_changes
 
     assert accept_response.status_code == 200
 
-    retry_response = client.post(
+    retry_response = cloudpayments_client.post(
         "/api/auth/checkout-intent",
         headers={"Authorization": f"Bearer {token}"},
         json={
@@ -7154,12 +7229,12 @@ def test_legal_required_documents_are_scoped_by_tenant_and_region() -> None:
 
 def test_cloudpayments_webhook_rejects_invalid_signature_when_secret_is_set() -> None:
     require_signed_cloudpayments_webhooks_for_test()
-    app.dependency_overrides.clear()
+    cloudpayments_app.dependency_overrides.clear()
 
     from app.settings import settings  # noqa: E402
 
     with override_settings(settings, cloudpayments_api_secret="test-secret"):
-        response = client.post(
+        response = cloudpayments_client.post(
             "/api/cloudpayments/pay",
             headers={"Content-HMAC": "invalid-signature"},
             json={
@@ -7182,14 +7257,13 @@ def test_cloudpayments_webhook_rejects_invalid_signature_when_secret_is_set() ->
     assert event.processed_at
 
 
-def test_cloudpayments_webhook_rejects_missing_secret_when_provider_is_enabled() -> None:
+def test_cloudpayments_webhook_rejects_missing_secret() -> None:
     require_signed_cloudpayments_webhooks_for_test()
     from app.settings import settings  # noqa: E402
 
-    object.__setattr__(settings, "cloudpayments_enabled", True)
     object.__setattr__(settings, "cloudpayments_api_secret", "")
 
-    response = client.post(
+    response = cloudpayments_client.post(
         "/api/cloudpayments/pay",
         json={
             "InvoiceId": "invoice-enabled-missing-secret",
@@ -7203,10 +7277,8 @@ def test_cloudpayments_webhook_rejects_missing_secret_when_provider_is_enabled()
     assert response.status_code == 400
     assert response.json()["detail"] == "invalid_cloudpayments_signature"
 
-    object.__setattr__(settings, "cloudpayments_enabled", False)
 
-
-def test_new_cloudpayments_webhook_types_reject_unsigned_disabled_mode() -> None:
+def test_new_cloudpayments_webhook_types_reject_unsigned_without_secret() -> None:
     require_signed_cloudpayments_webhooks_for_test()
 
     scenarios = [
@@ -7242,7 +7314,9 @@ def test_new_cloudpayments_webhook_types_reject_unsigned_disabled_mode() -> None
         ),
     ]
 
-    responses = [client.post(f"/api/cloudpayments/{endpoint}", json=payload) for endpoint, payload in scenarios]
+    responses = [
+        cloudpayments_client.post(f"/api/cloudpayments/{endpoint}", json=payload) for endpoint, payload in scenarios
+    ]
 
     assert [response.status_code for response in responses] == [400, 400, 400]
     assert [response.json()["detail"] for response in responses] == [
@@ -7266,7 +7340,6 @@ def test_cloudpayments_webhook_rejects_non_ascii_signature_without_500() -> None
     secret = "test-secret"
     from app.settings import settings  # noqa: E402
 
-    object.__setattr__(settings, "cloudpayments_enabled", True)
     object.__setattr__(settings, "cloudpayments_api_secret", secret)
     payload = b'{"InvoiceId":"invoice-non-ascii","Amount":"1490.00","Currency":"RUB"}'
     valid_signature = base64.b64encode(hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).digest()).decode(
@@ -7281,5 +7354,4 @@ def test_cloudpayments_webhook_rejects_non_ascii_signature_without_500() -> None
         is False
     )
 
-    object.__setattr__(settings, "cloudpayments_enabled", False)
     object.__setattr__(settings, "cloudpayments_api_secret", "")

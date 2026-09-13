@@ -21,7 +21,7 @@ def write_module(root: Path, relative: str, source: str) -> None:
     path.write_text(source, encoding="utf-8")
 
 
-def test_cloudpayments_webhook_keeps_shared_async_body_and_sync_processing_boundary() -> None:
+def test_retained_cloudpayments_webhook_keeps_shared_async_body_and_sync_processing_boundary() -> None:
     route = next(
         route
         for route in cloudpayments_router.routes
@@ -29,7 +29,7 @@ def test_cloudpayments_webhook_keeps_shared_async_body_and_sync_processing_bound
     )
     dependencies = {dependency.name: dependency.call for dependency in route.dependant.dependencies}
 
-    assert "/api/cloudpayments/{endpoint}" in app.openapi()["paths"]
+    assert "/api/cloudpayments/{endpoint}" not in app.openapi()["paths"]
     assert not inspect.iscoroutinefunction(route.endpoint)
     assert dependencies["raw_body"] is get_raw_request_body
     assert inspect.iscoroutinefunction(get_raw_request_body)
@@ -160,6 +160,38 @@ def test_domain_application_trees_reject_fastapi_and_starlette_dependencies(tmp_
         and "domain service/application-to-transport dependency" in error
         for error in errors
     )
+
+
+def test_application_modules_must_import_sentry_through_the_adapter(tmp_path: Path) -> None:
+    forbidden_imports = {
+        "apps/api/app/domains/billing/application/renewal.py": "import sentry_sdk\n",
+        "apps/api/app/payment_providers/errors.py": "from sentry_sdk import capture_exception\n",
+        "apps/api/app/integrations/cloudpayments/client.py": ("from sentry_sdk.integrations import Integration\n"),
+        "apps/api/app/domains/billing/router.py": "import sentry_sdk.client\n",
+        "apps/api/app/commands/expire_subscriptions.py": ("from sentry_sdk.scope import Scope\n"),
+    }
+    for relative, source in forbidden_imports.items():
+        write_module(tmp_path, relative, source)
+
+    errors = check_python_boundaries(tmp_path)
+
+    for relative in forbidden_imports:
+        assert any(
+            error.startswith(f"{relative}:1 imports sentry_sdk")
+            and "Sentry SDK adapter boundary" in error
+            and "import app.infrastructure.sentry instead" in error
+            for error in errors
+        )
+
+
+def test_sentry_infrastructure_adapter_may_import_the_sdk(tmp_path: Path) -> None:
+    write_module(
+        tmp_path,
+        "apps/api/app/infrastructure/sentry.py",
+        "import sentry_sdk\nfrom sentry_sdk.integrations.atexit import AtexitIntegration\n",
+    )
+
+    assert check_python_boundaries(tmp_path) == []
 
 
 def test_comments_strings_and_allowed_session_import_pass(tmp_path: Path) -> None:

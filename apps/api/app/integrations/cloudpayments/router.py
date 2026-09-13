@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.observability import record_webhook, traced
 from app.http_dependencies import get_raw_request_body
+from app.infrastructure.sentry import Operation, report_exception
 from app.integrations.cloudpayments.adapter import (
     SUPPORTED_ENDPOINTS,
     CloudPaymentsAdapter,
@@ -123,6 +124,13 @@ def receive_cloudpayments_webhook(
             )
             record_webhook(endpoint, event.status)
             _log_webhook_processed(event)
+            report_exception(
+                exc,
+                operation=Operation.HTTP_REQUEST,
+                method=request.method,
+                route="/api/cloudpayments/{endpoint}",
+                error_code="normalization_unexpected_error",
+            )
             raise HTTPException(status_code=500, detail="webhook_normalization_failed") from exc
 
     record_webhook(endpoint, event.status)

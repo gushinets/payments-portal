@@ -1,7 +1,7 @@
 # Deployment Architecture
 
 Status: authoritative current deployment plus target contour isolation
-Last verified: 2026-08-18
+Last verified: 2026-09-10
 
 ## Current `ru` deployment
 
@@ -16,6 +16,7 @@ flowchart LR
   Browser --> CP["CloudPayments widget"]
   CP -->|"HTTPS webhook"| API
   API --> OTEL["Optional telemetry backend"]
+  API --> Sentry["Optional Sentry error reporting"]
 ```
 
 Production Compose builds web and API images and runs Alembic through a
@@ -25,6 +26,23 @@ a failed migration therefore blocks API startup. Only Caddy publishes host
 ports, while PostgreSQL, API, and web remain internal. Production must provide
 HTTPS termination, `ru` data residency, backups, secret storage, and
 monitoring outside this repository's local Compose assumptions.
+
+Production exposes optional `SENTRY_DSN` and `SENTRY_RELEASE` values to the
+shared API/migration environment. An empty DSN keeps Sentry disabled; when a
+production deployment supplies a DSN, it must use HTTPS and must also supply
+the immutable release identifier through `SENTRY_RELEASE`. `APP_ENV` remains
+the Sentry environment source and `OTEL_SERVICE_NAME` remains the
+service-identity source. The repository does not hardcode a DSN, discover
+releases from container git state, or expose separate Sentry enablement,
+environment, service, sampling, debug, Spotlight, metrics, or logging switches.
+
+Sentry is an optional outbound backend application-error destination, separate
+from the optional OTLP telemetry backend. It does not own or receive tracing,
+application logs, metrics, or profiling, and it does not replace persisted
+database state as business truth. Project-side data scrubbing, disabled or
+policy-compliant IP collection, and notifications for new or regressed
+production issues are operator-managed settings; this repository does not
+automate Sentry project management or broad monitoring owned by ANY-86.
 
 `GET /api/health/live` reports only whether the API process can serve HTTP and
 does not access PostgreSQL. `GET /api/health/ready` runs `SELECT 1` and returns
