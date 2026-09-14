@@ -31,7 +31,7 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware  # noqa: E40
 from app.domains.billing.router import get_subscription as get_account_subscription_route  # noqa: E402
 from app.domains.billing.router import list_subscriptions as list_account_subscriptions_route  # noqa: E402
 import app.domains.identity.password_reset as password_reset_router  # noqa: E402
-import app.domains.identity.router as identity_router  # noqa: E402
+import app.domains.identity.services.auth as identity_auth_service  # noqa: E402
 from app.core.observability import JsonFormatter  # noqa: E402
 from app.database import Base, SessionLocal, engine  # noqa: E402
 from app.infrastructure.persistence.password_reset import (  # noqa: E402
@@ -5342,7 +5342,7 @@ def test_registration_failure_before_initial_session_rolls_back_and_allows_retry
 
     with monkeypatch.context() as context:
         context.setattr(
-            identity_router,
+            identity_auth_service,
             "make_session_token",
             fail_session_token_generation,
         )
@@ -5450,6 +5450,7 @@ def test_login_and_logout_flow() -> None:
         headers={"Authorization": f"Bearer {token}"},
     )
     assert session_response.status_code == 401
+    assert session_response.json() == {"detail": "invalid_session"}
 
 
 def test_password_reset_email_token_and_session_revocation(monkeypatch) -> None:

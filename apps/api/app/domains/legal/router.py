@@ -12,7 +12,6 @@ from app.core.observability import record_legal_acceptance, traced
 from app.domains.identity.session import (
     DEFAULT_REGION,
     DEFAULT_TENANT_ID,
-    get_current_session,
 )
 from app.domains.legal.service import (
     LegalAcceptanceError,
@@ -22,6 +21,7 @@ from app.domains.legal.service import (
     get_active_required_documents,
     utc_now,
 )
+from app.http_dependencies import get_current_session
 from app.infrastructure.queries.legal import get_active_required_document_by_id
 from app.infrastructure.queries.plans import get_current_sellable_plan
 from app.models import AuthSession, DocumentVersion, User

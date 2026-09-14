@@ -29,6 +29,7 @@ REFACTORED_ACTIVE_PERSISTENCE_MODULES = (
     "domains/legal/service.py",
     "domains/legal/router.py",
     "domains/identity/services/checkout.py",
+    "domains/identity/services/auth.py",
     "domains/identity/session.py",
     "domains/identity/router.py",
     "domains/identity/password_reset.py",
@@ -471,7 +472,7 @@ def test_comments_strings_and_allowed_session_import_pass(tmp_path: Path) -> Non
         "apps/api/app/domains/legal/router.py",
         '"from app.integrations import provider"\n'
         "# from app.domains.identity import router\n"
-        "from app.domains.identity.session import get_current_session\n",
+        "from app.domains.identity.session import DEFAULT_REGION\n",
     )
 
     assert check_python_boundaries(tmp_path) == []
@@ -502,9 +503,10 @@ def test_provider_neutral_modules_reject_cloudpayments_literal(tmp_path: Path) -
 
 def test_legacy_auth_module_reexports_session_contract() -> None:
     from app.auth import DEFAULT_REGION, DEFAULT_TENANT_ID, as_utc, get_current_session
-    from app.domains.identity import session
+    from app.domains.identity.services import auth
+    from app.http_dependencies import get_current_session as http_get_current_session
 
     assert DEFAULT_REGION == "ru"
     assert DEFAULT_TENANT_ID == "anytoolai"
-    assert as_utc is session.as_utc
-    assert get_current_session is session.get_current_session
+    assert as_utc is auth.as_utc
+    assert get_current_session is http_get_current_session

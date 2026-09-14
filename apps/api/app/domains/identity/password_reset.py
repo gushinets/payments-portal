@@ -16,6 +16,7 @@ from app.core.password_reset_email import (
     build_password_reset_url,
     send_password_reset_email,
 )
+from app.core.time import utc_now
 from app.domains.identity.errors import (
     InvalidOrExpiredResetTokenError,
     PasswordResetError,
@@ -25,7 +26,6 @@ from app.domains.identity.passwords import hash_password
 from app.domains.identity.session import (
     DEFAULT_REGION,
     DEFAULT_TENANT_ID,
-    utc_now,
 )
 from app.infrastructure.persistence.password_reset import (
     claim_valid_password_reset_token,

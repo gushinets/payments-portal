@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import hashlib
 import logging
-import secrets
-from datetime import datetime, timedelta
+from datetime import timedelta
 from decimal import Decimal
 from typing import Annotated
 
@@ -12,14 +10,22 @@ from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.payment_providers.errors import PaymentProviderConfigurationError
 from app.core.observability import record_checkout, traced
+from app.core.time import utc_now
+from app.domains.billing.enums import ProductAccessStatus
 from app.domains.identity.errors import (
     AutomaticRenewalNotPermittedError,
     MissingRequiredDocumentsError,
     ProviderCurrencyMismatchError,
 )
-from app.domains.identity.passwords import hash_password, verify_password
+from app.domains.identity.services.auth import (
+    login_user,
+    logout_session,
+    normalize_email,
+    normalize_region,
+    normalize_tenant_id,
+    register_user,
+)
 from app.domains.identity.services.checkout import (
     CheckoutIntentRequest,
     CheckoutIntentResponse,
@@ -30,18 +36,13 @@ from app.domains.identity.services.checkout import (
     make_order_number,
     raise_missing_recurring_consent,
 )
+from app.domains.identity.session import DEFAULT_REGION, DEFAULT_TENANT_ID
 from app.domains.legal.service import (
     get_current_recurring_consent_acceptance,
     get_missing_required_documents_for_user,
     present_required_document,
 )
-from app.domains.billing.enums import ProductAccessStatus
-from app.domains.identity.session import (
-    DEFAULT_REGION,
-    DEFAULT_TENANT_ID,
-    get_current_session,
-)
-from app.core.time import utc_now
+from app.http_dependencies import get_current_session, get_payment_provider_registry
 from app.infrastructure.queries.identity import get_user_by_normalized_email
 from app.infrastructure.queries.orders import (
     get_latest_order_for_user_entrypoint,
@@ -75,18 +76,14 @@ from app.models import (
     SubscriptionRenewalMode,
     SubscriptionScopeType,
     User,
-    UserStatus,
 )
 from app.payment_providers.accounts import get_or_create_checkout_provider_account
-from app.payment_providers.registry import (
-    PaymentProviderRegistry,
-    get_payment_provider_registry,
-)
+from app.payment_providers.errors import PaymentProviderConfigurationError
+from app.payment_providers.registry import PaymentProviderRegistry
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 logger = logging.getLogger(__name__)
 
-SESSION_TTL_DAYS = 30
 PRODUCT_DEFAULTS = {
     "document-summary": {
         "plan_code": "document-summary-pro",
@@ -117,25 +114,6 @@ class LoginRequest(BaseModel):
     region: str = DEFAULT_REGION
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
-
-
-def make_session_token() -> tuple[str, str, datetime]:
-    token = secrets.token_urlsafe(32)
-    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
-    expires_at = utc_now() + timedelta(days=SESSION_TTL_DAYS)
-    return token, token_hash, expires_at
-
-
-def normalize_tenant_id(value: str) -> str:
-    return value.strip().lower()
-
-
-def normalize_region(value: str) -> str:
-    return value.strip().lower()
-
-
-def normalize_email(value: str) -> str:
-    return value.strip().lower()
 
 
 def present_user(user: User) -> dict:
@@ -229,53 +207,22 @@ def register(
     request: Request,
     db: Annotated[Session, Depends(get_db)],
 ):
-    if not payload.personal_consent:
-        raise HTTPException(status_code=400, detail={"code": "missing_personal_consent"})
-    if not payload.offer_consent:
-        raise HTTPException(status_code=400, detail={"code": "missing_offer_consent"})
-
-    tenant_id = normalize_tenant_id(payload.tenant_id)
-    region = normalize_region(payload.region)
-    normalized_email = normalize_email(str(payload.email))
-    existing = get_user_by_normalized_email(
+    result = register_user(
         db,
-        tenant_id=tenant_id,
-        region=region,
-        email_normalized=normalized_email,
-    )
-    if existing is not None:
-        raise HTTPException(status_code=409, detail={"code": "email_already_registered"})
-
-    user = User(
-        tenant_id=tenant_id,
-        region=region,
+        tenant_id=payload.tenant_id,
+        region=payload.region,
         email=str(payload.email),
-        email_normalized=normalized_email,
-        password_hash=hash_password(payload.password),
-        email_verified_at=utc_now(),
-        status=UserStatus.ACTIVE,
-        last_login_at=utc_now(),
-    )
-    db.add(user)
-    db.flush()
-
-    token, token_hash, expires_at = make_session_token()
-    session = AuthSession(
-        tenant_id=user.tenant_id,
-        region=user.region,
-        user_id=user.id,
-        token_hash=token_hash,
-        expires_at=expires_at,
-        ip=request.client.host if request.client else None,
+        password=payload.password,
+        personal_consent=payload.personal_consent,
+        offer_consent=payload.offer_consent,
+        client_ip=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
     )
-    db.add(session)
-    db.commit()
 
     return {
         "status": "registered",
-        "token": token,
-        "user": present_user(user),
+        "token": result.token,
+        "user": present_user(result.user),
     }
 
 
@@ -285,37 +232,20 @@ def login(
     request: Request,
     db: Annotated[Session, Depends(get_db)],
 ):
-    tenant_id = normalize_tenant_id(payload.tenant_id)
-    region = normalize_region(payload.region)
-    normalized_email = normalize_email(str(payload.email))
-    user = get_user_by_normalized_email(
+    result = login_user(
         db,
-        tenant_id=tenant_id,
-        region=region,
-        email_normalized=normalized_email,
-    )
-    if user is None or user.password_hash is None or not verify_password(payload.password, user.password_hash):
-        raise HTTPException(status_code=401, detail={"code": "invalid_credentials"})
-
-    user.last_login_at = utc_now()
-    db.add(user)
-    token, token_hash, expires_at = make_session_token()
-    session = AuthSession(
-        tenant_id=user.tenant_id,
-        region=user.region,
-        user_id=user.id,
-        token_hash=token_hash,
-        expires_at=expires_at,
-        ip=request.client.host if request.client else None,
+        tenant_id=payload.tenant_id,
+        region=payload.region,
+        email=str(payload.email),
+        password=payload.password,
+        client_ip=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
     )
-    db.add(session)
-    db.commit()
 
     return {
         "status": "authenticated",
-        "token": token,
-        "user": present_user(user),
+        "token": result.token,
+        "user": present_user(result.user),
     }
 
 
@@ -431,8 +361,7 @@ def logout(
     db: Annotated[Session, Depends(get_db)],
 ):
     _, session = current
-    db.delete(session)
-    db.commit()
+    logout_session(db, auth_session=session)
     return {"status": "logged_out"}
 
 

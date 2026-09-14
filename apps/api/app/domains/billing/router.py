@@ -21,7 +21,7 @@ from app.models import (
     SubscriptionStatus,
     User,
 )
-from app.domains.identity.session import get_current_session
+from app.http_dependencies import get_current_session
 from app.infrastructure.queries.plans import get_plan_by_id, list_plans_by_ids
 from app.infrastructure.queries.subscriptions import (
     get_account_subscription,

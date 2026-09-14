@@ -11,8 +11,12 @@ from starlette.responses import Response
 from app.core.errors import AppError
 from app.domains.identity.errors import (
     AutomaticRenewalNotPermittedError,
+    EmailAlreadyRegisteredError,
+    InvalidCredentialsError,
     InvalidOrExpiredResetTokenError,
     MissingRequiredDocumentsError,
+    MissingOfferConsentError,
+    MissingPersonalConsentError,
     PasswordResetRateLimitedError,
     ProviderCurrencyMismatchError,
     RecurringConsentRequiredError,
@@ -27,6 +31,10 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 APPLICATION_ROOT = Path(__file__).resolve().parent
 HTTP_ERRORS_MODULE = Path(__file__).resolve()
 HTTP_ERROR_RESPONSES: dict[type[AppError], tuple[int, str]] = {
+    MissingPersonalConsentError: (400, "missing_personal_consent"),
+    MissingOfferConsentError: (400, "missing_offer_consent"),
+    EmailAlreadyRegisteredError: (409, "email_already_registered"),
+    InvalidCredentialsError: (401, "invalid_credentials"),
     UnknownProductPlanError: (400, "unknown_product_plan"),
     AutomaticRenewalNotPermittedError: (409, "automatic_renewal_not_permitted"),
     MissingRequiredDocumentsError: (409, "missing_required_documents"),

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from fastapi import Request
-
 from app.payment_providers.adapter import PaymentProviderAdapter
 
 
@@ -22,10 +20,3 @@ class PaymentProviderRegistry:
         if len(self._adapters) != 1:
             return None
         return next(iter(self._adapters.values()))
-
-
-def get_payment_provider_registry(request: Request) -> PaymentProviderRegistry:
-    try:
-        return request.app.state.payment_provider_registry
-    except AttributeError as exc:
-        raise RuntimeError("Payment provider registry is not configured for this app") from exc
