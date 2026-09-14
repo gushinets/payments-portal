@@ -6,7 +6,7 @@ from unittest.mock import Mock
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import event, inspect
+from sqlalchemy import inspect
 from sqlalchemy.orm import Session, make_transient_to_detached
 
 from app.commands import expire_subscriptions as cli
@@ -24,6 +24,40 @@ from app.models import (
     User,
     UserStatus,
 )
+
+
+class FakeTransaction:
+    def __init__(self, timeline: list[str], *, commit_error: Exception | None = None) -> None:
+        self.timeline = timeline
+        self.commit_error = commit_error
+
+    def __enter__(self) -> FakeTransaction:
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        if exc_type is not None:
+            self.timeline.append("transaction_rolled_back")
+            return
+        if self.commit_error is not None:
+            self.timeline.append("transaction_commit_failed")
+            raise self.commit_error
+        self.timeline.append("transaction_committed")
+
+
+class FakeSession:
+    def __init__(self, timeline: list[str], *, commit_error: Exception | None = None) -> None:
+        self.timeline = timeline
+        self.commit_error = commit_error
+
+    def __enter__(self) -> FakeSession:
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        return None
+
+    def begin(self) -> FakeTransaction:
+        self.timeline.append("transaction_started")
+        return FakeTransaction(self.timeline, commit_error=self.commit_error)
 
 
 @pytest.fixture(autouse=True)
@@ -45,21 +79,15 @@ def test_expiration_cli_runs_one_batch_with_configured_size(monkeypatch, capsys,
         def emit(self, record: logging.LogRecord) -> None:
             timeline.append(record.getMessage())
 
-    class FakeSession:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc_value, traceback) -> None:
-            return None
-
-        def commit(self) -> None:
-            raise AssertionError("the CLI must not commit outside the lifecycle operation")
-
     def fake_expire(db, command):
         captured["command"] = command
         timeline.append("lifecycle_called")
         timeline.append("lifecycle_returned")
         return expired_subscriptions
+
+    def inspect_with_timeline(subscription: Subscription):
+        timeline.append("identity_captured")
+        return inspect(subscription)
 
     def fake_configure_sentry(app_settings) -> None:
         assert app_settings is cli.settings
@@ -67,8 +95,9 @@ def test_expiration_cli_runs_one_batch_with_configured_size(monkeypatch, capsys,
 
     monkeypatch.setattr(cli, "configure_logging", lambda: timeline.append("logging_configured"))
     monkeypatch.setattr(cli, "configure_sentry", fake_configure_sentry)
-    monkeypatch.setattr(cli, "SessionLocal", lambda: FakeSession())
+    monkeypatch.setattr(cli, "SessionLocal", lambda: FakeSession(timeline))
     monkeypatch.setattr(cli, "expire_due_subscriptions", fake_expire)
+    monkeypatch.setattr(cli, "inspect", inspect_with_timeline)
     monkeypatch.setattr(cli, "report_exception", report_exception)
     handler = TimelineHandler()
     cli.logger.addHandler(handler)
@@ -86,8 +115,12 @@ def test_expiration_cli_runs_one_batch_with_configured_size(monkeypatch, capsys,
         "logging_configured",
         "sentry_configured",
         "subscription_expiry_run_started",
+        "transaction_started",
         "lifecycle_called",
         "lifecycle_returned",
+        "identity_captured",
+        "identity_captured",
+        "transaction_committed",
         "subscription_expiry_transition_committed",
         "subscription_expiry_transition_committed",
         "subscription_expiry_run_succeeded",
@@ -116,24 +149,15 @@ def test_expiration_cli_runs_one_batch_with_configured_size(monkeypatch, capsys,
     report_exception.assert_not_called()
 
 
-def test_expiration_cli_does_not_commit_on_failure(monkeypatch, caplog) -> None:
+def test_expiration_cli_rolls_back_on_lifecycle_failure(monkeypatch, caplog) -> None:
     original_error = RuntimeError("forced expiration failure")
     report_exception = Mock()
-
-    class FakeSession:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc_value, traceback) -> None:
-            return None
-
-        def commit(self) -> None:
-            raise AssertionError("the CLI must not commit outside the lifecycle operation")
+    timeline: list[str] = []
 
     def fake_expire(db, command):
         raise original_error
 
-    monkeypatch.setattr(cli, "SessionLocal", lambda: FakeSession())
+    monkeypatch.setattr(cli, "SessionLocal", lambda: FakeSession(timeline))
     monkeypatch.setattr(cli, "expire_due_subscriptions", fake_expire)
     monkeypatch.setattr(cli, "report_exception", report_exception)
 
@@ -144,6 +168,7 @@ def test_expiration_cli_does_not_commit_on_failure(monkeypatch, caplog) -> None:
         cli.main(["--batch-size", "37"])
 
     assert raised.value is original_error
+    assert timeline == ["transaction_started", "transaction_rolled_back"]
     events = [record for record in caplog.records if record.getMessage().startswith("subscription_expiry_")]
     assert [record.getMessage() for record in events] == [
         "subscription_expiry_run_started",
@@ -163,26 +188,64 @@ def test_expiration_cli_does_not_commit_on_failure(monkeypatch, caplog) -> None:
     )
 
 
+def test_expiration_cli_does_not_emit_committed_diagnostics_when_commit_fails(monkeypatch, caplog) -> None:
+    original_error = RuntimeError("forced transaction commit failure")
+    report_exception = Mock()
+    timeline: list[str] = []
+    expired_subscription = Subscription(id=uuid4())
+    make_transient_to_detached(expired_subscription)
+
+    def fake_expire(db, command):
+        return [expired_subscription]
+
+    def inspect_with_timeline(subscription: Subscription):
+        timeline.append("identity_captured")
+        return inspect(subscription)
+
+    monkeypatch.setattr(
+        cli,
+        "SessionLocal",
+        lambda: FakeSession(timeline, commit_error=original_error),
+    )
+    monkeypatch.setattr(cli, "expire_due_subscriptions", fake_expire)
+    monkeypatch.setattr(cli, "inspect", inspect_with_timeline)
+    monkeypatch.setattr(cli, "report_exception", report_exception)
+
+    with (
+        caplog.at_level(logging.INFO, logger=cli.logger.name),
+        pytest.raises(RuntimeError, match="forced transaction commit failure") as raised,
+    ):
+        cli.main(["--batch-size", "37"])
+
+    assert raised.value is original_error
+    assert timeline == ["transaction_started", "identity_captured", "transaction_commit_failed"]
+    events = [record for record in caplog.records if record.getMessage().startswith("subscription_expiry_")]
+    assert [record.getMessage() for record in events] == [
+        "subscription_expiry_run_started",
+        "subscription_expiry_run_failed",
+    ]
+    assert "subscription_expiry_transition_committed" not in caplog.text
+    assert "subscription_expiry_run_succeeded" not in caplog.text
+    assert "forced transaction commit failure" not in caplog.text
+    report_exception.assert_called_once_with(
+        original_error,
+        operation=cli.Operation.EXPIRE_SUBSCRIPTIONS,
+        run_id=events[0].structured["run_id"],
+        batch_size=37,
+    )
+
+
 def test_expiration_cli_reports_missing_identity_as_diagnostic_invariant(monkeypatch, caplog) -> None:
     report_exception = Mock()
+    timeline: list[str] = []
     valid_subscription = Subscription(id=uuid4())
     make_transient_to_detached(valid_subscription)
     invalid_subscription = Subscription()
 
-    class FakeSession:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc_value, traceback) -> None:
-            return None
-
-        def commit(self) -> None:
-            raise AssertionError("the CLI must not commit outside the lifecycle operation")
-
     def fake_expire(db, command):
         return [valid_subscription, invalid_subscription]
 
-    monkeypatch.setattr(cli, "SessionLocal", lambda: FakeSession())
+    monkeypatch.setattr(cli, "SessionLocal", lambda: FakeSession(timeline))
     monkeypatch.setattr(cli, "expire_due_subscriptions", fake_expire)
     monkeypatch.setattr(cli, "report_exception", report_exception)
 
@@ -202,6 +265,7 @@ def test_expiration_cli_reports_missing_identity_as_diagnostic_invariant(monkeyp
     assert any(
         frame.f_code.co_filename == cli.__file__ and frame.f_code.co_name == "main" for frame in traceback_frames
     )
+    assert timeline == ["transaction_started", "transaction_rolled_back"]
 
     events = [record for record in caplog.records if record.getMessage().startswith("subscription_expiry_")]
     assert [record.getMessage() for record in events] == [
@@ -230,20 +294,13 @@ def test_expiration_cli_reports_missing_identity_as_diagnostic_invariant(monkeyp
 def test_sentry_reporting_failure_does_not_replace_expiration_failure(monkeypatch, caplog) -> None:
     original_error = RuntimeError("forced expiration failure")
 
-    class FakeSession:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc_value, traceback) -> None:
-            return None
-
     def fake_expire(db, command):
         raise original_error
 
     def fail_capture_exception(*args, **kwargs):
         raise RuntimeError("forced Sentry failure")
 
-    monkeypatch.setattr(cli, "SessionLocal", lambda: FakeSession())
+    monkeypatch.setattr(cli, "SessionLocal", lambda: FakeSession([]))
     monkeypatch.setattr(cli, "expire_due_subscriptions", fake_expire)
     monkeypatch.setattr(sentry_reporting.sentry_sdk, "capture_exception", fail_capture_exception)
 
@@ -272,7 +329,6 @@ def test_expiration_cli_commits_due_subscription_changes(
     capsys,
     caplog,
     db_session,
-    postgres_engine,
     postgres_session_factory,
 ) -> None:
     now = datetime.now(timezone.utc)
@@ -334,30 +390,17 @@ def test_expiration_cli_commits_due_subscription_changes(
     monkeypatch.setattr(cli, "SessionLocal", postgres_session_factory)
 
     lifecycle = cli.expire_due_subscriptions
-    post_return_sql: list[str] = []
-    listener_installed = False
-
-    def observe_post_return_sql(conn, cursor, statement, parameters, context, executemany) -> None:
-        post_return_sql.append(statement)
 
     def fake_expire(db: Session, command: cli.ExpireDueSubscriptionsCommand) -> list[Subscription]:
-        nonlocal listener_installed
         expired = lifecycle(db, command)
         assert len(expired) == 2
-        assert all(inspect(subscription).expired for subscription in expired)
-        event.listen(postgres_engine, "before_cursor_execute", observe_post_return_sql)
-        listener_installed = True
+        assert all(inspect(subscription).identity is not None for subscription in expired)
+        assert all(not inspect(subscription).expired for subscription in expired)
         return expired
 
     monkeypatch.setattr(cli, "expire_due_subscriptions", fake_expire)
-    try:
-        with caplog.at_level(logging.INFO, logger=cli.logger.name):
-            assert cli.main(["--batch-size", "2"]) == 0
-    finally:
-        if listener_installed:
-            event.remove(postgres_engine, "before_cursor_execute", observe_post_return_sql)
-
-    assert post_return_sql == []
+    with caplog.at_level(logging.INFO, logger=cli.logger.name):
+        assert cli.main(["--batch-size", "2"]) == 0
 
     diagnostics = [
         record for record in caplog.records if record.getMessage() == "subscription_expiry_transition_committed"

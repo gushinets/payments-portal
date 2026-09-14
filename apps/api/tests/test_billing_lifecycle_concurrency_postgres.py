@@ -272,7 +272,7 @@ def _activate_in_worker(
     session_factory: sessionmaker[Session],
     command: ActivatePaidPeriodCommand,
 ) -> uuid.UUID:
-    with session_factory() as session:
+    with session_factory() as session, session.begin():
         return activate_paid_period(session, command).id
 
 
@@ -282,7 +282,8 @@ def _start_trial_in_worker(
 ) -> tuple[str, uuid.UUID | str]:
     with session_factory() as session:
         try:
-            subscription = start_trial(session, command)
+            with session.begin():
+                subscription = start_trial(session, command)
         except SubscriptionLifecycleError as exc:
             return "error", str(exc)
         return "ok", subscription.id
@@ -383,7 +384,7 @@ def test_parallel_enable_automatic_renewal_same_key_reuses_event_after_subscript
     def submit(barrier: Barrier, _index: int) -> tuple[uuid.UUID, float]:
         barrier.wait(timeout=5)
         started_at = time.monotonic()
-        with postgres_session_factory() as session:
+        with postgres_session_factory() as session, session.begin():
             result = enable_automatic_renewal(session, command)
         return result.id, time.monotonic() - started_at
 
@@ -475,7 +476,7 @@ def test_parallel_start_trial_same_key_reuses_event_after_user_lock(
 
     def submit(barrier: Barrier, _index: int) -> uuid.UUID:
         barrier.wait(timeout=5)
-        with postgres_session_factory() as session:
+        with postgres_session_factory() as session, session.begin():
             return start_trial(session, command).id
 
     blocker = postgres_session_factory()
@@ -939,7 +940,7 @@ def test_terminal_subscription_allows_new_subscription_same_scope(
             occurred_at=now,
         )
 
-    with postgres_session_factory() as session:
+    with postgres_session_factory() as session, session.begin():
         new_subscription = activate_paid_period(session, command)
         new_subscription_id = new_subscription.id
 

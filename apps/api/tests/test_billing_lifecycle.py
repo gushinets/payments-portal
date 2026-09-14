@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 from pydantic import ValidationError
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.domains.billing.enums import ProviderSubscriptionState
 from app.domains.billing.service import (
@@ -79,6 +80,143 @@ def test_provider_state_is_mapped_to_domain_status() -> None:
 )
 def test_terminal_provider_states_stop_future_renewal(provider_state: ProviderSubscriptionState) -> None:
     assert subscription_status_from_provider_state(provider_state) == SubscriptionStatus.CANCELED
+
+
+def _seed_transaction_participation_subscription(db_session: Session, *, key: str) -> uuid.UUID:
+    now = datetime(2026, 9, 14, 9, 0, tzinfo=timezone.utc)
+    plan = db_session.query(Plan).filter(Plan.tenant_id == "anytoolai", Plan.region == "ru").first()
+    assert plan is not None
+    user = User(
+        tenant_id="anytoolai",
+        region="ru",
+        email=f"{key}@example.com",
+        email_normalized=f"{key}@example.com",
+        status=UserStatus.ACTIVE,
+    )
+    db_session.add(user)
+    db_session.flush()
+    subscription = Subscription(
+        tenant_id="anytoolai",
+        region="ru",
+        user_id=user.id,
+        plan_id=plan.id,
+        scope_type=plan.scope_type,
+        product_id=plan.product_id,
+        bundle_id=plan.bundle_id,
+        status=SubscriptionStatus.ACTIVE,
+        renewal_mode=SubscriptionRenewalMode.AUTOMATIC,
+        current_period_start=now,
+        current_period_end=now + timedelta(days=30),
+    )
+    db_session.add(subscription)
+    db_session.flush()
+    subscription_id = subscription.id
+    db_session.commit()
+    return subscription_id
+
+
+def _assert_provider_state_transition_rolled_back(
+    session_factory: sessionmaker[Session],
+    *,
+    subscription_id: uuid.UUID,
+    operation_key: str,
+) -> None:
+    with session_factory() as session:
+        subscription = session.get(Subscription, subscription_id)
+        assert subscription is not None
+        assert subscription.status is SubscriptionStatus.ACTIVE
+        assert (
+            session.query(SubscriptionEvent)
+            .filter(SubscriptionEvent.operation_idempotency_key == operation_key)
+            .count()
+            == 0
+        )
+
+
+def test_lifecycle_on_clean_session_leaves_commit_to_caller(
+    db_session: Session,
+    postgres_session_factory: sessionmaker[Session],
+) -> None:
+    operation_key = "transaction-participation-clean-session"
+    subscription_id = _seed_transaction_participation_subscription(db_session, key=operation_key)
+    command = ApplyProviderSubscriptionStateCommand(
+        operation_idempotency_key=operation_key,
+        subscription_id=subscription_id,
+        provider_state=ProviderSubscriptionState.PAST_DUE,
+    )
+
+    with postgres_session_factory() as session:
+        assert not session.in_transaction()
+        result = apply_provider_subscription_state(session, command)
+        assert result.status is SubscriptionStatus.PAST_DUE
+        assert session.in_transaction()
+        assert (
+            session.query(SubscriptionEvent)
+            .filter(SubscriptionEvent.operation_idempotency_key == operation_key)
+            .count()
+            == 1
+        )
+        session.rollback()
+
+    _assert_provider_state_transition_rolled_back(
+        postgres_session_factory,
+        subscription_id=subscription_id,
+        operation_key=operation_key,
+    )
+
+
+def test_lifecycle_does_not_finalize_explicit_caller_transaction(
+    db_session: Session,
+    postgres_session_factory: sessionmaker[Session],
+) -> None:
+    operation_key = "transaction-participation-explicit-transaction"
+    subscription_id = _seed_transaction_participation_subscription(db_session, key=operation_key)
+    command = ApplyProviderSubscriptionStateCommand(
+        operation_idempotency_key=operation_key,
+        subscription_id=subscription_id,
+        provider_state=ProviderSubscriptionState.PAST_DUE,
+    )
+
+    with postgres_session_factory() as session:
+        transaction = session.begin()
+        result = apply_provider_subscription_state(session, command)
+        assert result.status is SubscriptionStatus.PAST_DUE
+        assert transaction.is_active
+        assert session.in_transaction()
+        session.rollback()
+
+    _assert_provider_state_transition_rolled_back(
+        postgres_session_factory,
+        subscription_id=subscription_id,
+        operation_key=operation_key,
+    )
+
+
+def test_lifecycle_does_not_treat_autobegin_as_transaction_ownership(
+    db_session: Session,
+    postgres_session_factory: sessionmaker[Session],
+) -> None:
+    operation_key = "transaction-participation-autobegin"
+    subscription_id = _seed_transaction_participation_subscription(db_session, key=operation_key)
+    command = ApplyProviderSubscriptionStateCommand(
+        operation_idempotency_key=operation_key,
+        subscription_id=subscription_id,
+        provider_state=ProviderSubscriptionState.PAST_DUE,
+    )
+
+    with postgres_session_factory() as session:
+        assert session.get(Subscription, subscription_id) is not None
+        assert session.in_transaction()
+        result = apply_provider_subscription_state(session, command)
+        assert result.status is SubscriptionStatus.PAST_DUE
+        assert session.in_transaction()
+        session.rollback()
+
+    _assert_provider_state_transition_rolled_back(
+        postgres_session_factory,
+        subscription_id=subscription_id,
+        operation_key=operation_key,
+    )
 
 
 @pytest.mark.parametrize(

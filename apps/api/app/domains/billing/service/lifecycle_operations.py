@@ -39,7 +39,6 @@ from app.domains.billing.service.support import (
     _period_end,
     _scope_matches,
     _subscription_for_event,
-    _transactional,
     _verify_renewal_context,
     _write_event,
 )
@@ -72,7 +71,6 @@ def _is_provider_subscription_reference_conflict(error: IntegrityError) -> bool:
     return constraint_name == _PROVIDER_SUBSCRIPTION_REFERENCE_INDEX
 
 
-@_transactional
 def enable_automatic_renewal(db: Session, command: EnableAutomaticRenewalCommand) -> Subscription:
     existing_event = _event_for_key(db, command.operation_idempotency_key)
     if existing_event:
@@ -190,7 +188,6 @@ def enable_automatic_renewal(db: Session, command: EnableAutomaticRenewalCommand
     return subscription
 
 
-@_transactional
 def apply_renewal_payment(db: Session, command: ApplyRenewalPaymentCommand) -> Subscription:
     existing_event = _event_for_key(db, command.operation_idempotency_key)
     if existing_event:
@@ -246,7 +243,6 @@ def apply_renewal_payment(db: Session, command: ApplyRenewalPaymentCommand) -> S
     return subscription
 
 
-@_transactional
 def apply_provider_subscription_state(db: Session, command: ApplyProviderSubscriptionStateCommand) -> Subscription:
     existing_event = _event_for_key(db, command.operation_idempotency_key)
     if existing_event:
@@ -272,7 +268,6 @@ def apply_provider_subscription_state(db: Session, command: ApplyProviderSubscri
     return subscription
 
 
-@_transactional
 def request_cancellation(db: Session, command: RequestCancellationCommand) -> Subscription:
     existing_event = _event_for_key(db, command.operation_idempotency_key)
     if existing_event:
@@ -299,7 +294,6 @@ def request_cancellation(db: Session, command: RequestCancellationCommand) -> Su
     return subscription
 
 
-@_transactional
 def apply_refund(db: Session, command: ApplyRefundCommand) -> Subscription:
     existing_event = _event_for_key(db, command.operation_idempotency_key)
     if existing_event:
@@ -359,7 +353,6 @@ def apply_refund(db: Session, command: ApplyRefundCommand) -> Subscription:
     return subscription
 
 
-@_transactional
 def expire_due_subscriptions(db: Session, command: ExpireDueSubscriptionsCommand) -> list[Subscription]:
     subscriptions = list_due_subscriptions(db, now=command.now, batch_size=command.batch_size)
     for subscription in subscriptions:
