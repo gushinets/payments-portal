@@ -22,6 +22,7 @@ from app.domains.legal.service import (
     get_active_required_documents,
     utc_now,
 )
+from app.infrastructure.queries.legal import get_active_required_document_by_id
 from app.infrastructure.queries.plans import get_current_sellable_plan
 from app.models import AuthSession, DocumentVersion, User
 
@@ -80,17 +81,12 @@ def accept_document(
     db: Annotated[Session, Depends(get_db)],
 ):
     user, _ = current
-    document = (
-        db.query(DocumentVersion)
-        .filter(
-            DocumentVersion.id == payload.document_version_id,
-            DocumentVersion.tenant_id == user.tenant_id,
-            DocumentVersion.region == user.region,
-            DocumentVersion.is_active.is_(True),
-            DocumentVersion.requires_acceptance.is_(True),
-            DocumentVersion.effective_from <= utc_now(),
-        )
-        .first()
+    document = get_active_required_document_by_id(
+        db,
+        document_version_id=payload.document_version_id,
+        tenant_id=user.tenant_id,
+        region=user.region,
+        effective_at=utc_now(),
     )
     if document is None:
         record_legal_acceptance("document_not_found")

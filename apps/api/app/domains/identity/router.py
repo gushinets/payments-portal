@@ -42,12 +42,17 @@ from app.domains.identity.session import (
     get_current_session,
 )
 from app.core.time import utc_now
+from app.infrastructure.queries.identity import get_user_by_normalized_email
 from app.infrastructure.queries.orders import (
-    get_order_by_id,
     get_latest_order_for_user_entrypoint,
+    get_order_by_id,
+    get_order_by_user_and_provider_invoice_id,
     get_order_item,
 )
-from app.infrastructure.queries.payments import get_latest_payment_for_order
+from app.infrastructure.queries.payments import (
+    get_latest_payment_for_order,
+    get_latest_payment_for_order_with_statuses,
+)
 from app.infrastructure.queries.plans import get_plan_by_id
 from app.infrastructure.queries.products import get_product_by_code
 from app.infrastructure.queries.products import (
@@ -232,14 +237,11 @@ def register(
     tenant_id = normalize_tenant_id(payload.tenant_id)
     region = normalize_region(payload.region)
     normalized_email = normalize_email(str(payload.email))
-    existing = (
-        db.query(User)
-        .filter(
-            User.tenant_id == tenant_id,
-            User.region == region,
-            User.email_normalized == normalized_email,
-        )
-        .first()
+    existing = get_user_by_normalized_email(
+        db,
+        tenant_id=tenant_id,
+        region=region,
+        email_normalized=normalized_email,
     )
     if existing is not None:
         raise HTTPException(status_code=409, detail={"code": "email_already_registered"})
@@ -287,14 +289,11 @@ def login(
     tenant_id = normalize_tenant_id(payload.tenant_id)
     region = normalize_region(payload.region)
     normalized_email = normalize_email(str(payload.email))
-    user = (
-        db.query(User)
-        .filter(
-            User.tenant_id == tenant_id,
-            User.region == region,
-            User.email_normalized == normalized_email,
-        )
-        .first()
+    user = get_user_by_normalized_email(
+        db,
+        tenant_id=tenant_id,
+        region=region,
+        email_normalized=normalized_email,
     )
     if user is None or user.password_hash is None or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=401, detail={"code": "invalid_credentials"})
@@ -349,45 +348,34 @@ def get_payment_status(
     region: Annotated[str, Query()] = DEFAULT_REGION,
 ):
     normalized_email = normalize_email(str(email))
-    user = (
-        db.query(User)
-        .filter(
-            User.tenant_id == normalize_tenant_id(tenant_id),
-            User.region == normalize_region(region),
-            User.email_normalized == normalized_email,
-        )
-        .first()
+    user = get_user_by_normalized_email(
+        db,
+        tenant_id=normalize_tenant_id(tenant_id),
+        region=normalize_region(region),
+        email_normalized=normalized_email,
     )
     if user is None:
         raise HTTPException(status_code=404, detail="payment_not_found")
 
-    order = (
-        db.query(Order)
-        .filter(
-            Order.user_id == user.id,
-            Order.provider_invoice_id == invoice_id,
-        )
-        .first()
+    order = get_order_by_user_and_provider_invoice_id(
+        db,
+        user_id=user.id,
+        provider_invoice_id=invoice_id,
     )
     if order is None:
         raise HTTPException(status_code=404, detail="payment_not_found")
     payment = None
-    payment_query = db.query(Payment).filter(Payment.order_id == order.id)
     if order.status == OrderStatus.CANCELED:
-        payment = (
-            payment_query.filter(
-                Payment.status.in_(
-                    (
-                        PaymentStatus.SUCCEEDED,
-                        PaymentStatus.PARTIALLY_REFUNDED,
-                        PaymentStatus.REFUNDED,
-                    )
-                )
-            )
-            .order_by(Payment.captured_at.desc(), Payment.created_at.desc())
-            .first()
+        payment = get_latest_payment_for_order_with_statuses(
+            db,
+            order_id=order.id,
+            statuses=(
+                PaymentStatus.SUCCEEDED,
+                PaymentStatus.PARTIALLY_REFUNDED,
+                PaymentStatus.REFUNDED,
+            ),
         )
-    payment = payment or payment_query.order_by(Payment.created_at.desc()).first()
+    payment = payment or get_latest_payment_for_order(db, order.id)
 
     order_item = get_order_item(db, order.id)
     product_code = order_item.product_code_snapshot if order_item else None

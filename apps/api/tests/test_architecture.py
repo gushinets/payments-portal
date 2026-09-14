@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import inspect
 import os
 from pathlib import Path
@@ -12,7 +13,21 @@ from app.http_dependencies import get_raw_request_body
 from app.integrations.cloudpayments.adapter import CloudPaymentsAdapter
 from app.integrations.cloudpayments.router import router as cloudpayments_router
 from app.main import app
-from scripts.repo import check_python_boundaries
+from scripts.repo import check_python_boundaries, module_matches, resolve_python_imports
+
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
+APP_ROOT = REPOSITORY_ROOT / "apps/api/app"
+REFACTORED_ACTIVE_PERSISTENCE_MODULES = (
+    "domains/legal/service.py",
+    "domains/legal/router.py",
+    "domains/identity/services/checkout.py",
+    "domains/identity/session.py",
+    "domains/identity/router.py",
+    "domains/identity/password_reset.py",
+)
+ALLOWED_ACTIVE_SQLALCHEMY_IMPORTS = frozenset({"sqlalchemy.orm", "sqlalchemy.orm.Session"})
+DIRECT_SESSION_PERSISTENCE_METHODS = frozenset({"execute", "get", "query", "scalar", "scalars"})
 
 
 def write_module(root: Path, relative: str, source: str) -> None:
@@ -192,6 +207,125 @@ def test_sentry_infrastructure_adapter_may_import_the_sdk(tmp_path: Path) -> Non
     )
 
     assert check_python_boundaries(tmp_path) == []
+
+
+def test_persistence_infrastructure_accepts_sqlalchemy_models_and_neutral_core(tmp_path: Path) -> None:
+    write_module(
+        tmp_path,
+        "apps/api/app/infrastructure/queries/identity.py",
+        "from sqlalchemy.orm import Session\nfrom app.models import User\nfrom app.core.time import utc_now\n",
+    )
+    write_module(
+        tmp_path,
+        "apps/api/app/infrastructure/persistence/password_reset.py",
+        "from sqlalchemy import text\nfrom sqlalchemy.orm import Session\nfrom app.models import MagicLinkToken\n",
+    )
+
+    assert check_python_boundaries(tmp_path) == []
+
+
+def test_persistence_infrastructure_rejects_domain_dependencies(tmp_path: Path) -> None:
+    write_module(
+        tmp_path,
+        "apps/api/app/infrastructure/queries/legal.py",
+        "from app.domains.legal import service\n",
+    )
+
+    assert check_python_boundaries(tmp_path) == [
+        "apps/api/app/infrastructure/queries/legal.py:1 imports app.domains.legal; "
+        "violates persistence dependency direction; keep persistence "
+        "dependent only on models and neutral infrastructure (see ARCHITECTURE.md)"
+    ]
+
+
+def test_persistence_infrastructure_rejects_transport_dependencies(tmp_path: Path) -> None:
+    write_module(
+        tmp_path,
+        "apps/api/app/infrastructure/queries/identity.py",
+        "from fastapi import Depends\n",
+    )
+    write_module(
+        tmp_path,
+        "apps/api/app/infrastructure/persistence/password_reset.py",
+        "from starlette.requests import Request\n",
+    )
+
+    errors = check_python_boundaries(tmp_path)
+
+    assert any(
+        "apps/api/app/infrastructure/queries/identity.py:1 imports fastapi" in error
+        and "persistence dependency direction" in error
+        for error in errors
+    )
+    assert any(
+        "apps/api/app/infrastructure/persistence/password_reset.py:1 imports starlette.requests" in error
+        and "persistence dependency direction" in error
+        for error in errors
+    )
+
+
+def test_persistence_infrastructure_rejects_integration_and_payment_provider_dependencies(tmp_path: Path) -> None:
+    write_module(
+        tmp_path,
+        "apps/api/app/infrastructure/queries/payments.py",
+        "from app.integrations.cloudpayments import adapter\n",
+    )
+    write_module(
+        tmp_path,
+        "apps/api/app/infrastructure/persistence/orders.py",
+        "from app.payment_providers import registry\n",
+    )
+
+    errors = check_python_boundaries(tmp_path)
+
+    assert any(
+        "apps/api/app/infrastructure/queries/payments.py:1 imports app.integrations.cloudpayments" in error
+        and "persistence dependency direction" in error
+        for error in errors
+    )
+    assert any(
+        "apps/api/app/infrastructure/persistence/orders.py:1 imports app.payment_providers" in error
+        and "persistence dependency direction" in error
+        for error in errors
+    )
+
+
+def _session_parameter_names(function: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
+    arguments = (*function.args.posonlyargs, *function.args.args, *function.args.kwonlyargs)
+    return {
+        argument.arg
+        for argument in arguments
+        if argument.annotation is not None
+        and any(isinstance(node, ast.Name) and node.id == "Session" for node in ast.walk(argument.annotation))
+    }
+
+
+def test_refactored_active_surfaces_keep_query_composition_behind_infrastructure() -> None:
+    direct_persistence_calls: list[str] = []
+    disallowed_sqlalchemy_imports: list[str] = []
+
+    for relative in REFACTORED_ACTIVE_PERSISTENCE_MODULES:
+        path = APP_ROOT / relative
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for imported in resolve_python_imports(path, APP_ROOT):
+            disallowed_sqlalchemy_imports.extend(
+                f"{relative}:{imported.line}:{target}"
+                for target in imported.targets
+                if module_matches(target, "sqlalchemy") and target not in ALLOWED_ACTIVE_SQLALCHEMY_IMPORTS
+            )
+        for function in (node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))):
+            session_parameters = _session_parameter_names(function)
+            for call in (node for node in ast.walk(function) if isinstance(node, ast.Call)):
+                if (
+                    isinstance(call.func, ast.Attribute)
+                    and isinstance(call.func.value, ast.Name)
+                    and call.func.value.id in session_parameters
+                    and call.func.attr in DIRECT_SESSION_PERSISTENCE_METHODS
+                ):
+                    direct_persistence_calls.append(f"{relative}:{call.lineno}:{call.func.attr}")
+
+    assert disallowed_sqlalchemy_imports == []
+    assert direct_persistence_calls == []
 
 
 def test_comments_strings_and_allowed_session_import_pass(tmp_path: Path) -> None:

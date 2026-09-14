@@ -8,6 +8,12 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.core.time import utc_now
+from app.infrastructure.queries.legal import (
+    get_document_acceptance_candidate,
+    get_document_version_by_id,
+    list_active_required_documents,
+    list_document_acceptance_fingerprints,
+)
 from app.models import AcceptanceKind, DocumentAcceptance, DocumentVersion, User
 
 
@@ -60,17 +66,11 @@ def get_active_required_documents(
     now: datetime | None = None,
 ) -> list[DocumentVersion]:
     effective_at = now or utc_now()
-    return (
-        db.query(DocumentVersion)
-        .filter(
-            DocumentVersion.tenant_id == tenant_id,
-            DocumentVersion.region == region,
-            DocumentVersion.is_active.is_(True),
-            DocumentVersion.requires_acceptance.is_(True),
-            DocumentVersion.effective_from <= effective_at,
-        )
-        .order_by(DocumentVersion.doc_type.asc(), DocumentVersion.published_at.desc())
-        .all()
+    return list_active_required_documents(
+        db,
+        tenant_id=tenant_id,
+        region=region,
+        effective_at=effective_at,
     )
 
 
@@ -93,22 +93,16 @@ def get_missing_required_documents_for_user(
     if not required_documents:
         return []
 
-    accepted_version_kinds = {
-        (row[0], row[1], row[2])
-        for row in db.query(
-            DocumentAcceptance.document_version_id,
-            DocumentAcceptance.acceptance_kind,
-            DocumentAcceptance.acceptance_text_hash,
+    accepted_version_kinds = set(
+        list_document_acceptance_fingerprints(
+            db,
+            tenant_id=user.tenant_id,
+            region=user.region,
+            user_id=user.id,
+            document_version_ids=[document.id for document in required_documents],
+            accepted_at=effective_at,
         )
-        .filter(
-            DocumentAcceptance.tenant_id == user.tenant_id,
-            DocumentAcceptance.region == user.region,
-            DocumentAcceptance.user_id == user.id,
-            DocumentAcceptance.document_version_id.in_([document.id for document in required_documents]),
-            DocumentAcceptance.accepted_at <= effective_at,
-        )
-        .all()
-    }
+    )
     return [
         document
         for document in required_documents
@@ -182,7 +176,7 @@ def _is_current_recurring_consent_acceptance_with_metadata(
 ) -> bool:
     effective_at = now or utc_now()
     comparable_effective_at = _as_utc_naive(effective_at)
-    document = db.get(DocumentVersion, acceptance.document_version_id)
+    document = get_document_version_by_id(db, acceptance.document_version_id)
     metadata = acceptance.metadata_
     persisted_metadata_value = metadata.get(metadata_key) if isinstance(metadata, dict) else None
     return not (
@@ -226,25 +220,15 @@ def get_current_recurring_consent_acceptance(
     now: datetime | None = None,
 ) -> DocumentAcceptance | None:
     effective_at = now or utc_now()
-    acceptance = (
-        db.query(DocumentAcceptance)
-        .join(DocumentVersion, DocumentVersion.id == DocumentAcceptance.document_version_id)
-        .filter(
-            DocumentAcceptance.id == acceptance_id,
-            DocumentAcceptance.tenant_id == user.tenant_id,
-            DocumentAcceptance.region == user.region,
-            DocumentAcceptance.user_id == user.id,
-            DocumentAcceptance.doc_type == "recurring_consent",
-            DocumentAcceptance.acceptance_kind == AcceptanceKind.RECURRING_CONSENT,
-            DocumentAcceptance.accepted_at <= effective_at,
-            DocumentVersion.tenant_id == user.tenant_id,
-            DocumentVersion.region == user.region,
-            DocumentVersion.doc_type == "recurring_consent",
-            DocumentVersion.is_active.is_(True),
-            DocumentVersion.requires_acceptance.is_(True),
-            DocumentVersion.effective_from <= effective_at,
-        )
-        .first()
+    acceptance = get_document_acceptance_candidate(
+        db,
+        acceptance_id=acceptance_id,
+        tenant_id=user.tenant_id,
+        region=user.region,
+        user_id=user.id,
+        doc_type="recurring_consent",
+        acceptance_kind=AcceptanceKind.RECURRING_CONSENT,
+        effective_at=effective_at,
     )
     if acceptance is None:
         return None

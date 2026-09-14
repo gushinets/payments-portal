@@ -5,7 +5,7 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session
 
-from app.models import Bundle, Plan, PlanStatus, Product, ProductStatus, SubscriptionScopeType
+from app.models import Bundle, BundleStatus, Plan, PlanStatus, Product, ProductStatus, SubscriptionScopeType
 
 
 def get_product_by_code(db: Session, *, tenant_id: str, code: str) -> Product | None:
@@ -14,6 +14,23 @@ def get_product_by_code(db: Session, *, tenant_id: str, code: str) -> Product | 
 
 def get_product_by_id(db: Session, product_id: uuid.UUID) -> Product | None:
     return db.get(Product, product_id)
+
+
+def get_active_product_by_id(
+    db: Session,
+    *,
+    product_id: uuid.UUID,
+    tenant_id: str,
+) -> Product | None:
+    return (
+        db.query(Product)
+        .filter(
+            Product.id == product_id,
+            Product.tenant_id == tenant_id,
+            Product.status == ProductStatus.ACTIVE,
+        )
+        .first()
+    )
 
 
 def list_sellable_product_offers(
@@ -47,3 +64,20 @@ def get_bundle_by_code(db: Session, *, tenant_id: str, code: str) -> Bundle | No
 
 def get_bundle_by_id(db: Session, bundle_id: uuid.UUID) -> Bundle | None:
     return db.get(Bundle, bundle_id)
+
+
+def get_active_bundle_by_id(
+    db: Session,
+    *,
+    bundle_id: uuid.UUID,
+    tenant_id: str,
+) -> Bundle | None:
+    return (
+        db.query(Bundle)
+        .filter(
+            Bundle.id == bundle_id,
+            Bundle.tenant_id == tenant_id,
+            Bundle.status == BundleStatus.ACTIVE,
+        )
+        .first()
+    )

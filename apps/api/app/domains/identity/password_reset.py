@@ -8,7 +8,6 @@ from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -28,8 +27,20 @@ from app.domains.identity.session import (
     DEFAULT_TENANT_ID,
     utc_now,
 )
+from app.infrastructure.persistence.password_reset import (
+    claim_valid_password_reset_token,
+    increment_password_reset_rate_limit,
+    invalidate_outstanding_password_reset_tokens,
+    prune_expired_password_reset_rate_limits,
+    prune_expired_password_reset_tokens,
+    revoke_active_auth_sessions,
+)
+from app.infrastructure.queries.identity import (
+    get_active_user_by_normalized_email,
+    get_magic_link_token_by_hash_and_purpose,
+)
 from app.infrastructure.sentry import FailureCategory, Operation, report_exception
-from app.models import AuthSession, MagicLinkPurpose, MagicLinkToken, User, UserStatus
+from app.models import MagicLinkPurpose, MagicLinkToken
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -82,57 +93,14 @@ def make_password_reset_decoy_email_normalized(*, tenant_id: str, region: str, e
 
 def enforce_password_reset_rate_limit(*, db: Session, key: str, limit: int, now: datetime) -> None:
     expires_at = now + timedelta(minutes=PASSWORD_RESET_RATE_LIMIT_WINDOW_MINUTES)
-    attempts = db.execute(
-        text(
-            """
-            INSERT INTO password_reset_rate_limits (
-                rate_limit_key,
-                count,
-                window_start,
-                expires_at,
-                created_at,
-                updated_at
-            )
-            VALUES (:key, 1, :now, :expires_at, :now, :now)
-            ON CONFLICT(rate_limit_key) DO UPDATE SET
-                count = CASE
-                    WHEN password_reset_rate_limits.expires_at <= :now THEN 1
-                    ELSE password_reset_rate_limits.count + 1
-                END,
-                window_start = CASE
-                    WHEN password_reset_rate_limits.expires_at <= :now THEN :now
-                    ELSE password_reset_rate_limits.window_start
-                END,
-                expires_at = CASE
-                    WHEN password_reset_rate_limits.expires_at <= :now THEN :expires_at
-                    ELSE password_reset_rate_limits.expires_at
-                END,
-                updated_at = :now
-            RETURNING count
-            """
-        ),
-        {"key": key, "now": now, "expires_at": expires_at},
-    ).scalar_one()
+    attempts = increment_password_reset_rate_limit(
+        db,
+        key=key,
+        now=now,
+        expires_at=expires_at,
+    )
     if attempts > limit:
         raise PasswordResetRateLimitedError()
-
-
-def prune_expired_password_reset_rate_limits(*, db: Session, now: datetime) -> None:
-    db.execute(
-        text("DELETE FROM password_reset_rate_limits WHERE expires_at <= :now"),
-        {"now": now},
-    )
-
-
-def prune_expired_password_reset_tokens(*, db: Session, now: datetime) -> None:
-    (
-        db.query(MagicLinkToken)
-        .filter(
-            MagicLinkToken.purpose == PASSWORD_RESET_PURPOSE,
-            MagicLinkToken.expires_at <= now,
-        )
-        .delete(synchronize_session=False)
-    )
 
 
 def send_password_reset_email_safely(email: str, reset_url: str) -> None:
@@ -208,15 +176,11 @@ def request_password_reset(
         db.rollback()
         raise
     token, token_hash, expires_at = make_password_reset_token()
-    user = (
-        db.query(User)
-        .filter(
-            User.tenant_id == tenant_id,
-            User.region == region,
-            User.email_normalized == normalized_email,
-            User.status == UserStatus.ACTIVE,
-        )
-        .first()
+    user = get_active_user_by_normalized_email(
+        db,
+        tenant_id=tenant_id,
+        region=region,
+        email_normalized=normalized_email,
     )
 
     reset_token = MagicLinkToken(
@@ -257,41 +221,29 @@ def confirm_password_reset(
 ):
     now = utc_now()
     token_hash = hashlib.sha256(payload.token.encode("utf-8")).hexdigest()
-    claimed = (
-        db.query(MagicLinkToken)
-        .filter(
-            MagicLinkToken.token_hash == token_hash,
-            MagicLinkToken.purpose == PASSWORD_RESET_PURPOSE,
-            MagicLinkToken.used_at.is_(None),
-            MagicLinkToken.expires_at > now,
-        )
-        .update({"used_at": now}, synchronize_session=False)
+    claimed = claim_valid_password_reset_token(
+        db,
+        token_hash=token_hash,
+        now=now,
     )
     if claimed != 1:
         db.rollback()
         raise InvalidOrExpiredResetTokenError()
 
-    reset_token = (
-        db.query(MagicLinkToken)
-        .filter(
-            MagicLinkToken.token_hash == token_hash,
-            MagicLinkToken.purpose == PASSWORD_RESET_PURPOSE,
-        )
-        .first()
+    reset_token = get_magic_link_token_by_hash_and_purpose(
+        db,
+        token_hash=token_hash,
+        purpose=PASSWORD_RESET_PURPOSE,
     )
     if reset_token is None:
         db.rollback()
         raise InvalidOrExpiredResetTokenError()
 
-    user = (
-        db.query(User)
-        .filter(
-            User.tenant_id == reset_token.tenant_id,
-            User.region == reset_token.region,
-            User.email_normalized == reset_token.email_normalized,
-            User.status == UserStatus.ACTIVE,
-        )
-        .first()
+    user = get_active_user_by_normalized_email(
+        db,
+        tenant_id=reset_token.tenant_id,
+        region=reset_token.region,
+        email_normalized=reset_token.email_normalized,
     )
     if user is None:
         db.rollback()
@@ -300,27 +252,20 @@ def confirm_password_reset(
     user.password_hash = hash_password(payload.password)
     db.add(user)
 
-    (
-        db.query(MagicLinkToken)
-        .filter(
-            MagicLinkToken.tenant_id == user.tenant_id,
-            MagicLinkToken.region == user.region,
-            MagicLinkToken.email_normalized == user.email_normalized,
-            MagicLinkToken.purpose == PASSWORD_RESET_PURPOSE,
-            MagicLinkToken.used_at.is_(None),
-        )
-        .update({"used_at": now}, synchronize_session=False)
+    invalidate_outstanding_password_reset_tokens(
+        db,
+        tenant_id=user.tenant_id,
+        region=user.region,
+        email_normalized=user.email_normalized,
+        now=now,
     )
 
-    (
-        db.query(AuthSession)
-        .filter(
-            AuthSession.tenant_id == user.tenant_id,
-            AuthSession.region == user.region,
-            AuthSession.user_id == user.id,
-            AuthSession.revoked_at.is_(None),
-        )
-        .update({"revoked_at": now}, synchronize_session=False)
+    revoke_active_auth_sessions(
+        db,
+        tenant_id=user.tenant_id,
+        region=user.region,
+        user_id=user.id,
+        now=now,
     )
     db.commit()
 

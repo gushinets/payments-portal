@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.time import utc_now
+from app.infrastructure.queries.identity import get_auth_session_by_token_hash, get_user_for_auth_session
 from app.models import AuthSession, User
 
 DEFAULT_TENANT_ID = "anytoolai"
@@ -31,19 +32,11 @@ def get_current_session(
     token = authorization.removeprefix("Bearer ").strip()
     token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
 
-    session = db.query(AuthSession).filter(AuthSession.token_hash == token_hash).first()
+    session = get_auth_session_by_token_hash(db, token_hash)
     if session is None or session.revoked_at is not None or as_utc(session.expires_at) <= utc_now():
         raise HTTPException(status_code=401, detail="invalid_session")
 
-    user = (
-        db.query(User)
-        .filter(
-            User.id == session.user_id,
-            User.tenant_id == session.tenant_id,
-            User.region == session.region,
-        )
-        .first()
-    )
+    user = get_user_for_auth_session(db, session)
     if user is None:
         raise HTTPException(status_code=401, detail="invalid_session")
 

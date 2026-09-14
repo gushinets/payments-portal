@@ -33,6 +33,10 @@ from app.domains.billing.router import list_subscriptions as list_account_subscr
 import app.domains.identity.password_reset as password_reset_router  # noqa: E402
 from app.core.observability import JsonFormatter  # noqa: E402
 from app.database import Base, SessionLocal, engine  # noqa: E402
+from app.infrastructure.persistence.password_reset import (  # noqa: E402
+    prune_expired_password_reset_rate_limits,
+    prune_expired_password_reset_tokens,
+)
 from app.integrations.cloudpayments import adapter as cloudpayments_adapter_module  # noqa: E402
 from app.integrations.cloudpayments import router as cloudpayments_router_module  # noqa: E402
 from app.main import create_app  # noqa: E402
@@ -5720,7 +5724,7 @@ def test_password_reset_rate_limit_prunes_expired_keys() -> None:
         )
         db.commit()
 
-        password_reset_router.prune_expired_password_reset_rate_limits(db=db, now=now)
+        prune_expired_password_reset_rate_limits(db, now=now)
         db.commit()
 
         assert db.query(PasswordResetRateLimit).count() == 0
@@ -5742,7 +5746,7 @@ def test_password_reset_request_prunes_expired_reset_tokens() -> None:
         )
         db.commit()
 
-        password_reset_router.prune_expired_password_reset_tokens(db=db, now=now)
+        prune_expired_password_reset_tokens(db, now=now)
         db.commit()
 
         assert db.query(MagicLinkToken).count() == 0

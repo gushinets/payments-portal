@@ -12,6 +12,22 @@ def get_order_by_id(db: Session, order_id: uuid.UUID, *, for_update: bool = Fals
     return (query.with_for_update() if for_update else query).first()
 
 
+def get_order_by_user_and_provider_invoice_id(
+    db: Session,
+    *,
+    user_id: uuid.UUID,
+    provider_invoice_id: str,
+) -> Order | None:
+    return (
+        db.query(Order)
+        .filter(
+            Order.user_id == user_id,
+            Order.provider_invoice_id == provider_invoice_id,
+        )
+        .first()
+    )
+
+
 def get_entrypoint_session_by_id(
     db: Session, entrypoint_session_id: uuid.UUID, *, for_update: bool = False
 ) -> EntrypointSession | None:

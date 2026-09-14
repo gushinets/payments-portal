@@ -17,12 +17,9 @@ from app.domains.identity.errors import (
 )
 from app.domains.legal.service import get_active_required_documents, present_required_document
 from app.infrastructure.queries.plans import get_current_sellable_plan
+from app.infrastructure.queries.products import get_active_bundle_by_id, get_active_product_by_id
 from app.models import (
     BillingPeriod,
-    Bundle,
-    BundleStatus,
-    Product,
-    ProductStatus,
     SubscriptionRenewalMode,
     SubscriptionScopeType,
     User,
@@ -109,14 +106,10 @@ def get_sellable_plan(db: Session, *, user: User, plan_id: uuid.UUID, now: datet
     if scope_type is SubscriptionScopeType.PRODUCT:
         if plan.product_id is None or plan.bundle_id is not None:
             raise UnknownProductPlanError()
-        product = (
-            db.query(Product)
-            .filter(
-                Product.id == plan.product_id,
-                Product.tenant_id == user.tenant_id,
-                Product.status == ProductStatus.ACTIVE,
-            )
-            .first()
+        product = get_active_product_by_id(
+            db,
+            product_id=plan.product_id,
+            tenant_id=user.tenant_id,
         )
         if product is None:
             raise UnknownProductPlanError()
@@ -124,14 +117,10 @@ def get_sellable_plan(db: Session, *, user: User, plan_id: uuid.UUID, now: datet
     elif scope_type is SubscriptionScopeType.BUNDLE:
         if plan.product_id is not None or plan.bundle_id is None:
             raise UnknownProductPlanError()
-        bundle = (
-            db.query(Bundle)
-            .filter(
-                Bundle.id == plan.bundle_id,
-                Bundle.tenant_id == user.tenant_id,
-                Bundle.status == BundleStatus.ACTIVE,
-            )
-            .first()
+        bundle = get_active_bundle_by_id(
+            db,
+            bundle_id=plan.bundle_id,
+            tenant_id=user.tenant_id,
         )
         if bundle is None:
             raise UnknownProductPlanError()
