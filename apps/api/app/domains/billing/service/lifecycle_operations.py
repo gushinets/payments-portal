@@ -39,7 +39,6 @@ from app.domains.billing.service.support import (
     _period_end,
     _scope_matches,
     _subscription_for_event,
-    _transactional,
     _verify_renewal_context,
     _write_event,
 )
@@ -72,7 +71,6 @@ def _is_provider_subscription_reference_conflict(error: IntegrityError) -> bool:
     return constraint_name == _PROVIDER_SUBSCRIPTION_REFERENCE_INDEX
 
 
-@_transactional
 def enable_automatic_renewal(db: Session, command: EnableAutomaticRenewalCommand) -> Subscription:
     existing_event = _event_for_key(db, command.operation_idempotency_key)
     if existing_event:
@@ -190,7 +188,6 @@ def enable_automatic_renewal(db: Session, command: EnableAutomaticRenewalCommand
     return subscription
 
 
-@_transactional
 def apply_renewal_payment(db: Session, command: ApplyRenewalPaymentCommand) -> Subscription:
     existing_event = _event_for_key(db, command.operation_idempotency_key)
     if existing_event:
@@ -198,6 +195,9 @@ def apply_renewal_payment(db: Session, command: ApplyRenewalPaymentCommand) -> S
     subscription = get_subscription_by_id(db, command.subscription_id, for_update=True)
     if subscription is None:
         raise SubscriptionLifecycleError("subscription_not_found")
+    existing_event = _event_for_key(db, command.operation_idempotency_key)
+    if existing_event:
+        return _subscription_for_event(db, existing_event)
     order, _, _ = _verify_renewal_context(db, subscription=subscription, command=command)
     order_plan = _find_plan_for_order(db, order)
     if order_plan.id != subscription.plan_id or not _scope_matches(subscription, order_plan):
@@ -246,7 +246,6 @@ def apply_renewal_payment(db: Session, command: ApplyRenewalPaymentCommand) -> S
     return subscription
 
 
-@_transactional
 def apply_provider_subscription_state(db: Session, command: ApplyProviderSubscriptionStateCommand) -> Subscription:
     existing_event = _event_for_key(db, command.operation_idempotency_key)
     if existing_event:
@@ -254,6 +253,9 @@ def apply_provider_subscription_state(db: Session, command: ApplyProviderSubscri
     subscription = get_subscription_by_id(db, command.subscription_id, for_update=True)
     if subscription is None:
         raise SubscriptionLifecycleError("subscription_not_found")
+    existing_event = _event_for_key(db, command.operation_idempotency_key)
+    if existing_event:
+        return _subscription_for_event(db, existing_event)
     previous = subscription.status
     status = subscription_status_from_provider_state(command.provider_state)
     ensure_subscription_status_transition(previous, status)
@@ -272,7 +274,6 @@ def apply_provider_subscription_state(db: Session, command: ApplyProviderSubscri
     return subscription
 
 
-@_transactional
 def request_cancellation(db: Session, command: RequestCancellationCommand) -> Subscription:
     existing_event = _event_for_key(db, command.operation_idempotency_key)
     if existing_event:
@@ -280,6 +281,9 @@ def request_cancellation(db: Session, command: RequestCancellationCommand) -> Su
     subscription = get_subscription_by_id(db, command.subscription_id, for_update=True)
     if subscription is None:
         raise SubscriptionLifecycleError("subscription_not_found")
+    existing_event = _event_for_key(db, command.operation_idempotency_key)
+    if existing_event:
+        return _subscription_for_event(db, existing_event)
     if subscription.status not in {
         SubscriptionStatus.TRIALING,
         SubscriptionStatus.ACTIVE,
@@ -299,7 +303,6 @@ def request_cancellation(db: Session, command: RequestCancellationCommand) -> Su
     return subscription
 
 
-@_transactional
 def apply_refund(db: Session, command: ApplyRefundCommand) -> Subscription:
     existing_event = _event_for_key(db, command.operation_idempotency_key)
     if existing_event:
@@ -308,6 +311,9 @@ def apply_refund(db: Session, command: ApplyRefundCommand) -> Subscription:
     refund = get_refund_by_id(db, command.refund_id, for_update=True)
     if order is None or refund is None or refund.order_id != order.id:
         raise SubscriptionLifecycleError("refund_context_missing")
+    existing_event = _event_for_key(db, command.operation_idempotency_key)
+    if existing_event:
+        return _subscription_for_event(db, existing_event)
     if refund.amount_minor != command.amount_minor:
         raise SubscriptionLifecycleError("refund_amount_mismatch")
     if refund.status != RefundStatus.SUCCEEDED:
@@ -359,7 +365,6 @@ def apply_refund(db: Session, command: ApplyRefundCommand) -> Subscription:
     return subscription
 
 
-@_transactional
 def expire_due_subscriptions(db: Session, command: ExpireDueSubscriptionsCommand) -> list[Subscription]:
     subscriptions = list_due_subscriptions(db, now=command.now, batch_size=command.batch_size)
     for subscription in subscriptions:

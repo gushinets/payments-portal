@@ -58,9 +58,38 @@ def main(argv: Sequence[str] | None = None) -> int:
         extra={"structured": {"run_id": run_id, "batch_size": command.batch_size}},
     )
     with SessionLocal() as db:
+        identity_invariant_error: RuntimeError | None = None
         try:
-            expired = expire_due_subscriptions(db, command)
+            with db.begin():
+                expired = expire_due_subscriptions(db, command)
+                subscription_ids: list[str] = []
+                for subscription in expired:
+                    identity = inspect(subscription).identity
+                    if identity is None:
+                        identity_invariant_error = RuntimeError("subscription returned without a persisted identity")
+                        raise identity_invariant_error
+                    subscription_ids.append(str(identity[0]))
         except Exception as error:
+            if error is identity_invariant_error:
+                logger.error(
+                    "subscription_expiry_diagnostic_invariant_violated",
+                    extra={
+                        "structured": {
+                            "run_id": run_id,
+                            "batch_size": command.batch_size,
+                            "invariant": MISSING_PERSISTED_IDENTITY_INVARIANT,
+                        }
+                    },
+                )
+                report_exception(
+                    error,
+                    operation=Operation.EXPIRE_SUBSCRIPTIONS,
+                    failure_category=FailureCategory.CONSISTENCY_INVARIANT_VIOLATION,
+                    run_id=run_id,
+                    batch_size=command.batch_size,
+                    invariant=MISSING_PERSISTED_IDENTITY_INVARIANT,
+                )
+                raise
             logger.error(
                 "subscription_expiry_run_failed",
                 extra={
@@ -78,33 +107,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                 batch_size=command.batch_size,
             )
             raise
-        subscription_ids: list[str] = []
-        for subscription in expired:
-            identity = inspect(subscription).identity
-            if identity is None:
-                logger.error(
-                    "subscription_expiry_diagnostic_invariant_violated",
-                    extra={
-                        "structured": {
-                            "run_id": run_id,
-                            "batch_size": command.batch_size,
-                            "invariant": MISSING_PERSISTED_IDENTITY_INVARIANT,
-                        }
-                    },
-                )
-                try:
-                    raise RuntimeError("subscription returned without a persisted identity")
-                except RuntimeError as error:
-                    report_exception(
-                        error,
-                        operation=Operation.EXPIRE_SUBSCRIPTIONS,
-                        failure_category=FailureCategory.CONSISTENCY_INVARIANT_VIOLATION,
-                        run_id=run_id,
-                        batch_size=command.batch_size,
-                        invariant=MISSING_PERSISTED_IDENTITY_INVARIANT,
-                    )
-                    raise
-            subscription_ids.append(str(identity[0]))
         for subscription_id in subscription_ids:
             logger.info(
                 "subscription_expiry_transition_committed",

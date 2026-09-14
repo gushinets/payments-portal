@@ -34,7 +34,6 @@ from app.domains.billing.service.support import (
     _scope_matches,
     _scope_values,
     _subscription_for_event,
-    _transactional,
     _verify_successful_payment_context,
     _write_event,
 )
@@ -63,7 +62,6 @@ def _is_live_subscription_unique_conflict(error: IntegrityError) -> bool:
     return constraint_name in _LIVE_SUBSCRIPTION_UNIQUE_INDEXES
 
 
-@_transactional
 def start_trial(db: Session, command: StartTrialCommand) -> Subscription:
     existing_event = _event_for_key(db, command.operation_idempotency_key)
     if existing_event:
@@ -157,7 +155,6 @@ def start_trial(db: Session, command: StartTrialCommand) -> Subscription:
     return subscription
 
 
-@_transactional
 def activate_paid_period(db: Session, command: ActivatePaidPeriodCommand) -> Subscription:
     existing_event = _event_for_key(db, command.operation_idempotency_key)
     if existing_event:

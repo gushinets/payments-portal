@@ -257,8 +257,7 @@ def register(
         last_login_at=utc_now(),
     )
     db.add(user)
-    db.commit()
-    db.refresh(user)
+    db.flush()
 
     token, token_hash, expires_at = make_session_token()
     session = AuthSession(

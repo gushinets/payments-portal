@@ -10,6 +10,7 @@ import pytest
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.domains.billing.enums import ProviderSubscriptionState
 from app.models import (
     AcceptanceKind,
     EntitlementSource,
@@ -19,23 +20,33 @@ from app.models import (
     OrderStatus,
     PaymentStatus,
     PaymentWebhookEventStatus,
+    RefundStatus,
     SubscriptionEventType,
     SubscriptionRenewalMode,
     SubscriptionStatus,
 )
 from app.domains.billing.service import (
     ActivatePaidPeriodCommand,
+    ApplyProviderSubscriptionStateCommand,
+    ApplyRefundCommand,
+    ApplyRenewalPaymentCommand,
     EnableAutomaticRenewalCommand,
+    RequestCancellationCommand,
     StartTrialCommand,
     SubscriptionLifecycleError,
     activate_paid_period,
+    apply_provider_subscription_state,
+    apply_refund,
+    apply_renewal_payment,
     enable_automatic_renewal,
+    request_cancellation,
     start_trial,
 )
 from app.domains.billing.service import lifecycle
 from app.domains.billing.service import lifecycle_operations
 from app.domains.legal.service import expected_acceptance_text_hash
 from app.infrastructure.queries.identity import lock_user_by_id
+from app.infrastructure.queries.orders import get_order_by_id
 from app.infrastructure.queries.subscriptions import get_subscription_by_id
 from app.models import (
     DocumentAcceptance,
@@ -48,6 +59,7 @@ from app.models import (
     PaymentProviderAccount,
     PaymentWebhookEvent,
     Plan,
+    Refund,
     Subscription,
     SubscriptionEvent,
     User,
@@ -220,6 +232,60 @@ def _add_verified_paid_order(
     return order, payment, webhook
 
 
+def _add_active_subscription(
+    session: Session,
+    *,
+    user: User,
+    plan: Plan,
+    now: datetime,
+    provider_account: PaymentProviderAccount | None = None,
+    current_period_end: datetime | None = None,
+) -> Subscription:
+    period_end = current_period_end or now
+    subscription = Subscription(
+        tenant_id=user.tenant_id,
+        region=user.region,
+        user_id=user.id,
+        plan_id=plan.id,
+        scope_type=plan.scope_type,
+        product_id=plan.product_id,
+        bundle_id=plan.bundle_id,
+        status=SubscriptionStatus.ACTIVE,
+        renewal_mode=SubscriptionRenewalMode.AUTOMATIC,
+        current_period_start=period_end - timedelta(days=30),
+        current_period_end=period_end,
+        provider_account_id=provider_account.id if provider_account is not None else None,
+    )
+    session.add(subscription)
+    session.flush()
+    return subscription
+
+
+def _synchronize_lifecycle_operation_event_misses(
+    monkeypatch: pytest.MonkeyPatch,
+    operation_key: str,
+) -> tuple[Barrier, set[int]]:
+    event_check_barrier = Barrier(3)
+    original_event_for_key = lifecycle_operations._event_for_key
+    synchronized_threads: set[int] = set()
+    synchronized_threads_lock = Lock()
+
+    def synchronized_event_for_key(session: Session, key: str) -> SubscriptionEvent | None:
+        event = original_event_for_key(session, key)
+        thread_id = get_ident()
+        should_wait = False
+        with synchronized_threads_lock:
+            if key == operation_key and event is None and thread_id not in synchronized_threads:
+                synchronized_threads.add(thread_id)
+                should_wait = True
+        if should_wait:
+            event_check_barrier.wait(timeout=5)
+        return event
+
+    monkeypatch.setattr(lifecycle_operations, "_event_for_key", synchronized_event_for_key)
+    return event_check_barrier, synchronized_threads
+
+
 def _seed_paid_orders(
     session_factory: sessionmaker[Session],
     *,
@@ -272,7 +338,7 @@ def _activate_in_worker(
     session_factory: sessionmaker[Session],
     command: ActivatePaidPeriodCommand,
 ) -> uuid.UUID:
-    with session_factory() as session:
+    with session_factory() as session, session.begin():
         return activate_paid_period(session, command).id
 
 
@@ -282,7 +348,8 @@ def _start_trial_in_worker(
 ) -> tuple[str, uuid.UUID | str]:
     with session_factory() as session:
         try:
-            subscription = start_trial(session, command)
+            with session.begin():
+                subscription = start_trial(session, command)
         except SubscriptionLifecycleError as exc:
             return "error", str(exc)
         return "ok", subscription.id
@@ -383,9 +450,10 @@ def test_parallel_enable_automatic_renewal_same_key_reuses_event_after_subscript
     def submit(barrier: Barrier, _index: int) -> tuple[uuid.UUID, float]:
         barrier.wait(timeout=5)
         started_at = time.monotonic()
-        with postgres_session_factory() as session:
+        with postgres_session_factory() as session, session.begin():
             result = enable_automatic_renewal(session, command)
-        return result.id, time.monotonic() - started_at
+            result_id = result.id
+        return result_id, time.monotonic() - started_at
 
     blocker = postgres_session_factory()
     blocker.begin()
@@ -475,7 +543,7 @@ def test_parallel_start_trial_same_key_reuses_event_after_user_lock(
 
     def submit(barrier: Barrier, _index: int) -> uuid.UUID:
         barrier.wait(timeout=5)
-        with postgres_session_factory() as session:
+        with postgres_session_factory() as session, session.begin():
             return start_trial(session, command).id
 
     blocker = postgres_session_factory()
@@ -656,6 +724,333 @@ def test_parallel_activate_paid_period_same_key_reuses_event_after_user_lock(
     assert operation_key_count == 1
     assert len(order_entitlements) == 1
     assert order_entitlements[0].subscription_id == subscriptions[0].id
+
+
+def test_parallel_apply_renewal_payment_same_key_reuses_event_after_subscription_lock(
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime(2026, 9, 14, 10, 0, tzinfo=UTC)
+    with postgres_session_factory() as session, session.begin():
+        user, account = _add_billing_user_and_account(session, "concurrent-renewal-same-key")
+        plan = _plan_by_code(session, "document-summary-pro")
+        subscription = _add_active_subscription(
+            session,
+            user=user,
+            plan=plan,
+            now=now,
+            provider_account=account,
+        )
+        order, payment, webhook = _add_verified_paid_order(
+            session,
+            key="concurrent-renewal-same-key",
+            user=user,
+            account=account,
+            plan=plan,
+            paid_at=now,
+        )
+        subscription_id = subscription.id
+        order_id = order.id
+        payment_id = payment.id
+        webhook_id = webhook.id
+
+    command = ApplyRenewalPaymentCommand(
+        operation_idempotency_key="concurrent-renewal-same-key",
+        subscription_id=subscription_id,
+        succeeded=True,
+        order_id=order_id,
+        payment_id=payment_id,
+        webhook_event_id=webhook_id,
+        paid_at=now,
+        occurred_at=now,
+    )
+    event_check_barrier, synchronized_threads = _synchronize_lifecycle_operation_event_misses(
+        monkeypatch,
+        command.operation_idempotency_key,
+    )
+
+    def submit(barrier: Barrier, _index: int) -> uuid.UUID:
+        barrier.wait(timeout=5)
+        with postgres_session_factory() as session, session.begin():
+            return apply_renewal_payment(session, command).id
+
+    blocker = postgres_session_factory()
+    blocker.begin()
+    try:
+        assert get_subscription_by_id(blocker, subscription_id, for_update=True) is not None
+        start_barrier = Barrier(3)
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = [executor.submit(submit, start_barrier, index) for index in range(2)]
+            start_barrier.wait(timeout=5)
+            event_check_barrier.wait(timeout=5)
+            blocker.commit()
+            results = [future.result(timeout=10) for future in futures]
+    finally:
+        if blocker.in_transaction():
+            blocker.rollback()
+        blocker.close()
+
+    with postgres_session_factory() as session:
+        persisted_subscription = session.get(Subscription, subscription_id)
+        events = (
+            session.query(SubscriptionEvent)
+            .filter(SubscriptionEvent.operation_idempotency_key == command.operation_idempotency_key)
+            .all()
+        )
+        entitlements = session.query(Entitlement).filter(Entitlement.order_id == order_id).all()
+
+    assert set(results) == {subscription_id}
+    assert len(synchronized_threads) == 2
+    assert persisted_subscription is not None
+    assert persisted_subscription.status is SubscriptionStatus.ACTIVE
+    assert persisted_subscription.current_period_start == now
+    assert len(events) == 1
+    assert events[0].event_type is SubscriptionEventType.RENEWAL_SUCCEEDED
+    assert len(entitlements) == 1
+    assert entitlements[0].subscription_id == subscription_id
+
+
+def test_parallel_apply_provider_state_same_key_reuses_event_after_subscription_lock(
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime(2026, 9, 14, 10, 30, tzinfo=UTC)
+    with postgres_session_factory() as session, session.begin():
+        user, _ = _add_billing_user_and_account(session, "concurrent-provider-state-same-key")
+        plan = _plan_by_code(session, "document-summary-pro")
+        subscription = _add_active_subscription(session, user=user, plan=plan, now=now)
+        subscription_id = subscription.id
+
+    command = ApplyProviderSubscriptionStateCommand(
+        operation_idempotency_key="concurrent-provider-state-same-key",
+        subscription_id=subscription_id,
+        provider_state=ProviderSubscriptionState.PAST_DUE,
+        occurred_at=now,
+    )
+    event_check_barrier, synchronized_threads = _synchronize_lifecycle_operation_event_misses(
+        monkeypatch,
+        command.operation_idempotency_key,
+    )
+
+    def submit(barrier: Barrier, _index: int) -> uuid.UUID:
+        barrier.wait(timeout=5)
+        with postgres_session_factory() as session, session.begin():
+            return apply_provider_subscription_state(session, command).id
+
+    blocker = postgres_session_factory()
+    blocker.begin()
+    try:
+        assert get_subscription_by_id(blocker, subscription_id, for_update=True) is not None
+        start_barrier = Barrier(3)
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = [executor.submit(submit, start_barrier, index) for index in range(2)]
+            start_barrier.wait(timeout=5)
+            event_check_barrier.wait(timeout=5)
+            blocker.commit()
+            results = [future.result(timeout=10) for future in futures]
+    finally:
+        if blocker.in_transaction():
+            blocker.rollback()
+        blocker.close()
+
+    with postgres_session_factory() as session:
+        persisted_subscription = session.get(Subscription, subscription_id)
+        events = (
+            session.query(SubscriptionEvent)
+            .filter(SubscriptionEvent.operation_idempotency_key == command.operation_idempotency_key)
+            .all()
+        )
+
+    assert set(results) == {subscription_id}
+    assert len(synchronized_threads) == 2
+    assert persisted_subscription is not None
+    assert persisted_subscription.status is SubscriptionStatus.PAST_DUE
+    assert len(events) == 1
+    assert events[0].event_type is SubscriptionEventType.PROVIDER_SUBSCRIPTION_STATE_APPLIED
+
+
+def test_parallel_request_cancellation_same_key_reuses_event_after_subscription_lock(
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime(2026, 9, 14, 11, 0, tzinfo=UTC)
+    with postgres_session_factory() as session, session.begin():
+        user, _ = _add_billing_user_and_account(session, "concurrent-cancellation-same-key")
+        plan = _plan_by_code(session, "document-summary-pro")
+        subscription = _add_active_subscription(session, user=user, plan=plan, now=now)
+        subscription_id = subscription.id
+
+    command = RequestCancellationCommand(
+        operation_idempotency_key="concurrent-cancellation-same-key",
+        subscription_id=subscription_id,
+        occurred_at=now,
+    )
+    event_check_barrier, synchronized_threads = _synchronize_lifecycle_operation_event_misses(
+        monkeypatch,
+        command.operation_idempotency_key,
+    )
+
+    def submit(barrier: Barrier, _index: int) -> uuid.UUID:
+        barrier.wait(timeout=5)
+        with postgres_session_factory() as session, session.begin():
+            return request_cancellation(session, command).id
+
+    blocker = postgres_session_factory()
+    blocker.begin()
+    try:
+        assert get_subscription_by_id(blocker, subscription_id, for_update=True) is not None
+        start_barrier = Barrier(3)
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = [executor.submit(submit, start_barrier, index) for index in range(2)]
+            start_barrier.wait(timeout=5)
+            event_check_barrier.wait(timeout=5)
+            blocker.commit()
+            results = [future.result(timeout=10) for future in futures]
+    finally:
+        if blocker.in_transaction():
+            blocker.rollback()
+        blocker.close()
+
+    with postgres_session_factory() as session:
+        persisted_subscription = session.get(Subscription, subscription_id)
+        events = (
+            session.query(SubscriptionEvent)
+            .filter(SubscriptionEvent.operation_idempotency_key == command.operation_idempotency_key)
+            .all()
+        )
+
+    assert set(results) == {subscription_id}
+    assert len(synchronized_threads) == 2
+    assert persisted_subscription is not None
+    assert persisted_subscription.cancel_requested_at == now
+    assert len(events) == 1
+    assert events[0].event_type is SubscriptionEventType.CANCELLATION_REQUESTED
+
+
+def test_parallel_apply_refund_same_key_reuses_event_after_order_lock(
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime(2026, 9, 14, 11, 30, tzinfo=UTC)
+    with postgres_session_factory() as session, session.begin():
+        user, account = _add_billing_user_and_account(session, "concurrent-refund-same-key")
+        plan = _plan_by_code(session, "document-summary-pro")
+        order, payment, webhook = _add_verified_paid_order(
+            session,
+            key="concurrent-refund-same-key",
+            user=user,
+            account=account,
+            plan=plan,
+            paid_at=now,
+        )
+        subscription = _add_active_subscription(
+            session,
+            user=user,
+            plan=plan,
+            now=now,
+            provider_account=account,
+            current_period_end=now + timedelta(days=30),
+        )
+        entitlement = Entitlement(
+            tenant_id=user.tenant_id,
+            region=user.region,
+            user_id=user.id,
+            subscription_id=subscription.id,
+            plan_id=plan.id,
+            scope_type=plan.scope_type,
+            product_id=plan.product_id,
+            bundle_id=plan.bundle_id,
+            status=EntitlementStatus.ACTIVE,
+            valid_from=subscription.current_period_start,
+            valid_until=subscription.current_period_end,
+            source=EntitlementSource.ORDER,
+            order_id=order.id,
+        )
+        activation_event = SubscriptionEvent(
+            subscription_id=subscription.id,
+            event_type=SubscriptionEventType.PAID_PERIOD_ACTIVATED,
+            previous_status=None,
+            next_status=SubscriptionStatus.ACTIVE,
+            occurred_at=now,
+            operation_idempotency_key="concurrent-refund-same-key:activation",
+            order_id=order.id,
+            payment_id=payment.id,
+            webhook_event_id=webhook.id,
+            metadata_={},
+        )
+        refund = Refund(
+            tenant_id=order.tenant_id,
+            region=order.region,
+            order_id=order.id,
+            payment_id=payment.id,
+            provider_account_id=account.id,
+            provider_refund_id="concurrent-refund-same-key",
+            status=RefundStatus.SUCCEEDED,
+            amount_minor=payment.amount_minor,
+            currency=payment.currency,
+            requested_at=now,
+            succeeded_at=now,
+        )
+        payment.refunded_amount_minor = payment.amount_minor
+        session.add_all([entitlement, activation_event, refund])
+        session.flush()
+        order_id = order.id
+        subscription_id = subscription.id
+        entitlement_id = entitlement.id
+        refund_id = refund.id
+        refund_amount_minor = refund.amount_minor
+
+    command = ApplyRefundCommand(
+        operation_idempotency_key="concurrent-refund-same-key",
+        order_id=order_id,
+        refund_id=refund_id,
+        amount_minor=refund_amount_minor,
+        occurred_at=now,
+    )
+    event_check_barrier, synchronized_threads = _synchronize_lifecycle_operation_event_misses(
+        monkeypatch,
+        command.operation_idempotency_key,
+    )
+
+    def submit(barrier: Barrier, _index: int) -> uuid.UUID:
+        barrier.wait(timeout=5)
+        with postgres_session_factory() as session, session.begin():
+            return apply_refund(session, command).id
+
+    blocker = postgres_session_factory()
+    blocker.begin()
+    try:
+        assert get_order_by_id(blocker, order_id, for_update=True) is not None
+        start_barrier = Barrier(3)
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = [executor.submit(submit, start_barrier, index) for index in range(2)]
+            start_barrier.wait(timeout=5)
+            event_check_barrier.wait(timeout=5)
+            blocker.commit()
+            results = [future.result(timeout=10) for future in futures]
+    finally:
+        if blocker.in_transaction():
+            blocker.rollback()
+        blocker.close()
+
+    with postgres_session_factory() as session:
+        persisted_subscription = session.get(Subscription, subscription_id)
+        persisted_entitlement = session.get(Entitlement, entitlement_id)
+        events = (
+            session.query(SubscriptionEvent)
+            .filter(SubscriptionEvent.operation_idempotency_key == command.operation_idempotency_key)
+            .all()
+        )
+
+    assert set(results) == {subscription_id}
+    assert len(synchronized_threads) == 2
+    assert persisted_subscription is not None
+    assert persisted_subscription.status is SubscriptionStatus.REFUNDED
+    assert persisted_entitlement is not None
+    assert persisted_entitlement.status is EntitlementStatus.REVOKED
+    assert persisted_entitlement.revoked_at == now
+    assert len(events) == 1
+    assert events[0].event_type is SubscriptionEventType.REFUND_APPLIED
 
 
 def test_parallel_paid_orders_same_scope_share_one_subscription(
@@ -939,7 +1334,7 @@ def test_terminal_subscription_allows_new_subscription_same_scope(
             occurred_at=now,
         )
 
-    with postgres_session_factory() as session:
+    with postgres_session_factory() as session, session.begin():
         new_subscription = activate_paid_period(session, command)
         new_subscription_id = new_subscription.id
 

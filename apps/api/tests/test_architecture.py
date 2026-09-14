@@ -5,6 +5,8 @@ import inspect
 import os
 from pathlib import Path
 
+import pytest
+
 os.environ["DATABASE_URL"] = "sqlite+pysqlite:///:memory:"
 
 from fastapi.routing import APIRoute
@@ -13,7 +15,12 @@ from app.http_dependencies import get_raw_request_body
 from app.integrations.cloudpayments.adapter import CloudPaymentsAdapter
 from app.integrations.cloudpayments.router import router as cloudpayments_router
 from app.main import app
-from scripts.repo import check_python_boundaries, module_matches, resolve_python_imports
+from scripts.repo import (
+    check_persistence_transaction_ownership,
+    check_python_boundaries,
+    module_matches,
+    resolve_python_imports,
+)
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
@@ -288,6 +295,136 @@ def test_persistence_infrastructure_rejects_integration_and_payment_provider_dep
         and "persistence dependency direction" in error
         for error in errors
     )
+
+
+@pytest.mark.parametrize(
+    ("relative", "method"),
+    (
+        ("apps/api/app/infrastructure/queries/orders.py", "begin"),
+        ("apps/api/app/infrastructure/queries/orders.py", "commit"),
+        ("apps/api/app/infrastructure/queries/orders.py", "rollback"),
+        ("apps/api/app/infrastructure/persistence/orders.py", "begin"),
+        ("apps/api/app/infrastructure/persistence/orders.py", "commit"),
+        ("apps/api/app/infrastructure/persistence/orders.py", "rollback"),
+    ),
+)
+def test_persistence_helpers_reject_outer_session_transaction_ownership(
+    tmp_path: Path,
+    relative: str,
+    method: str,
+) -> None:
+    write_module(
+        tmp_path,
+        relative,
+        f"from sqlalchemy.orm import Session\n\ndef persist(db: Session) -> None:\n    db.{method}()\n",
+    )
+
+    assert check_persistence_transaction_ownership(tmp_path) == [
+        f"{relative}:4 calls SQLAlchemy Session.{method}(); focused persistence "
+        "helpers must not own or finalize the outer business transaction "
+        "(see ARCHITECTURE.md)"
+    ]
+
+
+def test_persistence_transaction_guard_tracks_aliased_session_types(tmp_path: Path) -> None:
+    relative = "apps/api/app/infrastructure/queries/orders.py"
+    write_module(
+        tmp_path,
+        relative,
+        "from sqlalchemy.orm import Session as DatabaseSession\n\n"
+        "def persist(db: DatabaseSession) -> None:\n"
+        "    db.commit()\n",
+    )
+
+    assert check_persistence_transaction_ownership(tmp_path) == [
+        f"{relative}:4 calls SQLAlchemy Session.commit(); focused persistence "
+        "helpers must not own or finalize the outer business transaction "
+        "(see ARCHITECTURE.md)"
+    ]
+
+
+def test_persistence_transaction_guard_tracks_unaliased_sqlalchemy_import(tmp_path: Path) -> None:
+    relative = "apps/api/app/infrastructure/queries/orders.py"
+    write_module(
+        tmp_path,
+        relative,
+        "import sqlalchemy\n\ndef persist(db: sqlalchemy.orm.Session) -> None:\n    db.commit()\n",
+    )
+
+    assert check_persistence_transaction_ownership(tmp_path) == [
+        f"{relative}:4 calls SQLAlchemy Session.commit(); focused persistence "
+        "helpers must not own or finalize the outer business transaction "
+        "(see ARCHITECTURE.md)"
+    ]
+
+
+def test_persistence_transaction_guard_tracks_simple_session_assignment(tmp_path: Path) -> None:
+    relative = "apps/api/app/infrastructure/queries/orders.py"
+    write_module(
+        tmp_path,
+        relative,
+        "from sqlalchemy.orm import Session\n\ndef persist(db: Session) -> None:\n    alias = db\n    alias.commit()\n",
+    )
+
+    assert check_persistence_transaction_ownership(tmp_path) == [
+        f"{relative}:5 calls SQLAlchemy Session.commit(); focused persistence "
+        "helpers must not own or finalize the outer business transaction "
+        "(see ARCHITECTURE.md)"
+    ]
+
+
+def test_persistence_transaction_guard_forgets_reassigned_session_alias(tmp_path: Path) -> None:
+    write_module(
+        tmp_path,
+        "apps/api/app/infrastructure/queries/orders.py",
+        "from sqlalchemy.orm import Session\n\n"
+        "class SomeOtherObject:\n"
+        "    def commit(self) -> None: ...\n\n"
+        "def persist(db: Session) -> None:\n"
+        "    alias = db\n"
+        "    alias = SomeOtherObject()\n"
+        "    alias.commit()\n",
+    )
+
+    assert check_persistence_transaction_ownership(tmp_path) == []
+
+
+def test_persistence_transaction_guard_allows_owned_database_mechanics(tmp_path: Path) -> None:
+    write_module(
+        tmp_path,
+        "apps/api/app/infrastructure/persistence/orders.py",
+        "from sqlalchemy import text\n"
+        "from sqlalchemy.orm import Session\n\n"
+        "def persist(db: Session) -> None:\n"
+        "    db.flush()\n"
+        "    with db.begin_nested():\n"
+        "        db.execute(text('SELECT 1'))\n"
+        "    db.query(object).with_for_update().first()\n",
+    )
+
+    assert check_persistence_transaction_ownership(tmp_path) == []
+
+
+def test_persistence_transaction_guard_ignores_unrelated_methods_and_other_layers(tmp_path: Path) -> None:
+    write_module(
+        tmp_path,
+        "apps/api/app/infrastructure/queries/jobs.py",
+        "class Worker:\n"
+        "    def begin(self) -> None: ...\n"
+        "    def commit(self) -> None: ...\n"
+        "    def rollback(self) -> None: ...\n\n"
+        "def run(worker: Worker) -> None:\n"
+        "    worker.begin()\n"
+        "    worker.commit()\n"
+        "    worker.rollback()\n",
+    )
+    write_module(
+        tmp_path,
+        "apps/api/app/domains/billing/application/unit_of_work.py",
+        "from sqlalchemy.orm import Session\n\ndef run(db: Session) -> None:\n    with db.begin():\n        pass\n",
+    )
+
+    assert check_persistence_transaction_ownership(tmp_path) == []
 
 
 def _session_parameter_names(function: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:

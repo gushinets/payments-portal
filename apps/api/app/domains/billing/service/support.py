@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import calendar
-from contextlib import contextmanager
-from functools import wraps
 import uuid
 from datetime import datetime, timedelta
 from typing import Any
@@ -41,28 +39,6 @@ from app.models import (
     SubscriptionScopeType,
     SubscriptionStatus,
 )
-
-
-@contextmanager
-def _transaction(db: Session):
-    if db.in_transaction():
-        yield
-    else:
-        with db.begin():
-            yield
-
-
-def _transactional(function):
-    @wraps(function)
-    def wrapped(db: Session, *args, **kwargs):
-        opened_transaction = not db.in_transaction()
-        with _transaction(db):
-            result = function(db, *args, **kwargs)
-        if opened_transaction and isinstance(result, Subscription):
-            db.refresh(result)
-        return result
-
-    return wrapped
 
 
 def _event_for_key(db: Session, key: str) -> SubscriptionEvent | None:

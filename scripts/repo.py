@@ -1095,6 +1095,181 @@ def router_module(module: str) -> bool:
     return module.endswith(".router") or ".router." in module
 
 
+def _dotted_python_name(node: ast.expr) -> str | None:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        prefix = _dotted_python_name(node.value)
+        if prefix is not None:
+            return f"{prefix}.{node.attr}"
+    return None
+
+
+def _sqlalchemy_session_symbols(tree: ast.AST) -> tuple[set[str], set[str]]:
+    direct_names: set[str] = set()
+    module_names: set[str] = set()
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            if node.module == "sqlalchemy.orm":
+                direct_names.update(
+                    alias.asname or alias.name
+                    for alias in node.names
+                    if alias.name == "Session"
+                )
+            elif node.module == "sqlalchemy":
+                module_names.update(
+                    alias.asname or alias.name
+                    for alias in node.names
+                    if alias.name == "orm"
+                )
+            continue
+        if not isinstance(node, ast.Import):
+            continue
+        for alias in node.names:
+            if alias.name == "sqlalchemy.orm":
+                module_names.add(alias.asname or "sqlalchemy.orm")
+            elif alias.name == "sqlalchemy":
+                module_names.add(
+                    f"{alias.asname}.orm" if alias.asname else "sqlalchemy.orm"
+                )
+
+    return direct_names, module_names
+
+
+def _references_sqlalchemy_session(
+    node: ast.expr,
+    direct_names: set[str],
+    module_names: set[str],
+) -> bool:
+    for candidate in ast.walk(node):
+        dotted = _dotted_python_name(candidate)
+        if dotted in direct_names or any(
+            dotted == f"{module}.Session" for module in module_names
+        ):
+            return True
+        if isinstance(candidate, ast.Constant) and isinstance(candidate.value, str):
+            if candidate.value in direct_names or any(
+                candidate.value == f"{module}.Session" for module in module_names
+            ):
+                return True
+    return False
+
+
+class _PersistenceTransactionOwnershipVisitor(ast.NodeVisitor):
+    forbidden_methods = frozenset({"begin", "commit", "rollback"})
+
+    def __init__(self, direct_names: set[str], module_names: set[str]) -> None:
+        self.direct_names = direct_names
+        self.module_names = module_names
+        self.session_scopes: list[set[str]] = [set()]
+        self.violations: list[tuple[int, str]] = []
+
+    def _is_session_reference(self, node: ast.expr) -> bool:
+        dotted = _dotted_python_name(node)
+        return dotted in self.direct_names or any(
+            dotted == f"{module}.Session" for module in self.module_names
+        )
+
+    def _is_session_receiver(self, node: ast.expr) -> bool:
+        return (isinstance(node, ast.Name) and node.id in self.session_scopes[-1]) or (
+            self._is_session_reference(node)
+        )
+
+    def _visit_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+        arguments = (*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs)
+        shadowed_names = {argument.arg for argument in arguments}
+        session_names = self.session_scopes[-1] - shadowed_names
+        session_names.update(
+            argument.arg
+            for argument in arguments
+            if argument.annotation is not None
+            and _references_sqlalchemy_session(
+                argument.annotation,
+                self.direct_names,
+                self.module_names,
+            )
+        )
+        self.session_scopes.append(session_names)
+        for statement in node.body:
+            self.visit(statement)
+        self.session_scopes.pop()
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        self._visit_function(node)
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        self._visit_function(node)
+
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+        if isinstance(node.target, ast.Name):
+            if _references_sqlalchemy_session(
+                node.annotation,
+                self.direct_names,
+                self.module_names,
+            ):
+                self.session_scopes[-1].add(node.target.id)
+            else:
+                self.session_scopes[-1].discard(node.target.id)
+        self.generic_visit(node)
+
+    def visit_Assign(self, node: ast.Assign) -> None:
+        value_is_session = self._is_session_receiver(node.value) or (
+            isinstance(node.value, ast.Call)
+            and self._is_session_reference(node.value.func)
+        )
+        for target in node.targets:
+            if isinstance(target, ast.Name):
+                if value_is_session:
+                    self.session_scopes[-1].add(target.id)
+                else:
+                    self.session_scopes[-1].discard(target.id)
+        self.generic_visit(node)
+
+    def visit_Call(self, node: ast.Call) -> None:
+        if (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr in self.forbidden_methods
+            and self._is_session_receiver(node.func.value)
+        ):
+            self.violations.append((node.lineno, node.func.attr))
+        self.generic_visit(node)
+
+
+def check_persistence_transaction_ownership(root: Path = ROOT) -> list[str]:
+    app_root = root / "apps/api/app"
+    focused_roots = (
+        app_root / "infrastructure/queries",
+        app_root / "infrastructure/persistence",
+    )
+    errors: list[str] = []
+
+    for focused_root in focused_roots:
+        if not focused_root.exists():
+            continue
+        for path in sorted(focused_root.rglob("*.py")):
+            relative = path.relative_to(root).as_posix()
+            try:
+                tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            except SyntaxError:
+                continue
+            direct_names, module_names = _sqlalchemy_session_symbols(tree)
+            if not direct_names and not module_names:
+                continue
+            visitor = _PersistenceTransactionOwnershipVisitor(
+                direct_names, module_names
+            )
+            visitor.visit(tree)
+            errors.extend(
+                f"{relative}:{line} calls SQLAlchemy Session.{method}(); focused persistence "
+                "helpers must not own or finalize the outer business transaction "
+                "(see ARCHITECTURE.md)"
+                for line, method in visitor.violations
+            )
+
+    return errors
+
+
 def check_python_boundaries(root: Path = ROOT) -> list[str]:
     app_root = root / "apps/api/app"
     if not app_root.exists():
@@ -1328,6 +1503,7 @@ def check_canonical_persisted_model_layer(root: Path = ROOT) -> list[str]:
 
 def cmd_architecture(_: argparse.Namespace) -> None:
     errors = check_python_boundaries()
+    errors.extend(check_persistence_transaction_ownership())
     errors.extend(check_canonical_persisted_model_layer())
     limits = json.loads((ROOT / "architecture-limits.json").read_text(encoding="utf-8"))
     default_limit = int(limits["defaultMaxLines"])
