@@ -7,7 +7,7 @@
 | Parent | `ANY-407` |
 | Ticket | `ANY-490` |
 | ANY-407 step | `7. Presentation Boundary & FastAPI DI` |
-| Overall status | `ready for execution against reviewed ANY-489 baseline` |
+| Overall status | `done` |
 | Execution order | Sequential only |
 | Implementation steps / commits | 5 |
 | Required predecessor | `ANY-489` review findings resolved/accepted; ANY-490 branches from the reviewed ANY-489 head |
@@ -290,7 +290,7 @@ These decisions are not left to the execution model.
 
 # Step 1 — Establish FastAPI DI and the Identity Authentication Boundary
 
-**Status:** `todo`
+**Status:** `done`
 
 ## Goal
 
@@ -605,7 +605,7 @@ npm run architecture:check
 
 # Step 2 — Move Active Read Orchestration Behind Application Boundaries
 
-**Status:** `todo`
+**Status:** `done`
 
 ## Goal
 
@@ -837,7 +837,7 @@ npm run architecture:check
 
 # Step 3 — Extract Password Reset Application Orchestration
 
-**Status:** `todo`
+**Status:** `done`
 
 ## Goal
 
@@ -1057,7 +1057,7 @@ npm run architecture:check
 
 # Step 4 — Move Legal Acceptance and Checkout Write Orchestration Inward
 
-**Status:** `todo`
+**Status:** `done`
 
 ## Goal
 
@@ -1324,7 +1324,7 @@ npm run generate:check
 
 # Step 5 — Enforce the Boundary, Document Lifetimes, and Run Final Verification
 
-**Status:** `todo`
+**Status:** `done`
 
 ## Goal
 
