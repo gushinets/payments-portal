@@ -76,7 +76,7 @@ def accept_document(
     request: Request,
     current: Annotated[tuple[User, AuthSession], Depends(get_current_session)],
     db: Annotated[Session, Depends(get_db)],
-) -> Any:
+):
     user, _ = current
     try:
         result = accept_legal_document(

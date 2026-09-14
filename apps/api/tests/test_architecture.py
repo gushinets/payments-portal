@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import ast
 import inspect
 import os
 from pathlib import Path
@@ -18,24 +17,7 @@ from app.main import app
 from scripts.repo import (
     check_persistence_transaction_ownership,
     check_python_boundaries,
-    module_matches,
-    resolve_python_imports,
 )
-
-
-REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
-APP_ROOT = REPOSITORY_ROOT / "apps/api/app"
-REFACTORED_ACTIVE_PERSISTENCE_MODULES = (
-    "domains/legal/service.py",
-    "domains/legal/router.py",
-    "domains/identity/services/checkout.py",
-    "domains/identity/services/auth.py",
-    "domains/identity/session.py",
-    "domains/identity/router.py",
-    "domains/identity/password_reset.py",
-)
-ALLOWED_ACTIVE_SQLALCHEMY_IMPORTS = frozenset({"sqlalchemy.orm", "sqlalchemy.orm.Session"})
-DIRECT_SESSION_PERSISTENCE_METHODS = frozenset({"execute", "get", "query", "scalar", "scalars"})
 
 
 def write_module(root: Path, relative: str, source: str) -> None:
@@ -183,6 +165,113 @@ def test_domain_application_trees_reject_fastapi_and_starlette_dependencies(tmp_
         and "domain service/application-to-transport dependency" in error
         for error in errors
     )
+
+
+def test_active_domain_presentation_rejects_persistence_orchestration(tmp_path: Path) -> None:
+    relative = "apps/api/app/domains/identity/http_api.py"
+    write_module(
+        tmp_path,
+        relative,
+        "from fastapi import APIRouter as Router\n"
+        "from sqlalchemy.orm import Session\n"
+        "from app.infrastructure.queries import identity\n\n"
+        "api = Router()\n\n"
+        "@api.get('/users')\n"
+        "def list_users(db: Session) -> object:\n"
+        "    db.add(object())\n"
+        "    db.commit()\n"
+        "    return db.query(object).all()\n",
+    )
+
+    errors = check_python_boundaries(tmp_path)
+
+    assert any(
+        error.startswith(f"{relative}:3 imports app.infrastructure.queries")
+        and "HTTP Presentation persistence boundary" in error
+        for error in errors
+    )
+    assert any(
+        error.startswith(f"{relative}:9 calls SQLAlchemy Session.add()") and "active domain Presentation" in error
+        for error in errors
+    )
+    assert any(
+        error.startswith(f"{relative}:10 calls SQLAlchemy Session.commit()") and "active domain Presentation" in error
+        for error in errors
+    )
+    assert any(
+        error.startswith(f"{relative}:11 calls SQLAlchemy Session.query()") and "active domain Presentation" in error
+        for error in errors
+    )
+
+
+def test_http_dependencies_rejects_persistence_orchestration_without_api_router(tmp_path: Path) -> None:
+    relative = "apps/api/app/http_dependencies.py"
+    write_module(
+        tmp_path,
+        relative,
+        "from sqlalchemy.orm import Session\n"
+        "from app.infrastructure.persistence import password_reset\n\n"
+        "def dependency(db: Session) -> object:\n"
+        "    return db.execute('SELECT 1')\n",
+    )
+
+    errors = check_python_boundaries(tmp_path)
+
+    assert any(
+        error.startswith(f"{relative}:2 imports app.infrastructure.persistence")
+        and "HTTP Presentation persistence boundary" in error
+        for error in errors
+    )
+    assert any(
+        error.startswith(f"{relative}:5 calls SQLAlchemy Session.execute()") and "HTTP dependency composition" in error
+        for error in errors
+    )
+
+
+def test_active_domain_presentation_allows_session_di_and_inward_delegation(tmp_path: Path) -> None:
+    write_module(
+        tmp_path,
+        "apps/api/app/domains/identity/http_api.py",
+        "from fastapi import APIRouter, Depends\n"
+        "from sqlalchemy.orm import Session\n"
+        "from app.core.database import get_db\n"
+        "from app.domains.identity.services.account import load_account_session\n\n"
+        "router = APIRouter()\n\n"
+        "@router.get('/session')\n"
+        "def get_session(db: Session = Depends(get_db)) -> object:\n"
+        "    return load_account_session(db, user=object(), product_code=None)\n",
+    )
+
+    assert check_python_boundaries(tmp_path) == []
+
+
+@pytest.mark.parametrize("relative", ("apps/api/app/integrations/cloudpayments/router.py", "apps/api/app/health.py"))
+def test_non_domain_api_router_is_not_active_domain_presentation(tmp_path: Path, relative: str) -> None:
+    write_module(
+        tmp_path,
+        relative,
+        "from fastapi import APIRouter\n"
+        "from sqlalchemy.orm import Session\n"
+        "from app.infrastructure.queries import orders\n\n"
+        "router = APIRouter()\n\n"
+        "def retained_handler(db: Session) -> object:\n"
+        "    return db.query(object).first()\n",
+    )
+
+    assert check_python_boundaries(tmp_path) == []
+
+
+@pytest.mark.parametrize("transport_import", ("from fastapi import Request", "from starlette.requests import Request"))
+def test_payment_provider_registry_rejects_transport_dependencies(tmp_path: Path, transport_import: str) -> None:
+    relative = "apps/api/app/payment_providers/registry.py"
+    write_module(tmp_path, relative, f"{transport_import}\n")
+
+    errors = check_python_boundaries(tmp_path)
+
+    assert len(errors) == 1
+    assert errors[0].startswith(f"{relative}:1 imports ")
+    assert "payment-provider registry transport boundary" in errors[0]
+    assert "keep request-state access in app.http_dependencies" in errors[0]
 
 
 def test_application_modules_must_import_sentry_through_the_adapter(tmp_path: Path) -> None:
@@ -426,44 +515,6 @@ def test_persistence_transaction_guard_ignores_unrelated_methods_and_other_layer
     )
 
     assert check_persistence_transaction_ownership(tmp_path) == []
-
-
-def _session_parameter_names(function: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
-    arguments = (*function.args.posonlyargs, *function.args.args, *function.args.kwonlyargs)
-    return {
-        argument.arg
-        for argument in arguments
-        if argument.annotation is not None
-        and any(isinstance(node, ast.Name) and node.id == "Session" for node in ast.walk(argument.annotation))
-    }
-
-
-def test_refactored_active_surfaces_keep_query_composition_behind_infrastructure() -> None:
-    direct_persistence_calls: list[str] = []
-    disallowed_sqlalchemy_imports: list[str] = []
-
-    for relative in REFACTORED_ACTIVE_PERSISTENCE_MODULES:
-        path = APP_ROOT / relative
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        for imported in resolve_python_imports(path, APP_ROOT):
-            disallowed_sqlalchemy_imports.extend(
-                f"{relative}:{imported.line}:{target}"
-                for target in imported.targets
-                if module_matches(target, "sqlalchemy") and target not in ALLOWED_ACTIVE_SQLALCHEMY_IMPORTS
-            )
-        for function in (node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))):
-            session_parameters = _session_parameter_names(function)
-            for call in (node for node in ast.walk(function) if isinstance(node, ast.Call)):
-                if (
-                    isinstance(call.func, ast.Attribute)
-                    and isinstance(call.func.value, ast.Name)
-                    and call.func.value.id in session_parameters
-                    and call.func.attr in DIRECT_SESSION_PERSISTENCE_METHODS
-                ):
-                    direct_persistence_calls.append(f"{relative}:{call.lineno}:{call.func.attr}")
-
-    assert disallowed_sqlalchemy_imports == []
-    assert direct_persistence_calls == []
 
 
 def test_comments_strings_and_allowed_session_import_pass(tmp_path: Path) -> None:

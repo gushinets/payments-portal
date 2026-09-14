@@ -76,6 +76,23 @@ Persistence / Integrations -> implementations of those capabilities
 Composition -> concrete wiring
 ```
 
+For active FastAPI domain endpoints, the implemented request path is:
+
+```text
+FastAPI Presentation
+    -> transport-neutral Application/service use case
+    -> Domain + focused query/persistence capabilities
+```
+
+Presentation owns transport parsing and validation, dependency composition,
+response DTOs, and HTTP error mapping. Active domain modules that own an
+`APIRouter` do not import `app.infrastructure.queries` or
+`app.infrastructure.persistence` and do not issue SQLAlchemy `Session` query
+or persistence operations directly. `app.http_dependencies` is the explicit
+HTTP composition boundary and follows the same restriction. Retained provider
+integration routers and operational health/metrics endpoints are outside this
+active-domain rule because they have different boundary responsibilities.
+
 Application owns use-case and transaction orchestration while Domain owns
 transport- and vendor-independent rules. Persistence and Integrations implement
 the outer capabilities required by Application, and Composition binds their
@@ -119,27 +136,48 @@ helper that happens to issue SQL. The repository architecture checker protects
 this boundary in `app.infrastructure.queries` and
 `app.infrastructure.persistence`.
 
-Current physical placement is transitional: a router, dependency, or CLI may
-still contain the application orchestration that finalizes a transaction. The
-logical ownership rules do not freeze those files as permanent layer
-boundaries, and later package or dependency-injection work may move them without
-changing the transaction contract.
+Current physical placement remains transitional even though active FastAPI
+domain routes now delegate their use-case orchestration inward. Application
+functions may remain in existing domain `service.py`, `services/`, or
+`application/` modules; this does not require a repository per model or a
+service container. Retained integration routes and CLI entrypoints keep their
+documented boundary-specific responsibilities. Later physical package moves
+must not change the transaction contract.
+
+### FastAPI dependency lifetimes
+
+Request-scoped resources and context are composed explicitly:
+
+- `get_db()` creates and closes the SQLAlchemy `Session`; it owns Session
+  lifetime, not a request-wide business transaction;
+- `app.http_dependencies.get_current_session()` resolves authenticated
+  user/session context from that request Session. Its established
+  `last_seen_at` commit is a separate bookkeeping transaction.
+
+`PaymentProviderRegistry` is app-scoped. `create_app()` creates it once on
+application state, and `app.http_dependencies.get_payment_provider_registry()`
+exposes that instance to routes without moving request-state access into the
+provider-neutral registry.
+
+Stateless Application/service functions are ordinary code called directly by
+Presentation. They are not wrapped in `Depends()` merely for test substitution;
+tests call them directly or override their actual resource/context dependencies.
 
 ### Current transaction map
 
 | Operation | Current transaction owner and boundary |
 | --- | --- |
-| User registration | The registration application flow commits `User` and its initial `AuthSession` atomically. A pre-commit failure leaves neither durable. |
-| Login | The current login flow preserves its existing single local commit for login bookkeeping and the new `AuthSession`. |
-| Authenticated-request bookkeeping | `get_current_session()` currently commits `last_seen_at` before endpoint execution. This is a separate bookkeeping transaction; moving that responsibility or separating its FastAPI dependency belongs to later work. |
-| Logout | Authentication bookkeeping commits first through `get_current_session()`; the logout endpoint then deletes the session in a separate commit. The whole request is not one transaction. |
-| Legal acceptance | The current acceptance flow preserves its local atomic commit. Any preceding authenticated-request bookkeeping remains a separate transaction. |
-| Password-reset request | The current orchestration deliberately commits cleanup, IP rate-limit accounting, account rate-limit accounting, and reset-token creation as separate durable phases so a later failure does not erase already-consumed protection. |
-| Password-reset confirmation | Token claim, password replacement, outstanding-token invalidation, and active-session revocation commit atomically. |
+| User registration | `app.domains.identity.services.auth.register_user()` commits `User` and its initial `AuthSession` atomically. A pre-commit failure leaves neither durable. |
+| Login | `app.domains.identity.services.auth.login_user()` owns the existing single local commit for login bookkeeping and the new `AuthSession`. |
+| Authenticated-request bookkeeping | `app.http_dependencies.get_current_session()` delegates authentication to `app.domains.identity.services.auth.authenticate_session()`, which commits `last_seen_at` before endpoint execution. This is a separate bookkeeping transaction. |
+| Logout | Authentication bookkeeping commits first through the current-session dependency; `app.domains.identity.services.auth.logout_session()` then deletes the session in a separate commit. The whole request is not one transaction. |
+| Legal acceptance | `app.domains.legal.service.accept_legal_document()` owns the acceptance commit and refresh. Any preceding authenticated-request bookkeeping remains a separate transaction. |
+| Password-reset request | `app.domains.identity.services.password_reset.prepare_password_reset()` deliberately commits cleanup, IP rate-limit accounting, account rate-limit accounting, and reset-token creation as separate durable phases so a later failure does not erase already-consumed protection. |
+| Password-reset confirmation | `app.domains.identity.services.password_reset.confirm_password_reset()` atomically commits token claim, password replacement, outstanding-token invalidation, and active-session revocation. |
 | Provider-neutral billing lifecycle | Lifecycle functions participate in the calling application operation's transaction and never finalize the outer transaction themselves. |
 | Scheduled subscription expiry | The CLI owns one explicit transaction. It validates persisted identities before transaction exit and emits committed/success diagnostics only after commit. |
 | Provider-account uniqueness recovery | The current checkout helper uses a nested savepoint to recover a concurrent unique insert; this is not a business commit. |
-| Checkout | Current checkout state and `prepare_checkout_action()` are local work before the final local commit. That preparation performs no network command and is not evidence that future external-command ordering is already implemented. |
+| Checkout | `app.domains.identity.services.checkout.create_checkout()` owns provider-configuration rollback and the final local commit. Checkout state and `prepare_checkout_action()` are local work before that commit; preparation performs no network command and is not evidence that future external-command ordering is already implemented. |
 | CloudPayments webhook source | Its retained commit, rollback, and idempotency mechanics are legacy-only and are not the target transaction architecture or a normal-runtime path. |
 
 Retained CloudPayments and direct-provider persistence is transitional legacy
@@ -161,8 +199,12 @@ and security helpers are shared infrastructure.
 
 Python AST analysis currently enforces selected dependency constraints in the
 transitional package tree, including core/domain-to-integration restrictions,
-persistence-to-outward-layer restrictions, router import boundaries, and
-provider-neutrality rules. It does not
+persistence-to-outward-layer restrictions, router import boundaries,
+provider-neutrality, transport-neutral domain service/application trees, and
+the active FastAPI domain Presentation persistence boundary. Active domain
+Presentation is detected from actual `APIRouter` ownership rather than a router
+filename list; `app.http_dependencies` and the app-scoped provider registry have
+their explicit composition rules. The checker does not
 mechanically enforce the complete target logical layering above;
 Presentation/Application/Domain/Persistence/Integration is not yet fully
 represented by the physical packages. Routers share authentication through

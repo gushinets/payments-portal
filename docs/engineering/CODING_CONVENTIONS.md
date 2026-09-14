@@ -111,6 +111,30 @@ unsafe-assertion rule as `error` only after current `json()` /
     explicit parameter and return annotations without unintentionally changing
     FastAPI response-model inference.
 
+### API Presentation and dependency composition
+
+1. Active domain routers parse and validate transport input, invoke an inward
+   Application/service use case, and map its result or semantic errors to the
+   public HTTP contract. They do not own use-case orchestration.
+2. Active domain Presentation and `app.http_dependencies` do not import
+   `app.infrastructure.queries` or `app.infrastructure.persistence` and do not
+   call SQLAlchemy Session query or persistence mechanics directly. Importing
+   `Session` for a FastAPI dependency annotation and passing it inward is
+   allowed.
+3. Response presenters are pure mappings. They do not receive a Session, issue
+   queries, or intentionally trigger ORM lazy loading.
+4. FastAPI dependency injection composes explicit resources and context, such
+   as the request-scoped Session, authenticated context, and app-scoped provider
+   registry. Stateless Application/service functions remain ordinary direct
+   calls and are not placed behind `Depends()` only for testability.
+5. Public Pydantic request/response DTOs are owned by Presentation. Inward use
+   cases accept validated primitives or their own small concrete typed contract
+   when structured input/output warrants it; they do not accept router-owned
+   DTOs or introduce generic command/query abstractions.
+6. Application, Domain, and focused persistence code remain transport-neutral:
+   no FastAPI/Starlette request, response, dependency, or `HTTPException`
+   types cross inward.
+
 ### API persistence
 
 1. `app.models` is the canonical persisted ORM model contract. Use its models
