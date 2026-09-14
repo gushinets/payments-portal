@@ -1,9 +1,5 @@
 from __future__ import annotations
 
-import hashlib
-import logging
-import secrets
-from datetime import datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
@@ -11,45 +7,18 @@ from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.observability import record_password_reset_email
-from app.core.password_reset_email import (
-    build_password_reset_url,
-    send_password_reset_email,
-)
-from app.core.time import utc_now
-from app.domains.identity.errors import (
-    InvalidOrExpiredResetTokenError,
-    PasswordResetError,
-    PasswordResetRateLimitedError,
-)
-from app.domains.identity.passwords import hash_password
 from app.domains.identity.session import (
     DEFAULT_REGION,
     DEFAULT_TENANT_ID,
 )
-from app.infrastructure.persistence.password_reset import (
-    claim_valid_password_reset_token,
-    increment_password_reset_rate_limit,
-    invalidate_outstanding_password_reset_tokens,
-    prune_expired_password_reset_rate_limits,
-    prune_expired_password_reset_tokens,
-    revoke_active_auth_sessions,
+from app.domains.identity.services.password_reset import (
+    confirm_password_reset as confirm_password_reset_use_case,
+    prepare_password_reset,
+    send_password_reset_email_safely,
+    skip_password_reset_email,
 )
-from app.infrastructure.queries.identity import (
-    get_active_user_by_normalized_email,
-    get_magic_link_token_by_hash_and_purpose,
-)
-from app.infrastructure.sentry import FailureCategory, Operation, report_exception
-from app.models import MagicLinkPurpose, MagicLinkToken
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
-
-PASSWORD_RESET_TTL_MINUTES = 30
-PASSWORD_RESET_PURPOSE = MagicLinkPurpose.PASSWORD_RESET
-PASSWORD_RESET_RATE_LIMIT_WINDOW_MINUTES = 15
-PASSWORD_RESET_ACCOUNT_RATE_LIMIT_MAX = 5
-PASSWORD_RESET_IP_RATE_LIMIT_MAX = 20
-logger = logging.getLogger("payment_portal.identity.password_reset")
 
 
 class PasswordResetRequest(BaseModel):
@@ -61,82 +30,6 @@ class PasswordResetConfirmRequest(BaseModel):
     password: str = Field(min_length=8, max_length=128)
 
 
-def make_password_reset_token() -> tuple[str, str, datetime]:
-    token = secrets.token_urlsafe(48)
-    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
-    expires_at = utc_now() + timedelta(minutes=PASSWORD_RESET_TTL_MINUTES)
-    return token, token_hash, expires_at
-
-
-def normalize_email(value: str) -> str:
-    return value.strip().lower()
-
-
-def password_reset_client_ip(request: Request) -> str:
-    return request.client.host if request.client else "unknown"
-
-
-def password_reset_rate_limit_keys(
-    *, tenant_id: str, region: str, email_normalized: str, request: Request
-) -> tuple[str, str]:
-    ip = password_reset_client_ip(request)
-    return (
-        f"account:{tenant_id}:{region}:{email_normalized}",
-        f"ip:{tenant_id}:{region}:{ip}",
-    )
-
-
-def make_password_reset_decoy_email_normalized(*, tenant_id: str, region: str, email_normalized: str) -> str:
-    digest = hashlib.sha256(f"{tenant_id}:{region}:{email_normalized}".encode("utf-8")).hexdigest()
-    return f"password-reset-decoy:{digest}"
-
-
-def enforce_password_reset_rate_limit(*, db: Session, key: str, limit: int, now: datetime) -> None:
-    expires_at = now + timedelta(minutes=PASSWORD_RESET_RATE_LIMIT_WINDOW_MINUTES)
-    attempts = increment_password_reset_rate_limit(
-        db,
-        key=key,
-        now=now,
-        expires_at=expires_at,
-    )
-    if attempts > limit:
-        raise PasswordResetRateLimitedError()
-
-
-def send_password_reset_email_safely(email: str, reset_url: str) -> None:
-    try:
-        sent = send_password_reset_email(email, reset_url)
-    except Exception as error:
-        record_password_reset_email("failed")
-        logger.warning(
-            "password_reset_email_delivery_failed",
-            extra={
-                "structured": {
-                    "outcome": "failed",
-                    "reason": error.__class__.__name__,
-                }
-            },
-        )
-        report_exception(
-            error,
-            operation=Operation.PASSWORD_RESET_EMAIL,
-            failure_category=FailureCategory.INTEGRATION_FAILURE,
-        )
-        return
-
-    outcome = "sent" if sent else "disabled"
-    record_password_reset_email(outcome)
-    if not sent:
-        logger.warning(
-            "password_reset_email_delivery_disabled",
-            extra={"structured": {"outcome": outcome, "reason": "smtp_not_configured"}},
-        )
-
-
-def skip_password_reset_email(email: str, reset_url: str) -> None:
-    return None
-
-
 @router.post("/password-reset/request")
 def request_password_reset(
     payload: PasswordResetRequest,
@@ -144,71 +37,18 @@ def request_password_reset(
     background_tasks: BackgroundTasks,
     db: Annotated[Session, Depends(get_db)],
 ):
-    tenant_id = DEFAULT_TENANT_ID
-    region = DEFAULT_REGION
-    normalized_email = normalize_email(str(payload.email))
-    now = utc_now()
-    account_rate_limit_key, ip_rate_limit_key = password_reset_rate_limit_keys(
-        tenant_id=tenant_id,
-        region=region,
-        email_normalized=normalized_email,
-        request=request,
-    )
-    try:
-        prune_expired_password_reset_tokens(db=db, now=now)
-        prune_expired_password_reset_rate_limits(db=db, now=now)
-        db.commit()
-        enforce_password_reset_rate_limit(
-            db=db,
-            key=ip_rate_limit_key,
-            limit=PASSWORD_RESET_IP_RATE_LIMIT_MAX,
-            now=now,
-        )
-        db.commit()
-        enforce_password_reset_rate_limit(
-            db=db,
-            key=account_rate_limit_key,
-            limit=PASSWORD_RESET_ACCOUNT_RATE_LIMIT_MAX,
-            now=now,
-        )
-        db.commit()
-    except PasswordResetError:
-        db.rollback()
-        raise
-    token, token_hash, expires_at = make_password_reset_token()
-    user = get_active_user_by_normalized_email(
+    delivery = prepare_password_reset(
         db,
-        tenant_id=tenant_id,
-        region=region,
-        email_normalized=normalized_email,
-    )
-
-    reset_token = MagicLinkToken(
-        tenant_id=user.tenant_id if user is not None else tenant_id,
-        region=user.region if user is not None else region,
-        email_normalized=(
-            user.email_normalized
-            if user is not None
-            else make_password_reset_decoy_email_normalized(
-                tenant_id=tenant_id,
-                region=region,
-                email_normalized=normalized_email,
-            )
-        ),
-        token_hash=token_hash,
-        purpose=PASSWORD_RESET_PURPOSE,
-        expires_at=expires_at,
-        ip=password_reset_client_ip(request),
+        tenant_id=DEFAULT_TENANT_ID,
+        region=DEFAULT_REGION,
+        email=str(payload.email),
+        client_ip=request.client.host if request.client else "unknown",
         user_agent=request.headers.get("user-agent"),
     )
-    db.add(reset_token)
-
-    db.commit()
-
     background_tasks.add_task(
-        send_password_reset_email_safely if user is not None else skip_password_reset_email,
-        user.email if user is not None else normalized_email,
-        build_password_reset_url(token),
+        send_password_reset_email_safely if delivery.send_email else skip_password_reset_email,
+        delivery.recipient_email,
+        delivery.reset_url,
     )
 
     return {"status": "accepted"}
@@ -219,54 +59,9 @@ def confirm_password_reset(
     payload: PasswordResetConfirmRequest,
     db: Annotated[Session, Depends(get_db)],
 ):
-    now = utc_now()
-    token_hash = hashlib.sha256(payload.token.encode("utf-8")).hexdigest()
-    claimed = claim_valid_password_reset_token(
+    confirm_password_reset_use_case(
         db,
-        token_hash=token_hash,
-        now=now,
+        token=payload.token,
+        password=payload.password,
     )
-    if claimed != 1:
-        db.rollback()
-        raise InvalidOrExpiredResetTokenError()
-
-    reset_token = get_magic_link_token_by_hash_and_purpose(
-        db,
-        token_hash=token_hash,
-        purpose=PASSWORD_RESET_PURPOSE,
-    )
-    if reset_token is None:
-        db.rollback()
-        raise InvalidOrExpiredResetTokenError()
-
-    user = get_active_user_by_normalized_email(
-        db,
-        tenant_id=reset_token.tenant_id,
-        region=reset_token.region,
-        email_normalized=reset_token.email_normalized,
-    )
-    if user is None:
-        db.rollback()
-        raise InvalidOrExpiredResetTokenError()
-
-    user.password_hash = hash_password(payload.password)
-    db.add(user)
-
-    invalidate_outstanding_password_reset_tokens(
-        db,
-        tenant_id=user.tenant_id,
-        region=user.region,
-        email_normalized=user.email_normalized,
-        now=now,
-    )
-
-    revoke_active_auth_sessions(
-        db,
-        tenant_id=user.tenant_id,
-        region=user.region,
-        user_id=user.id,
-        now=now,
-    )
-    db.commit()
-
     return {"status": "password_reset"}

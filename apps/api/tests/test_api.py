@@ -30,8 +30,8 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware  # noqa: E40
 from app.domains.billing.router import get_subscription as get_account_subscription_route  # noqa: E402
 from app.domains.billing.router import list_subscriptions as list_account_subscriptions_route  # noqa: E402
 from app.domains.identity.router import present_user  # noqa: E402
-import app.domains.identity.password_reset as password_reset_router  # noqa: E402
 import app.domains.identity.services.auth as identity_auth_service  # noqa: E402
+import app.domains.identity.services.password_reset as password_reset_service  # noqa: E402
 from app.core.observability import JsonFormatter  # noqa: E402
 from app.database import Base, SessionLocal, engine  # noqa: E402
 from app.http_dependencies import get_current_session  # noqa: E402
@@ -5505,7 +5505,7 @@ def test_password_reset_email_token_and_session_revocation(monkeypatch) -> None:
     reset_token = "known-reset-token-value-with-enough-entropy"
 
     def fake_make_password_reset_token():
-        token_hash = password_reset_router.hashlib.sha256(reset_token.encode("utf-8")).hexdigest()
+        token_hash = hashlib.sha256(reset_token.encode("utf-8")).hexdigest()
         return (
             reset_token,
             token_hash,
@@ -5513,12 +5513,12 @@ def test_password_reset_email_token_and_session_revocation(monkeypatch) -> None:
         )
 
     monkeypatch.setattr(
-        password_reset_router,
+        password_reset_service,
         "make_password_reset_token",
         fake_make_password_reset_token,
     )
     monkeypatch.setattr(
-        password_reset_router,
+        password_reset_service,
         "send_password_reset_email",
         lambda email, url: sent_messages.append((email, url)) or True,
     )
@@ -5544,7 +5544,7 @@ def test_password_reset_email_token_and_session_revocation(monkeypatch) -> None:
     assert sent_messages == [
         (
             "reset-user@example.com",
-            password_reset_router.build_password_reset_url(reset_token),
+            password_reset_service.build_password_reset_url(reset_token),
         )
     ]
 
@@ -5591,7 +5591,7 @@ def test_password_reset_email_token_and_session_revocation(monkeypatch) -> None:
 def test_password_reset_request_does_not_reveal_unknown_email(monkeypatch) -> None:
     sent_messages: list[tuple[str, str]] = []
     monkeypatch.setattr(
-        password_reset_router,
+        password_reset_service,
         "send_password_reset_email",
         lambda email, url: sent_messages.append((email, url)) or True,
     )
@@ -5628,7 +5628,7 @@ def test_password_reset_request_uses_forwarded_client_ip_from_trusted_proxy() ->
 
 
 def test_password_reset_request_derives_scope_server_side_for_rate_limits() -> None:
-    for index in range(password_reset_router.PASSWORD_RESET_IP_RATE_LIMIT_MAX):
+    for index in range(password_reset_service.PASSWORD_RESET_IP_RATE_LIMIT_MAX):
         response = client.post(
             "/api/auth/password-reset/request",
             json={
@@ -5651,17 +5651,17 @@ def test_password_reset_request_derives_scope_server_side_for_rate_limits() -> N
     assert limited_response.json() == {"detail": {"code": "password_reset_rate_limited"}}
 
     with SessionLocal() as db:
-        assert db.query(MagicLinkToken).count() == password_reset_router.PASSWORD_RESET_IP_RATE_LIMIT_MAX
+        assert db.query(MagicLinkToken).count() == password_reset_service.PASSWORD_RESET_IP_RATE_LIMIT_MAX
         stored_token = db.query(MagicLinkToken).first()
         assert stored_token is not None
         assert stored_token.tenant_id == "anytoolai"
         assert stored_token.region == "ru"
         ip_limit = db.query(PasswordResetRateLimit).filter_by(rate_limit_key="ip:anytoolai:ru:testclient").one()
-        assert ip_limit.count == password_reset_router.PASSWORD_RESET_IP_RATE_LIMIT_MAX
+        assert ip_limit.count == password_reset_service.PASSWORD_RESET_IP_RATE_LIMIT_MAX
 
 
 def test_password_reset_request_is_rate_limited_per_account() -> None:
-    for _ in range(password_reset_router.PASSWORD_RESET_ACCOUNT_RATE_LIMIT_MAX):
+    for _ in range(password_reset_service.PASSWORD_RESET_ACCOUNT_RATE_LIMIT_MAX):
         response = client.post(
             "/api/auth/password-reset/request",
             json={"email": "probe@example.com"},
@@ -5677,7 +5677,7 @@ def test_password_reset_request_is_rate_limited_per_account() -> None:
 
 
 def test_password_reset_account_limit_does_not_rollback_ip_counter() -> None:
-    for _ in range(password_reset_router.PASSWORD_RESET_ACCOUNT_RATE_LIMIT_MAX):
+    for _ in range(password_reset_service.PASSWORD_RESET_ACCOUNT_RATE_LIMIT_MAX):
         response = client.post(
             "/api/auth/password-reset/request",
             json={"email": "rollback-probe@example.com"},
@@ -5692,7 +5692,7 @@ def test_password_reset_account_limit_does_not_rollback_ip_counter() -> None:
 
     with SessionLocal() as db:
         stored_limit = db.query(PasswordResetRateLimit).filter_by(rate_limit_key="ip:anytoolai:ru:testclient").one()
-        assert stored_limit.count == password_reset_router.PASSWORD_RESET_ACCOUNT_RATE_LIMIT_MAX + 1
+        assert stored_limit.count == password_reset_service.PASSWORD_RESET_ACCOUNT_RATE_LIMIT_MAX + 1
 
 
 def test_password_reset_confirm_invalidates_other_outstanding_reset_tokens(
@@ -5710,8 +5710,8 @@ def test_password_reset_confirm_invalidates_other_outstanding_reset_tokens(
             datetime.now(timezone.utc) + timedelta(minutes=30),
         )
 
-    monkeypatch.setattr(password_reset_router, "make_password_reset_token", make_token)
-    monkeypatch.setattr(password_reset_router, "send_password_reset_email", lambda email, url: True)
+    monkeypatch.setattr(password_reset_service, "make_password_reset_token", make_token)
+    monkeypatch.setattr(password_reset_service, "send_password_reset_email", lambda email, url: True)
 
     register_response = client.post(
         "/api/auth/register",
@@ -5750,7 +5750,7 @@ def test_password_reset_confirm_invalidates_other_outstanding_reset_tokens(
 
 
 def test_password_reset_request_is_rate_limited_per_ip_across_emails() -> None:
-    for index in range(password_reset_router.PASSWORD_RESET_IP_RATE_LIMIT_MAX):
+    for index in range(password_reset_service.PASSWORD_RESET_IP_RATE_LIMIT_MAX):
         response = client.post(
             "/api/auth/password-reset/request",
             json={"email": f"probe-{index}@example.com"},
@@ -5769,11 +5769,11 @@ def test_password_reset_rate_limit_window_resets_after_expiry() -> None:
     key = "account:anytoolai:ru:window-reset@example.com"
     first_attempt_at = datetime(2026, 7, 29, 9, 0, tzinfo=timezone.utc)
     next_window_at = first_attempt_at + timedelta(
-        minutes=password_reset_router.PASSWORD_RESET_RATE_LIMIT_WINDOW_MINUTES + 1
+        minutes=password_reset_service.PASSWORD_RESET_RATE_LIMIT_WINDOW_MINUTES + 1
     )
 
     with SessionLocal() as db:
-        password_reset_router.enforce_password_reset_rate_limit(
+        password_reset_service.enforce_password_reset_rate_limit(
             db=db,
             key=key,
             limit=1,
@@ -5781,7 +5781,7 @@ def test_password_reset_rate_limit_window_resets_after_expiry() -> None:
         )
         db.commit()
 
-        password_reset_router.enforce_password_reset_rate_limit(
+        password_reset_service.enforce_password_reset_rate_limit(
             db=db,
             key=key,
             limit=1,
@@ -5838,10 +5838,10 @@ def test_password_reset_request_prunes_expired_reset_tokens() -> None:
 
 
 def test_password_reset_email_delivery_disabled_is_observable(monkeypatch, caplog) -> None:
-    monkeypatch.setattr(password_reset_router, "send_password_reset_email", lambda email, url: False)
+    monkeypatch.setattr(password_reset_service, "send_password_reset_email", lambda email, url: False)
 
     with caplog.at_level("WARNING", logger="payment_portal.identity.password_reset"):
-        password_reset_router.send_password_reset_email_safely(
+        password_reset_service.send_password_reset_email_safely(
             "reset-user@example.com",
             "http://localhost/reset",
         )
@@ -5857,23 +5857,23 @@ def test_password_reset_email_delivery_failure_is_observable(monkeypatch, caplog
     def fail_delivery(email: str, url: str) -> bool:
         raise original_error
 
-    monkeypatch.setattr(password_reset_router, "send_password_reset_email", fail_delivery)
-    monkeypatch.setattr(password_reset_router, "record_password_reset_email", record_password_reset_email)
-    monkeypatch.setattr(password_reset_router, "report_exception", report_exception)
+    monkeypatch.setattr(password_reset_service, "send_password_reset_email", fail_delivery)
+    monkeypatch.setattr(password_reset_service, "record_password_reset_email", record_password_reset_email)
+    monkeypatch.setattr(password_reset_service, "report_exception", report_exception)
 
     with caplog.at_level("WARNING", logger="payment_portal.identity.password_reset"):
-        result = password_reset_router.send_password_reset_email_safely(
+        result = password_reset_service.send_password_reset_email_safely(
             "reset-user@example.com",
             "http://localhost/reset?token=reset-token-secret",
         )
 
     assert result is None
-    assert password_reset_router.Operation.PASSWORD_RESET_EMAIL.value == "password_reset_email"
+    assert password_reset_service.Operation.PASSWORD_RESET_EMAIL.value == "password_reset_email"
     record_password_reset_email.assert_called_once_with("failed")
     report_exception.assert_called_once_with(
         original_error,
-        operation=password_reset_router.Operation.PASSWORD_RESET_EMAIL,
-        failure_category=password_reset_router.FailureCategory.INTEGRATION_FAILURE,
+        operation=password_reset_service.Operation.PASSWORD_RESET_EMAIL,
+        failure_category=password_reset_service.FailureCategory.INTEGRATION_FAILURE,
     )
     diagnostics = [record for record in caplog.records if record.getMessage() == "password_reset_email_delivery_failed"]
     assert len(diagnostics) == 1
