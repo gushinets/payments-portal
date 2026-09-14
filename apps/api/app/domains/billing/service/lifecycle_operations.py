@@ -195,6 +195,9 @@ def apply_renewal_payment(db: Session, command: ApplyRenewalPaymentCommand) -> S
     subscription = get_subscription_by_id(db, command.subscription_id, for_update=True)
     if subscription is None:
         raise SubscriptionLifecycleError("subscription_not_found")
+    existing_event = _event_for_key(db, command.operation_idempotency_key)
+    if existing_event:
+        return _subscription_for_event(db, existing_event)
     order, _, _ = _verify_renewal_context(db, subscription=subscription, command=command)
     order_plan = _find_plan_for_order(db, order)
     if order_plan.id != subscription.plan_id or not _scope_matches(subscription, order_plan):
@@ -250,6 +253,9 @@ def apply_provider_subscription_state(db: Session, command: ApplyProviderSubscri
     subscription = get_subscription_by_id(db, command.subscription_id, for_update=True)
     if subscription is None:
         raise SubscriptionLifecycleError("subscription_not_found")
+    existing_event = _event_for_key(db, command.operation_idempotency_key)
+    if existing_event:
+        return _subscription_for_event(db, existing_event)
     previous = subscription.status
     status = subscription_status_from_provider_state(command.provider_state)
     ensure_subscription_status_transition(previous, status)
@@ -275,6 +281,9 @@ def request_cancellation(db: Session, command: RequestCancellationCommand) -> Su
     subscription = get_subscription_by_id(db, command.subscription_id, for_update=True)
     if subscription is None:
         raise SubscriptionLifecycleError("subscription_not_found")
+    existing_event = _event_for_key(db, command.operation_idempotency_key)
+    if existing_event:
+        return _subscription_for_event(db, existing_event)
     if subscription.status not in {
         SubscriptionStatus.TRIALING,
         SubscriptionStatus.ACTIVE,
@@ -302,6 +311,9 @@ def apply_refund(db: Session, command: ApplyRefundCommand) -> Subscription:
     refund = get_refund_by_id(db, command.refund_id, for_update=True)
     if order is None or refund is None or refund.order_id != order.id:
         raise SubscriptionLifecycleError("refund_context_missing")
+    existing_event = _event_for_key(db, command.operation_idempotency_key)
+    if existing_event:
+        return _subscription_for_event(db, existing_event)
     if refund.amount_minor != command.amount_minor:
         raise SubscriptionLifecycleError("refund_amount_mismatch")
     if refund.status != RefundStatus.SUCCEEDED:
