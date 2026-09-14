@@ -274,6 +274,36 @@ def test_active_domain_presentation_rejects_persistence_orchestration(tmp_path: 
     )
 
 
+def test_active_domain_presentation_assignment_router_alias_keeps_boundary(
+    tmp_path: Path,
+) -> None:
+    relative = "apps/api/app/domains/identity/http_api.py"
+    write_module(
+        tmp_path,
+        relative,
+        "from fastapi import APIRouter\n"
+        "from sqlalchemy.orm import Session\n"
+        "from app.infrastructure.queries import identity\n\n"
+        "RouterFactory = APIRouter\n"
+        "router = RouterFactory()\n\n"
+        "def list_users(db: Session) -> object:\n"
+        "    return db.query(object).all()\n",
+    )
+
+    errors = check_python_boundaries(tmp_path)
+
+    assert any(
+        error.startswith(f"{relative}:3 imports app.infrastructure.queries")
+        and "HTTP Presentation persistence boundary" in error
+        for error in errors
+    )
+    assert any(
+        error.startswith(f"{relative}:9 calls SQLAlchemy Session.query()")
+        and "active domain Presentation" in error
+        for error in errors
+    )
+
+
 def test_http_dependencies_rejects_persistence_orchestration_without_api_router(tmp_path: Path) -> None:
     relative = "apps/api/app/http_dependencies.py"
     write_module(

@@ -1113,6 +1113,15 @@ def _owns_fastapi_api_router(tree: ast.AST) -> bool:
                 elif alias.name == "fastapi.routing":
                     factories.add(f"{alias.asname or 'fastapi.routing'}.APIRouter")
 
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+            and _dotted_python_name(node.value) in factories
+        ):
+            factories.add(node.targets[0].id)
+
     return any(
         isinstance(node, ast.Call) and _dotted_python_name(node.func) in factories
         for node in ast.walk(tree)
