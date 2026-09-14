@@ -12,19 +12,22 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.observability import record_checkout, traced
 from app.core.time import utc_now
-from app.domains.billing.enums import ProductAccessStatus
 from app.domains.identity.errors import (
     AutomaticRenewalNotPermittedError,
     MissingRequiredDocumentsError,
     ProviderCurrencyMismatchError,
 )
 from app.domains.identity.services.auth import (
+    AuthenticationResult,
     login_user,
     logout_session,
-    normalize_email,
-    normalize_region,
-    normalize_tenant_id,
+    normalize_email as normalize_email,
     register_user,
+)
+from app.domains.identity.services.account import (
+    ProductStateResult,
+    load_account_session,
+    load_payment_status,
 )
 from app.domains.identity.services.checkout import (
     CheckoutIntentRequest,
@@ -43,25 +46,6 @@ from app.domains.legal.service import (
     present_required_document,
 )
 from app.http_dependencies import get_current_session, get_payment_provider_registry
-from app.infrastructure.queries.identity import get_user_by_normalized_email
-from app.infrastructure.queries.orders import (
-    get_latest_order_for_user_entrypoint,
-    get_order_by_id,
-    get_order_by_user_and_provider_invoice_id,
-    get_order_item,
-)
-from app.infrastructure.queries.payments import (
-    get_latest_payment_for_order,
-    get_latest_payment_for_order_with_statuses,
-)
-from app.infrastructure.queries.plans import get_plan_by_id
-from app.infrastructure.queries.products import get_product_by_code
-from app.infrastructure.queries.products import (
-    get_bundle_by_code,
-    get_bundle_by_id,
-    get_product_by_id,
-)
-from app.infrastructure.queries.subscriptions import get_active_entitlement_for_scope
 from app.models import (
     AuthSession,
     CheckoutSession,
@@ -71,8 +55,6 @@ from app.models import (
     OrderItem,
     OrderItemType,
     OrderStatus,
-    Payment,
-    PaymentStatus,
     SubscriptionRenewalMode,
     SubscriptionScopeType,
     User,
@@ -83,21 +65,6 @@ from app.payment_providers.registry import PaymentProviderRegistry
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 logger = logging.getLogger(__name__)
-
-PRODUCT_DEFAULTS = {
-    "document-summary": {
-        "plan_code": "document-summary-pro",
-        "plan_name": "Document Summary Pro",
-        "price_amount_minor": 99000,
-        "trial_days": 7,
-    },
-    "prompt-optimizer": {
-        "plan_code": "prompt-optimizer-pro",
-        "plan_name": "Prompt Optimizer Pro",
-        "price_amount_minor": 99000,
-        "trial_days": 7,
-    },
-}
 
 
 class RegisterRequest(BaseModel):
@@ -116,88 +83,27 @@ class LoginRequest(BaseModel):
     password: str = Field(min_length=8, max_length=128)
 
 
-def present_user(user: User) -> dict:
+def present_user(result: AuthenticationResult) -> dict:
     return {
-        "tenant_id": user.tenant_id,
-        "region": user.region,
-        "user_id": str(user.id),
-        "email": user.email,
+        "tenant_id": result.tenant_id,
+        "region": result.region,
+        "user_id": str(result.user_id),
+        "email": result.email,
     }
 
 
 def present_product_state(
-    db: Session,
-    *,
-    user: User,
-    product_code: str,
-    order: Order | None = None,
-    payment: Payment | None = None,
+    result: ProductStateResult,
 ) -> dict:
-    now = utc_now()
-    product = get_product_by_code(db, tenant_id=user.tenant_id, code=product_code)
-    bundle = get_bundle_by_code(db, tenant_id=user.tenant_id, code=product_code) if product is None else None
-    default_plan = PRODUCT_DEFAULTS.get(product_code, {}) if product is not None else {}
-    if product is not None:
-        scope_type = SubscriptionScopeType.PRODUCT
-    elif bundle is not None:
-        scope_type = SubscriptionScopeType.BUNDLE
-    elif product_code == "all-access":
-        scope_type = SubscriptionScopeType.ALL_ACCESS
-    else:
-        scope_type = None
-    if scope_type is not None and order is None:
-        order = get_latest_order_for_user_entrypoint(
-            db,
-            tenant_id=user.tenant_id,
-            region=user.region,
-            user_id=user.id,
-            product_id=product.id if product is not None else None,
-            bundle_id=bundle.id if bundle is not None else None,
-            scope_type=scope_type,
-            entrypoint_code=product_code,
-        )
-    entitlement = None
-    if scope_type is not None:
-        entitlement = get_active_entitlement_for_scope(
-            db,
-            tenant_id=user.tenant_id,
-            region=user.region,
-            user_id=user.id,
-            scope_type=scope_type,
-            product_id=product.id if product is not None else None,
-            bundle_id=bundle.id if bundle is not None else None,
-            now=now,
-        )
-    if entitlement is not None:
-        if order is None and entitlement.order_id is not None:
-            order = get_order_by_id(db, entitlement.order_id)
-        payment = payment or (get_latest_payment_for_order(db, order.id) if order is not None else None)
-        status = ProductAccessStatus.ACTIVE.value
-        starts_at = entitlement.valid_from
-        expires_at = entitlement.valid_until
-    else:
-        starts_at = order.created_at if order is not None else None
-        expires_at = None
-        pending_order_statuses = {OrderStatus.CREATED, OrderStatus.PENDING_PAYMENT}
-        status = (
-            ProductAccessStatus.PENDING.value
-            if order is not None and order.status in pending_order_statuses
-            else ProductAccessStatus.INACTIVE.value
-        )
-    plan = None
-    if entitlement is not None:
-        plan = get_plan_by_id(db, entitlement.plan_id)
-    elif order is not None and order.plan_id is not None:
-        plan = get_plan_by_id(db, order.plan_id)
     return {
-        "product_code": product_code,
-        "plan_code": plan.code if plan is not None else default_plan.get("plan_code"),
-        "plan_name": plan.name if plan is not None else default_plan.get("plan_name"),
-        "invoice_id": order.provider_invoice_id if order else None,
-        "transaction_id": payment.provider_payment_id if payment else None,
-        "status": status,
-        "starts_at": starts_at.isoformat() if starts_at else None,
-        "expires_at": expires_at.isoformat() if expires_at else None,
+        "product_code": result.product_code,
+        "plan_code": result.plan_code,
+        "plan_name": result.plan_name,
+        "invoice_id": result.invoice_id,
+        "transaction_id": result.transaction_id,
+        "status": result.status.value,
+        "starts_at": result.starts_at.isoformat() if result.starts_at else None,
+        "expires_at": result.expires_at.isoformat() if result.expires_at else None,
     }
 
 
@@ -222,7 +128,7 @@ def register(
     return {
         "status": "registered",
         "token": result.token,
-        "user": present_user(result.user),
+        "user": present_user(result),
     }
 
 
@@ -245,7 +151,7 @@ def login(
     return {
         "status": "authenticated",
         "token": result.token,
-        "user": present_user(result.user),
+        "user": present_user(result),
     }
 
 
@@ -256,15 +162,17 @@ def get_session(
     product: str | None = None,
 ):
     user, _ = current
-
-    product_state = None
-    if product:
-        product_state = present_product_state(db, user=user, product_code=product)
+    result = load_account_session(db, user=user, product_code=product)
 
     return {
         "authenticated": True,
-        "user": present_user(user),
-        "product_state": product_state,
+        "user": {
+            "tenant_id": result.tenant_id,
+            "region": result.region,
+            "user_id": str(result.user_id),
+            "email": result.email,
+        },
+        "product_state": present_product_state(result.product_state) if result.product_state else None,
     }
 
 
@@ -276,81 +184,42 @@ def get_payment_status(
     tenant_id: Annotated[str, Query()] = DEFAULT_TENANT_ID,
     region: Annotated[str, Query()] = DEFAULT_REGION,
 ):
-    normalized_email = normalize_email(str(email))
-    user = get_user_by_normalized_email(
+    result = load_payment_status(
         db,
-        tenant_id=normalize_tenant_id(tenant_id),
-        region=normalize_region(region),
-        email_normalized=normalized_email,
+        invoice_id=invoice_id,
+        email=str(email),
+        tenant_id=tenant_id,
+        region=region,
     )
-    if user is None:
-        raise HTTPException(status_code=404, detail="payment_not_found")
-
-    order = get_order_by_user_and_provider_invoice_id(
-        db,
-        user_id=user.id,
-        provider_invoice_id=invoice_id,
-    )
-    if order is None:
-        raise HTTPException(status_code=404, detail="payment_not_found")
-    payment = None
-    if order.status == OrderStatus.CANCELED:
-        payment = get_latest_payment_for_order_with_statuses(
-            db,
-            order_id=order.id,
-            statuses=(
-                PaymentStatus.SUCCEEDED,
-                PaymentStatus.PARTIALLY_REFUNDED,
-                PaymentStatus.REFUNDED,
-            ),
-        )
-    payment = payment or get_latest_payment_for_order(db, order.id)
-
-    order_item = get_order_item(db, order.id)
-    product_code = order_item.product_code_snapshot if order_item else None
-    if product_code is None and order_item is not None and order_item.product_id is not None:
-        product = get_product_by_id(db, order_item.product_id)
-        product_code = product.code if product is not None else None
-    elif product_code is None and order_item is not None and order_item.bundle_id is not None:
-        bundle = get_bundle_by_id(db, order_item.bundle_id)
-        product_code = bundle.code if bundle is not None else None
-    elif product_code is None and order_item is not None and order_item.item_type == OrderItemType.ALL_ACCESS_PLAN:
-        product_code = "all-access"
-    if product_code is None:
+    if result is None:
         raise HTTPException(status_code=404, detail="payment_not_found")
 
     return {
-        "tenant_id": user.tenant_id,
-        "region": user.region,
-        "user_id": str(user.id),
-        "email": normalized_email,
-        "product_state": present_product_state(
-            db,
-            user=user,
-            product_code=product_code,
-            order=order,
-            payment=payment,
-        ),
+        "tenant_id": result.tenant_id,
+        "region": result.region,
+        "user_id": str(result.user_id),
+        "email": result.email,
+        "product_state": present_product_state(result.product_state),
         "order": {
-            "order_id": str(order.id),
-            "order_number": order.order_number,
-            "status": order.status,
-            "amount_minor": order.amount_minor,
-            "currency": order.currency,
-            "paid_at": order.paid_at.isoformat() if order.paid_at else None,
-            "failed_at": order.failed_at.isoformat() if order.failed_at else None,
+            "order_id": str(result.order.order_id),
+            "order_number": result.order.order_number,
+            "status": result.order.status,
+            "amount_minor": result.order.amount_minor,
+            "currency": result.order.currency,
+            "paid_at": result.order.paid_at.isoformat() if result.order.paid_at else None,
+            "failed_at": result.order.failed_at.isoformat() if result.order.failed_at else None,
         },
         "payment": {
-            "payment_id": str(payment.id),
-            "status": payment.status,
-            "provider_payment_id": payment.provider_payment_id,
-            "amount_minor": payment.amount_minor,
-            "currency": payment.currency,
-            "captured_at": payment.captured_at.isoformat() if payment.captured_at else None,
-            "failed_at": payment.failed_at.isoformat() if payment.failed_at else None,
-            "refunded_amount_minor": payment.refunded_amount_minor,
+            "payment_id": str(result.payment.payment_id),
+            "status": result.payment.status,
+            "provider_payment_id": result.payment.provider_payment_id,
+            "amount_minor": result.payment.amount_minor,
+            "currency": result.payment.currency,
+            "captured_at": result.payment.captured_at.isoformat() if result.payment.captured_at else None,
+            "failed_at": result.payment.failed_at.isoformat() if result.payment.failed_at else None,
+            "refunded_amount_minor": result.payment.refunded_amount_minor,
         }
-        if payment is not None
+        if result.payment is not None
         else None,
     }
 

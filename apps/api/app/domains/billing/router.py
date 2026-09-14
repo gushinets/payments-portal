@@ -4,31 +4,24 @@ import uuid
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.time import utc_now
+from app.domains.billing.service.account import (
+    AccountSubscriptionResult,
+    get_account_subscription_result,
+    list_account_subscription_results,
+)
+from app.http_dependencies import get_current_session
 from app.models import (
     AuthSession,
-    Entitlement,
     EntitlementStatus,
-    Plan,
-    Subscription,
     SubscriptionRenewalMode,
     SubscriptionScopeType,
     SubscriptionStatus,
     User,
-)
-from app.http_dependencies import get_current_session
-from app.infrastructure.queries.plans import get_plan_by_id, list_plans_by_ids
-from app.infrastructure.queries.subscriptions import (
-    get_account_subscription,
-    get_relevant_entitlement_for_subscription,
-    list_relevant_entitlements_for_subscriptions,
-    list_account_subscriptions,
-    list_current_bundle_product_ids,
 )
 
 router = APIRouter(prefix="/api/account", tags=["account"])
@@ -79,69 +72,38 @@ class AccountSubscriptionsResponse(BaseModel):
     subscriptions: list[AccountSubscriptionResponse]
 
 
-def present_loaded_account_subscription(
-    *,
-    subscription: Subscription,
-    plan: Plan,
-    entitlement: Entitlement | None,
-    included_product_ids: list[uuid.UUID] | None = None,
+def present_account_subscription(
+    result: AccountSubscriptionResult,
 ) -> AccountSubscriptionResponse:
     return AccountSubscriptionResponse(
-        subscription_id=subscription.id,
+        subscription_id=result.subscription_id,
         plan=AccountSubscriptionPlanResponse(
-            plan_id=plan.id,
-            code=plan.code,
-            name=plan.name,
-            billing_period=plan.billing_period,
+            plan_id=result.plan_id,
+            code=result.plan_code,
+            name=result.plan_name,
+            billing_period=result.plan_billing_period,
         ),
         scope=AccountSubscriptionScopeResponse(
-            scope_type=subscription.scope_type,
-            product_id=subscription.product_id,
-            bundle_id=subscription.bundle_id,
-            included_product_ids=included_product_ids or [],
+            scope_type=result.scope_type,
+            product_id=result.product_id,
+            bundle_id=result.bundle_id,
+            included_product_ids=list(result.included_product_ids),
         ),
-        status=subscription.status,
-        renewal_mode=subscription.renewal_mode,
+        status=result.status,
+        renewal_mode=result.renewal_mode,
         current_period=AccountSubscriptionCurrentPeriodResponse(
-            starts_at=subscription.current_period_start,
-            ends_at=subscription.current_period_end,
+            starts_at=result.current_period_start,
+            ends_at=result.current_period_end,
         ),
         cancellation=AccountSubscriptionCancellationResponse(
-            cancel_requested_at=subscription.cancel_requested_at,
-            canceled_at=subscription.canceled_at,
+            cancel_requested_at=result.cancel_requested_at,
+            canceled_at=result.canceled_at,
         ),
         entitlement_validity=AccountSubscriptionEntitlementValidityResponse(
-            status=(entitlement.status if entitlement is not None else None),
-            valid_from=entitlement.valid_from if entitlement is not None else None,
-            valid_until=entitlement.valid_until if entitlement is not None else None,
+            status=result.entitlement_status,
+            valid_from=result.entitlement_valid_from,
+            valid_until=result.entitlement_valid_until,
         ),
-    )
-
-
-def present_account_subscription(
-    db: Session,
-    *,
-    subscription: Subscription,
-    plan: Plan | None = None,
-    entitlement: Entitlement | None = None,
-) -> AccountSubscriptionResponse:
-    plan = plan or get_plan_by_id(db, subscription.plan_id)
-    if plan is None:
-        raise HTTPException(status_code=500, detail={"code": "subscription_plan_missing"})
-
-    now = utc_now()
-    entitlement = entitlement or get_relevant_entitlement_for_subscription(db, subscription.id, now=now)
-    included_product_ids_by_bundle = list_current_bundle_product_ids(
-        db,
-        tenant_id=subscription.tenant_id,
-        bundle_ids={subscription.bundle_id} if subscription.bundle_id is not None else set(),
-        now=now,
-    )
-    return present_loaded_account_subscription(
-        subscription=subscription,
-        plan=plan,
-        entitlement=entitlement,
-        included_product_ids=included_product_ids_by_bundle.get(subscription.bundle_id, []),
     )
 
 
@@ -151,45 +113,8 @@ def list_subscriptions(
     db: Annotated[Session, Depends(get_db)],
 ) -> AccountSubscriptionsResponse:
     user, _ = current
-    subscriptions = list_account_subscriptions(
-        db,
-        tenant_id=user.tenant_id,
-        region=user.region,
-        user_id=user.id,
-    )
-    plan_ids = {subscription.plan_id for subscription in subscriptions}
-    plans_by_id = {
-        plan.id: plan for plan in list_plans_by_ids(db, tenant_id=user.tenant_id, region=user.region, plan_ids=plan_ids)
-    }
-    now = utc_now()
-    entitlements_by_subscription_id = list_relevant_entitlements_for_subscriptions(
-        db,
-        tenant_id=user.tenant_id,
-        region=user.region,
-        user_id=user.id,
-        subscription_ids={subscription.id for subscription in subscriptions},
-        now=now,
-    )
-    included_product_ids_by_bundle = list_current_bundle_product_ids(
-        db,
-        tenant_id=user.tenant_id,
-        bundle_ids={subscription.bundle_id for subscription in subscriptions if subscription.bundle_id is not None},
-        now=now,
-    )
-    presented_subscriptions: list[AccountSubscriptionResponse] = []
-    for subscription in subscriptions:
-        plan = plans_by_id.get(subscription.plan_id)
-        if plan is None:
-            raise HTTPException(status_code=500, detail={"code": "subscription_plan_missing"})
-        presented_subscriptions.append(
-            present_loaded_account_subscription(
-                subscription=subscription,
-                plan=plan,
-                entitlement=entitlements_by_subscription_id.get(subscription.id),
-                included_product_ids=included_product_ids_by_bundle.get(subscription.bundle_id, []),
-            )
-        )
-    return AccountSubscriptionsResponse(subscriptions=presented_subscriptions)
+    results = list_account_subscription_results(db, user=user)
+    return AccountSubscriptionsResponse(subscriptions=[present_account_subscription(result) for result in results])
 
 
 @router.get("/subscriptions/{subscription_id}", response_model=AccountSubscriptionResponse)
@@ -199,14 +124,9 @@ def get_subscription(
     db: Annotated[Session, Depends(get_db)],
 ) -> AccountSubscriptionResponse:
     user, _ = current
-    subscription = get_account_subscription(
+    result = get_account_subscription_result(
         db,
-        tenant_id=user.tenant_id,
-        region=user.region,
-        user_id=user.id,
+        user=user,
         subscription_id=subscription_id,
     )
-    if subscription is None:
-        raise HTTPException(status_code=404, detail={"code": "subscription_not_found"})
-
-    return present_account_subscription(db, subscription=subscription)
+    return present_account_subscription(result)

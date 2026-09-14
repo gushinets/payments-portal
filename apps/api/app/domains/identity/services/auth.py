@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import secrets
+import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
@@ -29,8 +30,11 @@ SESSION_TTL_DAYS = 30
 
 @dataclass(frozen=True)
 class AuthenticationResult:
-    user: User
     token: str
+    user_id: uuid.UUID
+    tenant_id: str
+    region: str
+    email: str
 
 
 def as_utc(value: datetime) -> datetime:
@@ -56,6 +60,16 @@ def make_session_token() -> tuple[str, str, datetime]:
     token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
     expires_at = utc_now() + timedelta(days=SESSION_TTL_DAYS)
     return token, token_hash, expires_at
+
+
+def _authentication_result(*, user: User, token: str) -> AuthenticationResult:
+    return AuthenticationResult(
+        token=token,
+        user_id=user.id,
+        tenant_id=user.tenant_id,
+        region=user.region,
+        email=user.email,
+    )
 
 
 def authenticate_session(db: Session, *, token: str) -> tuple[User, AuthSession]:
@@ -128,8 +142,9 @@ def register_user(
         user_agent=user_agent,
     )
     db.add(auth_session)
+    result = _authentication_result(user=user, token=token)
     db.commit()
-    return AuthenticationResult(user=user, token=token)
+    return result
 
 
 def login_user(
@@ -164,8 +179,9 @@ def login_user(
         user_agent=user_agent,
     )
     db.add(auth_session)
+    result = _authentication_result(user=user, token=token)
     db.commit()
-    return AuthenticationResult(user=user, token=token)
+    return result
 
 
 def logout_session(db: Session, *, auth_session: AuthSession) -> None:

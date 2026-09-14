@@ -3,14 +3,13 @@ from __future__ import annotations
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.time import utc_now
+from app.domains.billing.service.catalog import CatalogOfferResult, list_catalog_offers
 from app.domains.identity.session import DEFAULT_REGION, DEFAULT_TENANT_ID
-from app.infrastructure.queries.products import list_sellable_product_offers
 from app.models import BillingPeriod, SubscriptionRenewalMode
 
 router = APIRouter(prefix="/api/catalog", tags=["catalog"])
@@ -39,44 +38,30 @@ class CatalogProductsResponse(BaseModel):
     products: list[CatalogProductResponse]
 
 
+def present_catalog_offer(result: CatalogOfferResult) -> CatalogProductResponse:
+    return CatalogProductResponse(
+        product_id=result.product_id,
+        code=result.product_code,
+        name=result.product_name,
+        description=result.product_description,
+        plan=CatalogPlanResponse(
+            plan_id=result.plan_id,
+            code=result.plan_code,
+            name=result.plan_name,
+            price_amount_minor=result.price_amount_minor,
+            currency=result.currency,
+            billing_period=result.billing_period,
+            renewal_mode=result.renewal_mode,
+            trial_days=result.trial_days,
+        ),
+    )
+
+
 @router.get("/products", response_model=CatalogProductsResponse)
 def list_catalog_products(db: Annotated[Session, Depends(get_db)]) -> CatalogProductsResponse:
-    offers = list_sellable_product_offers(
+    results = list_catalog_offers(
         db,
         tenant_id=DEFAULT_TENANT_ID,
         region=DEFAULT_REGION,
-        now=utc_now(),
     )
-    seen_product_ids: set[uuid.UUID] = set()
-    for product, _plan in offers:
-        if product.id in seen_product_ids:
-            raise HTTPException(
-                status_code=500,
-                detail={
-                    "code": "ambiguous_catalog_product_offer",
-                    "product_code": product.code,
-                },
-            )
-        seen_product_ids.add(product.id)
-
-    return CatalogProductsResponse(
-        products=[
-            CatalogProductResponse(
-                product_id=product.id,
-                code=product.code,
-                name=product.name,
-                description=product.description,
-                plan=CatalogPlanResponse(
-                    plan_id=plan.id,
-                    code=plan.code,
-                    name=plan.name,
-                    price_amount_minor=plan.price_amount_minor,
-                    currency=plan.currency,
-                    billing_period=plan.billing_period,
-                    renewal_mode=plan.renewal_mode,
-                    trial_days=plan.trial_days,
-                ),
-            )
-            for product, plan in offers
-        ]
-    )
+    return CatalogProductsResponse(products=[present_catalog_offer(result) for result in results])

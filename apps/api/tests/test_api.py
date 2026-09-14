@@ -18,7 +18,6 @@ from apps.api.tests.support.settings import override_settings
 configure_api_test_environment()
 
 import pytest  # noqa: E402
-from fastapi import HTTPException  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor  # noqa: E402
 from opentelemetry.sdk.trace import TracerProvider  # noqa: E402
@@ -30,10 +29,12 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware  # noqa: E40
 
 from app.domains.billing.router import get_subscription as get_account_subscription_route  # noqa: E402
 from app.domains.billing.router import list_subscriptions as list_account_subscriptions_route  # noqa: E402
+from app.domains.identity.router import present_user  # noqa: E402
 import app.domains.identity.password_reset as password_reset_router  # noqa: E402
 import app.domains.identity.services.auth as identity_auth_service  # noqa: E402
 from app.core.observability import JsonFormatter  # noqa: E402
 from app.database import Base, SessionLocal, engine  # noqa: E402
+from app.http_dependencies import get_current_session  # noqa: E402
 from app.infrastructure.persistence.password_reset import (  # noqa: E402
     prune_expired_password_reset_rate_limits,
     prune_expired_password_reset_tokens,
@@ -551,6 +552,45 @@ def register_test_user(*, email: str, tenant_id: str = "anytoolai", region: str 
     )
     assert register_response.status_code == 200, register_response.text
     return register_response.json()["token"]
+
+
+def test_register_and_login_results_are_presentable_after_session_close() -> None:
+    email = "auth-result-snapshot@example.com"
+    with SessionLocal() as db:
+        registration = identity_auth_service.register_user(
+            db,
+            tenant_id="anytoolai",
+            region="ru",
+            email=email,
+            password="very-secret-password",
+            personal_consent=True,
+            offer_consent=True,
+            client_ip=None,
+            user_agent=None,
+        )
+
+    registration_user = present_user(registration)
+
+    with SessionLocal() as db:
+        authentication = identity_auth_service.login_user(
+            db,
+            tenant_id="anytoolai",
+            region="ru",
+            email=email,
+            password="very-secret-password",
+            client_ip=None,
+            user_agent=None,
+        )
+
+    authentication_user = present_user(authentication)
+
+    assert registration_user == authentication_user
+    assert registration_user == {
+        "tenant_id": "anytoolai",
+        "region": "ru",
+        "user_id": str(registration.user_id),
+        "email": email,
+    }
 
 
 def add_active_entitlement_for_plan(db, *, user: User, plan: Plan) -> Entitlement:
@@ -3657,6 +3697,13 @@ def test_payment_status_projects_product_state_from_final_and_pending_orders() -
     assert refunded_payload["payment"]["status"] == "refunded"
 
 
+def test_payment_status_missing_result_preserves_legacy_error() -> None:
+    response = client.get("/api/auth/payment-status?invoice_id=missing-invoice&email=missing@example.com")
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "payment_not_found"}
+
+
 def test_signed_check_after_failed_attempt_allows_retry() -> None:
     require_signed_cloudpayments_webhooks_for_test()
     object.__setattr__(settings, "cloudpayments_api_secret", "test-secret")
@@ -6400,7 +6447,7 @@ def test_account_subscription_relevant_entitlement_precedence_is_unchanged() -> 
 def test_account_subscription_list_missing_plan_keeps_existing_error() -> None:
     now = datetime.now(timezone.utc)
     with SessionLocal() as db:
-        user, session, plan = _add_account_subscription_user(
+        user, _session, plan = _add_account_subscription_user(
             db,
             email="account-subscription-missing-plan@example.com",
         )
@@ -6413,16 +6460,23 @@ def test_account_subscription_list_missing_plan_keeps_existing_error() -> None:
         )
         db.commit()
         user_id = user.id
-        session_id = session.id
 
-    with SessionLocal() as db:
-        user = db.get(User, user_id)
-        session = db.get(AuthSession, session_id)
-        with pytest.raises(HTTPException) as exc_info:
-            list_account_subscriptions_route(current=(user, session), db=db)
+    current_user = User(
+        id=user_id,
+        tenant_id="anytoolai",
+        region="ru",
+        email="account-subscription-missing-plan@example.com",
+        email_normalized="account-subscription-missing-plan@example.com",
+        status=UserStatus.ACTIVE,
+    )
+    app.dependency_overrides[get_current_session] = lambda: (current_user, AuthSession())
+    try:
+        response = client.get("/api/account/subscriptions")
+    finally:
+        app.dependency_overrides.pop(get_current_session, None)
 
-    assert exc_info.value.status_code == 500
-    assert exc_info.value.detail == {"code": "subscription_plan_missing"}
+    assert response.status_code == 500
+    assert response.json() == {"detail": {"code": "subscription_plan_missing"}}
 
 
 @pytest.mark.parametrize("subscription_count", (1, 20))

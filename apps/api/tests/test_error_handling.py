@@ -11,6 +11,11 @@ from fastapi.testclient import TestClient
 from starlette.requests import Request
 
 from app.core.errors import AppError
+from app.domains.billing.errors import (
+    AmbiguousCatalogProductOfferError,
+    SubscriptionNotFoundError,
+    SubscriptionPlanMissingError,
+)
 from app.domains.identity.errors import (
     AutomaticRenewalNotPermittedError,
     CheckoutError,
@@ -83,7 +88,7 @@ def test_checkout_app_errors_use_structured_code(
     report_exception.assert_not_called()
 
 
-def test_missing_documents_are_the_only_safe_details_exposed() -> None:
+def test_missing_documents_expose_only_allowlisted_safe_details() -> None:
     error = MissingRequiredDocumentsError([{"document_version_id": "document-id"}])
     error.details_safe["internal"] = "must not be exposed"
     with patch("app.http_errors.report_exception") as report_exception:
@@ -100,6 +105,59 @@ def test_missing_documents_are_the_only_safe_details_exposed() -> None:
         }
     }
     report_exception.assert_not_called()
+
+
+def test_expected_billing_not_found_error_is_mapped_without_reporting() -> None:
+    error = SubscriptionNotFoundError()
+    with patch("app.http_errors.report_exception") as report_exception:
+        response = app_error_handler(make_request(), error)
+
+    assert response.status_code == 404
+    assert json.loads(response.body) == {"detail": {"code": "subscription_not_found"}}
+    report_exception.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("error", "detail"),
+    [
+        (
+            SubscriptionPlanMissingError(),
+            {"code": "subscription_plan_missing"},
+        ),
+        (
+            AmbiguousCatalogProductOfferError(product_code="document-summary"),
+            {
+                "code": "ambiguous_catalog_product_offer",
+                "product_code": "document-summary",
+            },
+        ),
+    ],
+)
+def test_mapped_internal_billing_errors_preserve_contract_and_are_reported(
+    error: AppError,
+    detail: dict[str, str],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    error.details_safe["internal"] = "must not be exposed"
+    with (
+        patch("app.http_errors.report_exception") as report_exception,
+        caplog.at_level(logging.ERROR, logger="payment_portal.http"),
+    ):
+        response = app_error_handler(make_request(), error)
+
+    diagnostics = [record for record in caplog.records if record.getMessage() == "http_internal_failure"]
+    assert response.status_code == 500
+    assert json.loads(response.body) == {"detail": detail}
+    assert len(diagnostics) == 1
+    assert diagnostics[0].structured["error_type"] == type(error).__name__
+    report_exception.assert_called_once_with(
+        error,
+        operation=Operation.HTTP_REQUEST,
+        method="POST",
+        route="/api/auth/checkout-intent",
+        error_code=None,
+        failure_location=None,
+    )
 
 
 def test_unmapped_app_errors_fail_closed_with_generic_detail() -> None:
