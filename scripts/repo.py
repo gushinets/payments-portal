@@ -1284,6 +1284,25 @@ class _PresentationPersistenceOrchestrationVisitor(
     )
 
 
+class _ApplicationQueryCompositionVisitor(_PersistenceTransactionOwnershipVisitor):
+    forbidden_methods = frozenset({"execute", "get", "query", "scalar", "scalars"})
+
+
+def _is_refactored_application_persistence_surface(
+    path_parts: tuple[str, ...],
+) -> bool:
+    """Identify active inward surfaces with established focused persistence helpers."""
+    return (
+        path_parts[:3] == ("domains", "identity", "services")
+        or path_parts == ("domains", "legal", "service.py")
+        or path_parts
+        in {
+            ("domains", "billing", "service", "account.py"),
+            ("domains", "billing", "service", "catalog.py"),
+        }
+    )
+
+
 def check_persistence_transaction_ownership(root: Path = ROOT) -> list[str]:
     app_root = root / "apps/api/app"
     focused_roots = (
@@ -1341,6 +1360,9 @@ def check_python_boundaries(root: Path = ROOT) -> list[str]:
         is_payment_provider_registry = path_parts == (
             "payment_providers",
             "registry.py",
+        )
+        is_refactored_application_persistence = (
+            _is_refactored_application_persistence_surface(path_parts)
         )
         is_domain_service_or_model = in_domains and path.name in {"service.py", "models.py"}
         is_domain_service_tree = (
@@ -1411,6 +1433,16 @@ def check_python_boundaries(root: Path = ROOT) -> list[str]:
                         lambda target: module_matches(target, "fastapi")
                         or module_matches(target, "starlette"),
                         "keep FastAPI and Starlette dependencies in presentation modules",
+                    )
+                )
+            if is_refactored_application_persistence:
+                rules.append(
+                    (
+                        "refactored Application persistence boundary",
+                        lambda target: module_matches(target, "sqlalchemy")
+                        and target not in {"sqlalchemy.orm", "sqlalchemy.orm.Session"},
+                        "delegate SQLAlchemy query construction and storage mechanics to focused "
+                        "infrastructure capabilities",
                     )
                 )
             if is_active_domain_presentation or is_http_dependencies:
@@ -1493,6 +1525,21 @@ def check_python_boundaries(root: Path = ROOT) -> list[str]:
                     f"{relative}:{line} calls SQLAlchemy Session.{method}(); {owner} must "
                     "delegate persistence orchestration to an inward application/service use case "
                     "(see ARCHITECTURE.md)"
+                    for line, method in visitor.violations
+                )
+
+        if is_refactored_application_persistence:
+            direct_names, module_names = _sqlalchemy_session_symbols(tree)
+            if direct_names or module_names:
+                visitor = _ApplicationQueryCompositionVisitor(
+                    direct_names,
+                    module_names,
+                )
+                visitor.visit(tree)
+                errors.extend(
+                    f"{relative}:{line} calls SQLAlchemy Session.{method}(); refactored "
+                    "Application code must delegate query composition to focused infrastructure "
+                    "capabilities (see ARCHITECTURE.md)"
                     for line, method in visitor.violations
                 )
 

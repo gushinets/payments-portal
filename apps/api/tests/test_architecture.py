@@ -167,6 +167,70 @@ def test_domain_application_trees_reject_fastapi_and_starlette_dependencies(tmp_
     )
 
 
+@pytest.mark.parametrize(
+    "relative",
+    (
+        "apps/api/app/domains/identity/services/account.py",
+        "apps/api/app/domains/legal/service.py",
+        "apps/api/app/domains/billing/service/catalog.py",
+    ),
+)
+def test_refactored_application_surfaces_reject_direct_query_composition(
+    tmp_path: Path,
+    relative: str,
+) -> None:
+    write_module(
+        tmp_path,
+        relative,
+        "from sqlalchemy import select\n"
+        "from sqlalchemy.orm import Session\n\n"
+        "def load(db: Session) -> object:\n"
+        "    db.execute(select(object))\n"
+        "    db.get(object, 1)\n"
+        "    db.scalar(select(object))\n"
+        "    db.scalars(select(object))\n"
+        "    return db.query(object).first()\n",
+    )
+
+    errors = check_python_boundaries(tmp_path)
+
+    assert any(
+        error.startswith(f"{relative}:1 imports sqlalchemy") and "refactored Application persistence boundary" in error
+        for error in errors
+    )
+    for line, method in (
+        (5, "execute"),
+        (6, "get"),
+        (7, "scalar"),
+        (8, "scalars"),
+        (9, "query"),
+    ):
+        assert any(
+            error.startswith(f"{relative}:{line} calls SQLAlchemy Session.{method}()")
+            and "refactored Application code" in error
+            for error in errors
+        )
+
+
+def test_refactored_application_surfaces_allow_transaction_orchestration(
+    tmp_path: Path,
+) -> None:
+    write_module(
+        tmp_path,
+        "apps/api/app/domains/identity/services/auth.py",
+        "from sqlalchemy.orm import Session\n\n"
+        "def save(db: Session, entity: object) -> None:\n"
+        "    db.add(entity)\n"
+        "    db.flush()\n"
+        "    db.refresh(entity)\n"
+        "    db.commit()\n"
+        "    db.rollback()\n"
+        "    db.delete(entity)\n",
+    )
+
+    assert check_python_boundaries(tmp_path) == []
+
+
 def test_active_domain_presentation_rejects_persistence_orchestration(tmp_path: Path) -> None:
     relative = "apps/api/app/domains/identity/http_api.py"
     write_module(
@@ -174,7 +238,8 @@ def test_active_domain_presentation_rejects_persistence_orchestration(tmp_path: 
         relative,
         "from fastapi import APIRouter as Router\n"
         "from sqlalchemy.orm import Session\n"
-        "from app.infrastructure.queries import identity\n\n"
+        "from app.infrastructure.queries import identity\n"
+        "from app.infrastructure.persistence import password_reset\n\n"
         "api = Router()\n\n"
         "@api.get('/users')\n"
         "def list_users(db: Session) -> object:\n"
@@ -191,15 +256,20 @@ def test_active_domain_presentation_rejects_persistence_orchestration(tmp_path: 
         for error in errors
     )
     assert any(
-        error.startswith(f"{relative}:9 calls SQLAlchemy Session.add()") and "active domain Presentation" in error
+        error.startswith(f"{relative}:4 imports app.infrastructure.persistence")
+        and "HTTP Presentation persistence boundary" in error
         for error in errors
     )
     assert any(
-        error.startswith(f"{relative}:10 calls SQLAlchemy Session.commit()") and "active domain Presentation" in error
+        error.startswith(f"{relative}:10 calls SQLAlchemy Session.add()") and "active domain Presentation" in error
         for error in errors
     )
     assert any(
-        error.startswith(f"{relative}:11 calls SQLAlchemy Session.query()") and "active domain Presentation" in error
+        error.startswith(f"{relative}:11 calls SQLAlchemy Session.commit()") and "active domain Presentation" in error
+        for error in errors
+    )
+    assert any(
+        error.startswith(f"{relative}:12 calls SQLAlchemy Session.query()") and "active domain Presentation" in error
         for error in errors
     )
 
