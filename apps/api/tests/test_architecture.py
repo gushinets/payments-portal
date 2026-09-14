@@ -343,6 +343,52 @@ def test_persistence_transaction_guard_tracks_aliased_session_types(tmp_path: Pa
     ]
 
 
+def test_persistence_transaction_guard_tracks_unaliased_sqlalchemy_import(tmp_path: Path) -> None:
+    relative = "apps/api/app/infrastructure/queries/orders.py"
+    write_module(
+        tmp_path,
+        relative,
+        "import sqlalchemy\n\ndef persist(db: sqlalchemy.orm.Session) -> None:\n    db.commit()\n",
+    )
+
+    assert check_persistence_transaction_ownership(tmp_path) == [
+        f"{relative}:4 calls SQLAlchemy Session.commit(); focused persistence "
+        "helpers must not own or finalize the outer business transaction "
+        "(see ARCHITECTURE.md)"
+    ]
+
+
+def test_persistence_transaction_guard_tracks_simple_session_assignment(tmp_path: Path) -> None:
+    relative = "apps/api/app/infrastructure/queries/orders.py"
+    write_module(
+        tmp_path,
+        relative,
+        "from sqlalchemy.orm import Session\n\ndef persist(db: Session) -> None:\n    alias = db\n    alias.commit()\n",
+    )
+
+    assert check_persistence_transaction_ownership(tmp_path) == [
+        f"{relative}:5 calls SQLAlchemy Session.commit(); focused persistence "
+        "helpers must not own or finalize the outer business transaction "
+        "(see ARCHITECTURE.md)"
+    ]
+
+
+def test_persistence_transaction_guard_forgets_reassigned_session_alias(tmp_path: Path) -> None:
+    write_module(
+        tmp_path,
+        "apps/api/app/infrastructure/queries/orders.py",
+        "from sqlalchemy.orm import Session\n\n"
+        "class SomeOtherObject:\n"
+        "    def commit(self) -> None: ...\n\n"
+        "def persist(db: Session) -> None:\n"
+        "    alias = db\n"
+        "    alias = SomeOtherObject()\n"
+        "    alias.commit()\n",
+    )
+
+    assert check_persistence_transaction_ownership(tmp_path) == []
+
+
 def test_persistence_transaction_guard_allows_owned_database_mechanics(tmp_path: Path) -> None:
     write_module(
         tmp_path,

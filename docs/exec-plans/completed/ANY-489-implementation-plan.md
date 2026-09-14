@@ -1,5 +1,7 @@
 # ANY-489 — Establish Transaction Boundaries & Idempotency — Implementation Plan
 
+**Overall status:** `done`
+
 ## Summary
 
 ANY-489 is Step 6 of the ANY-407 architecture sequence. Its purpose is to make transaction ownership, commit/rollback responsibility, idempotency, retry, and concurrency semantics explicit and reusable without pulling Step 7–11 work forward.

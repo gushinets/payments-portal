@@ -1129,8 +1129,10 @@ def _sqlalchemy_session_symbols(tree: ast.AST) -> tuple[set[str], set[str]]:
         for alias in node.names:
             if alias.name == "sqlalchemy.orm":
                 module_names.add(alias.asname or "sqlalchemy.orm")
-            elif alias.name == "sqlalchemy" and alias.asname:
-                module_names.add(f"{alias.asname}.orm")
+            elif alias.name == "sqlalchemy":
+                module_names.add(
+                    f"{alias.asname}.orm" if alias.asname else "sqlalchemy.orm"
+                )
 
     return direct_names, module_names
 
@@ -1212,12 +1214,16 @@ class _PersistenceTransactionOwnershipVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_Assign(self, node: ast.Assign) -> None:
-        if isinstance(node.value, ast.Call) and self._is_session_reference(
-            node.value.func
-        ):
-            for target in node.targets:
-                if isinstance(target, ast.Name):
+        value_is_session = self._is_session_receiver(node.value) or (
+            isinstance(node.value, ast.Call)
+            and self._is_session_reference(node.value.func)
+        )
+        for target in node.targets:
+            if isinstance(target, ast.Name):
+                if value_is_session:
                     self.session_scopes[-1].add(target.id)
+                else:
+                    self.session_scopes[-1].discard(target.id)
         self.generic_visit(node)
 
     def visit_Call(self, node: ast.Call) -> None:
