@@ -31,6 +31,7 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware  # noqa: E40
 from app.domains.billing.router import get_subscription as get_account_subscription_route  # noqa: E402
 from app.domains.billing.router import list_subscriptions as list_account_subscriptions_route  # noqa: E402
 import app.domains.identity.password_reset as password_reset_router  # noqa: E402
+import app.domains.identity.router as identity_router  # noqa: E402
 from app.core.observability import JsonFormatter  # noqa: E402
 from app.database import Base, SessionLocal, engine  # noqa: E402
 from app.infrastructure.persistence.password_reset import (  # noqa: E402
@@ -5323,6 +5324,42 @@ def test_same_email_cannot_register_twice_in_same_region() -> None:
     assert first_response.status_code == 200
     assert second_response.status_code == 409
     assert second_response.json() == {"detail": {"code": "email_already_registered"}}
+
+
+def test_registration_failure_before_initial_session_rolls_back_and_allows_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = {
+        "region": "ru",
+        "email": "atomic-registration@example.com",
+        "password": "very-secret-password",
+        "personal_consent": True,
+        "offer_consent": True,
+    }
+
+    def fail_session_token_generation() -> tuple[str, str, datetime]:
+        raise RuntimeError("session token generation failed")
+
+    with monkeypatch.context() as context:
+        context.setattr(
+            identity_router,
+            "make_session_token",
+            fail_session_token_generation,
+        )
+        failed_response = client.post("/api/auth/register", json=payload)
+
+    assert failed_response.status_code == 500
+    with SessionLocal() as db:
+        assert db.query(User).filter(User.email_normalized == payload["email"]).count() == 0
+        assert db.query(AuthSession).count() == 0
+
+    retry_response = client.post("/api/auth/register", json=payload)
+
+    assert retry_response.status_code == 200
+    with SessionLocal() as db:
+        user = db.query(User).filter(User.email_normalized == payload["email"]).one()
+        session = db.query(AuthSession).one()
+        assert session.user_id == user.id
 
 
 def test_selected_auth_failures_use_structured_error_codes() -> None:
