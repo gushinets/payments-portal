@@ -298,8 +298,7 @@ def test_active_domain_presentation_assignment_router_alias_keeps_boundary(
         for error in errors
     )
     assert any(
-        error.startswith(f"{relative}:9 calls SQLAlchemy Session.query()")
-        and "active domain Presentation" in error
+        error.startswith(f"{relative}:9 calls SQLAlchemy Session.query()") and "active domain Presentation" in error
         for error in errors
     )
 
