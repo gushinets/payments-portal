@@ -352,7 +352,7 @@ A registration attempt cannot durably create only the user half of the operation
 
 ## Step 2 — Make Billing Transaction Ownership Explicit
 
-**Status:** `todo`
+**Status:** `done`
 
 ### Goal
 
@@ -484,7 +484,7 @@ No lifecycle decorator/helper decides whether to commit based on incidental `Ses
 
 ## Step 3 — Harden Same-Key Billing Concurrency
 
-**Status:** `todo`
+**Status:** `done`
 
 ### Goal
 
@@ -627,7 +627,7 @@ All identified same-key lifecycle races converge to one logical result and one d
 
 ## Step 4 — Guard Transaction Ownership at the Persistence Boundary
 
-**Status:** `todo`
+**Status:** `done`
 
 ### Goal
 
@@ -753,7 +753,7 @@ A future persistence helper cannot accidentally acquire business commit/rollback
 
 ## Step 5 — Document Transaction, Retry, and Idempotency Contracts
 
-**Status:** `todo`
+**Status:** `done`
 
 ### Goal
 
