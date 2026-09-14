@@ -1,7 +1,7 @@
 # Payment Portal Architecture
 
 Status: authoritative current-state map
-Last verified: 2026-09-13
+Last verified: 2026-09-14
 
 ## System boundary
 
@@ -109,10 +109,38 @@ session orchestration at this architecture stage. Simple `db.add(entity)`,
 `db.delete(entity)`, canonical ORM mutation, or equivalent enlistment does not
 require an artificial repository wrapper.
 
-Transaction ownership, commit and rollback policy, general flush policy,
-idempotency, retries and recovery, global lock ordering, outbox/inbox, and
-reconciliation remain responsibilities of ANY-407 Step 6. This persistence
-boundary does not redesign them.
+Application orchestration owns each outer business transaction and decides when
+to commit or roll it back. Focused query and persistence helpers may construct
+queries, lock rows, perform atomic DML, flush, interpret storage exceptions, and
+use a targeted nested savepoint. They do not start, commit, or roll back the
+outer business transaction. SQLAlchemy `Session` autobegin is a session/database
+mechanism and does not transfer logical transaction ownership to the first
+helper that happens to issue SQL. The repository architecture checker protects
+this boundary in `app.infrastructure.queries` and
+`app.infrastructure.persistence`.
+
+Current physical placement is transitional: a router, dependency, or CLI may
+still contain the application orchestration that finalizes a transaction. The
+logical ownership rules do not freeze those files as permanent layer
+boundaries, and later package or dependency-injection work may move them without
+changing the transaction contract.
+
+### Current transaction map
+
+| Operation | Current transaction owner and boundary |
+| --- | --- |
+| User registration | The registration application flow commits `User` and its initial `AuthSession` atomically. A pre-commit failure leaves neither durable. |
+| Login | The current login flow preserves its existing single local commit for login bookkeeping and the new `AuthSession`. |
+| Authenticated-request bookkeeping | `get_current_session()` currently commits `last_seen_at` before endpoint execution. This is a separate bookkeeping transaction; moving that responsibility or separating its FastAPI dependency belongs to later work. |
+| Logout | Authentication bookkeeping commits first through `get_current_session()`; the logout endpoint then deletes the session in a separate commit. The whole request is not one transaction. |
+| Legal acceptance | The current acceptance flow preserves its local atomic commit. Any preceding authenticated-request bookkeeping remains a separate transaction. |
+| Password-reset request | The current orchestration deliberately commits cleanup, IP rate-limit accounting, account rate-limit accounting, and reset-token creation as separate durable phases so a later failure does not erase already-consumed protection. |
+| Password-reset confirmation | Token claim, password replacement, outstanding-token invalidation, and active-session revocation commit atomically. |
+| Provider-neutral billing lifecycle | Lifecycle functions participate in the calling application operation's transaction and never finalize the outer transaction themselves. |
+| Scheduled subscription expiry | The CLI owns one explicit transaction. It validates persisted identities before transaction exit and emits committed/success diagnostics only after commit. |
+| Provider-account uniqueness recovery | The current checkout helper uses a nested savepoint to recover a concurrent unique insert; this is not a business commit. |
+| Checkout | Current checkout state and `prepare_checkout_action()` are local work before the final local commit. That preparation performs no network command and is not evidence that future external-command ordering is already implemented. |
+| CloudPayments webhook source | Its retained commit, rollback, and idempotency mechanics are legacy-only and are not the target transaction architecture or a normal-runtime path. |
 
 Retained CloudPayments and direct-provider persistence is transitional legacy
 expected to be physically decommissioned later. It is not the architectural

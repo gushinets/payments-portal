@@ -1,7 +1,7 @@
 # Billing Authority and Consistency
 
 Status: normative architecture
-Last verified: 2026-09-04
+Last verified: 2026-09-14
 
 This document expands the decision in
 [ADR 0004](decisions/0004-billing-authority-and-consistency.md). It preserves
@@ -107,6 +107,12 @@ to-external-billing migration or coexistence mechanism.
 - **Command:** an outbound request or intention. A successful call is not final
   billing-state authority, and the external command is not assumed to be
   idempotent.
+- **Confirmed success:** authoritative evidence establishes that the intended
+  external command effect occurred. It does not bypass the verified-fact and
+  local-entitlement rules.
+- **Confirmed failure:** authoritative evidence establishes that the intended
+  external command effect did not occur and is sufficient for the integration's
+  explicit failure policy.
 - **Authoritative fact:** a normalized fact backed by the owning billing source.
   An authenticated webhook payload is sufficient only when integration policy
   confirms that authenticity plus the integration's semantic completeness and
@@ -120,6 +126,9 @@ to-external-billing migration or coexistence mechanism.
 - **Unknown external outcome:** a command outcome that is neither confirmed
   success nor confirmed failure, including a timeout or lost response. It must
   be reconciled before another external command is considered.
+- **Ambiguous external outcome:** conflicting evidence or multiple plausible
+  correlated external objects prevent selection of one safe outcome. It fails
+  closed for reconciliation, manual review, or repair.
 - **Entitlement:** Payment Portal's local access authority consumed by Platform
   Kernel.
 - **Internal identity:** a Portal-owned UUID identity.
@@ -195,7 +204,11 @@ Other external billing operations use the same general command invariant:
 ```text
 durable local operation or purchase intent, as applicable
     -> commit
-    -> external command
+    -> external command outside any database transaction
+    -> persist reliable result and mapping
+    -> commit
+    -> verified authoritative fact or reconciliation
+    -> shared local transition path
 ```
 
 They do not require a commercial `Order` unless they are a genuine Portal-
@@ -234,9 +247,11 @@ external commands. External HTTP or other network calls must not execute while
 a database transaction is open. When a flow requires local intent or
 idempotency state before an external command, that state must be durably
 persisted before the call; the external result and any resulting mapping must
-be persisted using an appropriate subsequent transaction boundary. This is an
-architectural invariant and does not require transaction-handling runtime
-changes in this decision.
+be persisted using an appropriate subsequent transaction boundary. A verified
+authoritative fact or reconciliation then feeds the shared local transition
+path. Focused persistence/query helpers may supply database mechanics but do not
+own or finalize these outer business transactions. SQLAlchemy `Session`
+autobegin does not change that logical ownership.
 
 A timeout or lost response is not confirmed success and not confirmed failure;
 it leaves an unknown external outcome. Application must not blindly retry the
@@ -275,6 +290,35 @@ There is no last-write-wins billing state. A stale, duplicate, or conflicting
 fact is rejected or ignored according to explicit transition and idempotency
 rules, or it triggers reconciliation. It does not blindly downgrade or
 overwrite newer confirmed local state.
+
+### Current local transaction and replay contract
+
+The current provider-neutral lifecycle functions are transaction participants.
+The calling application operation owns the outer commit or rollback, so a
+failure before that commit rolls back the whole local transition. Scheduled
+subscription expiry makes that ownership explicit in its CLI transaction and
+emits committed diagnostics only after transaction exit.
+
+For same-key lifecycle concurrency, the persisted operation identity is checked
+before locking, the established row lock serializes competing transitions, and
+the same identity is checked again after the lock. A worker that follows an
+already committed peer replays the persisted result. Existing database
+uniqueness is the final invariant against duplicate durable events; no generic
+automatic retry loop is implied.
+
+The current direct-provider checkout path prepares its checkout action locally
+before the final local commit. Specifically, `prepare_checkout_action()` is
+non-network preparation in the retained Portal-managed boundary. Its placement
+must not be cited as an already implemented ordering guarantee for the future
+external-billing command sequence above. The retained CloudPayments webhook
+commit, rollback, and idempotency behavior is likewise legacy-only and is not a
+normal-runtime or target architecture contract.
+
+ANY-489 required no schema migration: it uses the existing operation identity,
+audit events, locks, savepoints, and uniqueness constraints. Persistence for a
+future external-command operation intent remains deferred until concrete
+external-billing requirements are approved. No future table, entity, API,
+status vocabulary, or reconciliation storage design is selected here.
 
 ## Identity and correlation
 

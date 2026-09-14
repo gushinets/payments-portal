@@ -1,15 +1,18 @@
 # Reliability Requirements
 
 Status: authoritative
-Last verified: 2026-09-10
+Last verified: 2026-09-14
 
 ## Critical paths
 
 - API liveness must not depend on PostgreSQL; readiness must.
-- Billing must use retry-safe orchestration. Persist or find the local operation
-  or purchase intent and commit it before issuing an external command; persist a
-  reliable result and mapping afterward. Use provider idempotency features when
-  available, but do not assume every external command is idempotent.
+- Billing must use retry-safe orchestration. The provider-neutral future
+  external-command sequence is: persist or find the durable local operation or
+  purchase intent, commit it, issue the external command outside any database
+  transaction, persist the reliable result and mapping in a subsequent commit,
+  then apply a verified fact or reconcile through the shared local transition
+  path. Use provider idempotency features when available, but
+  do not assume every external command is idempotent.
 - A Portal-initiated commercial purchase or change must validate the exact
   `Plan.id`, user, legal, entrypoint, and commercial context and persist its
   Portal-owned purchase intent / commercial `Order` before the external
@@ -53,6 +56,66 @@ Last verified: 2026-09-10
 - No CloudPayments flow is active in normal runtime. Any future active billing
   integration must obtain authoritative facts through authenticated,
   validated integration facts and reconciliation as required.
+
+## Transaction, idempotency, and retry contract
+
+Application orchestration owns outer business transaction commit and rollback.
+Focused persistence/query code owns database mechanics below that boundary:
+queries, row locks, atomic DML, flushes, storage-specific exception handling,
+and explicitly targeted nested savepoints. A `Session` autobegin does not make
+the first persistence helper the logical transaction owner, and those helpers
+must not finalize the outer transaction.
+
+The current provider-neutral billing lifecycle participates in a caller-owned
+transaction. Same-key operations first inspect the persisted operation event,
+serialize on the established row lock, and inspect the operation event again
+after acquiring that lock. Once one transaction commits, a concurrent replay
+returns the persisted result rather than repeating the transition. Database
+uniqueness remains the final invariant; logs and exceptions are not a substitute
+for it. Retained CloudPayments webhook transaction and idempotency mechanics are
+legacy evidence only, are not active in normal runtime, and are not the target
+model.
+
+Database retry decisions use these semantics:
+
+- a transaction known to have rolled back before commit may be retried as the
+  whole logical operation, using the same operation identity where supported;
+- an operation known to have committed is replayed or read from its persisted
+  idempotent result;
+- an uncertain local commit requires inspection of authoritative persisted
+  state before any retry;
+- there is no generic automatic database retry loop.
+
+External-command outcomes have four distinct meanings:
+
+- **confirmed success** — authoritative evidence establishes that the intended
+  external command effect occurred; any billing or entitlement transition still
+  requires the applicable verified fact and local policy;
+- **confirmed failure** — authoritative evidence establishes that the command
+  did not produce its intended effect and supplies enough information for the
+  integration's explicit failure policy;
+- **unknown** — available evidence cannot establish whether the command took
+  effect, for example after a timeout or lost response;
+- **ambiguous** — observations conflict or correlate to multiple plausible
+  external objects, so no single outcome can be selected safely.
+
+Unknown and ambiguous outcomes remain unresolved. They require authoritative
+inspection, reconciliation, or another explicitly safe recovery policy before
+another external command; they must never trigger a blind duplicate command.
+Confirmed external command success is not by itself paid-access authority.
+
+Logs, traces, metrics, and Sentry are diagnostics and correlation aids only.
+They never serve as the correctness, transaction, idempotency, or replay store;
+persisted local state and events remain authoritative. Existing request/trace
+correlation, redaction, and privacy constraints continue to apply during retry
+and recovery.
+
+ANY-489 required no schema migration because it changed transaction ownership,
+rollback behavior, post-lock rechecks, and architecture enforcement while using
+existing persisted operation identities and uniqueness constraints. A future
+external-command operation-intent representation remains deferred until the
+external-billing work has concrete persistence and recovery requirements; this
+document does not invent a table, entity, API, or vendor status for it.
 
 ## Framework worker execution
 
@@ -158,9 +221,11 @@ The representative incident journeys are:
    run starts with `subscription_expiry_run_started` and ends with
    `subscription_expiry_run_failed` with the run ID, batch size, and exception
    type; it must not emit `subscription_expiry_transition_committed` or
-   `subscription_expiry_run_succeeded`. After the lifecycle operation returns,
-   a missing persisted identity is reported separately as
-   `subscription_expiry_diagnostic_invariant_violated`. The lifecycle changes are already committed at this point, so `subscription_expiry_run_failed` is not emitted, although the CLI still propagates the diagnostic invariant exception.
+   `subscription_expiry_run_succeeded`. A missing persisted identity is checked
+   inside the CLI-owned transaction and reported as
+   `subscription_expiry_diagnostic_invariant_violated`; the transaction rolls
+   back, no committed/success diagnostic is emitted, and the CLI propagates the
+   invariant exception.
 
 5. Password-reset email delivery: the existing background callback intentionally
    absorbs delivery exceptions so the accepted HTTP response remains unchanged.
@@ -171,9 +236,9 @@ The representative incident journeys are:
 
 Scheduled expiry is not an HTTP request and does not reuse request context. Its
 `run_id` is generated for that command invocation only. The committed
-transition diagnostics are emitted after the current lifecycle operation
-returns successfully; for this fresh-session CLI path, that return follows the
-existing lifecycle-owned transaction commit.
+transition diagnostics are emitted only after the explicit CLI-owned
+transaction commits successfully. The lifecycle operation itself is a
+transaction participant and does not commit.
 
 ## Telemetry backend boundary
 

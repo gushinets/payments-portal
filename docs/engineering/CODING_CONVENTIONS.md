@@ -1,7 +1,7 @@
 # Coding Conventions
 
 Status: authoritative
-Last verified: 2026-09-13
+Last verified: 2026-09-14
 
 How to write **new and changed** code so types, states, and trust boundaries
 stay explicit. This is not a backlog and not a mass-migration plan.
@@ -129,10 +129,23 @@ unsafe-assertion rule as `error` only after current `json()` /
    A SQLAlchemy `Session` may pass through Application or session orchestration.
    Do not add wrappers whose only purpose is replacing `db.add(entity)`,
    `db.delete(entity)`, or direct canonical model mutation.
-5. Transaction ownership, commit/rollback policy, general flush policy,
-   idempotency, retry/recovery, lock ordering, outbox/inbox, and reconciliation
-   remain deferred to ANY-407 Step 6.
-6. Retained CloudPayments/direct-provider persistence is transitional legacy,
+5. Application orchestration owns the outer business transaction and its
+   commit/rollback decision. Focused query and persistence helpers may query,
+   lock, flush, execute atomic DML, interpret storage exceptions, and use
+   targeted `begin_nested()` savepoints; they must not call `begin()`,
+   `commit()`, or `rollback()` to own or finalize the outer transaction.
+   SQLAlchemy `Session` autobegin is a database/session mechanism, not an
+   application ownership signal.
+6. Provider-neutral billing lifecycle functions participate in a caller-owned
+   transaction. A caller must establish the transaction boundary and may not
+   rely on a lifecycle helper to commit partial work. Use the persisted
+   operation identity, the established row-lock order, a post-lock idempotency
+   recheck, and database uniqueness to make same-key concurrency converge.
+7. Retry a definitely rolled-back database operation only as the complete
+   logical operation, with the same operation identity where one exists. If the
+   commit result is uncertain, inspect authoritative persisted state before
+   deciding whether replay is safe. Do not add a generic automatic retry loop.
+8. Retained CloudPayments/direct-provider persistence is transitional legacy,
    not the template for future external billing. Generic persistence helpers
    remain provider-neutral and independent of retained provider code; do not
    promote CloudPayments-only behavior into them merely to preserve legacy
