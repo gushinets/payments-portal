@@ -8,22 +8,19 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.observability import record_legal_acceptance, traced
+from app.core.observability import traced
 from app.domains.identity.session import (
     DEFAULT_REGION,
     DEFAULT_TENANT_ID,
 )
 from app.domains.legal.service import (
     LegalAcceptanceError,
+    accept_legal_document,
     build_acceptance_text,
-    create_document_acceptance,
     expected_acceptance_text_hash,
     get_active_required_documents,
-    utc_now,
 )
 from app.http_dependencies import get_current_session
-from app.infrastructure.queries.legal import get_active_required_document_by_id
-from app.infrastructure.queries.plans import get_current_sellable_plan
 from app.models import AuthSession, DocumentVersion, User
 
 router = APIRouter(prefix="/api/legal", tags=["legal"])
@@ -79,60 +76,37 @@ def accept_document(
     request: Request,
     current: Annotated[tuple[User, AuthSession], Depends(get_current_session)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> Any:
     user, _ = current
-    document = get_active_required_document_by_id(
-        db,
-        document_version_id=payload.document_version_id,
-        tenant_id=user.tenant_id,
-        region=user.region,
-        effective_at=utc_now(),
-    )
-    if document is None:
-        record_legal_acceptance("document_not_found")
-        raise HTTPException(status_code=404, detail="document_version_not_found")
-
-    if document.doc_type == "recurring_consent":
-        if payload.plan_id is None or not payload.entrypoint_type or not payload.entrypoint_value:
-            raise HTTPException(status_code=400, detail={"code": "recurring_consent_context_required"})
-        if (
-            get_current_sellable_plan(
-                db,
-                plan_id=payload.plan_id,
-                tenant_id=user.tenant_id,
-                region=user.region,
-                now=utc_now(),
-            )
-            is None
-        ):
-            raise HTTPException(status_code=400, detail={"code": "recurring_consent_plan_invalid"})
-
     try:
-        acceptance = create_document_acceptance(
+        result = accept_legal_document(
             db,
-            document=document,
-            user_id=user.id,
-            ip=request.client.host if request.client else None,
-            user_agent=request.headers.get("user-agent"),
+            user=user,
+            document_version_id=payload.document_version_id,
             acceptance_text_hash=payload.acceptance_text_hash,
+            plan_id=payload.plan_id,
             entrypoint_type=payload.entrypoint_type,
             entrypoint_value=payload.entrypoint_value,
             source_url=payload.source_url,
             metadata=payload.metadata,
-            plan_id=payload.plan_id,
+            client_ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
         )
     except LegalAcceptanceError as exc:
-        record_legal_acceptance("invalid_text_hash")
+        if exc.code == "document_version_not_found":
+            raise HTTPException(status_code=404, detail=exc.code) from exc
+        if exc.code in {
+            "recurring_consent_context_required",
+            "recurring_consent_plan_invalid",
+        }:
+            raise HTTPException(status_code=400, detail={"code": exc.code}) from exc
         raise HTTPException(status_code=400, detail=exc.code) from exc
-    db.commit()
-    db.refresh(acceptance)
-    record_legal_acceptance("accepted")
 
     return {
         "status": "accepted",
-        "acceptance_id": str(acceptance.id),
-        "document_version_id": str(acceptance.document_version_id),
-        "doc_type": acceptance.doc_type,
-        "version": acceptance.version,
-        "accepted_at": acceptance.accepted_at.isoformat(),
+        "acceptance_id": str(result.acceptance_id),
+        "document_version_id": str(result.document_version_id),
+        "doc_type": result.doc_type,
+        "version": result.version,
+        "accepted_at": result.accepted_at.isoformat(),
     }

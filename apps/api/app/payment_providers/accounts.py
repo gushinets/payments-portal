@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import CountryRegionRule, PaymentProviderAccount, User
 from app.payment_providers.adapter import PaymentProviderAdapter
+from app.payment_providers.errors import PaymentProviderUnavailableError
 from app.payment_providers.registry import PaymentProviderRegistry
 
 
@@ -62,17 +62,17 @@ def get_or_create_checkout_provider_account(
         try:
             return account, registry.get(account.provider)
         except LookupError as exc:
-            raise HTTPException(status_code=503, detail="payment_provider_unavailable") from exc
+            raise PaymentProviderUnavailableError("payment_provider_unavailable") from exc
 
     if provider_code is None:
         adapter = registry.sole_adapter()
         if adapter is None:
-            raise HTTPException(status_code=503, detail="payment_provider_unavailable")
+            raise PaymentProviderUnavailableError("payment_provider_unavailable")
     else:
         try:
             adapter = registry.get(provider_code)
         except LookupError as exc:
-            raise HTTPException(status_code=503, detail="payment_provider_unavailable") from exc
+            raise PaymentProviderUnavailableError("payment_provider_unavailable") from exc
 
     account = PaymentProviderAccount(**adapter.default_account_fields(tenant_id=user.tenant_id, region=user.region))
     try:
