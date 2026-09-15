@@ -1,6 +1,6 @@
 # External billing boundary and Payments Portal redesign
 
-Status: review requested after tenth external-review amendments  
+Status: review requested after eleventh external-review amendments  
 Date: 2026-09-15
 
 ## Goal
@@ -272,9 +272,10 @@ metric/source binding
 ```
 
 Allowance quantity is captured before acceptance from provider-owned commercial
-configuration and pinned in the accepted snapshot. Live charges, agreement
-balance, payment amount/status, and other mutable funding artifacts never define
-or resize quota.
+configuration and pinned in the accepted snapshot. For MVP it is a non-negative
+integer end to end; floating/decimal quota quantities are unsupported. Live
+charges, agreement balance, payment amount/status, and other mutable funding
+artifacts never define or resize quota.
 
 Prefer a native stable provider cycle ID. If none exists, derived identity is
 allowed only when test evidence proves its fields remain stable across rereads
@@ -690,7 +691,7 @@ There is no Portal-owned commercial Order.
 
 ```text
 user_id
-billing_account_id
+external_billing_account_id
 product_id
 billing_offer_id
 accepted commercial_fingerprint
@@ -721,7 +722,12 @@ uniqueness is `(user_id, product_id)`.
 
 At most one scope-holding purchase flow exists for one user/product. Once a
 non-terminal subscription is linked, it owns that scope; a prepared unpaid
-subscription therefore blocks a second purchase.
+subscription therefore blocks a second purchase. A linked prepared/unpaid
+subscription has no checkout/session TTL: it keeps `(user_id, product_id)` until
+it is authoritatively terminal or the scope is released through audited evidence
+that release is safe. Public purchase attempts against such an occupied scope use
+a stable provider-neutral error code such as `purchase_scope_occupied`; callers
+must not infer provider billing state from internal reason strings.
 
 Customer, agreement, and subscription creation all use one conceptual durable
 outbound-create operation model rather than three independent UNKNOWN state
@@ -748,17 +754,17 @@ hold the affected scope
 allow safe read-only recovery/discovery only
 never blind-retry the create
 never auto-release on zero matches
-unknown_recovery_deadline_at = unknown_since + 2h   # MVP default, configurable
+unknown_recovery_deadline_at = unknown_since + 2h   # fixed MVP constant
 ```
 
 The affected scope is the external-customer slot for customer create and the
 purchase/product flow for agreement or subscription create. Widget mint and any
-dependent create that would duplicate the unresolved object remain blocked.
+independent create that would duplicate the unresolved object remain blocked.
 
 When UNKNOWN is first created, Portal durably schedules one escalation work item
-for the deadline. Before the deadline, safe read-only recovery runs with urgent
-cadence. A unique proven match binds immediately; more than one plausible match
-enters manual review immediately.
+for the fixed two-hour deadline. Before the deadline, safe read-only recovery runs
+with urgent cadence. A unique proven match binds immediately; more than one
+plausible match enters manual review immediately.
 
 At the deadline, if still UNKNOWN:
 
@@ -818,22 +824,24 @@ Uniqueness includes:
 UNIQUE(external_billing_account_id, external_subscription_id)
 ```
 
-For customer-funded LBX subscriptions, the dedicated-agreement invariant is also
-materialized. One non-terminal paid subscription has exactly one
-`provider_agreement_id`, and that agreement cannot back two non-terminal Portal
-subscriptions in the same billing account. A practical DB guard is a partial
-unique constraint/index equivalent to:
+For customer-funded LBX subscriptions, the dedicated-agreement invariant is
+permanent, including historical subscriptions. One paid subscription has exactly
+one `provider_agreement_id`, and one agreement may never back a different Portal
+subscription in the same billing account, even after the first subscription has
+ended. The DB guard is therefore unconditional:
 
 ```text
 UNIQUE(external_billing_account_id, provider_agreement_id)
-WHERE lifecycle_status != 'ended'
 ```
 
-Renewal of the same subscription keeps the same agreement. A new subscription
-uses a new dedicated agreement. If an authoritative reread claims a different
-agreement for an already-linked non-terminal subscription, Portal creates
-`agreement_binding_conflict`, fails affected paid access closed, and enters
-manual review rather than silently rebinding.
+Renewal of the same subscription stays on the same subscription row and keeps the
+same agreement. A new subscription uses a new dedicated agreement. If Phase 0 A
+demonstrates that LBX requires a new subscription ID to reuse an ended agreement,
+that violates the isolation invariant and is a launch blocker rather than a reason
+to weaken this uniqueness rule. If an authoritative reread claims a different
+agreement for an already-linked subscription, Portal creates
+`agreement_binding_conflict`, fails affected paid access closed, and enters manual
+review rather than silently rebinding.
 
 `ended` is terminal for a canonical `external_subscription_id` in this MVP. Once
 Portal has authoritatively committed `ended`, a later non-terminal provider state
@@ -867,11 +875,14 @@ blocked.
 `purchased_allowances` combines two authorities:
 
 ```text
-quantity              <- immutable accepted fixed offer/operator-comp snapshot
+quantity              <- immutable accepted fixed offer snapshot
 cycle identity/bounds <- authoritative provider cycle facts
 ```
 
-Live charges, balance, or payment state never create or resize a quota bucket.
+There is no operator-supplied allowance quantity path. Quantity is a non-negative
+integer in Portal storage, AccessSnapshot, and Kernel quota state. Live charges,
+balance, payment state, or manual operator input never create or resize a quota
+bucket.
 
 Logical allowance identity is:
 
@@ -896,10 +907,13 @@ Repeated same-cycle reads and financial block/unblock preserve each metric's
 `allowance_id`, fixed quantity, and Kernel usage. Only a confirmed new provider
 cycle creates new metric-specific IDs.
 
-For a given `allowance_id`, product, metric, quantity, and period boundaries are
-immutable. A later read claiming different boundaries or other tuple fields for
-the same allowance creates a conflict rather than silently rewriting the bucket.
-Kernel independently freezes and verifies the same tuple according to the
+For a given `allowance_id`, product, metric, integer quantity, and effective wire
+period boundaries are immutable. The effective `period_start`/`period_end` are
+frozen when that allowance ID is first committed; a later deployment change to
+`clock_skew_budget` applies only to future allowance IDs and must not rewrite an
+existing tuple. A later read claiming different boundaries or other tuple fields
+for the same allowance creates a conflict rather than silently rewriting the
+bucket. Kernel independently freezes and verifies the same tuple according to the
 companion access contract.
 
 MVP does not stack multiple effective allowances for one `(product_id,
@@ -1053,17 +1067,25 @@ products/sources may continue.
 Every deterministic access-reducing boundary has a local writer independent of
 AccessSnapshot GET and independent of provider availability.
 
-The existing durable Portal worker selects indexed due facts, including effective
-conservative deadlines derived from:
+Whenever Portal commits or legitimately refreshes a paid fact, it also schedules
+the existing durable worker for the earliest effective access-reducing deadline
+for that affected access scope. Conceptually:
 
 ```text
-projection_valid_until
-a finite allowance.period_end
-a finite grant.valid_until
+next_attempt_at = min(
+  effective projection_valid_until,
+  finite effective allowance.period_end,
+  finite effective grant.valid_until
+)
 ```
 
-and sends them through the same effective-access commit path used by other
-material changes:
+This deadline-driven work is separate from the 5m/15m provider HTTP
+reconciliation cadence. The same worker infrastructure wakes at the scheduled
+`next_attempt_at`; it does not wait for the next reconciliation tick. After a due
+commit it schedules the next remaining effective deadline, if any.
+
+At the deadline the worker selects indexed due facts and sends them through the
+same effective-access commit path used by other material changes:
 
 ```text
 SELECT due facts
@@ -1072,6 +1094,7 @@ SELECT due facts
  -> if semantic effective set changed:
       access_revision = N + 1
       upsert durable invalidation N + 1
+ -> schedule next remaining effective deadline
  -> COMMIT
 ```
 
@@ -1087,7 +1110,10 @@ expired. No separate expiry service and no fleet-wide user snapshot poller are
 introduced.
 
 The effective time bounds used for authorization include the clock-skew safety
-haircut defined by the companion Portal<->Kernel contract.
+haircut defined by the companion Portal<->Kernel contract. A finite raw deadline
+is therefore scheduled using its conservative effective deadline; a null
+`grant.valid_until` remains null and contributes no grant-terminal deadline, while
+provider/source trust still contributes its own finite effective deadline.
 
 ### Fenced reconciliation lease
 
@@ -1114,7 +1140,8 @@ For open-ended recurring subscriptions:
 grant.valid_until = null
 ```
 
-`null` does not mean infinite provider trust.
+`null` stays `null` in the wire contract and does not mean infinite provider
+trust.
 
 Raw provider intervals are UTC half-open `[start, end)`. Portal retains those raw
 bounds for provider/cycle evidence and publishes conservative effective
@@ -1162,10 +1189,11 @@ Free, guest, and trial entitlement/quota remain Kernel-owned policies. Until a
 paid grant exists, Portal's paid AccessSnapshot is empty; this rewrite does not
 carry forward Portal-issued unpaid/free/trial grants.
 
-The exact HTTP schemas, host/caller ownership, freshness fields, clock-skew
-rules, status/error semantics, request-driven refresh, revision-floor behavior,
-invalidation outbox/ack rules, immutable allowance tuple, usage-ledger lifetime,
-and contract fixtures are defined exclusively by:
+The exact HTTP schemas, canonical Portal `user_id`, host/caller ownership,
+freshness fields, clock-skew rules, status/error semantics, request-driven
+refresh, revision-floor behavior, invalidation outbox/ack rules, immutable
+allowance tuple, usage-ledger lifetime, and contract fixtures are defined
+exclusively by:
 
 `docs/superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md`.
 
@@ -1190,8 +1218,9 @@ Typical reasons include:
 Controlled resolutions may bind a proven external object, release a scope after
 audited evidence of safe absence, restore/prove the original customer identity,
 mark duplicate/conflict, or accept an already-proven subscription as primary
-under the product scope lock. Operators never directly set entitlement active
-and never rebind an existing purchase to a different mapping revision.
+under the product scope lock. Operators never directly set entitlement active,
+never supply allowance quantity, and never rebind an existing purchase to a
+different mapping revision.
 
 MVP requires durable records, alerting, runbook, and controlled admin command/API;
 a dedicated manual-review UI is not required.
@@ -1202,10 +1231,10 @@ MVP runs a durable billing worker embedded in the Payments Portal API process
 with one API replica initially. Correctness-critical work lives in PostgreSQL,
 not FastAPI `BackgroundTasks` or an in-memory queue.
 
-Queue claims, unified outbound-create UNKNOWN escalation, deterministic due-time
-boundary processing, product-scope decisions, reconciliation leases, and
-invalidation delivery must be safe for multiple consumers even though initial
-deployment has one replica.
+Queue claims, unified outbound-create UNKNOWN escalation, deadline-driven
+deterministic due-time processing, product-scope decisions, reconciliation
+leases, and invalidation delivery must be safe for multiple consumers even though
+initial deployment has one replica.
 
 No external network request runs inside an open DB transaction. Transactions are
 short and cover local state creation, claims/leases, access decisions, outbox
@@ -1243,12 +1272,12 @@ Monitor at minimum:
 - manifest/catalog age and sync failures;
 - not-sellable reasons and invalid/unclassified mappings;
 - customer/recovery UNKNOWN, ambiguous states, and `identity_conflict`;
-- oldest `external_create_outcome_unknown` and pending 2h escalation by operation
-  kind;
+- oldest `external_create_outcome_unknown` and pending fixed 2h escalation by
+  operation kind;
 - manual-review count/age by reason;
 - normalization and commercial-verification failures;
 - discovery/reconciliation success, latency, trust-deadline proximity;
-- deterministic due-boundary backlog/lag;
+- deterministic due-boundary scheduling lag, overdue work, and execution lag;
 - urgent vs normal reconciliation backlog;
 - work-queue depth/oldest item;
 - webhook auth failures/delivery lag;
@@ -1271,7 +1300,7 @@ Order:
 0. Run Phase 0 A-E and record PASS evidence. Reuse existing stand-043 REST facts;
    prove missing semantics, especially authenticated Widget behavior, bounded
    Widget remint overlap, `users.outer_id` drift/recovery, and stable subscription
-   -> agreement binding.
+   -> agreement binding/isolation with no cross-subscription agreement reuse.
 1. Supersede contradictory canonical ADR/docs in Portal and Kernel.
 2. Remove obsolete Portal Product/Bundle/Plan/PlanLimit/Order and direct-payment
    semantics; replace the disposable Alembic baseline and recreate dev/test DBs.
@@ -1283,26 +1312,32 @@ Order:
    mapping/fingerprint/fixed-quantity snapshot.
 5. Implement one configured billing account per contour, durable external-customer
    slot using one `billing_customer_key`, canonical provider subscription identity,
-   dedicated `provider_agreement_id`, non-payment preparation, and one unified
-   customer/agreement/subscription outbound-create UNKNOWN recovery path.
-6. Implement PurchaseIntent scope, complete prepared-state commercial verification,
-   fail-closed Widget mint-on-open, common UNKNOWN 2h escalation, and
+   permanently unique dedicated `provider_agreement_id`, non-payment preparation,
+   and one unified customer/agreement/subscription outbound-create UNKNOWN recovery
+   path with the fixed 2h escalation.
+6. Implement PurchaseIntent scope, no checkout TTL for linked prepared/unpaid
+   subscription ownership, stable provider-neutral occupied-scope errors, complete
+   prepared-state commercial verification, fail-closed Widget mint-on-open, and
    manual-review controls.
 7. Implement the actual LBX customer-list/point-read behavior proven in Phase 0 D,
    persist target-product observation before the product decision lock,
    first-primary selection, fenced reconciliation, unified urgent scheduling,
    prepaid normalization, terminal-revival conflict, and 6h provider trust lease.
 8. Implement metric-specific allowance identity/cycles from Phase 0 evidence with
-   immutable allowance tuple, metric-local duplicate conflict, quantity pinned
-   from accepted fixed terms, and no provisional rollover.
-9. Implement deterministic local time-boundary commits plus implicit
-   revision-zero/committed immutable-revision AccessSnapshot, durable invalidation,
-   and Kernel revision-floor consumer according to the companion contract.
+   immutable integer quantity and effective allowance tuple, metric-local duplicate
+   conflict, quantity pinned only from accepted fixed terms, and no provisional
+   rollover.
+9. Implement deadline-scheduled deterministic local time-boundary commits plus
+   implicit revision-zero/committed immutable-revision AccessSnapshot, durable
+   invalidation, and Kernel revision-floor consumer according to the companion
+   contract.
 10. Integrate allowances into Kernel durable quota consumption, including metered
-    action `metric_key` requirements, clock-safe effective bounds, request-driven
-    snapshot refresh, and usage lifetime independent from snapshot/cache presence.
+    action `metric_key` requirements, immutable existing allowance bounds across
+    clock-skew-config changes, clock-safe effective bounds, request-driven snapshot
+    refresh, and usage lifetime independent from snapshot/cache presence.
 11. Run cross-repo contract/integration proofs with producer-owned fixtures,
-    invalidation in-flight ack races, and exact HTTP semantics.
+    canonical Portal UUID identity, integer quantity, invalidation in-flight ack
+    races, and exact HTTP semantics.
 12. Repeat critical LBX probes against deployed RU configuration before launch.
 
 No dual-write old/new billing compatibility layer is required.
@@ -1313,28 +1348,37 @@ The later implementation plan must contain concrete automated/provider proofs fo
 these areas rather than duplicating a large test matrix here:
 
 - Phase 0 A-E launch evidence, including Widget remint overlap,
-  `outer_id` drift/recovery, and stable subscription -> agreement identity;
+  `outer_id` drift/recovery, stable subscription -> agreement identity, and no
+  agreement reuse across different subscription IDs;
 - complete commercial re-verification and `NOT_SELLABLE` fallback;
 - fail-closed Widget mint and paid access under identity/commercial conflict;
-- unified customer/agreement/subscription uncertain-create recovery, 2h
+- unified customer/agreement/subscription uncertain-create recovery, fixed 2h
   escalation, and no unsafe scope release;
+- linked prepared/unpaid scope remains held with no checkout TTL until terminal or
+  audited safe release, with a stable provider-neutral public error;
 - canonical LBX `subscription_id` binding with non-unique `outer_id` only as a
   recovery hint;
 - `ended -> non-terminal` same-ID revival fails closed as conflict;
+- full uniqueness of `(external_billing_account_id, provider_agreement_id)` also
+  prevents a new subscription from reusing a historical ended agreement;
 - first-primary persists target-product observations before acquiring the product
   decision lock and includes every observed candidate;
 - fresh manifest + fresh catalog mapping publication and immutable historical pin;
 - unified urgent scheduling and provider trust expiry;
-- deterministic local due-boundary omission without provider HTTP preserves
-  independent products and increments revision;
-- fixed quantity/cycle identity, immutable allowance tuple, metric-local duplicate
-  conflict, and multi-metric bucket isolation;
+- every committed paid fact schedules the existing durable worker for its nearest
+  effective access-reducing deadline; due omission occurs without provider HTTP,
+  preserves independent products, and increments revision;
+- fixed quantity/cycle identity, non-negative integer quantity, immutable allowance
+  tuple across clock-skew-config changes, metric-local duplicate conflict, and
+  multi-metric bucket isolation;
 - implicit revision `0`, immutable semantic revisions, and independent fact
   omission;
 - AccessInvalidation outbox/retry plus revision-floor and in-flight `204` races;
 - same-cycle allowance omission/reappearance preserves durable Kernel usage;
 - paid metered action requires its exact metric allowance; no allowance stacking;
-- clock-skew-safe effective bounds and `refresh_after <= expires_at`;
+- `null grant.valid_until` stays null, clock-skew-safe effective trust/period/grant
+  bounds are conservative, and `refresh_after <= expires_at`;
+- canonical AccessSnapshot/Invalidation `user_id` is the Portal identity UUID;
 - request-driven snapshot refresh with no fleet-wide user poller;
 - concurrent durable Kernel quota consumption;
 - capability `enabled` admission semantics, manifest LKG/freshness, and
@@ -1356,11 +1400,16 @@ MVP does not:
 - rebind an existing purchase/subscription to a newer mapping revision;
 - support provider revival of an `ended` subscription ID without a separate
   approved design;
+- reuse a dedicated provider agreement for a different subscription, including
+  after the original subscription ended;
 - support bundles, overlapping access-producing subscriptions, allowance stacking,
   duplicate metric sources, shared metrics, or paid overage;
 - support postpaid/debt access or dynamic/prorated/charge-derived quota;
 - support Portal-initiated upgrade/downgrade/refund/dispute/commercial trial;
 - issue Portal-owned unpaid/free/trial grants in this billing rewrite;
+- support operator-supplied paid allowance quantity;
+- release a linked prepared/unpaid purchase scope because a checkout/session TTL
+  or browser-close timer elapsed;
 - support in-place re-consent/material mutation of live customer-funded
   subscriptions;
 - create provisional renewal allowances;
@@ -1390,9 +1439,9 @@ Payments Portal
   immutable mappings + accepted commercial/quantity snapshot
   unified durable outbound-create recovery and manual review
   LBX discovery/reconciliation proven by Phase 0
-  deterministic local time-boundary access reductions
+  deadline-scheduled deterministic local time-boundary access reductions
   product-scope primary selection
-  paid entitlements + metric-specific allowances
+  paid entitlements + metric-specific integer allowances
   complete paid AccessSnapshot + durable AccessInvalidation
 
 Platform Kernel
