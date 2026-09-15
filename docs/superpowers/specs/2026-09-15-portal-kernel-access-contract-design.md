@@ -1,6 +1,6 @@
 # Payments Portal <-> Platform Kernel access contract
 
-Status: review requested after eighth external-review amendments  
+Status: review requested after ninth external-review amendments  
 Date: 2026-09-15
 
 ## Purpose
@@ -117,6 +117,29 @@ metric_key -> exactly one existing product_id
 The response is all-or-nothing. Kernel returns `200` only for a complete valid
 manifest. It does not return a partial `200`.
 
+### `enabled` semantics
+
+`enabled` is admission control for new technical-commercial bindings, not a
+runtime kill switch and not an entitlement-revocation signal.
+
+A newly published mapping may reference only:
+
+```text
+product.enabled == true
+and, for every mapped metric:
+metric.enabled == true
+metric.product_id == mapped product_id
+```
+
+Before every new purchase is pinned, Portal revalidates the referenced product
+and metrics against the current fresh manifest. A previously published mapping
+is not sufficient if the referenced capability is now disabled.
+
+After a purchase has been pinned, a later `enabled=false` does not rewrite or
+revoke that historical mapping, subscription, grant, or allowance. If Platform
+Kernel needs an emergency/runtime suspension mechanism, it is a separate
+Kernel-owned policy outside this manifest flag.
+
 ### HTTP semantics
 
 ```text
@@ -154,7 +177,8 @@ new_sales_projection_max_age = 24h
 
 A manifest older than that blocks new sales and new mapping publication, but
 does not silently rewrite or revoke already-pinned historical mappings or paid
-access.
+access. The billing-boundary design additionally requires a fresh external
+billing catalog before a mapping revision can be published.
 
 ## AccessSnapshot
 
@@ -175,7 +199,6 @@ GET /internal/v1/access-snapshots/{user_id}?tenant_id=anytoolai&region=ru
   "region": "ru",
   "user_id": "uuid",
   "access_revision": 184,
-  "authoritative_as_of": "2026-09-15T12:00:00Z",
   "refresh_after": "2026-09-15T12:01:00Z",
   "expires_at": "2026-09-15T12:05:00Z",
   "grants": [
@@ -202,6 +225,30 @@ No provider-specific values may appear in this response.
 `AccessSnapshot` is a complete current effective set, not a delta. If Product A
 is absent while Product B is present, A is denied and B remains allowed.
 
+The wire contract intentionally has no aggregate `authoritative_as_of` field.
+Source-specific authoritative-read/projection timestamps remain internal to
+Payments Portal. Kernel derives snapshot usability only from the revision,
+`refresh_after`, `expires_at`, and explicit grant/allowance boundaries.
+
+### Initial implicit revision zero
+
+For every canonical Portal user known in the requested tenant/region, the initial
+paid-access state is the implicit immutable empty state:
+
+```text
+access_revision = 0
+grants = []
+allowances = []
+```
+
+Revision zero does not require a persisted access-state row. `GET AccessSnapshot`
+is read-only and must never INSERT/UPDATE access state merely to answer a request.
+
+The first material paid-access change atomically creates committed revision `1`
+and durable invalidation `1`. After any committed revision exists, that user never
+returns to revision zero; a later empty effective set has its own monotonic
+revision `N > 0`.
+
 ### Immutable semantic state per revision
 
 One `access_revision` identifies one immutable semantic effective access state.
@@ -226,7 +273,6 @@ Freshness metadata may be recomputed without changing the revision when semantic
 access is unchanged:
 
 ```text
-authoritative_as_of
 refresh_after
 expires_at
 ```
@@ -257,18 +303,20 @@ Kernel must use an allowance only while `now` belongs to its half-open UTC perio
 ### HTTP semantics
 
 For a canonical Portal user known in the requested tenant/region, Portal always
-returns `200` with a complete versioned snapshot. This includes users with no
-current paid access:
+returns `200` with a complete versioned snapshot. A user with no prior material
+paid-access transition returns the implicit empty revision zero:
 
 ```json
 {
-  "access_revision": 185,
+  "access_revision": 0,
   "grants": [],
   "allowances": []
 }
 ```
 
-An empty paid-access set is therefore not `404` and not `204`.
+A known user whose previous paid access has ended may instead return an empty
+committed revision `N > 0`. An empty paid-access set is therefore never `404` or
+`204`.
 
 ```text
 200 -> known user, complete current snapshot, possibly empty
@@ -338,6 +386,10 @@ After successful application Kernel returns:
 The endpoint is idempotent. A repeated or lower revision is a successful no-op
 and also returns 204.
 
+A `204` acknowledges only the revision carried by that concrete request. It does
+not acknowledge a newer Portal revision that may have been committed while the
+request was in flight.
+
 ## Kernel monotonic revision floor
 
 Kernel persists or otherwise durably/coherently maintains
@@ -347,7 +399,7 @@ Kernel persists or otherwise durably/coherently maintains
 (tenant_id, region, user_id)
 ```
 
-The floor only increases:
+The floor only increases and begins at zero:
 
 ```text
 floor = max(floor, received_invalidation_revision)
@@ -386,7 +438,8 @@ if a snapshot at or above the floor cannot be obtained.
 ## Portal invalidation outbox
 
 Every material access change is committed with the new user revision and durable
-invalidation work in one PostgreSQL transaction:
+invalidation work in one PostgreSQL transaction. Revision zero is implicit and
+has no invalidation; the first material change is `0 -> 1`.
 
 ```text
 persist effective access change
@@ -427,8 +480,32 @@ lives in Portal's business/reconciliation state.
 
 ## Delivery and retry semantics
 
-Delivery is at-least-once. Portal's durable worker POSTs the latest pending
-revision until Kernel confirms success.
+Delivery is at-least-once. Before each HTTP request, Portal's durable worker
+captures the exact revision it is about to send:
+
+```text
+sent_revision = current pending_revision
+```
+
+The request payload contains `sent_revision`. A `204` permits only this monotonic
+local acknowledgement:
+
+```text
+delivered_revision = max(delivered_revision, sent_revision)
+```
+
+Then, in a short transaction, Portal compares against the current pending value:
+
+```text
+if pending_revision <= delivered_revision:
+    delivery is caught up
+else:
+    keep/schedule the row; a newer revision is still pending
+```
+
+Therefore a newer revision committed while an older request is in flight is never
+cleared by the older `204`. A late acknowledgement for N after N+1 was already
+acknowledged also cannot regress `delivered_revision`.
 
 Retryable outcomes include:
 
@@ -447,8 +524,10 @@ Use bounded exponential backoff with jitter, conceptually:
 
 The durable row is not discarded because an attempt count was exceeded.
 
-If revision N is still pending and N+1 is committed, the next delivery may send
-only N+1.
+If revision N is still pending and N+1 is committed before the next send, that
+next delivery may send only N+1. If Kernel applied a request but Portal crashes
+before committing its acknowledgement, the same revision may be delivered again;
+idempotency makes this safe.
 
 Permanent/configuration outcomes include malformed contract, unsupported schema,
 service-auth failure, or region/tenant mismatch. They must:
@@ -481,23 +560,61 @@ paid access it cannot refresh.
 Platform Kernel owns durable actual usage. For each allowance independently:
 
 ```text
-remaining = max(0, allowance.quantity - durable_usage[allowance_id])
+remaining = max(0, frozen_quantity[allowance_id] - durable_usage[allowance_id])
 ```
 
-Consumption must be atomic and must not exceed the allowance under concurrency.
-Restart preserves used quantity. Two metric allowances never share a runtime
-counter merely because they came from one provider billing cycle.
+On first acceptance of an `allowance_id`, Kernel durably freezes this scoped tuple:
+
+```text
+(tenant_id, region, user_id, allowance_id,
+ product_id, metric_key, quantity, period_start, period_end)
+```
+
+For every later appearance of the same `allowance_id`, all frozen fields must be
+identical. Any difference in product, metric, quantity, or period boundaries is
+an allowance contract conflict. Kernel must not overwrite the frozen tuple, reset
+usage, or authorize consumption from that conflicting allowance. Unrelated grants
+and allowances may continue.
+
+Consumption must be atomic and must not exceed the frozen allowance quantity under
+concurrency. Restart preserves used quantity. Two metric allowances never share a
+runtime counter merely because they came from one provider billing cycle.
 
 The usage ledger lifetime is independent of whether an allowance is present in
 the current AccessSnapshot. Omission, financial block, snapshot expiry, or cache
 eviction stops current authorization but never deletes or resets accumulated
 usage for that `allowance_id`.
 
-If the same allowance reappears after a same-cycle unblock, Kernel resumes the
-same durable counter. Only a genuinely new `allowance_id` creates a fresh usage
-bucket starting at zero. Historical usage rows are retained at least longer than
-any possible reappearance of that allowance; MVP may retain them without
-automatic deletion.
+If the same allowance reappears after a same-cycle unblock with the identical
+frozen tuple, Kernel resumes the same durable counter. Only a genuinely new
+`allowance_id` creates a fresh usage bucket starting at zero. Historical usage
+rows are retained at least longer than any possible reappearance of that
+allowance; MVP may retain them without automatic deletion.
+
+### Metered paid execution
+
+Every paid metered action in Platform Kernel must declare exactly one
+`metric_key`, and that metric must belong to the action's `product_id` in the
+Kernel registry.
+
+For paid metered execution, a product grant alone is insufficient. Kernel requires
+all of:
+
+```text
+valid product grant
+exactly one action metric_key belonging to that product
+exactly one currently effective allowance for (product_id, metric_key)
+now inside allowance [period_start, period_end)
+durable usage below frozen quantity
+```
+
+The absence or expiry of the paid allowance fails closed for that metric even if
+the product grant remains present. MVP does not stack multiple effective
+allowances for one `(product_id, metric_key)`; receiving more than one is a
+contract conflict and Kernel does not sum them.
+
+Free/guest quota, if configured, is a separate Kernel-owned policy. Missing paid
+allowance never authorizes Kernel to invent paid quota.
 
 Portal never stores authoritative runtime remaining quota.
 
@@ -523,21 +640,33 @@ cross-repository runtime dependency.
 
 The implementation plan must cover at least:
 
+- known user with no access-state row returns read-only `200`, revision `0`, and
+  empty arrays; GET never creates revision state;
+- first material access change atomically creates revision `1` and invalidation
+  `1`, with no competing GET-created revision;
 - same `access_revision` cannot return a different semantic grants/allowances set;
 - snapshot N rejected after floor N+1 is learned;
 - concurrent N+1 then delayed N cannot regress cache/floor;
-- known user with no access returns `200` with empty arrays and committed revision;
 - entitlement absence never produces `404`;
 - unexpected `404` for a previously known user does not erase a still-valid cache;
 - duplicate invalidation is idempotent;
 - outbox survives crash after Portal commit;
+- an in-flight `204` for N cannot acknowledge a newly committed N+1;
+- a late `204` for N cannot regress already acknowledged N+1;
 - N pending plus N+1 committed may coalesce to N+1;
 - invalidation outage still fails closed through snapshot expiry;
 - stale one-product fact can be omitted while independent product access remains;
 - same allowance omitted during block and restored during same cycle keeps the
-  same accumulated usage;
+  same accumulated usage and identical frozen tuple;
+- the same `allowance_id` with changed quantity/product/metric/period fails closed
+  instead of increasing or resetting quota;
 - cache eviction does not delete allowance usage;
+- a product grant without the required paid metric allowance cannot authorize a
+  paid metered action;
+- multiple effective allowances for one metric are not stacked;
 - concurrent Kernel quota consumption cannot exceed allowance quantity;
+- capability `enabled=false` blocks new mapping/purchase pins without revoking
+  already-pinned historical access;
 - capability-manifest partial/invalid sync keeps prior LKG and does not move
   `last_complete_sync_at`;
 - hash-checked contract fixtures cannot drift silently between repositories.
