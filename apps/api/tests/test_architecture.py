@@ -319,8 +319,7 @@ def test_active_domain_presentation_rejects_sqlalchemy_query_imports(tmp_path: P
     errors = check_python_boundaries(tmp_path)
 
     assert any(
-        error.startswith(f"{relative}:2 imports sqlalchemy")
-        and "HTTP Presentation persistence boundary" in error
+        error.startswith(f"{relative}:2 imports sqlalchemy") and "HTTP Presentation persistence boundary" in error
         for error in errors
     )
 
@@ -340,8 +339,7 @@ def test_http_dependencies_rejects_persistence_orchestration_without_api_router(
     errors = check_python_boundaries(tmp_path)
 
     assert any(
-        error.startswith(f"{relative}:2 imports sqlalchemy")
-        and "HTTP Presentation persistence boundary" in error
+        error.startswith(f"{relative}:2 imports sqlalchemy") and "HTTP Presentation persistence boundary" in error
         for error in errors
     )
     assert any(
@@ -350,8 +348,7 @@ def test_http_dependencies_rejects_persistence_orchestration_without_api_router(
         for error in errors
     )
     assert any(
-        error.startswith(f"{relative}:6 calls SQLAlchemy Session.execute()")
-        and "HTTP dependency composition" in error
+        error.startswith(f"{relative}:6 calls SQLAlchemy Session.execute()") and "HTTP dependency composition" in error
         for error in errors
     )
 
