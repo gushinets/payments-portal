@@ -303,12 +303,35 @@ def test_active_domain_presentation_assignment_router_alias_keeps_boundary(
     )
 
 
+def test_active_domain_presentation_rejects_sqlalchemy_query_imports(tmp_path: Path) -> None:
+    relative = "apps/api/app/domains/identity/http_api.py"
+    write_module(
+        tmp_path,
+        relative,
+        "from fastapi import APIRouter\n"
+        "from sqlalchemy import select\n"
+        "from sqlalchemy.orm import Session\n\n"
+        "router = APIRouter()\n\n"
+        "def list_users(db: Session) -> object:\n"
+        "    return object()\n",
+    )
+
+    errors = check_python_boundaries(tmp_path)
+
+    assert any(
+        error.startswith(f"{relative}:2 imports sqlalchemy")
+        and "HTTP Presentation persistence boundary" in error
+        for error in errors
+    )
+
+
 def test_http_dependencies_rejects_persistence_orchestration_without_api_router(tmp_path: Path) -> None:
     relative = "apps/api/app/http_dependencies.py"
     write_module(
         tmp_path,
         relative,
         "from sqlalchemy.orm import Session\n"
+        "from sqlalchemy import select\n"
         "from app.infrastructure.persistence import password_reset\n\n"
         "def dependency(db: Session) -> object:\n"
         "    return db.execute('SELECT 1')\n",
@@ -317,12 +340,18 @@ def test_http_dependencies_rejects_persistence_orchestration_without_api_router(
     errors = check_python_boundaries(tmp_path)
 
     assert any(
-        error.startswith(f"{relative}:2 imports app.infrastructure.persistence")
+        error.startswith(f"{relative}:2 imports sqlalchemy")
         and "HTTP Presentation persistence boundary" in error
         for error in errors
     )
     assert any(
-        error.startswith(f"{relative}:5 calls SQLAlchemy Session.execute()") and "HTTP dependency composition" in error
+        error.startswith(f"{relative}:3 imports app.infrastructure.persistence")
+        and "HTTP Presentation persistence boundary" in error
+        for error in errors
+    )
+    assert any(
+        error.startswith(f"{relative}:6 calls SQLAlchemy Session.execute()")
+        and "HTTP dependency composition" in error
         for error in errors
     )
 

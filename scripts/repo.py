@@ -1461,8 +1461,14 @@ def check_python_boundaries(root: Path = ROOT) -> list[str]:
                         lambda target: (
                             module_matches(target, "app.infrastructure.queries")
                             or module_matches(target, "app.infrastructure.persistence")
+                            or (
+                                module_matches(target, "sqlalchemy")
+                                and target
+                                not in {"sqlalchemy.orm", "sqlalchemy.orm.Session"}
+                            )
                         ),
-                        "delegate persistence orchestration to an inward application/service use case",
+                        "delegate SQLAlchemy query construction and persistence orchestration to "
+                        "an inward application/service use case",
                     )
                 )
             if is_payment_provider_registry:
