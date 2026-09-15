@@ -591,19 +591,23 @@ expired
 it does **not** mean the commercial outcome is resolved and does not by itself
 release the `(user_id, product_id)` purchase scope.
 
-Purchase scope is released only after one of these outcomes:
+PurchaseIntent stops owning the scope only after one of these outcomes:
 
-- `linked` — a real subscription was proven; future purchase is then governed by
-  `already_owned` while that access-producing subscription exists;
+- `linked` — a real external subscription was proven and scope ownership moves
+  to that `billing_subscription`;
 - `resolved_no_external_effect` — provider-specific recovery proves the old flow
   can no longer create an external effect;
 - `failed_before_external_effect` — failure happened before any external
   mutation was possible;
 - explicit audited manual resolution.
 
-If outcome cannot be proven, the intent remains unresolved/manual-review and
-continues to hold scope. A late external subscription after UX expiry is still
-discovered/reconciled and may link the intent.
+A linked non-terminal subscription continues to hold product-purchase scope even
+when it is prepared-but-unpaid or otherwise not yet access-eligible. New purchase
+for that product remains blocked until authoritative provider state proves that
+the linked subscription is terminal/cannot later become access-producing, or an
+explicit audited resolution clears it. If outcome cannot be proven, the subject
+remains unresolved/manual-review. A late external subscription after UX expiry
+is still discovered/reconciled and may link the intent.
 
 ### Subscription projection
 
@@ -634,6 +638,8 @@ External subscription uniqueness includes:
 The domain/DB also prevents more than one selected access-producing subscription
 per `(user_id, product_id)`. Multiple external subscription rows may exist for
 audit/conflict handling, but only one may be selected as the access source.
+Separately, a linked non-terminal subscription may hold purchase scope even
+while it is not selected as access-producing.
 
 `billing_subscription_components` projects actual subscription composition and
 stores its pinned mapping revision.
@@ -772,14 +778,16 @@ uniqueness is `(user_id, product_id)`.
 In a short local transaction Portal checks for:
 
 ```text
-active selected subscription -> already_owned
-scope-holding PurchaseIntent -> purchase_in_progress
-none                       -> create PurchaseIntent
+scope-holding billing_subscription -> already_owned if access-eligible,
+                                      otherwise existing_subscription_pending
+scope-holding PurchaseIntent       -> purchase_in_progress
+none                               -> create PurchaseIntent
 ```
 
 DB uniqueness/partial uniqueness is the final race protection. `unknown`,
 `ambiguous`, interaction expiry, or unresolved provider outcome continues to
-hold purchase scope until proven resolved.
+hold purchase scope until proven resolved. A linked prepared-but-unpaid
+subscription therefore cannot be bypassed by starting a second purchase.
 
 ### Durable external-customer ensure
 
@@ -1110,7 +1118,11 @@ refresh_after = generated_at + 1 minute
 expires_at    = generated_at + 5 minutes
 ```
 
-These are Kernel cache bounds, not LBX billing grace.
+These are Kernel cache bounds, not LBX billing grace. Snapshot `expires_at` must
+never exceed the Portal freshness/trust deadline for the paid facts represented
+by that snapshot and must not extend a provisional bucket beyond
+`renewal_grace_until`. Earlier per-grant/per-allowance semantic boundaries remain
+independent refresh triggers.
 
 Kernel behavior:
 
@@ -1466,6 +1478,8 @@ proving at least:
 - different keys/tabs cannot create two simultaneous purchase scopes for one
   `(user, product)`;
 - UX interaction expiry does not release unresolved purchase scope;
+- linking a prepared-but-unpaid subscription transfers purchase scope from the
+  PurchaseIntent to that subscription and still blocks a second purchase;
 - late external subscription after Widget expiry still links/reconciles;
 - customer slot is created before LBX create and parallel Product A/B purchases
   cannot create two LBX customers;
@@ -1510,6 +1524,7 @@ proving at least:
   and durably queues invalidation;
 - crossing an allowance/grant semantic boundary forces Kernel refresh before
   final deny;
+- `AccessSnapshot.expires_at` never exceeds Portal trust/grace bounds;
 - lost invalidation still converges via refresh/expiry;
 - Kernel cache defaults are 1m refresh / 5m expiry and are not confused with
   Portal LBX trust lease;
