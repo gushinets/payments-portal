@@ -1,6 +1,6 @@
 # Payments Portal <-> Platform Kernel access contract
 
-Status: review requested after ninth external-review amendments  
+Status: review requested after tenth external-review amendments  
 Date: 2026-09-15
 
 ## Purpose
@@ -277,28 +277,74 @@ refresh_after
 expires_at
 ```
 
-### Snapshot time semantics
+### Snapshot time semantics and clock skew
 
-MVP defaults:
+Portal and Kernel have independent clocks. The deployment therefore defines one
+positive `clock_skew_budget`. Portal publishes conservative authorization bounds;
+Kernel compares those received bounds with its own `now` and never adds time or
+extends them locally.
+
+For finite paid facts, Portal derives effective wire bounds conservatively:
 
 ```text
-refresh_after = now + 1m
-expires_at = min(
-  now + 5m,
-  deadlines of source facts actually included,
-  included grant terminal boundaries,
-  included allowance boundaries where relevant
-)
+effective grant.valid_until = source valid_until - clock_skew_budget
+effective allowance.period_start = source period_start + clock_skew_budget
+effective allowance.period_end = source period_end - clock_skew_budget
 ```
 
-A stale/expired/conflicted fact is omitted instead of invalidating unrelated
-facts. Once omitted, its old deadline does not shorten the newly materialized
-snapshot. The omission itself is a semantic access change and therefore requires
-a new revision before the GET can return it.
+Raw provider/source boundaries remain internal to Portal. If the conservative
+haircut collapses an interval, that paid fact is unusable and is omitted/fails
+closed rather than widened.
 
-Portal must not include a paid fact after its provider projection trust deadline.
-Kernel must use an allowance only while `now` belongs to its half-open UTC period
-`[period_start, period_end)` and the parent snapshot remains valid.
+MVP snapshot defaults are:
+
+```text
+expires_at = min(
+  now + 5m,
+  effective deadlines of source facts actually included,
+  included effective grant terminal boundaries,
+  included effective allowance boundaries where relevant
+)
+
+refresh_after = min(now + 1m, expires_at)
+```
+
+Therefore `refresh_after` is never later than `expires_at`.
+
+A stale/expired/conflicted fact is omitted instead of invalidating unrelated
+facts. The billing-boundary design requires deterministic due-boundary processing
+through the existing Portal access-commit path, with no provider HTTP, so an
+overdue fact is removed by a new revision rather than by GET. GET itself remains
+strictly read-only. If the due commit is temporarily late, the already-issued
+snapshot remains expired and Kernel must not extend it; unrelated facts become
+usable again when Portal commits the reduced effective set as the next revision.
+
+Portal must not include a paid fact after its effective provider-projection trust
+deadline. Kernel must use an allowance only while its own `now` belongs to the
+received half-open UTC period `[period_start, period_end)` and the parent snapshot
+remains valid.
+
+### Request-driven refresh; no fleet poller
+
+`refresh_after` is a cache-refresh hint, not a command to poll every user on a
+fixed timer. Platform Kernel does not run a fleet-wide one-minute snapshot poller.
+
+On a paid action:
+
+```text
+now < refresh_after
+  -> current accepted cache may be used
+
+refresh_after <= now < expires_at
+  -> initiate/request refresh; the still-valid cached snapshot may authorize
+     this action if all other predicates pass
+
+now >= expires_at
+  -> a fresh acceptable snapshot is required before paid authorization;
+     otherwise fail closed
+```
+
+An invalidation revision floor always takes precedence over this timing behavior.
 
 ### HTTP semantics
 
@@ -547,7 +593,7 @@ Correctness also depends on:
 ```text
 AccessSnapshot.refresh_after
 AccessSnapshot.expires_at
-temporal-boundary refresh
+temporal-boundary commits
 complete snapshot replacement semantics
 ```
 
@@ -609,12 +655,19 @@ durable usage below frozen quantity
 ```
 
 The absence or expiry of the paid allowance fails closed for that metric even if
-the product grant remains present. MVP does not stack multiple effective
-allowances for one `(product_id, metric_key)`; receiving more than one is a
-contract conflict and Kernel does not sum them.
+the product grant remains present.
 
-Free/guest quota, if configured, is a separate Kernel-owned policy. Missing paid
-allowance never authorizes Kernel to invent paid quota.
+MVP does not stack multiple effective allowances for one `(product_id,
+metric_key)`. If a snapshot contains more than one currently effective allowance
+for that pair, Kernel fails closed only for that metric: it does not sum the
+allowances, does not reject unrelated grants/metrics, and does not discard the
+whole snapshot. Portal should likewise materialize that duplicate-source conflict
+as omission of the affected metric allowance(s), not unrelated product access.
+
+Free, guest, and trial access/quota, if configured, are separate Kernel-owned
+policies. The paid AccessSnapshot remains empty until Portal has a paid grant; the
+Portal does not issue an unpaid/free/trial grant through this billing rewrite.
+Missing paid allowance never authorizes Kernel to invent paid quota.
 
 Portal never stores authoritative runtime remaining quota.
 
@@ -630,11 +683,20 @@ MVP rules:
 - do not introduce a shared runtime Python package that couples Portal and
   Kernel releases.
 
-Canonical JSON contract fixtures are checked in with Payments Portal tests.
-Platform Kernel vendors a hash-checked copy for producer/consumer compatibility
-proofs. Intentional contract changes update the canonical fixture and expected
-SHA-256 copy together. This is test data only, not a shared runtime package or a
-cross-repository runtime dependency.
+Fixture ownership follows producer ownership:
+
+```text
+Platform Kernel owns canonical capability-manifest fixtures.
+Payments Portal vendors hash-checked copies as the manifest consumer.
+
+Payments Portal owns canonical access-snapshot fixtures.
+Payments Portal owns canonical access-invalidation request fixtures.
+Platform Kernel vendors hash-checked copies as the consumer/receiver.
+```
+
+Intentional contract changes update the producer-owned canonical fixture and the
+consumer repository's expected SHA-256 copy together. These fixtures are test
+data only, not a shared runtime package or a cross-repository runtime dependency.
 
 ## Required contract proofs
 
@@ -645,6 +707,13 @@ The implementation plan must cover at least:
 - first material access change atomically creates revision `1` and invalidation
   `1`, with no competing GET-created revision;
 - same `access_revision` cannot return a different semantic grants/allowances set;
+- a deterministic time boundary omits only the due fact through revision `N+1`
+  without provider HTTP and leaves unrelated paid facts available after refresh;
+- `refresh_after <= expires_at` for every snapshot;
+- Portal's configured clock-skew haircut is conservative and Kernel never extends
+  received expiry/period bounds with its own clock;
+- no fleet-wide snapshot poller is required; refresh is driven by paid actions,
+  invalidations, and hard expiry;
 - snapshot N rejected after floor N+1 is learned;
 - concurrent N+1 then delayed N cannot regress cache/floor;
 - entitlement absence never produces `404`;
@@ -663,13 +732,16 @@ The implementation plan must cover at least:
 - cache eviction does not delete allowance usage;
 - a product grant without the required paid metric allowance cannot authorize a
   paid metered action;
-- multiple effective allowances for one metric are not stacked;
+- duplicate effective allowances for one metric fail closed only that metric and
+  are never stacked;
 - concurrent Kernel quota consumption cannot exceed allowance quantity;
 - capability `enabled=false` blocks new mapping/purchase pins without revoking
   already-pinned historical access;
 - capability-manifest partial/invalid sync keeps prior LKG and does not move
   `last_complete_sync_at`;
-- hash-checked contract fixtures cannot drift silently between repositories.
+- manifest canonical fixture ownership remains in Kernel while snapshot/
+  invalidation canonical fixtures remain in Portal, with hash-checked consumer
+  copies and no shared runtime package.
 
 ## Result
 
