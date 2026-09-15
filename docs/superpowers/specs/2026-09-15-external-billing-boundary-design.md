@@ -1,17 +1,17 @@
 # External billing boundary and Payments Portal redesign
 
-Status: review requested after external-review amendments
+Status: review requested after second external-review and LBX Widget refinement
 Date: 2026-09-15
 
 ## Goal
 
 Redesign Payments Portal around a strict bounded-context split:
 
-- the external billing system owns the commercial billing domain;
-- Payments Portal owns AnyToolAI user identity plus the anti-corruption,
-  projection, reconciliation, recovery, and entitlement boundary;
-- Platform Kernel owns technical product identity, usage metrics, actual usage,
-  quota enforcement, and runtime execution;
+- External Billing owns the commercial billing domain;
+- Payments Portal owns AnyToolAI identity plus the anti-corruption,
+  projection, reconciliation, recovery, entitlement, and integration boundary;
+- Platform Kernel owns technical product/metric vocabulary, actual usage,
+  runtime quota enforcement, and execution;
 - Platform Kernel never communicates directly with LBX, Dodo, or any future
   billing provider.
 
@@ -19,50 +19,52 @@ The repository has not been deployed to production. The current direct-payment
 and Portal-owned commerce schema is disposable. This design therefore uses a
 clean pre-production reset rather than a backward-compatible migration path.
 
-This revision incorporates the external architecture review and the decisions
-accepted after that review. It intentionally narrows MVP commercial scope to
-buying one existing Platform product at a time.
+MVP intentionally supports independent purchase of one existing Platform product
+at a time. Commercial bundles, overlapping paid subscriptions for the same
+product, allowance stacking, paid overage, and upgrade/downgrade are deferred.
 
 ## Canonical documentation precedence and required supersession
 
-This design changes accepted semantics that are still present in existing
-Payments Portal ADRs and architecture documents. Those older semantics must not
-be treated as simultaneously authoritative.
+This design changes accepted semantics that still exist in Payments Portal ADRs
+and architecture documents. Those older passages must not remain simultaneously
+authoritative.
 
-In particular, this design supersedes the following concepts where they appear
-in ADR 0002, ADR 0004, or related canonical documentation:
+This design supersedes, where present in ADR 0002, ADR 0004, or related canonical
+documentation:
 
 - Portal-owned `Product`, `Plan`, `PlanLimit`, and commercial `Order` as the
   purchase authority;
-- `Plan.id` as the exact commercial purchase identity;
+- `Plan.id` as exact commercial purchase identity;
 - recurring/commercial consent bound to `Plan.id`;
 - a mandatory Portal commercial Order for Portal-initiated purchase;
-- direct-payment-provider orchestration by Payments Portal.
+- direct-payment-provider orchestration by Payments Portal;
+- the assumption that payment UX, invoices, payment methods, or autopay must be
+  implemented as Portal-owned UI.
 
-The replacement semantics are:
+Replacement semantics are:
 
-- Platform Kernel owns technical `product_id` and `metric_key` vocabulary;
+- Platform Kernel owns `product_id` and `metric_key` vocabulary;
 - External Billing owns commercial offers, prices, periods, subscriptions,
-  payments, refunds, payment methods, autopay, and billing lifecycle;
-- Payments Portal projects a provider offer as `billing_offer` and identifies
-  the exact commercial version by `offer_id + commercial_fingerprint`;
+  balances, payments, refunds, payment methods, autopay, invoices, and billing
+  lifecycle;
+- Payments Portal projects provider offers as `billing_offer` and identifies the
+  commercial version by `offer_id + commercial_fingerprint`;
 - `PurchaseIntent` is orchestration state only, not a commercial Order;
-- AnyToolAI commercial/legal acceptance is bound to the current offer
-  fingerprint and exact required legal-document versions;
-- payment initiation and payment UX are provider-owned.
+- AnyToolAI commercial/legal acceptance is bound to current offer fingerprint
+  and exact required legal-document versions;
+- payment and billing self-service UX are provider-owned.
 
-Before implementation is considered complete, the canonical set must be made
-consistent in one documentation change: ADR 0002, ADR 0004, billing authority,
-data model, reliability, Platform Kernel contract, legal-flow documentation,
-and any README/implementation guidance that still describes the superseded
-model. A new ADR may record this design as the superseding decision. Until that
-canonical update lands, this document is the intended target design for the
-external-billing rewrite and the conflicting older passages are migration
-inputs, not concurrent requirements.
+Before implementation is complete, the canonical set must be made consistent in
+one documentation stream: ADR 0002, ADR 0004, billing authority, Portal data
+model, reliability docs, Platform Kernel contract/quota docs, legal-flow docs,
+and README/implementation guidance that still describes superseded semantics. A
+new superseding ADR may record this target. Until that update lands, this spec is
+the target design and conflicting older passages are migration inputs, not
+concurrent requirements.
 
-The clean Alembic reset is also an explicit pre-production exception to any
-older "baseline frozen / forward-only" migration convention. There is no
-production data compatibility requirement for this rewrite.
+The clean Alembic reset is an explicit pre-production exception to any older
+"baseline frozen / forward-only" convention. There is no production-data
+compatibility requirement for this rewrite.
 
 ## Architectural invariants
 
@@ -72,16 +74,15 @@ External Billing owns commercial billing truth. For RU this is LBX. EU/US may
 use Dodo or another provider behind the same Portal boundary. External Billing
 owns, as applicable:
 
-- commercial services/products and tariff/package composition;
-- prices, currency, billing periods, discounts, and sellability;
-- commercial allowances and billing rules;
-- commercial subscription lifecycle;
-- agreements or equivalent provider-native commercial contracts;
-- balances, charges, billing calculations, and financial blocking;
-- payment initiation, payment UX, acquiring, payment methods, autopay;
-- refunds, disputes/chargebacks as represented by the provider;
-- invoices and billing documents;
-- billing customer profile and billing notifications.
+- commercial services/products, tariffs, periods, package composition, prices,
+  discounts, sellability, and commercial allowances;
+- subscription lifecycle, agreements or equivalent provider-native contracts;
+- balances, charges, billing calculations, financial blocking;
+- payment initiation and payment UX, acquiring, payment methods, autopay;
+- refunds and dispute/chargeback consequences as represented by the provider;
+- invoices, billing documents, payment history, billing customer profile, and
+  billing notifications;
+- provider-owned billing self-service UI.
 
 Payments Portal owns:
 
@@ -89,24 +90,24 @@ Payments Portal owns:
   AnyToolAI legal acceptance;
 - verified mapping between AnyToolAI users and external billing customers;
 - read-only local projections of external catalog and subscription state;
-- explicit, versioned mapping between external billing components and Platform
-  technical capabilities;
-- `PurchaseIntent` and provider-owned customer-interaction orchestration state;
-- durable command recovery, discovery, reconciliation, work queues, webhook
-  ingestion, and manual-review workflow;
+- explicit immutable/versioned mapping between external billing components and
+  Platform technical capabilities;
+- `PurchaseIntent` and customer-interaction orchestration state;
+- durable command recovery, customer discovery, reconciliation, webhook
+  ingestion, work queues, and manual-review workflow;
 - normalized entitlements and purchased-allowance projections;
-- the vendor-neutral `AccessSnapshot` consumed by Platform Kernel;
-- delivery state for usage forwarding when a provider requires it.
+- vendor-neutral `AccessSnapshot` and access invalidation toward Platform Kernel;
+- durable ingestion/delivery state for usage forwarding when required.
 
 Platform Kernel owns:
 
-- technical `product_id` vocabulary and product registry;
-- technical usage metric vocabulary (`metric_key`) and ownership of each metric
-  by exactly one `product_id`;
+- technical `product_id` registry;
+- technical `metric_key` registry, with every metric owned by exactly one
+  `product_id`;
 - actual runtime usage;
 - runtime quota state, policy, and enforcement;
 - scenario/workflow/action execution;
-- a durable usage outbox for paid usage events.
+- durable paid-usage outbox.
 
 Payments Portal never becomes the source of truth for actual runtime usage or
 remaining runtime quota.
@@ -119,8 +120,8 @@ identifiers and must never call a billing provider directly.
 ```text
 External Billing
       |
-      | provider-specific catalog/subscription/customer APIs
-      | provider-owned payment UI + webhooks
+      | catalog/customer/subscription APIs
+      | webhooks + provider-owned billing UI
       v
 Payments Portal
       |
@@ -129,7 +130,7 @@ Payments Portal
 Platform Kernel
 ```
 
-When provider metering is required, the usage path is:
+When provider metering is required:
 
 ```text
 Platform Kernel -> durable UsageEvent -> Payments Portal -> provider adapter
@@ -138,51 +139,69 @@ Platform Kernel -> durable UsageEvent -> Payments Portal -> provider adapter
 ### Strict payment boundary
 
 Payments Portal does not call payment-specific REST APIs. It does not create a
-payment, calculate or submit a payment amount as payment authority, choose an
-acquirer, save a payment method, enable autopay, retry a payment, issue a
-refund, or use payment status as an access-granting fact.
+payment, submit or calculate a payment amount as payment authority, choose an
+acquirer, save a payment method, enable autopay, retry a payment, issue a refund,
+or use payment status as an access-granting fact.
 
-Payments Portal may call non-payment External Billing APIs needed to establish
-or reconcile commercial structure: customer provisioning/recovery, catalog
-reads, provider-specific agreement/subscription provisioning, subscription
-state reads/discovery, and safe usage reporting when a tariff requires it.
+Portal may call non-payment External Billing APIs required to establish or
+reconcile commercial structure: customer provisioning/recovery, catalog reads,
+provider-specific agreement/subscription provisioning, subscription state
+reads/discovery, and safe usage reporting when a tariff requires it.
 
-For RU, the selected customer-facing payment mechanism is **LBX Widget**. The
-Portal embeds provider-owned payment UI scoped to the prepared billing context.
-There is no fallback to Portal-orchestrated LBX payment REST calls. If LBX
-cannot satisfy the required Widget isolation, that is a provider capability gap
-and blocks RU production enablement rather than weakening this boundary.
+For RU, the selected customer-facing billing/payment surface is **LBX Widget**.
+There is no fallback to Portal-orchestrated `/eps_payments` or another LBX
+payment REST flow. Failure of the Widget production gate is an LBX capability
+blocker, not a reason to weaken this boundary.
 
-### Projection, not duplicated authority
+### Commercial facts versus derived paid access
 
-A local catalog row, subscription projection, entitlement, allowance, webhook,
-browser callback, successful outbound POST, payment fact, agreement creation,
-or `PurchaseIntent` state never becomes commercial authority by itself.
+External commercial/subscription facts change only after a complete,
+successfully normalized authoritative provider read. Portal never invents
+provider lifecycle, financial state, subscription composition, terminal dates,
+or commercial quantities.
 
-Only a complete, successfully normalized authoritative subscription read may
-change access-producing subscription facts. Webhooks and browser interaction
-only accelerate such reads.
+Derived paid access may change only from this closed list of causes:
+
+1. a complete successfully normalized authoritative provider snapshot;
+2. deterministic passage of time across a boundary already present in trusted
+   facts; this may only reduce/expire access;
+3. the explicitly bounded provisional recurring-allowance rollover defined in
+   this spec;
+4. an explicit audited operator resolution/rebind that selects or rebinds
+   already-authoritative facts and then returns through normal derivation.
+
+No other Portal-local event may create or increase paid access. Among
+Portal-local mechanisms, provisional rollover is the **only** mechanism allowed
+to increase usable paid allowance without a new authoritative provider read.
+
+A local catalog row, webhook, browser/Widget callback, successful outbound POST,
+payment fact, agreement creation, or `PurchaseIntent` state is never by itself
+access authority.
 
 ## MVP commercial scope
 
-MVP intentionally supports only independent purchase of one existing Platform
-product at a time.
+MVP supports independent purchase of one existing Platform product at a time:
 
 ```text
 Product A -> Offer A -> Subscription A
 Product B -> Offer B -> Subscription B
 ```
 
-A user may own different products independently, but for one `(user_id,
-product_id)` there may be at most one access-producing billable subscription.
-MVP does not support commercial bundles, all-access packages, overlapping paid
-subscriptions for the same product, allowance stacking, shared metrics across
-products, paid overage, or upgrade/downgrade flows.
+For one `(user_id, product_id)` there may be at most one access-producing
+billable subscription. A user may own different products independently.
 
-Every sellable offer resolves to exactly one unique Platform `product_id` and
-may include zero or more usage allowances whose `metric_key` values all belong
-to that same product. A `metric_key` belongs to exactly one `product_id` in the
-Platform capability registry.
+MVP does not support:
+
+- commercial bundles or all-access packages;
+- one offer granting multiple products;
+- multiple active billable subscriptions for the same product;
+- allowance stacking;
+- one metric shared by several products;
+- paid overage;
+- upgrade/downgrade flows.
+
+Every sellable offer resolves to exactly one `product_id` and may contain zero or
+more allowances whose `metric_key` values all belong to that product.
 
 ## System shape
 
@@ -194,8 +213,9 @@ Platform capability registry.
                  LBX (RU) / future
                 commercial authority
                           |
-              non-payment REST + webhooks
-                 + provider-owned UI
+             non-payment REST + webhooks
+                          |
+             + provider-owned billing UI
                           |
                           v
                 +-------------------+
@@ -216,7 +236,6 @@ Platform capability registry.
                           v
                 +-------------------+
                 | Platform Kernel   |
-                |                   |
                 | product_id        |
                 | metric_key        |
                 | actual usage      |
@@ -226,12 +245,103 @@ Platform capability registry.
                 +-------------------+
 ```
 
+## LBX Widget as the RU billing cabinet
+
+### Vendor-documented capabilities
+
+The public LBX Widget documentation describes an embeddable authenticated
+customer window that can:
+
+- show all customer subscriptions;
+- create, edit, and stop subscriptions;
+- top up a selected agreement balance;
+- let the customer enter a payment amount, with LBX offering a recommended
+  amount;
+- manage autopay/payment method for a selected agreement;
+- create, view, and download invoices;
+- show history of money movement across agreements.
+
+The Widget connection documentation also exposes configuration flags including
+`disableCreateSubscription`, `disableEditSubscription`,
+`disableStopSubscription`, `disableAutopayments`, `disablePayments`,
+`disableInvoiceGeneration`, `hideInvoicesList`, and `hideSubscriptionsList`.
+JWT authentication supports several customer lookup modes, including lookup by
+agreement number (`ident_type=5`). The documentation does **not** by itself prove
+that lookup by agreement number server-side restricts the Widget to only that
+agreement; isolation remains a runtime/vendor proof obligation.
+
+Vendor documentation basis:
+
+- https://docs.lbxbilling.ru/integration_lbx/widget/
+- https://docs.lbxbilling.ru/integration_lbx/widget/widget_connection/
+
+### Target Widget configuration
+
+MVP delegates billing self-service to LBX Widget while preserving Portal control
+of commercial preparation:
+
+```text
+disableCreateSubscription = true
+disableEditSubscription   = true
+
+disableStopSubscription   = false
+disablePayments           = false
+disableAutopayments       = false
+
+disableInvoiceGeneration  = false
+hideInvoicesList          = false
+hideSubscriptionsList     = false
+```
+
+Portal does not rely on `activeSubscriptionsLimit` or hidden controls as a
+security boundary. Production validation must prove the relevant restrictions
+are effective server-side/in the actual LBX deployment.
+
+The following customer-facing billing UX moves to Widget:
+
+- agreement balance/payment top-up;
+- card/payment-method entry and storage handled by provider/payment
+  infrastructure;
+- autopay enable/change/disable;
+- billing subscription/balance display;
+- invoice generation/view/download where enabled;
+- payment/money-movement history;
+- customer-initiated subscription cancellation.
+
+Portal keeps:
+
+- AnyToolAI login/registration and legal acceptance;
+- product catalog and fixed offer selection;
+- purchase uniqueness and `PurchaseIntent`;
+- lazy customer ensure;
+- dedicated agreement/subscription preparation through non-payment LBX APIs;
+- discovery/reconciliation;
+- mapping, entitlements, allowances, `AccessSnapshot`, Kernel invalidation, and
+  usage delivery.
+
+Portal-owned payment form, card UI, autopay UI, invoice/payment-history UI, and
+payment-result semantics are removed from the target. Post-Widget UX should
+report **access activation/reconciliation state**, not claim payment success as
+Portal authority.
+
+### Native LBX balance model is accepted
+
+LBX documentation describes an agreement-balance top-up where the user selects
+an agreement and enters a payment amount; LBX may suggest a recommended amount.
+MVP intentionally accepts that provider-native balance model rather than
+requiring an exact Portal-defined checkout amount.
+
+The safety boundary is therefore **dedicated-agreement accounting isolation**,
+not "exact amount". Underpayment must not grant access; sufficient funding may
+make only the intended subscription access-eligible; overpayment may remain on
+the dedicated agreement for future provider billing. Portal does not model or
+interpret the agreement balance.
+
 ## Platform capability manifest
 
-Platform Kernel is the single source of truth for technical product and metric
+Platform Kernel is the source of truth for technical product and metric
 vocabulary. It publishes a versioned, vendor-neutral, read-only internal
-capability manifest derived from the canonical Platform registry rather than a
-second billing-specific source file.
+capability manifest derived from the canonical Platform registry.
 
 Conceptual shape:
 
@@ -254,31 +364,27 @@ Conceptual shape:
 }
 ```
 
-`manifest_version` changes deterministically on semantic content changes.
-Platform validation enforces that each metric belongs to exactly one product.
+`manifest_version` changes deterministically on semantic changes. Platform
+validation enforces `metric_key -> exactly one product_id`.
 
-Payments Portal periodically imports the manifest into a local read-only
-projection. The manifest is not fetched synchronously on every purchase or
-runtime access request.
+Portal imports the manifest into a local read-only projection. It is not fetched
+synchronously on each purchase or runtime access request.
 
-MVP operational defaults:
+MVP defaults:
 
-- import on startup plus scheduled refresh approximately every 5 minutes;
+- import on startup plus refresh approximately every 5 minutes;
 - `capability_manifest_max_age = 24h` for **new sales**.
 
-If refresh fails, Portal retains the last-known-good manifest. Once that
-manifest is older than the maximum sales age, new purchase creation fails
-closed. Existing pinned subscriptions and entitlements are not revoked merely
-because capability import is stale.
+If import fails, Portal retains the last-known-good manifest. Once it is older
+than 24h, new purchases fail closed. Existing pinned subscriptions and
+entitlements are not revoked because the capability manifest became stale.
 
-`enabled=false` for a product or metric blocks new offers/mappings that depend
-on it but does not automatically revoke historical paid access. Product sunset
-for already-sold subscriptions is a separate controlled migration.
+`enabled=false` blocks new offers/mappings that depend on that capability but
+does not automatically revoke historical paid access. Product sunset is a
+separate controlled migration.
 
-Every mapping revision records the `manifest_version` against which it was
-validated.
-
-Capability Manifest and AccessSnapshot are separate contracts:
+Every published mapping revision records the manifest version against which it
+was validated.
 
 ```text
 Capability Manifest = what technical capabilities exist
@@ -289,22 +395,24 @@ AccessSnapshot       = what this user may use now
 
 ### Fixed one-product offers
 
-For MVP every sellable external tariff/period is projected as a fixed
-`billing_offer`. The customer cannot add/remove services or choose arbitrary
-component quantities inside that Portal purchase flow.
+Every MVP sellable external tariff/period is projected as a fixed
+`billing_offer`. Portal purchase flow does not allow a customer to modify tariff,
+service composition, or component quantity.
 
-The offer may contain multiple external billing components, but after mapping:
+An offer may contain several external components, but after mapping:
 
-- it must resolve to exactly one unique `product_id`;
-- every mapped `metric_key` must belong to that product;
+- it resolves to exactly one unique `product_id`;
+- every mapped `metric_key` belongs to that product;
 - commercial-only components are allowed;
-- an unclassified component makes the offer `NOT_SELLABLE`.
+- any `UNCLASSIFIED` component makes the offer `NOT_SELLABLE`;
+- more than one source component for the same `metric_key` makes the offer
+  `NOT_SELLABLE` with `duplicate_metric_source`.
 
 There is no Portal-owned Product/Bundle/Plan/PlanLimit commercial model.
 
 ### Component classification
 
-Every imported external billing component has an explicit classification:
+Each imported external component is explicitly:
 
 ```text
 UNCLASSIFIED
@@ -312,20 +420,11 @@ CAPABILITY_BEARING
 COMMERCIAL_ONLY
 ```
 
-Semantics:
-
-- `UNCLASSIFIED`: new offers containing the component are `NOT_SELLABLE`;
-- `CAPABILITY_BEARING`: at least one valid technical capability binding is
-  required;
-- `COMMERCIAL_ONLY`: zero technical bindings are intentional and produce no
-  entitlement/allowance.
-
-Missing mapping is never silently interpreted as commercial-only.
+`CAPABILITY_BEARING` requires one or more technical bindings.
+`COMMERCIAL_ONLY` intentionally has no technical bindings. Missing mapping is
+never silently interpreted as commercial-only.
 
 ### Immutable versioned mappings
-
-A component mapping is versioned and immutable after publication. A component
-revision has zero or more bindings, not exactly one.
 
 Conceptually:
 
@@ -335,28 +434,35 @@ billing_component_mapping_revisions
   billing_component_id
   revision
   classification
-  status            # active / retired
+  status                  # active / retired
   validated_manifest_version
   created_at
-  created_by/source
+  published_by
 
 billing_component_mapping_bindings
   mapping_revision_id
-  capability_type   # product / usage_metric
+  capability_type         # product / usage_metric
   technical_key
 ```
 
-A single external component may therefore imply both product access and one or
-more product-owned usage metrics.
+One external component may bind to both a product and one or more product-owned
+metrics. Mapping revisions are immutable after publication; future changes
+create revision N+1.
 
-A new revision may become active for future resolution; an old revision is
-retained for history. Editing an already-used revision in place is forbidden.
+Mapping publication is a controlled Product/Engineering operation, not Sales
+free-form editing and not automatic inference from `outer_id`. MVP may use a
+controlled admin command/API rather than a dedicated UI. Publication validates
+against the current capability manifest and records actor, timestamp, and
+manifest version.
+
+Sales/Finance owns the commercial catalog in LBX. A new LBX service/tariff may
+therefore exist while its Portal component remains `UNCLASSIFIED`; the related
+offer is not sellable until Product/Engineering publishes a valid mapping.
 
 ### Subscription-component pinning
 
-When Portal first resolves an actual external subscription component, it pins
-that component instance to the then-active mapping revision. Future catalog
-mapping changes do not silently change existing access.
+When Portal first resolves a real external subscription component, it pins that
+component instance to the then-active mapping revision.
 
 ```text
 External subscription component
@@ -365,23 +471,25 @@ External subscription component
         -> entitlements / allowance buckets
 ```
 
-If the authoritative external subscription later removes the component, the
-corresponding derived grant/allowance is removed. If a previously unknown
-component later receives its first valid mapping, an unresolved subscription
-component may be resolved once from `NULL` to that mapping revision.
+Future catalog mapping changes do not silently rewrite existing access. If the
+provider later removes the component from the subscription, the derived
+capability is removed through normal reconciliation.
 
-Changing an already-pinned revision requires an explicit audited rebind
-operation. Catalog sync and ordinary reconciliation never perform such a
-rebind automatically.
+A previously unresolved subscription component may be resolved once from
+`NULL` to its first valid mapping revision. Changing an already-pinned revision
+requires an explicit audited rebind; ordinary catalog sync and reconciliation
+never rebind automatically.
 
-If a live subscription contains both known and unknown components, known pinned
-components may continue to produce their known access while the unknown
-component produces no invented capability and opens mapping review.
+Several components may map to the same `product_id`; product grants use set/union
+semantics and materialize one product grant. A concrete subscription may not
+have more than one source component for one `metric_key`. If it does, that
+metric receives no allowance, `allowance_conflict` is opened for manual review,
+and unrelated unambiguous capabilities may continue.
 
 ## Target Payments Portal data model
 
-Exact SQL names/types may follow repository conventions, but these semantic
-entities and constraints are required.
+Exact SQL names/types may follow repository conventions. The semantic entities
+and constraints below are required.
 
 ### Identity and legal
 
@@ -389,72 +497,113 @@ Retain Portal-owned:
 
 - `users`;
 - authentication/session state;
-- versioned legal documents and acceptances.
+- versioned legal documents and append-only acceptances.
 
-`users.id` is canonical AnyToolAI identity. Email is an attribute, not a
+`users.id` is canonical AnyToolAI identity. Email is an attribute, never a
 cross-system identity key.
 
 ### External billing configuration and customer correlation
 
 `external_billing_accounts` identifies provider/system, contour/region,
-environment/account key, and enabled state. It contains no credentials or
-secrets.
+environment/account key, and enabled state. It contains no secrets.
 
-`external_billing_customers` maps one Portal user to one provider customer for a
-billing account and includes a **mandatory stable opaque recovery key** generated
-by Portal. The recovery key is independent of email and must support provider
-recovery after uncertain customer creation. The database enforces at most one
-active mapping per `(external_billing_account_id, user_id)`.
+`external_billing_customers` is also the **durable customer slot** for a Portal
+user and billing account. It exists before the first external customer-create
+call and contains at least:
 
-External customer provisioning is **lazy**, not registration-time eager. Normal
-Portal registration creates no LBX customer. Customer creation starts only
-after the user begins a commercial action and passes the required legal barrier.
-Only the minimum provider-required PII is transmitted.
+```text
+id
+external_billing_account_id
+user_id
+recovery_key              # stable opaque, NOT NULL
+provider_customer_id      # NULL until proven
+provisioning_status       # provisioning/ready/unknown/manual_review/failed
+```
 
-Changing Portal email updates the existing external customer where required; it
-must not create a second external customer merely because contact data changed.
+Required uniqueness:
+
+```text
+(external_billing_account_id, user_id) UNIQUE
+(external_billing_account_id, provider_customer_id) UNIQUE when provider id exists
+```
+
+The stable recovery key is generated before any provider create and never
+changes, including after email change.
+
+External customer provisioning is lazy. Normal Portal registration creates no
+LBX customer. Customer creation starts only after a commercial action passes its
+legal barrier. Only minimum provider-required PII is transmitted.
+
+Concurrent purchases of different products share the same customer slot. Only
+the single unresolved `ensure_customer` operation may execute external create.
+Parallel callers wait/reuse that operation and never issue a second LBX customer
+create. `unknown` customer-create outcome blocks new create attempts until
+recovery/manual resolution.
 
 ### Catalog projections
 
-The Portal stores read-only projections such as:
+Portal stores read-only projections for:
 
 - capability-manifest import metadata;
-- `technical_products` and `technical_usage_metrics`;
-- `billing_catalog_components`;
-- immutable component mapping revisions and bindings;
-- `billing_offers` with commercial display facts, provider references,
-  `product_id`, `commercial_fingerprint`, source version, sellability, and sync
-  timestamps;
-- `billing_offer_components` with fixed provider component composition and
-  commercial quantities/allowance facts.
+- technical products and metrics;
+- external catalog components;
+- immutable mapping revisions/bindings;
+- fixed `billing_offers` with `product_id`, display facts,
+  `commercial_fingerprint`, provider references, sellability, and sync metadata;
+- offer component composition/allowance facts.
 
-### Purchase intent
+### Purchase intent: orchestration and interaction are separate
 
-There is no Portal-owned commercial `Order`.
+There is no Portal commercial `Order`.
 
-`purchase_intents` records that a user started buying one current offer version.
-It includes at least:
+`purchase_intents` includes at least:
 
-- `user_id`, `billing_account_id`, `product_id`, `billing_offer_id`;
-- immutable `commercial_fingerprint` and relevant displayed commercial snapshot;
+- `user_id`, billing account, `product_id`, `billing_offer_id`;
+- immutable commercial fingerprint/snapshot;
 - client idempotency identity;
-- orchestration status and timestamps;
+- orchestration state;
+- interaction state/timestamps;
 - optional linked external subscription once proven.
 
 `PurchaseIntent` is not an invoice, payment, subscription, or access authority.
 
-Conceptual states include:
+Orchestration states conceptually include:
 
 ```text
-created -> preparing -> interaction_ready -> awaiting_external_result -> linked
+created
+preparing
+awaiting_external_result
+linked
+resolved_no_external_effect
+manual_review
+failed_before_external_effect
 ```
 
-plus `expired` and `failed`. `linked` only means an external subscription was
-unambiguously linked; it does not mean entitlement is active.
+Customer-interaction state is separate:
 
-An expired intent may still be a reconciliation subject when an external result
-can arrive late. Expiry of the UX flow never authorizes Portal to ignore a
-later real external subscription/payment outcome.
+```text
+not_ready
+available
+expired
+```
+
+`interaction=expired` means the normal Widget UX is no longer considered active;
+it does **not** mean the commercial outcome is resolved and does not by itself
+release the `(user_id, product_id)` purchase scope.
+
+Purchase scope is released only after one of these outcomes:
+
+- `linked` — a real subscription was proven; future purchase is then governed by
+  `already_owned` while that access-producing subscription exists;
+- `resolved_no_external_effect` — provider-specific recovery proves the old flow
+  can no longer create an external effect;
+- `failed_before_external_effect` — failure happened before any external
+  mutation was possible;
+- explicit audited manual resolution.
+
+If outcome cannot be proven, the intent remains unresolved/manual-review and
+continues to hold scope. A late external subscription after UX expiry is still
+discovered/reconciled and may link the intent.
 
 ### Subscription projection
 
@@ -462,87 +611,83 @@ later real external subscription/payment outcome.
 confirmed. Pre-subscription uncertainty belongs to `PurchaseIntent` and
 `billing_operations`.
 
-Normalized business states are deliberately small:
+Normalized subscription facts are deliberately small:
 
 ```text
 lifecycle_status: active | inactive | ended
 financial_access_status: allowed | blocked
+commercial_access_status: eligible | ineligible
 ```
 
-Unknown provider semantics are **not** persisted as a normal business status.
-Normalization health is tracked separately. On an access-relevant normalization
-error, the last successfully normalized business projection is preserved until
-its finite trust boundary; a subject with no prior good state grants no access.
+`commercial_access_status` is adapter-derived from provider-authoritative facts
+and represents the provider-validated criterion that the prepared subscription
+is commercially eligible for access, including any required initial-activation
+semantics. Unknown access-relevant provider semantics are not stored as normal
+business states.
 
-`billing_subscription_components` projects the actual component composition of
-that specific subscription and stores its pinned mapping revision.
-
-External subscription uniqueness includes at least:
+External subscription uniqueness includes:
 
 ```text
 (external_billing_account_id, external_subscription_id) UNIQUE
 ```
 
-The application/DB also prevents more than one access-producing billable
-subscription for the same `(user_id, product_id)`. A second externally-created
-active subscription for the same product is a conflict, not something to stack.
+The domain/DB also prevents more than one selected access-producing subscription
+per `(user_id, product_id)`. Multiple external subscription rows may exist for
+audit/conflict handling, but only one may be selected as the access source.
+
+`billing_subscription_components` projects actual subscription composition and
+stores its pinned mapping revision.
 
 ### Entitlements and purchased allowances
 
-`entitlements` materializes normalized product grants. It contains Portal and
-Platform identifiers only, never provider tariff/agreement/subscription IDs in
-the Kernel-facing representation.
+`entitlements` materializes product grants. `purchased_allowances` materializes
+paid metric limits. Kernel-facing representations contain no provider IDs.
 
-`purchased_allowances` materializes paid metric limits. Every active allowance
-has a stable opaque `allowance_id` and is linked internally to one normalized
-subscription and the exact pinned subscription component/source needed for
-historical routing.
+Every allowance has stable opaque `allowance_id` and an internal link to the
+exact normalized subscription + pinned external component needed for historical
+routing. Historical/expired allowance rows are retained and remain resolvable by
+`allowance_id`; they are not physically deleted merely because the period ended.
 
-For MVP a user has at most one active paid allowance bucket for a given
-`metric_key`. Paid allowance stacking is not supported.
+For MVP, one user may have at most one active paid allowance source for a given
+`metric_key`. No stacking or automatic sum/max semantics exist.
 
 Portal does not persist authoritative runtime `remaining` usage. Platform Kernel
 owns actual usage and remaining-quota calculation.
 
 ### Reliability and operational state
 
-`billing_operations` is the durable journal for Portal-initiated external
-non-payment mutations. States include:
+`billing_operations` is the durable journal for Portal-initiated non-payment
+external mutations. An operation exists before any non-idempotent side effect.
+Timeout/lost response becomes `unknown`; no blind retry occurs before
+provider-specific recovery.
 
-```text
-pending | in_progress | succeeded | unknown | ambiguous | failed
-```
-
-An operation row exists before a non-idempotent external side effect. Network
-calls never execute inside its database transaction. Timeout/lost response is
-`unknown` and triggers provider-specific recovery before any retry.
-
-`billing_webhook_inbox` stores every authenticated webhook delivery with a
+`billing_webhook_inbox` stores every authenticated delivery with a
 Portal-generated `delivery_id`, safe correlation hints, event type, non-unique
 `payload_hash`, processing state, and timestamps.
 
-`billing_work_items` is the durable PostgreSQL work queue for catalog/capability
-sync, webhook-triggered work, operation recovery, customer discovery,
-subscription reconciliation, access invalidation, and related jobs.
+`billing_work_items` is the durable PostgreSQL queue for catalog/capability sync,
+operation recovery, discovery, reconciliation, invalidation delivery, and
+related work.
 
-`manual_review_cases` records operational cases separately from billing/access
-state. It contains subject, reason code, owner category, status, timestamps, and
-explicit resolution/audit information.
+`manual_review_cases` records subject, reason code, owner category, status,
+timestamps, explicit resolution, and audit actor/details. It is separate from
+access state.
 
-Usage ingestion/delivery state is stored as integration state, not a second
-runtime usage ledger.
+Usage ingestion/delivery persistence records integration state only, not a
+second runtime usage ledger.
 
-Provider-specific typed support tables are allowed. For LBX, agreement
-bindings/recovery data may live in typed LBX tables. Provider-specific concepts
-must not force themselves into generic domain contracts.
+Provider-specific typed support tables are allowed. LBX agreement
+bindings/recovery data may live in LBX-specific tables without forcing Agreement
+into provider-neutral domain contracts.
 
-## Legal barrier and customer creation
+## Legal barrier, origin classification, and customer creation
 
-Before a `PurchaseIntent` is created, Portal must verify that the user has
-accepted every currently-required AnyToolAI legal document for the exact
-commercial version being purchased.
+### User-initiated purchase
 
-Commercial/legal acceptance is bound to:
+Before creating a user-initiated `PurchaseIntent`, Portal verifies all currently
+required AnyToolAI legal documents for the exact commercial version.
+
+Acceptance is bound to:
 
 ```text
 user_id
@@ -551,330 +696,343 @@ billing_offer_id
 commercial_fingerprint
 required legal document versions
 acceptance kind
-authorized timestamp/audit metadata
+timestamp/audit metadata
 ```
 
-The commercial fingerprint covers material terms used to decide what the user
-is buying, including price/currency, billing period/recurrence, target product,
-component/allowance composition, and material renewal/cancellation terms that
-Portal presents or relies on. Cosmetic description/copy changes alone must not
-change the fingerprint.
+Commercial fingerprint covers material terms used to decide what the user buys:
+price/currency, billing period/recurrence, product, component/allowance
+composition, and material renewal/cancellation terms presented or relied on.
+Cosmetic copy changes alone do not change the fingerprint.
 
-If the commercial fingerprint changes after display/acceptance, the purchase
-returns `offer_changed`; the user must review the new commercial version and
-complete any newly-required acceptance before a new PurchaseIntent is created.
+Changed material terms return `offer_changed` and require review/new acceptance
+before a new intent.
 
-Portal owns AnyToolAI legal acceptance. LBX/its payment infrastructure owns
-payment-method, acquiring, and provider-specific autopay consent inside the
-provider-owned payment UX. Portal must not infer "permission to charge" from
-its own legal checkbox.
+Portal owns AnyToolAI legal acceptance. LBX/payment infrastructure owns
+provider-specific payment-method/autopay consent inside Widget. Portal never
+infers permission to charge from its own checkbox.
 
-After the legal barrier, the purchase flow may lazily ensure the external
-billing customer using the mandatory stable recovery key.
+### Discovered/manual subscriptions
+
+Automatic access-producing origins are limited to:
+
+```text
+purchase
+operator_comp
+external_unknown
+```
+
+A normal customer-funded/recurring subscription discovered without the matching
+Portal purchase/legal acceptance does **not** automatically grant access; it is
+`external_unknown` and requires manual review.
+
+`operator_comp` is an explicit audited classification for a non-customer-funded,
+non-autopay comp/gift grant. It may omit `PurchaseIntent`/recurring-payment
+consent, but the Portal user must still hold current baseline AnyToolAI terms /
+privacy acceptances required to use the service. If baseline acceptance is
+missing, the comp entitlement is held until acceptance.
+
+MVP supports comp/gift only for an **already mapped** external customer. Creating
+or auto-binding a new LBX customer solely for a Sales/Finance gift is out of
+scope. Unknown provider customers are never auto-bound by PII.
+
+### Data lifecycle
 
 Erasure/retention, merchant-of-record, fiscal/54-FZ responsibility, and exact
 legal retention periods require explicit Legal/Finance policy. The technical
 design must support delete/anonymize/disconnect/retain decisions without
-pretending Portal identity deletion automatically erases provider records that
-may have independent retention obligations.
+pretending Portal user deletion automatically erases provider records with
+independent retention obligations.
 
-## Purchase and LBX Widget lifecycle
+## Purchase and LBX preparation lifecycle
 
-### Offer validation
+### Offer and scope validation
 
-The browser submits only Portal-owned opaque identifiers:
+Browser submits only Portal opaque identifiers:
 
 ```text
 offer_id
-commercial_fingerprint / offer_version shown to the user
+commercial_fingerprint / offer_version
 client idempotency key
 ```
 
-It never supplies authoritative price, provider tariff/service IDs, payment
+It never submits authoritative price, provider tariff/service ID, payment
 amount, or billing period.
 
-Before purchase, Portal verifies capability-manifest freshness, catalog
-freshness, offer sellability, current commercial fingerprint, legal acceptance,
-and business uniqueness for `(user_id, product_id)`.
-
-If commercial terms are stale, Portal performs the required targeted provider
-refresh. Changed terms return `offer_changed`. If current terms cannot be
-confirmed when required, a new purchase fails closed.
+Portal verifies capability-manifest freshness, external catalog freshness,
+offer sellability, current fingerprint, legal acceptance, and business
+uniqueness for `(user_id, product_id)`. Changed terms return `offer_changed`.
+When current terms cannot be confirmed where required, new purchase fails
+closed.
 
 ### Business uniqueness beyond HTTP idempotency
 
-`Idempotency-Key` protects retransmission of the same public request. It is not
-the business uniqueness mechanism.
+`Idempotency-Key` protects retransmission of one public request. Business
+uniqueness is `(user_id, product_id)`.
 
-Before creating a new intent Portal serializes the purchase scope
-`(user_id, product_id)` in a short local transaction and checks:
-
-- whether an access-producing billable subscription already exists;
-- whether a non-terminal/unresolved PurchaseIntent already owns that scope.
-
-Results are conceptually:
+In a short local transaction Portal checks for:
 
 ```text
-active subscription -> already_owned
-unresolved purchase  -> purchase_in_progress
-none                 -> create PurchaseIntent
+active selected subscription -> already_owned
+scope-holding PurchaseIntent -> purchase_in_progress
+none                       -> create PurchaseIntent
 ```
 
-The database provides the final race protection with appropriate uniqueness or
-partial uniqueness constraints for the one active subscription and one
-non-terminal/unresolved purchase scope.
+DB uniqueness/partial uniqueness is the final race protection. `unknown`,
+`ambiguous`, interaction expiry, or unresolved provider outcome continues to
+hold purchase scope until proven resolved.
 
-A purchase whose external operation is `unknown` or `ambiguous` continues to
-hold the purchase scope until recovery proves the outcome or an explicit manual
-resolution occurs. A second browser tab with a different idempotency key cannot
-start a duplicate external purchase.
+### Durable external-customer ensure
 
-### Provider-neutral commercial preparation
-
-The application flow is:
+The customer slot + stable recovery key and a durable `ensure_customer`
+operation are committed **before** LBX customer create.
 
 ```text
-validate offer + legal + business scope
+BEGIN
+create/find customer slot
+create/find single unresolved ensure operation
+COMMIT
+
+only then -> LBX customer create/recovery
+```
+
+Two parallel purchases for Product A and Product B may have independent
+PurchaseIntents, but they share the same customer ensure. A timeout keeps the
+slot `unknown`; lookup/recovery by stable key happens before any controlled
+retry. Multiple matches become manual review.
+
+### Provider-neutral preparation
+
+```text
+validate offer + legal + purchase scope
  -> create PurchaseIntent
  -> ensure external customer
  -> provider-specific non-payment commercial preparation
  -> CustomerInteraction
- -> external result/discovery
- -> authoritative subscription reconciliation
- -> PurchaseIntent linked
+ -> Widget interaction / external changes
+ -> discovery + authoritative reconciliation
+ -> link PurchaseIntent when subscription identity is proven
 ```
 
-The application layer exposes capability-oriented ports and does not require an
-Agreement concept. The LBX adapter may internally create/recover a dedicated
-agreement and subscription.
+Application ports do not require Agreement. LBX adapter may create/recover a
+dedicated agreement and subscription.
 
-For LBX MVP the cardinality rule is:
+LBX MVP cardinality:
 
 ```text
 1 Portal User = 1 LBX Customer
-1 externally billed AnyToolAI product subscription = 1 dedicated LBX Agreement
-renewal of that same subscription reuses the same Agreement
+1 paid AnyToolAI product subscription = 1 dedicated LBX Agreement
+renewal of same subscription reuses Agreement
 new subscription = new dedicated Agreement
 ```
 
-This is an LBX adapter isolation rule, not a provider-neutral domain concept.
+### Prepared-but-unpaid safety
 
-### CustomerInteraction
+Creation of agreement/subscription never implies paid access.
 
-The provider-neutral interaction types are:
-
-```text
-embedded_external
-redirect_external
-none
-```
-
-There is no `portal_managed` payment interaction.
-
-For RU:
+Access-producing eligibility requires all of:
 
 ```text
-provider  = lbx
-mechanism = widget
-interaction = embedded_external
+lifecycle_status = active
+financial_access_status = allowed
+commercial_access_status = eligible
+current time is inside applicable trusted boundaries
 ```
 
-The Widget is provider-owned payment UI. Portal may embed/launch it but does not
-submit a payment command or treat its JS/browser success callback as access
-authority.
+For LBX, production enablement requires runtime proof that an unpaid prepared
+subscription remains commercially/access ineligible and becomes eligible only
+after provider-owned billing processing changes authoritative subscription
+facts. Portal does not query payment-specific APIs and does not use Widget
+callback/payment event as the criterion.
 
-### LBX Widget production gate
+If LBX can expose a newly prepared unpaid subscription as access-eligible under
+the chosen configuration, RU launch is blocked. Portal must not compensate by
+creating a shadow payment state.
 
-RU production launch is blocked until vendor/runtime validation proves all of
-the following:
+## LBX Widget production gate
 
-- authenticated Widget rendering with the actual supported script/signing
-  configuration;
-- unambiguous scoping to the intended LBX customer and, critically, the exact
-  dedicated Agreement/subscription context;
-- with two Agreements for one customer, Widget A cannot pay or mutate Agreement
-  B;
-- the user cannot use the Widget to create a different subscription, change
-  tariff/services, or otherwise bypass Portal's fixed-offer purchase scope;
-- payment amount/payment method/acquiring are determined inside provider-owned
-  billing/payment infrastructure, not by Portal payment REST calls;
-- initial payment works through the Widget/provider UX;
-- required recurring/autopay setup is provider-owned;
-- browser callback is only a reconciliation hint;
-- after provider-side payment, Portal can derive access from ordinary
-  authoritative subscription state without querying payment-specific APIs.
+RU production requires authenticated stand/vendor proof of all of the following:
 
-Failure of this validation is a provider capability gap. The fallback is not
-`/eps_payments` or another Portal payment API orchestration path.
+- supported Widget script URL and signing-secret provisioning;
+- intended configuration flags actually prevent subscription create/edit;
+- one customer with Agreement A and Agreement B cannot use Widget context A to
+  fund/mutate/activate B;
+- balance top-up is accounted to the selected dedicated agreement;
+- autopay/payment-method behavior is isolated to the intended agreement context;
+- funding Agreement A cannot activate Subscription B;
+- prepared-but-unpaid subscription gives no access;
+- underpayment gives no access;
+- sufficient funding can make only the target subscription access-eligible;
+- Widget cancellation produces an authoritative subscription change that Portal
+  can reconcile correctly;
+- browser/JS success callbacks remain hints only;
+- Portal can derive access from ordinary authoritative subscription reads
+  without payment-specific REST calls.
+
+Editable payment amount is **not** itself a blocker: it is documented LBX native
+behavior and is accepted if dedicated-agreement isolation above is proven.
+Likewise, `ident_type=5` or UI-hidden controls are not accepted as proof of
+server-side isolation by themselves.
 
 ## Reconciliation and discovery
 
 ### Webhook is only an accelerator
 
-Webhook handling is deliberately short:
+Webhook handling:
 
 ```text
 authenticate
- -> minimal validate / extract safe correlation hints
- -> generate Portal delivery_id
- -> persist inbox delivery
- -> enqueue/coalesce reconciliation work
+ -> minimal validate / extract safe hints
+ -> generate delivery_id
+ -> persist inbox row
+ -> enqueue/coalesce work
  -> commit
  -> return 2xx
 ```
 
-No provider REST read occurs in the webhook request.
+No provider REST read occurs in webhook request. Every valid HTTP delivery is
+stored separately. `payload_hash` is diagnostic, not unique. Dedup/coalescing is
+on reconciliation work by subject. Provider webhook order is not authoritative.
 
-Each valid HTTP delivery is persisted separately. `payload_hash` is diagnostic
-and is not a uniqueness/deduplication key. Duplicate or out-of-order deliveries
-are safe because payload contents never directly mutate entitlement.
-
-Coalescing happens at the reconciliation-work level by subject, not by deleting
-webhook deliveries. Provider event ordering is not treated as an authoritative
-sequence.
-
-Authentication failure creates no trusted billing inbox delivery and triggers
-security telemetry instead.
-
-Scheduled reconciliation and discovery remain correctness backstops even if
-webhooks are missed or the provider does not retry them.
+Scheduled reconciliation/discovery are correctness backstops even when webhooks
+are missed.
 
 ### Known-subscription reconciliation
 
 Known subscriptions reconcile by exact external reference and a full
-authoritative read. Only a complete, internally consistent provider snapshot may
-atomically update normalized subscription state, components, entitlements,
-allowances, audit state, and reconciliation timestamps.
+authoritative read. A complete consistent snapshot atomically updates normalized
+state, components, entitlements, allowances, audit state, access revision, and
+reconciliation timestamps as appropriate.
 
-A partial/inconsistent read preserves the previous good projection and retries
-later.
+Partial/inconsistent reads preserve previous good projection.
 
 ### Customer-scoped inbound discovery
 
-`PurchaseIntent` is not a prerequisite for `billing_subscription`.
+`PurchaseIntent` is not required for `billing_subscription`. Every mapped
+external customer undergoes periodic subscription discovery independent of
+checkout.
 
-Every mapped external billing customer periodically undergoes subscription
-discovery independent of checkout:
-
-```text
-known Portal user
-  -> verified external_billing_customer mapping
-  -> list/discover provider subscriptions for that customer
-  -> find unknown subscription reference
-  -> perform full authoritative subscription read
-  -> resolve/pin components
-  -> create normalized subscription/access projection
-```
-
-This supports Sales/Finance-created, comp/gift, repaired, or otherwise externally
-created subscriptions.
+Discovery never grants from list output alone. A discovered reference always
+receives a full authoritative read first.
 
 Automatic identity binding is allowed only through the already-verified Portal
-User <-> external customer mapping. Portal must never auto-bind an unknown
-external customer to a user by email, phone, or name.
+User <-> external customer mapping. Account-wide scans may detect orphans for
+manual review but never auto-bind by email/phone/name.
 
-An account-wide scan may be added as an audit/orphan detector, but unknown
-external customers discovered that way produce no entitlement and require
-manual review.
+A retired/missing current catalog offer does not invalidate an existing
+subscription; access derives from actual composition + pinned mapping + trusted
+authoritative state.
 
-Operational rule for Sales/Finance: when manually granting a product to an
-existing user, create it under the already-mapped external customer and obey the
-LBX dedicated-Agreement isolation rule. Do not create a second customer for the
-same Portal user.
+### Discovery cadence
 
-A current catalog offer is not required for an already-existing discovered
-subscription. Runtime access derives from actual subscription composition,
-pinned mappings, and normalized authoritative state, even if the corresponding
-commercial offer is retired or no longer sellable.
+MVP defaults, all configurable:
 
-### Per-subject serialization by fenced lease
+```text
+stable mapped customer            every 6 hours
+recent/changed customer           every 5 minutes
+open PurchaseIntent               adaptive 1-5 minutes
+valid webhook hint                immediate/high priority
+manual-review/ambiguous recovery  dedicated recovery policy
+```
 
-Only one reconciliation for an external subscription may be allowed to apply at
-a time. MVP uses a process-independent PostgreSQL **fenced lease**, not a
-long-lived database transaction across the provider HTTP call.
+Workers persist `last_discovery_at`, `next_discovery_at`, priority/result
+metadata so restarts do not lose cadence. Webhooks improve latency only.
 
-Conceptually:
+### Fenced per-subject reconciliation lease
 
-1. in a short transaction, atomically claim the subject with `lease_owner`,
-   `lease_until`, and a monotonically increasing `lease_generation`/fencing
-   token;
+Only one provider snapshot may apply for a subscription at a time. MVP uses a
+PostgreSQL fenced lease:
+
+1. short transaction claims `lease_owner`, `lease_until`, monotonically
+   increasing fencing generation;
 2. commit;
-3. perform the provider HTTP read with no open database transaction;
-4. in a new short transaction, apply the snapshot only if the same lease owner
-   and fencing generation are still current;
-5. release/expire the lease.
+3. provider HTTP read with no open DB transaction;
+4. new short transaction applies only if owner+generation are still current;
+5. release/expire lease.
 
-If a lease expires and another worker acquires a higher generation, the stale
-worker cannot commit its older read. Long-running calls may renew the lease in a
-short transaction before expiry. This removes the connection/transaction
-ambiguity of holding a session advisory lock across network I/O.
+If another worker acquires a higher generation, a stale worker cannot commit its
+older read.
+
+## Conflict and primary-source semantics
+
+MVP never stacks eligible subscriptions for one `(user, product)`.
+
+If an already-known trusted access-producing subscription exists and discovery
+finds a second eligible subscription for the same product:
+
+```text
+existing trusted primary continues within normal trust rules
+new conflicting subscription produces no access
+open subscription_conflict manual review
+```
+
+If Portal first observes two or more eligible subscriptions and no trusted
+primary was previously established:
+
+```text
+no paid grant for that product
+open subscription_conflict manual review
+```
+
+`PurchaseIntent` by itself does not make a subscription primary. Resolution
+`accept_subscription_as_primary` selects the authoritative source and then
+normal reconciliation derives access. Portal never auto-selects by age, amount,
+agreement order, or another heuristic.
 
 ## Normalization uncertainty
 
-Unknown access-relevant provider semantics are an integration failure, not a
-normal business state.
-
-If the adapter receives an unrecognized access-relevant subscription state,
-blocking meaning, effective-date semantic, or component semantic:
+Unknown access-relevant provider semantics are integration failure, not a normal
+business state.
 
 ```text
 provider response received
  -> normalization_error
- -> do not overwrite last-known-good business projection
- -> alert + retry / manual review as appropriate
+ -> preserve last-known-good normalized projection
+ -> alert + retry/manual review
 ```
 
 Rules:
 
-- a previously `allowed` subscription may preserve its old access only until the
-  already-established finite trust deadline;
-- a previously `blocked` subscription remains blocked;
-- a subject with no prior valid state grants no access;
-- uncertainty never creates/increases access;
-- semantic unknown does not qualify for provisional renewal rollover;
-- unknown irrelevant optional provider fields are tolerated and ignored.
+- previous allowed access may survive only to its existing finite trust deadline;
+- previous blocked state remains blocked;
+- no prior valid state means no access;
+- uncertainty never increases access;
+- semantic unknown does not qualify for provisional rollover;
+- irrelevant unknown optional provider fields are tolerated.
 
-## Freshness, renewal, and failure policy
+## Freshness, renewal, and provisional rollover
 
-Business state and operational freshness are separate.
-
-Conceptually:
+Business state and operational freshness are separate:
 
 ```text
 fresh -> stale_usable -> expired
 ```
 
-A temporary provider/Portal outage may preserve an already-confirmed grant
-inside a finite last-known-good trust lease. New purchases and new grants fail
-closed when required current facts cannot be confirmed.
+An authoritative `blocked`, `ended`, or other known negative fact revokes Portal
+access immediately; outage grace does not override known negative state.
 
-An authoritative negative state such as `blocked` or `ended` revokes access
-immediately in the Portal; there is no outage grace after a known negative
-fact.
-
-### Subscription lifetime versus allowance period
-
-Do not equate recurring subscription lifetime with the end of the current usage
-allowance period.
+### Subscription lifetime is not allowance period
 
 ```text
-subscription effective end  !=  allowance period_end
+subscription terminal boundary != allowance period_end
 ```
 
-An open-ended/recurring active subscription does not lose product entitlement
-merely because its current monthly allowance period ended.
+An open-ended recurring subscription does not lose product grant because the
+current monthly allowance period ended.
 
-### Pre-boundary reconciliation and provisional rollover
+### Provisional rollover
 
-Portal increases reconciliation urgency before an expected allowance-period
-boundary. If the next period cannot be authoritatively confirmed **only because
-of provider transport/unavailability**, Portal may create a bounded provisional
-rollover when the last authoritative state proves all of the following:
+Portal increases reconciliation urgency before expected allowance boundary. If
+the next period cannot be confirmed **only because of provider transport/
+unavailability**, Portal may create a provisional next allowance when the last
+authoritative state proves all of:
 
-- this is an already-confirmed recurring subscription;
-- lifecycle/access were active + allowed;
-- no known cancellation/terminal end blocks renewal;
-- the new allowance terms do not improve on the last confirmed recurring terms.
+- already-confirmed recurring subscription;
+- lifecycle active, financial allowed, commercial access eligible;
+- no known cancellation/terminal end;
+- same product and metric;
+- same or smaller confirmed quantity/policy;
+- previous period completed normally;
+- failure is provider transport/unavailability, not unknown access semantics.
 
 MVP default:
 
@@ -882,34 +1040,35 @@ MVP default:
 renewal_grace_window = 6 hours
 ```
 
-The value is configurable. Provisional rollover may reuse at most the same
-confirmed allowance quantity/policy for the next period and exists only until
-`renewal_grace_until`.
+Provisional rollover cannot create a new product grant, first paid access,
+upgrade, larger allowance, different metric/product/tariff, or revive a known
+blocked/ended subscription.
 
-Provisional rollover is forbidden for:
+Portal may materialize a **future-dated** provisional bucket before the boundary
+when the qualifying provider outage is already established:
 
-- a new product grant;
-- a new purchase;
-- an upgrade or larger allowance;
-- a different tariff;
-- an already ended/blocked subscription;
-- access-relevant semantic unknown returned by the provider.
+```text
+period_start = previous period_end
+renewal_grace_until = period_start + 6h
+```
 
-If provider recovery confirms renewal, the allowance becomes authoritative. If
-it confirms blocked/cancelled/not renewed, Portal immediately revokes the
-provisional allowance and any dependent access. Usage already legitimately
-consumed during the bounded grace is not retroactively undone.
+It is unusable before `period_start`.
 
-If no authoritative confirmation exists when the 6-hour grace expires, the
-provisional allowance expires and the affected paid usage fails closed.
+Provider confirmation turns it authoritative. Provider confirmation of blocked,
+cancelled, or not-renewed state revokes it immediately. Usage legitimately
+consumed during grace is not retroactively undone. Without confirmation, it
+expires at grace end.
 
-## AccessSnapshot contract
+## AccessSnapshot contract and Kernel cache
 
-Platform Kernel pulls a vendor-neutral AccessSnapshot from Payments Portal.
-Conceptual shape:
+All timestamps are UTC. All validity intervals use half-open `[start, end)`
+semantics.
+
+Conceptual AccessSnapshot:
 
 ```json
 {
+  "schema_version": 1,
   "tenant_id": "anytoolai",
   "region": "ru",
   "user_id": "uuid",
@@ -921,7 +1080,7 @@ Conceptual shape:
     {
       "product_id": "document-summary",
       "valid_from": "...",
-      "valid_until": "..."
+      "valid_until": null
     }
   ],
   "allowances": [
@@ -937,97 +1096,96 @@ Conceptual shape:
 }
 ```
 
-The Kernel-facing snapshot contains no provider tariff/service/agreement/
-subscription/payment IDs, balances, provider statuses, or provider-specific
-blocking values.
+`grant.valid_until` is only a known **terminal product-access lifecycle
+boundary**. For open-ended recurring subscriptions it is `null`. It must never
+be copied from `allowance.period_end`. `null` does not mean infinite trust;
+`AccessSnapshot.expires_at` remains mandatory.
 
-`allowance_id` is an opaque stable Portal identifier that lets Kernel later
-report usage against the exact historical allowance source without learning
-provider identity.
+Known scheduled cancellation/end may set a finite `grant.valid_until`.
 
-MVP normal cache defaults:
+MVP cache defaults:
 
 ```text
-refresh_after = now + 1 minute
-expires_at    = now + 5 minutes
+refresh_after = generated_at + 1 minute
+expires_at    = generated_at + 5 minutes
 ```
 
-These are configurable operational defaults. `expires_at` must never exceed the
-Portal's own projection trust deadline, entitlement validity, or provisional
-`renewal_grace_until`.
+These are Kernel cache bounds, not LBX billing grace.
 
 Kernel behavior:
 
-- before `refresh_after`, use the cached snapshot;
-- from `refresh_after` until `expires_at`, attempt refresh but may temporarily use
-  the cache if Portal is unavailable;
+- before `refresh_after`, cached snapshot may be used if no semantic boundary
+  has been crossed;
+- between `refresh_after` and `expires_at`, Kernel attempts refresh but may use
+  cache if Portal is temporarily unavailable and the relevant grant/allowance
+  interval is still valid;
 - at/after `expires_at`, cached paid access fails closed;
+- crossing `grant.valid_until`, `allowance.period_start`, `allowance.period_end`,
+  or another access-relevant temporal boundary requires synchronous
+  AccessSnapshot refresh before treating absence of a new period as final deny;
+- Kernel never creates provisional paid access itself;
+- if an allowance ended and Portal is unavailable, paid consumption fails closed
+  until refresh succeeds;
 - guest/free Kernel-owned functionality is independent of paid billing outage.
 
-## Negative-access invalidation
+Portal may continue to serve a last-known-good snapshot within its own longer
+`projection_valid_until` even while LBX is unavailable. The 5-minute Kernel
+expiry means only "Kernel may not remain autonomous from Portal longer than
+this". It does not redefine Portal's LBX trust lease.
 
-Pull + bounded expiry remains the correctness contract, but Portal sends a
-best-effort durable invalidation when paid access is reduced.
+## Access revision and invalidation
 
-Each user's paid-access projection has a monotonically increasing
-`access_revision`. In the same local transaction that applies an access-reducing
-change, Portal:
+Any material access projection change, positive or negative, increments the
+user's monotonically increasing `access_revision` and enqueues durable Kernel
+invalidation in the same local transaction.
 
-```text
-updates normalized projection
-increments access_revision
-enqueues durable Kernel invalidation
-COMMIT
-```
+Examples include:
 
-A worker later sends only a vendor-neutral invalidation hint such as:
+- new paid grant after authoritative activation;
+- blocked -> allowed or allowed -> blocked;
+- new authoritative allowance;
+- future/provisional rollover materialization;
+- allowance reduction/removal;
+- subscription end;
+- audited rebind/manual resolution affecting access.
+
+Invalidation carries only a vendor-neutral hint:
 
 ```json
 {
+  "schema_version": 1,
   "user_id": "uuid",
   "region": "ru",
   "access_revision": 184
 }
 ```
 
-The push never carries an entitlement delta. Kernel compares revisions; if the
-incoming revision is newer than its cached revision, it invalidates the paid
-snapshot and uses the normal AccessSnapshot pull path. Delayed older
-invalidations are ignored.
+It never carries entitlement deltas. Kernel discards older cached revisions and
+uses the normal AccessSnapshot pull path. Delayed invalidations with older
+revision are ignored. Multiple pending revisions may coalesce to the newest.
 
-Access-reducing changes include blocked/ended subscription, product grant
-removal, allowance removal/reduction, forced period termination, and an audited
-mapping rebind/manual resolution that removes capability.
-
-Positive changes do not require push for correctness in MVP; normal refresh is
-sufficient. Invalidation delivery failure does not roll back the authoritative
-Portal change. The 5-minute snapshot expiry remains the hard safety bound when
-push is lost.
-
-Invalidation jobs are durable PostgreSQL work, not FastAPI `BackgroundTasks`.
-Multiple pending revisions for one user may be coalesced to the newest revision.
+Lost invalidation is tolerated because `refresh_after`, semantic-boundary
+refresh, and `expires_at` remain correctness backstops.
 
 ## Runtime usage and durable delivery
 
-Platform Kernel is the single authority for actual usage and runtime quota.
-When paid usage is consumed, Kernel atomically updates its usage/quota state and
-writes a `UsageEvent` to a durable outbox in the **same transaction**.
+Platform Kernel remains the single authority for actual usage and runtime quota.
+Paid quota consumption and UsageEvent-outbox insertion occur in the same Kernel
+transaction:
 
 ```text
-Kernel transaction
-  update actual usage / quota
-  insert UsageEvent outbox row
+update actual usage/quota
+insert UsageEvent outbox row
 COMMIT
 ```
 
-A separate Kernel worker delivers events to Portal at least once. Portal ingests
-them idempotently by globally unique `usage_event_id` and acknowledges only
-after durable persistence.
+Portal is not in the synchronous hot path of each runtime action.
 
 Conceptual event:
 
 ```json
 {
+  "schema_version": 1,
   "usage_event_id": "uuid",
   "tenant_id": "anytoolai",
   "region": "ru",
@@ -1040,11 +1198,31 @@ Conceptual event:
 }
 ```
 
-The Portal validates that the allowance/product/metric relationship matches its
-historical projection and uses `allowance_id` to route to the exact historical
-subscription/component source even if the subscription later ends.
+Kernel -> Portal delivery is at-least-once. Portal ingestion is idempotent by
+`usage_event_id` and acknowledges only after durable persistence.
 
-Portal usage state records delivery/integration facts only, for example:
+Portal outcomes are logically:
+
+```text
+accepted
+duplicate
+rejected_permanent
+```
+
+Permanent semantic rejection (for example unknown allowance, wrong user,
+tenant/region mismatch, product/metric mismatch, invalid quantity, or occurrence
+outside the historical allowance interval) is itself durably recorded and
+returned as a terminal `2xx` result. Kernel stops retrying and retains a
+terminal/dead-letter audit state. Runtime usage is **not** refunded.
+
+Only failures where Portal could not durably process the event because of a
+retryable infrastructure problem return `5xx` and remain retryable.
+
+Late delivery after subscription/period end remains valid when `occurred_at` was
+inside the historical `[period_start, period_end)` and `allowance_id` still
+resolves.
+
+Portal delivery state may include:
 
 ```text
 received
@@ -1052,284 +1230,303 @@ not_required
 pending_external
 external_delivered
 external_unknown
-failed/manual_review
+rejected_permanent
+manual_review
 ```
 
-It does **not** calculate authoritative remaining runtime quota.
+Portal never calculates authoritative remaining runtime quota.
 
-If the external provider does not require usage reporting, the event becomes
-`not_required`. If reporting is required, the adapter performs safe delivery.
-Provider calls with uncertain non-idempotent outcomes are never blindly retried.
+If external metering is required, unsafe non-idempotent provider reporting is
+never blindly retried. An offer requiring provider metering is `NOT_SELLABLE`
+unless native idempotency or an unambiguous recovery strategy is proven.
 
-If a provider's metering API cannot provide native idempotency or a proven
-unambiguous recovery strategy after timeout, an offer requiring such metering is
-`NOT_SELLABLE` until safe semantics are established.
-
-Portal outage does not synchronously block each runtime call: Kernel continues
-to enforce its locally known allowance and its durable usage outbox accumulates
-pending delivery. Paid overage is not supported; when the known allowance is
-exhausted, Kernel hard-stops further paid consumption.
+Paid overage is absent. Kernel hard-stops at the known allowance limit.
 
 ## Commercial lifecycle scope
 
-MVP supports only Portal-orchestrated **buy one product**.
+MVP Portal command orchestration supports only **buy one product**.
 
-Other commercial mutations are intentionally not Portal command flows:
+- **Cancellation** is customer-initiated in LBX Widget where enabled, or
+  Support/Finance in LBX. Portal only reconciles the resulting authoritative
+  state.
+- **Upgrade/downgrade** is out of scope. A second offer for the same product
+  cannot be bought while current subscription owns the product.
+- **Refund/dispute/chargeback** are provider/payment concerns. Portal does not
+  initiate or interpret payment status; it reacts to authoritative subscription
+  consequences.
+- **Commercial trial** has no Portal-owned paid state. Free/guest usage remains
+  Kernel policy. A future provider-managed free-period/recurring-charge trial
+  requires separate design.
+- **Comp/gift** is allowed only for an already mapped customer and only as
+  explicit audited `operator_comp` with no customer-funded/autopay obligation.
 
-- **Cancellation**: initiated through LBX-owned Widget/cabinet where supported or
-  by Support/Finance in LBX. Portal observes the resulting authoritative state.
-  A scheduled end continues access until its authoritative effective end.
-- **Upgrade/downgrade**: not supported in MVP. A second offer for the same
-  product cannot be bought while the current billable subscription owns that
-  product. The simple fallback is end/cancel current subscription, then buy a
-  new offer after it ends.
-- **Refund/dispute/chargeback**: provider/payment concern. Portal does not issue
-  the financial operation and does not infer its own access rule from payment
-  status; it reacts to the resulting authoritative subscription state.
-- **Commercial trial**: no Portal-owned paid trial state. Free/guest usage is a
-  Platform Kernel policy. A future "free period then recurring charge" trial
-  must be modeled by External Billing and designed separately.
-- **Manual/comp paid grant**: created in External Billing under the already
-  mapped customer and discovered by customer-scoped discovery.
-
-"Out of scope for command orchestration" does not mean "out of scope for
-observation". Reconciliation must understand access-relevant consequences such
-as active, blocked, scheduled end, ended, component change, and allowance-period
-change.
+"Out of scope for command orchestration" is not "out of scope for
+observation". Portal must reconcile access-relevant consequences created
+externally.
 
 ## Manual review
 
-`manual_review` is an operational workflow, never an access state or direct
-entitlement authority.
+`manual_review` is operational workflow, never access state or direct entitlement
+authority.
 
-Each case records:
-
-```text
-subject_type / subject_id
-reason_code
-status
-owner_kind
-created_at / resolved_at
-explicit resolution
-audit actor + details
-```
-
-Minimum MVP reason/owner policy:
+Minimum reasons/owners:
 
 - duplicate/overlapping subscription -> Finance/Billing Ops;
-- ambiguous external create/recovery -> Billing Ops;
+- ambiguous create/recovery -> Billing Ops;
 - unknown external customer -> Support/Billing Ops;
-- unmapped/unclassified component -> Product/Engineering owner;
+- unmapped/unclassified component -> Product/Engineering;
+- duplicate metric source -> Product/Engineering;
 - unknown access-relevant provider semantics -> Engineering/on-call;
 - invalid capability mapping -> Product/Engineering.
 
-Before resolution, safety behavior follows the last trusted state, not the mere
-existence of the manual-review case. For example, a newly discovered second
-subscription cannot add access, while an already-known-good primary subscription
-may continue within its normal trust rules.
+Safety behavior follows trusted facts, not the existence of the case. A newly
+found conflicting subscription cannot add access; an already-known primary may
+continue within its trust rules.
 
-Resolutions are explicit actions such as `bind_existing_external_object`,
-`mark_duplicate_external_object`, `rebind_mapping_revision`,
-`accept_subscription_as_primary`, `reject_subscription_as_conflict`, or
-`mark_external_customer_unmatched`. An operator never directly sets
-`entitlement=active`; resolution returns the subject to ordinary
-reconciliation/access derivation.
+Explicit resolutions may include:
 
-MVP does not require a dedicated backoffice UI. Durable records, alerts,
-a documented runbook, and controlled operational command/API are sufficient.
+```text
+bind_existing_external_object
+mark_duplicate_external_object
+rebind_mapping_revision
+accept_subscription_as_primary
+reject_subscription_as_conflict
+mark_external_customer_unmatched
+```
+
+MVP does **not** include `bind_external_customer_to_user` for unknown provider
+customers. Operators never directly set `entitlement=active`; resolution always
+returns through normal reconciliation/derivation.
+
+A dedicated admin UI is not required. Durable records, metrics/alerts, runbook,
+and controlled operational command/API are sufficient.
 
 ## Provider abstraction
 
-Application/domain code depends on capability-oriented ports rather than one
-giant provider interface or an LBX-shaped domain model. Conceptual capabilities
-include:
+Application/domain code depends on small capability-oriented ports:
 
 - external catalog reads;
 - external customer ensure/recovery;
-- non-payment commercial purchase preparation;
-- provider-owned customer interaction description;
+- non-payment commercial preparation;
+- provider-owned customer-interaction description;
 - authoritative subscription read and customer-scoped discovery;
 - optional usage reporting;
 - webhook authentication/parsing.
 
-There is deliberately no generic payment-command capability in Payments Portal.
+There is no generic payment-command capability in Payments Portal.
+Provider-specific branches live only in integration/composition packages.
+LBX Agreement logic, tariff/service API, `state`, `current_blocking`, Widget
+mechanics, balance behavior, and recovery lookups stay inside LBX integration.
 
-Provider-specific branching (`LBX` versus future providers) belongs in
-integration/composition packages, not in domain/application use cases or
-Platform Kernel. LBX Agreement logic, tariff/service APIs, `state`,
-`current_blocking`, Widget mechanics, and recovery lookups remain inside the
-LBX integration boundary.
+## Portal <-> Platform Kernel implementation contract
+
+This is a cross-repository implementation stream, not a final Portal-only step.
+Implementation is incomplete until both repos implement and test their sides.
+
+Wire contracts and ownership:
+
+| Contract | Producer/source | Consumer |
+| --- | --- | --- |
+| Capability Manifest | Platform Kernel | Payments Portal |
+| AccessSnapshot | Payments Portal | Platform Kernel |
+| AccessInvalidation | Payments Portal | Platform Kernel |
+| UsageEvent | Platform Kernel | Payments Portal |
+
+Each wire payload has `schema_version`. Consumers fail clearly on unsupported
+major schema versions. Do not introduce a shared runtime Python package that
+couples repo release cycles; use versioned HTTP/JSON contracts and contract tests
+on both sides.
+
+Platform Kernel implementation work must include:
+
+- canonical usage-metric registry and Capability Manifest endpoint;
+- AccessSnapshot client/cache and semantic-boundary refresh;
+- AccessInvalidation receiver keyed by `access_revision`;
+- integration of paid allowances into the existing backend-owned quota engine;
+- atomic paid-usage + UsageEvent-outbox persistence;
+- outbox retry/terminal-rejection handling.
+
+Payments Portal implementation work must include:
+
+- Capability Manifest importer;
+- AccessSnapshot producer;
+- monotonic access revision + durable invalidation sender;
+- durable UsageEvent ingestion, permanent rejection, and historical allowance
+  routing.
+
+Required cross-repo proof includes at minimum:
+
+```text
+subscription becomes eligible
+ -> Portal AccessSnapshot revision N
+ -> Kernel authorizes product
+ -> Kernel atomically consumes quota + writes UsageEvent
+ -> Portal durably ingests event
+ -> Portal access changes to revision N+1
+ -> invalidation reaches Kernel
+ -> Kernel refetches N+1 and uses it for next decision
+```
+
+Failure proof must cover Portal outage beyond snapshot expiry, LBX outage with
+Portal still serving last-known-good state, allowance boundary refresh, and
+permanent UsageEvent rejection without infinite retry.
 
 ## Worker topology and transaction rules
 
-MVP runs the durable billing worker embedded in the Payments Portal API process
-with one API replica initially. Correctness-critical work is persisted in
-PostgreSQL and never relies on in-memory queues or FastAPI `BackgroundTasks`.
+MVP runs the durable billing worker embedded in the Payments Portal API process,
+with one API replica initially. Correctness-critical work is PostgreSQL-backed,
+not FastAPI `BackgroundTasks` or an in-memory queue.
 
 Worker/use-case code is independent of FastAPI composition so it can later move
-to a dedicated process without changing domain behavior.
+to a dedicated process. Queue claiming, customer ensure, purchase uniqueness,
+and reconciliation leases remain multi-consumer safe even if replicas increase.
 
-Queue claiming and subject leases are multi-consumer safe even though initial
-deployment has one replica. External network requests never execute inside an
-open database transaction. Transactions are short and cover intent creation,
-queue/lease claims, durable command state, or atomic projection updates.
+External network requests never execute inside an open DB transaction.
+Transactions are short and cover durable intent/customer slot creation,
+operation/queue/lease claims, and atomic local projection updates.
 
 No RabbitMQ/Kafka is required for MVP.
 
 ## Security and PII
 
 External billing credentials, webhook secrets, Widget signing secrets, and
-payment credentials exist only in runtime secret configuration for integration
-code. They are not stored in billing-account rows, domain objects, logs, or
-browser-visible responses.
+payment credentials live only in runtime secret configuration. They are not
+stored in billing-account/domain rows, logs, or ordinary browser-visible API
+responses.
 
-Kernel-facing capability/access/usage/invalidation APIs are internal
-service-to-service contracts over TLS with explicit service authentication and
-expected tenant/region scope. User authentication alone must not authorize them.
-A contour may never read or write another contour's billing/access data.
+Kernel-facing capability/access/usage/invalidation APIs are service-to-service
+over TLS with explicit service authentication and contour scope. User auth alone
+must not authorize them.
 
-Only minimum billing/customer PII required for the external provider is
-transmitted/stored. Email, phone, or name are never used as automatic identity
-binding authority between systems.
+Only minimum provider-required customer PII is transmitted/stored. Email, phone,
+name, and INN are never automatic cross-system identity-binding authority.
 
-Reverse proxy/access logging must not leak webhook query secrets, Widget signing
-material, or authentication data. Raw provider payload retention requires an
-explicit operational/debugging purpose plus redaction/retention policy.
+Reverse-proxy/access logging must not leak webhook query secrets, Widget signing
+material, or auth data. Raw provider payload retention requires an explicit
+purpose plus redaction/retention policy.
 
 ## Observability and audit
 
-Use non-PII correlation identifiers such as request ID, user ID,
-PurchaseIntent ID, billing operation ID, webhook `delivery_id`, work item ID,
-subscription ID, `allowance_id`, access revision, and safe opaque external
-references.
-
 At minimum monitor:
 
-- capability-manifest age/import failures;
-- catalog projection age/sync failures;
-- unclassified components and invalid/not-sellable offers;
-- external customer provisioning/recovery failures;
-- `unknown`/`ambiguous` operation counts;
-- manual-review open count and oldest age by reason;
-- normalization-error count, affected subjects, and oldest error age;
-- reconciliation/discovery success, failure, duration, and age since last
-  authoritative state;
-- work-queue and Kernel usage-outbox depth/oldest-item age;
-- webhook authentication failures, delivery rate, and processing lag;
-- fresh/stale-usable/expired access projection counts;
-- provisional-renewal count/age and grace expiry;
-- access-invalidation queue lag;
-- provider latency, timeout, and error rate.
+- capability-manifest age/import failure;
+- catalog sync age and not-sellable reasons;
+- customer ensure/recovery failures and unresolved `unknown`;
+- open manual-review count and oldest age by reason;
+- normalization errors and affected subjects;
+- discovery/reconciliation age, success/failure, and duration;
+- webhook auth failures and processing lag;
+- work-queue depth/oldest age;
+- Portal invalidation queue lag;
+- Kernel UsageEvent outbox depth/oldest age;
+- permanent usage rejection rate by reason;
+- fresh/stale-usable/expired projection counts;
+- provisional rollover count/age/grace expiry;
+- provider latency/timeouts/errors.
 
-Normalization errors are high-priority alerts because a vendor semantic change
-can affect many paid users as their finite trust leases expire.
+Normalization errors and sustained permanent UsageEvent rejects are high-priority
+alerts because they indicate contract/provider inconsistency.
 
 Audit must answer why access changed and which authoritative reconciliation,
-mapping revision/rebind, or manual resolution caused it without requiring a
-shadow copy of the provider financial ledger.
+mapping revision/rebind, manual resolution, or provisional rollover caused it,
+without creating a shadow provider financial ledger.
 
-## Clean pre-production reset
+## Clean pre-production reset and implementation ordering
 
-There is no production deployment and no compatibility contract to preserve.
-Do not implement a staged dual-schema or semantic migration from the old
-Portal-owned commerce model.
+There is no production deployment or compatibility contract. Do not implement a
+dual schema or semantic data migration from old Portal commerce.
 
-The implementation should:
+Implementation ordering must be dependency-aware and cross-repo:
 
-1. explicitly supersede/update contradictory ADR/canonical billing docs;
-2. remove obsolete Portal-owned Product/Bundle/Plan/PlanLimit/Order semantics;
-3. remove old direct-payment-provider architecture, DTOs, checkout/payment
-   orchestration, and obsolete provider-shaped payment fields;
-4. replace the development Alembic baseline with the clean target schema under
-   the documented pre-production reset exception;
-5. recreate development/test databases from empty state;
-6. implement the new flow in dependency order;
-7. use no dual-write compatibility layer and no old/new billing traffic split.
+1. supersede/update contradictory canonical ADR/docs in Portal and Kernel;
+2. remove obsolete Portal Product/Bundle/Plan/PlanLimit/Order and direct-payment
+   orchestration semantics;
+3. replace the disposable Portal Alembic baseline with clean target schema and
+   recreate development/test DBs;
+4. implement Kernel capability/metric manifest and Portal importer;
+5. implement external catalog projection + mapping publication/pinning;
+6. implement durable customer slot/ensure and LBX non-payment preparation;
+7. implement PurchaseIntent scope rules and embedded Widget integration;
+8. implement customer discovery, fenced reconciliation, normalized access and
+   allowances;
+9. implement Portal AccessSnapshot/revision/invalidation and Kernel consumer;
+10. integrate paid allowance into existing Kernel quota engine;
+11. implement Kernel UsageEvent outbox + Portal durable ingestion/routing;
+12. run cross-repo contract/integration proofs;
+13. separately satisfy LBX Widget production gate before RU production launch.
 
-If a developer/staging database contains useful manual data, export it
-separately before reset. It does not constrain the target architecture.
+No old/new billing traffic split or dual-write compatibility layer is required.
 
-## Required correctness tests
+## Required correctness tests and launch evidence
 
-The implementation plan must include automated tests and provider-validation
-spikes proving at least the following:
+Implementation plan must include automated tests plus provider-validation spikes
+proving at least:
 
-- two identical submissions with one idempotency key create one PurchaseIntent;
-- two tabs with different idempotency keys cannot create two simultaneous
-  purchase flows for the same `(user_id, product_id)`;
-- `unknown`/`ambiguous` external create holds purchase scope and is recovered
-  before any retry;
-- an expired PurchaseIntent can still late-link to a real external subscription;
-- a provider create timeout performs lookup/recovery and never blindly duplicates
-  a non-idempotent create;
-- valid duplicate/out-of-order webhooks converge to the same authoritative
-  projection and each delivery retains its own Portal `delivery_id`;
-- a missed webhook is repaired by scheduled reconciliation/discovery;
-- a Sales/Finance-created subscription under a mapped customer is discovered
-  without PurchaseIntent;
-- an unknown external customer is never auto-bound by email/phone/name;
-- a full authoritative read is required before discovered access is granted;
-- an offer with an unclassified component is not sellable;
-- one component can bind to both product and metric capabilities;
-- mapping revisions are immutable and an existing subscription component remains
-  pinned when the catalog mapping changes;
-- explicit audited rebind is required to change an already-pinned mapping;
-- current mapping removal/retirement does not silently revoke historical access;
-- a live subscription with one unknown component never invents access for that
-  component and preserves independently known components;
-- an offer cannot resolve to more than one product in MVP;
-- a metric cannot belong to multiple products;
-- overlapping active external subscriptions for the same `(user, product)` are
-  treated as conflict/manual review and are not allowance-stacked;
-- paid overage is rejected by Kernel at the hard allowance limit;
-- a UsageEvent routes via `allowance_id` to the historical subscription/component
-  even if delivered after the subscription ended;
-- Kernel quota update and usage-outbox insertion are atomic;
-- Kernel retries Portal delivery without duplicating Portal ingestion by
-  `usage_event_id`;
-- a Portal outage does not lose usage events;
-- provider metering with unsafe/unrecoverable non-idempotent semantics makes the
-  dependent offer not sellable;
-- temporary provider outage preserves existing last-known-good access only
-  inside the finite Portal trust boundary;
-- allowance-period end alone does not terminate an open recurring product grant;
-- pre-boundary provider outage may create only same-terms provisional rollover;
-- provisional rollover expires no later than 6 hours unless authoritatively
-  confirmed;
-- authoritative blocked/cancelled/not-renewed state revokes provisional access
-  immediately;
-- semantic unknown never creates provisional renewal and never overwrites the
-  last-known-good normalized state;
-- unknown irrelevant provider fields do not fail reconciliation;
-- authoritative negative access change increments `access_revision`, persists a
-  durable invalidation, and Kernel drops an older cached snapshot on receipt;
-- lost invalidation still fails closed no later than AccessSnapshot `expires_at`;
-- normal AccessSnapshot cache defaults are 1-minute refresh / 5-minute expiry and
-  are always capped by Portal trust/grace validity;
-- stale capability manifest blocks new sales after 24 hours but does not revoke
-  existing pinned subscriptions;
-- `enabled=false` technical capability blocks new sales but does not silently
-  terminate historical entitlement;
-- legal acceptance for old commercial fingerprint cannot authorize changed
-  material terms;
-- cosmetic-only offer-copy change does not change commercial fingerprint;
-- PurchaseIntent cannot be created without current required legal acceptances;
-- external customer provisioning does not occur merely on Portal registration;
-- external customer recovery key is stable across email change;
-- LBX Widget validation proves two-Agreement isolation, intended-subscription
-  scoping, no unauthorized tariff/service mutation, initial payment, and
-  provider-owned recurring/autopay behavior before RU production enablement;
-- Widget/browser callback never grants entitlement without authoritative
-  subscription reconciliation;
-- cancellation/refund/dispute outcomes affect access only through resulting
-  authoritative subscription state;
-- no external network request occurs inside an open database transaction;
-- fenced reconciliation lease prevents an expired/stale worker from committing
-  an older provider read;
-- manual-review resolution never directly grants entitlement and returns through
-  reconciliation/access derivation;
-- architecture checks prevent LBX/future-provider concepts/imports from leaking
-  into Platform Kernel and generic domain/application packages.
+- same idempotency key creates one PurchaseIntent;
+- different keys/tabs cannot create two simultaneous purchase scopes for one
+  `(user, product)`;
+- UX interaction expiry does not release unresolved purchase scope;
+- late external subscription after Widget expiry still links/reconciles;
+- customer slot is created before LBX create and parallel Product A/B purchases
+  cannot create two LBX customers;
+- customer-create timeout keeps same recovery key and forbids blind duplicate
+  create;
+- provider create timeout for agreement/subscription uses safe recovery;
+- duplicate/out-of-order webhooks converge and each HTTP delivery keeps unique
+  Portal `delivery_id`;
+- missed webhook is repaired by scheduled reconciliation/discovery;
+- mapped-customer manual subscription is found without PurchaseIntent;
+- unknown external customer never auto-binds by PII;
+- comp/gift to an unmapped user is unsupported in MVP;
+- external_unknown customer-funded subscription without proper Portal purchase
+  acceptance does not automatically grant access;
+- baseline legal acceptance is required before operator-comp access activates;
+- full authoritative read is required before discovered access;
+- mapping publication is controlled/audited and revisions are immutable;
+- existing subscription component remains pinned through mapping changes;
+- unclassified component makes offer not sellable;
+- duplicate metric source makes new offer not sellable and creates no summed
+  allowance for a live subscription;
+- multiple product bindings deduplicate to one product grant;
+- when two eligible subscriptions first appear with no trusted primary, no grant
+  is created until manual primary selection;
+- when a trusted primary already exists, later conflicting subscription adds no
+  access and does not revoke the trusted primary merely by appearing;
+- prepared-but-unpaid LBX subscription is access-ineligible;
+- underfunding the dedicated agreement does not grant access;
+- sufficient Widget funding can make only target subscription eligible;
+- funding/autopay for Agreement A cannot activate/mutate Agreement B;
+- Widget create/edit subscription restrictions are effective in actual runtime;
+- Widget cancellation reconciles through authoritative subscription state;
+- Widget/browser callback never grants access directly;
+- allowance-period end does not end an open-ended product grant;
+- open-ended grant serializes with `valid_until=null`;
+- `allowance.period_end` is never copied into `grant.valid_until`;
+- all temporal semantics are UTC half-open intervals;
+- qualifying provider outage may create only same-terms provisional rollover;
+- provisional allowance expires in <=6h unless confirmed;
+- semantic unknown cannot create provisional rollover or overwrite good state;
+- any positive or negative material access change increments `access_revision`
+  and durably queues invalidation;
+- crossing an allowance/grant semantic boundary forces Kernel refresh before
+  final deny;
+- lost invalidation still converges via refresh/expiry;
+- Kernel cache defaults are 1m refresh / 5m expiry and are not confused with
+  Portal LBX trust lease;
+- stale capability manifest blocks new sales after 24h but not historical access;
+- Kernel paid quota consumption and UsageEvent insertion are atomic;
+- Portal ingest is idempotent by `usage_event_id`;
+- permanent invalid UsageEvent is durably rejected, acknowledged terminally,
+  does not retry forever, and never refunds Kernel usage;
+- late UsageEvent routes through historical `allowance_id`;
+- unsafe external metering semantics make dependent offer not sellable;
+- no provider network request occurs inside an open Portal DB transaction;
+- fenced lease prevents stale reconciliation commit;
+- manual review never directly sets entitlement active;
+- cross-repo integration proves Capability Manifest, AccessSnapshot,
+  invalidation, paid quota, and UsageEvent paths together;
+- architecture checks prevent LBX/future-provider concepts from leaking into
+  Platform Kernel or generic Portal domain/application packages.
 
 ## Explicit non-goals
 
@@ -1339,34 +1536,42 @@ MVP does not:
 - make Payments Portal a second commercial catalog, payment orchestrator, or
   financial ledger;
 - call payment-specific LBX REST APIs;
-- support bundles/all-access packages or one offer granting multiple products;
-- support multiple active billable subscriptions for one user/product;
-- support allowance stacking or a metric shared by multiple products;
+- implement Portal-owned card/payment-method, autopay, invoice, payment-history,
+  or billing-cabinet UI where LBX Widget provides it;
+- allow Widget subscription create/edit in the AnyToolAI MVP flow;
+- require a fixed exact Widget top-up amount;
+- support bundles/all-access/multiple products per offer;
+- support multiple access-producing subscriptions per user/product;
+- support allowance stacking, duplicate metric sources, or shared metric across
+  products;
 - support paid overage;
-- support Portal-initiated upgrade/downgrade, refund, dispute, or commercial
-  trial;
-- define Dodo-specific behavior before that adapter is designed;
-- auto-bind unknown external customers to Portal users using PII;
-- require a dedicated manual-review admin UI in MVP;
-- decide merchant-of-record, 54-FZ, or legal retention policy without
-  Legal/Finance confirmation;
-- preserve legacy direct-payment-provider data/schema compatibility.
+- support Portal-initiated upgrade/downgrade/refund/dispute/commercial trial;
+- create or auto-bind an external customer solely to deliver a gift to an
+  unmapped user;
+- auto-bind unknown external customers using PII;
+- define Dodo-specific behavior before its adapter is designed;
+- require a dedicated manual-review admin UI;
+- decide MoR, 54-FZ, or retention policy without Legal/Finance confirmation;
+- preserve old direct-payment-provider data/schema compatibility.
 
 ## Resulting bounded contexts
 
 ```text
-External Billing
+External Billing / LBX Widget
   owns commercial catalog and billing lifecycle
-  + provider-owned payment UX/payment methods/refunds/invoices
+  + balances/payment UX/payment methods/autopay
+  + invoices/payment history/customer billing self-service
+  + customer-initiated cancellation
 
 Payments Portal
-  owns AnyToolAI user identity and legal acceptance
+  owns AnyToolAI identity and legal acceptance
   + external-billing anti-corruption layer
-  + local catalog/subscription projections
+  + catalog/subscription projections
   + immutable versioned capability mappings
+  + PurchaseIntent/customer correlation
   + reconciliation/discovery/recovery/manual review
-  + entitlements and purchased allowance projections
-  + AccessSnapshot and negative-access invalidation
+  + entitlements and purchased allowances
+  + AccessSnapshot/access revision/invalidation
   + usage delivery mediation when required
 
 Platform Kernel
@@ -1375,7 +1580,8 @@ Platform Kernel
   + runtime quota enforcement
   + execution
 
-Platform Kernel never calls an external billing system directly.
+Platform Kernel never calls External Billing directly.
 Payments Portal never calls payment-specific provider APIs.
-RU payment interaction is LBX Widget, subject to the production validation gate.
+RU billing/payment self-service is LBX Widget with create/edit disabled and is
+subject to the dedicated-agreement production validation gate.
 ```
