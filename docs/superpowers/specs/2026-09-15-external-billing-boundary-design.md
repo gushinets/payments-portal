@@ -1,6 +1,6 @@
 # External billing boundary and Payments Portal redesign
 
-Status: review requested after eighth external-review amendments  
+Status: review requested after ninth external-review amendments  
 Date: 2026-09-15
 
 ## Goal
@@ -136,8 +136,9 @@ Paid access may change only because of:
    commercial terms;
 2. deterministic passage of time across an already-known boundary, which may
    only reduce/expire access;
-3. an explicit audited operator resolution/rebind that selects already-proven
-   facts and returns through normal derivation.
+3. an explicit audited operator resolution that selects already-proven facts,
+   never mutates pinned commercial/mapping meaning, and returns through normal
+   derivation.
 
 A local catalog row, webhook, Widget/browser callback, successful outbound POST,
 charge/payment/balance change, agreement creation, or `PurchaseIntent` state is
@@ -200,6 +201,8 @@ Prove:
 - authenticated Widget rendering with real signing/configuration;
 - Portal-like non-payment preparation of customer -> dedicated agreement ->
   subscription;
+- the concrete provider agreement identifier for a subscription can be read
+  authoritatively and remains stable for that subscription/renewal;
 - funding Agreement A cannot make Agreement B commercially/access eligible;
 - autopay/payment-method behavior is isolated to the intended agreement;
 - cancellation/stop of A cannot mutate B;
@@ -349,7 +352,11 @@ application behavior. Phase 0 E must explicitly probe drift:
 ```
 
 Any authoritative mismatch becomes `identity_conflict`; it is never solved by
-adopting K2 locally or silently creating a second key.
+adopting K2 locally or silently creating a second key. While the conflict exists,
+all paid grants/allowances derived from that external customer slot fail closed.
+Stable provider IDs remain usable only for read-only diagnosis/reconciliation,
+not to preserve paid access. Normal MVP resolution restores the original K1 on
+the provider side and then proves it by authoritative reread.
 
 #### Server-generated bounded Widget credential
 
@@ -376,8 +383,8 @@ agreement/top-up/autopay operation, cross-customer use, principal tampering, and
 expired-token replay. PASS depends on server behavior, not hidden buttons.
 
 While `identity_conflict` is active, Phase 0 must also prove that Portal issues no
-Widget JWT and starts no new customer/agreement/subscription creation for that
-slot.
+Widget JWT, starts no new customer/agreement/subscription creation, and derives no
+paid access from that external customer slot.
 
 #### Prepaid eligibility
 
@@ -503,6 +510,12 @@ deterministic `manifest_version`, products, and `metric_key -> product_id`
 bindings. Kernel validates unique products/metrics and exactly one existing
 product for every metric before serving `200`.
 
+`enabled` is admission control for new technical-commercial bindings only. A new
+mapping or purchase may reference only enabled products and enabled metrics that
+belong to that product. A later `enabled=false` does not rewrite or revoke an
+already-pinned purchase/subscription/grant/allowance; runtime emergency disable,
+if required, is a separate Kernel policy.
+
 Portal imports the manifest into a local read-only projection atomically. A
 manifest sync updates `capability_manifest_last_complete_sync_at` only after a
 complete `200`, supported schema, full reference validation, and successful
@@ -510,7 +523,8 @@ local projection commit. Timeout, `5xx`, partial/malformed payload, unsupported
 schema, broken references, or local transaction failure retain the previous LKG
 projection and do not advance freshness.
 
-Use one freshness constant for all projections required to begin a new sale:
+Use one freshness constant for all projections required to begin a new sale or
+publish a new mapping:
 
 ```text
 new_sales_projection_max_age = 24h
@@ -524,12 +538,12 @@ capability_manifest_last_complete_sync_at age <= 24h
 billing_catalog_last_complete_sync_at age <= 24h
 ```
 
-Only a complete successful catalog sync likewise refreshes the catalog timestamp.
-Failed/partial sync does not.
+A new mapping revision is also allowed only when both projections satisfy that
+same freshness bound. Only a complete successful catalog sync refreshes the
+catalog timestamp. Failed/partial sync does not.
 
-Staleness blocks new sales. Manifest staleness also blocks publishing a new
-mapping revision. Staleness does not revoke existing pinned mappings,
-subscriptions, grants, or allowances.
+Staleness blocks new sales and new mapping publication. It does not revoke
+existing pinned mappings, subscriptions, grants, or allowances.
 
 The detailed manifest wire contract and contract-fixture rules live in
 `docs/superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md`.
@@ -558,13 +572,23 @@ Only `none` is sellable in this MVP. `required` and `unknown` stay
 implemented.
 
 Published mapping revisions are immutable, privileged Product/Engineering state.
-Each revision records the Platform manifest version used for validation. Later
-changes create a new revision; already-pinned subscriptions are not silently
-rewritten.
+A new revision may be published only against a fresh complete capability manifest
+and fresh complete external billing catalog. Each revision records both the
+Platform manifest version and the normalized billing-catalog version/digest used
+for validation. Later changes create a new revision; existing pins never rebind.
+Historical mapping revisions remain queryable while any purchase/subscription
+references them.
+
+Publication validates that every referenced external offer/component still
+exists in the current catalog projection, every target product/metric exists and
+is enabled in the current manifest, and each metric belongs to the mapped product.
 
 ### Purchase-time snapshot
 
-When `PurchaseIntent` is created, the same local transaction pins:
+When `PurchaseIntent` is created, Portal first revalidates the exact current offer
+against the fresh current catalog and the pinned mapping against the fresh current
+manifest, including `enabled` flags and current component structure. The same
+local transaction then pins:
 
 - external component references;
 - exact mapping revision IDs;
@@ -573,7 +597,11 @@ When `PurchaseIntent` is created, the same local transaction pins:
 - exact material commercial fingerprint and legal-document versions.
 
 A later mapping revision does not change an existing purchase/subscription
-meaning.
+meaning. If a historical pin is later found invalid/inconsistent, affected paid
+access fails closed and enters manual review; MVP does not mutate that pin to a
+new mapping revision. Corrective choices are restoring the original semantics,
+ending/replacing the commercial relationship through a new normal purchase, or a
+separately designed migration mechanism.
 
 Provider internal IDs may be stored as verification evidence without becoming
 part of the user-facing commercial fingerprint.
@@ -625,11 +653,13 @@ and is never reused for another user/customer even if LBX no longer resolves the
 old value.
 
 `identity_conflict` blocks Widget mint, new sales, new customer/agreement/
-subscription mutation, and identity-based recovery until audited resolution.
-Existing linked paid access may continue only when stable provider customer and
-subscription IDs independently and authoritatively prove the original ownership
-and ordinary access predicates still hold; otherwise affected access fails closed
-through the normal revisioned access transition.
+subscription mutation, identity-based recovery, and all paid access derived from
+that customer slot. The Portal commits the resulting paid-fact omissions through
+the ordinary revisioned access path. Stable provider IDs may still be used for
+read-only diagnosis/reconciliation but never preserve paid access while the
+identity invariant is broken. Normal MVP resolution is provider-side restoration
+of the original `billing_customer_key` value followed by authoritative reread;
+Portal does not adopt a replacement provider `outer_id`.
 
 ### PurchaseIntent
 
@@ -721,11 +751,52 @@ access and enters conflict review if a later purchase already succeeded.
 ## Subscription projection and paid eligibility
 
 A local subscription row exists only for a proven external subscription.
+
+For LBX, Portal naming is explicit:
+
+```text
+external_subscription_id = LBX subscriptions.subscription_id
+subscriptions.outer_id   = non-unique correlation/recovery hint only
+```
+
+`subscriptions.outer_id` never proves identity. Recovery candidates found through
+that hint must still be point-read and proven by canonical `subscription_id` plus
+expected customer/agreement/commercial facts. Multiple plausible matches are
+ambiguous and never auto-bind. Once bound, authoritative rereads and local joins
+use canonical `subscription_id`, not `outer_id`.
+
+Subscription storage includes at least:
+
+```text
+external_billing_account_id
+provider_customer_id
+provider_agreement_id
+external_subscription_id
+lifecycle_status
+```
+
 Uniqueness includes:
 
 ```text
 UNIQUE(external_billing_account_id, external_subscription_id)
 ```
+
+For customer-funded LBX subscriptions, the dedicated-agreement invariant is also
+materialized. One non-terminal paid subscription has exactly one
+`provider_agreement_id`, and that agreement cannot back two non-terminal Portal
+subscriptions in the same billing account. A practical DB guard is a partial
+unique constraint/index equivalent to:
+
+```text
+UNIQUE(external_billing_account_id, provider_agreement_id)
+WHERE lifecycle_status != 'ended'
+```
+
+Renewal of the same subscription keeps the same agreement. A new subscription
+uses a new dedicated agreement. If an authoritative reread claims a different
+agreement for an already-linked non-terminal subscription, Portal creates
+`agreement_binding_conflict`, fails affected paid access closed, and enters
+manual review rather than silently rebinding.
 
 Normalized access-relevant fields remain deliberately small:
 
@@ -781,9 +852,11 @@ Repeated same-cycle reads and financial block/unblock preserve each metric's
 `allowance_id`, fixed quantity, and Kernel usage. Only a confirmed new provider
 cycle creates new metric-specific IDs.
 
-Published allowance boundaries are immutable for that cycle in MVP. A later read
-claiming different boundaries for the same cycle creates
-`allowance_cycle_conflict` rather than silently rewriting the bucket.
+For a given `allowance_id`, product, metric, quantity, and period boundaries are
+immutable. A later read claiming different boundaries or other tuple fields for
+the same allowance creates a conflict rather than silently rewriting the bucket.
+Kernel independently freezes and verifies the same tuple according to the
+companion access contract.
 
 Portal does not store authoritative runtime `remaining`.
 
@@ -953,121 +1026,43 @@ confirmed, the product grant may remain but no future metric bucket is invented;
 metered paid usage fails closed at the old `period_end`. A later confirmed cycle
 creates new metric-specific IDs using the pinned fixed quantities.
 
-## AccessSnapshot and Platform Kernel boundary
+## Access boundary with Platform Kernel
 
-`AccessSnapshot` is vendor-neutral and is the complete current effective set for
-one `(tenant_id, region, user_id)`. It contains product grants and metric
-allowances but no provider IDs/statuses, balances, payments, charges, or provider
-cycle keys.
+Payments Portal is the authority for the derived paid-access projection. Platform
+Kernel never consumes provider-specific billing facts.
 
-One `access_revision` identifies one immutable semantic effective access state.
-For the same revision, authorization-relevant contents of `grants[]` and
-`allowances[]` may not change. Any grant/allowance add, omission, or material
-change is first committed as a new effective state with `access_revision N+1` and
-durable invalidation. GET materialization serializes the committed state; it does
-not change rights on the fly while retaining revision N.
-
-`authoritative_as_of`, `refresh_after`, and `expires_at` may be recalculated at
-the same revision if the semantic access state is unchanged.
-
-Portal evaluates facts independently when committing a new effective state. If
-Product A source loses trust while independent Product B remains trusted:
+For each known `(tenant_id, region, user_id)`, Portal exposes a complete
+vendor-neutral effective-access state consisting of product grants and metric
+allowances. The initial state is the implicit immutable empty state:
 
 ```text
-revision N:   A + B
-revision N+1: B only
+access_revision = 0
+grants = []
+allowances = []
 ```
 
-A's omission is a material negative access change and increments
-`access_revision`; B remains valid. An expired metric allowance may be omitted
-while its open-ended product grant remains present, but that omission likewise
-requires the new revision before a GET can return it.
+Revision zero requires no persisted access-state row, and AccessSnapshot GET is
+read-only. The first material access transition atomically creates revision `1`
+and durable invalidation `1`; after that, revisions never return to zero.
 
-MVP defaults:
+One `access_revision` identifies one immutable semantic effective-access set. Any
+material add, omission, or change of a grant/allowance commits revision `N+1` and
+durable invalidation before it can be returned. Independent products/facts remain
+independent: failure of one source omits only the affected paid facts.
 
-```text
-refresh_after = now + 1m
-expires_at = min(
-  now + 5m,
-  deadlines of paid facts actually included,
-  included grant terminal boundaries,
-  included allowance boundaries where relevant
-)
-```
+Portal supplies allowance identity and purchased quantity. Platform Kernel owns
+durable actual usage, remaining-quota calculation, and runtime enforcement. A
+product grant alone does not authorize a paid metered action: each paid metered
+action has exactly one Kernel-owned `metric_key` and requires the corresponding
+current allowance. MVP does not stack multiple effective allowances for one
+metric. Free/guest quota remains separate Kernel policy.
 
-After a fact is omitted, its old deadline no longer shortens the new snapshot.
-
-Known Portal users always receive `200` with a complete snapshot, including
-`grants=[]` and `allowances=[]` after a committed empty-access revision. `404`
-means only an unknown canonical user in the requested tenant/region; `401`/`403`
-mean service-auth/scope failures; `5xx` means Portal could not produce a complete
-valid snapshot. Kernel may use a prior snapshot after transport/`5xx` only until
-its existing `expires_at`, never extending it locally, then paid access fails
-closed. An unexpected `404` for a previously known scoped user is an integration
-anomaly, not a normal empty-entitlement transition.
-
-### Monotonic access revision and durable invalidation
-
-Every material positive or negative access change increments per-user
-`access_revision` and atomically upserts durable invalidation work.
-
-Payments Portal calls the region-local endpoint hosted by Platform Kernel:
-
-```text
-POST /internal/v1/access-invalidations
-```
-
-with:
-
-```text
-(tenant_id, region, user_id, access_revision)
-```
-
-Platform Kernel, conversely, calls the region-local AccessSnapshot endpoint hosted
-by Payments Portal. The exact host/caller matrix and HTTP contract are defined in
-the companion design.
-
-Invalidation delivery is at-least-once, idempotent, durable, and coalesced to the
-maximum pending revision for that user. Transport/429/5xx failures retry durably;
-contract/auth/region errors remain unresolved and alert rather than hot-looping.
-
-Kernel atomically raises its monotonic revision floor and evicts older cached
-snapshots. Once floor `R` is known, a delayed snapshot `< R` cannot be cached or
-used for authorization.
-
-Invalidation push accelerates convergence and fences stale responses; it is not
-the sole correctness mechanism. `refresh_after`, `expires_at`, temporal-boundary
-refresh, and complete snapshot replacement remain fail-closed backstops.
-
-The detailed cross-repository wire contract is:
+The exact HTTP schemas, host/caller ownership, freshness fields, status/error
+semantics, revision-floor behavior, invalidation outbox/ack rules, immutable
+allowance tuple, usage-ledger lifetime, and contract fixtures are defined
+exclusively by:
 
 `docs/superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md`.
-
-## Platform Kernel paid quota semantics
-
-For each allowance independently:
-
-```text
-remaining = max(0, allowance.quantity - durable Kernel usage[allowance_id])
-```
-
-Kernel hard-stops at zero; there is no paid overage. Usage consumption is atomic
-and restart-safe. Two metrics from one provider cycle have independent counters.
-
-The durable usage ledger lifetime is independent of an allowance's current
-presence in `AccessSnapshot`. Omission because of financial block, trust/conflict,
-snapshot expiry, or cache eviction stops current authorization but does not
-delete/reset `usage[allowance_id]`.
-
-If the same allowance reappears after same-cycle unblock, Kernel resumes the same
-counter and remaining amount. Only a new `allowance_id`, produced by a confirmed
-new provider cycle, creates a new zero-usage bucket. Historical usage rows remain
-at least longer than any possible reappearance; MVP may retain them without
-automatic deletion.
-
-External usage reporting is outside this MVP. If a billing offer requires it or
-its requirement is unknown, the offer remains `NOT_SELLABLE` until a separate
-design is approved.
 
 ## Manual review
 
@@ -1079,16 +1074,18 @@ Typical reasons include:
 - `subscription_create_outcome_unknown`;
 - ambiguous external create/recovery;
 - unknown external customer or `identity_conflict`;
+- `agreement_binding_conflict` or subscription identity conflict;
 - unmapped/unclassified component or duplicate metric source;
+- invalid historical mapping pin;
 - normalization/integration uncertainty;
 - prepared-commercial mismatch or `commercial_terms_conflict`;
-- `allowance_cycle_conflict`.
+- `allowance_cycle_conflict`/allowance tuple conflict.
 
 Controlled resolutions may bind a proven external object, release a scope after
 audited evidence of safe absence, restore/prove the original customer identity,
-mark duplicate/conflict, perform audited mapping rebind, or accept a proven
-subscription as primary under the product scope lock. Operators never directly
-set entitlement active.
+mark duplicate/conflict, or accept an already-proven subscription as primary
+under the product scope lock. Operators never directly set entitlement active
+and never rebind an existing purchase to a different mapping revision.
 
 MVP requires durable records, alerting, runbook, and controlled admin command/API;
 a dedicated manual-review UI is not required.
@@ -1145,7 +1142,7 @@ Monitor at minimum:
 - urgent vs normal reconciliation backlog;
 - work-queue depth/oldest item;
 - webhook auth failures/delivery lag;
-- commercial/allowance conflicts;
+- commercial/agreement/subscription/allowance conflicts;
 - access fact omissions and revision changes;
 - AccessInvalidation delivery lag/errors and Kernel stale-snapshot rejection;
 - provider latency/timeouts/error rate.
@@ -1161,18 +1158,20 @@ Destructive rewrite begins only after all Phase 0 launch-critical gates pass.
 Order:
 
 0. Run Phase 0 A-E and record PASS evidence. Reuse existing stand-043 REST facts;
-   prove missing semantics, especially authenticated Widget behavior and
-   `users.outer_id` drift/recovery semantics.
+   prove missing semantics, especially authenticated Widget behavior,
+   `users.outer_id` drift/recovery, and stable subscription -> agreement binding.
 1. Supersede contradictory canonical ADR/docs in Portal and Kernel.
 2. Remove obsolete Portal Product/Bundle/Plan/PlanLimit/Order and direct-payment
    semantics; replace the disposable Alembic baseline and recreate dev/test DBs.
 3. Implement the Kernel-hosted capability/metric manifest contract and Portal
-   atomic LKG manifest/catalog freshness projections.
-4. Implement controlled mapping publication plus purchase-time
+   atomic LKG manifest/catalog freshness projections, including `enabled`
+   admission semantics.
+4. Implement controlled mapping publication against fresh manifest + fresh
+   billing catalog, immutable historical revisions, and purchase-time
    mapping/fingerprint/fixed-quantity snapshot.
 5. Implement durable external-customer slot using one `billing_customer_key`,
-   immutable identity/drift detection, non-payment customer/agreement/subscription
-   preparation, and safe recovery.
+   immutable identity/drift detection, canonical provider subscription identity,
+   dedicated `provider_agreement_id`, non-payment preparation, and safe recovery.
 6. Implement PurchaseIntent scope, complete prepared-state commercial verification,
    fail-closed Widget mint-on-open, UNKNOWN 2h escalation, and manual-review
    controls.
@@ -1181,13 +1180,16 @@ Order:
    fenced reconciliation, unified urgent scheduling, prepaid normalization, and
    6h provider trust lease.
 8. Implement metric-specific allowance identity/cycles from Phase 0 evidence with
-   quantity pinned from accepted fixed terms and no provisional rollover.
-9. Implement committed immutable-revision AccessSnapshot plus durable invalidation
-   and Kernel revision-floor consumer according to the companion contract.
-10. Integrate allowances into Kernel durable quota consumption with usage ledger
-    lifetime independent from snapshot/cache presence.
-11. Run cross-repo contract/integration proofs, including manifest fixtures and
-    exact HTTP semantics.
+   immutable allowance tuple, quantity pinned from accepted fixed terms, and no
+   provisional rollover.
+9. Implement implicit revision-zero/committed immutable-revision AccessSnapshot
+   plus durable invalidation and Kernel revision-floor consumer according to the
+   companion contract.
+10. Integrate allowances into Kernel durable quota consumption, including metered
+    action `metric_key` requirements and usage lifetime independent from
+    snapshot/cache presence.
+11. Run cross-repo contract/integration proofs, including manifest fixtures,
+    invalidation in-flight ack races, and exact HTTP semantics.
 12. Repeat critical LBX probes against deployed RU configuration before launch.
 
 No dual-write old/new billing compatibility layer is required.
@@ -1197,19 +1199,26 @@ No dual-write old/new billing compatibility layer is required.
 The later implementation plan must contain concrete automated/provider proofs for
 these areas rather than duplicating a large test matrix here:
 
-- Phase 0 A-E launch evidence, including `outer_id` drift/recovery;
+- Phase 0 A-E launch evidence, including `outer_id` drift/recovery and stable
+  subscription -> agreement identity;
 - complete commercial re-verification and `NOT_SELLABLE` fallback;
-- fail-closed Widget mint under mismatch/INCOMPLETE/conflict/UNKNOWN;
+- fail-closed Widget mint and paid access under identity/commercial conflict;
 - uncertain-create recovery, 2h escalation, and no unsafe scope release;
+- canonical LBX `subscription_id` binding with non-unique `outer_id` only as a
+  recovery hint;
 - first-primary includes every observed candidate before decision under lock;
+- fresh manifest + fresh catalog mapping publication and immutable historical pin;
 - unified urgent scheduling and provider trust expiry;
-- fixed quantity/cycle identity and multi-metric bucket isolation;
-- same `access_revision` always means the same semantic effective access set;
-- independent AccessSnapshot fact omission and exact 200/404/401/403/5xx behavior;
-- AccessInvalidation outbox/retry plus Kernel revision-floor races;
+- fixed quantity/cycle identity, immutable allowance tuple, and multi-metric
+  bucket isolation;
+- implicit revision `0`, immutable semantic revisions, and independent fact
+  omission;
+- AccessInvalidation outbox/retry plus revision-floor and in-flight `204` races;
 - same-cycle allowance omission/reappearance preserves durable Kernel usage;
+- paid metered action requires its exact metric allowance; no allowance stacking;
 - concurrent durable Kernel quota consumption;
-- capability-manifest LKG/freshness and hash-checked cross-repo contract fixtures;
+- capability `enabled` admission semantics, manifest LKG/freshness, and
+  hash-checked cross-repo contract fixtures;
 - architecture checks preventing provider concepts from leaking into Kernel.
 
 ## Explicit non-goals
@@ -1223,6 +1232,8 @@ MVP does not:
 - build Portal-owned card/payment/autopay/invoice/payment-history UI where Widget
   provides it;
 - treat Widget JS flags as ACLs or PII as identity authority;
+- preserve paid access while `billing_customer_key` identity is in conflict;
+- rebind an existing purchase/subscription to a newer mapping revision;
 - support bundles, overlapping access-producing subscriptions, allowance stacking,
   duplicate metric sources, shared metrics, or paid overage;
 - support postpaid/debt access or dynamic/prorated/charge-derived quota;
@@ -1247,7 +1258,7 @@ External Billing
 Payments Portal
   AnyToolAI identity and legal acceptance
   external-billing anti-corruption layer
-  one immutable opaque external-customer key + drift detection
+  one immutable opaque external-customer key + fail-closed drift detection
   catalog/subscription projections + freshness gates
   immutable mappings + accepted commercial/quantity snapshot
   durable recovery and manual review
