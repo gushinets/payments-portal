@@ -62,7 +62,7 @@ only for billing access.
 
 ### Request
 
-Recommended MVP route:
+MVP route:
 
 ```http
 GET /internal/v1/access-snapshots/{user_id}?tenant_id=anytoolai&region=ru
