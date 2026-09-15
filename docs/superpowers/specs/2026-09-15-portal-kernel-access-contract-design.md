@@ -1,6 +1,6 @@
 # Payments Portal <-> Platform Kernel access contract
 
-Status: review requested after tenth external-review amendments  
+Status: review requested after eleventh external-review amendments  
 Date: 2026-09-15
 
 ## Purpose
@@ -46,6 +46,13 @@ For AnyToolAI RU MVP:
 tenant_id = anytoolai
 region    = ru
 ```
+
+For AccessSnapshot and AccessInvalidation, `user_id` is the canonical AnyToolAI
+Portal user UUID carried by the authenticated identity flow. Platform Kernel must
+use that canonical principal directly; it must not substitute a Kernel-local user
+identifier or maintain a second billing-user mapping. The path parameter,
+response body, invalidation payload, cache key, and revision floor all refer to
+the same canonical Portal UUID.
 
 The same contracts are reusable for other regional contours. A regional service
 must reject a request whose region does not match the contour it serves. Region
@@ -222,6 +229,11 @@ GET /internal/v1/access-snapshots/{user_id}?tenant_id=anytoolai&region=ru
 
 No provider-specific values may appear in this response.
 
+`quantity` is a non-negative integer throughout the paid-access contract, Portal
+storage/projection, fixtures, and Kernel quota ledger. Floating-point or decimal
+representations, including integral-looking values such as `1000.0`, are invalid
+contract data rather than alternate encodings of the same allowance.
+
 `AccessSnapshot` is a complete current effective set, not a delta. If Product A
 is absent while Product B is present, A is denied and B remains allowed.
 
@@ -279,41 +291,61 @@ expires_at
 
 ### Snapshot time semantics and clock skew
 
-Portal and Kernel have independent clocks. The deployment therefore defines one
-positive `clock_skew_budget`. Portal publishes conservative authorization bounds;
-Kernel compares those received bounds with its own `now` and never adds time or
-extends them locally.
+Portal and Kernel have independent clocks. The deployment defines one positive
+`clock_skew_budget` equal to the maximum tolerated absolute Portal<->Kernel clock
+offset for this contract. Deployment validation requires the budget to be smaller
+than the hard snapshot TTL. Portal publishes conservative authorization bounds;
+Kernel compares received absolute timestamps with its own `now` and never adds
+time or extends them locally.
 
-For finite paid facts, Portal derives effective wire bounds conservatively:
+For finite paid facts, Portal derives effective wire/authorization bounds
+conservatively:
 
 ```text
+effective source_trust_deadline = source projection_valid_until - clock_skew_budget
 effective grant.valid_until = source valid_until - clock_skew_budget
 effective allowance.period_start = source period_start + clock_skew_budget
 effective allowance.period_end = source period_end - clock_skew_budget
 ```
 
-Raw provider/source boundaries remain internal to Portal. If the conservative
-haircut collapses an interval, that paid fact is unusable and is omitted/fails
-closed rather than widened.
+A `null` `grant.valid_until` remains `null`; no arithmetic is applied to it and it
+does not become an infinite provider-trust lease. Raw provider/source boundaries
+remain internal to Portal. If the conservative haircut collapses a finite
+interval, that paid fact is unusable and is omitted/fails closed rather than
+widened.
+
+For an already-issued `allowance_id`, the effective wire tuple is immutable. The
+`clock_skew_budget` in effect when its effective `period_start`/`period_end` are
+first committed is therefore part of how those frozen boundaries were derived.
+A later deployment change to `clock_skew_budget` applies only when deriving future
+allowance IDs; it must not rewrite the effective period bounds of an existing
+`allowance_id`.
 
 MVP snapshot defaults are:
 
 ```text
+snapshot_hard_expiry = portal_now + 5m - clock_skew_budget
+
 expires_at = min(
-  now + 5m,
-  effective deadlines of source facts actually included,
-  included effective grant terminal boundaries,
-  included effective allowance boundaries where relevant
+  snapshot_hard_expiry,
+  effective source-trust deadlines of paid facts actually included,
+  included effective finite grant.valid_until values,
+  included effective allowance.period_end values
 )
 
-refresh_after = min(now + 1m, expires_at)
+refresh_after = min(portal_now + 1m, expires_at)
 ```
 
-Therefore `refresh_after` is never later than `expires_at`.
+Therefore `refresh_after` is never later than `expires_at`, and both the 5-minute
+snapshot lease and the underlying source trust/period/grant deadlines are
+conservative against the configured clock-skew budget.
 
 A stale/expired/conflicted fact is omitted instead of invalidating unrelated
 facts. The billing-boundary design requires deterministic due-boundary processing
-through the existing Portal access-commit path, with no provider HTTP, so an
+through the existing Portal access-commit path, with no provider HTTP. When a paid
+fact is committed or its effective deadline changes legitimately before issuance,
+Portal schedules that same durable worker for the effective access-reducing
+deadline rather than waiting for the 5m/15m provider-reconciliation cadence. An
 overdue fact is removed by a new revision rather than by GET. GET itself remains
 strictly read-only. If the due commit is temporarily late, the already-issued
 snapshot remains expired and Kernel must not extend it; unrelated facts become
@@ -616,11 +648,13 @@ On first acceptance of an `allowance_id`, Kernel durably freezes this scoped tup
  product_id, metric_key, quantity, period_start, period_end)
 ```
 
-For every later appearance of the same `allowance_id`, all frozen fields must be
-identical. Any difference in product, metric, quantity, or period boundaries is
-an allowance contract conflict. Kernel must not overwrite the frozen tuple, reset
-usage, or authorize consumption from that conflicting allowance. Unrelated grants
-and allowances may continue.
+`quantity` in the frozen tuple is a non-negative integer. For every later
+appearance of the same `allowance_id`, all frozen fields must be identical. Any
+difference in product, metric, integer quantity, or effective period boundaries
+is an allowance contract conflict. A Portal-side change to clock-skew
+configuration is not permission to rewrite an already-frozen allowance tuple.
+Kernel must not overwrite the frozen tuple, reset usage, or authorize consumption
+from that conflicting allowance. Unrelated grants and allowances may continue.
 
 Consumption must be atomic and must not exceed the frozen allowance quantity under
 concurrency. Restart preserves used quantity. Two metric allowances never share a
@@ -704,14 +738,22 @@ The implementation plan must cover at least:
 
 - known user with no access-state row returns read-only `200`, revision `0`, and
   empty arrays; GET never creates revision state;
+- the request path/body/cache/floor use the canonical Portal user UUID from the
+  authenticated identity principal; a Kernel-local user id is never substituted;
 - first material access change atomically creates revision `1` and invalidation
   `1`, with no competing GET-created revision;
 - same `access_revision` cannot return a different semantic grants/allowances set;
-- a deterministic time boundary omits only the due fact through revision `N+1`
-  without provider HTTP and leaves unrelated paid facts available after refresh;
+- a deterministic time boundary is scheduled on the existing durable worker for
+  its effective deadline, omits only the due fact through revision `N+1` without
+  provider HTTP, and leaves unrelated paid facts available after refresh;
 - `refresh_after <= expires_at` for every snapshot;
-- Portal's configured clock-skew haircut is conservative and Kernel never extends
-  received expiry/period bounds with its own clock;
+- `null grant.valid_until` remains null and does not bypass source-trust expiry;
+- Portal's configured clock-skew haircut covers hard snapshot expiry, source trust,
+  grant, and allowance bounds while Kernel never extends received bounds;
+- changing `clock_skew_budget` does not change the effective period tuple of an
+  already-issued `allowance_id`;
+- allowance quantity is a non-negative integer end to end; decimal/float encodings
+  are rejected;
 - no fleet-wide snapshot poller is required; refresh is driven by paid actions,
   invalidations, and hard expiry;
 - snapshot N rejected after floor N+1 is learned;
