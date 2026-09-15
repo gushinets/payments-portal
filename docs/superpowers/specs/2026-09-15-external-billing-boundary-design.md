@@ -281,23 +281,28 @@ cycle ID, a derived identity is acceptable only when test evidence proves that
 the chosen fields are authoritative and stable across rereads and financial
 block/unblock, and change only on an actual new billing cycle.
 
+This is a provider-semantics spike, not production Kernel implementation. It may
+use a throwaway probe ledger/harness to represent the stable `allowance_id` and
+an already-consumed quantity while testing LBX transitions.
+
 The mandatory end-to-end probe is:
 
 ```text
 1. prepare subscription
 2. make it commercially eligible through Widget
 3. authoritative-read cycle C1, quantity Q, interval [T1, T2)
-4. materialize Portal allowance A1 for C1
-5. consume N units in Kernel from A1
+4. allocate probe allowance identity A1 for C1
+5. record N consumed units against A1 in the throwaway probe ledger
 6. cause financial/access blocking in LBX
 7. authoritative-read and prove the cycle is still C1
 8. remove blocking
 9. authoritative-read and prove cycle/quantity/interval are still C1/Q/[T1,T2)
-10. prove Portal still resolves C1 -> A1 and Kernel still has used=N
+10. prove C1 still resolves to A1 and the probe ledger still has used=N
 11. trigger/wait for real renewal
 12. authoritative-read a distinct cycle C2 with its authoritative quantity and
     interval
-13. prove C2 -> new allowance A2 and A2 starts with zero Kernel usage
+13. prove C2 resolves to a new allowance identity A2 and starts with zero probe
+    usage
 14. reread C2 repeatedly and prove every reread resolves to the same A2
 ```
 
@@ -1390,6 +1395,9 @@ expires_at    = min(now + 5 minutes, relevant Portal projection trust deadline)
 
 Known grant and allowance temporal boundaries remain independent semantic
 constraints; an allowance is usable only inside `[period_start, period_end)`.
+For a snapshot containing facts from several subscriptions, `expires_at` must not
+outlive the earliest relevant provider-fact trust deadline among the included
+paid-access facts.
 
 Kernel behavior:
 
