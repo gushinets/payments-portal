@@ -1,34 +1,43 @@
 # Payments Portal <-> Platform Kernel access contract
 
-Status: review requested after seventh external-review amendments  
+Status: review requested after eighth external-review amendments  
 Date: 2026-09-15
 
 ## Purpose
 
-This companion design contains the cross-repository wire contract between
-Payments Portal and Platform Kernel for paid-access projection, cache fencing,
-and fast invalidation.
+This companion design contains the cross-repository wire contracts between
+Payments Portal and Platform Kernel for technical capability discovery, paid
+access projection, cache fencing, and fast invalidation.
 
 The billing-boundary design remains authoritative for commercial ownership,
 provider integration, recovery, sellability, and entitlement derivation. This
 file deliberately contains no LBX concepts, provider IDs, balances, payment
 states, or billing-specific lifecycle values.
 
-The contract has two required operations in MVP:
+The contract has three required operations in MVP:
 
-```text
-Kernel -> Portal: GET AccessSnapshot
-Portal -> Kernel: POST AccessInvalidation
-```
+| Operation | Host | Caller |
+|---|---|---|
+| `GET /internal/v1/capability-manifest` | Platform Kernel | Payments Portal |
+| `GET /internal/v1/access-snapshots/{user_id}` | Payments Portal | Platform Kernel |
+| `POST /internal/v1/access-invalidations` | Platform Kernel | Payments Portal |
+
+These routes intentionally live in different services. Capability discovery is
+Kernel -> Portal at the domain level: Kernel defines technical vocabulary and
+Portal consumes it. AccessSnapshot is pulled by Kernel from Portal.
+AccessInvalidation is only a Portal -> Kernel cache-fencing delivery path; it
+does not make Kernel a billing-system client.
 
 Platform Kernel never calls External Billing directly.
 
 ## Scope key
 
-Every access value is scoped by:
+Every cross-service value is scoped by tenant and region. User access values add
+`user_id`:
 
 ```text
-(tenant_id, region, user_id)
+capability manifest: (tenant_id, region)
+access state:         (tenant_id, region, user_id)
 ```
 
 For AnyToolAI RU MVP:
@@ -38,12 +47,13 @@ tenant_id = anytoolai
 region    = ru
 ```
 
-The same contract is reusable for other regional contours. A regional service
-must reject a request whose region does not match the contour it serves.
+The same contracts are reusable for other regional contours. A regional service
+must reject a request whose region does not match the contour it serves. Region
+in the request is a validation guard, not a mechanism for cross-contour routing.
 
 ## Service authentication
 
-Both operations are internal service-to-service APIs. User authentication is not
+All operations are internal service-to-service APIs. User authentication is not
 sufficient.
 
 Required properties:
@@ -58,17 +68,103 @@ The concrete credential format should reuse the deployment's internal service
 authentication mechanism. This design does not introduce a separate auth system
 only for billing access.
 
+## Capability Manifest
+
+### Request ownership
+
+Platform Kernel hosts the manifest endpoint. Payments Portal is the caller.
+
+```http
+GET /internal/v1/capability-manifest?tenant_id=anytoolai&region=ru
+```
+
+### Response
+
+```json
+{
+  "schema_version": 1,
+  "tenant_id": "anytoolai",
+  "region": "ru",
+  "manifest_version": "sha256:...",
+  "generated_at": "2026-09-15T12:00:00Z",
+  "products": [
+    {
+      "product_id": "document-summary",
+      "enabled": true
+    }
+  ],
+  "usage_metrics": [
+    {
+      "metric_key": "document-summary.generations",
+      "product_id": "document-summary",
+      "unit": "generation",
+      "enabled": true
+    }
+  ]
+}
+```
+
+Kernel validates before serving that:
+
+```text
+product_id is unique
+metric_key is unique
+metric_key -> exactly one existing product_id
+```
+
+`manifest_version` changes deterministically on semantic manifest changes.
+
+The response is all-or-nothing. Kernel returns `200` only for a complete valid
+manifest. It does not return a partial `200`.
+
+### HTTP semantics
+
+```text
+200 -> complete valid manifest
+401 -> missing/invalid service authentication
+403 -> authenticated caller not authorized for tenant/region/scope
+5xx -> Kernel cannot produce a complete valid manifest
+```
+
+### Portal import and freshness
+
+Portal targets refresh at startup and approximately every five minutes. It keeps
+a last-known-good projection.
+
+`capability_manifest_last_complete_sync_at` advances only after all of these
+succeed:
+
+```text
+HTTP 200
+supported schema_version
+full payload validation
+all product/metric references valid
+atomic local projection commit
+```
+
+Timeouts, `5xx`, malformed/partial responses, unsupported schema, broken
+metric-to-product references, or local projection transaction failure do not
+advance freshness and do not partially replace the prior projection.
+
+The billing-boundary design applies:
+
+```text
+new_sales_projection_max_age = 24h
+```
+
+A manifest older than that blocks new sales and new mapping publication, but
+does not silently rewrite or revoke already-pinned historical mappings or paid
+access.
+
 ## AccessSnapshot
 
-### Request
+### Request ownership
 
-MVP route:
+Payments Portal hosts the snapshot endpoint. Platform Kernel is the caller.
 
 ```http
 GET /internal/v1/access-snapshots/{user_id}?tenant_id=anytoolai&region=ru
 ```
-
-The caller is Platform Kernel.
 
 ### Response
 
@@ -106,6 +202,35 @@ No provider-specific values may appear in this response.
 `AccessSnapshot` is a complete current effective set, not a delta. If Product A
 is absent while Product B is present, A is denied and B remains allowed.
 
+### Immutable semantic state per revision
+
+One `access_revision` identifies one immutable semantic effective access state.
+For two successful responses with the same revision, the authorization-relevant
+contents of `grants[]` and `allowances[]` must be identical, including grant
+boundaries and allowance identity, product/metric binding, quantity, and period
+bounds.
+
+Any add, omission, or material change to an effective grant or allowance must be
+committed first as:
+
+```text
+new effective access state
++ access_revision N+1
++ durable AccessInvalidation N+1
+```
+
+A GET serializes already-committed effective state; it never silently changes the
+effective set while retaining the same revision.
+
+Freshness metadata may be recomputed without changing the revision when semantic
+access is unchanged:
+
+```text
+authoritative_as_of
+refresh_after
+expires_at
+```
+
 ### Snapshot time semantics
 
 MVP defaults:
@@ -122,15 +247,55 @@ expires_at = min(
 
 A stale/expired/conflicted fact is omitted instead of invalidating unrelated
 facts. Once omitted, its old deadline does not shorten the newly materialized
-snapshot.
+snapshot. The omission itself is a semantic access change and therefore requires
+a new revision before the GET can return it.
 
 Portal must not include a paid fact after its provider projection trust deadline.
 Kernel must use an allowance only while `now` belongs to its half-open UTC period
 `[period_start, period_end)` and the parent snapshot remains valid.
 
+### HTTP semantics
+
+For a canonical Portal user known in the requested tenant/region, Portal always
+returns `200` with a complete versioned snapshot. This includes users with no
+current paid access:
+
+```json
+{
+  "access_revision": 185,
+  "grants": [],
+  "allowances": []
+}
+```
+
+An empty paid-access set is therefore not `404` and not `204`.
+
+```text
+200 -> known user, complete current snapshot, possibly empty
+404 -> canonical user_id is unknown in the requested tenant/region
+401 -> missing/invalid service authentication
+403 -> authenticated caller not authorized for tenant/region/scope
+5xx -> Portal cannot produce a valid complete snapshot
+```
+
+`404` never means "known user with no entitlement". If Kernel previously accepted
+snapshots for the same scoped user and later receives an unexpected `404`, it
+treats that as an integration anomaly, alerts, and uses only a still-valid cached
+snapshot until its existing `expires_at`; after expiry paid access fails closed.
+
+For timeout/transport/`5xx`, Kernel may use an already-accepted cached snapshot
+only while that snapshot remains within its existing validity. Kernel never
+locally extends `expires_at`. Without a valid cache, or after expiry, paid access
+fails closed.
+
+`401`/`403` are service auth/configuration failures, not entitlement results, and
+must not be converted into an empty snapshot.
+
 ## AccessInvalidation
 
-### Request
+### Request ownership
+
+Platform Kernel hosts the invalidation endpoint. Payments Portal is the caller.
 
 ```http
 POST /internal/v1/access-invalidations
@@ -311,7 +476,7 @@ If invalidation delivery is delayed, Kernel may continue only within the already
 issued snapshot's valid temporal bounds. After expiry it must fail closed for
 paid access it cannot refresh.
 
-## Quota ownership
+## Quota ownership and allowance-ledger lifetime
 
 Platform Kernel owns durable actual usage. For each allowance independently:
 
@@ -323,9 +488,20 @@ Consumption must be atomic and must not exceed the allowance under concurrency.
 Restart preserves used quantity. Two metric allowances never share a runtime
 counter merely because they came from one provider billing cycle.
 
+The usage ledger lifetime is independent of whether an allowance is present in
+the current AccessSnapshot. Omission, financial block, snapshot expiry, or cache
+eviction stops current authorization but never deletes or resets accumulated
+usage for that `allowance_id`.
+
+If the same allowance reappears after a same-cycle unblock, Kernel resumes the
+same durable counter. Only a genuinely new `allowance_id` creates a fresh usage
+bucket starting at zero. Historical usage rows are retained at least longer than
+any possible reappearance of that allowance; MVP may retain them without
+automatic deletion.
+
 Portal never stores authoritative runtime remaining quota.
 
-## Versioning
+## Versioning and contract fixtures
 
 All payloads carry `schema_version`.
 
@@ -337,34 +513,52 @@ MVP rules:
 - do not introduce a shared runtime Python package that couples Portal and
   Kernel releases.
 
+Canonical JSON contract fixtures are checked in with Payments Portal tests.
+Platform Kernel vendors a hash-checked copy for producer/consumer compatibility
+proofs. Intentional contract changes update the canonical fixture and expected
+SHA-256 copy together. This is test data only, not a shared runtime package or a
+cross-repository runtime dependency.
+
 ## Required contract proofs
 
 The implementation plan must cover at least:
 
+- same `access_revision` cannot return a different semantic grants/allowances set;
 - snapshot N rejected after floor N+1 is learned;
 - concurrent N+1 then delayed N cannot regress cache/floor;
+- known user with no access returns `200` with empty arrays and committed revision;
+- entitlement absence never produces `404`;
+- unexpected `404` for a previously known user does not erase a still-valid cache;
 - duplicate invalidation is idempotent;
 - outbox survives crash after Portal commit;
 - N pending plus N+1 committed may coalesce to N+1;
 - invalidation outage still fails closed through snapshot expiry;
 - stale one-product fact can be omitted while independent product access remains;
-- concurrent Kernel quota consumption cannot exceed allowance quantity.
+- same allowance omitted during block and restored during same cycle keeps the
+  same accumulated usage;
+- cache eviction does not delete allowance usage;
+- concurrent Kernel quota consumption cannot exceed allowance quantity;
+- capability-manifest partial/invalid sync keeps prior LKG and does not move
+  `last_complete_sync_at`;
+- hash-checked contract fixtures cannot drift silently between repositories.
 
 ## Result
 
 The cross-repository boundary is intentionally small:
 
 ```text
+Platform Kernel
+  Capability Manifest producer
+  AccessSnapshot cache/client
+  monotonic revision floor
+  AccessInvalidation receiver
+  durable actual usage and quota enforcement
+
 Payments Portal
+  Capability Manifest consumer/LKG projection
   complete AccessSnapshot producer
   monotonic access_revision owner
   durable coalesced AccessInvalidation sender
-
-Platform Kernel
-  AccessSnapshot cache/client
-  monotonic revision floor
-  invalidation receiver
-  durable actual usage and quota enforcement
 ```
 
 Nothing in this contract makes Platform Kernel a billing-system client.
