@@ -223,9 +223,17 @@ Phase 0 MUST prove:
 - customer-scoped subscription enumeration can be proven complete, including
   pagination/cursors needed for first-primary conflict detection.
 
-The public Widget documentation is evidence of available UI/configuration
-features, but it is not proof of server-side agreement isolation or the exact
-unpaid/eligible semantics. Those remain runtime/vendor proof obligations.
+Each probe result is recorded with evidence status:
+
+```text
+DOCUMENTED        = supported by public/provider documentation only
+VENDOR_CONFIRMED  = explicitly confirmed by LBX/vendor for our deployment
+CONFIRMED_ON_TEST = reproduced on the real test stand
+```
+
+The launch-critical Phase 0 properties above require `CONFIRMED_ON_TEST`; public
+Widget documentation alone is not proof of server-side agreement isolation or
+the exact unpaid/eligible semantics.
 
 Phase 0 failure means:
 
@@ -372,6 +380,7 @@ An offer is sellable only if:
 - every mapped `metric_key` belongs to that product;
 - every external component is explicitly classified;
 - no two source components resolve to the same `metric_key`;
+- the provider's metering requirement is explicitly classified;
 - any provider-required external metering capability is actually implemented
   and proven safe.
 
@@ -454,9 +463,17 @@ preserves those semantics does not require renewed user consent.
 
 For an admissible externally-created subscription without PurchaseIntent, each
 previously unresolved component may be resolved once using the then-active
-mapping and is then permanently pinned. Future mapping changes never silently
-rewrite existing access. Changing an already-pinned revision requires an
-explicit audited rebind.
+mapping and is then permanently pinned. A current/sellable Portal offer is not
+required for such an already-existing subscription; access derives from the
+actual authoritative component composition plus pinned mappings and legal/origin
+rules in this spec.
+
+Future mapping publication, retirement, manifest staleness, or `enabled=false`
+does not silently rewrite/revoke an already-pinned historical interpretation.
+Changing an already-pinned revision requires an explicit audited rebind.
+
+If an authoritative subscription later removes a pinned component, the
+corresponding derived grant/allowance is removed through normal reconciliation.
 
 Several components may map to the same `product_id`; product grants use set/union
 semantics. A concrete subscription may not have more than one source component
@@ -514,7 +531,8 @@ where needed; they never create a new identity.
 
 Portal stores read-only projections of technical manifest facts, external
 components, immutable mappings, billing offers, offer components, material
-commercial fingerprint, source versions, sellability, and sync timestamps.
+commercial fingerprint, source versions, sellability, metering classification,
+and sync timestamps.
 
 ### PurchaseIntent and interaction state
 
@@ -636,6 +654,22 @@ pending | in_progress | succeeded | unknown | ambiguous | failed | manual_review
 The operation exists before network side effects. Timeout/lost response becomes
 `unknown`; recovery lookup occurs before any retry. No external network request
 runs inside an open database transaction.
+
+For the LBX adapter, recovery identity is stable and operation-specific:
+
+```text
+customer     -> Portal-generated stable recovery/outer key
+agreement    -> mapped customer + stable agreement number/key
+subscription -> agreement_id + stable Portal external key
+```
+
+Recovery result semantics are:
+
+```text
+0 matches  -> controlled retry only when the adapter can prove retry is safe
+1 match    -> bind the existing provider object
+>1 matches -> ambiguous/manual_review; never guess
+```
 
 `billing_webhook_inbox` stores every authenticated HTTP delivery separately with
 Portal-generated `delivery_id`. `payload_hash` is diagnostic, not a uniqueness
@@ -805,6 +839,18 @@ manual-review/ambiguous recovery    dedicated recovery policy
 Workers persist `last_discovery_at`, `next_discovery_at`, priority, and result so
 restarts preserve cadence.
 
+A current catalog offer is not required for an already-existing discovered
+subscription. The actual authoritative component composition plus pinned
+mapping/legal/origin rules decide access.
+
+An optional account-wide scan may detect orphan provider customers/subscriptions,
+but it is audit/manual-review input only and never grants access or PII-binds an
+unknown external customer.
+
+Sales/Finance manual creation for an already-mapped LBX customer must follow the
+same dedicated-Agreement isolation rule; it must not create a second LBX customer
+for the Portal user.
+
 ### Known-subscription authoritative reconciliation
 
 Known access-relevant subscriptions are authoritative-read independently of
@@ -913,6 +959,12 @@ through:
 If a trusted primary already existed and a later discovery finds another
 eligible subscription, the trusted primary continues within its normal trust
 rules; the newcomer produces no additional access and opens conflict review.
+
+If the selected primary later becomes blocked/ineligible, Portal does not
+automatically promote another candidate. Access follows the selected primary's
+authoritative state. If the selected primary becomes terminal and the selection
+is cleared, any future first selection again requires a complete discovery-cycle
+finalization or explicit audited resolution.
 
 No heuristic selection by age, amount, agreement order, worker completion order,
 or other convenience rule is allowed.
@@ -1128,6 +1180,11 @@ Conceptual vendor-neutral snapshot:
 Kernel-facing data contains no provider tariff/service/agreement/subscription/
 payment IDs, balances, or provider-specific statuses.
 
+`authoritative_as_of` is informational/audit metadata, not a trust lease. For a
+snapshot containing several paid facts it is the oldest
+`last_authoritative_read_at` among those included facts. Correctness uses the
+per-fact semantic boundaries and `expires_at`, not this field alone.
+
 MVP cache defaults:
 
 ```text
@@ -1218,11 +1275,14 @@ The baseline paid MVP does **not** require a Kernel -> Portal UsageEvent pipelin
 unless a selected external tariff actually requires reporting runtime usage back
 to the provider.
 
-Each normalized offer has provider-derived metering requirement:
+Each normalized offer has provider-derived metering classification:
 
 ```text
-external_usage_reporting = none | required
+external_usage_reporting = none | required | unknown
 ```
+
+`unknown` is fail-closed for new sales; Portal never silently interprets an
+unclassified tariff as `none`.
 
 For `none`:
 
@@ -1504,6 +1564,8 @@ spikes proving at least:
 - two eligible first-seen candidates produce no primary and manual review;
 - an existing trusted primary continues when a later conflicting eligible
   subscription appears, while newcomer adds no access;
+- an ineligible/blocked selected primary does not auto-promote a competing
+  subscription;
 - `PurchaseIntent` never shortcuts a real subscription conflict;
 - unknown provider customer never auto-binds by PII;
 - comp/gift to unmapped user is unsupported;
@@ -1511,7 +1573,8 @@ spikes proving at least:
   evidence does not auto-grant access;
 - operator comp requires audited non-customer-funded classification and baseline
   legal acceptance;
-- unclassified component or duplicate metric source blocks new offer sale;
+- unclassified component, unknown metering classification, or duplicate metric
+  source blocks new offer sale;
 - mapping revisions are immutable and already-pinned subscription mappings do
   not change silently;
 - explicit audited rebind is required to change a pinned mapping;
