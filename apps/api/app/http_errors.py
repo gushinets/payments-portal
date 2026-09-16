@@ -9,10 +9,19 @@ from fastapi.responses import JSONResponse
 from starlette.responses import Response
 
 from app.core.errors import AppError
+from app.domains.billing.errors import (
+    AmbiguousCatalogProductOfferError,
+    SubscriptionNotFoundError,
+    SubscriptionPlanMissingError,
+)
 from app.domains.identity.errors import (
     AutomaticRenewalNotPermittedError,
+    EmailAlreadyRegisteredError,
+    InvalidCredentialsError,
     InvalidOrExpiredResetTokenError,
     MissingRequiredDocumentsError,
+    MissingOfferConsentError,
+    MissingPersonalConsentError,
     PasswordResetRateLimitedError,
     ProviderCurrencyMismatchError,
     RecurringConsentRequiredError,
@@ -27,6 +36,13 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 APPLICATION_ROOT = Path(__file__).resolve().parent
 HTTP_ERRORS_MODULE = Path(__file__).resolve()
 HTTP_ERROR_RESPONSES: dict[type[AppError], tuple[int, str]] = {
+    SubscriptionNotFoundError: (404, "subscription_not_found"),
+    SubscriptionPlanMissingError: (500, "subscription_plan_missing"),
+    AmbiguousCatalogProductOfferError: (500, "ambiguous_catalog_product_offer"),
+    MissingPersonalConsentError: (400, "missing_personal_consent"),
+    MissingOfferConsentError: (400, "missing_offer_consent"),
+    EmailAlreadyRegisteredError: (409, "email_already_registered"),
+    InvalidCredentialsError: (401, "invalid_credentials"),
     UnknownProductPlanError: (400, "unknown_product_plan"),
     AutomaticRenewalNotPermittedError: (409, "automatic_renewal_not_permitted"),
     MissingRequiredDocumentsError: (409, "missing_required_documents"),
@@ -93,9 +109,13 @@ def app_error_handler(request: Request, error: AppError) -> JSONResponse:
     spec = HTTP_ERROR_RESPONSES.get(type(error))
     if spec is not None:
         status_code, public_code = spec
+        if status_code >= 500:
+            _report_internal_failure(request, error)
         detail: dict[str, object] = {"code": public_code}
         if isinstance(error, MissingRequiredDocumentsError):
             detail["documents"] = error.details_safe["documents"]
+        elif isinstance(error, AmbiguousCatalogProductOfferError):
+            detail["product_code"] = error.details_safe["product_code"]
         return JSONResponse(status_code=status_code, content={"detail": detail})
 
     _report_internal_failure(request, error)

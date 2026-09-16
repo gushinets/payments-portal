@@ -1095,6 +1095,39 @@ def router_module(module: str) -> bool:
     return module.endswith(".router") or ".router." in module
 
 
+def _owns_fastapi_api_router(tree: ast.AST) -> bool:
+    factories: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and module_matches(
+            node.module or "", "fastapi"
+        ):
+            for alias in node.names:
+                if alias.name == "APIRouter":
+                    factories.add(alias.asname or alias.name)
+                elif node.module == "fastapi" and alias.name == "routing":
+                    factories.add(f"{alias.asname or alias.name}.APIRouter")
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "fastapi":
+                    factories.add(f"{alias.asname or 'fastapi'}.APIRouter")
+                elif alias.name == "fastapi.routing":
+                    factories.add(f"{alias.asname or 'fastapi.routing'}.APIRouter")
+
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+            and _dotted_python_name(node.value) in factories
+        ):
+            factories.add(node.targets[0].id)
+
+    return any(
+        isinstance(node, ast.Call) and _dotted_python_name(node.func) in factories
+        for node in ast.walk(tree)
+    )
+
+
 def _dotted_python_name(node: ast.expr) -> str | None:
     if isinstance(node, ast.Name):
         return node.id
@@ -1236,6 +1269,49 @@ class _PersistenceTransactionOwnershipVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
 
+class _PresentationPersistenceOrchestrationVisitor(
+    _PersistenceTransactionOwnershipVisitor
+):
+    forbidden_methods = frozenset(
+        {
+            "add",
+            "add_all",
+            "begin",
+            "begin_nested",
+            "commit",
+            "delete",
+            "execute",
+            "flush",
+            "get",
+            "merge",
+            "query",
+            "refresh",
+            "rollback",
+            "scalar",
+            "scalars",
+        }
+    )
+
+
+class _ApplicationQueryCompositionVisitor(_PersistenceTransactionOwnershipVisitor):
+    forbidden_methods = frozenset({"execute", "get", "query", "scalar", "scalars"})
+
+
+def _is_refactored_application_persistence_surface(
+    path_parts: tuple[str, ...],
+) -> bool:
+    """Identify active inward surfaces with established focused persistence helpers."""
+    return (
+        path_parts[:3] == ("domains", "identity", "services")
+        or path_parts == ("domains", "legal", "service.py")
+        or path_parts
+        in {
+            ("domains", "billing", "service", "account.py"),
+            ("domains", "billing", "service", "catalog.py"),
+        }
+    )
+
+
 def check_persistence_transaction_ownership(root: Path = ROOT) -> list[str]:
     app_root = root / "apps/api/app"
     focused_roots = (
@@ -1289,6 +1365,14 @@ def check_python_boundaries(root: Path = ROOT) -> list[str]:
             and path_parts[0] == "infrastructure"
             and path_parts[1] in {"persistence", "queries"}
         )
+        is_http_dependencies = path_parts == ("http_dependencies.py",)
+        is_payment_provider_registry = path_parts == (
+            "payment_providers",
+            "registry.py",
+        )
+        is_refactored_application_persistence = (
+            _is_refactored_application_persistence_surface(path_parts)
+        )
         is_domain_service_or_model = in_domains and path.name in {"service.py", "models.py"}
         is_domain_service_tree = (
             in_domains
@@ -1304,6 +1388,7 @@ def check_python_boundaries(root: Path = ROOT) -> list[str]:
             )
 
         try:
+            tree = ast.parse(source, filename=str(path))
             imports = resolve_python_imports(path, app_root)
         except SyntaxError as error:
             errors.append(
@@ -1311,6 +1396,8 @@ def check_python_boundaries(root: Path = ROOT) -> list[str]:
                 "fix the Python syntax before running architecture checks"
             )
             continue
+
+        is_active_domain_presentation = in_domains and _owns_fastapi_api_router(tree)
 
         for imported in imports:
             rules: list[tuple[str, Callable[[str], bool], str]] = []
@@ -1357,6 +1444,42 @@ def check_python_boundaries(root: Path = ROOT) -> list[str]:
                         "keep FastAPI and Starlette dependencies in presentation modules",
                     )
                 )
+            if is_refactored_application_persistence:
+                rules.append(
+                    (
+                        "refactored Application persistence boundary",
+                        lambda target: module_matches(target, "sqlalchemy")
+                        and target not in {"sqlalchemy.orm", "sqlalchemy.orm.Session"},
+                        "delegate SQLAlchemy query construction and storage mechanics to focused "
+                        "infrastructure capabilities",
+                    )
+                )
+            if is_active_domain_presentation or is_http_dependencies:
+                rules.append(
+                    (
+                        "HTTP Presentation persistence boundary",
+                        lambda target: (
+                            module_matches(target, "app.infrastructure.queries")
+                            or module_matches(target, "app.infrastructure.persistence")
+                            or (
+                                module_matches(target, "sqlalchemy")
+                                and target
+                                not in {"sqlalchemy.orm", "sqlalchemy.orm.Session"}
+                            )
+                        ),
+                        "delegate SQLAlchemy query construction and persistence orchestration to "
+                        "an inward application/service use case",
+                    )
+                )
+            if is_payment_provider_registry:
+                rules.append(
+                    (
+                        "payment-provider registry transport boundary",
+                        lambda target: module_matches(target, "fastapi")
+                        or module_matches(target, "starlette"),
+                        "keep request-state access in app.http_dependencies",
+                    )
+                )
             if in_integrations:
                 rules.append(
                     (
@@ -1399,6 +1522,41 @@ def check_python_boundaries(root: Path = ROOT) -> list[str]:
                         f"{relative}:{imported.line} imports {target}; violates {rule_name}; "
                         f"{remediation} (see ARCHITECTURE.md)"
                     )
+
+        if is_active_domain_presentation or is_http_dependencies:
+            direct_names, module_names = _sqlalchemy_session_symbols(tree)
+            if direct_names or module_names:
+                visitor = _PresentationPersistenceOrchestrationVisitor(
+                    direct_names,
+                    module_names,
+                )
+                visitor.visit(tree)
+                owner = (
+                    "active domain Presentation"
+                    if is_active_domain_presentation
+                    else "HTTP dependency composition"
+                )
+                errors.extend(
+                    f"{relative}:{line} calls SQLAlchemy Session.{method}(); {owner} must "
+                    "delegate persistence orchestration to an inward application/service use case "
+                    "(see ARCHITECTURE.md)"
+                    for line, method in visitor.violations
+                )
+
+        if is_refactored_application_persistence:
+            direct_names, module_names = _sqlalchemy_session_symbols(tree)
+            if direct_names or module_names:
+                visitor = _ApplicationQueryCompositionVisitor(
+                    direct_names,
+                    module_names,
+                )
+                visitor.visit(tree)
+                errors.extend(
+                    f"{relative}:{line} calls SQLAlchemy Session.{method}(); refactored "
+                    "Application code must delegate query composition to focused infrastructure "
+                    "capabilities (see ARCHITECTURE.md)"
+                    for line, method in visitor.violations
+                )
 
     return errors
 

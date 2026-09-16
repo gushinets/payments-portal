@@ -2,18 +2,28 @@ from __future__ import annotations
 
 import hashlib
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.core.observability import record_legal_acceptance
 from app.core.time import utc_now
+from app.domains.legal.errors import (
+    DocumentVersionNotFoundError,
+    InvalidAcceptanceTextHashError,
+    RecurringConsentContextRequiredError,
+    RecurringConsentPlanInvalidError,
+)
 from app.infrastructure.queries.legal import (
+    get_active_required_document_by_id,
     get_document_acceptance_candidate,
     get_document_version_by_id,
     list_active_required_documents,
     list_document_acceptance_fingerprints,
 )
+from app.infrastructure.queries.plans import get_current_sellable_plan
 from app.models import AcceptanceKind, DocumentAcceptance, DocumentVersion, User
 
 
@@ -26,12 +36,13 @@ ACCEPTANCE_KIND_BY_DOC_TYPE = {
 }
 
 
-class LegalAcceptanceError(ValueError):
-    """Raised when a legal acceptance cannot be recorded safely."""
-
-    def __init__(self, code: str) -> None:
-        super().__init__(code)
-        self.code = code
+@dataclass(frozen=True)
+class LegalAcceptanceResult:
+    acceptance_id: uuid.UUID
+    document_version_id: uuid.UUID
+    doc_type: str
+    version: str
+    accepted_at: datetime
 
 
 def hash_acceptance_text(value: str) -> str:
@@ -263,7 +274,7 @@ def create_document_acceptance(
     accepted_at: datetime | None = None,
 ) -> DocumentAcceptance:
     if acceptance_text_hash != expected_acceptance_text_hash(document):
-        raise LegalAcceptanceError("invalid_acceptance_text_hash")
+        raise InvalidAcceptanceTextHashError()
 
     acceptance_metadata = {key: value for key, value in (metadata or {}).items() if key != "plan_id"}
     if document.doc_type == "recurring_consent" and plan_id is not None:
@@ -290,3 +301,74 @@ def create_document_acceptance(
     )
     db.add(acceptance)
     return acceptance
+
+
+def accept_legal_document(
+    db: Session,
+    *,
+    user: User,
+    document_version_id: uuid.UUID,
+    acceptance_text_hash: str,
+    plan_id: uuid.UUID | None,
+    entrypoint_type: str | None,
+    entrypoint_value: str | None,
+    source_url: str | None,
+    metadata: dict[str, Any],
+    client_ip: str | None,
+    user_agent: str | None,
+) -> LegalAcceptanceResult:
+    document = get_active_required_document_by_id(
+        db,
+        document_version_id=document_version_id,
+        tenant_id=user.tenant_id,
+        region=user.region,
+        effective_at=utc_now(),
+    )
+    if document is None:
+        record_legal_acceptance("document_not_found")
+        raise DocumentVersionNotFoundError()
+
+    if document.doc_type == "recurring_consent":
+        if plan_id is None or not entrypoint_type or not entrypoint_value:
+            raise RecurringConsentContextRequiredError()
+        if (
+            get_current_sellable_plan(
+                db,
+                plan_id=plan_id,
+                tenant_id=user.tenant_id,
+                region=user.region,
+                now=utc_now(),
+            )
+            is None
+        ):
+            raise RecurringConsentPlanInvalidError()
+
+    try:
+        acceptance = create_document_acceptance(
+            db,
+            document=document,
+            user_id=user.id,
+            ip=client_ip,
+            user_agent=user_agent,
+            acceptance_text_hash=acceptance_text_hash,
+            entrypoint_type=entrypoint_type,
+            entrypoint_value=entrypoint_value,
+            source_url=source_url,
+            metadata=metadata,
+            plan_id=plan_id,
+        )
+    except InvalidAcceptanceTextHashError:
+        record_legal_acceptance("invalid_text_hash")
+        raise
+
+    db.commit()
+    db.refresh(acceptance)
+    result = LegalAcceptanceResult(
+        acceptance_id=acceptance.id,
+        document_version_id=acceptance.document_version_id,
+        doc_type=acceptance.doc_type,
+        version=acceptance.version,
+        accepted_at=acceptance.accepted_at,
+    )
+    record_legal_acceptance("accepted")
+    return result

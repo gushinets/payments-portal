@@ -3,6 +3,26 @@ from __future__ import annotations
 from app.core.errors import AppError
 
 
+class InvalidAuthSessionError(AppError):
+    pass
+
+
+class MissingPersonalConsentError(AppError):
+    pass
+
+
+class MissingOfferConsentError(AppError):
+    pass
+
+
+class EmailAlreadyRegisteredError(AppError):
+    pass
+
+
+class InvalidCredentialsError(AppError):
+    pass
+
+
 class CheckoutError(AppError):
     pass
 
