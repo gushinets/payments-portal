@@ -1098,12 +1098,36 @@ def router_module(module: str) -> bool:
 _INTEGRATION_FORBIDDEN_COMMERCIAL_MODEL_NAMES = frozenset(
     {"Payment", "PaymentStatus", "Refund", "RefundStatus"}
 )
+_OUTER_FORBIDDEN_LIFECYCLE_MODEL_NAMES = frozenset(
+    {
+        "Entitlement",
+        "EntitlementSource",
+        "EntitlementStatus",
+        "Subscription",
+        "SubscriptionEvent",
+        "SubscriptionEventType",
+        "SubscriptionRenewalMode",
+        "SubscriptionStatus",
+    }
+)
+_OUTER_FORBIDDEN_LIFECYCLE_MODULES = (
+    "app.domains.billing.service.commands",
+    "app.domains.billing.service.lifecycle",
+    "app.domains.billing.service.lifecycle_operations",
+    "app.domains.billing.service.state_machine",
+    "app.domains.billing.service.support",
+    "app.infrastructure.persistence.entitlements",
+    "app.infrastructure.persistence.subscriptions",
+    "app.infrastructure.queries.entitlements",
+    "app.infrastructure.queries.subscriptions",
+)
 
 
-def _integration_commercial_model_references(
+def _canonical_model_references(
     tree: ast.AST,
+    forbidden_names: frozenset[str],
 ) -> list[tuple[int, str, str]]:
-    """Find direct canonical commercial-model references in Integration code."""
+    """Find direct references to selected canonical persisted model symbols."""
     module_aliases: dict[str, str] = {}
     references: set[tuple[int, str, str]] = set()
 
@@ -1123,7 +1147,7 @@ def _integration_commercial_model_references(
             target = f"{module}.{alias.name}" if module else alias.name
             if (
                 module_matches(module, "app.models")
-                and alias.name in _INTEGRATION_FORBIDDEN_COMMERCIAL_MODEL_NAMES
+                and alias.name in forbidden_names
             ):
                 references.add((node.lineno, alias.name, module))
             elif module_matches(target, "app.models") and alias.name[:1].islower():
@@ -1132,7 +1156,7 @@ def _integration_commercial_model_references(
     for node in ast.walk(tree):
         if (
             not isinstance(node, ast.Attribute)
-            or node.attr not in _INTEGRATION_FORBIDDEN_COMMERCIAL_MODEL_NAMES
+            or node.attr not in forbidden_names
         ):
             continue
         dotted = _dotted_python_name(node)
@@ -1414,6 +1438,7 @@ def check_python_boundaries(root: Path = ROOT) -> list[str]:
         in_core = path_parts[0] == "core"
         in_domains = path_parts[0] == "domains"
         in_integrations = path_parts[0] == "integrations"
+        in_operational_entrypoint = path_parts[0] in {"commands", "jobs"}
         in_provider_neutral_payment = path_parts[0] == "payment_providers"
         in_persistence_infrastructure = (
             len(path_parts) >= 2
@@ -1456,7 +1481,10 @@ def check_python_boundaries(root: Path = ROOT) -> list[str]:
 
         if in_integrations:
             commercial_model_references = set(
-                _integration_commercial_model_references(tree)
+                _canonical_model_references(
+                    tree,
+                    _INTEGRATION_FORBIDDEN_COMMERCIAL_MODEL_NAMES,
+                )
             )
             for imported in imports:
                 for target in imported.targets:
@@ -1471,6 +1499,28 @@ def check_python_boundaries(root: Path = ROOT) -> list[str]:
                 "violates integration commercial mutation ownership; map provider facts into "
                 "Application commercial transitions instead (see ARCHITECTURE.md)"
                 for line, symbol, module in sorted(commercial_model_references)
+            )
+
+        if in_integrations or in_operational_entrypoint:
+            lifecycle_model_references = set(
+                _canonical_model_references(
+                    tree,
+                    _OUTER_FORBIDDEN_LIFECYCLE_MODEL_NAMES,
+                )
+            )
+            for imported in imports:
+                for target in imported.targets:
+                    module, _, symbol = target.rpartition(".")
+                    if (
+                        symbol in _OUTER_FORBIDDEN_LIFECYCLE_MODEL_NAMES
+                        and module_matches(module, "app.models")
+                    ):
+                        lifecycle_model_references.add((imported.line, symbol, module))
+            errors.extend(
+                f"{relative}:{line} references canonical lifecycle model {symbol} from {module}; "
+                "violates subscription/entitlement mutation ownership; invoke the public "
+                "Application lifecycle facade instead (see ARCHITECTURE.md)"
+                for line, symbol, module in sorted(lifecycle_model_references)
             )
 
         for imported in imports:
@@ -1561,6 +1611,18 @@ def check_python_boundaries(root: Path = ROOT) -> list[str]:
                         lambda target: module_matches(target, "app.domains")
                         and router_module(target),
                         "call a domain service instead of importing a domain router",
+                    )
+                )
+            if in_integrations or in_operational_entrypoint or is_active_domain_presentation:
+                rules.append(
+                    (
+                        "outer subscription/entitlement lifecycle ownership",
+                        lambda target: any(
+                            module_matches(target, module)
+                            for module in _OUTER_FORBIDDEN_LIFECYCLE_MODULES
+                        ),
+                        "invoke app.domains.billing.service instead of lifecycle implementation "
+                        "or subscription persistence mechanics",
                     )
                 )
             if in_persistence_infrastructure:

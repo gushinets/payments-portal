@@ -1,7 +1,7 @@
 # Payment Portal Architecture
 
 Status: authoritative current-state map
-Last verified: 2026-09-14
+Last verified: 2026-09-16
 
 ## System boundary
 
@@ -171,6 +171,52 @@ projection and lifecycle effects while preserving the durable inbox receipt.
 Future reconciliation must feed the same Application transition path rather
 than introduce another state machine. Retained CloudPayments remains absent
 from normal runtime composition.
+
+### Subscription and entitlement transition boundary
+
+`app.domains.billing.service` is the public Application facade for local
+Subscription and Entitlement mutations. Presentation, Integration, CLI, and job
+entrypoints construct an operation-specific lifecycle command and invoke that
+facade; they do not import lifecycle implementation modules, query subscription
+persistence to make mutation-policy decisions, or maintain another access state
+machine. Read-side account and access queries remain separate and valid.
+
+The Step-8 commercial transition remains authoritative for canonical Order,
+Payment, Refund, and confirmed commercial outcome state. Only a newly
+applicable paid or refund outcome is handed to the Step-9 lifecycle boundary.
+Step 9 validates the persisted commercial context and owns the resulting local
+Subscription projection, Entitlement consequence, audit event, or legitimate
+no-op. In particular, Integration does not decide whether a confirmed Refund
+affects access. Local Entitlement state and validity are the Payment Portal
+source of truth for product access; neither Subscription status nor provider or
+vendor state is a second read-time access authority.
+
+Lifecycle operation keys identify persisted operations. For normalized
+authoritative subscription-state input, exact replay must match the
+subscription, transition kind, normalized target, and authoritative occurrence
+time; reuse with different semantic input fails closed. That input requires an
+explicit timezone-aware authoritative `occurred_at`. Ordering compares only
+new ordering-aware authoritative-state events: an older fact is recorded as a
+stale no-op, equal-time same-target input is a safe no-op, equal-time
+conflicting target fails closed, and a newer fact still passes through the
+canonical transition graph. Legacy events whose timestamps may be processing
+time are not silently promoted into ordering facts. Unknown or
+non-normalizable authoritative state is rejected before mutation. These
+freshness rules do not apply generically to trials, payments, refunds,
+cancellation requests, or expiry commands.
+
+The outer caller owns commit and rollback. Lifecycle and focused query or
+persistence helpers may load, lock, mutate, and flush, but do not finalize the
+outer transaction. The retained webhook keeps its two durable phases: the
+redacted inbox receipt commits first, then the Step-8 commercial transition and
+Step-9 consequence share the second transaction. A lifecycle failure rolls
+back both transition groups while preserving the receipt. Trial and manual
+access lifecycles remain valid without a provider subscription identity.
+
+Retained CloudPayments/direct-provider code is deactivated compatibility
+source, not the target billing architecture. ANY-497 owns future external
+billing command flows. Future reconciliation must feed the same Application
+transition boundaries and remains outside this implementation.
 
 ### FastAPI dependency lifetimes
 

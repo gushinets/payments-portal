@@ -1,7 +1,7 @@
 # Billing Authority and Consistency
 
 Status: normative architecture
-Last verified: 2026-09-14
+Last verified: 2026-09-16
 
 This document expands the decision in
 [ADR 0004](decisions/0004-billing-authority-and-consistency.md). It preserves
@@ -329,6 +329,49 @@ fields, signatures, and arbitrary dictionaries do not enter the Application
 contract. The retained `Payment.raw_summary` column is not a canonical input
 and provider-specific summaries are no longer mutated by commercial
 processing; durable redacted evidence remains in the webhook inbox.
+
+### Local Subscription and Entitlement consequence
+
+The billing Application lifecycle facade is the sole mutation authority for
+local Subscription projections, Entitlements, and their lifecycle audit. The
+Step-8 commercial transition remains authoritative for Order, Payment, Refund,
+and whether a commercial outcome is newly applicable. Step 9 consumes that
+result without duplicating financial ownership: a newly applicable paid result
+may activate a paid period, and a newly confirmed Refund is passed to the
+lifecycle facade to determine its local consequence. Integration does not query
+Subscription persistence or apply provider-specific policy to decide whether a
+Refund affects access.
+
+The lifecycle boundary validates persisted commercial provenance. It may apply
+a Subscription/Entitlement transition, produce the defined partial-refund audit
+without changing access, return the retained canceled-order/no-subscription
+no-op, or fail closed when commercial and lifecycle context is inconsistent.
+Only Entitlement state together with its validity interval is local product-
+access authority. Subscription, Payment, and external provider or vendor state
+remain inputs or projections, not competing access authorities.
+
+The normalized authoritative subscription-state command uses provider-neutral
+vocabulary and requires an explicit timezone-aware authoritative occurrence
+time. Its operation key is semantic identity: exact replay for the same
+subscription, transition kind, normalized target, and occurrence time converges
+without another effect, while reuse for different semantic input fails closed.
+Unknown or non-normalizable state is rejected before mutation.
+
+Freshness ordering applies only to normalized authoritative subscription-state
+facts. Older facts are stale no-ops; equal-time facts with the same target are
+safe no-ops; equal-time facts with a different target fail closed; and newer
+facts must still satisfy the existing lifecycle transition graph. Only events
+marked as carrying authoritative occurrence time participate in this ordering,
+so legacy processing-time event timestamps are not silently treated as
+external ordering facts. Arrival, receipt, processing, database-update, and
+wall-clock times are not substitutes. This policy is not a generic ordering
+rule for trials, payments, refunds, cancellation requests, or expiry.
+
+Portal-owned free-trial and manual-access lifecycles remain valid without a
+provider subscription identity. Retained CloudPayments/direct-provider code is
+deactivated compatibility source. ANY-497 owns external billing command flows;
+reconciliation remains future work and must reuse these Application transition
+paths rather than introduce another state machine.
 
 ### Current local transaction and replay contract
 

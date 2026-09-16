@@ -930,9 +930,7 @@ def test_parallel_stale_and_newer_authoritative_states_cannot_regress_subscripti
     assert persisted_subscription is not None
     assert persisted_subscription.status is SubscriptionStatus.PAUSED
     assert len(events) == 2
-    assert {event.metadata_["authoritative_state_disposition"] for event in events}.issubset(
-        {"applied", "stale"}
-    )
+    assert {event.metadata_["authoritative_state_disposition"] for event in events}.issubset({"applied", "stale"})
 
 
 def test_parallel_equal_time_conflicting_authoritative_states_fail_closed(

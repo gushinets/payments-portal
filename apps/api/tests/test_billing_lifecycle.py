@@ -241,10 +241,7 @@ def test_authoritative_state_orders_only_marked_authoritative_events(db_session:
     assert subscription.status is SubscriptionStatus.ACTIVE
     assert events["authoritative-ordering-applied"].metadata_["authoritative_state_disposition"] == "applied"
     assert events["authoritative-ordering-stale"].metadata_["authoritative_state_disposition"] == "stale"
-    assert (
-        events["authoritative-ordering-equal-duplicate"].metadata_["authoritative_state_disposition"]
-        == "duplicate"
-    )
+    assert events["authoritative-ordering-equal-duplicate"].metadata_["authoritative_state_disposition"] == "duplicate"
     assert "authoritative-ordering-equal-conflict" not in events
     assert events["authoritative-ordering-newer"].metadata_["authoritative_state_disposition"] == "applied"
 
