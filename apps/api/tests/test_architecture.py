@@ -134,6 +134,16 @@ def test_layer_specific_router_rules_are_enforced(tmp_path: Path) -> None:
             "RefundStatus",
             "app.models.enums",
         ),
+        (
+            "import app.models.commerce\npayment = app.models.Payment\n",
+            "Payment",
+            "app.models",
+        ),
+        (
+            "import app.models.commerce\npayment = app.models.commerce.Payment\n",
+            "Payment",
+            "app.models.commerce",
+        ),
         ("from app import models\npayment = models.Payment\n", "Payment", "app.models"),
         ("from ...models.commerce import Payment\n", "Payment", "app.models.commerce"),
     ),
@@ -153,6 +163,18 @@ def test_integrations_reject_canonical_commercial_mutation_vocabulary(
         "violates integration commercial mutation ownership; map provider facts into "
         "Application commercial transitions instead (see ARCHITECTURE.md)"
     ]
+
+
+def test_integrations_do_not_resolve_unrelated_namespace_from_model_import(
+    tmp_path: Path,
+) -> None:
+    write_module(
+        tmp_path,
+        "apps/api/app/integrations/example/processing.py",
+        "import app.models.commerce\npayment = app.other_namespace.Payment\n",
+    )
+
+    assert check_python_boundaries(tmp_path) == []
 
 
 def test_integrations_allow_retained_commercial_correlation_dependencies(tmp_path: Path) -> None:

@@ -1111,7 +1111,10 @@ def _integration_commercial_model_references(
         if isinstance(node, ast.Import):
             for alias in node.names:
                 if module_matches(alias.name, "app.models"):
-                    module_aliases[alias.asname or alias.name] = alias.name
+                    bound_name = alias.asname or alias.name.split(".", 1)[0]
+                    module_aliases[bound_name] = (
+                        alias.name if alias.asname else bound_name
+                    )
             continue
         if not isinstance(node, ast.ImportFrom):
             continue
@@ -1140,7 +1143,8 @@ def _integration_commercial_model_references(
             if prefix == alias or prefix.startswith(f"{alias}."):
                 suffix = prefix[len(alias) :].lstrip(".")
                 canonical_module = f"{module}.{suffix}" if suffix else module
-                references.add((node.lineno, symbol, canonical_module))
+                if module_matches(canonical_module, "app.models"):
+                    references.add((node.lineno, symbol, canonical_module))
                 break
 
     return sorted(references)
