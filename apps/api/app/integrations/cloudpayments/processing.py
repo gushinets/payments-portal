@@ -11,14 +11,17 @@ from app.domains.billing.service import (
     activate_paid_period,
     apply_refund,
 )
-from app.integrations.cloudpayments.payload import get_first
-from app.integrations.cloudpayments.processing_support import (
-    TERMINAL_ORDER_STATUSES,
-    TERMINAL_PAYMENT_STATUSES,
-    parse_data as _parse_data,
-    safe_summary as _safe_summary,
-    terminal_order_event_error_code as _terminal_order_event_error_code,
+from app.domains.billing.service.commercial_transitions import (
+    CommercialTransitionResult,
+    PaymentOutcome,
+    PaymentTransitionCommand,
+    RefundTransitionCommand,
+    TransitionDisposition,
+    apply_payment_transition,
+    apply_refund_transition,
 )
+from app.integrations.cloudpayments.payload import get_first
+from app.integrations.cloudpayments.refunds import refund_lifecycle_applies
 from app.integrations.cloudpayments.validation import (
     cancel_validation_error,
     check_order_state_error,
@@ -28,16 +31,12 @@ from app.integrations.cloudpayments.validation import (
     refund_validation_error,
     validation_error_message,
 )
-from app.integrations.cloudpayments.refunds import record_refund, refund_lifecycle_applies
 from app.integrations.cloudpayments.rules import (
     find_default_provider_account,
     payment_schema_error,
 )
 from app.models import (
     Order,
-    OrderStatus,
-    Payment,
-    PaymentStatus,
     PaymentWebhookEvent,
     PaymentWebhookEventStatus,
 )
@@ -57,100 +56,39 @@ def find_order(db: Session, invoice_id: str | None, *, for_update: bool = False)
     return query.first()
 
 
-def _find_payment(
-    db: Session,
-    *,
-    order: Order,
-    transaction_id: str | None,
-) -> Payment | None:
-    query = db.query(Payment).filter(Payment.provider_account_id == order.provider_account_id)
-    if transaction_id:
-        payment = query.filter(Payment.provider_payment_id == transaction_id).first()
-        if payment is not None:
-            return payment
+def _payment_outcome(endpoint: str, payload: dict[str, Any]) -> PaymentOutcome:
+    if endpoint == "pay" and str(get_first(payload, "Status", "status") or "").lower() == "authorized":
+        return PaymentOutcome.AUTHORIZED
+    return {
+        "pay": PaymentOutcome.SUCCEEDED,
+        "confirm": PaymentOutcome.SUCCEEDED,
+        "fail": PaymentOutcome.FAILED,
+        "cancel": PaymentOutcome.CANCELED,
+    }[endpoint]
+
+
+def _optional_text(value: object) -> str | None:
+    if value is None:
         return None
-    return (
-        db.query(Payment)
-        .filter(
-            Payment.order_id == order.id,
-            Payment.provider_payment_id.is_(None),
-        )
-        .first()
+    normalized = str(value).strip()
+    return normalized or None
+
+
+def _apply_transition_result(
+    event: PaymentWebhookEvent,
+    result: CommercialTransitionResult,
+) -> None:
+    event.payment_id = result.payment_id
+    if result.disposition in {TransitionDisposition.APPLIED, TransitionDisposition.DUPLICATE}:
+        event.status = PaymentWebhookEventStatus.PROCESSED
+        return
+    event.error_code = result.reason_code or "commercial_transition_conflict"
+    event.error_message = validation_error_message(event.error_code)
+    event.status = (
+        PaymentWebhookEventStatus.IGNORED
+        if result.disposition == TransitionDisposition.IGNORED
+        else PaymentWebhookEventStatus.FAILED
     )
-
-
-def upsert_payment_from_webhook(
-    db: Session,
-    *,
-    endpoint: str,
-    order: Order,
-    invoice_id: str | None,
-    transaction_id: str | None,
-    amount_minor: int,
-    currency: str,
-    payload: dict[str, Any],
-    update_order_status: bool = True,
-) -> Payment:
-    now = datetime_now()
-    data = _parse_data(payload)
-    payment = _find_payment(db, order=order, transaction_id=transaction_id)
-    if payment is None:
-        payment = Payment(
-            tenant_id=order.tenant_id,
-            region=order.region,
-            order_id=order.id,
-            provider_account_id=order.provider_account_id,
-            provider=order.provider,
-            provider_payment_id=transaction_id,
-            provider_invoice_id=invoice_id,
-            status=PaymentStatus.CREATED,
-            amount_minor=amount_minor,
-            currency=currency,
-            raw_summary={},
-        )
-
-    previous_payment_status = payment.status
-    payment.provider_payment_id = transaction_id
-    payment.provider_invoice_id = invoice_id
-    payment.amount_minor = amount_minor
-    payment.currency = currency
-    payment.payment_method_type = get_first(payload, "PaymentMethod", "paymentMethod")
-    payment.raw_summary = _safe_summary(payload, data)
-
-    provider_status = str(get_first(payload, "Status", "status") or "").lower()
-    if endpoint == "pay" and provider_status == "authorized":
-        if previous_payment_status not in TERMINAL_PAYMENT_STATUSES:
-            payment.status = PaymentStatus.AUTHORIZED
-            payment.authorized_at = payment.authorized_at or now
-    elif endpoint in {"pay", "confirm"}:
-        if previous_payment_status not in TERMINAL_PAYMENT_STATUSES:
-            payment.status = PaymentStatus.SUCCEEDED
-            payment.authorized_at = payment.authorized_at or now
-            payment.captured_at = payment.captured_at or now
-            if update_order_status:
-                order.status = OrderStatus.PAID
-                order.paid_at = order.paid_at or now
-                order.failed_at = None
-    elif endpoint == "fail":
-        if previous_payment_status not in TERMINAL_PAYMENT_STATUSES:
-            payment.status = PaymentStatus.FAILED
-            payment.failed_at = payment.failed_at or now
-            payment.failure_code = str(get_first(payload, "ReasonCode", "reasonCode") or "")
-            payment.failure_message_safe = get_first(payload, "Reason", "reason")
-        if order.status not in TERMINAL_ORDER_STATUSES:
-            order.status = OrderStatus.PAYMENT_FAILED
-            order.failed_at = order.failed_at or now
-    elif endpoint == "cancel":
-        if previous_payment_status not in TERMINAL_PAYMENT_STATUSES:
-            payment.status = PaymentStatus.CANCELED
-        if order.status not in TERMINAL_ORDER_STATUSES:
-            order.status = OrderStatus.CANCELED
-            order.canceled_at = order.canceled_at or now
-
-    db.add(payment)
-    db.add(order)
-    db.flush()
-    return payment
 
 
 def safe_normalization_error_message(exc: Exception) -> str:
@@ -177,91 +115,6 @@ def fail_webhook_event(
     return event
 
 
-def _handle_pay_or_confirm_for_terminal_order(
-    db: Session,
-    *,
-    event: PaymentWebhookEvent,
-    endpoint: str,
-    order: Order,
-    invoice_id: str | None,
-    transaction_id: str | None,
-    amount_minor: int | None,
-    currency: str | None,
-    payload: dict[str, Any],
-) -> bool:
-    if endpoint not in {"pay", "confirm"} or order.status not in TERMINAL_ORDER_STATUSES:
-        return False
-    payment = _find_payment(db, order=order, transaction_id=transaction_id)
-    if payment is not None:
-        if endpoint == "confirm" and payment.status not in TERMINAL_PAYMENT_STATUSES:
-            assert amount_minor is not None
-            payment = upsert_payment_from_webhook(
-                db,
-                endpoint=endpoint,
-                order=order,
-                invoice_id=invoice_id,
-                transaction_id=transaction_id,
-                amount_minor=amount_minor,
-                currency=currency if currency is not None else order.currency,
-                payload=payload,
-                update_order_status=False,
-            )
-            event.payment_id = payment.id
-            event.currency = payment.currency
-            event.status = PaymentWebhookEventStatus.PROCESSED
-            event.processed_at = datetime_now()
-            return True
-        event.payment_id = payment.id
-        event.status = PaymentWebhookEventStatus.IGNORED
-        event.error_code = _terminal_order_event_error_code(order)
-        event.error_message = validation_error_message(event.error_code)
-        event.processed_at = datetime_now()
-        return True
-    if not transaction_id:
-        event.payment_id = None
-        event.status = PaymentWebhookEventStatus.IGNORED
-        event.error_code = _terminal_order_event_error_code(order)
-        event.error_message = validation_error_message(event.error_code)
-        event.processed_at = datetime_now()
-        return True
-    assert amount_minor is not None
-    payment = upsert_payment_from_webhook(
-        db,
-        endpoint=endpoint,
-        order=order,
-        invoice_id=invoice_id,
-        transaction_id=transaction_id,
-        amount_minor=amount_minor,
-        currency=currency if currency is not None else order.currency,
-        payload=payload,
-        update_order_status=False,
-    )
-    event.payment_id = payment.id
-    event.currency = payment.currency
-    event.status = PaymentWebhookEventStatus.PROCESSED
-    event.processed_at = datetime_now()
-    return True
-
-
-def _ignore_cancel_for_terminal_order(
-    db: Session,
-    *,
-    event: PaymentWebhookEvent,
-    endpoint: str,
-    order: Order,
-    transaction_id: str | None,
-) -> bool:
-    if endpoint != "cancel" or order.status not in TERMINAL_ORDER_STATUSES:
-        return False
-    payment = _find_payment(db, order=order, transaction_id=transaction_id)
-    event.payment_id = payment.id if payment is not None else None
-    event.status = PaymentWebhookEventStatus.IGNORED
-    event.error_code = _terminal_order_event_error_code(order)
-    event.error_message = validation_error_message(event.error_code)
-    event.processed_at = datetime_now()
-    return True
-
-
 def process_webhook_event(
     db: Session,
     *,
@@ -270,6 +123,7 @@ def process_webhook_event(
     payload: dict[str, Any],
     invoice_id: str | None,
     transaction_id: str | None,
+    refund_id: str | None,
     amount_minor: int | None,
     currency: str | None,
     idempotency_key: str,
@@ -384,7 +238,6 @@ def process_webhook_event(
             validation_error = confirm_validation_error(
                 db,
                 order,
-                transaction_id=transaction_id,
                 account_id=account_id,
                 amount_minor=amount_minor,
                 currency=currency,
@@ -401,65 +254,58 @@ def process_webhook_event(
             event.status = PaymentWebhookEventStatus.FAILED
             event.error_code = validation_error
             event.error_message = validation_error_message(validation_error)
-        elif _handle_pay_or_confirm_for_terminal_order(
-            db,
-            event=event,
-            endpoint=endpoint,
-            order=order,
-            invoice_id=invoice_id,
-            transaction_id=transaction_id,
-            amount_minor=amount_minor,
-            currency=currency,
-            payload=payload,
-        ) or _ignore_cancel_for_terminal_order(
-            db,
-            event=event,
-            endpoint=endpoint,
-            order=order,
-            transaction_id=transaction_id,
-        ):
-            pass
         else:
+            assert transaction_id is not None
             assert amount_minor is not None
             effective_currency = currency if currency is not None else order.currency
-            payment = upsert_payment_from_webhook(
+            occurred_at = datetime_now()
+            result = apply_payment_transition(
                 db,
-                endpoint=endpoint,
-                order=order,
-                invoice_id=invoice_id,
-                transaction_id=transaction_id,
-                amount_minor=amount_minor,
-                currency=effective_currency,
-                payload=payload,
+                PaymentTransitionCommand(
+                    order_id=order.id,
+                    provider=order.provider,
+                    provider_account_id=order.provider_account_id,
+                    provider_payment_id=transaction_id,
+                    provider_invoice_id=invoice_id,
+                    outcome=_payment_outcome(endpoint, payload),
+                    amount_minor=order.amount_minor if endpoint == "cancel" else amount_minor,
+                    currency=effective_currency,
+                    occurred_at=occurred_at,
+                    failure_code=_optional_text(get_first(payload, "ReasonCode", "reasonCode")),
+                    failure_message_safe=_optional_text(get_first(payload, "Reason", "reason")),
+                    payment_method_type=_optional_text(get_first(payload, "PaymentMethod", "paymentMethod")),
+                ),
             )
-            event.payment_id = payment.id
             event.currency = effective_currency
-            event.status = PaymentWebhookEventStatus.PROCESSED
-            if payment.status == PaymentStatus.SUCCEEDED:
+            _apply_transition_result(event, result)
+            if result.order_became_paid:
+                assert result.payment_id is not None
                 activate_paid_period(
                     db,
                     ActivatePaidPeriodCommand(
                         order_id=order.id,
-                        payment_id=payment.id,
+                        payment_id=result.payment_id,
                         webhook_event_id=event.id,
                         operation_idempotency_key=f"{idempotency_key}:activate",
-                        occurred_at=datetime_now(),
+                        occurred_at=occurred_at,
                     ),
                 )
         event.processed_at = datetime_now()
     elif endpoint == "refund":
-        payment = _find_payment(db, order=order, transaction_id=transaction_id)
-        if payment is None:
+        if transaction_id is None:
             event.status = PaymentWebhookEventStatus.FAILED
             event.error_code = "payment_not_found"
             event.error_message = "No payment found for refund webhook"
             event.processed_at = datetime_now()
+        elif refund_id is None:
+            event.status = PaymentWebhookEventStatus.FAILED
+            event.error_code = "missing_refund_id"
+            event.error_message = validation_error_message(event.error_code)
+            event.processed_at = datetime_now()
         else:
-            event.payment_id = payment.id
             validation_error = refund_validation_error(
                 db,
                 order,
-                payment,
                 account_id=account_id,
                 amount_minor=amount_minor,
                 currency=currency,
@@ -473,28 +319,36 @@ def process_webhook_event(
                 db.flush()
                 return event
             assert amount_minor is not None
-            refund = record_refund(
+            occurred_at = datetime_now()
+            effective_currency = currency if currency is not None else order.currency
+            result = apply_refund_transition(
                 db,
-                order=order,
-                payment=payment,
-                amount_minor=amount_minor,
-                currency=currency if currency is not None else payment.currency,
-                payload=payload,
-                now=datetime_now(),
+                RefundTransitionCommand(
+                    order_id=order.id,
+                    provider=order.provider,
+                    provider_account_id=order.provider_account_id,
+                    provider_payment_id=transaction_id,
+                    provider_refund_id=refund_id,
+                    amount_minor=amount_minor,
+                    currency=effective_currency,
+                    occurred_at=occurred_at,
+                    reason=_optional_text(get_first(payload, "Reason", "reason")),
+                ),
             )
-            if refund_lifecycle_applies(db, order, for_update=True):
+            _apply_transition_result(event, result)
+            if result.refund_created and refund_lifecycle_applies(db, order, for_update=True):
+                assert result.refund_id is not None
                 apply_refund(
                     db,
                     ApplyRefundCommand(
                         order_id=order.id,
-                        refund_id=refund.id,
-                        amount_minor=refund.amount_minor,
-                        operation_idempotency_key=f"cloudpayments:refund:{refund.id}",
-                        occurred_at=datetime_now(),
+                        refund_id=result.refund_id,
+                        amount_minor=amount_minor,
+                        operation_idempotency_key=f"cloudpayments:refund:{result.refund_id}",
+                        occurred_at=occurred_at,
                     ),
                 )
-            event.currency = currency if currency is not None else payment.currency
-            event.status = PaymentWebhookEventStatus.PROCESSED
+            event.currency = effective_currency
             event.processed_at = datetime_now()
 
     db.add(event)

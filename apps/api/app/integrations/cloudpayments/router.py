@@ -107,6 +107,7 @@ def receive_cloudpayments_webhook(
                 payload=normalized_event.safe_payload,
                 invoice_id=normalized_event.invoice_id,
                 transaction_id=normalized_event.transaction_id,
+                refund_id=normalized_event.refund_id,
                 amount_minor=normalized_event.amount_minor,
                 currency=normalized_event.currency,
                 idempotency_key=normalized_event.idempotency_key,

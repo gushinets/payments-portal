@@ -323,15 +323,15 @@ def test_raw_webhook_event_survives_failed_normalization_and_can_retry(
     invoice_id = "inv-durable-1"
     seed_order(webhook_database, invoice_id)
 
-    original_upsert = cloudpayments_processing.upsert_payment_from_webhook
+    original_transition = cloudpayments_processing.apply_payment_transition
     original_error = RuntimeError("forced normalization error with card 4111111111111111")
     report_exception = Mock()
 
-    def raising_upsert(*args, **kwargs):
-        original_upsert(*args, **kwargs)
+    def raising_transition(*args, **kwargs):
+        original_transition(*args, **kwargs)
         raise original_error
 
-    monkeypatch.setattr(cloudpayments_processing, "upsert_payment_from_webhook", raising_upsert)
+    monkeypatch.setattr(cloudpayments_processing, "apply_payment_transition", raising_transition)
     monkeypatch.setattr(cloudpayments_router, "report_exception", report_exception)
 
     payload = {
@@ -394,7 +394,7 @@ def test_raw_webhook_event_survives_failed_normalization_and_can_retry(
     ):
         assert marker not in diagnostic_output
 
-    monkeypatch.setattr(cloudpayments_processing, "upsert_payment_from_webhook", original_upsert)
+    monkeypatch.setattr(cloudpayments_processing, "apply_payment_transition", original_transition)
     retry_response = client.post("/api/cloudpayments/pay", json=payload)
 
     assert retry_response.status_code == 200
@@ -419,25 +419,25 @@ def test_concurrent_duplicate_webhook_is_serialized_with_provider_payment_id(
     invoice_id = "inv-concurrent-1"
     seed_order(webhook_database, invoice_id)
 
-    original_upsert = cloudpayments_processing.upsert_payment_from_webhook
-    first_upsert_entered = threading.Event()
+    original_transition = cloudpayments_processing.apply_payment_transition
+    first_transition_entered = threading.Event()
     call_lock = threading.Lock()
     call_count = 0
 
-    def slow_first_upsert(*args, **kwargs):
+    def slow_first_transition(*args, **kwargs):
         nonlocal call_count
         with call_lock:
             call_count += 1
             is_first_call = call_count == 1
         if is_first_call:
-            first_upsert_entered.set()
+            first_transition_entered.set()
             time.sleep(0.3)
-        return original_upsert(*args, **kwargs)
+        return original_transition(*args, **kwargs)
 
     monkeypatch.setattr(
         cloudpayments_processing,
-        "upsert_payment_from_webhook",
-        slow_first_upsert,
+        "apply_payment_transition",
+        slow_first_transition,
     )
 
     payload = {
@@ -455,7 +455,7 @@ def test_concurrent_duplicate_webhook_is_serialized_with_provider_payment_id(
 
     with ThreadPoolExecutor(max_workers=2) as executor:
         first_result = executor.submit(post_webhook)
-        assert first_upsert_entered.wait(timeout=5)
+        assert first_transition_entered.wait(timeout=5)
         second_result = executor.submit(post_webhook)
 
         first_response = first_result.result(timeout=10)
@@ -505,25 +505,25 @@ def test_signed_duplicate_webhook_is_persisted_once_and_acknowledged_idempotentl
         "Content-Type": "application/json",
     }
 
-    original_upsert = cloudpayments_processing.upsert_payment_from_webhook
-    first_upsert_entered = threading.Event()
+    original_transition = cloudpayments_processing.apply_payment_transition
+    first_transition_entered = threading.Event()
     call_lock = threading.Lock()
     call_count = 0
 
-    def slow_first_upsert(*args, **kwargs):
+    def slow_first_transition(*args, **kwargs):
         nonlocal call_count
         with call_lock:
             call_count += 1
             is_first_call = call_count == 1
         if is_first_call:
-            first_upsert_entered.set()
+            first_transition_entered.set()
             time.sleep(0.3)
-        return original_upsert(*args, **kwargs)
+        return original_transition(*args, **kwargs)
 
     monkeypatch.setattr(
         cloudpayments_processing,
-        "upsert_payment_from_webhook",
-        slow_first_upsert,
+        "apply_payment_transition",
+        slow_first_transition,
     )
 
     def post_webhook():
@@ -537,7 +537,7 @@ def test_signed_duplicate_webhook_is_persisted_once_and_acknowledged_idempotentl
     try:
         with ThreadPoolExecutor(max_workers=2) as executor:
             first_result = executor.submit(post_webhook)
-            assert first_upsert_entered.wait(timeout=5)
+            assert first_transition_entered.wait(timeout=5)
             second_result = executor.submit(post_webhook)
             first_response = first_result.result(timeout=10)
             second_response = second_result.result(timeout=10)
@@ -603,7 +603,7 @@ def test_cancel_after_paid_payment_is_ignored_without_state_regression(
         PaymentWebhookEventStatus.IGNORED,
     ]
     assert events[-1].payment_id == payment.id
-    assert events[-1].error_code == "order_already_paid"
+    assert events[-1].error_code == "stale_payment_fact"
 
 
 def test_cancel_after_refunded_payment_is_ignored_without_refund_mutation(
@@ -658,7 +658,7 @@ def test_cancel_after_refunded_payment_is_ignored_without_refund_mutation(
         PaymentWebhookEventStatus.IGNORED,
     ]
     assert events[-1].payment_id == payment.id
-    assert events[-1].error_code == "order_already_refunded"
+    assert events[-1].error_code == "stale_payment_fact"
 
 
 def test_full_refund_after_provider_canceled_subscription_is_processed(
@@ -935,7 +935,7 @@ def test_refund_after_canceled_payment_is_rejected_without_refund_mutation(
         PaymentWebhookEventStatus.FAILED,
     ]
     assert events[-1].payment_id == payment.id
-    assert events[-1].error_code == "payment_already_canceled"
+    assert events[-1].error_code == "payment_not_refundable"
 
 
 def test_refund_after_failed_payment_is_rejected_without_refund_mutation(

@@ -79,6 +79,8 @@ from app.models import (  # noqa: E402
     Refund,
     RefundStatus,
     Subscription,
+    SubscriptionEvent,
+    SubscriptionEventType,
     SubscriptionRenewalMode,
     SubscriptionScopeType,
     SubscriptionStatus,
@@ -2987,7 +2989,7 @@ def test_successful_pay_webhook_is_saved_and_activates_access() -> None:
     assert payment.status is PaymentStatus.SUCCEEDED
     assert payment.provider_payment_id == "tx-success-1"
     assert payment.amount_minor == 99000
-    assert "CardFirstSix" not in payment.raw_summary
+    assert payment.raw_summary == {}
 
 
 def test_charge_pay_rejects_missing_declined_and_unknown_statuses() -> None:
@@ -4026,6 +4028,8 @@ def test_late_pay_or_confirm_does_not_reopen_canceled_order() -> None:
             "entrypoint_value": "document-summary",
             "endpoint": "pay",
             "transaction_id": "tx-late-pay-after-cancel",
+            "expected_status": PaymentWebhookEventStatus.IGNORED,
+            "expected_error": "stale_payment_fact",
         },
         {
             "email": "late-confirm-after-cancel@example.com",
@@ -4034,6 +4038,8 @@ def test_late_pay_or_confirm_does_not_reopen_canceled_order() -> None:
             "entrypoint_value": "prompt-optimizer",
             "endpoint": "confirm",
             "transaction_id": "tx-late-confirm-after-cancel",
+            "expected_status": PaymentWebhookEventStatus.FAILED,
+            "expected_error": "payment_outcome_conflict",
         },
     ]
 
@@ -4097,9 +4103,9 @@ def test_late_pay_or_confirm_does_not_reopen_canceled_order() -> None:
         assert [event.endpoint for event in events] == ["cancel", scenario["endpoint"]]
         assert [event.status for event in events] == [
             PaymentWebhookEventStatus.PROCESSED,
-            PaymentWebhookEventStatus.IGNORED,
+            scenario["expected_status"],
         ]
-        assert events[1].error_code == "order_already_canceled"
+        assert events[1].error_code == scenario["expected_error"]
 
 
 def test_late_fail_webhook_does_not_downgrade_paid_order() -> None:
@@ -4215,8 +4221,9 @@ def test_late_fail_webhook_does_not_downgrade_canceled_order() -> None:
     assert [event.status for event in events] == [
         PaymentWebhookEventStatus.PROCESSED,
         PaymentWebhookEventStatus.PROCESSED,
-        PaymentWebhookEventStatus.PROCESSED,
+        PaymentWebhookEventStatus.FAILED,
     ]
+    assert events[-1].error_code == "payment_outcome_conflict"
 
 
 def test_late_distinct_pay_is_persisted_without_reopening_paid_order() -> None:
@@ -4454,6 +4461,47 @@ def test_duplicate_success_webhook_does_not_duplicate_payment_or_order_updates()
         PaymentWebhookEventStatus.DUPLICATE,
     ]
     assert events[1].payment_id == payments[0].id
+
+
+def test_fresh_delivery_of_existing_commercial_payment_is_processed_without_reapplying_access() -> None:
+    invoice_id = create_checkout_invoice(email="commercial-duplicate-user@example.com")
+    payload = {
+        "InvoiceId": invoice_id,
+        "TransactionId": "tx-commercial-duplicate-1",
+        "AccountId": "commercial-duplicate-user@example.com",
+        "Amount": "990.00",
+        "Currency": "RUB",
+        "Status": "Completed",
+    }
+
+    first_response = cloudpayments_client.post(
+        "/api/cloudpayments/pay",
+        json={**payload, "EventId": "commercial-event-1"},
+    )
+    second_response = cloudpayments_client.post(
+        "/api/cloudpayments/pay",
+        json={**payload, "EventId": "commercial-event-2"},
+    )
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+    with SessionLocal() as db:
+        events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
+        payment_count = db.query(Payment).count()
+        paid_activation_count = (
+            db.query(SubscriptionEvent)
+            .filter(SubscriptionEvent.event_type == SubscriptionEventType.PAID_PERIOD_ACTIVATED)
+            .count()
+        )
+
+    assert [event.status for event in events] == [
+        PaymentWebhookEventStatus.PROCESSED,
+        PaymentWebhookEventStatus.PROCESSED,
+    ]
+    assert events[0].idempotency_key != events[1].idempotency_key
+    assert events[0].payment_id == events[1].payment_id
+    assert payment_count == 1
+    assert paid_activation_count == 1
 
 
 def test_refund_webhook_records_refund_skeleton_and_updates_payment() -> None:

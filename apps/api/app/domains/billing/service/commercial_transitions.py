@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
-from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy.orm import Session
 
+from app.domains.billing.service.commercial_contracts import (
+    CommercialTransitionResult,
+    PaymentOutcome,
+    PaymentTransitionCommand,
+    RefundTransitionCommand,
+    TransitionDisposition,
+)
 from app.infrastructure.persistence.commercial import (
     establish_payment_identity,
     establish_refund_identity,
@@ -29,122 +33,6 @@ from app.models import (
     Refund,
     RefundStatus,
 )
-
-
-class PaymentOutcome(StrEnum):
-    AUTHORIZED = "authorized"
-    SUCCEEDED = "succeeded"
-    FAILED = "failed"
-    CANCELED = "canceled"
-
-
-class TransitionDisposition(StrEnum):
-    APPLIED = "applied"
-    DUPLICATE = "duplicate"
-    IGNORED = "ignored"
-    CONFLICT = "conflict"
-
-
-class PaymentTransitionCommand(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    order_id: uuid.UUID
-    provider: str = Field(min_length=1, max_length=255)
-    provider_account_id: uuid.UUID
-    provider_payment_id: str = Field(min_length=1, max_length=255)
-    provider_invoice_id: str | None = Field(default=None, min_length=1, max_length=255)
-    outcome: PaymentOutcome
-    amount_minor: int = Field(gt=0)
-    currency: str = Field(min_length=3, max_length=3)
-    occurred_at: datetime
-    failure_code: str | None = Field(default=None, max_length=255)
-    failure_message_safe: str | None = Field(default=None, max_length=2000)
-    payment_method_type: str | None = Field(default=None, max_length=255)
-
-    @field_validator("provider", "provider_payment_id", "provider_invoice_id")
-    @classmethod
-    def normalize_required_identifiers(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        normalized = value.strip()
-        if not normalized:
-            raise ValueError("identifier_must_not_be_blank")
-        return normalized
-
-    @field_validator("currency")
-    @classmethod
-    def normalize_currency(cls, value: str) -> str:
-        return value.upper()
-
-    @field_validator("failure_code", "failure_message_safe", "payment_method_type")
-    @classmethod
-    def normalize_optional_text(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        return value.strip() or None
-
-    @field_validator("occurred_at")
-    @classmethod
-    def require_aware_occurrence(cls, value: datetime) -> datetime:
-        if value.tzinfo is None or value.utcoffset() is None:
-            raise ValueError("occurred_at_must_be_timezone_aware")
-        return value
-
-
-class RefundTransitionCommand(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    order_id: uuid.UUID
-    provider: str = Field(min_length=1, max_length=255)
-    provider_account_id: uuid.UUID
-    provider_payment_id: str = Field(min_length=1, max_length=255)
-    provider_refund_id: str = Field(min_length=1, max_length=255)
-    amount_minor: int = Field(gt=0)
-    currency: str = Field(min_length=3, max_length=3)
-    occurred_at: datetime
-    reason: str | None = Field(default=None, max_length=2000)
-
-    @field_validator("provider", "provider_payment_id", "provider_refund_id")
-    @classmethod
-    def normalize_required_identifiers(cls, value: str) -> str:
-        normalized = value.strip()
-        if not normalized:
-            raise ValueError("identifier_must_not_be_blank")
-        return normalized
-
-    @field_validator("currency")
-    @classmethod
-    def normalize_currency(cls, value: str) -> str:
-        return value.upper()
-
-    @field_validator("reason")
-    @classmethod
-    def normalize_optional_text(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        return value.strip() or None
-
-    @field_validator("occurred_at")
-    @classmethod
-    def require_aware_occurrence(cls, value: datetime) -> datetime:
-        if value.tzinfo is None or value.utcoffset() is None:
-            raise ValueError("occurred_at_must_be_timezone_aware")
-        return value
-
-
-class CommercialTransitionResult(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    disposition: TransitionDisposition
-    order_id: uuid.UUID
-    payment_id: uuid.UUID | None = None
-    refund_id: uuid.UUID | None = None
-    order_status: OrderStatus | None = None
-    payment_status: PaymentStatus | None = None
-    refund_status: RefundStatus | None = None
-    reason_code: str | None = None
-    order_became_paid: bool = False
-    refund_created: bool = False
 
 
 _PAYABLE_ORDER_STATUSES = frozenset({OrderStatus.PENDING_PAYMENT, OrderStatus.PAYMENT_FAILED})
@@ -569,6 +457,14 @@ def apply_refund_transition(db: Session, command: RefundTransitionCommand) -> Co
             reason_code=("refund_identity_conflict" if disposition == TransitionDisposition.CONFLICT else None),
         )
 
+    if payment.status not in {PaymentStatus.SUCCEEDED, PaymentStatus.PARTIALLY_REFUNDED}:
+        return _result(
+            TransitionDisposition.CONFLICT,
+            order_id=command.order_id,
+            order=order,
+            payment=payment,
+            reason_code="payment_not_refundable",
+        )
     if order.status not in {
         OrderStatus.PAID,
         OrderStatus.PARTIALLY_REFUNDED,
@@ -581,14 +477,6 @@ def apply_refund_transition(db: Session, command: RefundTransitionCommand) -> Co
             order=order,
             payment=payment,
             reason_code="unsupported_order_status",
-        )
-    if payment.status not in {PaymentStatus.SUCCEEDED, PaymentStatus.PARTIALLY_REFUNDED}:
-        return _result(
-            TransitionDisposition.CONFLICT,
-            order_id=command.order_id,
-            order=order,
-            payment=payment,
-            reason_code="payment_not_refundable",
         )
     if payment.refunded_amount_minor + command.amount_minor > payment.amount_minor:
         return _result(

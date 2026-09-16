@@ -11,13 +11,8 @@ from app.integrations.cloudpayments.payload import (
     parse_bool,
     parse_int,
 )
-from app.models import Order, OrderStatus, Payment, PaymentStatus, User
+from app.models import Order, OrderStatus, User
 
-REFUNDABLE_PAYMENT_STATUSES = {
-    PaymentStatus.SUCCEEDED,
-    PaymentStatus.PARTIALLY_REFUNDED,
-    PaymentStatus.REFUNDED,
-}
 SUPPORTED_RECURRENT_INTERVALS = {"week", "month"}
 
 
@@ -97,7 +92,6 @@ def confirm_validation_error(
     db: Session,
     order: Order,
     *,
-    transaction_id: str | None,
     account_id: str | None,
     amount_minor: int | None,
     currency: str | None,
@@ -123,21 +117,6 @@ def confirm_validation_error(
     if amount_minor != order.amount_minor:
         return "amount_mismatch"
 
-    authorized_amount_minor = order.amount_minor
-    if transaction_id:
-        payment = (
-            db.query(Payment)
-            .filter(
-                Payment.provider_account_id == order.provider_account_id,
-                Payment.provider_payment_id == transaction_id,
-            )
-            .first()
-        )
-        if payment is not None:
-            authorized_amount_minor = payment.amount_minor
-
-    if authorized_amount_minor != order.amount_minor:
-        return "amount_mismatch"
     return None
 
 
@@ -151,6 +130,7 @@ def validation_error_message(error_code: str) -> str:
     return {
         "missing_account_id": "Webhook account id is missing",
         "missing_transaction_id": "Webhook transaction id is missing",
+        "missing_refund_id": "Webhook refund id is missing",
         "account_mismatch": "Webhook account id does not match order user",
         "missing_amount": "Webhook amount is missing",
         "amount_mismatch": "Webhook amount does not match order",
@@ -164,6 +144,10 @@ def validation_error_message(error_code: str) -> str:
         "payment_not_refundable": "Refund notification rejected because payment is not captured",
         "order_already_refunded": "Payment notification ignored because order is refunded",
         "refund_amount_exceeds_payment": "Refund amount exceeds remaining payment amount",
+        "payment_context_mismatch": "Webhook payment context conflicts with canonical payment state",
+        "payment_outcome_conflict": "Webhook payment outcome conflicts with canonical payment state",
+        "refund_identity_conflict": "Webhook refund identity conflicts with canonical refund state",
+        "stale_payment_fact": "Webhook payment fact is stale and was ignored",
         "payment_schema_mismatch": "Webhook type does not match the configured payment schema",
         "provider_account_not_found": "No enabled provider account found for webhook",
         "missing_subscription_id": "Webhook subscription id is missing",
@@ -218,29 +202,18 @@ def cancel_validation_error(
 def refund_validation_error(
     db: Session,
     order: Order,
-    payment: Payment,
     *,
     account_id: str | None,
     amount_minor: int | None,
     currency: str | None,
 ) -> str | None:
-    if payment.status == PaymentStatus.CANCELED:
-        return "payment_already_canceled"
-    if payment.status not in REFUNDABLE_PAYMENT_STATUSES:
-        return "payment_not_refundable"
-    validation_error = cancel_validation_error(
+    return cancel_validation_error(
         db,
         order,
         account_id=account_id,
         amount_minor=amount_minor,
         currency=currency,
     )
-    if validation_error is not None:
-        return validation_error
-    assert amount_minor is not None
-    if payment.refunded_amount_minor + amount_minor > payment.amount_minor:
-        return "refund_amount_exceeds_payment"
-    return None
 
 
 def recurrent_validation_error(
