@@ -14,6 +14,32 @@ from app.integrations.cloudpayments.payload import (
 from app.models import Order, OrderStatus, User
 
 SUPPORTED_RECURRENT_INTERVALS = {"week", "month"}
+COMMERCIAL_IDENTITY_MAX_LENGTH = 255
+COMMERCIAL_DIAGNOSTIC_MAX_LENGTH = 255
+COMMERCIAL_MESSAGE_MAX_LENGTH = 2000
+
+
+def commercial_field_length_error(
+    *,
+    transaction_id: str | None,
+    refund_id: str | None = None,
+    failure_code: str | None = None,
+    failure_message: str | None = None,
+    payment_method: str | None = None,
+    refund_reason: str | None = None,
+) -> str | None:
+    fields = (
+        (transaction_id, COMMERCIAL_IDENTITY_MAX_LENGTH, "transaction_id_too_long"),
+        (refund_id, COMMERCIAL_IDENTITY_MAX_LENGTH, "refund_id_too_long"),
+        (failure_code, COMMERCIAL_DIAGNOSTIC_MAX_LENGTH, "reason_code_too_long"),
+        (failure_message, COMMERCIAL_MESSAGE_MAX_LENGTH, "reason_too_long"),
+        (payment_method, COMMERCIAL_DIAGNOSTIC_MAX_LENGTH, "payment_method_too_long"),
+        (refund_reason, COMMERCIAL_MESSAGE_MAX_LENGTH, "refund_reason_too_long"),
+    )
+    for value, maximum, error_code in fields:
+        if value is not None and len(value) > maximum:
+            return error_code
+    return None
 
 
 def parse_int_at_least(value: object, minimum: int) -> int | None:
@@ -131,6 +157,12 @@ def validation_error_message(error_code: str) -> str:
         "missing_account_id": "Webhook account id is missing",
         "missing_transaction_id": "Webhook transaction id is missing",
         "missing_refund_id": "Webhook refund id is missing",
+        "transaction_id_too_long": "Webhook transaction id exceeds the supported length",
+        "refund_id_too_long": "Webhook refund id exceeds the supported length",
+        "reason_code_too_long": "Webhook reason code exceeds the supported length",
+        "reason_too_long": "Webhook reason exceeds the supported length",
+        "payment_method_too_long": "Webhook payment method exceeds the supported length",
+        "refund_reason_too_long": "Webhook refund reason exceeds the supported length",
         "account_mismatch": "Webhook account id does not match order user",
         "missing_amount": "Webhook amount is missing",
         "amount_mismatch": "Webhook amount does not match order",

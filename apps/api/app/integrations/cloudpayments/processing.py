@@ -25,6 +25,7 @@ from app.integrations.cloudpayments.refunds import refund_lifecycle_applies
 from app.integrations.cloudpayments.validation import (
     cancel_validation_error,
     check_order_state_error,
+    commercial_field_length_error,
     confirm_validation_error,
     payment_validation_error,
     recurrent_validation_error,
@@ -35,8 +36,10 @@ from app.integrations.cloudpayments.rules import (
     find_default_provider_account,
     payment_schema_error,
 )
+from app.infrastructure.queries.payments import get_payment_by_provider_identity
 from app.models import (
     Order,
+    OrderStatus,
     PaymentWebhookEvent,
     PaymentWebhookEventStatus,
 )
@@ -221,6 +224,12 @@ def process_webhook_event(
         event.processed_at = datetime_now()
     elif endpoint in {"pay", "fail", "confirm", "cancel"}:
         validation_error = None if transaction_id else "missing_transaction_id"
+        validation_error = validation_error or commercial_field_length_error(
+            transaction_id=transaction_id,
+            failure_code=_optional_text(get_first(payload, "ReasonCode", "reasonCode")),
+            failure_message=_optional_text(get_first(payload, "Reason", "reason")),
+            payment_method=_optional_text(get_first(payload, "PaymentMethod", "paymentMethod")),
+        )
         validation_error = validation_error or payment_schema_error(
             order=order,
             endpoint=endpoint,
@@ -250,10 +259,33 @@ def process_webhook_event(
                 amount_minor=amount_minor,
                 currency=currency,
             )
+        ignore_unknown_terminal_cancel = False
+        if (
+            validation_error is None
+            and endpoint == "cancel"
+            and order.status
+            in {
+                OrderStatus.PAID,
+                OrderStatus.CANCELED,
+                OrderStatus.PARTIALLY_REFUNDED,
+                OrderStatus.REFUNDED,
+            }
+        ):
+            assert transaction_id is not None
+            payment = get_payment_by_provider_identity(
+                db,
+                provider_account_id=order.provider_account_id,
+                provider_payment_id=transaction_id,
+            )
+            ignore_unknown_terminal_cancel = payment is None or payment.order_id != order.id
         if validation_error is not None:
             event.status = PaymentWebhookEventStatus.FAILED
             event.error_code = validation_error
             event.error_message = validation_error_message(validation_error)
+        elif ignore_unknown_terminal_cancel:
+            event.status = PaymentWebhookEventStatus.IGNORED
+            event.error_code = "stale_payment_fact"
+            event.error_message = validation_error_message(event.error_code)
         else:
             assert transaction_id is not None
             assert amount_minor is not None
@@ -303,6 +335,19 @@ def process_webhook_event(
             event.error_message = validation_error_message(event.error_code)
             event.processed_at = datetime_now()
         else:
+            validation_error = commercial_field_length_error(
+                transaction_id=transaction_id,
+                refund_id=refund_id,
+                refund_reason=_optional_text(get_first(payload, "Reason", "reason")),
+            )
+            if validation_error is not None:
+                event.status = PaymentWebhookEventStatus.FAILED
+                event.error_code = validation_error
+                event.error_message = validation_error_message(validation_error)
+                event.processed_at = datetime_now()
+                db.add(event)
+                db.flush()
+                return event
             validation_error = refund_validation_error(
                 db,
                 order,

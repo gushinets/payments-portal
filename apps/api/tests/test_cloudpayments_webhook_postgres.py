@@ -648,6 +648,91 @@ def test_cancel_after_paid_payment_is_ignored_without_state_regression(
     assert events[-1].error_code == "stale_payment_fact"
 
 
+def test_cancel_after_paid_with_unknown_transaction_is_ignored_without_phantom_payment(
+    monkeypatch: pytest.MonkeyPatch,
+    webhook_database: sessionmaker[Session],
+) -> None:
+    client = TestClient(app, raise_server_exceptions=False)
+    invoice_id = "inv-cancel-after-paid-unknown-1"
+    paid_transaction_id = "tx-paid-before-unknown-cancel-1"
+    seed_order(webhook_database, invoice_id, widget_mode="auth")
+
+    authorized_response = client.post(
+        "/api/cloudpayments/pay",
+        json=authorized_payload(invoice_id, paid_transaction_id),
+    )
+    confirm_response = client.post(
+        "/api/cloudpayments/confirm",
+        json=paid_payload(invoice_id, paid_transaction_id),
+    )
+    monkeypatch.setattr(
+        cloudpayments_adapter_module,
+        "verify_cloudpayments_signature",
+        verify_cloudpayments_signature,
+    )
+    original_api_secret = settings.cloudpayments_api_secret
+    object.__setattr__(settings, "cloudpayments_api_secret", "test-secret")
+    raw_cancel_payload = (
+        b'{"InvoiceId":"inv-cancel-after-paid-unknown-1",'
+        b'"TransactionId":"tx-unknown-terminal-cancel-1","Amount":"100.00"}'
+    )
+    try:
+        cancel_response = client.post(
+            "/api/cloudpayments/cancel",
+            headers={
+                "Content-HMAC": cloudpayments_signature(raw_cancel_payload),
+                "Content-Type": "application/json",
+            },
+            content=raw_cancel_payload,
+        )
+    finally:
+        object.__setattr__(settings, "cloudpayments_api_secret", original_api_secret)
+
+    assert authorized_response.status_code == 200
+    assert confirm_response.status_code == 200
+    assert cancel_response.status_code == 200
+    assert cancel_response.json() == {"code": 0}
+    with webhook_database() as db:
+        order = db.query(Order).one()
+        payments = db.query(Payment).all()
+        events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
+
+    assert order.status is OrderStatus.PAID
+    assert order.canceled_at is None
+    assert len(payments) == 1
+    assert payments[0].provider_payment_id == paid_transaction_id
+    assert payments[0].status is PaymentStatus.SUCCEEDED
+    assert events[-1].status is PaymentWebhookEventStatus.IGNORED
+    assert events[-1].payment_id is None
+    assert events[-1].error_code == "stale_payment_fact"
+
+
+def test_oversized_transaction_id_is_failed_without_unexpected_error(
+    webhook_database: sessionmaker[Session],
+) -> None:
+    client = TestClient(app, raise_server_exceptions=False)
+    invoice_id = "inv-oversized-transaction-1"
+    seed_order(webhook_database, invoice_id)
+
+    response = client.post(
+        "/api/cloudpayments/pay",
+        json=paid_payload(invoice_id, "x" * 256),
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"code": 0}
+    with webhook_database() as db:
+        order = db.query(Order).one()
+        payment_count = db.query(Payment).count()
+        event = db.query(PaymentWebhookEvent).one()
+
+    assert order.status is OrderStatus.PENDING_PAYMENT
+    assert payment_count == 0
+    assert event.status is PaymentWebhookEventStatus.FAILED
+    assert event.error_code == "transaction_id_too_long"
+    assert event.error_message == "Webhook transaction id exceeds the supported length"
+
+
 def test_cancel_after_refunded_payment_is_ignored_without_refund_mutation(
     webhook_database: sessionmaker[Session],
 ) -> None:
