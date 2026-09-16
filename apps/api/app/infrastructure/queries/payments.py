@@ -21,6 +21,20 @@ def get_latest_payment_for_order(db: Session, order_id: uuid.UUID) -> Payment | 
     return db.query(Payment).filter(Payment.order_id == order_id).order_by(Payment.created_at.desc()).first()
 
 
+def get_payment_by_provider_identity(
+    db: Session,
+    *,
+    provider_account_id: uuid.UUID,
+    provider_payment_id: str,
+    for_update: bool = False,
+) -> Payment | None:
+    query = db.query(Payment).filter(
+        Payment.provider_account_id == provider_account_id,
+        Payment.provider_payment_id == provider_payment_id,
+    )
+    return (query.with_for_update() if for_update else query).first()
+
+
 def get_latest_payment_for_order_with_statuses(
     db: Session,
     *,
@@ -38,8 +52,38 @@ def get_latest_payment_for_order_with_statuses(
     )
 
 
+def list_payments_for_order_with_statuses(
+    db: Session,
+    *,
+    order_id: uuid.UUID,
+    statuses: Collection[PaymentStatus],
+) -> list[Payment]:
+    return (
+        db.query(Payment)
+        .filter(
+            Payment.order_id == order_id,
+            Payment.status.in_(statuses),
+        )
+        .all()
+    )
+
+
 def get_refund_by_id(db: Session, refund_id: uuid.UUID, *, for_update: bool = False) -> Refund | None:
     query = db.query(Refund).filter(Refund.id == refund_id)
+    return (query.with_for_update() if for_update else query).first()
+
+
+def get_refund_by_provider_identity(
+    db: Session,
+    *,
+    provider_account_id: uuid.UUID,
+    provider_refund_id: str,
+    for_update: bool = False,
+) -> Refund | None:
+    query = db.query(Refund).filter(
+        Refund.provider_account_id == provider_account_id,
+        Refund.provider_refund_id == provider_refund_id,
+    )
     return (query.with_for_update() if for_update else query).first()
 
 
