@@ -1,106 +1,46 @@
 from __future__ import annotations
 
-import hashlib
-import logging
-import secrets
-from datetime import datetime, timedelta
+import uuid
 from decimal import Decimal
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.payment_providers.errors import PaymentProviderConfigurationError
-from app.core.observability import record_checkout, traced
-from app.domains.identity.errors import (
-    AutomaticRenewalNotPermittedError,
-    MissingRequiredDocumentsError,
-    ProviderCurrencyMismatchError,
+from app.core.observability import traced
+from app.domains.identity.services.auth import (
+    AuthenticationResult,
+    login_user,
+    logout_session,
+    normalize_email as normalize_email,
+    register_user,
 )
-from app.domains.identity.passwords import hash_password, verify_password
+from app.domains.identity.services.account import (
+    ProductStateResult,
+    load_account_session,
+    load_payment_status,
+)
 from app.domains.identity.services.checkout import (
-    CheckoutIntentRequest,
-    CheckoutIntentResponse,
-    CheckoutPaymentResponse,
-    CheckoutPurchaseResponse,
-    get_sellable_plan,
-    make_invoice_id,
-    make_order_number,
-    raise_missing_recurring_consent,
+    CheckoutCommand,
+    create_checkout,
 )
-from app.domains.legal.service import (
-    get_current_recurring_consent_acceptance,
-    get_missing_required_documents_for_user,
-    present_required_document,
-)
-from app.domains.billing.enums import ProductAccessStatus
-from app.domains.identity.session import (
-    DEFAULT_REGION,
-    DEFAULT_TENANT_ID,
-    get_current_session,
-)
-from app.core.time import utc_now
-from app.infrastructure.queries.identity import get_user_by_normalized_email
-from app.infrastructure.queries.orders import (
-    get_latest_order_for_user_entrypoint,
-    get_order_by_id,
-    get_order_by_user_and_provider_invoice_id,
-    get_order_item,
-)
-from app.infrastructure.queries.payments import (
-    get_latest_payment_for_order,
-    get_latest_payment_for_order_with_statuses,
-)
-from app.infrastructure.queries.plans import get_plan_by_id
-from app.infrastructure.queries.products import get_product_by_code
-from app.infrastructure.queries.products import (
-    get_bundle_by_code,
-    get_bundle_by_id,
-    get_product_by_id,
-)
-from app.infrastructure.queries.subscriptions import get_active_entitlement_for_scope
+from app.domains.identity.session import DEFAULT_REGION, DEFAULT_TENANT_ID
+from app.http_dependencies import get_current_session, get_payment_provider_registry
 from app.models import (
     AuthSession,
-    CheckoutSession,
-    CheckoutSessionStatus,
-    EntrypointSession,
-    Order,
-    OrderItem,
-    OrderItemType,
-    OrderStatus,
-    Payment,
-    PaymentStatus,
-    SubscriptionRenewalMode,
     SubscriptionScopeType,
     User,
-    UserStatus,
 )
-from app.payment_providers.accounts import get_or_create_checkout_provider_account
-from app.payment_providers.registry import (
-    PaymentProviderRegistry,
-    get_payment_provider_registry,
+from app.payment_providers.contracts import CheckoutAction
+from app.payment_providers.errors import (
+    PaymentProviderConfigurationError,
+    PaymentProviderUnavailableError,
 )
+from app.payment_providers.registry import PaymentProviderRegistry
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
-logger = logging.getLogger(__name__)
-
-SESSION_TTL_DAYS = 30
-PRODUCT_DEFAULTS = {
-    "document-summary": {
-        "plan_code": "document-summary-pro",
-        "plan_name": "Document Summary Pro",
-        "price_amount_minor": 99000,
-        "trial_days": 7,
-    },
-    "prompt-optimizer": {
-        "plan_code": "prompt-optimizer-pro",
-        "plan_name": "Prompt Optimizer Pro",
-        "price_amount_minor": 99000,
-        "trial_days": 7,
-    },
-}
 
 
 class RegisterRequest(BaseModel):
@@ -119,107 +59,63 @@ class LoginRequest(BaseModel):
     password: str = Field(min_length=8, max_length=128)
 
 
-def make_session_token() -> tuple[str, str, datetime]:
-    token = secrets.token_urlsafe(32)
-    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
-    expires_at = utc_now() + timedelta(days=SESSION_TTL_DAYS)
-    return token, token_hash, expires_at
+class CheckoutIntentRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    plan_id: uuid.UUID
+    auto_renew: bool = False
+    recurring_consent_acceptance_id: uuid.UUID | None = None
+    entrypoint_type: str
+    entrypoint_value: str
+    frontend_id: str | None = None
+    source_url: str | None = None
 
 
-def normalize_tenant_id(value: str) -> str:
-    return value.strip().lower()
+class CheckoutPurchaseResponse(BaseModel):
+    order_id: uuid.UUID
+    plan_id: uuid.UUID
+    plan_code: str
+    plan_name: str
+    scope_type: SubscriptionScopeType
+    product_id: uuid.UUID | None
+    bundle_id: uuid.UUID | None
+    invoice_id: str
 
 
-def normalize_region(value: str) -> str:
-    return value.strip().lower()
+class CheckoutPaymentResponse(BaseModel):
+    amount_minor: int
+    amount: float
+    currency: str
+    action: CheckoutAction
 
 
-def normalize_email(value: str) -> str:
-    return value.strip().lower()
+class CheckoutIntentResponse(BaseModel):
+    status: Literal["pending"] = "pending"
+    purchase: CheckoutPurchaseResponse
+    checkout: CheckoutPaymentResponse
 
 
-def present_user(user: User) -> dict:
+def present_user(result: AuthenticationResult) -> dict:
     return {
-        "tenant_id": user.tenant_id,
-        "region": user.region,
-        "user_id": str(user.id),
-        "email": user.email,
+        "tenant_id": result.tenant_id,
+        "region": result.region,
+        "user_id": str(result.user_id),
+        "email": result.email,
     }
 
 
 def present_product_state(
-    db: Session,
-    *,
-    user: User,
-    product_code: str,
-    order: Order | None = None,
-    payment: Payment | None = None,
+    result: ProductStateResult,
 ) -> dict:
-    now = utc_now()
-    product = get_product_by_code(db, tenant_id=user.tenant_id, code=product_code)
-    bundle = get_bundle_by_code(db, tenant_id=user.tenant_id, code=product_code) if product is None else None
-    default_plan = PRODUCT_DEFAULTS.get(product_code, {}) if product is not None else {}
-    if product is not None:
-        scope_type = SubscriptionScopeType.PRODUCT
-    elif bundle is not None:
-        scope_type = SubscriptionScopeType.BUNDLE
-    elif product_code == "all-access":
-        scope_type = SubscriptionScopeType.ALL_ACCESS
-    else:
-        scope_type = None
-    if scope_type is not None and order is None:
-        order = get_latest_order_for_user_entrypoint(
-            db,
-            tenant_id=user.tenant_id,
-            region=user.region,
-            user_id=user.id,
-            product_id=product.id if product is not None else None,
-            bundle_id=bundle.id if bundle is not None else None,
-            scope_type=scope_type,
-            entrypoint_code=product_code,
-        )
-    entitlement = None
-    if scope_type is not None:
-        entitlement = get_active_entitlement_for_scope(
-            db,
-            tenant_id=user.tenant_id,
-            region=user.region,
-            user_id=user.id,
-            scope_type=scope_type,
-            product_id=product.id if product is not None else None,
-            bundle_id=bundle.id if bundle is not None else None,
-            now=now,
-        )
-    if entitlement is not None:
-        if order is None and entitlement.order_id is not None:
-            order = get_order_by_id(db, entitlement.order_id)
-        payment = payment or (get_latest_payment_for_order(db, order.id) if order is not None else None)
-        status = ProductAccessStatus.ACTIVE.value
-        starts_at = entitlement.valid_from
-        expires_at = entitlement.valid_until
-    else:
-        starts_at = order.created_at if order is not None else None
-        expires_at = None
-        pending_order_statuses = {OrderStatus.CREATED, OrderStatus.PENDING_PAYMENT}
-        status = (
-            ProductAccessStatus.PENDING.value
-            if order is not None and order.status in pending_order_statuses
-            else ProductAccessStatus.INACTIVE.value
-        )
-    plan = None
-    if entitlement is not None:
-        plan = get_plan_by_id(db, entitlement.plan_id)
-    elif order is not None and order.plan_id is not None:
-        plan = get_plan_by_id(db, order.plan_id)
     return {
-        "product_code": product_code,
-        "plan_code": plan.code if plan is not None else default_plan.get("plan_code"),
-        "plan_name": plan.name if plan is not None else default_plan.get("plan_name"),
-        "invoice_id": order.provider_invoice_id if order else None,
-        "transaction_id": payment.provider_payment_id if payment else None,
-        "status": status,
-        "starts_at": starts_at.isoformat() if starts_at else None,
-        "expires_at": expires_at.isoformat() if expires_at else None,
+        "product_code": result.product_code,
+        "plan_code": result.plan_code,
+        "plan_name": result.plan_name,
+        "invoice_id": result.invoice_id,
+        "transaction_id": result.transaction_id,
+        "status": result.status.value,
+        "starts_at": result.starts_at.isoformat() if result.starts_at else None,
+        "expires_at": result.expires_at.isoformat() if result.expires_at else None,
     }
 
 
@@ -229,53 +125,22 @@ def register(
     request: Request,
     db: Annotated[Session, Depends(get_db)],
 ):
-    if not payload.personal_consent:
-        raise HTTPException(status_code=400, detail={"code": "missing_personal_consent"})
-    if not payload.offer_consent:
-        raise HTTPException(status_code=400, detail={"code": "missing_offer_consent"})
-
-    tenant_id = normalize_tenant_id(payload.tenant_id)
-    region = normalize_region(payload.region)
-    normalized_email = normalize_email(str(payload.email))
-    existing = get_user_by_normalized_email(
+    result = register_user(
         db,
-        tenant_id=tenant_id,
-        region=region,
-        email_normalized=normalized_email,
-    )
-    if existing is not None:
-        raise HTTPException(status_code=409, detail={"code": "email_already_registered"})
-
-    user = User(
-        tenant_id=tenant_id,
-        region=region,
+        tenant_id=payload.tenant_id,
+        region=payload.region,
         email=str(payload.email),
-        email_normalized=normalized_email,
-        password_hash=hash_password(payload.password),
-        email_verified_at=utc_now(),
-        status=UserStatus.ACTIVE,
-        last_login_at=utc_now(),
-    )
-    db.add(user)
-    db.flush()
-
-    token, token_hash, expires_at = make_session_token()
-    session = AuthSession(
-        tenant_id=user.tenant_id,
-        region=user.region,
-        user_id=user.id,
-        token_hash=token_hash,
-        expires_at=expires_at,
-        ip=request.client.host if request.client else None,
+        password=payload.password,
+        personal_consent=payload.personal_consent,
+        offer_consent=payload.offer_consent,
+        client_ip=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
     )
-    db.add(session)
-    db.commit()
 
     return {
         "status": "registered",
-        "token": token,
-        "user": present_user(user),
+        "token": result.token,
+        "user": present_user(result),
     }
 
 
@@ -285,37 +150,20 @@ def login(
     request: Request,
     db: Annotated[Session, Depends(get_db)],
 ):
-    tenant_id = normalize_tenant_id(payload.tenant_id)
-    region = normalize_region(payload.region)
-    normalized_email = normalize_email(str(payload.email))
-    user = get_user_by_normalized_email(
+    result = login_user(
         db,
-        tenant_id=tenant_id,
-        region=region,
-        email_normalized=normalized_email,
-    )
-    if user is None or user.password_hash is None or not verify_password(payload.password, user.password_hash):
-        raise HTTPException(status_code=401, detail={"code": "invalid_credentials"})
-
-    user.last_login_at = utc_now()
-    db.add(user)
-    token, token_hash, expires_at = make_session_token()
-    session = AuthSession(
-        tenant_id=user.tenant_id,
-        region=user.region,
-        user_id=user.id,
-        token_hash=token_hash,
-        expires_at=expires_at,
-        ip=request.client.host if request.client else None,
+        tenant_id=payload.tenant_id,
+        region=payload.region,
+        email=str(payload.email),
+        password=payload.password,
+        client_ip=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
     )
-    db.add(session)
-    db.commit()
 
     return {
         "status": "authenticated",
-        "token": token,
-        "user": present_user(user),
+        "token": result.token,
+        "user": present_user(result),
     }
 
 
@@ -326,15 +174,17 @@ def get_session(
     product: str | None = None,
 ):
     user, _ = current
-
-    product_state = None
-    if product:
-        product_state = present_product_state(db, user=user, product_code=product)
+    result = load_account_session(db, user=user, product_code=product)
 
     return {
         "authenticated": True,
-        "user": present_user(user),
-        "product_state": product_state,
+        "user": {
+            "tenant_id": result.tenant_id,
+            "region": result.region,
+            "user_id": str(result.user_id),
+            "email": result.email,
+        },
+        "product_state": present_product_state(result.product_state) if result.product_state else None,
     }
 
 
@@ -346,81 +196,42 @@ def get_payment_status(
     tenant_id: Annotated[str, Query()] = DEFAULT_TENANT_ID,
     region: Annotated[str, Query()] = DEFAULT_REGION,
 ):
-    normalized_email = normalize_email(str(email))
-    user = get_user_by_normalized_email(
+    result = load_payment_status(
         db,
-        tenant_id=normalize_tenant_id(tenant_id),
-        region=normalize_region(region),
-        email_normalized=normalized_email,
+        invoice_id=invoice_id,
+        email=str(email),
+        tenant_id=tenant_id,
+        region=region,
     )
-    if user is None:
-        raise HTTPException(status_code=404, detail="payment_not_found")
-
-    order = get_order_by_user_and_provider_invoice_id(
-        db,
-        user_id=user.id,
-        provider_invoice_id=invoice_id,
-    )
-    if order is None:
-        raise HTTPException(status_code=404, detail="payment_not_found")
-    payment = None
-    if order.status == OrderStatus.CANCELED:
-        payment = get_latest_payment_for_order_with_statuses(
-            db,
-            order_id=order.id,
-            statuses=(
-                PaymentStatus.SUCCEEDED,
-                PaymentStatus.PARTIALLY_REFUNDED,
-                PaymentStatus.REFUNDED,
-            ),
-        )
-    payment = payment or get_latest_payment_for_order(db, order.id)
-
-    order_item = get_order_item(db, order.id)
-    product_code = order_item.product_code_snapshot if order_item else None
-    if product_code is None and order_item is not None and order_item.product_id is not None:
-        product = get_product_by_id(db, order_item.product_id)
-        product_code = product.code if product is not None else None
-    elif product_code is None and order_item is not None and order_item.bundle_id is not None:
-        bundle = get_bundle_by_id(db, order_item.bundle_id)
-        product_code = bundle.code if bundle is not None else None
-    elif product_code is None and order_item is not None and order_item.item_type == OrderItemType.ALL_ACCESS_PLAN:
-        product_code = "all-access"
-    if product_code is None:
+    if result is None:
         raise HTTPException(status_code=404, detail="payment_not_found")
 
     return {
-        "tenant_id": user.tenant_id,
-        "region": user.region,
-        "user_id": str(user.id),
-        "email": normalized_email,
-        "product_state": present_product_state(
-            db,
-            user=user,
-            product_code=product_code,
-            order=order,
-            payment=payment,
-        ),
+        "tenant_id": result.tenant_id,
+        "region": result.region,
+        "user_id": str(result.user_id),
+        "email": result.email,
+        "product_state": present_product_state(result.product_state),
         "order": {
-            "order_id": str(order.id),
-            "order_number": order.order_number,
-            "status": order.status,
-            "amount_minor": order.amount_minor,
-            "currency": order.currency,
-            "paid_at": order.paid_at.isoformat() if order.paid_at else None,
-            "failed_at": order.failed_at.isoformat() if order.failed_at else None,
+            "order_id": str(result.order.order_id),
+            "order_number": result.order.order_number,
+            "status": result.order.status,
+            "amount_minor": result.order.amount_minor,
+            "currency": result.order.currency,
+            "paid_at": result.order.paid_at.isoformat() if result.order.paid_at else None,
+            "failed_at": result.order.failed_at.isoformat() if result.order.failed_at else None,
         },
         "payment": {
-            "payment_id": str(payment.id),
-            "status": payment.status,
-            "provider_payment_id": payment.provider_payment_id,
-            "amount_minor": payment.amount_minor,
-            "currency": payment.currency,
-            "captured_at": payment.captured_at.isoformat() if payment.captured_at else None,
-            "failed_at": payment.failed_at.isoformat() if payment.failed_at else None,
-            "refunded_amount_minor": payment.refunded_amount_minor,
+            "payment_id": str(result.payment.payment_id),
+            "status": result.payment.status,
+            "provider_payment_id": result.payment.provider_payment_id,
+            "amount_minor": result.payment.amount_minor,
+            "currency": result.payment.currency,
+            "captured_at": result.payment.captured_at.isoformat() if result.payment.captured_at else None,
+            "failed_at": result.payment.failed_at.isoformat() if result.payment.failed_at else None,
+            "refunded_amount_minor": result.payment.refunded_amount_minor,
         }
-        if payment is not None
+        if result.payment is not None
         else None,
     }
 
@@ -431,8 +242,7 @@ def logout(
     db: Annotated[Session, Depends(get_db)],
 ):
     _, session = current
-    db.delete(session)
-    db.commit()
+    logout_session(db, auth_session=session)
     return {"status": "logged_out"}
 
 
@@ -444,195 +254,45 @@ def create_checkout_intent(
     current: Annotated[tuple[User, AuthSession], Depends(get_current_session)],
     db: Annotated[Session, Depends(get_db)],
     providers: Annotated[PaymentProviderRegistry, Depends(get_payment_provider_registry)],
-):
+) -> CheckoutIntentResponse:
     user, _ = current
-    now = utc_now()
-    sellable_plan = get_sellable_plan(
-        db,
-        user=user,
-        plan_id=payload.plan_id,
-        now=now,
-    )
-    if payload.auto_renew and sellable_plan.renewal_mode != SubscriptionRenewalMode.AUTOMATIC:
-        raise AutomaticRenewalNotPermittedError()
-    missing_documents = get_missing_required_documents_for_user(
-        db,
-        user=user,
-        now=now,
-        require_recurring_consent=payload.auto_renew,
-    )
-    if missing_documents:
-        record_checkout("missing_required_documents")
-        raise MissingRequiredDocumentsError([present_required_document(document) for document in missing_documents])
-
-    recurring_consent = None
-    if payload.auto_renew and payload.recurring_consent_acceptance_id is None:
-        raise_missing_recurring_consent(db, user=user, now=now)
-    if payload.auto_renew:
-        recurring_consent = get_current_recurring_consent_acceptance(
-            db,
-            acceptance_id=payload.recurring_consent_acceptance_id,
-            user=user,
-            entrypoint_type=payload.entrypoint_type,
-            entrypoint_value=payload.entrypoint_value,
-            plan_id=sellable_plan.id,
-            now=now,
-        )
-        if recurring_consent is None:
-            raise_missing_recurring_consent(db, user=user, now=now)
-
-    provider_account, provider_adapter = get_or_create_checkout_provider_account(
-        db,
-        user=user,
-        registry=providers,
-    )
-    invoice_id = make_invoice_id()
-    amount_minor = sellable_plan.price_amount_minor
-    currency = sellable_plan.currency
-    if currency != provider_account.default_currency:
-        record_checkout("provider_currency_mismatch")
-        raise ProviderCurrencyMismatchError()
-    expires_at = now + timedelta(minutes=30)
-
-    entrypoint_session = EntrypointSession(
-        tenant_id=user.tenant_id,
-        route_region=user.region,
-        resolved_region=user.region,
-        entrypoint_type=payload.entrypoint_type,
-        entrypoint_value=payload.entrypoint_value,
-        product_id=sellable_plan.product_id,
-        bundle_id=sellable_plan.bundle_id,
-        frontend_id=payload.frontend_id or "web_checkout",
-        user_id=user.id,
-        source_url=payload.source_url,
-        ip=request.client.host if request.client else None,
-        user_agent=request.headers.get("user-agent"),
-        metadata_={
-            "plan_id": str(sellable_plan.id),
-            "plan_code": sellable_plan.code,
-            "scope_type": sellable_plan.scope_type.value,
-            "auto_renew": payload.auto_renew,
-        },
-    )
-    db.add(entrypoint_session)
-    db.flush()
-
-    checkout_session = CheckoutSession(
-        tenant_id=user.tenant_id,
-        region=user.region,
-        user_id=user.id,
-        entrypoint_session_id=entrypoint_session.id,
-        plan_id=sellable_plan.id,
-        status=CheckoutSessionStatus.ORDER_CREATED,
-        amount_minor=amount_minor,
-        currency=currency,
-        expires_at=expires_at,
-        metadata_={
-            "plan_id": str(sellable_plan.id),
-            "plan_code": sellable_plan.code,
-            "scope_type": sellable_plan.scope_type.value,
-            "product_code": sellable_plan.product_code,
-            "auto_renew": payload.auto_renew,
-            "recurring_consent_acceptance_id": str(recurring_consent.id) if recurring_consent else None,
-        },
-    )
-    db.add(checkout_session)
-    db.flush()
-
-    order = Order(
-        tenant_id=user.tenant_id,
-        region=user.region,
-        order_number=make_order_number(user.region),
-        user_id=user.id,
-        checkout_session_id=checkout_session.id,
-        entrypoint_session_id=entrypoint_session.id,
-        plan_id=sellable_plan.id,
-        status=OrderStatus.PENDING_PAYMENT,
-        amount_minor=amount_minor,
-        currency=currency,
-        provider=provider_account.provider,
-        provider_account_id=provider_account.id,
-        merchant_order_id=invoice_id,
-        provider_invoice_id=invoice_id,
-        expires_at=expires_at,
-        metadata_={
-            "plan_id": str(sellable_plan.id),
-            "plan_code": sellable_plan.code,
-            "scope_type": sellable_plan.scope_type.value,
-            "product_code": sellable_plan.product_code,
-            "auto_renew": payload.auto_renew,
-            "recurring_consent_acceptance_id": str(recurring_consent.id) if recurring_consent else None,
-        },
-    )
-    db.add(order)
-    db.flush()
     try:
-        checkout_action = provider_adapter.prepare_checkout_action(
-            provider_account=provider_account,
-            order=order,
-            account_id=user.email,
-            description=sellable_plan.name,
-            metadata={
-                "plan_id": str(sellable_plan.id),
-                "plan_code": sellable_plan.code,
-                "scope_type": sellable_plan.scope_type.value,
-                "product_code": sellable_plan.product_code,
-            },
+        result = create_checkout(
+            db,
+            user=user,
+            providers=providers,
+            command=CheckoutCommand(
+                plan_id=payload.plan_id,
+                auto_renew=payload.auto_renew,
+                recurring_consent_acceptance_id=payload.recurring_consent_acceptance_id,
+                entrypoint_type=payload.entrypoint_type,
+                entrypoint_value=payload.entrypoint_value,
+                frontend_id=payload.frontend_id,
+                source_url=payload.source_url,
+                client_ip=request.client.host if request.client else None,
+                user_agent=request.headers.get("user-agent"),
+            ),
         )
-        order.metadata_ = {
-            **order.metadata_,
-            "payment_mode": checkout_action.mode,
-        }
-        db.add(order)
     except PaymentProviderConfigurationError as exc:
-        db.rollback()
-        record_checkout("provider_configuration_error")
         raise HTTPException(status_code=409, detail=exc.code) from exc
-    db.add(
-        OrderItem(
-            order_id=order.id,
-            item_type={
-                SubscriptionScopeType.PRODUCT: OrderItemType.PRODUCT_PLAN,
-                SubscriptionScopeType.BUNDLE: OrderItemType.BUNDLE_PLAN,
-                SubscriptionScopeType.ALL_ACCESS: OrderItemType.ALL_ACCESS_PLAN,
-            }[sellable_plan.scope_type],
-            product_id=sellable_plan.product_id,
-            bundle_id=sellable_plan.bundle_id,
-            plan_id=sellable_plan.id,
-            product_code_snapshot=sellable_plan.product_code,
-            plan_code_snapshot=sellable_plan.code,
-            title_snapshot=sellable_plan.name,
-            quantity=1,
-            list_amount_minor=amount_minor,
-            discount_amount_minor=0,
-            unit_amount_minor=amount_minor,
-            amount_minor=amount_minor,
-            currency=currency,
-            trial_days_snapshot=sellable_plan.trial_days,
-            pricing_snapshot=sellable_plan.pricing_snapshot,
-        )
-    )
-
-    order_id = str(order.id)
-    db.commit()
-    logger.info("billing_checkout_committed", extra={"structured": {"order_id": order_id}})
-    record_checkout("created")
+    except PaymentProviderUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=exc.code) from exc
 
     return CheckoutIntentResponse(
         purchase=CheckoutPurchaseResponse(
-            order_id=order.id,
-            plan_id=sellable_plan.id,
-            plan_code=sellable_plan.code,
-            plan_name=sellable_plan.name,
-            scope_type=sellable_plan.scope_type,
-            product_id=sellable_plan.product_id,
-            bundle_id=sellable_plan.bundle_id,
-            invoice_id=invoice_id,
+            order_id=result.order_id,
+            plan_id=result.plan_id,
+            plan_code=result.plan_code,
+            plan_name=result.plan_name,
+            scope_type=result.scope_type,
+            product_id=result.product_id,
+            bundle_id=result.bundle_id,
+            invoice_id=result.invoice_id,
         ),
         checkout=CheckoutPaymentResponse(
-            amount_minor=amount_minor,
-            amount=float(Decimal(amount_minor) / Decimal(100)),
-            currency=currency,
-            action=checkout_action,
+            amount_minor=result.amount_minor,
+            amount=float(Decimal(result.amount_minor) / Decimal(100)),
+            currency=result.currency,
+            action=result.action,
         ),
     )

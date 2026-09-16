@@ -84,3 +84,20 @@ lifecycle, dependency overrides, environment changes, database sessions, and
 other setup that requires teardown. Put a fixture in `apps/api/tests/conftest.py`
 only when multiple test modules need it; keep module-specific setup as a
 module-local fixture near the tests that use it.
+
+## FastAPI dependency substitution
+
+Use `app.dependency_overrides` when a route already exposes an explicit FastAPI
+resource or context dependency, including `get_db`,
+authenticated-current-session context, and the app-scoped payment-provider
+registry accessor. Restore the previous override mapping in teardown or a
+`finally` block so overrides cannot leak between tests. Prefer this supported
+substitution point to monkeypatching a module global; do not mass-migrate
+unrelated historical tests whose dependencies are not part of the changed
+slice.
+
+Stateless Application/service functions are not DI-managed only for testability.
+Test them by calling the inward function directly with explicit dependencies and
+typed input. Add a shared API client or override fixture only after multiple test
+modules need the same lifecycle; otherwise keep the lifecycle local to the test
+module and make cleanup explicit.

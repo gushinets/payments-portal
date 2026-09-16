@@ -22,6 +22,10 @@ class PaymentProviderConfigurationError(PaymentsError):
     pass
 
 
+class PaymentProviderUnavailableError(PaymentsError):
+    pass
+
+
 class PaymentsTransportError(PaymentsError):
     def __init__(
         self,
