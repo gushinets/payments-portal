@@ -266,7 +266,10 @@ recalculated when catalog prices change.
 
 One order may have multiple payment attempts. `payments` stores provider IDs,
 status, amounts, currency, method category, lifecycle times, refund total, safe
-failure details, and a normalized safe summary.
+failure details, and a retained summary field. The `raw_summary` column is not a
+canonical Application input and commercial processing does not write
+provider-specific summaries into it; redacted provider evidence remains in
+`payment_webhook_events`.
 
 `refunds` records each full or partial refund independently and is idempotent on
 provider account plus provider refund ID when supplied.
@@ -354,6 +357,13 @@ webhook payload is semantically sufficient or point reconciliation is required.
 `region_mismatch` blocks future entitlement creation on this instance and is a
 Region Resolver redirect signal, not a local rewrite onto another contour.
 
+For a payable Order, a successful Payment fact moves it to `paid`, a failed
+fact to `payment_failed`, and a cancellation fact to `canceled`. Authorization
+alone does not make the Order paid. Once the Order is terminal, a distinct late
+attempt may be projected as evidence but does not reopen or downgrade the
+Order. Refund aggregation may advance a paid Order to `partially_refunded` or
+`refunded` as described below.
+
 ### Payment
 
 ```text
@@ -377,6 +387,38 @@ downgrade an already successful payment or paid order. Future billing
 integrations may project authoritative facts into the same local payment
 states; a contour is not required to register a direct-provider adapter.
 
+The canonical commercial transition accepts only typed, provider-neutral
+facts. A new Payment identity must match its Order's immutable amount and
+currency. The first applicable outcome sets its confirmation timestamp; replay
+does not replace `authorized_at`, `captured_at`, `failed_at`, or the Order's
+first terminal timestamp. An authorized attempt may advance to success,
+failure, or cancellation. Exact replay is duplicate; out-of-order facts after
+confirmed success/refund are ignored; contradictory same-identity terminal
+outcomes conflict. A distinct external Payment identity is a distinct attempt,
+but cannot reopen or downgrade an already terminal Order.
+
+### Refund
+
+For an externally confirmed successful Refund fact, Application resolves and
+locks `Order -> Payment`, then checks an existing Refund identity before current
+refundability. An exact existing identity is a duplicate even when the winning
+transition already made the Payment fully refunded; contradictory immutable
+correlation or financial fields conflict. Only a new identity proceeds to
+refundability and remaining-amount validation.
+
+A successful new Refund increments `Payment.refunded_amount_minor` exactly
+once. The Payment becomes `partially_refunded` or `refunded`; aggregate Order
+state is computed across captured Payments without lost updates or over-refund.
+An already canceled Order remains canceled for compatibility while the Refund
+projection is still recorded. For this confirmed Step-8 projection,
+`requested_at = succeeded_at =` the typed occurrence timestamp supplied by the
+verified fact.
+
+ANY-493 changes transition ownership and behavior only. It requires no schema
+migration and introduces no future external-billing tables, mappings, enums, or
+public API; physical schema adaptation remains deferred until an approved
+external-billing design requires it.
+
 ### Webhook event
 
 ```text
@@ -389,7 +431,10 @@ failed
 ```
 
 Duplicate delivery is a normal provider behavior and must produce an idempotent
-result rather than duplicate domain mutations.
+result rather than duplicate domain mutations. Inbox delivery duplicate status
+is reserved for the durable receipt identity. A fresh delivery whose Payment or
+Refund commercial identity was already applied remains a processed commercial
+duplicate and does not repeat financial or Step-9 lifecycle effects.
 
 ### Subscription and entitlement states
 

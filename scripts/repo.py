@@ -1095,6 +1095,57 @@ def router_module(module: str) -> bool:
     return module.endswith(".router") or ".router." in module
 
 
+_INTEGRATION_FORBIDDEN_COMMERCIAL_MODEL_NAMES = frozenset(
+    {"Payment", "PaymentStatus", "Refund", "RefundStatus"}
+)
+
+
+def _integration_commercial_model_references(
+    tree: ast.AST,
+) -> list[tuple[int, str, str]]:
+    """Find direct canonical commercial-model references in Integration code."""
+    module_aliases: dict[str, str] = {}
+    references: set[tuple[int, str, str]] = set()
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if module_matches(alias.name, "app.models"):
+                    module_aliases[alias.asname or alias.name] = alias.name
+            continue
+        if not isinstance(node, ast.ImportFrom):
+            continue
+        module = node.module or ""
+        for alias in node.names:
+            target = f"{module}.{alias.name}" if module else alias.name
+            if (
+                module_matches(module, "app.models")
+                and alias.name in _INTEGRATION_FORBIDDEN_COMMERCIAL_MODEL_NAMES
+            ):
+                references.add((node.lineno, alias.name, module))
+            elif module_matches(target, "app.models") and alias.name[:1].islower():
+                module_aliases[alias.asname or alias.name] = target
+
+    for node in ast.walk(tree):
+        if (
+            not isinstance(node, ast.Attribute)
+            or node.attr not in _INTEGRATION_FORBIDDEN_COMMERCIAL_MODEL_NAMES
+        ):
+            continue
+        dotted = _dotted_python_name(node)
+        if dotted is None:
+            continue
+        prefix, _, symbol = dotted.rpartition(".")
+        for alias, module in module_aliases.items():
+            if prefix == alias or prefix.startswith(f"{alias}."):
+                suffix = prefix[len(alias) :].lstrip(".")
+                canonical_module = f"{module}.{suffix}" if suffix else module
+                references.add((node.lineno, symbol, canonical_module))
+                break
+
+    return sorted(references)
+
+
 def _owns_fastapi_api_router(tree: ast.AST) -> bool:
     factories: set[str] = set()
     for node in ast.walk(tree):
@@ -1398,6 +1449,25 @@ def check_python_boundaries(root: Path = ROOT) -> list[str]:
             continue
 
         is_active_domain_presentation = in_domains and _owns_fastapi_api_router(tree)
+
+        if in_integrations:
+            commercial_model_references = set(
+                _integration_commercial_model_references(tree)
+            )
+            for imported in imports:
+                for target in imported.targets:
+                    module, _, symbol = target.rpartition(".")
+                    if (
+                        symbol in _INTEGRATION_FORBIDDEN_COMMERCIAL_MODEL_NAMES
+                        and module_matches(module, "app.models")
+                    ):
+                        commercial_model_references.add((imported.line, symbol, module))
+            errors.extend(
+                f"{relative}:{line} references canonical commercial model {symbol} from {module}; "
+                "violates integration commercial mutation ownership; map provider facts into "
+                "Application commercial transitions instead (see ARCHITECTURE.md)"
+                for line, symbol, module in sorted(commercial_model_references)
+            )
 
         for imported in imports:
             rules: list[tuple[str, Callable[[str], bool], str]] = []
