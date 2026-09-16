@@ -8,7 +8,7 @@
 | Ticket | `ANY-493` |
 | Immediate predecessor | `ANY-490` / PR #103 |
 | Predecessor baseline | Reviewed `ANY-490` branch; current reviewed head used during planning: `4e6395b938dfff7c5058dc04032d102a08460209` |
-| Overall status | `ready for execution from reviewed ANY-490 branch` |
+| Overall status | `done` |
 | Execution order | Sequential only: Step 1 → review/verify/commit → Step 2 → review/verify/commit → Step 3 → review/verify/commit → Step 4 |
 | Steps / proposed commits | 4 |
 | Database migration | No |
@@ -715,7 +715,7 @@ Do not add a generic retry loop, advisory lock, distributed lock, or migration.
 
 # Step 1 — Establish the Canonical Commercial Application Boundary
 
-**Status:** `todo`
+**Status:** `done`
 
 ## Goal
 
@@ -931,7 +931,7 @@ pytest apps/api/tests/test_commercial_transitions.py -q
 
 # Step 2 — Route Retained CloudPayments Through Application Transitions
 
-**Status:** `todo`
+**Status:** `done`
 
 ## Goal
 
@@ -1113,7 +1113,7 @@ pytest apps/api/tests/test_api.py -k "webhook or late_pay or late_confirm or lat
 
 # Step 3 — Prove Commercial Concurrency and Atomicity on PostgreSQL
 
-**Status:** `todo`
+**Status:** `done`
 
 ## Goal
 
@@ -1253,7 +1253,7 @@ make test_db_stop
 
 # Step 4 — Ratchet Ownership, Document the Contract, and Run Final Verification
 
-**Status:** `todo`
+**Status:** `done`
 
 ## Goal
 
