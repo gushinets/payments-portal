@@ -481,6 +481,48 @@ def test_concurrent_duplicate_webhook_is_serialized_with_provider_payment_id(
     assert payments[0].provider_payment_id == "tx-concurrent-1"
 
 
+def test_fresh_webhook_delivery_of_existing_commercial_payment_does_not_reapply_paid_period(
+    webhook_database: sessionmaker[Session],
+) -> None:
+    client = TestClient(app, raise_server_exceptions=False)
+    invoice_id = "inv-commercial-replay-1"
+    transaction_id = "tx-commercial-replay-1"
+    seed_order(webhook_database, invoice_id)
+    payload = paid_payload(invoice_id, transaction_id)
+
+    first_response = client.post(
+        "/api/cloudpayments/pay",
+        json={**payload, "EventId": "commercial-replay-event-1"},
+    )
+    replay_response = client.post(
+        "/api/cloudpayments/pay",
+        json={**payload, "EventId": "commercial-replay-event-2"},
+    )
+
+    assert first_response.status_code == 200
+    assert replay_response.status_code == 200
+    with webhook_database() as db:
+        order = db.query(Order).one()
+        payments = db.query(Payment).all()
+        events = db.query(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at).all()
+        paid_period_events = (
+            db.query(SubscriptionEvent)
+            .filter(SubscriptionEvent.event_type == SubscriptionEventType.PAID_PERIOD_ACTIVATED)
+            .all()
+        )
+
+    assert order.status is OrderStatus.PAID
+    assert len(payments) == 1
+    assert payments[0].provider_payment_id == transaction_id
+    assert [event.status for event in events] == [
+        PaymentWebhookEventStatus.PROCESSED,
+        PaymentWebhookEventStatus.PROCESSED,
+    ]
+    assert events[0].idempotency_key != events[1].idempotency_key
+    assert events[0].payment_id == events[1].payment_id == payments[0].id
+    assert len(paid_period_events) == 1
+
+
 def test_signed_duplicate_webhook_is_persisted_once_and_acknowledged_idempotently(
     monkeypatch: pytest.MonkeyPatch,
     webhook_database: sessionmaker[Session],
