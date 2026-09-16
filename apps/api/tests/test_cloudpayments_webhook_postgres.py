@@ -29,11 +29,11 @@ from app.integrations.cloudpayments.adapter import verify_cloudpayments_signatur
 from app.integrations.cloudpayments import processing as cloudpayments_processing  # noqa: E402
 from app.integrations.cloudpayments import router as cloudpayments_router  # noqa: E402
 from app.core.settings import settings  # noqa: E402
-from app.domains.billing.enums import ProviderSubscriptionState  # noqa: E402
 from app.domains.billing.service import (  # noqa: E402
-    ApplyProviderSubscriptionStateCommand,
+    ApplyAuthoritativeSubscriptionStateCommand,
+    AuthoritativeSubscriptionState,
     ExpireDueSubscriptionsCommand,
-    apply_provider_subscription_state,
+    apply_authoritative_subscription_state,
     expire_due_subscriptions,
 )
 from app.infrastructure.queries.subscriptions import get_active_entitlement_for_scope  # noqa: E402
@@ -804,12 +804,13 @@ def test_full_refund_after_provider_canceled_subscription_is_processed(
 
     with webhook_database() as db:
         subscription = db.query(Subscription).one()
-        apply_provider_subscription_state(
+        apply_authoritative_subscription_state(
             db,
-            ApplyProviderSubscriptionStateCommand(
+            ApplyAuthoritativeSubscriptionStateCommand(
                 operation_idempotency_key="webhook-provider-cancel-before-refund",
                 subscription_id=subscription.id,
-                provider_state=ProviderSubscriptionState.CANCELED,
+                authoritative_state=AuthoritativeSubscriptionState.CANCELED,
+                occurred_at=datetime.now(timezone.utc),
             ),
         )
         db.commit()

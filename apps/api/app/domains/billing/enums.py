@@ -3,7 +3,7 @@
 from enum import StrEnum
 
 
-class ProviderSubscriptionState(StrEnum):
+class AuthoritativeSubscriptionState(StrEnum):
     ACTIVE = "active"
     PAST_DUE = "past_due"
     CANCELED = "canceled"
@@ -30,7 +30,7 @@ class ProductAccessStatus(StrEnum):
 
 
 __all__ = [
+    "AuthoritativeSubscriptionState",
     "ProductAccessStatus",
-    "ProviderSubscriptionState",
     "SensitiveMetadataKey",
 ]

@@ -10,7 +10,6 @@ import pytest
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.domains.billing.enums import ProviderSubscriptionState
 from app.models import (
     AcceptanceKind,
     EntitlementSource,
@@ -27,15 +26,16 @@ from app.models import (
 )
 from app.domains.billing.service import (
     ActivatePaidPeriodCommand,
-    ApplyProviderSubscriptionStateCommand,
+    ApplyAuthoritativeSubscriptionStateCommand,
     ApplyRefundCommand,
     ApplyRenewalPaymentCommand,
+    AuthoritativeSubscriptionState,
     EnableAutomaticRenewalCommand,
     RequestCancellationCommand,
     StartTrialCommand,
     SubscriptionLifecycleError,
     activate_paid_period,
-    apply_provider_subscription_state,
+    apply_authoritative_subscription_state,
     apply_refund,
     apply_renewal_payment,
     enable_automatic_renewal,
@@ -821,10 +821,10 @@ def test_parallel_apply_provider_state_same_key_reuses_event_after_subscription_
         subscription = _add_active_subscription(session, user=user, plan=plan, now=now)
         subscription_id = subscription.id
 
-    command = ApplyProviderSubscriptionStateCommand(
+    command = ApplyAuthoritativeSubscriptionStateCommand(
         operation_idempotency_key="concurrent-provider-state-same-key",
         subscription_id=subscription_id,
-        provider_state=ProviderSubscriptionState.PAST_DUE,
+        authoritative_state=AuthoritativeSubscriptionState.PAST_DUE,
         occurred_at=now,
     )
     event_check_barrier, synchronized_threads = _synchronize_lifecycle_operation_event_misses(
@@ -835,7 +835,7 @@ def test_parallel_apply_provider_state_same_key_reuses_event_after_subscription_
     def submit(barrier: Barrier, _index: int) -> uuid.UUID:
         barrier.wait(timeout=5)
         with postgres_session_factory() as session, session.begin():
-            return apply_provider_subscription_state(session, command).id
+            return apply_authoritative_subscription_state(session, command).id
 
     blocker = postgres_session_factory()
     blocker.begin()
@@ -867,6 +867,134 @@ def test_parallel_apply_provider_state_same_key_reuses_event_after_subscription_
     assert persisted_subscription.status is SubscriptionStatus.PAST_DUE
     assert len(events) == 1
     assert events[0].event_type is SubscriptionEventType.PROVIDER_SUBSCRIPTION_STATE_APPLIED
+
+
+def test_parallel_stale_and_newer_authoritative_states_cannot_regress_subscription(
+    postgres_session_factory: sessionmaker[Session],
+) -> None:
+    now = datetime(2026, 9, 16, 10, 30, tzinfo=UTC)
+    with postgres_session_factory() as session, session.begin():
+        user, _ = _add_billing_user_and_account(session, "concurrent-authoritative-ordering")
+        plan = _plan_by_code(session, "document-summary-pro")
+        subscription = _add_active_subscription(session, user=user, plan=plan, now=now)
+        subscription_id = subscription.id
+
+    commands = (
+        ApplyAuthoritativeSubscriptionStateCommand(
+            operation_idempotency_key="concurrent-authoritative-older",
+            subscription_id=subscription_id,
+            authoritative_state=AuthoritativeSubscriptionState.PAST_DUE,
+            occurred_at=now,
+        ),
+        ApplyAuthoritativeSubscriptionStateCommand(
+            operation_idempotency_key="concurrent-authoritative-newer",
+            subscription_id=subscription_id,
+            authoritative_state=AuthoritativeSubscriptionState.PAUSED,
+            occurred_at=now + timedelta(minutes=1),
+        ),
+    )
+
+    def submit(barrier: Barrier, command: ApplyAuthoritativeSubscriptionStateCommand) -> uuid.UUID:
+        barrier.wait(timeout=5)
+        with postgres_session_factory() as session, session.begin():
+            return apply_authoritative_subscription_state(session, command).id
+
+    blocker = postgres_session_factory()
+    blocker.begin()
+    try:
+        assert get_subscription_by_id(blocker, subscription_id, for_update=True) is not None
+        barrier = Barrier(3)
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = [executor.submit(submit, barrier, command) for command in commands]
+            barrier.wait(timeout=5)
+            blocker.commit()
+            results = [future.result(timeout=10) for future in futures]
+    finally:
+        if blocker.in_transaction():
+            blocker.rollback()
+        blocker.close()
+
+    with postgres_session_factory() as session:
+        persisted_subscription = session.get(Subscription, subscription_id)
+        events = (
+            session.query(SubscriptionEvent)
+            .filter(
+                SubscriptionEvent.operation_idempotency_key.in_(
+                    ("concurrent-authoritative-older", "concurrent-authoritative-newer")
+                )
+            )
+            .all()
+        )
+
+    assert set(results) == {subscription_id}
+    assert persisted_subscription is not None
+    assert persisted_subscription.status is SubscriptionStatus.PAUSED
+    assert len(events) == 2
+    assert {event.metadata_["authoritative_state_disposition"] for event in events}.issubset(
+        {"applied", "stale"}
+    )
+
+
+def test_parallel_equal_time_conflicting_authoritative_states_fail_closed(
+    postgres_session_factory: sessionmaker[Session],
+) -> None:
+    now = datetime(2026, 9, 16, 11, 0, tzinfo=UTC)
+    with postgres_session_factory() as session, session.begin():
+        user, _ = _add_billing_user_and_account(session, "concurrent-authoritative-equal-conflict")
+        plan = _plan_by_code(session, "document-summary-pro")
+        subscription = _add_active_subscription(session, user=user, plan=plan, now=now)
+        subscription_id = subscription.id
+
+    commands = tuple(
+        ApplyAuthoritativeSubscriptionStateCommand(
+            operation_idempotency_key=f"concurrent-authoritative-equal-{state.value}",
+            subscription_id=subscription_id,
+            authoritative_state=state,
+            occurred_at=now,
+        )
+        for state in (AuthoritativeSubscriptionState.PAST_DUE, AuthoritativeSubscriptionState.PAUSED)
+    )
+
+    def submit(barrier: Barrier, command: ApplyAuthoritativeSubscriptionStateCommand) -> str:
+        barrier.wait(timeout=5)
+        with postgres_session_factory() as session, session.begin():
+            try:
+                apply_authoritative_subscription_state(session, command)
+            except SubscriptionLifecycleError as exc:
+                return str(exc)
+            return "applied"
+
+    blocker = postgres_session_factory()
+    blocker.begin()
+    try:
+        assert get_subscription_by_id(blocker, subscription_id, for_update=True) is not None
+        barrier = Barrier(3)
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = [executor.submit(submit, barrier, command) for command in commands]
+            barrier.wait(timeout=5)
+            blocker.commit()
+            results = [future.result(timeout=10) for future in futures]
+    finally:
+        if blocker.in_transaction():
+            blocker.rollback()
+        blocker.close()
+
+    with postgres_session_factory() as session:
+        persisted_subscription = session.get(Subscription, subscription_id)
+        events = (
+            session.query(SubscriptionEvent)
+            .filter(
+                SubscriptionEvent.operation_idempotency_key.in_(
+                    tuple(command.operation_idempotency_key for command in commands)
+                )
+            )
+            .all()
+        )
+
+    assert sorted(results) == ["applied", "authoritative_state_occurrence_conflict"]
+    assert persisted_subscription is not None
+    assert persisted_subscription.status in {SubscriptionStatus.PAST_DUE, SubscriptionStatus.PAUSED}
+    assert len(events) == 1
 
 
 def test_parallel_request_cancellation_same_key_reuses_event_after_subscription_lock(

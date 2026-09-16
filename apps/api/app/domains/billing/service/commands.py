@@ -9,7 +9,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.core.time import utc_now
-from app.domains.billing.enums import ProviderSubscriptionState
+from app.domains.billing.enums import AuthoritativeSubscriptionState
 
 
 class LifecycleCommand(BaseModel):
@@ -23,7 +23,7 @@ class LifecycleCommand(BaseModel):
     def normalize_occurrence(self) -> LifecycleCommand:
         if self.occurred_at is None:
             self.occurred_at = utc_now()
-        elif self.occurred_at.tzinfo is None:
+        elif self.occurred_at.tzinfo is None or self.occurred_at.utcoffset() is None:
             raise ValueError("occurred_at_must_be_timezone_aware")
         return self
 
@@ -65,9 +65,10 @@ class ApplyRenewalPaymentCommand(LifecycleCommand):
         return value
 
 
-class ApplyProviderSubscriptionStateCommand(LifecycleCommand):
+class ApplyAuthoritativeSubscriptionStateCommand(LifecycleCommand):
+    occurred_at: datetime
     subscription_id: uuid.UUID
-    provider_state: ProviderSubscriptionState
+    authoritative_state: AuthoritativeSubscriptionState
 
 
 class RequestCancellationCommand(LifecycleCommand):

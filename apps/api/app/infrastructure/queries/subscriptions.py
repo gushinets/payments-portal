@@ -89,6 +89,22 @@ def get_subscription_event_by_operation_key(db: Session, key: str) -> Subscripti
     return db.query(SubscriptionEvent).filter(SubscriptionEvent.operation_idempotency_key == key).first()
 
 
+def list_subscription_events_by_type(
+    db: Session,
+    subscription_id: uuid.UUID,
+    event_type: SubscriptionEventType,
+) -> list[SubscriptionEvent]:
+    return (
+        db.query(SubscriptionEvent)
+        .filter(
+            SubscriptionEvent.subscription_id == subscription_id,
+            SubscriptionEvent.event_type == event_type,
+        )
+        .order_by(SubscriptionEvent.occurred_at.desc(), SubscriptionEvent.id.desc())
+        .all()
+    )
+
+
 def get_subscription_for_event(db: Session, event: SubscriptionEvent) -> Subscription | None:
     return get_subscription_by_id(db, event.subscription_id)
 

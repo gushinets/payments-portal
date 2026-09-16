@@ -7,23 +7,23 @@ import pytest
 from pydantic import ValidationError
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.domains.billing.enums import ProviderSubscriptionState
 from app.domains.billing.service import (
     ActivatePaidPeriodCommand,
     EnableAutomaticRenewalCommand,
     ApplyRefundCommand,
-    ApplyProviderSubscriptionStateCommand,
+    ApplyAuthoritativeSubscriptionStateCommand,
     ApplyRenewalPaymentCommand,
+    AuthoritativeSubscriptionState,
     ExpireDueSubscriptionsCommand,
     SubscriptionLifecycleError,
     activate_paid_period,
     enable_automatic_renewal,
     apply_refund,
     apply_renewal_payment,
-    apply_provider_subscription_state,
+    apply_authoritative_subscription_state,
     ensure_subscription_status_transition,
     expire_due_subscriptions,
-    subscription_status_from_provider_state,
+    subscription_status_from_authoritative_state,
 )
 from app.domains.legal.service import expected_acceptance_text_hash
 from app.infrastructure.queries.subscriptions import (
@@ -66,20 +66,220 @@ from app.models import (
 
 
 def test_provider_state_is_mapped_to_domain_status() -> None:
-    assert subscription_status_from_provider_state(ProviderSubscriptionState.ENDED) == SubscriptionStatus.CANCELED
+    assert (
+        subscription_status_from_authoritative_state(AuthoritativeSubscriptionState.ENDED)
+        == SubscriptionStatus.CANCELED
+    )
 
 
 @pytest.mark.parametrize(
     "provider_state",
     (
-        ProviderSubscriptionState.CANCELED,
-        ProviderSubscriptionState.REJECTED,
-        ProviderSubscriptionState.EXPIRED,
-        ProviderSubscriptionState.ENDED,
+        AuthoritativeSubscriptionState.CANCELED,
+        AuthoritativeSubscriptionState.REJECTED,
+        AuthoritativeSubscriptionState.EXPIRED,
+        AuthoritativeSubscriptionState.ENDED,
     ),
 )
-def test_terminal_provider_states_stop_future_renewal(provider_state: ProviderSubscriptionState) -> None:
-    assert subscription_status_from_provider_state(provider_state) == SubscriptionStatus.CANCELED
+def test_terminal_provider_states_stop_future_renewal(provider_state: AuthoritativeSubscriptionState) -> None:
+    assert subscription_status_from_authoritative_state(provider_state) == SubscriptionStatus.CANCELED
+
+
+def _add_authoritative_state_subscription(db_session: Session, *, key: str, now: datetime) -> Subscription:
+    plan = db_session.query(Plan).filter(Plan.tenant_id == "anytoolai", Plan.region == "ru").first()
+    assert plan is not None
+    user = User(
+        tenant_id="anytoolai",
+        region="ru",
+        email=f"{key}@example.com",
+        email_normalized=f"{key}@example.com",
+        status=UserStatus.ACTIVE,
+    )
+    db_session.add(user)
+    db_session.flush()
+    subscription = Subscription(
+        tenant_id="anytoolai",
+        region="ru",
+        user_id=user.id,
+        plan_id=plan.id,
+        scope_type=plan.scope_type,
+        product_id=plan.product_id,
+        bundle_id=plan.bundle_id,
+        status=SubscriptionStatus.ACTIVE,
+        renewal_mode=SubscriptionRenewalMode.AUTOMATIC,
+        current_period_start=now,
+        current_period_end=now + timedelta(days=30),
+    )
+    db_session.add(subscription)
+    db_session.flush()
+    return subscription
+
+
+def test_authoritative_state_requires_explicit_aware_occurrence() -> None:
+    base = {
+        "operation_idempotency_key": "authoritative-state-validation",
+        "subscription_id": uuid.uuid4(),
+        "authoritative_state": AuthoritativeSubscriptionState.ACTIVE,
+    }
+
+    with pytest.raises(ValidationError, match="occurred_at"):
+        ApplyAuthoritativeSubscriptionStateCommand(**base)
+    with pytest.raises(ValidationError, match="occurred_at_must_be_timezone_aware"):
+        ApplyAuthoritativeSubscriptionStateCommand(
+            **base,
+            occurred_at=datetime(2026, 9, 16, 9, 0),
+        )
+    with pytest.raises(ValidationError):
+        ApplyAuthoritativeSubscriptionStateCommand(
+            **{**base, "authoritative_state": "vendor_mystery_state"},
+            occurred_at=datetime(2026, 9, 16, 9, 0, tzinfo=timezone.utc),
+        )
+
+
+def test_authoritative_state_operation_key_is_semantic_identity(db_session: Session) -> None:
+    now = datetime(2026, 9, 16, 9, 0, tzinfo=timezone.utc)
+    subscription = _add_authoritative_state_subscription(db_session, key="authoritative-replay", now=now)
+    command = ApplyAuthoritativeSubscriptionStateCommand(
+        operation_idempotency_key="authoritative-replay",
+        subscription_id=subscription.id,
+        authoritative_state=AuthoritativeSubscriptionState.PAST_DUE,
+        occurred_at=now,
+    )
+
+    applied = apply_authoritative_subscription_state(db_session, command)
+    replayed = apply_authoritative_subscription_state(db_session, command)
+    with pytest.raises(SubscriptionLifecycleError, match="operation_idempotency_conflict"):
+        apply_authoritative_subscription_state(
+            db_session,
+            command.model_copy(update={"authoritative_state": AuthoritativeSubscriptionState.PAUSED}),
+        )
+    with pytest.raises(SubscriptionLifecycleError, match="operation_idempotency_conflict"):
+        apply_authoritative_subscription_state(
+            db_session,
+            command.model_copy(update={"occurred_at": now + timedelta(seconds=1)}),
+        )
+
+    events = (
+        db_session.query(SubscriptionEvent)
+        .filter(SubscriptionEvent.operation_idempotency_key == command.operation_idempotency_key)
+        .all()
+    )
+    assert applied.id == replayed.id == subscription.id
+    assert subscription.status is SubscriptionStatus.PAST_DUE
+    assert len(events) == 1
+
+
+def test_authoritative_state_orders_only_marked_authoritative_events(db_session: Session) -> None:
+    now = datetime(2026, 9, 16, 10, 0, tzinfo=timezone.utc)
+    subscription = _add_authoritative_state_subscription(db_session, key="authoritative-ordering", now=now)
+    db_session.add(
+        SubscriptionEvent(
+            subscription_id=subscription.id,
+            event_type=SubscriptionEventType.PROVIDER_SUBSCRIPTION_STATE_APPLIED,
+            previous_status=SubscriptionStatus.ACTIVE,
+            next_status=SubscriptionStatus.PAUSED,
+            occurred_at=now + timedelta(days=1),
+            operation_idempotency_key="legacy-processing-time-event",
+            metadata_={},
+        )
+    )
+    db_session.flush()
+
+    apply_authoritative_subscription_state(
+        db_session,
+        ApplyAuthoritativeSubscriptionStateCommand(
+            operation_idempotency_key="authoritative-ordering-applied",
+            subscription_id=subscription.id,
+            authoritative_state=AuthoritativeSubscriptionState.PAST_DUE,
+            occurred_at=now,
+        ),
+    )
+    apply_authoritative_subscription_state(
+        db_session,
+        ApplyAuthoritativeSubscriptionStateCommand(
+            operation_idempotency_key="authoritative-ordering-stale",
+            subscription_id=subscription.id,
+            authoritative_state=AuthoritativeSubscriptionState.ACTIVE,
+            occurred_at=now - timedelta(minutes=1),
+        ),
+    )
+    apply_authoritative_subscription_state(
+        db_session,
+        ApplyAuthoritativeSubscriptionStateCommand(
+            operation_idempotency_key="authoritative-ordering-equal-duplicate",
+            subscription_id=subscription.id,
+            authoritative_state=AuthoritativeSubscriptionState.PAST_DUE,
+            occurred_at=now,
+        ),
+    )
+    with pytest.raises(SubscriptionLifecycleError, match="authoritative_state_occurrence_conflict"):
+        apply_authoritative_subscription_state(
+            db_session,
+            ApplyAuthoritativeSubscriptionStateCommand(
+                operation_idempotency_key="authoritative-ordering-equal-conflict",
+                subscription_id=subscription.id,
+                authoritative_state=AuthoritativeSubscriptionState.PAUSED,
+                occurred_at=now,
+            ),
+        )
+    apply_authoritative_subscription_state(
+        db_session,
+        ApplyAuthoritativeSubscriptionStateCommand(
+            operation_idempotency_key="authoritative-ordering-newer",
+            subscription_id=subscription.id,
+            authoritative_state=AuthoritativeSubscriptionState.ACTIVE,
+            occurred_at=now + timedelta(minutes=1),
+        ),
+    )
+
+    events = {
+        event.operation_idempotency_key: event
+        for event in db_session.query(SubscriptionEvent)
+        .filter(SubscriptionEvent.subscription_id == subscription.id)
+        .all()
+    }
+    assert subscription.status is SubscriptionStatus.ACTIVE
+    assert events["authoritative-ordering-applied"].metadata_["authoritative_state_disposition"] == "applied"
+    assert events["authoritative-ordering-stale"].metadata_["authoritative_state_disposition"] == "stale"
+    assert (
+        events["authoritative-ordering-equal-duplicate"].metadata_["authoritative_state_disposition"]
+        == "duplicate"
+    )
+    assert "authoritative-ordering-equal-conflict" not in events
+    assert events["authoritative-ordering-newer"].metadata_["authoritative_state_disposition"] == "applied"
+
+
+def test_newer_authoritative_state_cannot_resurrect_terminal_subscription(db_session: Session) -> None:
+    now = datetime(2026, 9, 16, 11, 0, tzinfo=timezone.utc)
+    subscription = _add_authoritative_state_subscription(db_session, key="authoritative-terminal", now=now)
+    apply_authoritative_subscription_state(
+        db_session,
+        ApplyAuthoritativeSubscriptionStateCommand(
+            operation_idempotency_key="authoritative-terminal-canceled",
+            subscription_id=subscription.id,
+            authoritative_state=AuthoritativeSubscriptionState.CANCELED,
+            occurred_at=now,
+        ),
+    )
+
+    with pytest.raises(SubscriptionLifecycleError, match="invalid_subscription_status_transition"):
+        apply_authoritative_subscription_state(
+            db_session,
+            ApplyAuthoritativeSubscriptionStateCommand(
+                operation_idempotency_key="authoritative-terminal-reactivate",
+                subscription_id=subscription.id,
+                authoritative_state=AuthoritativeSubscriptionState.ACTIVE,
+                occurred_at=now + timedelta(minutes=1),
+            ),
+        )
+
+    assert subscription.status is SubscriptionStatus.CANCELED
+    assert (
+        db_session.query(SubscriptionEvent)
+        .filter(SubscriptionEvent.operation_idempotency_key == "authoritative-terminal-reactivate")
+        .count()
+        == 0
+    )
 
 
 def _seed_transaction_participation_subscription(db_session: Session, *, key: str) -> uuid.UUID:
@@ -139,15 +339,16 @@ def test_lifecycle_on_clean_session_leaves_commit_to_caller(
 ) -> None:
     operation_key = "transaction-participation-clean-session"
     subscription_id = _seed_transaction_participation_subscription(db_session, key=operation_key)
-    command = ApplyProviderSubscriptionStateCommand(
+    command = ApplyAuthoritativeSubscriptionStateCommand(
         operation_idempotency_key=operation_key,
         subscription_id=subscription_id,
-        provider_state=ProviderSubscriptionState.PAST_DUE,
+        authoritative_state=AuthoritativeSubscriptionState.PAST_DUE,
+        occurred_at=datetime(2026, 9, 14, 9, 5, tzinfo=timezone.utc),
     )
 
     with postgres_session_factory() as session:
         assert not session.in_transaction()
-        result = apply_provider_subscription_state(session, command)
+        result = apply_authoritative_subscription_state(session, command)
         assert result.status is SubscriptionStatus.PAST_DUE
         assert session.in_transaction()
         assert (
@@ -171,15 +372,16 @@ def test_lifecycle_does_not_finalize_explicit_caller_transaction(
 ) -> None:
     operation_key = "transaction-participation-explicit-transaction"
     subscription_id = _seed_transaction_participation_subscription(db_session, key=operation_key)
-    command = ApplyProviderSubscriptionStateCommand(
+    command = ApplyAuthoritativeSubscriptionStateCommand(
         operation_idempotency_key=operation_key,
         subscription_id=subscription_id,
-        provider_state=ProviderSubscriptionState.PAST_DUE,
+        authoritative_state=AuthoritativeSubscriptionState.PAST_DUE,
+        occurred_at=datetime(2026, 9, 14, 9, 5, tzinfo=timezone.utc),
     )
 
     with postgres_session_factory() as session:
         transaction = session.begin()
-        result = apply_provider_subscription_state(session, command)
+        result = apply_authoritative_subscription_state(session, command)
         assert result.status is SubscriptionStatus.PAST_DUE
         assert transaction.is_active
         assert session.in_transaction()
@@ -198,16 +400,17 @@ def test_lifecycle_does_not_treat_autobegin_as_transaction_ownership(
 ) -> None:
     operation_key = "transaction-participation-autobegin"
     subscription_id = _seed_transaction_participation_subscription(db_session, key=operation_key)
-    command = ApplyProviderSubscriptionStateCommand(
+    command = ApplyAuthoritativeSubscriptionStateCommand(
         operation_idempotency_key=operation_key,
         subscription_id=subscription_id,
-        provider_state=ProviderSubscriptionState.PAST_DUE,
+        authoritative_state=AuthoritativeSubscriptionState.PAST_DUE,
+        occurred_at=datetime(2026, 9, 14, 9, 5, tzinfo=timezone.utc),
     )
 
     with postgres_session_factory() as session:
         assert session.get(Subscription, subscription_id) is not None
         assert session.in_transaction()
-        result = apply_provider_subscription_state(session, command)
+        result = apply_authoritative_subscription_state(session, command)
         assert result.status is SubscriptionStatus.PAST_DUE
         assert session.in_transaction()
         session.rollback()
@@ -223,12 +426,12 @@ def test_lifecycle_does_not_treat_autobegin_as_transaction_ownership(
     ("provider_state", "expected_status", "expected_renewal_mode"),
     (
         (
-            ProviderSubscriptionState.PAST_DUE,
+            AuthoritativeSubscriptionState.PAST_DUE,
             SubscriptionStatus.PAST_DUE,
             SubscriptionRenewalMode.AUTOMATIC,
         ),
         (
-            ProviderSubscriptionState.REJECTED,
+            AuthoritativeSubscriptionState.REJECTED,
             SubscriptionStatus.CANCELED,
             SubscriptionRenewalMode.MANUAL,
         ),
@@ -236,7 +439,7 @@ def test_lifecycle_does_not_treat_autobegin_as_transaction_ownership(
 )
 def test_provider_state_keeps_paid_entitlement_valid(
     db_session,
-    provider_state: ProviderSubscriptionState,
+    provider_state: AuthoritativeSubscriptionState,
     expected_status: SubscriptionStatus,
     expected_renewal_mode: SubscriptionRenewalMode,
 ) -> None:
@@ -314,12 +517,12 @@ def test_provider_state_keeps_paid_entitlement_valid(
     db_session.add(entitlement)
     db_session.flush()
 
-    result = apply_provider_subscription_state(
+    result = apply_authoritative_subscription_state(
         db_session,
-        ApplyProviderSubscriptionStateCommand(
+        ApplyAuthoritativeSubscriptionStateCommand(
             operation_idempotency_key="provider-state-terminal",
             subscription_id=subscription.id,
-            provider_state=provider_state,
+            authoritative_state=provider_state,
             occurred_at=now,
         ),
     )
@@ -333,14 +536,14 @@ def test_provider_state_keeps_paid_entitlement_valid(
 @pytest.mark.parametrize(
     ("provider_state", "expected_status"),
     (
-        (ProviderSubscriptionState.PAST_DUE, SubscriptionStatus.PAST_DUE),
-        (ProviderSubscriptionState.PAUSED, SubscriptionStatus.PAUSED),
+        (AuthoritativeSubscriptionState.PAST_DUE, SubscriptionStatus.PAST_DUE),
+        (AuthoritativeSubscriptionState.PAUSED, SubscriptionStatus.PAUSED),
     ),
 )
 @pytest.mark.parametrize("entitlement_source", (EntitlementSource.TRIAL, EntitlementSource.ORDER))
 def test_trialing_provider_state_keeps_current_entitlement_and_is_idempotent(
     db_session,
-    provider_state: ProviderSubscriptionState,
+    provider_state: AuthoritativeSubscriptionState,
     expected_status: SubscriptionStatus,
     entitlement_source: EntitlementSource,
 ) -> None:
@@ -393,14 +596,14 @@ def test_trialing_provider_state_keeps_current_entitlement_and_is_idempotent(
     db_session.add(entitlement)
     db_session.flush()
 
-    command = ApplyProviderSubscriptionStateCommand(
+    command = ApplyAuthoritativeSubscriptionStateCommand(
         operation_idempotency_key=key,
         subscription_id=subscription.id,
-        provider_state=provider_state,
+        authoritative_state=provider_state,
         occurred_at=now,
     )
-    result = apply_provider_subscription_state(db_session, command)
-    repeated = apply_provider_subscription_state(db_session, command)
+    result = apply_authoritative_subscription_state(db_session, command)
+    repeated = apply_authoritative_subscription_state(db_session, command)
 
     events = (
         db_session.query(SubscriptionEvent)
@@ -1520,12 +1723,12 @@ def test_full_refund_after_provider_cancellation_revokes_access(db_session) -> N
             occurred_at=now,
         ),
     )
-    apply_provider_subscription_state(
+    apply_authoritative_subscription_state(
         db_session,
-        ApplyProviderSubscriptionStateCommand(
+        ApplyAuthoritativeSubscriptionStateCommand(
             operation_idempotency_key="refund-after-provider-cancel-provider-state",
             subscription_id=subscription.id,
-            provider_state=ProviderSubscriptionState.CANCELED,
+            authoritative_state=AuthoritativeSubscriptionState.CANCELED,
             occurred_at=now + timedelta(minutes=1),
         ),
     )
@@ -1811,6 +2014,56 @@ def test_missing_subscription_event_for_paid_refund_is_not_swallowed(db_session)
                 occurred_at=now + timedelta(minutes=5),
             ),
         )
+
+
+def test_confirmed_refund_for_canceled_order_without_subscription_is_safe_no_op(db_session: Session) -> None:
+    now = datetime(2026, 9, 16, 12, 0, tzinfo=timezone.utc)
+    plan = (
+        db_session.query(Plan)
+        .filter(Plan.tenant_id == "anytoolai", Plan.region == "ru", Plan.price_amount_minor > 0)
+        .first()
+    )
+    assert plan is not None
+    user, account = _add_billing_user_and_account(db_session, "canceled-refund-no-subscription")
+    order, payment, _ = _add_verified_paid_order(
+        db_session,
+        key="canceled-refund-no-subscription",
+        user=user,
+        account=account,
+        plan=plan,
+        paid_at=now,
+    )
+    order.status = OrderStatus.CANCELED
+    payment.status = PaymentStatus.REFUNDED
+    payment.refunded_amount_minor = payment.amount_minor
+    refund = _add_refund(
+        db_session,
+        key="canceled-refund-no-subscription",
+        order=order,
+        payment=payment,
+        account=account,
+        amount_minor=payment.amount_minor,
+        occurred_at=now + timedelta(minutes=1),
+    )
+
+    result = apply_refund(
+        db_session,
+        ApplyRefundCommand(
+            operation_idempotency_key="canceled-refund-no-subscription",
+            order_id=order.id,
+            refund_id=refund.id,
+            amount_minor=refund.amount_minor,
+            occurred_at=now + timedelta(minutes=1),
+        ),
+    )
+
+    assert result is None
+    assert (
+        db_session.query(SubscriptionEvent)
+        .filter(SubscriptionEvent.operation_idempotency_key == "canceled-refund-no-subscription")
+        .count()
+        == 0
+    )
 
 
 def test_paid_orders_create_distinct_entitlements_and_refund_uses_order_provenance(db_session) -> None:

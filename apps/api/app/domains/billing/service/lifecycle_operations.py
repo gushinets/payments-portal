@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -13,12 +15,13 @@ from app.models import (
     OrderStatus,
     RefundStatus,
     Subscription,
+    SubscriptionEvent,
     SubscriptionEventType,
     SubscriptionRenewalMode,
     SubscriptionStatus,
 )
 from app.domains.billing.service.commands import (
-    ApplyProviderSubscriptionStateCommand,
+    ApplyAuthoritativeSubscriptionStateCommand,
     ApplyRefundCommand,
     ApplyRenewalPaymentCommand,
     EnableAutomaticRenewalCommand,
@@ -29,7 +32,7 @@ from app.domains.billing.service.commands import (
 from app.domains.billing.service.state_machine import (
     SubscriptionLifecycleError,
     ensure_subscription_status_transition,
-    subscription_status_from_provider_state,
+    subscription_status_from_authoritative_state,
 )
 from app.domains.billing.service.support import (
     _active_or_future_entitlements,
@@ -61,9 +64,17 @@ from app.infrastructure.queries.subscriptions import (
     list_due_entitlements_for_subscription,
     list_due_subscriptions,
     list_entitlements_for_order,
+    list_subscription_events_by_type,
 )
 
 _PROVIDER_SUBSCRIPTION_REFERENCE_INDEX = "uq_subscriptions_provider_reference"
+_AUTHORITATIVE_STATE_CONTRACT_VERSION_KEY = "authoritative_state_contract_version"
+_AUTHORITATIVE_STATE_CONTRACT_VERSION = 1
+_AUTHORITATIVE_TARGET_STATUS_KEY = "authoritative_target_status"
+_AUTHORITATIVE_STATE_DISPOSITION_KEY = "authoritative_state_disposition"
+_AUTHORITATIVE_STATE_APPLIED = "applied"
+_AUTHORITATIVE_STATE_STALE = "stale"
+_AUTHORITATIVE_STATE_DUPLICATE = "duplicate"
 
 
 def _is_provider_subscription_reference_conflict(error: IntegrityError) -> bool:
@@ -246,30 +257,139 @@ def apply_renewal_payment(db: Session, command: ApplyRenewalPaymentCommand) -> S
     return subscription
 
 
-def apply_provider_subscription_state(db: Session, command: ApplyProviderSubscriptionStateCommand) -> Subscription:
+def _same_instant(left: datetime, right: datetime) -> bool:
+    return left.astimezone(timezone.utc) == right.astimezone(timezone.utc)
+
+
+def _instant_before(left: datetime, right: datetime) -> bool:
+    return left.astimezone(timezone.utc) < right.astimezone(timezone.utc)
+
+
+def _ordering_aware_authoritative_target(event: SubscriptionEvent) -> str | None:
+    metadata = event.metadata_
+    if (
+        not isinstance(metadata, dict)
+        or metadata.get(_AUTHORITATIVE_STATE_CONTRACT_VERSION_KEY) != _AUTHORITATIVE_STATE_CONTRACT_VERSION
+    ):
+        return None
+    target_status = metadata.get(_AUTHORITATIVE_TARGET_STATUS_KEY)
+    return target_status if isinstance(target_status, str) else None
+
+
+def _authoritative_state_replay(
+    db: Session,
+    command: ApplyAuthoritativeSubscriptionStateCommand,
+    event: SubscriptionEvent,
+    target_status: SubscriptionStatus,
+) -> Subscription:
+    if (
+        event.subscription_id != command.subscription_id
+        or event.event_type != SubscriptionEventType.PROVIDER_SUBSCRIPTION_STATE_APPLIED
+        or not _same_instant(event.occurred_at, command.occurred_at)
+        or _ordering_aware_authoritative_target(event) != target_status.value
+    ):
+        raise SubscriptionLifecycleError("operation_idempotency_conflict")
+    return _subscription_for_event(db, event)
+
+
+def _write_authoritative_state_event(
+    db: Session,
+    *,
+    subscription: Subscription,
+    command: ApplyAuthoritativeSubscriptionStateCommand,
+    previous_status: SubscriptionStatus,
+    next_status: SubscriptionStatus,
+    target_status: SubscriptionStatus,
+    disposition: str,
+) -> None:
+    event_command = command.model_copy(
+        update={
+            "metadata": {
+                **command.metadata,
+                _AUTHORITATIVE_STATE_CONTRACT_VERSION_KEY: _AUTHORITATIVE_STATE_CONTRACT_VERSION,
+                _AUTHORITATIVE_TARGET_STATUS_KEY: target_status.value,
+                _AUTHORITATIVE_STATE_DISPOSITION_KEY: disposition,
+            }
+        }
+    )
+    _write_event(
+        db,
+        subscription=subscription,
+        command=event_command,
+        event_type=SubscriptionEventType.PROVIDER_SUBSCRIPTION_STATE_APPLIED,
+        previous_status=previous_status,
+        next_status=next_status,
+    )
+
+
+def apply_authoritative_subscription_state(
+    db: Session,
+    command: ApplyAuthoritativeSubscriptionStateCommand,
+) -> Subscription:
+    status = subscription_status_from_authoritative_state(command.authoritative_state)
     existing_event = _event_for_key(db, command.operation_idempotency_key)
     if existing_event:
-        return _subscription_for_event(db, existing_event)
+        return _authoritative_state_replay(db, command, existing_event, status)
     subscription = get_subscription_by_id(db, command.subscription_id, for_update=True)
     if subscription is None:
         raise SubscriptionLifecycleError("subscription_not_found")
     existing_event = _event_for_key(db, command.operation_idempotency_key)
     if existing_event:
-        return _subscription_for_event(db, existing_event)
+        return _authoritative_state_replay(db, command, existing_event, status)
+
+    latest_event = next(
+        (
+            event
+            for event in list_subscription_events_by_type(
+                db,
+                subscription.id,
+                SubscriptionEventType.PROVIDER_SUBSCRIPTION_STATE_APPLIED,
+            )
+            if _ordering_aware_authoritative_target(event) is not None
+            and event.metadata_.get(_AUTHORITATIVE_STATE_DISPOSITION_KEY) == _AUTHORITATIVE_STATE_APPLIED
+        ),
+        None,
+    )
     previous = subscription.status
-    status = subscription_status_from_provider_state(command.provider_state)
+    if latest_event is not None:
+        if _instant_before(command.occurred_at, latest_event.occurred_at):
+            _write_authoritative_state_event(
+                db,
+                subscription=subscription,
+                command=command,
+                previous_status=previous,
+                next_status=previous,
+                target_status=status,
+                disposition=_AUTHORITATIVE_STATE_STALE,
+            )
+            return subscription
+        if _same_instant(command.occurred_at, latest_event.occurred_at):
+            if _ordering_aware_authoritative_target(latest_event) != status.value:
+                raise SubscriptionLifecycleError("authoritative_state_occurrence_conflict")
+            _write_authoritative_state_event(
+                db,
+                subscription=subscription,
+                command=command,
+                previous_status=previous,
+                next_status=previous,
+                target_status=status,
+                disposition=_AUTHORITATIVE_STATE_DUPLICATE,
+            )
+            return subscription
+
     ensure_subscription_status_transition(previous, status)
     subscription.status = status
     if status == SubscriptionStatus.CANCELED:
         subscription.renewal_mode = SubscriptionRenewalMode.MANUAL
         subscription.canceled_at = subscription.canceled_at or command.occurred_at
-    _write_event(
+    _write_authoritative_state_event(
         db,
         subscription=subscription,
         command=command,
-        event_type=SubscriptionEventType.PROVIDER_SUBSCRIPTION_STATE_APPLIED,
         previous_status=previous,
         next_status=status,
+        target_status=status,
+        disposition=_AUTHORITATIVE_STATE_APPLIED,
     )
     return subscription
 
@@ -303,7 +423,7 @@ def request_cancellation(db: Session, command: RequestCancellationCommand) -> Su
     return subscription
 
 
-def apply_refund(db: Session, command: ApplyRefundCommand) -> Subscription:
+def apply_refund(db: Session, command: ApplyRefundCommand) -> Subscription | None:
     existing_event = _event_for_key(db, command.operation_idempotency_key)
     if existing_event:
         return _subscription_for_event(db, existing_event)
@@ -318,9 +438,6 @@ def apply_refund(db: Session, command: ApplyRefundCommand) -> Subscription:
         raise SubscriptionLifecycleError("refund_amount_mismatch")
     if refund.status != RefundStatus.SUCCEEDED:
         raise SubscriptionLifecycleError("refund_not_verified")
-    subscription = get_subscription_for_order(db, order.id, for_update=True)
-    if subscription is None:
-        raise SubscriptionLifecycleError("subscription_not_found_for_order")
     payment = get_payment_for_refund(db, refund.payment_id)
     if payment is None or payment.order_id != order.id:
         raise SubscriptionLifecycleError("refund_payment_missing")
@@ -329,6 +446,11 @@ def apply_refund(db: Session, command: ApplyRefundCommand) -> Subscription:
         or payment.provider_account_id != order.provider_account_id
     ):
         raise SubscriptionLifecycleError("refund_provider_context_mismatch")
+    subscription = get_subscription_for_order(db, order.id, for_update=True)
+    if subscription is None:
+        if order.status == OrderStatus.CANCELED:
+            return None
+        raise SubscriptionLifecycleError("subscription_not_found_for_order")
     previous = subscription.status
     full_refund = payment.refunded_amount_minor >= payment.amount_minor
     if full_refund:

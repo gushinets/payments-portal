@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from sqlalchemy.orm import Session
-
 from app.integrations.cloudpayments.account_validation import validate_provider_account_context
 from app.integrations.cloudpayments.api_client import CloudPaymentsApiClient
 from app.integrations.cloudpayments.operation_meta import (
@@ -13,12 +11,7 @@ from app.integrations.cloudpayments.operation_meta import (
     idempotency_key_required_meta,
     succeeded_meta,
 )
-from app.infrastructure.queries.subscriptions import get_subscription_for_order
-from app.models import (
-    Order,
-    OrderStatus,
-    PaymentProviderAccount,
-)
+from app.models import PaymentProviderAccount
 from app.payment_providers.contracts import (
     ProviderRefundStatus,
     RefundRequest,
@@ -190,12 +183,6 @@ def refund_payment(
         currency=request.currency,
         meta=succeeded_meta(idempotency_key=request.idempotency_key),
     )
-
-
-def refund_lifecycle_applies(db: Session, order: Order, *, for_update: bool = False) -> bool:
-    if order.status != OrderStatus.CANCELED:
-        return True
-    return get_subscription_for_order(db, order.id, for_update=for_update) is not None
 
 
 def _provider_transaction_id(value: str | None) -> int | None:
