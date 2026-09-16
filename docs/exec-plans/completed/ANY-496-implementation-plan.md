@@ -1,5 +1,7 @@
 # ANY-496 — Establish Subscription / Entitlement Application Transitions — Final Implementation Plan
 
+**Overall status:** `done`
+
 ## Objective
 
 Establish one canonical, provider-neutral and transport-neutral **Application-owned transition boundary** for Subscription and Entitlement lifecycle changes.
@@ -259,7 +261,7 @@ Each step should leave the repository in a coherent, reviewable state with meani
 
 # Step 1 — Establish and harden canonical Subscription / Entitlement Application transitions
 
-**Status:** todo
+**Status:** done
 
 ## Goal
 
@@ -700,7 +702,7 @@ refactor(billing): establish subscription transition semantics
 
 # Step 2 — Route callers through the boundary, enforce ownership, and finalize the contract
 
-**Status:** todo
+**Status:** done
 
 ## Goal
 
