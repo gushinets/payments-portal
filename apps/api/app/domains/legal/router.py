@@ -13,8 +13,13 @@ from app.domains.identity.session import (
     DEFAULT_REGION,
     DEFAULT_TENANT_ID,
 )
+from app.domains.legal.errors import (
+    DocumentVersionNotFoundError,
+    InvalidAcceptanceTextHashError,
+    RecurringConsentContextRequiredError,
+    RecurringConsentPlanInvalidError,
+)
 from app.domains.legal.service import (
-    LegalAcceptanceError,
     accept_legal_document,
     build_acceptance_text,
     expected_acceptance_text_hash,
@@ -92,14 +97,11 @@ def accept_document(
             client_ip=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
         )
-    except LegalAcceptanceError as exc:
-        if exc.code == "document_version_not_found":
-            raise HTTPException(status_code=404, detail=exc.code) from exc
-        if exc.code in {
-            "recurring_consent_context_required",
-            "recurring_consent_plan_invalid",
-        }:
-            raise HTTPException(status_code=400, detail={"code": exc.code}) from exc
+    except DocumentVersionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=exc.code) from exc
+    except (RecurringConsentContextRequiredError, RecurringConsentPlanInvalidError) as exc:
+        raise HTTPException(status_code=400, detail={"code": exc.code}) from exc
+    except InvalidAcceptanceTextHashError as exc:
         raise HTTPException(status_code=400, detail=exc.code) from exc
 
     return {

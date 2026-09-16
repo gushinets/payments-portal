@@ -134,6 +134,11 @@ unsafe-assertion rule as `error` only after current `json()` /
 6. Application, Domain, and focused persistence code remain transport-neutral:
    no FastAPI/Starlette request, response, dependency, or `HTTPException`
    types cross inward.
+7. When distinct Application/Domain failure meanings require different HTTP
+   treatment, Presentation dispatches on concrete feature-owned exception
+   types, not arbitrary `.code` strings. Stable codes remain payload or
+   diagnostic identifiers; do not create a global class-per-code hierarchy.
+   Preserve legacy response shapes in Presentation when compatibility requires it.
 
 ### API persistence
 

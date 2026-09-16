@@ -10,6 +10,12 @@ from sqlalchemy.orm import Session
 
 from app.core.observability import record_legal_acceptance
 from app.core.time import utc_now
+from app.domains.legal.errors import (
+    DocumentVersionNotFoundError,
+    InvalidAcceptanceTextHashError,
+    RecurringConsentContextRequiredError,
+    RecurringConsentPlanInvalidError,
+)
 from app.infrastructure.queries.legal import (
     get_active_required_document_by_id,
     get_document_acceptance_candidate,
@@ -28,14 +34,6 @@ ACCEPTANCE_KIND_BY_DOC_TYPE = {
     "recurring_consent": AcceptanceKind.RECURRING_CONSENT,
     "cookies": AcceptanceKind.COOKIES,
 }
-
-
-class LegalAcceptanceError(ValueError):
-    """Raised when a legal acceptance cannot be recorded safely."""
-
-    def __init__(self, code: str) -> None:
-        super().__init__(code)
-        self.code = code
 
 
 @dataclass(frozen=True)
@@ -276,7 +274,7 @@ def create_document_acceptance(
     accepted_at: datetime | None = None,
 ) -> DocumentAcceptance:
     if acceptance_text_hash != expected_acceptance_text_hash(document):
-        raise LegalAcceptanceError("invalid_acceptance_text_hash")
+        raise InvalidAcceptanceTextHashError()
 
     acceptance_metadata = {key: value for key, value in (metadata or {}).items() if key != "plan_id"}
     if document.doc_type == "recurring_consent" and plan_id is not None:
@@ -328,11 +326,11 @@ def accept_legal_document(
     )
     if document is None:
         record_legal_acceptance("document_not_found")
-        raise LegalAcceptanceError("document_version_not_found")
+        raise DocumentVersionNotFoundError()
 
     if document.doc_type == "recurring_consent":
         if plan_id is None or not entrypoint_type or not entrypoint_value:
-            raise LegalAcceptanceError("recurring_consent_context_required")
+            raise RecurringConsentContextRequiredError()
         if (
             get_current_sellable_plan(
                 db,
@@ -343,7 +341,7 @@ def accept_legal_document(
             )
             is None
         ):
-            raise LegalAcceptanceError("recurring_consent_plan_invalid")
+            raise RecurringConsentPlanInvalidError()
 
     try:
         acceptance = create_document_acceptance(
@@ -359,7 +357,7 @@ def accept_legal_document(
             metadata=metadata,
             plan_id=plan_id,
         )
-    except LegalAcceptanceError:
+    except InvalidAcceptanceTextHashError:
         record_legal_acceptance("invalid_text_hash")
         raise
 

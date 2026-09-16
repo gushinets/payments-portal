@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from starlette.requests import Request
 
@@ -27,6 +28,15 @@ from app.domains.identity.errors import (
     RecurringConsentRequiredError,
     UnknownProductPlanError,
 )
+import app.domains.legal.router as legal_router
+from app.domains.legal.errors import (
+    DocumentVersionNotFoundError,
+    InvalidAcceptanceTextHashError,
+    LegalAcceptanceError,
+    RecurringConsentContextRequiredError,
+    RecurringConsentPlanInvalidError,
+)
+from app.domains.legal.router import AcceptDocumentRequest
 from app.http_errors import app_error_handler
 from app.infrastructure.sentry import Operation
 from app.main import create_app
@@ -41,6 +51,10 @@ class UnmappedPasswordResetError(PasswordResetError):
     pass
 
 
+class UnmappedLegalAcceptanceError(LegalAcceptanceError):
+    code = "new_legal_acceptance_error"
+
+
 def make_request() -> Request:
     return Request(
         {
@@ -52,6 +66,82 @@ def make_request() -> Request:
             "route": SimpleNamespace(path="/api/auth/checkout-intent"),
         }
     )
+
+
+def make_legal_acceptance_request() -> Request:
+    return Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/legal/acceptances",
+            "headers": [(b"user-agent", b"test")],
+            "query_string": b"",
+            "client": ("127.0.0.1", 1234),
+        }
+    )
+
+
+def raise_legal_error(error: LegalAcceptanceError, *args: object, **kwargs: object) -> None:
+    raise error
+
+
+def call_legal_acceptance_route(monkeypatch: pytest.MonkeyPatch, error: LegalAcceptanceError) -> None:
+    monkeypatch.setattr(legal_router, "accept_legal_document", lambda *args, **kwargs: raise_legal_error(error))
+    legal_router.accept_document(
+        payload=AcceptDocumentRequest(
+            document_version_id="00000000-0000-0000-0000-000000000001",
+            acceptance_text_hash="f" * 64,
+        ),
+        request=make_legal_acceptance_request(),
+        current=(object(), object()),
+        db=object(),
+    )
+
+
+@pytest.mark.parametrize(
+    ("error", "status_code", "detail"),
+    [
+        (DocumentVersionNotFoundError(), 404, "document_version_not_found"),
+        (
+            RecurringConsentContextRequiredError(),
+            400,
+            {"code": "recurring_consent_context_required"},
+        ),
+        (
+            RecurringConsentPlanInvalidError(),
+            400,
+            {"code": "recurring_consent_plan_invalid"},
+        ),
+        (InvalidAcceptanceTextHashError(), 400, "invalid_acceptance_text_hash"),
+    ],
+)
+def test_legal_acceptance_error_mapping_preserves_public_contract(
+    monkeypatch: pytest.MonkeyPatch,
+    error: LegalAcceptanceError,
+    status_code: int,
+    detail: str | dict[str, str],
+) -> None:
+    with pytest.raises(HTTPException) as raised:
+        call_legal_acceptance_route(monkeypatch, error)
+
+    assert raised.value.status_code == status_code
+    assert raised.value.detail == detail
+
+
+def test_unmapped_legal_acceptance_error_fails_closed_through_app_error_handler(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    error = UnmappedLegalAcceptanceError()
+
+    with pytest.raises(UnmappedLegalAcceptanceError):
+        call_legal_acceptance_route(monkeypatch, error)
+
+    with patch("app.http_errors.report_exception") as report_exception:
+        response = app_error_handler(make_request(), error)
+
+    assert response.status_code == 500
+    assert json.loads(response.body) == {"detail": {"code": "internal_server_error"}}
+    report_exception.assert_called_once()
 
 
 def test_create_app_registers_the_central_app_error_handler() -> None:

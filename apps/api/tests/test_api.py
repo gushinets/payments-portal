@@ -6957,8 +6957,8 @@ def test_required_document_acceptance_scope_and_time_filters_still_apply() -> No
 
 
 def test_create_document_acceptance_rejects_substituted_hash_in_endpoint_and_service() -> None:
+    from app.domains.legal.errors import InvalidAcceptanceTextHashError
     from app.domains.legal.service import (
-        LegalAcceptanceError,
         create_document_acceptance,
     )
 
@@ -6972,7 +6972,7 @@ def test_create_document_acceptance_rejects_substituted_hash_in_endpoint_and_ser
             title="Публичная оферта",
         )
         document_id = document.id
-        with pytest.raises(LegalAcceptanceError) as error:
+        with pytest.raises(InvalidAcceptanceTextHashError) as error:
             create_document_acceptance(
                 db,
                 document=document,
