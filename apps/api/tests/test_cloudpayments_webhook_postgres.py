@@ -9,6 +9,7 @@ import time
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
+from typing import Any, NoReturn
 from unittest.mock import Mock
 
 import pytest
@@ -29,11 +30,11 @@ from app.integrations.cloudpayments.adapter import verify_cloudpayments_signatur
 from app.integrations.cloudpayments import processing as cloudpayments_processing  # noqa: E402
 from app.integrations.cloudpayments import router as cloudpayments_router  # noqa: E402
 from app.core.settings import settings  # noqa: E402
-from app.domains.billing.enums import ProviderSubscriptionState  # noqa: E402
 from app.domains.billing.service import (  # noqa: E402
-    ApplyProviderSubscriptionStateCommand,
+    ApplyAuthoritativeSubscriptionStateCommand,
+    AuthoritativeSubscriptionState,
     ExpireDueSubscriptionsCommand,
-    apply_provider_subscription_state,
+    apply_authoritative_subscription_state,
     expire_due_subscriptions,
 )
 from app.infrastructure.queries.subscriptions import get_active_entitlement_for_scope  # noqa: E402
@@ -410,6 +411,57 @@ def test_raw_webhook_event_survives_failed_normalization_and_can_retry(
     assert order.status is OrderStatus.PAID
     assert len(payments) == 1
     assert payments[0].provider_payment_id == "tx-durable-1"
+
+
+def test_lifecycle_failure_rolls_back_commercial_and_access_changes_but_preserves_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    webhook_database: sessionmaker[Session],
+) -> None:
+    client = TestClient(app, raise_server_exceptions=False)
+    invoice_id = "inv-lifecycle-rollback-1"
+    transaction_id = "tx-lifecycle-rollback-1"
+    seed_order(webhook_database, invoice_id)
+
+    original_lifecycle = cloudpayments_processing.activate_paid_period
+    lifecycle_error = RuntimeError("forced lifecycle failure")
+    report_exception = Mock()
+
+    def raising_lifecycle(*args: Any, **kwargs: Any) -> NoReturn:
+        original_lifecycle(*args, **kwargs)
+        raise lifecycle_error
+
+    monkeypatch.setattr(cloudpayments_processing, "activate_paid_period", raising_lifecycle)
+    monkeypatch.setattr(cloudpayments_router, "report_exception", report_exception)
+
+    response = client.post(
+        "/api/cloudpayments/pay",
+        json=paid_payload(invoice_id, transaction_id),
+    )
+
+    assert response.status_code == 500
+    assert response.json() == {"detail": "webhook_normalization_failed"}
+    report_exception.assert_called_once_with(
+        lifecycle_error,
+        operation=cloudpayments_router.Operation.HTTP_REQUEST,
+        method="POST",
+        route="/api/cloudpayments/{endpoint}",
+        error_code="normalization_unexpected_error",
+    )
+    with webhook_database() as db:
+        event = db.query(PaymentWebhookEvent).one()
+        order = db.query(Order).one()
+        payment_count = db.query(Payment).count()
+        subscription_count = db.query(Subscription).count()
+        entitlement_count = db.query(Entitlement).count()
+        lifecycle_event_count = db.query(SubscriptionEvent).count()
+
+    assert event.status is PaymentWebhookEventStatus.FAILED
+    assert event.error_code == "normalization_unexpected_error"
+    assert order.status is OrderStatus.PENDING_PAYMENT
+    assert payment_count == 0
+    assert subscription_count == 0
+    assert entitlement_count == 0
+    assert lifecycle_event_count == 0
 
 
 def test_concurrent_duplicate_webhook_is_serialized_with_provider_payment_id(
@@ -804,12 +856,13 @@ def test_full_refund_after_provider_canceled_subscription_is_processed(
 
     with webhook_database() as db:
         subscription = db.query(Subscription).one()
-        apply_provider_subscription_state(
+        apply_authoritative_subscription_state(
             db,
-            ApplyProviderSubscriptionStateCommand(
+            ApplyAuthoritativeSubscriptionStateCommand(
                 operation_idempotency_key="webhook-provider-cancel-before-refund",
                 subscription_id=subscription.id,
-                provider_state=ProviderSubscriptionState.CANCELED,
+                authoritative_state=AuthoritativeSubscriptionState.CANCELED,
+                occurred_at=datetime.now(timezone.utc),
             ),
         )
         db.commit()

@@ -21,7 +21,6 @@ from app.domains.billing.service.commercial_transitions import (
     apply_refund_transition,
 )
 from app.integrations.cloudpayments.payload import get_first
-from app.integrations.cloudpayments.refunds import refund_lifecycle_applies
 from app.integrations.cloudpayments.validation import (
     cancel_validation_error,
     check_order_state_error,
@@ -356,7 +355,7 @@ def process_webhook_event(
                 ),
             )
             _apply_transition_result(event, result)
-            if result.refund_created and refund_lifecycle_applies(db, order, for_update=True):
+            if result.refund_created:
                 assert result.refund_id is not None
                 apply_refund(
                     db,

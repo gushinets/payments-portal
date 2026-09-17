@@ -1,7 +1,7 @@
 # Reliability Requirements
 
 Status: authoritative
-Last verified: 2026-09-14
+Last verified: 2026-09-16
 
 ## Critical paths
 
@@ -95,6 +95,34 @@ downstream failure rolls back normalized commercial and lifecycle mutations but
 does not erase the inbox receipt. Delivery duplicates and commercial replays
 remain separate identities. Future reconciliation must normalize into this
 same commercial transition so webhook and reconciliation evidence converge.
+
+The public billing Application lifecycle facade owns Subscription and
+Entitlement mutation semantics. Integration and operational entrypoints invoke
+that boundary and do not query subscription persistence to decide access
+consequences. A newly applicable Step-8 paid or refund outcome and its Step-9
+lifecycle consequence share the caller-owned processing transaction; neither
+transition boundary commits or rolls it back. Scheduled expiry likewise keeps
+its explicit CLI-owned transaction, with committed diagnostics emitted only
+after transaction exit.
+
+For normalized authoritative subscription-state transitions, the operation key
+is semantic identity. Exact replay for the same subscription, transition kind,
+normalized target, and authoritative occurrence time is safe; reuse for
+different semantic input fails closed without another mutation or event. The
+authoritative occurrence time is explicit and timezone-aware. An older fact is
+a stale no-op, an equal-time same-target fact is a safe no-op, an equal-time
+conflicting target fails closed, and a newer fact still must satisfy the
+lifecycle transition graph. Unknown or non-normalizable states fail before
+mutation. Only events explicitly marked as ordering-aware participate, so
+legacy processing timestamps are not promoted into authoritative ordering.
+These freshness rules are limited to authoritative subscription-state facts and
+do not impose last-write-wins behavior on other lifecycle commands.
+
+Local Entitlement state and validity remain the access authority. A provider or
+vendor state cannot become a second runtime access source. Portal-owned trials
+and manual access remain valid without provider subscription identity. Retained
+CloudPayments/direct-provider code is deactivated compatibility source;
+ANY-497 external billing command flows and reconciliation remain future work.
 
 Database retry decisions use these semantics:
 

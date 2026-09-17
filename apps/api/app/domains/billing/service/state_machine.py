@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.domains.billing.enums import ProviderSubscriptionState
+from app.domains.billing.enums import AuthoritativeSubscriptionState
 from app.models import SubscriptionStatus
 
 
@@ -10,14 +10,14 @@ class SubscriptionLifecycleError(ValueError):
     """Raised when a lifecycle command cannot be applied safely."""
 
 
-PROVIDER_SUBSCRIPTION_STATUS_MAP = {
-    ProviderSubscriptionState.ACTIVE: SubscriptionStatus.ACTIVE,
-    ProviderSubscriptionState.PAST_DUE: SubscriptionStatus.PAST_DUE,
-    ProviderSubscriptionState.CANCELED: SubscriptionStatus.CANCELED,
-    ProviderSubscriptionState.REJECTED: SubscriptionStatus.CANCELED,
-    ProviderSubscriptionState.EXPIRED: SubscriptionStatus.CANCELED,
-    ProviderSubscriptionState.PAUSED: SubscriptionStatus.PAUSED,
-    ProviderSubscriptionState.ENDED: SubscriptionStatus.CANCELED,
+AUTHORITATIVE_SUBSCRIPTION_STATUS_MAP = {
+    AuthoritativeSubscriptionState.ACTIVE: SubscriptionStatus.ACTIVE,
+    AuthoritativeSubscriptionState.PAST_DUE: SubscriptionStatus.PAST_DUE,
+    AuthoritativeSubscriptionState.CANCELED: SubscriptionStatus.CANCELED,
+    AuthoritativeSubscriptionState.REJECTED: SubscriptionStatus.CANCELED,
+    AuthoritativeSubscriptionState.EXPIRED: SubscriptionStatus.CANCELED,
+    AuthoritativeSubscriptionState.PAUSED: SubscriptionStatus.PAUSED,
+    AuthoritativeSubscriptionState.ENDED: SubscriptionStatus.CANCELED,
 }
 
 SUBSCRIPTION_STATUS_TRANSITIONS = {
@@ -65,8 +65,11 @@ SUBSCRIPTION_STATUS_TRANSITIONS = {
 }
 
 
-def subscription_status_from_provider_state(state: ProviderSubscriptionState) -> SubscriptionStatus:
-    return PROVIDER_SUBSCRIPTION_STATUS_MAP[state]
+def subscription_status_from_authoritative_state(state: AuthoritativeSubscriptionState) -> SubscriptionStatus:
+    try:
+        return AUTHORITATIVE_SUBSCRIPTION_STATUS_MAP[state]
+    except KeyError as exc:
+        raise SubscriptionLifecycleError("unsupported_authoritative_subscription_state") from exc
 
 
 def ensure_subscription_status_transition(current: SubscriptionStatus, next_status: SubscriptionStatus) -> None:

@@ -190,6 +190,83 @@ def test_integrations_allow_retained_commercial_correlation_dependencies(tmp_pat
     assert check_python_boundaries(tmp_path) == []
 
 
+@pytest.mark.parametrize(
+    ("relative", "source", "expected"),
+    (
+        (
+            "apps/api/app/integrations/example/processing.py",
+            "from app.models import SubscriptionStatus\n",
+            "references canonical lifecycle model SubscriptionStatus from app.models",
+        ),
+        (
+            "apps/api/app/integrations/example/processing.py",
+            "from app.infrastructure.queries.subscriptions import get_subscription_for_order\n",
+            "violates outer subscription/entitlement lifecycle ownership",
+        ),
+        (
+            "apps/api/app/commands/example.py",
+            "from app.domains.billing.service.lifecycle_operations import apply_refund\n",
+            "violates outer subscription/entitlement lifecycle ownership",
+        ),
+        (
+            "apps/api/app/domains/billing/router.py",
+            "from fastapi import APIRouter\n"
+            "from app.domains.billing.service.lifecycle import activate_paid_period\n"
+            "router = APIRouter()\n",
+            "violates outer subscription/entitlement lifecycle ownership",
+        ),
+        (
+            "apps/api/app/commands/example.py",
+            "from app import models\nstatus = models.EntitlementStatus.ACTIVE\n",
+            "references canonical lifecycle model EntitlementStatus from app.models",
+        ),
+    ),
+)
+def test_outer_layers_reject_subscription_lifecycle_ownership(
+    tmp_path: Path,
+    relative: str,
+    source: str,
+    expected: str,
+) -> None:
+    write_module(tmp_path, relative, source)
+
+    errors = check_python_boundaries(tmp_path)
+
+    assert len(errors) == 1
+    assert expected in errors[0]
+    assert "invoke" in errors[0]
+
+
+def test_outer_layers_use_public_lifecycle_facade_without_blocking_read_side_queries(
+    tmp_path: Path,
+) -> None:
+    write_module(
+        tmp_path,
+        "apps/api/app/integrations/example/processing.py",
+        "from app.domains.billing.service import ApplyRefundCommand, apply_refund\n",
+    )
+    write_module(
+        tmp_path,
+        "apps/api/app/commands/example.py",
+        "from app.domains.billing.service import ExpireDueSubscriptionsCommand, expire_due_subscriptions\n",
+    )
+    write_module(
+        tmp_path,
+        "apps/api/app/domains/billing/router.py",
+        "from fastapi import APIRouter\n"
+        "from app.domains.billing.service import ApplyRefundCommand, apply_refund\n"
+        "from app.models import SubscriptionStatus\n"
+        "router = APIRouter()\n",
+    )
+    write_module(
+        tmp_path,
+        "apps/api/app/domains/billing/service/account_queries.py",
+        "from app.infrastructure.queries.subscriptions import list_account_subscriptions\n",
+    )
+
+    assert check_python_boundaries(tmp_path) == []
+
+
 def test_domain_service_trees_reject_fastapi_and_starlette_dependencies(tmp_path: Path) -> None:
     write_module(
         tmp_path,

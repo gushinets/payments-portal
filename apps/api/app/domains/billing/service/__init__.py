@@ -1,8 +1,9 @@
 """Provider-neutral subscription lifecycle public facade."""
 
+from app.domains.billing.enums import AuthoritativeSubscriptionState
 from app.domains.billing.service.commands import (
     ActivatePaidPeriodCommand,
-    ApplyProviderSubscriptionStateCommand,
+    ApplyAuthoritativeSubscriptionStateCommand,
     ApplyRefundCommand,
     ApplyRenewalPaymentCommand,
     EnableAutomaticRenewalCommand,
@@ -16,7 +17,7 @@ from app.domains.billing.service.lifecycle import (
     start_trial,
 )
 from app.domains.billing.service.lifecycle_operations import (
-    apply_provider_subscription_state,
+    apply_authoritative_subscription_state,
     apply_refund,
     apply_renewal_payment,
     enable_automatic_renewal,
@@ -26,14 +27,15 @@ from app.domains.billing.service.lifecycle_operations import (
 from app.domains.billing.service.state_machine import (
     SubscriptionLifecycleError,
     ensure_subscription_status_transition,
-    subscription_status_from_provider_state,
+    subscription_status_from_authoritative_state,
 )
 
 __all__ = [
     "ActivatePaidPeriodCommand",
-    "ApplyProviderSubscriptionStateCommand",
+    "ApplyAuthoritativeSubscriptionStateCommand",
     "ApplyRefundCommand",
     "ApplyRenewalPaymentCommand",
+    "AuthoritativeSubscriptionState",
     "EnableAutomaticRenewalCommand",
     "ExpireDueSubscriptionsCommand",
     "LifecycleCommand",
@@ -41,7 +43,7 @@ __all__ = [
     "StartTrialCommand",
     "SubscriptionLifecycleError",
     "activate_paid_period",
-    "apply_provider_subscription_state",
+    "apply_authoritative_subscription_state",
     "apply_refund",
     "apply_renewal_payment",
     "enable_automatic_renewal",
@@ -49,5 +51,5 @@ __all__ = [
     "expire_due_subscriptions",
     "request_cancellation",
     "start_trial",
-    "subscription_status_from_provider_state",
+    "subscription_status_from_authoritative_state",
 ]
