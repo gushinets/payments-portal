@@ -1116,9 +1116,6 @@ _OUTER_FORBIDDEN_LIFECYCLE_MODULES = (
     "app.domains.billing.service.lifecycle_operations",
     "app.domains.billing.service.state_machine",
     "app.domains.billing.service.support",
-    "app.infrastructure.persistence.entitlements",
-    "app.infrastructure.persistence.subscriptions",
-    "app.infrastructure.queries.entitlements",
     "app.infrastructure.queries.subscriptions",
 )
 

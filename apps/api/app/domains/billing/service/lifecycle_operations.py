@@ -68,6 +68,7 @@ from app.infrastructure.queries.subscriptions import (
 )
 
 _PROVIDER_SUBSCRIPTION_REFERENCE_INDEX = "uq_subscriptions_provider_reference"
+_SUBSCRIPTION_EVENT_OPERATION_KEY_CONSTRAINT = "uq_subscription_events_operation_key"
 _AUTHORITATIVE_STATE_CONTRACT_VERSION_KEY = "authoritative_state_contract_version"
 _AUTHORITATIVE_STATE_CONTRACT_VERSION = 1
 _AUTHORITATIVE_TARGET_STATUS_KEY = "authoritative_target_status"
@@ -80,6 +81,11 @@ _AUTHORITATIVE_STATE_DUPLICATE = "duplicate"
 def _is_provider_subscription_reference_conflict(error: IntegrityError) -> bool:
     constraint_name = getattr(getattr(error.orig, "diag", None), "constraint_name", None)
     return constraint_name == _PROVIDER_SUBSCRIPTION_REFERENCE_INDEX
+
+
+def _is_subscription_event_operation_key_conflict(error: IntegrityError) -> bool:
+    constraint_name = getattr(getattr(error.orig, "diag", None), "constraint_name", None)
+    return constraint_name == _SUBSCRIPTION_EVENT_OPERATION_KEY_CONSTRAINT
 
 
 def enable_automatic_renewal(db: Session, command: EnableAutomaticRenewalCommand) -> Subscription:
@@ -351,46 +357,39 @@ def apply_authoritative_subscription_state(
         None,
     )
     previous = subscription.status
+    disposition = _AUTHORITATIVE_STATE_APPLIED
     if latest_event is not None:
         if _instant_before(command.occurred_at, latest_event.occurred_at):
-            _write_authoritative_state_event(
-                db,
-                subscription=subscription,
-                command=command,
-                previous_status=previous,
-                next_status=previous,
-                target_status=status,
-                disposition=_AUTHORITATIVE_STATE_STALE,
-            )
-            return subscription
-        if _same_instant(command.occurred_at, latest_event.occurred_at):
+            disposition = _AUTHORITATIVE_STATE_STALE
+        elif _same_instant(command.occurred_at, latest_event.occurred_at):
             if _ordering_aware_authoritative_target(latest_event) != status.value:
                 raise SubscriptionLifecycleError("authoritative_state_occurrence_conflict")
+            disposition = _AUTHORITATIVE_STATE_DUPLICATE
+
+    try:
+        with db.begin_nested():
+            if disposition == _AUTHORITATIVE_STATE_APPLIED:
+                ensure_subscription_status_transition(previous, status)
+                subscription.status = status
+                if status == SubscriptionStatus.CANCELED:
+                    subscription.renewal_mode = SubscriptionRenewalMode.MANUAL
+                    subscription.canceled_at = subscription.canceled_at or command.occurred_at
             _write_authoritative_state_event(
                 db,
                 subscription=subscription,
                 command=command,
                 previous_status=previous,
-                next_status=previous,
+                next_status=subscription.status,
                 target_status=status,
-                disposition=_AUTHORITATIVE_STATE_DUPLICATE,
+                disposition=disposition,
             )
-            return subscription
-
-    ensure_subscription_status_transition(previous, status)
-    subscription.status = status
-    if status == SubscriptionStatus.CANCELED:
-        subscription.renewal_mode = SubscriptionRenewalMode.MANUAL
-        subscription.canceled_at = subscription.canceled_at or command.occurred_at
-    _write_authoritative_state_event(
-        db,
-        subscription=subscription,
-        command=command,
-        previous_status=previous,
-        next_status=status,
-        target_status=status,
-        disposition=_AUTHORITATIVE_STATE_APPLIED,
-    )
+    except IntegrityError as exc:
+        if not _is_subscription_event_operation_key_conflict(exc):
+            raise
+        winning_event = _event_for_key(db, command.operation_idempotency_key)
+        if winning_event is None:
+            raise SubscriptionLifecycleError("operation_idempotency_conflict") from exc
+        return _authoritative_state_replay(db, command, winning_event, status)
     return subscription
 
 

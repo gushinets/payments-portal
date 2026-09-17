@@ -869,6 +869,109 @@ def test_parallel_apply_provider_state_same_key_reuses_event_after_subscription_
     assert events[0].event_type is SubscriptionEventType.PROVIDER_SUBSCRIPTION_STATE_APPLIED
 
 
+def test_parallel_apply_provider_state_same_key_different_subscriptions_conflicts_without_leaking_mutation(
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime(2026, 9, 14, 10, 45, tzinfo=UTC)
+    with postgres_session_factory() as session, session.begin():
+        user_one, _ = _add_billing_user_and_account(session, "concurrent-provider-state-cross-subscription-one")
+        user_two, _ = _add_billing_user_and_account(session, "concurrent-provider-state-cross-subscription-two")
+        plan = _plan_by_code(session, "document-summary-pro")
+        subscription_one = _add_active_subscription(session, user=user_one, plan=plan, now=now)
+        subscription_two = _add_active_subscription(session, user=user_two, plan=plan, now=now)
+        subscription_ids = (subscription_one.id, subscription_two.id)
+
+    operation_key = "concurrent-provider-state-cross-subscription"
+    commands = tuple(
+        ApplyAuthoritativeSubscriptionStateCommand(
+            operation_idempotency_key=operation_key,
+            subscription_id=subscription_id,
+            authoritative_state=AuthoritativeSubscriptionState.PAST_DUE,
+            occurred_at=now,
+        )
+        for subscription_id in subscription_ids
+    )
+    event_check_barrier, synchronized_threads = _synchronize_lifecycle_operation_event_misses(
+        monkeypatch,
+        operation_key,
+    )
+    write_barrier = Barrier(3)
+    original_write_authoritative_state_event = lifecycle_operations._write_authoritative_state_event
+
+    def synchronized_write_authoritative_state_event(
+        db: Session,
+        *,
+        subscription: Subscription,
+        command: ApplyAuthoritativeSubscriptionStateCommand,
+        previous_status: SubscriptionStatus,
+        next_status: SubscriptionStatus,
+        target_status: SubscriptionStatus,
+        disposition: str,
+    ) -> None:
+        write_barrier.wait(timeout=5)
+        original_write_authoritative_state_event(
+            db,
+            subscription=subscription,
+            command=command,
+            previous_status=previous_status,
+            next_status=next_status,
+            target_status=target_status,
+            disposition=disposition,
+        )
+
+    monkeypatch.setattr(
+        lifecycle_operations,
+        "_write_authoritative_state_event",
+        synchronized_write_authoritative_state_event,
+    )
+
+    def submit(barrier: Barrier, command: ApplyAuthoritativeSubscriptionStateCommand) -> tuple[str, uuid.UUID]:
+        barrier.wait(timeout=5)
+        with postgres_session_factory() as session, session.begin():
+            try:
+                result = apply_authoritative_subscription_state(session, command)
+            except SubscriptionLifecycleError as exc:
+                assert str(exc) == "operation_idempotency_conflict"
+                unchanged = get_subscription_by_id(session, command.subscription_id)
+                assert unchanged is not None
+                assert unchanged.status is SubscriptionStatus.ACTIVE
+                return str(exc), command.subscription_id
+            return "applied", result.id
+
+    start_barrier = Barrier(3)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(submit, start_barrier, command) for command in commands]
+        start_barrier.wait(timeout=5)
+        event_check_barrier.wait(timeout=5)
+        write_barrier.wait(timeout=5)
+        results = [future.result(timeout=10) for future in futures]
+
+    with postgres_session_factory() as session:
+        persisted_subscriptions = [session.get(Subscription, subscription_id) for subscription_id in subscription_ids]
+        events = (
+            session.query(SubscriptionEvent).filter(SubscriptionEvent.operation_idempotency_key == operation_key).all()
+        )
+
+    assert sorted(result[0] for result in results) == ["applied", "operation_idempotency_conflict"]
+    assert len(synchronized_threads) == 2
+    assert len(events) == 1
+    assert events[0].subscription_id == next(result[1] for result in results if result[0] == "applied")
+    assert events[0].next_status is SubscriptionStatus.PAST_DUE
+    assert {subscription.id for subscription in persisted_subscriptions if subscription is not None} == set(
+        subscription_ids
+    )
+    winning_subscription_id = events[0].subscription_id
+    for persisted_subscription in persisted_subscriptions:
+        assert persisted_subscription is not None
+        expected_status = (
+            SubscriptionStatus.PAST_DUE
+            if persisted_subscription.id == winning_subscription_id
+            else SubscriptionStatus.ACTIVE
+        )
+        assert persisted_subscription.status is expected_status
+
+
 def test_parallel_stale_and_newer_authoritative_states_cannot_regress_subscription(
     postgres_session_factory: sessionmaker[Session],
 ) -> None:

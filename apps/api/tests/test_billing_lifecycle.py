@@ -279,6 +279,39 @@ def test_newer_authoritative_state_cannot_resurrect_terminal_subscription(db_ses
     )
 
 
+def test_newer_authoritative_state_with_same_terminal_target_uses_transition_graph(db_session: Session) -> None:
+    now = datetime(2026, 9, 16, 12, 0, tzinfo=timezone.utc)
+    subscription = _add_authoritative_state_subscription(db_session, key="authoritative-terminal-normalized", now=now)
+    apply_authoritative_subscription_state(
+        db_session,
+        ApplyAuthoritativeSubscriptionStateCommand(
+            operation_idempotency_key="authoritative-terminal-normalized-canceled",
+            subscription_id=subscription.id,
+            authoritative_state=AuthoritativeSubscriptionState.CANCELED,
+            occurred_at=now,
+        ),
+    )
+
+    with pytest.raises(SubscriptionLifecycleError, match="invalid_subscription_status_transition"):
+        apply_authoritative_subscription_state(
+            db_session,
+            ApplyAuthoritativeSubscriptionStateCommand(
+                operation_idempotency_key="authoritative-terminal-normalized-ended",
+                subscription_id=subscription.id,
+                authoritative_state=AuthoritativeSubscriptionState.ENDED,
+                occurred_at=now + timedelta(minutes=1),
+            ),
+        )
+
+    assert subscription.status is SubscriptionStatus.CANCELED
+    assert (
+        db_session.query(SubscriptionEvent)
+        .filter(SubscriptionEvent.operation_idempotency_key == "authoritative-terminal-normalized-ended")
+        .count()
+        == 0
+    )
+
+
 def _seed_transaction_participation_subscription(db_session: Session, *, key: str) -> uuid.UUID:
     now = datetime(2026, 9, 14, 9, 0, tzinfo=timezone.utc)
     plan = db_session.query(Plan).filter(Plan.tenant_id == "anytoolai", Plan.region == "ru").first()
