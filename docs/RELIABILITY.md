@@ -72,9 +72,29 @@ serialize on the established row lock, and inspect the operation event again
 after acquiring that lock. Once one transaction commits, a concurrent replay
 returns the persisted result rather than repeating the transition. Database
 uniqueness remains the final invariant; logs and exceptions are not a substitute
-for it. Retained CloudPayments webhook transaction and idempotency mechanics are
-legacy evidence only, are not active in normal runtime, and are not the target
-model.
+for it. Retained CloudPayments webhook transaction and delivery-idempotency
+mechanics remain a compatibility boundary for the inactive source; they are not
+active in normal runtime and do not define future integration protocol.
+
+Canonical commercial projection follows an Order-first lock direction.
+Application reloads and locks the Order before Payment/Refund decisions and
+revalidates local provider-account correlation, immutable financial context,
+and opaque external identity. Database uniqueness is the final identity
+invariant. A new external Payment or Refund identity is inserted and flushed
+inside a targeted nested savepoint before related commercial mutations; only
+the named identity uniqueness conflict is recovered and reclassified as a
+duplicate or business conflict. Unrelated `IntegrityError` is re-raised, and
+the focused helper never commits or rolls back the caller's outer transaction.
+No generic database retry or provider network I/O occurs inside this commercial
+transition.
+
+The retained webhook path uses two durable phases: first commit the redacted
+inbox receipt, then process the normalized fact in a caller-owned transaction
+that also contains any newly applicable subscription/entitlement handoff. A
+downstream failure rolls back normalized commercial and lifecycle mutations but
+does not erase the inbox receipt. Delivery duplicates and commercial replays
+remain separate identities. Future reconciliation must normalize into this
+same commercial transition so webhook and reconciliation evidence converge.
 
 Database retry decisions use these semantics:
 

@@ -291,6 +291,45 @@ fact is rejected or ignored according to explicit transition and idempotency
 rules, or it triggers reconciliation. It does not blindly downgrade or
 overwrite newer confirmed local state.
 
+### Commercial fact transition outcomes
+
+A verified Payment or Refund fact enters one provider-neutral Application
+transition path. Integration may correlate a candidate local Order and supplies
+the local provider-account UUID as correlation context, not as an external
+provider identifier. Application locks and reloads the Order, then validates
+provider namespace, provider account, tenant, region, opaque external identity,
+amount, and currency before mutation.
+
+The transition returns one explicit outcome:
+
+- `APPLIED` — a new canonical commercial mutation was made;
+- `DUPLICATE` — the same immutable commercial identity and outcome were already
+  applied, so no mutation or downstream effect is repeated;
+- `IGNORED` — the fact is stale relative to a confirmed terminal state;
+- `CONFLICT` — the same identity contradicts canonical correlation or outcome
+  and fails closed with a safe internal reason.
+
+An exact `SUCCEEDED` replay against a `SUCCEEDED` Payment is a commercial
+`DUPLICATE`; after that Payment advances to `PARTIALLY_REFUNDED` or `REFUNDED`,
+the same success fact is later and is `IGNORED` as stale, without Payment,
+Order, or downstream-effect mutation.
+
+A webhook-delivery duplicate is different: the durable inbox recognizes the
+same delivery before commercial processing. A fresh delivery that reaches
+Application and resolves as a commercial `DUPLICATE` is processed successfully,
+not relabeled as an inbox duplicate. Distinct opaque Payment identities are
+distinct attempts and may be recorded without reopening an already terminal
+Order, except that an uncorrelated cancellation fact against an already
+terminal Order is stale and does not synthesize a new Payment attempt;
+contradictory facts for the same identity never use last-write-wins.
+
+Webhook-derived facts and future reconciliation-derived facts must use this
+same transition path. Provider payloads, vendor status strings, email/account
+fields, signatures, and arbitrary dictionaries do not enter the Application
+contract. The retained `Payment.raw_summary` column is not a canonical input
+and provider-specific summaries are no longer mutated by commercial
+processing; durable redacted evidence remains in the webhook inbox.
+
 ### Current local transaction and replay contract
 
 The current provider-neutral lifecycle functions are transaction participants.
@@ -306,13 +345,23 @@ already committed peer replays the persisted result. Existing database
 uniqueness is the final invariant against duplicate durable events; no generic
 automatic retry loop is implied.
 
+Commercial transitions use an Order-first lock direction. Payment/Refund
+external identity candidates are inserted and flushed inside a targeted nested
+savepoint before related commercial mutation. Only the known Payment or Refund
+identity uniqueness constraint is recovered; unrelated integrity failures are
+re-raised. The winning row is reloaded and classified as duplicate or conflict
+while the outer transaction remains usable. No provider network call occurs in
+this transaction.
+
 The current direct-provider checkout path prepares its checkout action locally
 before the final local commit. Specifically, `prepare_checkout_action()` is
 non-network preparation in the retained Portal-managed boundary. Its placement
 must not be cited as an already implemented ordering guarantee for the future
-external-billing command sequence above. The retained CloudPayments webhook
-commit, rollback, and idempotency behavior is likewise legacy-only and is not a
-normal-runtime or target architecture contract.
+external-billing command sequence above. The retained CloudPayments webhook is
+a compatibility boundary: its redacted inbox receipt commits before normalized
+processing, while the commercial transition and any downstream Step-9
+lifecycle effect share the following transaction. It remains outside normal
+runtime composition.
 
 ANY-489 required no schema migration: it uses the existing operation identity,
 audit events, locks, savepoints, and uniqueness constraints. Persistence for a
@@ -447,6 +496,7 @@ card/token/payment values. New monitoring or Sentry is outside this boundary.
 | `app.main` | Composition root that owns normal application lifespan and the empty direct-provider registry; retained CloudPayments source is not wired into normal runtime. |
 | `app.models` | Canonical persisted model contract. It remains in place and must not be duplicated. |
 | `app.infrastructure.queries` | Useful persistence extraction for repeated or query-specific access; it does not require repositories for every table. |
+| `app.domains.billing.service.commercial_transitions` | Application-owned canonical Payment/Refund commercial transition policy and caller-owned transaction participant. |
 | `app.integrations.cloudpayments` | Retained external boundary for CloudPayments parsing, signature verification, redaction, validation, and normalization; it is not a normal-runtime callback path. |
 | `app.payment_providers` | Retained direct-provider contract. Its meaning is limited to Portal-managed direct-provider flows and it is not part of the long-term target or active normal runtime. |
 | `app.domains.identity.router` | Presentation entrypoint with known transitional checkout orchestration responsibilities. |
@@ -463,10 +513,11 @@ implements the target logical layers.
   provider is registered. Retained source supplies `user.email` as the legacy
   CloudPayments `account_id`; future work may establish an Application
   boundary, but this step does not move the code.
-- `integrations/cloudpayments/processing.py` both interprets provider input and
-  performs SQLAlchemy queries, direct `Order` and `Payment` mutation, and
-  subscription transitions. This is known mixed responsibility and is not
-  refactored here.
+- `integrations/cloudpayments/processing.py` retains provider-protocol
+  interpretation, Order correlation, durable-inbox handling, and the Step-9
+  compatibility handoff. Canonical Payment/Refund/Order commercial mutation is
+  delegated to Application; the retained source is not mounted in normal
+  runtime.
 - `payment_providers` exposes a broad direct-provider contract covering
   checkout, transaction lookup, refunds, and recurring operations. It remains
   the Portal-managed boundary and is not generalized into an external-billing

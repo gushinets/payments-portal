@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime
 from decimal import Decimal
-from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.payment_providers.errors import PaymentsError
 from app.integrations.cloudpayments.account_validation import validate_provider_account_context
 from app.integrations.cloudpayments.api_client import CloudPaymentsApiClient
 from app.integrations.cloudpayments.operation_meta import (
@@ -16,16 +13,11 @@ from app.integrations.cloudpayments.operation_meta import (
     idempotency_key_required_meta,
     succeeded_meta,
 )
-from app.integrations.cloudpayments.payload import get_first
 from app.infrastructure.queries.subscriptions import get_subscription_for_order
 from app.models import (
     Order,
     OrderStatus,
-    Payment,
     PaymentProviderAccount,
-    PaymentStatus,
-    Refund,
-    RefundStatus,
 )
 from app.payment_providers.contracts import (
     ProviderRefundStatus,
@@ -33,12 +25,7 @@ from app.payment_providers.contracts import (
     RefundResult,
     RetryDisposition,
 )
-
-CAPTURED_PAYMENT_STATUSES = {
-    PaymentStatus.SUCCEEDED,
-    PaymentStatus.REFUNDED,
-    PaymentStatus.PARTIALLY_REFUNDED,
-}
+from app.payment_providers.errors import PaymentsError
 
 
 def refund_payment(
@@ -205,92 +192,10 @@ def refund_payment(
     )
 
 
-def record_refund(
-    db: Session,
-    *,
-    order: Order,
-    payment: Payment,
-    amount_minor: int,
-    currency: str,
-    payload: dict[str, Any],
-    now: datetime,
-) -> Refund:
-    provider_refund_id = get_first(
-        payload,
-        "RefundId",
-        "refundId",
-        "TransactionId",
-        "transactionId",
-    )
-    refund = None
-    if provider_refund_id:
-        refund = (
-            db.query(Refund)
-            .filter(
-                Refund.provider_account_id == order.provider_account_id,
-                Refund.provider_refund_id == str(provider_refund_id),
-            )
-            .first()
-        )
-    if refund is not None:
-        return refund
-
-    refund = Refund(
-        tenant_id=order.tenant_id,
-        region=order.region,
-        order_id=order.id,
-        payment_id=payment.id,
-        provider_account_id=order.provider_account_id,
-        provider_refund_id=str(provider_refund_id) if provider_refund_id else None,
-        status=RefundStatus.SUCCEEDED,
-        amount_minor=amount_minor,
-        currency=currency,
-        reason=get_first(payload, "Reason", "reason"),
-        requested_at=now,
-        succeeded_at=now,
-        metadata_={},
-    )
-    db.add(refund)
-    payment.refunded_amount_minor = max(payment.refunded_amount_minor, 0) + amount_minor
-    payment.status = (
-        PaymentStatus.REFUNDED
-        if payment.refunded_amount_minor >= payment.amount_minor
-        else PaymentStatus.PARTIALLY_REFUNDED
-    )
-    db.add(payment)
-    db.flush()
-    _apply_order_refund_status(db, order)
-    db.add(order)
-    db.flush()
-    return refund
-
-
 def refund_lifecycle_applies(db: Session, order: Order, *, for_update: bool = False) -> bool:
     if order.status != OrderStatus.CANCELED:
         return True
     return get_subscription_for_order(db, order.id, for_update=for_update) is not None
-
-
-def _apply_order_refund_status(db: Session, order: Order) -> None:
-    if not refund_lifecycle_applies(db, order):
-        return
-    captured_payments = (
-        db.query(Payment)
-        .filter(
-            Payment.order_id == order.id,
-            Payment.status.in_(CAPTURED_PAYMENT_STATUSES),
-        )
-        .all()
-    )
-    captured_total = sum(max(payment.amount_minor, 0) for payment in captured_payments)
-    refunded_total = sum(max(payment.refunded_amount_minor, 0) for payment in captured_payments)
-    if refunded_total <= 0:
-        return
-    order.status = (
-        OrderStatus.REFUNDED
-        if captured_total > 0 and refunded_total >= captured_total
-        else OrderStatus.PARTIALLY_REFUNDED
-    )
 
 
 def _provider_transaction_id(value: str | None) -> int | None:

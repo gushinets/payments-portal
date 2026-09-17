@@ -144,6 +144,34 @@ service container. Retained integration routes and CLI entrypoints keep their
 documented boundary-specific responsibilities. Later physical package moves
 must not change the transaction contract.
 
+### Commercial transition boundary
+
+Application owns the canonical `Order`/`Payment`/`Refund` commercial state
+machine. Integration authenticates and validates provider input, correlates a
+candidate local Order, and maps the verified fact into a typed provider-neutral
+command. It does not import or mutate canonical `Payment`, `Refund`,
+`PaymentStatus`, or `RefundStatus` state. Application reloads and locks the
+Order first, revalidates provider/account/tenant/region and financial
+correlation, and then applies the Payment or Refund projection.
+
+Commercial transition functions participate in the caller-owned transaction:
+they may lock, mutate, and flush, but never commit or roll back the outer
+transaction. Their results distinguish `APPLIED`, commercial `DUPLICATE`,
+stale `IGNORED`, and contradictory `CONFLICT` facts. Database uniqueness is
+the final external Payment/Refund identity invariant; focused persistence may
+use a targeted savepoint for the candidate identity insert and recover only
+the named identity uniqueness race.
+
+The retained webhook inbox is a compatibility boundary with two transactions.
+The redacted receipt is committed first. Normalized processing then invokes the
+Application commercial transition and, only for a newly applicable result,
+hands the result to the existing subscription/entitlement lifecycle (Step 9)
+in the same second transaction. A downstream failure rolls back the commercial
+projection and lifecycle effects while preserving the durable inbox receipt.
+Future reconciliation must feed the same Application transition path rather
+than introduce another state machine. Retained CloudPayments remains absent
+from normal runtime composition.
+
 ### FastAPI dependency lifetimes
 
 Request-scoped resources and context are composed explicitly:
@@ -174,11 +202,12 @@ tests call them directly or override their actual resource/context dependencies.
 | Legal acceptance | `app.domains.legal.service.accept_legal_document()` owns the acceptance commit and refresh. Any preceding authenticated-request bookkeeping remains a separate transaction. |
 | Password-reset request | `app.domains.identity.services.password_reset.prepare_password_reset()` deliberately commits cleanup, IP rate-limit accounting, account rate-limit accounting, and reset-token creation as separate durable phases so a later failure does not erase already-consumed protection. |
 | Password-reset confirmation | `app.domains.identity.services.password_reset.confirm_password_reset()` atomically commits token claim, password replacement, outstanding-token invalidation, and active-session revocation. |
-| Provider-neutral billing lifecycle | Lifecycle functions participate in the calling application operation's transaction and never finalize the outer transaction themselves. |
+| Commercial Payment/Refund transition (Step 8) | Application locks the Order first, applies the canonical commercial projection, and participates in the caller-owned transaction without finalizing it. |
+| Subscription/entitlement lifecycle (Step 9) | Lifecycle functions consume newly applicable commercial results in the same caller-owned transaction and never finalize the outer transaction themselves. |
 | Scheduled subscription expiry | The CLI owns one explicit transaction. It validates persisted identities before transaction exit and emits committed/success diagnostics only after commit. |
 | Provider-account uniqueness recovery | The current checkout helper uses a nested savepoint to recover a concurrent unique insert; this is not a business commit. |
 | Checkout | `app.domains.identity.services.checkout.create_checkout()` owns provider-configuration rollback and the final local commit. Checkout state and `prepare_checkout_action()` are local work before that commit; preparation performs no network command and is not evidence that future external-command ordering is already implemented. |
-| CloudPayments webhook source | Its retained commit, rollback, and idempotency mechanics are legacy-only and are not the target transaction architecture or a normal-runtime path. |
+| Retained CloudPayments webhook source | The redacted inbox receipt commits first; normalized commercial processing and any Step-9 handoff share a second transaction. Delivery idempotency remains distinct from commercial replay. The source is not mounted in normal runtime. |
 
 Retained CloudPayments and direct-provider persistence is transitional legacy
 expected to be physically decommissioned later. It is not the architectural
