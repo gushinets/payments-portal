@@ -522,6 +522,44 @@ def test_same_payment_identity_cannot_move_between_orders(db_session: Session) -
     assert db_session.query(Payment).count() == 1
 
 
+def test_existing_payment_on_another_terminal_order_conflicts_with_cancel(
+    db_session: Session,
+) -> None:
+    first_order, account = _seed_order(db_session, key="cancel-identity-first")
+    payment = _add_payment(
+        db_session,
+        first_order,
+        payment_id="shared-cancel-payment",
+        status=PaymentStatus.AUTHORIZED,
+    )
+    second_order, _ = _seed_order(
+        db_session,
+        key="cancel-identity-second",
+        status=OrderStatus.PAID,
+        account=account,
+    )
+    order_state = (second_order.status, second_order.paid_at, second_order.failed_at, second_order.canceled_at)
+
+    result = apply_payment_transition(
+        db_session,
+        _payment_command(
+            second_order,
+            payment_id="shared-cancel-payment",
+            outcome=PaymentOutcome.CANCELED,
+        ),
+    )
+
+    assert result.disposition == TransitionDisposition.CONFLICT
+    assert result.reason_code == "payment_context_mismatch"
+    assert payment.order_id == first_order.id
+    assert payment.status == PaymentStatus.AUTHORIZED
+    assert payment.authorized_at == OCCURRED_AT
+    assert payment.refunded_amount_minor == 0
+    assert (second_order.status, second_order.paid_at, second_order.failed_at, second_order.canceled_at) == order_state
+    assert db_session.query(Payment).count() == 1
+    assert db_session.query(Payment).filter(Payment.order_id == second_order.id).count() == 0
+
+
 def test_existing_provider_summary_is_not_rewritten_by_progression(db_session: Session) -> None:
     order, _ = _seed_order(db_session, key="historical-summary")
     payment = _add_payment(db_session, order, payment_id="payment-1", status=PaymentStatus.AUTHORIZED)
@@ -558,6 +596,85 @@ def test_distinct_successful_attempt_does_not_reopen_or_reapply_terminal_order(
     assert payment.status == PaymentStatus.SUCCEEDED
     assert order.status == terminal_status
     assert db_session.query(Payment).count() == (2 if terminal_status == OrderStatus.PAID else 1)
+
+
+@pytest.mark.parametrize(
+    "terminal_status",
+    (
+        OrderStatus.PAID,
+        OrderStatus.CANCELED,
+        OrderStatus.PARTIALLY_REFUNDED,
+        OrderStatus.REFUNDED,
+    ),
+)
+def test_uncorrelated_cancel_on_terminal_order_is_stale_without_payment(
+    db_session: Session,
+    terminal_status: OrderStatus,
+) -> None:
+    order, _ = _seed_order(db_session, key=f"unknown-cancel-{terminal_status.value}", status=terminal_status)
+    order_state = (order.status, order.paid_at, order.failed_at, order.canceled_at)
+
+    result = apply_payment_transition(
+        db_session,
+        _payment_command(order, payment_id="unknown-payment", outcome=PaymentOutcome.CANCELED),
+    )
+
+    assert result.disposition == TransitionDisposition.IGNORED
+    assert result.reason_code == "stale_payment_fact"
+    assert result.payment_id is None
+    assert result.order_became_paid is False
+    assert result.refund_created is False
+    assert (order.status, order.paid_at, order.failed_at, order.canceled_at) == order_state
+    assert db_session.query(Payment).count() == 0
+
+
+@pytest.mark.parametrize(
+    ("refund_amount_minor", "payment_status", "order_status"),
+    (
+        (4_000, PaymentStatus.PARTIALLY_REFUNDED, OrderStatus.PARTIALLY_REFUNDED),
+        (10_000, PaymentStatus.REFUNDED, OrderStatus.REFUNDED),
+    ),
+)
+def test_succeeded_replay_after_refund_is_stale_without_downstream_effects(
+    db_session: Session,
+    refund_amount_minor: int,
+    payment_status: PaymentStatus,
+    order_status: OrderStatus,
+) -> None:
+    order, _ = _seed_order(db_session, key=f"succeeded-after-{payment_status.value}", status=OrderStatus.PAID)
+    payment = _add_payment(db_session, order, payment_id="payment-1", status=PaymentStatus.SUCCEEDED)
+    refund_result = apply_refund_transition(
+        db_session,
+        _refund_command(order, payment, refund_id="refund-1", amount_minor=refund_amount_minor),
+    )
+    assert refund_result.disposition == TransitionDisposition.APPLIED
+
+    payment_state = (
+        payment.status,
+        payment.authorized_at,
+        payment.captured_at,
+        payment.failed_at,
+        payment.refunded_amount_minor,
+    )
+    order_state = (order.status, order.paid_at, order.failed_at, order.canceled_at)
+    result = apply_payment_transition(
+        db_session,
+        _payment_command(order, payment_id="payment-1", outcome=PaymentOutcome.SUCCEEDED),
+    )
+
+    assert result.disposition == TransitionDisposition.IGNORED
+    assert result.reason_code == "stale_payment_fact"
+    assert result.order_became_paid is False
+    assert result.refund_created is False
+    assert payment_state == (
+        payment_status,
+        payment.authorized_at,
+        payment.captured_at,
+        payment.failed_at,
+        refund_amount_minor,
+    )
+    assert order_state == (order_status, order.paid_at, order.failed_at, order.canceled_at)
+    assert db_session.query(Payment).count() == 1
 
 
 def test_elapsed_expiry_does_not_reject_authoritative_payment(db_session: Session) -> None:

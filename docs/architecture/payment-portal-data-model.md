@@ -361,8 +361,9 @@ For a payable Order, a successful Payment fact moves it to `paid`, a failed
 fact to `payment_failed`, and a cancellation fact to `canceled`. Authorization
 alone does not make the Order paid. Once the Order is terminal, a distinct late
 attempt may be projected as evidence but does not reopen or downgrade the
-Order. Refund aggregation may advance a paid Order to `partially_refunded` or
-`refunded` as described below.
+Order. An uncorrelated cancellation fact against an already-terminal Order is
+stale and does not synthesize a new Payment attempt. Refund aggregation may
+advance a paid Order to `partially_refunded` or `refunded` as described below.
 
 ### Payment
 
@@ -393,9 +394,14 @@ currency. The first applicable outcome sets its confirmation timestamp; replay
 does not replace `authorized_at`, `captured_at`, `failed_at`, or the Order's
 first terminal timestamp. An authorized attempt may advance to success,
 failure, or cancellation. Exact replay is duplicate; out-of-order facts after
-confirmed success/refund are ignored; contradictory same-identity terminal
-outcomes conflict. A distinct external Payment identity is a distinct attempt,
-but cannot reopen or downgrade an already terminal Order.
+confirmed success/refund are ignored; in particular, a `SUCCEEDED` fact replayed
+against a `SUCCEEDED` Payment is `DUPLICATE`, while the same fact against a
+`PARTIALLY_REFUNDED` or `REFUNDED` Payment is stale and `IGNORED` with no
+Payment, Order, or downstream-effect mutation. Contradictory same-identity
+terminal outcomes conflict. A distinct external Payment identity is a distinct
+attempt, but cannot reopen or downgrade an already terminal Order; an
+uncorrelated terminal cancellation is the exception and does not create that
+attempt.
 
 ### Refund
 

@@ -244,6 +244,13 @@ def apply_payment_transition(db: Session, command: PaymentTransitionCommand) -> 
             for_update=True,
         )
         assert payment is not None
+    if command.outcome == PaymentOutcome.CANCELED and order.status in _TERMINAL_ORDER_STATUSES and payment is None:
+        return _result(
+            TransitionDisposition.IGNORED,
+            order_id=command.order_id,
+            order=order,
+            reason_code="stale_payment_fact",
+        )
     if payment is not None:
         if not _payment_context_matches(payment, order, command):
             return _result(

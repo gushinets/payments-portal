@@ -18,8 +18,8 @@
       "reason": "CloudPayments webhook processing is temporarily over the default limit while ANY-168 recurrent integration is pending; extract recurrent processing before adding provider behavior."
     },
     "apps/api/app/domains/billing/service/commercial_transitions.py": {
-      "maxLines": 550,
-      "reason": "Canonical Payment and Refund transition policy remains together after typed contracts were extracted; do not add another commercial transition without a further policy split."
+      "maxLines": 560,
+      "reason": "Canonical Payment and Refund transition policy remains together after typed contracts were extracted; the bounded allowance covers the approved uncorrelated terminal-cancellation stale-fact rule. Do not add another commercial transition without a further policy split."
     },
     "apps/web/src/features/checkout/CheckoutClient.tsx": {
       "maxLines": 1050,

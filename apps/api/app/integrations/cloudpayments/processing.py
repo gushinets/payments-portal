@@ -36,10 +36,8 @@ from app.integrations.cloudpayments.rules import (
     find_default_provider_account,
     payment_schema_error,
 )
-from app.infrastructure.queries.payments import get_payment_by_provider_identity
 from app.models import (
     Order,
-    OrderStatus,
     PaymentWebhookEvent,
     PaymentWebhookEventStatus,
 )
@@ -259,33 +257,10 @@ def process_webhook_event(
                 amount_minor=amount_minor,
                 currency=currency,
             )
-        ignore_unknown_terminal_cancel = False
-        if (
-            validation_error is None
-            and endpoint == "cancel"
-            and order.status
-            in {
-                OrderStatus.PAID,
-                OrderStatus.CANCELED,
-                OrderStatus.PARTIALLY_REFUNDED,
-                OrderStatus.REFUNDED,
-            }
-        ):
-            assert transaction_id is not None
-            payment = get_payment_by_provider_identity(
-                db,
-                provider_account_id=order.provider_account_id,
-                provider_payment_id=transaction_id,
-            )
-            ignore_unknown_terminal_cancel = payment is None or payment.order_id != order.id
         if validation_error is not None:
             event.status = PaymentWebhookEventStatus.FAILED
             event.error_code = validation_error
             event.error_message = validation_error_message(validation_error)
-        elif ignore_unknown_terminal_cancel:
-            event.status = PaymentWebhookEventStatus.IGNORED
-            event.error_code = "stale_payment_fact"
-            event.error_message = validation_error_message(event.error_code)
         else:
             assert transaction_id is not None
             assert amount_minor is not None

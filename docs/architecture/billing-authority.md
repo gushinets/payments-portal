@@ -309,12 +309,19 @@ The transition returns one explicit outcome:
 - `CONFLICT` — the same identity contradicts canonical correlation or outcome
   and fails closed with a safe internal reason.
 
+An exact `SUCCEEDED` replay against a `SUCCEEDED` Payment is a commercial
+`DUPLICATE`; after that Payment advances to `PARTIALLY_REFUNDED` or `REFUNDED`,
+the same success fact is later and is `IGNORED` as stale, without Payment,
+Order, or downstream-effect mutation.
+
 A webhook-delivery duplicate is different: the durable inbox recognizes the
 same delivery before commercial processing. A fresh delivery that reaches
 Application and resolves as a commercial `DUPLICATE` is processed successfully,
 not relabeled as an inbox duplicate. Distinct opaque Payment identities are
 distinct attempts and may be recorded without reopening an already terminal
-Order; contradictory facts for the same identity never use last-write-wins.
+Order, except that an uncorrelated cancellation fact against an already
+terminal Order is stale and does not synthesize a new Payment attempt;
+contradictory facts for the same identity never use last-write-wins.
 
 Webhook-derived facts and future reconciliation-derived facts must use this
 same transition path. Provider payloads, vendor status strings, email/account
