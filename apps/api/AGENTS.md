@@ -1,11 +1,24 @@
 # API Agent Guide
 
-Read the root `AGENTS.md`, `ARCHITECTURE.md`, [contours](../../docs/architecture/contours.md),
-[payment providers](../../docs/architecture/payment-providers.md), the
-[billing authority](../../docs/architecture/billing-authority.md), the
-canonical data-model document, and the
+Read the root `AGENTS.md`, `ARCHITECTURE.md`,
+[contours](../../docs/architecture/contours.md), and the
 [API section of coding conventions](../../docs/engineering/CODING_CONVENTIONS.md#api--python)
 before backend work.
+
+For new billing work, follow the target authority chain before consulting any
+retained billing document:
+
+1. [ADR 0005](../../docs/architecture/decisions/0005-external-billing-boundary.md)
+2. [External Billing Boundary Design](../../docs/superpowers/specs/2026-09-15-external-billing-boundary-design.md)
+3. [Portal ↔ Kernel Access Contract Design](../../docs/superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md)
+
+The [payment-provider document](../../docs/architecture/payment-providers.md)
+characterizes the retained direct-provider implementation, the
+[billing-authority document](../../docs/architecture/billing-authority.md) is
+superseded target history plus current-state context, and the
+[data-model document](../../docs/architecture/payment-portal-data-model.md) is
+the authoritative current-state schema reference. None overrides the target
+authority chain or defines the future external-billing persistence model.
 
 ## Conventions
 
@@ -48,7 +61,13 @@ payloads must be authenticated or verified, validated, redacted, and
 normalized at the owning Integration boundary. CloudPayments source is retained
 for transitional cleanup but is not registered or used by normal `ru` runtime;
 an external billing system is a distinct boundary and is not another
-`PaymentProviderAdapter`.
+`PaymentProviderAdapter` or a member of `PaymentProviderRegistry`. Do not extend
+those retained abstractions for new external billing except under explicitly
+scoped characterization or removal work. Do not make the current Portal-owned
+`Product`/`Plan`/`Order`/`Payment` model the target commercial authority.
+Provider-independent clean pre-production cleanup may precede Phase 0;
+provider-dependent LBX production semantics and paid-access derivation remain
+Phase 0 gated under `ANY-504`.
 
 ## Tooling
 
@@ -66,10 +85,11 @@ database lifecycle.
 
 ## Safety
 
-- Paid access changes only from verified authoritative billing facts. Normal
-  runtime has no CloudPayments callback path; a browser return remains
-  informational, and any future billing integration must supply authenticated,
-  validated authoritative facts.
+- Current retained access behavior is characterization, not the final target
+  wire model. Target paid access changes only from the authoritative sources
+  permitted by ADR 0005 and the accepted designs; a browser return, Widget
+  callback, webhook, outbound request success, or payment state alone is not
+  access authority. Normal runtime has no CloudPayments callback path.
 - Never log authentication tokens, authorization headers, secrets, card fields,
   or unredacted webhook bodies.
 - Legal acceptance records are append-only.

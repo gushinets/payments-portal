@@ -14,6 +14,7 @@ from scripts.repo import (
     canonical_check_environment,
     check_canonical_persisted_model_layer,
     check_documented_metadata_tables,
+    check_external_billing_documentation_precedence,
     check_expected_legal_versions,
     check_required_markdown_link_content,
     direct_api_environment,
@@ -307,41 +308,68 @@ def test_missing_core_authority_link_is_actionable() -> None:
 @pytest.mark.parametrize(
     ("source_relative", "target_relative"),
     [
-        ("AGENTS.md", "docs/architecture/billing-authority.md"),
-        ("apps/api/AGENTS.md", "docs/architecture/billing-authority.md"),
-        ("ARCHITECTURE.md", "docs/architecture/billing-authority.md"),
-        ("docs/README.md", "docs/architecture/billing-authority.md"),
+        (
+            source,
+            target,
+        )
+        for source in (
+            "AGENTS.md",
+            "README.md",
+            "apps/api/AGENTS.md",
+            "ARCHITECTURE.md",
+            "docs/README.md",
+            "docs/PRODUCT.md",
+            "docs/RELIABILITY.md",
+            "docs/engineering/CODING_CONVENTIONS.md",
+            "docs/architecture/contours.md",
+            "docs/architecture/billing-authority.md",
+        )
+        for target in (
+            "docs/architecture/decisions/0005-external-billing-boundary.md",
+            "docs/superpowers/specs/2026-09-15-external-billing-boundary-design.md",
+            "docs/superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md",
+        )
+    ]
+    + [
         (
             "docs/architecture/payment-providers.md",
-            "docs/architecture/billing-authority.md",
+            "docs/architecture/decisions/0005-external-billing-boundary.md",
         ),
         (
+            "docs/architecture/payment-providers.md",
+            "docs/superpowers/specs/2026-09-15-external-billing-boundary-design.md",
+        ),
+        (
+            "docs/architecture/payment-portal-data-model.md",
+            "docs/architecture/decisions/0005-external-billing-boundary.md",
+        ),
+        (
+            "docs/architecture/payment-portal-data-model.md",
+            "docs/superpowers/specs/2026-09-15-external-billing-boundary-design.md",
+        ),
+        (
+            "docs/architecture/platform-kernel-contract.md",
+            "docs/architecture/decisions/0005-external-billing-boundary.md",
+        ),
+        (
+            "docs/architecture/platform-kernel-contract.md",
+            "docs/superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md",
+        ),
+    ]
+    + [
+        (
+            source,
+            "docs/architecture/decisions/0005-external-billing-boundary.md",
+        )
+        for source in (
             "docs/architecture/decisions/0001-multi-contour-billing.md",
-            "docs/architecture/decisions/0004-billing-authority-and-consistency.md",
-        ),
-        (
-            "docs/architecture/decisions/README.md",
-            "docs/architecture/decisions/0004-billing-authority-and-consistency.md",
-        ),
-        (
-            "docs/architecture/billing-authority.md",
-            "docs/architecture/decisions/0001-multi-contour-billing.md",
-        ),
-        (
-            "docs/architecture/billing-authority.md",
             "docs/architecture/decisions/0002-plan-based-checkout-identity.md",
-        ),
-        (
-            "docs/architecture/billing-authority.md",
-            "docs/architecture/decisions/0003-canonical-persisted-model-layer.md",
-        ),
-        (
-            "docs/architecture/billing-authority.md",
             "docs/architecture/decisions/0004-billing-authority-and-consistency.md",
-        ),
+            "docs/architecture/decisions/README.md",
+        )
     ],
 )
-def test_billing_authority_graph_is_guarded_and_consistent(
+def test_external_billing_authority_graph_is_guarded_and_consistent(
     source_relative: str,
     target_relative: str,
 ) -> None:
@@ -350,6 +378,236 @@ def test_billing_authority_graph_is_guarded_and_consistent(
 
     assert target in repo.CORE_AUTHORITY_LINKS[source]
     assert repo.check_required_markdown_links(source, [target]) == []
+
+
+def _write_external_billing_documentation_fixture(root: Path) -> None:
+    documents = {
+        "AGENTS.md": ("For all new billing work, follow this target authority chain in order:\n"),
+        "docs/RELIABILITY.md": (
+            "Status: authoritative operational requirements; target "
+            "external-billing semantics delegated\n"
+            "Target external-billing authority\n"
+        ),
+        "docs/architecture/contours.md": (
+            "Status: authoritative target architecture; implemented product remains `ru`\n"
+            "Target billing ownership authority:\n"
+        ),
+        "docs/PRODUCT.md": (
+            "Status: authoritative\nTarget billing ownership and authoritative facts follow, in precedence order,\n"
+        ),
+        "docs/architecture/decisions/0005-external-billing-boundary.md": ("Status: accepted\n"),
+        "docs/superpowers/specs/2026-09-15-external-billing-boundary-design.md": (
+            "Status: accepted implementation baseline\n"
+        ),
+        "docs/superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md": (
+            "Status: accepted implementation baseline\n"
+        ),
+        "docs/architecture/decisions/0002-plan-based-checkout-identity.md": (
+            "Status: superseded for new billing development\n"
+        ),
+        "docs/architecture/decisions/0004-billing-authority-and-consistency.md": (
+            "Status: superseded for new billing development\n"
+        ),
+        "docs/architecture/billing-authority.md": (
+            "Status: superseded target architecture; retained "
+            "historical/current-state reference\n"
+            "This document is not an authority for new billing development.\n"
+        ),
+        "docs/architecture/payment-providers.md": (
+            "LEGACY / TRANSITIONAL REFERENCE — NOT TARGET ARCHITECTURE\n"
+            "Status: retained current-state characterization of the "
+            "direct-provider boundary\n"
+        ),
+        "docs/architecture/payment-portal-data-model.md": (
+            "Status: authoritative current-state schema reference; not target external-billing "
+            "persistence design\n"
+            "CURRENT-STATE SCHEMA REFERENCE — NOT TARGET PERSISTENCE DESIGN\n"
+        ),
+        "docs/architecture/platform-kernel-contract.md": (
+            "Status: superseded planned contract; retained historical context only\nSUPERSEDED CONTRACT NOTICE\n"
+        ),
+    }
+    for relative, content in documents.items():
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+    for filename in repo.SUPERSEDED_BILLING_PLANS:
+        path = root / "docs/exec-plans/superseded" / filename
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("# Retained history\n", encoding="utf-8")
+
+
+def test_external_billing_documentation_precedence_accepts_consistent_fixture(
+    tmp_path: Path,
+) -> None:
+    _write_external_billing_documentation_fixture(tmp_path)
+
+    assert check_external_billing_documentation_precedence(root=tmp_path) == []
+
+
+def test_external_billing_documentation_precedence_reports_wrong_status(
+    tmp_path: Path,
+) -> None:
+    _write_external_billing_documentation_fixture(tmp_path)
+    relative = Path("docs/architecture/decisions/0005-external-billing-boundary.md")
+    (tmp_path / relative).write_text("Status: proposed\n", encoding="utf-8")
+
+    assert check_external_billing_documentation_precedence(root=tmp_path) == [
+        "Incorrect external-billing documentation classification in "
+        f"{relative.as_posix()}: expected exactly one active status "
+        "'status: accepted', found 'status: proposed'"
+    ]
+
+
+def test_external_billing_documentation_precedence_rejects_historical_expected_status(
+    tmp_path: Path,
+) -> None:
+    _write_external_billing_documentation_fixture(tmp_path)
+    relative = Path("docs/architecture/decisions/0005-external-billing-boundary.md")
+    (tmp_path / relative).write_text(
+        "Status: proposed\n\nPrevious status: accepted\n",
+        encoding="utf-8",
+    )
+
+    assert check_external_billing_documentation_precedence(root=tmp_path) == [
+        "Incorrect external-billing documentation classification in "
+        f"{relative.as_posix()}: expected exactly one active status "
+        "'status: accepted', found 'status: proposed'"
+    ]
+
+
+def test_external_billing_documentation_precedence_rejects_status_after_header(
+    tmp_path: Path,
+) -> None:
+    _write_external_billing_documentation_fixture(tmp_path)
+    relative = Path("docs/architecture/decisions/0005-external-billing-boundary.md")
+    (tmp_path / relative).write_text(
+        "# Document\n\n## Historical context\n\nStatus: accepted\n",
+        encoding="utf-8",
+    )
+
+    assert check_external_billing_documentation_precedence(root=tmp_path) == [
+        "Incorrect external-billing documentation classification in "
+        f"{relative.as_posix()}: expected exactly one active status "
+        "'status: accepted', found none"
+    ]
+
+
+def test_external_billing_documentation_precedence_rejects_multiple_active_statuses(
+    tmp_path: Path,
+) -> None:
+    _write_external_billing_documentation_fixture(tmp_path)
+    relative = Path("docs/architecture/decisions/0005-external-billing-boundary.md")
+    (tmp_path / relative).write_text(
+        "Status: accepted\nStatus: proposed\n\n## Historical context\n",
+        encoding="utf-8",
+    )
+
+    assert check_external_billing_documentation_precedence(root=tmp_path) == [
+        "Incorrect external-billing documentation classification in "
+        f"{relative.as_posix()}: expected exactly one active status "
+        "'status: accepted', found 'status: accepted', 'status: proposed'"
+    ]
+
+
+def test_external_billing_documentation_precedence_requires_banner_in_header(
+    tmp_path: Path,
+) -> None:
+    _write_external_billing_documentation_fixture(tmp_path)
+    relative = Path("docs/architecture/payment-portal-data-model.md")
+    (tmp_path / relative).write_text(
+        "Status: authoritative current-state schema reference; not target "
+        "external-billing persistence design\n\n"
+        "## Historical context\n\n"
+        "CURRENT-STATE SCHEMA REFERENCE — NOT TARGET PERSISTENCE DESIGN\n",
+        encoding="utf-8",
+    )
+
+    assert check_external_billing_documentation_precedence(root=tmp_path) == [
+        "Incorrect external-billing documentation classification in "
+        f"{relative.as_posix()}: expected header marker "
+        "'current-state schema reference — not target persistence design'"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("relative", "stale_authority", "expected_marker"),
+    [
+        (
+            Path("docs/RELIABILITY.md"),
+            "ANY-497 external billing command flows and reconciliation remain future work.\n",
+            "any-497 external billing command flows and reconciliation remain future work",
+        ),
+        (
+            Path("docs/architecture/contours.md"),
+            "Billing ownership: [ADR 0004](decisions/0004-billing-authority-and-consistency.md)\n",
+            "billing ownership: [adr 0004]",
+        ),
+        (
+            Path("docs/PRODUCT.md"),
+            "The private regional entitlement/access API for Platform Kernel is planned under ANY-79.\n",
+            "private regional entitlement/access api for platform kernel is planned under any-79",
+        ),
+    ],
+)
+def test_external_billing_documentation_precedence_rejects_stale_executable_authority(
+    tmp_path: Path,
+    relative: Path,
+    stale_authority: str,
+    expected_marker: str,
+) -> None:
+    _write_external_billing_documentation_fixture(tmp_path)
+    path = tmp_path / relative
+    path.write_text(path.read_text(encoding="utf-8") + stale_authority, encoding="utf-8")
+
+    assert check_external_billing_documentation_precedence(root=tmp_path) == [
+        f"Stale executable billing authority in {relative.as_posix()}: marker {expected_marker!r}"
+    ]
+
+
+def test_external_billing_documentation_precedence_allows_historical_any_497_reference(
+    tmp_path: Path,
+) -> None:
+    _write_external_billing_documentation_fixture(tmp_path)
+    reliability = tmp_path / "docs/RELIABILITY.md"
+    reliability.write_text(
+        reliability.read_text(encoding="utf-8") + "ANY-497 was cancelled and superseded by ANY-504.\n",
+        encoding="utf-8",
+    )
+
+    assert check_external_billing_documentation_precedence(root=tmp_path) == []
+
+
+def test_external_billing_documentation_precedence_rejects_reactivated_plan(
+    tmp_path: Path,
+) -> None:
+    _write_external_billing_documentation_fixture(tmp_path)
+    filename = repo.SUPERSEDED_BILLING_PLANS[0]
+    active = tmp_path / "docs/exec-plans/active" / filename
+    active.parent.mkdir(parents=True, exist_ok=True)
+    active.write_text("# Incorrectly active\n", encoding="utf-8")
+    relative = Path("docs/exec-plans/active") / filename
+
+    assert check_external_billing_documentation_precedence(root=tmp_path) == [
+        f"Superseded billing execution plan must not remain active: {relative.as_posix()}"
+    ]
+
+
+def test_external_billing_documentation_precedence_requires_retained_plan(
+    tmp_path: Path,
+) -> None:
+    _write_external_billing_documentation_fixture(tmp_path)
+    filename = repo.SUPERSEDED_BILLING_PLANS[-1]
+    (tmp_path / "docs/exec-plans/superseded" / filename).unlink()
+    relative = Path("docs/exec-plans/superseded") / filename
+
+    assert check_external_billing_documentation_precedence(root=tmp_path) == [
+        f"Missing retained superseded billing execution plan: {relative.as_posix()}"
+    ]
+
+
+def _normalized_document(relative: str) -> str:
+    return " ".join((repo.ROOT / relative).read_text(encoding="utf-8").split())
 
 
 def test_adr_0001_keeps_distinct_billing_integration_boundaries() -> None:
@@ -363,84 +621,55 @@ def test_adr_0001_keeps_distinct_billing_integration_boundaries() -> None:
     assert "Each contour registers its own payment-provider adapter." not in content
 
 
-def test_billing_docs_keep_target_and_access_only_ownership_distinct() -> None:
-    target_docs = (
-        "README.md",
-        "ARCHITECTURE.md",
-        "docs/architecture/billing-authority.md",
-        "docs/architecture/decisions/0004-billing-authority-and-consistency.md",
-    )
-    ownership_docs = (
-        "ARCHITECTURE.md",
-        "docs/architecture/billing-authority.md",
-        "docs/architecture/decisions/0004-billing-authority-and-consistency.md",
-        "docs/architecture/contours.md",
-    )
+def test_external_billing_authority_sources_keep_ownership_distinct() -> None:
+    adr = _normalized_document("docs/architecture/decisions/0005-external-billing-boundary.md")
+    billing_design = _normalized_document("docs/superpowers/specs/2026-09-15-external-billing-boundary-design.md")
+    access_design = _normalized_document("docs/superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md")
 
-    def normalized(relative: str) -> str:
-        content = (repo.ROOT / relative).read_text(encoding="utf-8")
-        return " ".join(content.replace("**", "").replace("`", "").lower().split())
-
-    for relative in target_docs:
-        assert "sole long-term production target is the external-billing-managed flow" in normalized(relative)
-
-    assert "most likely launch" not in normalized("README.md")
-    assert "expected launch model" not in normalized("ARCHITECTURE.md")
-
-    for relative in ownership_docs:
-        content = normalized(relative)
-        assert "subscription that participates in a billing lifecycle" in content
-        assert "exactly one billing owner at a time" in content
-        assert "portal-only access lifecycle" in content
-        assert "does not require an external billing owner" in content
-        assert "each subscription and its billing lifecycle has exactly one billing owner" not in content
+    assert "External Billing owns commercial billing truth and lifecycle" in adr
+    assert "Payment Portal owns AnyToolAI identity and legal acceptance" in adr
+    assert "Platform Kernel owns technical product and metric vocabulary" in adr
+    assert "External Billing is not a `PaymentProviderAdapter`" in adr
+    assert "Platform Kernel never communicates directly with LBX" in billing_design
+    assert "Platform Kernel never calls External Billing directly" in access_design
 
 
 def test_billing_consistency_docs_require_retry_safe_unknown_outcomes() -> None:
-    reliability = (repo.ROOT / "docs/RELIABILITY.md").read_text(encoding="utf-8")
-    authority = (repo.ROOT / "docs/architecture/billing-authority.md").read_text(encoding="utf-8")
+    reliability = _normalized_document("docs/RELIABILITY.md")
+    billing_design = _normalized_document("docs/superpowers/specs/2026-09-15-external-billing-boundary-design.md")
 
     assert "retry-safe orchestration" in reliability
     assert "do not assume every external command is idempotent" in reliability
     assert "outbound billing commands must be idempotent" not in reliability
-    assert "A timeout or lost response is not confirmed success and not confirmed failure" in authority
-    assert "multiple plausible matches are ambiguous and fail closed" in authority
+    assert "A timeout or lost response is neither confirmed success nor confirmed failure" in reliability
+    assert "Multiple plausible matches are ambiguous and never auto-bind" in billing_design
 
 
-def test_billing_docs_separate_external_service_financial_and_entitlement_state() -> None:
-    authority = (repo.ROOT / "docs/architecture/billing-authority.md").read_text(encoding="utf-8")
-    data_model = (repo.ROOT / "docs/architecture/payment-portal-data-model.md").read_text(encoding="utf-8")
+def test_billing_design_separates_provider_facts_from_paid_access() -> None:
+    billing_design = _normalized_document("docs/superpowers/specs/2026-09-15-external-billing-boundary-design.md")
 
-    for content in (authority, data_model):
-        normalized = " ".join(content.replace("`", "").lower().split())
-        assert "external subscription or service state, confirmed financial or payment state" in normalized
-        assert "local entitlement are distinct" in normalized or "local entitlement are separate concerns" in normalized
-        assert "vendor" in normalized
-        assert "single vendor field" in normalized or "single field" in normalized
-        assert "directly grant access" in normalized or "directly creates an entitlement" in normalized
-        assert "entitlement policy" in normalized
+    assert "Payments Portal is the authority for the derived **paid** access projection" in billing_design
+    assert "Platform Kernel never consumes provider-specific billing facts" in billing_design
+    assert "payment state, or manual operator input never create or resize a quota bucket" in billing_design
+    assert "Payload content does not directly mutate entitlement" in billing_design
 
 
-def test_billing_docs_scope_commercial_orders_to_commercial_intent() -> None:
-    authority = (repo.ROOT / "docs/architecture/billing-authority.md").read_text(encoding="utf-8")
-    reliability = (repo.ROOT / "docs/RELIABILITY.md").read_text(encoding="utf-8")
-    authority_normalized = " ".join(authority.replace("`", "").lower().split())
-    reliability_normalized = " ".join(reliability.replace("`", "").lower().split())
+def test_external_billing_design_replaces_portal_commercial_orders() -> None:
+    billing_design = _normalized_document("docs/superpowers/specs/2026-09-15-external-billing-boundary-design.md")
 
-    assert "the commercial order rule is not universal" in authority_normalized
-    assert "portal-initiated commercial purchase or change" in authority_normalized
-    assert "without a prerequisite portal order" in authority_normalized
-    assert "a commercial order is not required for unrelated external billing operations" in reliability_normalized
+    assert "`PurchaseIntent` is orchestration state, not a commercial Order" in billing_design
+    assert "There is no Portal-owned commercial Order" in billing_design
 
 
 def test_billing_docs_require_missed_notification_recovery() -> None:
-    authority = (repo.ROOT / "docs/architecture/billing-authority.md").read_text(encoding="utf-8")
-    reliability = (repo.ROOT / "docs/RELIABILITY.md").read_text(encoding="utf-8")
+    reliability = _normalized_document("docs/RELIABILITY.md")
+    billing_design = _normalized_document("docs/superpowers/specs/2026-09-15-external-billing-boundary-design.md")
 
-    for content in (authority, reliability):
-        normalized = " ".join(content.lower().split())
-        assert "notifications are completely missed" in normalized
-        assert "correctness must not depend solely on webhook delivery" in normalized
+    reliability_normalized = reliability.lower()
+    assert "notifications are completely missed" in reliability_normalized
+    assert "correctness must not depend solely on webhook delivery" in reliability_normalized
+    assert "Webhook is a priority hint only" in billing_design
+    assert "Scheduled reconciliation/discovery is the correctness backstop" in billing_design
 
 
 def test_reliability_docs_acknowledge_only_after_durable_webhook_receipt() -> None:
@@ -493,10 +722,10 @@ def test_observability_docs_preserve_correlation_and_ownership_contract() -> Non
     )
 
 
-def test_missing_billing_authority_link_is_actionable() -> None:
+def test_missing_external_billing_authority_link_is_actionable() -> None:
     root = Path("repository").resolve()
     source_relative = Path("apps") / "api" / "AGENTS.md"
-    target_relative = Path("docs") / "architecture" / "billing-authority.md"
+    target_relative = Path("docs") / "architecture" / "decisions" / "0005-external-billing-boundary.md"
     source = root / source_relative
     authority = root / target_relative
 
@@ -586,6 +815,7 @@ def test_check_docs_uses_imported_metadata_tables(
 
     monkeypatch.setattr(repo, "ROOT", tmp_path)
     monkeypatch.setattr(repo, "check_knowledge_hierarchy", lambda: [])
+    monkeypatch.setattr(repo, "check_external_billing_documentation_precedence", lambda: [])
     monkeypatch.setattr(repo, "engineering_markdown_files", lambda: [])
     monkeypatch.setattr(repo, "import_api", lambda: (FakeBase, object()))
 

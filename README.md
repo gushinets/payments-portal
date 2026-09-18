@@ -7,25 +7,32 @@ service for AnytoolAI products. Each production deployment is one contour
 It contains a Next.js web application, a FastAPI API, PostgreSQL persistence,
 and retained CloudPayments integration source. Catalog products and plans, local
 subscriptions, entitlement rules, entitlements, and subscription audit are
-implemented. The private regional entitlement/access API for Platform Kernel
-is still planned. Platform Kernel code is maintained in the separate
+implemented current-state behavior. The accepted Portal-Kernel access contract
+is the target paid-access boundary, but its runtime implementation remains
+future program work. Platform Kernel code is maintained in the separate
 [anytoolai-platform](https://github.com/gushinets/anytoolai-platform) repository.
 
 Payment Portal is still under development and is not running as a production
 billing service. CloudPayments implementation and persistence source is
 retained for transitional cleanup, but normal backend and frontend runtime no
 longer initializes, registers, loads, or invokes it. Checkout is temporarily
-unavailable until a separately selected and implemented billing integration
-exists; there are no production CloudPayments subscribers or subscriptions to
-migrate. The sole long-term production target is the external-billing-managed
-flow. See the current [product scope](docs/PRODUCT.md), [billing
-authority](docs/architecture/billing-authority.md), and contour and Region
-Resolver architecture in [ARCHITECTURE.md](ARCHITECTURE.md).
+unavailable while the external-billing target remains unimplemented; there are
+no production CloudPayments subscribers or subscriptions to migrate. For target
+billing work, follow [ADR 0005](docs/architecture/decisions/0005-external-billing-boundary.md),
+the accepted [External Billing Boundary Design](docs/superpowers/specs/2026-09-15-external-billing-boundary-design.md),
+and the accepted
+[Portal ↔ Kernel Access Contract Design](docs/superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md),
+in that order. The old [billing-authority document](docs/architecture/billing-authority.md)
+is retained only for current-state and historical context. See also the current
+[product scope](docs/PRODUCT.md) and contour and Region Resolver architecture
+in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Start here
 
 1. Read [AGENTS.md](AGENTS.md) for the repository map and non-negotiable rules.
-2. Read [ARCHITECTURE.md](ARCHITECTURE.md) for current system boundaries.
+2. Read [ARCHITECTURE.md](ARCHITECTURE.md) for the explicit current/retained and
+   target system boundaries. Billing work then follows the ADR 0005 and accepted
+   design chain linked there.
 3. Run the environment diagnostic:
 
    ```bash
@@ -232,8 +239,8 @@ CloudPayments source is not a current payment boundary.
 - Password-based demo authentication with SMTP-backed password reset;
   production email verification is planned.
 - Contour confirmation via Region Resolver is planned and not implemented.
-- The private regional entitlement/access API for Platform Kernel is planned
-  and not implemented yet.
-- Checkout is deliberately unavailable until a billing integration is selected
-  and implemented for the normal runtime.
+- The accepted Portal-Kernel capability, access-snapshot, and invalidation
+  contracts are target architecture and are not implemented yet.
+- Checkout is deliberately unavailable until the external-billing program is
+  implemented for normal runtime, subject to its Phase 0 gates.
 - Legal documents are drafts until reviewed and approved by counsel.

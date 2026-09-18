@@ -1,7 +1,7 @@
 # Product Scope
 
 Status: authoritative
-Last verified: 2026-09-04
+Last verified: 2026-09-18
 
 Payment Portal is the identity, legal-consent, checkout, and access-entry
 service for AnytoolAI products, deployed as one **contour** (compliance zone)
@@ -19,8 +19,12 @@ subscribers or subscriptions to migrate. The sole long-term production target
 is an external-billing-managed flow.
 
 Contour architecture is defined in [contours](architecture/contours.md).
-Billing ownership and authoritative facts are defined in
-[billing authority](architecture/billing-authority.md).
+Target billing ownership and authoritative facts follow, in precedence order,
+[ADR 0005](architecture/decisions/0005-external-billing-boundary.md), the
+accepted [External Billing Boundary Design](superpowers/specs/2026-09-15-external-billing-boundary-design.md),
+and the accepted [Portal ↔ Kernel Access Contract Design](superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md).
+The retained [Billing Authority and Consistency](architecture/billing-authority.md)
+document is current-state and historical context, not target authority.
 Implemented `ru` screens are defined in [RU MVP journey](product/ru-mvp.md).
 
 ## Implemented
@@ -45,8 +49,9 @@ Implemented `ru` screens are defined in [RU MVP journey](product/ru-mvp.md).
   external-billing integrations selected for each contour. Those markets are
   not implemented product surface; the concrete external-billing integration
   for those deployed products is not selected here.
-- The private regional entitlement/access API for Platform Kernel is planned
-  under ANY-79.
+- The old private entitlement contract planned under ANY-79 is superseded for
+  target development. Future paid-access and quota integration follows the
+  accepted Portal ↔ Kernel Access Contract Design and the `ANY-504` sequence.
 - Workflow execution, scenario runtime, artifacts, and usage accounting belong to
   the separate Platform Kernel repository.
 
@@ -66,5 +71,7 @@ Implemented `ru` screens are defined in [RU MVP journey](product/ru-mvp.md).
 - Checkout remains deliberately unavailable until a billing integration is
   selected and implemented for normal runtime.
 - Legal drafts are not represented as counsel-approved documents.
-- Product and plan identifiers must remain stable across web, payment metadata,
-  and future Platform Kernel integration.
+- Retained Portal product and plan identifiers remain stable where the current
+  web, persistence, and provider metadata use them. They are not future
+  commercial or paid-access authority: target technical product and metric
+  identity comes from Platform Kernel through the accepted designs.

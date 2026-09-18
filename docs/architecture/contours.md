@@ -1,7 +1,7 @@
 # Contours
 
 Status: authoritative target architecture; implemented product remains `ru`
-Last verified: 2026-09-04
+Last verified: 2026-09-18
 
 A **contour** is the compliance zone in which this Payment Portal is deployed.
 It may serve any number of countries assigned to that zone. It is not a locale,
@@ -16,8 +16,10 @@ for server-side validation and market configuration.
 
 Normative decision: [ADR 0001](decisions/0001-multi-contour-billing.md).
 Region routing: [Region Resolver contract](region-resolver-contract.md).
-Billing ownership: [ADR 0004](decisions/0004-billing-authority-and-consistency.md)
-and [Billing Authority and Consistency](billing-authority.md).
+Target billing ownership authority: [ADR 0005](decisions/0005-external-billing-boundary.md),
+the accepted [External Billing Boundary Design](../superpowers/specs/2026-09-15-external-billing-boundary-design.md),
+and the accepted [Portal ↔ Kernel Access Contract Design](../superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md),
+in that order.
 
 ## Planned contours
 
@@ -71,10 +73,11 @@ This is implementation debt, not permission to deploy a shared data plane.
 
 ## Current vs planned product surface
 
-Implemented today: `ru` web routes, `docs/legal/ru`, CloudPayments, and `ru`
-defaults in the web and API. These are implementation surfaces in a product
-that is still under development, not evidence of a production CloudPayments
-billing deployment. See [RU MVP journey](../product/ru-mvp.md).
+Implemented today: `ru` web routes, `docs/legal/ru`, retained CloudPayments
+source and persistence, and `ru` defaults in the web and API. These are
+implementation surfaces in a product that is still under development, not
+evidence of an active runtime path or production CloudPayments billing
+deployment. See [RU MVP journey](../product/ru-mvp.md).
 
 Planned, not implemented:
 
@@ -112,7 +115,9 @@ Enabling a contour requires a dedicated ticket. Minimum set:
    required by current code, operations, obligations, or cutover. Configuration
    is not an assignment of billing ownership to the contour and does not make
    direct-provider billing a co-equal target.
-6. Catalog and plans in the contour's supported currencies.
+6. Current catalog and plan data in the contour's supported currencies while
+   retained implementation requires them. Target external catalog projection
+   and Platform capability mapping follow the accepted billing designs.
 7. Contour locale and routes in the web application.
 8. Isolated data plane and billing-notification URLs on that plane.
 9. Region Resolver registry entry with the public ISO country mapping and the
@@ -122,9 +127,10 @@ Enabling a contour requires a dedicated ticket. Minimum set:
 
 ## Billing ownership and integration
 
-Checkout, orders, payments, and refunds belong to billing and are contour-local.
-The current `ru` implementation contains the transitional Portal-managed direct
-CloudPayments flow: its payment provider is selected from local
+In the retained current implementation, Portal checkout, orders, payments, and
+refunds are contour-local. The current `ru` implementation retains the
+transitional Portal-managed direct CloudPayments source: its payment provider
+is selected from local
 `payment_provider_accounts`, and provider-specific verification stays in the
 adapter. Payment Portal is not yet a production billing service, and there are
 no production CloudPayments subscriptions to migrate. Under ANY-407, the code
@@ -136,12 +142,13 @@ The long-term production target requires contour enablement or deployment
 configuration to select one concrete external-billing integration for the
 deployed product. A current/transitional direct-provider integration may remain
 only while required; reintroducing it as a future production model requires a
-new explicit architecture decision. The durable ownership invariant applies to
-a `Subscription` that participates in a billing lifecycle, which has exactly
-one billing owner at a time. A Portal-only access lifecycle, such as a locally
-granted free trial without an external billing lifecycle, remains Portal-owned
-and does not require an external billing owner. This does not require a contour
-to support multiple simultaneously active billing owners or production
-integrations, and it defines no migration or coexistence mechanism. See
+new explicit architecture decision. Target commercial ownership, provider-
+neutral paid-access projection, and the Portal ↔ Kernel contract follow the ADR
+0005 authority chain above. Retained local `Subscription` and `Entitlement`
+semantics describe current state and do not define the target ownership or
+paid-access model.
+
+For retained current-state and historical context only, see
 [payment providers](payment-providers.md) and
-[billing authority](billing-authority.md).
+[Billing Authority and Consistency](billing-authority.md); neither is target
+external-billing authority.

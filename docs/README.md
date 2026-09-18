@@ -1,13 +1,16 @@
 # Documentation Index
 
 Status: authoritative index
-Last verified: 2026-09-04
+Last verified: 2026-09-18
 
 Start with the smallest document that matches the task.
 
 ## Knowledge-source roles
 
 - Architecture decision records capture durable architectural decisions.
+- New billing development follows ADR 0005, then the accepted external-billing
+  boundary design, then the accepted Portal-Kernel access-contract design.
+  Retained billing documents cannot override that target authority chain.
 - `ARCHITECTURE.md` is the factual current-state map and records clearly
   labelled target or transitional constraints where needed.
 - Topic architecture documents provide detailed rules under the ADRs.
@@ -31,13 +34,30 @@ Start with the smallest document that matches the task.
 ## Architecture
 
 - [Repository architecture](../ARCHITECTURE.md)
+
+### Target billing architecture (follow in order)
+
+1. [ADR 0005: External billing boundary](architecture/decisions/0005-external-billing-boundary.md)
+2. [External Billing Boundary Design](superpowers/specs/2026-09-15-external-billing-boundary-design.md)
+3. [Portal ↔ Kernel Access Contract Design](superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md)
+
+### Current-state and retained references
+
+- [Payment providers](architecture/payment-providers.md) — retained
+  direct-provider characterization; not target external-billing guidance
+- [Billing authority](architecture/billing-authority.md) — superseded target
+  design retained for current-state and historical context
+- [Payment Portal data model](architecture/payment-portal-data-model.md) —
+  authoritative current-state schema reference; not the target persistence
+  design
+- [Platform Kernel contract boundary](architecture/platform-kernel-contract.md)
+  — superseded planned contract; retained historical context
+
+### Other architecture
+
 - [Contours](architecture/contours.md)
 - [Region Resolver contract](architecture/region-resolver-contract.md)
-- [Payment providers](architecture/payment-providers.md)
-- [Billing authority](architecture/billing-authority.md)
-- [Payment Portal data model](architecture/payment-portal-data-model.md)
 - [Deployment](architecture/deployment.md)
-- [Platform Kernel contract boundary](architecture/platform-kernel-contract.md)
 - [Architecture decisions](architecture/decisions/README.md)
 - [DDD-lite audit and safe remediation](architecture/ddd-lite-audit.md) —
   smell catalog and two billing slices; not current-state authority

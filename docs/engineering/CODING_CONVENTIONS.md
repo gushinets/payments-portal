@@ -9,10 +9,15 @@ stay explicit. This is not a backlog and not a mass-migration plan.
 Related documents:
 
 - [Architecture](../../ARCHITECTURE.md) — dependency direction and ownership
-- [Billing authority](../architecture/billing-authority.md) — billing ownership,
-  authoritative facts, and Integration trust boundaries
-- [Data model](../architecture/payment-portal-data-model.md) — persistence
-  invariants
+- [ADR 0005](../architecture/decisions/0005-external-billing-boundary.md) and
+  the accepted [External Billing Boundary Design](../superpowers/specs/2026-09-15-external-billing-boundary-design.md)
+  and [Portal-Kernel Access Contract Design](../superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md)
+  — target billing ownership, authoritative facts, and implementation baselines
+- [Billing authority](../architecture/billing-authority.md) — superseded target
+  architecture retained for historical and current-state context
+- [Data model](../architecture/payment-portal-data-model.md) — authoritative
+  current-state schema and persistence invariants, not target external-billing
+  persistence design
 - [DDD-lite audit](../architecture/ddd-lite-audit.md) — smell catalog; not a
   burn-down list
 - [API agent guide](../../apps/api/AGENTS.md) and

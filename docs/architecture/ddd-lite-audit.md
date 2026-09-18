@@ -14,11 +14,11 @@ implemented behavior.
 The RU MVP is not claimed broken. Findings are maintainability and
 extensibility gaps unless marked as a product display issue.
 
-Related CloudPayments work (must not be blocked):
+Related retained CloudPayments implementation history (superseded):
 
-- [ANY-165 payment provider boundary](../exec-plans/active/ANY-165-payment-provider-boundary.md)
-- [ANY-166 browser checkout adapter](../exec-plans/active/ANY-166-cloudpayments-browser-checkout-adapter.md)
-- [ANY-167 notification adapter](../exec-plans/active/ANY-167-cloudpayments-notification-adapter.md)
+- [ANY-165 payment provider boundary](../exec-plans/superseded/ANY-165-payment-provider-boundary.md)
+- [ANY-166 browser checkout adapter](../exec-plans/superseded/ANY-166-cloudpayments-browser-checkout-adapter.md)
+- [ANY-167 notification adapter](../exec-plans/superseded/ANY-167-cloudpayments-notification-adapter.md)
 
 ANY-112 already enforced a **minimal** import graph. ANY-112 deferred
 repository/service decomposition. This document does not reopen that as a

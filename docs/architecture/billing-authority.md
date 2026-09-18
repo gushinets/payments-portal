@@ -1,10 +1,24 @@
 # Billing Authority and Consistency
 
-Status: normative architecture
+Status: superseded target architecture; retained historical/current-state reference
 Last verified: 2026-09-16
 
-This document expands the decision in
-[ADR 0004](decisions/0004-billing-authority-and-consistency.md). It preserves
+> **WARNING — SUPERSEDED TARGET ARCHITECTURE**
+>
+> This document is not an authority for new billing development. It is retained
+> to characterize the current implementation and preserve the historical target
+> architecture that expanded
+> [ADR 0004](decisions/0004-billing-authority-and-consistency.md). New target
+> billing development follows
+> [ADR 0005](decisions/0005-external-billing-boundary.md), the accepted
+> [external-billing boundary design](../superpowers/specs/2026-09-15-external-billing-boundary-design.md),
+> and the accepted
+> [Portal-Kernel access-contract design](../superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md).
+> `ANY-504` owns future implementation and controlled cleanup; statements below
+> describe retained current-state facts or superseded design context unless the
+> new authority chain explicitly preserves them.
+
+The historical design preserved
 [ADR 0001](decisions/0001-multi-contour-billing.md) contour isolation,
 [ADR 0002](decisions/0002-plan-based-checkout-identity.md) purchase identity,
 and [ADR 0003](decisions/0003-canonical-persisted-model-layer.md) persisted
@@ -369,9 +383,12 @@ rule for trials, payments, refunds, cancellation requests, or expiry.
 
 Portal-owned free-trial and manual-access lifecycles remain valid without a
 provider subscription identity. Retained CloudPayments/direct-provider code is
-deactivated compatibility source. ANY-497 owns external billing command flows;
-reconciliation remains future work and must reuse these Application transition
-paths rather than introduce another state machine.
+deactivated compatibility source. In the superseded execution sequence,
+ANY-497 was assigned external billing command flows, while reconciliation
+remained future work and was expected to reuse these Application transition
+paths rather than introduce another state machine. That assignment is
+historical, not current executable ownership; ADR 0005, the accepted designs,
+and ANY-504 control current target direction and implementation sequence.
 
 ### Current local transaction and replay contract
 
