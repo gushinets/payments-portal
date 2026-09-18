@@ -1,7 +1,18 @@
 # Portal-Managed Payment Provider Boundary
 
-Status: authoritative for the retained direct-provider boundary; no provider is active in normal runtime
+**LEGACY / TRANSITIONAL REFERENCE — NOT TARGET ARCHITECTURE**
+
+Status: retained current-state characterization of the direct-provider boundary
 Last verified: 2026-09-04
+
+> This document preserves facts and safety constraints for the retained
+> Portal-managed direct-provider implementation. It must not be extended to
+> integrate LBX or another external billing system. New target billing work
+> follows [ADR 0005](decisions/0005-external-billing-boundary.md) and the
+> accepted
+> [external-billing boundary design](../superpowers/specs/2026-09-15-external-billing-boundary-design.md).
+> `ANY-504` owns future implementation and controlled removal of retained
+> direct-provider code; this document does not make that cleanup complete.
 
 This document covers only the **Portal-managed direct payment-provider flow**:
 Payment Portal orchestrates billing and calls a payment or acquiring provider
@@ -15,7 +26,8 @@ An **external billing system** owns its own external customer, invoice, payment,
 and subscription lifecycle. It is a separate authority boundary, is not a
 payment-provider adapter, and must not be registered in
 `PaymentProviderRegistry`. The normative distinction and target flow are in
-[Billing Authority and Consistency](billing-authority.md).
+[ADR 0005](decisions/0005-external-billing-boundary.md) and the accepted
+[external-billing boundary design](../superpowers/specs/2026-09-15-external-billing-boundary-design.md).
 
 Provider-neutral modules must not import provider integrations and must not
 branch on provider-specific literals. When a direct provider is explicitly

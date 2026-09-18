@@ -1,22 +1,35 @@
 # Payment Portal Data Model and Backend Invariants
 
-Status: normative source of truth
+Status: authoritative current-state schema reference; not target external-billing persistence design
 Version: 0.7
 Last verified against code: 2026-09-04
-Implementation expansion owner: Linear ANY-71
+Historical implementation expansion owner: Linear ANY-71
 
-This document is the canonical persistence reference for Payment Portal. It
-defines persisted model semantics, local state representation, persistence
-rules, implemented table meaning, and local state-transition representation
-where applicable. The generated schema documents what exists in code; this
-document explains what that schema means and distinguishes current
+> **CURRENT-STATE SCHEMA REFERENCE — NOT TARGET PERSISTENCE DESIGN**
+>
+> This document remains authoritative for the implemented ORM tables and their
+> current semantics. It does not define the target external-billing physical
+> model. Target billing architecture follows
+> [ADR 0005](decisions/0005-external-billing-boundary.md) and the accepted
+> [external-billing boundary design](../superpowers/specs/2026-09-15-external-billing-boundary-design.md).
+> The next `ANY-504` persistence step owns the future physical-model and reset
+> design. Until that step changes the actual schema, the implemented table
+> inventory and current ORM descriptions below must remain complete.
+
+This document is the canonical current-state persistence reference for Payment
+Portal. It defines implemented persisted model semantics, local state
+representation, persistence rules, table meaning, and local state-transition
+representation where applicable. The generated schema documents what exists in
+code; this document explains what that schema means and distinguishes current
 implementation from planned work. Contour isolation is defined in
 [contours](contours.md). Provider adapters are defined for the Portal-managed
-direct-provider flow in [payment providers](payment-providers.md). Billing
-lifecycle authority and ownership are defined by
-[ADR 0004](decisions/0004-billing-authority-and-consistency.md) and expanded in
-[Billing Authority and Consistency](billing-authority.md). Browser routing to
-another contour is defined in [Region Resolver](region-resolver-contract.md).
+direct-provider flow in the legacy
+[payment providers](payment-providers.md) reference. Historical billing
+authority context is retained in
+[Billing Authority and Consistency](billing-authority.md); it is superseded for
+new target development by ADR 0005 and the accepted external-billing design.
+Browser routing to another contour is defined in
+[Region Resolver](region-resolver-contract.md).
 
 ## 1. Locked decisions
 
