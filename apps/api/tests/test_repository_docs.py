@@ -318,6 +318,9 @@ def test_missing_core_authority_link_is_actionable() -> None:
             "apps/api/AGENTS.md",
             "ARCHITECTURE.md",
             "docs/README.md",
+            "docs/PRODUCT.md",
+            "docs/RELIABILITY.md",
+            "docs/architecture/contours.md",
             "docs/architecture/billing-authority.md",
         )
         for target in (
@@ -379,6 +382,18 @@ def test_external_billing_authority_graph_is_guarded_and_consistent(
 def _write_external_billing_documentation_fixture(root: Path) -> None:
     documents = {
         "AGENTS.md": ("For all new billing work, follow this target authority chain in order:\n"),
+        "docs/RELIABILITY.md": (
+            "Status: authoritative operational requirements; target "
+            "external-billing semantics delegated\n"
+            "Target external-billing authority\n"
+        ),
+        "docs/architecture/contours.md": (
+            "Status: authoritative target architecture; implemented product remains `ru`\n"
+            "Target billing ownership authority:\n"
+        ),
+        "docs/PRODUCT.md": (
+            "Status: authoritative\nTarget billing ownership and authoritative facts follow, in precedence order,\n"
+        ),
         "docs/architecture/decisions/0005-external-billing-boundary.md": ("Status: accepted\n"),
         "docs/superpowers/specs/2026-09-15-external-billing-boundary-design.md": (
             "Status: accepted implementation baseline\n"
@@ -439,6 +454,54 @@ def test_external_billing_documentation_precedence_reports_wrong_status(
     assert check_external_billing_documentation_precedence(root=tmp_path) == [
         f"Incorrect external-billing documentation classification in {relative}: expected marker 'status: accepted'"
     ]
+
+
+@pytest.mark.parametrize(
+    ("relative", "stale_authority", "expected_marker"),
+    [
+        (
+            Path("docs/RELIABILITY.md"),
+            "ANY-497 external billing command flows and reconciliation remain future work.\n",
+            "any-497 external billing command flows and reconciliation remain future work",
+        ),
+        (
+            Path("docs/architecture/contours.md"),
+            "Billing ownership: [ADR 0004](decisions/0004-billing-authority-and-consistency.md)\n",
+            "billing ownership: [adr 0004]",
+        ),
+        (
+            Path("docs/PRODUCT.md"),
+            "The private regional entitlement/access API for Platform Kernel is planned under ANY-79.\n",
+            "private regional entitlement/access api for platform kernel is planned under any-79",
+        ),
+    ],
+)
+def test_external_billing_documentation_precedence_rejects_stale_executable_authority(
+    tmp_path: Path,
+    relative: Path,
+    stale_authority: str,
+    expected_marker: str,
+) -> None:
+    _write_external_billing_documentation_fixture(tmp_path)
+    path = tmp_path / relative
+    path.write_text(path.read_text(encoding="utf-8") + stale_authority, encoding="utf-8")
+
+    assert check_external_billing_documentation_precedence(root=tmp_path) == [
+        f"Stale executable billing authority in {relative.as_posix()}: marker {expected_marker!r}"
+    ]
+
+
+def test_external_billing_documentation_precedence_allows_historical_any_497_reference(
+    tmp_path: Path,
+) -> None:
+    _write_external_billing_documentation_fixture(tmp_path)
+    reliability = tmp_path / "docs/RELIABILITY.md"
+    reliability.write_text(
+        reliability.read_text(encoding="utf-8") + "ANY-497 was cancelled and superseded by ANY-504.\n",
+        encoding="utf-8",
+    )
+
+    assert check_external_billing_documentation_precedence(root=tmp_path) == []
 
 
 def test_external_billing_documentation_precedence_rejects_reactivated_plan(

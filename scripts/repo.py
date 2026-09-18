@@ -834,6 +834,11 @@ CORE_AUTHORITY_LINKS = {
     ROOT / "README.md": EXTERNAL_BILLING_AUTHORITY_CHAIN,
     ROOT / "apps" / "api" / "AGENTS.md": EXTERNAL_BILLING_AUTHORITY_CHAIN,
     ROOT / "ARCHITECTURE.md": EXTERNAL_BILLING_AUTHORITY_CHAIN,
+    ROOT / "docs" / "PRODUCT.md": EXTERNAL_BILLING_AUTHORITY_CHAIN,
+    ROOT / "docs" / "RELIABILITY.md": EXTERNAL_BILLING_AUTHORITY_CHAIN,
+    ROOT / "docs" / "architecture" / "contours.md": (
+        *EXTERNAL_BILLING_AUTHORITY_CHAIN,
+    ),
     ROOT / "docs" / "architecture" / "payment-providers.md": (
         EXTERNAL_BILLING_ADR,
         EXTERNAL_BILLING_DESIGN,
@@ -978,6 +983,30 @@ def check_external_billing_documentation_precedence(
         Path("AGENTS.md"): (
             "for all new billing work, follow this target authority chain in order:",
         ),
+        Path("docs/RELIABILITY.md"): (
+            "status: authoritative operational requirements; target "
+            "external-billing semantics delegated",
+            "target external-billing authority",
+        ),
+        Path("docs/architecture/contours.md"): (
+            "status: authoritative target architecture; implemented product remains `ru`",
+            "target billing ownership authority:",
+        ),
+        Path("docs/PRODUCT.md"): (
+            "status: authoritative",
+            "target billing ownership and authoritative facts follow, in precedence order,",
+        ),
+    }
+
+    stale_executable_authority_markers = {
+        Path("docs/RELIABILITY.md"): (
+            "any-497 external billing command flows and reconciliation remain future work",
+        ),
+        Path("docs/architecture/contours.md"): ("billing ownership: [adr 0004]",),
+        Path("docs/PRODUCT.md"): (
+            "private regional entitlement/access api for platform kernel is planned "
+            "under any-79",
+        ),
     }
 
     errors: list[str] = []
@@ -994,6 +1023,18 @@ def check_external_billing_documentation_precedence(
                 errors.append(
                     "Incorrect external-billing documentation classification in "
                     f"{relative.as_posix()}: expected marker {marker!r}"
+                )
+
+    for relative, markers in stale_executable_authority_markers.items():
+        path = root / relative
+        if not path.exists():
+            continue
+        normalized = " ".join(path.read_text(encoding="utf-8").lower().split())
+        for marker in markers:
+            if marker in normalized:
+                errors.append(
+                    "Stale executable billing authority in "
+                    f"{relative.as_posix()}: marker {marker!r}"
                 )
 
     active = root / "docs/exec-plans/active"

@@ -1,26 +1,33 @@
 # Reliability Requirements
 
-Status: authoritative
-Last verified: 2026-09-16
+Status: authoritative operational requirements; target external-billing semantics delegated
+Last verified: 2026-09-18
 
-## Critical paths
+## Target external-billing authority
+
+Target external-billing ownership and behavior are defined, in precedence order,
+by [ADR 0005](architecture/decisions/0005-external-billing-boundary.md), the
+accepted [External Billing Boundary Design](superpowers/specs/2026-09-15-external-billing-boundary-design.md),
+and the accepted [Portal ↔ Kernel Access Contract Design](superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md).
+`ANY-504` controls their implementation sequence. This document records
+cross-cutting operational constraints and retained/current implementation
+behavior; it does not redefine target commercial ownership, persistence, or
+paid-access derivation.
+
+## Cross-cutting critical paths
 
 - API liveness must not depend on PostgreSQL; readiness must.
-- Billing must use retry-safe orchestration. The provider-neutral future
+- Billing must use retry-safe orchestration. The cross-boundary
   external-command sequence is: persist or find the durable local operation or
   purchase intent, commit it, issue the external command outside any database
   transaction, persist the reliable result and mapping in a subsequent commit,
   then apply a verified fact or reconcile through the shared local transition
   path. Use provider idempotency features when available, but
   do not assume every external command is idempotent.
-- A Portal-initiated commercial purchase or change must validate the exact
-  `Plan.id`, user, legal, entrypoint, and commercial context and persist its
-  Portal-owned purchase intent / commercial `Order` before the external
-  commercial command. A commercial `Order` is not required for unrelated
-  external billing operations: customer provisioning may correlate through the
-  existing Portal `User`, durable operation, and external mapping, while an
-  externally initiated or scheduled renewal is projected or reconciled from
-  authoritative external facts.
+- Target purchase validation, `PurchaseIntent` persistence, external-operation
+  recovery, and authoritative-fact rules follow ADR 0005 and the accepted
+  External Billing Boundary Design rather than the retained Portal `Plan` and
+  commercial `Order` model.
 - A timeout or lost response is neither confirmed success nor confirmed failure:
   the external outcome is unknown. Reconcile before deciding whether another
   command is safe; never automatically issue a duplicate create after an
@@ -45,8 +52,6 @@ Last verified: 2026-09-16
   idempotency rules must reject or ignore them, or trigger reconciliation.
 - Valid later lifecycle facts, including refunds, disputes, cancellations, and
   expirations, must remain able to perform their legitimate transitions.
-- Verified webhook and future reconciliation facts must feed the same local
-  transition path; reconciliation must not become a competing state machine.
 - Every external-billing integration must define recovery or reconciliation for
   externally authoritative state changes whose notifications are completely
   missed. Correctness must not depend solely on webhook delivery. The concrete
@@ -57,7 +62,7 @@ Last verified: 2026-09-16
   integration must obtain authoritative facts through authenticated,
   validated integration facts and reconciliation as required.
 
-## Transaction, idempotency, and retry contract
+## Retained/current transaction, idempotency, and retry contract
 
 Application orchestration owns outer business transaction commit and rollback.
 Focused persistence/query code owns database mechanics below that boundary:
@@ -66,7 +71,7 @@ and explicitly targeted nested savepoints. A `Session` autobegin does not make
 the first persistence helper the logical transaction owner, and those helpers
 must not finalize the outer transaction.
 
-The current provider-neutral billing lifecycle participates in a caller-owned
+The retained local billing lifecycle participates in a caller-owned
 transaction. Same-key operations first inspect the persisted operation event,
 serialize on the established row lock, and inspect the operation event again
 after acquiring that lock. Once one transaction commits, a concurrent replay
@@ -76,7 +81,8 @@ for it. Retained CloudPayments webhook transaction and delivery-idempotency
 mechanics remain a compatibility boundary for the inactive source; they are not
 active in normal runtime and do not define future integration protocol.
 
-Canonical commercial projection follows an Order-first lock direction.
+In the retained Portal-managed implementation, commercial projection follows an
+Order-first lock direction.
 Application reloads and locks the Order before Payment/Refund decisions and
 revalidates local provider-account correlation, immutable financial context,
 and opaque external identity. Database uniqueness is the final identity
@@ -93,17 +99,19 @@ inbox receipt, then process the normalized fact in a caller-owned transaction
 that also contains any newly applicable subscription/entitlement handoff. A
 downstream failure rolls back normalized commercial and lifecycle mutations but
 does not erase the inbox receipt. Delivery duplicates and commercial replays
-remain separate identities. Future reconciliation must normalize into this
-same commercial transition so webhook and reconciliation evidence converge.
+remain separate identities in this retained path. Verified webhook and
+reconciliation facts converge through this retained commercial transition. This
+behavior does not define the target; target reconciliation semantics follow ADR
+0005 and the accepted External Billing Boundary Design.
 
-The public billing Application lifecycle facade owns Subscription and
-Entitlement mutation semantics. Integration and operational entrypoints invoke
-that boundary and do not query subscription persistence to decide access
-consequences. A newly applicable Step-8 paid or refund outcome and its Step-9
-lifecycle consequence share the caller-owned processing transaction; neither
-transition boundary commits or rolls it back. Scheduled expiry likewise keeps
-its explicit CLI-owned transaction, with committed diagnostics emitted only
-after transaction exit.
+In the retained current implementation, the public billing Application
+lifecycle facade owns Subscription and Entitlement mutation semantics.
+Integration and operational entrypoints invoke that boundary and do not query
+subscription persistence to decide access consequences. A newly applicable
+Step-8 paid or refund outcome and its Step-9 lifecycle consequence share the
+caller-owned processing transaction; neither transition boundary commits or
+rolls it back. Scheduled expiry likewise keeps its explicit CLI-owned
+transaction, with committed diagnostics emitted only after transaction exit.
 
 For normalized authoritative subscription-state transitions, the operation key
 is semantic identity. Exact replay for the same subscription, transition kind,
@@ -118,11 +126,14 @@ legacy processing timestamps are not promoted into authoritative ordering.
 These freshness rules are limited to authoritative subscription-state facts and
 do not impose last-write-wins behavior on other lifecycle commands.
 
-Local Entitlement state and validity remain the access authority. A provider or
-vendor state cannot become a second runtime access source. Portal-owned trials
-and manual access remain valid without provider subscription identity. Retained
-CloudPayments/direct-provider code is deactivated compatibility source;
-ANY-497 external billing command flows and reconciliation remain future work.
+For the retained current implementation, local Entitlement state and validity
+are the runtime access source. A provider or vendor state cannot become a second
+runtime access source for that implementation, and its Portal-owned trials and
+manual access remain valid without provider subscription identity. These are
+current-state facts, not the final target paid-access authority or wire model.
+Retained CloudPayments/direct-provider code is deactivated compatibility source.
+Target paid-access projection and delivery follow ADR 0005 and the accepted
+designs, with the external-billing implementation sequence owned by `ANY-504`.
 
 Database retry decisions use these semantics:
 
@@ -160,10 +171,10 @@ and recovery.
 
 ANY-489 required no schema migration because it changed transaction ownership,
 rollback behavior, post-lock rechecks, and architecture enforcement while using
-existing persisted operation identities and uniqueness constraints. A future
-external-command operation-intent representation remains deferred until the
-external-billing work has concrete persistence and recovery requirements; this
-document does not invent a table, entity, API, or vendor status for it.
+existing persisted operation identities and uniqueness constraints. Target
+external-command persistence and recovery follow ADR 0005 and the accepted
+External Billing Boundary Design and are sequenced by `ANY-504`; this document
+does not invent a competing table, entity, API, or vendor status.
 
 ## Framework worker execution
 
