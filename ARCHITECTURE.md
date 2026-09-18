@@ -1,17 +1,18 @@
 # Payment Portal Architecture
 
 Status: authoritative current-state map
-Last verified: 2026-09-16
+Last verified: 2026-09-18
 
 ## System boundary
 
-This repository owns identity, legal-document and acceptance records, catalog
-semantics, entitlement rules, local entitlements, and the payment portal UI for
-**one contour per production instance**. It owns checkout and local billing
-records, while normal runtime has no active direct payment provider. Retained
-provider/webhook source is not part of normal application composition. It does
-not own workflow execution, scenario runtime, artifacts, or usage consumption.
-Those belong to the separate Platform Kernel repository.
+In the current implementation, this repository owns identity, legal-document
+and acceptance records, catalog semantics, entitlement rules, local
+entitlements, checkout and local billing records, and the payment portal UI for
+**one contour per production instance**. Normal runtime has no active direct
+payment provider, and retained provider/webhook source is not part of normal
+application composition. The repository does not own workflow execution,
+scenario runtime, artifacts, or usage consumption. Those belong to the separate
+Platform Kernel repository.
 
 The implemented instance is the `ru` contour. Target contours are `ru`, `eu`,
 and `us`. See [contours](docs/architecture/contours.md).
@@ -32,27 +33,49 @@ flowchart LR
   Web -. "planned contour switch" .-> Resolver
 ```
 
-This diagram shows **CURRENT IMPLEMENTATION CODE**, not a production billing
+## Billing architecture status
+
+### CURRENT / RETAINED
+
+The diagram shows current implementation code, not a production billing
 deployment. Payment Portal is still under development and has no production
-CloudPayments subscribers or subscriptions. The retained `ru` code contains
-transitional direct-provider source and persistence, but normal backend and
-frontend runtime does not initialize, register, load, or invoke CloudPayments.
-Checkout is deliberately unavailable until a separately selected and
-implemented billing integration exists.
+CloudPayments subscribers or subscriptions. The implemented schema and code
+contain Portal-owned `Product`, `Plan`, `Order`, `Payment`, `Subscription`, and
+`Entitlement` records plus transitional direct-provider source. Normal backend
+and frontend runtime does not initialize, register, load, or invoke
+CloudPayments, and checkout is deliberately unavailable. These commercial and
+access objects remain current-state implementation facts; they do not establish
+future commercial authority or the final paid-access wire model.
 
-The sole long-term production target is the external-billing-managed flow, in
-which the external system owns its external customer, invoice, payment, and
-subscription lifecycle and the Portal stores normalized local projections. The
-retained Portal-managed source remains documented only for later cleanup. A
-`Subscription` that participates in a billing
-lifecycle has exactly one billing owner at a time. A Portal-only access
-lifecycle, such as a locally granted free trial without an external billing
-lifecycle, remains Portal-owned and does not require an external billing owner.
-No CloudPayments-to-external-billing migration or coexistence mechanism is
-required or defined while there are no production subscriptions to migrate. See
-[Billing Authority and Consistency](docs/architecture/billing-authority.md).
+The retained Portal-managed path and its documents remain available for
+characterization and controlled cleanup. No CloudPayments-to-external-billing
+migration or coexistence mechanism is required while there are no production
+subscriptions to migrate.
 
-## Current domains
+### TARGET
+
+The canonical target is defined, in precedence order, by
+[ADR 0005](docs/architecture/decisions/0005-external-billing-boundary.md), the
+accepted [External Billing Boundary Design](docs/superpowers/specs/2026-09-15-external-billing-boundary-design.md),
+and the accepted
+[Portal ↔ Kernel Access Contract Design](docs/superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md).
+External Billing owns commercial billing truth and lifecycle. Payment Portal
+owns AnyToolAI identity and legal acceptance, the external-billing anti-
+corruption/projection/reconciliation/recovery boundary, and provider-neutral
+paid-access projection and delivery. Platform Kernel owns technical product and
+metric vocabulary, durable actual usage, and quota enforcement.
+
+External Billing is not a `PaymentProviderAdapter`, is never registered in
+`PaymentProviderRegistry`, and does not make Payment Portal the target payment
+orchestrator. The accepted Portal-Kernel `AccessSnapshot` and invalidation
+contract is the target access boundary; the current local `Entitlement`
+representation is not automatically that final wire model. This target remains
+future work controlled by `ANY-504`; it is not implemented by the current code.
+Provider-independent clean pre-production cleanup may precede Phase 0, while
+provider-dependent LBX production semantics, paid-access derivation, Widget
+behavior, and launch remain Phase 0 gated.
+
+## Current / retained domains
 
 - **Identity** — contour-local users and hashed authentication sessions.
 - **Legal** — legal entities, document versions, and append-only acceptances.
@@ -98,8 +121,9 @@ transport- and vendor-independent rules. Persistence and Integrations implement
 the outer capabilities required by Application, and Composition binds their
 concrete implementations. This is the target logical model, not a claim that
 the current physical package tree fully conforms. Current exceptions and the
-transitional package mapping are recorded in
-[Billing Authority and Consistency](docs/architecture/billing-authority.md).
+transitional package mapping are recorded in the retained
+[Billing Authority and Consistency](docs/architecture/billing-authority.md)
+current-state/historical reference.
 The selective persistence rules are defined below; they do not require a
 repository for every model.
 
@@ -214,9 +238,10 @@ back both transition groups while preserving the receipt. Trial and manual
 access lifecycles remain valid without a provider subscription identity.
 
 Retained CloudPayments/direct-provider code is deactivated compatibility
-source, not the target billing architecture. ANY-497 owns future external
-billing command flows. Future reconciliation must feed the same Application
-transition boundaries and remains outside this implementation.
+source, not the target billing architecture. The transition behavior above
+describes only the retained implementation and does not constrain the target
+external-billing recovery or reconciliation design. `ANY-504` controls that
+future implementation sequence under ADR 0005 and the accepted designs.
 
 ### FastAPI dependency lifetimes
 
@@ -412,13 +437,16 @@ persisted business state.
 
 ## Authoritative details
 
+- [ADR 0005: External billing boundary](docs/architecture/decisions/0005-external-billing-boundary.md)
+- [External Billing Boundary Design](docs/superpowers/specs/2026-09-15-external-billing-boundary-design.md)
+- [Portal ↔ Kernel Access Contract Design](docs/superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md)
 - [Contours](docs/architecture/contours.md)
 - [Region Resolver contract](docs/architecture/region-resolver-contract.md)
-- [Payment providers](docs/architecture/payment-providers.md)
-- [Billing Authority and Consistency](docs/architecture/billing-authority.md)
-- [Data model](docs/architecture/payment-portal-data-model.md)
+- [Retained payment-provider characterization](docs/architecture/payment-providers.md)
+- [Superseded billing-authority design and current-state context](docs/architecture/billing-authority.md)
+- [Current-state data model](docs/architecture/payment-portal-data-model.md)
 - [Deployment](docs/architecture/deployment.md)
-- [Platform Kernel contract boundary](docs/architecture/platform-kernel-contract.md)
+- [Superseded planned Platform Kernel contract](docs/architecture/platform-kernel-contract.md) — retained historical context
 - [Implemented `ru` journey](docs/product/ru-mvp.md)
 - [Security](docs/SECURITY.md)
 - [Reliability](docs/RELIABILITY.md)

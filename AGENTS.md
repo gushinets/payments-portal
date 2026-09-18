@@ -14,18 +14,28 @@ document that applies to the current task.
 
 - [README.md](README.md) — setup and canonical commands.
 - [ARCHITECTURE.md](ARCHITECTURE.md) — current boundaries and dependency rules.
+- For all new billing work, follow this target authority chain in order:
+  1. [ADR 0005](docs/architecture/decisions/0005-external-billing-boundary.md)
+     — the canonical external-billing ownership and precedence decision;
+  2. [External Billing Boundary Design](docs/superpowers/specs/2026-09-15-external-billing-boundary-design.md)
+     — the accepted commercial boundary and implementation baseline;
+  3. [Portal ↔ Kernel Access Contract Design](docs/superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md)
+     — the accepted paid-access and quota wire-contract baseline.
 - [docs/PRODUCT.md](docs/PRODUCT.md) — current product scope.
 - [docs/architecture/contours.md](docs/architecture/contours.md) — contour
   isolation and country membership.
 - [docs/architecture/region-resolver-contract.md](docs/architecture/region-resolver-contract.md)
   — planned Region Resolver consumer rules.
 - [docs/architecture/payment-providers.md](docs/architecture/payment-providers.md)
-  — Portal-managed direct-provider billing and adapters.
+  — retained current-state characterization of Portal-managed direct-provider
+  billing and adapters; not target external-billing guidance.
 - [docs/architecture/billing-authority.md](docs/architecture/billing-authority.md)
-  — billing ownership, authoritative facts, trust boundaries, and entitlement
-  authority.
+  — superseded target design retained for current-state and historical context.
 - [docs/architecture/payment-portal-data-model.md](docs/architecture/payment-portal-data-model.md)
-  — normative Payment Portal data and backend invariants.
+  — authoritative current-state schema reference, not the target external-
+  billing persistence design.
+- Superseded billing ADRs and retained billing execution plans are historical or
+  migration references only. They do not define new target behavior.
 - [docs/product/ru-mvp.md](docs/product/ru-mvp.md) — implemented `ru` journey
   and pages.
 - [docs/DESIGN.md](docs/DESIGN.md) — Bundle 3 UI rules.
@@ -65,16 +75,24 @@ document that applies to the current task.
 - Region Resolver is a separate repository. This portal may know only that
   resolver origin, as a planned client. Do not implement the resolver here.
 - Platform Kernel changes belong to `gushinets/anytoolai-platform`.
-- ANY-71 owns Payment Portal data-model design and decomposition; implementation
-  is owned by its child tickets: ANY-77 for catalog, ANY-78 for subscriptions
-  and entitlements, and ANY-79 for the private entitlement API.
-- Payment Portal owns local entitlements, and Platform Kernel consumes them as
-  access authority. Raw external contracts and vendor status vocabularies stop
-  at the Integration boundary.
-- Paid access changes only from verified authoritative billing facts, never
-  from a browser return URL. Normal runtime has no active CloudPayments fact
-  path; any future billing integration must authenticate and validate its
-  authoritative facts and feed the local transition path.
+- External Billing is never a `PaymentProviderAdapter` and is never registered
+  in `PaymentProviderRegistry`. Do not add external-billing functionality to
+  either retained direct-provider abstraction.
+- Do not extend CloudPayments or the retained direct-provider architecture for
+  new external billing. Work there requires explicit characterization or
+  removal scope.
+- Do not introduce target commercial authority based on the retained Portal-
+  owned `Product`, `Plan`, `Order`, or `Payment` model. Current local
+  `Subscription` and `Entitlement` behavior is current-state characterization,
+  not the final target paid-access wire model.
+- Legacy documents cannot override ADR 0005 or either accepted design baseline
+  for target behavior.
+- Provider-independent clean pre-production cleanup may precede Phase 0.
+  Provider-dependent LBX production semantics, paid-access derivation, Widget
+  behavior, and launch remain gated on Phase 0 PASS under `ANY-504`.
+- Paid access is never granted from a browser return, Widget callback, webhook,
+  outbound request success, or payment state alone. Target derivation follows
+  the authoritative-fact rules in the accepted external-billing design.
 - Never collect card data or log secrets, authorization headers, raw tokens, or
   unredacted payment fields.
 - Legal pages are drafts; do not present them as legally approved.
