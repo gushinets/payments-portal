@@ -1,6 +1,17 @@
 # ANY-78 - Implement Payment Portal Subscriptions and Entitlements
 
-Status: active
+> **Classification: completed implementation history — superseded as the target
+> billing direction.** This work was implemented; do not continue its
+> architecture as the target billing direction. Already implemented source may
+> remain temporarily for characterization and later gated cleanup. New billing
+> work follows [ADR 0005], the [External Billing Boundary Design], and the
+> [Portal ↔ Kernel Access Contract Design].
+
+[ADR 0005]: ../../architecture/decisions/0005-external-billing-boundary.md
+[External Billing Boundary Design]: ../../superpowers/specs/2026-09-15-external-billing-boundary-design.md
+[Portal ↔ Kernel Access Contract Design]: ../../superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md
+
+Status: completed implementation history; target direction superseded
 Owner: repository maintainers
 Started: 2026-08-24
 

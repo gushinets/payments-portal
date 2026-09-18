@@ -1,6 +1,16 @@
 # ANY-165 - Minimal payment provider boundary
 
-Status: active
+> **Classification: superseded — retained implementation history.** Do not
+> continue this plan as the target billing direction. Already implemented source
+> may remain temporarily for characterization and later gated cleanup. New
+> billing work follows [ADR 0005], the [External Billing Boundary Design], and
+> the [Portal ↔ Kernel Access Contract Design].
+
+[ADR 0005]: ../../architecture/decisions/0005-external-billing-boundary.md
+[External Billing Boundary Design]: ../../superpowers/specs/2026-09-15-external-billing-boundary-design.md
+[Portal ↔ Kernel Access Contract Design]: ../../superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md
+
+Status: superseded
 Owner: Codex
 Parent: https://linear.app/paveldik/issue/ANY-163/podklyuchenie-cloudpayments-vidzhet-api-uvedomleniya-podpiski
 
