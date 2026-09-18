@@ -9,12 +9,20 @@ Historical implementation expansion owner: Linear ANY-71
 >
 > This document remains authoritative for the implemented ORM tables and their
 > current semantics. It does not define the target external-billing physical
-> model. Target billing architecture follows
-> [ADR 0005](decisions/0005-external-billing-boundary.md) and the accepted
-> [external-billing boundary design](../superpowers/specs/2026-09-15-external-billing-boundary-design.md).
-> The next `ANY-504` persistence step owns the future physical-model and reset
-> design. Until that step changes the actual schema, the implemented table
-> inventory and current ORM descriptions below must remain complete.
+> model. Target architecture authority follows, in precedence order:
+>
+> 1. [ADR 0005](decisions/0005-external-billing-boundary.md);
+> 2. the accepted
+>    [external-billing boundary design](../superpowers/specs/2026-09-15-external-billing-boundary-design.md);
+> 3. the accepted
+>    [Portal-Kernel access-contract design](../superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md)
+>    where the Kernel contract is relevant.
+>
+> `ANY-504` separately controls implementation sequencing, including future
+> physical-model and reset work.
+>
+> Until `ANY-504` changes the actual schema, the implemented table inventory and
+> current ORM descriptions below must remain complete.
 
 This document is the canonical current-state persistence reference for Payment
 Portal. It defines implemented persisted model semantics, local state
@@ -51,15 +59,12 @@ Browser routing to another contour is defined in
   `us`. A production instance stores and serves exactly one contour.
 - Identity is `tenant_id + region + user_id` and is independent across
   contours. The same email on two contours is two accounts on two data planes.
-- Payment Portal owns identity, legal and catalog semantics, entitlement rules,
-  Portal-initiated commercial purchase intent / `Order`, and local
-  entitlements. In the current Portal-managed direct-provider flow it also owns
-  the billing lifecycle. Under external billing, the external system owns its
-  external customer, invoice, payment, and subscription lifecycle, while Portal
-  `Payment` and `Subscription` records are normalized local projections. An
-  external invoice identifier may be correlated with the applicable Portal-
-  owned order. Platform Kernel owns runtime sessions, jobs, actions, provider
-  calls, artifacts, events, and usage consumption.
+- The implemented schema assigns Payment Portal identity, legal and catalog
+  semantics, entitlement rules, Portal-initiated commercial `Order` records,
+  local entitlements, and the current Portal-managed direct-provider billing
+  lifecycle. This is current-state characterization, not target commercial
+  ownership. Target ownership and persistence semantics follow ADR 0005, the
+  accepted external-billing boundary design, and `ANY-504` sequencing.
 - Paid access is activated only from a verified authoritative billing fact,
   never from a browser return URL or outbound command result.
 - Payment Portal stores purchased limits; Platform Kernel stores usage.
@@ -107,7 +112,7 @@ Exact implemented columns and indexes are generated in
 [`docs/generated/db-schema.md`](../generated/db-schema.md). Any implemented ORM
 table missing from the table above is a documentation-check failure.
 
-### Persistence readiness for external billing
+### Current persistence and superseded planning context
 
 - **CURRENT physical persistence:** The implemented schema remains primarily
   shaped around the Portal-managed direct-provider flow. `Order` and `Payment`
@@ -118,7 +123,8 @@ table missing from the table above is a documentation-check failure.
   the schema has no general external-billing ownership or external-ID mapping
   representation. External billing must not be represented by creating fake
   `payment_provider_accounts` rows.
-- **TARGET semantics:** In the external-billing-managed flow, Payment Portal
+- **HISTORICAL / SUPERSEDED target context:** Earlier planning said that, in an
+  external-billing-managed flow, Payment Portal
   persists and commits a local operation or purchase intent, as applicable,
   before an external command. A Portal-initiated commercial purchase or change
   requires a Portal-owned purchase intent / commercial `Order` before the
@@ -128,14 +134,16 @@ table missing from the table above is a documentation-check failure.
   reconciled from authoritative facts without a prerequisite Portal `Order`.
   Local `Payment` and `Subscription` records serve as normalized Payment Portal
   projections of authoritative external billing facts. The current physical
-  schema remains direct-provider-shaped and may require later adaptation; this
-  document does not choose a generic-operation or projection-provenance
-  representation.
-- **FUTURE implementation:** A concrete external-billing integration may need
+  schema remains direct-provider-shaped and may require later adaptation. This
+  retained description is not executable target guidance: it includes the old
+  Portal-owned commercial `Order` assumption superseded by ADR 0005 and the
+  accepted external-billing boundary design.
+- **HISTORICAL / SUPERSEDED future context:** Earlier planning anticipated
   separately approved persistence adaptation, such as external-ID mappings,
   ownership representation, changed or nullable references, or another minimal
-  schema change. ANY-411 intentionally does not choose that representation or
-  implement any such change.
+  schema change. ANY-411 did not choose that representation or implement any
+  such change. Current target persistence and commercial semantics follow ADR
+  0005, the accepted external-billing boundary design, and `ANY-504`.
 
 ## 3. Current implemented model
 
@@ -195,10 +203,11 @@ Only one version per `tenant_id + region + doc_type` may be active. Its
 
 The current schema therefore supports one active legal pack per contour.
 `country_region_rules.default_document_set` is configuration vocabulary, not a
-key or foreign key into `document_versions`. If countries in one contour need
-different active documents, ANY-71 must define a document-set dimension and its
-relationship to country rules, document versions, acceptances, generation, and
-rendering before that contour is enabled.
+key or foreign key into `document_versions`. Historical ANY-71 planning recorded
+that enabling different active documents within one contour would first require
+a document-set dimension and defined relationships to country rules, document
+versions, acceptances, generation, and rendering. This document does not assign
+current ownership of that future product decision.
 
 `document_acceptances` is append-only. It snapshots type, version, acceptance
 kind, acceptance text hash, time, source, and relevant entrypoint context. A new
@@ -207,7 +216,9 @@ be a separate append-only record rather than mutation of acceptance history.
 
 ### Checkout and orders
 
-The accepted checkout identity decision is recorded in [ADR 0002](decisions/0002-plan-based-checkout-identity.md).
+The implemented checkout identity decision is recorded historically in
+[ADR 0002](decisions/0002-plan-based-checkout-identity.md), which ADR 0005
+supersedes for new billing development.
 The catalog returns Product data with the exact currently sellable Plan:
 
 ```text
@@ -222,8 +233,9 @@ backend catalog returns Product + exact current Plan
 
 `Plan.id` is the only commercial purchase identity submitted by checkout.
 `Product.code`, `Bundle.code`, and `Plan.code` are readable catalog or
-snapshot data, not generic checkout selectors. The target checkout request
-therefore removes `product` and `plan_code` without compatibility aliases.
+snapshot data, not generic selectors in the implemented checkout. The current
+checkout request therefore omits `product` and `plan_code` compatibility
+aliases.
 
 An `entrypoint_session` records product/bundle/catalog/paywall context and future
 regional-resolution evidence. It is provenance, not the purchased object:
@@ -258,17 +270,15 @@ or entrypoint strings. Checkout responses are purchase/Plan-oriented while
 preserving the provider-neutral `checkout.amount`, `checkout.currency`, and
 `checkout.action` envelope.
 
-For a Portal-initiated commercial purchase or change in either billing flow, an
-`order` is the Portal-owned local purchase intent / commercial request. It is
-created after resolving the exact `Plan.id` and validating the authenticated
-user, legal, entrypoint, and local commercial context, before the external
-commercial command. The current physical record
-contains the user, region, checkout and entrypoint links, amount/currency,
-provider account, merchant/provider identifiers, timestamps, and region-
-mismatch state because the schema is still shaped for the direct-provider flow.
-An external-billing-managed integration may correlate its invoice identifier
-with this Portal-owned order, but adapting the physical fields belongs to later
-persistence/integration work.
+In the current Portal-managed direct-provider flow, an `order` is the Portal-
+owned commercial request. It is created after resolving the exact `Plan.id` and
+validating the authenticated user, legal, entrypoint, and local commercial
+context. The physical record contains the user, region, checkout and entrypoint
+links, amount/currency, provider account, merchant/provider identifiers,
+timestamps, and region-mismatch state. Earlier planning extended this `Order`
+concept to external billing; that target assumption is superseded and must not
+guide implementation. ADR 0005, the accepted external-billing boundary design,
+and `ANY-504` govern the target replacement.
 
 `order_items` preserves the commercial facts shown at checkout: item type,
 product/bundle/plan identifiers, names and codes, quantities, prices, discounts,
@@ -294,23 +304,25 @@ payment records. Raw card fields and secrets are forbidden.
 
 ### Subscriptions, entitlements, and access audit
 
-`subscriptions` represents the contour-local, access-facing lifecycle for
-trials, paid periods, manual renewal, automatic renewal, cancellation,
-provider-reference attachment, refund outcomes, and expiration. In the current
-Portal-managed flow, Payment Portal owns that billing lifecycle. In an
-external-billing-managed flow, the external system owns its external
-subscription lifecycle and the local `Subscription` is a normalized projection
-used by Portal entitlement rules. Subscription identity is internal UUID
-identity; provider account and provider subscription IDs are optional opaque
-references, not Payment Portal domain identities.
+`subscriptions` represents the implemented contour-local, access-facing
+lifecycle for trials, paid periods, manual renewal, automatic renewal,
+cancellation, provider-reference attachment, refund outcomes, and expiration.
+In the current Portal-managed flow, Payment Portal owns that billing lifecycle.
+Subscription identity is internal UUID identity; provider account and provider
+subscription IDs are optional opaque references, not Payment Portal domain
+identities.
+Earlier planning described the local `Subscription` as an external-billing
+projection; that target description is superseded and does not define the
+future persistence model.
 
-External subscription or service state, confirmed financial or payment state,
-and local entitlement are separate concerns. No vendor `active`, `unblocked`,
-payment-status, account-balance, or other single field directly creates an
-entitlement. The Integration boundary supplies normalized authoritative facts;
-Payment Portal's entitlement policy evaluates the applicable facts and decides
-whether access is granted, retained, changed, or revoked. This document does not
-fix the future fact set or entitlement algorithm.
+In the implemented direct-provider lifecycle, external subscription or service
+state, confirmed financial or payment state, and local entitlement are separate
+concerns. No vendor `active`, `unblocked`, payment-status, account-balance, or
+other single field directly creates an entitlement. The current Integration
+boundary supplies normalized authoritative facts, and the current entitlement
+policy decides whether access is granted, retained, changed, or revoked. These
+implemented mechanics do not define the target fact set or paid-access
+derivation; those follow the accepted designs and `ANY-504` sequencing.
 
 Automatic renewal can be enabled only after provider setup succeeds. Until then,
 a requested automatic renewal remains a manual subscription with paid access
@@ -365,8 +377,9 @@ region_mismatch
 
 Only an authoritative normalized fact backed by the billing owner may set
 `paid`. For the current Portal-managed flow, that is verified provider state.
-For external billing, integration policy determines whether an authenticated
-webhook payload is semantically sufficient or point reconciliation is required.
+This implemented `Order` state must not be projected into the target external-
+billing persistence model; target authoritative-fact rules follow ADR 0005 and
+the accepted external-billing boundary design.
 `region_mismatch` blocks future entitlement creation on this instance and is a
 Region Resolver redirect signal, not a local rewrite onto another contour.
 
@@ -397,11 +410,12 @@ For the implemented `ru` CloudPayments charge mode, the expected terminal
 transition is `created -> succeeded` or `created -> failed`. Authorization mode
 may persist `created -> authorized`; a later `confirm`, `fail`, or `cancel`
 webhook moves it to `succeeded`, `failed`, or `canceled`. A late failure must not
-downgrade an already successful payment or paid order. Future billing
-integrations may project authoritative facts into the same local payment
-states; a contour is not required to register a direct-provider adapter.
+downgrade an already successful payment or paid order. Earlier planning expected
+future billing integrations to project authoritative facts into the same local
+payment states. That expectation is superseded target context, not a requirement
+to retain this model.
 
-The canonical commercial transition accepts only typed, provider-neutral
+The implemented commercial transition accepts only typed, provider-neutral
 facts. A new Payment identity must match its Order's immutable amount and
 currency. The first applicable outcome sets its confirmation timestamp; replay
 does not replace `authorized_at`, `captured_at`, `failed_at`, or the Order's
@@ -435,8 +449,8 @@ verified fact.
 
 ANY-493 changes transition ownership and behavior only. It requires no schema
 migration and introduces no future external-billing tables, mappings, enums, or
-public API; physical schema adaptation remains deferred until an approved
-external-billing design requires it.
+public API. Target physical-schema work follows the accepted external-billing
+design and `ANY-504` sequencing.
 
 ### Webhook event
 
@@ -492,34 +506,33 @@ Expiration is a one-shot, idempotent maintenance command for an external
 scheduler, and access evaluation must still enforce `valid_until` if that
 command is delayed.
 
-### TARGET: external-billing-managed lifecycle
+### HISTORICAL / SUPERSEDED TARGET: external-billing-managed lifecycle
 
-The sole long-term production target is an external-billing-managed lifecycle.
-Payment Portal first persists and commits a local operation or purchase intent,
-as applicable. A Portal-initiated commercial purchase or change requires its
-Portal-owned commercial `Order`; customer provisioning and externally initiated
-or scheduled renewals do not acquire an invented prerequisite `Order`. The
-external billing system owns its external customer, invoice, payment, and
-subscription lifecycle. Authenticated webhooks are the primary asynchronous
-notification mechanism, but authenticity alone is not semantic authority. After
-authenticity verification, validation, and normalization, integration policy
-decides whether the webhook payload's completeness and currentness guarantees
-are sufficient to produce an authoritative normalized fact; otherwise the
-webhook triggers point reconciliation and verified server-side state produces
-that fact. Both fact sources must converge through the same normalized local
-transition rules. Every external-billing integration must also recover
-externally authoritative changes whose notifications are completely missed;
-correctness must not depend solely on webhook delivery. An outbound command
-result is not payment, subscription, or entitlement authority.
+The following paragraphs preserve the earlier ANY-411-era target for historical
+context. They are not executable target guidance and must not be used to design
+the future schema. Current target commercial and persistence semantics follow
+ADR 0005, the accepted external-billing boundary design, and `ANY-504`.
 
-The existing `orders` remain Portal-owned commercial intents, while `payments`
-and `subscriptions` may be normalized local projections for entitlement
-processing. Payment Portal remains authoritative for catalog semantics,
-entitlement rules, and `entitlements`, and Platform Kernel continues to consume
-only those local entitlements. This target description adds no external-
-customer table, external-subscription table, billing-owner field or enum,
-adapter, mapping schema, or other implemented persistence, and does not choose
-how the direct-provider-shaped `orders` table is later adapted.
+That superseded model described the sole long-term production target as an
+external-billing-managed lifecycle. It said Payment Portal first persisted and
+committed a local operation or purchase intent, as applicable. It required a
+Portal-owned commercial `Order` for a Portal-
+initiated commercial purchase or change, while customer provisioning and
+externally initiated or scheduled renewals did not acquire an invented
+prerequisite `Order`. It assigned the external customer, invoice, payment, and
+subscription lifecycle to the external billing system. It treated authenticated
+webhooks as the primary asynchronous notification mechanism but required
+integration policy to decide whether a payload was semantically authoritative
+or point reconciliation was needed. It also required missed-notification
+recovery and rejected outbound command results as payment, subscription, or
+entitlement authority.
+
+The superseded description kept existing `orders` as Portal-owned commercial
+intents and treated `payments` and `subscriptions` as possible normalized local
+projections for entitlement processing. It added no external-customer table,
+external-subscription table, billing-owner field or enum, adapter, mapping
+schema, or other implemented persistence. Those historical omissions and
+assumptions are not current target decisions.
 
 ## 6. Implemented catalog and access model
 
@@ -543,11 +556,13 @@ order creation. Money in the model is always integer minor units plus an ISO
 
 ### Subscriptions and entitlements
 
-`subscriptions` own trial and paid periods, renewal mode, cancellation, and
-optional provider subscription references. `entitlements` are explicit grants
-with scope, validity, source, order, and subscription links. Platform Kernel will
-read entitlements through the future Payment Portal access API and will continue
-to own actual usage counters.
+In the implemented model, `subscriptions` own trial and paid periods, renewal
+mode, cancellation, and optional provider subscription references.
+`entitlements` are explicit grants with scope, validity, source, order, and
+subscription links. Historical ANY-79 planning proposed that Platform Kernel
+read those local entitlements through a future Payment Portal access API. That
+proposal is superseded; current target Portal-Kernel behavior is defined by the
+accepted Portal-Kernel access-contract design and sequenced by `ANY-504`.
 
 Direct product, containing bundle, and all-access grants are the three allowed
 ways for a product access check to succeed. Final ANY-370 ownership checks may
@@ -556,9 +571,9 @@ containing Bundle, or `all_access` entitlement. That access decision is
 independent from checkout selection: none of these scopes is a checkout
 purchase identifier, and the client submits only the exact Plan ID.
 
-## 7. External Platform Kernel boundary
+## 7. Historical / superseded Platform Kernel contract context
 
-The future verified identity key is:
+Earlier ANY-79 planning proposed this verified identity key:
 
 ```text
 tenant_id + region + user_id
@@ -567,14 +582,17 @@ tenant_id + region + user_id
 `region` is the local contour. Platform Kernel in another contour is a different
 deployment. This portal does not answer access checks for a foreign contour.
 
-The proposed access request includes the identity key, product code, and optional
-scenario/session context. The response includes allowed state, entitlement and
-subscription identifiers, plan code, validity, scope, and purchased limits.
+That proposal described an access request containing the identity key, product
+code, and optional scenario/session context. Its response would have included
+allowed state, entitlement and subscription identifiers, plan code, validity,
+scope, and purchased limits.
 
-The private Platform Kernel access API is planned context only in this
-repository and is owned by ANY-79. The implemented authenticated account
-subscription APIs are for Payment Portal users and do not expose provider
-references, payment IDs, webhook IDs, or raw audit payloads.
+The old private Platform Kernel access API and its ANY-79 ownership are retained
+only as historical context, not current future work. Current target Portal-
+Kernel behavior is defined by the accepted Portal-Kernel access-contract design
+and sequenced by `ANY-504`. The implemented authenticated account subscription
+APIs remain current-state facts: they are for Payment Portal users and do not
+expose provider references, payment IDs, webhook IDs, or raw audit payloads.
 
 ## 8. Migration and seed rules
 
@@ -591,7 +609,11 @@ references, payment IDs, webhook IDs, or raw audit payloads.
 - Versioned legal source and its generated manifest must match the first-install
   seed exactly.
 
-## 9. Unresolved product decisions owned by ANY-71
+## 9. Historical ANY-71 unresolved-product context
+
+The following list preserves unresolved items recorded under ANY-71. It does
+not assign current program ownership or override ADR 0005, either accepted
+design, or `ANY-504` sequencing.
 
 - Retention for separately approved integration-specific webhook payload data,
   IP, user agent, and acceptance evidence.

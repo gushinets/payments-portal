@@ -947,67 +947,88 @@ def check_required_markdown_links(
     )
 
 
-def normalized_top_level_status(content: str) -> str | None:
+def markdown_header_region(content: str) -> str:
     heading = LEVEL_2_HEADING.search(content)
-    header = content if heading is None else content[: heading.start()]
-    match = TOP_LEVEL_STATUS.search(header)
-    if match is None:
-        return None
-    return " ".join(match.group(0).lower().split())
+    return content if heading is None else content[: heading.start()]
+
+
+def normalized_top_level_statuses(content: str) -> list[str]:
+    return [
+        " ".join(match.group(0).lower().split())
+        for match in TOP_LEVEL_STATUS.finditer(markdown_header_region(content))
+    ]
 
 
 def check_external_billing_documentation_precedence(
     *, root: Path = ROOT
 ) -> list[str]:
-    required_markers = {
+    required_statuses = {
         Path("docs/architecture/decisions/0005-external-billing-boundary.md"): (
-            "status: accepted",
+            "status: accepted"
         ),
         Path(
             "docs/superpowers/specs/2026-09-15-external-billing-boundary-design.md"
-        ): ("status: accepted implementation baseline",),
+        ): "status: accepted implementation baseline",
         Path(
             "docs/superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md"
-        ): ("status: accepted implementation baseline",),
+        ): "status: accepted implementation baseline",
         Path("docs/architecture/decisions/0002-plan-based-checkout-identity.md"): (
-            "status: superseded for new billing development",
+            "status: superseded for new billing development"
         ),
         Path(
             "docs/architecture/decisions/0004-billing-authority-and-consistency.md"
-        ): ("status: superseded for new billing development",),
+        ): "status: superseded for new billing development",
         Path("docs/architecture/billing-authority.md"): (
             "status: superseded target architecture; retained "
-            "historical/current-state reference",
+            "historical/current-state reference"
+        ),
+        Path("docs/architecture/payment-providers.md"): (
+            "status: retained current-state characterization of the "
+            "direct-provider boundary"
+        ),
+        Path("docs/architecture/payment-portal-data-model.md"): (
+            "status: authoritative current-state schema reference; not target "
+            "external-billing persistence design"
+        ),
+        Path("docs/architecture/platform-kernel-contract.md"): (
+            "status: superseded planned contract; retained historical context only"
+        ),
+        Path("docs/RELIABILITY.md"): (
+            "status: authoritative operational requirements; target "
+            "external-billing semantics delegated"
+        ),
+        Path("docs/architecture/contours.md"): (
+            "status: authoritative target architecture; implemented product remains `ru`"
+        ),
+        Path("docs/PRODUCT.md"): "status: authoritative",
+    }
+
+    required_header_markers = {
+        Path("docs/architecture/billing-authority.md"): (
             "this document is not an authority for new billing development",
         ),
         Path("docs/architecture/payment-providers.md"): (
             "legacy / transitional reference — not target architecture",
-            "status: retained current-state characterization of the "
-            "direct-provider boundary",
         ),
         Path("docs/architecture/payment-portal-data-model.md"): (
-            "status: authoritative current-state schema reference; not target "
-            "external-billing persistence design",
             "current-state schema reference — not target persistence design",
         ),
         Path("docs/architecture/platform-kernel-contract.md"): (
-            "status: superseded planned contract; retained historical context only",
             "superseded contract notice",
         ),
+    }
+
+    required_document_markers = {
         Path("AGENTS.md"): (
             "for all new billing work, follow this target authority chain in order:",
         ),
         Path("docs/RELIABILITY.md"): (
-            "status: authoritative operational requirements; target "
-            "external-billing semantics delegated",
             "target external-billing authority",
         ),
         Path("docs/architecture/contours.md"): (
-            "status: authoritative target architecture; implemented product remains `ru`",
             "target billing ownership authority:",
         ),
         Path("docs/PRODUCT.md"): (
-            "status: authoritative",
             "target billing ownership and authoritative facts follow, in precedence order,",
         ),
     }
@@ -1023,27 +1044,60 @@ def check_external_billing_documentation_precedence(
         ),
     }
 
+    documents: dict[Path, str] = {}
     errors: list[str] = []
-    for relative, markers in required_markers.items():
+    required_documents = dict.fromkeys(
+        (*required_statuses, *required_header_markers, *required_document_markers)
+    )
+    for relative in required_documents:
         path = root / relative
+        rendered_path = path.relative_to(root).as_posix()
         if not path.exists():
             errors.append(
-                f"Missing external-billing authority document: {relative.as_posix()}"
+                f"Missing external-billing authority document: {rendered_path}"
             )
             continue
-        content = path.read_text(encoding="utf-8")
-        normalized = " ".join(content.lower().split())
-        active_status = normalized_top_level_status(content)
-        for marker in markers:
-            marker_is_present = (
-                active_status == marker
-                if marker.startswith("status:")
-                else marker in normalized
+        documents[relative] = path.read_text(encoding="utf-8")
+
+    for relative, expected_status in required_statuses.items():
+        content = documents.get(relative)
+        if content is None:
+            continue
+        statuses = normalized_top_level_statuses(content)
+        if statuses != [expected_status]:
+            rendered_statuses = (
+                ", ".join(repr(status) for status in statuses) or "none"
             )
-            if not marker_is_present:
+            errors.append(
+                "Incorrect external-billing documentation classification in "
+                f"{(root / relative).relative_to(root).as_posix()}: expected exactly "
+                f"one active status {expected_status!r}, found {rendered_statuses}"
+            )
+
+    for relative, markers in required_header_markers.items():
+        content = documents.get(relative)
+        if content is None:
+            continue
+        normalized = " ".join(markdown_header_region(content).lower().split())
+        for marker in markers:
+            if marker not in normalized:
                 errors.append(
                     "Incorrect external-billing documentation classification in "
-                    f"{relative.as_posix()}: expected marker {marker!r}"
+                    f"{(root / relative).relative_to(root).as_posix()}: expected header "
+                    f"marker {marker!r}"
+                )
+
+    for relative, markers in required_document_markers.items():
+        content = documents.get(relative)
+        if content is None:
+            continue
+        normalized = " ".join(content.lower().split())
+        for marker in markers:
+            if marker not in normalized:
+                errors.append(
+                    "Incorrect external-billing documentation classification in "
+                    f"{(root / relative).relative_to(root).as_posix()}: expected "
+                    f"document marker {marker!r}"
                 )
 
     for relative, markers in stale_executable_authority_markers.items():
@@ -1055,7 +1109,7 @@ def check_external_billing_documentation_precedence(
             if marker in normalized:
                 errors.append(
                     "Stale executable billing authority in "
-                    f"{relative.as_posix()}: marker {marker!r}"
+                    f"{path.relative_to(root).as_posix()}: marker {marker!r}"
                 )
 
     active = root / "docs/exec-plans/active"
@@ -1066,12 +1120,12 @@ def check_external_billing_documentation_precedence(
         if active_plan.exists():
             errors.append(
                 "Superseded billing execution plan must not remain active: "
-                f"{active_plan.relative_to(root)}"
+                f"{active_plan.relative_to(root).as_posix()}"
             )
         if not retained_plan.exists():
             errors.append(
                 "Missing retained superseded billing execution plan: "
-                f"{retained_plan.relative_to(root)}"
+                f"{retained_plan.relative_to(root).as_posix()}"
             )
     return errors
 

@@ -453,7 +453,9 @@ def test_external_billing_documentation_precedence_reports_wrong_status(
     (tmp_path / relative).write_text("Status: proposed\n", encoding="utf-8")
 
     assert check_external_billing_documentation_precedence(root=tmp_path) == [
-        f"Incorrect external-billing documentation classification in {relative}: expected marker 'status: accepted'"
+        "Incorrect external-billing documentation classification in "
+        f"{relative.as_posix()}: expected exactly one active status "
+        "'status: accepted', found 'status: proposed'"
     ]
 
 
@@ -468,7 +470,9 @@ def test_external_billing_documentation_precedence_rejects_historical_expected_s
     )
 
     assert check_external_billing_documentation_precedence(root=tmp_path) == [
-        f"Incorrect external-billing documentation classification in {relative}: expected marker 'status: accepted'"
+        "Incorrect external-billing documentation classification in "
+        f"{relative.as_posix()}: expected exactly one active status "
+        "'status: accepted', found 'status: proposed'"
     ]
 
 
@@ -483,7 +487,46 @@ def test_external_billing_documentation_precedence_rejects_status_after_header(
     )
 
     assert check_external_billing_documentation_precedence(root=tmp_path) == [
-        f"Incorrect external-billing documentation classification in {relative}: expected marker 'status: accepted'"
+        "Incorrect external-billing documentation classification in "
+        f"{relative.as_posix()}: expected exactly one active status "
+        "'status: accepted', found none"
+    ]
+
+
+def test_external_billing_documentation_precedence_rejects_multiple_active_statuses(
+    tmp_path: Path,
+) -> None:
+    _write_external_billing_documentation_fixture(tmp_path)
+    relative = Path("docs/architecture/decisions/0005-external-billing-boundary.md")
+    (tmp_path / relative).write_text(
+        "Status: accepted\nStatus: proposed\n\n## Historical context\n",
+        encoding="utf-8",
+    )
+
+    assert check_external_billing_documentation_precedence(root=tmp_path) == [
+        "Incorrect external-billing documentation classification in "
+        f"{relative.as_posix()}: expected exactly one active status "
+        "'status: accepted', found 'status: accepted', 'status: proposed'"
+    ]
+
+
+def test_external_billing_documentation_precedence_requires_banner_in_header(
+    tmp_path: Path,
+) -> None:
+    _write_external_billing_documentation_fixture(tmp_path)
+    relative = Path("docs/architecture/payment-portal-data-model.md")
+    (tmp_path / relative).write_text(
+        "Status: authoritative current-state schema reference; not target "
+        "external-billing persistence design\n\n"
+        "## Historical context\n\n"
+        "CURRENT-STATE SCHEMA REFERENCE — NOT TARGET PERSISTENCE DESIGN\n",
+        encoding="utf-8",
+    )
+
+    assert check_external_billing_documentation_precedence(root=tmp_path) == [
+        "Incorrect external-billing documentation classification in "
+        f"{relative.as_posix()}: expected header marker "
+        "'current-state schema reference — not target persistence design'"
     ]
 
 
@@ -543,9 +586,10 @@ def test_external_billing_documentation_precedence_rejects_reactivated_plan(
     active = tmp_path / "docs/exec-plans/active" / filename
     active.parent.mkdir(parents=True, exist_ok=True)
     active.write_text("# Incorrectly active\n", encoding="utf-8")
+    relative = Path("docs/exec-plans/active") / filename
 
     assert check_external_billing_documentation_precedence(root=tmp_path) == [
-        f"Superseded billing execution plan must not remain active: docs/exec-plans/active/{filename}"
+        f"Superseded billing execution plan must not remain active: {relative.as_posix()}"
     ]
 
 
@@ -555,9 +599,10 @@ def test_external_billing_documentation_precedence_requires_retained_plan(
     _write_external_billing_documentation_fixture(tmp_path)
     filename = repo.SUPERSEDED_BILLING_PLANS[-1]
     (tmp_path / "docs/exec-plans/superseded" / filename).unlink()
+    relative = Path("docs/exec-plans/superseded") / filename
 
     assert check_external_billing_documentation_precedence(root=tmp_path) == [
-        f"Missing retained superseded billing execution plan: docs/exec-plans/superseded/{filename}"
+        f"Missing retained superseded billing execution plan: {relative.as_posix()}"
     ]
 
 
