@@ -770,6 +770,32 @@ INITIAL_MIGRATION = (
     / "versions"
     / "20260707_0001_foundation_identity_legal_provider.py"
 )
+EXTERNAL_BILLING_ADR = (
+    ROOT
+    / "docs"
+    / "architecture"
+    / "decisions"
+    / "0005-external-billing-boundary.md"
+)
+EXTERNAL_BILLING_DESIGN = (
+    ROOT
+    / "docs"
+    / "superpowers"
+    / "specs"
+    / "2026-09-15-external-billing-boundary-design.md"
+)
+PORTAL_KERNEL_ACCESS_DESIGN = (
+    ROOT
+    / "docs"
+    / "superpowers"
+    / "specs"
+    / "2026-09-15-portal-kernel-access-contract-design.md"
+)
+EXTERNAL_BILLING_AUTHORITY_CHAIN = (
+    EXTERNAL_BILLING_ADR,
+    EXTERNAL_BILLING_DESIGN,
+    PORTAL_KERNEL_ACCESS_DESIGN,
+)
 CORE_AUTHORITY_LINKS = {
     ROOT / "AGENTS.md": (
         ROOT / "README.md",
@@ -778,8 +804,8 @@ CORE_AUTHORITY_LINKS = {
         ROOT / "docs" / "architecture" / "contours.md",
         ROOT / "docs" / "architecture" / "region-resolver-contract.md",
         ROOT / "docs" / "architecture" / "payment-providers.md",
-        ROOT / "docs" / "architecture" / "billing-authority.md",
         ROOT / "docs" / "architecture" / "payment-portal-data-model.md",
+        *EXTERNAL_BILLING_AUTHORITY_CHAIN,
         ROOT / "docs" / "product" / "ru-mvp.md",
         ROOT / "docs" / "DESIGN.md",
         ROOT / "docs" / "SECURITY.md",
@@ -796,8 +822,8 @@ CORE_AUTHORITY_LINKS = {
         ROOT / "docs" / "architecture" / "contours.md",
         ROOT / "docs" / "architecture" / "region-resolver-contract.md",
         ROOT / "docs" / "architecture" / "payment-providers.md",
-        ROOT / "docs" / "architecture" / "billing-authority.md",
         ROOT / "docs" / "architecture" / "payment-portal-data-model.md",
+        *EXTERNAL_BILLING_AUTHORITY_CHAIN,
         ROOT / "docs" / "engineering" / "AGENT_WORKFLOW.md",
         ROOT / "docs" / "engineering" / "CODING_CONVENTIONS.md",
         ROOT / "docs" / "RELIABILITY.md",
@@ -805,52 +831,52 @@ CORE_AUTHORITY_LINKS = {
         ROOT / "docs" / "legal" / "README.md",
         ROOT / "docs" / "exec-plans" / "README.md",
     ),
-    ROOT / "apps" / "api" / "AGENTS.md": (
-        ROOT / "docs" / "architecture" / "billing-authority.md",
-    ),
-    ROOT / "ARCHITECTURE.md": (
-        ROOT / "docs" / "architecture" / "billing-authority.md",
-    ),
+    ROOT / "README.md": EXTERNAL_BILLING_AUTHORITY_CHAIN,
+    ROOT / "apps" / "api" / "AGENTS.md": EXTERNAL_BILLING_AUTHORITY_CHAIN,
+    ROOT / "ARCHITECTURE.md": EXTERNAL_BILLING_AUTHORITY_CHAIN,
     ROOT / "docs" / "architecture" / "payment-providers.md": (
-        ROOT / "docs" / "architecture" / "billing-authority.md",
+        EXTERNAL_BILLING_ADR,
+        EXTERNAL_BILLING_DESIGN,
     ),
     ROOT / "docs" / "architecture" / "decisions" / "0001-multi-contour-billing.md": (
-        ROOT
-        / "docs"
-        / "architecture"
-        / "decisions"
-        / "0004-billing-authority-and-consistency.md",
+        EXTERNAL_BILLING_ADR,
+    ),
+    ROOT
+    / "docs"
+    / "architecture"
+    / "decisions"
+    / "0002-plan-based-checkout-identity.md": (
+        EXTERNAL_BILLING_ADR,
+    ),
+    ROOT
+    / "docs"
+    / "architecture"
+    / "decisions"
+    / "0004-billing-authority-and-consistency.md": (
+        EXTERNAL_BILLING_ADR,
     ),
     ROOT / "docs" / "architecture" / "decisions" / "README.md": (
-        ROOT
-        / "docs"
-        / "architecture"
-        / "decisions"
-        / "0004-billing-authority-and-consistency.md",
+        EXTERNAL_BILLING_ADR,
     ),
     ROOT / "docs" / "architecture" / "billing-authority.md": (
-        ROOT
-        / "docs"
-        / "architecture"
-        / "decisions"
-        / "0001-multi-contour-billing.md",
-        ROOT
-        / "docs"
-        / "architecture"
-        / "decisions"
-        / "0002-plan-based-checkout-identity.md",
-        ROOT
-        / "docs"
-        / "architecture"
-        / "decisions"
-        / "0003-canonical-persisted-model-layer.md",
-        ROOT
-        / "docs"
-        / "architecture"
-        / "decisions"
-        / "0004-billing-authority-and-consistency.md",
+        *EXTERNAL_BILLING_AUTHORITY_CHAIN,
+    ),
+    ROOT / "docs" / "architecture" / "payment-portal-data-model.md": (
+        EXTERNAL_BILLING_ADR,
+        EXTERNAL_BILLING_DESIGN,
+    ),
+    ROOT / "docs" / "architecture" / "platform-kernel-contract.md": (
+        EXTERNAL_BILLING_ADR,
+        PORTAL_KERNEL_ACCESS_DESIGN,
     ),
 }
+
+SUPERSEDED_BILLING_PLANS = (
+    "ANY-165-payment-provider-boundary.md",
+    "ANY-166-cloudpayments-browser-checkout-adapter.md",
+    "ANY-167-cloudpayments-notification-adapter.md",
+    "ANY-78-subscriptions-entitlements.md",
+)
 
 
 def engineering_markdown_files() -> Iterable[Path]:
@@ -909,6 +935,83 @@ def check_required_markdown_links(
         required,
         root=root,
     )
+
+
+def check_external_billing_documentation_precedence(
+    *, root: Path = ROOT
+) -> list[str]:
+    required_markers = {
+        Path("docs/architecture/decisions/0005-external-billing-boundary.md"): (
+            "status: accepted",
+        ),
+        Path(
+            "docs/superpowers/specs/2026-09-15-external-billing-boundary-design.md"
+        ): ("status: accepted implementation baseline",),
+        Path(
+            "docs/superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md"
+        ): ("status: accepted implementation baseline",),
+        Path("docs/architecture/decisions/0002-plan-based-checkout-identity.md"): (
+            "status: superseded for new billing development",
+        ),
+        Path(
+            "docs/architecture/decisions/0004-billing-authority-and-consistency.md"
+        ): ("status: superseded for new billing development",),
+        Path("docs/architecture/billing-authority.md"): (
+            "status: superseded target architecture; retained "
+            "historical/current-state reference",
+            "this document is not an authority for new billing development",
+        ),
+        Path("docs/architecture/payment-providers.md"): (
+            "legacy / transitional reference — not target architecture",
+            "status: retained current-state characterization of the "
+            "direct-provider boundary",
+        ),
+        Path("docs/architecture/payment-portal-data-model.md"): (
+            "status: authoritative current-state schema reference; not target "
+            "external-billing persistence design",
+            "current-state schema reference — not target persistence design",
+        ),
+        Path("docs/architecture/platform-kernel-contract.md"): (
+            "status: superseded planned contract; retained historical context only",
+            "superseded contract notice",
+        ),
+        Path("AGENTS.md"): (
+            "for all new billing work, follow this target authority chain in order:",
+        ),
+    }
+
+    errors: list[str] = []
+    for relative, markers in required_markers.items():
+        path = root / relative
+        if not path.exists():
+            errors.append(
+                f"Missing external-billing authority document: {relative.as_posix()}"
+            )
+            continue
+        normalized = " ".join(path.read_text(encoding="utf-8").lower().split())
+        for marker in markers:
+            if marker not in normalized:
+                errors.append(
+                    "Incorrect external-billing documentation classification in "
+                    f"{relative.as_posix()}: expected marker {marker!r}"
+                )
+
+    active = root / "docs/exec-plans/active"
+    superseded = root / "docs/exec-plans/superseded"
+    for filename in SUPERSEDED_BILLING_PLANS:
+        active_plan = active / filename
+        retained_plan = superseded / filename
+        if active_plan.exists():
+            errors.append(
+                "Superseded billing execution plan must not remain active: "
+                f"{active_plan.relative_to(root)}"
+            )
+        if not retained_plan.exists():
+            errors.append(
+                "Missing retained superseded billing execution plan: "
+                f"{retained_plan.relative_to(root)}"
+            )
+    return errors
 
 
 def check_expected_legal_versions(
@@ -1008,6 +1111,7 @@ def check_docs() -> list[str]:
         if not path.exists():
             errors.append(f"Missing authoritative document: {path.relative_to(ROOT)}")
     errors.extend(check_knowledge_hierarchy())
+    errors.extend(check_external_billing_documentation_precedence())
     for path in engineering_markdown_files():
         if not path.exists():
             continue

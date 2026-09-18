@@ -7,7 +7,7 @@
 | Parent program | `ANY-504` |
 | Ticket | `ANY-505` |
 | Program step | Step 1 — Canonical architecture/docs authority |
-| Overall status | `todo` |
+| Overall status | `done` |
 | Implementation type | Documentation + repository documentation guard only |
 | Runtime impact | None |
 | Database / migrations impact | None |
@@ -252,7 +252,7 @@ All engineering Markdown added or modified by this ticket must remain English. D
 
 # Step 1 — Establish the canonical target decision and accept the design baselines
 
-**Status:** `todo`
+**Status:** `done`
 
 ## Goal
 
@@ -437,7 +437,7 @@ Then manually inspect the diff and confirm that no provider-dependent candidate 
 
 # Step 2 — Reclassify retained legacy architecture documents
 
-**Status:** `todo`
+**Status:** `done`
 
 ## Goal
 
@@ -561,7 +561,7 @@ All four legacy/current-state architecture documents are still useful for unders
 
 # Step 3 — Align repository entry points and agent instructions
 
-**Status:** `todo`
+**Status:** `done`
 
 ## Goal
 
@@ -728,7 +728,7 @@ Starting from either `README.md`, root `AGENTS.md`, backend `apps/api/AGENTS.md`
 
 # Step 4 — Move superseded billing execution plans out of `active`
 
-**Status:** `todo`
+**Status:** `done`
 
 ## Goal
 
@@ -864,7 +864,7 @@ The four known old billing-direction plans are absent from `active`, preserved u
 
 # Step 5 — Enforce the documentation precedence with the existing repository guard
 
-**Status:** `todo`
+**Status:** `done`
 
 ## Goal
 
