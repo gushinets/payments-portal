@@ -27,9 +27,12 @@ Payment Portal owns purchased access and plan limits. Platform Kernel owns
 workflow execution and actual usage. The shared verified identity key is planned
 as `tenant_id + region + user_id`, where `region` is the local contour.
 
-ANY-71 will define and implement the Payment Portal side of the access contract.
-Until then, this document prevents agents from inventing cross-service tables,
-copying raw profiles, or treating email as a runtime identity.
+Historically, ANY-71 was expected to define and implement the Payment Portal
+side of this access contract. That statement is retained as superseded context,
+not current execution direction. ADR 0005, the accepted Portal-Kernel
+access-contract design, and ANY-504 define the current target and implementation
+sequence. The historical contract still records why agents must not invent
+cross-service tables, copy raw profiles, or treat email as a runtime identity.
 
 ## Planned interaction
 

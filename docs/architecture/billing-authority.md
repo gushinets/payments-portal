@@ -383,9 +383,12 @@ rule for trials, payments, refunds, cancellation requests, or expiry.
 
 Portal-owned free-trial and manual-access lifecycles remain valid without a
 provider subscription identity. Retained CloudPayments/direct-provider code is
-deactivated compatibility source. ANY-497 owns external billing command flows;
-reconciliation remains future work and must reuse these Application transition
-paths rather than introduce another state machine.
+deactivated compatibility source. In the superseded execution sequence,
+ANY-497 was assigned external billing command flows, while reconciliation
+remained future work and was expected to reuse these Application transition
+paths rather than introduce another state machine. That assignment is
+historical, not current executable ownership; ADR 0005, the accepted designs,
+and ANY-504 control current target direction and implementation sequence.
 
 ### Current local transaction and replay contract
 

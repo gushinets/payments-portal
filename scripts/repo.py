@@ -762,6 +762,8 @@ CANONICAL_METADATA_TABLE_ENTRY = re.compile(
     r"^\|\s*`(?P<table>[^`|]+)`\s*\|\s*[^|\n]+\|\s*[^|\n]+\|\s*$",
     re.MULTILINE,
 )
+TOP_LEVEL_STATUS = re.compile(r"^Status:[^\r\n]*$", re.IGNORECASE | re.MULTILINE)
+LEVEL_2_HEADING = re.compile(r"^##(?:[ \t]+|$)", re.MULTILINE)
 INITIAL_MIGRATION = (
     ROOT
     / "apps"
@@ -874,6 +876,9 @@ CORE_AUTHORITY_LINKS = {
         EXTERNAL_BILLING_ADR,
         PORTAL_KERNEL_ACCESS_DESIGN,
     ),
+    ROOT / "docs" / "engineering" / "CODING_CONVENTIONS.md": (
+        *EXTERNAL_BILLING_AUTHORITY_CHAIN,
+    ),
 }
 
 SUPERSEDED_BILLING_PLANS = (
@@ -940,6 +945,15 @@ def check_required_markdown_links(
         required,
         root=root,
     )
+
+
+def normalized_top_level_status(content: str) -> str | None:
+    heading = LEVEL_2_HEADING.search(content)
+    header = content if heading is None else content[: heading.start()]
+    match = TOP_LEVEL_STATUS.search(header)
+    if match is None:
+        return None
+    return " ".join(match.group(0).lower().split())
 
 
 def check_external_billing_documentation_precedence(
@@ -1017,9 +1031,16 @@ def check_external_billing_documentation_precedence(
                 f"Missing external-billing authority document: {relative.as_posix()}"
             )
             continue
-        normalized = " ".join(path.read_text(encoding="utf-8").lower().split())
+        content = path.read_text(encoding="utf-8")
+        normalized = " ".join(content.lower().split())
+        active_status = normalized_top_level_status(content)
         for marker in markers:
-            if marker not in normalized:
+            marker_is_present = (
+                active_status == marker
+                if marker.startswith("status:")
+                else marker in normalized
+            )
+            if not marker_is_present:
                 errors.append(
                     "Incorrect external-billing documentation classification in "
                     f"{relative.as_posix()}: expected marker {marker!r}"

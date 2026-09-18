@@ -320,6 +320,7 @@ def test_missing_core_authority_link_is_actionable() -> None:
             "docs/README.md",
             "docs/PRODUCT.md",
             "docs/RELIABILITY.md",
+            "docs/engineering/CODING_CONVENTIONS.md",
             "docs/architecture/contours.md",
             "docs/architecture/billing-authority.md",
         )
@@ -450,6 +451,36 @@ def test_external_billing_documentation_precedence_reports_wrong_status(
     _write_external_billing_documentation_fixture(tmp_path)
     relative = Path("docs/architecture/decisions/0005-external-billing-boundary.md")
     (tmp_path / relative).write_text("Status: proposed\n", encoding="utf-8")
+
+    assert check_external_billing_documentation_precedence(root=tmp_path) == [
+        f"Incorrect external-billing documentation classification in {relative}: expected marker 'status: accepted'"
+    ]
+
+
+def test_external_billing_documentation_precedence_rejects_historical_expected_status(
+    tmp_path: Path,
+) -> None:
+    _write_external_billing_documentation_fixture(tmp_path)
+    relative = Path("docs/architecture/decisions/0005-external-billing-boundary.md")
+    (tmp_path / relative).write_text(
+        "Status: proposed\n\nPrevious status: accepted\n",
+        encoding="utf-8",
+    )
+
+    assert check_external_billing_documentation_precedence(root=tmp_path) == [
+        f"Incorrect external-billing documentation classification in {relative}: expected marker 'status: accepted'"
+    ]
+
+
+def test_external_billing_documentation_precedence_rejects_status_after_header(
+    tmp_path: Path,
+) -> None:
+    _write_external_billing_documentation_fixture(tmp_path)
+    relative = Path("docs/architecture/decisions/0005-external-billing-boundary.md")
+    (tmp_path / relative).write_text(
+        "# Document\n\n## Historical context\n\nStatus: accepted\n",
+        encoding="utf-8",
+    )
 
     assert check_external_billing_documentation_precedence(root=tmp_path) == [
         f"Incorrect external-billing documentation classification in {relative}: expected marker 'status: accepted'"
