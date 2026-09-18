@@ -1,6 +1,6 @@
 # External billing boundary and Payments Portal redesign
 
-Status: review requested after eleventh external-review amendments  
+Status: accepted implementation baseline  
 Date: 2026-09-15
 
 ## Goal
@@ -16,9 +16,10 @@ Redesign Payments Portal around a strict bounded-context split:
   provider.
 
 The repository has not been deployed to production. The current Portal-owned
-commerce/direct-payment schema is disposable, but the clean Alembic reset is
-allowed only after every launch-critical LBX Phase 0 gate in this document passes
-on the real test configuration.
+commerce/direct-payment schema is disposable. Under `ANY-504`, provider-
+independent pre-production cleanup and reset may occur before Phase 0. Phase 0
+remains the hard gate for provider-dependent production semantics, Widget/LBX
+production behavior, and launch.
 
 MVP supports buying one existing Platform product at a time. Bundles, overlapping
 access-producing subscriptions for one product, allowance stacking, paid
@@ -171,10 +172,9 @@ Anything violating those rules is `NOT_SELLABLE`.
 
 ## Phase 0: LBX feasibility gate before destructive implementation
 
-Phase 0 is an architecture gate, not end-of-project QA. Before deleting the old
-commerce model, resetting Alembic, implementing the production LBX adapter, or
-building paid Kernel integration, run the required probes against the real LBX
-test environment.
+Phase 0 is an architecture gate, not end-of-project QA. Before implementing
+provider-dependent production semantics, Widget/LBX production behavior, or
+launching, run the required probes against the real LBX test environment.
 
 Evidence labels:
 
@@ -297,13 +297,16 @@ negative test: charge state is not quota authority.
 
 ### Phase 0 D: customer-list completeness for first-primary selection
 
-Determine whether the actual LBX customer subscription list, using supported
-pagination/page size, gives a sufficiently complete candidate set before Portal
-selects the linked purchase subscription.
+Determine the actual deployed LBX customer subscription discovery/list semantics
+and whether they give a sufficiently complete candidate set before Portal
+selects the linked purchase subscription. Do not assume pagination or a page-size
+control exists.
 
 Probe:
 
-- sort stability and pagination behavior;
+- the deployed list/discovery contract and its completeness guarantees;
+- sort stability and, only if the deployed contract exposes pagination,
+  pagination behavior;
 - insert/delete while reading;
 - visibility delay after successful create/read;
 - webhook-before-listing visibility;
@@ -328,12 +331,14 @@ For RU the intended mapping is:
 ```text
 Portal billing_customer_key
   = LBX users.outer_id
-  = Widget ident with ident_type=0
 ```
 
-Phase 0 E must prove that `ident_type=0` safely authenticates the mapped customer
-in the real Widget configuration. If it does not, this gate fails and the design
-is revisited; MVP does not silently add a second identity key.
+The currently identified Widget identity-type candidate is `ident_type=6`, but
+it is not confirmed for the real Widget configuration. Phase 0 E must determine
+the exact identity type and prove that it safely authenticates the mapped
+customer using `billing_customer_key` as Widget `ident`. Exact identity type is
+a deterministic PASS/FAIL gate. If no identity type passes, the design is
+revisited; MVP does not silently add a second identity key.
 
 Email, phone, and name are never Widget identity authority.
 
@@ -365,6 +370,10 @@ Widget JWT is minted only by Portal backend after authenticated Portal-user ->
 verified LBX-customer resolution. Browser input never authoritatively chooses
 `ident`, `ident_type`, customer, agreement, or permissions.
 
+Before running the credential probe, approve an explicit acceptable maximum
+provider-enforced Widget credential lifetime and a remint-overlap policy. This
+baseline intentionally does not assert numerical limits for either value.
+
 Phase 0 must prove a provider-enforced bounded lifetime using supported `exp`, an
 `iat` maximum age, a revocable short-lived session, or equivalent. An ignored
 claim or effectively unbounded replayable token blocks launch.
@@ -385,7 +394,8 @@ control but is not a substitute for provider-enforced credential lifetime.
 #### Server-side operation scope
 
 JavaScript flags such as `disableCreateSubscription` and
-`disableEditSubscription` are not ACLs. Phase 0 must prove either:
+`disableEditSubscription` control Widget presentation only; they are not
+provider-enforced server authorization or ACLs. Phase 0 must prove either:
 
 1. agreement-scoped server authorization; or
 2. customer-scoped identity plus server-side authorization that blocks unsafe
@@ -1293,7 +1303,17 @@ financial ledger.
 
 ## Clean pre-production reset and implementation ordering
 
-Destructive rewrite begins only after all Phase 0 launch-critical gates pass.
+`ANY-504` is the current implementation-sequence authority. It supersedes older
+ordering statements in this document, including the order below, wherever they
+delay provider-independent pre-production cleanup until Phase 0 PASS. This
+design remains authoritative for target architecture and provider-contract
+requirements. Phase 0 remains the hard gate for provider-dependent production
+semantics, Widget/LBX production behavior, and launch. The order below is
+retained as historical design context.
+
+Historical ordering statement, superseded for current execution sequencing by
+`ANY-504`: destructive rewrite begins only after all Phase 0 launch-critical
+gates pass.
 
 Order:
 

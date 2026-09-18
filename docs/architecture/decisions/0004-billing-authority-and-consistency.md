@@ -1,7 +1,12 @@
 # 0004. Billing authority and consistency
 
-Status: accepted
+Status: superseded for new billing development
 Date: 2026-09-04
+
+Superseded by: [ADR 0005](0005-external-billing-boundary.md)
+
+This ADR is retained as historical and current-implementation context. New
+target billing development follows ADR 0005 and its normative design baselines.
 
 Amends: [ADR 0001](0001-multi-contour-billing.md), only where it assumes that
 every contour registers a payment-provider adapter.

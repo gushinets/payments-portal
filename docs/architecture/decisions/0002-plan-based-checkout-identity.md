@@ -1,7 +1,12 @@
 # 0002. Plan-based checkout identity
 
-Status: accepted
+Status: superseded for new billing development
 Date: 2026-09-02
+
+Superseded by: [ADR 0005](0005-external-billing-boundary.md)
+
+This ADR is retained as historical and current-implementation context. New
+target billing development follows ADR 0005 and its normative design baselines.
 
 ## Context
 

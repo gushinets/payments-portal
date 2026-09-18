@@ -1,6 +1,6 @@
 # Payments Portal <-> Platform Kernel access contract
 
-Status: review requested after eleventh external-review amendments  
+Status: accepted implementation baseline  
 Date: 2026-09-15
 
 ## Purpose

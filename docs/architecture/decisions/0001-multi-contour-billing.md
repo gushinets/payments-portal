@@ -3,10 +3,12 @@
 Status: accepted
 Date: 2026-08-18
 
-Amendment: [ADR 0004](0004-billing-authority-and-consistency.md) supersedes
-only the assumption that every contour registers a payment-provider adapter.
-The contour-isolation and Region Resolver decisions in this ADR remain in
-force.
+Amendment history: [ADR 0004](0004-billing-authority-and-consistency.md)
+superseded only the assumption that every contour registers a payment-provider
+adapter. [ADR 0005](0005-external-billing-boundary.md) is the current authority
+for new external-billing development and supersedes conflicting target billing
+semantics in ADR 0004. The contour-isolation and Region Resolver decisions in
+this ADR remain in force.
 
 ## Context
 
