@@ -698,6 +698,20 @@ Step 8 enforces the referenced observation kind and projection-causality
 invariant in the same Application transition. No observation-kind discriminator
 is duplicated on this table.
 
+`commercial_access_status = eligible` requires all of: complete material-term
+match, a valid linked PurchaseIntent with immutable accepted commercial/legal
+evidence for the exact offer/fingerprint and required document versions, valid
+pinned mapping provenance, valid origin rules, and no access conflict. The
+nullable `purchase_intent_id` is intentional: Portal may persist and reconcile
+a proven external subscription discovered outside a valid Portal purchase
+flow. Such a row remains commercially ineligible for Portal paid access,
+contributes no paid product grant and no purchased allowance, and may still
+enter conflict/manual-review flows. Selecting it as primary or resolving a
+manual-review case cannot bypass the predicate. Authoritative provider
+lifecycle/financial state alone cannot manufacture Portal purchase, mapping,
+or legal-acceptance provenance. This rule also applies to an unmetered offer,
+even though no metric allowance may exist.
+
 ### `billing_state_observations`
 
 **Owner/source of truth.** Portal owns append-only, minimized, normalized
@@ -1083,7 +1097,9 @@ commercial authority.
 
 A resolution may bind a proven object or release a held scope after audited
 proof. It cannot directly activate entitlement, invent allowance quantity, or
-rebind historical mapping/purchase evidence. Cases and their resolution proof
+rebind historical mapping/purchase evidence, and it cannot bypass the requirement
+for a valid linked PurchaseIntent with immutable accepted commercial/legal evidence and pinned mapping provenance for paid access.
+Cases and their resolution proof
 are retained for the correctness/audit period of the affected history.
 `resolved_by_principal` is a stable provider-neutral audit principal, not a
 customer identity or a new operator-account subsystem; the owning runtime step
@@ -1335,6 +1351,8 @@ semantics.
 | Mapping revisions and accepted purchase snapshots remain immutable. | Migration/schema + application tests | DDL in Step 4; behavior in Steps 6-7 |
 | `billing_state_observations` survive restart and mutable-projection replacement, reject rows missing the kind-specific structural links, require primary-selection basis to be a discovery in the same scope, require every subscription `latest_observation_id` to be the same-subscription `authoritative_subscription_read` that produced the current projection, and retain normalized authoritative-read/discovery/primary/deterministic-boundary evidence without raw provider/payment history. For a causative observation at revision `N`, Step 9 atomically commits effective state `N`, its invalidation, and `resulting_access_revision = N`; advancing current state to `N+1` neither rewrites nor invalidates that historical observation. | Migration/schema + application/audit + PostgreSQL atomicity tests | DDL in Step 4; kind/causality behavior in Steps 8-9 |
 | A linked subscription whose component/product/metric/quantity matches its immutable accepted purchase snapshot can materialize a purchased allowance. An unlinked discovered subscription cannot; any component/product/metric/quantity mismatch fails closed through the existing conflict/manual-review path. Later mapping/catalog/provider changes cannot mutate materialized accepted quantity/provenance, and Portal never persists runtime `remaining`. | Migration/schema + application + architecture/static + contract tests | DDL in Step 4; provenance/materialization behavior in Step 9; Kernel remaining in Step 10 |
+| A discovered external subscription with `purchase_intent_id = NULL` can be persisted and reconciled, but remains commercially ineligible and produces neither a paid product grant nor a purchased allowance. Selecting it as primary or resolving its manual-review case does not bypass missing purchase/mapping/legal-acceptance provenance; authoritative provider state alone cannot manufacture that provenance, and an unmetered subscription without it still produces no paid grant. | Migration/schema + application + contract tests | Nullable persistence/FK shape in Step 4; reconciliation in Step 8; commercial eligibility and grant/allowance derivation in Step 9 |
+| Once a subscription has a valid linked PurchaseIntent with immutable accepted commercial/legal evidence and pinned mapping provenance, and every other accepted predicate is satisfied, normal paid-access derivation may produce the applicable paid product grant and, for metered offers, the purchased allowance. | Application + contract + E2E evidence | Step 9, with Portal-Kernel contract proof in Step 10 |
 | Same-cycle block/unblock preserves `allowance_id` and Kernel usage identity. | Contract + E2E evidence | Phase 0 prerequisite in Step 5; runtime in Steps 9-10 |
 | Allowance A is first committed with effective bounds derived using `clock_skew_budget` X; after deployment changes the budget to Y, A retains exactly its original product, metric, quantity, and effective bounds, reinterpretation of A cannot mutate it and fails closed as a conflict, and a future allowance B may be derived using Y. | Migration/schema immutability + application + contract tests | DDL immutability in Step 4; derivation/conflict behavior in Step 9; Kernel tuple defense in Step 10 |
 | Conflicting duplicate effective allowance candidates for one `(product_id, metric_key)` are omitted for that metric without summing, heuristic selection, replacement identity, or usage reset; conflict/manual-review evidence is retained while unrelated metrics and products remain eligible. | Application + contract + E2E evidence | Step 9, with Kernel defense in Step 10 |
