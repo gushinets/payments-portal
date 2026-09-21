@@ -406,9 +406,9 @@ identity/correlation, not customer-profile authority.
 | Field | Storage; null/default | Key / FK delete behavior | Constraint or index | Mutability | Evidence | Gate / owner |
 | --- | --- | --- | --- | --- | --- | --- |
 | `customer_id` | UUID; not null | PK; part of composite scope-reference target | `UNIQUE(customer_id, external_billing_account_id, user_id)` in addition to PK | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
-| `external_billing_account_id` | text; not null | Configuration scope | In both required unique keys | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
+| `external_billing_account_id` | text; not null | Configuration scope | In the customer-slot identity key | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
 | `user_id` | UUID; not null | FK `users.id`; `RESTRICT` | `UNIQUE(account, user_id)` | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
-| `billing_customer_key` | text; not null | Portal allocation identity | Non-empty; `UNIQUE(account, billing_customer_key)` | Immutable; never reused | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
+| `billing_customer_key` | text; not null | Portal allocation identity | Non-empty; globally `UNIQUE(billing_customer_key)` across all retained customer slots | Immutable; permanently reserved locally and never reused | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
 | `provider_customer_id` | text; nullable | Opaque external binding | Indexed when present; no pre-Phase-0 uniqueness | Bind once or change only through audited recovery | `GATED / UNVERIFIED` | `STEP_4_SAFE` nullable slot; identity constraints are `PHASE_0_GATED` and owned by `ANY-504` Step 5 |
 | `binding_state` | text-backed enum; not null, default `unbound` | - | Check `unbound | bound | identity_conflict`; state lookup index | Application transition only | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `LATER_STEP_RUNTIME` (`ANY-504` Step 7) |
 | `binding_updated_at` | timestamptz; not null | - | - | Updated with binding state | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `LATER_STEP_RUNTIME` (`ANY-504` Step 7) |
@@ -416,9 +416,9 @@ identity/correlation, not customer-profile authority.
 
 `identity_conflict` is durable and fail-closed; it is not merely a log entry.
 This state is not outbound-create uncertainty, which belongs only in
-`external_create_operations`. Customer-slot rows cannot be hard-deleted in a
-way that permits key reuse and are retained for the life of the key plus
-correctness/audit obligations. Email, phone, and name are neither stored here
+`external_create_operations`. A customer-slot row carrying an allocated key is
+retained permanently for local non-reuse; hard deletion cannot make that key
+available again. Email, phone, and name are neither stored here
 nor used as identity. Exact `outer_id` behavior, provider-side restoration,
 and any provider-ID uniqueness are `GATED / UNVERIFIED`, `PHASE_0_GATED`, and
 owned by `ANY-504` Step 5 before Step 7 uses them.
@@ -608,12 +608,14 @@ the canonical `(user_id, product_id)` access-scope row:
    candidate without comparing it to the persisted key. The immutable key
    already stored on the canonical row is the sole Portal key and is reused by
    this purchase flow.
-3. A `UNIQUE(external_billing_account_id, billing_customer_key)` conflict with
-   another customer slot is instead a local key-allocation collision. It never
-   reuses the other customer's row and never becomes `identity_conflict`; before
-   any external effect, the owning Step-7 implementation may fail the local
-   allocation or retry with a new candidate while restarting the transaction in
-   the same `product access scope -> customer slot` lock order.
+3. A global `UNIQUE(billing_customer_key)` conflict with any retained customer
+   slot, including a slot in a different `external_billing_account_id` scope, is
+   instead a local key-allocation collision. It never reuses the other customer's
+   row and never becomes `identity_conflict`; before any external effect, the
+   owning Step-7 implementation may fail the local allocation or retry with a new
+   candidate while restarting the transaction in the same
+   `product access scope -> customer slot` lock order. Changing configured
+   billing-account scope cannot make a previously allocated key available again.
 4. Inspect unresolved `operation_kind = customer` operations for the canonical
    `customer_id` and either reuse/block on the existing operation or insert the
    sole unresolved customer-create operation. Create or reuse the
@@ -824,11 +826,26 @@ facts; Kernel owns actual usage and remaining quota.
 | `period_end` | timestamptz; not null | Frozen AccessSnapshot wire bound | With `period_start`, check `period_start < period_end` | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
 | `created_at` | timestamptz; not null | - | - | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
 
-Raw cycle bounds are both null or both present. A collapsed/invalid effective
-interval is never widened into a usable row. Same-cycle block/unblock reuses
-the same `allowance_id` and Kernel usage identity. Step 4 deliberately omits a
-logical provider-cycle uniqueness constraint until Phase 0 proves the cycle
-key and same/new-cycle behavior. There is no `remaining` field.
+Raw cycle bounds are both null or both present. When Step 9 first materializes a
+new `allowance_id`, it derives and freezes the effective Portal <-> Kernel bounds
+using the deployment `clock_skew_budget` then in force:
+
+```text
+effective period_start = raw/source period_start + clock_skew_budget
+effective period_end   = raw/source period_end   - clock_skew_budget
+```
+
+If that conservative interval collapses, the allowance is unusable and fails
+closed; Portal never widens it. After first commit, `allowance_id`, `product_id`,
+`metric_key`, `quantity`, and the effective stored `period_start`/`period_end`
+tuple are immutable. A later deployment change to `clock_skew_budget` applies
+only to future allowance IDs. A provider reread or configuration
+reinterpretation that would change an existing tuple is a conflict/fail-closed
+condition, not an `UPDATE`. The budget itself is not a business column; the
+durable result is the frozen effective tuple. Same-cycle block/unblock reuses
+that same `allowance_id`, tuple, and Kernel usage identity. Step 4 deliberately
+omits a logical provider-cycle uniqueness constraint until Phase 0 proves the
+cycle key and same/new-cycle behavior. There is no `remaining` field.
 Allowance rows are retained with their source subscription and paid-access
 audit history.
 
@@ -851,6 +868,17 @@ manual-review path where appropriate. Runtime never reconstructs or invents
 quantity from mutable provider payment, balance, charge, catalog, or mapping
 state. Later mapping, catalog, or provider changes cannot mutate an already
 materialized allowance's accepted quantity or provenance.
+
+MVP does not stack multiple effective allowance candidates for one
+`(product_id, metric_key)`. Conflicting duplicates are not summed and Portal
+does not choose among them by row order, recency, amount, worker order, or
+last-write-wins. Step 9 omits the conflicting metric allowance from the
+committed effective access state and retains the required conflict/manual-review
+evidence. Unrelated metrics and products remain independently eligible. The
+conflict must not invent a replacement allowance identity or reset Kernel usage.
+Provider-cycle identity and any corresponding uniqueness remain Phase-0-gated;
+this metric-local fail-closed rule does not promote an unproven provider-cycle
+constraint into Step 4.
 
 ### `paid_access_states`
 
@@ -980,6 +1008,30 @@ AND lease_expires_at IS NOT NULL)`. Pending/retry history is retained until
 safely resolved; operational cleanup may later remove unreferenced terminal
 scheduling rows without deleting business/evidence records.
 
+Whenever Portal commits or legitimately refreshes a paid fact, it durably
+schedules or coalesces this shared worker for the earliest applicable finite
+effective access-reducing deadline in the affected access scope. Conceptually:
+
+```text
+next_attempt_at = min(
+    effective projection_valid_until,
+    finite effective allowance.period_end,
+    finite effective grant.valid_until
+)
+```
+
+Only applicable finite deadlines participate. This deterministic deadline work
+uses the same PostgreSQL worker substrate but is separate from the normal
+provider-reconciliation cadence: it wakes at the effective deadline rather than
+waiting for a later provider poll and performs no provider HTTP. Due processing
+re-derives effective access from committed facts, removes only facts that are
+actually due, and leaves independent products and metrics unaffected. A material
+resulting change uses the normal atomic paid-access revision and invalidation
+transaction. After processing, the worker schedules the next remaining
+effective deadline, if one exists. This is not a second scheduler, queue, table,
+or specialized deadline subsystem. Step 8 owns durable worker execution and
+Step 9 owns the access derivation and semantic commit.
+
 ### `access_invalidation_outbox`
 
 **Owner/source of truth.** Portal owns durable, coalesced notification delivery
@@ -991,7 +1043,7 @@ state. `paid_access_states` owns the semantic revision being notified.
 | `tenant_id` | Logical text scope value; explicit-column nullability is the Step-3/4 handoff | Canonical user/contour scope | Part of required semantic uniqueness | Immutable scope | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` after `ANY-504` Step 3 fixes physical representation |
 | `region` | Logical text scope value; explicit-column nullability is the Step-3/4 handoff | Canonical user/contour scope | Part of required semantic uniqueness | Immutable scope | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` after `ANY-504` Step 3 fixes physical representation |
 | `user_id` | UUID; not null | Same canonical user FK/delete rule as `paid_access_states` | `UNIQUE` on the finalized semantic tenant/region/user scope | Immutable scope | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` after `ANY-504` Step 3 fixes FK/unique shape |
-| `pending_revision` | bigint; not null | Scope-local revision | `>= 0`; `pending_revision >= delivered_revision` | Monotonic maximum only | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `LATER_STEP_RUNTIME` (`ANY-504` Steps 9-10) |
+| `pending_revision` | bigint; not null | Scope-local revision | `> 0`; `pending_revision >= delivered_revision` | Monotonic maximum only | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` constraints; production/delivery are `LATER_STEP_RUNTIME` (`ANY-504` Steps 9-10) |
 | `delivered_revision` | bigint; not null, default `0` | Scope-local acknowledgement | `>= 0`; never beyond revision actually sent | Monotonic only | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `LATER_STEP_RUNTIME` (`ANY-504` Step 10) |
 | `attempt_count` | integer; not null, default `0` | - | `>= 0` | Reset/increment only by delivery transition | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `LATER_STEP_RUNTIME` (`ANY-504` Step 10) |
 | `next_attempt_at` | timestamptz; not null | - | Due-delivery index | Updated on coalesce/retry | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `LATER_STEP_RUNTIME` (`ANY-504` Step 10) |
@@ -1001,9 +1053,12 @@ state. `paid_access_states` owns the semantic revision being notified.
 
 The scope representation must exactly match `paid_access_states` and
 AccessSnapshot. A semantic access commit atomically upserts the maximum pending
-revision. An acknowledgement can advance only through the revision actually
-sent; it cannot clear a newer in-flight commit or move backward. The coalesced
-row is retained while a paid-access state exists or delivery is outstanding.
+revision. Revision `0` is implicit, has no durable invalidation, and cannot
+create an outbox row; the first material transition atomically creates paid
+access revision `1` and pending invalidation `1`. An acknowledgement can advance
+only through the revision actually sent; it cannot clear a newer in-flight
+commit or move backward. The coalesced row is retained while a paid-access state
+exists or delivery is outstanding.
 
 ### `manual_review_cases`
 
@@ -1272,7 +1327,7 @@ semantics.
 | The one-contour identity baseline no longer depends on `eu`/DE/ES rows in a `ru` data plane. | Migration/schema + identity contract tests | Steps 3-4 |
 | No old Portal catalog, provider, commerce, subscription, or entitlement table remains. | Migration/schema + architecture/static checks | Step 4 |
 | No CloudPayments/provider-registry runtime, configuration, test, or frontend dependency remains, and `ANY-168` cannot execute into Step 4. | Architecture/static check + roadmap gate evidence | Step 4 |
-| Exactly one customer slot exists per `(external_billing_account_id, user_id)`, persisted customer-key reuse is rejected, and concurrent purchases for different products follow `product access scope -> customer slot`, discard a losing insertion candidate without comparing it to the canonical key, reuse the persisted slot/key, and converge on at most one unresolved customer-create operation. A collision with another slot's persisted key fails/reallocates locally before external effect and never becomes `identity_conflict`. | Migration/schema + PostgreSQL cross-product concurrency + application/idempotency tests | DDL in Step 4; runtime in Step 7 |
+| Exactly one customer slot exists per `(external_billing_account_id, user_id)`, and `billing_customer_key` is globally unique across all retained slots so an allocated key cannot be reused by another customer slot even after the configured billing-account scope changes. Concurrent purchases for different products follow `product access scope -> customer slot`, discard a losing insertion candidate without comparing it to the canonical key, reuse the persisted slot/key, and converge on at most one unresolved customer-create operation. A collision with any other slot's persisted key, including one under a different account scope, fails/reallocates locally before external effect and never becomes `identity_conflict`. | Migration/schema + PostgreSQL cross-account/cross-product concurrency + application/idempotency tests | DDL in Step 4; runtime in Step 7 |
 | Two concurrent first purchase attempts against an initially absent `(user_id, product_id)` scope converge through insert-on-conflict/get-and-lock on exactly one scope row; before either external call, at most one scope-holding `PurchaseIntent` / create operation owns permission to proceed and the other reuses it or receives the occupied-scope result. | Migration/schema + PostgreSQL concurrency + application/idempotency tests | DDL in Step 4; runtime in Steps 7-8 |
 | Composite scope FKs reject mismatched mapping account/offer, customer account/user, linked-purchase account/user/product/provenance, primary-subscription user/product, allowance product, and scope-bearing observation references. Observation rows also reject simultaneous subscription/direct-purchase references and derive subscription purchase provenance through `external_subscriptions.purchase_intent_id`, including when that link is null. | Migration/schema negative tests | Step 4 |
 | Duplicate client retries are unique on `(external_billing_account_id, user_id, client_idempotency_key)`; exact replay converges and same-identity/different-request reuse conflicts. | Migration/schema + application/idempotency + PostgreSQL concurrency tests | DDL in Step 4; runtime in Step 7 |
@@ -1281,12 +1336,15 @@ semantics.
 | `billing_state_observations` survive restart and mutable-projection replacement, reject rows missing the kind-specific structural links, require primary-selection basis to be a discovery in the same scope, require every subscription `latest_observation_id` to be the same-subscription `authoritative_subscription_read` that produced the current projection, and retain normalized authoritative-read/discovery/primary/deterministic-boundary evidence without raw provider/payment history. For a causative observation at revision `N`, Step 9 atomically commits effective state `N`, its invalidation, and `resulting_access_revision = N`; advancing current state to `N+1` neither rewrites nor invalidates that historical observation. | Migration/schema + application/audit + PostgreSQL atomicity tests | DDL in Step 4; kind/causality behavior in Steps 8-9 |
 | A linked subscription whose component/product/metric/quantity matches its immutable accepted purchase snapshot can materialize a purchased allowance. An unlinked discovered subscription cannot; any component/product/metric/quantity mismatch fails closed through the existing conflict/manual-review path. Later mapping/catalog/provider changes cannot mutate materialized accepted quantity/provenance, and Portal never persists runtime `remaining`. | Migration/schema + application + architecture/static + contract tests | DDL in Step 4; provenance/materialization behavior in Step 9; Kernel remaining in Step 10 |
 | Same-cycle block/unblock preserves `allowance_id` and Kernel usage identity. | Contract + E2E evidence | Phase 0 prerequisite in Step 5; runtime in Steps 9-10 |
+| Allowance A is first committed with effective bounds derived using `clock_skew_budget` X; after deployment changes the budget to Y, A retains exactly its original product, metric, quantity, and effective bounds, reinterpretation of A cannot mutate it and fails closed as a conflict, and a future allowance B may be derived using Y. | Migration/schema immutability + application + contract tests | DDL immutability in Step 4; derivation/conflict behavior in Step 9; Kernel tuple defense in Step 10 |
+| Conflicting duplicate effective allowance candidates for one `(product_id, metric_key)` are omitted for that metric without summing, heuristic selection, replacement identity, or usage reset; conflict/manual-review evidence is retained while unrelated metrics and products remain eligible. | Application + contract + E2E evidence | Step 9, with Kernel defense in Step 10 |
 | A known user with no `paid_access_states` row receives implicit revision zero and a read causes no database write. | Contract + application/database tests | Step 10 |
+| Revision zero cannot create a durable invalidation: schema insertion of `pending_revision = 0` is rejected, while the first material transition atomically creates paid-access revision `1` and pending invalidation `1`; `delivered_revision` may remain `0`. | Migration/schema negative + PostgreSQL atomicity + application tests | DDL in Step 4; production in Step 9; delivery state in Step 10 |
 | Starting from absent revision zero and separately from existing revision `N`, two concurrent independent product-access transitions serialize on the canonical user row, each re-derive from the latest committed complete state, and commit revisions `1` then `2` (or `N+1` then `N+2`); the final complete state contains both changes and the atomic coalesced outbox retains at least the newer revision despite an older acknowledgement. | PostgreSQL concurrency/atomicity + application tests | Step 9, with delivery-race completion in Step 10 |
 | Duplicate and out-of-order webhooks never directly grant access and converge through the same transition used by reconciliation. | Application/idempotency + contract tests | Steps 8-9 |
 | Work claims/retries and reconciliation fencing prevent a stale worker from committing. | PostgreSQL concurrency + application tests | Step 8 |
 | Subscription and work-item lease owner/expiry columns reject either half-populated form. | Migration/schema negative tests | Step 4 |
-| Deterministic due-time work removes only the due paid fact without provider HTTP. | Application + contract tests | Steps 8-9 |
+| A committed or legitimately refreshed paid fact schedules/coalesces the shared PostgreSQL worker at the earliest applicable finite effective access-reducing deadline, independently of provider-reconciliation cadence. At that deadline, even with provider reconciliation and network access unavailable, due-time work performs no provider HTTP, removes only facts actually due, preserves independent products/metrics, commits any material revision plus invalidation atomically, and schedules the next remaining effective deadline. | PostgreSQL scheduling + application + contract tests | Worker execution in Step 8; derivation/revision/invalidation in Step 9 |
 | Invalidation coalescing and in-flight acknowledgement races cannot lose a newer revision. | PostgreSQL concurrency/atomicity + contract tests | Production in Step 9; delivery in Step 10 |
 | Manual review cannot directly create entitlement or allowance authority. | Application + architecture/static checks | Steps 7-9 |
 | Stale or conflicting provider facts fail closed at the affected fact/metric scope while independent proven facts remain available. | Application + contract + E2E evidence | Steps 8-11 |
