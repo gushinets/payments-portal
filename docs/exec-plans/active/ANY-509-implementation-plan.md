@@ -85,7 +85,7 @@ If this premise changes before destructive `ANY-504` Step 4 work starts, `ANY-50
 
 `ANY-457` is complete. Normal runtime has an empty `PaymentProviderRegistry`, does not initialize or mount CloudPayments, and the frontend checkout path is deliberately unavailable. The retained CloudPayments source, settings, old ORM model, migrations, tests, and frontend/provider code therefore exist for characterization and cleanup, not because they still own production behavior.
 
-One current-state documentation inconsistency remains: `docs/architecture/deployment.md` still depicts active CloudPayments widget/webhook traffic and still contains a stale future-access reference to the old ANY-71-era contract. That is stale relative to `ANY-457`, current code/tests, ADR 0005, the accepted Portal-Kernel design, `ARCHITECTURE.md`, and `docs/PRODUCT.md` and must be corrected as part of `ANY-509 Step 1` without redesigning future deployment topology.
+`ANY-509 Step 1` discovered and resolved a current-state documentation inconsistency in `docs/architecture/deployment.md`: it removed the stale active CloudPayments widget/webhook traffic, recorded that normal runtime does not load or invoke CloudPayments and that checkout is currently unavailable, and replaced the old ANY-71-era future-access reference with ADR 0005 and the accepted Portal-Kernel design. This was a focused correction relative to `ANY-457`, current code/tests, `ARCHITECTURE.md`, and `docs/PRODUCT.md`; it did not redesign the future deployment topology.
 
 ### Existing persistence architecture that must survive
 
@@ -215,7 +215,7 @@ The target physical table set introduced by the clean baseline is:
 14. `access_invalidation_outbox`
 15. `manual_review_cases`
 
-The fifteenth table is intentional rather than speculative: the accepted architecture requires durable, minimized evidence for authoritative reads, complete target-product discovery observations, first-primary decisions, and deterministic access-reducing transitions even after mutable projections are replaced. That audit requirement cannot be satisfied reliably by the latest `external_subscriptions` row, transient worker state, or application logs alone. `billing_state_observations` is an append-only provider-neutral evidence boundary, not a payment ledger, raw provider event archive, or second business state machine.
+`billing_state_observations` is intentional rather than speculative: the accepted architecture requires durable, minimized evidence for authoritative reads, complete target-product discovery observations, first-primary decisions, and deterministic access-reducing transitions even after mutable projections are replaced. That audit requirement cannot be satisfied reliably by the latest `external_subscriptions` row, transient worker state, or application logs alone. `billing_state_observations` is an append-only provider-neutral evidence boundary, not a payment ledger, raw provider event archive, or second business state machine.
 
 This list is intentionally much smaller than a table-per-concept/provider design. It must not be expanded with provider-account catalogs, payment/refund ledgers, separate customer/agreement/subscription UNKNOWN state machines, per-entity repositories, speculative provider abstractions, or table-per-provider observation stores. Later evidence may add reviewed fields/indexes/constraints through ordinary forward migrations, but must not silently recreate Portal-owned commerce or change the authority boundaries fixed by ADR 0005.
 
