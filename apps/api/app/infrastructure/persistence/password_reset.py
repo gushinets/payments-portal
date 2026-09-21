@@ -90,7 +90,7 @@ def invalidate_outstanding_password_reset_tokens(
     *,
     tenant_id: str,
     region: str,
-    email_normalized: str,
+    user_id: uuid.UUID,
     now: datetime,
 ) -> int:
     return (
@@ -98,7 +98,7 @@ def invalidate_outstanding_password_reset_tokens(
         .filter(
             MagicLinkToken.tenant_id == tenant_id,
             MagicLinkToken.region == region,
-            MagicLinkToken.email_normalized == email_normalized,
+            MagicLinkToken.user_id == user_id,
             MagicLinkToken.purpose == MagicLinkPurpose.PASSWORD_RESET,
             MagicLinkToken.used_at.is_(None),
         )

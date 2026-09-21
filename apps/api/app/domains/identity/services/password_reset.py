@@ -26,6 +26,7 @@ from app.infrastructure.persistence.password_reset import (
     revoke_active_auth_sessions,
 )
 from app.infrastructure.queries.identity import (
+    get_active_user_by_id_and_scope,
     get_active_user_by_normalized_email,
     get_magic_link_token_by_hash_and_purpose,
 )
@@ -138,6 +139,7 @@ def prepare_password_reset(
     reset_token = MagicLinkToken(
         tenant_id=user.tenant_id if user is not None else tenant_id,
         region=user.region if user is not None else region,
+        user_id=user.id if user is not None else None,
         email_normalized=(
             user.email_normalized
             if user is not None
@@ -187,15 +189,15 @@ def confirm_password_reset(
         token_hash=token_hash,
         purpose=PASSWORD_RESET_PURPOSE,
     )
-    if reset_token is None:
+    if reset_token is None or reset_token.user_id is None:
         db.rollback()
         raise InvalidOrExpiredResetTokenError()
 
-    user = get_active_user_by_normalized_email(
+    user = get_active_user_by_id_and_scope(
         db,
+        user_id=reset_token.user_id,
         tenant_id=reset_token.tenant_id,
         region=reset_token.region,
-        email_normalized=reset_token.email_normalized,
     )
     if user is None:
         db.rollback()
@@ -207,7 +209,7 @@ def confirm_password_reset(
         db,
         tenant_id=user.tenant_id,
         region=user.region,
-        email_normalized=user.email_normalized,
+        user_id=user.id,
         now=now,
     )
     revoke_active_auth_sessions(

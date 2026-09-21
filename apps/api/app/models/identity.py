@@ -6,6 +6,7 @@ from app.models._shared import (
     Boolean,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     Mapped,
@@ -58,6 +59,7 @@ class User(Base):
             "email_normalized",
             name="uq_users_tenant_region_email_normalized",
         ),
+        UniqueConstraint("id", "tenant_id", "region", name="uq_users_id_tenant_region"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(uuid_type, primary_key=True, default=uuid.uuid4)
@@ -83,11 +85,19 @@ class User(Base):
 
 class AuthSession(Base):
     __tablename__ = "auth_sessions"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["user_id", "tenant_id", "region"],
+            ["users.id", "users.tenant_id", "users.region"],
+            name="fk_auth_sessions_user_scope",
+            ondelete="RESTRICT",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(uuid_type, primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[str] = mapped_column(Text, nullable=False, default="anytoolai", index=True)
     region: Mapped[str] = mapped_column(ForeignKey("regions.code"), nullable=False, index=True)
-    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(uuid_type, nullable=False, index=True)
     token_hash: Mapped[str] = mapped_column(Text, nullable=False, unique=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -99,14 +109,22 @@ class AuthSession(Base):
 
 class MagicLinkToken(Base):
     __tablename__ = "magic_link_tokens"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["user_id", "tenant_id", "region"],
+            ["users.id", "users.tenant_id", "users.region"],
+            name="fk_magic_link_tokens_user_scope",
+            ondelete="RESTRICT",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(uuid_type, primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[str] = mapped_column(Text, nullable=False, default="anytoolai", index=True)
     region: Mapped[str] = mapped_column(ForeignKey("regions.code"), nullable=False, index=True)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(uuid_type, nullable=True, index=True)
     email_normalized: Mapped[str] = mapped_column(String(320), nullable=False, index=True)
     token_hash: Mapped[str] = mapped_column(Text, nullable=False, unique=True, index=True)
     purpose: Mapped[MagicLinkPurpose] = mapped_column(PersistedEnumType(MagicLinkPurpose), nullable=False)
-    entrypoint_session_id: Mapped[uuid.UUID | None] = mapped_column(uuid_type, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

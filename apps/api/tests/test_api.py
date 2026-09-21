@@ -23,7 +23,7 @@ from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor  # noqa: E
 from opentelemetry.sdk.trace import TracerProvider  # noqa: E402
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor  # noqa: E402
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter  # noqa: E402
-from sqlalchemy import event, inspect  # noqa: E402
+from sqlalchemy import event, inspect, text  # noqa: E402
 from sqlalchemy.orm import Session as SQLAlchemySession  # noqa: E402
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware  # noqa: E402
 
@@ -5561,7 +5561,7 @@ def test_auth_sessions_store_only_token_hash() -> None:
 
 
 def test_login_and_logout_flow() -> None:
-    client.post(
+    register_response = client.post(
         "/api/auth/register",
         json={
             "email": "user@example.com",
@@ -5581,6 +5581,11 @@ def test_login_and_logout_flow() -> None:
 
     assert login_response.status_code == 200
     token = login_response.json()["token"]
+    login_token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+    with SessionLocal() as db:
+        assert db.query(AuthSession).count() == 2
+        assert db.query(AuthSession).filter(AuthSession.token_hash == login_token_hash).one()
 
     logout_response = client.post(
         "/api/auth/logout",
@@ -5590,10 +5595,102 @@ def test_login_and_logout_flow() -> None:
     assert logout_response.status_code == 200
     assert logout_response.json()["status"] == "logged_out"
 
+    with SessionLocal() as db:
+        remaining_session = db.query(AuthSession).one()
+        assert remaining_session.token_hash == hashlib.sha256(
+            register_response.json()["token"].encode("utf-8")
+        ).hexdigest()
+
     session_response = client.get(
         "/api/auth/session",
         headers={"Authorization": f"Bearer {token}"},
     )
+    assert session_response.status_code == 401
+    assert session_response.json() == {"detail": "invalid_session"}
+
+
+def test_security_revoked_and_expired_auth_sessions_remain_invalid() -> None:
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "inactive-sessions@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    login_response = client.post(
+        "/api/auth/login",
+        json={
+            "email": "inactive-sessions@example.com",
+            "password": "very-secret-password",
+        },
+    )
+    revoked_token = register_response.json()["token"]
+    expired_token = login_response.json()["token"]
+    revoked_token_hash = hashlib.sha256(revoked_token.encode("utf-8")).hexdigest()
+    expired_token_hash = hashlib.sha256(expired_token.encode("utf-8")).hexdigest()
+
+    with SessionLocal() as db:
+        revoked_session = (
+            db.query(AuthSession).filter(AuthSession.token_hash == revoked_token_hash).one()
+        )
+        expired_session = (
+            db.query(AuthSession).filter(AuthSession.token_hash == expired_token_hash).one()
+        )
+        revoked_session.revoked_at = datetime.now(UTC)
+        expired_session.expires_at = datetime.now(UTC) - timedelta(seconds=1)
+        db.commit()
+
+    for inactive_token in (revoked_token, expired_token):
+        response = client.get(
+            "/api/auth/session",
+            headers={"Authorization": f"Bearer {inactive_token}"},
+        )
+        assert response.status_code == 401
+        assert response.json() == {"detail": "invalid_session"}
+
+    with SessionLocal() as db:
+        assert db.query(AuthSession).count() == 2
+        retained_revoked_session = (
+            db.query(AuthSession).filter(AuthSession.token_hash == revoked_token_hash).one()
+        )
+        assert retained_revoked_session.revoked_at is not None
+
+
+def test_auth_sessions_and_login_require_active_user() -> None:
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "non-active-user@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    token = register_response.json()["token"]
+
+    with SessionLocal() as db:
+        db.execute(
+            text("UPDATE users SET status = 'future_non_active' WHERE email_normalized = :email"),
+            {"email": "non-active-user@example.com"},
+        )
+        db.commit()
+
+    login_response = client.post(
+        "/api/auth/login",
+        json={
+            "email": "non-active-user@example.com",
+            "password": "very-secret-password",
+        },
+    )
+    session_response = client.get(
+        "/api/auth/session",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert login_response.status_code == 401
+    assert login_response.json() == {"detail": {"code": "invalid_credentials"}}
     assert session_response.status_code == 401
     assert session_response.json() == {"detail": "invalid_session"}
 
@@ -5648,7 +5745,11 @@ def test_password_reset_email_token_and_session_revocation(monkeypatch) -> None:
 
     with SessionLocal() as db:
         stored_token = db.query(MagicLinkToken).one()
+        stored_user = (
+            db.query(User).filter(User.email_normalized == "reset-user@example.com").one()
+        )
         assert stored_token.purpose == MagicLinkPurpose.PASSWORD_RESET
+        assert stored_token.user_id == stored_user.id
         assert stored_token.token_hash
         assert stored_token.token_hash != reset_token
         assert len(stored_token.token_hash) == 64
@@ -5659,6 +5760,18 @@ def test_password_reset_email_token_and_session_revocation(monkeypatch) -> None:
     )
     assert confirm_response.status_code == 200
     assert confirm_response.json() == {"status": "password_reset"}
+
+    with SessionLocal() as db:
+        revoked_session = (
+            db.query(AuthSession)
+            .filter(
+                AuthSession.token_hash
+                == hashlib.sha256(old_session_token.encode("utf-8")).hexdigest()
+            )
+            .one()
+        )
+        assert revoked_session.revoked_at is not None
+        assert db.query(MagicLinkToken).one().used_at is not None
 
     old_session_response = client.get(
         "/api/auth/session",
@@ -5705,6 +5818,7 @@ def test_password_reset_request_does_not_reveal_unknown_email(monkeypatch) -> No
     with SessionLocal() as db:
         stored_token = db.query(MagicLinkToken).one()
         assert stored_token.purpose == MagicLinkPurpose.PASSWORD_RESET
+        assert stored_token.user_id is None
         assert stored_token.email_normalized.startswith("password-reset-decoy:")
 
 
@@ -5833,11 +5947,22 @@ def test_password_reset_confirm_invalidates_other_outstanding_reset_tokens(
     assert first_request.status_code == 200
     assert second_request.status_code == 200
 
+    with SessionLocal() as db:
+        user = db.query(User).filter(User.email_normalized == "multi-reset@example.com").one()
+        stored_tokens = db.query(MagicLinkToken).all()
+        assert len(stored_tokens) == 2
+        assert {stored_token.user_id for stored_token in stored_tokens} == {user.id}
+
     confirm_response = client.post(
         "/api/auth/password-reset/confirm",
         json={"token": first_token, "password": "new-password-123"},
     )
     assert confirm_response.status_code == 200
+
+    with SessionLocal() as db:
+        stored_tokens = db.query(MagicLinkToken).all()
+        assert len(stored_tokens) == 2
+        assert all(stored_token.used_at is not None for stored_token in stored_tokens)
 
     second_confirm_response = client.post(
         "/api/auth/password-reset/confirm",

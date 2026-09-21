@@ -18,9 +18,10 @@ from app.domains.identity.errors import (
 )
 from app.domains.identity.passwords import hash_password, verify_password
 from app.infrastructure.queries.identity import (
+    get_active_user_by_normalized_email,
+    get_active_user_for_auth_session,
     get_auth_session_by_token_hash,
     get_user_by_normalized_email,
-    get_user_for_auth_session,
 )
 from app.models import AuthSession, User, UserStatus
 
@@ -78,7 +79,7 @@ def authenticate_session(db: Session, *, token: str) -> tuple[User, AuthSession]
     if auth_session is None or auth_session.revoked_at is not None or as_utc(auth_session.expires_at) <= utc_now():
         raise InvalidAuthSessionError()
 
-    user = get_user_for_auth_session(db, auth_session)
+    user = get_active_user_for_auth_session(db, auth_session)
     if user is None:
         raise InvalidAuthSessionError()
 
@@ -157,7 +158,7 @@ def login_user(
     client_ip: str | None,
     user_agent: str | None,
 ) -> AuthenticationResult:
-    user = get_user_by_normalized_email(
+    user = get_active_user_by_normalized_email(
         db,
         tenant_id=normalize_tenant_id(tenant_id),
         region=normalize_region(region),

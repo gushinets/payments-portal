@@ -25,6 +25,7 @@ EXPECTED_REVISION_CHAIN = [
     "20260707_0003",
     "20260729_0004",
     "20260826_0005",
+    "20260921_0006",
 ]
 
 pytestmark = pytest.mark.postgres
@@ -145,6 +146,46 @@ def seeded_catalog_ids(postgres_engine: Engine) -> dict[str, str]:
 
 def assert_postgres_schema_contract(postgres_engine: Engine) -> None:
     inspector = inspect(postgres_engine)
+    user_unique_constraints = {
+        constraint["name"]: tuple(constraint["column_names"])
+        for constraint in inspector.get_unique_constraints("users")
+    }
+    assert user_unique_constraints["uq_users_id_tenant_region"] == (
+        "id",
+        "tenant_id",
+        "region",
+    )
+
+    auth_session_foreign_keys = {
+        foreign_key["name"]: foreign_key
+        for foreign_key in inspector.get_foreign_keys("auth_sessions")
+    }
+    auth_user_scope = auth_session_foreign_keys["fk_auth_sessions_user_scope"]
+    assert tuple(auth_user_scope["constrained_columns"]) == ("user_id", "tenant_id", "region")
+    assert auth_user_scope["referred_table"] == "users"
+    assert tuple(auth_user_scope["referred_columns"]) == ("id", "tenant_id", "region")
+    assert auth_user_scope["options"]["ondelete"] == "RESTRICT"
+
+    magic_link_columns = {
+        column["name"]: column for column in inspector.get_columns("magic_link_tokens")
+    }
+    assert "user_id" in magic_link_columns
+    assert magic_link_columns["user_id"]["nullable"] is True
+    assert "entrypoint_session_id" not in magic_link_columns
+    magic_link_foreign_keys = {
+        foreign_key["name"]: foreign_key
+        for foreign_key in inspector.get_foreign_keys("magic_link_tokens")
+    }
+    magic_link_user_scope = magic_link_foreign_keys["fk_magic_link_tokens_user_scope"]
+    assert tuple(magic_link_user_scope["constrained_columns"]) == (
+        "user_id",
+        "tenant_id",
+        "region",
+    )
+    assert magic_link_user_scope["referred_table"] == "users"
+    assert tuple(magic_link_user_scope["referred_columns"]) == ("id", "tenant_id", "region")
+    assert magic_link_user_scope["options"]["ondelete"] == "RESTRICT"
+
     webhook_columns = {column["name"]: column for column in inspector.get_columns("payment_webhook_events")}
     payment_columns = {column["name"]: column for column in inspector.get_columns("payments")}
     subscription_columns = {column["name"]: column for column in inspector.get_columns("subscriptions")}
@@ -570,6 +611,111 @@ def test_clean_postgres_alembic_upgrade_and_downgrade(
     }
 
 
+def test_identity_scope_migration_backfills_only_exact_known_users(
+    postgres_engine: Engine,
+    database_test_url: URL,
+) -> None:
+    reset_public_schema(postgres_engine)
+    ru_user_id = uuid.UUID("10000000-0000-4000-8000-000000000001")
+    eu_user_id = uuid.UUID("10000000-0000-4000-8000-000000000002")
+
+    with alembic_test_config(database_test_url) as config:
+        command.upgrade(config, "20260826_0005")
+
+    with postgres_engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO users (
+                    id, tenant_id, region, email, email_normalized, status
+                )
+                VALUES
+                    (
+                        :ru_user_id,
+                        'anytoolai',
+                        'ru',
+                        'shared@example.com',
+                        'shared@example.com',
+                        'active'
+                    ),
+                    (
+                        :eu_user_id,
+                        'anytoolai',
+                        'eu',
+                        'shared@example.com',
+                        'shared@example.com',
+                        'active'
+                    )
+                """
+            ),
+            {"ru_user_id": ru_user_id, "eu_user_id": eu_user_id},
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO magic_link_tokens (
+                    id,
+                    tenant_id,
+                    region,
+                    email_normalized,
+                    token_hash,
+                    purpose,
+                    expires_at
+                )
+                VALUES
+                    (
+                        :ru_token_id,
+                        'anytoolai',
+                        'ru',
+                        'shared@example.com',
+                        'known-ru-token-hash',
+                        'password_reset',
+                        now() + interval '30 minutes'
+                    ),
+                    (
+                        :eu_token_id,
+                        'anytoolai',
+                        'eu',
+                        'shared@example.com',
+                        'known-eu-token-hash',
+                        'password_reset',
+                        now() + interval '30 minutes'
+                    ),
+                    (
+                        :decoy_token_id,
+                        'anytoolai',
+                        'ru',
+                        'password-reset-decoy:missing',
+                        'decoy-token-hash',
+                        'password_reset',
+                        now() + interval '30 minutes'
+                    )
+                """
+            ),
+            {
+                "ru_token_id": uuid.UUID("20000000-0000-4000-8000-000000000001"),
+                "eu_token_id": uuid.UUID("20000000-0000-4000-8000-000000000002"),
+                "decoy_token_id": uuid.UUID("20000000-0000-4000-8000-000000000003"),
+            },
+        )
+
+    with alembic_test_config(database_test_url) as config:
+        command.upgrade(config, "20260921_0006")
+
+    with postgres_engine.connect() as connection:
+        migrated_tokens = dict(
+            connection.execute(
+                text("SELECT token_hash, user_id FROM magic_link_tokens ORDER BY token_hash")
+            ).all()
+        )
+
+    assert migrated_tokens == {
+        "decoy-token-hash": None,
+        "known-eu-token-hash": eu_user_id,
+        "known-ru-token-hash": ru_user_id,
+    }
+
+
 def test_any78_upgrade_downgrade_cycle_preserves_clean_baseline(
     postgres_engine: Engine,
     database_test_url: URL,
@@ -593,7 +739,7 @@ def test_any78_upgrade_downgrade_cycle_preserves_clean_baseline(
     assert "subscriptions" in tables
     assert "entitlements" in tables
     assert "subscription_events" in tables
-    assert current_alembic_revision(postgres_engine) == "20260826_0005"
+    assert current_alembic_revision(postgres_engine) == EXPECTED_REVISION_CHAIN[-1]
     assert_postgres_schema_contract(postgres_engine)
 
     with alembic_test_config(database_test_url) as config:
@@ -614,7 +760,7 @@ def test_any78_upgrade_downgrade_cycle_preserves_clean_baseline(
     assert "subscriptions" in tables
     assert "entitlements" in tables
     assert "subscription_events" in tables
-    assert current_alembic_revision(postgres_engine) == "20260826_0005"
+    assert current_alembic_revision(postgres_engine) == EXPECTED_REVISION_CHAIN[-1]
     assert_postgres_schema_contract(postgres_engine)
 
 
