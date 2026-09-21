@@ -1,7 +1,7 @@
 # Deployment Architecture
 
 Status: authoritative current deployment plus target contour isolation
-Last verified: 2026-09-10
+Last verified: 2026-09-21
 
 ## Current `ru` deployment
 
@@ -13,8 +13,6 @@ flowchart LR
   DB[("PostgreSQL 18")] -->|"healthy"| Migrate["One-shot Alembic service"]
   Migrate -->|"completed successfully"| API
   API --> DB
-  Browser --> CP["CloudPayments widget"]
-  CP -->|"HTTPS webhook"| API
   API --> OTEL["Optional telemetry backend"]
   API --> Sentry["Optional Sentry error reporting"]
 ```
@@ -26,6 +24,11 @@ a failed migration therefore blocks API startup. Only Caddy publishes host
 ports, while PostgreSQL, API, and web remain internal. Production must provide
 HTTPS termination, `ru` data residency, backups, secret storage, and
 monitoring outside this repository's local Compose assumptions.
+
+Normal runtime does not load or invoke CloudPayments. The API composes an empty
+payment-provider registry, no CloudPayments callback route is mounted, and the
+current checkout flow is unavailable. Retained CloudPayments source and
+configuration are cleanup inputs, not active deployment components.
 
 Production exposes optional `SENTRY_DSN` and `SENTRY_RELEASE` values to the
 shared API/migration environment. An empty DSN keeps Sentry disabled; when a
@@ -76,6 +79,9 @@ permitted in development Compose.
 ## Future Platform Kernel connection
 
 Platform Kernel is a separately deployed service and repository in the **same**
-contour. Future calls will use verified contour identity and the Payment Portal
-access API described by ANY-71. This repository must not copy Platform Kernel
-runtime tables or store its artifacts and usage events.
+contour. Future calls will use verified contour identity and the access
+boundary defined by [ADR 0005](decisions/0005-external-billing-boundary.md) and
+the accepted
+[Portal <-> Kernel Access Contract Design](../superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md).
+This repository must not copy Platform Kernel runtime tables or store its
+artifacts and usage events.
