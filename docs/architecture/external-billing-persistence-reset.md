@@ -720,7 +720,7 @@ provider event store, or a second business state machine.
 | `evidence_document` | jsonb; not null | - | Whole bounded typed document validated for kind/schema | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `LATER_STEP_RUNTIME` (`ANY-504` Steps 8-9) |
 | `completeness_classification` | text; not null | - | Open vocabulary; audit index | Immutable | `GATED / UNVERIFIED` | `LATER_STEP_RUNTIME` (`ANY-504` Steps 5 and 8 close the vocabulary) |
 | `result_classification` | text; not null | - | Open vocabulary; audit index | Immutable | `GATED / UNVERIFIED` | `LATER_STEP_RUNTIME` (`ANY-504` Steps 5 and 8 close the vocabulary) |
-| `resulting_access_revision` | bigint; nullable | Logical link to same user scope in `paid_access_states`; physical FK shape follows Step-3/4 scope handoff | `> 0` when present; user/revision audit index | Null or set once; never changed | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `LATER_STEP_RUNTIME` (`ANY-504` Step 9) |
+| `resulting_access_revision` | bigint; nullable | Historical audit scalar once populated; deliberately not an FK to mutable `paid_access_states.access_revision` | `> 0` when present; canonical user/access-scope plus revision audit index | Sole late-bindable field: `NULL` -> one positive revision exactly once in the causative semantic access transition; thereafter immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `LATER_STEP_RUNTIME` (`ANY-504` Step 9) |
 | `created_at` | timestamptz; not null | - | - | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
 
 Step 4 must install a provider-independent kind-shape `CHECK` that enforces at
@@ -770,6 +770,22 @@ remaining later-owned kind checks and provider-specific result/completeness
 vocabularies do not make observations event-sourced authority or duplicate
 mutable subscription/access state.
 
+`resulting_access_revision` records the exact historical revision produced by
+the causative observation. An observation may first commit with this field
+`NULL`. If that durable evidence later causes a semantic access transition,
+Step 9 may update it from `NULL` to one positive revision `N` exactly once, only
+in the same transaction that commits effective state revision `N`, the
+resulting semantic access state, and the corresponding invalidation/outbox
+update. The observation's canonical user/access scope must agree with that
+transition through the scope/Application transaction invariants above. Once
+populated, the scalar is immutable: `N` -> `M` is forbidden. It is not
+referential authority for, and has no physical FK to, the current mutable
+`paid_access_states.access_revision`: when current state advances from revision
+`N` to `N+1`, the causative observation permanently retains `N` and is neither
+rewritten nor invalidated. The canonical-scope/revision index is an audit lookup
+only. `paid_access_states` remains current-state authority, while normalized
+observation evidence remains immutable historical evidence.
+
 An authoritative-read document contains only normalized material facts needed
 to reproduce the Application decision, including commercial verification and
 required source/cycle facts. A discovery document contains the complete
@@ -779,9 +795,13 @@ to its discovery through `basis_observation_id`. A deterministic-boundary
 document records the local fact/deadline that allowed an access-reducing commit
 without provider HTTP. Payloads are bounded and redacted: no raw response,
 webhook body, payment history, or invoice ledger. Evidence meaning is immutable;
-only the one-time resulting-revision linkage may be populated. Rows remain
-queryable while current/historical subscriptions, purchases, access revisions,
-reviews, or operational audit depend on them.
+observation identity, kind, scope references, normalized evidence,
+classifications, timestamps, and evidence meaning never change after insertion.
+`resulting_access_revision` is the sole intentionally late-bindable audit field
+and is populated at most once, in the same semantic transaction that commits
+the resulting access revision and invalidation. Rows remain queryable while
+current/historical subscriptions, purchases, access revisions, reviews, or
+operational audit depend on them.
 
 ### `purchased_allowances`
 
@@ -811,6 +831,26 @@ logical provider-cycle uniqueness constraint until Phase 0 proves the cycle
 key and same/new-cycle behavior. There is no `remaining` field.
 Allowance rows are retained with their source subscription and paid-access
 audit history.
+
+Step 9 may materialize a `purchased_allowances` row only after the source
+subscription has proven immutable accepted purchase/mapping provenance. The
+subscription must be linked to the applicable `PurchaseIntent`; that purchase
+must pin the applicable mapping revision; `source_component_id` must be one of
+the accepted source components; `product_id` and `metric_key` must equal the
+resolved bindings in the immutable accepted snapshot; and `quantity` must
+equal that snapshot's fixed accepted integer quantity. This is an Application
+and persistence invariant over the existing subscription, purchase, mapping,
+and typed snapshot records; it does not require another table or a copied
+snapshot on the allowance.
+
+A discovered subscription may remain projected with a null
+`purchase_intent_id`, but it cannot authorize a purchased allowance. Missing or
+contradictory accepted provenance fails closed, materializes no allowance,
+derives no paid metered access from one, and enters the existing conflict or
+manual-review path where appropriate. Runtime never reconstructs or invents
+quantity from mutable provider payment, balance, charge, catalog, or mapping
+state. Later mapping, catalog, or provider changes cannot mutate an already
+materialized allowance's accepted quantity or provenance.
 
 ### `paid_access_states`
 
@@ -1238,8 +1278,8 @@ semantics.
 | Duplicate client retries are unique on `(external_billing_account_id, user_id, client_idempotency_key)`; exact replay converges and same-identity/different-request reuse conflicts. | Migration/schema + application/idempotency + PostgreSQL concurrency tests | DDL in Step 4; runtime in Step 7 |
 | An ambiguous external create persists `UNKNOWN`, survives restart, retains its scope, and is recovered without blind retry. | Application/idempotency + restart/integration tests | Steps 7-8 |
 | Mapping revisions and accepted purchase snapshots remain immutable. | Migration/schema + application tests | DDL in Step 4; behavior in Steps 6-7 |
-| `billing_state_observations` survive restart and mutable-projection replacement, reject rows missing the kind-specific structural links, require primary-selection basis to be a discovery in the same scope, require every subscription `latest_observation_id` to be the same-subscription `authoritative_subscription_read` that produced the current projection, retain normalized authoritative-read/discovery/primary/deterministic-boundary evidence, and link causative evidence to the resulting access revision without retaining raw provider/payment history. | Migration/schema + application/audit tests | DDL in Step 4; kind/causality behavior in Steps 8-9 |
-| Purchased quantity and effective allowance tuple are immutable, and Portal persists no runtime `remaining`. | Migration/schema + architecture/static + contract tests | DDL in Step 4; behavior in Steps 9-10 |
+| `billing_state_observations` survive restart and mutable-projection replacement, reject rows missing the kind-specific structural links, require primary-selection basis to be a discovery in the same scope, require every subscription `latest_observation_id` to be the same-subscription `authoritative_subscription_read` that produced the current projection, and retain normalized authoritative-read/discovery/primary/deterministic-boundary evidence without raw provider/payment history. For a causative observation at revision `N`, Step 9 atomically commits effective state `N`, its invalidation, and `resulting_access_revision = N`; advancing current state to `N+1` neither rewrites nor invalidates that historical observation. | Migration/schema + application/audit + PostgreSQL atomicity tests | DDL in Step 4; kind/causality behavior in Steps 8-9 |
+| A linked subscription whose component/product/metric/quantity matches its immutable accepted purchase snapshot can materialize a purchased allowance. An unlinked discovered subscription cannot; any component/product/metric/quantity mismatch fails closed through the existing conflict/manual-review path. Later mapping/catalog/provider changes cannot mutate materialized accepted quantity/provenance, and Portal never persists runtime `remaining`. | Migration/schema + application + architecture/static + contract tests | DDL in Step 4; provenance/materialization behavior in Step 9; Kernel remaining in Step 10 |
 | Same-cycle block/unblock preserves `allowance_id` and Kernel usage identity. | Contract + E2E evidence | Phase 0 prerequisite in Step 5; runtime in Steps 9-10 |
 | A known user with no `paid_access_states` row receives implicit revision zero and a read causes no database write. | Contract + application/database tests | Step 10 |
 | Starting from absent revision zero and separately from existing revision `N`, two concurrent independent product-access transitions serialize on the canonical user row, each re-derive from the latest committed complete state, and commit revisions `1` then `2` (or `N+1` then `N+2`); the final complete state contains both changes and the atomic coalesced outbox retains at least the newer revision despite an older acknowledgement. | PostgreSQL concurrency/atomicity + application tests | Step 9, with delivery-race completion in Step 10 |
