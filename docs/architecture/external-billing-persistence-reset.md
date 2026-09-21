@@ -826,3 +826,253 @@ discovery, reconciliation, recovery, and durable worker execution; Step 9 owns
 subscription access projection, allowances, effective revision, and atomic
 outbox production; Step 10 owns the Portal-Kernel HTTP and quota runtime. The
 webhook and reconciliation paths must feed the same Application transition.
+
+## Implementation gates
+
+Evidence strength and implementation timing are independent. A documented or
+accepted fact can still have later runtime ownership, and a provider-neutral
+storage slot can be safe before its provider-specific meaning is proven.
+
+| Gate | Meaning | What `ANY-504` Step 4 may do |
+| --- | --- | --- |
+| `STEP_4_SAFE` | Provider-neutral physical shape or invariant is fully decided without LBX production evidence. | Create the named table, column, FK, uniqueness rule, index, or closed provider-neutral vocabulary in the clean baseline. It does not authorize later runtime behavior. |
+| `PHASE_0_GATED` | The production rule depends on retained LBX evidence that is not yet sufficient. | Create only the explicitly approved opaque/nullable provider-neutral slot. Do not add the provider-specific constraint, interpretation, or production flow until `ANY-504` Step 5 closes the gate. |
+| `LATER_STEP_RUNTIME` | The physical slot is part of the approved baseline, but its validation, transitions, network behavior, or public contract belongs to the named later step. | Create the storage shape and Step-4-safe constraints only. Do not populate it, introduce its runtime, or close an intentionally open vocabulary in Step 4. |
+
+## Clean-reset and bootstrap contract
+
+The clean reset is conditional, not an unconditional authorization to destroy
+data. `ANY-504` Step 4 must revalidate the no-production premise immediately
+before destructive work. If production billing/customer data, an active client,
+or a retention/cutover obligation exists, Step 4 must stop and obtain an
+approved migration and cutover design.
+
+When the premise remains true, Step 4 must apply this contract:
+
+1. Consume the merged `ANY-504` Step 3 repository state as the final physical
+   identity/session/legal baseline and complete the handoff checklist below.
+2. Remove or neutralize old backend public consumers and frontend calls before
+   deleting persistence symbols they require. Preserve core
+   `GET /api/auth/session` user/session behavior, but remove its optional
+   `product` input and billing-derived `product_state` result. Remove
+   `GET /api/auth/payment-status` and its payment-result polling. A frontend
+   route may remain only as a neutral unavailable/informational shell that
+   calls none of the removed billing APIs.
+3. Remove the old Portal-owned catalog, checkout, order, payment, refund,
+   subscription, entitlement, trial, direct-provider, CloudPayments,
+   configuration, integration, and provider-registry consumers described by
+   the disposition matrices above. The legacy trial lifecycle is removed
+   Portal-owned access state, not a target paid-access or compatibility path.
+4. Install the retained Step-3 identity/session/legal model and the 15 target
+   tables in this document, with only `STEP_4_SAFE` constraints and the
+   explicitly approved safe slots for later-owned semantics.
+5. Treat revisions `20260707_0001` through `20260826_0005` only as the
+   researched baseline. Replace the **entire pre-reset Alembic history present
+   when Step 4 starts**, including any Step-3 identity/session/legal revisions,
+   with one fresh first-install baseline and one Alembic head.
+6. Do not build a data-preserving forward business migration, dual write,
+   legacy backfill, old/new coexistence layer, or billing compatibility layer
+   while the no-production premise holds. Recreate development, test, and
+   pre-production databases from the new baseline.
+7. Seed no Portal-owned product, plan, bundle, or provider-account catalog.
+   Capability/catalog projections, mappings, purchases, customer/subscription
+   state, observations, allowances, access state, work items, outbox rows, and
+   manual-review cases all start empty and are populated only by their later
+   runtime owners.
+8. Keep the canonical legal source and manifest as the legal bootstrap input,
+   using the final Step-3 physical shape and deterministic bootstrap behavior.
+   Bootstrap only contour-local configuration allowed by the final one-contour
+   contract. In particular, a `ru` data plane must not retain `eu`, DE, or ES
+   seed rows merely because the former initial migration contained them.
+9. Rewrite or remove obsolete persistence, migration, provider, backend, and
+   frontend tests; add the Step-4 target schema and PostgreSQL concurrency
+   proofs assigned below.
+10. Regenerate database-schema and OpenAPI artifacts only through repository
+    generation tooling. Never hand-edit generated files.
+11. Finish with no live import, configuration requirement, API/frontend call,
+    test, generated artifact, or current-state documentation that still
+    requires removed `Product`, `Plan`, `Order`, `Payment`, subscription/
+    entitlement, trial, `PaymentProvider`, or CloudPayments semantics.
+
+After the reset, later steps use ordinary reviewed forward migrations for
+newly proven requirements. Another squash or reset would require a separate,
+explicit pre-production decision.
+
+### `ANY-504` Step 4 dependency and removal order
+
+The following order is mandatory so deleted persistence is never kept alive by
+an accidental consumer:
+
+1. Reverify the no-production premise and consume the `ANY-504` Step 3 handoff.
+2. Remove or neutralize old backend public consumers and all affected frontend
+   calls, including session product-state, payment-status polling, catalog,
+   checkout, and account-subscription calls.
+3. Remove old billing Application/runtime, integration, provider, configuration,
+   command, persistence-helper, and export consumers.
+4. Install the final retained identity/session/legal models and the approved
+   target models/enums without later-step runtime behavior.
+5. Replace the complete then-current Alembic history with the clean baseline
+   and contour-local/legal bootstrap.
+6. Delete or rewrite old persistence/migration/provider tests and add the
+   target schema and concurrency tests owned by Step 4.
+7. Regenerate schema/OpenAPI references and update affected current-state
+   documentation and guards.
+8. Prove that no removed import, configuration key, public API, frontend call,
+   test assumption, generated contract, or architecture classification remains.
+
+Target catalog, purchase, account, subscription-projection, and Portal-Kernel
+surfaces are introduced only by their named later owners. Step 4 must not hide
+their runtime implementation inside the reset merely because their storage
+exists.
+
+## `ANY-504` Step 3 to Step 4 handoff checklist
+
+Before schema implementation, Step 4 must complete every item:
+
+- [ ] Re-read only the retained identity/session/legal rows affected by the
+  merged Step-3 change and update their physical details in the current-table
+  disposition matrix; do not reopen unaffected target-billing decisions.
+- [ ] Confirm the retained append-only acceptance evidence directly binds the
+  exact accepted commercial fingerprint or offer to the complete required set
+  of versioned legal documents. A copied generic acceptance or legacy
+  `Plan.id`-bound recurring consent is insufficient.
+- [ ] Decide whether `entrypoint_sessions` retains a provider-independent
+  identity/legal/origin role and remove all Product/Bundle authority from any
+  retained shape.
+- [ ] Confirm the final one-contour registration, user, session, region, and
+  country bootstrap behavior. Step 4 must not remove the old `eu`/DE/ES seeds
+  while Step-3-approved identity tests still require `ru`+`eu` seed or
+  cross-contour registration behavior.
+- [ ] Resolve only the physical representation of the already-locked semantic
+  paid-access scope `(tenant_id, region, canonical Portal user_id)`: explicit
+  `tenant_id`/`region` columns or lossless derivation through the final canonical
+  user/contour key.
+- [ ] Apply exactly that same physical scope and serialization to
+  `paid_access_states`, `access_invalidation_outbox`, and the future
+  AccessSnapshot contract, including compatible FKs and uniqueness.
+- [ ] Confirm Step 3 found no separate provider-independent obligation for the
+  old Portal trial lifecycle. If it did, stop and report the material
+  contradiction instead of preserving the billing model implicitly.
+- [ ] Confirm direct-CloudPayments work such as `ANY-168` is canceled,
+  superseded, or otherwise non-executable before Step 4 begins.
+
+Step 3 may refine these retained physical details without invalidating the
+target billing design. It may not reopen External Billing ownership, the 15
+target table boundaries, provider-neutral invariants, or Phase 0 gates without
+a concrete contradiction.
+
+## Security, audit, and retention rules
+
+- Persist no billing secret, Widget signing material, card/payment credential,
+  authorization header, raw token, or unredacted payment field. Secret material
+  remains outside the database in the approved runtime secret boundary.
+- `billing_customer_key` is an opaque, immutable, non-PII correlation key. It
+  must not encode email, phone number, legal name, or another mutable/customer-
+  meaningful identifier.
+- Webhook delivery, create-recovery, work-item, observation, and manual-review
+  evidence is bounded, schema-versioned, minimized, and redacted. Raw provider
+  bodies, provider payment history, and invoice/refund ledgers are not retained.
+- Durable evidence must be sufficient to reconstruct why paid access was
+  granted, omitted, reduced, blocked, or placed into manual review, including
+  the accepted mapping/purchase/legal provenance and the observation or local
+  deterministic boundary that caused a semantic revision.
+- Current projections and application logs are not audit history. Immutable
+  purchase/mapping evidence, normalized observations, create-operation state,
+  review resolutions, access revision, and outbox state carry the meanings
+  assigned in the durable evidence-source matrix.
+- This handoff defines no legal or regulatory retention duration. Deletion and
+  archival periods require explicit Legal/Finance authority plus a reviewed
+  operational policy that preserves referential and audit obligations.
+
+## Future verification matrix
+
+`ANY-509` defines these obligations but implements none of the tests or runtime
+behavior. A proof with more than one owner is completed incrementally: the
+earlier step proves its physical/static part and the later step proves runtime
+semantics.
+
+| Required proof | Proof class | Owner |
+| --- | --- | --- |
+| A fresh database reaches the sole new Alembic head and contains exactly the retained Step-3 tables plus the 15 target tables. | Migration/schema test | `ANY-504` Step 4 |
+| Retained identity/session/legal behavior survives the baseline; core `/api/auth/session` remains while `product`/`product_state` is absent. | Migration/schema + contract tests | Steps 3-4 |
+| Legacy Portal trial persistence/lifecycle is absent and never produces a free/trial grant through paid AccessSnapshot. | Architecture/static + contract tests | Removal in Step 4; paid-contract proof in Steps 9-10 |
+| The one-contour identity baseline no longer depends on `eu`/DE/ES rows in a `ru` data plane. | Migration/schema + identity contract tests | Steps 3-4 |
+| No old Portal catalog, provider, commerce, subscription, or entitlement table remains. | Migration/schema + architecture/static checks | Step 4 |
+| No CloudPayments/provider-registry runtime, configuration, test, or frontend dependency remains, and `ANY-168` cannot execute into Step 4. | Architecture/static check + roadmap gate evidence | Step 4 |
+| Exactly one customer slot exists per `(external_billing_account_id, user_id)`, customer-key reuse is rejected, and concurrent creation converges. | Migration/schema + PostgreSQL concurrency + application/idempotency tests | DDL in Step 4; runtime in Step 7 |
+| One product-scope row serializes purchase and primary-selection decisions for `(user_id, product_id)`. | Migration/schema + PostgreSQL concurrency tests | DDL in Step 4; runtime in Steps 7-8 |
+| Duplicate client retries cannot create a second business flow for the Step-7 idempotency contract. | Application/idempotency + PostgreSQL concurrency tests | Step 7 |
+| An ambiguous external create persists `UNKNOWN`, survives restart, retains its scope, and is recovered without blind retry. | Application/idempotency + restart/integration tests | Steps 7-8 |
+| Mapping revisions and accepted purchase snapshots remain immutable. | Migration/schema + application tests | DDL in Step 4; behavior in Steps 6-7 |
+| `billing_state_observations` survive restart and mutable-projection replacement, retain normalized authoritative-read/discovery/primary/deterministic-boundary evidence, and link causative evidence to the resulting access revision without retaining raw provider/payment history. | Migration/schema + application/audit tests | DDL in Step 4; behavior in Steps 8-9 |
+| Purchased quantity and effective allowance tuple are immutable, and Portal persists no runtime `remaining`. | Migration/schema + architecture/static + contract tests | DDL in Step 4; behavior in Steps 9-10 |
+| Same-cycle block/unblock preserves `allowance_id` and Kernel usage identity. | Contract + E2E evidence | Phase 0 prerequisite in Step 5; runtime in Steps 9-10 |
+| A known user with no `paid_access_states` row receives implicit revision zero and a read causes no database write. | Contract + application/database tests | Step 10 |
+| Every semantic paid-access change increments a monotonic revision and atomically updates the durable invalidation outbox. | PostgreSQL concurrency/atomicity + application tests | Step 9 |
+| Duplicate and out-of-order webhooks never directly grant access and converge through the same transition used by reconciliation. | Application/idempotency + contract tests | Steps 8-9 |
+| Work claims/retries and reconciliation fencing prevent a stale worker from committing. | PostgreSQL concurrency + application tests | Step 8 |
+| Deterministic due-time work removes only the due paid fact without provider HTTP. | Application + contract tests | Steps 8-9 |
+| Invalidation coalescing and in-flight acknowledgement races cannot lose a newer revision. | PostgreSQL concurrency/atomicity + contract tests | Production in Step 9; delivery in Step 10 |
+| Manual review cannot directly create entitlement or allowance authority. | Application + architecture/static checks | Steps 7-9 |
+| Stale or conflicting provider facts fail closed at the affected fact/metric scope while independent proven facts remain available. | Application + contract + E2E evidence | Steps 8-11 |
+| Generated schema/OpenAPI, current-state documents, and architecture guards describe the clean baseline and no removed contract. | Architecture/static + documentation/generated-artifact checks | Step 4, consolidated in Step 11 |
+
+## Later-step ownership and deferrals
+
+| `ANY-504` step | Owned work | Explicit deferral / boundary |
+| --- | --- | --- |
+| Step 3 | Final physical identity/session/legal baseline; provider-independent legal acceptance directly bound to exact commercial and versioned-document evidence; one-contour identity behavior. | Does not redesign target billing persistence. Its approved physical refinements are consumed before Step 4. |
+| Step 4 | Conditional clean reset; legacy commerce/direct-provider removal; retained + target baseline; `STEP_4_SAFE` DDL; clean bootstrap; Step-4 schema/concurrency proof; affected docs/generated artifacts. | No LBX production semantics and no runtime owned by Steps 5-10. |
+| Step 5 | LBX Phase 0 evidence and final provider-dependent identity, agreement, subscription, Widget, cycle, webhook, and authoritative-fact constraints; reviewed forward migrations where evidence warrants them. | No speculative provider rule may be promoted before retained evidence closes its gate. |
+| Step 6 | Capability-manifest and external-catalog LKG imports, freshness, typed projection documents, and privileged immutable mapping publication. | Does not create purchase/customer/subscription runtime. |
+| Step 7 | `PurchaseIntent`, customer binding/preparation, outbound-create idempotency/uncertainty, accepted snapshots, and Widget flow. | Does not treat browser return, outbound success, Widget callback, or payment status as paid-access authority. |
+| Step 8 | Webhook receipt, complete discovery, authoritative reads, reconciliation, recovery, normalized observations, manual-review orchestration, and durable worker claiming/fencing. | Webhooks are priority/evidence only; access derivation remains Step 9. |
+| Step 9 | External-subscription access projection, purchased allowances, fact-scoped fail-closed behavior, effective access revisions, and atomic invalidation-outbox production. | Does not own Kernel quota usage/remaining or the Portal-Kernel transport. |
+| Step 10 | Portal <-> Kernel HTTP contract, implicit revision-zero read behavior, invalidation delivery, and Kernel quota runtime. Rewrite, close, or supersede `ANY-79`, `ANY-286`, and `ANY-287`; they must not execute as currently written. | Does not revive the old entitlement contract. |
+| Step 11 | Final as-built consolidation, architecture guards, transitional-debt cleanup, and end-to-end evidence. | Canceled `ANY-497` remains historical only; it is not an implementation contract. |
+
+Before Step 4, `ANY-168` and the direct-CloudPayments roadmap must no longer be
+executable. No later-step runtime may be included in Step 4 merely because its
+table or safe storage slot is present.
+
+## Documentation and guard handoff
+
+| Surface | Required owner/action |
+| --- | --- |
+| `docs/architecture/payment-portal-data-model.md` | `ANY-504` Step 4 rewrites it as the authoritative current-state/as-built clean-schema reference, still subordinate to the target authority chain for future billing behavior. |
+| `docs/architecture/payment-providers.md` | Step 4 updates/reclassifies it when direct-provider source is removed. |
+| ANY-505 documentation/architecture guards | Step 4 updates any guard whose retained-direct-provider classification becomes false; it must not weaken the canonical precedence checks. |
+| `docs/product/ru-mvp.md` | Step 4 removes stale ANY-71 catalog/trial and old catalog/subscription journey claims. |
+| `ARCHITECTURE.md`, `docs/PRODUCT.md`, `docs/RELIABILITY.md`, and `README.md` | Step 4 updates only factual current-state/operational claims changed by physical removal, including obsolete subscription-expiry or commercial-transition operations. |
+| `docs/generated/db-schema.md` and `docs/generated/openapi.json` | Step 4 regenerates both through repository tooling after schema/API removal; neither is hand-edited. |
+| Superseded ADRs and historical billing plans | Retain as clearly subordinate history; do not rewrite them as target authority. |
+
+No new `ANY-509`-specific architecture guard is required. Existing `ANY-505`
+precedence checks remain authoritative. Executable schema/runtime guards belong
+to `ANY-504` Step 4 and the later step that owns the behavior.
+
+## `ANY-504` Step 4 readiness checklist
+
+- [ ] The no-production premise has been revalidated immediately before work;
+  otherwise Step 4 is stopped for a new approved cutover design.
+- [ ] The Step-3 identity/session/legal handoff checklist is complete, and its
+  affected retention-matrix rows reflect the final physical repository state.
+- [ ] Exact commercial/legal acceptance binding and the disposition of
+  `entrypoint_sessions` are known from Step 3.
+- [ ] One-contour identity/bootstrap tests no longer require the obsolete
+  `ru`+`eu` seed/registration behavior before foreign-contour rows are removed.
+- [ ] The physical `(tenant_id, region, user_id)` representation is fixed and
+  identical for paid access, invalidation, and future AccessSnapshot scope.
+- [ ] `ANY-168`/direct-CloudPayments work is non-executable; `ANY-79`,
+  `ANY-286`, and `ANY-287` are reserved for Step-10 rewrite/supersession; the
+  canceled `ANY-497` remains historical only.
+- [ ] The public/API/frontend removal order, complete pre-reset Alembic-history
+  replacement, empty-target bootstrap, test replacement, generated-artifact
+  regeneration, documentation updates, and final dependency proof are scoped
+  together for Step 4.
+- [ ] Every target field/constraint is classified as `STEP_4_SAFE`,
+  `PHASE_0_GATED`, or `LATER_STEP_RUNTIME`, with no unowned provider-independent
+  design question.
+- [ ] Remaining unknowns are limited to Step-3 physical refinements captured by
+  this checklist, the named Phase 0 evidence gates, or named later-runtime
+  behavior. None authorizes Step 4 to invent a new target rule.
