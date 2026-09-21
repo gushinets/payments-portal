@@ -5,7 +5,12 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session
 
-from app.models import AcceptanceKind, DocumentAcceptance, DocumentVersion
+from app.models import (
+    AcceptanceKind,
+    DocumentAcceptance,
+    DocumentVersion,
+    LegalAcceptanceEvent,
+)
 
 
 def list_active_required_documents(
@@ -44,12 +49,19 @@ def list_document_acceptance_fingerprints(
             DocumentAcceptance.acceptance_kind,
             DocumentAcceptance.acceptance_text_hash,
         )
+        .join(
+            LegalAcceptanceEvent,
+            LegalAcceptanceEvent.id == DocumentAcceptance.legal_acceptance_event_id,
+        )
         .filter(
             DocumentAcceptance.tenant_id == tenant_id,
             DocumentAcceptance.region == region,
             DocumentAcceptance.user_id == user_id,
             DocumentAcceptance.document_version_id.in_(document_version_ids),
-            DocumentAcceptance.accepted_at <= accepted_at,
+            LegalAcceptanceEvent.tenant_id == tenant_id,
+            LegalAcceptanceEvent.region == region,
+            LegalAcceptanceEvent.user_id == user_id,
+            LegalAcceptanceEvent.accepted_at <= accepted_at,
         )
         .all()
     )
@@ -74,6 +86,10 @@ def get_document_acceptance_candidate(
     return (
         db.query(DocumentAcceptance)
         .join(DocumentVersion, DocumentVersion.id == DocumentAcceptance.document_version_id)
+        .join(
+            LegalAcceptanceEvent,
+            LegalAcceptanceEvent.id == DocumentAcceptance.legal_acceptance_event_id,
+        )
         .filter(
             DocumentAcceptance.id == acceptance_id,
             DocumentAcceptance.tenant_id == tenant_id,
@@ -81,7 +97,10 @@ def get_document_acceptance_candidate(
             DocumentAcceptance.user_id == user_id,
             DocumentAcceptance.doc_type == doc_type,
             DocumentAcceptance.acceptance_kind == acceptance_kind,
-            DocumentAcceptance.accepted_at <= effective_at,
+            LegalAcceptanceEvent.tenant_id == tenant_id,
+            LegalAcceptanceEvent.region == region,
+            LegalAcceptanceEvent.user_id == user_id,
+            LegalAcceptanceEvent.accepted_at <= effective_at,
             DocumentVersion.tenant_id == tenant_id,
             DocumentVersion.region == region,
             DocumentVersion.doc_type == doc_type,

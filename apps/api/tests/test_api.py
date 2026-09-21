@@ -57,6 +57,7 @@ from app.models import (  # noqa: E402
     DocumentAcceptance,
     DocumentVersion,
     EntrypointSession,
+    LegalAcceptanceEvent,
     LegalEntity,
     LegalEntityStatus,
     LegalEntityType,
@@ -87,7 +88,11 @@ from app.models import (  # noqa: E402
     User,
     UserStatus,
 )
-from app.legal_seed import RU_DOCUMENT_VERSIONS, seed_legal_documents  # noqa: E402
+from app.legal_seed import (  # noqa: E402
+    RU_DOCUMENT_VERSIONS,
+    LegalDocumentSeedMismatchError,
+    seed_legal_documents,
+)
 from app.integrations.cloudpayments.adapter import (  # noqa: E402
     _event_idempotency_key,
     verify_cloudpayments_signature,
@@ -348,7 +353,17 @@ def create_document_acceptance_row(
 ) -> DocumentAcceptance:
     from app.domains.legal.service import ACCEPTANCE_KIND_BY_DOC_TYPE
 
+    event_accepted_at = accepted_at or datetime.now(timezone.utc)
+    acceptance_event = LegalAcceptanceEvent(
+        tenant_id=tenant_id or document.tenant_id,
+        region=region or document.region,
+        user_id=user.id,
+        accepted_at=event_accepted_at,
+    )
+    db.add(acceptance_event)
+    db.flush()
     acceptance = DocumentAcceptance(
+        legal_acceptance_event_id=acceptance_event.id,
         tenant_id=tenant_id or document.tenant_id,
         region=region or document.region,
         user_id=user.id,
@@ -356,7 +371,7 @@ def create_document_acceptance_row(
         doc_type=document.doc_type,
         version=document.version,
         acceptance_kind=ACCEPTANCE_KIND_BY_DOC_TYPE.get(document.doc_type, AcceptanceKind.TERMS_ACCEPTANCE),
-        accepted_at=accepted_at or datetime.now(timezone.utc),
+        accepted_at=event_accepted_at,
         acceptance_text_hash=acceptance_text_hash,
         entrypoint_type="product" if entrypoint_value is not None else None,
         entrypoint_value=entrypoint_value,
@@ -847,6 +862,15 @@ def test_legal_seed_replaces_existing_active_document_type() -> None:
             doc_type="offer",
             version="2026-07-custom",
         )
+        existing_material = (
+            existing_offer.legal_entity_id,
+            existing_offer.title,
+            existing_offer.url_path,
+            existing_offer.content_hash,
+            existing_offer.published_at,
+            existing_offer.effective_from,
+            existing_offer.requires_acceptance,
+        )
 
         seed_legal_documents(db)
 
@@ -864,10 +888,115 @@ def test_legal_seed_replaces_existing_active_document_type() -> None:
         db.refresh(existing_offer)
 
     assert existing_offer.is_active is False
+    assert (
+        existing_offer.legal_entity_id,
+        existing_offer.title,
+        existing_offer.url_path,
+        existing_offer.content_hash,
+        existing_offer.published_at,
+        existing_offer.effective_from,
+        existing_offer.requires_acceptance,
+    ) == existing_material
     assert [offer.id for offer in offers] == [
         RU_DOCUMENT_VERSIONS[2]["id"],
     ]
     assert seeded_documents_count == len(RU_DOCUMENT_VERSIONS)
+
+
+def test_legal_seed_is_idempotent_for_exact_immutable_versions() -> None:
+    with SessionLocal() as db:
+        seed_legal_documents(db)
+        first_snapshot = [
+            (
+                document.id,
+                document.legal_entity_id,
+                document.title,
+                document.url_path,
+                document.content_hash,
+                document.published_at,
+                document.effective_from,
+                document.requires_acceptance,
+                document.is_active,
+            )
+            for document in db.query(DocumentVersion).order_by(DocumentVersion.id).all()
+        ]
+
+        seed_legal_documents(db)
+        second_snapshot = [
+            (
+                document.id,
+                document.legal_entity_id,
+                document.title,
+                document.url_path,
+                document.content_hash,
+                document.published_at,
+                document.effective_from,
+                document.requires_acceptance,
+                document.is_active,
+            )
+            for document in db.query(DocumentVersion).order_by(DocumentVersion.id).all()
+        ]
+
+    assert second_snapshot == first_snapshot
+
+
+def test_legal_seed_fails_closed_on_same_version_material_mismatch() -> None:
+    with SessionLocal() as db:
+        seed_legal_documents(db)
+        offer = (
+            db.query(DocumentVersion)
+            .filter(DocumentVersion.doc_type == "offer", DocumentVersion.version == "2026-07-11")
+            .one()
+        )
+        offer.title = "Rewritten historical offer"
+        db.commit()
+
+        with pytest.raises(LegalDocumentSeedMismatchError, match="immutable fields differ: title"):
+            seed_legal_documents(db)
+
+        db.rollback()
+        persisted_offer = db.get(DocumentVersion, offer.id)
+        assert persisted_offer is not None
+        assert persisted_offer.title == "Rewritten historical offer"
+
+
+def test_legal_seed_keeps_operator_metadata_separate_from_historical_document_identity() -> None:
+    with SessionLocal() as db:
+        seed_legal_documents(db)
+        historical_offer = (
+            db.query(DocumentVersion)
+            .filter(DocumentVersion.doc_type == "offer", DocumentVersion.version == "2026-07-11")
+            .one()
+        )
+        historical_identity = (
+            historical_offer.legal_entity_id,
+            historical_offer.content_hash,
+            historical_offer.title,
+        )
+        current_operator = db.get(LegalEntity, historical_offer.legal_entity_id)
+        assert current_operator is not None
+        current_operator.support_email = "updated-support@example.com"
+        db.commit()
+        seed_legal_documents(db)
+
+        replacement_operator = create_legal_entity(db, region="ru")
+        replacement_document = create_document_version(
+            db,
+            legal_entity=replacement_operator,
+            doc_type="offer",
+            version="2026-09-replacement-operator",
+            is_active=False,
+        )
+
+        db.refresh(historical_offer)
+
+    assert (
+        historical_offer.legal_entity_id,
+        historical_offer.content_hash,
+        historical_offer.title,
+    ) == historical_identity
+    assert replacement_document.legal_entity_id != historical_offer.legal_entity_id
+    assert "legal_entity_versions" not in Base.metadata.tables
 
 
 def test_register_session_and_checkout_intent_flow() -> None:
@@ -1608,8 +1737,13 @@ def test_checkout_persists_exact_recurring_consent_reference() -> None:
         checkout = db.query(CheckoutSession).one()
         order = db.query(Order).one()
         acceptance = db.query(DocumentAcceptance).one()
+        acceptance_event = db.get(LegalAcceptanceEvent, acceptance.legal_acceptance_event_id)
+        assert acceptance_event is not None
 
     assert acceptance.metadata_["plan_id"] == plan_id_for_code("document-summary-pro")
+    assert acceptance_event.external_billing_account_id is None
+    assert acceptance_event.billing_offer_id is None
+    assert acceptance_event.accepted_commercial_fingerprint is None
     assert checkout.metadata_["recurring_consent_acceptance_id"] == acceptance_id
     assert order.metadata_["recurring_consent_acceptance_id"] == acceptance_id
 
@@ -1638,6 +1772,54 @@ def test_non_recurring_acceptance_drops_client_plan_id_metadata() -> None:
 
     assert "plan_id" not in acceptance.metadata_
     assert acceptance.metadata_["client_field"] == "preserved"
+
+
+def test_required_document_acceptance_creates_a_new_noncommercial_event_per_call() -> None:
+    with SessionLocal() as db:
+        legal_entity = create_legal_entity(db)
+        document = create_document_version(db, legal_entity=legal_entity, doc_type="offer")
+
+    token = register_test_user(email="acceptance-events@example.com")
+    from app.domains.legal.service import expected_acceptance_text_hash
+
+    request_payload = {
+        "document_version_id": str(document.id),
+        "acceptance_text_hash": expected_acceptance_text_hash(document),
+    }
+    first_response = client.post(
+        "/api/legal/acceptances",
+        headers={"Authorization": f"Bearer {token}"},
+        json=request_payload,
+    )
+    second_response = client.post(
+        "/api/legal/acceptances",
+        headers={"Authorization": f"Bearer {token}"},
+        json=request_payload,
+    )
+
+    assert first_response.status_code == 200, first_response.text
+    assert second_response.status_code == 200, second_response.text
+    with SessionLocal() as db:
+        acceptances = db.query(DocumentAcceptance).order_by(DocumentAcceptance.created_at).all()
+        events = db.query(LegalAcceptanceEvent).order_by(LegalAcceptanceEvent.created_at).all()
+
+    assert len(acceptances) == 2
+    assert len(events) == 2
+    assert {acceptance.legal_acceptance_event_id for acceptance in acceptances} == {
+        event.id for event in events
+    }
+    assert all(
+        acceptance.accepted_at == next(
+            event.accepted_at
+            for event in events
+            if event.id == acceptance.legal_acceptance_event_id
+        )
+        for acceptance in acceptances
+    )
+    assert all(event.external_billing_account_id is None for event in events)
+    assert all(event.billing_offer_id is None for event in events)
+    assert all(event.accepted_commercial_fingerprint is None for event in events)
+    assert all(acceptance.guest_id is None for acceptance in acceptances)
 
 
 def test_automatic_checkout_rejects_recurring_consent_for_wrong_plan_id() -> None:
@@ -2232,7 +2414,11 @@ def test_checkout_rejects_recurring_acceptance_from_the_future() -> None:
 
     with SessionLocal() as db:
         future_acceptance = db.get(DocumentAcceptance, uuid.UUID(future_acceptance_id))
-        future_acceptance.accepted_at = datetime.now(timezone.utc) + timedelta(days=1)
+        future_accepted_at = datetime.now(timezone.utc) + timedelta(days=1)
+        future_event = db.get(LegalAcceptanceEvent, future_acceptance.legal_acceptance_event_id)
+        assert future_event is not None
+        future_event.accepted_at = future_accepted_at
+        future_acceptance.accepted_at = future_accepted_at
         db.commit()
 
     checkout_response = client.post(
@@ -7047,7 +7233,9 @@ def test_required_document_acceptance_hash_controls_terms_and_personal_consent_g
     assert bad_hash_response.status_code == 409
     bad_hash_detail = bad_hash_response.json()["detail"]
     assert bad_hash_detail["code"] == "missing_required_documents"
-    assert [document["document_version_id"] for document in bad_hash_detail["documents"]] == [str(offer_document_id)]
+    assert [document["document_version_id"] for document in bad_hash_detail["documents"]] == [
+        str(offer_document_id)
+    ]
 
     with SessionLocal() as db:
         user = db.query(User).filter(User.email == "legal-hash-gate@example.com").one()
@@ -7179,7 +7367,9 @@ def test_required_document_acceptance_scope_and_time_filters_still_apply() -> No
     assert [document["document_version_id"] for document in detail["documents"]] == [str(active_document_id)]
 
 
-def test_create_document_acceptance_rejects_substituted_hash_in_endpoint_and_service() -> None:
+def test_create_document_acceptance_rejects_substituted_hash_in_endpoint_and_service(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from app.domains.legal.errors import InvalidAcceptanceTextHashError
     from app.domains.legal.service import (
         create_document_acceptance,
@@ -7199,6 +7389,13 @@ def test_create_document_acceptance_rejects_substituted_hash_in_endpoint_and_ser
             create_document_acceptance(
                 db,
                 document=document,
+                acceptance_event=LegalAcceptanceEvent(
+                    id=uuid.uuid4(),
+                    tenant_id=document.tenant_id,
+                    region=document.region,
+                    user_id=uuid.uuid4(),
+                    accepted_at=datetime.now(timezone.utc),
+                ),
                 acceptance_text_hash="f" * 64,
             )
         assert error.value.code == "invalid_acceptance_text_hash"
@@ -7214,6 +7411,11 @@ def test_create_document_acceptance_rejects_substituted_hash_in_endpoint_and_ser
         },
     )
     token = register_response.json()["token"]
+    event_creator = Mock(side_effect=AssertionError("invalid acceptance must not create an event"))
+    monkeypatch.setattr(
+        "app.domains.legal.service.create_noncommercial_legal_acceptance_event",
+        event_creator,
+    )
 
     response = client.post(
         "/api/legal/acceptances",
@@ -7226,6 +7428,9 @@ def test_create_document_acceptance_rejects_substituted_hash_in_endpoint_and_ser
 
     assert response.status_code == 400
     assert response.json()["detail"] == "invalid_acceptance_text_hash"
+    event_creator.assert_not_called()
+    with SessionLocal() as db:
+        assert db.query(LegalAcceptanceEvent).count() == 0
 
 
 def test_automatic_checkout_keeps_recurring_consent_missing_when_hash_is_wrong() -> None:

@@ -13,7 +13,7 @@ from alembic.script import ScriptDirectory
 from sqlalchemy import inspect, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import Engine, URL
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DatabaseError, IntegrityError
 
 from apps.api.tests.support.postgres import alembic_test_config, reset_public_schema
 from app.models import SubscriptionStatus
@@ -26,6 +26,7 @@ EXPECTED_REVISION_CHAIN = [
     "20260729_0004",
     "20260826_0005",
     "20260921_0006",
+    "20260921_0007",
 ]
 
 pytestmark = pytest.mark.postgres
@@ -185,6 +186,55 @@ def assert_postgres_schema_contract(postgres_engine: Engine) -> None:
     assert magic_link_user_scope["referred_table"] == "users"
     assert tuple(magic_link_user_scope["referred_columns"]) == ("id", "tenant_id", "region")
     assert magic_link_user_scope["options"]["ondelete"] == "RESTRICT"
+
+    legal_event_columns = {
+        column["name"]: column for column in inspector.get_columns("legal_acceptance_events")
+    }
+    assert set(legal_event_columns) == {
+        "id",
+        "tenant_id",
+        "region",
+        "user_id",
+        "external_billing_account_id",
+        "billing_offer_id",
+        "accepted_commercial_fingerprint",
+        "accepted_at",
+        "ip",
+        "user_agent",
+        "created_at",
+    }
+    legal_event_unique_constraints = {
+        constraint["name"]: tuple(constraint["column_names"])
+        for constraint in inspector.get_unique_constraints("legal_acceptance_events")
+    }
+    assert legal_event_unique_constraints["uq_legal_acceptance_events_scope"] == (
+        "id",
+        "tenant_id",
+        "region",
+        "user_id",
+    )
+    assert legal_event_unique_constraints["uq_legal_acceptance_events_purchase_binding"] == (
+        "id",
+        "user_id",
+        "external_billing_account_id",
+        "billing_offer_id",
+        "accepted_commercial_fingerprint",
+    )
+    document_acceptance_columns = {
+        column["name"]: column for column in inspector.get_columns("document_acceptances")
+    }
+    assert document_acceptance_columns["legal_acceptance_event_id"]["nullable"] is False
+    assert document_acceptance_columns["user_id"]["nullable"] is False
+    document_acceptance_foreign_keys = {
+        foreign_key["name"]: foreign_key
+        for foreign_key in inspector.get_foreign_keys("document_acceptances")
+    }
+    assert tuple(
+        document_acceptance_foreign_keys["fk_document_acceptances_event_scope"]["constrained_columns"]
+    ) == ("legal_acceptance_event_id", "tenant_id", "region", "user_id")
+    assert tuple(
+        document_acceptance_foreign_keys["fk_document_acceptances_document_scope"]["constrained_columns"]
+    ) == ("document_version_id", "tenant_id", "region")
 
     webhook_columns = {column["name"]: column for column in inspector.get_columns("payment_webhook_events")}
     payment_columns = {column["name"]: column for column in inspector.get_columns("payments")}
@@ -714,6 +764,177 @@ def test_identity_scope_migration_backfills_only_exact_known_users(
         "known-eu-token-hash": eu_user_id,
         "known-ru-token-hash": ru_user_id,
     }
+
+
+def test_legal_acceptance_migration_backfills_one_noncommercial_event_per_user_acceptance(
+    postgres_engine: Engine,
+    database_test_url: URL,
+) -> None:
+    reset_public_schema(postgres_engine)
+    user_id = uuid.UUID("30000000-0000-4000-8000-000000000001")
+    acceptance_id = uuid.UUID("30000000-0000-4000-8000-000000000002")
+    document_id = uuid.UUID("55555555-5555-4555-8555-555555555503")
+
+    with alembic_test_config(database_test_url) as config:
+        command.upgrade(config, "20260921_0006")
+
+    with postgres_engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO users (
+                    id, tenant_id, region, email, email_normalized, status
+                )
+                VALUES (
+                    :user_id,
+                    'anytoolai',
+                    'ru',
+                    'legal-backfill@example.com',
+                    'legal-backfill@example.com',
+                    'active'
+                )
+                """
+            ),
+            {"user_id": user_id},
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO document_acceptances (
+                    id,
+                    tenant_id,
+                    region,
+                    user_id,
+                    document_version_id,
+                    doc_type,
+                    version,
+                    acceptance_kind,
+                    accepted_at,
+                    ip,
+                    user_agent,
+                    acceptance_text_hash,
+                    metadata
+                )
+                VALUES (
+                    :acceptance_id,
+                    'anytoolai',
+                    'ru',
+                    :user_id,
+                    :document_id,
+                    'offer',
+                    '2026-07-11',
+                    'terms_acceptance',
+                    '2026-09-21T10:00:00+00:00',
+                    '192.0.2.10',
+                    'migration-test-agent',
+                    'acceptance-hash',
+                    '{}'::jsonb
+                )
+                """
+            ),
+            {
+                "acceptance_id": acceptance_id,
+                "user_id": user_id,
+                "document_id": document_id,
+            },
+        )
+
+    with alembic_test_config(database_test_url) as config:
+        command.upgrade(config, "20260921_0007")
+
+    with postgres_engine.connect() as connection:
+        event = connection.execute(
+            text(
+                """
+                SELECT
+                    id,
+                    tenant_id,
+                    region,
+                    user_id,
+                    external_billing_account_id,
+                    billing_offer_id,
+                    accepted_commercial_fingerprint,
+                    accepted_at,
+                    ip::text AS ip,
+                    user_agent
+                FROM legal_acceptance_events
+                WHERE id = :acceptance_id
+                """
+            ),
+            {"acceptance_id": acceptance_id},
+        ).one()
+        linked_event_id = connection.execute(
+            text(
+                "SELECT legal_acceptance_event_id "
+                "FROM document_acceptances WHERE id = :acceptance_id"
+            ),
+            {"acceptance_id": acceptance_id},
+        ).scalar_one()
+
+    assert event.id == acceptance_id
+    assert event.tenant_id == "anytoolai"
+    assert event.region == "ru"
+    assert event.user_id == user_id
+    assert event.external_billing_account_id is None
+    assert event.billing_offer_id is None
+    assert event.accepted_commercial_fingerprint is None
+    assert event.accepted_at == datetime(2026, 9, 21, 10, 0, tzinfo=UTC)
+    assert event.ip == "192.0.2.10/32"
+    assert event.user_agent == "migration-test-agent"
+    assert linked_event_id == acceptance_id
+
+
+def test_legal_acceptance_migration_rejects_evidence_without_a_canonical_user(
+    postgres_engine: Engine,
+    database_test_url: URL,
+) -> None:
+    reset_public_schema(postgres_engine)
+    acceptance_id = uuid.UUID("30000000-0000-4000-8000-000000000003")
+    document_id = uuid.UUID("55555555-5555-4555-8555-555555555503")
+
+    with alembic_test_config(database_test_url) as config:
+        command.upgrade(config, "20260921_0006")
+
+    with postgres_engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO document_acceptances (
+                    id,
+                    tenant_id,
+                    region,
+                    user_id,
+                    guest_id,
+                    document_version_id,
+                    doc_type,
+                    version,
+                    acceptance_kind,
+                    acceptance_text_hash,
+                    metadata
+                )
+                VALUES (
+                    :acceptance_id,
+                    'anytoolai',
+                    'ru',
+                    NULL,
+                    'legacy-guest',
+                    :document_id,
+                    'offer',
+                    '2026-07-11',
+                    'terms_acceptance',
+                    'acceptance-hash',
+                    '{}'::jsonb
+                )
+                """
+            ),
+            {"acceptance_id": acceptance_id, "document_id": document_id},
+        )
+
+    with pytest.raises(DatabaseError, match="without a canonical user"):
+        with alembic_test_config(database_test_url) as config:
+            command.upgrade(config, "20260921_0007")
+
+    assert current_alembic_revision(postgres_engine) == "20260921_0006"
 
 
 def test_any78_upgrade_downgrade_cycle_preserves_clean_baseline(

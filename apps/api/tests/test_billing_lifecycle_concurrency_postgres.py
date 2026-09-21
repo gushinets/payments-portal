@@ -54,6 +54,7 @@ from app.models import (
     Entitlement,
     EntrypointSession,
     LegalEntity,
+    LegalAcceptanceEvent,
     Order,
     Payment,
     PaymentProviderAccount,
@@ -149,7 +150,16 @@ def _add_recurring_consent_acceptance(
     )
     session.add(entrypoint_session)
     session.flush()
+    acceptance_event = LegalAcceptanceEvent(
+        tenant_id=user.tenant_id,
+        region=user.region,
+        user_id=user.id,
+        accepted_at=accepted_at,
+    )
+    session.add(acceptance_event)
+    session.flush()
     acceptance = DocumentAcceptance(
+        legal_acceptance_event_id=acceptance_event.id,
         tenant_id=user.tenant_id,
         region=user.region,
         user_id=user.id,
