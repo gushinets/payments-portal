@@ -244,6 +244,44 @@ documents below are schema-versioned structured JSON, not arbitrary
 dictionaries. Their owning runtime step must define explicit Pydantic
 contracts and validate the whole document before persistence or use.
 
+### Relational scope-integrity strategy
+
+Surrogate UUIDs remain the row identities, but a surrogate-only FK is
+insufficient where the referencing row also carries correctness-critical
+semantic scope. Step 4 therefore creates narrow composite alternate keys and
+composite FKs for these chains:
+
+- mapping revision -> exact billing account and offer on a purchase;
+- customer -> exact billing account and canonical user on a purchase or
+  subscription;
+- purchase -> exact customer/account/user/product/mapping provenance on a
+  linked subscription;
+- subscription -> exact user/product on a primary access-scope selection;
+- subscription -> exact product on a purchased allowance.
+
+The repeated subscription `user_id` is deliberate: without it PostgreSQL could
+not prove that `billing_product_access_scopes.primary_subscription_id` belongs
+to that exact user/product row. It is not an independent source of truth because
+the composite customer FK forces it to equal the canonical customer-slot user.
+These alternate keys exist only as FK targets; they do not introduce new
+business identities, Portal-owned product/catalog rows, or provider-specific
+semantics. Scope-bearing evidence references follow the same rule below; opaque
+audit/work references that carry no duplicated relational scope remain ordinary
+surrogate FKs.
+
+Reviewing all 15 tables under this rule yields no reason to add another table or
+remove a scope column. The three projection/revision tables have no Portal-owned
+catalog FK; the customer/purchase/subscription/access/allowance chain receives
+the composite guards above; observation references enforce scope where scope is
+repeated; `paid_access_states` and `access_invalidation_outbox` already require
+the same finalized Step-3 tenant/region/user representation; webhook, work, and
+manual-review scope references remain intentionally typed/opaque because they do
+not repeat relational account/user/product columns. Nullable relationships
+remain nullable only for the stated lifecycle reason: no selected primary yet,
+no linked purchase for a discovered subscription, optional evidence/work links,
+or later-proven provider bindings. Required provenance and accepted evidence
+remain non-null or are covered by the explicit Step-3 -> Step-4 handoff.
+
 ### Matrix conventions
 
 - `UUID`, `text`, `integer`/`bigint`, `timestamptz`, and `jsonb` name storage
@@ -336,9 +374,9 @@ the purchases that reference them.
 
 | Field | Storage; null/default | Key / FK delete behavior | Constraint or index | Mutability | Evidence | Gate / owner |
 | --- | --- | --- | --- | --- | --- | --- |
-| `mapping_revision_id` | UUID; not null | PK | Unique identity | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
-| `external_billing_account_id` | text; not null | Configuration scope | Part of offer/revision unique key and current-selection index | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
-| `billing_offer_id` | text; not null | Opaque external identity, no catalog FK | With account and revision, unique | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
+| `mapping_revision_id` | UUID; not null | PK; part of composite purchase/subscription-reference targets | `UNIQUE(mapping_revision_id, external_billing_account_id)` and `UNIQUE(mapping_revision_id, external_billing_account_id, billing_offer_id)` in addition to PK | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
+| `external_billing_account_id` | text; not null | Configuration scope; part of composite purchase-reference target | Part of offer/revision unique key and current-selection index | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
+| `billing_offer_id` | text; not null | Opaque external identity, no catalog FK; part of composite purchase-reference target | With account and revision, unique | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
 | `revision_number` | bigint; not null | Publication sequence | `> 0`; `UNIQUE(account, offer, revision_number)` | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
 | `manifest_version` | text; not null | Pinned external version, no projection FK | Indexed with publication scope | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
 | `catalog_version` | text; nullable | Pinned external version, no projection FK | - | Immutable | `GATED / UNVERIFIED` | `STEP_4_SAFE` opaque slot; semantics closed by `ANY-504` Steps 5-6 |
@@ -367,7 +405,7 @@ identity/correlation, not customer-profile authority.
 
 | Field | Storage; null/default | Key / FK delete behavior | Constraint or index | Mutability | Evidence | Gate / owner |
 | --- | --- | --- | --- | --- | --- | --- |
-| `customer_id` | UUID; not null | PK | Unique identity | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
+| `customer_id` | UUID; not null | PK; part of composite scope-reference target | `UNIQUE(customer_id, external_billing_account_id, user_id)` in addition to PK | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
 | `external_billing_account_id` | text; not null | Configuration scope | In both required unique keys | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
 | `user_id` | UUID; not null | FK `users.id`; `RESTRICT` | `UNIQUE(account, user_id)` | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
 | `billing_customer_key` | text; not null | Portal allocation identity | Non-empty; `UNIQUE(account, billing_customer_key)` | Immutable; never reused | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
@@ -393,10 +431,10 @@ primary selection, not commercial authority.
 
 | Field | Storage; null/default | Key / FK delete behavior | Constraint or index | Mutability | Evidence | Gate / owner |
 | --- | --- | --- | --- | --- | --- | --- |
-| `access_scope_id` | UUID; not null | PK | Unique identity | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
+| `access_scope_id` | UUID; not null | PK; part of composite observation-reference target | `UNIQUE(access_scope_id, user_id, product_id)` in addition to PK | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
 | `user_id` | UUID; not null | FK `users.id`; `RESTRICT` | With `product_id`, unique serialization scope | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
 | `product_id` | text; not null | Kernel identity; no Portal catalog FK | `UNIQUE(user_id, product_id)` | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
-| `primary_subscription_id` | UUID; nullable | FK `external_subscriptions.subscription_id`; `RESTRICT` | Index for reverse lookup; FK deletion cannot clear the primary | Only audited deterministic Application transition | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `LATER_STEP_RUNTIME` (`ANY-504` Steps 7-9) |
+| `primary_subscription_id` | UUID; nullable | Composite FK `(primary_subscription_id, user_id, product_id)` to `external_subscriptions(subscription_id, user_id, product_id)`; `RESTRICT` | Index for reverse lookup; FK deletion cannot clear the primary | Only audited deterministic Application transition | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` FK; transition is `LATER_STEP_RUNTIME` (`ANY-504` Steps 7-9) |
 | `updated_at` | timestamptz; not null | - | - | Updated with primary decision | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `LATER_STEP_RUNTIME` (`ANY-504` Steps 7-9) |
 
 The canonical first-row acquisition protocol is a short PostgreSQL transaction:
@@ -405,10 +443,15 @@ The canonical first-row acquisition protocol is a short PostgreSQL transaction:
    `ON CONFLICT (user_id, product_id) DO NOTHING`;
 2. `SELECT` the unique row by `(user_id, product_id) FOR UPDATE`, whether this
    transaction inserted it or a concurrent transaction won the insert;
-3. while holding that row lock, inspect the current purchase, subscription, and
-   create-operation state for the scope, then create or reuse the scope-holding
-   `PurchaseIntent` and any required durable `external_create_operations`
-   record; commit before an external call.
+3. while holding that row lock, acquire/create the canonical
+   `(external_billing_account_id, user_id)` customer slot using the customer
+   protocol below and lock that customer row `FOR UPDATE`;
+4. inspect/reuse/create the single unresolved customer-create operation, then
+   inspect the current purchase, subscription, and create-operation state for
+   the product scope and create or reuse the scope-holding `PurchaseIntent` and
+   any other required durable local state;
+5. commit all required local intent/state before any external call; only after
+   commit may provider I/O occur.
 
 PostgreSQL's unique-index conflict handling makes a concurrent losing insert
 wait for the winner and converge on the same committed row. No caller may
@@ -421,7 +464,9 @@ ownership is represented by the existing purchase, operation, and linked-
 subscription state; it does not add an owner column or table. Rollback leaves
 no newly established scope-holding flow and grants no permission for an
 external effect. This protocol also applies when the scope row already exists
-and requires no separate lock table.
+and requires no separate lock table. The global lock order for a normal purchase
+is therefore `product access scope -> customer slot`; no purchase path may
+acquire those two locks in the reverse order.
 
 Before locking this row, Step 8 performs the Step-5-proven complete discovery
 and authoritative point reads, normalizes the complete target-product
@@ -468,13 +513,14 @@ without becoming either.
 | Field | Storage; null/default | Key / FK delete behavior | Constraint or index | Mutability | Evidence | Gate / owner |
 | --- | --- | --- | --- | --- | --- | --- |
 | `purchase_intent_id` | UUID; not null | PK | Unique identity | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
-| `user_id` | UUID; not null | FK `users.id`; `RESTRICT` | User/product orchestration index | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
-| `external_billing_account_id` | text; not null | Configuration scope | Account/offer lookup index | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
+| `user_id` | UUID; not null | FK `users.id`; part of composite customer-scope FK; `RESTRICT` | User/product orchestration index | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
+| `external_billing_account_id` | text; not null | Configuration scope; part of composite customer and mapping FKs | Account/offer lookup index | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
+| `customer_id` | UUID; not null | Composite FK `(customer_id, external_billing_account_id, user_id)` to `external_billing_customers(customer_id, external_billing_account_id, user_id)`; `RESTRICT` | Customer/purchase lookup index; part of composite subscription-reference target | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
 | `product_id` | text; not null | Kernel identity; no Portal catalog FK | User/product orchestration index | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
 | `billing_offer_id` | text; not null | Opaque external identity; no catalog FK | Account/offer lookup index | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
-| `mapping_revision_id` | UUID; not null | FK `commercial_mapping_revisions.mapping_revision_id`; `RESTRICT` | Lookup index | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
+| `mapping_revision_id` | UUID; not null | Composite FK `(mapping_revision_id, external_billing_account_id, billing_offer_id)` to `commercial_mapping_revisions(mapping_revision_id, external_billing_account_id, billing_offer_id)`; `RESTRICT` | Lookup index; with purchase scope, composite subscription-reference target | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
 | `accepted_commercial_fingerprint` | text; not null | - | Non-empty; audit lookup index | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
-| `client_idempotency_key` | text; not null | Client request identity | Indexed; final uniqueness scope deliberately absent in Step 4 | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `LATER_STEP_RUNTIME` (`ANY-504` Step 7 closes and installs the public API uniqueness rule) |
+| `client_idempotency_key` | text; not null | Client request identity | Non-empty; `UNIQUE(external_billing_account_id, user_id, client_idempotency_key)` | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE`; replay/conflict behavior is `LATER_STEP_RUNTIME` (`ANY-504` Step 7) |
 | `state` | text-backed enum; not null, default `created` | - | Check `created | preparing | awaiting_external_result | linked | resolved_no_external_effect | failed_before_external_effect | manual_review`; state index | Application transition only | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `LATER_STEP_RUNTIME` (`ANY-504` Step 7) |
 | `accepted_snapshot_schema_version` | text; not null | - | Non-empty | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
 | `accepted_snapshot` | jsonb; not null | - | Whole typed immutable document validated against schema version | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `LATER_STEP_RUNTIME` (`ANY-504` Step 7) |
@@ -488,13 +534,30 @@ mapping revision, Kernel `product_id`/`metric_key` bindings, fixed accepted
 integer quantities, the material commercial fingerprint, and the exact legal
 acceptance/document-version evidence finalized by Step 3. Copying a legacy
 generic or `Plan.id`-bound consent after the fact is insufficient. Business
-serialization uses `billing_product_access_scopes(user_id, product_id)`.
+serialization uses `billing_product_access_scopes(user_id, product_id)`. The
+semantic idempotency identity is exactly
+`(external_billing_account_id, user_id, client_idempotency_key)`: one key names
+one logical public purchase request by one canonical user inside one configured
+billing boundary, independent of product or offer. An exact replay returns the
+same flow; reuse of that identity with different immutable request semantics is
+an idempotency conflict rather than a new purchase. Step 4 installs the unique
+constraint; Step 7 owns request comparison and the transport/runtime result.
 Rows and accepted evidence are retained for recovery and commercial/legal
 audit; accepted fields never rebind or mutate. The accepted legal-evidence
 binding is mandatory semantically, but Step 3 alone decides its final columns,
 FK target/cardinality, and nullability. Step 4 must implement that result
 without adding another target table, weakening append-only evidence, or
 permitting an accepted purchase to become unbound.
+
+Step 4 also installs composite alternate keys
+`UNIQUE(purchase_intent_id, customer_id)` and
+`UNIQUE(purchase_intent_id, external_billing_account_id, user_id, product_id)`,
+plus
+`UNIQUE(purchase_intent_id, customer_id, external_billing_account_id, user_id,
+product_id, mapping_revision_id)`. The leading UUID remains the purchase
+identity; these wider keys exist only as relational targets so create operations
+and linked subscriptions cannot contradict the purchase's scope or mapping
+provenance.
 
 The canonical purchase-to-subscription relationship is
 `external_subscriptions.purchase_intent_id`. `purchase_intents` carries no
@@ -512,8 +575,8 @@ an external object was actually created. This is not a generic job queue.
 | --- | --- | --- | --- | --- | --- | --- |
 | `create_operation_id` | UUID; not null | PK | Unique identity | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
 | `operation_kind` | text-backed enum; not null | - | Check `customer | agreement | subscription` | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
-| `customer_id` | UUID; not null | FK `external_billing_customers.customer_id`; `RESTRICT` | Customer/state lookup index | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
-| `purchase_intent_id` | UUID; nullable | FK `purchase_intents.purchase_intent_id`; `RESTRICT` | Purchase lookup index | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
+| `customer_id` | UUID; not null | FK `external_billing_customers.customer_id`; `RESTRICT`; with `purchase_intent_id`, composite purchase/customer FK when the purchase is present | Customer/state lookup index; partial `UNIQUE(customer_id) WHERE operation_kind = 'customer' AND resolved_at IS NULL` | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
+| `purchase_intent_id` | UUID; nullable | Composite FK `(purchase_intent_id, customer_id)` to `purchase_intents(purchase_intent_id, customer_id)`; `RESTRICT` | Purchase lookup index; required for `agreement` and `subscription`, forbidden for `customer` | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
 | `request_correlation_key` | text; not null | Outbound request identity | Non-empty; indexed; exact provider correlation semantics not constrained | Immutable | `GATED / UNVERIFIED` | `STEP_4_SAFE` opaque slot; semantics closed by `ANY-504` Steps 5 and 7 |
 | `operation_state` | text; not null | - | Open vocabulary; state/recovery index; must represent durable `unknown` | Application transition only | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `LATER_STEP_RUNTIME` (`ANY-504` Steps 7-8 close the vocabulary) |
 | `unknown_since` | timestamptz; nullable | - | Paired with deadline when state is `unknown` | Set when outcome becomes ambiguous; then immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `LATER_STEP_RUNTIME` (`ANY-504` Steps 7-8) |
@@ -532,6 +595,50 @@ matches is never proof of absence. At the fixed deadline it escalates to
 manual review. `billing_work_items` schedules recovery. Records remain for
 identity/recovery/audit after resolution.
 
+The customer row supplies cross-product serialization specifically for customer
+creation; it does not replace product-scope business serialization. For a normal
+purchase, the customer sub-protocol runs only after the transaction has locked
+the canonical `(user_id, product_id)` access-scope row:
+
+1. Generate a `billing_customer_key` only as a candidate for insertion of an
+   absent customer slot, then attempt the insert with
+   `ON CONFLICT (external_billing_account_id, user_id) DO NOTHING`.
+2. Select the canonical `(external_billing_account_id, user_id)` customer row
+   `FOR UPDATE`. If the insert lost to an existing slot, discard the losing
+   candidate without comparing it to the persisted key. The immutable key
+   already stored on the canonical row is the sole Portal key and is reused by
+   this purchase flow.
+3. A `UNIQUE(external_billing_account_id, billing_customer_key)` conflict with
+   another customer slot is instead a local key-allocation collision. It never
+   reuses the other customer's row and never becomes `identity_conflict`; before
+   any external effect, the owning Step-7 implementation may fail the local
+   allocation or retry with a new candidate while restarting the transaction in
+   the same `product access scope -> customer slot` lock order.
+4. Inspect unresolved `operation_kind = customer` operations for the canonical
+   `customer_id` and either reuse/block on the existing operation or insert the
+   sole unresolved customer-create operation. Create or reuse the
+   `PurchaseIntent` and remaining product-scope state in the same short
+   transaction, then commit before provider I/O.
+5. Perform provider I/O only after commit; record a definite result or durable
+   `unknown` in a later short transaction. While the operation is unresolved,
+   every product flow for that customer reuses or waits on it; an ambiguous
+   result is recovered by reads and is never blind-retried.
+
+Two first purchases for different products may hold different product-scope
+rows and then contend on the same customer row. The loser waits, discards its
+candidate key if the winner inserted the slot, and reuses the canonical slot and
+any unresolved customer-create operation. A customer-recovery worker that does
+not mutate product-scope state may lock only the customer/create-operation
+state; it must never acquire a product-scope lock afterward, so it cannot create
+a reverse `customer slot -> product access scope` path.
+
+The partial unique constraint on unresolved customer-create rows is
+`STEP_4_SAFE`: it uses the closed operation kind and `resolved_at`, not the
+later-owned operation-state vocabulary. An audited safe release or proven bind
+sets `resolved_at`; `unknown` and escalated manual-review operations remain
+unresolved and continue to hold the customer slot. This closes the cross-product
+race without assuming provider `outer_id` uniqueness or deduplication.
+
 ### `external_subscriptions`
 
 **Owner/source of truth.** External Billing is subscription/commercial truth;
@@ -541,12 +648,13 @@ unproven provider identifier.
 
 | Field | Storage; null/default | Key / FK delete behavior | Constraint or index | Mutability | Evidence | Gate / owner |
 | --- | --- | --- | --- | --- | --- | --- |
-| `subscription_id` | UUID; not null | PK | Unique Portal identity | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
-| `external_billing_account_id` | text; not null | Configuration scope | Account/customer index | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
-| `customer_id` | UUID; not null | FK `external_billing_customers.customer_id`; `RESTRICT` | Account/customer index | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
-| `product_id` | text; not null | Kernel identity; no Portal catalog FK | Customer/product/status index | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
-| `purchase_intent_id` | UUID; nullable | Canonical FK to `purchase_intents.purchase_intent_id`; `RESTRICT` | Partial `UNIQUE(purchase_intent_id)` when non-null; provenance/reverse-link lookup index | Set only as part of the proven-link Application transition; thereafter immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` FK/uniqueness; linking is `LATER_STEP_RUNTIME` (`ANY-504` Steps 7-8) |
-| `mapping_revision_id` | UUID; nullable | FK `commercial_mapping_revisions.mapping_revision_id`; `RESTRICT` | Provenance lookup index | Immutable once set | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
+| `subscription_id` | UUID; not null | PK; part of composite scope-reference targets | `UNIQUE(subscription_id, product_id)`, `UNIQUE(subscription_id, user_id, product_id)`, and `UNIQUE(subscription_id, external_billing_account_id, user_id, product_id)` in addition to PK | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
+| `external_billing_account_id` | text; not null | Configuration scope; part of composite customer, purchase, and mapping FKs | Account/customer index | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
+| `customer_id` | UUID; not null | Composite FK `(customer_id, external_billing_account_id, user_id)` to `external_billing_customers(customer_id, external_billing_account_id, user_id)`; `RESTRICT` | Account/customer index | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
+| `user_id` | UUID; not null | With customer and account, composite FK to `external_billing_customers`; `RESTRICT` | `UNIQUE(subscription_id, user_id, product_id)` in addition to PK; user/product/status index | Immutable; deliberate denormalized scope protected by FK | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
+| `product_id` | text; not null | Kernel identity; no Portal catalog FK; part of composite purchase FK and primary-subscription reference target | Customer/product/status index | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
+| `purchase_intent_id` | UUID; nullable | Composite FK `(purchase_intent_id, customer_id, external_billing_account_id, user_id, product_id, mapping_revision_id)` to the same columns on `purchase_intents`; `RESTRICT` | Partial `UNIQUE(purchase_intent_id)` when non-null; provenance/reverse-link lookup index | Set only as part of the proven-link Application transition; thereafter immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` FK/uniqueness; linking is `LATER_STEP_RUNTIME` (`ANY-504` Steps 7-8) |
+| `mapping_revision_id` | UUID; nullable | Composite FK `(mapping_revision_id, external_billing_account_id)` to `commercial_mapping_revisions(mapping_revision_id, external_billing_account_id)`; `RESTRICT`; participates in the purchase FK when linked | Provenance lookup index | Immutable once set; required when `purchase_intent_id` is set | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
 | `external_subscription_id` | text; nullable | Opaque external binding | Indexed when present; no pre-Phase-0 uniqueness/check | Set only from proof; correction only through audited recovery | `GATED / UNVERIFIED` | `STEP_4_SAFE` nullable slot; canonical identity is `PHASE_0_GATED`, owned by `ANY-504` Step 5 |
 | `external_agreement_id` | text; nullable | Opaque external binding | Indexed when present; no pre-Phase-0 uniqueness/check | Set only from proof; correction only through audited recovery | `GATED / UNVERIFIED` | `STEP_4_SAFE` nullable slot; lifetime/isolation uniqueness is `PHASE_0_GATED`, owned by `ANY-504` Step 5 |
 | `lifecycle_status` | text-backed enum; not null | - | Check `active | inactive | ended`; projection index | Authoritative transition only | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `LATER_STEP_RUNTIME` (`ANY-504` Steps 8-9) |
@@ -554,10 +662,10 @@ unproven provider identifier.
 | `commercial_access_status` | text-backed enum; not null | - | Check `eligible | ineligible`; projection index | Authoritative transition only | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `LATER_STEP_RUNTIME` (`ANY-504` Steps 8-9) |
 | `last_authoritative_read_at` | timestamptz; not null | - | Freshness/reconciliation index | Advances with successful authoritative read | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `LATER_STEP_RUNTIME` (`ANY-504` Step 8) |
 | `projection_valid_until` | timestamptz; not null | - | Freshness/deadline index | Recomputed only by authoritative transition | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `LATER_STEP_RUNTIME` (`ANY-504` Steps 8-9) |
-| `reconciliation_lease_owner` | text; nullable | - | Lease scan index with expiry | Claim/release only | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `LATER_STEP_RUNTIME` (`ANY-504` Step 8) |
-| `reconciliation_lease_expires_at` | timestamptz; nullable | - | Paired with lease owner; expiry index | Claim/renew/release only | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `LATER_STEP_RUNTIME` (`ANY-504` Step 8) |
+| `reconciliation_lease_owner` | text; nullable | - | Lease scan index with expiry; paired-nullability `CHECK` with expiry | Claim/release only | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` check; behavior is `LATER_STEP_RUNTIME` (`ANY-504` Step 8) |
+| `reconciliation_lease_expires_at` | timestamptz; nullable | - | Paired-nullability `CHECK` with owner; expiry index | Claim/renew/release only | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` check; behavior is `LATER_STEP_RUNTIME` (`ANY-504` Step 8) |
 | `reconciliation_fencing_token` | bigint; not null, default `0` | - | `>= 0`; monotonically increases on claim | Monotonic only | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `LATER_STEP_RUNTIME` (`ANY-504` Step 8) |
-| `latest_observation_id` | UUID; nullable | FK `billing_state_observations.observation_id`; `SET NULL` does not change projection meaning | Observation lookup index | Updated only with authoritative projection | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `LATER_STEP_RUNTIME` (`ANY-504` Step 8) |
+| `latest_observation_id` | UUID; nullable | Composite FK `(latest_observation_id, subscription_id)` to `billing_state_observations(observation_id, subscription_id)`; `RESTRICT` | Observation lookup index; referenced row must be `authoritative_subscription_read` | Updated only with the authoritative read that produced the current projection | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` FK; kind validation/transition is `LATER_STEP_RUNTIME` (`ANY-504` Step 8) |
 | `created_at` | timestamptz; not null | - | - | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
 | `updated_at` | timestamptz; not null | - | - | Updated with projection | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `LATER_STEP_RUNTIME` (`ANY-504` Steps 8-9) |
 
@@ -570,7 +678,23 @@ and audit history is retained. Raw provider statuses remain Integration-owned.
 This table's canonical nullable FK is the only persisted
 PurchaseIntent-to-subscription link. The partial uniqueness rule makes the
 reverse relationship zero-or-one and prevents contradictory links; no mirror
-FK exists on `purchase_intents`.
+FK exists on `purchase_intents`. The composite FK guarantees that a linked
+subscription and purchase have the same canonical customer, billing account,
+user, product, and mapping provenance. The separate composite customer FK makes
+the deliberately repeated subscription `user_id` structural rather than
+independent truth. A Step-4 `CHECK` requires `mapping_revision_id` whenever
+`purchase_intent_id` is present. Reconciliation lease owner and expiry are
+either both null or both non-null, enforced by
+`(reconciliation_lease_owner IS NULL AND reconciliation_lease_expires_at IS
+NULL) OR (reconciliation_lease_owner IS NOT NULL AND
+reconciliation_lease_expires_at IS NOT NULL)`.
+
+`latest_observation_id` names only the
+`authoritative_subscription_read` whose normalized facts produced the current
+subscription projection. The composite FK enforces subscription ownership;
+Step 8 enforces the referenced observation kind and projection-causality
+invariant in the same Application transition. No observation-kind discriminator
+is duplicated on this table.
 
 ### `billing_state_observations`
 
@@ -580,16 +704,16 @@ provider event store, or a second business state machine.
 
 | Field | Storage; null/default | Key / FK delete behavior | Constraint or index | Mutability | Evidence | Gate / owner |
 | --- | --- | --- | --- | --- | --- | --- |
-| `observation_id` | UUID; not null | PK | Unique identity | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
+| `observation_id` | UUID; not null | PK; part of composite observation-reference targets | `UNIQUE(observation_id, access_scope_id)` and `UNIQUE(observation_id, subscription_id)` in addition to PK | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
 | `observation_kind` | text-backed enum; not null | - | Check `authoritative_subscription_read | target_product_discovery | primary_selection | deterministic_access_boundary`; kind/time index | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
 | `external_billing_account_id` | text; not null | Configuration scope | Account/kind/time index | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
 | `user_id` | UUID; nullable | FK `users.id`; `RESTRICT` | User/product/time audit index | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
 | `product_id` | text; nullable | Kernel identity; no Portal catalog FK | User/product/time audit index | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
-| `access_scope_id` | UUID; nullable | FK `billing_product_access_scopes.access_scope_id`; `RESTRICT` | Scope/time audit index | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
-| `subscription_id` | UUID; nullable | FK `external_subscriptions.subscription_id`; `RESTRICT` | Subscription/time audit index | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
-| `purchase_intent_id` | UUID; nullable | FK `purchase_intents.purchase_intent_id`; `RESTRICT` | Purchase/time audit index | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
+| `access_scope_id` | UUID; nullable | Composite FK `(access_scope_id, user_id, product_id)` to `billing_product_access_scopes(access_scope_id, user_id, product_id)`; `RESTRICT` | Scope/time audit index | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
+| `subscription_id` | UUID; nullable | Composite FK `(subscription_id, external_billing_account_id, user_id, product_id)` to the same columns on `external_subscriptions`; `RESTRICT` | Subscription/time audit index; mutually exclusive with `purchase_intent_id` | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
+| `purchase_intent_id` | UUID; nullable | Composite FK `(purchase_intent_id, external_billing_account_id, user_id, product_id)` to the same columns on `purchase_intents`; `RESTRICT` | Purchase/time audit index; `CHECK(subscription_id IS NULL OR purchase_intent_id IS NULL)` | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
 | `work_item_id` | UUID; nullable | FK `billing_work_items.work_item_id`; `SET NULL` | Work/audit index | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
-| `basis_observation_id` | UUID; nullable | Self-FK `billing_state_observations.observation_id`; `RESTRICT` | Basis/decision lookup index | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
+| `basis_observation_id` | UUID; nullable | Composite self-FK `(basis_observation_id, access_scope_id)` to `billing_state_observations(observation_id, access_scope_id)`; `RESTRICT` | Basis/decision lookup index | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
 | `observed_at` | timestamptz; not null | - | Kind/time and scope/time indexes | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
 | `effective_at` | timestamptz; nullable | - | Effective-boundary index | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
 | `evidence_schema_version` | text; not null | - | Non-empty | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
@@ -612,16 +736,39 @@ allowed when meaningful):
   `effective_at` are all non-null, so the affected product scope, durable source
   fact, and access-reducing boundary are identifiable.
 
-The Step-4 `CHECK` enforces only this provider-independent row-local shape, and
-the existing FKs enforce that referenced rows exist. The cross-row semantic
-invariant remains unchanged: a `primary_selection.basis_observation_id` must
-refer to the persisted `target_product_discovery` used for the decision in the
-same access scope. Because a PostgreSQL row `CHECK` cannot inspect the
-referenced observation's kind or scope without duplicating that state, Steps
-8-9 own application/runtime validation before insert and the corresponding
-application/audit verification. This leaves only provider-specific result and
-completeness vocabularies open for Steps 5 and 8. It does not make observations
-event-sourced authority or duplicate mutable subscription/access state.
+It also requires `user_id` and `product_id` whenever `access_scope_id`,
+`subscription_id`, or `purchase_intent_id` is present. The composite FKs then
+force every repeated account/user/product value to agree with every referenced
+scope-bearing row. A basis observation is forced into the same access scope as
+the decision, and a subscription's `latest_observation_id` can reference only
+an observation for that subscription. A separate Step-4 `CHECK` enforces
+`subscription_id IS NULL OR purchase_intent_id IS NULL`: when an observation
+references a subscription, its purchase provenance is derived exclusively
+through the subscription's immutable nullable
+`external_subscriptions.purchase_intent_id`. An observation may reference a
+purchase directly only when it does not also reference a subscription. This
+keeps discovered subscriptions with no linked purchase valid while making a
+contradictory `S2`/`P1` pair unrepresentable.
+
+The Step-4 `CHECK` enforces the provider-independent row-local shape and
+non-contradictory provenance, and the composite FKs enforce existence plus
+relational scope agreement. Two cross-row observation-kind invariants remain
+with their runtime owners because a normal FK cannot inspect the referenced
+row's kind without duplicating that state:
+
+- a `primary_selection.basis_observation_id` must have
+  `observation_kind = target_product_discovery`; Steps 8-9 own validation before
+  insert and the corresponding application/audit verification;
+- `external_subscriptions.latest_observation_id` must have
+  `observation_kind = authoritative_subscription_read`; Step 8 owns validation
+  before updating the current projection pointer and verifies that the same
+  authoritative read produced the stored projection.
+
+The composite FKs already enforce the same access scope or subscription for
+these references. No `observation_kind` copy is added to another table. The
+remaining later-owned kind checks and provider-specific result/completeness
+vocabularies do not make observations event-sourced authority or duplicate
+mutable subscription/access state.
 
 An authoritative-read document contains only normalized material facts needed
 to reproduce the Application decision, including commercial verification and
@@ -645,7 +792,7 @@ facts; Kernel owns actual usage and remaining quota.
 | Field | Storage; null/default | Key / FK delete behavior | Constraint or index | Mutability | Evidence | Gate / owner |
 | --- | --- | --- | --- | --- | --- | --- |
 | `allowance_id` | UUID; not null | PK | Unique stable usage identity | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
-| `subscription_id` | UUID; not null | FK `external_subscriptions.subscription_id`; `RESTRICT` | Subscription/cycle lookup index | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
+| `subscription_id` | UUID; not null | Composite FK `(subscription_id, product_id)` to `external_subscriptions(subscription_id, product_id)`; `RESTRICT` | Subscription/cycle lookup index | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
 | `source_component_id` | text; not null | Opaque concrete external component identity; no catalog FK | Subscription/component/cycle lookup index | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
 | `product_id` | text; not null | Kernel identity; no Portal catalog FK | Product/metric lookup index | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
 | `metric_key` | text; not null | Kernel identity; no Portal catalog FK | Product/metric lookup index | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
@@ -776,8 +923,8 @@ access-reducing deadlines. It is scheduling state, not business authority.
 | `next_attempt_at` | timestamptz; not null | - | Due-work index with state/priority | Updated on retry/reschedule | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `LATER_STEP_RUNTIME` (`ANY-504` Step 8) |
 | `attempt_count` | integer; not null, default `0` | - | `>= 0` | Monotonic | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `LATER_STEP_RUNTIME` (`ANY-504` Step 8) |
 | `work_state` | text; not null | - | Open vocabulary; due-work index | Claim/transition only | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `LATER_STEP_RUNTIME` (`ANY-504` Step 8 closes the vocabulary) |
-| `lease_owner` | text; nullable | - | Paired with lease expiry; claim index | Claim/renew/release only | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `LATER_STEP_RUNTIME` (`ANY-504` Step 8) |
-| `lease_expires_at` | timestamptz; nullable | - | Paired with lease owner; expiry index | Claim/renew/release only | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `LATER_STEP_RUNTIME` (`ANY-504` Step 8) |
+| `lease_owner` | text; nullable | - | Paired-nullability `CHECK` with expiry; claim index | Claim/renew/release only | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` check; behavior is `LATER_STEP_RUNTIME` (`ANY-504` Step 8) |
+| `lease_expires_at` | timestamptz; nullable | - | Paired-nullability `CHECK` with owner; expiry index | Claim/renew/release only | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` check; behavior is `LATER_STEP_RUNTIME` (`ANY-504` Step 8) |
 | `last_error_classification` | text; nullable | - | Safe classification only | Updated after attempts | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `LATER_STEP_RUNTIME` (`ANY-504` Step 8) |
 | `created_at` | timestamptz; not null | - | - | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
 | `updated_at` | timestamptz; not null | - | - | Updated with scheduling state | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `LATER_STEP_RUNTIME` (`ANY-504` Step 8) |
@@ -786,9 +933,12 @@ Urgency is a priority/cadence on this table, never a second queue. In-memory
 work, FastAPI `BackgroundTasks`, RabbitMQ, or Kafka cannot be correctness
 authority for MVP. Invalidation remains in its dedicated coalesced outbox.
 Open work-kind/state values intentionally receive no premature persisted enum
-or database check. Pending/retry history is retained until safely resolved;
-operational cleanup may later remove unreferenced terminal scheduling rows
-without deleting business/evidence records.
+or database check. Step 4 nevertheless installs the provider-neutral lease
+shape check
+`(lease_owner IS NULL AND lease_expires_at IS NULL) OR (lease_owner IS NOT NULL
+AND lease_expires_at IS NOT NULL)`. Pending/retry history is retained until
+safely resolved; operational cleanup may later remove unreferenced terminal
+scheduling rows without deleting business/evidence records.
 
 ### `access_invalidation_outbox`
 
@@ -1082,18 +1232,20 @@ semantics.
 | The one-contour identity baseline no longer depends on `eu`/DE/ES rows in a `ru` data plane. | Migration/schema + identity contract tests | Steps 3-4 |
 | No old Portal catalog, provider, commerce, subscription, or entitlement table remains. | Migration/schema + architecture/static checks | Step 4 |
 | No CloudPayments/provider-registry runtime, configuration, test, or frontend dependency remains, and `ANY-168` cannot execute into Step 4. | Architecture/static check + roadmap gate evidence | Step 4 |
-| Exactly one customer slot exists per `(external_billing_account_id, user_id)`, customer-key reuse is rejected, and concurrent creation converges. | Migration/schema + PostgreSQL concurrency + application/idempotency tests | DDL in Step 4; runtime in Step 7 |
+| Exactly one customer slot exists per `(external_billing_account_id, user_id)`, persisted customer-key reuse is rejected, and concurrent purchases for different products follow `product access scope -> customer slot`, discard a losing insertion candidate without comparing it to the canonical key, reuse the persisted slot/key, and converge on at most one unresolved customer-create operation. A collision with another slot's persisted key fails/reallocates locally before external effect and never becomes `identity_conflict`. | Migration/schema + PostgreSQL cross-product concurrency + application/idempotency tests | DDL in Step 4; runtime in Step 7 |
 | Two concurrent first purchase attempts against an initially absent `(user_id, product_id)` scope converge through insert-on-conflict/get-and-lock on exactly one scope row; before either external call, at most one scope-holding `PurchaseIntent` / create operation owns permission to proceed and the other reuses it or receives the occupied-scope result. | Migration/schema + PostgreSQL concurrency + application/idempotency tests | DDL in Step 4; runtime in Steps 7-8 |
-| Duplicate client retries cannot create a second business flow for the Step-7 idempotency contract. | Application/idempotency + PostgreSQL concurrency tests | Step 7 |
+| Composite scope FKs reject mismatched mapping account/offer, customer account/user, linked-purchase account/user/product/provenance, primary-subscription user/product, allowance product, and scope-bearing observation references. Observation rows also reject simultaneous subscription/direct-purchase references and derive subscription purchase provenance through `external_subscriptions.purchase_intent_id`, including when that link is null. | Migration/schema negative tests | Step 4 |
+| Duplicate client retries are unique on `(external_billing_account_id, user_id, client_idempotency_key)`; exact replay converges and same-identity/different-request reuse conflicts. | Migration/schema + application/idempotency + PostgreSQL concurrency tests | DDL in Step 4; runtime in Step 7 |
 | An ambiguous external create persists `UNKNOWN`, survives restart, retains its scope, and is recovered without blind retry. | Application/idempotency + restart/integration tests | Steps 7-8 |
 | Mapping revisions and accepted purchase snapshots remain immutable. | Migration/schema + application tests | DDL in Step 4; behavior in Steps 6-7 |
-| `billing_state_observations` survive restart and mutable-projection replacement, reject rows missing the kind-specific structural links, require primary-selection basis to be a discovery in the same scope, retain normalized authoritative-read/discovery/primary/deterministic-boundary evidence, and link causative evidence to the resulting access revision without retaining raw provider/payment history. | Migration/schema + application/audit tests | DDL in Step 4; behavior in Steps 8-9 |
+| `billing_state_observations` survive restart and mutable-projection replacement, reject rows missing the kind-specific structural links, require primary-selection basis to be a discovery in the same scope, require every subscription `latest_observation_id` to be the same-subscription `authoritative_subscription_read` that produced the current projection, retain normalized authoritative-read/discovery/primary/deterministic-boundary evidence, and link causative evidence to the resulting access revision without retaining raw provider/payment history. | Migration/schema + application/audit tests | DDL in Step 4; kind/causality behavior in Steps 8-9 |
 | Purchased quantity and effective allowance tuple are immutable, and Portal persists no runtime `remaining`. | Migration/schema + architecture/static + contract tests | DDL in Step 4; behavior in Steps 9-10 |
 | Same-cycle block/unblock preserves `allowance_id` and Kernel usage identity. | Contract + E2E evidence | Phase 0 prerequisite in Step 5; runtime in Steps 9-10 |
 | A known user with no `paid_access_states` row receives implicit revision zero and a read causes no database write. | Contract + application/database tests | Step 10 |
 | Starting from absent revision zero and separately from existing revision `N`, two concurrent independent product-access transitions serialize on the canonical user row, each re-derive from the latest committed complete state, and commit revisions `1` then `2` (or `N+1` then `N+2`); the final complete state contains both changes and the atomic coalesced outbox retains at least the newer revision despite an older acknowledgement. | PostgreSQL concurrency/atomicity + application tests | Step 9, with delivery-race completion in Step 10 |
 | Duplicate and out-of-order webhooks never directly grant access and converge through the same transition used by reconciliation. | Application/idempotency + contract tests | Steps 8-9 |
 | Work claims/retries and reconciliation fencing prevent a stale worker from committing. | PostgreSQL concurrency + application tests | Step 8 |
+| Subscription and work-item lease owner/expiry columns reject either half-populated form. | Migration/schema negative tests | Step 4 |
 | Deterministic due-time work removes only the due paid fact without provider HTTP. | Application + contract tests | Steps 8-9 |
 | Invalidation coalescing and in-flight acknowledgement races cannot lose a newer revision. | PostgreSQL concurrency/atomicity + contract tests | Production in Step 9; delivery in Step 10 |
 | Manual review cannot directly create entitlement or allowance authority. | Application + architecture/static checks | Steps 7-9 |
