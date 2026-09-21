@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.observability import traced
+from app.core.settings import settings
 from app.domains.identity.services.auth import (
     AuthenticationResult,
     login_user,
@@ -44,8 +45,6 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 class RegisterRequest(BaseModel):
-    tenant_id: str = DEFAULT_TENANT_ID
-    region: str = DEFAULT_REGION
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
     personal_consent: bool
@@ -53,8 +52,6 @@ class RegisterRequest(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    tenant_id: str = DEFAULT_TENANT_ID
-    region: str = DEFAULT_REGION
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
 
@@ -127,8 +124,8 @@ def register(
 ):
     result = register_user(
         db,
-        tenant_id=payload.tenant_id,
-        region=payload.region,
+        tenant_id=settings.instance_tenant_id,
+        region=settings.instance_region,
         email=str(payload.email),
         password=payload.password,
         personal_consent=payload.personal_consent,
@@ -152,8 +149,8 @@ def login(
 ):
     result = login_user(
         db,
-        tenant_id=payload.tenant_id,
-        region=payload.region,
+        tenant_id=settings.instance_tenant_id,
+        region=settings.instance_region,
         email=str(payload.email),
         password=payload.password,
         client_ip=request.client.host if request.client else None,

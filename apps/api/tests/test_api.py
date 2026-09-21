@@ -5366,20 +5366,22 @@ def test_recurrent_duplicate_delivery_uses_payload_idempotency_not_subscription_
     assert events[2].idempotency_key != events[0].idempotency_key
 
 
-def test_same_email_can_register_independent_ru_and_eu_accounts() -> None:
-    ru_response = client.post(
+def test_same_email_foreign_client_scope_cannot_create_foreign_contour_user() -> None:
+    first_response = client.post(
         "/api/auth/register",
         json={
-            "region": "ru",
+            "tenant_id": "foreign-tenant",
+            "region": "eu",
             "email": "shared@example.com",
             "password": "very-secret-password",
             "personal_consent": True,
             "offer_consent": True,
         },
     )
-    eu_response = client.post(
+    second_response = client.post(
         "/api/auth/register",
         json={
+            "tenant_id": "another-foreign-tenant",
             "region": "eu",
             "email": "shared@example.com",
             "password": "very-secret-password",
@@ -5388,23 +5390,71 @@ def test_same_email_can_register_independent_ru_and_eu_accounts() -> None:
         },
     )
 
-    assert ru_response.status_code == 200
-    assert eu_response.status_code == 200
-    ru_user = ru_response.json()["user"]
-    eu_user = eu_response.json()["user"]
-    assert ru_user["region"] == "ru"
-    assert eu_user["region"] == "eu"
-    assert ru_user["email"] == eu_user["email"] == "shared@example.com"
-    assert ru_user["user_id"] != eu_user["user_id"]
+    assert first_response.status_code == 200
+    assert second_response.status_code == 409
+    assert second_response.json() == {"detail": {"code": "email_already_registered"}}
+    assert first_response.json()["user"]["tenant_id"] == "anytoolai"
+    assert first_response.json()["user"]["region"] == "ru"
 
     with SessionLocal() as db:
-        users = db.query(User).filter(User.email_normalized == "shared@example.com").order_by(User.region).all()
+        users = db.query(User).filter(User.email_normalized == "shared@example.com").all()
 
-    assert len(users) == 2
-    assert {user.region for user in users} == {"eu", "ru"}
+    assert [(user.tenant_id, user.region) for user in users] == [("anytoolai", "ru")]
 
 
-def test_same_email_cannot_register_twice_in_same_region() -> None:
+def test_register_and_login_foreign_client_scope_cannot_select_foreign_contour_user() -> None:
+    email = "foreign-login@example.com"
+    with SessionLocal() as db:
+        identity_auth_service.register_user(
+            db,
+            tenant_id="anytoolai",
+            region="ru",
+            email=email,
+            password="local-password-123",
+            personal_consent=True,
+            offer_consent=True,
+            client_ip=None,
+            user_agent=None,
+        )
+    with SessionLocal() as db:
+        identity_auth_service.register_user(
+            db,
+            tenant_id="anytoolai",
+            region="eu",
+            email=email,
+            password="foreign-password-123",
+            personal_consent=True,
+            offer_consent=True,
+            client_ip=None,
+            user_agent=None,
+        )
+
+    foreign_password_response = client.post(
+        "/api/auth/login",
+        json={
+            "tenant_id": "anytoolai",
+            "region": "eu",
+            "email": email,
+            "password": "foreign-password-123",
+        },
+    )
+    local_password_response = client.post(
+        "/api/auth/login",
+        json={
+            "tenant_id": "foreign-tenant",
+            "region": "eu",
+            "email": email,
+            "password": "local-password-123",
+        },
+    )
+
+    assert foreign_password_response.status_code == 401
+    assert local_password_response.status_code == 200
+    assert local_password_response.json()["user"]["tenant_id"] == "anytoolai"
+    assert local_password_response.json()["user"]["region"] == "ru"
+
+
+def test_same_email_cannot_register_twice_in_local_scope() -> None:
     payload = {
         "region": "ru",
         "email": "shared@example.com",
@@ -7283,7 +7333,7 @@ def test_checkout_requires_acceptance_again_when_active_document_version_changes
     assert not hasattr(acceptances[0], "updated_at")
 
 
-def test_legal_required_documents_are_scoped_by_tenant_and_region() -> None:
+def test_legal_required_documents_use_instance_scope() -> None:
     with SessionLocal() as db:
         ru_entity = create_legal_entity(db, region="ru")
         eu_entity = create_legal_entity(db, region="eu")
@@ -7302,72 +7352,24 @@ def test_legal_required_documents_are_scoped_by_tenant_and_region() -> None:
         ru_document_id = ru_document.id
         eu_document_id = eu_document.id
 
-    ru_documents_response = client.get("/api/legal/required-documents?region=ru")
-    eu_documents_response = client.get("/api/legal/required-documents?region=eu")
-
-    assert ru_documents_response.status_code == 200
-    assert eu_documents_response.status_code == 200
-    assert ru_documents_response.json()["documents"][0]["document_version_id"] == str(ru_document_id)
-    assert eu_documents_response.json()["documents"][0]["document_version_id"] == str(eu_document_id)
-    assert ru_documents_response.json()["documents"][0]["acceptance_text_hash"]
-    assert eu_documents_response.json()["documents"][0]["acceptance_text_hash"]
-
-    ru_response = client.post(
-        "/api/auth/register",
-        json={
-            "region": "ru",
-            "email": "scoped@example.com",
-            "password": "very-secret-password",
-            "personal_consent": True,
-            "offer_consent": True,
-        },
-    )
-    eu_response = client.post(
-        "/api/auth/register",
-        json={
-            "region": "eu",
-            "email": "scoped@example.com",
-            "password": "very-secret-password",
-            "personal_consent": True,
-            "offer_consent": True,
-        },
+    default_response = client.get("/api/legal/required-documents")
+    foreign_scope_response = client.get(
+        "/api/legal/required-documents?tenant_id=foreign-tenant&region=eu"
     )
 
-    assert ru_response.status_code == 200
-    assert eu_response.status_code == 200
-    ru_token = ru_response.json()["token"]
-    eu_token = eu_response.json()["token"]
-
-    with SessionLocal() as db:
-        assert db.query(DocumentAcceptance).count() == 0
-
-    ru_accept_response = client.post(
-        "/api/legal/acceptances",
-        headers={"Authorization": f"Bearer {ru_token}"},
-        json={
-            "document_version_id": str(ru_document_id),
-            "acceptance_text_hash": ru_documents_response.json()["documents"][0]["acceptance_text_hash"],
-        },
-    )
-    eu_accept_response = client.post(
-        "/api/legal/acceptances",
-        headers={"Authorization": f"Bearer {eu_token}"},
-        json={
-            "document_version_id": str(eu_document_id),
-            "acceptance_text_hash": eu_documents_response.json()["documents"][0]["acceptance_text_hash"],
-        },
-    )
-
-    assert ru_accept_response.status_code == 200
-    assert eu_accept_response.status_code == 200
-
-    with SessionLocal() as db:
-        acceptances = db.query(DocumentAcceptance).all()
-
-    assert len(acceptances) == 2
-    assert {(acceptance.region, acceptance.document_version_id) for acceptance in acceptances} == {
-        ("ru", ru_document_id),
-        ("eu", eu_document_id),
+    assert default_response.status_code == 200
+    assert foreign_scope_response.status_code == 200
+    default_documents = default_response.json()["documents"]
+    foreign_scope_documents = foreign_scope_response.json()["documents"]
+    assert [document["document_version_id"] for document in default_documents] == [
+        str(ru_document_id)
+    ]
+    assert foreign_scope_documents == default_documents
+    assert default_documents[0]["tenant_id"] == "anytoolai"
+    assert default_documents[0]["region"] == "ru"
+    assert default_documents[0]["acceptance_text_hash"]
+    assert str(eu_document_id) not in {
+        document["document_version_id"] for document in foreign_scope_documents
     }
 
 

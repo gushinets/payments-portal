@@ -13,6 +13,8 @@ x-api-build: &api-build
 
 x-api-environment: &api-environment
   APP_ENV: ${APP_ENV:-development}
+  INSTANCE_TENANT_ID: ${INSTANCE_TENANT_ID:-anytoolai}
+  INSTANCE_REGION: ${INSTANCE_REGION:-ru}
   DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-anytoolai}:${POSTGRES_PASSWORD:-anytoolai}@postgres:5432/${POSTGRES_DB:-anytoolai}
   POSTGRES_DB: ${POSTGRES_DB:-anytoolai}
   POSTGRES_USER: ${POSTGRES_USER:-anytoolai}

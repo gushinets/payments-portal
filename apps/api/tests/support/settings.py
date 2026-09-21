@@ -8,6 +8,8 @@ from typing import Any
 
 DEFAULT_API_TEST_ENV = {
     "APP_ENV": "test",
+    "INSTANCE_TENANT_ID": "anytoolai",
+    "INSTANCE_REGION": "ru",
     "APP_PUBLIC_BASE_URL": "http://localhost:3000",
     "DATABASE_URL": "sqlite+pysqlite:///:memory:",
     "POSTGRES_DB": "anytoolai_test",

@@ -68,6 +68,36 @@ def test_production_sentry_configuration_is_optional_and_minimal() -> None:
     assert services["migrate"]["environment"] == api_environment
 
 
+def test_instance_scope_is_explicit_in_managed_environments() -> None:
+    local_example = load_env_example(".env.example")
+    production_example = load_env_example(".env.production.example")
+    local_api_environment = load_compose("docker-compose.yml")["services"]["api"]["environment"]
+    agent_api_environment = load_compose("docker-compose.agent.yml")["services"]["api"]["environment"]
+    production_api_environment = load_compose("docker-compose.prod.yml")["services"]["api"][
+        "environment"
+    ]
+    workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+
+    assert local_example["INSTANCE_TENANT_ID"] == "anytoolai"
+    assert local_example["INSTANCE_REGION"] == "ru"
+    assert production_example["INSTANCE_TENANT_ID"] == ""
+    assert production_example["INSTANCE_REGION"] == ""
+    assert local_api_environment["INSTANCE_TENANT_ID"] == "${INSTANCE_TENANT_ID:-anytoolai}"
+    assert local_api_environment["INSTANCE_REGION"] == "${INSTANCE_REGION:-ru}"
+    assert agent_api_environment["INSTANCE_TENANT_ID"] == "${INSTANCE_TENANT_ID}"
+    assert agent_api_environment["INSTANCE_REGION"] == "${INSTANCE_REGION}"
+    assert production_api_environment["INSTANCE_TENANT_ID"] == (
+        "${INSTANCE_TENANT_ID:?INSTANCE_TENANT_ID is required}"
+    )
+    assert production_api_environment["INSTANCE_REGION"] == (
+        "${INSTANCE_REGION:?INSTANCE_REGION is required}"
+    )
+    assert "INSTANCE_TENANT_ID: anytoolai" in workflow
+    assert "INSTANCE_REGION: ru" in workflow
+    assert 'echo "INSTANCE_TENANT_ID=$INSTANCE_TENANT_ID"' in workflow
+    assert 'echo "INSTANCE_REGION=$INSTANCE_REGION"' in workflow
+
+
 @pytest.mark.parametrize(
     "path",
     ["docker-compose.yml", "docker-compose.prod.yml", "docker-compose.agent.yml"],

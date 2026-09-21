@@ -39,6 +39,8 @@ GENERATED_LEGAL_PY = ROOT / "apps" / "api" / "app" / "generated" / "legal_manife
 GENERATED_LEGAL_JSON = ROOT / "apps" / "web" / "src" / "generated" / "legal-manifest.json"
 API_TEST_PATH = "apps/api/tests"
 LEGAL_DOCS_ROOT = ROOT / "docs" / "legal" / "ru"
+LOCAL_INSTANCE_TENANT_ID = "anytoolai"
+LOCAL_INSTANCE_REGION = "ru"
 
 CANONICAL_PERSISTED_ENUM_NAMES = frozenset(
     {
@@ -202,6 +204,8 @@ def canonical_check_environment(
     for variable in ("TEMP", "TMP", "TMPDIR"):
         environment[variable] = str(temp_dir)
     environment["OTEL_EXPORTER_OTLP_ENDPOINT"] = ""
+    environment["INSTANCE_TENANT_ID"] = LOCAL_INSTANCE_TENANT_ID
+    environment["INSTANCE_REGION"] = LOCAL_INSTANCE_REGION
     return environment
 
 
@@ -376,6 +380,8 @@ def write_runtime(config: RuntimeConfig) -> None:
     values = {
         "COMPOSE_PROJECT_NAME": config.compose_project,
         "APP_ENV": "development",
+        "INSTANCE_TENANT_ID": LOCAL_INSTANCE_TENANT_ID,
+        "INSTANCE_REGION": LOCAL_INSTANCE_REGION,
         "POSTGRES_DB": config.database_name,
         "POSTGRES_USER": "anytoolai",
         "POSTGRES_PASSWORD": "anytoolai-local-only",
@@ -647,6 +653,8 @@ def import_api() -> tuple[object, object]:
     if api_root not in sys.path:
         sys.path.insert(0, api_root)
     os.environ.setdefault("APP_ENV", "test")
+    os.environ["INSTANCE_TENANT_ID"] = LOCAL_INSTANCE_TENANT_ID
+    os.environ["INSTANCE_REGION"] = LOCAL_INSTANCE_REGION
     os.environ.setdefault("APP_PUBLIC_BASE_URL", "http://localhost:3000")
     os.environ.setdefault("DATABASE_URL", "sqlite+pysqlite:///:memory:")
     os.environ.setdefault("POSTGRES_DB", "anytoolai")
@@ -2048,6 +2056,8 @@ def cmd_harness_smoke(_: argparse.Namespace) -> None:
     env = read_runtime_env()
     caddy_origin = f"http://localhost:{runtime_caddy_port(config)}"
     assert env["APP_ENV"] == "development"
+    assert env["INSTANCE_TENANT_ID"] == LOCAL_INSTANCE_TENANT_ID
+    assert env["INSTANCE_REGION"] == LOCAL_INSTANCE_REGION
     assert env["CADDY_PORT"] == str(runtime_caddy_port(config))
     assert env["NEXT_PUBLIC_API_BASE_URL"] == caddy_origin
     cors_origins = set(env["CORS_ALLOW_ORIGINS"].split(","))
@@ -2362,6 +2372,8 @@ def direct_api_environment(*, environ: dict[str, str] | None = None) -> dict[str
         **base_environment,
     }
     defaults.setdefault("APP_ENV", "development")
+    defaults.setdefault("INSTANCE_TENANT_ID", LOCAL_INSTANCE_TENANT_ID)
+    defaults.setdefault("INSTANCE_REGION", LOCAL_INSTANCE_REGION)
     defaults.setdefault("APP_PUBLIC_BASE_URL", "http://localhost:3000")
     defaults.setdefault("CORS_ALLOW_ORIGINS", defaults.get("APP_PUBLIC_BASE_URL", "http://localhost:3000"))
     defaults.setdefault("SKIP_LEGAL_SEED", "true")

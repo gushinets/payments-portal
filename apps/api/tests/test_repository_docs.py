@@ -842,6 +842,10 @@ def test_canonical_checks_use_a_worktree_scoped_temp_directory(tmp_path: Path) -
     assert {second[name] for name in ("TEMP", "TMP", "TMPDIR")} == {str(second_temp)}
     assert first["OTEL_EXPORTER_OTLP_ENDPOINT"] == ""
     assert second["OTEL_EXPORTER_OTLP_ENDPOINT"] == ""
+    assert first["INSTANCE_TENANT_ID"] == "anytoolai"
+    assert first["INSTANCE_REGION"] == "ru"
+    assert second["INSTANCE_TENANT_ID"] == "anytoolai"
+    assert second["INSTANCE_REGION"] == "ru"
     assert first_temp.is_dir()
     assert second_temp.is_dir()
     assert first_temp != second_temp
@@ -913,6 +917,8 @@ def test_direct_api_environment_uses_host_database_url_from_runtime(
     environment = direct_api_environment(environ={})
 
     assert environment["APP_ENV"] == "development"
+    assert environment["INSTANCE_TENANT_ID"] == "anytoolai"
+    assert environment["INSTANCE_REGION"] == "ru"
     assert environment["DATABASE_URL"] == (
         "postgresql+psycopg://anytoolai:anytoolai-local-only@127.0.0.1:32053/payments_test"
     )
@@ -1303,6 +1309,8 @@ def test_write_runtime_excludes_cloudpayments_configuration(
     assert stat.S_IMODE(runtime_env.stat().st_mode) == 0o600
     runtime_contents = runtime_env.read_text(encoding="utf-8")
     assert "APP_ENV=development" in runtime_contents
+    assert "INSTANCE_TENANT_ID=anytoolai" in runtime_contents
+    assert "INSTANCE_REGION=ru" in runtime_contents
     assert "CLOUDPAYMENTS_PUBLIC_ID" not in runtime_contents
     assert "CLOUDPAYMENTS_API_SECRET" not in runtime_contents
     assert "CLOUDPAYMENTS_ENABLED" not in runtime_contents

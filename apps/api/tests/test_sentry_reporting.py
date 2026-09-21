@@ -62,6 +62,8 @@ class RecordingTransport(Transport):
 def make_settings(**overrides: object) -> Settings:
     values: dict[str, object] = {
         "app_env": AppEnv.TEST,
+        "instance_tenant_id": "anytoolai",
+        "instance_region": "ru",
         "app_public_base_url": "http://localhost:3000",
         "database_url": "sqlite+pysqlite:///:memory:",
         "cors_allow_origins": ("http://localhost:3000",),

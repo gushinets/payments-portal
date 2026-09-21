@@ -7,10 +7,7 @@ from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.domains.identity.session import (
-    DEFAULT_REGION,
-    DEFAULT_TENANT_ID,
-)
+from app.core.settings import settings
 from app.domains.identity.services.password_reset import (
     confirm_password_reset as confirm_password_reset_use_case,
     prepare_password_reset,
@@ -39,8 +36,8 @@ def request_password_reset(
 ):
     delivery = prepare_password_reset(
         db,
-        tenant_id=DEFAULT_TENANT_ID,
-        region=DEFAULT_REGION,
+        tenant_id=settings.instance_tenant_id,
+        region=settings.instance_region,
         email=str(payload.email),
         client_ip=request.client.host if request.client else "unknown",
         user_agent=request.headers.get("user-agent"),

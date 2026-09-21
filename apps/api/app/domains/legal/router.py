@@ -3,16 +3,13 @@ from __future__ import annotations
 import uuid
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.observability import traced
-from app.domains.identity.session import (
-    DEFAULT_REGION,
-    DEFAULT_TENANT_ID,
-)
+from app.core.settings import settings
 from app.domains.legal.errors import (
     DocumentVersionNotFoundError,
     InvalidAcceptanceTextHashError,
@@ -63,13 +60,11 @@ def present_document(document: DocumentVersion) -> dict:
 @router.get("/required-documents")
 def list_required_documents(
     db: Annotated[Session, Depends(get_db)],
-    tenant_id: Annotated[str, Query()] = DEFAULT_TENANT_ID,
-    region: Annotated[str, Query()] = DEFAULT_REGION,
 ):
     documents = get_active_required_documents(
         db,
-        tenant_id=tenant_id.strip().lower(),
-        region=region.strip().lower(),
+        tenant_id=settings.instance_tenant_id,
+        region=settings.instance_region,
     )
     return {"documents": [present_document(document) for document in documents]}
 
