@@ -108,7 +108,6 @@ def test_canonical_enum_layer_contains_locked_model_vocabularies() -> None:
     assert _values(PlanLimitOveragePolicy) == {"deny"}
     assert _values(EntitlementStatus) == {"active", "expired", "revoked", "superseded"}
     assert _values(RegionStatus) == {"active"}
-    assert _values(UserStatus) == {"active"}
     assert _values(MagicLinkPurpose) == {"password_reset"}
     assert _values(LegalEntityStatus) == {"active"}
     assert _values(LegalEntityType) == {"individual_entrepreneur", "merchant_of_record", "company"}
@@ -126,6 +125,10 @@ def test_canonical_enum_layer_contains_locked_model_vocabularies() -> None:
         "partial_refund_applied",
         "subscription_expired",
     }
+
+
+def test_user_status_vocabulary_requires_explicit_auth_semantics() -> None:
+    assert _values(UserStatus) == {"active"}
 
 
 def test_subscription_status_live_values_are_preserved() -> None:

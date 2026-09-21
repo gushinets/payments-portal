@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from threading import Barrier
@@ -12,6 +13,7 @@ from sqlalchemy.exc import DatabaseError, IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 import app.domains.identity.services.auth as identity_auth_service
+import app.domains.identity.services.password_reset as password_reset_service
 from app.domains.identity.errors import EmailAlreadyRegisteredError
 from app.domains.identity.passwords import hash_password
 from app.models import (
@@ -110,6 +112,219 @@ def create_legal_evidence(
     db_session.add(acceptance)
     db_session.commit()
     return user, document, acceptance_event, acceptance
+
+
+def register_user_with_legal_evidence(
+    db_session: Session,
+    *,
+    email: str,
+) -> identity_auth_service.AuthenticationResult:
+    return identity_auth_service.register_user(
+        db_session,
+        tenant_id="anytoolai",
+        region="ru",
+        email=email,
+        password="very-secret-password",
+        personal_consent=True,
+        offer_consent=True,
+        client_ip="192.0.2.10",
+        user_agent="identity-legal-survivor-test",
+    )
+
+
+def test_registration_persists_canonical_identity_hashed_session_and_legal_event(
+    db_session: Session,
+) -> None:
+    result = register_user_with_legal_evidence(
+        db_session,
+        email="provider-independent-registration@example.com",
+    )
+
+    user = db_session.get(User, result.user_id)
+    auth_session = (
+        db_session.query(AuthSession).filter(AuthSession.user_id == result.user_id).one()
+    )
+    acceptance_event = (
+        db_session.query(LegalAcceptanceEvent)
+        .filter(LegalAcceptanceEvent.user_id == result.user_id)
+        .one()
+    )
+    acceptances = (
+        db_session.query(DocumentAcceptance)
+        .filter(DocumentAcceptance.user_id == result.user_id)
+        .all()
+    )
+
+    assert user is not None
+    assert isinstance(user.id, uuid.UUID)
+    assert user.id == result.user_id
+    assert (user.tenant_id, user.region) == ("anytoolai", "ru")
+    assert auth_session.token_hash == hashlib.sha256(
+        result.token.encode("utf-8")
+    ).hexdigest()
+    assert auth_session.token_hash != result.token
+    assert {acceptance.legal_acceptance_event_id for acceptance in acceptances} == {
+        acceptance_event.id
+    }
+    assert {acceptance.doc_type for acceptance in acceptances} == {
+        "privacy",
+        "pd_consent",
+        "offer",
+    }
+
+
+def test_registration_failure_rolls_back_identity_session_and_legal_evidence(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_session_token_generation() -> tuple[str, str, datetime]:
+        raise RuntimeError("session token generation failed")
+
+    monkeypatch.setattr(
+        identity_auth_service,
+        "make_session_token",
+        fail_session_token_generation,
+    )
+
+    with pytest.raises(RuntimeError, match="session token generation failed"):
+        register_user_with_legal_evidence(
+            db_session,
+            email="rolled-back-registration@example.com",
+        )
+
+    assert (
+        db_session.query(User)
+        .filter(User.email_normalized == "rolled-back-registration@example.com")
+        .count()
+        == 0
+    )
+    assert db_session.query(AuthSession).count() == 0
+    assert db_session.query(LegalAcceptanceEvent).count() == 0
+    assert db_session.query(DocumentAcceptance).count() == 0
+
+
+def test_normal_logout_deletes_only_the_selected_session(
+    db_session: Session,
+) -> None:
+    registration = register_user_with_legal_evidence(
+        db_session,
+        email="logout-survivor@example.com",
+    )
+    login = identity_auth_service.login_user(
+        db_session,
+        tenant_id="anytoolai",
+        region="ru",
+        email="logout-survivor@example.com",
+        password="very-secret-password",
+        client_ip="192.0.2.11",
+        user_agent="identity-legal-survivor-test",
+    )
+    login_token_hash = hashlib.sha256(login.token.encode("utf-8")).hexdigest()
+    login_session = (
+        db_session.query(AuthSession)
+        .filter(AuthSession.token_hash == login_token_hash)
+        .one()
+    )
+
+    identity_auth_service.logout_session(db_session, auth_session=login_session)
+
+    remaining_sessions = db_session.query(AuthSession).all()
+    assert [session.token_hash for session in remaining_sessions] == [
+        hashlib.sha256(registration.token.encode("utf-8")).hexdigest()
+    ]
+
+
+def test_unknown_email_password_reset_uses_hashed_decoy_without_user_binding(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    raw_token = "unknown-email-reset-token-with-enough-entropy"
+    token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+    monkeypatch.setattr(
+        password_reset_service,
+        "make_password_reset_token",
+        lambda: (
+            raw_token,
+            token_hash,
+            datetime.now(UTC) + timedelta(minutes=30),
+        ),
+    )
+
+    delivery = password_reset_service.prepare_password_reset(
+        db_session,
+        tenant_id="anytoolai",
+        region="ru",
+        email="unknown-reset@example.com",
+        client_ip="192.0.2.12",
+        user_agent="identity-legal-survivor-test",
+    )
+    stored_token = db_session.query(MagicLinkToken).one()
+
+    assert delivery.send_email is False
+    assert stored_token.user_id is None
+    assert stored_token.email_normalized.startswith("password-reset-decoy:")
+    assert stored_token.token_hash == token_hash
+    assert stored_token.token_hash != raw_token
+
+
+def test_password_reset_binds_canonical_user_and_revokes_security_state(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registration = register_user_with_legal_evidence(
+        db_session,
+        email="canonical-reset@example.com",
+    )
+    identity_auth_service.login_user(
+        db_session,
+        tenant_id="anytoolai",
+        region="ru",
+        email="canonical-reset@example.com",
+        password="very-secret-password",
+        client_ip="192.0.2.13",
+        user_agent="identity-legal-survivor-test",
+    )
+    raw_token = "canonical-user-reset-token-with-enough-entropy"
+    token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+    monkeypatch.setattr(
+        password_reset_service,
+        "make_password_reset_token",
+        lambda: (
+            raw_token,
+            token_hash,
+            datetime.now(UTC) + timedelta(minutes=30),
+        ),
+    )
+
+    delivery = password_reset_service.prepare_password_reset(
+        db_session,
+        tenant_id="anytoolai",
+        region="ru",
+        email="canonical-reset@example.com",
+        client_ip="192.0.2.14",
+        user_agent="identity-legal-survivor-test",
+    )
+    stored_token = db_session.query(MagicLinkToken).one()
+
+    assert delivery.send_email is True
+    assert stored_token.user_id == registration.user_id
+    assert (stored_token.tenant_id, stored_token.region) == ("anytoolai", "ru")
+
+    password_reset_service.confirm_password_reset(
+        db_session,
+        token=raw_token,
+        password="new-very-secret-password",
+    )
+
+    sessions = (
+        db_session.query(AuthSession)
+        .filter(AuthSession.user_id == registration.user_id)
+        .all()
+    )
+    db_session.refresh(stored_token)
+    assert len(sessions) == 2
+    assert all(session.revoked_at is not None for session in sessions)
+    assert stored_token.used_at is not None
 
 
 def test_auth_session_scope_must_match_canonical_user(db_session: Session) -> None:

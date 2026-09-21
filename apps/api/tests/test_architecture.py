@@ -10,10 +10,12 @@ os.environ["DATABASE_URL"] = "sqlite+pysqlite:///:memory:"
 
 from fastapi.routing import APIRoute
 
+from app.core.database import Base
 from app.http_dependencies import get_raw_request_body
 from app.integrations.cloudpayments.adapter import CloudPaymentsAdapter
 from app.integrations.cloudpayments.router import router as cloudpayments_router
 from app.main import app
+from app.models import MagicLinkToken
 from scripts.repo import (
     check_persistence_transaction_ownership,
     check_python_boundaries,
@@ -827,6 +829,136 @@ def test_provider_neutral_modules_reject_cloudpayments_literal(tmp_path: Path) -
     assert any(
         "apps/api/app/payment_providers/accounts.py contains CloudPayments-specific logic" in error for error in errors
     )
+
+
+def test_external_billing_accounts_orm_table_and_fk_targets_are_forbidden(
+    tmp_path: Path,
+) -> None:
+    write_module(
+        tmp_path,
+        "apps/api/app/models/external_billing.py",
+        "class ExternalBillingAccount:\n"
+        "    __tablename__ = 'external_billing_accounts'\n",
+    )
+    write_module(
+        tmp_path,
+        "apps/api/app/models/identity.py",
+        "from sqlalchemy import ForeignKey\n"
+        "account_id = ForeignKey('external_billing_accounts.id')\n",
+    )
+
+    errors = check_python_boundaries(tmp_path)
+
+    assert any(
+        "apps/api/app/models/external_billing.py:2 references forbidden table "
+        "external_billing_accounts" in error
+        for error in errors
+    )
+    assert any(
+        "apps/api/app/models/identity.py:2 references forbidden table "
+        "external_billing_accounts" in error
+        for error in errors
+    )
+    assert "external_billing_accounts" not in Base.metadata.tables
+    assert all(
+        foreign_key.target_fullname.split(".", 1)[0] != "external_billing_accounts"
+        for table in Base.metadata.tables.values()
+        for foreign_key in table.foreign_keys
+    )
+
+
+def test_identity_recovery_rejects_entrypoint_commerce_provider_and_trial_dependencies(
+    tmp_path: Path,
+) -> None:
+    write_module(
+        tmp_path,
+        "apps/api/app/domains/identity/services/auth.py",
+        "from app.models import EntrypointSession, Product\n",
+    )
+    write_module(
+        tmp_path,
+        "apps/api/app/domains/identity/services/password_reset.py",
+        "from app.infrastructure.queries.subscriptions import get_active_trial\n",
+    )
+    write_module(
+        tmp_path,
+        "apps/api/app/domains/identity/session.py",
+        "from app.payment_providers.contracts import PaymentProviderAdapter\n",
+    )
+
+    errors = check_python_boundaries(tmp_path)
+
+    assert any(
+        "apps/api/app/domains/identity/services/auth.py:1 references "
+        "EntrypointSession" in error
+        for error in errors
+    )
+    assert any(
+        "apps/api/app/domains/identity/services/auth.py:1 references Product" in error
+        for error in errors
+    )
+    assert any(
+        "apps/api/app/domains/identity/services/password_reset.py:1 imports "
+        "app.infrastructure.queries.subscriptions" in error
+        for error in errors
+    )
+    assert any(
+        "apps/api/app/domains/identity/services/password_reset.py:1 references "
+        "get_active_trial" in error
+        for error in errors
+    )
+    assert any(
+        "apps/api/app/domains/identity/session.py:1 imports "
+        "app.payment_providers.contracts" in error
+        for error in errors
+    )
+
+
+def test_identity_legal_rejects_billing_customer_and_cross_system_identity_ownership(
+    tmp_path: Path,
+) -> None:
+    write_module(
+        tmp_path,
+        "apps/api/app/domains/identity/services/auth.py",
+        "from app.external_billing.customers import bind_customer\n\n"
+        "def bind(email: str, provider_customer_id: str) -> None:\n"
+        "    bind_customer(outer_id=email, provider_customer_id=provider_customer_id)\n",
+    )
+
+    errors = check_python_boundaries(tmp_path)
+
+    assert any(
+        "imports app.external_billing.customers" in error
+        and "must not own external billing customer allocation or binding" in error
+        for error in errors
+    )
+    assert any(
+        "references outer_id" in error
+        and "must not allocate or bind external billing customers" in error
+        for error in errors
+    )
+    assert any(
+        "references provider_customer_id" in error
+        and "cross-system identity" in error
+        for error in errors
+    )
+
+
+def test_identity_legal_allows_portal_email_as_local_user_attribute(
+    tmp_path: Path,
+) -> None:
+    write_module(
+        tmp_path,
+        "apps/api/app/domains/identity/services/auth.py",
+        "def normalize_email(email: str) -> str:\n"
+        "    return email.strip().lower()\n",
+    )
+
+    assert check_python_boundaries(tmp_path) == []
+
+
+def test_magic_link_token_has_no_entrypoint_session_binding() -> None:
+    assert "entrypoint_session_id" not in MagicLinkToken.__table__.c
 
 
 def test_legacy_auth_module_reexports_session_contract() -> None:

@@ -1346,6 +1346,66 @@ _OUTER_FORBIDDEN_LIFECYCLE_MODULES = (
     "app.domains.billing.service.support",
     "app.infrastructure.queries.subscriptions",
 )
+_RETAINED_IDENTITY_RECOVERY_PATHS = frozenset(
+    {
+        ("domains", "identity", "password_reset.py"),
+        ("domains", "identity", "passwords.py"),
+        ("domains", "identity", "session.py"),
+        ("domains", "identity", "services", "auth.py"),
+        ("domains", "identity", "services", "password_reset.py"),
+        ("infrastructure", "persistence", "identity.py"),
+        ("infrastructure", "persistence", "password_reset.py"),
+        ("infrastructure", "queries", "identity.py"),
+    }
+)
+_RETAINED_IDENTITY_FORBIDDEN_MODEL_NAMES = frozenset(
+    {"EntrypointSession", "Product", "Plan", "Subscription", "Entitlement"}
+)
+_RETAINED_IDENTITY_FORBIDDEN_NAMES = _RETAINED_IDENTITY_FORBIDDEN_MODEL_NAMES | {
+    "PaymentProviderAdapter",
+    "PaymentProviderRegistry",
+}
+_RETAINED_IDENTITY_FORBIDDEN_MODULES = (
+    "app.domains.billing",
+    "app.domains.identity.services.account",
+    "app.domains.identity.services.checkout",
+    "app.infrastructure.queries.orders",
+    "app.infrastructure.queries.payments",
+    "app.infrastructure.queries.plans",
+    "app.infrastructure.queries.products",
+    "app.infrastructure.queries.subscriptions",
+    "app.integrations",
+    "app.payment_providers",
+)
+
+
+def _is_retained_identity_legal_surface(path_parts: tuple[str, ...]) -> bool:
+    return (
+        path_parts in _RETAINED_IDENTITY_RECOVERY_PATHS
+        or path_parts[:2] == ("domains", "legal")
+        or path_parts
+        in {
+            ("infrastructure", "queries", "legal.py"),
+            ("models", "identity.py"),
+            ("models", "legal.py"),
+        }
+    )
+
+
+def _retained_identity_boundary_names(tree: ast.AST) -> list[tuple[int, str]]:
+    names: set[tuple[int, str]] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name):
+            names.add((node.lineno, node.id))
+        elif isinstance(node, ast.Attribute):
+            names.add((node.lineno, node.attr))
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            names.add((node.lineno, node.name))
+        elif isinstance(node, ast.arg):
+            names.add((node.lineno, node.arg))
+        elif isinstance(node, ast.keyword) and node.arg is not None:
+            names.add((node.lineno, node.arg))
+    return sorted(names)
 
 
 def _canonical_model_references(
@@ -1701,6 +1761,124 @@ def check_python_boundaries(root: Path = ROOT) -> list[str]:
                 "fix the Python syntax before running architecture checks"
             )
             continue
+
+        for node in ast.walk(tree):
+            if (
+                path_parts[0] == "models"
+                and isinstance(node, ast.Constant)
+                and isinstance(node.value, str)
+                and re.search(r"\bexternal_billing_accounts\b", node.value)
+            ):
+                errors.append(
+                    f"{relative}:{node.lineno} references forbidden table "
+                    "external_billing_accounts; external_billing_account_id is opaque "
+                    "configuration scope, not a Portal ORM entity (see ADR 0005)"
+                )
+
+        if path_parts in _RETAINED_IDENTITY_RECOVERY_PATHS:
+            forbidden_model_references = set(
+                _canonical_model_references(
+                    tree,
+                    _RETAINED_IDENTITY_FORBIDDEN_MODEL_NAMES,
+                )
+            )
+            for imported in imports:
+                for target in imported.targets:
+                    module, _, symbol = target.rpartition(".")
+                    if (
+                        symbol in _RETAINED_IDENTITY_FORBIDDEN_MODEL_NAMES
+                        and module_matches(module, "app.models")
+                    ):
+                        forbidden_model_references.add(
+                            (imported.line, symbol, module)
+                        )
+                    if any(
+                        module_matches(target, module_name)
+                        for module_name in _RETAINED_IDENTITY_FORBIDDEN_MODULES
+                    ):
+                        errors.append(
+                            f"{relative}:{imported.line} imports {target}; retained "
+                            "identity/recovery must not depend on entrypoint, commerce, "
+                            "provider, or trial ownership (see ADR 0005)"
+                        )
+            errors.extend(
+                f"{relative}:{line} references {symbol} from {module}; retained "
+                "identity/recovery must not depend on entrypoint, commerce, provider, "
+                "or trial ownership (see ADR 0005)"
+                for line, symbol, module in sorted(forbidden_model_references)
+            )
+            for line, name in _retained_identity_boundary_names(tree):
+                lowered_name = name.lower()
+                if name in _RETAINED_IDENTITY_FORBIDDEN_NAMES:
+                    errors.append(
+                        f"{relative}:{line} references {name}; retained identity/recovery "
+                        "must not use entrypoint, commerce, or provider authority "
+                        "(see ADR 0005)"
+                    )
+                elif "entrypoint" in lowered_name or "trial" in lowered_name:
+                    errors.append(
+                        f"{relative}:{line} references {name}; retained identity/recovery "
+                        "must not require entrypoint or Portal trial state (see ADR 0005)"
+                    )
+            for node in ast.walk(tree):
+                if (
+                    isinstance(node, ast.Constant)
+                    and isinstance(node.value, str)
+                    and re.search(r"\btrial(?:s|ing)?\b", node.value, re.IGNORECASE)
+                ):
+                    errors.append(
+                        f"{relative}:{node.lineno} references Portal trial vocabulary; "
+                        "retained identity/recovery must not require Portal trial state "
+                        "(see ADR 0005)"
+                    )
+
+        if _is_retained_identity_legal_surface(path_parts):
+            for line, name in _retained_identity_boundary_names(tree):
+                lowered_name = name.lower()
+                if "customer" in lowered_name or lowered_name == "outer_id":
+                    errors.append(
+                        f"{relative}:{line} references {name}; retained identity/legal "
+                        "must not allocate or bind external billing customers or promote "
+                        "PII/provider values into cross-system identity (see ADR 0005)"
+                    )
+                elif (
+                    re.search(r"(?:external|billing|provider)_.*_?id$", lowered_name)
+                    and lowered_name
+                    not in {"external_billing_account_id", "billing_offer_id"}
+                ):
+                    errors.append(
+                        f"{relative}:{line} references {name}; retained identity/legal "
+                        "must not promote provider identifiers into cross-system identity "
+                        "(see ADR 0005)"
+                    )
+            for imported in imports:
+                for target in imported.targets:
+                    lowered_target = target.lower()
+                    if (
+                        "customer" in lowered_target
+                        or lowered_target.endswith(".outer_id")
+                        or "external_billing" in lowered_target
+                    ):
+                        errors.append(
+                            f"{relative}:{imported.line} imports {target}; retained "
+                            "identity/legal must not own external billing customer "
+                            "allocation or binding (see ADR 0005)"
+                        )
+            for node in ast.walk(tree):
+                if not (
+                    isinstance(node, ast.Constant)
+                    and isinstance(node.value, str)
+                ):
+                    continue
+                lowered_value = node.value.lower()
+                if "customer" in lowered_value or re.search(
+                    r"\bouter_id\b", lowered_value
+                ):
+                    errors.append(
+                        f"{relative}:{node.lineno} contains external customer identity "
+                        "vocabulary; retained identity/legal must not own billing customer "
+                        "allocation or binding (see ADR 0005)"
+                    )
 
         is_active_domain_presentation = in_domains and _owns_fastapi_api_router(tree)
 
