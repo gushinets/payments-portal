@@ -82,9 +82,9 @@ delegated to it.
 | `entitlements` | REPLACE WITH TARGET | Replace old Plan/Order-derived entitlement rows with committed provider-neutral paid-access state and purchased allowances. |
 | `subscription_events` | REPLACE WITH TARGET | Old Order/Payment/Refund audit chain is obsolete; target auditability comes from purchase snapshots, create-operation recovery state, webhook/reconciliation evidence, projection facts, and manual-review cases. |
 
-`REPLACE WITH TARGET` records replacement intent only. The target tables,
-fields, constraints, provider-evidence gates, and reset sequence are deliberately
-not defined in this step.
+`REPLACE WITH TARGET` records the Step-1 inventory decision. The target tables,
+fields, constraints, provider-evidence gates, and reset sequence are defined in
+the later sections of this completed handoff.
 
 ## Runtime and code-surface disposition
 
@@ -160,9 +160,10 @@ current repository. `apps/api/app/commands/expire_subscriptions.py` is retained
 legacy scheduled behavior for the old subscription/entitlement model and is
 removed in `ANY-504` Step 4; it is not a target work substrate.
 
-The target design will require a shared durable work substrate, but its tables,
-fields, constraints, scheduling semantics, and verification obligations are
-outside `ANY-509` Step 1 and are not specified here.
+Step 1 identified this gap without designing its replacement. The completed
+handoff defines the shared durable work substrate, its persistence contract,
+and its verification obligations in the target-model and verification sections
+below; later `ANY-504` runtime steps still own scheduling behavior.
 
 ## Related roadmap and executable-plan disposition
 
@@ -398,6 +399,30 @@ primary selection, not commercial authority.
 | `primary_subscription_id` | UUID; nullable | FK `external_subscriptions.subscription_id`; `RESTRICT` | Index for reverse lookup; FK deletion cannot clear the primary | Only audited deterministic Application transition | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `LATER_STEP_RUNTIME` (`ANY-504` Steps 7-9) |
 | `updated_at` | timestamptz; not null | - | - | Updated with primary decision | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `LATER_STEP_RUNTIME` (`ANY-504` Steps 7-9) |
 
+The canonical first-row acquisition protocol is a short PostgreSQL transaction:
+
+1. `INSERT` the `(user_id, product_id)` scope with
+   `ON CONFLICT (user_id, product_id) DO NOTHING`;
+2. `SELECT` the unique row by `(user_id, product_id) FOR UPDATE`, whether this
+   transaction inserted it or a concurrent transaction won the insert;
+3. while holding that row lock, inspect the current purchase, subscription, and
+   create-operation state for the scope, then create or reuse the scope-holding
+   `PurchaseIntent` and any required durable `external_create_operations`
+   record; commit before an external call.
+
+PostgreSQL's unique-index conflict handling makes a concurrent losing insert
+wait for the winner and converge on the same committed row. No caller may
+create a scope-holding purchase flow or make an external create call before it
+has completed this acquire/get-and-lock sequence. After the transaction, only
+the purchase/create operation that the transaction durably established as the
+scope-holding flow may proceed; a concurrent attempt must reuse the applicable
+idempotent flow or return the provider-neutral occupied-scope result. This
+ownership is represented by the existing purchase, operation, and linked-
+subscription state; it does not add an owner column or table. Rollback leaves
+no newly established scope-holding flow and grants no permission for an
+external effect. This protocol also applies when the scope row already exists
+and requires no separate lock table.
+
 Before locking this row, Step 8 performs the Step-5-proven complete discovery
 and authoritative point reads, normalizes the complete target-product
 candidate set, and durably inserts the observation. The short decision
@@ -574,6 +599,30 @@ provider event store, or a second business state machine.
 | `resulting_access_revision` | bigint; nullable | Logical link to same user scope in `paid_access_states`; physical FK shape follows Step-3/4 scope handoff | `> 0` when present; user/revision audit index | Null or set once; never changed | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `LATER_STEP_RUNTIME` (`ANY-504` Step 9) |
 | `created_at` | timestamptz; not null | - | - | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
 
+Step 4 must install a provider-independent kind-shape `CHECK` that enforces at
+least these row-local non-null requirements (additional references remain
+allowed when meaningful):
+
+- `authoritative_subscription_read`: `subscription_id IS NOT NULL`;
+- `target_product_discovery`: `user_id`, `product_id`, and `access_scope_id`
+  are all non-null;
+- `primary_selection`: `access_scope_id` and `basis_observation_id` are both
+  non-null;
+- `deterministic_access_boundary`: `access_scope_id`, `subscription_id`, and
+  `effective_at` are all non-null, so the affected product scope, durable source
+  fact, and access-reducing boundary are identifiable.
+
+The Step-4 `CHECK` enforces only this provider-independent row-local shape, and
+the existing FKs enforce that referenced rows exist. The cross-row semantic
+invariant remains unchanged: a `primary_selection.basis_observation_id` must
+refer to the persisted `target_product_discovery` used for the decision in the
+same access scope. Because a PostgreSQL row `CHECK` cannot inspect the
+referenced observation's kind or scope without duplicating that state, Steps
+8-9 own application/runtime validation before insert and the corresponding
+application/audit verification. This leaves only provider-specific result and
+completeness vocabularies open for Steps 5 and 8. It does not make observations
+event-sourced authority or duplicate mutable subscription/access state.
+
 An authoritative-read document contains only normalized material facts needed
 to reproduce the Application decision, including commercial verification and
 required source/cycle facts. A discovery document contains the complete
@@ -646,6 +695,40 @@ the outbox in one transaction. GET/read paths never create or mutate this row.
 The current row is access authority; immutable mapping, purchase, observation,
 and review evidence supplies history, so there is no row per old revision.
 The current row is retained while the canonical user is known.
+
+All writers that can commit a semantic paid-access change for a scope must use
+one serialization protocol. In a short transaction they first lock the
+existing canonical Step-3 user row that anchors the finalized
+`(tenant_id, region, user_id)` scope with `SELECT ... FOR UPDATE`, then read the
+latest committed `paid_access_states` row and all relevant committed facts,
+derive the complete effective state, and compare it with the current semantic
+document. The user row is the stable lock anchor even when the access-state row
+does not yet exist; locking it is intentionally slightly broader than locking
+one product because the stored snapshot is the complete effective state across
+independent products for that user scope. The final one-contour Step-3 mapping
+must provide an existing canonical user-row anchor deterministically identified
+by every semantic access scope. Step 4 installs the persistence structure and
+constraints needed to support this protocol; Step 9 implements the runtime
+paid-access writer and serialization behavior. Sharing an anchor may serialize
+more work but cannot weaken safety.
+
+If the effective state changed, the same transaction inserts revision `1` when
+the state row is absent, or updates revision `N` to `N + 1` when it exists, and
+upserts `access_invalidation_outbox.pending_revision` to the maximum of its
+current value and the new revision. It then commits state, revision, causative
+observation linkage, and outbox together. If the state is semantically
+unchanged, it creates no revision. Every access writer acquires the canonical
+user lock before reading/locking access state or outbox rows, so two independent
+product transitions cannot derive from the same stale snapshot or overwrite
+one another. Provider I/O and other long-running work occur before this short
+transaction; facts used for derivation are re-read after acquiring the lock.
+
+A deadlock, serialization failure, or unexpected uniqueness conflict aborts
+the whole transaction. The worker must retry by reacquiring the same user lock
+and re-deriving from newly read committed facts and effective state; it must
+never retry only the failed `UPDATE`, reuse a previously derived whole-state
+document, or advance the outbox separately. This is a focused PostgreSQL
+row-lock contract, not a generic locking framework.
 
 ### `external_billing_webhook_deliveries`
 
@@ -1000,15 +1083,15 @@ semantics.
 | No old Portal catalog, provider, commerce, subscription, or entitlement table remains. | Migration/schema + architecture/static checks | Step 4 |
 | No CloudPayments/provider-registry runtime, configuration, test, or frontend dependency remains, and `ANY-168` cannot execute into Step 4. | Architecture/static check + roadmap gate evidence | Step 4 |
 | Exactly one customer slot exists per `(external_billing_account_id, user_id)`, customer-key reuse is rejected, and concurrent creation converges. | Migration/schema + PostgreSQL concurrency + application/idempotency tests | DDL in Step 4; runtime in Step 7 |
-| One product-scope row serializes purchase and primary-selection decisions for `(user_id, product_id)`. | Migration/schema + PostgreSQL concurrency tests | DDL in Step 4; runtime in Steps 7-8 |
+| Two concurrent first purchase attempts against an initially absent `(user_id, product_id)` scope converge through insert-on-conflict/get-and-lock on exactly one scope row; before either external call, at most one scope-holding `PurchaseIntent` / create operation owns permission to proceed and the other reuses it or receives the occupied-scope result. | Migration/schema + PostgreSQL concurrency + application/idempotency tests | DDL in Step 4; runtime in Steps 7-8 |
 | Duplicate client retries cannot create a second business flow for the Step-7 idempotency contract. | Application/idempotency + PostgreSQL concurrency tests | Step 7 |
 | An ambiguous external create persists `UNKNOWN`, survives restart, retains its scope, and is recovered without blind retry. | Application/idempotency + restart/integration tests | Steps 7-8 |
 | Mapping revisions and accepted purchase snapshots remain immutable. | Migration/schema + application tests | DDL in Step 4; behavior in Steps 6-7 |
-| `billing_state_observations` survive restart and mutable-projection replacement, retain normalized authoritative-read/discovery/primary/deterministic-boundary evidence, and link causative evidence to the resulting access revision without retaining raw provider/payment history. | Migration/schema + application/audit tests | DDL in Step 4; behavior in Steps 8-9 |
+| `billing_state_observations` survive restart and mutable-projection replacement, reject rows missing the kind-specific structural links, require primary-selection basis to be a discovery in the same scope, retain normalized authoritative-read/discovery/primary/deterministic-boundary evidence, and link causative evidence to the resulting access revision without retaining raw provider/payment history. | Migration/schema + application/audit tests | DDL in Step 4; behavior in Steps 8-9 |
 | Purchased quantity and effective allowance tuple are immutable, and Portal persists no runtime `remaining`. | Migration/schema + architecture/static + contract tests | DDL in Step 4; behavior in Steps 9-10 |
 | Same-cycle block/unblock preserves `allowance_id` and Kernel usage identity. | Contract + E2E evidence | Phase 0 prerequisite in Step 5; runtime in Steps 9-10 |
 | A known user with no `paid_access_states` row receives implicit revision zero and a read causes no database write. | Contract + application/database tests | Step 10 |
-| Every semantic paid-access change increments a monotonic revision and atomically updates the durable invalidation outbox. | PostgreSQL concurrency/atomicity + application tests | Step 9 |
+| Starting from absent revision zero and separately from existing revision `N`, two concurrent independent product-access transitions serialize on the canonical user row, each re-derive from the latest committed complete state, and commit revisions `1` then `2` (or `N+1` then `N+2`); the final complete state contains both changes and the atomic coalesced outbox retains at least the newer revision despite an older acknowledgement. | PostgreSQL concurrency/atomicity + application tests | Step 9, with delivery-race completion in Step 10 |
 | Duplicate and out-of-order webhooks never directly grant access and converge through the same transition used by reconciliation. | Application/idempotency + contract tests | Steps 8-9 |
 | Work claims/retries and reconciliation fencing prevent a stale worker from committing. | PostgreSQL concurrency + application tests | Step 8 |
 | Deterministic due-time work removes only the due paid fact without provider HTTP. | Application + contract tests | Steps 8-9 |

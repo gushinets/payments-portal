@@ -6,7 +6,7 @@
 | --- | --- |
 | Parent | `ANY-504` Step 2 |
 | Ticket | `ANY-509` |
-| Overall status | `todo` |
+| Overall status | `complete` |
 | Execution order | Sequential only: `ANY-509 Step 1` -> manual verification -> commit -> `ANY-509 Step 2` -> manual verification -> commit -> `ANY-509 Step 3` -> manual verification -> commit |
 | Steps / commits | 3 |
 | Primary durable artifact | `docs/architecture/external-billing-persistence-reset.md` |
@@ -17,7 +17,8 @@
 ## How to Use This File
 
 1. Work from an up-to-date branch for `ANY-509` after merged `ANY-505` / PR #113.
-2. Implement only one step at a time.
+2. The three implementation steps were completed sequentially; their scoped
+   prompts remain below as historical execution records, not pending work.
 3. The implementation model must use the decisions in this plan instead of repeating broad repository research or redesigning the persistence model.
 4. After each step, review the diff and run the listed manual verification commands yourself.
 5. Commit the step only after manual review and verification.
@@ -470,7 +471,7 @@ Do not add a brittle content-specific architecture guard for the new design docu
 
 # ANY-509 Step 1 - Establish the current-state persistence and legacy-removal inventory
 
-**Status:** `todo`
+**Status:** `complete`
 
 **Goal**
 
@@ -577,7 +578,7 @@ npm run architecture:check
 
 # ANY-509 Step 2 - Define the target persistence contract and provider-evidence gates
 
-**Status:** `todo`
+**Status:** `complete`
 
 **Goal**
 
@@ -714,7 +715,7 @@ npm run docs:check
 
 # ANY-509 Step 3 - Lock the clean-reset handoff, verification matrix, and documentation index
 
-**Status:** `todo`
+**Status:** `complete`
 
 **Goal**
 
