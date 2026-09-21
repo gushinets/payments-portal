@@ -6,6 +6,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.time import utc_now
@@ -17,6 +18,11 @@ from app.domains.identity.errors import (
     MissingPersonalConsentError,
 )
 from app.domains.identity.passwords import hash_password, verify_password
+from app.domains.legal.service import (
+    create_registration_legal_evidence,
+    get_registration_required_documents,
+)
+from app.infrastructure.persistence.identity import is_scoped_email_unique_conflict
 from app.infrastructure.queries.identity import (
     get_active_user_by_normalized_email,
     get_active_user_for_auth_session,
@@ -119,33 +125,66 @@ def register_user(
     if existing is not None:
         raise EmailAlreadyRegisteredError()
 
-    user = User(
-        tenant_id=normalized_tenant_id,
-        region=normalized_region,
-        email=email,
-        email_normalized=normalized_email,
-        password_hash=hash_password(password),
-        email_verified_at=utc_now(),
-        status=UserStatus.ACTIVE,
-        last_login_at=utc_now(),
-    )
-    db.add(user)
-    db.flush()
+    try:
+        accepted_at = utc_now()
+        registration_documents = get_registration_required_documents(
+            db,
+            tenant_id=normalized_tenant_id,
+            region=normalized_region,
+            now=accepted_at,
+        )
+        user = User(
+            tenant_id=normalized_tenant_id,
+            region=normalized_region,
+            email=email,
+            email_normalized=normalized_email,
+            password_hash=hash_password(password),
+            email_verified_at=accepted_at,
+            status=UserStatus.ACTIVE,
+            last_login_at=accepted_at,
+        )
+        db.add(user)
+        db.flush()
 
-    token, token_hash, expires_at = make_session_token()
-    auth_session = AuthSession(
-        tenant_id=user.tenant_id,
-        region=user.region,
-        user_id=user.id,
-        token_hash=token_hash,
-        expires_at=expires_at,
-        ip=client_ip,
-        user_agent=user_agent,
-    )
-    db.add(auth_session)
-    result = _authentication_result(user=user, token=token)
-    db.commit()
-    return result
+        create_registration_legal_evidence(
+            db,
+            user=user,
+            documents=registration_documents,
+            accepted_at=accepted_at,
+            ip=client_ip,
+            user_agent=user_agent,
+        )
+
+        token, token_hash, expires_at = make_session_token()
+        auth_session = AuthSession(
+            tenant_id=user.tenant_id,
+            region=user.region,
+            user_id=user.id,
+            token_hash=token_hash,
+            expires_at=expires_at,
+            ip=client_ip,
+            user_agent=user_agent,
+        )
+        db.add(auth_session)
+        result = _authentication_result(user=user, token=token)
+        db.commit()
+        return result
+    except IntegrityError as exc:
+        db.rollback()
+        if not is_scoped_email_unique_conflict(exc):
+            raise
+        winner = get_user_by_normalized_email(
+            db,
+            tenant_id=normalized_tenant_id,
+            region=normalized_region,
+            email_normalized=normalized_email,
+        )
+        if winner is None:
+            raise
+        raise EmailAlreadyRegisteredError() from exc
+    except Exception:
+        db.rollback()
+        raise
 
 
 def login_user(

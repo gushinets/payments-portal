@@ -1,13 +1,18 @@
 from __future__ import annotations
 
 import hashlib
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
+from threading import Barrier
 
 import pytest
 from sqlalchemy import text
+from sqlalchemy.engine import Engine
 from sqlalchemy.exc import DatabaseError, IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
+import app.domains.identity.services.auth as identity_auth_service
+from app.domains.identity.errors import EmailAlreadyRegisteredError
 from app.domains.identity.passwords import hash_password
 from app.models import (
     AcceptanceKind,
@@ -455,3 +460,79 @@ def test_legal_acceptance_event_accepts_a_complete_commercial_triplet(
     db_session.flush()
 
     assert acceptance_event.id is not None
+
+
+def test_concurrent_duplicate_registration_keeps_one_complete_result(
+    migrated_database: Engine,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del migrated_database
+    email = "concurrent-registration@example.com"
+    precheck_barrier = Barrier(2)
+    original_get_user = identity_auth_service.get_user_by_normalized_email
+
+    def synchronized_get_user(
+        db: Session,
+        *,
+        tenant_id: str,
+        region: str,
+        email_normalized: str,
+    ) -> User | None:
+        user = original_get_user(
+            db,
+            tenant_id=tenant_id,
+            region=region,
+            email_normalized=email_normalized,
+        )
+        if user is None:
+            precheck_barrier.wait(timeout=10)
+        return user
+
+    monkeypatch.setattr(identity_auth_service, "get_user_by_normalized_email", synchronized_get_user)
+
+    def register_once() -> str:
+        with postgres_session_factory() as session:
+            try:
+                identity_auth_service.register_user(
+                    session,
+                    tenant_id="anytoolai",
+                    region="ru",
+                    email=email,
+                    password="very-secret-password",
+                    personal_consent=True,
+                    offer_consent=True,
+                    client_ip="192.0.2.10",
+                    user_agent="registration-concurrency-test",
+                )
+            except EmailAlreadyRegisteredError:
+                return "duplicate"
+        return "registered"
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        outcomes = list(executor.map(lambda _: register_once(), range(2)))
+
+    assert sorted(outcomes) == ["duplicate", "registered"]
+    with postgres_session_factory() as session:
+        users = session.query(User).filter(User.email_normalized == email).all()
+        assert len(users) == 1
+        user = users[0]
+        sessions = session.query(AuthSession).filter(AuthSession.user_id == user.id).all()
+        events = (
+            session.query(LegalAcceptanceEvent)
+            .filter(LegalAcceptanceEvent.user_id == user.id)
+            .all()
+        )
+        acceptances = (
+            session.query(DocumentAcceptance)
+            .filter(DocumentAcceptance.user_id == user.id)
+            .all()
+        )
+
+    assert len(sessions) == 1
+    assert len(events) == 1
+    assert len(acceptances) == 3
+    assert {acceptance.legal_acceptance_event_id for acceptance in acceptances} == {
+        events[0].id
+    }
+    assert {acceptance.doc_type for acceptance in acceptances} == {"privacy", "pd_consent", "offer"}

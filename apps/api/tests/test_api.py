@@ -243,6 +243,7 @@ def setup_function() -> None:
     Base.metadata.create_all(engine)
     with SessionLocal() as db:
         seed_catalog(db)
+        seed_legal_documents(db)
 
 
 def create_legal_entity(db, *, tenant_id: str = "anytoolai", region: str = "ru") -> LegalEntity:
@@ -272,6 +273,20 @@ def create_document_version(
     requires_acceptance: bool = True,
 ) -> DocumentVersion:
     now = datetime.now(timezone.utc)
+    if is_active:
+        active_documents = (
+            db.query(DocumentVersion)
+            .filter(
+                DocumentVersion.tenant_id == legal_entity.tenant_id,
+                DocumentVersion.region == legal_entity.region,
+                DocumentVersion.doc_type == doc_type,
+                DocumentVersion.is_active.is_(True),
+            )
+            .all()
+        )
+        for active_document in active_documents:
+            active_document.is_active = False
+        db.flush()
     document = DocumentVersion(
         id=uuid.uuid4(),
         tenant_id=legal_entity.tenant_id,
@@ -819,9 +834,18 @@ def test_invalid_request_id_is_replaced() -> None:
     assert len(response.headers["X-Request-ID"]) == 32
 
 
-def test_seeded_legal_documents_block_checkout_on_fresh_database() -> None:
+def test_seeded_registration_documents_are_accepted_atomically() -> None:
+    from app.domains.legal.service import expected_registration_acceptance_text_hash
+
     with SessionLocal() as db:
-        seed_legal_documents(db)
+        legal_entity = db.query(LegalEntity).filter(LegalEntity.region == "ru").one()
+        create_document_version(
+            db,
+            legal_entity=legal_entity,
+            doc_type="recurring_consent",
+            version="2026-09-recurring-v1",
+            title="Согласие на рекуррентные платежи",
+        )
 
     register_response = client.post(
         "/api/auth/register",
@@ -832,25 +856,103 @@ def test_seeded_legal_documents_block_checkout_on_fresh_database() -> None:
             "offer_consent": True,
         },
     )
-    token = register_response.json()["token"]
+    assert register_response.status_code == 200, register_response.text
+    with SessionLocal() as db:
+        user = db.query(User).filter(User.email_normalized == "seeded-legal@example.com").one()
+        event = db.query(LegalAcceptanceEvent).filter(LegalAcceptanceEvent.user_id == user.id).one()
+        acceptances = (
+            db.query(DocumentAcceptance)
+            .filter(DocumentAcceptance.user_id == user.id)
+            .order_by(DocumentAcceptance.doc_type)
+            .all()
+        )
+        session = db.query(AuthSession).filter(AuthSession.user_id == user.id).one()
+        expected_hashes: dict[str, str] = {}
+        for acceptance in acceptances:
+            document = db.get(DocumentVersion, acceptance.document_version_id)
+            assert document is not None
+            expected_hashes[acceptance.doc_type] = expected_registration_acceptance_text_hash(document)
 
-    checkout_response = client.post(
-        "/api/auth/checkout-intent",
-        headers={"Authorization": f"Bearer {token}"},
+    assert {acceptance.doc_type for acceptance in acceptances} == {"privacy", "pd_consent", "offer"}
+    assert {acceptance.legal_acceptance_event_id for acceptance in acceptances} == {event.id}
+    assert {acceptance.accepted_at for acceptance in acceptances} == {event.accepted_at}
+    assert session.user_id == user.id
+    assert event.external_billing_account_id is None
+    assert event.billing_offer_id is None
+    assert event.accepted_commercial_fingerprint is None
+    assert {
+        acceptance.doc_type: acceptance.acceptance_text_hash for acceptance in acceptances
+    } == expected_hashes
+
+
+def test_registration_offer_statement_hash_matches_checkout_checkbox() -> None:
+    from app.domains.legal.service import (
+        REGISTRATION_OFFER_CONSENT_TEXT,
+        expected_registration_acceptance_text_hash,
+    )
+
+    expected_statement = (
+        "Я принимаю условия Публичной оферты и ознакомлен(а) с Условиями отмены "
+        "подписки и возврата денежных средств."
+    )
+    with SessionLocal() as db:
+        offer = (
+            db.query(DocumentVersion)
+            .filter(
+                DocumentVersion.doc_type == "offer",
+                DocumentVersion.is_active.is_(True),
+            )
+            .one()
+        )
+
+    assert REGISTRATION_OFFER_CONSENT_TEXT == expected_statement
+    assert expected_registration_acceptance_text_hash(offer) == (
+        "4453768958dc84a86fddc9cb07903acc150d2d1a6d64c5486f0b4372552b230f"
+    )
+
+
+@pytest.mark.parametrize("invalid_pack", ["missing_expected", "unmapped_required"])
+def test_registration_fails_closed_for_incomplete_or_unmapped_legal_pack(invalid_pack: str) -> None:
+    with SessionLocal() as db:
+        if invalid_pack == "missing_expected":
+            privacy = (
+                db.query(DocumentVersion)
+                .filter(
+                    DocumentVersion.doc_type == "privacy",
+                    DocumentVersion.is_active.is_(True),
+                )
+                .one()
+            )
+            privacy.is_active = False
+            db.commit()
+        else:
+            legal_entity = db.query(LegalEntity).filter(LegalEntity.region == "ru").one()
+            assert legal_entity is not None
+            create_document_version(
+                db,
+                legal_entity=legal_entity,
+                doc_type="unmapped_registration_consent",
+                version="2026-09-unmapped-v1",
+                title="Unmapped registration consent",
+            )
+
+    response = client.post(
+        "/api/auth/register",
         json={
-            "plan_id": plan_id_for_code("document-summary-pro"),
-            "entrypoint_type": "product",
-            "entrypoint_value": "document-summary",
-            "auto_renew": False,
+            "email": f"invalid-pack-{invalid_pack}@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
         },
     )
 
-    assert checkout_response.status_code == 409
-    missing_documents = checkout_response.json()["detail"]["documents"]
-    required_seeded_types = {
-        document["doc_type"] for document in RU_DOCUMENT_VERSIONS if document["requires_acceptance"]
-    }
-    assert {document["doc_type"] for document in missing_documents} == required_seeded_types
+    assert response.status_code == 500
+    assert response.json() == {"detail": {"code": "internal_server_error"}}
+    with SessionLocal() as db:
+        assert db.query(User).count() == 0
+        assert db.query(LegalAcceptanceEvent).count() == 0
+        assert db.query(DocumentAcceptance).count() == 0
+        assert db.query(AuthSession).count() == 0
 
 
 def test_legal_seed_replaces_existing_active_document_type() -> None:
@@ -1736,7 +1838,8 @@ def test_checkout_persists_exact_recurring_consent_reference() -> None:
     with SessionLocal() as db:
         checkout = db.query(CheckoutSession).one()
         order = db.query(Order).one()
-        acceptance = db.query(DocumentAcceptance).one()
+        acceptance = db.get(DocumentAcceptance, uuid.UUID(acceptance_id))
+        assert acceptance is not None
         acceptance_event = db.get(LegalAcceptanceEvent, acceptance.legal_acceptance_event_id)
         assert acceptance_event is not None
 
@@ -1767,8 +1870,10 @@ def test_non_recurring_acceptance_drops_client_plan_id_metadata() -> None:
     )
 
     assert response.status_code == 200, response.text
+    acceptance_id = uuid.UUID(response.json()["acceptance_id"])
     with SessionLocal() as db:
-        acceptance = db.query(DocumentAcceptance).one()
+        acceptance = db.get(DocumentAcceptance, acceptance_id)
+        assert acceptance is not None
 
     assert "plan_id" not in acceptance.metadata_
     assert acceptance.metadata_["client_field"] == "preserved"
@@ -1799,9 +1904,19 @@ def test_required_document_acceptance_creates_a_new_noncommercial_event_per_call
 
     assert first_response.status_code == 200, first_response.text
     assert second_response.status_code == 200, second_response.text
+    acceptance_ids = {
+        uuid.UUID(first_response.json()["acceptance_id"]),
+        uuid.UUID(second_response.json()["acceptance_id"]),
+    }
     with SessionLocal() as db:
-        acceptances = db.query(DocumentAcceptance).order_by(DocumentAcceptance.created_at).all()
-        events = db.query(LegalAcceptanceEvent).order_by(LegalAcceptanceEvent.created_at).all()
+        acceptances = (
+            db.query(DocumentAcceptance)
+            .filter(DocumentAcceptance.id.in_(acceptance_ids))
+            .order_by(DocumentAcceptance.created_at)
+            .all()
+        )
+        event_ids = {acceptance.legal_acceptance_event_id for acceptance in acceptances}
+        events = db.query(LegalAcceptanceEvent).filter(LegalAcceptanceEvent.id.in_(event_ids)).all()
 
     assert len(acceptances) == 2
     assert len(events) == 2
@@ -1941,7 +2056,8 @@ def test_recurring_consent_metadata_cannot_spoof_typed_plan_id() -> None:
 
     assert response.status_code == 200, response.text
     with SessionLocal() as db:
-        acceptance = db.query(DocumentAcceptance).one()
+        acceptance = db.get(DocumentAcceptance, uuid.UUID(acceptance_id))
+        assert acceptance is not None
     assert acceptance.metadata_["plan_id"] == plan_id
 
 
@@ -2048,7 +2164,11 @@ def test_versioned_plans_require_plan_bound_recurring_consent() -> None:
     assert checkout_response.status_code == 200, checkout_response.text
     assert checkout_response.json()["purchase"]["plan_id"] == str(plan_b_id)
     with SessionLocal() as db:
-        acceptances = db.query(DocumentAcceptance).all()
+        acceptances = (
+            db.query(DocumentAcceptance)
+            .filter(DocumentAcceptance.doc_type == "recurring_consent")
+            .all()
+        )
     assert {acceptance.metadata_["plan_id"] for acceptance in acceptances} == {
         str(plan_a_id),
         str(plan_b_id),
@@ -5589,6 +5709,8 @@ def test_same_email_foreign_client_scope_cannot_create_foreign_contour_user() ->
 
 
 def test_register_and_login_foreign_client_scope_cannot_select_foreign_contour_user() -> None:
+    from app.domains.identity.passwords import hash_password
+
     email = "foreign-login@example.com"
     with SessionLocal() as db:
         identity_auth_service.register_user(
@@ -5603,17 +5725,17 @@ def test_register_and_login_foreign_client_scope_cannot_select_foreign_contour_u
             user_agent=None,
         )
     with SessionLocal() as db:
-        identity_auth_service.register_user(
-            db,
-            tenant_id="anytoolai",
-            region="eu",
-            email=email,
-            password="foreign-password-123",
-            personal_consent=True,
-            offer_consent=True,
-            client_ip=None,
-            user_agent=None,
+        db.add(
+            User(
+                tenant_id="anytoolai",
+                region="eu",
+                email=email,
+                email_normalized=email,
+                password_hash=hash_password("foreign-password-123"),
+                status=UserStatus.ACTIVE,
+            )
         )
+        db.commit()
 
     foreign_password_response = client.post(
         "/api/auth/login",
@@ -5682,6 +5804,8 @@ def test_registration_failure_before_initial_session_rolls_back_and_allows_retry
     assert failed_response.status_code == 500
     with SessionLocal() as db:
         assert db.query(User).filter(User.email_normalized == payload["email"]).count() == 0
+        assert db.query(LegalAcceptanceEvent).count() == 0
+        assert db.query(DocumentAcceptance).count() == 0
         assert db.query(AuthSession).count() == 0
 
     retry_response = client.post("/api/auth/register", json=payload)
@@ -5689,8 +5813,12 @@ def test_registration_failure_before_initial_session_rolls_back_and_allows_retry
     assert retry_response.status_code == 200
     with SessionLocal() as db:
         user = db.query(User).filter(User.email_normalized == payload["email"]).one()
-        session = db.query(AuthSession).one()
+        session = db.query(AuthSession).filter(AuthSession.user_id == user.id).one()
+        event = db.query(LegalAcceptanceEvent).filter(LegalAcceptanceEvent.user_id == user.id).one()
+        acceptances = db.query(DocumentAcceptance).filter(DocumentAcceptance.user_id == user.id).all()
         assert session.user_id == user.id
+        assert {acceptance.legal_acceptance_event_id for acceptance in acceptances} == {event.id}
+        assert {acceptance.doc_type for acceptance in acceptances} == {"privacy", "pd_consent", "offer"}
 
 
 def test_selected_auth_failures_use_structured_error_codes() -> None:
@@ -7155,6 +7283,18 @@ def test_account_subscription_detail_enforces_authenticated_ownership() -> None:
 def test_required_document_acceptance_hash_controls_terms_and_personal_consent_gate() -> None:
     from app.domains.legal.service import expected_acceptance_text_hash
 
+    register_response = cloudpayments_client.post(
+        "/api/auth/register",
+        json={
+            "email": "legal-hash-gate@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    assert register_response.status_code == 200, register_response.text
+    token = register_response.json()["token"]
+
     with SessionLocal() as db:
         legal_entity = create_legal_entity(db, region="ru")
         offer_document = create_document_version(
@@ -7175,17 +7315,6 @@ def test_required_document_acceptance_hash_controls_terms_and_personal_consent_g
         personal_document_id = personal_document.id
         offer_hash = expected_acceptance_text_hash(offer_document)
         personal_hash = expected_acceptance_text_hash(personal_document)
-
-    register_response = cloudpayments_client.post(
-        "/api/auth/register",
-        json={
-            "email": "legal-hash-gate@example.com",
-            "password": "very-secret-password",
-            "personal_consent": True,
-            "offer_consent": True,
-        },
-    )
-    token = register_response.json()["token"]
 
     checkout_response = cloudpayments_client.post(
         "/api/auth/checkout-intent",
@@ -7259,13 +7388,43 @@ def test_required_document_acceptance_hash_controls_terms_and_personal_consent_g
     )
     assert accepted_response.status_code == 200, accepted_response.text
     with SessionLocal() as db:
-        acceptances = db.query(DocumentAcceptance).all()
+        acceptances = (
+            db.query(DocumentAcceptance)
+            .filter(
+                DocumentAcceptance.document_version_id.in_(
+                    [offer_document_id, personal_document_id]
+                )
+            )
+            .all()
+        )
     assert len(acceptances) == 3
     assert any(acceptance.acceptance_text_hash == "0" * 64 for acceptance in acceptances)
 
 
 def test_required_document_acceptance_scope_and_time_filters_still_apply() -> None:
     from app.domains.legal.service import expected_acceptance_text_hash
+
+    owner_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "legal-scope-owner@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    other_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "legal-scope-other@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    assert owner_response.status_code == 200
+    assert other_response.status_code == 200
+    token = owner_response.json()["token"]
 
     now = datetime.now(timezone.utc)
     with SessionLocal() as db:
@@ -7290,27 +7449,6 @@ def test_required_document_acceptance_scope_and_time_filters_still_apply() -> No
         active_hash = expected_acceptance_text_hash(active_document)
         stale_hash = expected_acceptance_text_hash(stale_document)
         db.commit()
-
-    owner_response = client.post(
-        "/api/auth/register",
-        json={
-            "email": "legal-scope-owner@example.com",
-            "password": "very-secret-password",
-            "personal_consent": True,
-            "offer_consent": True,
-        },
-    )
-    other_response = client.post(
-        "/api/auth/register",
-        json={
-            "email": "legal-scope-other@example.com",
-            "password": "very-secret-password",
-            "personal_consent": True,
-            "offer_consent": True,
-        },
-    )
-    assert other_response.status_code == 200
-    token = owner_response.json()["token"]
 
     with SessionLocal() as db:
         owner = db.query(User).filter(User.email == "legal-scope-owner@example.com").one()
@@ -7430,7 +7568,7 @@ def test_create_document_acceptance_rejects_substituted_hash_in_endpoint_and_ser
     assert response.json()["detail"] == "invalid_acceptance_text_hash"
     event_creator.assert_not_called()
     with SessionLocal() as db:
-        assert db.query(LegalAcceptanceEvent).count() == 0
+        assert db.query(LegalAcceptanceEvent).count() == 1
 
 
 def test_automatic_checkout_keeps_recurring_consent_missing_when_hash_is_wrong() -> None:
@@ -7512,6 +7650,8 @@ def test_automatic_checkout_keeps_recurring_consent_missing_when_hash_is_wrong()
 
 
 def test_checkout_requires_acceptance_again_when_active_document_version_changes() -> None:
+    from app.domains.legal.service import expected_registration_acceptance_text_hash
+
     with SessionLocal() as db:
         legal_entity = create_legal_entity(db, region="ru")
         first_document = create_document_version(
@@ -7532,10 +7672,18 @@ def test_checkout_requires_acceptance_again_when_active_document_version_changes
             "offer_consent": True,
         },
     )
+    assert register_response.status_code == 200, register_response.text
     token = register_response.json()["token"]
 
     with SessionLocal() as db:
-        assert db.query(DocumentAcceptance).count() == 0
+        registration_acceptances = db.query(DocumentAcceptance).all()
+        first_acceptance = (
+            db.query(DocumentAcceptance)
+            .filter(DocumentAcceptance.document_version_id == first_document_id)
+            .one()
+        )
+        first_document = db.get(DocumentVersion, first_document_id)
+        assert first_document is not None
 
     checkout_response = cloudpayments_client.post(
         "/api/auth/checkout-intent",
@@ -7548,55 +7696,11 @@ def test_checkout_requires_acceptance_again_when_active_document_version_changes
         },
     )
 
-    assert checkout_response.status_code == 409
-    missing_document = checkout_response.json()["detail"]["documents"][0]
-    assert checkout_response.json()["detail"]["code"] == "missing_required_documents"
-    assert missing_document["document_version_id"] == str(first_document_id)
-    assert missing_document["version"] == "2026-07-ru-v1"
-    assert missing_document["acceptance_text"] == "Я принимаю документ «Публичная оферта»."
-    assert "offer" not in missing_document["acceptance_text"]
-    assert "2026-07-ru-v1" not in missing_document["acceptance_text"]
-    assert missing_document["acceptance_text_hash"]
-
-    invalid_accept_response = cloudpayments_client.post(
-        "/api/legal/acceptances",
-        headers={"Authorization": f"Bearer {token}"},
-        json={
-            "document_version_id": str(first_document_id),
-            "acceptance_text_hash": "a" * 64,
-            "entrypoint_type": "product",
-            "entrypoint_value": "document-summary",
-        },
+    assert checkout_response.status_code == 200, checkout_response.text
+    assert len(registration_acceptances) == 3
+    assert first_acceptance.acceptance_text_hash == expected_registration_acceptance_text_hash(
+        first_document
     )
-
-    assert invalid_accept_response.status_code == 400
-    assert invalid_accept_response.json()["detail"] == "invalid_acceptance_text_hash"
-
-    accept_first_response = cloudpayments_client.post(
-        "/api/legal/acceptances",
-        headers={"Authorization": f"Bearer {token}"},
-        json={
-            "document_version_id": str(first_document_id),
-            "acceptance_text_hash": missing_document["acceptance_text_hash"],
-            "entrypoint_type": "product",
-            "entrypoint_value": "document-summary",
-        },
-    )
-
-    assert accept_first_response.status_code == 200
-
-    retry_first_response = cloudpayments_client.post(
-        "/api/auth/checkout-intent",
-        headers={"Authorization": f"Bearer {token}"},
-        json={
-            "plan_id": plan_id_for_code("document-summary-pro"),
-            "entrypoint_type": "product",
-            "entrypoint_value": "document-summary",
-            "auto_renew": False,
-        },
-    )
-
-    assert retry_first_response.status_code == 200
 
     with SessionLocal() as db:
         first_document = db.get(DocumentVersion, first_document_id)
@@ -7653,7 +7757,12 @@ def test_checkout_requires_acceptance_again_when_active_document_version_changes
 
     assert retry_response.status_code == 200
     with SessionLocal() as db:
-        acceptances = db.query(DocumentAcceptance).order_by(DocumentAcceptance.accepted_at).all()
+        acceptances = (
+            db.query(DocumentAcceptance)
+            .filter(DocumentAcceptance.doc_type == "offer")
+            .order_by(DocumentAcceptance.accepted_at)
+            .all()
+        )
 
     assert len(acceptances) == 2
     assert {acceptance.version for acceptance in acceptances} == {

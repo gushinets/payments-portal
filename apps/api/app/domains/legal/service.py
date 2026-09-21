@@ -13,6 +13,7 @@ from app.core.time import utc_now
 from app.domains.legal.errors import (
     DocumentVersionNotFoundError,
     InvalidAcceptanceTextHashError,
+    RegistrationLegalPackInvalidError,
     RecurringConsentContextRequiredError,
     RecurringConsentPlanInvalidError,
 )
@@ -21,6 +22,7 @@ from app.infrastructure.queries.legal import (
     get_document_acceptance_candidate,
     get_document_version_by_id,
     list_active_required_documents,
+    list_active_required_documents_for_registration,
     list_document_acceptance_fingerprints,
 )
 from app.infrastructure.queries.plans import get_current_sellable_plan
@@ -39,6 +41,22 @@ ACCEPTANCE_KIND_BY_DOC_TYPE = {
     "offer": AcceptanceKind.TERMS_ACCEPTANCE,
     "recurring_consent": AcceptanceKind.RECURRING_CONSENT,
     "cookies": AcceptanceKind.COOKIES,
+}
+
+REGISTRATION_PERSONAL_CONSENT_TEXT = (
+    "Я даю согласие на обработку персональных данных в соответствии с "
+    "Согласием на обработку персональных данных и Политикой в отношении "
+    "обработки персональных данных."
+)
+REGISTRATION_OFFER_CONSENT_TEXT = (
+    "Я принимаю условия Публичной оферты и ознакомлен(а) с Условиями отмены "
+    "подписки и возврата денежных средств."
+)
+REGISTRATION_DOCUMENT_TYPES = ("privacy", "pd_consent", "offer")
+REGISTRATION_ACCEPTANCE_TEXT_BY_DOC_TYPE = {
+    "privacy": REGISTRATION_PERSONAL_CONSENT_TEXT,
+    "pd_consent": REGISTRATION_PERSONAL_CONSENT_TEXT,
+    "offer": REGISTRATION_OFFER_CONSENT_TEXT,
 }
 
 
@@ -61,6 +79,21 @@ def build_acceptance_text(document: DocumentVersion) -> str:
 
 def expected_acceptance_text_hash(document: DocumentVersion) -> str:
     return hash_acceptance_text(build_acceptance_text(document))
+
+
+def expected_registration_acceptance_text_hash(document: DocumentVersion) -> str:
+    acceptance_text = REGISTRATION_ACCEPTANCE_TEXT_BY_DOC_TYPE.get(document.doc_type)
+    if acceptance_text is None:
+        raise RegistrationLegalPackInvalidError()
+    return hash_acceptance_text(acceptance_text)
+
+
+def valid_acceptance_text_hashes(document: DocumentVersion) -> frozenset[str]:
+    hashes = {expected_acceptance_text_hash(document)}
+    registration_text = REGISTRATION_ACCEPTANCE_TEXT_BY_DOC_TYPE.get(document.doc_type)
+    if registration_text is not None:
+        hashes.add(hash_acceptance_text(registration_text))
+    return frozenset(hashes)
 
 
 def present_required_document(document: DocumentVersion) -> dict[str, str]:
@@ -91,6 +124,35 @@ def get_active_required_documents(
     )
 
 
+def get_registration_required_documents(
+    db: Session,
+    *,
+    tenant_id: str,
+    region: str,
+    now: datetime | None = None,
+) -> list[DocumentVersion]:
+    effective_at = now or utc_now()
+    active_documents = list_active_required_documents_for_registration(
+        db,
+        tenant_id=tenant_id,
+        region=region,
+    )
+    registration_documents = [
+        document for document in active_documents if document.doc_type != "recurring_consent"
+    ]
+    documents_by_type = {document.doc_type: document for document in registration_documents}
+    if (
+        len(registration_documents) != len(REGISTRATION_DOCUMENT_TYPES)
+        or set(documents_by_type) != set(REGISTRATION_DOCUMENT_TYPES)
+        or any(
+            _as_utc_naive(documents_by_type[doc_type].effective_from) > _as_utc_naive(effective_at)
+            for doc_type in REGISTRATION_DOCUMENT_TYPES
+        )
+    ):
+        raise RegistrationLegalPackInvalidError()
+    return [documents_by_type[doc_type] for doc_type in REGISTRATION_DOCUMENT_TYPES]
+
+
 def get_missing_required_documents_for_user(
     db: Session,
     *,
@@ -110,7 +172,7 @@ def get_missing_required_documents_for_user(
     if not required_documents:
         return []
 
-    accepted_version_kinds = set(
+    accepted_version_fingerprints = set(
         list_document_acceptance_fingerprints(
             db,
             tenant_id=user.tenant_id,
@@ -123,12 +185,15 @@ def get_missing_required_documents_for_user(
     return [
         document
         for document in required_documents
-        if (
-            document.id,
-            ACCEPTANCE_KIND_BY_DOC_TYPE.get(document.doc_type, AcceptanceKind.TERMS_ACCEPTANCE),
-            expected_acceptance_text_hash(document),
+        if not any(
+            (
+                document.id,
+                ACCEPTANCE_KIND_BY_DOC_TYPE.get(document.doc_type, AcceptanceKind.TERMS_ACCEPTANCE),
+                acceptance_text_hash,
+            )
+            in accepted_version_fingerprints
+            for acceptance_text_hash in valid_acceptance_text_hashes(document)
         )
-        not in accepted_version_kinds
     ]
 
 
@@ -283,6 +348,33 @@ def create_document_acceptance(
     if acceptance_text_hash != expected_acceptance_text_hash(document):
         raise InvalidAcceptanceTextHashError()
 
+    return _create_document_acceptance(
+        db,
+        document=document,
+        acceptance_event=acceptance_event,
+        acceptance_text_hash=acceptance_text_hash,
+        entrypoint_session_id=entrypoint_session_id,
+        entrypoint_type=entrypoint_type,
+        entrypoint_value=entrypoint_value,
+        source_url=source_url,
+        metadata=metadata,
+        plan_id=plan_id,
+    )
+
+
+def _create_document_acceptance(
+    db: Session,
+    *,
+    document: DocumentVersion,
+    acceptance_event: LegalAcceptanceEvent,
+    acceptance_text_hash: str,
+    entrypoint_session_id: uuid.UUID | None = None,
+    entrypoint_type: str | None = None,
+    entrypoint_value: str | None = None,
+    source_url: str | None = None,
+    metadata: dict[str, Any] | None = None,
+    plan_id: uuid.UUID | None = None,
+) -> DocumentAcceptance:
     acceptance_metadata = {key: value for key, value in (metadata or {}).items() if key != "plan_id"}
     if document.doc_type == "recurring_consent" and plan_id is not None:
         acceptance_metadata["plan_id"] = str(plan_id)
@@ -328,6 +420,35 @@ def create_noncommercial_legal_acceptance_event(
         user_agent=user_agent,
     )
     db.add(acceptance_event)
+    return acceptance_event
+
+
+def create_registration_legal_evidence(
+    db: Session,
+    *,
+    user: User,
+    documents: list[DocumentVersion],
+    accepted_at: datetime,
+    ip: str | None,
+    user_agent: str | None,
+) -> LegalAcceptanceEvent:
+    if [document.doc_type for document in documents] != list(REGISTRATION_DOCUMENT_TYPES):
+        raise RegistrationLegalPackInvalidError()
+
+    acceptance_event = create_noncommercial_legal_acceptance_event(
+        db,
+        user=user,
+        accepted_at=accepted_at,
+        ip=ip,
+        user_agent=user_agent,
+    )
+    for document in documents:
+        _create_document_acceptance(
+            db,
+            document=document,
+            acceptance_event=acceptance_event,
+            acceptance_text_hash=expected_registration_acceptance_text_hash(document),
+        )
     return acceptance_event
 
 

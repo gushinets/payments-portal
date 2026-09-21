@@ -34,6 +34,25 @@ def list_active_required_documents(
     )
 
 
+def list_active_required_documents_for_registration(
+    db: Session,
+    *,
+    tenant_id: str,
+    region: str,
+) -> list[DocumentVersion]:
+    return (
+        db.query(DocumentVersion)
+        .filter(
+            DocumentVersion.tenant_id == tenant_id,
+            DocumentVersion.region == region,
+            DocumentVersion.is_active.is_(True),
+            DocumentVersion.requires_acceptance.is_(True),
+        )
+        .order_by(DocumentVersion.doc_type.asc(), DocumentVersion.published_at.desc())
+        .all()
+    )
+
+
 def list_document_acceptance_fingerprints(
     db: Session,
     *,
