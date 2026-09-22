@@ -837,9 +837,7 @@ def _add_recurring_consent_acceptance(
     )
     db_session.add(acceptance_event)
     db_session.flush()
-    acceptance_entrypoint_type = (
-        None if acceptance_shape == "missing_acceptance_entrypoint" else entrypoint_type
-    )
+    acceptance_entrypoint_type = None if acceptance_shape == "missing_acceptance_entrypoint" else entrypoint_type
     acceptance_entrypoint_value = (
         "different-entrypoint" if acceptance_shape == "wrong_entrypoint_value" else resolved_entrypoint_value
     )

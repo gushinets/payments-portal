@@ -880,9 +880,7 @@ def test_seeded_registration_documents_are_accepted_atomically() -> None:
     assert event.external_billing_account_id is None
     assert event.billing_offer_id is None
     assert event.accepted_commercial_fingerprint is None
-    assert {
-        acceptance.doc_type: acceptance.acceptance_text_hash for acceptance in acceptances
-    } == expected_hashes
+    assert {acceptance.doc_type: acceptance.acceptance_text_hash for acceptance in acceptances} == expected_hashes
 
 
 def test_registration_acceptance_statements_and_hashes_are_frozen() -> None:
@@ -898,8 +896,7 @@ def test_registration_acceptance_statements_and_hashes_are_frozen() -> None:
         "обработки персональных данных."
     )
     expected_offer_statement = (
-        "Я принимаю условия Публичной оферты и ознакомлен(а) с Условиями отмены "
-        "подписки и возврата денежных средств."
+        "Я принимаю условия Публичной оферты и ознакомлен(а) с Условиями отмены подписки и возврата денежных средств."
     )
     with SessionLocal() as db:
         documents = (
@@ -914,15 +911,15 @@ def test_registration_acceptance_statements_and_hashes_are_frozen() -> None:
 
     assert REGISTRATION_PERSONAL_CONSENT_TEXT == expected_personal_statement
     assert REGISTRATION_OFFER_CONSENT_TEXT == expected_offer_statement
-    assert expected_registration_acceptance_text_hash(
-        registration_documents["privacy"]
-    ) == "fa093c89e1a09dd82691c41a5dfb51298be1680e8e8462e138280fbcf61788b3"
-    assert expected_registration_acceptance_text_hash(
-        registration_documents["pd_consent"]
-    ) == "fa093c89e1a09dd82691c41a5dfb51298be1680e8e8462e138280fbcf61788b3"
-    assert expected_registration_acceptance_text_hash(
-        registration_documents["offer"]
-    ) == (
+    assert (
+        expected_registration_acceptance_text_hash(registration_documents["privacy"])
+        == "fa093c89e1a09dd82691c41a5dfb51298be1680e8e8462e138280fbcf61788b3"
+    )
+    assert (
+        expected_registration_acceptance_text_hash(registration_documents["pd_consent"])
+        == "fa093c89e1a09dd82691c41a5dfb51298be1680e8e8462e138280fbcf61788b3"
+    )
+    assert expected_registration_acceptance_text_hash(registration_documents["offer"]) == (
         "4453768958dc84a86fddc9cb07903acc150d2d1a6d64c5486f0b4372552b230f"
     )
 
@@ -1936,15 +1933,10 @@ def test_required_document_acceptance_creates_a_new_noncommercial_event_per_call
 
     assert len(acceptances) == 2
     assert len(events) == 2
-    assert {acceptance.legal_acceptance_event_id for acceptance in acceptances} == {
-        event.id for event in events
-    }
+    assert {acceptance.legal_acceptance_event_id for acceptance in acceptances} == {event.id for event in events}
     assert all(
-        acceptance.accepted_at == next(
-            event.accepted_at
-            for event in events
-            if event.id == acceptance.legal_acceptance_event_id
-        )
+        acceptance.accepted_at
+        == next(event.accepted_at for event in events if event.id == acceptance.legal_acceptance_event_id)
         for acceptance in acceptances
     )
     assert all(event.external_billing_account_id is None for event in events)
@@ -2180,11 +2172,7 @@ def test_versioned_plans_require_plan_bound_recurring_consent() -> None:
     assert checkout_response.status_code == 200, checkout_response.text
     assert checkout_response.json()["purchase"]["plan_id"] == str(plan_b_id)
     with SessionLocal() as db:
-        acceptances = (
-            db.query(DocumentAcceptance)
-            .filter(DocumentAcceptance.doc_type == "recurring_consent")
-            .all()
-        )
+        acceptances = db.query(DocumentAcceptance).filter(DocumentAcceptance.doc_type == "recurring_consent").all()
     assert {acceptance.metadata_["plan_id"] for acceptance in acceptances} == {
         str(plan_a_id),
         str(plan_b_id),
@@ -5927,9 +5915,10 @@ def test_login_and_logout_flow() -> None:
 
     with SessionLocal() as db:
         remaining_session = db.query(AuthSession).one()
-        assert remaining_session.token_hash == hashlib.sha256(
-            register_response.json()["token"].encode("utf-8")
-        ).hexdigest()
+        assert (
+            remaining_session.token_hash
+            == hashlib.sha256(register_response.json()["token"].encode("utf-8")).hexdigest()
+        )
 
     session_response = client.get(
         "/api/auth/session",
@@ -5962,12 +5951,8 @@ def test_security_revoked_and_expired_auth_sessions_remain_invalid() -> None:
     expired_token_hash = hashlib.sha256(expired_token.encode("utf-8")).hexdigest()
 
     with SessionLocal() as db:
-        revoked_session = (
-            db.query(AuthSession).filter(AuthSession.token_hash == revoked_token_hash).one()
-        )
-        expired_session = (
-            db.query(AuthSession).filter(AuthSession.token_hash == expired_token_hash).one()
-        )
+        revoked_session = db.query(AuthSession).filter(AuthSession.token_hash == revoked_token_hash).one()
+        expired_session = db.query(AuthSession).filter(AuthSession.token_hash == expired_token_hash).one()
         revoked_session.revoked_at = datetime.now(UTC)
         expired_session.expires_at = datetime.now(UTC) - timedelta(seconds=1)
         db.commit()
@@ -5982,9 +5967,7 @@ def test_security_revoked_and_expired_auth_sessions_remain_invalid() -> None:
 
     with SessionLocal() as db:
         assert db.query(AuthSession).count() == 2
-        retained_revoked_session = (
-            db.query(AuthSession).filter(AuthSession.token_hash == revoked_token_hash).one()
-        )
+        retained_revoked_session = db.query(AuthSession).filter(AuthSession.token_hash == revoked_token_hash).one()
         assert retained_revoked_session.revoked_at is not None
 
 
@@ -6075,9 +6058,7 @@ def test_password_reset_email_token_and_session_revocation(monkeypatch) -> None:
 
     with SessionLocal() as db:
         stored_token = db.query(MagicLinkToken).one()
-        stored_user = (
-            db.query(User).filter(User.email_normalized == "reset-user@example.com").one()
-        )
+        stored_user = db.query(User).filter(User.email_normalized == "reset-user@example.com").one()
         assert stored_token.purpose == MagicLinkPurpose.PASSWORD_RESET
         assert stored_token.user_id == stored_user.id
         assert stored_token.token_hash
@@ -6094,10 +6075,7 @@ def test_password_reset_email_token_and_session_revocation(monkeypatch) -> None:
     with SessionLocal() as db:
         revoked_session = (
             db.query(AuthSession)
-            .filter(
-                AuthSession.token_hash
-                == hashlib.sha256(old_session_token.encode("utf-8")).hexdigest()
-            )
+            .filter(AuthSession.token_hash == hashlib.sha256(old_session_token.encode("utf-8")).hexdigest())
             .one()
         )
         assert revoked_session.revoked_at is not None
@@ -7378,9 +7356,7 @@ def test_required_document_acceptance_hash_controls_terms_and_personal_consent_g
     assert bad_hash_response.status_code == 409
     bad_hash_detail = bad_hash_response.json()["detail"]
     assert bad_hash_detail["code"] == "missing_required_documents"
-    assert [document["document_version_id"] for document in bad_hash_detail["documents"]] == [
-        str(offer_document_id)
-    ]
+    assert [document["document_version_id"] for document in bad_hash_detail["documents"]] == [str(offer_document_id)]
 
     with SessionLocal() as db:
         user = db.query(User).filter(User.email == "legal-hash-gate@example.com").one()
@@ -7406,11 +7382,7 @@ def test_required_document_acceptance_hash_controls_terms_and_personal_consent_g
     with SessionLocal() as db:
         acceptances = (
             db.query(DocumentAcceptance)
-            .filter(
-                DocumentAcceptance.document_version_id.in_(
-                    [offer_document_id, personal_document_id]
-                )
-            )
+            .filter(DocumentAcceptance.document_version_id.in_([offer_document_id, personal_document_id]))
             .all()
         )
     assert len(acceptances) == 3
@@ -7694,9 +7666,7 @@ def test_checkout_requires_acceptance_again_when_active_document_version_changes
     with SessionLocal() as db:
         registration_acceptances = db.query(DocumentAcceptance).all()
         first_acceptance = (
-            db.query(DocumentAcceptance)
-            .filter(DocumentAcceptance.document_version_id == first_document_id)
-            .one()
+            db.query(DocumentAcceptance).filter(DocumentAcceptance.document_version_id == first_document_id).one()
         )
         first_document = db.get(DocumentVersion, first_document_id)
         assert first_document is not None
@@ -7714,9 +7684,7 @@ def test_checkout_requires_acceptance_again_when_active_document_version_changes
 
     assert checkout_response.status_code == 200, checkout_response.text
     assert len(registration_acceptances) == 3
-    assert first_acceptance.acceptance_text_hash == expected_registration_acceptance_text_hash(
-        first_document
-    )
+    assert first_acceptance.acceptance_text_hash == expected_registration_acceptance_text_hash(first_document)
 
     with SessionLocal() as db:
         first_document = db.get(DocumentVersion, first_document_id)
@@ -7808,24 +7776,18 @@ def test_legal_required_documents_use_instance_scope() -> None:
         eu_document_id = eu_document.id
 
     default_response = client.get("/api/legal/required-documents")
-    foreign_scope_response = client.get(
-        "/api/legal/required-documents?tenant_id=foreign-tenant&region=eu"
-    )
+    foreign_scope_response = client.get("/api/legal/required-documents?tenant_id=foreign-tenant&region=eu")
 
     assert default_response.status_code == 200
     assert foreign_scope_response.status_code == 200
     default_documents = default_response.json()["documents"]
     foreign_scope_documents = foreign_scope_response.json()["documents"]
-    assert [document["document_version_id"] for document in default_documents] == [
-        str(ru_document_id)
-    ]
+    assert [document["document_version_id"] for document in default_documents] == [str(ru_document_id)]
     assert foreign_scope_documents == default_documents
     assert default_documents[0]["tenant_id"] == "anytoolai"
     assert default_documents[0]["region"] == "ru"
     assert default_documents[0]["acceptance_text_hash"]
-    assert str(eu_document_id) not in {
-        document["document_version_id"] for document in foreign_scope_documents
-    }
+    assert str(eu_document_id) not in {document["document_version_id"] for document in foreign_scope_documents}
 
 
 def test_cloudpayments_webhook_rejects_invalid_signature_when_secret_is_set() -> None:

@@ -837,26 +837,22 @@ def test_external_billing_accounts_orm_table_and_fk_targets_are_forbidden(
     write_module(
         tmp_path,
         "apps/api/app/models/external_billing.py",
-        "class ExternalBillingAccount:\n"
-        "    __tablename__ = 'external_billing_accounts'\n",
+        "class ExternalBillingAccount:\n    __tablename__ = 'external_billing_accounts'\n",
     )
     write_module(
         tmp_path,
         "apps/api/app/models/identity.py",
-        "from sqlalchemy import ForeignKey\n"
-        "account_id = ForeignKey('external_billing_accounts.id')\n",
+        "from sqlalchemy import ForeignKey\naccount_id = ForeignKey('external_billing_accounts.id')\n",
     )
 
     errors = check_python_boundaries(tmp_path)
 
     assert any(
-        "apps/api/app/models/external_billing.py:2 references forbidden table "
-        "external_billing_accounts" in error
+        "apps/api/app/models/external_billing.py:2 references forbidden table external_billing_accounts" in error
         for error in errors
     )
     assert any(
-        "apps/api/app/models/identity.py:2 references forbidden table "
-        "external_billing_accounts" in error
+        "apps/api/app/models/identity.py:2 references forbidden table external_billing_accounts" in error
         for error in errors
     )
     assert "external_billing_accounts" not in Base.metadata.tables
@@ -889,27 +885,20 @@ def test_identity_recovery_rejects_entrypoint_commerce_provider_and_trial_depend
     errors = check_python_boundaries(tmp_path)
 
     assert any(
-        "apps/api/app/domains/identity/services/auth.py:1 references "
-        "EntrypointSession" in error
-        for error in errors
+        "apps/api/app/domains/identity/services/auth.py:1 references EntrypointSession" in error for error in errors
     )
-    assert any(
-        "apps/api/app/domains/identity/services/auth.py:1 references Product" in error
-        for error in errors
-    )
+    assert any("apps/api/app/domains/identity/services/auth.py:1 references Product" in error for error in errors)
     assert any(
         "apps/api/app/domains/identity/services/password_reset.py:1 imports "
         "app.infrastructure.queries.subscriptions" in error
         for error in errors
     )
     assert any(
-        "apps/api/app/domains/identity/services/password_reset.py:1 references "
-        "get_active_trial" in error
+        "apps/api/app/domains/identity/services/password_reset.py:1 references get_active_trial" in error
         for error in errors
     )
     assert any(
-        "apps/api/app/domains/identity/session.py:1 imports "
-        "app.payment_providers.contracts" in error
+        "apps/api/app/domains/identity/session.py:1 imports app.payment_providers.contracts" in error
         for error in errors
     )
 
@@ -933,15 +922,10 @@ def test_identity_legal_rejects_billing_customer_and_cross_system_identity_owner
         for error in errors
     )
     assert any(
-        "references outer_id" in error
-        and "must not allocate or bind external billing customers" in error
+        "references outer_id" in error and "must not allocate or bind external billing customers" in error
         for error in errors
     )
-    assert any(
-        "references provider_customer_id" in error
-        and "cross-system identity" in error
-        for error in errors
-    )
+    assert any("references provider_customer_id" in error and "cross-system identity" in error for error in errors)
 
 
 def test_identity_legal_allows_portal_email_as_local_user_attribute(
@@ -950,8 +934,7 @@ def test_identity_legal_allows_portal_email_as_local_user_attribute(
     write_module(
         tmp_path,
         "apps/api/app/domains/identity/services/auth.py",
-        "def normalize_email(email: str) -> str:\n"
-        "    return email.strip().lower()\n",
+        "def normalize_email(email: str) -> str:\n    return email.strip().lower()\n",
     )
 
     assert check_python_boundaries(tmp_path) == []

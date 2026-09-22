@@ -86,9 +86,7 @@ def get_registration_required_documents(
         tenant_id=tenant_id,
         region=region,
     )
-    registration_documents = [
-        document for document in active_documents if document.doc_type != "recurring_consent"
-    ]
+    registration_documents = [document for document in active_documents if document.doc_type != "recurring_consent"]
     documents_by_type = {document.doc_type: document for document in registration_documents}
     if (
         len(registration_documents) != len(REGISTRATION_DOCUMENT_TYPES)

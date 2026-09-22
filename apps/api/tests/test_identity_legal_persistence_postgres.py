@@ -141,31 +141,19 @@ def test_registration_persists_canonical_identity_hashed_session_and_legal_event
     )
 
     user = db_session.get(User, result.user_id)
-    auth_session = (
-        db_session.query(AuthSession).filter(AuthSession.user_id == result.user_id).one()
-    )
+    auth_session = db_session.query(AuthSession).filter(AuthSession.user_id == result.user_id).one()
     acceptance_event = (
-        db_session.query(LegalAcceptanceEvent)
-        .filter(LegalAcceptanceEvent.user_id == result.user_id)
-        .one()
+        db_session.query(LegalAcceptanceEvent).filter(LegalAcceptanceEvent.user_id == result.user_id).one()
     )
-    acceptances = (
-        db_session.query(DocumentAcceptance)
-        .filter(DocumentAcceptance.user_id == result.user_id)
-        .all()
-    )
+    acceptances = db_session.query(DocumentAcceptance).filter(DocumentAcceptance.user_id == result.user_id).all()
 
     assert user is not None
     assert isinstance(user.id, uuid.UUID)
     assert user.id == result.user_id
     assert (user.tenant_id, user.region) == ("anytoolai", "ru")
-    assert auth_session.token_hash == hashlib.sha256(
-        result.token.encode("utf-8")
-    ).hexdigest()
+    assert auth_session.token_hash == hashlib.sha256(result.token.encode("utf-8")).hexdigest()
     assert auth_session.token_hash != result.token
-    assert {acceptance.legal_acceptance_event_id for acceptance in acceptances} == {
-        acceptance_event.id
-    }
+    assert {acceptance.legal_acceptance_event_id for acceptance in acceptances} == {acceptance_event.id}
     assert {acceptance.doc_type for acceptance in acceptances} == {
         "privacy",
         "pd_consent",
@@ -192,12 +180,7 @@ def test_registration_failure_rolls_back_identity_session_and_legal_evidence(
             email="rolled-back-registration@example.com",
         )
 
-    assert (
-        db_session.query(User)
-        .filter(User.email_normalized == "rolled-back-registration@example.com")
-        .count()
-        == 0
-    )
+    assert db_session.query(User).filter(User.email_normalized == "rolled-back-registration@example.com").count() == 0
     assert db_session.query(AuthSession).count() == 0
     assert db_session.query(LegalAcceptanceEvent).count() == 0
     assert db_session.query(DocumentAcceptance).count() == 0
@@ -220,11 +203,7 @@ def test_normal_logout_deletes_only_the_selected_session(
         user_agent="identity-legal-survivor-test",
     )
     login_token_hash = hashlib.sha256(login.token.encode("utf-8")).hexdigest()
-    login_session = (
-        db_session.query(AuthSession)
-        .filter(AuthSession.token_hash == login_token_hash)
-        .one()
-    )
+    login_session = db_session.query(AuthSession).filter(AuthSession.token_hash == login_token_hash).one()
 
     identity_auth_service.logout_session(db_session, auth_session=login_session)
 
@@ -316,11 +295,7 @@ def test_password_reset_binds_canonical_user_and_revokes_security_state(
         password="new-very-secret-password",
     )
 
-    sessions = (
-        db_session.query(AuthSession)
-        .filter(AuthSession.user_id == registration.user_id)
-        .all()
-    )
+    sessions = db_session.query(AuthSession).filter(AuthSession.user_id == registration.user_id).all()
     db_session.refresh(stored_token)
     assert len(sessions) == 2
     assert all(session.revoked_at is not None for session in sessions)
@@ -415,22 +390,14 @@ def test_legal_acceptance_event_audit_metadata_may_only_be_cleared(
     )
 
     db_session.execute(
-        text(
-            "UPDATE legal_acceptance_events "
-            "SET ip = NULL, user_agent = NULL "
-            "WHERE id = :event_id"
-        ),
+        text("UPDATE legal_acceptance_events SET ip = NULL, user_agent = NULL WHERE id = :event_id"),
         {"event_id": acceptance_event.id},
     )
     db_session.commit()
 
     with pytest.raises(DatabaseError, match="audit metadata may only be cleared"):
         db_session.execute(
-            text(
-                "UPDATE legal_acceptance_events "
-                "SET user_agent = 'replacement-agent' "
-                "WHERE id = :event_id"
-            ),
+            text("UPDATE legal_acceptance_events SET user_agent = 'replacement-agent' WHERE id = :event_id"),
             {"event_id": acceptance_event.id},
         )
 
@@ -443,11 +410,7 @@ def test_document_acceptance_rows_are_append_only(db_session: Session) -> None:
 
     with pytest.raises(DatabaseError, match="document acceptances are append-only"):
         db_session.execute(
-            text(
-                "UPDATE document_acceptances "
-                "SET acceptance_text_hash = 'replacement' "
-                "WHERE id = :acceptance_id"
-            ),
+            text("UPDATE document_acceptances SET acceptance_text_hash = 'replacement' WHERE id = :acceptance_id"),
             {"acceptance_id": acceptance.id},
         )
     db_session.rollback()
@@ -468,11 +431,7 @@ def test_document_version_material_is_immutable_but_active_selection_may_change(
     )
 
     db_session.execute(
-        text(
-            "UPDATE document_versions "
-            "SET is_active = false, updated_at = now() "
-            "WHERE id = :document_id"
-        ),
+        text("UPDATE document_versions SET is_active = false, updated_at = now() WHERE id = :document_id"),
         {"document_id": document.id},
     )
     db_session.commit()
@@ -733,21 +692,11 @@ def test_concurrent_duplicate_registration_keeps_one_complete_result(
         assert len(users) == 1
         user = users[0]
         sessions = session.query(AuthSession).filter(AuthSession.user_id == user.id).all()
-        events = (
-            session.query(LegalAcceptanceEvent)
-            .filter(LegalAcceptanceEvent.user_id == user.id)
-            .all()
-        )
-        acceptances = (
-            session.query(DocumentAcceptance)
-            .filter(DocumentAcceptance.user_id == user.id)
-            .all()
-        )
+        events = session.query(LegalAcceptanceEvent).filter(LegalAcceptanceEvent.user_id == user.id).all()
+        acceptances = session.query(DocumentAcceptance).filter(DocumentAcceptance.user_id == user.id).all()
 
     assert len(sessions) == 1
     assert len(events) == 1
     assert len(acceptances) == 3
-    assert {acceptance.legal_acceptance_event_id for acceptance in acceptances} == {
-        events[0].id
-    }
+    assert {acceptance.legal_acceptance_event_id for acceptance in acceptances} == {events[0].id}
     assert {acceptance.doc_type for acceptance in acceptances} == {"privacy", "pd_consent", "offer"}

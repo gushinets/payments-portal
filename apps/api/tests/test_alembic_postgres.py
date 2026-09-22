@@ -158,8 +158,7 @@ def assert_postgres_schema_contract(postgres_engine: Engine) -> None:
     )
 
     auth_session_foreign_keys = {
-        foreign_key["name"]: foreign_key
-        for foreign_key in inspector.get_foreign_keys("auth_sessions")
+        foreign_key["name"]: foreign_key for foreign_key in inspector.get_foreign_keys("auth_sessions")
     }
     auth_user_scope = auth_session_foreign_keys["fk_auth_sessions_user_scope"]
     assert tuple(auth_user_scope["constrained_columns"]) == ("user_id", "tenant_id", "region")
@@ -167,15 +166,12 @@ def assert_postgres_schema_contract(postgres_engine: Engine) -> None:
     assert tuple(auth_user_scope["referred_columns"]) == ("id", "tenant_id", "region")
     assert auth_user_scope["options"]["ondelete"] == "RESTRICT"
 
-    magic_link_columns = {
-        column["name"]: column for column in inspector.get_columns("magic_link_tokens")
-    }
+    magic_link_columns = {column["name"]: column for column in inspector.get_columns("magic_link_tokens")}
     assert "user_id" in magic_link_columns
     assert magic_link_columns["user_id"]["nullable"] is True
     assert "entrypoint_session_id" not in magic_link_columns
     magic_link_foreign_keys = {
-        foreign_key["name"]: foreign_key
-        for foreign_key in inspector.get_foreign_keys("magic_link_tokens")
+        foreign_key["name"]: foreign_key for foreign_key in inspector.get_foreign_keys("magic_link_tokens")
     }
     magic_link_user_scope = magic_link_foreign_keys["fk_magic_link_tokens_user_scope"]
     assert tuple(magic_link_user_scope["constrained_columns"]) == (
@@ -187,9 +183,7 @@ def assert_postgres_schema_contract(postgres_engine: Engine) -> None:
     assert tuple(magic_link_user_scope["referred_columns"]) == ("id", "tenant_id", "region")
     assert magic_link_user_scope["options"]["ondelete"] == "RESTRICT"
 
-    legal_event_columns = {
-        column["name"]: column for column in inspector.get_columns("legal_acceptance_events")
-    }
+    legal_event_columns = {column["name"]: column for column in inspector.get_columns("legal_acceptance_events")}
     assert set(legal_event_columns) == {
         "id",
         "tenant_id",
@@ -220,21 +214,23 @@ def assert_postgres_schema_contract(postgres_engine: Engine) -> None:
         "billing_offer_id",
         "accepted_commercial_fingerprint",
     )
-    document_acceptance_columns = {
-        column["name"]: column for column in inspector.get_columns("document_acceptances")
-    }
+    document_acceptance_columns = {column["name"]: column for column in inspector.get_columns("document_acceptances")}
     assert document_acceptance_columns["legal_acceptance_event_id"]["nullable"] is False
     assert document_acceptance_columns["user_id"]["nullable"] is False
     document_acceptance_foreign_keys = {
-        foreign_key["name"]: foreign_key
-        for foreign_key in inspector.get_foreign_keys("document_acceptances")
+        foreign_key["name"]: foreign_key for foreign_key in inspector.get_foreign_keys("document_acceptances")
     }
-    assert tuple(
-        document_acceptance_foreign_keys["fk_document_acceptances_event_scope"]["constrained_columns"]
-    ) == ("legal_acceptance_event_id", "tenant_id", "region", "user_id")
-    assert tuple(
-        document_acceptance_foreign_keys["fk_document_acceptances_document_scope"]["constrained_columns"]
-    ) == ("document_version_id", "tenant_id", "region")
+    assert tuple(document_acceptance_foreign_keys["fk_document_acceptances_event_scope"]["constrained_columns"]) == (
+        "legal_acceptance_event_id",
+        "tenant_id",
+        "region",
+        "user_id",
+    )
+    assert tuple(document_acceptance_foreign_keys["fk_document_acceptances_document_scope"]["constrained_columns"]) == (
+        "document_version_id",
+        "tenant_id",
+        "region",
+    )
 
     webhook_columns = {column["name"]: column for column in inspector.get_columns("payment_webhook_events")}
     payment_columns = {column["name"]: column for column in inspector.get_columns("payments")}
@@ -754,9 +750,7 @@ def test_identity_scope_migration_backfills_only_exact_known_users(
 
     with postgres_engine.connect() as connection:
         migrated_tokens = dict(
-            connection.execute(
-                text("SELECT token_hash, user_id FROM magic_link_tokens ORDER BY token_hash")
-            ).all()
+            connection.execute(text("SELECT token_hash, user_id FROM magic_link_tokens ORDER BY token_hash")).all()
         )
 
     assert migrated_tokens == {
@@ -864,10 +858,7 @@ def test_legal_acceptance_migration_backfills_one_noncommercial_event_per_user_a
             {"acceptance_id": acceptance_id},
         ).one()
         linked_event_id = connection.execute(
-            text(
-                "SELECT legal_acceptance_event_id "
-                "FROM document_acceptances WHERE id = :acceptance_id"
-            ),
+            text("SELECT legal_acceptance_event_id FROM document_acceptances WHERE id = :acceptance_id"),
             {"acceptance_id": acceptance_id},
         ).scalar_one()
 
