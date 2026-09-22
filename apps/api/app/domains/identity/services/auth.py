@@ -6,7 +6,6 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.time import utc_now
@@ -169,7 +168,7 @@ def register_user(
         result = _authentication_result(user=user, token=token)
         db.commit()
         return result
-    except IntegrityError as exc:
+    except Exception as exc:
         db.rollback()
         if not is_scoped_email_unique_conflict(exc):
             raise
@@ -182,9 +181,6 @@ def register_user(
         if winner is None:
             raise
         raise EmailAlreadyRegisteredError() from exc
-    except Exception:
-        db.rollback()
-        raise
 
 
 def login_user(

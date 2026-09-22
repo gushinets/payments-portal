@@ -1,7 +1,7 @@
 # Contours
 
 Status: authoritative target architecture; implemented product remains `ru`
-Last verified: 2026-09-18
+Last verified: 2026-09-22
 
 A **contour** is the compliance zone in which this Payment Portal is deployed.
 It may serve any number of countries assigned to that zone. It is not a locale,
@@ -13,6 +13,12 @@ Persisted contour identity is `regions.code`. Country membership is
 Region Resolver owns the public ISO country-to-deployed-contour map used before
 the browser enters a data plane. Each contour keeps only its local country rules
 for server-side validation and market configuration.
+
+The API's implemented data-plane authority is the required deployment pair
+`INSTANCE_TENANT_ID` / `INSTANCE_REGION`. Registration, login, password reset,
+required-document discovery, authenticated sessions, and legal writes derive
+scope from that pair or from the authenticated canonical user. A client cannot
+select another contour by supplying request or query fields.
 
 Normative decision: [ADR 0001](decisions/0001-multi-contour-billing.md).
 Region routing: [Region Resolver contract](region-resolver-contract.md).
@@ -26,7 +32,7 @@ in that order.
 | Contour | Compliance zone | Countries in product terms | Status |
 |---|---|---|---|
 | `ru` | Russian | Countries assigned to `ru` (currently `RU`) | Implemented product |
-| `eu` | European | European countries assigned to `eu` | Planned; `eu` exists in schema seed |
+| `eu` | European | European countries assigned to `eu` | Planned; transitional `eu` seed exists until the clean reset |
 | `us` | North American | United States, Canada, and any later assigned country | Planned; not in schema |
 
 Exact ISO country lists for `eu` and `us` are product data, not code defaults.
@@ -37,6 +43,7 @@ A country belongs to at most one contour.
 A production instance:
 
 - enables exactly one contour;
+- requires one explicit `INSTANCE_TENANT_ID` and `INSTANCE_REGION` pair;
 - stores only that contour's users, legal versions, orders, and provider accounts;
 - evaluates country membership only against local `country_region_rules`;
 - does not store other contours' base URLs, users, or legal entities;
@@ -55,19 +62,18 @@ No user or payment data may be silently replicated between contour data planes.
 | Contour | `regions.code` |
 | Residency / data plane | `regions.residency_zone` |
 | Countries in this contour | `country_region_rules.country_code` |
+| Canonical Portal user | `users.id`, scoped by explicit `tenant_id` and `region` |
 | Seller / operator | `legal_entities` keyed by contour |
 | Legal pack | `document_versions` keyed by contour |
 | Direct payment provider account | `payment_provider_accounts` keyed by contour for the Portal-managed flow |
 | Customer-facing locale | `regions.default_locale` and web routes; not the contour key |
 
-The first-install migration currently inserts both `ru` and `eu` plus DE/ES
-country rules into one database. That is **not** the production invariant. A
-`ru` instance must not serve `eu`. Treat extra seed rows as schema vocabulary
-and follow-up debt, not as an enabled European market.
-
-The current auth API also accepts a client-supplied `region`, defaulting to
-`ru`. Therefore current code does not yet enforce one contour per instance.
-This is implementation debt, not permission to deploy a shared data plane.
+The pre-reset first-install migration currently inserts both `ru` and `eu` plus
+DE/ES country rules into one database. That is **not** the runtime invariant.
+The configured API scope is server-authoritative and a `ru` instance cannot
+create or authenticate an `eu` user through the public identity/legal API.
+`ANY-504` Step 4 removes the foreign `eu`/DE/ES rows from the clean RU baseline
+and bootstraps only the configured contour's local region and country rules.
 
 `us` is absent from the schema until an explicit enablement ticket adds it.
 
@@ -81,8 +87,6 @@ deployment. See [RU MVP journey](../product/ru-mvp.md).
 
 Planned, not implemented:
 
-- instance contour taken from deployment configuration rather than a `ru`
-  literal;
 - login/registration contour confirmation via Region Resolver;
 - `eu` and `us` legal trees, operators, catalogs, and explicitly selected
   billing integrations;
@@ -95,8 +99,9 @@ orthogonal. `/en/**` remains out of the implemented `ru` journey.
 
 Enabling a contour requires a dedicated ticket. Minimum set:
 
-1. Server-side instance-contour configuration that rejects foreign client
-   `region` values and prevents foreign seed data.
+1. Explicit server-side `INSTANCE_TENANT_ID` / `INSTANCE_REGION`
+   configuration, a contour-local clean bootstrap, and no foreign client scope
+   authority.
 2. `regions` row, residency zone, and local `country_region_rules` for every
    assigned country.
 3. A defined customer-country source for selecting country-specific provider

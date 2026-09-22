@@ -1,7 +1,7 @@
 # Documentation Index
 
 Status: authoritative index
-Last verified: 2026-09-21
+Last verified: 2026-09-22
 
 Start with the smallest document that matches the task.
 
@@ -43,6 +43,8 @@ Start with the smallest document that matches the task.
 
 ### Implementation handoffs and references
 
+- [Portal identity, session, and legal baseline](architecture/portal-identity-session-legal-baseline.md)
+  — as-built `ANY-504` Step 3 retained-schema contract and exact Step 4 handoff
 - [External Billing Persistence Reset](architecture/external-billing-persistence-reset.md)
   — reviewed `ANY-504` Step 2 persistence/reset implementation handoff,
   subordinate to ADR 0005 and both accepted design baselines above

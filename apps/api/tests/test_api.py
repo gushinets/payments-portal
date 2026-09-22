@@ -885,28 +885,44 @@ def test_seeded_registration_documents_are_accepted_atomically() -> None:
     } == expected_hashes
 
 
-def test_registration_offer_statement_hash_matches_checkout_checkbox() -> None:
+def test_registration_acceptance_statements_and_hashes_are_frozen() -> None:
     from app.domains.legal.service import (
         REGISTRATION_OFFER_CONSENT_TEXT,
+        REGISTRATION_PERSONAL_CONSENT_TEXT,
         expected_registration_acceptance_text_hash,
     )
 
-    expected_statement = (
+    expected_personal_statement = (
+        "Я даю согласие на обработку персональных данных в соответствии с "
+        "Согласием на обработку персональных данных и Политикой в отношении "
+        "обработки персональных данных."
+    )
+    expected_offer_statement = (
         "Я принимаю условия Публичной оферты и ознакомлен(а) с Условиями отмены "
         "подписки и возврата денежных средств."
     )
     with SessionLocal() as db:
-        offer = (
+        documents = (
             db.query(DocumentVersion)
             .filter(
-                DocumentVersion.doc_type == "offer",
+                DocumentVersion.doc_type.in_(("privacy", "pd_consent", "offer")),
                 DocumentVersion.is_active.is_(True),
             )
-            .one()
+            .all()
         )
+        registration_documents = {document.doc_type: document for document in documents}
 
-    assert REGISTRATION_OFFER_CONSENT_TEXT == expected_statement
-    assert expected_registration_acceptance_text_hash(offer) == (
+    assert REGISTRATION_PERSONAL_CONSENT_TEXT == expected_personal_statement
+    assert REGISTRATION_OFFER_CONSENT_TEXT == expected_offer_statement
+    assert expected_registration_acceptance_text_hash(
+        registration_documents["privacy"]
+    ) == "fa093c89e1a09dd82691c41a5dfb51298be1680e8e8462e138280fbcf61788b3"
+    assert expected_registration_acceptance_text_hash(
+        registration_documents["pd_consent"]
+    ) == "fa093c89e1a09dd82691c41a5dfb51298be1680e8e8462e138280fbcf61788b3"
+    assert expected_registration_acceptance_text_hash(
+        registration_documents["offer"]
+    ) == (
         "4453768958dc84a86fddc9cb07903acc150d2d1a6d64c5486f0b4372552b230f"
     )
 

@@ -91,6 +91,13 @@ def get_document_version_by_id(db: Session, document_version_id: uuid.UUID) -> D
     return db.get(DocumentVersion, document_version_id)
 
 
+def get_legal_acceptance_event_by_id(
+    db: Session,
+    acceptance_event_id: uuid.UUID,
+) -> LegalAcceptanceEvent | None:
+    return db.get(LegalAcceptanceEvent, acceptance_event_id)
+
+
 def get_document_acceptance_candidate(
     db: Session,
     *,

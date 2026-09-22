@@ -49,22 +49,23 @@ billing migration is required under the current premise.
 
 ## Current table disposition
 
-The following classification covers all 26 current tables. `ANY-504` Step 3
-may refine only the physical identity, session, and legal details explicitly
-delegated to it.
+The following classification covers all 27 current tables after the completed
+`ANY-504` Step-3 identity/session/legal work. The resolved physical contract is
+the [Portal Identity, Session, and Legal Baseline](portal-identity-session-legal-baseline.md).
 
 | Current table | `ANY-509` disposition | Locked rationale |
 | --- | --- | --- |
-| `regions` | RETAIN WITH TARGET ADAPTATION | Contour identity remains valid; `ANY-504` Step 4 bootstrap must respect one-contour-per-instance rather than preserve cross-contour seed accidents. |
-| `country_region_rules` | RETAIN WITH TARGET ADAPTATION | Local contour/country policy can remain; `default_payment_provider` is direct-provider legacy and is not part of the target model. |
-| `users` | RETAIN WITH TARGET ADAPTATION | Canonical Portal UUID identity remains Portal-owned; `ANY-504` Step 3 owns final physical/runtime details. |
-| `auth_sessions` | RETAIN WITH TARGET ADAPTATION | Portal auth/session is provider-independent; `ANY-504` Step 3 owns final characterization. |
-| `magic_link_tokens` | RETAIN WITH TARGET ADAPTATION | Password-reset token storage is provider-independent; any checkout/entrypoint coupling is not a target invariant and is revalidated by `ANY-504` Step 3. |
+| `regions` | RETAIN WITH TARGET ADAPTATION | Contour identity remains valid; Step 4 keeps only the configured local contour instead of preserving cross-contour seed accidents. |
+| `country_region_rules` | RETAIN WITH TARGET ADAPTATION | Preserve local country membership/market/document-set validation where used; Step 4 removes `default_payment_provider` and `allow_region_override`. |
+| `users` | RETAIN WITH TARGET ADAPTATION | Canonical Portal UUID plus explicit tenant/region scope is final; preserve both alternate keys and active-only authentication semantics. |
+| `auth_sessions` | RETAIN | Provider-independent hash/expiry/revocation metadata with the composite restrictive canonical-user FK. |
+| `magic_link_tokens` | RETAIN | Provider-independent hash-only reset storage, nullable canonical-user binding for decoys, and no entrypoint binding. |
 | `password_reset_rate_limits` | RETAIN | Provider-independent identity/security infrastructure. |
-| `legal_entities` | RETAIN WITH TARGET ADAPTATION | Portal legal identity remains Portal-owned; `ANY-504` Step 3 owns physical details. |
-| `document_versions` | RETAIN WITH TARGET ADAPTATION | Versioned legal documents remain required. |
-| `document_acceptances` | RETAIN WITH TARGET ADAPTATION | Append-only legal evidence remains required, but legacy `Plan.id`-bound recurring-consent semantics are transitional. `ANY-504` Step 3 must finalize provider-independent acceptance evidence that is directly bound to the exact accepted commercial fingerprint/offer and required legal-document versions. |
-| `entrypoint_sessions` | RETAIN WITH TARGET ADAPTATION, ANY-504 STEP-3 HANDOFF | Retain only if `ANY-504` Step 3 confirms a provider-independent identity/legal/origin role. Current `Product`/`Bundle` foreign-key coupling must not survive as target commercial authority. |
+| `legal_entities` | RETAIN | Contour-scoped current operator metadata; immutable `DocumentVersion` content/hash, not mutable entity metadata, is historical acceptance truth. |
+| `document_versions` | RETAIN | Same-scope version identity/material is immutable; only active-version lifecycle selection may change. |
+| `legal_acceptance_events` | RETAIN | Immutable canonical-user acceptance action; optional commercial triplet is all-null or all non-empty and is the exact future purchase-evidence parent. |
+| `document_acceptances` | RETAIN WITH TARGET ADAPTATION | Keep the clean event/document/user/hash subset and append-only protection; remove guest/entrypoint/source/arbitrary metadata, legacy `Plan.id`, and duplicated document/action fields. |
+| `entrypoint_sessions` | REMOVE IN STEP 4 | Step 3 found no provider-independent identity, legal, recovery, or origin role. Remove the Product/Bundle-coupled table and do not invent a replacement. |
 | `products` | REPLACE WITH TARGET | Technical product identity comes from the Kernel capability manifest, not a Portal-owned commercial catalog. |
 | `bundles` | REMOVE IN STEP 4 | Current Portal-owned bundle commerce is not target authority. No generic replacement is invented unless a later accepted product requirement needs one. |
 | `bundle_products` | REMOVE IN STEP 4 | Depends on the obsolete Portal-owned bundle/product model. |
@@ -93,21 +94,21 @@ no unowned "keep for now" category.
 
 | Current surface | Disposition | Owner / boundary |
 | --- | --- | --- |
-| `app.models.identity` and `app.models.legal` | RETAIN / ADAPT | `ANY-504` Step 3 finalizes the physical identity/session/legal shape; `ANY-504` Step 4 carries that result into the clean baseline. |
+| `app.models.identity` and `app.models.legal` | RETAIN / ADAPT | Carry the resolved identity/session/legal baseline into the clean schema, including composite scope FKs and PostgreSQL-only legal evidence triggers. |
 | `app.models.catalog` | REPLACE WITH TARGET or REMOVE | `ANY-504` Step 4 removes the Portal-owned catalog graph; only target technical/catalog projections approved by the authoritative designs and completed `ANY-509` handoff replace it. |
-| `app.models.commerce` | RETAIN / ADAPT `entrypoint_sessions`; otherwise REPLACE WITH TARGET or REMOVE | `ANY-504` Step 3 decides whether the provider-independent entrypoint role survives. `ANY-504` Step 4 removes checkout sessions, orders, payments, and refunds and adds only approved target persistence. |
+| `app.models.commerce` | REPLACE WITH TARGET or REMOVE | Step 4 removes `entrypoint_sessions`, checkout sessions, orders, payments, and refunds and adds only approved target persistence. |
 | `app.models.providers` | REMOVE IN `ANY-504` STEP 4 | Portal-managed direct-provider accounts are not part of the target model. |
 | `app.models.webhooks` and `app.models.subscriptions` | REPLACE WITH TARGET | `ANY-504` Step 4 removes the direct-payment inbox and Portal-owned subscription/entitlement graph and adds only the approved target projections and evidence storage. |
-| `app.models.enums` | RETAIN / ADAPT IDENTITY AND LEGAL ENUMS; REMOVE OR REPLACE LEGACY BILLING ENUMS | `ANY-504` Step 3 owns final retained identity/legal vocabularies; Step 4 removes old catalog, commerce, provider, subscription, entitlement, and trial vocabularies instead of promoting them into target authority. |
+| `app.models.enums` | RETAIN / ADAPT IDENTITY AND LEGAL ENUMS; REMOVE OR REPLACE LEGACY BILLING ENUMS | Preserve the resolved active-only `UserStatus` and retained legal/recovery vocabularies; Step 4 removes old catalog, commerce, provider, subscription, entitlement, and trial vocabularies instead of promoting them into target authority. |
 | `app.models._shared` and `PersistedEnumType` | RETAIN / ADAPT | Preserve provider-independent SQLAlchemy and text-backed enum mechanics; Step 4 removes legacy subscription-scope/status SQL helpers with their consumers. |
 | `app.models.__init__` | ADAPT IN `ANY-504` STEP 4 | Re-export the final retained Step-3 models and approved target models only; remove legacy billing exports. |
-| Alembic revisions `20260707_0001` through `20260826_0005` | REPLACE WITH CLEAN BASELINE | `ANY-504` Step 4 replaces the pre-production migration chain after `ANY-504` Step 3 freezes retained identity/session/legal details; retained concepts are carried forward, not the legacy revision files as target authority. |
+| Complete pre-reset Alembic history, including `20260921_0006` and `20260921_0007` | REPLACE WITH CLEAN BASELINE | Step 4 uses the resolved handoff as authority and recreates retained identity/legal schema and trigger semantics in one clean first-install baseline; transitional revisions are not copied mechanically. |
 | `app.domains.identity.services.checkout` and its identity-router checkout presentation | REMOVE IN `ANY-504` STEP 4 | Remove the old direct-provider checkout. Target `PurchaseIntent` runtime is deferred to `ANY-504` Step 7. |
 | `app.domains.identity.services.account` billing reads | REMOVE IN `ANY-504` STEP 4 | Remove old `Product` / `Plan` / `Order` / `Payment` / `Entitlement` lookups, including `load_payment_status()` and product-state resolution; preserve provider-independent authenticated user/session semantics. |
 | `app.domains.billing.catalog` and `app.domains.billing.service.catalog` | REMOVE IN `ANY-504` STEP 4 | Remove the Portal-owned sellable catalog. Target catalog projection runtime is deferred to `ANY-504` Steps 6-7. |
 | `app.domains.billing.service.account` and the current account router | REMOVE IN `ANY-504` STEP 4 | Remove Plan/Entitlement-shaped account subscription behavior. Any target account/billing projection is deferred to the applicable later runtime step. |
 | Billing commercial-transition and lifecycle modules under `app.domains.billing.service` | REMOVE IN `ANY-504` STEP 4 | Remove behavior coupled to old Order/Payment/Refund/Subscription/Entitlement authority. Later external-billing ingestion and access derivation belong to `ANY-504` Steps 8-9. |
-| Exported `start_trial()`, `SubscriptionStatus.TRIALING`, `EntitlementSource.TRIAL`, `Plan.trial_days`, and trial-backed entitlement reads | REMOVE IN `ANY-504` STEP 4 | The legacy trial lifecycle is Portal billing/access state. Free/guest/trial policy remains Kernel-owned unless `ANY-504` Step 3 reports a material, provider-independent contradiction. |
+| Exported `start_trial()`, `SubscriptionStatus.TRIALING`, `EntitlementSource.TRIAL`, `Plan.trial_days`, and trial-backed entitlement reads | REMOVE IN `ANY-504` STEP 4 | Step 3 confirmed identity/session/legal/recovery has no provider-independent dependency on the legacy Portal trial lifecycle. Free/guest/trial policy remains Kernel-owned. |
 | `apps/api/app/commands/expire_subscriptions.py` | REMOVE IN `ANY-504` STEP 4 | It schedules the superseded Portal-owned subscription/entitlement lifecycle. It is not a target worker. |
 | `app.payment_providers` registry/accounts/contracts stack | REMOVE IN `ANY-504` STEP 4 | Remove after old checkout consumers disappear. External Billing must not be registered or modeled as a `PaymentProviderAdapter`. |
 | `app.integrations.cloudpayments/**` and `app.cloudpayments.py` | REMOVE IN `ANY-504` STEP 4 | Retained direct-provider implementation is deactivated characterization source only. It must not be generalized for External Billing. |
@@ -139,10 +140,10 @@ no-production premise.
 
 | Current surface | Disposition | Owner / boundary |
 | --- | --- | --- |
-| Old migration/schema tests and fixtures | REPLACE IN `ANY-504` STEP 4 | Verify the clean baseline and the retained Step-3 identity/session/legal shape instead of the old 26-table schema. |
+| Old migration/schema tests and fixtures | REPLACE IN `ANY-504` STEP 4 | Verify the clean baseline and the retained Step-3 identity/session/legal shape instead of the pre-reset 27-table schema. |
 | CloudPayments adapter, API, webhook, recurring, refund, sandbox, and deactivation tests/support | REMOVE IN `ANY-504` STEP 4 | Remove with retained direct-provider source; later External Billing tests must exercise the new boundary. |
 | Old checkout, catalog, payment, refund, commercial-transition, subscription, entitlement, expiry, and trial tests | REMOVE or REPLACE IN `ANY-504` STEP 4 | Preserve only assertions that describe a retained provider-independent invariant; do not carry old commercial authority forward. |
-| Identity, password-reset, legal, security, observability, persistence-boundary, and architecture tests | RETAIN / ADAPT | `ANY-504` Step 3 owns identity/session/legal changes; Step 4 adapts tests only where the clean baseline or removed billing extensions require it. |
+| Identity, password-reset, legal, security, observability, persistence-boundary, and architecture tests | RETAIN / ADAPT | Preserve the provider-independent survivor matrix in the resolved Step-3 handoff; Step 4 adapts tests only where the clean baseline or removed billing extensions require it. |
 | Frontend checkout-unavailable, payment-result, catalog, account-subscription, and provider tests | REMOVE or ADAPT IN `ANY-504` STEP 4 | Keep only neutral route/identity behavior that remains factual; target flow coverage belongs to later runtime steps. |
 | `docs/architecture/payment-portal-data-model.md` | REWRITE IN `ANY-504` STEP 4 | Make it the authoritative current-state/as-built clean-schema reference, subordinate to the target authority chain for future billing semantics. |
 | `docs/architecture/payment-providers.md` and its ANY-505 documentation guard | UPDATE IN `ANY-504` STEP 4 | Reclassify the document when direct-provider source is physically removed, and update the guard in the same change so it does not require a false retained-implementation classification. |
@@ -178,30 +179,20 @@ below; later `ANY-504` runtime steps still own scheduling behavior.
 
 ## `ANY-504` Step 3 handoff boundary
 
-`ANY-509` locks retention intent and provider-independent invariants. It does
-not pre-empt `ANY-504` Step 3's ownership of the final physical and runtime
-shape of identity, session, and legal persistence. Before destructive Step-4
-work begins, Step 3's final repository state must be reread as the baseline for
-all retained identity/session/legal tables.
+Step 3 is complete. Its durable, as-built result is the
+[Portal Identity, Session, and Legal Baseline](portal-identity-session-legal-baseline.md),
+which Step 4 must consume without reopening the target billing design.
 
-Step 3 must leave append-only acceptance evidence that directly binds the exact
-accepted commercial fingerprint or offer to the required set of versioned
-legal documents. Legacy `Plan.id`-bound recurring consent is not the target
-contract. `entrypoint_sessions` may survive only if Step 3 confirms a
-provider-independent identity, legal, or origin role; current Product/Bundle
-foreign keys do not carry target authority.
-
-Step 3 must also resolve the transitional multi-contour identity behavior.
-Registration currently accepts a client-supplied `region`, and current tests
-allow independent `ru` and `eu` accounts for the same email, while the target
-deployment permits one contour per instance. `ANY-504` Step 4 must not delete
-the `eu`, DE, or ES bootstrap rows while identity regression tests approved by
-Step 3 still require that behavior.
-
-If Step 3 discovers a provider-independent Portal obligation that genuinely
-requires retained non-billing trial state, it must report that as a material
-contradiction. It must not silently preserve the old Plan/Subscription/
-Entitlement trial model.
+The resolved results are: acceptance evidence has an immutable event parent
+and exact document-version children; the future purchase binding uses the
+event's same user, configured billing account, offer, and accepted commercial
+fingerprint; `entrypoint_sessions` has no retained provider-independent role;
+public identity and legal discovery are server-scoped to the configured
+instance; the RU clean bootstrap no longer needs foreign `eu`/DE/ES rows; and
+there is no retained identity/session/legal dependency on the old Portal trial
+lifecycle. The exact retained fields, drop list, composite FKs, registration
+hashes, PostgreSQL-only triggers, and survivor tests are defined in that
+baseline.
 
 ## Target persistence contract
 
@@ -280,7 +271,8 @@ not repeat relational account/user/product columns. Nullable relationships
 remain nullable only for the stated lifecycle reason: no selected primary yet,
 no linked purchase for a discovered subscription, optional evidence/work links,
 or later-proven provider bindings. Required provenance and accepted evidence
-remain non-null or are covered by the explicit Step-3 -> Step-4 handoff.
+remain non-null, including the resolved non-null legal acceptance event on
+every purchase intent.
 
 ### Matrix conventions
 
@@ -524,7 +516,7 @@ without becoming either.
 | `state` | text-backed enum; not null, default `created` | - | Check `created | preparing | awaiting_external_result | linked | resolved_no_external_effect | failed_before_external_effect | manual_review`; state index | Application transition only | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `LATER_STEP_RUNTIME` (`ANY-504` Step 7) |
 | `accepted_snapshot_schema_version` | text; not null | - | Non-empty | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
 | `accepted_snapshot` | jsonb; not null | - | Whole typed immutable document validated against schema version | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `LATER_STEP_RUNTIME` (`ANY-504` Step 7) |
-| Accepted legal-evidence binding (logical requirement; physical field names deferred) | Final columns, type family, cardinality, and nullability are the Step-3 -> Step-4 handoff; no single UUID column is assumed here | Must directly reference the append-only legal/commercial acceptance evidence finalized by Step 3 with deletion behavior that cannot orphan an accepted purchase | Every accepted purchase must have a durable complete binding to the exact accepted commercial fingerprint/offer and all required versioned legal-document evidence | Immutable after acceptance | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` only after `ANY-504` Step 3 supplies the physical FK/cardinality/nullability shape to Step 4 |
+| `legal_acceptance_event_id` | UUID; not null | Composite FK `(legal_acceptance_event_id, user_id, external_billing_account_id, billing_offer_id, accepted_commercial_fingerprint)` to `legal_acceptance_events(id, user_id, external_billing_account_id, billing_offer_id, accepted_commercial_fingerprint)`; `RESTRICT` | Application invariant: event contains the complete required versioned document set written from the same authoritative offer/fingerprint | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT`, resolved Step-3 handoff | `STEP_4_SAFE` |
 | `created_at` | timestamptz; not null | - | - | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
 | `state_updated_at` | timestamptz; not null | - | State/recovery index | Updated with state | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `LATER_STEP_RUNTIME` (`ANY-504` Step 7) |
 | `resolved_at` | timestamptz; nullable | - | - | Set once on terminal resolution | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `LATER_STEP_RUNTIME` (`ANY-504` Steps 7-8) |
@@ -532,8 +524,11 @@ without becoming either.
 The typed accepted snapshot pins exact external component references, the
 mapping revision, Kernel `product_id`/`metric_key` bindings, fixed accepted
 integer quantities, the material commercial fingerprint, and the exact legal
-acceptance/document-version evidence finalized by Step 3. Copying a legacy
-generic or `Plan.id`-bound consent after the fact is insufficient. Business
+acceptance/document-version evidence finalized by Step 3. The referenced event
+must contain all required versioned document acceptances created atomically
+from the authoritative offer/fingerprint. A registration or generic legal event
+has a NULL commercial triplet and cannot satisfy the purchase FK. Copying a
+legacy generic or `Plan.id`-bound consent after the fact is insufficient. Business
 serialization uses `billing_product_access_scopes(user_id, product_id)`. The
 semantic idempotency identity is exactly
 `(external_billing_account_id, user_id, client_idempotency_key)`: one key names
@@ -543,11 +538,10 @@ same flow; reuse of that identity with different immutable request semantics is
 an idempotency conflict rather than a new purchase. Step 4 installs the unique
 constraint; Step 7 owns request comparison and the transport/runtime result.
 Rows and accepted evidence are retained for recovery and commercial/legal
-audit; accepted fields never rebind or mutate. The accepted legal-evidence
-binding is mandatory semantically, but Step 3 alone decides its final columns,
-FK target/cardinality, and nullability. Step 4 must implement that result
-without adding another target table, weakening append-only evidence, or
-permitting an accepted purchase to become unbound.
+audit; accepted fields never rebind or mutate. Step 4 must implement the exact
+non-null composite event FK above without adding another target table,
+weakening append-only evidence, or permitting an accepted purchase to become
+unbound.
 
 Step 4 also installs composite alternate keys
 `UNIQUE(purchase_intent_id, customer_id)` and
@@ -905,19 +899,18 @@ the first material paid-access transition.
 | Field | Storage; null/default | Key / FK delete behavior | Constraint or index | Mutability | Evidence | Gate / owner |
 | --- | --- | --- | --- | --- | --- | --- |
 | `paid_access_state_id` | UUID; not null | PK | Unique row identity | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
-| `tenant_id` | Logical text scope value; explicit-column nullability is the Step-3/4 handoff | Canonical user/contour scope | Part of required semantic uniqueness | Immutable scope | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` after `ANY-504` Step 3 fixes physical representation |
-| `region` | Logical text scope value; explicit-column nullability is the Step-3/4 handoff | Canonical user/contour scope | Part of required semantic uniqueness | Immutable scope | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` after `ANY-504` Step 3 fixes physical representation |
-| `user_id` | UUID; not null | FK to the Step-3 canonical Portal user; `RESTRICT` | With the finalized tenant/region representation, one row per semantic scope | Immutable scope | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` after `ANY-504` Step 3 fixes FK/unique shape |
+| `tenant_id` | text; not null | Part of composite canonical-user FK | `UNIQUE(tenant_id, region, user_id)` | Immutable scope | `ACCEPTED_ARCHITECTURE_REQUIREMENT`, resolved Step-3 handoff | `STEP_4_SAFE` |
+| `region` | text; not null | Part of composite canonical-user FK | `UNIQUE(tenant_id, region, user_id)` | Immutable scope | `ACCEPTED_ARCHITECTURE_REQUIREMENT`, resolved Step-3 handoff | `STEP_4_SAFE` |
+| `user_id` | UUID; not null | Composite FK `(user_id, tenant_id, region)` to `users(id, tenant_id, region)`; `RESTRICT` | `UNIQUE(tenant_id, region, user_id)` | Immutable scope | `ACCEPTED_ARCHITECTURE_REQUIREMENT`, resolved Step-3 handoff | `STEP_4_SAFE` |
 | `access_revision` | bigint; not null | Scope-local revision | `access_revision > 0`; monotonic | Incremented only with semantic document change | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `LATER_STEP_RUNTIME` (`ANY-504` Step 9) |
 | `effective_state_schema_version` | text; not null | - | Non-empty | Updated only with semantic document change | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `LATER_STEP_RUNTIME` (`ANY-504` Step 9) |
 | `effective_state_document` | jsonb; not null | - | Whole typed provider-neutral document validated against schema version | Updated atomically with revision and outbox | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `LATER_STEP_RUNTIME` (`ANY-504` Steps 9-10) |
 | `committed_at` | timestamptz; not null | - | - | Updated with semantic commit | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `LATER_STEP_RUNTIME` (`ANY-504` Step 9) |
 
-The only intentionally delegated physical decision in the target billing model
-is whether `tenant_id` and `region` are columns here or are losslessly implied
-by the canonical Step-3 user/contour key. Step 4 must install a PK/FK/unique
-shape that serializes exactly `(tenant_id, region, canonical Portal user_id)`
-and use the identical shape in `access_invalidation_outbox` and AccessSnapshot.
+The Step-3 handoff resolved the physical scope: Step 4 installs explicit,
+non-null `tenant_id`, `region`, and canonical Portal `user_id`, the composite
+restrictive FK and semantic uniqueness shown above, and the identical scope in
+`access_invalidation_outbox` and AccessSnapshot.
 The effective document contains no provider IDs or statuses. Every semantic
 grant/allowance change updates the document, increments revision, and upserts
 the outbox in one transaction. GET/read paths never create or mutate this row.
@@ -935,8 +928,8 @@ document. The user row is the stable lock anchor even when the access-state row
 does not yet exist; locking it is intentionally slightly broader than locking
 one product because the stored snapshot is the complete effective state across
 independent products for that user scope. The final one-contour Step-3 mapping
-must provide an existing canonical user-row anchor deterministically identified
-by every semantic access scope. Step 4 installs the persistence structure and
+provides an existing canonical user-row anchor deterministically identified by
+every semantic access scope. Step 4 installs the persistence structure and
 constraints needed to support this protocol; Step 9 implements the runtime
 paid-access writer and serialization behavior. Sharing an anchor may serialize
 more work but cannot weaken safety.
@@ -1054,9 +1047,9 @@ state. `paid_access_states` owns the semantic revision being notified.
 | Field | Storage; null/default | Key / FK delete behavior | Constraint or index | Mutability | Evidence | Gate / owner |
 | --- | --- | --- | --- | --- | --- | --- |
 | `outbox_id` | UUID; not null | PK | Unique row identity | Immutable | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` |
-| `tenant_id` | Logical text scope value; explicit-column nullability is the Step-3/4 handoff | Canonical user/contour scope | Part of required semantic uniqueness | Immutable scope | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` after `ANY-504` Step 3 fixes physical representation |
-| `region` | Logical text scope value; explicit-column nullability is the Step-3/4 handoff | Canonical user/contour scope | Part of required semantic uniqueness | Immutable scope | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` after `ANY-504` Step 3 fixes physical representation |
-| `user_id` | UUID; not null | Same canonical user FK/delete rule as `paid_access_states` | `UNIQUE` on the finalized semantic tenant/region/user scope | Immutable scope | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` after `ANY-504` Step 3 fixes FK/unique shape |
+| `tenant_id` | text; not null | Part of composite canonical-user FK | `UNIQUE(tenant_id, region, user_id)` | Immutable scope | `ACCEPTED_ARCHITECTURE_REQUIREMENT`, resolved Step-3 handoff | `STEP_4_SAFE` |
+| `region` | text; not null | Part of composite canonical-user FK | `UNIQUE(tenant_id, region, user_id)` | Immutable scope | `ACCEPTED_ARCHITECTURE_REQUIREMENT`, resolved Step-3 handoff | `STEP_4_SAFE` |
+| `user_id` | UUID; not null | Composite FK `(user_id, tenant_id, region)` to `users(id, tenant_id, region)`; `RESTRICT` | `UNIQUE(tenant_id, region, user_id)` | Immutable scope | `ACCEPTED_ARCHITECTURE_REQUIREMENT`, resolved Step-3 handoff | `STEP_4_SAFE` |
 | `pending_revision` | bigint; not null | Scope-local revision | `> 0`; `pending_revision >= delivered_revision` | Monotonic maximum only | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `STEP_4_SAFE` constraints; production/delivery are `LATER_STEP_RUNTIME` (`ANY-504` Steps 9-10) |
 | `delivered_revision` | bigint; not null, default `0` | Scope-local acknowledgement | `>= 0`; never beyond revision actually sent | Monotonic only | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `LATER_STEP_RUNTIME` (`ANY-504` Step 10) |
 | `attempt_count` | integer; not null, default `0` | - | `>= 0` | Reset/increment only by delivery transition | `ACCEPTED_ARCHITECTURE_REQUIREMENT` | `LATER_STEP_RUNTIME` (`ANY-504` Step 10) |
@@ -1161,7 +1154,7 @@ must not alter the accepted authority boundaries or silently recreate
 Portal-owned catalog, order, payment/refund, provider-account, or authoritative
 remaining-quota semantics.
 
-Runtime ownership is fixed as follows: Step 3 finalizes identity/session/legal
+Runtime ownership is fixed as follows: Step 3 finalized identity/session/legal
 and the legal-acceptance FK; Step 4 creates the clean physical baseline and
 only `STEP_4_SAFE` constraints; Step 5 closes provider evidence; Step 6 owns
 manifest/catalog import and mapping publication; Step 7 owns purchase,
@@ -1209,11 +1202,16 @@ When the premise remains true, Step 4 must apply this contract:
    Portal-owned access state, not a target paid-access or compatibility path.
 4. Install the retained Step-3 identity/session/legal model and the 15 target
    tables in this document, with only `STEP_4_SAFE` constraints and the
-   explicitly approved safe slots for later-owned semantics.
+   explicitly approved safe slots for later-owned semantics. Recreate the
+   PostgreSQL-only legal protections in the Step-3 handoff: immutable core
+   `legal_acceptance_events` with ancillary IP/user-agent clear-only behavior,
+   unconditional UPDATE/DELETE rejection for `document_acceptances`, and
+   immutability of material `document_versions` fields while allowing the
+   active-version lifecycle selector to change.
 5. Treat revisions `20260707_0001` through `20260826_0005` only as the
    researched baseline. Replace the **entire pre-reset Alembic history present
-   when Step 4 starts**, including any Step-3 identity/session/legal revisions,
-   with one fresh first-install baseline and one Alembic head.
+   when Step 4 starts**, including Step-3 revisions `20260921_0006` and
+   `20260921_0007`, with one fresh first-install baseline and one Alembic head.
 6. Do not build a data-preserving forward business migration, dual write,
    legacy backfill, old/new coexistence layer, or billing compatibility layer
    while the no-production premise holds. Recreate development, test, and
@@ -1269,41 +1267,33 @@ surfaces are introduced only by their named later owners. Step 4 must not hide
 their runtime implementation inside the reset merely because their storage
 exists.
 
-## `ANY-504` Step 3 to Step 4 handoff checklist
+## Resolved `ANY-504` Step 3 to Step 4 handoff
 
-Before schema implementation, Step 4 must complete every item:
+The identity/session/legal questions delegated to Step 3 are resolved in the
+[Portal Identity, Session, and Legal Baseline](portal-identity-session-legal-baseline.md):
 
-- [ ] Re-read only the retained identity/session/legal rows affected by the
-  merged Step-3 change and update their physical details in the current-table
-  disposition matrix; do not reopen unaffected target-billing decisions.
-- [ ] Confirm the retained append-only acceptance evidence directly binds the
-  exact accepted commercial fingerprint or offer to the complete required set
-  of versioned legal documents. A copied generic acceptance or legacy
-  `Plan.id`-bound recurring consent is insufficient.
-- [ ] Decide whether `entrypoint_sessions` retains a provider-independent
-  identity/legal/origin role and remove all Product/Bundle authority from any
-  retained shape.
-- [ ] Confirm the final one-contour registration, user, session, region, and
-  country bootstrap behavior. Step 4 must not remove the old `eu`/DE/ES seeds
-  while Step-3-approved identity tests still require `ru`+`eu` seed or
-  cross-contour registration behavior.
-- [ ] Resolve only the physical representation of the already-locked semantic
-  paid-access scope `(tenant_id, region, canonical Portal user_id)`: explicit
-  `tenant_id`/`region` columns or lossless derivation through the final canonical
-  user/contour key.
-- [ ] Apply exactly that same physical scope and serialization to
-  `paid_access_states`, `access_invalidation_outbox`, and the future
-  AccessSnapshot contract, including compatible FKs and uniqueness.
-- [ ] Confirm Step 3 found no separate provider-independent obligation for the
-  old Portal trial lifecycle. If it did, stop and report the material
-  contradiction instead of preserving the billing model implicitly.
-- [ ] Confirm direct-CloudPayments work such as `ANY-168` is canceled,
-  superseded, or otherwise non-executable before Step 4 begins.
+- the retained table shapes, composite scope FKs, immutable legal-version
+  semantics, atomic registration mapping/hashes, event/document evidence, and
+  PostgreSQL-only triggers are fixed;
+- a purchase uses non-null `legal_acceptance_event_id` plus the exact composite
+  FK to the same user, configured billing account, offer, and commercial
+  fingerprint; a purchase-compatible event contains the complete required
+  versioned document set;
+- `entrypoint_sessions` has no retained provider-independent role and is
+  removed without replacement;
+- instance settings are authoritative for one-contour public behavior, so the
+  RU clean baseline removes foreign `eu`/DE/ES seed rows;
+- `paid_access_states`, `access_invalidation_outbox`, and AccessSnapshot use
+  explicit non-null `(tenant_id, region, user_id)` scope, both tables have the
+  composite restrictive FK to `users(id, tenant_id, region)` and one row per
+  semantic scope, and the canonical user is the later writer lock anchor; and
+- retained identity/session/legal/recovery has no dependency on the old Portal
+  trial lifecycle.
 
-Step 3 may refine these retained physical details without invalidating the
-target billing design. It may not reopen External Billing ownership, the 15
-target table boundaries, provider-neutral invariants, or Phase 0 gates without
-a concrete contradiction.
+The separate roadmap prerequisite remains: direct-CloudPayments work such as
+`ANY-168` must be canceled, superseded, or otherwise non-executable before
+Step 4 begins. These resolved details do not reopen External Billing ownership,
+the 15 target table boundaries, provider-neutral invariants, or Phase 0 gates.
 
 ## Security, audit, and retention rules
 
@@ -1406,13 +1396,13 @@ to `ANY-504` Step 4 and the later step that owns the behavior.
 
 - [ ] The no-production premise has been revalidated immediately before work;
   otherwise Step 4 is stopped for a new approved cutover design.
-- [ ] The Step-3 identity/session/legal handoff checklist is complete, and its
+- [x] The Step-3 identity/session/legal handoff checklist is complete, and its
   affected retention-matrix rows reflect the final physical repository state.
-- [ ] Exact commercial/legal acceptance binding and the disposition of
+- [x] Exact commercial/legal acceptance binding and the disposition of
   `entrypoint_sessions` are known from Step 3.
-- [ ] One-contour identity/bootstrap tests no longer require the obsolete
+- [x] One-contour identity/bootstrap tests no longer require the obsolete
   `ru`+`eu` seed/registration behavior before foreign-contour rows are removed.
-- [ ] The physical `(tenant_id, region, user_id)` representation is fixed and
+- [x] The physical `(tenant_id, region, user_id)` representation is fixed and
   identical for paid access, invalidation, and future AccessSnapshot scope.
 - [ ] `ANY-168`/direct-CloudPayments work is non-executable; `ANY-79`,
   `ANY-286`, and `ANY-287` are reserved for Step-10 rewrite/supersession; the
@@ -1424,6 +1414,6 @@ to `ANY-504` Step 4 and the later step that owns the behavior.
 - [ ] Every target field/constraint is classified as `STEP_4_SAFE`,
   `PHASE_0_GATED`, or `LATER_STEP_RUNTIME`, with no unowned provider-independent
   design question.
-- [ ] Remaining unknowns are limited to Step-3 physical refinements captured by
-  this checklist, the named Phase 0 evidence gates, or named later-runtime
-  behavior. None authorizes Step 4 to invent a new target rule.
+- [x] Step-3 physical identity/session/legal refinements are resolved. Remaining
+  unknowns are limited to the named Phase 0 evidence gates or named later-runtime
+  behavior; none authorizes Step 4 to invent a new target rule.

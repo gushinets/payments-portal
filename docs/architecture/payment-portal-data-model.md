@@ -1,8 +1,8 @@
 # Payment Portal Data Model and Backend Invariants
 
 Status: authoritative current-state schema reference; not target external-billing persistence design
-Version: 0.7
-Last verified against code: 2026-09-04
+Version: 0.8
+Last verified against code: 2026-09-22
 Historical implementation expansion owner: Linear ANY-71
 
 > **CURRENT-STATE SCHEMA REFERENCE — NOT TARGET PERSISTENCE DESIGN**
@@ -81,7 +81,8 @@ Browser routing to another contour is defined in
 | `country_region_rules` | Implemented | Country-to-region policy data |
 | `legal_entities` | Implemented | Seller/operator identity per region |
 | `document_versions` | Implemented | Versioned legal document metadata |
-| `document_acceptances` | Implemented | Append-only acceptance evidence |
+| `legal_acceptance_events` | Implemented | Immutable canonical-user acceptance action and optional complete commercial binding |
+| `document_acceptances` | Implemented | Append-only exact document-version evidence belonging to an acceptance event |
 | `users` | Implemented | Regional user identity |
 | `auth_sessions` | Implemented | Hashed login sessions |
 | `magic_link_tokens` | Implemented | Hash-only password-reset token storage |
@@ -150,25 +151,29 @@ table missing from the table above is a documentation-check failure.
 ### Contour configuration
 
 `regions.code` is the contour key. Identity, legal, billing, and access records
-carry that contour. `country_region_rules` lists countries that belong to the
-**local** contour: market enablement, override policy, document set, and default
-provider. The default-provider fields configure the current Portal-managed
-direct-provider flow; they do not define a universal external-billing model.
+carry that contour. Required settings `INSTANCE_TENANT_ID` and
+`INSTANCE_REGION` are the implemented server authority for public identity,
+session, recovery, and legal operations. `country_region_rules` lists countries
+that belong to the **local** contour: market enablement, override policy,
+document set, and default provider. The override/provider fields remain
+transitional direct-provider schema; `ANY-504` Step 4 removes
+`allow_region_override` and `default_payment_provider` from the clean retained
+shape.
 
-The implemented product is the `ru` contour. The first-install seed also inserts
-an `eu` region and DE/ES country rules into the same database. That seed is not
-permission for a `ru` instance to serve Europe. `us` is not in the schema.
-See [contours](contours.md).
+The implemented product is the `ru` contour. The pre-reset first-install seed
+also inserts an `eu` region and DE/ES country rules into the same database.
+That seed is not runtime authority or permission for a `ru` instance to serve
+Europe. Step 4 removes those foreign rows from the clean RU bootstrap. `us` is
+not in the schema. See [contours](contours.md).
 
 Region Resolver, not this database, owns the map of deployed contours and their
 base URLs, plus the public ISO country-to-contour map. `region_mismatch` means
 this instance cannot serve the request: send the browser through the resolver.
 Do not write another contour's user or order into this data plane.
 
-Current registration and login accept a client-supplied `region`, and the
-first-install migration seeds both `ru` and `eu`. These are known gaps against
-the target one-contour-per-instance invariant. A future instance-contour setting
-must reject foreign regions before another contour is enabled.
+Registration, login, password reset, and legal discovery use the configured
+instance tenant/region. Extra client fields may be ignored by established
+request parsing, but cannot select a foreign user or legal pack.
 
 ### Identity
 
@@ -176,15 +181,29 @@ must reject foreign regions before another contour is enabled.
 
 ```text
 unique(tenant_id, region, email_normalized)
+unique(id, tenant_id, region)
 ```
 
+The UUID is canonical identity and is never reassigned or reused. The current
+`UserStatus` vocabulary is active-only, and authentication/recovery queries
+explicitly require that status. Application code does not hard-delete users;
+restrictive scope FKs prevent referenced users from being deleted. Future PII
+erasure is distinct from identity deletion and must preserve UUID/referential
+integrity unless separately approved policy says otherwise.
+
 Raw session tokens are returned to the client once and stored only as SHA-256
-hashes in `auth_sessions`. Sessions have expiry and revocation timestamps.
+hashes in `auth_sessions`. Sessions use a 30-day TTL and a composite restrictive
+FK to the exact canonical user scope. Normal logout deletes only the selected
+session, while password-reset security invalidation retains rows and sets
+`revoked_at`.
 Password-reset tokens are emailed once and stored only as SHA-256 hashes in
-`magic_link_tokens`. Reset confirmation consumes outstanding reset tokens for
-that user and revokes active sessions. For the implemented `ru` contour,
-password-reset request scope is derived server-side rather than accepted from
-unauthenticated clients.
+`magic_link_tokens`. Known-user tokens bind `user_id` plus tenant/region;
+unknown-email decoys keep `user_id=NULL`. Reset confirmation claims the token,
+resolves the exact active canonical user, consumes outstanding reset tokens for
+that user, and revokes active sessions in the password-change transaction.
+`MagicLinkToken` has no entrypoint-session binding. For the implemented `ru`
+contour, password-reset request scope is derived server-side rather than
+accepted from unauthenticated clients.
 Password-reset request throttling is stored in `password_reset_rate_limits` so
 limits are shared across API workers. Counters are keyed by account or IP scope
 and expire after their current window. Expired password-reset token rows are
@@ -200,6 +219,11 @@ tenant_id + region + doc_type + version
 
 Only one version per `tenant_id + region + doc_type` may be active. Its
 `content_hash` is the SHA-256 hash of the canonical normalized Markdown body.
+Published material and identity fields are immutable for the same version;
+`is_active` is the intentional lifecycle selector. `LegalEntity` remains
+mutable current operator metadata, while the exact immutable document version
+and hash are historical acceptance truth. See the
+[Portal identity/session/legal baseline](portal-identity-session-legal-baseline.md).
 
 The current schema therefore supports one active legal pack per contour.
 `country_region_rules.default_document_set` is configuration vocabulary, not a
@@ -209,10 +233,30 @@ a document-set dimension and defined relationships to country rules, document
 versions, acceptances, generation, and rendering. This document does not assign
 current ownership of that future product decision.
 
-`document_acceptances` is append-only. It snapshots type, version, acceptance
-kind, acceptance text hash, time, source, and relevant entrypoint context. A new
-document version requires a new acceptance. Revocation, when implemented, must
-be a separate append-only record rather than mutation of acceptance history.
+`legal_acceptance_events` is the parent action record. It binds the exact
+canonical user/scope and canonical `accepted_at`; its external-billing account,
+offer, and commercial-fingerprint fields are either all NULL or all non-empty.
+Core event evidence is immutable. IP and user agent are ancillary and may only
+be cleared, not replaced.
+
+`document_acceptances` is append-only exact document-version evidence under an
+event, with at most one row per event/document version. It snapshots type,
+version, acceptance kind, acceptance text hash, time, source, and relevant
+entrypoint context in the current transitional schema. A new document version
+requires a new acceptance. Registration atomically persists one non-commercial
+event plus the active `privacy`, `pd_consent`, and `offer` version acceptances
+with the user and initial session. Generic successful acceptance calls remain
+separate append-only actions rather than being deduplicated.
+
+The clean Step-4 retained acceptance row keeps only `id`, event ID, tenant,
+region, non-null user ID, document-version ID, acceptance kind, acceptance-text
+hash, and `created_at`. Current `guest_id`, entrypoint/source fields, arbitrary
+metadata including legacy `plan_id`, duplicated type/version, and duplicated
+per-document time/IP/user-agent remain only until Step 4 removes legacy
+checkout. The PostgreSQL triggers that protect event evidence, append-only
+acceptances, and immutable document material are implemented by the
+transitional legal-evidence migration and must be recreated in the clean
+baseline rather than lost with the old migration chain.
 
 ### Checkout and orders
 
@@ -596,18 +640,26 @@ expose provider references, payment IDs, webhook IDs, or raw audit payloads.
 
 ## 8. Migration and seed rules
 
-- The corrected initial migration defines the schema baseline.
-- After it is frozen, use forward Alembic revisions.
+- The current pre-reset schema is the corrected initial migration plus forward
+  revisions, including the identity-scope and legal-evidence revisions.
+- `ANY-504` Step 4 conditionally replaces the complete then-current history
+  with one clean first-install baseline after consuming the
+  [identity/session/legal handoff](portal-identity-session-legal-baseline.md).
+  The forward revisions are transitional upgrade history, not a mechanical
+  template; the clean baseline must recreate their retained composite keys and
+  PostgreSQL-only legal immutability/append-only triggers.
+- After that clean baseline is frozen, use ordinary forward Alembic revisions.
 - Do not use PostgreSQL enums for evolving provider/domain statuses.
 - Use JSONB for redacted provider payloads and INET for IP data.
-- Do not add `updated_at` to append-only acceptance, subscription-event, or
-  webhook-inbox records.
+- Do not add `updated_at` to immutable acceptance events or append-only
+  document-acceptance, subscription-event, or webhook-inbox records.
 - Do not recreate or expand `product_access_states`; ANY-78 is a clean-baseline
   implementation with no legacy data backfill because deployment has not
   occurred.
 - Never place secrets in migrations, seed data, or database configuration rows.
-- Versioned legal source and its generated manifest must match the first-install
-  seed exactly.
+- Versioned legal source and its generated manifest must match legal bootstrap
+  exactly. The clean RU bootstrap contains only its configured contour and
+  local country membership.
 
 ## 9. Historical ANY-71 unresolved-product context
 

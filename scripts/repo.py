@@ -1399,6 +1399,8 @@ def _retained_identity_boundary_names(tree: ast.AST) -> list[tuple[int, str]]:
             names.add((node.lineno, node.id))
         elif isinstance(node, ast.Attribute):
             names.add((node.lineno, node.attr))
+        elif isinstance(node, ast.alias):
+            names.add((node.lineno, node.asname or node.name.rsplit(".", 1)[-1]))
         elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             names.add((node.lineno, node.name))
         elif isinstance(node, ast.arg):
