@@ -7,7 +7,7 @@
 | Program | `ANY-504` — LBX / External Billing Architecture program |
 | Program step | ANY-504 Step 3 — Stabilize Portal User Identity, Session & Provider-Independent Test Baseline |
 | Ticket | `ANY-510` |
-| Overall status | `todo` |
+| Overall status | `done` |
 | Execution order | Sequential only: Implementation Step 1 → manual verification → commit → Implementation Step 2 → ... → Implementation Step 6 |
 | Implementation steps / proposed commits | 6 |
 | Predecessor | `ANY-509` / PR `#117` |
@@ -301,7 +301,7 @@ Do not implement any of the following in `ANY-510`:
 
 # Implementation Step 1 — Make tenant and contour scope server-authoritative
 
-**Status:** `todo`
+**Status:** `done`
 
 **Goal**  
 Remove client authority over Portal tenant/contour selection and establish one explicit deployment-owned identity scope without changing the existing successful auth response shape or pulling ANY-504 Step-4 commerce cleanup into this ticket.
@@ -428,7 +428,7 @@ pytest apps/api/tests/test_deployment_contract.py
 
 # Implementation Step 2 — Harden canonical identity, sessions, and password-reset persistence
 
-**Status:** `todo`
+**Status:** `done`
 
 **Goal**  
 Make canonical-user/session/recovery scope structurally consistent, preserve the explicit normal-logout vs security-revocation distinction, and bind known password-reset tokens to `users.id` without changing password-reset anti-enumeration behavior.
@@ -573,7 +573,7 @@ make test_db_stop
 
 # Implementation Step 3 — Add immutable legal acceptance events and legal scope integrity
 
-**Status:** `todo`
+**Status:** `done`
 
 **Goal**  
 Create the retained provider-independent legal evidence anchor required by the `ANY-509` purchase handoff, make legal/user scope relationally consistent, and stop same-version legal seeding from rewriting historical meaning.
@@ -742,7 +742,7 @@ make test_db_stop
 
 # Implementation Step 4 — Make registration atomically persist mandatory legal evidence
 
-**Status:** `todo`
+**Status:** `done`
 
 **Goal**  
 Make successful registration produce one coherent canonical user, durable required legal evidence, and initial session in one transaction, including deterministic concurrent-duplicate behavior.
@@ -886,7 +886,7 @@ make test_db_stop
 
 # Implementation Step 5 — Add provider-independent identity/legal architecture guards and survivor regressions
 
-**Status:** `todo`
+**Status:** `done`
 
 **Goal**  
 Turn the ANY-504 Step-3 identity/legal decisions into focused regressions that can survive ANY-504 Step-4 legacy commerce removal and prevent the retained identity/legal boundary from reintroducing PII/provider/entrypoint/trial authority. Do not add speculative tests for an allocator that does not exist until ANY-504 Step 7.
@@ -999,7 +999,7 @@ npm run architecture:check
 
 # Implementation Step 6 — Freeze the ANY-504 Step 3 → Step 4 handoff and run final verification manually
 
-**Status:** `todo`
+**Status:** `done`
 
 **Goal**  
 Record the final as-built identity/session/legal contract and exact ANY-504 Step-4 cleanup/install instructions so ANY-504 Step 4 can build the clean target schema without reopening Step-3 architecture.
