@@ -518,10 +518,7 @@ def test_document_version_material_is_immutable_but_active_selection_may_change(
     db_session.commit()
 
     assert (
-        db_session.query(DocumentAcceptance)
-        .filter(DocumentAcceptance.document_version_id == document_id)
-        .count()
-        == 0
+        db_session.query(DocumentAcceptance).filter(DocumentAcceptance.document_version_id == document_id).count() == 0
     )
 
     db_session.execute(
