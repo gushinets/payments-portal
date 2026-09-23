@@ -63,7 +63,7 @@ class User(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(uuid_type, primary_key=True, default=uuid.uuid4)
-    tenant_id: Mapped[str] = mapped_column(Text, nullable=False, default="anytoolai", index=True)
+    tenant_id: Mapped[str] = mapped_column(Text, nullable=False, index=True)
     region: Mapped[str] = mapped_column(ForeignKey("regions.code"), nullable=False, index=True)
     email: Mapped[str] = mapped_column(String(320), nullable=False)
     email_normalized: Mapped[str] = mapped_column(String(320), nullable=False, index=True)
@@ -95,7 +95,7 @@ class AuthSession(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(uuid_type, primary_key=True, default=uuid.uuid4)
-    tenant_id: Mapped[str] = mapped_column(Text, nullable=False, default="anytoolai", index=True)
+    tenant_id: Mapped[str] = mapped_column(Text, nullable=False, index=True)
     region: Mapped[str] = mapped_column(ForeignKey("regions.code"), nullable=False, index=True)
     user_id: Mapped[uuid.UUID] = mapped_column(uuid_type, nullable=False, index=True)
     token_hash: Mapped[str] = mapped_column(Text, nullable=False, unique=True, index=True)
@@ -119,7 +119,7 @@ class MagicLinkToken(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(uuid_type, primary_key=True, default=uuid.uuid4)
-    tenant_id: Mapped[str] = mapped_column(Text, nullable=False, default="anytoolai", index=True)
+    tenant_id: Mapped[str] = mapped_column(Text, nullable=False, index=True)
     region: Mapped[str] = mapped_column(ForeignKey("regions.code"), nullable=False, index=True)
     user_id: Mapped[uuid.UUID | None] = mapped_column(uuid_type, nullable=True, index=True)
     email_normalized: Mapped[str] = mapped_column(String(320), nullable=False, index=True)

@@ -15,7 +15,15 @@ from app.http_dependencies import get_raw_request_body
 from app.integrations.cloudpayments.adapter import CloudPaymentsAdapter
 from app.integrations.cloudpayments.router import router as cloudpayments_router
 from app.main import app
-from app.models import MagicLinkToken
+from app.models import (
+    AuthSession,
+    DocumentAcceptance,
+    DocumentVersion,
+    LegalAcceptanceEvent,
+    LegalEntity,
+    MagicLinkToken,
+    User,
+)
 from scripts.repo import (
     check_persistence_transaction_ownership,
     check_python_boundaries,
@@ -942,6 +950,20 @@ def test_identity_legal_allows_portal_email_as_local_user_attribute(
 
 def test_magic_link_token_has_no_entrypoint_session_binding() -> None:
     assert "entrypoint_session_id" not in MagicLinkToken.__table__.c
+
+
+def test_identity_and_legal_models_require_explicit_tenant_scope() -> None:
+    tenant_scoped_models = (
+        User,
+        AuthSession,
+        MagicLinkToken,
+        LegalEntity,
+        DocumentVersion,
+        LegalAcceptanceEvent,
+        DocumentAcceptance,
+    )
+
+    assert all(model.__table__.c.tenant_id.default is None for model in tenant_scoped_models)
 
 
 def test_legacy_auth_module_reexports_session_contract() -> None:

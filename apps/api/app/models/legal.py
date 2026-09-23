@@ -32,7 +32,7 @@ class LegalEntity(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(uuid_type, primary_key=True, default=uuid.uuid4)
-    tenant_id: Mapped[str] = mapped_column(Text, nullable=False, default="anytoolai", index=True)
+    tenant_id: Mapped[str] = mapped_column(Text, nullable=False, index=True)
     region: Mapped[str] = mapped_column(ForeignKey("regions.code"), nullable=False, index=True)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     entity_type: Mapped[LegalEntityType] = mapped_column(PersistedEnumType(LegalEntityType), nullable=False)
@@ -87,7 +87,7 @@ class DocumentVersion(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(uuid_type, primary_key=True, default=uuid.uuid4)
-    tenant_id: Mapped[str] = mapped_column(Text, nullable=False, default="anytoolai", index=True)
+    tenant_id: Mapped[str] = mapped_column(Text, nullable=False, index=True)
     region: Mapped[str] = mapped_column(ForeignKey("regions.code"), nullable=False, index=True)
     legal_entity_id: Mapped[uuid.UUID] = mapped_column(uuid_type, nullable=False, index=True)
     doc_type: Mapped[str] = mapped_column(Text, nullable=False, index=True)
@@ -147,7 +147,7 @@ class LegalAcceptanceEvent(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(uuid_type, primary_key=True, default=uuid.uuid4)
-    tenant_id: Mapped[str] = mapped_column(Text, nullable=False, default="anytoolai", index=True)
+    tenant_id: Mapped[str] = mapped_column(Text, nullable=False, index=True)
     region: Mapped[str] = mapped_column(ForeignKey("regions.code"), nullable=False, index=True)
     user_id: Mapped[uuid.UUID] = mapped_column(uuid_type, nullable=False, index=True)
     external_billing_account_id: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -207,7 +207,7 @@ class DocumentAcceptance(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(uuid_type, primary_key=True, default=uuid.uuid4)
     legal_acceptance_event_id: Mapped[uuid.UUID] = mapped_column(uuid_type, nullable=False, index=True)
-    tenant_id: Mapped[str] = mapped_column(Text, nullable=False, default="anytoolai", index=True)
+    tenant_id: Mapped[str] = mapped_column(Text, nullable=False, index=True)
     region: Mapped[str] = mapped_column(ForeignKey("regions.code"), nullable=False, index=True)
     user_id: Mapped[uuid.UUID] = mapped_column(uuid_type, nullable=False, index=True)
     guest_id: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)

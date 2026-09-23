@@ -27,7 +27,18 @@ EXPECTED_REVISION_CHAIN = [
     "20260826_0005",
     "20260921_0006",
     "20260921_0007",
+    "20260923_0008",
 ]
+
+IDENTITY_LEGAL_TENANT_TABLES = (
+    "users",
+    "auth_sessions",
+    "magic_link_tokens",
+    "legal_entities",
+    "document_versions",
+    "legal_acceptance_events",
+    "document_acceptances",
+)
 
 pytestmark = pytest.mark.postgres
 
@@ -147,6 +158,11 @@ def seeded_catalog_ids(postgres_engine: Engine) -> dict[str, str]:
 
 def assert_postgres_schema_contract(postgres_engine: Engine) -> None:
     inspector = inspect(postgres_engine)
+    for table_name in IDENTITY_LEGAL_TENANT_TABLES:
+        columns = {column["name"]: column for column in inspector.get_columns(table_name)}
+        assert columns["tenant_id"]["nullable"] is False
+        assert columns["tenant_id"]["default"] is None
+
     user_unique_constraints = {
         constraint["name"]: tuple(constraint["column_names"])
         for constraint in inspector.get_unique_constraints("users")
