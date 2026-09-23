@@ -119,7 +119,7 @@ ANY-510 must leave the survivor boundary explicit so ANY-504 Step 4 does not hav
 
 - Add required deployment settings `INSTANCE_TENANT_ID` and `INSTANCE_REGION` (`Settings.instance_tenant_id` / `Settings.instance_region`).
 - local development/test examples use explicit `anytoolai` / `ru` values; production Compose requires explicit values rather than silently selecting a production contour.
-- registration, login, password reset, required-document discovery, authenticated sessions, and later legal writes derive scope from these settings or the authenticated user; caller-supplied `tenant_id` / `region` is not data-plane authority.
+- registration, login, password reset, required-document discovery, authenticated sessions, and later legal writes derive scope from these settings or the authenticated user; bearer-session authentication and reset-token confirmation reject persisted foreign-contour scope before mutation; caller-supplied `tenant_id` / `region` is not data-plane authority.
 - existing unknown request/query fields may remain ignored by the current Pydantic/FastAPI boundary where that is the established behavior; the important invariant is that supplied foreign values cannot select foreign data.
 - response identity may continue returning `tenant_id` and `region` as descriptive server-derived identity scope.
 
@@ -127,7 +127,7 @@ ANY-510 must leave the survivor boundary explicit so ANY-504 Step 4 does not hav
 
 - Session secret generation and hashing stay provider-independent: random opaque token, SHA-256 hash at rest, 30-day TTL unless an existing policy changes separately.
 - only the token hash is persisted.
-- an auth session is valid only when the row exists, is unrevoked, is unexpired, belongs structurally to the same canonical active user/scope, and that user still resolves as active.
+- an auth session is valid only when the row exists, is unrevoked, is unexpired, belongs to the configured instance tenant/region, belongs structurally to the same canonical active user/scope, and that user still resolves as active.
 - preserve the existing distinction instead of inventing a new retention requirement: **normal user logout deletes that one session row**, while **security-driven invalidation** (currently password reset) sets `revoked_at` on affected active sessions so the security transition is durable.
 - first logout succeeds; replay of the deleted bearer token is rejected by ordinary authentication with `invalid_session`/401. A second authenticated logout using that token cannot reach the logout transition because authentication already fails.
 - password reset revokes all currently active sessions for the canonical user in the same transaction as password replacement and reset-token consumption.
@@ -137,7 +137,7 @@ ANY-510 must leave the survivor boundary explicit so ANY-504 Step 4 does not hav
 
 - known-user reset tokens are durably bound to canonical `users.id` in addition to the existing scoped email snapshot used for delivery/abuse protection.
 - unknown-email decoy reset tokens keep `user_id=NULL`, preserving indistinguishable external behavior without inventing a fake user.
-- reset confirmation resolves a known target by token-bound `user_id` and verifies active user/scope rather than treating mutable email as canonical identity.
+- reset confirmation atomically claims only a token in the configured instance tenant/region, then resolves a known target by token-bound `user_id` in that configured scope rather than treating mutable email or token-carried foreign scope as authority.
 - stored token secrets remain hashed; raw reset tokens are never persisted or logged.
 - rate limits remain server-scoped and continue to avoid account enumeration.
 - `MagicLinkToken.entrypoint_session_id` is removed from the retained identity/recovery shape because password reset has no provider-independent entrypoint-session requirement.
@@ -1253,12 +1253,12 @@ If `npm run test:api` already executes the PostgreSQL partition in the current r
 After all six steps:
 
 1. Portal identity, session, password-reset, and legal evidence are coherent without any payment provider.
-2. The running API derives tenant/contour from deployment configuration rather than caller input.
+2. The running API derives tenant/contour from deployment configuration rather than caller input or persisted foreign-contour bearer/reset-token scope.
 3. Canonical user/session/recovery/legal scope is structurally guarded in PostgreSQL.
 4. Normal logout deletes the current session row; password-reset/security invalidation revokes affected active session rows. Both paths make token replay invalid without inventing durable normal-logout retention.
-5. Known password-reset tokens bind to canonical user UUID rather than mutable email identity.
+5. Known password-reset tokens bind to canonical user UUID rather than mutable email identity, and confirmation claims only tokens in the configured instance scope.
 6. Historical legal document versions fail closed against same-version material rewriting.
-7. Registration commits User + the complete required exact-version legal evidence + initial session atomically; stored acceptance-text hashes represent the canonical registration statements attested by the API booleans, exact-version reads support approved acceptance surfaces, and concurrent duplicates converge safely.
+7. Registration commits User + the complete required exact-version legal evidence + initial session atomically; every registration entry point renders the same offer-only canonical statement, stored acceptance-text hashes represent exactly the statements attested by the API booleans, the informational cancellation document is not claimed as accepted, exact-version reads support approved acceptance surfaces, and concurrent duplicates converge safely.
 8. The retained legal model contains a provider-independent acceptance-event anchor capable of directly binding a future PurchaseIntent to the same canonical user and exact configured billing account / offer / accepted commercial fingerprint; generic NULL-commercial events cannot satisfy that purchase binding.
 9. The Step-3 handoff fixes explicit `(tenant_id, region, user_id)` paid-access/outbox scope and identifies the canonical User row as the future stable serialization lock anchor required by the updated `ANY-509` contract.
 10. The handoff preserves the updated `ANY-509` customer-key invariant: `billing_customer_key` is globally unique across retained customer slots and permanently non-reusable even if configured billing-account scope changes; allocation remains deferred.

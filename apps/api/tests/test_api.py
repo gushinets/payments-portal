@@ -888,6 +888,7 @@ def test_registration_acceptance_statements_and_hashes_are_frozen() -> None:
         REGISTRATION_OFFER_CONSENT_TEXT,
         REGISTRATION_PERSONAL_CONSENT_TEXT,
         expected_registration_acceptance_text_hash,
+        hash_acceptance_text,
     )
 
     expected_personal_statement = (
@@ -895,9 +896,7 @@ def test_registration_acceptance_statements_and_hashes_are_frozen() -> None:
         "Согласием на обработку персональных данных и Политикой в отношении "
         "обработки персональных данных."
     )
-    expected_offer_statement = (
-        "Я принимаю условия Публичной оферты и ознакомлен(а) с Условиями отмены подписки и возврата денежных средств."
-    )
+    expected_offer_statement = "Я принимаю условия Публичной оферты."
     with SessionLocal() as db:
         documents = (
             db.query(DocumentVersion)
@@ -919,8 +918,8 @@ def test_registration_acceptance_statements_and_hashes_are_frozen() -> None:
         expected_registration_acceptance_text_hash(registration_documents["pd_consent"])
         == "fa093c89e1a09dd82691c41a5dfb51298be1680e8e8462e138280fbcf61788b3"
     )
-    assert expected_registration_acceptance_text_hash(registration_documents["offer"]) == (
-        "4453768958dc84a86fddc9cb07903acc150d2d1a6d64c5486f0b4372552b230f"
+    assert expected_registration_acceptance_text_hash(registration_documents["offer"]) == hash_acceptance_text(
+        expected_offer_statement
     )
 
 
@@ -5993,6 +5992,65 @@ def test_security_revoked_and_expired_auth_sessions_remain_invalid() -> None:
         assert retained_revoked_session.revoked_at is not None
 
 
+def test_foreign_contour_bearer_session_is_rejected_without_mutation() -> None:
+    local_registration = client.post(
+        "/api/auth/register",
+        json={
+            "email": "local-session@example.com",
+            "password": "very-secret-password",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    assert local_registration.status_code == 200
+    local_session_response = client.get(
+        "/api/auth/session",
+        headers={"Authorization": f"Bearer {local_registration.json()['token']}"},
+    )
+    assert local_session_response.status_code == 200
+
+    foreign_token = "foreign-contour-session-token"
+    with SessionLocal() as db:
+        foreign_user = User(
+            tenant_id="anytoolai",
+            region="eu",
+            email="foreign-session@example.com",
+            email_normalized="foreign-session@example.com",
+            status=UserStatus.ACTIVE,
+        )
+        db.add(foreign_user)
+        db.flush()
+        foreign_session = AuthSession(
+            tenant_id=foreign_user.tenant_id,
+            region=foreign_user.region,
+            user_id=foreign_user.id,
+            token_hash=hashlib.sha256(foreign_token.encode("utf-8")).hexdigest(),
+            expires_at=datetime.now(UTC) + timedelta(days=30),
+            last_seen_at=datetime.now(UTC) - timedelta(days=1),
+        )
+        db.add(foreign_session)
+        db.commit()
+        foreign_user_id = foreign_user.id
+        foreign_session_id = foreign_session.id
+        last_seen_at_before = foreign_session.last_seen_at
+
+    response = client.get(
+        "/api/auth/session",
+        headers={"Authorization": f"Bearer {foreign_token}"},
+    )
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "invalid_session"}
+    with SessionLocal() as db:
+        retained_user = db.get(User, foreign_user_id)
+        retained_session = db.get(AuthSession, foreign_session_id)
+        assert retained_user is not None
+        assert retained_user.status == UserStatus.ACTIVE
+        assert retained_session is not None
+        assert retained_session.last_seen_at == last_seen_at_before
+        assert retained_session.revoked_at is None
+
+
 def test_auth_sessions_and_login_require_active_user() -> None:
     register_response = client.post(
         "/api/auth/register",
@@ -6127,6 +6185,63 @@ def test_password_reset_email_token_and_session_revocation(monkeypatch) -> None:
     )
     assert reuse_response.status_code == 400
     assert reuse_response.json() == {"detail": {"code": "invalid_or_expired_reset_token"}}
+
+
+def test_foreign_contour_password_reset_token_is_rejected_without_mutation() -> None:
+    from app.domains.identity.passwords import hash_password
+
+    raw_token = "foreign-reset-token-value-with-enough-entropy"
+    original_password_hash = hash_password("foreign-old-password")
+    with SessionLocal() as db:
+        foreign_user = User(
+            tenant_id="anytoolai",
+            region="eu",
+            email="foreign-reset@example.com",
+            email_normalized="foreign-reset@example.com",
+            password_hash=original_password_hash,
+            status=UserStatus.ACTIVE,
+        )
+        db.add(foreign_user)
+        db.flush()
+        foreign_session = AuthSession(
+            tenant_id=foreign_user.tenant_id,
+            region=foreign_user.region,
+            user_id=foreign_user.id,
+            token_hash=hashlib.sha256(b"foreign-reset-session").hexdigest(),
+            expires_at=datetime.now(UTC) + timedelta(days=30),
+        )
+        reset_token = MagicLinkToken(
+            tenant_id=foreign_user.tenant_id,
+            region=foreign_user.region,
+            user_id=foreign_user.id,
+            email_normalized=foreign_user.email_normalized,
+            token_hash=hashlib.sha256(raw_token.encode("utf-8")).hexdigest(),
+            purpose=MagicLinkPurpose.PASSWORD_RESET,
+            expires_at=datetime.now(UTC) + timedelta(minutes=30),
+        )
+        db.add_all([foreign_session, reset_token])
+        db.commit()
+        foreign_user_id = foreign_user.id
+        foreign_session_id = foreign_session.id
+        reset_token_id = reset_token.id
+
+    response = client.post(
+        "/api/auth/password-reset/confirm",
+        json={"token": raw_token, "password": "foreign-new-password"},
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {"detail": {"code": "invalid_or_expired_reset_token"}}
+    with SessionLocal() as db:
+        retained_user = db.get(User, foreign_user_id)
+        retained_session = db.get(AuthSession, foreign_session_id)
+        retained_token = db.get(MagicLinkToken, reset_token_id)
+        assert retained_user is not None
+        assert retained_user.password_hash == original_password_hash
+        assert retained_session is not None
+        assert retained_session.revoked_at is None
+        assert retained_token is not None
+        assert retained_token.used_at is None
 
 
 def test_password_reset_request_does_not_reveal_unknown_email(monkeypatch) -> None:

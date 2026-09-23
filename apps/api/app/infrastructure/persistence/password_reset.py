@@ -71,12 +71,16 @@ def claim_valid_password_reset_token(
     db: Session,
     *,
     token_hash: str,
+    tenant_id: str,
+    region: str,
     now: datetime,
 ) -> int:
     return (
         db.query(MagicLinkToken)
         .filter(
             MagicLinkToken.token_hash == token_hash,
+            MagicLinkToken.tenant_id == tenant_id,
+            MagicLinkToken.region == region,
             MagicLinkToken.purpose == MagicLinkPurpose.PASSWORD_RESET,
             MagicLinkToken.used_at.is_(None),
             MagicLinkToken.expires_at > now,

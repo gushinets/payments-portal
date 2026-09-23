@@ -690,7 +690,6 @@ export function CheckoutClient({
       loading={loading}
       personalConsentError="Для регистрации нужно отдельное согласие на обработку персональных данных."
       offerConsentError="Для регистрации нужно принять условия оферты."
-      includeCancellationLink
       telegramLoginUrl={telegramLoginUrl}
       telegramIcon={<MessageCircleMore size={16} aria-hidden="true" />}
       feedbackRef={feedbackRef}

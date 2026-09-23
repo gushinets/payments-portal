@@ -60,5 +60,7 @@ def confirm_password_reset(
         db,
         token=payload.token,
         password=payload.password,
+        tenant_id=settings.instance_tenant_id,
+        region=settings.instance_region,
     )
     return {"status": "password_reset"}

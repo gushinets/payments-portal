@@ -78,10 +78,22 @@ def _authentication_result(*, user: User, token: str) -> AuthenticationResult:
     )
 
 
-def authenticate_session(db: Session, *, token: str) -> tuple[User, AuthSession]:
+def authenticate_session(
+    db: Session,
+    *,
+    token: str,
+    tenant_id: str,
+    region: str,
+) -> tuple[User, AuthSession]:
     token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
     auth_session = get_auth_session_by_token_hash(db, token_hash)
-    if auth_session is None or auth_session.revoked_at is not None or as_utc(auth_session.expires_at) <= utc_now():
+    if (
+        auth_session is None
+        or auth_session.tenant_id != tenant_id
+        or auth_session.region != region
+        or auth_session.revoked_at is not None
+        or as_utc(auth_session.expires_at) <= utc_now()
+    ):
         raise InvalidAuthSessionError()
 
     user = get_active_user_for_auth_session(db, auth_session)

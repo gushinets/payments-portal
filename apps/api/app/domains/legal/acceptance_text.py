@@ -21,9 +21,7 @@ REGISTRATION_PERSONAL_CONSENT_TEXT = (
     "Согласием на обработку персональных данных и Политикой в отношении "
     "обработки персональных данных."
 )
-REGISTRATION_OFFER_CONSENT_TEXT = (
-    "Я принимаю условия Публичной оферты и ознакомлен(а) с Условиями отмены подписки и возврата денежных средств."
-)
+REGISTRATION_OFFER_CONSENT_TEXT = "Я принимаю условия Публичной оферты."
 REGISTRATION_DOCUMENT_TYPES = ("privacy", "pd_consent", "offer")
 REGISTRATION_ACCEPTANCE_TEXT_BY_DOC_TYPE = {
     "privacy": REGISTRATION_PERSONAL_CONSENT_TEXT,

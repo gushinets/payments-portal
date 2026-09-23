@@ -693,6 +693,12 @@ describe("CheckoutClient critical characterization", () => {
     await user.type(await screen.findByLabelText("Email"), "register-buyer@example.com");
     await user.type(await screen.findByLabelText("Пароль"), "password-123");
     await user.type(await screen.findByLabelText("Повторите пароль"), "password-123");
+    expect(
+      screen.getByLabelText("Я принимаю условия Публичной оферты.")
+    ).toBeVisible();
+    expect(
+      screen.queryByText(/отмены подписки и возврата денежных средств/)
+    ).not.toBeInTheDocument();
     await user.click(
       screen.getByLabelText(/Я даю согласие на обработку персональных данных/)
     );

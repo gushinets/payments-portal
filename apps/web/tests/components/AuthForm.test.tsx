@@ -72,4 +72,15 @@ describe("AuthForm characterization", () => {
       offerConsent: true
     });
   });
+
+  it("renders the canonical offer-only registration statement", () => {
+    renderAuthForm({ initialMode: "register" });
+
+    expect(
+      screen.getByLabelText("Я принимаю условия Публичной оферты.")
+    ).toBeVisible();
+    expect(
+      screen.queryByText(/отмены подписки и возврата денежных средств/)
+    ).not.toBeInTheDocument();
+  });
 });

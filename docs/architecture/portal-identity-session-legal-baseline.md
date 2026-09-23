@@ -1,7 +1,7 @@
 # Portal Identity, Session, and Legal Baseline
 
 Status: authoritative as-built `ANY-504` Step 3 handoff to Step 4  
-Last verified against code: 2026-09-22
+Last verified against code: 2026-09-23
 
 ## Authority and scope
 
@@ -35,8 +35,10 @@ deployed instance obtains their normalized values from the required
 password reset, required-document discovery, and later authenticated legal
 writes use those settings or the authenticated user's stored scope. Unknown
 caller-supplied `tenant_id` or `region` request fields do not select a data
-plane. Responses may return the server-derived values as descriptive identity
-scope.
+plane. Bearer-session authentication and password-reset confirmation also
+require the persisted session or token scope to equal the configured instance
+scope before any user or security state is mutated. Responses may return the
+server-derived values as descriptive identity scope.
 
 Email uniqueness remains scoped by
 `UNIQUE(tenant_id, region, email_normalized)`. The same email in two contours
@@ -61,8 +63,10 @@ approved legal and retention authority changes that rule.
 - A session secret is an opaque random token generated with
   `secrets.token_urlsafe(32)`. Only its SHA-256 hash is stored.
 - The implemented TTL is 30 days. A session is valid only when its row exists,
-  is not revoked, is not expired, matches the same canonical
-  `(user_id, tenant_id, region)`, and resolves to an active user.
+  is not revoked, is not expired, belongs to the configured instance tenant
+  and region, matches the same canonical `(user_id, tenant_id, region)`, and
+  resolves to an active user. A structurally valid foreign-contour session is
+  rejected as HTTP 401 `invalid_session` before `last_seen_at` is updated.
 - Successful authentication updates `last_seen_at`. Session IP and user agent
   are nullable ancillary security metadata, not identity.
 - Normal logout deletes only the selected session row. Replaying that bearer
@@ -76,9 +80,13 @@ approved legal and retention authority changes that rule.
 - A reset secret is generated with `secrets.token_urlsafe(48)`, has a 30-minute
   TTL, and is stored only as a SHA-256 hash.
 - A known-user token carries the canonical `user_id` and matching tenant and
-  region. Confirmation atomically claims the unused, unexpired token, resolves
-  that exact active user and scope, replaces the password, consumes every
-  other outstanding reset token for the user, and revokes all active sessions.
+  region. Confirmation atomically claims the unused, unexpired token only when
+  its tenant and region equal the configured instance scope, resolves that
+  exact active user in the configured scope, replaces the password, consumes
+  every other outstanding reset token for the user, and revokes all active
+  sessions. Presenting a foreign-contour token returns the ordinary invalid or
+  expired-token response without consuming it or mutating foreign security
+  state.
 - An unknown-email request persists a hashed decoy token with `user_id=NULL`
   and a one-way decoy email key. It sends no email and preserves the same
   external request behavior without creating a fake user.
@@ -150,10 +158,14 @@ The two public booleans map to durable evidence as follows:
   under the Personal Data Consent and Privacy Policy. Its UTF-8 SHA-256 hash is
   `fa093c89e1a09dd82691c41a5dfb51298be1680e8e8462e138280fbcf61788b3`.
 - `offer_consent=true` accepts the exact `offer` version using the canonical
-  backend-owned Russian statement in `REGISTRATION_OFFER_CONSENT_TEXT`:
-  acceptance of the Public Offer and acknowledgement of the cancellation and
-  refund terms. Its UTF-8 SHA-256 hash is
-  `4453768958dc84a86fddc9cb07903acc150d2d1a6d64c5486f0b4372552b230f`.
+  backend-owned RU statement in `REGISTRATION_OFFER_CONSENT_TEXT`, translated
+  as "I accept the terms of the Public Offer." Its stored evidence hash is the
+  UTF-8 SHA-256 of the exact localized statement.
+
+Every registration entry point renders these same two statements through the
+shared registration form. The separate versioned `cancellation` document is
+informational (`requires_acceptance=false`) and registration neither claims
+its acknowledgement nor creates a `DocumentAcceptance` for it.
 
 One non-commercial `LegalAcceptanceEvent`, its three
 `DocumentAcceptance` rows, the canonical `User`, and the initial
@@ -395,8 +407,8 @@ expectations, but it must preserve each provider-independent proof.
 | Server-authoritative registration/login and legal discovery scope | `apps/api/tests/test_api.py::test_same_email_foreign_client_scope_cannot_create_foreign_contour_user`, `::test_register_and_login_foreign_client_scope_cannot_select_foreign_contour_user`, `::test_legal_required_documents_use_instance_scope` |
 | Canonical UUID user, hashed initial session, event-backed three-document registration | `apps/api/tests/test_identity_legal_persistence_postgres.py::test_registration_persists_canonical_identity_hashed_session_and_legal_event` |
 | Atomic failure rollback and concurrent duplicate registration | `apps/api/tests/test_identity_legal_persistence_postgres.py::test_registration_failure_rolls_back_identity_session_and_legal_evidence`, `::test_concurrent_duplicate_registration_keeps_one_complete_result` |
-| Normal logout deletes one row; revoked/expired sessions remain invalid | `apps/api/tests/test_identity_legal_persistence_postgres.py::test_normal_logout_deletes_only_the_selected_session`, `apps/api/tests/test_api.py::test_security_revoked_and_expired_auth_sessions_remain_invalid` |
-| Unknown-email reset anti-enumeration, hash-only storage, canonical-user binding, token consumption, security revocation, and shared throttling | `apps/api/tests/test_identity_legal_persistence_postgres.py::test_unknown_email_password_reset_uses_hashed_decoy_without_user_binding`, `::test_password_reset_binds_canonical_user_and_revokes_security_state`; `apps/api/tests/test_password_reset_persistence_postgres.py::test_password_reset_rate_limit_upsert_returns_persisted_attempt_count` |
+| Normal logout deletes one row; revoked/expired and foreign-contour sessions remain invalid without mutation | `apps/api/tests/test_identity_legal_persistence_postgres.py::test_normal_logout_deletes_only_the_selected_session`; `apps/api/tests/test_api.py::test_security_revoked_and_expired_auth_sessions_remain_invalid`, `::test_foreign_contour_bearer_session_is_rejected_without_mutation` |
+| Unknown-email reset anti-enumeration, hash-only storage, canonical-user and instance-scope binding, token consumption, security revocation, and shared throttling | `apps/api/tests/test_identity_legal_persistence_postgres.py::test_unknown_email_password_reset_uses_hashed_decoy_without_user_binding`, `::test_password_reset_binds_canonical_user_and_revokes_security_state`, `::test_foreign_password_reset_token_is_not_claimed_or_mutated`; `apps/api/tests/test_api.py::test_foreign_contour_password_reset_token_is_rejected_without_mutation`; `apps/api/tests/test_password_reset_persistence_postgres.py::test_password_reset_rate_limit_upsert_returns_persisted_attempt_count` |
 | User/session/reset/legal relational scope and restrictive deletion | `apps/api/tests/test_identity_legal_persistence_postgres.py::test_auth_session_scope_must_match_canonical_user`, `::test_known_reset_token_scope_must_match_canonical_user`, `::test_canonical_user_delete_is_restricted_by_auth_session`, `::test_legal_event_scope_must_match_canonical_user`, `::test_document_version_scope_must_match_legal_entity`, `::test_document_acceptance_scope_must_match_event_user`, `::test_document_acceptance_scope_must_match_document_version` |
 | Event immutability, ancillary clearing only, append-only document acceptance, immutable same-version material with mutable active selection | `apps/api/tests/test_identity_legal_persistence_postgres.py::test_legal_acceptance_event_core_evidence_cannot_be_updated_or_deleted`, `::test_legal_acceptance_event_audit_metadata_may_only_be_cleared`, `::test_document_acceptance_rows_are_append_only`, `::test_document_version_material_is_immutable_but_active_selection_may_change` |
 | Commercial triplet all-or-none/non-empty and complete-triplet support | `apps/api/tests/test_identity_legal_persistence_postgres.py::test_legal_acceptance_event_commercial_triplet_is_all_or_none_and_nonempty`, `::test_legal_acceptance_event_accepts_a_complete_commercial_triplet` |
@@ -404,7 +416,7 @@ expectations, but it must preserve each provider-independent proof.
 | Migration backfill/fail-closed identity and legal evidence | `apps/api/tests/test_alembic_postgres.py::test_identity_scope_migration_backfills_only_exact_known_users`, `::test_legal_acceptance_migration_backfills_one_noncommercial_event_per_user_acceptance`, `::test_legal_acceptance_migration_rejects_evidence_without_a_canonical_user` |
 | Active-only user vocabulary and deliberate future auth semantics | `apps/api/tests/test_model_enums.py::test_user_status_vocabulary_requires_explicit_auth_semantics`, `apps/api/tests/test_api.py::test_auth_sessions_and_login_require_active_user` |
 | No `external_billing_accounts` ORM/FK; no billing-customer/PII cross-system identity ownership; no recovery dependency on entrypoint, commerce, provider, or trial state | `apps/api/tests/test_architecture.py::test_external_billing_accounts_orm_table_and_fk_targets_are_forbidden`, `::test_identity_legal_rejects_billing_customer_and_cross_system_identity_ownership`, `::test_identity_recovery_rejects_entrypoint_commerce_provider_and_trial_dependencies`, `::test_magic_link_token_has_no_entrypoint_session_binding` |
-| Registration statement/hash mapping, canonical legal source hashes, and immutable-version bootstrap behavior | `apps/api/tests/test_api.py::test_seeded_registration_documents_are_accepted_atomically`, `::test_registration_offer_statement_hash_matches_checkout_checkbox`, `::test_legal_seed_is_idempotent_for_exact_immutable_versions`, `::test_legal_seed_fails_closed_on_same_version_material_mismatch`, `::test_legal_seed_keeps_operator_metadata_separate_from_historical_document_identity`; `apps/api/tests/test_legal_manifest.py::test_legal_manifest_hashes_match_source` |
+| Registration statement/hash mapping, one canonical shared form statement, canonical legal source hashes, and immutable-version bootstrap behavior | `apps/api/tests/test_api.py::test_seeded_registration_documents_are_accepted_atomically`, `::test_registration_acceptance_statements_and_hashes_are_frozen`, `::test_legal_seed_is_idempotent_for_exact_immutable_versions`, `::test_legal_seed_fails_closed_on_same_version_material_mismatch`, `::test_legal_seed_keeps_operator_metadata_separate_from_historical_document_identity`; `apps/web/tests/components/AuthForm.test.tsx` (`renders the canonical offer-only registration statement`), `apps/web/tests/components/CheckoutClient.test.tsx` (`registers through the checkout form and stores the session token`); `apps/api/tests/test_legal_manifest.py::test_legal_manifest_hashes_match_source` |
 
 ## Explicit deferrals
 

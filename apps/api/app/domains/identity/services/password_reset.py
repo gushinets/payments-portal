@@ -172,12 +172,16 @@ def confirm_password_reset(
     *,
     token: str,
     password: str,
+    tenant_id: str,
+    region: str,
 ) -> None:
     now = utc_now()
     token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
     claimed = claim_valid_password_reset_token(
         db,
         token_hash=token_hash,
+        tenant_id=tenant_id,
+        region=region,
         now=now,
     )
     if claimed != 1:
@@ -189,15 +193,20 @@ def confirm_password_reset(
         token_hash=token_hash,
         purpose=PASSWORD_RESET_PURPOSE,
     )
-    if reset_token is None or reset_token.user_id is None:
+    if (
+        reset_token is None
+        or reset_token.tenant_id != tenant_id
+        or reset_token.region != region
+        or reset_token.user_id is None
+    ):
         db.rollback()
         raise InvalidOrExpiredResetTokenError()
 
     user = get_active_user_by_id_and_scope(
         db,
         user_id=reset_token.user_id,
-        tenant_id=reset_token.tenant_id,
-        region=reset_token.region,
+        tenant_id=tenant_id,
+        region=region,
     )
     if user is None:
         db.rollback()

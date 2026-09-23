@@ -25,7 +25,6 @@ type AuthFormProps = {
   loading: boolean;
   personalConsentError: string;
   offerConsentError: string;
-  includeCancellationLink?: boolean;
   passwordResetHref?: string;
   telegramLoginUrl?: string;
   telegramIcon?: ReactNode;
@@ -50,7 +49,6 @@ export function AuthForm({
   loading,
   personalConsentError,
   offerConsentError,
-  includeCancellationLink = false,
   passwordResetHref = "/ru/forgot-password",
   telegramLoginUrl,
   telegramIcon,
@@ -231,22 +229,7 @@ export function AuthForm({
                 rel="noopener noreferrer"
               >
                 Публичной оферты
-              </Link>
-              {includeCancellationLink ? (
-                <>
-                  {" "}
-                  и ознакомлен(а) с{" "}
-                  <Link
-                    className="inline-link"
-                    href="/ru/cancellation"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    Условиями отмены подписки и возврата денежных средств
-                  </Link>
-                </>
-              ) : null}
-              .
+              </Link>.
             </span>
           </label>
         </>

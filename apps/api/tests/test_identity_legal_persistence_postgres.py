@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 import app.domains.identity.services.auth as identity_auth_service
 import app.domains.identity.services.password_reset as password_reset_service
-from app.domains.identity.errors import EmailAlreadyRegisteredError
+from app.domains.identity.errors import EmailAlreadyRegisteredError, InvalidOrExpiredResetTokenError
 from app.domains.identity.passwords import hash_password
 from app.models import (
     AcceptanceKind,
@@ -293,6 +293,8 @@ def test_password_reset_binds_canonical_user_and_revokes_security_state(
         db_session,
         token=raw_token,
         password="new-very-secret-password",
+        tenant_id="anytoolai",
+        region="ru",
     )
 
     sessions = db_session.query(AuthSession).filter(AuthSession.user_id == registration.user_id).all()
@@ -300,6 +302,65 @@ def test_password_reset_binds_canonical_user_and_revokes_security_state(
     assert len(sessions) == 2
     assert all(session.revoked_at is not None for session in sessions)
     assert stored_token.used_at is not None
+
+
+def test_foreign_password_reset_token_is_not_claimed_or_mutated(
+    db_session: Session,
+) -> None:
+    raw_token = "foreign-canonical-user-reset-token-with-enough-entropy"
+    token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+    original_password_hash = hash_password("foreign-old-password")
+    foreign_user = User(
+        tenant_id="anytoolai",
+        region="eu",
+        email="foreign-reset@example.com",
+        email_normalized="foreign-reset@example.com",
+        password_hash=original_password_hash,
+        status=UserStatus.ACTIVE,
+    )
+    db_session.add(foreign_user)
+    db_session.flush()
+    foreign_session = AuthSession(
+        tenant_id=foreign_user.tenant_id,
+        region=foreign_user.region,
+        user_id=foreign_user.id,
+        token_hash=hashlib.sha256(b"foreign-reset-session").hexdigest(),
+        expires_at=datetime.now(UTC) + timedelta(days=30),
+    )
+    reset_token = MagicLinkToken(
+        tenant_id=foreign_user.tenant_id,
+        region=foreign_user.region,
+        user_id=foreign_user.id,
+        email_normalized=foreign_user.email_normalized,
+        token_hash=token_hash,
+        purpose=MagicLinkPurpose.PASSWORD_RESET,
+        expires_at=datetime.now(UTC) + timedelta(minutes=30),
+    )
+    db_session.add_all([foreign_session, reset_token])
+    db_session.commit()
+    foreign_user_id = foreign_user.id
+    foreign_session_id = foreign_session.id
+    reset_token_id = reset_token.id
+
+    with pytest.raises(InvalidOrExpiredResetTokenError):
+        password_reset_service.confirm_password_reset(
+            db_session,
+            token=raw_token,
+            password="foreign-new-password",
+            tenant_id="anytoolai",
+            region="ru",
+        )
+
+    db_session.expire_all()
+    retained_user = db_session.get(User, foreign_user_id)
+    retained_session = db_session.get(AuthSession, foreign_session_id)
+    retained_token = db_session.get(MagicLinkToken, reset_token_id)
+    assert retained_user is not None
+    assert retained_user.password_hash == original_password_hash
+    assert retained_session is not None
+    assert retained_session.revoked_at is None
+    assert retained_token is not None
+    assert retained_token.used_at is None
 
 
 def test_auth_session_scope_must_match_canonical_user(db_session: Session) -> None:
