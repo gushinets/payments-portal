@@ -1,8 +1,21 @@
+from app.models.billing_projections import (
+    CapabilityManifestProjection,
+    CommercialMappingRevision,
+    ExternalBillingCatalogProjection,
+)
+from app.models.billing_purchase import (
+    ExternalBillingCustomer,
+    ExternalCreateOperation,
+    PurchaseIntent,
+)
 from app.models.enums import (
     AcceptanceKind,
+    ExternalBillingCustomerBindingState,
+    ExternalCreateOperationKind,
     LegalEntityStatus,
     LegalEntityType,
     MagicLinkPurpose,
+    PurchaseIntentState,
     RegionStatus,
     UserStatus,
 )
@@ -24,9 +37,16 @@ from app.models.legal import (
 __all__ = [
     "AcceptanceKind",
     "AuthSession",
+    "CapabilityManifestProjection",
+    "CommercialMappingRevision",
     "CountryRegionRule",
     "DocumentAcceptance",
     "DocumentVersion",
+    "ExternalBillingCatalogProjection",
+    "ExternalBillingCustomer",
+    "ExternalBillingCustomerBindingState",
+    "ExternalCreateOperation",
+    "ExternalCreateOperationKind",
     "LegalAcceptanceEvent",
     "LegalEntity",
     "LegalEntityStatus",
@@ -34,6 +54,8 @@ __all__ = [
     "MagicLinkToken",
     "MagicLinkPurpose",
     "PasswordResetRateLimit",
+    "PurchaseIntent",
+    "PurchaseIntentState",
     "Region",
     "RegionStatus",
     "User",

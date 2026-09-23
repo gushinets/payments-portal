@@ -32,11 +32,36 @@ class AcceptanceKind(StrEnum):
     COOKIES = "cookies"
 
 
+class ExternalBillingCustomerBindingState(StrEnum):
+    UNBOUND = "unbound"
+    BOUND = "bound"
+    IDENTITY_CONFLICT = "identity_conflict"
+
+
+class PurchaseIntentState(StrEnum):
+    CREATED = "created"
+    PREPARING = "preparing"
+    AWAITING_EXTERNAL_RESULT = "awaiting_external_result"
+    LINKED = "linked"
+    RESOLVED_NO_EXTERNAL_EFFECT = "resolved_no_external_effect"
+    FAILED_BEFORE_EXTERNAL_EFFECT = "failed_before_external_effect"
+    MANUAL_REVIEW = "manual_review"
+
+
+class ExternalCreateOperationKind(StrEnum):
+    CUSTOMER = "customer"
+    AGREEMENT = "agreement"
+    SUBSCRIPTION = "subscription"
+
+
 __all__ = [
     "AcceptanceKind",
+    "ExternalBillingCustomerBindingState",
+    "ExternalCreateOperationKind",
     "LegalEntityStatus",
     "LegalEntityType",
     "MagicLinkPurpose",
+    "PurchaseIntentState",
     "RegionStatus",
     "UserStatus",
 ]

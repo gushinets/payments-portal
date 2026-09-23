@@ -6,6 +6,7 @@ from enum import StrEnum
 from typing import Any, TypeVar
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     CheckConstraint,
     DateTime,
@@ -64,6 +65,7 @@ __all__ = [
     "JSON",
     "JSONB",
     "Base",
+    "BigInteger",
     "Boolean",
     "CheckConstraint",
     "DateTime",

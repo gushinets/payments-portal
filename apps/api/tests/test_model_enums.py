@@ -12,9 +12,12 @@ import app.models.enums as model_enums
 from app.core.database import Base
 from app.models import (
     AcceptanceKind,
+    ExternalBillingCustomerBindingState,
+    ExternalCreateOperationKind,
     LegalEntityStatus,
     LegalEntityType,
     MagicLinkPurpose,
+    PurchaseIntentState,
     Region,
     RegionStatus,
     UserStatus,
@@ -26,7 +29,7 @@ def _values(enum_cls: type) -> set[str]:
     return {member.value for member in enum_cls}
 
 
-def test_canonical_enum_layer_contains_only_retained_vocabularies() -> None:
+def test_canonical_enum_layer_contains_approved_vocabularies() -> None:
     assert _values(RegionStatus) == {"active"}
     assert _values(UserStatus) == {"active"}
     assert _values(MagicLinkPurpose) == {"password_reset"}
@@ -42,11 +45,33 @@ def test_canonical_enum_layer_contains_only_retained_vocabularies() -> None:
         "recurring_consent",
         "cookies",
     }
+    assert _values(ExternalBillingCustomerBindingState) == {
+        "unbound",
+        "bound",
+        "identity_conflict",
+    }
+    assert _values(PurchaseIntentState) == {
+        "created",
+        "preparing",
+        "awaiting_external_result",
+        "linked",
+        "resolved_no_external_effect",
+        "failed_before_external_effect",
+        "manual_review",
+    }
+    assert _values(ExternalCreateOperationKind) == {
+        "customer",
+        "agreement",
+        "subscription",
+    }
     assert set(model_enums.__all__) == {
         "AcceptanceKind",
+        "ExternalBillingCustomerBindingState",
+        "ExternalCreateOperationKind",
         "LegalEntityStatus",
         "LegalEntityType",
         "MagicLinkPurpose",
+        "PurchaseIntentState",
         "RegionStatus",
         "UserStatus",
     }
