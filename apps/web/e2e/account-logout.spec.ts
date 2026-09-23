@@ -1,10 +1,9 @@
 import { expect, request as playwrightRequest, test } from "@playwright/test";
 
 const apiBaseURL = process.env.PLAYWRIGHT_API_BASE_URL ?? "http://127.0.0.1:8000";
-const documentLoadCountKey = "anytoolai_test_document_load_count";
 const sessionBootstrapKey = "anytoolai_test_session_bootstrapped";
 
-test("account logout performs a full document navigation", async ({ page }, testInfo) => {
+test("account logout revokes the session and returns to the signed-out account state", async ({ page }, testInfo) => {
   const api = await playwrightRequest.newContext({ baseURL: apiBaseURL });
   try {
     const email = `logout-${Date.now()}-${testInfo.workerIndex}@example.com`;
@@ -19,10 +18,6 @@ test("account logout performs a full document navigation", async ({ page }, test
     expect(registration.ok()).toBeTruthy();
     const { token } = (await registration.json()) as { token: string };
 
-    await page.addInitScript((storageKey) => {
-      const count = Number(window.sessionStorage.getItem(storageKey) ?? "0");
-      window.sessionStorage.setItem(storageKey, String(count + 1));
-    }, documentLoadCountKey);
     await page.addInitScript(
       ({ bootstrapKey, sessionToken }) => {
         if (window.sessionStorage.getItem(bootstrapKey) === "true") {
@@ -37,21 +32,18 @@ test("account logout performs a full document navigation", async ({ page }, test
     await page.goto("/ru/account");
     const accountMain = page.getByRole("main");
     await expect(accountMain.getByText(email, { exact: true })).toBeVisible();
-    const loadCountBeforeLogout = await page.evaluate(
-      (storageKey) => Number(window.sessionStorage.getItem(storageKey)),
-      documentLoadCountKey
-    );
 
     await accountMain.getByRole("button", { name: /Выйти/ }).click();
-    await expect(page).toHaveURL(/\/ru$/);
+    await expect(
+      accountMain.getByRole("link", { name: "Войти или зарегистрироваться" })
+    ).toBeVisible();
     await expect
       .poll(() =>
-        page.evaluate(
-          (storageKey) => Number(window.sessionStorage.getItem(storageKey)),
-          documentLoadCountKey
+        page.evaluate(() =>
+          window.localStorage.getItem("anytoolai_session_token_v1")
         )
       )
-      .toBe(loadCountBeforeLogout + 1);
+      .toBeNull();
   } finally {
     await api.dispose();
   }

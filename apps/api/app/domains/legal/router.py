@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import uuid
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -13,8 +13,6 @@ from app.core.settings import settings
 from app.domains.legal.errors import (
     DocumentVersionNotFoundError,
     InvalidAcceptanceTextHashError,
-    RecurringConsentContextRequiredError,
-    RecurringConsentPlanInvalidError,
 )
 from app.domains.legal.service import (
     accept_legal_document,
@@ -29,13 +27,10 @@ router = APIRouter(prefix="/api/legal", tags=["legal"])
 
 
 class AcceptDocumentRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     document_version_id: uuid.UUID
     acceptance_text_hash: str = Field(min_length=32, max_length=256)
-    plan_id: uuid.UUID | None = None
-    entrypoint_type: str | None = None
-    entrypoint_value: str | None = None
-    source_url: str | None = None
-    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 def present_document(document: DocumentVersion) -> dict:
@@ -84,18 +79,11 @@ def accept_document(
             user=user,
             document_version_id=payload.document_version_id,
             acceptance_text_hash=payload.acceptance_text_hash,
-            plan_id=payload.plan_id,
-            entrypoint_type=payload.entrypoint_type,
-            entrypoint_value=payload.entrypoint_value,
-            source_url=payload.source_url,
-            metadata=payload.metadata,
             client_ip=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
         )
     except DocumentVersionNotFoundError as exc:
         raise HTTPException(status_code=404, detail=exc.code) from exc
-    except (RecurringConsentContextRequiredError, RecurringConsentPlanInvalidError) as exc:
-        raise HTTPException(status_code=400, detail={"code": exc.code}) from exc
     except InvalidAcceptanceTextHashError as exc:
         raise HTTPException(status_code=400, detail=exc.code) from exc
 

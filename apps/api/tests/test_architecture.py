@@ -526,7 +526,8 @@ def test_active_domain_presentation_allows_session_di_and_inward_delegation(tmp_
         "router = APIRouter()\n\n"
         "@router.get('/session')\n"
         "def get_session(db: Session = Depends(get_db)) -> object:\n"
-        "    return load_account_session(db, user=object(), product_code=None)\n",
+        "    del db\n"
+        "    return load_account_session(user=object())\n",
     )
 
     assert check_python_boundaries(tmp_path) == []

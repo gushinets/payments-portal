@@ -1,21 +1,9 @@
 "use client";
+
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
+import { LogOut, ShieldCheck, UserRound } from "lucide-react";
 import {
-  ArrowRight,
-  LogOut,
-  MessageCircleMore,
-  ShieldCheck
-} from "lucide-react";
-import {
-  getCatalogProducts,
-  ProductCards,
-  type CatalogProduct
-} from "@/features/catalog";
-import {
-  ApiError,
-  apiErrorCode,
   authErrorMessage,
   decodeAuthSessionResponse,
   getJson,
@@ -23,701 +11,120 @@ import {
   sessionChangedEvent,
   sessionStorageKey,
   submitAuth,
-  type AuthProductState,
   type AuthUser
 } from "@/shared/api/auth";
-import { AuthForm, AuthFormSubmitValues, AuthMode } from "@/shared/ui";
-import { supportEmail } from "@/features/catalog";
-import {
-  CheckoutAction,
-  CheckoutAdapterStatus,
-  getCheckoutAdapter
-} from "./provider-adapters";
-import {
-  resolveSelectedProductAccess,
-  useCheckoutOwnership
-} from "./ownership";
-import {
-  SelectedProductCard,
-  SubscriptionState
-} from "./CheckoutProductPanels";
-type CheckoutIntentResponse = {
-  status: "pending";
-  purchase: {
-    order_id: string;
-    plan_id: string;
-    plan_code: string;
-    plan_name: string;
-    scope_type: "product" | "bundle" | "all_access";
-    product_id: string | null;
-    bundle_id: string | null;
-    invoice_id: string;
-  };
-  checkout: {
-    amount_minor: number;
-    amount: number;
-    currency: string;
-    action: CheckoutAction;
-  };
-};
-type RequiredDocument = {
-  document_version_id: string;
-  doc_type: string;
-  version: string;
-  title: string;
-  url_path: string;
-  acceptance_text: string;
-  acceptance_text_hash: string;
-};
-type AcceptDocumentResponse = {
-  acceptance_id?: unknown;
-  doc_type?: unknown;
-};
-const telegramLoginUrl = process.env.NEXT_PUBLIC_TELEGRAM_LOGIN_URL ?? "";
-const checkoutUnavailableMessage =
-  "Оплата временно недоступна. Попробуйте позже.";
-export function CheckoutClient({
-  checkoutAdapterStatus = "disabled"
-}: {
-  checkoutAdapterStatus?: CheckoutAdapterStatus;
-}) {
-  const searchParams = useSearchParams();
-  const initialProduct = searchParams.get("product");
-  const initialAuthMode = searchParams.get("auth");
-  const [selectedCode] = useState(initialProduct ?? "");
-  const [catalogProducts, setCatalogProducts] = useState<CatalogProduct[]>([]);
-  const [catalogLoading, setCatalogLoading] = useState(true);
-  const [catalogError, setCatalogError] = useState(false);
-  const selectedProduct = useMemo(
-    () => {
-      if (catalogLoading || catalogError) {
-        return undefined;
-      }
+import { AuthForm, type AuthFormSubmitValues } from "@/shared/ui";
 
-      const matches = catalogProducts.filter(
-        (product) => product.code === selectedCode
-      );
-      return matches.length === 1 ? matches[0] : undefined;
-    },
-    [catalogError, catalogLoading, catalogProducts, selectedCode]
-  );
-  const [mode, setMode] = useState<"login" | "register">(
-    initialAuthMode === "login" ? "login" : "register"
-  );
-  const [autoRenew, setAutoRenew] = useState(false);
-  const [recurrentConsent, setRecurrentConsent] = useState(false);
-  const [recurringConsentAcceptanceId, setRecurringConsentAcceptanceId] =
-    useState("");
-  const [sessionToken, setSessionToken] = useState("");
+const telegramLoginUrl = process.env.NEXT_PUBLIC_TELEGRAM_LOGIN_URL ?? "";
+
+export function CheckoutClient() {
   const [sessionUser, setSessionUser] = useState<AuthUser | null>(null);
   const [sessionResolved, setSessionResolved] = useState(false);
-  const ownershipState = useCheckoutOwnership(sessionResolved, sessionToken);
-  const [productState, setProductState] = useState<AuthProductState | null>(
-    null
-  );
-  const [missingDocuments, setMissingDocuments] = useState<RequiredDocument[]>([]);
-  const [documentConsentById, setDocumentConsentById] = useState<
-    Record<string, boolean>
-  >({});
+  const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [sessionLoading, setSessionLoading] = useState(false);
-  const feedbackRef = useRef<HTMLDivElement | null>(null);
-  const previousSessionUserKeyRef = useRef("");
-  const previousCheckoutContextKeyRef = useRef("");
-
-  const invalidProduct =
-    !catalogLoading &&
-    !catalogError &&
-    initialProduct !== null &&
-    !selectedProduct;
-  const needsAuthPrompt =
-    !catalogLoading && !catalogError && !!selectedProduct && !sessionUser;
-  const forceAuthPrompt =
-    !catalogLoading &&
-    !catalogError &&
-    !invalidProduct &&
-    initialAuthMode === "login" &&
-    !sessionUser;
-  const [authModalDismissed, setAuthModalDismissed] = useState(false);
-  const showAuthModal =
-    !catalogLoading &&
-    !catalogError &&
-    (needsAuthPrompt || forceAuthPrompt) &&
-    !sessionLoading &&
-    !authModalDismissed;
-  const allMissingDocumentsAccepted =
-    missingDocuments.length > 0 &&
-    missingDocuments.every(
-      (document) => documentConsentById[document.document_version_id]
-    );
-  const checkoutAdapterBlocked =
-    checkoutAdapterStatus === "disabled" ||
-    checkoutAdapterStatus === "loading" ||
-    checkoutAdapterStatus === "failed";
-  const sessionUserKey = sessionUser
-    ? `${sessionUser.tenant_id}:${sessionUser.region}:${sessionUser.user_id}`
-    : "";
-  const checkoutContextKey = selectedProduct
-    ? selectedProduct.plan.plan_id
-    : "";
-  const selectedProductAccess = resolveSelectedProductAccess(
-    selectedProduct,
-    productState,
-    ownershipState
-  );
-
-  function clearRecurringConsentEvidence() {
-    setRecurringConsentAcceptanceId("");
-  }
 
   useEffect(() => {
     let cancelled = false;
+    let refreshId = 0;
 
-    async function loadCatalog() {
-      try {
-        const response = await getCatalogProducts();
-        if (!cancelled) {
-          setCatalogProducts(response.products);
-        }
-      } catch {
-        if (!cancelled) {
-          setCatalogProducts([]);
-          setCatalogError(true);
-        }
-      } finally {
-        if (!cancelled) {
-          setCatalogLoading(false);
-        }
-      }
-    }
-
-    void loadCatalog();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    function syncStoredToken() {
-      const storedToken = window.localStorage.getItem(sessionStorageKey) ?? "";
-      setSessionResolved(true);
-      if (storedToken) {
-        setSessionLoading(true);
-        setSessionToken(storedToken);
-      } else {
-        setSessionToken("");
-        setSessionUser(null);
-        setProductState(null);
-        clearRecurringConsentEvidence();
-        setSessionLoading(false);
-      }
-    }
-
-    const timerId = window.setTimeout(syncStoredToken, 0);
-    window.addEventListener(sessionChangedEvent, syncStoredToken);
-
-    return () => {
-      window.clearTimeout(timerId);
-      window.removeEventListener(sessionChangedEvent, syncStoredToken);
-    };
-  }, []);
-
-  useEffect(() => {
     async function loadSession() {
-      if (!sessionToken) {
-        setSessionUser(null);
-        setProductState(null);
-        clearRecurringConsentEvidence();
-        setSessionLoading(false);
+      const currentRefreshId = ++refreshId;
+      const token = window.localStorage.getItem(sessionStorageKey);
+      if (!token) {
+        if (!cancelled && currentRefreshId === refreshId) {
+          setSessionUser(null);
+          setSessionResolved(true);
+        }
         return;
       }
 
-      setSessionLoading(true);
-
       try {
-        const suffix = selectedCode
-          ? `/api/auth/session?product=${encodeURIComponent(selectedCode)}`
-          : "/api/auth/session";
-        const payload = await getJson(
-          suffix,
-          sessionToken,
+        const session = await getJson(
+          "/api/auth/session",
+          token,
           decodeAuthSessionResponse
         );
-        setSessionUser(payload.user);
-        setProductState(payload.product_state ?? null);
-        setNotice("");
+        if (
+          !cancelled &&
+          currentRefreshId === refreshId &&
+          session.authenticated
+        ) {
+          setSessionUser(session.user);
+        }
       } catch {
-        window.localStorage.removeItem(sessionStorageKey);
-        window.dispatchEvent(new Event(sessionChangedEvent));
-        setSessionToken("");
-        setSessionUser(null);
-        setProductState(null);
-        clearRecurringConsentEvidence();
-        setNotice(
-          "Не удалось проверить текущую сессию. Войдите снова через форму ниже."
-        );
+        if (window.localStorage.getItem(sessionStorageKey) === token) {
+          window.localStorage.removeItem(sessionStorageKey);
+          window.dispatchEvent(new Event(sessionChangedEvent));
+        }
+        if (!cancelled && currentRefreshId === refreshId) {
+          setSessionUser(null);
+        }
       } finally {
-        setSessionLoading(false);
+        if (!cancelled && currentRefreshId === refreshId) {
+          setSessionResolved(true);
+        }
       }
     }
 
+    function handleSessionChanged() {
+      void loadSession();
+    }
+
+    window.addEventListener(sessionChangedEvent, handleSessionChanged);
     void loadSession();
-  }, [selectedCode, sessionToken]);
-
-  useEffect(() => {
-    const previousKey = previousSessionUserKeyRef.current;
-    if (previousKey && previousKey !== sessionUserKey) {
-      clearRecurringConsentEvidence();
-      setRecurrentConsent(false);
-    }
-    previousSessionUserKeyRef.current = sessionUserKey;
-  }, [sessionUserKey]);
-
-  useEffect(() => {
-    const previousKey = previousCheckoutContextKeyRef.current;
-    if (previousKey && previousKey !== checkoutContextKey) {
-      clearRecurringConsentEvidence();
-      setRecurrentConsent(false);
-    }
-    previousCheckoutContextKeyRef.current = checkoutContextKey;
-  }, [checkoutContextKey]);
-
-  useEffect(() => {
-    if (!error && !notice) {
-      return;
-    }
-
-    feedbackRef.current?.scrollIntoView({
-      behavior: "smooth",
-      block: "nearest"
-    });
-  }, [error, notice]);
-
-  function showError(message: string) {
-    setNotice("");
-    setError(message);
-  }
-
-  function showNotice(message: string) {
-    setError("");
-    setNotice(message);
-  }
-
-  function getMissingDocuments(errorValue: unknown): RequiredDocument[] | null {
-    if (!(errorValue instanceof ApiError) || errorValue.status !== 409) {
-      return null;
-    }
-
-    const detail = errorValue.detail;
-    const detailRecord =
-      typeof detail === "object" && detail !== null
-        ? (detail as Record<string, unknown>)
-        : null;
-    if (
-      detailRecord !== null &&
-      detailRecord.code === "missing_required_documents" &&
-      Array.isArray(detailRecord.documents)
-    ) {
-      const documents = detailRecord.documents.filter(isRequiredDocument);
-      return documents.length === detailRecord.documents.length
-        ? documents
-        : null;
-    }
-
-    return null;
-  }
-
-  function isRequiredDocument(value: unknown): value is RequiredDocument {
-    if (typeof value !== "object" || value === null) {
-      return false;
-    }
-    const document = value as Record<string, unknown>;
-    return (
-      typeof document.document_version_id === "string" &&
-      typeof document.doc_type === "string" &&
-      typeof document.version === "string" &&
-      typeof document.title === "string" &&
-      typeof document.url_path === "string" &&
-      typeof document.acceptance_text === "string" &&
-      typeof document.acceptance_text_hash === "string"
-    );
-  }
-
-  function checkoutPreparationErrorMessage(errorValue: unknown): string {
-    if (
-      errorValue instanceof ApiError &&
-      errorValue.status === 409 &&
-      apiErrorCode(errorValue) === "automatic_renewal_not_permitted"
-    ) {
-      return "Выбранный тариф не поддерживает автопродление. Отключите автопродление или выберите другой тариф.";
-    }
-    if (
-      errorValue instanceof ApiError &&
-      errorValue.status === 409 &&
-      apiErrorCode(errorValue) === "recurring_consent_required"
-    ) {
-      return "Для автопродления нужно принять актуальный документ о регулярных списаниях.";
-    }
-    if (
-      errorValue instanceof ApiError &&
-      errorValue.status === 409 &&
-      apiErrorCode(errorValue) === "recurring_consent_invalid"
-    ) {
-      return "Согласие на регулярные списания устарело. Примите актуальный документ ещё раз.";
-    }
-    if (
-      errorValue instanceof ApiError &&
-      errorValue.status === 400 &&
-      apiErrorCode(errorValue) === "invalid_acceptance_text_hash"
-    ) {
-      return "Текст согласия изменился. Обновите страницу и попробуйте ещё раз.";
-    }
-    if (
-      errorValue instanceof ApiError &&
-      errorValue.status === 409 &&
-      apiErrorCode(errorValue) === "missing_required_documents"
-    ) {
-      return "Перед оплатой нужно принять актуальные юридические документы.";
-    }
-
-    if (errorValue instanceof ApiError && errorValue.status === 409) {
-      if (
-        errorValue.detail === "cloudpayments_public_terminal_id_missing" ||
-        errorValue.detail === "cloudpayments_widget_mode_invalid"
-      ) {
-        return "Платёжный терминал настроен некорректно. Обратитесь в поддержку.";
-      }
-    }
-
-    return "Не удалось подготовить оплату. Попробуйте ещё раз.";
-  }
+    return () => {
+      cancelled = true;
+      window.removeEventListener(sessionChangedEvent, handleSessionChanged);
+    };
+  }, []);
 
   async function authenticate(values: AuthFormSubmitValues) {
     setError("");
     setNotice("");
-
     setLoading(true);
+
     try {
-      const payload = await submitAuth(values);
-      window.localStorage.setItem(sessionStorageKey, payload.token);
+      const response = await submitAuth(values);
+      window.localStorage.setItem(sessionStorageKey, response.token);
       window.dispatchEvent(new Event(sessionChangedEvent));
-      setSessionToken(payload.token);
-      setSessionUser(payload.user);
-      setMissingDocuments([]);
-      setDocumentConsentById({});
-      clearRecurringConsentEvidence();
-      setRecurrentConsent(false);
-      showNotice(
+      setSessionUser(response.user);
+      setNotice(
         values.mode === "register"
-          ? "Аккаунт создан. Теперь можно перейти к оплате."
-          : "Вход выполнен. Можно продолжить оформление."
+          ? "Аккаунт создан. Вход выполнен."
+          : "Вход выполнен."
       );
     } catch (requestError) {
-      showError(authErrorMessage(requestError));
+      setError(authErrorMessage(requestError));
     } finally {
       setLoading(false);
     }
   }
 
   async function logout() {
-    setError("");
-    setNotice("");
-
-    if (!sessionToken) {
-      return;
-    }
-
+    const token = window.localStorage.getItem(sessionStorageKey);
+    setLoading(true);
     try {
-      await postJson("/api/auth/logout", {}, sessionToken);
+      if (token) {
+        await postJson<{ status: string }>("/api/auth/logout", {}, token);
+      }
     } catch {
-      // Session cleanup is safe even if backend logout fails.
+      // Local session removal still leaves this browser signed out.
     } finally {
       window.localStorage.removeItem(sessionStorageKey);
       window.dispatchEvent(new Event(sessionChangedEvent));
-      setSessionToken("");
       setSessionUser(null);
-      setProductState(null);
-      setMissingDocuments([]);
-      setDocumentConsentById({});
-      clearRecurringConsentEvidence();
-      setRecurrentConsent(false);
-    }
-  }
-
-  async function goToPaymentResult(recurringAcceptanceIdOverride?: string) {
-    setError("");
-
-    if (checkoutAdapterStatus === "disabled") {
-      showNotice(checkoutUnavailableMessage);
-      return;
-    }
-
-    if (!selectedProduct) {
-      showError("Выберите продукт для оплаты.");
-      return;
-    }
-
-    if (selectedProductAccess.status === "owned") {
-      return;
-    }
-    if (selectedProductAccess.status === "checking") {
-      showError("Проверяем текущую подписку. Попробуйте ещё раз через несколько секунд.");
-      return;
-    }
-    if (selectedProductAccess.status === "error") {
-      showError(selectedProductAccess.message);
-      return;
-    }
-
-    if (!sessionUser || !sessionToken) {
-      showError("Сначала войдите или зарегистрируйтесь.");
-      return;
-    }
-
-    if (autoRenew && !recurrentConsent) {
-      showError(
-        "Для автопродления нужно отдельное согласие на регулярные списания."
-      );
-      return;
-    }
-
-    if (checkoutAdapterStatus === "loading") {
-      showError("Платёжный виджет ещё загружается. Попробуйте через несколько секунд.");
-      return;
-    }
-
-    if (checkoutAdapterStatus === "failed") {
-      showError(
-        "Не удалось загрузить платёжный виджет. Обновите страницу и попробуйте ещё раз."
-      );
-      return;
-    }
-
-    let checkoutIntent: CheckoutIntentResponse;
-    try {
-      const effectiveRecurringConsentAcceptanceId =
-        recurringAcceptanceIdOverride ?? recurringConsentAcceptanceId;
-      const checkoutPayload = {
-        plan_id: selectedProduct.plan.plan_id,
-        auto_renew: autoRenew,
-        ...(autoRenew && effectiveRecurringConsentAcceptanceId
-          ? {
-              recurring_consent_acceptance_id:
-                effectiveRecurringConsentAcceptanceId
-            }
-          : {}),
-        entrypoint_type: "product",
-        entrypoint_value: selectedProduct.code,
-        source_url: window.location.pathname + window.location.search
-      };
-      const payload = await postJson<CheckoutIntentResponse>(
-        "/api/auth/checkout-intent",
-        checkoutPayload,
-        sessionToken
-      );
-      checkoutIntent = payload;
-      setMissingDocuments([]);
-      setDocumentConsentById({});
-    } catch (requestError) {
-      const documents = getMissingDocuments(requestError);
-      if (documents) {
-        setMissingDocuments(documents);
-        setDocumentConsentById({});
-        if (
-          documents.some((document) => document.doc_type === "recurring_consent")
-        ) {
-          clearRecurringConsentEvidence();
-        }
-        showError("Перед оплатой нужно принять актуальные юридические документы.");
-        return;
-      }
-
-      if (
-        requestError instanceof ApiError &&
-        requestError.status === 409 &&
-        apiErrorCode(requestError) === "recurring_consent_invalid"
-      ) {
-        clearRecurringConsentEvidence();
-      }
-      showError(checkoutPreparationErrorMessage(requestError));
-      return;
-    }
-
-    const resultPayload = {
-      status: "pending",
-      productCode: selectedProduct.code,
-      productName: selectedProduct.name,
-      planName: selectedProduct.plan.name,
-      amount: checkoutIntent.checkout.amount,
-      currency: checkoutIntent.checkout.currency,
-      email: sessionUser.email,
-      autoRenew,
-      invoiceId: checkoutIntent.purchase.invoice_id
-    };
-
-    window.sessionStorage.setItem(
-      "anytoolai_last_payment_result",
-      JSON.stringify(resultPayload)
-    );
-
-    const checkoutAction = checkoutIntent.checkout.action;
-    const checkoutAdapter = getCheckoutAdapter(checkoutAction.provider);
-    if (!checkoutAdapter || !checkoutAdapter.isRequired()) {
-      window.sessionStorage.removeItem("anytoolai_last_payment_result");
-      showError("Платёжный провайдер недоступен. Обратитесь в поддержку.");
-      return;
-    }
-
-    if (!checkoutAdapter.isReady()) {
-      window.sessionStorage.removeItem("anytoolai_last_payment_result");
-      showError(
-        "Не удалось открыть платёжный виджет. Обновите страницу и попробуйте ещё раз."
-      );
-      return;
-    }
-
-    try {
-      checkoutAdapter.start(checkoutAction, {
-        productCode: selectedProduct.code,
-        planCode: selectedProduct.plan.code,
-        email: sessionUser.email,
-        invoiceId: checkoutIntent.purchase.invoice_id
-      });
-    } catch {
-      window.sessionStorage.removeItem("anytoolai_last_payment_result");
-      showError(
-        "Не удалось открыть платёжный виджет. Обновите страницу и попробуйте ещё раз."
-      );
-      return;
-    }
-  }
-
-  async function acceptRequiredDocumentsAndContinue() {
-    setError("");
-
-    if (checkoutAdapterStatus === "disabled") {
-      showNotice(checkoutUnavailableMessage);
-      return;
-    }
-
-    if (!sessionToken || !selectedProduct) {
-      showError("Сначала войдите или зарегистрируйтесь.");
-      return;
-    }
-
-    if (!allMissingDocumentsAccepted) {
-      showError("Отметьте каждый документ, который нужно принять перед оплатой.");
-      return;
-    }
-
-    setLoading(true);
-    try {
-      let recurringAcceptanceId = "";
-      for (const document of missingDocuments) {
-        const acceptance = await postJson<AcceptDocumentResponse>(
-          "/api/legal/acceptances",
-          {
-            document_version_id: document.document_version_id,
-            acceptance_text_hash: document.acceptance_text_hash,
-            ...(document.doc_type === "recurring_consent"
-              ? { plan_id: selectedProduct.plan.plan_id }
-              : {}),
-            entrypoint_type: "product",
-            entrypoint_value: selectedProduct.code,
-            source_url: window.location.pathname + window.location.search,
-            metadata: {
-              auto_renew: autoRenew
-            }
-          },
-          sessionToken
-        );
-        if (document.doc_type === "recurring_consent") {
-          if (
-            typeof acceptance.acceptance_id !== "string" ||
-            acceptance.doc_type !== "recurring_consent"
-          ) {
-            throw new Error("recurring_acceptance_missing");
-          }
-          recurringAcceptanceId = acceptance.acceptance_id;
-        }
-      }
-
-      if (
-        autoRenew &&
-        missingDocuments.some((document) => document.doc_type === "recurring_consent")
-      ) {
-        if (!recurringAcceptanceId) {
-          throw new Error("recurring_acceptance_missing");
-        }
-        setRecurringConsentAcceptanceId(recurringAcceptanceId);
-      }
-      setMissingDocuments([]);
-      setDocumentConsentById({});
-      showNotice("Документы приняты. Продолжаем оформление оплаты.");
-      await goToPaymentResult(recurringAcceptanceId || undefined);
-    } catch (requestError) {
-      if (
-        requestError instanceof ApiError &&
-        requestError.status === 400 &&
-        requestError.detail === "invalid_acceptance_text_hash"
-      ) {
-        showError("Текст согласия изменился. Обновите страницу и попробуйте ещё раз.");
-      } else {
-        showError("Не удалось зафиксировать согласие. Попробуйте ещё раз.");
-      }
-    } finally {
+      setNotice("Вы вышли из аккаунта.");
+      setError("");
       setLoading(false);
     }
   }
 
-  const authForm = (
-    <AuthForm
-      title="1. Вход или регистрация"
-      badgeIcon={<ShieldCheck size={12} aria-hidden="true" />}
-      initialMode={mode}
-      modeOrder={["register", "login"]}
-      prompt={
-        needsAuthPrompt && !sessionLoading ? (
-        <div className="notice">
-          Чтобы продолжить оформление, войдите в аккаунт или зарегистрируйтесь.
-        </div>
-        ) : null
-      }
-      notice={notice}
-      error={error}
-      loading={loading}
-      personalConsentError="Для регистрации нужно отдельное согласие на обработку персональных данных."
-      offerConsentError="Для регистрации нужно принять условия оферты."
-      telegramLoginUrl={telegramLoginUrl}
-      telegramIcon={<MessageCircleMore size={16} aria-hidden="true" />}
-      feedbackRef={feedbackRef}
-      onModeChange={(nextMode: AuthMode) => setMode(nextMode)}
-      onBeforeSubmit={() => {
-        setError("");
-        setNotice("");
-      }}
-      onValidationError={showError}
-      onSubmit={authenticate}
-    />
-  );
-
-  if (catalogLoading) {
+  if (!sessionResolved) {
     return (
       <section className="page-section compact">
         <div className="form-panel" role="status">
-          Загрузка каталога...
-        </div>
-      </section>
-    );
-  }
-
-  if (catalogError) {
-    return (
-      <section className="page-section compact">
-        <div className="form-panel notice error" role="alert">
-          Не удалось загрузить каталог. Обновите страницу и попробуйте ещё раз.
+          Проверяем сессию...
         </div>
       </section>
     );
@@ -725,278 +132,65 @@ export function CheckoutClient({
 
   return (
     <section className="page-section compact">
-      <div className="eyebrow">
-        <span className="eyebrow-dot" />
-        Оформление подписки
-      </div>
-      <h1 className="legal-title">Оформление доступа к сервису</h1>
-      <p className="hero-copy">
-        Выберите продукт, войдите в аккаунт или зарегистрируйтесь и перейдите к
-        оплате.
-      </p>
-
-      {invalidProduct ? (
-        <div className="notice error" style={{ marginTop: 24 }}>
-          Мы не нашли запрошенный продукт. Выберите один из доступных вариантов
-          ниже.
-        </div>
-      ) : null}
-
-      {showAuthModal ? (
-            <>
-              <button
-                className="auth-modal-overlay"
-                type="button"
-                aria-label="Закрыть окно входа"
-                onClick={() => setAuthModalDismissed(true)}
-              />
-              <div
-                className="form-panel auth-modal-panel"
-                role="dialog"
-                aria-modal="true"
-                aria-label="Вход или регистрация"
-              >
-                {authForm}
-              </div>
-            </>
-          ) : null}
-
-          <div className="two-column checkout-grid" style={{ marginTop: 28 }}>
-            <div>
-              {selectedProduct ? (
-                <SelectedProductCard
-                  product={selectedProduct}
-                  accessState={selectedProductAccess}
-                />
-              ) : (
-                <div className="form-panel checkout-equal-panel">
-                  <h2>Выберите продукт</h2>
-                  <p className="card-copy">
-                    Откройте нужный сервис, чтобы увидеть тариф, бесплатный лимит и
-                    перейти к оформлению.
-                  </p>
-                  <ProductCards
-                    products={catalogProducts}
-                    ownershipState={ownershipState}
-                  />
-                </div>
-              )}
-            </div>
-
-            <div className="form-panel checkout-equal-panel" id="checkout-form">
-              <div className="form-grid checkout-form-grid">
-                <span className="badge badge-running">
-                  <ShieldCheck size={12} aria-hidden="true" />
-                  Единый аккаунт
-                </span>
-
-                {checkoutAdapterStatus === "disabled" ? (
-                  <div className="notice" role="status">
-                    {checkoutUnavailableMessage}
-                  </div>
-                ) : null}
-
-                {needsAuthPrompt && !sessionLoading ? (
-                  <div className="notice">
-                    Чтобы продолжить оформление, войдите в аккаунт или
-                    зарегистрируйтесь.
-                  </div>
-                ) : null}
-
-                {sessionLoading ? (
-                  <div className="notice">Проверяем текущую сессию...</div>
-                ) : sessionUser ? (
-                  <>
-                    <h2 className="checkout-step-title">1. Аккаунт</h2>
-                    <div className="feedback-slot" ref={feedbackRef}>
-                      {notice ? <div className="notice">{notice}</div> : null}
-                      {error ? <div className="notice error">{error}</div> : null}
-                    </div>
-                    <div className="account-card checkout-account-card">
-                      <div>
-                        <strong>{sessionUser.email}</strong>
-                        <p className="card-copy">
-                          Вы вошли в единый аккаунт платформы.
-                        </p>
-                      </div>
-                      <button className="btn-secondary" type="button" onClick={logout}>
-                        <LogOut size={15} aria-hidden="true" />
-                        Выйти
-                      </button>
-                    </div>
-
-                    <h2 className="checkout-step-title">2. Статус подписки</h2>
-                    <SubscriptionState
-                      product={selectedProduct}
-                      state={productState}
-                      accessState={selectedProductAccess}
-                    />
-
-                    {selectedProductAccess.status === "available" ? (
-                      <>
-                        {missingDocuments.length > 0 ? (
-                          <div className="notice legal-consent-box">
-                            <strong style={{ color: "var(--txt)" }}>
-                              Нужно принять актуальные документы
-                            </strong>
-                            <div className="legal-consent-list">
-                              {missingDocuments.map((document) => (
-                                <div
-                                  className="legal-consent-item"
-                                  key={document.document_version_id}
-                                >
-                                  <input
-                                    aria-label={`Принять документ ${document.title}`}
-                                    type="checkbox"
-                                    checked={
-                                      documentConsentById[
-                                        document.document_version_id
-                                      ] ?? false
-                                    }
-                                    onChange={(event) =>
-                                      setDocumentConsentById((current) => ({
-                                        ...current,
-                                        [document.document_version_id]:
-                                          event.target.checked
-                                      }))
-                                    }
-                                  />
-                                  <div>
-                                    <Link
-                                      className="inline-link"
-                                      href={document.url_path}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                    >
-                                      {document.title}
-                                    </Link>
-                                    <p>{document.acceptance_text}</p>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                            <button
-                              className="btn-primary"
-                              type="button"
-                              onClick={acceptRequiredDocumentsAndContinue}
-                              disabled={
-                                loading ||
-                                !allMissingDocumentsAccepted ||
-                                checkoutAdapterStatus === "disabled"
-                              }
-                            >
-                              Принять и продолжить
-                              <ArrowRight size={16} aria-hidden="true" />
-                            </button>
-                          </div>
-                        ) : null}
-
-                        <label className="checkbox-label">
-                          <input
-                            type="checkbox"
-                            checked={autoRenew}
-                            onChange={(event) => {
-                              setAutoRenew(event.target.checked);
-                              if (!event.target.checked) {
-                                setRecurrentConsent(false);
-                                clearRecurringConsentEvidence();
-                              }
-                            }}
-                          />
-                          <span>Включить автопродление</span>
-                        </label>
-
-                        {autoRenew ? (
-                          <label className="checkbox-label">
-                            <input
-                              type="checkbox"
-                              checked={recurrentConsent}
-                              onChange={(event) =>
-                                setRecurrentConsent(event.target.checked)
-                              }
-                            />
-                            <span>
-                              Я соглашаюсь на регулярное автоматическое списание средств
-                              согласно выбранному тарифу. Подписка продлевается
-                              автоматически до её отмены.
-                            </span>
-                          </label>
-                        ) : null}
-
-                        {checkoutAdapterStatus === "failed" ? (
-                          <div className="notice error">
-                            Не удалось загрузить платёжный виджет. Обновите страницу и
-                            попробуйте ещё раз.
-                          </div>
-                        ) : null}
-
-                        {selectedProduct ? (
-                          <button
-                            className="btn-primary"
-                            type="button"
-                            onClick={() => void goToPaymentResult()}
-                            disabled={
-                              missingDocuments.length > 0 || checkoutAdapterBlocked
-                            }
-                          >
-                            {checkoutAdapterStatus === "disabled"
-                              ? "Оплата недоступна"
-                              : checkoutAdapterStatus === "loading"
-                              ? "Загрузка оплаты..."
-                              : "Оплатить"}
-                            <ArrowRight size={16} aria-hidden="true" />
-                          </button>
-                        ) : null}
-                      </>
-                    ) : null}
-
-                    {selectedProductAccess.status === "owned" ? (
-                      <Link className="btn-secondary" href="/ru/account">
-                        Перейти в аккаунт
-                        <ArrowRight size={15} aria-hidden="true" />
-                      </Link>
-                    ) : null}
-
-                    {selectedProductAccess.status === "checking" ? (
-                      <div className="notice" role="status">
-                        Проверяем текущую подписку...
-                      </div>
-                    ) : selectedProductAccess.status === "error" ? (
-                      <div className="notice error" role="alert">
-                        {selectedProductAccess.message}
-                      </div>
-                    ) : null}
-                  </>
-                ) : (
-                  <>
-                    <h2 className="checkout-step-title">1. Вход или регистрация</h2>
-                    <div className="feedback-slot" ref={feedbackRef}>
-                      {notice ? <div className="notice">{notice}</div> : null}
-                      {error ? <div className="notice error">{error}</div> : null}
-                    </div>
-                    <div className="notice">
-                      Чтобы продолжить оформление, откройте окно входа или
-                      регистрации.
-                    </div>
-                    <button
-                      className="btn-primary"
-                      type="button"
-                      onClick={() => setAuthModalDismissed(false)}
-                    >
-                      Войти или зарегистрироваться
-                      <ArrowRight size={15} aria-hidden="true" />
-                    </button>
-                  </>
-                )}
-
-                <p className="muted" style={{ margin: 0 }}>
-                  Поддержка:{" "}
-                  <a className="inline-link" href={`mailto:${supportEmail}`}>
-                    {supportEmail}
-                  </a>
-                </p>
+      <div className="checkout-layout auth-only-layout">
+        <article className="form-panel">
+          {sessionUser ? (
+            <div className="form-grid">
+              <span className="badge badge-live">
+                <UserRound size={12} aria-hidden="true" />
+                Вход выполнен
+              </span>
+              <h1>Аккаунт AnytoolAI</h1>
+              <p className="card-copy">{sessionUser.email}</p>
+              {notice ? <div className="notice">{notice}</div> : null}
+              <div className="hero-actions">
+                <Link className="btn-primary" href="/ru/account">
+                  Открыть аккаунт
+                </Link>
+                <button
+                  className="btn-secondary"
+                  type="button"
+                  disabled={loading}
+                  onClick={() => void logout()}
+                >
+                  <LogOut size={15} aria-hidden="true" />
+                  Выйти
+                </button>
               </div>
             </div>
+          ) : (
+            <AuthForm
+              title="Вход или регистрация"
+              badgeIcon={<ShieldCheck size={12} aria-hidden="true" />}
+              notice={notice}
+              error={error}
+              loading={loading}
+              personalConsentError="Нужно дать согласие на обработку персональных данных."
+              offerConsentError="Нужно принять условия оферты."
+              telegramLoginUrl={telegramLoginUrl}
+              onModeChange={() => {
+                setNotice("");
+                setError("");
+              }}
+              onBeforeSubmit={() => {
+                setNotice("");
+                setError("");
+              }}
+              onValidationError={setError}
+              onSubmit={authenticate}
+            />
+          )}
+        </article>
+
+        <aside className="form-panel">
+          <span className="badge badge-demo">Информация</span>
+          <h2 style={{ marginTop: 14 }}>Оплата временно недоступна</h2>
+          <p className="card-copy">
+            Сейчас портал поддерживает регистрацию, вход, восстановление пароля
+            и юридические согласия. Каталог, подписки и оплата будут доступны
+            после подключения новой биллинговой системы.
+          </p>
+        </aside>
       </div>
     </section>
   );

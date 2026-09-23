@@ -33,8 +33,6 @@ from app.domains.legal.errors import (
     DocumentVersionNotFoundError,
     InvalidAcceptanceTextHashError,
     LegalAcceptanceError,
-    RecurringConsentContextRequiredError,
-    RecurringConsentPlanInvalidError,
 )
 from app.domains.legal.router import AcceptDocumentRequest
 from app.http_errors import app_error_handler
@@ -60,10 +58,10 @@ def make_request() -> Request:
         {
             "type": "http",
             "method": "POST",
-            "path": "/api/auth/checkout-intent",
+            "path": "/test-error",
             "headers": [],
             "query_string": b"",
-            "route": SimpleNamespace(path="/api/auth/checkout-intent"),
+            "route": SimpleNamespace(path="/test-error"),
         }
     )
 
@@ -102,16 +100,6 @@ def call_legal_acceptance_route(monkeypatch: pytest.MonkeyPatch, error: LegalAcc
     ("error", "status_code", "detail"),
     [
         (DocumentVersionNotFoundError(), 404, "document_version_not_found"),
-        (
-            RecurringConsentContextRequiredError(),
-            400,
-            {"code": "recurring_consent_context_required"},
-        ),
-        (
-            RecurringConsentPlanInvalidError(),
-            400,
-            {"code": "recurring_consent_plan_invalid"},
-        ),
         (InvalidAcceptanceTextHashError(), 400, "invalid_acceptance_text_hash"),
     ],
 )
@@ -244,7 +232,7 @@ def test_mapped_internal_billing_errors_preserve_contract_and_are_reported(
         error,
         operation=Operation.HTTP_REQUEST,
         method="POST",
-        route="/api/auth/checkout-intent",
+        route="/test-error",
         error_code=None,
         failure_location=None,
     )
@@ -311,7 +299,7 @@ def test_unmapped_app_error_logs_one_bounded_failure(caplog: pytest.LogCaptureFi
         error,
         operation=Operation.HTTP_REQUEST,
         method="POST",
-        route="/api/auth/checkout-intent",
+        route="/test-error",
         error_code="provider_secret_error",
         failure_location=None,
     )
@@ -338,7 +326,7 @@ def test_semantic_app_error_logs_type_without_null_error_code(
         error,
         operation=Operation.HTTP_REQUEST,
         method="POST",
-        route="/api/auth/checkout-intent",
+        route="/test-error",
         error_code=None,
         failure_location=None,
     )

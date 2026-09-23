@@ -142,38 +142,38 @@ export function Footer({
             ))}
           </div>
         </div>
-        <div className="footer-payments">
-          <p className="footer-text">
-            Поддерживаемые способы оплаты
-          </p>
-          <div className="payment-list" aria-label="Способы оплаты">
-            {paymentMethods.map((method) =>
-              method.href ? (
-                <a
-                  className="payment-icon-link"
-                  href={method.href}
-                  key={method.code}
-                  target="_blank"
-                  rel="noreferrer"
-                  aria-label={method.label}
-                  title={method.label}
-                >
-                  <PaymentMethodIcon code={method.code} />
-                </a>
-              ) : (
-                <span
-                  className="payment-icon-link"
-                  key={method.code}
-                  role="img"
-                  aria-label={method.label}
-                  title={method.label}
-                >
-                  <PaymentMethodIcon code={method.code} />
-                </span>
-              )
-            )}
+        {paymentMethods.length > 0 ? (
+          <div className="footer-payments">
+            <p className="footer-text">Поддерживаемые способы оплаты</p>
+            <div className="payment-list" aria-label="Способы оплаты">
+              {paymentMethods.map((method) =>
+                method.href ? (
+                  <a
+                    className="payment-icon-link"
+                    href={method.href}
+                    key={method.code}
+                    target="_blank"
+                    rel="noreferrer"
+                    aria-label={method.label}
+                    title={method.label}
+                  >
+                    <PaymentMethodIcon code={method.code} />
+                  </a>
+                ) : (
+                  <span
+                    className="payment-icon-link"
+                    key={method.code}
+                    role="img"
+                    aria-label={method.label}
+                    title={method.label}
+                  >
+                    <PaymentMethodIcon code={method.code} />
+                  </span>
+                )
+              )}
+            </div>
           </div>
-        </div>
+        ) : null}
       </div>
     </footer>
   );

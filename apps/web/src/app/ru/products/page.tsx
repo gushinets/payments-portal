@@ -1,4 +1,4 @@
-import { CatalogProductsClient } from "@/features/catalog";
+import { ProductOverview } from "@/features/catalog";
 
 export default function ProductsPage() {
   return (
@@ -10,10 +10,10 @@ export default function ProductsPage() {
         </div>
         <h1 className="legal-title">Продукты и тарифы</h1>
         <p className="hero-copy">
-          Выберите сервис, сравните возможности и перейдите к оформлению
-          подписки.
+          Ознакомьтесь с сервисами AnytoolAI. Тарифы и оформление покупок
+          временно недоступны.
         </p>
-        <CatalogProductsClient />
+        <ProductOverview />
       </section>
     </>
   );

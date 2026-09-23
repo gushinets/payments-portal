@@ -7,7 +7,10 @@ const layoutPath = fileURLToPath(new URL("../src/app/layout.tsx", import.meta.ur
 const checkoutPagePath = fileURLToPath(
   new URL("../src/app/ru/auth-checkout/page.tsx", import.meta.url)
 );
-const checkoutAdaptersPath = fileURLToPath(
+const checkoutClientPath = fileURLToPath(
+  new URL("../src/features/checkout/CheckoutClient.tsx", import.meta.url)
+);
+const retainedProviderAdapterPath = fileURLToPath(
   new URL("../src/features/checkout/provider-adapters.ts", import.meta.url)
 );
 const srcRootPath = fileURLToPath(new URL("../src", import.meta.url));
@@ -24,26 +27,46 @@ test("root metadata keeps public RU branding copy", async () => {
   assert.doesNotMatch(source, /подготовки подключения CloudPayments/);
 });
 
-test("CloudPayments widget is isolated to the checkout route", async () => {
-  const [layoutSource, checkoutPageSource, adapterSource] = await Promise.all([
-    readFile(layoutPath, "utf8"),
+test("the retained auth route does not reach provider scripts or browser SDK", async () => {
+  const [checkoutPageSource, checkoutClientSource] = await Promise.all([
     readFile(checkoutPagePath, "utf8"),
-    readFile(checkoutAdaptersPath, "utf8")
+    readFile(checkoutClientPath, "utf8")
   ]);
-
-  assert.doesNotMatch(layoutSource, /widget\.cloudpayments\.ru/);
-  assert.doesNotMatch(checkoutPageSource, /widget\.cloudpayments\.ru/);
-  assert.match(adapterSource, /widget\.cloudpayments\.ru/);
-});
-
-test("CloudPayments browser SDK calls stay inside the checkout adapter", async () => {
   const files = await sourceFiles(srcRootPath);
   const offenders = [];
 
   await Promise.all(
     files.map(async (filePath) => {
       const source = await readFile(filePath, "utf8");
-      if (/\bwindow\.cp\b|\bcp\./.test(source) && filePath !== checkoutAdaptersPath) {
+      if (
+        /widget\.cloudpayments\.ru|\bwindow\.cp\b|\bcp\./.test(source) &&
+        filePath !== retainedProviderAdapterPath
+      ) {
+        offenders.push(filePath);
+      }
+    })
+  );
+
+  assert.doesNotMatch(checkoutPageSource, /next\/script|<Script/);
+  assert.doesNotMatch(checkoutPageSource, /provider-adapters/);
+  assert.doesNotMatch(checkoutClientSource, /provider-adapters|window\.cp|\bcp\./);
+  assert.deepEqual(offenders, []);
+});
+
+test("frontend source does not call removed billing contracts", async () => {
+  const files = await sourceFiles(srcRootPath);
+  const removedContracts = [
+    "/api/catalog/products",
+    "/api/auth/checkout-intent",
+    "/api/account/subscriptions",
+    "/api/auth/payment-status"
+  ];
+  const offenders = [];
+
+  await Promise.all(
+    files.map(async (filePath) => {
+      const source = await readFile(filePath, "utf8");
+      if (removedContracts.some((contract) => source.includes(contract))) {
         offenders.push(filePath);
       }
     })

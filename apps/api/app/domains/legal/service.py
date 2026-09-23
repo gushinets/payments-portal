@@ -26,8 +26,6 @@ from app.domains.legal.errors import (
     DocumentVersionNotFoundError,
     InvalidAcceptanceTextHashError,
     RegistrationLegalPackInvalidError,
-    RecurringConsentContextRequiredError,
-    RecurringConsentPlanInvalidError,
 )
 from app.infrastructure.queries.legal import (
     get_active_required_document_by_id,
@@ -38,7 +36,6 @@ from app.infrastructure.queries.legal import (
     list_active_required_documents_for_registration,
     list_document_acceptance_fingerprints,
 )
-from app.infrastructure.queries.plans import get_current_sellable_plan
 from app.models import (
     AcceptanceKind,
     DocumentAcceptance,
@@ -409,11 +406,6 @@ def accept_legal_document(
     user: User,
     document_version_id: uuid.UUID,
     acceptance_text_hash: str,
-    plan_id: uuid.UUID | None,
-    entrypoint_type: str | None,
-    entrypoint_value: str | None,
-    source_url: str | None,
-    metadata: dict[str, Any],
     client_ip: str | None,
     user_agent: str | None,
 ) -> LegalAcceptanceResult:
@@ -427,21 +419,6 @@ def accept_legal_document(
     if document is None:
         record_legal_acceptance("document_not_found")
         raise DocumentVersionNotFoundError()
-
-    if document.doc_type == "recurring_consent":
-        if plan_id is None or not entrypoint_type or not entrypoint_value:
-            raise RecurringConsentContextRequiredError()
-        if (
-            get_current_sellable_plan(
-                db,
-                plan_id=plan_id,
-                tenant_id=user.tenant_id,
-                region=user.region,
-                now=utc_now(),
-            )
-            is None
-        ):
-            raise RecurringConsentPlanInvalidError()
 
     try:
         if acceptance_text_hash != expected_acceptance_text_hash(document):
@@ -457,11 +434,6 @@ def accept_legal_document(
             document=document,
             acceptance_event=acceptance_event,
             acceptance_text_hash=acceptance_text_hash,
-            entrypoint_type=entrypoint_type,
-            entrypoint_value=entrypoint_value,
-            source_url=source_url,
-            metadata=metadata,
-            plan_id=plan_id,
         )
     except InvalidAcceptanceTextHashError:
         record_legal_acceptance("invalid_text_hash")

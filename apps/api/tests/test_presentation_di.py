@@ -73,7 +73,6 @@ def test_current_session_dependency_can_be_overridden_for_active_endpoint() -> N
             "user_id": str(user_id),
             "email": "override@example.com",
         },
-        "product_state": None,
     }
     assert application.dependency_overrides == {}
     client.close()
