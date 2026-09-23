@@ -27,15 +27,6 @@ from app.infrastructure.sentry import (
     configure_sentry,
     report_exception,
 )
-from app.payment_providers.contracts import RetryDisposition
-from app.payment_providers.errors import (
-    PaymentProviderConfigurationError,
-    PaymentsError,
-    PaymentsIdempotencyKeyRequiredError,
-    PaymentsOperationDeclinedError,
-    PaymentsTimeoutError,
-    PaymentsUpstreamError,
-)
 from apps.api.tests.support.settings import DEFAULT_API_TEST_ENV
 
 
@@ -237,34 +228,13 @@ def test_spotlight_environment_variable_cannot_enable_spotlight() -> None:
 @pytest.mark.parametrize(
     ("error", "expected"),
     [
-        (
-            PaymentsOperationDeclinedError("declined", provider="cloudpayments", operation="charge"),
-            None,
-        ),
-        (
-            PaymentsTimeoutError("timeout", retry_disposition=RetryDisposition.RETRYABLE),
-            FailureCategory.UNKNOWN_EXTERNAL_OUTCOME,
-        ),
-        (
-            PaymentsIdempotencyKeyRequiredError("idempotency_required"),
-            FailureCategory.INTERNAL_APPLICATION_FAILURE,
-        ),
-        (
-            PaymentProviderConfigurationError("provider_configuration"),
-            FailureCategory.INTERNAL_APPLICATION_FAILURE,
-        ),
-        (
-            PaymentsUpstreamError("upstream", retry_disposition=RetryDisposition.RETRYABLE),
-            FailureCategory.INTEGRATION_FAILURE,
-        ),
-        (PaymentsError("provider"), FailureCategory.INTEGRATION_FAILURE),
         (AppError("application"), FailureCategory.INTERNAL_APPLICATION_FAILURE),
         (RuntimeError("unexpected"), FailureCategory.UNEXPECTED_EXCEPTION),
     ],
 )
 def test_exception_classification_is_semantic(
     error: Exception,
-    expected: FailureCategory | None,
+    expected: FailureCategory,
 ) -> None:
     assert classify_exception(error) is expected
 
@@ -272,7 +242,7 @@ def test_exception_classification_is_semantic(
 @pytest.mark.parametrize(
     ("value", "expected"),
     [
-        (r"app\payment_providers\registry.py", "app/payment_providers/registry.py"),
+        (r"app\core\settings.py", "app/core/settings.py"),
         (r"tests\test_sentry_reporting.py", "tests/test_sentry_reporting.py"),
     ],
 )
@@ -323,13 +293,13 @@ def capture_correlated_failure(
                     operation=Operation.HTTP_REQUEST,
                     run_id=run_id,
                     method="POST",
-                    route="/api/orders/{order_id}",
-                    error_code="provider.timeout",
-                    invariant="subscription.state",
+                    route="/api/auth/session",
+                    error_code="identity.lookup_failed",
+                    invariant="session.state",
                     batch_size=1000,
                     failure_location={
-                        "module": "apps/api/app/payment_providers/registry.py",
-                        "function": "get",
+                        "module": "apps/api/app/domains/identity/services/auth.py",
+                        "function": "authenticate_session",
                         "line": 42,
                     },
                 )
@@ -365,13 +335,13 @@ def test_captured_exception_is_one_allowlisted_privacy_safe_error_event() -> Non
             "span_id": SPAN_ID,
             "run_id": RUN_ID,
             "method": "POST",
-            "route": "/api/orders/{order_id}",
-            "error_code": "provider.timeout",
-            "invariant": "subscription.state",
+            "route": "/api/auth/session",
+            "error_code": "identity.lookup_failed",
+            "invariant": "session.state",
             "batch_size": 1000,
             "failure_location": {
-                "module": "apps/api/app/payment_providers/registry.py",
-                "function": "get",
+                "module": "apps/api/app/domains/identity/services/auth.py",
+                "function": "authenticate_session",
                 "line": 42,
             },
         }
@@ -494,11 +464,11 @@ def test_malformed_context_values_are_dropped_from_the_final_event() -> None:
             except RuntimeError as error:
                 report_exception(
                     error,
-                    operation=Operation.EXPIRE_SUBSCRIPTIONS,
+                    operation=Operation.HTTP_REQUEST,
                     failure_category=FailureCategory.CONSISTENCY_INVARIANT_VIOLATION,
                     run_id="123E4567-E89B-12D3-A456-426614174000",
                     method="post",
-                    route="/orders/{id}?secret=value",
+                    route="/api/auth/session?secret=value",
                     error_code="UPPERCASE",
                     invariant="x" * 65,
                     batch_size=True,
@@ -528,17 +498,6 @@ def test_correlation_values_do_not_change_grouping_inputs() -> None:
     assert first["contexts"] != second["contexts"]
     assert "fingerprint" not in first
     assert "fingerprint" not in second
-
-
-def test_declined_operation_cannot_be_forced_into_reporting() -> None:
-    with capture_events() as (transport, _scope):
-        report_exception(
-            PaymentsOperationDeclinedError("declined", provider="cloudpayments", operation="charge"),
-            operation=Operation.HTTP_REQUEST,
-            failure_category=FailureCategory.INTEGRATION_FAILURE,
-        )
-
-    assert transport.items == []
 
 
 def test_service_tag_reuses_the_existing_otel_service_name() -> None:

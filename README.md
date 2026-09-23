@@ -195,11 +195,6 @@ with development values supplied by `.env.example`, local `.env`, or the
 worktree harness. Set `APP_ENV=development` for local Compose and keep
 `DATABASE_URL`, `APP_PUBLIC_BASE_URL`, and `CORS_ALLOW_ORIGINS` explicit.
 
-CloudPayments credentials and activation flags are not part of normal Portal
-startup. The retained `scripts/cloudpayments_sandbox_verify.py` script accepts
-`CLOUDPAYMENTS_PUBLIC_ID` and `CLOUDPAYMENTS_API_SECRET` only when an operator
-explicitly opts into legacy/manual CloudPayments sandbox verification.
-
 ## Production Compose workflow
 
 Copy `.env.production.example` to `.env.production`, supply production secrets,

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import inspect
 import os
 from pathlib import Path
 
@@ -8,13 +7,7 @@ import pytest
 
 os.environ["DATABASE_URL"] = "sqlite+pysqlite:///:memory:"
 
-from fastapi.routing import APIRoute
-
 from app.core.database import Base
-from app.http_dependencies import get_raw_request_body
-from app.integrations.cloudpayments.adapter import CloudPaymentsAdapter
-from app.integrations.cloudpayments.router import router as cloudpayments_router
-from app.main import app
 from app.models import (
     AuthSession,
     DocumentAcceptance,
@@ -34,21 +27,6 @@ def write_module(root: Path, relative: str, source: str) -> None:
     path = root / relative
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(source, encoding="utf-8")
-
-
-def test_retained_cloudpayments_webhook_keeps_shared_async_body_and_sync_processing_boundary() -> None:
-    route = next(
-        route
-        for route in cloudpayments_router.routes
-        if isinstance(route, APIRoute) and route.path == "/api/cloudpayments/{endpoint}"
-    )
-    dependencies = {dependency.name: dependency.call for dependency in route.dependant.dependencies}
-
-    assert "/api/cloudpayments/{endpoint}" not in app.openapi()["paths"]
-    assert not inspect.iscoroutinefunction(route.endpoint)
-    assert dependencies["raw_body"] is get_raw_request_body
-    assert inspect.iscoroutinefunction(get_raw_request_body)
-    assert not inspect.iscoroutinefunction(CloudPaymentsAdapter.normalize_webhook_request)
 
 
 def test_ast_import_forms_are_rejected_with_actionable_errors(tmp_path: Path) -> None:
@@ -115,7 +93,7 @@ def test_layer_specific_router_rules_are_enforced(tmp_path: Path) -> None:
     )
     write_module(
         tmp_path,
-        "apps/api/app/integrations/cloudpayments/handler.py",
+        "apps/api/app/integrations/example/handler.py",
         "from app.domains.billing import router\n",
     )
 
@@ -533,8 +511,8 @@ def test_active_domain_presentation_allows_session_di_and_inward_delegation(tmp_
     assert check_python_boundaries(tmp_path) == []
 
 
-@pytest.mark.parametrize("relative", ("apps/api/app/integrations/cloudpayments/router.py", "apps/api/app/health.py"))
-def test_non_domain_api_router_is_not_active_domain_presentation(tmp_path: Path, relative: str) -> None:
+def test_non_domain_api_router_is_not_active_domain_presentation(tmp_path: Path) -> None:
+    relative = "apps/api/app/health.py"
     write_module(
         tmp_path,
         relative,
@@ -549,26 +527,13 @@ def test_non_domain_api_router_is_not_active_domain_presentation(tmp_path: Path,
     assert check_python_boundaries(tmp_path) == []
 
 
-@pytest.mark.parametrize("transport_import", ("from fastapi import Request", "from starlette.requests import Request"))
-def test_payment_provider_registry_rejects_transport_dependencies(tmp_path: Path, transport_import: str) -> None:
-    relative = "apps/api/app/payment_providers/registry.py"
-    write_module(tmp_path, relative, f"{transport_import}\n")
-
-    errors = check_python_boundaries(tmp_path)
-
-    assert len(errors) == 1
-    assert errors[0].startswith(f"{relative}:1 imports ")
-    assert "payment-provider registry transport boundary" in errors[0]
-    assert "keep request-state access in app.http_dependencies" in errors[0]
-
-
 def test_application_modules_must_import_sentry_through_the_adapter(tmp_path: Path) -> None:
     forbidden_imports = {
-        "apps/api/app/domains/billing/application/renewal.py": "import sentry_sdk\n",
-        "apps/api/app/payment_providers/errors.py": "from sentry_sdk import capture_exception\n",
-        "apps/api/app/integrations/cloudpayments/client.py": ("from sentry_sdk.integrations import Integration\n"),
-        "apps/api/app/domains/billing/router.py": "import sentry_sdk.client\n",
-        "apps/api/app/commands/expire_subscriptions.py": ("from sentry_sdk.scope import Scope\n"),
+        "apps/api/app/domains/identity/services/auth.py": "import sentry_sdk\n",
+        "apps/api/app/domains/legal/service.py": "from sentry_sdk import capture_exception\n",
+        "apps/api/app/integrations/example/client.py": ("from sentry_sdk.integrations import Integration\n"),
+        "apps/api/app/domains/identity/router.py": "import sentry_sdk.client\n",
+        "apps/api/app/commands/maintenance.py": ("from sentry_sdk.scope import Scope\n"),
     }
     for relative, source in forbidden_imports.items():
         write_module(tmp_path, relative, source)

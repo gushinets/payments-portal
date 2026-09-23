@@ -24,7 +24,6 @@ from app.health import health_router
 from app.http_errors import app_error_handler, unexpected_failure_middleware
 from app.infrastructure.sentry import configure_sentry
 from app.legal_seed import seed_legal_documents
-from app.payment_providers.registry import PaymentProviderRegistry
 
 metrics_router = APIRouter(prefix="/metrics", tags=["metrics"])
 
@@ -68,7 +67,6 @@ def create_app() -> FastAPI:
         version="0.1.0",
         lifespan=lifespan,
     )
-    app.state.payment_provider_registry = PaymentProviderRegistry()
     # Middleware is inserted in reverse registration order: request context
     # must wrap the unexpected-failure boundary so it can add X-Request-ID to
     # the converted response and record request completion.

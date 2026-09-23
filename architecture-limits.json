@@ -1,33 +1,9 @@
 {
   "defaultMaxLines": 500,
   "exceptions": {
-    "apps/api/app/payment_providers/api_client.py": {
-      "maxLines": 550,
-      "reason": "Provider HTTP client keeps request deadline, retry, redaction, and idempotency policy together while the provider boundary is under active development."
-    },
-    "apps/api/app/integrations/cloudpayments/recurring.py": {
-      "maxLines": 600,
-      "reason": "CloudPayments recurring operations keep validation, state mapping, and safe result translation together while the recurring provider slice is under active development."
-    },
     "apps/api/app/domains/identity/router.py": {
       "maxLines": 711,
       "reason": "Behavior-preserving transition keeps legacy auth flow together until its product redesign; do not add identity routes here without extracting helpers."
-    },
-    "apps/api/app/integrations/cloudpayments/processing.py": {
-      "maxLines": 524,
-      "reason": "CloudPayments webhook processing is temporarily over the default limit while ANY-168 recurrent integration is pending; extract recurrent processing before adding provider behavior."
-    },
-    "apps/api/app/domains/billing/service/commercial_transitions.py": {
-      "maxLines": 560,
-      "reason": "Canonical Payment and Refund transition policy remains together after typed contracts were extracted; the bounded allowance covers the approved uncorrelated terminal-cancellation stale-fact rule. Do not add another commercial transition without a further policy split."
-    },
-    "apps/api/app/domains/billing/service/lifecycle_operations.py": {
-      "maxLines": 525,
-      "reason": "Canonical lifecycle operations remain together through ANY-496 authoritative-state and refund-policy hardening; do not add another lifecycle operation without splitting the module."
-    },
-    "apps/web/src/features/checkout/CheckoutClient.tsx": {
-      "maxLines": 1050,
-      "reason": "Checkout UI was moved behind a feature boundary; functional decomposition follows stable E2E coverage."
     },
     "apps/web/src/app/globals.css": {
       "maxLines": 1150,

@@ -1,1 +1,1 @@
-"""External provider adapters."""
+"""External system integrations."""

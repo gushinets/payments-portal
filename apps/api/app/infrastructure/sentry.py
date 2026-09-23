@@ -16,13 +16,6 @@ from sentry_sdk.integrations.atexit import AtexitIntegration
 from app.core.errors import AppError
 from app.core.observability import REQUEST_ID_PATTERN, current_trace_ids, request_id_context
 from app.core.settings import Settings
-from app.payment_providers.errors import (
-    PaymentProviderConfigurationError,
-    PaymentsError,
-    PaymentsIdempotencyKeyRequiredError,
-    PaymentsOperationDeclinedError,
-    PaymentsTimeoutError,
-)
 
 
 logger = logging.getLogger(__name__)
@@ -56,19 +49,10 @@ class FailureCategory(StrEnum):
 
 class Operation(StrEnum):
     HTTP_REQUEST = "http_request"
-    EXPIRE_SUBSCRIPTIONS = "expire_subscriptions"
     PASSWORD_RESET_EMAIL = "password_reset_email"
 
 
-def classify_exception(error: Exception) -> FailureCategory | None:
-    if isinstance(error, PaymentsOperationDeclinedError):
-        return None
-    if isinstance(error, PaymentsTimeoutError):
-        return FailureCategory.UNKNOWN_EXTERNAL_OUTCOME
-    if isinstance(error, (PaymentsIdempotencyKeyRequiredError, PaymentProviderConfigurationError)):
-        return FailureCategory.INTERNAL_APPLICATION_FAILURE
-    if isinstance(error, PaymentsError):
-        return FailureCategory.INTEGRATION_FAILURE
+def classify_exception(error: Exception) -> FailureCategory:
     if isinstance(error, AppError):
         return FailureCategory.INTERNAL_APPLICATION_FAILURE
     return FailureCategory.UNEXPECTED_EXCEPTION
@@ -127,8 +111,6 @@ def report_exception(
         if not isinstance(operation, Operation):
             raise TypeError("operation must be an Operation")
         classified_category = classify_exception(error)
-        if classified_category is None:
-            return
         category = failure_category or classified_category
         if not isinstance(category, FailureCategory):
             raise TypeError("failure_category must be a FailureCategory")

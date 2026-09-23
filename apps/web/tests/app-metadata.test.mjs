@@ -10,9 +10,6 @@ const checkoutPagePath = fileURLToPath(
 const checkoutClientPath = fileURLToPath(
   new URL("../src/features/checkout/CheckoutClient.tsx", import.meta.url)
 );
-const retainedProviderAdapterPath = fileURLToPath(
-  new URL("../src/features/checkout/provider-adapters.ts", import.meta.url)
-);
 const srcRootPath = fileURLToPath(new URL("../src", import.meta.url));
 
 test("root metadata keeps public RU branding copy", async () => {
@@ -27,7 +24,7 @@ test("root metadata keeps public RU branding copy", async () => {
   assert.doesNotMatch(source, /подготовки подключения CloudPayments/);
 });
 
-test("the retained auth route does not reach provider scripts or browser SDK", async () => {
+test("frontend source does not reach provider scripts or browser SDK", async () => {
   const [checkoutPageSource, checkoutClientSource] = await Promise.all([
     readFile(checkoutPagePath, "utf8"),
     readFile(checkoutClientPath, "utf8")
@@ -38,10 +35,7 @@ test("the retained auth route does not reach provider scripts or browser SDK", a
   await Promise.all(
     files.map(async (filePath) => {
       const source = await readFile(filePath, "utf8");
-      if (
-        /widget\.cloudpayments\.ru|\bwindow\.cp\b|\bcp\./.test(source) &&
-        filePath !== retainedProviderAdapterPath
-      ) {
+      if (/widget\.cloudpayments\.ru|\bwindow\.cp\b|\bcp\./.test(source)) {
         offenders.push(filePath);
       }
     })
