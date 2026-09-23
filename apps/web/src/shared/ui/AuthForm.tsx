@@ -3,6 +3,10 @@
 import Link from "next/link";
 import { type ReactNode, type Ref, useState } from "react";
 import { ArrowRight } from "lucide-react";
+import {
+  REGISTRATION_OFFER_CONSENT_TEXT,
+  REGISTRATION_PERSONAL_CONSENT_TEXT
+} from "@/generated/registration-acceptance";
 
 export type AuthMode = "login" | "register";
 
@@ -37,6 +41,58 @@ type AuthFormProps = {
 };
 
 const defaultModeOrder: AuthMode[] = ["login", "register"];
+
+type ConsentTextLink = {
+  href: string;
+  text: string;
+};
+
+const personalConsentLinks: ConsentTextLink[] = [
+  {
+    href: "/ru/consent-personal-data",
+    text: "Согласием на обработку персональных данных"
+  },
+  {
+    href: "/ru/privacy",
+    text: "Политикой в отношении обработки персональных данных"
+  }
+];
+const offerConsentLinks: ConsentTextLink[] = [
+  {
+    href: "/ru/offer",
+    text: "Публичной оферты"
+  }
+];
+
+function renderConsentText(
+  statement: string,
+  links: ConsentTextLink[]
+): ReactNode[] {
+  const content: ReactNode[] = [];
+  let cursor = 0;
+
+  for (const link of links) {
+    const start = statement.indexOf(link.text, cursor);
+    if (start < 0) {
+      throw new Error(`Registration consent link text is missing: ${link.text}`);
+    }
+    content.push(statement.slice(cursor, start));
+    content.push(
+      <Link
+        className="inline-link"
+        href={link.href}
+        target="_blank"
+        rel="noopener noreferrer"
+        key={link.href}
+      >
+        {statement.slice(start, start + link.text.length)}
+      </Link>
+    );
+    cursor = start + link.text.length;
+  }
+  content.push(statement.slice(cursor));
+  return content;
+}
 
 export function AuthForm({
   title,
@@ -188,48 +244,30 @@ export function AuthForm({
           <label className="checkbox-label">
             <input
               type="checkbox"
+              aria-label={REGISTRATION_PERSONAL_CONSENT_TEXT}
               checked={personalConsent}
               onChange={(event) => setPersonalConsent(event.target.checked)}
             />
             <span>
-              Я даю согласие на обработку персональных данных в соответствии с{" "}
-              <Link
-                className="inline-link"
-                href="/ru/consent-personal-data"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Согласием на обработку персональных данных
-              </Link>{" "}
-              и{" "}
-              <Link
-                className="inline-link"
-                href="/ru/privacy"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Политикой в отношении обработки персональных данных
-              </Link>
-              .
+              {renderConsentText(
+                REGISTRATION_PERSONAL_CONSENT_TEXT,
+                personalConsentLinks
+              )}
             </span>
           </label>
 
           <label className="checkbox-label">
             <input
               type="checkbox"
+              aria-label={REGISTRATION_OFFER_CONSENT_TEXT}
               checked={offerConsent}
               onChange={(event) => setOfferConsent(event.target.checked)}
             />
             <span>
-              Я принимаю условия{" "}
-              <Link
-                className="inline-link"
-                href="/ru/offer"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Публичной оферты
-              </Link>.
+              {renderConsentText(
+                REGISTRATION_OFFER_CONSENT_TEXT,
+                offerConsentLinks
+              )}
             </span>
           </label>
         </>

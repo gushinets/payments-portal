@@ -1151,6 +1151,30 @@ def test_makefile_contains_only_test_database_shortcuts() -> None:
     assert targets == ["test_db_up", "test_db_stop"]
 
 
+def test_generated_registration_acceptance_contract_matches_backend_authority() -> None:
+    generated = repo.GENERATED_REGISTRATION_ACCEPTANCE_TS.read_text(encoding="utf-8")
+
+    assert generated == repo.render_registration_acceptance_typescript()
+
+
+def test_registration_acceptance_generator_rejects_nonliteral_text(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "acceptance_text.py"
+    source.write_text(
+        'REGISTRATION_PERSONAL_CONSENT_TEXT = build_text()\nREGISTRATION_OFFER_CONSENT_TEXT = "Offer"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(repo, "REGISTRATION_ACCEPTANCE_TEXT_SOURCE", source)
+
+    with pytest.raises(
+        repo.HarnessError,
+        match="Registration acceptance text must be a string literal",
+    ):
+        repo.registration_acceptance_texts()
+
+
 def test_fast_check_passes_the_scoped_environment_to_every_subprocess(
     monkeypatch,
 ) -> None:

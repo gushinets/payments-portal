@@ -37,6 +37,12 @@ GENERATED_OPENAPI = ROOT / "docs" / "generated" / "openapi.json"
 GENERATED_TOKENS = ROOT / "apps" / "web" / "src" / "app" / "tokens.generated.css"
 GENERATED_LEGAL_PY = ROOT / "apps" / "api" / "app" / "generated" / "legal_manifest.py"
 GENERATED_LEGAL_JSON = ROOT / "apps" / "web" / "src" / "generated" / "legal-manifest.json"
+REGISTRATION_ACCEPTANCE_TEXT_SOURCE = (
+    ROOT / "apps" / "api" / "app" / "domains" / "legal" / "acceptance_text.py"
+)
+GENERATED_REGISTRATION_ACCEPTANCE_TS = (
+    ROOT / "apps" / "web" / "src" / "generated" / "registration-acceptance.ts"
+)
 API_TEST_PATH = "apps/api/tests"
 LEGAL_DOCS_ROOT = ROOT / "docs" / "legal" / "ru"
 LOCAL_INSTANCE_TENANT_ID = "anytoolai"
@@ -739,11 +745,69 @@ def render_tokens() -> str:
     )
 
 
+def registration_acceptance_texts() -> dict[str, str]:
+    required_names = {
+        "REGISTRATION_PERSONAL_CONSENT_TEXT",
+        "REGISTRATION_OFFER_CONSENT_TEXT",
+    }
+    tree = ast.parse(
+        REGISTRATION_ACCEPTANCE_TEXT_SOURCE.read_text(encoding="utf-8"),
+        filename=str(REGISTRATION_ACCEPTANCE_TEXT_SOURCE),
+    )
+    values: dict[str, str] = {}
+    for node in tree.body:
+        if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+            continue
+        target = node.targets[0]
+        if not isinstance(target, ast.Name) or target.id not in required_names:
+            continue
+        try:
+            value = ast.literal_eval(node.value)
+        except (ValueError, TypeError) as error:
+            raise HarnessError(
+                f"Registration acceptance text must be a string literal: {target.id}"
+            ) from error
+        if not isinstance(value, str):
+            raise HarnessError(
+                f"Registration acceptance text must be a string literal: {target.id}"
+            )
+        values[target.id] = value
+
+    missing = sorted(required_names - values.keys())
+    if missing:
+        raise HarnessError(
+            "Missing canonical registration acceptance text: " + ", ".join(missing)
+        )
+    return values
+
+
+def render_registration_acceptance_typescript() -> str:
+    values = registration_acceptance_texts()
+    lines = [
+        "// Generated from apps/api/app/domains/legal/acceptance_text.py. Do not edit.",
+        "",
+    ]
+    for name in (
+        "REGISTRATION_PERSONAL_CONSENT_TEXT",
+        "REGISTRATION_OFFER_CONSENT_TEXT",
+    ):
+        lines.append(
+            f"export const {name} = {json.dumps(values[name], ensure_ascii=False)} as const;"
+        )
+    lines.append("")
+    return "\n".join(lines)
+
+
 def generate_all(*, check: bool) -> bool:
     stale = generate_legal(check=check)
     stale |= write_or_check(GENERATED_DB, render_db_schema(), check=check)
     stale |= write_or_check(GENERATED_OPENAPI, render_openapi(), check=check)
     stale |= write_or_check(GENERATED_TOKENS, render_tokens(), check=check)
+    stale |= write_or_check(
+        GENERATED_REGISTRATION_ACCEPTANCE_TS,
+        render_registration_acceptance_typescript(),
+        check=check,
+    )
     return stale
 
 
