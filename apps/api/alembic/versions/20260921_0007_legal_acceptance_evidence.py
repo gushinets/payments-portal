@@ -319,6 +319,10 @@ def upgrade() -> None:
             LANGUAGE plpgsql
             AS $$
             BEGIN
+                IF TG_OP = 'DELETE' THEN
+                    RAISE EXCEPTION 'published legal document versions cannot be deleted';
+                END IF;
+
                 IF NEW.id IS DISTINCT FROM OLD.id
                     OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id
                     OR NEW.region IS DISTINCT FROM OLD.region
@@ -345,7 +349,7 @@ def upgrade() -> None:
         sa.text(
             """
             CREATE TRIGGER trg_guard_document_version_material
-            BEFORE UPDATE ON document_versions
+            BEFORE UPDATE OR DELETE ON document_versions
             FOR EACH ROW
             EXECUTE FUNCTION guard_document_version_material()
             """

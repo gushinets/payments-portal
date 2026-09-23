@@ -486,16 +486,52 @@ def test_document_acceptance_rows_are_append_only(db_session: Session) -> None:
 def test_document_version_material_is_immutable_but_active_selection_may_change(
     db_session: Session,
 ) -> None:
-    _, document, _, _ = create_legal_evidence(
-        db_session,
-        email="immutable-document@example.com",
+    published_at = datetime.now(UTC)
+    entity = LegalEntity(
+        tenant_id="anytoolai",
+        region="ru",
+        name="Unreferenced document legal entity",
+        entity_type=LegalEntityType.COMPANY,
+        legal_address="Test address",
+        support_email="support@example.com",
+        status=LegalEntityStatus.ACTIVE,
+    )
+    db_session.add(entity)
+    db_session.flush()
+    document = DocumentVersion(
+        tenant_id=entity.tenant_id,
+        region=entity.region,
+        legal_entity_id=entity.id,
+        doc_type="test_unreferenced_notice",
+        version="v1",
+        title="Unreferenced published legal notice",
+        url_path="/ru/test-unreferenced-notice",
+        content_hash="sha256:unreferenced",
+        published_at=published_at,
+        effective_from=published_at,
+        is_active=True,
+        requires_acceptance=True,
+    )
+    db_session.add(document)
+    db_session.flush()
+    document_id = document.id
+    db_session.commit()
+
+    assert (
+        db_session.query(DocumentAcceptance)
+        .filter(DocumentAcceptance.document_version_id == document_id)
+        .count()
+        == 0
     )
 
     db_session.execute(
         text("UPDATE document_versions SET is_active = false, updated_at = now() WHERE id = :document_id"),
-        {"document_id": document.id},
+        {"document_id": document_id},
     )
     db_session.commit()
+    updated_document = db_session.get(DocumentVersion, document_id)
+    assert updated_document is not None
+    assert updated_document.is_active is False
 
     with pytest.raises(DatabaseError, match="published legal document material is immutable"):
         db_session.execute(
@@ -504,7 +540,14 @@ def test_document_version_material_is_immutable_but_active_selection_may_change(
                 "SET content_hash = 'sha256:replacement', updated_at = now() "
                 "WHERE id = :document_id"
             ),
-            {"document_id": document.id},
+            {"document_id": document_id},
+        )
+    db_session.rollback()
+
+    with pytest.raises(DatabaseError, match="published legal document versions cannot be deleted"):
+        db_session.execute(
+            text("DELETE FROM document_versions WHERE id = :document_id"),
+            {"document_id": document_id},
         )
 
 

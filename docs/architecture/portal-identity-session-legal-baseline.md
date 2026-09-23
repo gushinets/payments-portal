@@ -262,11 +262,12 @@ pre-reset history:
 2. `guard_document_acceptance_evidence` on UPDATE or DELETE of
    `document_acceptances` rejects both operations unconditionally. Rows are
    append-only.
-3. `guard_document_version_material` before UPDATE of `document_versions`
-   rejects changes to `id`, tenant, region, legal entity, type, version, title,
-   URL path, content hash, publication/effective timestamps, or
-   `requires_acceptance`. It permits lifecycle updates such as `is_active` and
-   the corresponding `updated_at` change.
+3. `guard_document_version_material` before UPDATE or DELETE of
+   `document_versions` rejects every DELETE and rejects changes to `id`, tenant,
+   region, legal entity, type, version, title, URL path, content hash,
+   publication/effective timestamps, or `requires_acceptance`. It permits
+   lifecycle updates such as `is_active` and the corresponding `updated_at`
+   change.
 
 Equivalent trigger/function names are acceptable in the fresh baseline only
 if these exact semantics and their PostgreSQL tests remain intact.
