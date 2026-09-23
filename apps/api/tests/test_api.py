@@ -847,8 +847,15 @@ def test_seeded_registration_documents_are_accepted_atomically() -> None:
             title="Согласие на рекуррентные платежи",
         )
 
-    register_response = client.post(
+    registration_client = TestClient(
+        ProxyHeadersMiddleware(app, trusted_hosts=["testclient"]),
+    )
+    register_response = registration_client.post(
         "/api/auth/register",
+        headers={
+            "user-agent": "legal-evidence-test-agent",
+            "x-forwarded-for": "203.0.113.20",
+        },
         json={
             "email": "seeded-legal@example.com",
             "password": "very-secret-password",
@@ -876,6 +883,10 @@ def test_seeded_registration_documents_are_accepted_atomically() -> None:
     assert {acceptance.doc_type for acceptance in acceptances} == {"privacy", "pd_consent", "offer"}
     assert {acceptance.legal_acceptance_event_id for acceptance in acceptances} == {event.id}
     assert {acceptance.accepted_at for acceptance in acceptances} == {event.accepted_at}
+    assert str(event.ip) == "203.0.113.20"
+    assert event.user_agent == "legal-evidence-test-agent"
+    assert all(acceptance.ip is None for acceptance in acceptances)
+    assert all(acceptance.user_agent is None for acceptance in acceptances)
     assert session.user_id == user.id
     assert event.external_billing_account_id is None
     assert event.billing_offer_id is None

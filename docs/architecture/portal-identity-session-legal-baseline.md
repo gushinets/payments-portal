@@ -240,9 +240,11 @@ The current ORM still contains transitional checkout fields that Step 4 must
 remove after deleting their callers: `guest_id`, `entrypoint_session_id`,
 `entrypoint_type`, `entrypoint_value`, `source_url`, arbitrary `metadata`
 (including legacy `plan_id`), duplicated `doc_type` and `version`, and the
-per-document duplicates `accepted_at`, `ip`, and `user_agent`. Target readers
-derive document type/version from immutable `DocumentVersion` and action time
-and ancillary metadata from the event.
+per-document duplicate `accepted_at`. Transitional per-document `ip` and
+`user_agent` columns also remain, but new Step-3 writes leave them NULL so
+canonical ancillary metadata exists only on the event. Target readers derive
+document type/version from immutable `DocumentVersion` and action time and
+ancillary metadata from the event.
 
 ### PostgreSQL-only invariants Step 4 must recreate
 
