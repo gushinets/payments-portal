@@ -16,7 +16,6 @@ from sqlalchemy.engine import Engine, URL
 from sqlalchemy.exc import DatabaseError, IntegrityError
 
 from apps.api.tests.support.postgres import alembic_test_config, reset_public_schema
-from app.models import SubscriptionStatus
 
 
 EXPECTED_REVISION_CHAIN = [
@@ -39,6 +38,8 @@ IDENTITY_LEGAL_TENANT_TABLES = (
     "legal_acceptance_events",
     "document_acceptances",
 )
+
+LEGACY_LIVE_SUBSCRIPTION_STATUSES = {"trialing", "active", "past_due", "paused"}
 
 pytestmark = pytest.mark.postgres
 
@@ -1001,14 +1002,16 @@ def test_live_subscription_index_predicates_match_runtime_live_statuses(
     with alembic_test_config(database_test_url) as config:
         command.upgrade(config, "head")
 
-    expected_live_statuses = set(SubscriptionStatus.live_values())
     predicates = live_subscription_index_predicates(postgres_engine)
     assert set(predicates) == {
         "uq_subscriptions_live_all_access_scope",
         "uq_subscriptions_live_bundle_scope",
         "uq_subscriptions_live_product_scope",
     }
-    assert all(live_statuses_from_predicate(predicate) == expected_live_statuses for predicate in predicates.values())
+    assert all(
+        live_statuses_from_predicate(predicate) == LEGACY_LIVE_SUBSCRIPTION_STATUSES
+        for predicate in predicates.values()
+    )
 
 
 def test_live_subscription_unique_indexes_are_removed_on_downgrade(

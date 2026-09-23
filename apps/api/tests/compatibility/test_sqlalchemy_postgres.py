@@ -11,7 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from apps.api.tests.support.postgres import alembic_test_config
-from app.models import AuthSession, Payment, PaymentWebhookEvent, User, UserStatus
+from app.models import AuthSession, User, UserStatus
 
 pytestmark = pytest.mark.postgres
 
@@ -19,14 +19,6 @@ pytestmark = pytest.mark.postgres
 def test_postgres_orm_round_trip_and_rollback(migrated_database: Engine) -> None:
     with alembic_test_config(migrated_database.url) as config:
         expected_alembic_head = ScriptDirectory.from_config(config).get_current_head()
-
-    assert PaymentWebhookEvent.__table__.c.raw_payload.type.compile(dialect=migrated_database.dialect) == "JSONB"
-    payment_id_index = next(
-        index for index in Payment.__table__.indexes if index.name == "uq_payments_provider_account_payment_id"
-    )
-    assert payment_id_index.unique is True
-    assert str(payment_id_index.dialect_options["postgresql"]["where"]) == ("provider_payment_id IS NOT NULL")
-    assert {foreign_key.target_fullname for foreign_key in Payment.__table__.c.order_id.foreign_keys} == {"orders.id"}
 
     verified_at = datetime.now(timezone.utc)
 

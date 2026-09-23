@@ -44,10 +44,8 @@ class CountryRegionRule(Base):
     country_code: Mapped[str] = mapped_column(String(2), nullable=False, unique=True, index=True)
     region: Mapped[str] = mapped_column(ForeignKey("regions.code"), nullable=False, index=True)
     market_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    allow_region_override: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     strict_mismatch: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     default_document_set: Mapped[str] = mapped_column(Text, nullable=False)
-    default_payment_provider: Mapped[str] = mapped_column(Text, nullable=False)
 
 
 class User(Base):

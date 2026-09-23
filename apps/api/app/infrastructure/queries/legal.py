@@ -87,57 +87,6 @@ def list_document_acceptance_fingerprints(
     return [(row[0], row[1], row[2]) for row in rows]
 
 
-def get_document_version_by_id(db: Session, document_version_id: uuid.UUID) -> DocumentVersion | None:
-    return db.get(DocumentVersion, document_version_id)
-
-
-def get_legal_acceptance_event_by_id(
-    db: Session,
-    acceptance_event_id: uuid.UUID,
-) -> LegalAcceptanceEvent | None:
-    return db.get(LegalAcceptanceEvent, acceptance_event_id)
-
-
-def get_document_acceptance_candidate(
-    db: Session,
-    *,
-    acceptance_id: uuid.UUID,
-    tenant_id: str,
-    region: str,
-    user_id: uuid.UUID,
-    doc_type: str,
-    acceptance_kind: AcceptanceKind,
-    effective_at: datetime,
-) -> DocumentAcceptance | None:
-    return (
-        db.query(DocumentAcceptance)
-        .join(DocumentVersion, DocumentVersion.id == DocumentAcceptance.document_version_id)
-        .join(
-            LegalAcceptanceEvent,
-            LegalAcceptanceEvent.id == DocumentAcceptance.legal_acceptance_event_id,
-        )
-        .filter(
-            DocumentAcceptance.id == acceptance_id,
-            DocumentAcceptance.tenant_id == tenant_id,
-            DocumentAcceptance.region == region,
-            DocumentAcceptance.user_id == user_id,
-            DocumentAcceptance.doc_type == doc_type,
-            DocumentAcceptance.acceptance_kind == acceptance_kind,
-            LegalAcceptanceEvent.tenant_id == tenant_id,
-            LegalAcceptanceEvent.region == region,
-            LegalAcceptanceEvent.user_id == user_id,
-            LegalAcceptanceEvent.accepted_at <= effective_at,
-            DocumentVersion.tenant_id == tenant_id,
-            DocumentVersion.region == region,
-            DocumentVersion.doc_type == doc_type,
-            DocumentVersion.is_active.is_(True),
-            DocumentVersion.requires_acceptance.is_(True),
-            DocumentVersion.effective_from <= effective_at,
-        )
-        .first()
-    )
-
-
 def get_active_required_document_by_id(
     db: Session,
     *,
@@ -158,10 +107,3 @@ def get_active_required_document_by_id(
         )
         .first()
     )
-
-
-def get_document_acceptance_by_id(
-    db: Session, acceptance_id: uuid.UUID, *, for_update: bool = False
-) -> DocumentAcceptance | None:
-    query = db.query(DocumentAcceptance).filter(DocumentAcceptance.id == acceptance_id)
-    return (query.with_for_update() if for_update else query).first()

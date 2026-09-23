@@ -10,11 +10,14 @@ os.environ["DATABASE_URL"] = "sqlite+pysqlite:///:memory:"
 from app.core.database import Base
 from app.models import (
     AuthSession,
+    CountryRegionRule,
     DocumentAcceptance,
     DocumentVersion,
     LegalAcceptanceEvent,
     LegalEntity,
     MagicLinkToken,
+    PasswordResetRateLimit,
+    Region,
     User,
 )
 from scripts.repo import (
@@ -916,6 +919,45 @@ def test_identity_legal_allows_portal_email_as_local_user_attribute(
 
 def test_magic_link_token_has_no_entrypoint_session_binding() -> None:
     assert "entrypoint_session_id" not in MagicLinkToken.__table__.c
+
+
+def test_canonical_orm_contains_only_step_3_survivor_tables() -> None:
+    retained_models = (
+        Region,
+        CountryRegionRule,
+        User,
+        AuthSession,
+        MagicLinkToken,
+        PasswordResetRateLimit,
+        LegalEntity,
+        DocumentVersion,
+        LegalAcceptanceEvent,
+        DocumentAcceptance,
+    )
+
+    assert set(Base.metadata.tables) == {model.__tablename__ for model in retained_models}
+
+
+def test_clean_country_rule_and_document_acceptance_fields_are_exact() -> None:
+    assert set(CountryRegionRule.__table__.c.keys()) == {
+        "id",
+        "country_code",
+        "region",
+        "market_enabled",
+        "strict_mismatch",
+        "default_document_set",
+    }
+    assert set(DocumentAcceptance.__table__.c.keys()) == {
+        "id",
+        "legal_acceptance_event_id",
+        "tenant_id",
+        "region",
+        "user_id",
+        "document_version_id",
+        "acceptance_kind",
+        "acceptance_text_hash",
+        "created_at",
+    }
 
 
 def test_identity_and_legal_models_require_explicit_tenant_scope() -> None:

@@ -305,12 +305,7 @@ def test_generic_legal_acceptance_keeps_exact_version_event_evidence() -> None:
 
     assert acceptance.document_version_id == document_id
     assert acceptance.acceptance_text_hash == acceptance_text_hash
-    assert acceptance.entrypoint_session_id is None
-    assert acceptance.entrypoint_type is None
-    assert acceptance.entrypoint_value is None
-    assert acceptance.source_url is None
-    assert acceptance.metadata_ == {}
-    assert acceptance.accepted_at == event.accepted_at
+    assert response.json()["accepted_at"] == event.accepted_at.isoformat()
 
 
 def test_invalid_request_id_is_replaced() -> None:
@@ -360,28 +355,29 @@ def test_seeded_registration_documents_are_accepted_atomically() -> None:
         acceptances = (
             db.query(DocumentAcceptance)
             .filter(DocumentAcceptance.user_id == user.id)
-            .order_by(DocumentAcceptance.doc_type)
+            .order_by(DocumentAcceptance.created_at)
             .all()
         )
         session = db.query(AuthSession).filter(AuthSession.user_id == user.id).one()
         expected_hashes: dict[str, str] = {}
+        accepted_doc_types: dict[uuid.UUID, str] = {}
         for acceptance in acceptances:
             document = db.get(DocumentVersion, acceptance.document_version_id)
             assert document is not None
-            expected_hashes[acceptance.doc_type] = expected_registration_acceptance_text_hash(document)
+            accepted_doc_types[acceptance.id] = document.doc_type
+            expected_hashes[document.doc_type] = expected_registration_acceptance_text_hash(document)
 
-    assert {acceptance.doc_type for acceptance in acceptances} == {"privacy", "pd_consent", "offer"}
+    assert set(accepted_doc_types.values()) == {"privacy", "pd_consent", "offer"}
     assert {acceptance.legal_acceptance_event_id for acceptance in acceptances} == {event.id}
-    assert {acceptance.accepted_at for acceptance in acceptances} == {event.accepted_at}
     assert str(event.ip) == "203.0.113.20"
     assert event.user_agent == "legal-evidence-test-agent"
-    assert all(acceptance.ip is None for acceptance in acceptances)
-    assert all(acceptance.user_agent is None for acceptance in acceptances)
     assert session.user_id == user.id
     assert event.external_billing_account_id is None
     assert event.billing_offer_id is None
     assert event.accepted_commercial_fingerprint is None
-    assert {acceptance.doc_type: acceptance.acceptance_text_hash for acceptance in acceptances} == expected_hashes
+    assert {
+        accepted_doc_types[acceptance.id]: acceptance.acceptance_text_hash for acceptance in acceptances
+    } == expected_hashes
 
 
 def test_registration_acceptance_statements_and_hashes_are_frozen() -> None:
@@ -656,15 +652,9 @@ def test_required_document_acceptance_creates_a_new_noncommercial_event_per_call
     assert len(acceptances) == 2
     assert len(events) == 2
     assert {acceptance.legal_acceptance_event_id for acceptance in acceptances} == {event.id for event in events}
-    assert all(
-        acceptance.accepted_at
-        == next(event.accepted_at for event in events if event.id == acceptance.legal_acceptance_event_id)
-        for acceptance in acceptances
-    )
     assert all(event.external_billing_account_id is None for event in events)
     assert all(event.billing_offer_id is None for event in events)
     assert all(event.accepted_commercial_fingerprint is None for event in events)
-    assert all(acceptance.guest_id is None for acceptance in acceptances)
 
 
 def test_same_email_foreign_client_scope_cannot_create_foreign_contour_user() -> None:
@@ -811,9 +801,14 @@ def test_registration_failure_before_initial_session_rolls_back_and_allows_retry
         session = db.query(AuthSession).filter(AuthSession.user_id == user.id).one()
         event = db.query(LegalAcceptanceEvent).filter(LegalAcceptanceEvent.user_id == user.id).one()
         acceptances = db.query(DocumentAcceptance).filter(DocumentAcceptance.user_id == user.id).all()
+        documents = (
+            db.query(DocumentVersion)
+            .filter(DocumentVersion.id.in_([acceptance.document_version_id for acceptance in acceptances]))
+            .all()
+        )
         assert session.user_id == user.id
         assert {acceptance.legal_acceptance_event_id for acceptance in acceptances} == {event.id}
-        assert {acceptance.doc_type for acceptance in acceptances} == {"privacy", "pd_consent", "offer"}
+        assert {document.doc_type for document in documents} == {"privacy", "pd_consent", "offer"}
 
 
 def test_selected_auth_failures_use_structured_error_codes() -> None:
