@@ -102,7 +102,7 @@ no unowned "keep for now" category.
 | `app.models.enums` | RETAIN / ADAPT IDENTITY AND LEGAL ENUMS; REMOVE OR REPLACE LEGACY BILLING ENUMS | Preserve the resolved active-only `UserStatus` and retained legal/recovery vocabularies; Step 4 removes old catalog, commerce, provider, subscription, entitlement, and trial vocabularies instead of promoting them into target authority. |
 | `app.models._shared` and `PersistedEnumType` | RETAIN / ADAPT | Preserve provider-independent SQLAlchemy and text-backed enum mechanics; Step 4 removes legacy subscription-scope/status SQL helpers with their consumers. |
 | `app.models.__init__` | ADAPT IN `ANY-504` STEP 4 | Re-export the final retained Step-3 models and approved target models only; remove legacy billing exports. |
-| Complete pre-reset Alembic history, including `20260921_0006` and `20260921_0007` | REPLACE WITH CLEAN BASELINE | Step 4 uses the resolved handoff as authority and recreates retained identity/legal schema and trigger semantics in one clean first-install baseline; transitional revisions are not copied mechanically. |
+| Complete pre-reset Alembic history, including Step-3 revisions `20260921_0006`, `20260921_0007`, and `20260923_0008` | REPLACE WITH CLEAN BASELINE | Step 4 uses the resolved handoff as authority and recreates retained identity/legal schema and trigger semantics in one clean first-install baseline; transitional revisions are not copied mechanically. |
 | `app.domains.identity.services.checkout` and its identity-router checkout presentation | REMOVE IN `ANY-504` STEP 4 | Remove the old direct-provider checkout. Target `PurchaseIntent` runtime is deferred to `ANY-504` Step 7. |
 | `app.domains.identity.services.account` billing reads | REMOVE IN `ANY-504` STEP 4 | Remove old `Product` / `Plan` / `Order` / `Payment` / `Entitlement` lookups, including `load_payment_status()` and product-state resolution; preserve provider-independent authenticated user/session semantics. |
 | `app.domains.billing.catalog` and `app.domains.billing.service.catalog` | REMOVE IN `ANY-504` STEP 4 | Remove the Portal-owned sellable catalog. Target catalog projection runtime is deferred to `ANY-504` Steps 6-7. |
@@ -1210,8 +1210,8 @@ When the premise remains true, Step 4 must apply this contract:
    active-version lifecycle selector to change.
 5. Treat revisions `20260707_0001` through `20260826_0005` only as the
    researched baseline. Replace the **entire pre-reset Alembic history present
-   when Step 4 starts**, including Step-3 revisions `20260921_0006` and
-   `20260921_0007`, with one fresh first-install baseline and one Alembic head.
+   when Step 4 starts**, including Step-3 revisions `20260921_0006`, `20260921_0007`, and
+   `20260923_0008`, with one fresh first-install baseline and one Alembic head.
 6. Do not build a data-preserving forward business migration, dual write,
    legacy backfill, old/new coexistence layer, or billing compatibility layer
    while the no-production premise holds. Recreate development, test, and
