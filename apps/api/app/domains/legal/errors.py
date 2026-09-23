@@ -28,3 +28,7 @@ class RecurringConsentPlanInvalidError(LegalAcceptanceError):
 
 class InvalidAcceptanceTextHashError(LegalAcceptanceError):
     code = "invalid_acceptance_text_hash"
+
+
+class RegistrationLegalPackInvalidError(LegalAcceptanceError):
+    code = "registration_legal_pack_invalid"

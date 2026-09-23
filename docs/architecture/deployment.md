@@ -25,6 +25,15 @@ ports, while PostgreSQL, API, and web remain internal. Production must provide
 HTTPS termination, `ru` data residency, backups, secret storage, and
 monitoring outside this repository's local Compose assumptions.
 
+Both the API and migration service require explicit `INSTANCE_TENANT_ID` and
+`INSTANCE_REGION` production environment values. `docker-compose.prod.yml`
+fails interpolation when either is absent. The settings are normalized to
+lowercase and are the implemented server authority for registration, login,
+password reset, required legal-document discovery, authenticated session
+scope, and legal writes. They are descriptive deployment identity, not
+caller-selectable routing inputs. Local repository defaults are explicitly
+`anytoolai` / `ru`; production has no silent contour default.
+
 Normal runtime does not load or invoke CloudPayments. The API composes an empty
 payment-provider registry, no CloudPayments callback route is mounted, and the
 current checkout flow is unavailable. Retained CloudPayments source and
@@ -66,8 +75,10 @@ Region Resolver is deployed separately. It is not part of this Compose stack.
 This portal may later receive the resolver origin as instance configuration.
 Provider webhooks continue to hit the contour API directly.
 
-The first-install schema can physically hold more than one `regions` row. That
-does not authorize one production database to operate as two contours.
+The pre-reset schema can physically hold more than one `regions` row. That does
+not authorize one production database to operate as two contours. The planned
+clean baseline bootstraps only the configured contour and its local country
+membership.
 
 ## Local worktree deployment
 

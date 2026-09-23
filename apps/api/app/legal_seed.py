@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
@@ -44,19 +44,52 @@ RU_DOCUMENT_VERSIONS = [
     for document in LEGAL_MANIFEST["documents"]
 ]
 
+IMMUTABLE_DOCUMENT_VERSION_FIELDS = (
+    "id",
+    "tenant_id",
+    "region",
+    "legal_entity_id",
+    "doc_type",
+    "version",
+    "title",
+    "url_path",
+    "content_hash",
+    "published_at",
+    "effective_from",
+    "requires_acceptance",
+)
+
+
+class LegalDocumentSeedMismatchError(RuntimeError):
+    """Raised when a published legal version no longer matches its manifest identity."""
+
+
+def _comparable_datetime(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value
+    return value.astimezone(UTC).replace(tzinfo=None)
+
+
+def _document_material_mismatches(
+    document: DocumentVersion,
+    document_data: dict[str, object],
+) -> list[str]:
+    mismatches: list[str] = []
+    for field in IMMUTABLE_DOCUMENT_VERSION_FIELDS:
+        current_value = getattr(document, field)
+        expected_value = document_data[field]
+        if isinstance(current_value, datetime) and isinstance(expected_value, datetime):
+            current_value = _comparable_datetime(current_value)
+            expected_value = _comparable_datetime(expected_value)
+        if current_value != expected_value:
+            mismatches.append(field)
+    return mismatches
+
 
 def seed_legal_documents(db: Session) -> None:
     """Idempotently seed the current legal entity and document metadata."""
 
-    entity = db.get(LegalEntity, RU_LEGAL_ENTITY_ID)
-    if entity is None:
-        db.add(LegalEntity(**RU_LEGAL_ENTITY))
-        db.flush()
-    else:
-        for key, value in RU_LEGAL_ENTITY.items():
-            if key != "id":
-                setattr(entity, key, value)
-
+    existing_documents: dict[tuple[str, str, str, str], DocumentVersion] = {}
     for document_data in RU_DOCUMENT_VERSIONS:
         document = (
             db.query(DocumentVersion)
@@ -68,6 +101,39 @@ def seed_legal_documents(db: Session) -> None:
             )
             .first()
         )
+        key = (
+            str(document_data["tenant_id"]),
+            str(document_data["region"]),
+            str(document_data["doc_type"]),
+            str(document_data["version"]),
+        )
+        if document is not None:
+            mismatches = _document_material_mismatches(document, document_data)
+            if mismatches:
+                fields = ", ".join(mismatches)
+                raise LegalDocumentSeedMismatchError(
+                    "legal document seed mismatch for "
+                    f"{key[0]}/{key[1]}/{key[2]}/{key[3]}: immutable fields differ: {fields}"
+                )
+            existing_documents[key] = document
+
+    entity = db.get(LegalEntity, RU_LEGAL_ENTITY_ID)
+    if entity is None:
+        db.add(LegalEntity(**RU_LEGAL_ENTITY))
+        db.flush()
+    else:
+        for key, value in RU_LEGAL_ENTITY.items():
+            if key != "id":
+                setattr(entity, key, value)
+
+    for document_data in RU_DOCUMENT_VERSIONS:
+        key = (
+            str(document_data["tenant_id"]),
+            str(document_data["region"]),
+            str(document_data["doc_type"]),
+            str(document_data["version"]),
+        )
+        document = existing_documents.get(key)
         if document_data["is_active"]:
             active_documents = (
                 db.query(DocumentVersion)
@@ -79,15 +145,19 @@ def seed_legal_documents(db: Session) -> None:
                 )
                 .all()
             )
-            for active_document in active_documents:
-                if document is None or active_document.id != document.id:
-                    active_document.is_active = False
+            conflicting_active_documents = [
+                active_document
+                for active_document in active_documents
+                if document is None or active_document.id != document.id
+            ]
+            for active_document in conflicting_active_documents:
+                active_document.is_active = False
+            if conflicting_active_documents:
+                db.flush()
 
         if document is None:
             db.add(DocumentVersion(**document_data))
         else:
-            for key, value in document_data.items():
-                if key != "id":
-                    setattr(document, key, value)
+            document.is_active = bool(document_data["is_active"])
 
     db.commit()

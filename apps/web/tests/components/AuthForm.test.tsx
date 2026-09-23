@@ -1,6 +1,10 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import {
+  REGISTRATION_OFFER_CONSENT_TEXT,
+  REGISTRATION_PERSONAL_CONSENT_TEXT
+} from "@/generated/registration-acceptance";
 import { AuthForm } from "@/shared/ui";
 
 function renderAuthForm(overrides: Partial<Parameters<typeof AuthForm>[0]> = {}) {
@@ -71,5 +75,23 @@ describe("AuthForm characterization", () => {
       personalConsent: true,
       offerConsent: true
     });
+  });
+
+  it("renders the canonical backend-owned registration statements", () => {
+    renderAuthForm({ initialMode: "register" });
+
+    expect(
+      screen.getByRole("checkbox", {
+        name: REGISTRATION_PERSONAL_CONSENT_TEXT
+      })
+    ).toBeVisible();
+    expect(
+      screen.getByRole("checkbox", {
+        name: REGISTRATION_OFFER_CONSENT_TEXT
+      })
+    ).toBeVisible();
+    expect(
+      screen.queryByText(/отмены подписки и возврата денежных средств/)
+    ).not.toBeInTheDocument();
   });
 });

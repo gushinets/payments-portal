@@ -66,6 +66,8 @@ def test_settings_require_critical_environment_values_when_environment_is_absent
     missing_fields = {validation_error["loc"][0] for validation_error in error.value.errors()}
     assert missing_fields == {
         "app_env",
+        "instance_tenant_id",
+        "instance_region",
         "app_public_base_url",
         "database_url",
         "postgres_db",
@@ -104,6 +106,8 @@ def test_settings_accept_supported_app_environments(app_env: str) -> None:
         loaded_settings = Settings(_env_file=None)
 
     assert loaded_settings.app_env == AppEnv(app_env)
+    assert loaded_settings.instance_tenant_id == "anytoolai"
+    assert loaded_settings.instance_region == "ru"
     assert loaded_settings.app_public_base_url == "https://payments.example.com"
     assert loaded_settings.database_url == "sqlite+pysqlite:///:memory:"
     assert loaded_settings.cloudpayments_public_id == ""
@@ -153,6 +157,8 @@ def test_settings_preserve_dotenv_parsing_and_process_environment_precedence(
         "\n".join(
             [
                 "APP_ENV=development",
+                "INSTANCE_TENANT_ID=  AnyToolAI  ",
+                "INSTANCE_REGION=  RU  ",
                 'APP_PUBLIC_BASE_URL="https://dotenv.example/app"',
                 "DATABASE_URL=sqlite+pysqlite:///from-dotenv.db",
                 "POSTGRES_DB=payments_dotenv",
@@ -186,6 +192,8 @@ def test_settings_preserve_dotenv_parsing_and_process_environment_precedence(
         loaded_settings = Settings(_env_file=dotenv_path)
 
     assert loaded_settings.app_env == AppEnv.TEST
+    assert loaded_settings.instance_tenant_id == "anytoolai"
+    assert loaded_settings.instance_region == "ru"
     assert loaded_settings.app_public_base_url == "https://process.example/app"
     assert loaded_settings.database_url == "sqlite+pysqlite:///from-dotenv.db"
     assert loaded_settings.cloudpayments_public_id == "pk_from_dotenv"
@@ -249,6 +257,8 @@ def test_settings_reject_unsupported_app_environment(app_env: str) -> None:
     ("missing_name", "field_name"),
     [
         ("APP_PUBLIC_BASE_URL", "app_public_base_url"),
+        ("INSTANCE_TENANT_ID", "instance_tenant_id"),
+        ("INSTANCE_REGION", "instance_region"),
         ("POSTGRES_DB", "postgres_db"),
         ("POSTGRES_USER", "postgres_user"),
         ("POSTGRES_PASSWORD", "postgres_password"),
@@ -271,6 +281,8 @@ def test_settings_require_each_critical_environment_value(missing_name: str, fie
     "field_name",
     [
         "APP_PUBLIC_BASE_URL",
+        "INSTANCE_TENANT_ID",
+        "INSTANCE_REGION",
         "POSTGRES_DB",
         "POSTGRES_USER",
         "POSTGRES_PASSWORD",
@@ -371,7 +383,9 @@ def test_settings_validation_messages_do_not_include_sensitive_values() -> None:
     assert "secret-cloudpayments-api-key" not in message
 
 
-def test_settings_do_not_expose_configurable_default_scope() -> None:
+def test_settings_expose_required_instance_scope_without_legacy_default_names() -> None:
+    assert "instance_tenant_id" in Settings.model_fields
+    assert "instance_region" in Settings.model_fields
     assert "default_tenant_id" not in Settings.model_fields
     assert "default_region" not in Settings.model_fields
 
@@ -380,19 +394,12 @@ def test_settings_do_not_expose_cloudpayments_activation() -> None:
     assert "cloudpayments_enabled" not in Settings.model_fields
 
 
-def test_identity_default_scope_stays_aligned_with_ru_seed_data() -> None:
-    with patch.dict(
-        os.environ,
-        {
-            "DEFAULT_TENANT_ID": "tenant-from-env",
-            "DEFAULT_REGION": "eu",
-        },
-        clear=True,
-    ):
-        import app.domains.identity.session as session_module
+def test_identity_default_scope_compatibility_exports_use_instance_settings() -> None:
+    import app.domains.identity.session as session_module
+    from app.core.settings import settings
 
-        assert session_module.DEFAULT_TENANT_ID == "anytoolai"
-        assert session_module.DEFAULT_REGION == "ru"
+    assert session_module.DEFAULT_TENANT_ID == settings.instance_tenant_id
+    assert session_module.DEFAULT_REGION == settings.instance_region
 
 
 def test_runtime_dotenv_preserves_os_getenv_consumers(

@@ -266,7 +266,7 @@ tests call them directly or override their actual resource/context dependencies.
 
 | Operation | Current transaction owner and boundary |
 | --- | --- |
-| User registration | `app.domains.identity.services.auth.register_user()` commits `User` and its initial `AuthSession` atomically. A pre-commit failure leaves neither durable. |
+| User registration | `app.domains.identity.services.auth.register_user()` atomically commits the canonical `User`, one registration `LegalAcceptanceEvent`, all required registration `DocumentAcceptance` rows, and the initial `AuthSession`. A pre-commit failure leaves none of them durable. |
 | Login | `app.domains.identity.services.auth.login_user()` owns the existing single local commit for login bookkeeping and the new `AuthSession`. |
 | Authenticated-request bookkeeping | `app.http_dependencies.get_current_session()` delegates authentication to `app.domains.identity.services.auth.authenticate_session()`, which commits `last_seen_at` before endpoint execution. This is a separate bookkeeping transaction. |
 | Logout | Authentication bookkeeping commits first through the current-session dependency; `app.domains.identity.services.auth.logout_session()` then deletes the session in a separate commit. The whole request is not one transaction. |

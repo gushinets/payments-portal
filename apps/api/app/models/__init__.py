@@ -50,7 +50,12 @@ from app.models.identity import (
     Region,
     User,
 )
-from app.models.legal import DocumentAcceptance, DocumentVersion, LegalEntity
+from app.models.legal import (
+    DocumentAcceptance,
+    DocumentVersion,
+    LegalAcceptanceEvent,
+    LegalEntity,
+)
 from app.models.providers import PaymentProviderAccount
 from app.models.subscriptions import Entitlement, Subscription, SubscriptionEvent
 from app.models.webhooks import PaymentWebhookEvent
@@ -72,9 +77,10 @@ __all__ = [
     "EntitlementSource",
     "EntitlementStatus",
     "EntrypointSession",
+    "LegalAcceptanceEvent",
+    "LegalEntity",
     "LegalEntityStatus",
     "LegalEntityType",
-    "LegalEntity",
     "MagicLinkToken",
     "MagicLinkPurpose",
     "Order",

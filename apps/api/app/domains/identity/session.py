@@ -1,4 +1,7 @@
 from __future__ import annotations
 
-DEFAULT_TENANT_ID = "anytoolai"
-DEFAULT_REGION = "ru"
+from app.core.settings import settings
+
+
+DEFAULT_TENANT_ID = settings.instance_tenant_id
+DEFAULT_REGION = settings.instance_region

@@ -32,10 +32,7 @@ test("checkout registration asks to repeat password and opens legal docs in new 
   const dialog = page.getByRole("dialog", { name: "Вход или регистрация" });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByLabel("Повторите пароль")).toBeVisible();
-  await expectLegalLinksOpenInNewTab(dialog, [
-    ...legalPaths,
-    "/ru/cancellation"
-  ]);
+  await expectLegalLinksOpenInNewTab(dialog);
 
   await dialog.getByLabel("Email").fill("audit-user@example.com");
   await dialog.getByLabel("Пароль", { exact: true }).fill("synthetic-password-123");

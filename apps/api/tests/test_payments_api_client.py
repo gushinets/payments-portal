@@ -97,6 +97,8 @@ def _settings_values(**overrides: object) -> dict[str, object]:
     values: dict[str, object] = {
         "_env_file": None,
         "app_env": "test",
+        "instance_tenant_id": "anytoolai",
+        "instance_region": "ru",
         "app_public_base_url": "https://payments.example.com",
         "database_url": "sqlite+pysqlite:///:memory:",
         "postgres_db": "payments",

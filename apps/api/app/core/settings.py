@@ -44,6 +44,14 @@ class Settings(BaseSettings):
     )
 
     app_env: AppEnv
+    instance_tenant_id: Annotated[
+        str,
+        StringConstraints(strip_whitespace=True, to_lower=True, min_length=1),
+    ]
+    instance_region: Annotated[
+        str,
+        StringConstraints(strip_whitespace=True, to_lower=True, min_length=1),
+    ]
     app_public_base_url: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
     database_url: Annotated[str, StringConstraints(strip_whitespace=True)] = ""
     cors_allow_origins: Annotated[tuple[str, ...], NoDecode]

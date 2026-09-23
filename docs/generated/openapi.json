@@ -732,16 +732,6 @@
             "minLength": 8,
             "title": "Password",
             "type": "string"
-          },
-          "region": {
-            "default": "ru",
-            "title": "Region",
-            "type": "string"
-          },
-          "tenant_id": {
-            "default": "anytoolai",
-            "title": "Tenant Id",
-            "type": "string"
           }
         },
         "required": [
@@ -807,16 +797,6 @@
           "personal_consent": {
             "title": "Personal Consent",
             "type": "boolean"
-          },
-          "region": {
-            "default": "ru",
-            "title": "Region",
-            "type": "string"
-          },
-          "tenant_id": {
-            "default": "anytoolai",
-            "title": "Tenant Id",
-            "type": "string"
           }
         },
         "required": [
@@ -1529,28 +1509,6 @@
     "/api/legal/required-documents": {
       "get": {
         "operationId": "list_required_documents_api_legal_required_documents_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "tenant_id",
-            "required": false,
-            "schema": {
-              "default": "anytoolai",
-              "title": "Tenant Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "region",
-            "required": false,
-            "schema": {
-              "default": "ru",
-              "title": "Region",
-              "type": "string"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "content": {
@@ -1559,16 +1517,6 @@
               }
             },
             "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
           }
         },
         "summary": "List Required Documents",

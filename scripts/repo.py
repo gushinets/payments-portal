@@ -37,8 +37,16 @@ GENERATED_OPENAPI = ROOT / "docs" / "generated" / "openapi.json"
 GENERATED_TOKENS = ROOT / "apps" / "web" / "src" / "app" / "tokens.generated.css"
 GENERATED_LEGAL_PY = ROOT / "apps" / "api" / "app" / "generated" / "legal_manifest.py"
 GENERATED_LEGAL_JSON = ROOT / "apps" / "web" / "src" / "generated" / "legal-manifest.json"
+REGISTRATION_ACCEPTANCE_TEXT_SOURCE = (
+    ROOT / "apps" / "api" / "app" / "domains" / "legal" / "acceptance_text.py"
+)
+GENERATED_REGISTRATION_ACCEPTANCE_TS = (
+    ROOT / "apps" / "web" / "src" / "generated" / "registration-acceptance.ts"
+)
 API_TEST_PATH = "apps/api/tests"
 LEGAL_DOCS_ROOT = ROOT / "docs" / "legal" / "ru"
+LOCAL_INSTANCE_TENANT_ID = "anytoolai"
+LOCAL_INSTANCE_REGION = "ru"
 
 CANONICAL_PERSISTED_ENUM_NAMES = frozenset(
     {
@@ -202,6 +210,8 @@ def canonical_check_environment(
     for variable in ("TEMP", "TMP", "TMPDIR"):
         environment[variable] = str(temp_dir)
     environment["OTEL_EXPORTER_OTLP_ENDPOINT"] = ""
+    environment["INSTANCE_TENANT_ID"] = LOCAL_INSTANCE_TENANT_ID
+    environment["INSTANCE_REGION"] = LOCAL_INSTANCE_REGION
     return environment
 
 
@@ -376,6 +386,8 @@ def write_runtime(config: RuntimeConfig) -> None:
     values = {
         "COMPOSE_PROJECT_NAME": config.compose_project,
         "APP_ENV": "development",
+        "INSTANCE_TENANT_ID": LOCAL_INSTANCE_TENANT_ID,
+        "INSTANCE_REGION": LOCAL_INSTANCE_REGION,
         "POSTGRES_DB": config.database_name,
         "POSTGRES_USER": "anytoolai",
         "POSTGRES_PASSWORD": "anytoolai-local-only",
@@ -647,6 +659,8 @@ def import_api() -> tuple[object, object]:
     if api_root not in sys.path:
         sys.path.insert(0, api_root)
     os.environ.setdefault("APP_ENV", "test")
+    os.environ["INSTANCE_TENANT_ID"] = LOCAL_INSTANCE_TENANT_ID
+    os.environ["INSTANCE_REGION"] = LOCAL_INSTANCE_REGION
     os.environ.setdefault("APP_PUBLIC_BASE_URL", "http://localhost:3000")
     os.environ.setdefault("DATABASE_URL", "sqlite+pysqlite:///:memory:")
     os.environ.setdefault("POSTGRES_DB", "anytoolai")
@@ -731,11 +745,69 @@ def render_tokens() -> str:
     )
 
 
+def registration_acceptance_texts() -> dict[str, str]:
+    required_names = {
+        "REGISTRATION_PERSONAL_CONSENT_TEXT",
+        "REGISTRATION_OFFER_CONSENT_TEXT",
+    }
+    tree = ast.parse(
+        REGISTRATION_ACCEPTANCE_TEXT_SOURCE.read_text(encoding="utf-8"),
+        filename=str(REGISTRATION_ACCEPTANCE_TEXT_SOURCE),
+    )
+    values: dict[str, str] = {}
+    for node in tree.body:
+        if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+            continue
+        target = node.targets[0]
+        if not isinstance(target, ast.Name) or target.id not in required_names:
+            continue
+        try:
+            value = ast.literal_eval(node.value)
+        except (ValueError, TypeError) as error:
+            raise HarnessError(
+                f"Registration acceptance text must be a string literal: {target.id}"
+            ) from error
+        if not isinstance(value, str):
+            raise HarnessError(
+                f"Registration acceptance text must be a string literal: {target.id}"
+            )
+        values[target.id] = value
+
+    missing = sorted(required_names - values.keys())
+    if missing:
+        raise HarnessError(
+            "Missing canonical registration acceptance text: " + ", ".join(missing)
+        )
+    return values
+
+
+def render_registration_acceptance_typescript() -> str:
+    values = registration_acceptance_texts()
+    lines = [
+        "// Generated from apps/api/app/domains/legal/acceptance_text.py. Do not edit.",
+        "",
+    ]
+    for name in (
+        "REGISTRATION_PERSONAL_CONSENT_TEXT",
+        "REGISTRATION_OFFER_CONSENT_TEXT",
+    ):
+        lines.append(
+            f"export const {name} = {json.dumps(values[name], ensure_ascii=False)} as const;"
+        )
+    lines.append("")
+    return "\n".join(lines)
+
+
 def generate_all(*, check: bool) -> bool:
     stale = generate_legal(check=check)
     stale |= write_or_check(GENERATED_DB, render_db_schema(), check=check)
     stale |= write_or_check(GENERATED_OPENAPI, render_openapi(), check=check)
     stale |= write_or_check(GENERATED_TOKENS, render_tokens(), check=check)
+    stale |= write_or_check(
+        GENERATED_REGISTRATION_ACCEPTANCE_TS,
+        render_registration_acceptance_typescript(),
+        check=check,
+    )
     return stale
 
 
@@ -1338,6 +1410,68 @@ _OUTER_FORBIDDEN_LIFECYCLE_MODULES = (
     "app.domains.billing.service.support",
     "app.infrastructure.queries.subscriptions",
 )
+_RETAINED_IDENTITY_RECOVERY_PATHS = frozenset(
+    {
+        ("domains", "identity", "password_reset.py"),
+        ("domains", "identity", "passwords.py"),
+        ("domains", "identity", "session.py"),
+        ("domains", "identity", "services", "auth.py"),
+        ("domains", "identity", "services", "password_reset.py"),
+        ("infrastructure", "persistence", "identity.py"),
+        ("infrastructure", "persistence", "password_reset.py"),
+        ("infrastructure", "queries", "identity.py"),
+    }
+)
+_RETAINED_IDENTITY_FORBIDDEN_MODEL_NAMES = frozenset(
+    {"EntrypointSession", "Product", "Plan", "Subscription", "Entitlement"}
+)
+_RETAINED_IDENTITY_FORBIDDEN_NAMES = _RETAINED_IDENTITY_FORBIDDEN_MODEL_NAMES | {
+    "PaymentProviderAdapter",
+    "PaymentProviderRegistry",
+}
+_RETAINED_IDENTITY_FORBIDDEN_MODULES = (
+    "app.domains.billing",
+    "app.domains.identity.services.account",
+    "app.domains.identity.services.checkout",
+    "app.infrastructure.queries.orders",
+    "app.infrastructure.queries.payments",
+    "app.infrastructure.queries.plans",
+    "app.infrastructure.queries.products",
+    "app.infrastructure.queries.subscriptions",
+    "app.integrations",
+    "app.payment_providers",
+)
+
+
+def _is_retained_identity_legal_surface(path_parts: tuple[str, ...]) -> bool:
+    return (
+        path_parts in _RETAINED_IDENTITY_RECOVERY_PATHS
+        or path_parts[:2] == ("domains", "legal")
+        or path_parts
+        in {
+            ("infrastructure", "queries", "legal.py"),
+            ("models", "identity.py"),
+            ("models", "legal.py"),
+        }
+    )
+
+
+def _retained_identity_boundary_names(tree: ast.AST) -> list[tuple[int, str]]:
+    names: set[tuple[int, str]] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name):
+            names.add((node.lineno, node.id))
+        elif isinstance(node, ast.Attribute):
+            names.add((node.lineno, node.attr))
+        elif isinstance(node, ast.alias):
+            names.add((node.lineno, node.asname or node.name.rsplit(".", 1)[-1]))
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            names.add((node.lineno, node.name))
+        elif isinstance(node, ast.arg):
+            names.add((node.lineno, node.arg))
+        elif isinstance(node, ast.keyword) and node.arg is not None:
+            names.add((node.lineno, node.arg))
+    return sorted(names)
 
 
 def _canonical_model_references(
@@ -1694,6 +1828,124 @@ def check_python_boundaries(root: Path = ROOT) -> list[str]:
             )
             continue
 
+        for node in ast.walk(tree):
+            if (
+                path_parts[0] == "models"
+                and isinstance(node, ast.Constant)
+                and isinstance(node.value, str)
+                and re.search(r"\bexternal_billing_accounts\b", node.value)
+            ):
+                errors.append(
+                    f"{relative}:{node.lineno} references forbidden table "
+                    "external_billing_accounts; external_billing_account_id is opaque "
+                    "configuration scope, not a Portal ORM entity (see ADR 0005)"
+                )
+
+        if path_parts in _RETAINED_IDENTITY_RECOVERY_PATHS:
+            forbidden_model_references = set(
+                _canonical_model_references(
+                    tree,
+                    _RETAINED_IDENTITY_FORBIDDEN_MODEL_NAMES,
+                )
+            )
+            for imported in imports:
+                for target in imported.targets:
+                    module, _, symbol = target.rpartition(".")
+                    if (
+                        symbol in _RETAINED_IDENTITY_FORBIDDEN_MODEL_NAMES
+                        and module_matches(module, "app.models")
+                    ):
+                        forbidden_model_references.add(
+                            (imported.line, symbol, module)
+                        )
+                    if any(
+                        module_matches(target, module_name)
+                        for module_name in _RETAINED_IDENTITY_FORBIDDEN_MODULES
+                    ):
+                        errors.append(
+                            f"{relative}:{imported.line} imports {target}; retained "
+                            "identity/recovery must not depend on entrypoint, commerce, "
+                            "provider, or trial ownership (see ADR 0005)"
+                        )
+            errors.extend(
+                f"{relative}:{line} references {symbol} from {module}; retained "
+                "identity/recovery must not depend on entrypoint, commerce, provider, "
+                "or trial ownership (see ADR 0005)"
+                for line, symbol, module in sorted(forbidden_model_references)
+            )
+            for line, name in _retained_identity_boundary_names(tree):
+                lowered_name = name.lower()
+                if name in _RETAINED_IDENTITY_FORBIDDEN_NAMES:
+                    errors.append(
+                        f"{relative}:{line} references {name}; retained identity/recovery "
+                        "must not use entrypoint, commerce, or provider authority "
+                        "(see ADR 0005)"
+                    )
+                elif "entrypoint" in lowered_name or "trial" in lowered_name:
+                    errors.append(
+                        f"{relative}:{line} references {name}; retained identity/recovery "
+                        "must not require entrypoint or Portal trial state (see ADR 0005)"
+                    )
+            for node in ast.walk(tree):
+                if (
+                    isinstance(node, ast.Constant)
+                    and isinstance(node.value, str)
+                    and re.search(r"\btrial(?:s|ing)?\b", node.value, re.IGNORECASE)
+                ):
+                    errors.append(
+                        f"{relative}:{node.lineno} references Portal trial vocabulary; "
+                        "retained identity/recovery must not require Portal trial state "
+                        "(see ADR 0005)"
+                    )
+
+        if _is_retained_identity_legal_surface(path_parts):
+            for line, name in _retained_identity_boundary_names(tree):
+                lowered_name = name.lower()
+                if "customer" in lowered_name or lowered_name == "outer_id":
+                    errors.append(
+                        f"{relative}:{line} references {name}; retained identity/legal "
+                        "must not allocate or bind external billing customers or promote "
+                        "PII/provider values into cross-system identity (see ADR 0005)"
+                    )
+                elif (
+                    re.search(r"(?:external|billing|provider)_.*_?id$", lowered_name)
+                    and lowered_name
+                    not in {"external_billing_account_id", "billing_offer_id"}
+                ):
+                    errors.append(
+                        f"{relative}:{line} references {name}; retained identity/legal "
+                        "must not promote provider identifiers into cross-system identity "
+                        "(see ADR 0005)"
+                    )
+            for imported in imports:
+                for target in imported.targets:
+                    lowered_target = target.lower()
+                    if (
+                        "customer" in lowered_target
+                        or lowered_target.endswith(".outer_id")
+                        or "external_billing" in lowered_target
+                    ):
+                        errors.append(
+                            f"{relative}:{imported.line} imports {target}; retained "
+                            "identity/legal must not own external billing customer "
+                            "allocation or binding (see ADR 0005)"
+                        )
+            for node in ast.walk(tree):
+                if not (
+                    isinstance(node, ast.Constant)
+                    and isinstance(node.value, str)
+                ):
+                    continue
+                lowered_value = node.value.lower()
+                if "customer" in lowered_value or re.search(
+                    r"\bouter_id\b", lowered_value
+                ):
+                    errors.append(
+                        f"{relative}:{node.lineno} contains external customer identity "
+                        "vocabulary; retained identity/legal must not own billing customer "
+                        "allocation or binding (see ADR 0005)"
+                    )
+
         is_active_domain_presentation = in_domains and _owns_fastapi_api_router(tree)
 
         if in_integrations:
@@ -2048,6 +2300,8 @@ def cmd_harness_smoke(_: argparse.Namespace) -> None:
     env = read_runtime_env()
     caddy_origin = f"http://localhost:{runtime_caddy_port(config)}"
     assert env["APP_ENV"] == "development"
+    assert env["INSTANCE_TENANT_ID"] == LOCAL_INSTANCE_TENANT_ID
+    assert env["INSTANCE_REGION"] == LOCAL_INSTANCE_REGION
     assert env["CADDY_PORT"] == str(runtime_caddy_port(config))
     assert env["NEXT_PUBLIC_API_BASE_URL"] == caddy_origin
     cors_origins = set(env["CORS_ALLOW_ORIGINS"].split(","))
@@ -2362,6 +2616,8 @@ def direct_api_environment(*, environ: dict[str, str] | None = None) -> dict[str
         **base_environment,
     }
     defaults.setdefault("APP_ENV", "development")
+    defaults.setdefault("INSTANCE_TENANT_ID", LOCAL_INSTANCE_TENANT_ID)
+    defaults.setdefault("INSTANCE_REGION", LOCAL_INSTANCE_REGION)
     defaults.setdefault("APP_PUBLIC_BASE_URL", "http://localhost:3000")
     defaults.setdefault("CORS_ALLOW_ORIGINS", defaults.get("APP_PUBLIC_BASE_URL", "http://localhost:3000"))
     defaults.setdefault("SKIP_LEGAL_SEED", "true")

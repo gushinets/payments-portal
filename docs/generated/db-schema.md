@@ -7,7 +7,7 @@ Generated from SQLAlchemy metadata. Do not edit directly.
 | Column | Type | Nullable | Key |
 |---|---|---:|---|
 | `id` | `CHAR(32)` | no | PK |
-| `tenant_id` | `TEXT` | no |  |
+| `tenant_id` | `TEXT` | no | FK |
 | `region` | `TEXT` | no | FK |
 | `user_id` | `CHAR(32)` | no | FK |
 | `token_hash` | `TEXT` | no |  |
@@ -20,6 +20,7 @@ Generated from SQLAlchemy metadata. Do not edit directly.
 
 Indexes and constraints:
 
+- `fk_auth_sessions_user_scope`
 - `ix_auth_sessions_region`
 - `ix_auth_sessions_tenant_id`
 - `ix_auth_sessions_token_hash`
@@ -116,9 +117,10 @@ Indexes and constraints:
 | Column | Type | Nullable | Key |
 |---|---|---:|---|
 | `id` | `CHAR(32)` | no | PK |
-| `tenant_id` | `TEXT` | no |  |
+| `legal_acceptance_event_id` | `CHAR(32)` | no | FK |
+| `tenant_id` | `TEXT` | no | FK |
 | `region` | `TEXT` | no | FK |
-| `user_id` | `CHAR(32)` | yes | FK |
+| `user_id` | `CHAR(32)` | no | FK |
 | `guest_id` | `TEXT` | yes |  |
 | `entrypoint_session_id` | `CHAR(32)` | yes |  |
 | `document_version_id` | `CHAR(32)` | no | FK |
@@ -137,11 +139,15 @@ Indexes and constraints:
 
 Indexes and constraints:
 
+- `fk_document_acceptances_document_scope`
+- `fk_document_acceptances_event_scope`
+- `uq_document_acceptances_event_document`
 - `ix_document_acceptances_accepted_at`
 - `ix_document_acceptances_doc_type`
 - `ix_document_acceptances_document_version_id`
 - `ix_document_acceptances_entrypoint_session_id`
 - `ix_document_acceptances_guest_id`
+- `ix_document_acceptances_legal_acceptance_event_id`
 - `ix_document_acceptances_region`
 - `ix_document_acceptances_region_doc_version`
 - `ix_document_acceptances_tenant_id`
@@ -153,7 +159,7 @@ Indexes and constraints:
 | Column | Type | Nullable | Key |
 |---|---|---:|---|
 | `id` | `CHAR(32)` | no | PK |
-| `tenant_id` | `TEXT` | no |  |
+| `tenant_id` | `TEXT` | no | FK |
 | `region` | `TEXT` | no | FK |
 | `legal_entity_id` | `CHAR(32)` | no | FK |
 | `doc_type` | `TEXT` | no |  |
@@ -170,6 +176,8 @@ Indexes and constraints:
 
 Indexes and constraints:
 
+- `fk_document_versions_legal_entity_scope`
+- `uq_document_versions_id_tenant_region`
 - `uq_document_versions_tenant_region_doc_type_version`
 - `ix_document_versions_doc_type`
 - `ix_document_versions_is_active`
@@ -261,6 +269,33 @@ Indexes and constraints:
 - `ix_entrypoint_sessions_user_id`
 - `ix_entrypoint_sessions_user_id_created_at`
 
+## `legal_acceptance_events`
+
+| Column | Type | Nullable | Key |
+|---|---|---:|---|
+| `id` | `CHAR(32)` | no | PK |
+| `tenant_id` | `TEXT` | no | FK |
+| `region` | `TEXT` | no | FK |
+| `user_id` | `CHAR(32)` | no | FK |
+| `external_billing_account_id` | `TEXT` | yes |  |
+| `billing_offer_id` | `TEXT` | yes |  |
+| `accepted_commercial_fingerprint` | `TEXT` | yes |  |
+| `accepted_at` | `DATETIME` | no |  |
+| `ip` | `VARCHAR(45)` | yes |  |
+| `user_agent` | `TEXT` | yes |  |
+| `created_at` | `DATETIME` | no |  |
+
+Indexes and constraints:
+
+- `ck_legal_acceptance_events_commercial_triplet`
+- `fk_legal_acceptance_events_user_scope`
+- `uq_legal_acceptance_events_purchase_binding`
+- `uq_legal_acceptance_events_scope`
+- `ix_legal_acceptance_events_accepted_at`
+- `ix_legal_acceptance_events_region`
+- `ix_legal_acceptance_events_tenant_id`
+- `ix_legal_acceptance_events_user_id`
+
 ## `legal_entities`
 
 | Column | Type | Nullable | Key |
@@ -280,6 +315,7 @@ Indexes and constraints:
 
 Indexes and constraints:
 
+- `uq_legal_entities_id_tenant_region`
 - `ix_legal_entities_region`
 - `ix_legal_entities_status`
 - `ix_legal_entities_tenant_id`
@@ -290,12 +326,12 @@ Indexes and constraints:
 | Column | Type | Nullable | Key |
 |---|---|---:|---|
 | `id` | `CHAR(32)` | no | PK |
-| `tenant_id` | `TEXT` | no |  |
+| `tenant_id` | `TEXT` | no | FK |
 | `region` | `TEXT` | no | FK |
+| `user_id` | `CHAR(32)` | yes | FK |
 | `email_normalized` | `VARCHAR(320)` | no |  |
 | `token_hash` | `TEXT` | no |  |
 | `purpose` | `TEXT` | no |  |
-| `entrypoint_session_id` | `CHAR(32)` | yes |  |
 | `created_at` | `DATETIME` | no |  |
 | `expires_at` | `DATETIME` | no |  |
 | `used_at` | `DATETIME` | yes |  |
@@ -304,10 +340,12 @@ Indexes and constraints:
 
 Indexes and constraints:
 
+- `fk_magic_link_tokens_user_scope`
 - `ix_magic_link_tokens_email_normalized`
 - `ix_magic_link_tokens_region`
 - `ix_magic_link_tokens_tenant_id`
 - `ix_magic_link_tokens_token_hash`
+- `ix_magic_link_tokens_user_id`
 
 ## `order_items`
 
@@ -754,6 +792,7 @@ Indexes and constraints:
 
 Indexes and constraints:
 
+- `uq_users_id_tenant_region`
 - `uq_users_tenant_region_email_normalized`
 - `ix_users_email_normalized`
 - `ix_users_region`

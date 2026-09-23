@@ -37,6 +37,7 @@ from app.models import (
     Entitlement,
     EntrypointSession,
     LegalEntity,
+    LegalAcceptanceEvent,
     Order,
     OrderItem,
     Payment,
@@ -701,7 +702,7 @@ def _plan_by_code(db_session, code: str) -> Plan:
 
 
 def _add_recurring_consent_acceptance(
-    db_session,
+    db_session: Session,
     *,
     user: User,
     key: str,
@@ -709,6 +710,8 @@ def _add_recurring_consent_acceptance(
     accepted_at: datetime,
     entrypoint_type: str = "product",
     entrypoint_value: str | None = None,
+    acceptance_shape: str | None = None,
+    legacy_consent: bool = False,
 ) -> DocumentAcceptance:
     document = (
         db_session.query(DocumentVersion)
@@ -750,6 +753,70 @@ def _add_recurring_consent_acceptance(
         )
         db_session.add(document)
         db_session.flush()
+    acceptance_user = user
+    acceptance_document = document
+    if acceptance_shape == "stale_document":
+        acceptance_document = DocumentVersion(
+            tenant_id=document.tenant_id,
+            region=document.region,
+            legal_entity_id=document.legal_entity_id,
+            doc_type=document.doc_type,
+            version=f"stale-{key}",
+            title=document.title,
+            url_path=document.url_path,
+            content_hash=document.content_hash,
+            published_at=accepted_at - timedelta(days=2),
+            effective_from=accepted_at - timedelta(days=2),
+            is_active=False,
+            requires_acceptance=True,
+        )
+        db_session.add(acceptance_document)
+        db_session.flush()
+    elif acceptance_shape == "foreign_user":
+        acceptance_user = User(
+            tenant_id=user.tenant_id,
+            region=user.region,
+            email=f"{key}-foreign@example.com",
+            email_normalized=f"{key}-foreign@example.com",
+            status=UserStatus.ACTIVE,
+        )
+        db_session.add(acceptance_user)
+        db_session.flush()
+    elif acceptance_shape == "foreign_contour":
+        acceptance_user = User(
+            tenant_id=user.tenant_id,
+            region="eu",
+            email=f"{key}-foreign@example.com",
+            email_normalized=f"{key}-foreign@example.com",
+            status=UserStatus.ACTIVE,
+        )
+        foreign_entity = LegalEntity(
+            tenant_id=user.tenant_id,
+            region="eu",
+            name=f"{key} foreign legal entity",
+            entity_type=LegalEntityType.COMPANY,
+            legal_address="Test address",
+            support_email="support@example.com",
+            status=LegalEntityStatus.ACTIVE,
+        )
+        db_session.add_all([acceptance_user, foreign_entity])
+        db_session.flush()
+        acceptance_document = DocumentVersion(
+            tenant_id=user.tenant_id,
+            region="eu",
+            legal_entity_id=foreign_entity.id,
+            doc_type="recurring_consent",
+            version=f"{key}-foreign-v1",
+            title="Согласие на рекуррентные платежи",
+            url_path="/eu/recurring_consent",
+            content_hash=f"sha256:{key}-foreign",
+            published_at=accepted_at,
+            effective_from=accepted_at,
+            is_active=True,
+            requires_acceptance=True,
+        )
+        db_session.add(acceptance_document)
+        db_session.flush()
     resolved_entrypoint_value = entrypoint_value or plan_code
     entrypoint_session = EntrypointSession(
         tenant_id=user.tenant_id,
@@ -762,20 +829,51 @@ def _add_recurring_consent_acceptance(
     )
     db_session.add(entrypoint_session)
     db_session.flush()
+    acceptance_event = LegalAcceptanceEvent(
+        tenant_id=acceptance_user.tenant_id,
+        region=acceptance_user.region,
+        user_id=acceptance_user.id,
+        accepted_at=accepted_at,
+    )
+    db_session.add(acceptance_event)
+    db_session.flush()
+    acceptance_entrypoint_type = None if acceptance_shape == "missing_acceptance_entrypoint" else entrypoint_type
+    acceptance_entrypoint_value = (
+        "different-entrypoint" if acceptance_shape == "wrong_entrypoint_value" else resolved_entrypoint_value
+    )
+    if acceptance_shape == "wrong_entrypoint_type":
+        acceptance_entrypoint_type = "bundle"
+    acceptance_metadata: dict[str, object] = {
+        "plan_id": str(_plan_by_code(db_session, plan_code).id),
+        "fixture_key": key,
+    }
+    if legacy_consent:
+        acceptance_metadata = {"plan_code": plan_code}
+    elif acceptance_shape == "missing_plan_id":
+        acceptance_metadata = {}
+    elif acceptance_shape == "non_string_plan_id":
+        acceptance_metadata = {"plan_id": 123}
+    elif acceptance_shape == "wrong_plan_id":
+        acceptance_metadata = {"plan_id": str(uuid.uuid4())}
     acceptance = DocumentAcceptance(
-        tenant_id=user.tenant_id,
-        region=user.region,
-        user_id=user.id,
+        legal_acceptance_event_id=acceptance_event.id,
+        tenant_id=acceptance_user.tenant_id,
+        region=acceptance_user.region,
+        user_id=acceptance_user.id,
         entrypoint_session_id=entrypoint_session.id,
-        document_version_id=document.id,
-        doc_type=document.doc_type,
-        version=document.version,
+        document_version_id=acceptance_document.id,
+        doc_type=acceptance_document.doc_type,
+        version=acceptance_document.version,
         acceptance_kind=AcceptanceKind.RECURRING_CONSENT,
         accepted_at=accepted_at,
-        acceptance_text_hash=expected_acceptance_text_hash(document),
-        entrypoint_type=entrypoint_type,
-        entrypoint_value=resolved_entrypoint_value,
-        metadata_={"plan_id": str(_plan_by_code(db_session, plan_code).id), "fixture_key": key},
+        acceptance_text_hash=(
+            "wrong-acceptance-text-hash"
+            if acceptance_shape == "wrong_hash"
+            else expected_acceptance_text_hash(acceptance_document)
+        ),
+        entrypoint_type=acceptance_entrypoint_type,
+        entrypoint_value=acceptance_entrypoint_value,
+        metadata_=acceptance_metadata,
     )
     db_session.add(acceptance)
     db_session.flush()
@@ -954,13 +1052,15 @@ def _add_paid_subscription_for_order(
 
 
 def _add_automatic_renewal_context(
-    db_session,
+    db_session: Session,
     *,
     key: str,
     user: User,
     account: PaymentProviderAccount,
     plan: Plan,
     now: datetime,
+    acceptance_shape: str | None = None,
+    legacy_consent: bool = False,
 ) -> tuple[DocumentAcceptance, Order, Subscription]:
     acceptance = _add_recurring_consent_acceptance(
         db_session,
@@ -968,6 +1068,8 @@ def _add_automatic_renewal_context(
         key=key,
         plan_code=plan.code,
         accepted_at=now,
+        acceptance_shape=acceptance_shape,
+        legacy_consent=legacy_consent,
     )
     order, payment, _ = _add_verified_paid_order(
         db_session,
@@ -995,13 +1097,12 @@ def _add_automatic_renewal_context(
 
 
 def _mark_legacy_automatic_renewal_context(
-    db_session,
+    db_session: Session,
     *,
     acceptance: DocumentAcceptance,
     order: Order,
     plan: Plan,
 ) -> None:
-    acceptance.metadata_ = {"plan_code": plan.code}
     order.metadata_ = {
         "plan_code": plan.code,
         "auto_renew": True,
@@ -1230,6 +1331,7 @@ def test_automatic_renewal_accepts_legacy_consent_for_existing_order(db_session)
         account=account,
         plan=plan,
         now=now,
+        legacy_consent=True,
     )
     _mark_legacy_automatic_renewal_context(
         db_session,
@@ -1269,6 +1371,7 @@ def test_automatic_renewal_legacy_consent_cannot_attach_to_another_plan_version(
         account=account,
         plan=plan,
         now=now,
+        legacy_consent=True,
     )
     _mark_legacy_automatic_renewal_context(
         db_session,
@@ -1436,58 +1539,11 @@ def test_automatic_renewal_revalidates_persisted_consent_context(
         account=account,
         plan=plan,
         now=now,
+        acceptance_shape=invalid_context,
     )
 
-    if invalid_context == "stale_document":
-        current_document = db_session.get(DocumentVersion, acceptance.document_version_id)
-        assert current_document is not None
-        stale_document = DocumentVersion(
-            tenant_id=current_document.tenant_id,
-            region=current_document.region,
-            legal_entity_id=current_document.legal_entity_id,
-            doc_type=current_document.doc_type,
-            version=f"stale-{invalid_context}",
-            title=current_document.title,
-            url_path=current_document.url_path,
-            content_hash=current_document.content_hash,
-            published_at=now - timedelta(days=2),
-            effective_from=now - timedelta(days=2),
-            is_active=False,
-            requires_acceptance=True,
-        )
-        db_session.add(stale_document)
-        db_session.flush()
-        acceptance.document_version_id = stale_document.id
-        acceptance.acceptance_text_hash = expected_acceptance_text_hash(stale_document)
-    elif invalid_context == "wrong_hash":
-        acceptance.acceptance_text_hash = "wrong-acceptance-text-hash"
-    elif invalid_context == "missing_acceptance_entrypoint":
-        acceptance.entrypoint_type = None
-    elif invalid_context == "missing_entrypoint_session":
+    if invalid_context == "missing_entrypoint_session":
         order.entrypoint_session_id = None
-    elif invalid_context == "missing_plan_id":
-        acceptance.metadata_ = {}
-    elif invalid_context == "non_string_plan_id":
-        acceptance.metadata_ = {"plan_id": 123}
-    elif invalid_context == "wrong_plan_id":
-        acceptance.metadata_ = {"plan_id": str(uuid.uuid4())}
-    elif invalid_context == "wrong_entrypoint_type":
-        acceptance.entrypoint_type = "bundle"
-    elif invalid_context == "wrong_entrypoint_value":
-        acceptance.entrypoint_value = "different-entrypoint"
-    elif invalid_context == "foreign_user":
-        foreign_user = User(
-            tenant_id=user.tenant_id,
-            region=user.region,
-            email=f"{invalid_context}-foreign@example.com",
-            email_normalized=f"{invalid_context}-foreign@example.com",
-            status=UserStatus.ACTIVE,
-        )
-        db_session.add(foreign_user)
-        db_session.flush()
-        acceptance.user_id = foreign_user.id
-    elif invalid_context == "foreign_contour":
-        acceptance.region = "eu"
 
     db_session.flush()
     _assert_automatic_renewal_rejected_without_mutation(

@@ -17,10 +17,16 @@ from app.domains.identity.errors import (
     MissingPersonalConsentError,
 )
 from app.domains.identity.passwords import hash_password, verify_password
+from app.domains.legal.service import (
+    create_registration_legal_evidence,
+    get_registration_required_documents,
+)
+from app.infrastructure.persistence.identity import is_scoped_email_unique_conflict
 from app.infrastructure.queries.identity import (
+    get_active_user_by_normalized_email,
+    get_active_user_for_auth_session,
     get_auth_session_by_token_hash,
     get_user_by_normalized_email,
-    get_user_for_auth_session,
 )
 from app.models import AuthSession, User, UserStatus
 
@@ -72,13 +78,25 @@ def _authentication_result(*, user: User, token: str) -> AuthenticationResult:
     )
 
 
-def authenticate_session(db: Session, *, token: str) -> tuple[User, AuthSession]:
+def authenticate_session(
+    db: Session,
+    *,
+    token: str,
+    tenant_id: str,
+    region: str,
+) -> tuple[User, AuthSession]:
     token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
     auth_session = get_auth_session_by_token_hash(db, token_hash)
-    if auth_session is None or auth_session.revoked_at is not None or as_utc(auth_session.expires_at) <= utc_now():
+    if (
+        auth_session is None
+        or auth_session.tenant_id != tenant_id
+        or auth_session.region != region
+        or auth_session.revoked_at is not None
+        or as_utc(auth_session.expires_at) <= utc_now()
+    ):
         raise InvalidAuthSessionError()
 
-    user = get_user_for_auth_session(db, auth_session)
+    user = get_active_user_for_auth_session(db, auth_session)
     if user is None:
         raise InvalidAuthSessionError()
 
@@ -118,33 +136,63 @@ def register_user(
     if existing is not None:
         raise EmailAlreadyRegisteredError()
 
-    user = User(
-        tenant_id=normalized_tenant_id,
-        region=normalized_region,
-        email=email,
-        email_normalized=normalized_email,
-        password_hash=hash_password(password),
-        email_verified_at=utc_now(),
-        status=UserStatus.ACTIVE,
-        last_login_at=utc_now(),
-    )
-    db.add(user)
-    db.flush()
+    try:
+        accepted_at = utc_now()
+        registration_documents = get_registration_required_documents(
+            db,
+            tenant_id=normalized_tenant_id,
+            region=normalized_region,
+            now=accepted_at,
+        )
+        user = User(
+            tenant_id=normalized_tenant_id,
+            region=normalized_region,
+            email=email,
+            email_normalized=normalized_email,
+            password_hash=hash_password(password),
+            email_verified_at=accepted_at,
+            status=UserStatus.ACTIVE,
+            last_login_at=accepted_at,
+        )
+        db.add(user)
+        db.flush()
 
-    token, token_hash, expires_at = make_session_token()
-    auth_session = AuthSession(
-        tenant_id=user.tenant_id,
-        region=user.region,
-        user_id=user.id,
-        token_hash=token_hash,
-        expires_at=expires_at,
-        ip=client_ip,
-        user_agent=user_agent,
-    )
-    db.add(auth_session)
-    result = _authentication_result(user=user, token=token)
-    db.commit()
-    return result
+        create_registration_legal_evidence(
+            db,
+            user=user,
+            documents=registration_documents,
+            accepted_at=accepted_at,
+            ip=client_ip,
+            user_agent=user_agent,
+        )
+
+        token, token_hash, expires_at = make_session_token()
+        auth_session = AuthSession(
+            tenant_id=user.tenant_id,
+            region=user.region,
+            user_id=user.id,
+            token_hash=token_hash,
+            expires_at=expires_at,
+            ip=client_ip,
+            user_agent=user_agent,
+        )
+        db.add(auth_session)
+        result = _authentication_result(user=user, token=token)
+        db.commit()
+        return result
+    except Exception as exc:
+        db.rollback()
+        if not is_scoped_email_unique_conflict(exc):
+            raise
+        winner = get_user_by_normalized_email(
+            db,
+            tenant_id=normalized_tenant_id,
+            region=normalized_region,
+            email_normalized=normalized_email,
+        )
+        if winner is None:
+            raise
+        raise EmailAlreadyRegisteredError() from exc
 
 
 def login_user(
@@ -157,7 +205,7 @@ def login_user(
     client_ip: str | None,
     user_agent: str | None,
 ) -> AuthenticationResult:
-    user = get_user_by_normalized_email(
+    user = get_active_user_by_normalized_email(
         db,
         tenant_id=normalize_tenant_id(tenant_id),
         region=normalize_region(region),
