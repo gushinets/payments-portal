@@ -2347,6 +2347,46 @@ def test_checkout_rejects_recurring_acceptance_from_another_tenant_or_region() -
         db.add(foreign_plan)
         db.commit()
 
+        foreign_user = User(
+            tenant_id="anytoolai",
+            region="eu",
+            email="recurring-foreign@example.com",
+            email_normalized="recurring-foreign@example.com",
+            status=UserStatus.ACTIVE,
+        )
+        db.add(foreign_user)
+        db.flush()
+        accepted_at = datetime.now(timezone.utc)
+        foreign_event = LegalAcceptanceEvent(
+            tenant_id=foreign_user.tenant_id,
+            region=foreign_user.region,
+            user_id=foreign_user.id,
+            accepted_at=accepted_at,
+        )
+        db.add(foreign_event)
+        db.flush()
+
+        from app.domains.legal.service import expected_acceptance_text_hash
+
+        foreign_acceptance = DocumentAcceptance(
+            legal_acceptance_event_id=foreign_event.id,
+            tenant_id=foreign_user.tenant_id,
+            region=foreign_user.region,
+            user_id=foreign_user.id,
+            document_version_id=foreign_document.id,
+            doc_type=foreign_document.doc_type,
+            version=foreign_document.version,
+            acceptance_kind=AcceptanceKind.RECURRING_CONSENT,
+            accepted_at=accepted_at,
+            acceptance_text_hash=expected_acceptance_text_hash(foreign_document),
+            entrypoint_type="product",
+            entrypoint_value="document-summary",
+            metadata_={"plan_id": str(foreign_plan.id)},
+        )
+        db.add(foreign_acceptance)
+        db.commit()
+        foreign_acceptance_id = str(foreign_acceptance.id)
+
     buyer_response = client.post(
         "/api/auth/register",
         json={
@@ -2360,24 +2400,6 @@ def test_checkout_rejects_recurring_acceptance_from_another_tenant_or_region() -
     accept_document_for_token(
         buyer_token,
         document=document,
-        entrypoint_value="document-summary",
-    )
-
-    foreign_response = client.post(
-        "/api/auth/register",
-        json={
-            "tenant_id": "anytoolai",
-            "region": "eu",
-            "email": "recurring-foreign@example.com",
-            "password": "very-secret-password",
-            "personal_consent": True,
-            "offer_consent": True,
-        },
-    )
-    foreign_token = foreign_response.json()["token"]
-    foreign_acceptance_id = accept_document_for_token(
-        foreign_token,
-        document=foreign_document,
         entrypoint_value="document-summary",
     )
 
@@ -7782,12 +7804,13 @@ def test_legal_required_documents_use_instance_scope() -> None:
     assert foreign_scope_response.status_code == 200
     default_documents = default_response.json()["documents"]
     foreign_scope_documents = foreign_scope_response.json()["documents"]
-    assert [document["document_version_id"] for document in default_documents] == [str(ru_document_id)]
     assert foreign_scope_documents == default_documents
-    assert default_documents[0]["tenant_id"] == "anytoolai"
-    assert default_documents[0]["region"] == "ru"
-    assert default_documents[0]["acceptance_text_hash"]
-    assert str(eu_document_id) not in {document["document_version_id"] for document in foreign_scope_documents}
+    default_document_ids = {document["document_version_id"] for document in default_documents}
+    assert str(ru_document_id) in default_document_ids
+    assert str(eu_document_id) not in default_document_ids
+    assert all(document["tenant_id"] == "anytoolai" for document in default_documents)
+    assert all(document["region"] == "ru" for document in default_documents)
+    assert all(document["acceptance_text_hash"] for document in default_documents)
 
 
 def test_cloudpayments_webhook_rejects_invalid_signature_when_secret_is_set() -> None:

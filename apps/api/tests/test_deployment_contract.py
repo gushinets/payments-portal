@@ -143,9 +143,11 @@ def test_api_image_commands_do_not_run_migrations() -> None:
         assert "--no-access-log" in launch.split(" && exec ", 1)[1].split()
 
 
-def test_production_runtime_verification_disables_access_logging() -> None:
+def test_production_runtime_verification_supplies_scope_and_disables_access_logging() -> None:
     script = (ROOT / "security/trivy/verify-api-runtime.sh").read_text(encoding="utf-8")
 
+    assert "--env INSTANCE_TENANT_ID=anytoolai" in script
+    assert "--env INSTANCE_REGION=ru" in script
     assert "python -m uvicorn app.main:app" in script
     assert "--no-access-log" in script
 

@@ -145,9 +145,15 @@ def seed_legal_documents(db: Session) -> None:
                 )
                 .all()
             )
-            for active_document in active_documents:
-                if document is None or active_document.id != document.id:
-                    active_document.is_active = False
+            conflicting_active_documents = [
+                active_document
+                for active_document in active_documents
+                if document is None or active_document.id != document.id
+            ]
+            for active_document in conflicting_active_documents:
+                active_document.is_active = False
+            if conflicting_active_documents:
+                db.flush()
 
         if document is None:
             db.add(DocumentVersion(**document_data))

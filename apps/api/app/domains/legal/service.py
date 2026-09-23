@@ -370,6 +370,7 @@ def create_noncommercial_legal_acceptance_event(
         user_agent=user_agent,
     )
     db.add(acceptance_event)
+    db.flush()
     return acceptance_event
 
 
