@@ -1,3 +1,8 @@
+from app.models.billing_operations import (
+    BillingWorkItem,
+    ExternalBillingWebhookDelivery,
+    ManualReviewCase,
+)
 from app.models.billing_projections import (
     CapabilityManifestProjection,
     CommercialMappingRevision,
@@ -8,10 +13,20 @@ from app.models.billing_purchase import (
     ExternalCreateOperation,
     PurchaseIntent,
 )
+from app.models.billing_reconciliation import (
+    BillingProductAccessScope,
+    BillingStateObservation,
+    ExternalSubscription,
+    PurchasedAllowance,
+)
 from app.models.enums import (
     AcceptanceKind,
+    BillingStateObservationKind,
     ExternalBillingCustomerBindingState,
     ExternalCreateOperationKind,
+    ExternalSubscriptionCommercialAccessStatus,
+    ExternalSubscriptionFinancialAccessStatus,
+    ExternalSubscriptionLifecycleStatus,
     LegalEntityStatus,
     LegalEntityType,
     MagicLinkPurpose,
@@ -37,6 +52,10 @@ from app.models.legal import (
 __all__ = [
     "AcceptanceKind",
     "AuthSession",
+    "BillingProductAccessScope",
+    "BillingStateObservation",
+    "BillingStateObservationKind",
+    "BillingWorkItem",
     "CapabilityManifestProjection",
     "CommercialMappingRevision",
     "CountryRegionRule",
@@ -47,15 +66,22 @@ __all__ = [
     "ExternalBillingCustomerBindingState",
     "ExternalCreateOperation",
     "ExternalCreateOperationKind",
+    "ExternalBillingWebhookDelivery",
+    "ExternalSubscription",
+    "ExternalSubscriptionCommercialAccessStatus",
+    "ExternalSubscriptionFinancialAccessStatus",
+    "ExternalSubscriptionLifecycleStatus",
     "LegalAcceptanceEvent",
     "LegalEntity",
     "LegalEntityStatus",
     "LegalEntityType",
     "MagicLinkToken",
     "MagicLinkPurpose",
+    "ManualReviewCase",
     "PasswordResetRateLimit",
     "PurchaseIntent",
     "PurchaseIntentState",
+    "PurchasedAllowance",
     "Region",
     "RegionStatus",
     "User",

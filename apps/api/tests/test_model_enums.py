@@ -12,8 +12,12 @@ import app.models.enums as model_enums
 from app.core.database import Base
 from app.models import (
     AcceptanceKind,
+    BillingStateObservationKind,
     ExternalBillingCustomerBindingState,
     ExternalCreateOperationKind,
+    ExternalSubscriptionCommercialAccessStatus,
+    ExternalSubscriptionFinancialAccessStatus,
+    ExternalSubscriptionLifecycleStatus,
     LegalEntityStatus,
     LegalEntityType,
     MagicLinkPurpose,
@@ -64,10 +68,33 @@ def test_canonical_enum_layer_contains_approved_vocabularies() -> None:
         "agreement",
         "subscription",
     }
+    assert _values(ExternalSubscriptionLifecycleStatus) == {
+        "active",
+        "inactive",
+        "ended",
+    }
+    assert _values(ExternalSubscriptionFinancialAccessStatus) == {
+        "allowed",
+        "blocked",
+    }
+    assert _values(ExternalSubscriptionCommercialAccessStatus) == {
+        "eligible",
+        "ineligible",
+    }
+    assert _values(BillingStateObservationKind) == {
+        "authoritative_subscription_read",
+        "target_product_discovery",
+        "primary_selection",
+        "deterministic_access_boundary",
+    }
     assert set(model_enums.__all__) == {
         "AcceptanceKind",
+        "BillingStateObservationKind",
         "ExternalBillingCustomerBindingState",
         "ExternalCreateOperationKind",
+        "ExternalSubscriptionCommercialAccessStatus",
+        "ExternalSubscriptionFinancialAccessStatus",
+        "ExternalSubscriptionLifecycleStatus",
         "LegalEntityStatus",
         "LegalEntityType",
         "MagicLinkPurpose",

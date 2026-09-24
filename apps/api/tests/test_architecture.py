@@ -10,6 +10,9 @@ os.environ["DATABASE_URL"] = "sqlite+pysqlite:///:memory:"
 from app.core.database import Base
 from app.models import (
     AuthSession,
+    BillingProductAccessScope,
+    BillingStateObservation,
+    BillingWorkItem,
     CapabilityManifestProjection,
     CommercialMappingRevision,
     CountryRegionRule,
@@ -17,12 +20,16 @@ from app.models import (
     DocumentVersion,
     ExternalBillingCatalogProjection,
     ExternalBillingCustomer,
+    ExternalBillingWebhookDelivery,
     ExternalCreateOperation,
+    ExternalSubscription,
     LegalAcceptanceEvent,
     LegalEntity,
     MagicLinkToken,
+    ManualReviewCase,
     PasswordResetRateLimit,
     PurchaseIntent,
+    PurchasedAllowance,
     Region,
     User,
 )
@@ -927,7 +934,7 @@ def test_magic_link_token_has_no_entrypoint_session_binding() -> None:
     assert "entrypoint_session_id" not in MagicLinkToken.__table__.c
 
 
-def test_canonical_orm_contains_step_3_survivors_and_step_4_foundation() -> None:
+def test_canonical_orm_contains_step_3_survivors_and_step_4_target_models() -> None:
     retained_models = (
         Region,
         CountryRegionRule,
@@ -945,6 +952,13 @@ def test_canonical_orm_contains_step_3_survivors_and_step_4_foundation() -> None
         ExternalBillingCustomer,
         PurchaseIntent,
         ExternalCreateOperation,
+        BillingProductAccessScope,
+        ExternalSubscription,
+        BillingStateObservation,
+        PurchasedAllowance,
+        ExternalBillingWebhookDelivery,
+        BillingWorkItem,
+        ManualReviewCase,
     )
 
     assert set(Base.metadata.tables) == {model.__tablename__ for model in retained_models}

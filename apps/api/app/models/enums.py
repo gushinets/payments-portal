@@ -54,10 +54,37 @@ class ExternalCreateOperationKind(StrEnum):
     SUBSCRIPTION = "subscription"
 
 
+class ExternalSubscriptionLifecycleStatus(StrEnum):
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+    ENDED = "ended"
+
+
+class ExternalSubscriptionFinancialAccessStatus(StrEnum):
+    ALLOWED = "allowed"
+    BLOCKED = "blocked"
+
+
+class ExternalSubscriptionCommercialAccessStatus(StrEnum):
+    ELIGIBLE = "eligible"
+    INELIGIBLE = "ineligible"
+
+
+class BillingStateObservationKind(StrEnum):
+    AUTHORITATIVE_SUBSCRIPTION_READ = "authoritative_subscription_read"
+    TARGET_PRODUCT_DISCOVERY = "target_product_discovery"
+    PRIMARY_SELECTION = "primary_selection"
+    DETERMINISTIC_ACCESS_BOUNDARY = "deterministic_access_boundary"
+
+
 __all__ = [
     "AcceptanceKind",
+    "BillingStateObservationKind",
     "ExternalBillingCustomerBindingState",
     "ExternalCreateOperationKind",
+    "ExternalSubscriptionCommercialAccessStatus",
+    "ExternalSubscriptionFinancialAccessStatus",
+    "ExternalSubscriptionLifecycleStatus",
     "LegalEntityStatus",
     "LegalEntityType",
     "MagicLinkPurpose",
