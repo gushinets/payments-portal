@@ -314,7 +314,7 @@ jobs:
 
               attempts=$((attempts + 1))
               attempt_complete=1
-              for screenshot in landing checkout account payment-result; do
+              for screenshot in landing auth-shell account payment-result; do
                 evidence_file="${attempt_dir}/${screenshot}.png"
                 if [ ! -f "$evidence_file" ] || [ ! -s "$evidence_file" ]; then
                   attempt_complete=0
