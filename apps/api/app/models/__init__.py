@@ -1,3 +1,4 @@
+from app.models.billing_access import AccessInvalidationOutbox, PaidAccessState
 from app.models.billing_operations import (
     BillingWorkItem,
     ExternalBillingWebhookDelivery,
@@ -51,6 +52,7 @@ from app.models.legal import (
 
 __all__ = [
     "AcceptanceKind",
+    "AccessInvalidationOutbox",
     "AuthSession",
     "BillingProductAccessScope",
     "BillingStateObservation",
@@ -79,6 +81,7 @@ __all__ = [
     "MagicLinkPurpose",
     "ManualReviewCase",
     "PasswordResetRateLimit",
+    "PaidAccessState",
     "PurchaseIntent",
     "PurchaseIntentState",
     "PurchasedAllowance",

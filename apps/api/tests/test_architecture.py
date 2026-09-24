@@ -9,6 +9,7 @@ os.environ["DATABASE_URL"] = "sqlite+pysqlite:///:memory:"
 
 from app.core.database import Base
 from app.models import (
+    AccessInvalidationOutbox,
     AuthSession,
     BillingProductAccessScope,
     BillingStateObservation,
@@ -28,6 +29,7 @@ from app.models import (
     MagicLinkToken,
     ManualReviewCase,
     PasswordResetRateLimit,
+    PaidAccessState,
     PurchaseIntent,
     PurchasedAllowance,
     Region,
@@ -959,8 +961,11 @@ def test_canonical_orm_contains_step_3_survivors_and_step_4_target_models() -> N
         ExternalBillingWebhookDelivery,
         BillingWorkItem,
         ManualReviewCase,
+        PaidAccessState,
+        AccessInvalidationOutbox,
     )
 
+    assert len(Base.metadata.tables) == 25
     assert set(Base.metadata.tables) == {model.__tablename__ for model in retained_models}
 
 
