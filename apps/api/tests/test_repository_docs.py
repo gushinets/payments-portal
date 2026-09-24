@@ -755,6 +755,17 @@ def test_migration_legal_version_mismatch_is_rejected() -> None:
     ]
 
 
+def test_legal_version_guard_reads_the_clean_first_install_baseline() -> None:
+    assert repo.INITIAL_MIGRATION == (
+        repo.ROOT
+        / "apps"
+        / "api"
+        / "alembic"
+        / "versions"
+        / "20260924_0001_clean_first_install.py"
+    )
+
+
 def test_canonical_metadata_table_entry_is_accepted() -> None:
     assert (
         check_documented_metadata_tables(

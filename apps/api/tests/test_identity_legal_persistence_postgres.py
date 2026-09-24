@@ -27,6 +27,7 @@ from app.models import (
     LegalEntityType,
     MagicLinkPurpose,
     MagicLinkToken,
+    Region,
     User,
     UserStatus,
 )
@@ -48,6 +49,19 @@ def create_user(db_session: Session, *, email: str) -> User:
     db_session.commit()
     db_session.refresh(user)
     return user
+
+
+def create_foreign_test_region(db_session: Session) -> None:
+    db_session.add(
+        Region(
+            code="eu",
+            name="European Union test region",
+            residency_zone="test-eu",
+            default_currency="EUR",
+            default_locale="en-EU",
+        )
+    )
+    db_session.flush()
 
 
 def create_legal_evidence(
@@ -306,6 +320,7 @@ def test_password_reset_binds_canonical_user_and_revokes_security_state(
 def test_foreign_password_reset_token_is_not_claimed_or_mutated(
     db_session: Session,
 ) -> None:
+    create_foreign_test_region(db_session)
     raw_token = "foreign-canonical-user-reset-token-with-enough-entropy"
     token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
     original_password_hash = hash_password("foreign-old-password")
@@ -626,6 +641,7 @@ def test_document_acceptance_scope_must_match_event_user(db_session: Session) ->
 
 def test_document_acceptance_scope_must_match_document_version(db_session: Session) -> None:
     owner = create_user(db_session, email="acceptance-document-scope@example.com")
+    create_foreign_test_region(db_session)
     eu_entity = LegalEntity(
         tenant_id=owner.tenant_id,
         region="eu",

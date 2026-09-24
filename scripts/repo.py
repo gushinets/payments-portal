@@ -842,7 +842,7 @@ INITIAL_MIGRATION = (
     / "api"
     / "alembic"
     / "versions"
-    / "20260707_0001_foundation_identity_legal_provider.py"
+    / "20260924_0001_clean_first_install.py"
 )
 EXTERNAL_BILLING_ADR = (
     ROOT
