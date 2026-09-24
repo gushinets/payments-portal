@@ -189,7 +189,7 @@ def write_browser_evidence_fixture(root: Path, *, attempt_suffix: str = "") -> N
     for project in ("desktop-chromium", "mobile-chromium"):
         project_results = results / f"react-runtime-{project}{attempt_suffix}"
         project_results.mkdir(parents=True)
-        for screenshot in ("landing", "checkout", "account", "payment-result"):
+        for screenshot in ("landing", "auth-shell", "account", "payment-result"):
             (project_results / f"{screenshot}.png").write_bytes(b"png")
 
     for report in (
@@ -262,13 +262,13 @@ def test_browser_evidence_validator_rejects_non_numeric_retry_suffix(tmp_path: P
 
 def test_browser_evidence_validator_rejects_missing_screenshot(tmp_path: Path) -> None:
     write_browser_evidence_fixture(tmp_path)
-    missing = tmp_path / ".harness/playwright-react-runtime-results/react-runtime-mobile-chromium/checkout.png"
+    missing = tmp_path / ".harness/playwright-react-runtime-results/react-runtime-mobile-chromium/auth-shell.png"
     missing.unlink()
 
     result = run_browser_evidence_validator(tmp_path)
 
     assert result.returncode != 0
-    assert "mobile-chromium/checkout.png" in result.stdout
+    assert "mobile-chromium/auth-shell.png" in result.stdout
 
 
 def test_browser_evidence_validator_rejects_screenshots_split_across_attempts(
@@ -277,13 +277,15 @@ def test_browser_evidence_validator_rejects_screenshots_split_across_attempts(
     write_browser_evidence_fixture(tmp_path)
     (tmp_path / ".harness/playwright-react-runtime-results/react-runtime-desktop-chromium/landing.png").unlink()
     write_browser_evidence_fixture(tmp_path, attempt_suffix="-retry1")
-    (tmp_path / ".harness/playwright-react-runtime-results/react-runtime-desktop-chromium-retry1/checkout.png").unlink()
+    (
+        tmp_path / ".harness/playwright-react-runtime-results/react-runtime-desktop-chromium-retry1/auth-shell.png"
+    ).unlink()
 
     result = run_browser_evidence_validator(tmp_path)
 
     assert result.returncode != 0
     assert "desktop-chromium/landing.png" in result.stdout
-    assert "desktop-chromium-retry1/checkout.png" in result.stdout
+    assert "desktop-chromium-retry1/auth-shell.png" in result.stdout
 
 
 def test_browser_evidence_validator_rejects_empty_screenshot(tmp_path: Path) -> None:

@@ -1,8 +1,13 @@
 # ANY-95 — Critical Characterization Baseline
 
-Status: active
+Status: superseded historical implementation evidence
 Owner: repository maintainers
 Started: 2026-07-30
+
+> Superseded by ANY-522. This completed characterization records the removed
+> Portal-owned checkout and CloudPayments compatibility path and must not be
+> used as current billing architecture. New billing work follows ADR 0005 and
+> the ANY-504 external-billing program.
 
 ## Objective
 

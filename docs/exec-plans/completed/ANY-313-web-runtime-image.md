@@ -1,5 +1,7 @@
 # ANY-313 Web Runtime Image Implementation Plan
 
+Status: completed
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace the single-stage web image with a minimal non-root Next.js standalone runtime that excludes development and package-manager tooling without changing public checkout or payment behavior.

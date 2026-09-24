@@ -1,6 +1,6 @@
 # ANY-313 Web Runtime Image Design
 
-Status: approved design
+Status: completed design
 Date: 2026-08-16
 Linear: https://linear.app/paveldik/issue/ANY-313/razdelit-web-dockerfile-na-builderruntime-i-ubrat-dev-tooling-iz
 

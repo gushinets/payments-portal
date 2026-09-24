@@ -1,6 +1,6 @@
 # ANY-96 Runtime and Database Baseline
 
-Status: active
+Status: completed
 Started: 2026-07-27
 Linear: ANY-96
 
