@@ -1,7 +1,7 @@
 # Documentation Index
 
 Status: authoritative index
-Last verified: 2026-09-22
+Last verified: 2026-09-24
 
 Start with the smallest document that matches the task.
 
@@ -46,18 +46,17 @@ Start with the smallest document that matches the task.
 - [Portal identity, session, and legal baseline](architecture/portal-identity-session-legal-baseline.md)
   — as-built `ANY-504` Step 3 retained-schema contract and exact Step 4 handoff
 - [External Billing Persistence Reset](architecture/external-billing-persistence-reset.md)
-  — reviewed `ANY-504` Step 2 persistence/reset implementation handoff,
-  subordinate to ADR 0005 and both accepted design baselines above
+  — completed reviewed persistence/reset design handoff retained as
+  implementation history; the executable runbook is in Deployment
 
-### Current-state and retained references
+### Current-state and retained historical references
 
-- [Payment providers](architecture/payment-providers.md) — retained
-  direct-provider characterization; not target external-billing guidance
-- [Billing authority](architecture/billing-authority.md) — superseded target
-  design retained for current-state and historical context
+- [Payment provider boundary history](architecture/payment-providers.md) —
+  removed direct-provider characterization; not target authority
+- [Billing authority](architecture/billing-authority.md) — historical/superseded
+  reference only; not current-state or target authority
 - [Payment Portal data model](architecture/payment-portal-data-model.md) —
-  authoritative current-state schema reference; not the target persistence
-  design
+  authoritative current as-built 25-table schema reference
 - [Platform Kernel contract boundary](architecture/platform-kernel-contract.md)
   — superseded planned contract; retained historical context
 

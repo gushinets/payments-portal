@@ -191,28 +191,29 @@ def test_canonical_persisted_model_guard_rejects_billing_model_import(tmp_path: 
 
 
 def test_canonical_persisted_model_guard_rejects_duplicate_enum_definition(tmp_path: Path) -> None:
-    _write_api_source(tmp_path, "feature.py", "class PaymentStatus: pass\n")
+    _write_api_source(tmp_path, "feature.py", "class PurchaseIntentState: pass\n")
 
     errors = check_canonical_persisted_model_layer(tmp_path)
 
-    assert any("defines protected persisted enum PaymentStatus" in error for error in errors)
+    assert any("defines protected persisted enum PurchaseIntentState" in error for error in errors)
 
 
 def test_canonical_persisted_model_guard_rejects_removed_enum_facades(tmp_path: Path) -> None:
     _write_api_source(
         tmp_path,
         "feature.py",
-        "from app.domains.billing.enums import PaymentStatus\nfrom app.domains.legal.enums import AcceptanceKind\n",
+        "from app.domains.billing.enums import PurchaseIntentState\n"
+        "from app.domains.legal.enums import AcceptanceKind\n",
     )
 
     errors = check_canonical_persisted_model_layer(tmp_path)
 
-    assert any("imports PaymentStatus through the removed billing enum façade" in error for error in errors)
+    assert any("imports PurchaseIntentState through the removed billing enum façade" in error for error in errors)
     assert any("imports the removed legal enum façade" in error for error in errors)
 
 
 def test_canonical_persisted_model_guard_allows_canonical_definition(tmp_path: Path) -> None:
-    _write_api_source(tmp_path, "models/enums.py", "class PaymentStatus: pass\n")
+    _write_api_source(tmp_path, "models/enums.py", "class PurchaseIntentState: pass\n")
 
     assert check_canonical_persisted_model_layer(tmp_path) == []
 
@@ -236,11 +237,15 @@ def test_canonical_persisted_model_guard_rejects_relative_billing_model_import(t
 
 
 def test_canonical_persisted_model_guard_rejects_relative_billing_enum_import(tmp_path: Path) -> None:
-    _write_api_source(tmp_path, "domains/checkout/feature.py", "from ..billing.enums import PaymentStatus\n")
+    _write_api_source(
+        tmp_path,
+        "domains/checkout/feature.py",
+        "from ..billing.enums import PurchaseIntentState\n",
+    )
 
     errors = check_canonical_persisted_model_layer(tmp_path)
 
-    assert any("imports PaymentStatus through the removed billing enum façade" in error for error in errors)
+    assert any("imports PurchaseIntentState through the removed billing enum façade" in error for error in errors)
 
 
 def test_canonical_persisted_model_guard_rejects_relative_legal_enum_import(tmp_path: Path) -> None:
@@ -409,19 +414,18 @@ def _write_external_billing_documentation_fixture(root: Path) -> None:
             "Status: superseded for new billing development\n"
         ),
         "docs/architecture/billing-authority.md": (
-            "Status: superseded target architecture; retained "
-            "historical/current-state reference\n"
-            "This document is not an authority for new billing development.\n"
+            "Status: historical/superseded reference only; not current-state "
+            "or target authority\n"
+            "HISTORICAL/SUPERSEDED ONLY — NOT CURRENT STATE OR TARGET AUTHORITY\n"
+            "This document does not describe the current repository or runtime.\n"
         ),
         "docs/architecture/payment-providers.md": (
-            "LEGACY / TRANSITIONAL REFERENCE — NOT TARGET ARCHITECTURE\n"
-            "Status: retained current-state characterization of the "
-            "direct-provider boundary\n"
+            "REMOVED DIRECT-PROVIDER REFERENCE — NOT TARGET ARCHITECTURE\n"
+            "Status: historical boundary reference; direct-provider runtime removed\n"
         ),
         "docs/architecture/payment-portal-data-model.md": (
-            "Status: authoritative current-state schema reference; not target external-billing "
-            "persistence design\n"
-            "CURRENT-STATE SCHEMA REFERENCE — NOT TARGET PERSISTENCE DESIGN\n"
+            "Status: authoritative current-state schema reference\n"
+            "CURRENT AS-BUILT SCHEMA REFERENCE\n"
         ),
         "docs/architecture/platform-kernel-contract.md": (
             "Status: superseded planned contract; retained historical context only\nSUPERSEDED CONTRACT NOTICE\n"
@@ -456,6 +460,62 @@ def test_external_billing_documentation_precedence_reports_wrong_status(
         "Incorrect external-billing documentation classification in "
         f"{relative.as_posix()}: expected exactly one active status "
         "'status: accepted', found 'status: proposed'"
+    ]
+
+
+def test_external_billing_documentation_precedence_rejects_current_state_billing_authority(
+    tmp_path: Path,
+) -> None:
+    _write_external_billing_documentation_fixture(tmp_path)
+    relative = Path("docs/architecture/billing-authority.md")
+    path = tmp_path / relative
+    path.write_text(
+        path.read_text(encoding="utf-8").replace(
+            "Status: historical/superseded reference only; not current-state "
+            "or target authority",
+            "Status: superseded target architecture; retained "
+            "historical/current-state reference",
+        ),
+        encoding="utf-8",
+    )
+
+    assert check_external_billing_documentation_precedence(root=tmp_path) == [
+        "Incorrect external-billing documentation classification in "
+        f"{relative.as_posix()}: expected exactly one active status "
+        "'status: historical/superseded reference only; not current-state or target authority', "
+        "found 'status: superseded target architecture; retained historical/current-state reference'"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("removed_header_text", "expected_marker"),
+    [
+        (
+            "HISTORICAL/SUPERSEDED ONLY — NOT CURRENT STATE OR TARGET AUTHORITY\n",
+            "historical/superseded only — not current state or target authority",
+        ),
+        (
+            "This document does not describe the current repository or runtime.\n",
+            "does not describe the current repository or runtime",
+        ),
+    ],
+)
+def test_external_billing_documentation_precedence_requires_historical_only_billing_authority_header(
+    tmp_path: Path,
+    removed_header_text: str,
+    expected_marker: str,
+) -> None:
+    _write_external_billing_documentation_fixture(tmp_path)
+    relative = Path("docs/architecture/billing-authority.md")
+    path = tmp_path / relative
+    path.write_text(
+        path.read_text(encoding="utf-8").replace(removed_header_text, ""),
+        encoding="utf-8",
+    )
+
+    assert check_external_billing_documentation_precedence(root=tmp_path) == [
+        "Incorrect external-billing documentation classification in "
+        f"{relative.as_posix()}: expected header marker {expected_marker!r}"
     ]
 
 
@@ -516,17 +576,16 @@ def test_external_billing_documentation_precedence_requires_banner_in_header(
     _write_external_billing_documentation_fixture(tmp_path)
     relative = Path("docs/architecture/payment-portal-data-model.md")
     (tmp_path / relative).write_text(
-        "Status: authoritative current-state schema reference; not target "
-        "external-billing persistence design\n\n"
+        "Status: authoritative current-state schema reference\n\n"
         "## Historical context\n\n"
-        "CURRENT-STATE SCHEMA REFERENCE — NOT TARGET PERSISTENCE DESIGN\n",
+        "CURRENT AS-BUILT SCHEMA REFERENCE\n",
         encoding="utf-8",
     )
 
     assert check_external_billing_documentation_precedence(root=tmp_path) == [
         "Incorrect external-billing documentation classification in "
         f"{relative.as_posix()}: expected header marker "
-        "'current-state schema reference — not target persistence design'"
+        "'current as-built schema reference'"
     ]
 
 
@@ -695,14 +754,28 @@ def test_observability_docs_preserve_correlation_and_ownership_contract() -> Non
     reliability_normalized = " ".join(reliability.replace("`", "").lower().split())
     security_normalized = " ".join(security.replace("`", "").lower().split())
 
-    for local_id in ("order_id", "payment_id", "subscription_id", "webhook_event_id", "run_id"):
+    for local_id in (
+        "purchase_intent_id",
+        "create_operation_id",
+        "delivery_id",
+        "work_item_id",
+        "subscription_id",
+        "observation_id",
+        "review_case_id",
+    ):
         assert local_id in reliability_normalized
     assert "must never be metric labels" in reliability_normalized
-    for local_id in ("order_id", "payment_id", "subscription_id", "webhook_event_id", "run_id"):
+    for local_id in (
+        "purchase_intent_id",
+        "create_operation_id",
+        "delivery_id",
+        "work_item_id",
+        "subscription_id",
+        "observation_id",
+        "review_case_id",
+    ):
         assert local_id in security_normalized
     assert "must never become metric labels" in security_normalized
-    assert "refund_id remains a local durable business and audit lookup reference" in reliability_normalized
-    assert "not a new any-437 telemetry emission" in security_normalized
 
     assert "production monitoring and alerting work" in reliability_normalized
     assert "belongs to any-86" in reliability_normalized
@@ -712,14 +785,63 @@ def test_observability_docs_preserve_correlation_and_ownership_contract() -> Non
         in reliability_normalized
     )
 
+    assert "billing work tables do not establish a worker runtime" in reliability_normalized
+
+
+def test_docs_preserve_provider_independent_failure_and_worker_boundaries() -> None:
+    architecture = _normalized_document("ARCHITECTURE.md").replace("`", "").lower()
+    reliability = _normalized_document("docs/RELIABILITY.md").replace("`", "").lower()
+    conventions = (
+        _normalized_document("docs/engineering/CODING_CONVENTIONS.md")
+        .replace("`", "")
+        .lower()
+    )
+
     assert (
-        "a failed run starts with subscription_expiry_run_started and ends with subscription_expiry_run_failed"
-        in reliability_normalized
+        "the outer failure boundary for an operation owns application error reporting"
+        in architecture
     )
     assert (
-        "must not emit subscription_expiry_transition_committed or subscription_expiry_run_succeeded"
-        in reliability_normalized
+        "domain and application logic remain independent of direct sentry sdk reporting"
+        in architecture
     )
+    assert (
+        "sentry_sdk access stays behind the application-owned "
+        "app.infrastructure.sentry adapter" in architecture
+    )
+    assert "each reportable failure has one reporting owner" in architecture
+
+    assert (
+        "lower layers do not report a failure that continues propagating"
+        in reliability
+    )
+    assert "domain and application logic do not import or call sentry_sdk" in reliability
+    assert (
+        "sdk access remains behind the application-owned "
+        "app.infrastructure.sentry adapter" in reliability
+    )
+    assert (
+        "delegated unit creates, owns, and closes all of its synchronous resources"
+        in reliability
+    )
+    assert (
+        "not move a request-created sqlalchemy session through a manual thread bridge"
+        in reliability
+    )
+    assert (
+        "cancellation of an async waiter does not imply that the synchronous "
+        "worker was forcibly stopped" in reliability
+    )
+    assert (
+        "request id, trace/span, and structured-log context remain correlated"
+        in reliability
+    )
+
+    assert (
+        "cancellation of the async waiter does not mean delegated synchronous "
+        "work was forcibly stopped" in conventions
+    )
+    assert "request id and trace/span/log context must remain correlated" in conventions
 
 
 def test_missing_external_billing_authority_link_is_actionable() -> None:
@@ -1279,57 +1401,6 @@ def test_api_coverage_writes_xml_to_stable_harness_path(
             check_environment,
         )
     ]
-
-
-def test_write_runtime_excludes_cloudpayments_configuration(
-    monkeypatch,
-    tmp_path: Path,
-) -> None:
-    harness_dir = tmp_path / ".harness"
-    runtime_json = harness_dir / "runtime.json"
-    runtime_env = harness_dir / "runtime.env"
-    monkeypatch.setattr(repo, "HARNESS_DIR", harness_dir)
-    monkeypatch.setattr(repo, "RUNTIME_JSON", runtime_json)
-    monkeypatch.setattr(repo, "RUNTIME_ENV", runtime_env)
-    monkeypatch.setattr(
-        repo,
-        "read_dotenv",
-        lambda: {
-            "CLOUDPAYMENTS_PUBLIC_ID": "pk_from_dotenv",
-            "CLOUDPAYMENTS_API_SECRET": "secret-from-dotenv",
-            "CLOUDPAYMENTS_ENABLED": "true",
-        },
-    )
-    monkeypatch.setenv("CLOUDPAYMENTS_PUBLIC_ID", "pk_from_process")
-    monkeypatch.setenv("CLOUDPAYMENTS_API_SECRET", "secret-from-process")
-    monkeypatch.setenv("CLOUDPAYMENTS_ENABLED", "true")
-
-    repo.write_runtime(
-        repo.RuntimeConfig(
-            worktree_id="test",
-            compose_project="payment-portal-test",
-            database_name="payment_portal_test",
-            web_port=3000,
-            api_port=8000,
-            postgres_port=5432,
-            grafana_port=3001,
-            loki_port=3100,
-            prometheus_port=9090,
-            tempo_port=3200,
-            otlp_grpc_port=4317,
-            otlp_http_port=4318,
-        )
-    )
-
-    assert stat.S_IMODE(harness_dir.stat().st_mode) == 0o700
-    assert stat.S_IMODE(runtime_env.stat().st_mode) == 0o600
-    runtime_contents = runtime_env.read_text(encoding="utf-8")
-    assert "APP_ENV=development" in runtime_contents
-    assert "INSTANCE_TENANT_ID=anytoolai" in runtime_contents
-    assert "INSTANCE_REGION=ru" in runtime_contents
-    assert "CLOUDPAYMENTS_PUBLIC_ID" not in runtime_contents
-    assert "CLOUDPAYMENTS_API_SECRET" not in runtime_contents
-    assert "CLOUDPAYMENTS_ENABLED" not in runtime_contents
 
 
 def test_write_runtime_does_not_leave_secret_when_protection_fails(

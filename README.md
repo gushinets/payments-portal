@@ -4,26 +4,27 @@ The Payment Portal is the identity, legal-consent, checkout, and access-entry
 service for AnytoolAI products. Each production deployment is one contour
 (compliance zone). This repository currently ships the `ru` contour.
 
-It contains a Next.js web application, a FastAPI API, PostgreSQL persistence,
-and retained CloudPayments integration source. Catalog products and plans, local
-subscriptions, entitlement rules, entitlements, and subscription audit are
-implemented current-state behavior. The accepted Portal-Kernel access contract
-is the target paid-access boundary, but its runtime implementation remains
-future program work. Platform Kernel code is maintained in the separate
+It contains a Next.js web application, a FastAPI identity/legal API, PostgreSQL
+persistence, and the clean provider-neutral external-billing storage baseline.
+The former CloudPayments/direct-provider runtime and Portal-owned catalog,
+order, payment, subscription, entitlement, and trial architecture have been
+physically removed. The accepted Portal-Kernel access contract is the target
+paid-access boundary, but its runtime implementation remains future program
+work. Platform Kernel code is maintained in the separate
 [anytoolai-platform](https://github.com/gushinets/anytoolai-platform) repository.
 
 Payment Portal is still under development and is not running as a production
-billing service. CloudPayments implementation and persistence source is
-retained for transitional cleanup, but normal backend and frontend runtime no
-longer initializes, registers, loads, or invokes it. Checkout is temporarily
-unavailable while the external-billing target remains unimplemented; there are
-no production CloudPayments subscribers or subscriptions to migrate. For target
-billing work, follow [ADR 0005](docs/architecture/decisions/0005-external-billing-boundary.md),
+billing service. Checkout is temporarily unavailable while the approved
+external-billing runtime remains unimplemented; there are no production
+direct-provider subscribers or subscriptions to migrate. The fifteen target
+billing tables start empty and no current application behavior populates them.
+For target billing work, follow [ADR 0005](docs/architecture/decisions/0005-external-billing-boundary.md),
 the accepted [External Billing Boundary Design](docs/superpowers/specs/2026-09-15-external-billing-boundary-design.md),
 and the accepted
 [Portal ↔ Kernel Access Contract Design](docs/superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md),
 in that order. The old [billing-authority document](docs/architecture/billing-authority.md)
-is retained only for current-state and historical context. See also the current
+is historical/superseded only; it is neither current-state nor target
+authority. See also the current
 [product scope](docs/PRODUCT.md) and contour and Region Resolver architecture
 in [ARCHITECTURE.md](ARCHITECTURE.md).
 
@@ -131,17 +132,19 @@ derived database name ending in `_tests`.
 - Caddy: production and local Compose pin `caddy:2.11.4-alpine` plus its
   multi-architecture digest.
 
-The first production deployment has no existing data to migrate. Older local
-development/test PostgreSQL major-version volumes are intentionally not reused;
-recreate the development database with `npm run repo:reset` or
-`docker compose down -v` before starting the PostgreSQL 18 stack.
+The clean Step-4 baseline is recreate-only from discarded migration history.
+Pre-Step-4 binaries must never run against it, and image-only rollback across
+the reset is forbidden. Use the supported one-time
+[recreate/bootstrap runbook](docs/architecture/deployment.md#one-time-step-4-recreate-and-bootstrap);
+do not use `alembic stamp`, downgrade, or an upgrade bridge.
 
 ## Repository layout
 
 - `apps/web` — Next.js portal UI. Current routes are the `ru` contour and its
   legal-page renderer.
-- `apps/api` — FastAPI identity, legal, checkout, and payment API. Retained
-  CloudPayments source is not mounted in normal runtime.
+- `apps/api` — FastAPI identity, password-reset, legal, health, and metrics API,
+  plus the provider-neutral target persistence model. Billing runtime is not
+  implemented.
 - `apps/api/alembic` — PostgreSQL schema and first-install legal seed.
 - `docs` — authoritative product, architecture, design, reliability, security,
   legal, planning, and generated documentation.
@@ -225,8 +228,7 @@ template.
 
 Never commit production secrets. Card data is handled by the responsible
 external payment boundary and must not be collected or stored by this
-repository. No direct payment provider is active in normal runtime; retained
-CloudPayments source is not a current payment boundary.
+repository. No direct-provider runtime exists in this repository.
 
 ## Current limitations
 

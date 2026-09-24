@@ -38,6 +38,7 @@ from app.models import (
 from scripts.repo import (
     check_persistence_transaction_ownership,
     check_python_boundaries,
+    check_removed_billing_architecture,
 )
 
 
@@ -51,7 +52,7 @@ def test_ast_import_forms_are_rejected_with_actionable_errors(tmp_path: Path) ->
     write_module(
         tmp_path,
         "apps/api/app/core/settings.py",
-        "import app.integrations.cloudpayments as provider\n",
+        "import app.integrations.external_billing as billing\n",
     )
     write_module(
         tmp_path,
@@ -62,7 +63,7 @@ def test_ast_import_forms_are_rejected_with_actionable_errors(tmp_path: Path) ->
     errors = check_python_boundaries(tmp_path)
 
     assert any(
-        "apps/api/app/core/settings.py:1 imports app.integrations.cloudpayments" in error
+        "apps/api/app/core/settings.py:1 imports app.integrations.external_billing" in error
         and "core dependency direction" in error
         and "move the dependency" in error
         for error in errors
@@ -75,18 +76,44 @@ def test_ast_import_forms_are_rejected_with_actionable_errors(tmp_path: Path) ->
     )
 
 
-def test_core_to_payment_provider_dependency_is_rejected(tmp_path: Path) -> None:
+def test_removed_direct_provider_runtime_is_rejected(tmp_path: Path) -> None:
     write_module(
         tmp_path,
-        "apps/api/app/core/errors.py",
-        "from app.payment_providers import errors\n",
+        "apps/api/app/payment_providers/contracts.py",
+        "class PaymentProviderAdapter: ...\n",
+    )
+    write_module(
+        tmp_path,
+        "apps/api/app/integrations/cloudpayments/adapter.py",
+        "class CloudPaymentsAdapter: ...\n",
+    )
+    write_module(
+        tmp_path,
+        "apps/api/app/domains/billing/service.py",
+        "from app.payment_providers import PaymentProviderRegistry\n",
+    )
+    write_module(
+        tmp_path,
+        "apps/web/src/features/checkout/widget.ts",
+        "export const provider = 'cloudpayments';\n",
     )
 
-    assert check_python_boundaries(tmp_path) == [
-        "apps/api/app/core/errors.py:1 imports app.payment_providers; "
-        "violates core dependency direction; move the dependency to wiring or "
-        "shared core infrastructure (see ARCHITECTURE.md)"
-    ]
+    errors = check_removed_billing_architecture(tmp_path)
+
+    assert any(
+        "payment_providers/contracts.py recreates removed" in error
+        for error in errors
+    )
+    assert any(
+        "integrations/cloudpayments/adapter.py recreates removed" in error
+        for error in errors
+    )
+    assert any("imports removed direct-provider runtime" in error for error in errors)
+    assert any("references removed PaymentProviderRegistry" in error for error in errors)
+    assert any(
+        "apps/web/src/features/checkout/widget.ts references removed" in error
+        for error in errors
+    )
 
 
 def test_relative_router_import_is_rejected(tmp_path: Path) -> None:
@@ -121,156 +148,66 @@ def test_layer_specific_router_rules_are_enforced(tmp_path: Path) -> None:
     assert any("integration-to-domain-router dependency" in error for error in errors)
 
 
-@pytest.mark.parametrize(
-    ("source", "symbol", "module"),
-    (
-        ("from app.models import Payment\n", "Payment", "app.models"),
-        (
-            "from app.models.commerce import Refund as CanonicalRefund\n",
-            "Refund",
-            "app.models.commerce",
-        ),
-        (
-            "from app.models.enums import PaymentStatus\n",
-            "PaymentStatus",
-            "app.models.enums",
-        ),
-        (
-            "import app.models.enums as enums\nstatus = enums.RefundStatus\n",
-            "RefundStatus",
-            "app.models.enums",
-        ),
-        (
-            "import app.models.commerce\npayment = app.models.Payment\n",
-            "Payment",
-            "app.models",
-        ),
-        (
-            "import app.models.commerce\npayment = app.models.commerce.Payment\n",
-            "Payment",
-            "app.models.commerce",
-        ),
-        ("from app import models\npayment = models.Payment\n", "Payment", "app.models"),
-        ("from ...models.commerce import Payment\n", "Payment", "app.models.commerce"),
-    ),
-)
-def test_integrations_reject_canonical_commercial_mutation_vocabulary(
-    tmp_path: Path,
-    source: str,
-    symbol: str,
-    module: str,
-) -> None:
-    relative = "apps/api/app/integrations/example/processing.py"
-    write_module(tmp_path, relative, source)
-
-    assert check_python_boundaries(tmp_path) == [
-        f"{relative}:{2 if source.startswith(('import ', 'from app import')) else 1} "
-        f"references canonical commercial model {symbol} from {module}; "
-        "violates integration commercial mutation ownership; map provider facts into "
-        "Application commercial transitions instead (see ARCHITECTURE.md)"
-    ]
-
-
-def test_integrations_do_not_resolve_unrelated_namespace_from_model_import(
-    tmp_path: Path,
-) -> None:
+def test_removed_legacy_portal_billing_models_and_tables_are_rejected(tmp_path: Path) -> None:
     write_module(
         tmp_path,
-        "apps/api/app/integrations/example/processing.py",
-        "import app.models.commerce\npayment = app.other_namespace.Payment\n",
-    )
-
-    assert check_python_boundaries(tmp_path) == []
-
-
-def test_integrations_allow_retained_commercial_correlation_dependencies(tmp_path: Path) -> None:
-    write_module(
-        tmp_path,
-        "apps/api/app/integrations/example/processing.py",
-        "from app.models import Order, PaymentProviderAccount, PaymentWebhookEvent\n"
-        "from app.models.commerce import Order as CanonicalOrder\n"
-        "from app.models.providers import PaymentProviderAccount as CanonicalAccount\n"
-        "from app.models.webhooks import PaymentWebhookEvent as CanonicalWebhookEvent\n",
-    )
-
-    assert check_python_boundaries(tmp_path) == []
-
-
-@pytest.mark.parametrize(
-    ("relative", "source", "expected"),
-    (
-        (
-            "apps/api/app/integrations/example/processing.py",
-            "from app.models import SubscriptionStatus\n",
-            "references canonical lifecycle model SubscriptionStatus from app.models",
-        ),
-        (
-            "apps/api/app/integrations/example/processing.py",
-            "from app.infrastructure.queries.subscriptions import get_subscription_for_order\n",
-            "violates outer subscription/entitlement lifecycle ownership",
-        ),
-        (
-            "apps/api/app/commands/example.py",
-            "from app.domains.billing.service.lifecycle_operations import apply_refund\n",
-            "violates outer subscription/entitlement lifecycle ownership",
-        ),
-        (
-            "apps/api/app/domains/billing/router.py",
-            "from fastapi import APIRouter\n"
-            "from app.domains.billing.service.lifecycle import activate_paid_period\n"
-            "router = APIRouter()\n",
-            "violates outer subscription/entitlement lifecycle ownership",
-        ),
-        (
-            "apps/api/app/commands/example.py",
-            "from app import models\nstatus = models.EntitlementStatus.ACTIVE\n",
-            "references canonical lifecycle model EntitlementStatus from app.models",
-        ),
-    ),
-)
-def test_outer_layers_reject_subscription_lifecycle_ownership(
-    tmp_path: Path,
-    relative: str,
-    source: str,
-    expected: str,
-) -> None:
-    write_module(tmp_path, relative, source)
-
-    errors = check_python_boundaries(tmp_path)
-
-    assert len(errors) == 1
-    assert expected in errors[0]
-    assert "invoke" in errors[0]
-
-
-def test_outer_layers_use_public_lifecycle_facade_without_blocking_read_side_queries(
-    tmp_path: Path,
-) -> None:
-    write_module(
-        tmp_path,
-        "apps/api/app/integrations/example/processing.py",
-        "from app.domains.billing.service import ApplyRefundCommand, apply_refund\n",
+        "apps/api/app/models/commerce.py",
+        "class Product:\n    __tablename__ = 'products'\n\n"
+        "class Order:\n    __tablename__ = 'orders'\n\n"
+        "class Trial:\n    __tablename__ = 'trials'\n",
     )
     write_module(
         tmp_path,
-        "apps/api/app/commands/example.py",
-        "from app.domains.billing.service import ExpireDueSubscriptionsCommand, expire_due_subscriptions\n",
+        "apps/api/alembic/versions/0002_restore_orders.py",
+        "op.create_table('orders')\n",
     )
     write_module(
         tmp_path,
-        "apps/api/app/domains/billing/router.py",
-        "from fastapi import APIRouter\n"
-        "from app.domains.billing.service import ApplyRefundCommand, apply_refund\n"
-        "from app.models import SubscriptionStatus\n"
-        "router = APIRouter()\n",
+        "apps/api/app/domains/billing/service.py",
+        "from app.models import Product, Trial\n",
     )
     write_module(
         tmp_path,
-        "apps/api/app/domains/billing/service/account_queries.py",
-        "from app.infrastructure.queries.subscriptions import list_account_subscriptions\n",
+        "apps/api/app/models/enums.py",
+        "class PaymentStatus: ...\n",
     )
 
-    assert check_python_boundaries(tmp_path) == []
+    errors = check_removed_billing_architecture(tmp_path)
+
+    assert any(
+        "defines removed legacy billing model Product" in error for error in errors
+    )
+    assert any(
+        "defines removed legacy billing model Order" in error for error in errors
+    )
+    assert any(
+        "defines removed legacy billing model Trial" in error for error in errors
+    )
+    assert any(
+        "references removed legacy billing table products" in error
+        for error in errors
+    )
+    assert any(
+        "references removed legacy billing table orders" in error
+        for error in errors
+    )
+    assert any(
+        "references removed legacy billing table trials" in error
+        for error in errors
+    )
+    assert any("0002_restore_orders.py:1 references removed" in error for error in errors)
+    assert any(
+        "service.py:1 references removed legacy billing model Product" in error
+        for error in errors
+    )
+    assert any(
+        "service.py:1 references removed legacy billing model Trial" in error
+        for error in errors
+    )
+    assert any(
+        "defines removed legacy persisted enum PaymentStatus" in error
+        for error in errors
+    )
 
 
 def test_domain_service_trees_reject_fastapi_and_starlette_dependencies(tmp_path: Path) -> None:
@@ -536,7 +473,7 @@ def test_non_domain_api_router_is_not_active_domain_presentation(tmp_path: Path)
         relative,
         "from fastapi import APIRouter\n"
         "from sqlalchemy.orm import Session\n"
-        "from app.infrastructure.queries import orders\n\n"
+        "from app.infrastructure.queries import records\n\n"
         "router = APIRouter()\n\n"
         "def retained_handler(db: Session) -> object:\n"
         "    return db.query(object).first()\n",
@@ -632,27 +569,17 @@ def test_persistence_infrastructure_rejects_transport_dependencies(tmp_path: Pat
     )
 
 
-def test_persistence_infrastructure_rejects_integration_and_payment_provider_dependencies(tmp_path: Path) -> None:
+def test_persistence_infrastructure_rejects_integration_dependencies(tmp_path: Path) -> None:
     write_module(
         tmp_path,
         "apps/api/app/infrastructure/queries/payments.py",
-        "from app.integrations.cloudpayments import adapter\n",
+        "from app.integrations.external_billing import client\n",
     )
-    write_module(
-        tmp_path,
-        "apps/api/app/infrastructure/persistence/orders.py",
-        "from app.payment_providers import registry\n",
-    )
-
     errors = check_python_boundaries(tmp_path)
 
     assert any(
-        "apps/api/app/infrastructure/queries/payments.py:1 imports app.integrations.cloudpayments" in error
-        and "persistence dependency direction" in error
-        for error in errors
-    )
-    assert any(
-        "apps/api/app/infrastructure/persistence/orders.py:1 imports app.payment_providers" in error
+        "apps/api/app/infrastructure/queries/payments.py:1 imports "
+        "app.integrations.external_billing" in error
         and "persistence dependency direction" in error
         for error in errors
     )
@@ -661,12 +588,12 @@ def test_persistence_infrastructure_rejects_integration_and_payment_provider_dep
 @pytest.mark.parametrize(
     ("relative", "method"),
     (
-        ("apps/api/app/infrastructure/queries/orders.py", "begin"),
-        ("apps/api/app/infrastructure/queries/orders.py", "commit"),
-        ("apps/api/app/infrastructure/queries/orders.py", "rollback"),
-        ("apps/api/app/infrastructure/persistence/orders.py", "begin"),
-        ("apps/api/app/infrastructure/persistence/orders.py", "commit"),
-        ("apps/api/app/infrastructure/persistence/orders.py", "rollback"),
+        ("apps/api/app/infrastructure/queries/records.py", "begin"),
+        ("apps/api/app/infrastructure/queries/records.py", "commit"),
+        ("apps/api/app/infrastructure/queries/records.py", "rollback"),
+        ("apps/api/app/infrastructure/persistence/records.py", "begin"),
+        ("apps/api/app/infrastructure/persistence/records.py", "commit"),
+        ("apps/api/app/infrastructure/persistence/records.py", "rollback"),
     ),
 )
 def test_persistence_helpers_reject_outer_session_transaction_ownership(
@@ -688,7 +615,7 @@ def test_persistence_helpers_reject_outer_session_transaction_ownership(
 
 
 def test_persistence_transaction_guard_tracks_aliased_session_types(tmp_path: Path) -> None:
-    relative = "apps/api/app/infrastructure/queries/orders.py"
+    relative = "apps/api/app/infrastructure/queries/records.py"
     write_module(
         tmp_path,
         relative,
@@ -705,7 +632,7 @@ def test_persistence_transaction_guard_tracks_aliased_session_types(tmp_path: Pa
 
 
 def test_persistence_transaction_guard_tracks_unaliased_sqlalchemy_import(tmp_path: Path) -> None:
-    relative = "apps/api/app/infrastructure/queries/orders.py"
+    relative = "apps/api/app/infrastructure/queries/records.py"
     write_module(
         tmp_path,
         relative,
@@ -720,7 +647,7 @@ def test_persistence_transaction_guard_tracks_unaliased_sqlalchemy_import(tmp_pa
 
 
 def test_persistence_transaction_guard_tracks_simple_session_assignment(tmp_path: Path) -> None:
-    relative = "apps/api/app/infrastructure/queries/orders.py"
+    relative = "apps/api/app/infrastructure/queries/records.py"
     write_module(
         tmp_path,
         relative,
@@ -737,7 +664,7 @@ def test_persistence_transaction_guard_tracks_simple_session_assignment(tmp_path
 def test_persistence_transaction_guard_forgets_reassigned_session_alias(tmp_path: Path) -> None:
     write_module(
         tmp_path,
-        "apps/api/app/infrastructure/queries/orders.py",
+        "apps/api/app/infrastructure/queries/records.py",
         "from sqlalchemy.orm import Session\n\n"
         "class SomeOtherObject:\n"
         "    def commit(self) -> None: ...\n\n"
@@ -753,7 +680,7 @@ def test_persistence_transaction_guard_forgets_reassigned_session_alias(tmp_path
 def test_persistence_transaction_guard_allows_owned_database_mechanics(tmp_path: Path) -> None:
     write_module(
         tmp_path,
-        "apps/api/app/infrastructure/persistence/orders.py",
+        "apps/api/app/infrastructure/persistence/records.py",
         "from sqlalchemy import text\n"
         "from sqlalchemy.orm import Session\n\n"
         "def persist(db: Session) -> None:\n"
@@ -800,26 +727,18 @@ def test_comments_strings_and_allowed_session_import_pass(tmp_path: Path) -> Non
     assert check_python_boundaries(tmp_path) == []
 
 
-def test_provider_neutral_modules_reject_cloudpayments_literal(tmp_path: Path) -> None:
+def test_cloudpayments_reintroduction_is_rejected_in_any_executable_api_module(tmp_path: Path) -> None:
     write_module(
         tmp_path,
-        "apps/api/app/domains/billing/service/lifecycle.py",
+        "apps/api/app/domains/billing/service.py",
         'if provider == "cloudpayments":\n    pass\n',
     )
-    write_module(
-        tmp_path,
-        "apps/api/app/payment_providers/accounts.py",
-        'DEFAULT_PROVIDER = "cloudpayments"\n',
-    )
 
-    errors = check_python_boundaries(tmp_path)
+    errors = check_removed_billing_architecture(tmp_path)
 
     assert any(
-        "apps/api/app/domains/billing/service/lifecycle.py contains CloudPayments-specific logic" in error
+        "apps/api/app/domains/billing/service.py references removed CloudPayments runtime" in error
         for error in errors
-    )
-    assert any(
-        "apps/api/app/payment_providers/accounts.py contains CloudPayments-specific logic" in error for error in errors
     )
 
 
@@ -837,7 +756,7 @@ def test_external_billing_accounts_orm_table_and_fk_targets_are_forbidden(
         "from sqlalchemy import ForeignKey\naccount_id = ForeignKey('external_billing_accounts.id')\n",
     )
 
-    errors = check_python_boundaries(tmp_path)
+    errors = check_removed_billing_architecture(tmp_path)
 
     assert any(
         "apps/api/app/models/external_billing.py:2 references forbidden table external_billing_accounts" in error

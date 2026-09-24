@@ -1,7 +1,7 @@
 # Security Requirements
 
 Status: authoritative
-Last verified: 2026-09-10
+Last verified: 2026-09-24
 
 ## Sensitive data
 
@@ -14,20 +14,19 @@ or security purpose requires them, and never add them to metric labels.
 
 ## Telemetry correlation and emission
 
-The following are local Payment Portal identifiers that may be emitted in the
-approved bounded diagnostics when their flow provides a concrete incident
-lookup: `order_id`, `payment_id`, `subscription_id`, `webhook_event_id`, and
-`run_id`. They are diagnostic references only and must never become metric
-labels. `refund_id` is a local durable business and audit lookup reference
-already available through lifecycle data such as `SubscriptionEvent`; it is not
-a new ANY-437 telemetry emission.
+Current identity/legal diagnostics emit only approved bounded local references.
+Future target billing runtime may emit local `purchase_intent_id`,
+`create_operation_id`, `delivery_id`, `work_item_id`, `subscription_id`,
+`observation_id`, or `review_case_id` when the owning flow provides a concrete
+incident lookup. They are diagnostic references only and must never become
+metric labels.
 
 Keep these categories distinct:
 
 - Local IDs identify a durable Payment Portal record without exposing provider
   or customer data.
-- Durable local references, including `refund_id`, are looked up in persisted
-  lifecycle and audit records rather than inferred from telemetry alone.
+- Durable local references are looked up in persisted evidence records rather
+  than inferred from telemetry alone.
 - Provider transaction IDs, provider invoice IDs, email, user-provided account
   identifiers, authorization or token data, card data, arbitrary headers or
   query values, raw payloads, amounts, and raw exception text are not telemetry
@@ -91,10 +90,8 @@ need, security treatment, and retention.
 
 - Validate HTTP, environment, webhook, and database-boundary data.
 - Verify authenticity at every external billing or payment Integration before
-  trusting external state. Retained CloudPayments source verifies webhook
-  signatures, but its router is not mounted in normal runtime and is not a
-  current billing-fact processing path. Any future active integration must
-  preserve this invariant.
+  trusting external state. No billing integration is currently active; every
+  future integration must preserve this invariant.
 - Treat request IDs and external billing or payment metadata as untrusted input
   with length and character limits.
 - Store session tokens only as hashes.

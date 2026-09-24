@@ -1,7 +1,7 @@
 # Contours
 
 Status: authoritative target architecture; implemented product remains `ru`
-Last verified: 2026-09-22
+Last verified: 2026-09-24
 
 A **contour** is the compliance zone in which this Payment Portal is deployed.
 It may serve any number of countries assigned to that zone. It is not a locale,
@@ -65,25 +65,22 @@ No user or payment data may be silently replicated between contour data planes.
 | Canonical Portal user | `users.id`, scoped by explicit `tenant_id` and `region` |
 | Seller / operator | `legal_entities` keyed by contour |
 | Legal pack | `document_versions` keyed by contour |
-| Direct payment provider account | `payment_provider_accounts` keyed by contour for the Portal-managed flow |
+| External billing account scope | Opaque deployment configuration referenced by `external_billing_account_id`; no Portal account table |
 | Customer-facing locale | `regions.default_locale` and web routes; not the contour key |
 
-The pre-reset first-install migration currently inserts both `ru` and `eu` plus
-DE/ES country rules into one database. That is **not** the runtime invariant.
-The configured API scope is server-authoritative and a `ru` instance cannot
-create or authenticate an `eu` user through the public identity/legal API.
-`ANY-504` Step 4 removes the foreign `eu`/DE/ES rows from the clean RU baseline
-and bootstraps only the configured contour's local region and country rules.
+The clean first-install migration bootstraps only the configured contour and
+its local country rules. The configured API scope is server-authoritative and
+a `ru` instance cannot create or authenticate a foreign-contour user through
+the public identity/legal API.
 
 `us` is absent from the schema until an explicit enablement ticket adds it.
 
 ## Current vs planned product surface
 
-Implemented today: `ru` web routes, `docs/legal/ru`, retained CloudPayments
-source and persistence, and `ru` defaults in the web and API. These are
-implementation surfaces in a product that is still under development, not
-evidence of an active runtime path or production CloudPayments billing
-deployment. See [RU MVP journey](../product/ru-mvp.md).
+Implemented today: `ru` web routes, `docs/legal/ru`, identity/legal runtime,
+and the clean provider-neutral persistence baseline. Direct-provider runtime
+has been removed and target billing tables have no producer behavior. See
+[RU MVP journey](../product/ru-mvp.md).
 
 Planned, not implemented:
 
@@ -114,15 +111,10 @@ Enabling a contour requires a dedicated ticket. Minimum set:
 5. One concrete external-billing integration selected for the deployed product,
    as required by the sole long-term production target. Its owning
    implementation ticket must define the integration; contour enablement does
-   not invent it here. A current/transitional Portal-managed direct-provider
-   flow may additionally retain enabled `payment_provider_accounts`, adapter
-   registration, credentials, and provider-specific webhook routes while
-   required by current code, operations, obligations, or cutover. Configuration
-   is not an assignment of billing ownership to the contour and does not make
-   direct-provider billing a co-equal target.
-6. Current catalog and plan data in the contour's supported currencies while
-   retained implementation requires them. Target external catalog projection
-   and Platform capability mapping follow the accepted billing designs.
+   not invent it here. Direct-provider runtime is removed; reintroduction would
+   require a separate explicit architecture decision.
+6. External catalog projection and Platform capability mapping configured under
+   the accepted billing designs; the Portal owns no catalog/plan authority.
 7. Contour locale and routes in the web application.
 8. Isolated data plane and billing-notification URLs on that plane.
 9. Region Resolver registry entry with the public ISO country mapping and the
@@ -132,28 +124,17 @@ Enabling a contour requires a dedicated ticket. Minimum set:
 
 ## Billing ownership and integration
 
-In the retained current implementation, Portal checkout, orders, payments, and
-refunds are contour-local. The current `ru` implementation retains the
-transitional Portal-managed direct CloudPayments source: its payment provider
-is selected from local
-`payment_provider_accounts`, and provider-specific verification stays in the
-adapter. Payment Portal is not yet a production billing service, and there are
-no production CloudPayments subscriptions to migrate. Under ANY-407, the code
-remains in place while required by current code, operations, obligations, or
-safe cutover; its presence does not imply production use or make direct-provider
-billing part of the long-term target.
+The current `ru` implementation has no direct-provider runtime and no
+Portal-owned checkout/order/payment/subscription/entitlement authority. The
+clean target persistence baseline is contour-local but has no producer runtime.
+Payment Portal is not yet a production billing service.
 
-The long-term production target requires contour enablement or deployment
-configuration to select one concrete external-billing integration for the
-deployed product. A current/transitional direct-provider integration may remain
-only while required; reintroducing it as a future production model requires a
-new explicit architecture decision. Target commercial ownership, provider-
-neutral paid-access projection, and the Portal ↔ Kernel contract follow the ADR
-0005 authority chain above. Retained local `Subscription` and `Entitlement`
-semantics describe current state and do not define the target ownership or
-paid-access model.
+The long-term production target requires contour enablement/deployment
+configuration to select one concrete external-billing integration. Target
+commercial ownership, provider-neutral paid-access projection, and the Portal
+<-> Kernel contract follow the ADR 0005 authority chain above.
 
-For retained current-state and historical context only, see
+For historical/superseded context only, see
 [payment providers](payment-providers.md) and
-[Billing Authority and Consistency](billing-authority.md); neither is target
-external-billing authority.
+[Billing Authority and Consistency](billing-authority.md). Neither describes
+current state or target external-billing authority.

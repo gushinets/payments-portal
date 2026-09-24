@@ -27,13 +27,12 @@ document that applies to the current task.
 - [docs/architecture/region-resolver-contract.md](docs/architecture/region-resolver-contract.md)
   — planned Region Resolver consumer rules.
 - [docs/architecture/payment-providers.md](docs/architecture/payment-providers.md)
-  — retained current-state characterization of Portal-managed direct-provider
-  billing and adapters; not target external-billing guidance.
+  — historical characterization of the physically removed Portal-managed
+  direct-provider boundary; not target external-billing guidance.
 - [docs/architecture/billing-authority.md](docs/architecture/billing-authority.md)
-  — superseded target design retained for current-state and historical context.
+  — historical/superseded reference only; not current-state or target authority.
 - [docs/architecture/payment-portal-data-model.md](docs/architecture/payment-portal-data-model.md)
-  — authoritative current-state schema reference, not the target external-
-  billing persistence design.
+  — authoritative current as-built clean 25-table schema reference.
 - Superseded billing ADRs and retained billing execution plans are historical or
   migration references only. They do not define new target behavior.
 - [docs/product/ru-mvp.md](docs/product/ru-mvp.md) — implemented `ru` journey
@@ -67,24 +66,19 @@ document that applies to the current task.
   or `ru` as the only possible billing integration or contour.
 - A direct payment provider and an external billing system are different
   boundaries. Do not model external billing as another
-  `PaymentProviderAdapter`. CloudPayments source is retained as a transitional
-  Portal-managed implementation, but normal runtime does not register or use
-  it.
+  `PaymentProviderAdapter`. The CloudPayments/direct-provider implementation
+  has been physically removed.
 - A production instance serves one contour. It must not persist other contours'
   base URLs, users, or legal records, and must not call another contour's API.
 - Region Resolver is a separate repository. This portal may know only that
   resolver origin, as a planned client. Do not implement the resolver here.
 - Platform Kernel changes belong to `gushinets/anytoolai-platform`.
 - External Billing is never a `PaymentProviderAdapter` and is never registered
-  in `PaymentProviderRegistry`. Do not add external-billing functionality to
-  either retained direct-provider abstraction.
-- Do not extend CloudPayments or the retained direct-provider architecture for
-  new external billing. Work there requires explicit characterization or
-  removal scope.
-- Do not introduce target commercial authority based on the retained Portal-
-  owned `Product`, `Plan`, `Order`, or `Payment` model. Current local
-  `Subscription` and `Entitlement` behavior is current-state characterization,
-  not the final target paid-access wire model.
+  in `PaymentProviderRegistry`. Both direct-provider abstractions are removed;
+  do not recreate them for external billing.
+- Do not restore CloudPayments/direct-provider runtime or the removed Portal-
+  owned `Product`, `Plan`, `Order`, `Payment`, `Subscription`, `Entitlement`,
+  or trial authority.
 - Legacy documents cannot override ADR 0005 or either accepted design baseline
   for target behavior.
 - Provider-independent clean pre-production cleanup may precede Phase 0.

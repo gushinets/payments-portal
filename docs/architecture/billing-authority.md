@@ -1,22 +1,24 @@
 # Billing Authority and Consistency
 
-Status: superseded target architecture; retained historical/current-state reference
-Last verified: 2026-09-16
+Status: historical/superseded reference only; not current-state or target authority
+Historical snapshot last verified: 2026-09-16
 
-> **WARNING — SUPERSEDED TARGET ARCHITECTURE**
+> **HISTORICAL/SUPERSEDED ONLY — NOT CURRENT STATE OR TARGET AUTHORITY**
 >
-> This document is not an authority for new billing development. It is retained
-> to characterize the current implementation and preserve the historical target
-> architecture that expanded
+> This document does not describe the current repository or runtime. It
+> preserves an obsolete architecture snapshot, and no statement below is
+> executable guidance for current or future work. The `CURRENT` and `TARGET`
+> labels in the preserved body refer only to states within that superseded
+> snapshot. The document historically expanded
 > [ADR 0004](decisions/0004-billing-authority-and-consistency.md). New target
 > billing development follows
 > [ADR 0005](decisions/0005-external-billing-boundary.md), the accepted
 > [external-billing boundary design](../superpowers/specs/2026-09-15-external-billing-boundary-design.md),
 > and the accepted
 > [Portal-Kernel access-contract design](../superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md).
-> `ANY-504` owns future implementation and controlled cleanup; statements below
-> describe retained current-state facts or superseded design context unless the
-> new authority chain explicitly preserves them.
+> `ANY-504` owns later external-billing implementation under that authority
+> chain. The historical body below is retained without making it current-state
+> documentation or target authority.
 
 The historical design preserved
 [ADR 0001](decisions/0001-multi-contour-billing.md) contour isolation,
@@ -24,7 +26,7 @@ The historical design preserved
 and [ADR 0003](decisions/0003-canonical-persisted-model-layer.md) persisted
 model ownership.
 
-## Architecture states
+## Architecture states in the superseded snapshot
 
 ### CURRENT
 

@@ -1,356 +1,228 @@
 # Reliability Requirements
 
 Status: authoritative operational requirements; target external-billing semantics delegated
-Last verified: 2026-09-18
+Last verified: 2026-09-24
 
 ## Target external-billing authority
 
-Target external-billing ownership and behavior are defined, in precedence order,
-by [ADR 0005](architecture/decisions/0005-external-billing-boundary.md), the
+Target external-billing ownership and behavior are defined, in precedence
+order, by
+[ADR 0005](architecture/decisions/0005-external-billing-boundary.md), the
 accepted [External Billing Boundary Design](superpowers/specs/2026-09-15-external-billing-boundary-design.md),
-and the accepted [Portal ↔ Kernel Access Contract Design](superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md).
+and the accepted
+[Portal <-> Kernel Access Contract Design](superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md).
 `ANY-504` controls their implementation sequence. This document records
-cross-cutting operational constraints and retained/current implementation
-behavior; it does not redefine target commercial ownership, persistence, or
-paid-access derivation.
+cross-cutting operational constraints; it does not redefine target commercial
+ownership, persistence, or paid-access derivation.
+
+The direct-provider/CloudPayments runtime and Portal-owned commercial/access
+lifecycle have been physically removed. The target persistence graph exists,
+starts empty, and has no current producer runtime.
 
 ## Cross-cutting critical paths
 
 - API liveness must not depend on PostgreSQL; readiness must.
-- Billing must use retry-safe orchestration. The cross-boundary
-  external-command sequence is: persist or find the durable local operation or
-  purchase intent, commit it, issue the external command outside any database
-  transaction, persist the reliable result and mapping in a subsequent commit,
-  then apply a verified fact or reconcile through the shared local transition
-  path. Use provider idempotency features when available, but
+- Billing must use retry-safe orchestration. Persist or find the durable local
+  operation or purchase intent and commit it before issuing an external
+  command. Issue the command outside a database transaction, then persist the
+  reliable result/mapping and apply a verified fact or reconcile through the
+  shared local transition path. Use provider idempotency when available, but
   do not assume every external command is idempotent.
-- Target purchase validation, `PurchaseIntent` persistence, external-operation
-  recovery, and authoritative-fact rules follow ADR 0005 and the accepted
-  External Billing Boundary Design rather than the retained Portal `Plan` and
-  commercial `Order` model.
-- A timeout or lost response is neither confirmed success nor confirmed failure:
-  the external outcome is unknown. Reconcile before deciding whether another
-  command is safe; never automatically issue a duplicate create after an
-  uncertain outcome.
-- Recovery succeeds only when correlation finds exactly one unambiguous external
-  object. No unambiguous match remains unknown for later reconciliation or
-  another approved safe recovery policy. Multiple plausible matches are
-  ambiguous and must fail closed for manual review or repair, without another
-  automatic create.
+- A timeout or lost response is neither confirmed success nor confirmed
+  failure. Reconcile before deciding whether another command is safe; never
+  blindly duplicate a create after an uncertain outcome.
+- Recovery may auto-bind only when correlation finds exactly one unambiguous
+  external object. No match remains unknown. Multiple matches are ambiguous
+  and fail closed for manual review.
 - A valid webhook notification must be authenticated and minimally validated,
-  reduced to a whitelisted or redacted inbox record, and durably persisted
-  before the external request is acknowledged according to integration policy.
-  Processing, retry, and reconciliation then belong to Payment Portal. Once
-  receipt is durable, correctness must not depend on the external billing system
-  retrying an application-level HTTP failure. Concrete acknowledgement codes and
-  external retry policies remain integration-specific. Durability does not
-  require persisting the complete raw HTTP request.
-- Duplicate authoritative billing facts must not duplicate payment, refund,
-  subscription, order, or entitlement changes.
-- Stale, duplicate, reordered, or conflicting authoritative billing facts must
-  not blindly overwrite newer confirmed state. Explicit transition and
-  idempotency rules must reject or ignore them, or trigger reconciliation.
-- Valid later lifecycle facts, including refunds, disputes, cancellations, and
-  expirations, must remain able to perform their legitimate transitions.
-- Every external-billing integration must define recovery or reconciliation for
-  externally authoritative state changes whose notifications are completely
-  missed. Correctness must not depend solely on webhook delivery. The concrete
-  mechanism, cadence, cursor, pagination, scheduler, and storage remain outside
-  ANY-411.
-- Browser return-page state is informational and never billing authority.
-- No CloudPayments flow is active in normal runtime. Any future active billing
-  integration must obtain authoritative facts through authenticated,
-  validated integration facts and reconciliation as required.
+  reduced to whitelisted/redacted evidence, and durably persisted before it is
+  acknowledged according to integration policy. Processing, retry, and
+  reconciliation then belong to Payment Portal. Once receipt is durable,
+  correctness must not depend on the external system retrying an
+  application-level HTTP failure. Concrete acknowledgement codes/retry policy
+  remain integration-specific; durability does not require storing a raw
+  request.
+- Duplicate, stale, reordered, or conflicting authoritative facts must not
+  duplicate or blindly overwrite local projections.
+- Valid later lifecycle facts such as refunds, disputes, cancellations and
+  expirations must remain able to reduce access when the authoritative-fact and
+  derivation rules require it.
+- Every integration must recover or reconcile externally authoritative state
+  changes whose notifications are completely missed. Correctness must not
+  depend solely on webhook delivery.
+- Browser return state is informational and never billing authority.
+- Webhook receipt, Widget callback, outbound command success, payment state, or
+  manual operator input alone never grants paid access.
 
-## Retained/current transaction, idempotency, and retry contract
+These are target constraints. Provider integration, webhook processing,
+reconciliation workers, paid-access derivation, and invalidation delivery are
+not current runtime behavior.
 
-Application orchestration owns outer business transaction commit and rollback.
-Focused persistence/query code owns database mechanics below that boundary:
-queries, row locks, atomic DML, flushes, storage-specific exception handling,
-and explicitly targeted nested savepoints. A `Session` autobegin does not make
-the first persistence helper the logical transaction owner, and those helpers
-must not finalize the outer transaction.
+## Transaction, idempotency, and retry contract
 
-The retained local billing lifecycle participates in a caller-owned
-transaction. Same-key operations first inspect the persisted operation event,
-serialize on the established row lock, and inspect the operation event again
-after acquiring that lock. Once one transaction commits, a concurrent replay
-returns the persisted result rather than repeating the transition. Database
-uniqueness remains the final invariant; logs and exceptions are not a substitute
-for it. Retained CloudPayments webhook transaction and delivery-idempotency
-mechanics remain a compatibility boundary for the inactive source; they are not
-active in normal runtime and do not define future integration protocol.
+Application orchestration owns outer transaction commit and rollback. Focused
+query/persistence code owns database mechanics below that boundary: queries,
+row locks, atomic DML, flushes, storage-specific exception handling, and
+targeted nested savepoints. A SQLAlchemy `Session` autobegin does not make the
+first helper the logical owner, and helpers do not finalize the outer
+transaction.
 
-In the retained Portal-managed implementation, commercial projection follows an
-Order-first lock direction.
-Application reloads and locks the Order before Payment/Refund decisions and
-revalidates local provider-account correlation, immutable financial context,
-and opaque external identity. Database uniqueness is the final identity
-invariant. A new external Payment or Refund identity is inserted and flushed
-inside a targeted nested savepoint before related commercial mutations; only
-the named identity uniqueness conflict is recovered and reclassified as a
-duplicate or business conflict. Unrelated `IntegrityError` is re-raised, and
-the focused helper never commits or rolls back the caller's outer transaction.
-No generic database retry or provider network I/O occurs inside this commercial
-transition.
+Current identity/legal transaction boundaries are documented in
+[ARCHITECTURE.md](../ARCHITECTURE.md#current-transaction-map). No current
+runtime transaction populates the fifteen target billing tables.
 
-The retained webhook path uses two durable phases: first commit the redacted
-inbox receipt, then process the normalized fact in a caller-owned transaction
-that also contains any newly applicable subscription/entitlement handoff. A
-downstream failure rolls back normalized commercial and lifecycle mutations but
-does not erase the inbox receipt. Delivery duplicates and commercial replays
-remain separate identities in this retained path. Verified webhook and
-reconciliation facts converge through this retained commercial transition. This
-behavior does not define the target; target reconciliation semantics follow ADR
-0005 and the accepted External Billing Boundary Design.
+Future database retry decisions use these semantics:
 
-In the retained current implementation, the public billing Application
-lifecycle facade owns Subscription and Entitlement mutation semantics.
-Integration and operational entrypoints invoke that boundary and do not query
-subscription persistence to decide access consequences. A newly applicable
-Step-8 paid or refund outcome and its Step-9 lifecycle consequence share the
-caller-owned processing transaction; neither transition boundary commits or
-rolls it back. Scheduled expiry likewise keeps its explicit CLI-owned
-transaction, with committed diagnostics emitted only after transaction exit.
-
-For normalized authoritative subscription-state transitions, the operation key
-is semantic identity. Exact replay for the same subscription, transition kind,
-normalized target, and authoritative occurrence time is safe; reuse for
-different semantic input fails closed without another mutation or event. The
-authoritative occurrence time is explicit and timezone-aware. An older fact is
-a stale no-op, an equal-time same-target fact is a safe no-op, an equal-time
-conflicting target fails closed, and a newer fact still must satisfy the
-lifecycle transition graph. Unknown or non-normalizable states fail before
-mutation. Only events explicitly marked as ordering-aware participate, so
-legacy processing timestamps are not promoted into authoritative ordering.
-These freshness rules are limited to authoritative subscription-state facts and
-do not impose last-write-wins behavior on other lifecycle commands.
-
-For the retained current implementation, local Entitlement state and validity
-are the runtime access source. A provider or vendor state cannot become a second
-runtime access source for that implementation, and its Portal-owned trials and
-manual access remain valid without provider subscription identity. These are
-current-state facts, not the final target paid-access authority or wire model.
-Retained CloudPayments/direct-provider code is deactivated compatibility source.
-Target paid-access projection and delivery follow ADR 0005 and the accepted
-designs, with the external-billing implementation sequence owned by `ANY-504`.
-
-Database retry decisions use these semantics:
-
-- a transaction known to have rolled back before commit may be retried as the
-  whole logical operation, using the same operation identity where supported;
-- an operation known to have committed is replayed or read from its persisted
+- a transaction known to have rolled back before commit may retry the whole
+  logical operation with the same operation identity where supported;
+- an operation known to have committed is replayed/read from its persisted
   idempotent result;
 - an uncertain local commit requires inspection of authoritative persisted
-  state before any retry;
+  state before retry;
 - there is no generic automatic database retry loop.
 
-External-command outcomes have four distinct meanings:
+External-command outcomes are distinct:
 
-- **confirmed success** — authoritative evidence establishes that the intended
-  external command effect occurred; any billing or entitlement transition still
-  requires the applicable verified fact and local policy;
-- **confirmed failure** — authoritative evidence establishes that the command
-  did not produce its intended effect and supplies enough information for the
-  integration's explicit failure policy;
-- **unknown** — available evidence cannot establish whether the command took
-  effect, for example after a timeout or lost response;
-- **ambiguous** — observations conflict or correlate to multiple plausible
-  external objects, so no single outcome can be selected safely.
+- **confirmed success** — authoritative evidence proves the intended external
+  effect; this alone is not paid-access authority;
+- **confirmed failure** — authoritative evidence proves no intended effect and
+  supports the explicit failure policy;
+- **unknown** — available evidence cannot prove success or failure;
+- **ambiguous** — evidence conflicts or identifies multiple plausible objects.
 
-Unknown and ambiguous outcomes remain unresolved. They require authoritative
-inspection, reconciliation, or another explicitly safe recovery policy before
-another external command; they must never trigger a blind duplicate command.
-Confirmed external command success is not by itself paid-access authority.
+Unknown/ambiguous outcomes require authoritative inspection, reconciliation,
+or another explicitly safe policy before another external command.
 
-Logs, traces, metrics, and Sentry are diagnostics and correlation aids only.
-They never serve as the correctness, transaction, idempotency, or replay store;
-persisted local state and events remain authoritative. Existing request/trace
-correlation, redaction, and privacy constraints continue to apply during retry
-and recovery.
+Logs, traces, metrics and Sentry are diagnostics only. They never serve as the
+correctness, idempotency, reconciliation, or replay store.
 
-ANY-489 required no schema migration because it changed transaction ownership,
-rollback behavior, post-lock rechecks, and architecture enforcement while using
-existing persisted operation identities and uniqueness constraints. Target
-external-command persistence and recovery follow ADR 0005 and the accepted
-External Billing Boundary Design and are sequenced by `ANY-504`; this document
-does not invent a competing table, entity, API, or vendor status.
+## Durable target storage semantics
+
+- Complete capability/catalog projection replacement preserves the previous
+  last-known-good row on partial or failed sync.
+- Mapping revisions, accepted purchase evidence and purchased allowances are
+  immutable where the clean migration installs PostgreSQL protections.
+  Observation core fields are immutable, while
+  `resulting_access_revision` has only a one-time `NULL`-to-value storage
+  transition; ANY-504 Step 9 owns positivity and semantic/causal validation.
+- Webhook delivery rows contain bounded/redacted correlation and evidence,
+  never raw payload, authorization, secret, or card/payment fields.
+- Durable work/lease rows are scheduling state, not commercial/access truth.
+- Paid-access state storage holds a complete provider-neutral document and a
+  non-null revision slot. The clean baseline does not enforce positive or
+  monotonic paid-access transitions; ANY-504 Step 9 owns those runtime
+  semantics. Invalidation storage physically requires a positive pending
+  revision and forbids an acknowledged revision beyond it; later runtime owns
+  coalescing and delivery behavior.
+- Durable observations and manual-review evidence explain uncertainty/conflict;
+  they cannot independently grant access.
+
+The persistence shape does not authorize later runtime behavior. Open work,
+processing, classification, and review vocabularies remain open until their
+owning `ANY-504` step closes them.
 
 ## Framework worker execution
 
-FastAPI/Starlette framework worker capacity is finite and shared. Synchronous
-database and application flows run through normal `def` endpoints, and an
-async framework boundary delegates a complete resource-owning synchronous unit
-through the framework worker mechanism when blocking work is unavoidable. Do
-not add unbounded blocking work, unbounded retries, or blocking retry sleeps.
+FastAPI/Starlette worker capacity is finite and shared. Synchronous database
+and application flows use normal synchronous endpoints. An async boundary may
+delegate a complete resource-owning synchronous unit when unavoidable; it must
+not move a request-created SQLAlchemy `Session` through a manual thread
+bridge. The delegated unit creates, owns, and closes all of its synchronous
+resources inside the worker. Cancellation of an async waiter does not imply
+that the synchronous worker was forcibly stopped; resource lifetime, retries,
+and side effects must account for work that may still finish. Request ID,
+trace/span, and structured-log context remain correlated across the framework
+worker boundary. Do not add unbounded blocking work, retry loops, or retry
+sleeps.
 
-Retained synchronous provider integrations have bounded timeout and retry
-budgets in their source code. They are not active normal-runtime paths.
-Cancellation of the request or async waiter does not imply that work already
-running in a synchronous worker can be forcibly stopped. Resource ownership
-must therefore remain inside the delegated synchronous unit, and request ID
-plus trace/span/log context must remain correlated across the framework worker
-boundary.
-
-Scheduled subscription expiry remains a synchronous CLI. Password-reset email
-delivery remains its existing synchronous framework background task. Neither
-surface establishes a generic durable job or worker system. Retained
-CloudPayments cleanup source is not normal-runtime work and is not permanent
-provider lifecycle architecture.
+Password-reset email delivery remains its bounded synchronous framework
+background task. Billing work tables do not establish a worker runtime; the
+durable worker implementation belongs to a later step.
 
 ## Agent-verifiable signals
 
 - Every request receives an `X-Request-ID` response header.
-- API logs are structured JSON and include request and trace identifiers.
-- Metrics expose request latency/errors and billing/legal outcome counters.
-- Traces cover HTTP, checkout, legal acceptance, database, and webhook work.
-- Critical browser journeys fail on unexpected console errors, failed application
-  requests, or error spans.
+- API logs are structured JSON and include request/trace identifiers.
+- Metrics expose bounded request and legal/auth outcomes.
+- Traces cover HTTP, identity/legal operations and database work.
+- Critical browser journeys fail on unexpected console errors, failed
+  application requests, or error spans.
 
 ## Observability and correlation contract
 
-Signals have distinct responsibilities:
-
-- Sentry is the primary error-issue entry point for reportable backend
-  application failures. It provides the failure category, sanitized stack, and
-  release needed to begin investigation.
-- Metrics report bounded rates, outcomes, and durations. They are not a
-  business-record lookup index; Prometheus and OpenTelemetry remain the metrics
-  owners.
-- OpenTelemetry traces show the operation chain across the HTTP request,
-  application work, database instrumentation, and provider calls.
-- Structured logs provide bounded incident-local detail, including selected
-  local diagnostic IDs.
-- Persisted billing state and events remain the authoritative business record.
-
-For a reportable HTTP incident, start in Sentry and use its bounded correlation
-context to move into the existing telemetry and durable-state trail:
+Sentry is the primary optional entry point for reportable backend application
+errors. Metrics provide bounded rates/outcomes/durations. OpenTelemetry traces
+show the operation chain. Structured logs provide bounded incident-local
+detail. Persisted records remain authoritative business/evidence state.
 
 ```text
 Sentry
     -> request_id / trace_id
     -> trace and structured-log backend
     -> approved local Payment Portal diagnostic IDs
-    -> persisted Payment Portal records and events
+    -> persisted Payment Portal records
 ```
 
-The trace/span IDs and validated `request_id` correlate the issue with the
-operation trace and bounded JSON diagnostics. Those diagnostics, not the Sentry
-event, provide approved local entity IDs for locating durable records.
+Current identity/legal diagnostics may correlate only approved local IDs. Future
+billing runtime may add bounded identifiers such as `purchase_intent_id`,
+`create_operation_id`, `delivery_id`, `work_item_id`, `subscription_id`,
+`observation_id`, or `review_case_id`; they must never be metric labels and
+must not expose external/provider identifiers.
 
-The current local identifiers emitted or preserved by the ANY-437 telemetry
-paths are `order_id`, `payment_id`, `subscription_id`, `webhook_event_id`, and
-`run_id`. They are local Payment Portal identifiers and must never be metric
-labels. `refund_id` remains a local durable business and audit lookup reference
-available through existing lifecycle data such as `SubscriptionEvent`; ANY-437
-does not add a separate refund diagnostic merely for uniformity.
-
-The representative incident journeys are:
-
-1. Checkout to order: find the request/trace, then the post-commit
-   `billing_checkout_committed` diagnostic and its local `order_id`. Follow the
-   order to its payment, webhook, and provider-operation records as applicable.
-2. Retained provider webhook source to local billing state: when analyzing
-   retained legacy records or source, use the durable
-   `cloudpayments_webhook_processed` diagnostic, if present. Its
-   `webhook_event_id`, and any available `order_id` or `payment_id`, lead to the
-   persisted `PaymentWebhookEvent` and existing lifecycle/audit records.
-   Persisted status and error code distinguish duplicate, stale, or conflicting
-   outcomes without creating separate diagnostic families. The retained route
-   is not reachable in normal runtime.
-3. Provider timeout or ambiguous outcome: use the provider operation span and
-   bounded provider/operation/outcome metrics, then inspect the surrounding
-   request trace and local durable state. A timeout or lost response is
-   ambiguous, not confirmed failure; reconcile before deciding whether another
-   command is safe and never blindly retry a possibly completed command.
-4. Scheduled expiry to subscription event: start with the Sentry issue for a
-   reportable failure and follow:
-
-   ```text
-   Sentry
-       -> run_id
-       -> subscription-expiry diagnostics
-       -> subscription_id
-       -> SubscriptionEvent and persisted state
-   ```
-
-   Follow `subscription_expiry_run_started` through its `run_id` to each
-   `subscription_expiry_transition_committed` and the durable
-   `SubscriptionEvent`, then to `subscription_expiry_run_succeeded`. A failed
-   run starts with `subscription_expiry_run_started` and ends with
-   `subscription_expiry_run_failed` with the run ID, batch size, and exception
-   type; it must not emit `subscription_expiry_transition_committed` or
-   `subscription_expiry_run_succeeded`. A missing persisted identity is checked
-   inside the CLI-owned transaction and reported as
-   `subscription_expiry_diagnostic_invariant_violated`; the transaction rolls
-   back, no committed/success diagnostic is emitted, and the CLI propagates the
-   invariant exception.
-
-5. Password-reset email delivery: the existing background callback intentionally
-   absorbs delivery exceptions so the accepted HTTP response remains unchanged.
-   It preserves the failed metric and bounded warning, and reports the same
-   exception exactly once as the `password_reset_email` operation with the
-   `integration_failure` category. The report carries no email address, reset
-   URL, token, SMTP data, message content, or other email-specific context.
-
-Scheduled expiry is not an HTTP request and does not reuse request context. Its
-`run_id` is generated for that command invocation only. The committed
-transition diagnostics are emitted only after the explicit CLI-owned
-transaction commits successfully. The lifecycle operation itself is a
-transaction participant and does not commit.
+Password-reset email delivery intentionally absorbs delivery exceptions so the
+accepted HTTP response remains unchanged. It retains the failed metric and
+bounded warning and reports the exception once without email address, reset
+URL/token, SMTP data, or message content.
 
 ## Telemetry backend boundary
 
-The application supports OTLP export when the deployment configures an OTLP
-endpoint. The repository's local and agent Compose environments provide the
-existing development observability stack where configured. The production
-trace/log backend, retention, dashboards, alerts, and operational runbooks are
-deployment/environment-owned. The repository has no stable production
-trace/log query base-URL contract, so Sentry events intentionally do not invent
-direct Grafana, Tempo, or Loki links. Production monitoring and alerting work,
-including broad availability and
-HetrixTools checks, belongs to ANY-86 and remains outside this contract.
+The application supports OTLP export when configured. Production trace/log
+backends, retention, dashboards, alerts, and operational runbooks are
+deployment-owned. Production monitoring and alerting work belongs to
+`ANY-86`.
 
 Sentry is a separate optional outbound backend application-error destination.
-It does not receive application logs, metrics, tracing, or profiling and does
-not replace the OTLP backend, JSON logs, Prometheus/OpenTelemetry metrics, or
-persisted state. Operators must enable project-side data scrubbing, disable or
-scrub IP collection according to policy, and configure useful notifications
-for new or regressed production issues. Those project settings are operator
-actions, not runtime automation or general alerting infrastructure in this
-repository.
+It does not replace the OTLP backend, JSON logs, Prometheus/OpenTelemetry
+metrics, or persisted state. Project-side scrubbing, IP policy and
+notifications remain operator-managed.
 
-Current HTTP, billing, webhook, and provider metrics retain bounded label sets.
-Local business/entity IDs, provider transaction or invoice IDs, email, and
-other request or payload values are forbidden as metric labels.
+Local/entity IDs, external transaction/invoice IDs, email, and request/payload
+values are forbidden as metric labels.
 
 ## HTTP failure boundary
 
-Mapped application errors retain their existing public status and structured
-error contract. Unmapped `AppError` values and unexpected application failures
-return only the generic structured response
-`{"detail":{"code":"internal_server_error"}}` with HTTP 500; internal
-codes, diagnostics, and provider details are not serialized.
+Mapped application errors retain their public status and structured contract.
+Unmapped `AppError` values and unexpected failures return only
+`{"detail":{"code":"internal_server_error"}}` with HTTP 500.
 
-Unexpected application failures are converted by the Presentation middleware
-while request-ID context is active. The boundary emits exactly one bounded
-application-level failure diagnostic. It may record the request ID through the
-existing logging context, HTTP method, matched route template, exception type,
-and one application-owned failure location/fingerprint containing only a
-repository-relative module/file identifier, function name, and line number.
-It never records source text, locals, arguments, exception messages, raw
-traceback text, request bodies, response bodies, URLs/query values, headers,
-cookies, authorization data, provider payloads, secrets, or
-card/token/payment values. The existing request-completion log remains a
-separate request lifecycle record. The same outer failure boundary may also
-make at most one explicit report through the application-owned Sentry adapter;
-framework auto-capture and logging-to-Sentry are disabled so they cannot create
-a second issue.
+The outer failure boundary for an operation owns application error reporting.
+For HTTP requests, this is the Presentation failure boundary that maps the
+failure to its response. A bounded background operation that intentionally
+catches and absorbs a failure reports it at that catch boundary. Lower layers
+do not report a failure that continues propagating, which prevents duplicate
+application logging and Sentry capture. Domain and Application logic do not
+import or call `sentry_sdk`; SDK access remains behind the application-owned
+`app.infrastructure.sentry` adapter.
+
+The Presentation boundary may record request ID, method, matched route,
+exception type, and a repository-owned failure location/fingerprint. It never
+records source text, locals, arguments, exception messages, raw traceback,
+request/response bodies, URLs/query values, headers, cookies, authorization,
+provider payloads, secrets, or card/token/payment values.
 
 ## Recovery
 
-Development environments must be isolated by worktree and safely disposable.
-Production migrations are forward-only after the corrected initial baseline is
-frozen. Recovery instructions must never suggest treating the return URL as an
-authoritative billing fact or as a substitute for verified webhook processing
-or reconciliation.
+Development environments are worktree-isolated and disposable. The Step-4
+baseline is a destructive compatibility boundary:
+
+- pre-Step-4 binaries never run against the clean database;
+- databases stamped with discarded history are recreated, never upgraded,
+  downgraded, stamped, or bridged;
+- image-only rollback across the reset is forbidden;
+- recovery restores/recreates a matching application and database pair;
+- reset, bootstrap, schema-verification, or smoke failure blocks rollout.
+
+The executable local and shared-environment prerequisite sequence is in the
+[one-time recreate/bootstrap runbook](architecture/deployment.md#one-time-step-4-recreate-and-bootstrap).
+Recovery never treats a browser return as a billing fact or substitutes it for
+authoritative reads/reconciliation.

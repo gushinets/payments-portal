@@ -50,35 +50,47 @@ LOCAL_INSTANCE_REGION = "ru"
 
 CANONICAL_PERSISTED_ENUM_NAMES = frozenset(
     {
-        "ProductStatus",
-        "BundleStatus",
-        "BundleProductStatus",
-        "PlanStatus",
-        "SubscriptionScopeType",
-        "BillingPeriod",
-        "SubscriptionRenewalMode",
-        "PlanPriceComponentType",
-        "PlanLimitResetPolicy",
-        "PlanLimitOveragePolicy",
-        "CheckoutSessionStatus",
-        "OrderStatus",
-        "OrderItemType",
-        "PaymentStatus",
-        "RefundStatus",
-        "PaymentWebhookEventStatus",
-        "SubscriptionStatus",
-        "EntitlementStatus",
-        "EntitlementSource",
-        "SubscriptionEventType",
-        "RegionStatus",
-        "UserStatus",
-        "MagicLinkPurpose",
+        "AcceptanceKind",
+        "BillingStateObservationKind",
+        "ExternalBillingCustomerBindingState",
+        "ExternalCreateOperationKind",
+        "ExternalSubscriptionCommercialAccessStatus",
+        "ExternalSubscriptionFinancialAccessStatus",
+        "ExternalSubscriptionLifecycleStatus",
         "LegalEntityStatus",
         "LegalEntityType",
-        "AcceptanceKind",
+        "MagicLinkPurpose",
+        "PurchaseIntentState",
+        "RegionStatus",
+        "UserStatus",
     }
 )
-REMOVED_BILLING_ENUM_FACADE_NAMES = CANONICAL_PERSISTED_ENUM_NAMES | {"WebhookEventStatus"}
+REMOVED_BILLING_ENUM_FACADE_NAMES = CANONICAL_PERSISTED_ENUM_NAMES | {
+    "BillingPeriod",
+    "BundleProductStatus",
+    "BundleStatus",
+    "CheckoutSessionStatus",
+    "EntitlementSource",
+    "EntitlementStatus",
+    "OrderItemType",
+    "OrderStatus",
+    "PaymentStatus",
+    "PaymentWebhookEventStatus",
+    "PlanLimitOveragePolicy",
+    "PlanLimitResetPolicy",
+    "PlanPriceComponentType",
+    "PlanStatus",
+    "ProductStatus",
+    "RefundStatus",
+    "SubscriptionEventType",
+    "SubscriptionRenewalMode",
+    "SubscriptionScopeType",
+    "SubscriptionStatus",
+    "WebhookEventStatus",
+}
+REMOVED_LEGACY_PERSISTED_ENUM_NAMES = (
+    REMOVED_BILLING_ENUM_FACADE_NAMES - CANONICAL_PERSISTED_ENUM_NAMES
+)
 
 
 class HarnessError(RuntimeError):
@@ -1051,16 +1063,14 @@ def check_external_billing_documentation_precedence(
             "docs/architecture/decisions/0004-billing-authority-and-consistency.md"
         ): "status: superseded for new billing development",
         Path("docs/architecture/billing-authority.md"): (
-            "status: superseded target architecture; retained "
-            "historical/current-state reference"
+            "status: historical/superseded reference only; not current-state "
+            "or target authority"
         ),
         Path("docs/architecture/payment-providers.md"): (
-            "status: retained current-state characterization of the "
-            "direct-provider boundary"
+            "status: historical boundary reference; direct-provider runtime removed"
         ),
         Path("docs/architecture/payment-portal-data-model.md"): (
-            "status: authoritative current-state schema reference; not target "
-            "external-billing persistence design"
+            "status: authoritative current-state schema reference"
         ),
         Path("docs/architecture/platform-kernel-contract.md"): (
             "status: superseded planned contract; retained historical context only"
@@ -1077,13 +1087,14 @@ def check_external_billing_documentation_precedence(
 
     required_header_markers = {
         Path("docs/architecture/billing-authority.md"): (
-            "this document is not an authority for new billing development",
+            "historical/superseded only — not current state or target authority",
+            "does not describe the current repository or runtime",
         ),
         Path("docs/architecture/payment-providers.md"): (
-            "legacy / transitional reference — not target architecture",
+            "removed direct-provider reference — not target architecture",
         ),
         Path("docs/architecture/payment-portal-data-model.md"): (
-            "current-state schema reference — not target persistence design",
+            "current as-built schema reference",
         ),
         Path("docs/architecture/platform-kernel-contract.md"): (
             "superseded contract notice",
@@ -1387,30 +1398,61 @@ def router_module(module: str) -> bool:
     return module.endswith(".router") or ".router." in module
 
 
-_INTEGRATION_FORBIDDEN_COMMERCIAL_MODEL_NAMES = frozenset(
-    {"Payment", "PaymentStatus", "Refund", "RefundStatus"}
-)
-_OUTER_FORBIDDEN_LIFECYCLE_MODEL_NAMES = frozenset(
+_REMOVED_LEGACY_MODEL_NAMES = frozenset(
     {
+        "Bundle",
+        "BundleProduct",
+        "CheckoutSession",
         "Entitlement",
-        "EntitlementSource",
-        "EntitlementStatus",
+        "EntrypointSession",
+        "Order",
+        "OrderItem",
+        "Payment",
+        "PaymentProviderAccount",
+        "PaymentWebhookEvent",
+        "Plan",
+        "PlanLimit",
+        "PlanPriceComponent",
+        "Product",
+        "ProductAccessState",
+        "Refund",
         "Subscription",
         "SubscriptionEvent",
-        "SubscriptionEventType",
-        "SubscriptionRenewalMode",
-        "SubscriptionStatus",
+        "Trial",
     }
 )
-_OUTER_FORBIDDEN_LIFECYCLE_MODULES = (
-    "app.domains.billing.service.commands",
-    "app.domains.billing.service.lifecycle",
-    "app.domains.billing.service.lifecycle_operations",
-    "app.domains.billing.service.state_machine",
-    "app.domains.billing.service.support",
-    "app.infrastructure.queries.subscriptions",
+_REMOVED_LEGACY_TABLE_NAMES = frozenset(
+    {
+        "bundle_products",
+        "bundles",
+        "checkout_sessions",
+        "entitlements",
+        "entrypoint_sessions",
+        "order_items",
+        "orders",
+        "payment_provider_accounts",
+        "payment_webhook_events",
+        "payments",
+        "plan_limits",
+        "plan_price_components",
+        "plans",
+        "product_access_states",
+        "products",
+        "refunds",
+        "subscription_events",
+        "subscriptions",
+        "trials",
+    }
 )
-_RETAINED_IDENTITY_RECOVERY_PATHS = frozenset(
+_REMOVED_DIRECT_PROVIDER_MODULES = (
+    "app.cloudpayments",
+    "app.integrations.cloudpayments",
+    "app.payment_providers",
+)
+_REMOVED_DIRECT_PROVIDER_NAMES = frozenset(
+    {"PaymentProviderAdapter", "PaymentProviderRegistry"}
+)
+_IDENTITY_RECOVERY_PATHS = frozenset(
     {
         ("domains", "identity", "password_reset.py"),
         ("domains", "identity", "passwords.py"),
@@ -1422,14 +1464,14 @@ _RETAINED_IDENTITY_RECOVERY_PATHS = frozenset(
         ("infrastructure", "queries", "identity.py"),
     }
 )
-_RETAINED_IDENTITY_FORBIDDEN_MODEL_NAMES = frozenset(
+_IDENTITY_RECOVERY_FORBIDDEN_MODEL_NAMES = frozenset(
     {"EntrypointSession", "Product", "Plan", "Subscription", "Entitlement"}
 )
-_RETAINED_IDENTITY_FORBIDDEN_NAMES = _RETAINED_IDENTITY_FORBIDDEN_MODEL_NAMES | {
+_IDENTITY_RECOVERY_FORBIDDEN_NAMES = _IDENTITY_RECOVERY_FORBIDDEN_MODEL_NAMES | {
     "PaymentProviderAdapter",
     "PaymentProviderRegistry",
 }
-_RETAINED_IDENTITY_FORBIDDEN_MODULES = (
+_IDENTITY_RECOVERY_FORBIDDEN_MODULES = (
     "app.domains.billing",
     "app.domains.identity.services.account",
     "app.domains.identity.services.checkout",
@@ -1443,9 +1485,9 @@ _RETAINED_IDENTITY_FORBIDDEN_MODULES = (
 )
 
 
-def _is_retained_identity_legal_surface(path_parts: tuple[str, ...]) -> bool:
+def _is_identity_legal_surface(path_parts: tuple[str, ...]) -> bool:
     return (
-        path_parts in _RETAINED_IDENTITY_RECOVERY_PATHS
+        path_parts in _IDENTITY_RECOVERY_PATHS
         or path_parts[:2] == ("domains", "legal")
         or path_parts
         in {
@@ -1456,7 +1498,7 @@ def _is_retained_identity_legal_surface(path_parts: tuple[str, ...]) -> bool:
     )
 
 
-def _retained_identity_boundary_names(tree: ast.AST) -> list[tuple[int, str]]:
+def _identity_boundary_names(tree: ast.AST) -> list[tuple[int, str]]:
     names: set[tuple[int, str]] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Name):
@@ -1776,6 +1818,152 @@ def check_persistence_transaction_ownership(root: Path = ROOT) -> list[str]:
     return errors
 
 
+def check_removed_billing_architecture(root: Path = ROOT) -> list[str]:
+    """Reject executable legacy billing and direct-provider architecture."""
+    app_root = root / "apps/api/app"
+    errors: list[str] = []
+    for relative in (
+        Path("scripts/cloudpayments_sandbox_verify.py"),
+        Path("apps/api/app/commands/expire_subscriptions.py"),
+    ):
+        if (root / relative).exists():
+            errors.append(
+                f"{relative.as_posix()} recreates a removed provider/lifecycle command"
+            )
+
+    web_root = root / "apps/web/src"
+    if web_root.exists():
+        for path in sorted(web_root.rglob("*")):
+            if path.suffix not in {".js", ".jsx", ".ts", ".tsx"}:
+                continue
+            source = path.read_text(encoding="utf-8")
+            if "cloudpayments" in source.lower():
+                errors.append(
+                    f"{path.relative_to(root).as_posix()} references removed CloudPayments "
+                    "runtime; do not restore provider-specific executable architecture "
+                    "(see ADR 0005)"
+                )
+
+    if not app_root.exists():
+        return errors
+
+    for path in sorted(app_root.rglob("*.py")):
+        relative = path.relative_to(root).as_posix()
+        path_parts = path.relative_to(app_root).parts
+        source = path.read_text(encoding="utf-8")
+
+        if (
+            path_parts[0] == "payment_providers"
+            or path_parts[:2] == ("integrations", "cloudpayments")
+            or path_parts == ("cloudpayments.py",)
+        ):
+            errors.append(
+                f"{relative} recreates removed direct-provider/CloudPayments runtime; "
+                "External Billing is a separate boundary (see ADR 0005)"
+            )
+        elif "cloudpayments" in source.lower():
+            errors.append(
+                f"{relative} references removed CloudPayments runtime; "
+                "do not restore provider-specific executable architecture (see ADR 0005)"
+            )
+
+        try:
+            tree = ast.parse(source, filename=str(path))
+            imports = resolve_python_imports(path, app_root)
+        except SyntaxError:
+            continue
+
+        for imported in imports:
+            for target in imported.targets:
+                if any(
+                    module_matches(target, module)
+                    for module in _REMOVED_DIRECT_PROVIDER_MODULES
+                ):
+                    errors.append(
+                        f"{relative}:{imported.line} imports removed direct-provider "
+                        f"runtime {target}; External Billing must not use an adapter registry "
+                        "(see ADR 0005)"
+                    )
+
+        for line, name in _identity_boundary_names(tree):
+            if name in _REMOVED_DIRECT_PROVIDER_NAMES:
+                errors.append(
+                    f"{relative}:{line} references removed {name}; External Billing must "
+                    "not be modeled as direct-provider runtime (see ADR 0005)"
+                )
+
+        for line, symbol, module in _canonical_model_references(
+            tree,
+            _REMOVED_LEGACY_MODEL_NAMES,
+        ):
+            errors.append(
+                f"{relative}:{line} references removed legacy billing model "
+                f"{symbol} from {module}"
+            )
+
+        if path_parts[0] != "models":
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef) and node.name in _REMOVED_LEGACY_MODEL_NAMES:
+                errors.append(
+                    f"{relative}:{node.lineno} defines removed legacy billing model "
+                    f"{node.name}; use only the approved external-billing persistence graph"
+                )
+            if (
+                isinstance(node, ast.ClassDef)
+                and node.name in REMOVED_LEGACY_PERSISTED_ENUM_NAMES
+            ):
+                errors.append(
+                    f"{relative}:{node.lineno} defines removed legacy persisted enum "
+                    f"{node.name}"
+                )
+            if not (
+                isinstance(node, ast.Constant)
+                and isinstance(node.value, str)
+            ):
+                continue
+            table_name = node.value.split(".", 1)[0]
+            if table_name in _REMOVED_LEGACY_TABLE_NAMES:
+                errors.append(
+                    f"{relative}:{node.lineno} references removed legacy billing table "
+                    f"{table_name}"
+                )
+            elif table_name == "external_billing_accounts":
+                errors.append(
+                    f"{relative}:{node.lineno} references forbidden table "
+                    "external_billing_accounts; external_billing_account_id is opaque "
+                    "configuration scope, not a Portal ORM entity (see ADR 0005)"
+                )
+
+    migrations_root = root / "apps/api/alembic/versions"
+    if migrations_root.exists():
+        for path in sorted(migrations_root.glob("*.py")):
+            relative = path.relative_to(root).as_posix()
+            try:
+                tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            except SyntaxError:
+                continue
+            for node in ast.walk(tree):
+                if not (
+                    isinstance(node, ast.Constant)
+                    and isinstance(node.value, str)
+                ):
+                    continue
+                table_name = node.value.split(".", 1)[0]
+                if table_name in _REMOVED_LEGACY_TABLE_NAMES:
+                    errors.append(
+                        f"{relative}:{node.lineno} references removed legacy billing table "
+                        f"{table_name}"
+                    )
+                elif table_name == "external_billing_accounts":
+                    errors.append(
+                        f"{relative}:{node.lineno} references forbidden table "
+                        "external_billing_accounts (see ADR 0005)"
+                    )
+
+    return errors
+
+
 def check_python_boundaries(root: Path = ROOT) -> list[str]:
     app_root = root / "apps/api/app"
     if not app_root.exists():
@@ -1789,8 +1977,6 @@ def check_python_boundaries(root: Path = ROOT) -> list[str]:
         in_core = path_parts[0] == "core"
         in_domains = path_parts[0] == "domains"
         in_integrations = path_parts[0] == "integrations"
-        in_operational_entrypoint = path_parts[0] in {"commands", "jobs"}
-        in_provider_neutral_payment = path_parts[0] == "payment_providers"
         in_persistence_infrastructure = (
             len(path_parts) >= 2
             and path_parts[0] == "infrastructure"
@@ -1808,12 +1994,6 @@ def check_python_boundaries(root: Path = ROOT) -> list[str]:
         )
         is_router = path.name == "router.py"
         source = path.read_text(encoding="utf-8")
-        if (in_domains or in_provider_neutral_payment) and "cloudpayments" in source.lower():
-            errors.append(
-                f"{relative} contains CloudPayments-specific logic; keep provider-neutral "
-                "modules keyed by provider accounts and adapters instead (see ARCHITECTURE.md)"
-            )
-
         try:
             tree = ast.parse(source, filename=str(path))
             imports = resolve_python_imports(path, app_root)
@@ -1824,31 +2004,18 @@ def check_python_boundaries(root: Path = ROOT) -> list[str]:
             )
             continue
 
-        for node in ast.walk(tree):
-            if (
-                path_parts[0] == "models"
-                and isinstance(node, ast.Constant)
-                and isinstance(node.value, str)
-                and re.search(r"\bexternal_billing_accounts\b", node.value)
-            ):
-                errors.append(
-                    f"{relative}:{node.lineno} references forbidden table "
-                    "external_billing_accounts; external_billing_account_id is opaque "
-                    "configuration scope, not a Portal ORM entity (see ADR 0005)"
-                )
-
-        if path_parts in _RETAINED_IDENTITY_RECOVERY_PATHS:
+        if path_parts in _IDENTITY_RECOVERY_PATHS:
             forbidden_model_references = set(
                 _canonical_model_references(
                     tree,
-                    _RETAINED_IDENTITY_FORBIDDEN_MODEL_NAMES,
+                    _IDENTITY_RECOVERY_FORBIDDEN_MODEL_NAMES,
                 )
             )
             for imported in imports:
                 for target in imported.targets:
                     module, _, symbol = target.rpartition(".")
                     if (
-                        symbol in _RETAINED_IDENTITY_FORBIDDEN_MODEL_NAMES
+                        symbol in _IDENTITY_RECOVERY_FORBIDDEN_MODEL_NAMES
                         and module_matches(module, "app.models")
                     ):
                         forbidden_model_references.add(
@@ -1856,30 +2023,30 @@ def check_python_boundaries(root: Path = ROOT) -> list[str]:
                         )
                     if any(
                         module_matches(target, module_name)
-                        for module_name in _RETAINED_IDENTITY_FORBIDDEN_MODULES
+                        for module_name in _IDENTITY_RECOVERY_FORBIDDEN_MODULES
                     ):
                         errors.append(
-                            f"{relative}:{imported.line} imports {target}; retained "
+                            f"{relative}:{imported.line} imports {target}; "
                             "identity/recovery must not depend on entrypoint, commerce, "
                             "provider, or trial ownership (see ADR 0005)"
                         )
             errors.extend(
-                f"{relative}:{line} references {symbol} from {module}; retained "
+                f"{relative}:{line} references {symbol} from {module}; "
                 "identity/recovery must not depend on entrypoint, commerce, provider, "
                 "or trial ownership (see ADR 0005)"
                 for line, symbol, module in sorted(forbidden_model_references)
             )
-            for line, name in _retained_identity_boundary_names(tree):
+            for line, name in _identity_boundary_names(tree):
                 lowered_name = name.lower()
-                if name in _RETAINED_IDENTITY_FORBIDDEN_NAMES:
+                if name in _IDENTITY_RECOVERY_FORBIDDEN_NAMES:
                     errors.append(
-                        f"{relative}:{line} references {name}; retained identity/recovery "
+                        f"{relative}:{line} references {name}; identity/recovery "
                         "must not use entrypoint, commerce, or provider authority "
                         "(see ADR 0005)"
                     )
                 elif "entrypoint" in lowered_name or "trial" in lowered_name:
                     errors.append(
-                        f"{relative}:{line} references {name}; retained identity/recovery "
+                        f"{relative}:{line} references {name}; identity/recovery "
                         "must not require entrypoint or Portal trial state (see ADR 0005)"
                     )
             for node in ast.walk(tree):
@@ -1890,16 +2057,16 @@ def check_python_boundaries(root: Path = ROOT) -> list[str]:
                 ):
                     errors.append(
                         f"{relative}:{node.lineno} references Portal trial vocabulary; "
-                        "retained identity/recovery must not require Portal trial state "
+                        "identity/recovery must not require Portal trial state "
                         "(see ADR 0005)"
                     )
 
-        if _is_retained_identity_legal_surface(path_parts):
-            for line, name in _retained_identity_boundary_names(tree):
+        if _is_identity_legal_surface(path_parts):
+            for line, name in _identity_boundary_names(tree):
                 lowered_name = name.lower()
                 if "customer" in lowered_name or lowered_name == "outer_id":
                     errors.append(
-                        f"{relative}:{line} references {name}; retained identity/legal "
+                        f"{relative}:{line} references {name}; identity/legal "
                         "must not allocate or bind external billing customers or promote "
                         "PII/provider values into cross-system identity (see ADR 0005)"
                     )
@@ -1909,7 +2076,7 @@ def check_python_boundaries(root: Path = ROOT) -> list[str]:
                     not in {"external_billing_account_id", "billing_offer_id"}
                 ):
                     errors.append(
-                        f"{relative}:{line} references {name}; retained identity/legal "
+                        f"{relative}:{line} references {name}; identity/legal "
                         "must not promote provider identifiers into cross-system identity "
                         "(see ADR 0005)"
                     )
@@ -1922,7 +2089,7 @@ def check_python_boundaries(root: Path = ROOT) -> list[str]:
                         or "external_billing" in lowered_target
                     ):
                         errors.append(
-                            f"{relative}:{imported.line} imports {target}; retained "
+                            f"{relative}:{imported.line} imports {target}; "
                             "identity/legal must not own external billing customer "
                             "allocation or binding (see ADR 0005)"
                         )
@@ -1938,55 +2105,11 @@ def check_python_boundaries(root: Path = ROOT) -> list[str]:
                 ):
                     errors.append(
                         f"{relative}:{node.lineno} contains external customer identity "
-                        "vocabulary; retained identity/legal must not own billing customer "
+                        "vocabulary; identity/legal must not own billing customer "
                         "allocation or binding (see ADR 0005)"
                     )
 
         is_active_domain_presentation = in_domains and _owns_fastapi_api_router(tree)
-
-        if in_integrations:
-            commercial_model_references = set(
-                _canonical_model_references(
-                    tree,
-                    _INTEGRATION_FORBIDDEN_COMMERCIAL_MODEL_NAMES,
-                )
-            )
-            for imported in imports:
-                for target in imported.targets:
-                    module, _, symbol = target.rpartition(".")
-                    if (
-                        symbol in _INTEGRATION_FORBIDDEN_COMMERCIAL_MODEL_NAMES
-                        and module_matches(module, "app.models")
-                    ):
-                        commercial_model_references.add((imported.line, symbol, module))
-            errors.extend(
-                f"{relative}:{line} references canonical commercial model {symbol} from {module}; "
-                "violates integration commercial mutation ownership; map provider facts into "
-                "Application commercial transitions instead (see ARCHITECTURE.md)"
-                for line, symbol, module in sorted(commercial_model_references)
-            )
-
-        if in_integrations or in_operational_entrypoint:
-            lifecycle_model_references = set(
-                _canonical_model_references(
-                    tree,
-                    _OUTER_FORBIDDEN_LIFECYCLE_MODEL_NAMES,
-                )
-            )
-            for imported in imports:
-                for target in imported.targets:
-                    module, _, symbol = target.rpartition(".")
-                    if (
-                        symbol in _OUTER_FORBIDDEN_LIFECYCLE_MODEL_NAMES
-                        and module_matches(module, "app.models")
-                    ):
-                        lifecycle_model_references.add((imported.line, symbol, module))
-            errors.extend(
-                f"{relative}:{line} references canonical lifecycle model {symbol} from {module}; "
-                "violates subscription/entitlement mutation ownership; invoke the public "
-                "Application lifecycle facade instead (see ARCHITECTURE.md)"
-                for line, symbol, module in sorted(lifecycle_model_references)
-            )
 
         for imported in imports:
             rules: list[tuple[str, Callable[[str], bool], str]] = []
@@ -2003,8 +2126,7 @@ def check_python_boundaries(root: Path = ROOT) -> list[str]:
                     (
                         "core dependency direction",
                         lambda target: module_matches(target, "app.domains")
-                        or module_matches(target, "app.integrations")
-                        or module_matches(target, "app.payment_providers"),
+                        or module_matches(target, "app.integrations"),
                         "move the dependency to wiring or shared core infrastructure",
                     )
                 )
@@ -2069,18 +2191,6 @@ def check_python_boundaries(root: Path = ROOT) -> list[str]:
                         "call a domain service instead of importing a domain router",
                     )
                 )
-            if in_integrations or in_operational_entrypoint or is_active_domain_presentation:
-                rules.append(
-                    (
-                        "outer subscription/entitlement lifecycle ownership",
-                        lambda target: any(
-                            module_matches(target, module)
-                            for module in _OUTER_FORBIDDEN_LIFECYCLE_MODULES
-                        ),
-                        "invoke app.domains.billing.service instead of lifecycle implementation "
-                        "or subscription persistence mechanics",
-                    )
-                )
             if in_persistence_infrastructure:
                 rules.append(
                     (
@@ -2090,7 +2200,6 @@ def check_python_boundaries(root: Path = ROOT) -> list[str]:
                             or module_matches(target, "starlette")
                             or module_matches(target, "app.domains")
                             or module_matches(target, "app.integrations")
-                            or module_matches(target, "app.payment_providers")
                         ),
                         "keep persistence dependent only on models and neutral infrastructure",
                     )
@@ -2252,7 +2361,8 @@ def check_canonical_persisted_model_layer(root: Path = ROOT) -> list[str]:
 
 
 def cmd_architecture(_: argparse.Namespace) -> None:
-    errors = check_python_boundaries()
+    errors = check_removed_billing_architecture()
+    errors.extend(check_python_boundaries())
     errors.extend(check_persistence_transaction_ownership())
     errors.extend(check_canonical_persisted_model_layer())
     limits = json.loads((ROOT / "architecture-limits.json").read_text(encoding="utf-8"))
