@@ -124,6 +124,54 @@
         "title": "RegisterRequest",
         "type": "object"
       },
+      "SessionResponse": {
+        "properties": {
+          "authenticated": {
+            "const": true,
+            "title": "Authenticated",
+            "type": "boolean"
+          },
+          "user": {
+            "$ref": "#/components/schemas/SessionUserResponse"
+          }
+        },
+        "required": [
+          "authenticated",
+          "user"
+        ],
+        "title": "SessionResponse",
+        "type": "object"
+      },
+      "SessionUserResponse": {
+        "properties": {
+          "email": {
+            "format": "email",
+            "title": "Email",
+            "type": "string"
+          },
+          "region": {
+            "title": "Region",
+            "type": "string"
+          },
+          "tenant_id": {
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenant_id",
+          "region",
+          "user_id",
+          "email"
+        ],
+        "title": "SessionUserResponse",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -400,7 +448,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/SessionResponse"
+                }
               }
             },
             "description": "Successful Response"

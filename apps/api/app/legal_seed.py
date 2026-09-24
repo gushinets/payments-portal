@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
+from app.core.settings import SUPPORTED_INSTANCE_REGION, require_supported_instance_scope
 from app.generated.legal_manifest import LEGAL_MANIFEST
 from app.models import DocumentVersion, LegalEntity, LegalEntityStatus, LegalEntityType
 
@@ -86,8 +87,14 @@ def _document_material_mismatches(
     return mismatches
 
 
-def seed_legal_documents(db: Session) -> None:
+def seed_legal_documents(
+    db: Session,
+    *,
+    tenant_id: str = DEFAULT_TENANT_ID,
+    region: str = SUPPORTED_INSTANCE_REGION,
+) -> None:
     """Idempotently seed the current legal entity and document metadata."""
+    require_supported_instance_scope(tenant_id=tenant_id, region=region)
 
     existing_documents: dict[tuple[str, str, str, str], DocumentVersion] = {}
     for document_data in RU_DOCUMENT_VERSIONS:

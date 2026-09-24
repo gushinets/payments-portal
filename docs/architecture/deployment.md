@@ -32,7 +32,12 @@ lowercase and are the implemented server authority for registration, login,
 password reset, required legal-document discovery, authenticated session
 scope, and legal writes. They are descriptive deployment identity, not
 caller-selectable routing inputs. Local repository defaults are explicitly
-`anytoolai` / `ru`; production has no silent contour default.
+`anytoolai` / `ru`; production has no silent contour default. The current
+bootstrap and legal source support exactly `anytoolai` / `ru`. Settings,
+Alembic bootstrap, and runtime legal seeding fail before successful startup or
+bootstrap when a different tenant/region pair is configured. Enabling another
+scope requires its dedicated contour/legal enablement ticket; the current
+deployment variables are not a generic contour bootstrap selector.
 
 The direct-provider and CloudPayments runtime has been physically removed.
 Current API composition exposes no provider registry, callback route, provider
@@ -78,9 +83,10 @@ External Billing webhook integration is implemented by its owning later step,
 it is contour-local and terminates at that contour's API; Region Resolver is
 not a webhook proxy.
 
-The clean baseline bootstraps only the configured contour and its local country
-membership. It never authorizes one production database to operate as two
-contours.
+The clean baseline validates the configured scope and then bootstraps only the
+currently supported `anytoolai` / `ru` contour and its RU country membership.
+It never silently substitutes RU data for a different configured scope or
+authorizes one production database to operate as two contours.
 
 ## One-time Step-4 recreate and bootstrap
 

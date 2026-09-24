@@ -1,8 +1,12 @@
 # ANY-135 - Split Alembic Baseline
 
-Status: active
+Status: superseded historical implementation evidence
 Owner: repository maintainers
 Started: 2026-07-20
+
+> Superseded by ANY-522. This completed evidence describes the discarded
+> Portal-owned commerce migration chain and must not be continued or restored.
+> New billing work follows ADR 0005 and the ANY-504 external-billing program.
 
 ## Objective
 

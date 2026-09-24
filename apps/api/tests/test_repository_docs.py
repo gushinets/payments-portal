@@ -987,7 +987,10 @@ def test_validate_production_deployment_environment_requires_public_caddy_domain
 def test_alembic_uses_validated_application_database_url() -> None:
     alembic_env = Path("apps/api/alembic/env.py").read_text(encoding="utf-8")
 
-    assert "from app.core.settings import settings" in alembic_env
+    assert "from app.core.settings import require_supported_instance_scope, settings" in alembic_env
+    assert "require_supported_instance_scope(" in alembic_env
+    assert "tenant_id=settings.instance_tenant_id" in alembic_env
+    assert "region=settings.instance_region" in alembic_env
     assert 'os.getenv("DATABASE_URL")' not in alembic_env
     assert 'config.set_main_option("sqlalchemy.url", settings.database_url.replace("%", "%%"))' in alembic_env
 

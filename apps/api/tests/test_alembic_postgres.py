@@ -821,7 +821,7 @@ def test_clean_first_install_has_one_revision_and_exact_application_schema(
         assert columns[column_name]["default"] is None
 
 
-def test_clean_first_install_bootstraps_only_ru_legal_state_and_empty_targets(
+def test_clean_first_install_bootstraps_supported_configured_scope_and_empty_targets(
     postgres_engine: Engine,
     database_test_url: URL,
 ) -> None:
@@ -846,6 +846,29 @@ def test_clean_first_install_bootstraps_only_ru_legal_state_and_empty_targets(
         assert documents == _expected_legal_documents()
         for table_name in TARGET_TABLES:
             assert connection.execute(text(f'SELECT count(*) FROM "{table_name}"')).scalar_one() == 0
+
+
+@pytest.mark.parametrize(
+    ("instance_tenant_id", "instance_region"),
+    [("other", "ru"), ("anytoolai", "eu")],
+)
+def test_clean_first_install_rejects_unsupported_configured_scope(
+    postgres_engine: Engine,
+    database_test_url: URL,
+    instance_tenant_id: str,
+    instance_region: str,
+) -> None:
+    reset_public_schema(postgres_engine)
+
+    with alembic_test_config(
+        database_test_url,
+        instance_tenant_id=instance_tenant_id,
+        instance_region=instance_region,
+    ) as config:
+        with pytest.raises(ValueError, match="current bootstrap supports only anytoolai/ru"):
+            command.upgrade(config, "head")
+
+    assert _public_table_names(postgres_engine) == set()
 
 
 def test_survivor_scope_constraints_reject_cross_contour_references(migrated_database: Engine) -> None:

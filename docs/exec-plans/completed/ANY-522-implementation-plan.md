@@ -2,9 +2,23 @@
 
 **Issue:** ANY-522 — Implement Clean Target Persistence Baseline & Remove Legacy Commerce / CloudPayments  
 **Parent:** ANY-504 — RU External Billing & Paid Access Architecture Program  
-**Plan status:** `approved — Codex-ready sequential implementation plan for ANY-522`  
+**Plan status:** `completed — retained implementation history and handoff evidence`  
 **Final Step-3 baseline:** `main` at merge commit `87dbb62301fcf25eedb86bb897bbe92e021d9886`  
-**Validated:** 2026-09-23
+**Validated:** 2026-09-23  
+**Completed:** 2026-09-24
+
+---
+
+## Completion record
+
+Steps 1–9 are complete in the ANY-522 implementation. The repository now has
+the clean 25-table first-install baseline, the retained identity/session/legal
+runtime, provider-neutral target persistence with no producer runtime, and no
+CloudPayments/direct-provider or Portal-owned commerce runtime. Generated
+schema/OpenAPI artifacts and the recorded verification evidence form the final
+Step-9 handoff. Sections below are preserved as the sequential implementation
+contract and historical evidence; they are not instructions to restart at
+Step 1. Later billing behavior remains owned by ANY-504 Steps 5–11.
 
 ---
 
@@ -684,17 +698,18 @@ Each checkpoint must still be internally source-coherent:
 
 Step 9 is the **single canonical CI/merge-ready boundary**: `npm run generate:check` and the full `npm run check` must pass there. If CI is configured to require the full canonical suite on every pushed commit, keep Steps 1–8 local/squashed or otherwise avoid presenting them as merge candidates; do not weaken repository gates merely to make intermediate commits green.
 
-### 5.19 Codex execution protocol for separate chats
+### 5.19 Historical Codex execution protocol used for separate chats
 
-This plan is designed for **one fresh Codex chat per implementation step**.
+This plan used **one fresh Codex chat per implementation step**.
 
-Before Step 1, place this document in the repository as:
+Before Step 1, this document was placed in the repository as:
 
 ```text
-docs/exec-plans/active/ANY-522-implementation-plan.md
+docs/exec-plans/completed/ANY-522-implementation-plan.md
 ```
 
-Use the following protocol for every Step 1–9 chat:
+The following completed protocol is retained as implementation evidence and
+must not be restarted:
 
 1. Start from the same ANY-522 branch/worktree; all previous numbered steps must already be implemented there.
 2. Paste only the `AI prompt` for the selected step into the fresh chat. The prompt may read the canonical plan file above, but only the explicitly named sections for that step; it must not reread the whole plan or redo predecessor research.
@@ -711,7 +726,7 @@ The objective of this protocol is not to minimize file changes at the expense of
 
 # Step 1 — Remove Legacy Public Billing Contracts and Neutralize Frontend Consumers
 
-**Status:** `todo`
+**Status:** `completed`
 
 ## Goal
 
@@ -789,7 +804,7 @@ Keep `/ru/auth-checkout` as the minimal retained browser authentication shell fo
 
 ## AI prompt
 
-This prompt is intended for a **fresh Codex chat**. Work from the current ANY-522 branch/worktree, which must already contain every earlier numbered step. Do not rely on prior chat memory. The canonical plan must exist at `docs/exec-plans/active/ANY-522-implementation-plan.md`. Read only Sections 1–3 and the Step 1 section; do not reread the full plan or repeat ANY-509/ANY-510 architecture research. Inspect only the current Git state and directly relevant files needed to confirm the prerequisite checkpoint. If an earlier step is missing or the current source materially contradicts this step's fixed assumptions, stop and report the contradiction instead of implementing multiple steps or redesigning the architecture.
+This prompt is intended for a **fresh Codex chat**. Work from the current ANY-522 branch/worktree, which must already contain every earlier numbered step. Do not rely on prior chat memory. The canonical plan must exist at `docs/exec-plans/completed/ANY-522-implementation-plan.md`. Read only Sections 1–3 and the Step 1 section; do not reread the full plan or repeat ANY-509/ANY-510 architecture research. Inspect only the current Git state and directly relevant files needed to confirm the prerequisite checkpoint. If an earlier step is missing or the current source materially contradicts this step's fixed assumptions, stop and report the contradiction instead of implementing multiple steps or redesigning the architecture.
 
 Implement only Step 1 of ANY-522: remove the legacy public billing/payment contracts and neutralize their frontend consumers while preserving the final merged Step-3 provider-independent authentication/session/recovery/legal surface.
 
@@ -861,7 +876,7 @@ refactor(api): remove legacy billing public contracts
 
 # Step 2 — Physically Remove Legacy Billing Runtime, Direct-Provider Infrastructure and CloudPayments
 
-**Status:** `todo`
+**Status:** `completed`
 
 ## Goal
 
@@ -936,7 +951,7 @@ Legacy ORM classes remain temporarily for Step 3.
 
 ## AI prompt
 
-This prompt is intended for a **fresh Codex chat**. Work from the current ANY-522 branch/worktree, which must already contain every earlier numbered step. Do not rely on prior chat memory. The canonical plan must exist at `docs/exec-plans/active/ANY-522-implementation-plan.md`. Read only the Step 2 section and Section 3 locked outcome/removal boundaries; do not reread the full plan or repeat ANY-509/ANY-510 architecture research. Inspect only the current Git state and directly relevant files needed to confirm the prerequisite checkpoint. If an earlier step is missing or the current source materially contradicts this step's fixed assumptions, stop and report the contradiction instead of implementing multiple steps or redesigning the architecture.
+This prompt is intended for a **fresh Codex chat**. Work from the current ANY-522 branch/worktree, which must already contain every earlier numbered step. Do not rely on prior chat memory. The canonical plan must exist at `docs/exec-plans/completed/ANY-522-implementation-plan.md`. Read only the Step 2 section and Section 3 locked outcome/removal boundaries; do not reread the full plan or repeat ANY-509/ANY-510 architecture research. Inspect only the current Git state and directly relevant files needed to confirm the prerequisite checkpoint. If an earlier step is missing or the current source materially contradicts this step's fixed assumptions, stop and report the contradiction instead of implementing multiple steps or redesigning the architecture.
 
 Implement only Step 2 of ANY-522: physically remove the legacy Portal billing runtime, direct-provider infrastructure and CloudPayments implementation after Step 1 has removed their public consumers.
 
@@ -1005,7 +1020,7 @@ refactor(billing): remove direct provider runtime
 
 # Step 3 — Reduce the Canonical ORM to the Final Step-3 Survivor Schema
 
-**Status:** `todo`
+**Status:** `completed`
 
 ## Goal
 
@@ -1085,7 +1100,7 @@ Do not create target external-billing tables yet.
 
 ## AI prompt
 
-This prompt is intended for a **fresh Codex chat**. Work from the current ANY-522 branch/worktree, which must already contain every earlier numbered step. Do not rely on prior chat memory. The canonical plan must exist at `docs/exec-plans/active/ANY-522-implementation-plan.md`. Read only Section 4 and the Step 3 section; do not reread the full plan or repeat ANY-509/ANY-510 architecture research. Inspect only the current Git state and directly relevant files needed to confirm the prerequisite checkpoint. If an earlier step is missing or the current source materially contradicts this step's fixed assumptions, stop and report the contradiction instead of implementing multiple steps or redesigning the architecture.
+This prompt is intended for a **fresh Codex chat**. Work from the current ANY-522 branch/worktree, which must already contain every earlier numbered step. Do not rely on prior chat memory. The canonical plan must exist at `docs/exec-plans/completed/ANY-522-implementation-plan.md`. Read only Section 4 and the Step 3 section; do not reread the full plan or repeat ANY-509/ANY-510 architecture research. Inspect only the current Git state and directly relevant files needed to confirm the prerequisite checkpoint. If an earlier step is missing or the current source materially contradicts this step's fixed assumptions, stop and report the contradiction instead of implementing multiple steps or redesigning the architecture.
 
 Implement only Step 3 of ANY-522: reduce the canonical ORM to the final provider-independent Step-3 identity/session/recovery/legal/contour survivor schema.
 
@@ -1161,7 +1176,7 @@ refactor(models): retain clean identity and legal schema
 
 # Step 4 — Add Target Projection, Mapping, Customer and Purchase Foundation Models
 
-**Status:** `todo`
+**Status:** `completed`
 
 ## Goal
 
@@ -1226,7 +1241,7 @@ Important locked rules:
 
 ## AI prompt
 
-This prompt is intended for a **fresh Codex chat**. Work from the current ANY-522 branch/worktree, which must already contain every earlier numbered step. Do not rely on prior chat memory. The canonical plan must exist at `docs/exec-plans/active/ANY-522-implementation-plan.md`. Read only Sections 5.1–5.6 and the Step 4 section; do not reread the full plan or repeat ANY-509/ANY-510 architecture research. Inspect only the current Git state and directly relevant files needed to confirm the prerequisite checkpoint. If an earlier step is missing or the current source materially contradicts this step's fixed assumptions, stop and report the contradiction instead of implementing multiple steps or redesigning the architecture.
+This prompt is intended for a **fresh Codex chat**. Work from the current ANY-522 branch/worktree, which must already contain every earlier numbered step. Do not rely on prior chat memory. The canonical plan must exist at `docs/exec-plans/completed/ANY-522-implementation-plan.md`. Read only Sections 5.1–5.6 and the Step 4 section; do not reread the full plan or repeat ANY-509/ANY-510 architecture research. Inspect only the current Git state and directly relevant files needed to confirm the prerequisite checkpoint. If an earlier step is missing or the current source materially contradicts this step's fixed assumptions, stop and report the contradiction instead of implementing multiple steps or redesigning the architecture.
 
 Implement only Step 4 of ANY-522: add the provider-neutral target ORM foundation for projections, immutable mapping provenance, external-billing customer slots, PurchaseIntent evidence and durable outbound-create state.
 
@@ -1288,7 +1303,7 @@ feat(persistence): add billing foundation models
 
 # Step 5 — Add the Target Subscription, Observation and Reconciliation Persistence Graph
 
-**Status:** `todo`
+**Status:** `completed`
 
 ## Goal
 
@@ -1351,7 +1366,7 @@ Critical rules include:
 
 ## AI prompt
 
-This prompt is intended for a **fresh Codex chat**. Work from the current ANY-522 branch/worktree, which must already contain every earlier numbered step. Do not rely on prior chat memory. The canonical plan must exist at `docs/exec-plans/active/ANY-522-implementation-plan.md`. Read only Sections 5.7–5.13 and 5.17 plus the Step 5 section; do not reread the full plan or repeat ANY-509/ANY-510 architecture research. Inspect only the current Git state and directly relevant files needed to confirm the prerequisite checkpoint. If an earlier step is missing or the current source materially contradicts this step's fixed assumptions, stop and report the contradiction instead of implementing multiple steps or redesigning the architecture.
+This prompt is intended for a **fresh Codex chat**. Work from the current ANY-522 branch/worktree, which must already contain every earlier numbered step. Do not rely on prior chat memory. The canonical plan must exist at `docs/exec-plans/completed/ANY-522-implementation-plan.md`. Read only Sections 5.7–5.13 and 5.17 plus the Step 5 section; do not reread the full plan or repeat ANY-509/ANY-510 architecture research. Inspect only the current Git state and directly relevant files needed to confirm the prerequisite checkpoint. If an earlier step is missing or the current source materially contradicts this step's fixed assumptions, stop and report the contradiction instead of implementing multiple steps or redesigning the architecture.
 
 Implement only Step 5 of ANY-522: add the complete target ORM graph for product access scopes, external subscription projection, normalized observation evidence, purchased allowances, webhook evidence, durable reconciliation work and manual-review evidence.
 
@@ -1422,7 +1437,7 @@ feat(persistence): add billing reconciliation models
 
 # Step 6 — Add Provider-Neutral Paid Access State and Invalidation Outbox Models
 
-**Status:** `todo`
+**Status:** `completed`
 
 ## Goal
 
@@ -1472,7 +1487,7 @@ Critical rules:
 
 ## AI prompt
 
-This prompt is intended for a **fresh Codex chat**. Work from the current ANY-522 branch/worktree, which must already contain every earlier numbered step. Do not rely on prior chat memory. The canonical plan must exist at `docs/exec-plans/active/ANY-522-implementation-plan.md`. Read only Sections 5.14–5.15 plus the Step 6 section; do not reread the full plan or repeat ANY-509/ANY-510 architecture research. Inspect only the current Git state and directly relevant files needed to confirm the prerequisite checkpoint. If an earlier step is missing or the current source materially contradicts this step's fixed assumptions, stop and report the contradiction instead of implementing multiple steps or redesigning the architecture.
+This prompt is intended for a **fresh Codex chat**. Work from the current ANY-522 branch/worktree, which must already contain every earlier numbered step. Do not rely on prior chat memory. The canonical plan must exist at `docs/exec-plans/completed/ANY-522-implementation-plan.md`. Read only Sections 5.14–5.15 plus the Step 6 section; do not reread the full plan or repeat ANY-509/ANY-510 architecture research. Inspect only the current Git state and directly relevant files needed to confirm the prerequisite checkpoint. If an earlier step is missing or the current source materially contradicts this step's fixed assumptions, stop and report the contradiction instead of implementing multiple steps or redesigning the architecture.
 
 Implement only Step 6 of ANY-522: add the final provider-neutral target ORM tables `paid_access_states` and `access_invalidation_outbox`.
 
@@ -1534,7 +1549,7 @@ feat(persistence): add paid access state models
 
 # Step 7 — Replace the Complete Alembic History with One Clean First-Install Baseline
 
-**Status:** `todo`
+**Status:** `completed`
 
 ## Goal
 
@@ -1604,7 +1619,7 @@ For the cyclic access-scope/subscription/observation graph, implement the exact 
 
 ## AI prompt
 
-This prompt is intended for a **fresh Codex chat**. Work from the current ANY-522 branch/worktree, which must already contain every earlier numbered step. Do not rely on prior chat memory. The canonical plan must exist at `docs/exec-plans/active/ANY-522-implementation-plan.md`. Read only Sections 4, 5.1–5.17 and the Step 7 section; do not reread the full plan or repeat ANY-509/ANY-510 architecture research. Inspect only the current Git state and directly relevant files needed to confirm the prerequisite checkpoint. If an earlier step is missing or the current source materially contradicts this step's fixed assumptions, stop and report the contradiction instead of implementing multiple steps or redesigning the architecture.
+This prompt is intended for a **fresh Codex chat**. Work from the current ANY-522 branch/worktree, which must already contain every earlier numbered step. Do not rely on prior chat memory. The canonical plan must exist at `docs/exec-plans/completed/ANY-522-implementation-plan.md`. Read only Sections 4, 5.1–5.17 and the Step 7 section; do not reread the full plan or repeat ANY-509/ANY-510 architecture research. Inspect only the current Git state and directly relevant files needed to confirm the prerequisite checkpoint. If an earlier step is missing or the current source materially contradicts this step's fixed assumptions, stop and report the contradiction instead of implementing multiple steps or redesigning the architecture.
 
 Implement only Step 7 of ANY-522: replace the complete pre-reset Alembic history with one clean first-install baseline and implement the Step-4-owned PostgreSQL schema verification.
 
@@ -1705,7 +1720,7 @@ refactor(db): replace legacy history with clean baseline
 
 # Step 8 — Align Repository Harness, Architecture Guards and Current-State Documentation
 
-**Status:** `todo`
+**Status:** `completed`
 
 ## Goal
 
@@ -1811,7 +1826,7 @@ The repository currently has no authoritative command for platform-specific shar
 
 ## AI prompt
 
-This prompt is intended for a **fresh Codex chat**. Work from the current ANY-522 branch/worktree, which must already contain every earlier numbered step. Do not rely on prior chat memory. The canonical plan must exist at `docs/exec-plans/active/ANY-522-implementation-plan.md`. Read only Sections 3, 5.18–5.19 and the Step 8 section; do not reread the full plan or repeat ANY-509/ANY-510 architecture research. Inspect only the current Git state and directly relevant files needed to confirm the prerequisite checkpoint. If an earlier step is missing or the current source materially contradicts this step's fixed assumptions, stop and report the contradiction instead of implementing multiple steps or redesigning the architecture.
+This prompt is intended for a **fresh Codex chat**. Work from the current ANY-522 branch/worktree, which must already contain every earlier numbered step. Do not rely on prior chat memory. The canonical plan must exist at `docs/exec-plans/completed/ANY-522-implementation-plan.md`. Read only Sections 3, 5.18–5.19 and the Step 8 section; do not reread the full plan or repeat ANY-509/ANY-510 architecture research. Inspect only the current Git state and directly relevant files needed to confirm the prerequisite checkpoint. If an earlier step is missing or the current source materially contradicts this step's fixed assumptions, stop and report the contradiction instead of implementing multiple steps or redesigning the architecture.
 
 Implement only Step 8 of ANY-522: align repository tooling, architecture guards and current-state/reset documentation with the clean Step-4 schema and physical removal of the direct-provider architecture.
 
@@ -1900,7 +1915,7 @@ chore(repo): align clean persistence guards
 
 # Step 9 — Regenerate Contracts and Perform Final Step-4 Verification
 
-**Status:** `todo`
+**Status:** `completed`
 
 ## Goal
 
@@ -1961,7 +1976,7 @@ Do not textually purge generic words such as "payment" or historical evidence me
 
 ## AI prompt
 
-This prompt is intended for a **fresh Codex chat**. Work from the current ANY-522 branch/worktree, which must already contain every earlier numbered step. Do not rely on prior chat memory. The canonical plan must exist at `docs/exec-plans/active/ANY-522-implementation-plan.md`. Read only Sections 3, 5.18–5.19 and the Step 9 section; do not reread the full plan or repeat ANY-509/ANY-510 architecture research. Inspect only the current Git state and directly relevant files needed to confirm the prerequisite checkpoint. If an earlier step is missing or the current source materially contradicts this step's fixed assumptions, stop and report the contradiction instead of implementing multiple steps or redesigning the architecture.
+This prompt is intended for a **fresh Codex chat**. Work from the current ANY-522 branch/worktree, which must already contain every earlier numbered step. Do not rely on prior chat memory. The canonical plan must exist at `docs/exec-plans/completed/ANY-522-implementation-plan.md`. Read only Sections 3, 5.18–5.19 and the Step 9 section; do not reread the full plan or repeat ANY-509/ANY-510 architecture research. Inspect only the current Git state and directly relevant files needed to confirm the prerequisite checkpoint. If an earlier step is missing or the current source materially contradicts this step's fixed assumptions, stop and report the contradiction instead of implementing multiple steps or redesigning the architecture.
 
 Implement only Step 9 of ANY-522: regenerate the final database/OpenAPI artifacts from the clean Step-4 source state and close only Step-4-owned executable residue exposed by that generation.
 
@@ -2141,7 +2156,9 @@ This plan was revalidated after the final ANY-510 merge against:
 
 ### Execution readiness
 
-This plan is **approved and ready for sequential Codex execution starting with Step 1** against the recorded current baseline. No additional Linear-ticket prerequisite exists outside the authority chain defined in this plan.
+This plan was executed sequentially through Step 9 and is retained as completed
+implementation history. It must not be restarted. No additional Linear-ticket
+prerequisite existed outside the authority chain defined in this plan.
 
 No additional unresolved business, public API, persisted-data, security or architecture decision was found that should be delegated to the execution model.
 

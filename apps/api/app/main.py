@@ -30,7 +30,11 @@ metrics_router = APIRouter(prefix="/metrics", tags=["metrics"])
 
 def _seed_legal_documents_sync() -> None:
     with SessionLocal() as db:
-        seed_legal_documents(db)
+        seed_legal_documents(
+            db,
+            tenant_id=settings.instance_tenant_id,
+            region=settings.instance_region,
+        )
 
 
 @asynccontextmanager

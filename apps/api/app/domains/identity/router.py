@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Literal
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, EmailStr, Field
@@ -32,6 +33,18 @@ class RegisterRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
+
+
+class SessionUserResponse(BaseModel):
+    tenant_id: str
+    region: str
+    user_id: UUID
+    email: EmailStr
+
+
+class SessionResponse(BaseModel):
+    authenticated: Literal[True]
+    user: SessionUserResponse
 
 
 def present_user(result: AuthenticationResult) -> dict:
@@ -94,19 +107,19 @@ def login(
 @router.get("/session")
 def get_session(
     current: Annotated[tuple[User, AuthSession], Depends(get_current_session)],
-):
+) -> SessionResponse:
     user, _ = current
     result = load_account_session(user=user)
 
-    return {
-        "authenticated": True,
-        "user": {
-            "tenant_id": result.tenant_id,
-            "region": result.region,
-            "user_id": str(result.user_id),
-            "email": result.email,
-        },
-    }
+    return SessionResponse(
+        authenticated=True,
+        user=SessionUserResponse(
+            tenant_id=result.tenant_id,
+            region=result.region,
+            user_id=result.user_id,
+            email=result.email,
+        ),
+    )
 
 
 @router.post("/logout")

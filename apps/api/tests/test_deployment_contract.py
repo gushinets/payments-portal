@@ -71,6 +71,8 @@ def test_production_sentry_configuration_is_optional_and_minimal() -> None:
 def test_instance_scope_is_explicit_in_managed_environments() -> None:
     local_example = load_env_example(".env.example")
     production_example = load_env_example(".env.production.example")
+    production_example_text = (ROOT / ".env.production.example").read_text(encoding="utf-8")
+    deployment_document = (ROOT / "docs/architecture/deployment.md").read_text(encoding="utf-8")
     local_api_environment = load_compose("docker-compose.yml")["services"]["api"]["environment"]
     agent_api_environment = load_compose("docker-compose.agent.yml")["services"]["api"]["environment"]
     production_api_environment = load_compose("docker-compose.prod.yml")["services"]["api"]["environment"]
@@ -90,6 +92,9 @@ def test_instance_scope_is_explicit_in_managed_environments() -> None:
     assert "INSTANCE_REGION: ru" in workflow
     assert 'echo "INSTANCE_TENANT_ID=$INSTANCE_TENANT_ID"' in workflow
     assert 'echo "INSTANCE_REGION=$INSTANCE_REGION"' in workflow
+    assert "supports exactly this deployed scope" in production_example_text
+    assert "support exactly `anytoolai` / `ru`" in deployment_document
+    assert "fail before successful startup or" in deployment_document
 
 
 @pytest.mark.parametrize(

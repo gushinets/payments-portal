@@ -14,6 +14,18 @@ from app.core.url_validation import (
     validate_production_public_url,
 )
 
+SUPPORTED_INSTANCE_TENANT_ID = "anytoolai"
+SUPPORTED_INSTANCE_REGION = "ru"
+
+
+def require_supported_instance_scope(*, tenant_id: str, region: str) -> None:
+    """Reject deployment scopes that do not have a supported bootstrap."""
+    if (tenant_id, region) != (SUPPORTED_INSTANCE_TENANT_ID, SUPPORTED_INSTANCE_REGION):
+        raise ValueError(
+            "unsupported instance scope: the current bootstrap supports only "
+            f"{SUPPORTED_INSTANCE_TENANT_ID}/{SUPPORTED_INSTANCE_REGION}"
+        )
+
 
 def _split_csv_value(raw: str) -> tuple[str, ...]:
     return tuple(part.strip() for part in raw.split(",") if part.strip())
@@ -127,6 +139,14 @@ class Settings(BaseSettings):
         if info.data.get("app_env") == AppEnv.PRODUCTION:
             return tuple(validate_production_cors_origin(origin) for origin in value)
         return value
+
+    @model_validator(mode="after")
+    def require_supported_bootstrap_scope(self) -> Settings:
+        require_supported_instance_scope(
+            tenant_id=self.instance_tenant_id,
+            region=self.instance_region,
+        )
+        return self
 
     @model_validator(mode="after")
     def require_sentry_release_when_enabled(self) -> Settings:

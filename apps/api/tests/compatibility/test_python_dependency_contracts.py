@@ -105,6 +105,24 @@ def test_settings_accept_supported_app_environments(app_env: str) -> None:
 
 
 @pytest.mark.parametrize(
+    ("instance_tenant_id", "instance_region"),
+    [("other", "ru"), ("anytoolai", "eu")],
+)
+def test_settings_reject_instance_scope_without_supported_bootstrap(
+    instance_tenant_id: str,
+    instance_region: str,
+) -> None:
+    environment = {
+        **DEFAULT_API_TEST_ENV,
+        "INSTANCE_TENANT_ID": instance_tenant_id,
+        "INSTANCE_REGION": instance_region,
+    }
+    with patch.dict(os.environ, environment, clear=True):
+        with pytest.raises(ValidationError, match="current bootstrap supports only anytoolai/ru"):
+            Settings(_env_file=None)
+
+
+@pytest.mark.parametrize(
     ("raw_value", "expected"),
     [
         ("true", True),

@@ -175,8 +175,8 @@ below; later `ANY-504` runtime steps still own scheduling behavior.
 | `ANY-163` | Blocked CloudPayments umbrella; historical/transitional context only and no authority for new direct-provider work. |
 | `ANY-79`, `ANY-286`, and `ANY-287` | Must not execute as written against the old entitlement contract. Formal rewrite, close, or supersession remains owned by `ANY-504` Step 10. |
 | `ANY-497` | Canceled; historical `ANY-407` context only. |
-| `docs/exec-plans/active/ANY-135-split-alembic-baseline.md` | Describes completed current-state work. It is characterization evidence only, not executable target guidance. Broad exec-plan housekeeping is outside `ANY-509`. |
-| `docs/exec-plans/active/ANY-76-refund-result-status.md` | Describes completed current-state work. It is characterization evidence only, not executable target guidance. Broad exec-plan housekeeping is outside `ANY-509`. |
+| `docs/exec-plans/superseded/ANY-135-split-alembic-baseline.md` | Retained historical evidence for the discarded commerce migration chain. It is not executable target guidance. |
+| `docs/exec-plans/superseded/ANY-76-refund-result-status.md` | Retained historical evidence for the removed Portal-owned refund result flow. It is not executable target guidance. |
 
 ## `ANY-504` Step 3 handoff boundary
 

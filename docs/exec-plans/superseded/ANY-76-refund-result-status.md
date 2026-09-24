@@ -1,8 +1,12 @@
 # ANY-76 Follow-up — Refund Result Status
 
-Status: active
+Status: superseded historical implementation evidence
 Owner: repository maintainers
 Started: 2026-07-11
+
+> Superseded by ANY-522. This completed evidence describes the removed Portal-
+> owned order/payment/refund runtime and must not be continued. New billing
+> work follows ADR 0005 and the ANY-504 external-billing program.
 
 ## Objective
 

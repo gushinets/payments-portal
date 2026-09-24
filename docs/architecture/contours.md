@@ -32,7 +32,7 @@ in that order.
 | Contour | Compliance zone | Countries in product terms | Status |
 |---|---|---|---|
 | `ru` | Russian | Countries assigned to `ru` (currently `RU`) | Implemented product |
-| `eu` | European | European countries assigned to `eu` | Planned; transitional `eu` seed exists until the clean reset |
+| `eu` | European | European countries assigned to `eu` | Planned; not in schema |
 | `us` | North American | United States, Canada, and any later assigned country | Planned; not in schema |
 
 Exact ISO country lists for `eu` and `us` are product data, not code defaults.
@@ -44,7 +44,8 @@ A production instance:
 
 - enables exactly one contour;
 - requires one explicit `INSTANCE_TENANT_ID` and `INSTANCE_REGION` pair;
-- stores only that contour's users, legal versions, orders, and provider accounts;
+- stores only that contour's identity, session, legal, and provider-neutral
+  target persistence records;
 - evaluates country membership only against local `country_region_rules`;
 - does not store other contours' base URLs, users, or legal entities;
 - does not call another contour's API.
@@ -68,10 +69,11 @@ No user or payment data may be silently replicated between contour data planes.
 | External billing account scope | Opaque deployment configuration referenced by `external_billing_account_id`; no Portal account table |
 | Customer-facing locale | `regions.default_locale` and web routes; not the contour key |
 
-The clean first-install migration bootstraps only the configured contour and
-its local country rules. The configured API scope is server-authoritative and
-a `ru` instance cannot create or authenticate a foreign-contour user through
-the public identity/legal API.
+The clean first-install migration currently supports exactly the configured
+`anytoolai` / `ru` scope and its RU country rule. Any different configured
+tenant/region pair fails instead of silently creating RU data. The configured
+API scope is server-authoritative and a `ru` instance cannot create or
+authenticate a foreign-contour user through the public identity/legal API.
 
 `us` is absent from the schema until an explicit enablement ticket adds it.
 

@@ -66,8 +66,9 @@ to have a row in this inventory.
 
 ## Scope and identity invariants
 
-- A production instance serves exactly one contour. The clean migration seeds
-  only the configured `INSTANCE_REGION` and its country membership.
+- A production instance serves exactly one contour. The current clean migration
+  accepts only configured `anytoolai` / `ru` and seeds its RU country
+  membership; any other configured scope fails before bootstrap completes.
 - `users` is unique by `(tenant_id, region, email_normalized)` and exposes the
   composite alternate key `(id, tenant_id, region)` to scoped dependants.
 - Sessions, legal records, paid-access state, and invalidation state preserve
@@ -219,10 +220,11 @@ facades.
 ## Bootstrap and runtime boundary
 
 The first-install migration owns schema creation and deterministic bootstrap of
-the configured contour, local country membership, legal entity, and six current
-RU legal document versions. The API legal seed is an idempotent, fail-closed
-runtime validation of the same canonical legal material; it is not a second
-schema or migration authority.
+the currently supported configured `anytoolai` / `ru` contour, local RU country
+membership, legal entity, and six current RU legal document versions. The API
+legal seed is an idempotent, fail-closed runtime validation of the same
+canonical legal material and rejects any other configured scope; it is not a
+second schema or migration authority.
 
 All fifteen target billing tables are empty after bootstrap. Step-4 application
 runtime does not populate them. Browser returns, callbacks, webhook receipt,

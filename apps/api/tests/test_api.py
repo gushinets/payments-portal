@@ -230,8 +230,22 @@ def test_session_contract_returns_only_canonical_identity() -> None:
             "email": "identity-session-only@example.com",
         },
     }
+    assert "product_state" not in response.json()
     session_parameters = app.openapi()["paths"]["/api/auth/session"]["get"].get("parameters", [])
     assert "product" not in {parameter["name"] for parameter in session_parameters}
+    session_schema = app.openapi()["paths"]["/api/auth/session"]["get"]["responses"]["200"]["content"][
+        "application/json"
+    ]["schema"]
+    assert session_schema == {"$ref": "#/components/schemas/SessionResponse"}
+    schemas = app.openapi()["components"]["schemas"]
+    assert set(schemas["SessionResponse"]["properties"]) == {"authenticated", "user"}
+    assert schemas["SessionResponse"]["properties"]["user"] == {"$ref": "#/components/schemas/SessionUserResponse"}
+    assert set(schemas["SessionUserResponse"]["properties"]) == {
+        "tenant_id",
+        "region",
+        "user_id",
+        "email",
+    }
 
 
 @pytest.mark.parametrize(
@@ -512,6 +526,12 @@ def test_legal_seed_replaces_existing_active_document_type() -> None:
         RU_DOCUMENT_VERSIONS[2]["id"],
     ]
     assert seeded_documents_count == len(RU_DOCUMENT_VERSIONS)
+
+
+def test_legal_seed_rejects_scope_without_supported_legal_bootstrap() -> None:
+    with SessionLocal() as db:
+        with pytest.raises(ValueError, match="current bootstrap supports only anytoolai/ru"):
+            seed_legal_documents(db, tenant_id="anytoolai", region="eu")
 
 
 def test_legal_seed_is_idempotent_for_exact_immutable_versions() -> None:
