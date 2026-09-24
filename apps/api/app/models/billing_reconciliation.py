@@ -246,7 +246,12 @@ class ExternalSubscription(Base):
         DateTime(timezone=True),
         nullable=True,
     )
-    reconciliation_fencing_token: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    reconciliation_fencing_token: Mapped[int] = mapped_column(
+        BigInteger,
+        nullable=False,
+        default=0,
+        server_default=text("0"),
+    )
     latest_observation_id: Mapped[uuid.UUID | None] = mapped_column(uuid_type, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

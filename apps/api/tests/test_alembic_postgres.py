@@ -654,13 +654,16 @@ ORM_ONLY_DEFAULT_COLUMNS = {
     ("legal_entities", "status"),
     ("document_versions", "is_active"),
     ("document_versions", "requires_acceptance"),
-    ("external_billing_customers", "binding_state"),
-    ("purchase_intents", "state"),
-    ("external_subscriptions", "reconciliation_fencing_token"),
-    ("billing_work_items", "priority"),
-    ("billing_work_items", "attempt_count"),
-    ("access_invalidation_outbox", "delivered_revision"),
-    ("access_invalidation_outbox", "attempt_count"),
+}
+
+DATABASE_DEFAULT_COLUMNS = {
+    ("external_billing_customers", "binding_state"): "'unbound'",
+    ("purchase_intents", "state"): "'created'",
+    ("external_subscriptions", "reconciliation_fencing_token"): "0",
+    ("billing_work_items", "priority"): "0",
+    ("billing_work_items", "attempt_count"): "0",
+    ("access_invalidation_outbox", "delivered_revision"): "0",
+    ("access_invalidation_outbox", "attempt_count"): "0",
 }
 
 pytestmark = pytest.mark.postgres
@@ -819,6 +822,11 @@ def test_clean_first_install_has_one_revision_and_exact_application_schema(
     for table_name, column_name in ORM_ONLY_DEFAULT_COLUMNS:
         columns = {column["name"]: column for column in inspector.get_columns(table_name)}
         assert columns[column_name]["default"] is None
+    for (table_name, column_name), expected_default in DATABASE_DEFAULT_COLUMNS.items():
+        columns = {column["name"]: column for column in inspector.get_columns(table_name)}
+        actual_default = columns[column_name]["default"]
+        assert actual_default is not None
+        assert actual_default.removesuffix("::text") == expected_default
 
 
 def test_clean_first_install_bootstraps_supported_configured_scope_and_empty_targets(

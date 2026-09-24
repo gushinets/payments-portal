@@ -15,6 +15,7 @@ from app.models._shared import (
     func,
     json_type,
     mapped_column,
+    text,
     uuid,
     uuid_type,
 )
@@ -85,8 +86,13 @@ class AccessInvalidationOutbox(Base):
     region: Mapped[str] = mapped_column(Text, nullable=False)
     user_id: Mapped[uuid.UUID] = mapped_column(uuid_type, nullable=False)
     pending_revision: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    delivered_revision: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
-    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    delivered_revision: Mapped[int] = mapped_column(
+        BigInteger,
+        nullable=False,
+        default=0,
+        server_default=text("0"),
+    )
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
     next_attempt_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     last_error_classification: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())

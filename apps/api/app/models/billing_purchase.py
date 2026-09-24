@@ -71,6 +71,7 @@ class ExternalBillingCustomer(Base):
         PersistedEnumType(ExternalBillingCustomerBindingState),
         nullable=False,
         default=ExternalBillingCustomerBindingState.UNBOUND,
+        server_default=text("'unbound'"),
     )
     binding_updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -197,6 +198,7 @@ class PurchaseIntent(Base):
         PersistedEnumType(PurchaseIntentState),
         nullable=False,
         default=PurchaseIntentState.CREATED,
+        server_default=text("'created'"),
     )
     accepted_snapshot_schema_version: Mapped[str] = mapped_column(Text, nullable=False)
     accepted_snapshot: Mapped[dict] = mapped_column(json_type, nullable=False)

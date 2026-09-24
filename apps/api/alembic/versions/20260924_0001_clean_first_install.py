@@ -587,7 +587,7 @@ def _create_projection_and_purchase_tables() -> None:
         sa.Column("user_id", UUID_TYPE, sa.ForeignKey("users.id", ondelete="RESTRICT"), nullable=False),
         sa.Column("billing_customer_key", sa.Text(), nullable=False),
         sa.Column("provider_customer_id", sa.Text(), nullable=True),
-        sa.Column("binding_state", sa.Text(), nullable=False),
+        sa.Column("binding_state", sa.Text(), nullable=False, server_default=sa.text("'unbound'")),
         sa.Column(
             "binding_updated_at",
             sa.DateTime(timezone=True),
@@ -641,7 +641,7 @@ def _create_projection_and_purchase_tables() -> None:
         sa.Column("mapping_revision_id", UUID_TYPE, nullable=False),
         sa.Column("accepted_commercial_fingerprint", sa.Text(), nullable=False),
         sa.Column("client_idempotency_key", sa.Text(), nullable=False),
-        sa.Column("state", sa.Text(), nullable=False),
+        sa.Column("state", sa.Text(), nullable=False, server_default=sa.text("'created'")),
         sa.Column("accepted_snapshot_schema_version", sa.Text(), nullable=False),
         sa.Column("accepted_snapshot", JSONB_TYPE, nullable=False),
         sa.Column("legal_acceptance_event_id", UUID_TYPE, nullable=False),
@@ -856,9 +856,9 @@ def _create_reconciliation_tables() -> None:
         sa.Column("coalescing_key", sa.Text(), nullable=True),
         sa.Column("payload_schema_version", sa.Text(), nullable=False),
         sa.Column("payload_document", JSONB_TYPE, nullable=False),
-        sa.Column("priority", sa.Integer(), nullable=False),
+        sa.Column("priority", sa.Integer(), nullable=False, server_default=sa.text("0")),
         sa.Column("next_attempt_at", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("attempt_count", sa.Integer(), nullable=False),
+        sa.Column("attempt_count", sa.Integer(), nullable=False, server_default=sa.text("0")),
         sa.Column("work_state", sa.Text(), nullable=False),
         sa.Column("lease_owner", sa.Text(), nullable=True),
         sa.Column("lease_expires_at", sa.DateTime(timezone=True), nullable=True),
@@ -938,7 +938,7 @@ def _create_reconciliation_tables() -> None:
         sa.Column("projection_valid_until", sa.DateTime(timezone=True), nullable=False),
         sa.Column("reconciliation_lease_owner", sa.Text(), nullable=True),
         sa.Column("reconciliation_lease_expires_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("reconciliation_fencing_token", sa.BigInteger(), nullable=False),
+        sa.Column("reconciliation_fencing_token", sa.BigInteger(), nullable=False, server_default=sa.text("0")),
         sa.Column("latest_observation_id", UUID_TYPE, nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
@@ -1412,8 +1412,8 @@ def _create_delivery_review_and_access_tables() -> None:
         sa.Column("region", sa.Text(), nullable=False),
         sa.Column("user_id", UUID_TYPE, nullable=False),
         sa.Column("pending_revision", sa.BigInteger(), nullable=False),
-        sa.Column("delivered_revision", sa.BigInteger(), nullable=False),
-        sa.Column("attempt_count", sa.Integer(), nullable=False),
+        sa.Column("delivered_revision", sa.BigInteger(), nullable=False, server_default=sa.text("0")),
+        sa.Column("attempt_count", sa.Integer(), nullable=False, server_default=sa.text("0")),
         sa.Column("next_attempt_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("last_error_classification", sa.Text(), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
@@ -1670,7 +1670,10 @@ def _create_immutability_guards() -> None:
                     OR NEW.access_scope_id IS DISTINCT FROM OLD.access_scope_id
                     OR NEW.subscription_id IS DISTINCT FROM OLD.subscription_id
                     OR NEW.purchase_intent_id IS DISTINCT FROM OLD.purchase_intent_id
-                    OR NEW.work_item_id IS DISTINCT FROM OLD.work_item_id
+                    OR (
+                        NEW.work_item_id IS DISTINCT FROM OLD.work_item_id
+                        AND NOT (OLD.work_item_id IS NOT NULL AND NEW.work_item_id IS NULL)
+                    )
                     OR NEW.basis_observation_id IS DISTINCT FROM OLD.basis_observation_id
                     OR NEW.observed_at IS DISTINCT FROM OLD.observed_at
                     OR NEW.effective_at IS DISTINCT FROM OLD.effective_at

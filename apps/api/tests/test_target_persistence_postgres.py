@@ -135,6 +135,101 @@ def _assert_database_error(engine: Engine, statement: str, parameters: dict[str,
         connection.execute(text(statement), parameters or {})
 
 
+def test_database_supplies_approved_target_defaults(migrated_database: Engine) -> None:
+    default_customer_id = uuid.UUID("20000000-0000-4000-8000-000000000010")
+    default_purchase_id = uuid.UUID("50000000-0000-4000-8000-000000000010")
+    default_subscription_id = uuid.UUID("70000000-0000-4000-8000-000000000010")
+    default_work_item_id = uuid.UUID("75000000-0000-4000-8000-000000000010")
+    default_outbox_id = uuid.UUID("a0000000-0000-4000-8000-000000000010")
+
+    with migrated_database.begin() as connection:
+        _seed_purchase_graph(connection)
+        connection.execute(
+            text(
+                "INSERT INTO external_billing_customers ("
+                "customer_id, external_billing_account_id, user_id, billing_customer_key) VALUES ("
+                ":id, 'account-default', :user_id, 'customer-key-default')"
+            ),
+            {"id": default_customer_id, "user_id": SECOND_USER_ID},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO purchase_intents ("
+                "purchase_intent_id, user_id, external_billing_account_id, customer_id, product_id, "
+                "billing_offer_id, mapping_revision_id, accepted_commercial_fingerprint, "
+                "client_idempotency_key, accepted_snapshot_schema_version, accepted_snapshot, "
+                "legal_acceptance_event_id) VALUES ("
+                ":id, :user_id, 'account-a', :customer_id, 'product-a', 'offer-a', :mapping_id, "
+                "'fingerprint-a', 'idempotency-default', 'snapshot-v1', '{}'::jsonb, :legal_event_id)"
+            ),
+            {
+                "id": default_purchase_id,
+                "user_id": USER_ID,
+                "customer_id": CUSTOMER_ID,
+                "mapping_id": MAPPING_ID,
+                "legal_event_id": LEGAL_EVENT_ID,
+            },
+        )
+        connection.execute(
+            text(
+                "INSERT INTO external_subscriptions ("
+                "subscription_id, external_billing_account_id, customer_id, user_id, product_id, "
+                "lifecycle_status, financial_access_status, commercial_access_status, "
+                "last_authoritative_read_at, projection_valid_until) VALUES ("
+                ":id, 'account-a', :customer_id, :user_id, 'product-a', 'active', 'allowed', "
+                "'eligible', now(), now() + interval '1 hour')"
+            ),
+            {"id": default_subscription_id, "customer_id": CUSTOMER_ID, "user_id": USER_ID},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO billing_work_items ("
+                "work_item_id, work_kind, scope_kind, scope_reference, payload_schema_version, "
+                "payload_document, next_attempt_at, work_state) VALUES ("
+                ":id, 'refresh', 'user', 'user-default', 'payload-v1', '{}'::jsonb, now(), 'pending')"
+            ),
+            {"id": default_work_item_id},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO access_invalidation_outbox ("
+                "outbox_id, tenant_id, region, user_id, pending_revision, next_attempt_at) VALUES ("
+                ":id, 'anytoolai', 'ru', :user_id, 1, now())"
+            ),
+            {"id": default_outbox_id, "user_id": USER_ID},
+        )
+
+        assert (
+            connection.execute(
+                text("SELECT binding_state FROM external_billing_customers WHERE customer_id = :id"),
+                {"id": default_customer_id},
+            ).scalar_one()
+            == "unbound"
+        )
+        assert (
+            connection.execute(
+                text("SELECT state FROM purchase_intents WHERE purchase_intent_id = :id"),
+                {"id": default_purchase_id},
+            ).scalar_one()
+            == "created"
+        )
+        assert (
+            connection.execute(
+                text("SELECT reconciliation_fencing_token FROM external_subscriptions WHERE subscription_id = :id"),
+                {"id": default_subscription_id},
+            ).scalar_one()
+            == 0
+        )
+        assert connection.execute(
+            text("SELECT priority, attempt_count FROM billing_work_items WHERE work_item_id = :id"),
+            {"id": default_work_item_id},
+        ).one() == (0, 0)
+        assert connection.execute(
+            text("SELECT delivered_revision, attempt_count FROM access_invalidation_outbox WHERE outbox_id = :id"),
+            {"id": default_outbox_id},
+        ).one() == (0, 0)
+
+
 def test_customer_slot_and_purchase_identity_constraints(migrated_database: Engine) -> None:
     with migrated_database.begin() as connection:
         _seed_purchase_graph(connection)
@@ -645,6 +740,66 @@ def test_target_identity_and_historical_evidence_immutability_guards(migrated_da
     )
     for statement, parameters in rejected_statements:
         _assert_database_error(migrated_database, statement, parameters)
+
+
+def test_observation_work_item_cleanup_allows_only_non_null_to_null(migrated_database: Engine) -> None:
+    observation_id = uuid.UUID("80000000-0000-4000-8000-000000000020")
+    first_work_item_id = uuid.UUID("75000000-0000-4000-8000-000000000020")
+    second_work_item_id = uuid.UUID("75000000-0000-4000-8000-000000000021")
+
+    with migrated_database.begin() as connection:
+        _seed_subscription_graph(connection)
+        for work_item_id in (first_work_item_id, second_work_item_id):
+            connection.execute(
+                text(
+                    "INSERT INTO billing_work_items ("
+                    "work_item_id, work_kind, scope_kind, scope_reference, payload_schema_version, "
+                    "payload_document, next_attempt_at, work_state) VALUES ("
+                    ":id, 'refresh', 'user', :scope_reference, 'payload-v1', '{}'::jsonb, now(), 'terminal')"
+                ),
+                {"id": work_item_id, "scope_reference": str(work_item_id)},
+            )
+        connection.execute(
+            text(
+                "INSERT INTO billing_state_observations ("
+                "observation_id, observation_kind, external_billing_account_id, user_id, product_id, "
+                "access_scope_id, work_item_id, observed_at, evidence_schema_version, evidence_document, "
+                "completeness_classification, result_classification) VALUES ("
+                ":id, 'target_product_discovery', 'account-a', :user_id, 'product-a', :scope_id, "
+                ":work_item_id, now(), 'evidence-v1', '{}'::jsonb, 'complete', 'discovered')"
+            ),
+            {
+                "id": observation_id,
+                "user_id": USER_ID,
+                "scope_id": SCOPE_ID,
+                "work_item_id": first_work_item_id,
+            },
+        )
+
+    _assert_database_error(
+        migrated_database,
+        "UPDATE billing_state_observations SET work_item_id = :replacement_id WHERE observation_id = :id",
+        {"replacement_id": second_work_item_id, "id": observation_id},
+    )
+
+    with migrated_database.begin() as connection:
+        connection.execute(
+            text("DELETE FROM billing_work_items WHERE work_item_id = :id"),
+            {"id": first_work_item_id},
+        )
+        assert (
+            connection.execute(
+                text("SELECT work_item_id FROM billing_state_observations WHERE observation_id = :id"),
+                {"id": observation_id},
+            ).scalar_one()
+            is None
+        )
+
+    _assert_database_error(
+        migrated_database,
+        "UPDATE billing_state_observations SET work_item_id = :replacement_id WHERE observation_id = :id",
+        {"replacement_id": second_work_item_id, "id": observation_id},
+    )
 
 
 def _concurrent_insert_outcomes(
