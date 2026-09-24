@@ -55,10 +55,7 @@ def _check_names(model: type) -> set[str]:
 
 
 def _indexes(model: type) -> dict[str, tuple[str, ...]]:
-    return {
-        index.name: tuple(column.name for column in index.columns)
-        for index in model.__table__.indexes
-    }
+    return {index.name: tuple(column.name for column in index.columns) for index in model.__table__.indexes}
 
 
 def test_target_reconciliation_model_columns_are_exact() -> None:
@@ -545,9 +542,7 @@ def test_provider_specific_identity_and_later_runtime_rules_remain_deferred() ->
     assert BillingWorkItem.__table__.c.attempt_count.default.arg == 0
     assert "remaining" not in PurchasedAllowance.__table__.c
     checks = (
-        constraint
-        for constraint in BillingWorkItem.__table__.constraints
-        if isinstance(constraint, CheckConstraint)
+        constraint for constraint in BillingWorkItem.__table__.constraints if isinstance(constraint, CheckConstraint)
     )
     assert not any("attempt_count" in str(constraint.sqltext) for constraint in checks)
 

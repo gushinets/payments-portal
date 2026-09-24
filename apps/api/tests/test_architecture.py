@@ -100,20 +100,11 @@ def test_removed_direct_provider_runtime_is_rejected(tmp_path: Path) -> None:
 
     errors = check_removed_billing_architecture(tmp_path)
 
-    assert any(
-        "payment_providers/contracts.py recreates removed" in error
-        for error in errors
-    )
-    assert any(
-        "integrations/cloudpayments/adapter.py recreates removed" in error
-        for error in errors
-    )
+    assert any("payment_providers/contracts.py recreates removed" in error for error in errors)
+    assert any("integrations/cloudpayments/adapter.py recreates removed" in error for error in errors)
     assert any("imports removed direct-provider runtime" in error for error in errors)
     assert any("references removed PaymentProviderRegistry" in error for error in errors)
-    assert any(
-        "apps/web/src/features/checkout/widget.ts references removed" in error
-        for error in errors
-    )
+    assert any("apps/web/src/features/checkout/widget.ts references removed" in error for error in errors)
 
 
 def test_relative_router_import_is_rejected(tmp_path: Path) -> None:
@@ -174,40 +165,16 @@ def test_removed_legacy_portal_billing_models_and_tables_are_rejected(tmp_path: 
 
     errors = check_removed_billing_architecture(tmp_path)
 
-    assert any(
-        "defines removed legacy billing model Product" in error for error in errors
-    )
-    assert any(
-        "defines removed legacy billing model Order" in error for error in errors
-    )
-    assert any(
-        "defines removed legacy billing model Trial" in error for error in errors
-    )
-    assert any(
-        "references removed legacy billing table products" in error
-        for error in errors
-    )
-    assert any(
-        "references removed legacy billing table orders" in error
-        for error in errors
-    )
-    assert any(
-        "references removed legacy billing table trials" in error
-        for error in errors
-    )
+    assert any("defines removed legacy billing model Product" in error for error in errors)
+    assert any("defines removed legacy billing model Order" in error for error in errors)
+    assert any("defines removed legacy billing model Trial" in error for error in errors)
+    assert any("references removed legacy billing table products" in error for error in errors)
+    assert any("references removed legacy billing table orders" in error for error in errors)
+    assert any("references removed legacy billing table trials" in error for error in errors)
     assert any("0002_restore_orders.py:1 references removed" in error for error in errors)
-    assert any(
-        "service.py:1 references removed legacy billing model Product" in error
-        for error in errors
-    )
-    assert any(
-        "service.py:1 references removed legacy billing model Trial" in error
-        for error in errors
-    )
-    assert any(
-        "defines removed legacy persisted enum PaymentStatus" in error
-        for error in errors
-    )
+    assert any("service.py:1 references removed legacy billing model Product" in error for error in errors)
+    assert any("service.py:1 references removed legacy billing model Trial" in error for error in errors)
+    assert any("defines removed legacy persisted enum PaymentStatus" in error for error in errors)
 
 
 def test_domain_service_trees_reject_fastapi_and_starlette_dependencies(tmp_path: Path) -> None:
@@ -578,8 +545,7 @@ def test_persistence_infrastructure_rejects_integration_dependencies(tmp_path: P
     errors = check_python_boundaries(tmp_path)
 
     assert any(
-        "apps/api/app/infrastructure/queries/payments.py:1 imports "
-        "app.integrations.external_billing" in error
+        "apps/api/app/infrastructure/queries/payments.py:1 imports app.integrations.external_billing" in error
         and "persistence dependency direction" in error
         for error in errors
     )
@@ -737,8 +703,7 @@ def test_cloudpayments_reintroduction_is_rejected_in_any_executable_api_module(t
     errors = check_removed_billing_architecture(tmp_path)
 
     assert any(
-        "apps/api/app/domains/billing/service.py references removed CloudPayments runtime" in error
-        for error in errors
+        "apps/api/app/domains/billing/service.py references removed CloudPayments runtime" in error for error in errors
     )
 
 

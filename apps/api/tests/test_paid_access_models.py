@@ -42,10 +42,7 @@ def _checks(model: type) -> dict[str, str]:
 
 
 def _indexes(model: type) -> dict[str, tuple[str, ...]]:
-    return {
-        index.name: tuple(column.name for column in index.columns)
-        for index in model.__table__.indexes
-    }
+    return {index.name: tuple(column.name for column in index.columns) for index in model.__table__.indexes}
 
 
 def test_paid_access_and_invalidation_columns_are_exact() -> None:
@@ -88,8 +85,7 @@ def test_paid_access_scope_is_identical_and_canonical() -> None:
         assert _unique_keys(model) == {("tenant_id", "region", "user_id")}
         assert _foreign_keys(model) == expected_foreign_key
         assert all(
-            model.__table__.c[column_name].nullable is False
-            for column_name in ("tenant_id", "region", "user_id")
+            model.__table__.c[column_name].nullable is False for column_name in ("tenant_id", "region", "user_id")
         )
         for foreign_key in model.__table__.foreign_keys:
             assert foreign_key.column.table.metadata is model.__table__.metadata
@@ -120,8 +116,4 @@ def test_paid_access_storage_remains_provider_neutral() -> None:
     forbidden_fragments = ("provider", "external", "status", "remaining")
     paid_access_columns = _column_names(PaidAccessState)
 
-    assert all(
-        fragment not in column_name
-        for column_name in paid_access_columns
-        for fragment in forbidden_fragments
-    )
+    assert all(fragment not in column_name for column_name in paid_access_columns for fragment in forbidden_fragments)

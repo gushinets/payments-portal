@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -424,8 +423,7 @@ def _write_external_billing_documentation_fixture(root: Path) -> None:
             "Status: historical boundary reference; direct-provider runtime removed\n"
         ),
         "docs/architecture/payment-portal-data-model.md": (
-            "Status: authoritative current-state schema reference\n"
-            "CURRENT AS-BUILT SCHEMA REFERENCE\n"
+            "Status: authoritative current-state schema reference\nCURRENT AS-BUILT SCHEMA REFERENCE\n"
         ),
         "docs/architecture/platform-kernel-contract.md": (
             "Status: superseded planned contract; retained historical context only\nSUPERSEDED CONTRACT NOTICE\n"
@@ -471,10 +469,8 @@ def test_external_billing_documentation_precedence_rejects_current_state_billing
     path = tmp_path / relative
     path.write_text(
         path.read_text(encoding="utf-8").replace(
-            "Status: historical/superseded reference only; not current-state "
-            "or target authority",
-            "Status: superseded target architecture; retained "
-            "historical/current-state reference",
+            "Status: historical/superseded reference only; not current-state or target authority",
+            "Status: superseded target architecture; retained historical/current-state reference",
         ),
         encoding="utf-8",
     )
@@ -791,55 +787,25 @@ def test_observability_docs_preserve_correlation_and_ownership_contract() -> Non
 def test_docs_preserve_provider_independent_failure_and_worker_boundaries() -> None:
     architecture = _normalized_document("ARCHITECTURE.md").replace("`", "").lower()
     reliability = _normalized_document("docs/RELIABILITY.md").replace("`", "").lower()
-    conventions = (
-        _normalized_document("docs/engineering/CODING_CONVENTIONS.md")
-        .replace("`", "")
-        .lower()
-    )
+    conventions = _normalized_document("docs/engineering/CODING_CONVENTIONS.md").replace("`", "").lower()
 
-    assert (
-        "the outer failure boundary for an operation owns application error reporting"
-        in architecture
-    )
-    assert (
-        "domain and application logic remain independent of direct sentry sdk reporting"
-        in architecture
-    )
-    assert (
-        "sentry_sdk access stays behind the application-owned "
-        "app.infrastructure.sentry adapter" in architecture
-    )
+    assert "the outer failure boundary for an operation owns application error reporting" in architecture
+    assert "domain and application logic remain independent of direct sentry sdk reporting" in architecture
+    assert "sentry_sdk access stays behind the application-owned app.infrastructure.sentry adapter" in architecture
     assert "each reportable failure has one reporting owner" in architecture
 
-    assert (
-        "lower layers do not report a failure that continues propagating"
-        in reliability
-    )
+    assert "lower layers do not report a failure that continues propagating" in reliability
     assert "domain and application logic do not import or call sentry_sdk" in reliability
+    assert "sdk access remains behind the application-owned app.infrastructure.sentry adapter" in reliability
+    assert "delegated unit creates, owns, and closes all of its synchronous resources" in reliability
+    assert "not move a request-created sqlalchemy session through a manual thread bridge" in reliability
     assert (
-        "sdk access remains behind the application-owned "
-        "app.infrastructure.sentry adapter" in reliability
+        "cancellation of an async waiter does not imply that the synchronous worker was forcibly stopped" in reliability
     )
-    assert (
-        "delegated unit creates, owns, and closes all of its synchronous resources"
-        in reliability
-    )
-    assert (
-        "not move a request-created sqlalchemy session through a manual thread bridge"
-        in reliability
-    )
-    assert (
-        "cancellation of an async waiter does not imply that the synchronous "
-        "worker was forcibly stopped" in reliability
-    )
-    assert (
-        "request id, trace/span, and structured-log context remain correlated"
-        in reliability
-    )
+    assert "request id, trace/span, and structured-log context remain correlated" in reliability
 
     assert (
-        "cancellation of the async waiter does not mean delegated synchronous "
-        "work was forcibly stopped" in conventions
+        "cancellation of the async waiter does not mean delegated synchronous work was forcibly stopped" in conventions
     )
     assert "request id and trace/span/log context must remain correlated" in conventions
 
@@ -879,12 +845,7 @@ def test_migration_legal_version_mismatch_is_rejected() -> None:
 
 def test_legal_version_guard_reads_the_clean_first_install_baseline() -> None:
     assert repo.INITIAL_MIGRATION == (
-        repo.ROOT
-        / "apps"
-        / "api"
-        / "alembic"
-        / "versions"
-        / "20260924_0001_clean_first_install.py"
+        repo.ROOT / "apps" / "api" / "alembic" / "versions" / "20260924_0001_clean_first_install.py"
     )
 
 

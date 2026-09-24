@@ -28,8 +28,11 @@ test("auth shell exposes no legacy commerce or provider execution", async ({
 
   await page.goto("/ru/auth-checkout");
 
-  await expect(page.getByText("auth-shell@example.com")).toBeVisible();
-  await expect(page.getByText("Оплата временно недоступна")).toBeVisible();
+  const authShell = page.getByRole("main");
+  await expect(
+    authShell.getByText("auth-shell@example.com", { exact: true })
+  ).toBeVisible();
+  await expect(authShell.getByText("Оплата временно недоступна")).toBeVisible();
   expect(
     requestedUrls.some((url) =>
       [

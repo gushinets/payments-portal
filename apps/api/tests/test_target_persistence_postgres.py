@@ -606,10 +606,7 @@ def test_target_identity_and_historical_evidence_immutability_guards(migrated_da
             {"id": PURCHASE_ID},
         )
         connection.execute(
-            text(
-                "UPDATE billing_state_observations SET resulting_access_revision = 1 "
-                "WHERE observation_id = :id"
-            ),
+            text("UPDATE billing_state_observations SET resulting_access_revision = 1 WHERE observation_id = :id"),
             {"id": observation_id},
         )
 
@@ -620,8 +617,7 @@ def test_target_identity_and_historical_evidence_immutability_guards(migrated_da
         ),
         ("DELETE FROM external_billing_customers WHERE customer_id = :id", {"id": CUSTOMER_ID}),
         (
-            "UPDATE commercial_mapping_revisions SET catalog_digest = 'changed' "
-            "WHERE mapping_revision_id = :id",
+            "UPDATE commercial_mapping_revisions SET catalog_digest = 'changed' WHERE mapping_revision_id = :id",
             {"id": MAPPING_ID},
         ),
         ("DELETE FROM commercial_mapping_revisions WHERE mapping_revision_id = :id", {"id": MAPPING_ID}),

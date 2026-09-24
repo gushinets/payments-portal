@@ -49,10 +49,7 @@ def _check_names(model: type) -> set[str]:
 
 
 def _indexes(model: type) -> dict[str, tuple[str, ...]]:
-    return {
-        index.name: tuple(column.name for column in index.columns)
-        for index in model.__table__.indexes
-    }
+    return {index.name: tuple(column.name for column in index.columns) for index in model.__table__.indexes}
 
 
 def _nullable_columns(model: type) -> set[str]:
@@ -250,10 +247,7 @@ def test_closed_vocabularies_use_canonical_text_backed_enums() -> None:
         assert column.type.enum_cls is enum_cls
 
     assert not isinstance(ExternalCreateOperation.__table__.c.operation_state.type, PersistedEnumType)
-    assert (
-        ExternalBillingCustomer.__table__.c.binding_state.default.arg
-        is ExternalBillingCustomerBindingState.UNBOUND
-    )
+    assert ExternalBillingCustomer.__table__.c.binding_state.default.arg is ExternalBillingCustomerBindingState.UNBOUND
     assert PurchaseIntent.__table__.c.state.default.arg is PurchaseIntentState.CREATED
 
 
