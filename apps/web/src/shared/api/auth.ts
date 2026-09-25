@@ -180,18 +180,23 @@ export async function getJson<T>(
 ): Promise<T> {
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => controller.abort(), requestTimeoutMs);
-  const response = await fetch(`${resolveApiBase()}${path}`, {
-    headers: {
-      Authorization: `Bearer ${token}`
-    },
-    signal: controller.signal
-  }).finally(() => window.clearTimeout(timeoutId));
 
-  if (!response.ok) {
-    throw await makeApiError(response);
+  try {
+    const response = await fetch(`${resolveApiBase()}${path}`, {
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
+      signal: controller.signal
+    });
+
+    if (!response.ok) {
+      throw await makeApiError(response);
+    }
+
+    return await decodeSuccessfulResponse(response, decoder);
+  } finally {
+    window.clearTimeout(timeoutId);
   }
-
-  return decodeSuccessfulResponse(response, decoder);
 }
 
 export function decodeRegisterResponse(payload: unknown): AuthResponse {
