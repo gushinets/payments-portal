@@ -19,13 +19,14 @@ from app.domains.identity.errors import (
     PasswordResetRateLimitedError,
 )
 import app.domains.legal.router as legal_router
+import app.http.errors as http_errors
 from app.domains.legal.errors import (
     DocumentVersionNotFoundError,
     InvalidAcceptanceTextHashError,
     LegalAcceptanceError,
 )
 from app.domains.legal.router import AcceptDocumentRequest
-from app.http_errors import app_error_handler
+from app.http.errors import app_error_handler
 from app.infrastructure.sentry import Operation
 from app.main import create_app
 
@@ -109,7 +110,7 @@ def test_unmapped_legal_acceptance_error_fails_closed_through_app_error_handler(
     with pytest.raises(UnmappedLegalAcceptanceError):
         call_legal_acceptance_route(monkeypatch, error)
 
-    with patch("app.http_errors.report_exception") as report_exception:
+    with patch("app.http.errors.report_exception") as report_exception:
         response = app_error_handler(make_request(), error)
 
     assert response.status_code == 500
@@ -135,7 +136,7 @@ def test_unmapped_app_errors_fail_closed_with_generic_detail() -> None:
         message_safe="internal application message",
         details_safe={"token": "secret-token"},
     )
-    with patch("app.http_errors.report_exception") as report_exception:
+    with patch("app.http.errors.report_exception") as report_exception:
         response = app_error_handler(make_request(), error)
 
     assert response.status_code == 500
@@ -146,7 +147,7 @@ def test_unmapped_app_errors_fail_closed_with_generic_detail() -> None:
 
 def test_unmapped_password_reset_errors_fail_closed_with_generic_detail() -> None:
     error = UnmappedPasswordResetError()
-    with patch("app.http_errors.report_exception") as report_exception:
+    with patch("app.http.errors.report_exception") as report_exception:
         response = app_error_handler(make_request(), error)
 
     assert response.status_code == 500
@@ -164,7 +165,7 @@ def test_unmapped_app_error_logs_one_bounded_failure(caplog: pytest.LogCaptureFi
     )
 
     with (
-        patch("app.http_errors.report_exception") as report_exception,
+        patch("app.http.errors.report_exception") as report_exception,
         caplog.at_level(logging.ERROR, logger="payment_portal.http"),
     ):
         response = app_error_handler(make_request(), error)
@@ -192,7 +193,7 @@ def test_semantic_app_error_logs_type_without_null_error_code(
 ) -> None:
     error = UnmappedPasswordResetError()
     with (
-        patch("app.http_errors.report_exception") as report_exception,
+        patch("app.http.errors.report_exception") as report_exception,
         caplog.at_level(logging.ERROR, logger="payment_portal.http"),
     ):
         response = app_error_handler(make_request(), error)
@@ -234,7 +235,7 @@ def test_unexpected_failures_are_converted_and_logged_safely(
     )
 
     with (
-        patch("app.http_errors.report_exception") as report_exception,
+        patch("app.http.errors.report_exception") as report_exception,
         caplog.at_level(logging.ERROR, logger="payment_portal.http"),
     ):
         response = TestClient(application).get(
@@ -287,7 +288,7 @@ def test_unexpected_failures_from_application_code_identify_the_origin_safely(
     )
 
     with (
-        patch("app.http_errors.report_exception") as report_exception,
+        patch("app.http.errors.report_exception") as report_exception,
         caplog.at_level(logging.ERROR, logger="payment_portal.http"),
     ):
         response = TestClient(application).get(
@@ -322,6 +323,20 @@ def test_unexpected_failures_from_application_code_identify_the_origin_safely(
     assert "Traceback (most recent call last)" not in caplog.text
 
 
+def test_http_error_location_preserves_application_root_after_module_move() -> None:
+    try:
+        parse_absolute_url("not-an-absolute-url")
+    except ValueError as error:
+        location = http_errors._application_failure_location(error)
+    else:
+        pytest.fail("parse_absolute_url unexpectedly accepted an invalid URL")
+
+    assert location is not None
+    assert location["module"] == "apps/api/app/core/url_validation.py"
+    assert location["function"] == "parse_absolute_url"
+    assert isinstance(location["line"], int)
+
+
 @pytest.mark.parametrize(
     ("error", "status_code", "code"),
     [
@@ -334,7 +349,7 @@ def test_password_reset_app_errors_use_structured_code(
     status_code: int,
     code: str,
 ) -> None:
-    with patch("app.http_errors.report_exception") as report_exception:
+    with patch("app.http.errors.report_exception") as report_exception:
         response = app_error_handler(make_request(), error)
 
     assert response.status_code == status_code

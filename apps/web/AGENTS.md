@@ -9,7 +9,8 @@ before frontend work.
 ## Conventions
 
 - Treat `response.json()`, `JSON.parse`, storage, and query params as
-  `unknown`. `as T` is not validation.
+  `unknown`. `as T` is not validation; production-source lint rejects direct
+  assertions on `response.json()` and `JSON.parse(...)` results.
 - HTTP helpers take a decoder or return `unknown`; a generic `T` without a
   decoder is forbidden. A decoder must fail on mismatch and have a test that
   rejects an invalid value.

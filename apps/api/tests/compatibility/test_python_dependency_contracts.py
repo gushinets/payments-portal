@@ -17,7 +17,7 @@ configure_api_test_environment()
 
 from app.core.settings import AppEnv, Settings  # noqa: E402
 from app.core.settings import _load_settings_env_file  # noqa: E402
-from app.domains.identity.router import normalize_email  # noqa: E402
+from app.domains.identity.services.auth import normalize_email  # noqa: E402
 from apps.api.tests.factories.auth import (  # noqa: E402
     LoginRequestFactory,
     RegisterRequestFactory,
@@ -387,14 +387,6 @@ def test_settings_expose_required_instance_scope_without_legacy_default_names() 
 
 def test_settings_do_not_expose_cloudpayments_activation() -> None:
     assert "cloudpayments_enabled" not in Settings.model_fields
-
-
-def test_identity_default_scope_compatibility_exports_use_instance_settings() -> None:
-    import app.domains.identity.session as session_module
-    from app.core.settings import settings
-
-    assert session_module.DEFAULT_TENANT_ID == settings.instance_tenant_id
-    assert session_module.DEFAULT_REGION == settings.instance_region
 
 
 def test_runtime_dotenv_preserves_os_getenv_consumers(

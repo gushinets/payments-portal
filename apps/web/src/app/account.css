@@ -1,0 +1,242 @@
+.two-column {
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(340px, 1.05fr);
+  gap: 10px;
+  align-items: stretch;
+}
+
+.checkout-grid > *,
+.checkout-equal-panel {
+  min-height: 100%;
+}
+
+.form-panel,
+.result-panel,
+.legal-panel {
+  border-radius: 20px;
+  padding: 24px;
+}
+
+#checkout-form {
+  scroll-margin-top: 96px;
+}
+
+.auth-modal-panel {
+  position: fixed;
+  top: 96px;
+  left: 50%;
+  z-index: 40;
+  width: min(520px, calc(100vw - 32px));
+  max-height: calc(100vh - 124px);
+  overflow-y: auto;
+  background: #17123f;
+  border-color: rgba(129, 140, 248, 0.28);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  transform: translateX(-50%);
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.55);
+}
+
+.auth-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 39;
+  padding: 0;
+  background: rgba(5, 8, 22, 0.82);
+  border: 0;
+  cursor: default;
+}
+
+.form-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.auth-page-section {
+  display: flex;
+  justify-content: center;
+}
+
+.auth-page-panel {
+  width: min(100%, 520px);
+}
+
+.auth-form-secondary-link {
+  width: fit-content;
+  font-weight: 700;
+}
+
+.checkout-form-grid {
+  gap: 14px;
+}
+
+.checkout-step-title {
+  margin: 0;
+}
+
+.field-label {
+  display: grid;
+  gap: 8px;
+  color: var(--txt);
+  font-weight: 700;
+}
+
+.input {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  color: var(--txt);
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  outline: none;
+}
+
+.input:focus {
+  border-color: rgba(129, 140, 248, 0.6);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.18);
+}
+
+.checkbox-label {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  gap: 10px;
+  align-items: start;
+  color: var(--txt2);
+  line-height: 1.5;
+}
+
+.checkbox-label input {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  accent-color: var(--acc);
+}
+
+.inline-link {
+  color: var(--teal);
+  text-decoration: none;
+}
+
+.inline-link:hover {
+  text-decoration: underline;
+}
+
+.notice {
+  padding: 12px 14px;
+  color: var(--txt2);
+  background: rgba(94, 234, 212, 0.08);
+  border: 1px solid rgba(94, 234, 212, 0.18);
+  border-radius: 12px;
+  line-height: 1.5;
+}
+
+.notice.error {
+  background: var(--red-bg);
+  border-color: rgba(248, 113, 113, 0.25);
+}
+
+.feedback-slot:empty {
+  display: none;
+}
+
+.legal-consent-box {
+  display: grid;
+  gap: 12px;
+}
+
+.legal-consent-list {
+  display: grid;
+  gap: 10px;
+}
+
+.legal-consent-item {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  gap: 10px;
+  align-items: start;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.legal-consent-item input {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  accent-color: var(--acc);
+}
+
+.legal-consent-item p {
+  margin: 6px 0 0;
+}
+
+.account-card,
+.telegram-placeholder,
+.auth-mode-row {
+  display: flex;
+  gap: 12px;
+}
+
+.account-card,
+.telegram-placeholder {
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+}
+
+.checkout-account-card {
+  gap: 18px;
+  padding: 18px 20px;
+}
+
+.checkout-account-card .card-copy {
+  margin: 6px 0 0;
+}
+
+.telegram-placeholder {
+  align-items: center;
+}
+
+.telegram-button {
+  flex: 0 0 auto;
+  min-width: 220px;
+}
+
+.auth-mode-row {
+  flex-wrap: wrap;
+}
+
+.account-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.78fr) minmax(0, 1.22fr);
+  gap: 10px;
+  margin-top: 28px;
+  align-items: stretch;
+}
+
+.account-summary-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.account-summary-email {
+  margin: 0;
+}
+
+.account-summary-actions {
+  display: flex;
+  margin-top: auto;
+  padding-top: 22px;
+}
+
+.account-products-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
+  gap: 10px;
+}

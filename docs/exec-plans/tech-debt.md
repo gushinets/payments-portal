@@ -3,7 +3,6 @@
 | Item | Owner | Status | Notes |
 |---|---|---|---|
 | Target catalog/subscription/entitlement model | ANY-71 | Planned | Out of scope for ANY-108 |
-| Checkout and payment transitions belong in billing | Follow-up after provider boundary | Observed | Two vertical slices in [the DDD-lite audit](../architecture/ddd-lite-audit.md); do not block ANY-165/166/167; not a repository/DTO programme |
 | Region Resolver browser client | Planned | Observed | Login/registration contour list; instance knows only the resolver origin; see [the contract](../architecture/region-resolver-contract.md) |
 | Contour-aware runtime and generation | Planned | Observed | Enforce server-side instance contour; reject foreign auth regions; remove foreign production seed data; parameterize legal generation/rendering, routes/locales, and provider registration before enabling another contour |
 | `eu` / `us` MoR and providers | Product decision | Observed | Seed `paddle` for DE/ES is not an accepted provider choice |

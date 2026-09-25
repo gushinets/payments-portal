@@ -8,6 +8,7 @@ import pytest
 os.environ["DATABASE_URL"] = "sqlite+pysqlite:///:memory:"
 
 from app.core.database import Base
+from app.main import create_app
 from app.models import (
     AccessInvalidationOutbox,
     AuthSession,
@@ -36,6 +37,7 @@ from app.models import (
     User,
 )
 from scripts.repo import (
+    check_removed_api_compatibility,
     check_persistence_transaction_ownership,
     check_python_boundaries,
     check_removed_billing_architecture,
@@ -46,6 +48,42 @@ def write_module(root: Path, relative: str, source: str) -> None:
     path = root / relative
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(source, encoding="utf-8")
+
+
+def test_ordinary_json_routes_have_named_openapi_response_schemas() -> None:
+    openapi = create_app().openapi()
+    schemas = openapi["components"]["schemas"]
+
+    for path, path_item in openapi["paths"].items():
+        for method in ("get", "put", "post", "delete", "options", "head", "patch", "trace"):
+            operation = path_item.get(method)
+            if operation is None:
+                continue
+
+            for status_code, response in operation["responses"].items():
+                if not status_code.startswith("2"):
+                    continue
+
+                for media_type, media_response in response.get("content", {}).items():
+                    if media_type != "application/json" and not media_type.endswith("+json"):
+                        continue
+
+                    response_schema = media_response.get("schema", {})
+                    endpoint = f"{method.upper()} {path} {status_code} {media_type}"
+                    assert set(response_schema) == {"$ref"}, f"{endpoint} must use a named response schema"
+                    schema_ref = response_schema["$ref"]
+                    assert schema_ref.startswith("#/components/schemas/"), endpoint
+                    schema_name = schema_ref.removeprefix("#/components/schemas/")
+                    assert schema_name in schemas, endpoint
+
+    assert "/metrics" not in openapi["paths"]
+
+    readiness_unavailable_schema = openapi["paths"]["/api/health/ready"]["get"]["responses"]["503"]["content"][
+        "application/json"
+    ]["schema"]
+    assert readiness_unavailable_schema == {
+        "$ref": "#/components/schemas/ReadinessUnavailableResponse",
+    }
 
 
 def test_ast_import_forms_are_rejected_with_actionable_errors(tmp_path: Path) -> None:
@@ -386,8 +424,8 @@ def test_active_domain_presentation_rejects_sqlalchemy_query_imports(tmp_path: P
     )
 
 
-def test_http_dependencies_rejects_persistence_orchestration_without_api_router(tmp_path: Path) -> None:
-    relative = "apps/api/app/http_dependencies.py"
+def test_http_dependency_module_rejects_persistence_orchestration_without_api_router(tmp_path: Path) -> None:
+    relative = "apps/api/app/http/dependencies.py"
     write_module(
         tmp_path,
         relative,
@@ -422,19 +460,18 @@ def test_active_domain_presentation_allows_session_di_and_inward_delegation(tmp_
         "from fastapi import APIRouter, Depends\n"
         "from sqlalchemy.orm import Session\n"
         "from app.core.database import get_db\n"
-        "from app.domains.identity.services.account import load_account_session\n\n"
+        "from app.domains.identity.services.auth import authenticate_session\n\n"
         "router = APIRouter()\n\n"
         "@router.get('/session')\n"
         "def get_session(db: Session = Depends(get_db)) -> object:\n"
-        "    del db\n"
-        "    return load_account_session(user=object())\n",
+        "    return authenticate_session(db, token='token', tenant_id='tenant', region='region')\n",
     )
 
     assert check_python_boundaries(tmp_path) == []
 
 
 def test_non_domain_api_router_is_not_active_domain_presentation(tmp_path: Path) -> None:
-    relative = "apps/api/app/health.py"
+    relative = "apps/api/app/http/health.py"
     write_module(
         tmp_path,
         relative,
@@ -681,13 +718,13 @@ def test_persistence_transaction_guard_ignores_unrelated_methods_and_other_layer
     assert check_persistence_transaction_ownership(tmp_path) == []
 
 
-def test_comments_strings_and_allowed_session_import_pass(tmp_path: Path) -> None:
+def test_comments_strings_and_allowed_settings_import_pass(tmp_path: Path) -> None:
     write_module(
         tmp_path,
         "apps/api/app/domains/legal/router.py",
         '"from app.integrations import provider"\n'
         "# from app.domains.identity import router\n"
-        "from app.domains.identity.session import DEFAULT_REGION\n",
+        "from app.core.settings import settings\n",
     )
 
     assert check_python_boundaries(tmp_path) == []
@@ -754,7 +791,7 @@ def test_identity_recovery_rejects_entrypoint_commerce_provider_and_trial_depend
     )
     write_module(
         tmp_path,
-        "apps/api/app/domains/identity/session.py",
+        "apps/api/app/domains/identity/passwords.py",
         "from app.payment_providers.contracts import PaymentProviderAdapter\n",
     )
 
@@ -774,7 +811,7 @@ def test_identity_recovery_rejects_entrypoint_commerce_provider_and_trial_depend
         for error in errors
     )
     assert any(
-        "apps/api/app/domains/identity/session.py:1 imports app.payment_providers.contracts" in error
+        "apps/api/app/domains/identity/passwords.py:1 imports app.payment_providers.contracts" in error
         for error in errors
     )
 
@@ -889,12 +926,31 @@ def test_identity_and_legal_models_require_explicit_tenant_scope() -> None:
     assert all(model.__table__.c.tenant_id.default is None for model in tenant_scoped_models)
 
 
-def test_legacy_auth_module_reexports_session_contract() -> None:
-    from app.auth import DEFAULT_REGION, DEFAULT_TENANT_ID, as_utc, get_current_session
-    from app.domains.identity.services import auth
-    from app.http_dependencies import get_current_session as http_get_current_session
+def test_removed_api_compatibility_paths_and_imports_are_rejected(tmp_path: Path) -> None:
+    write_module(
+        tmp_path,
+        "apps/api/app/database.py",
+        "from app.core.database import Base\n",
+    )
+    write_module(
+        tmp_path,
+        "apps/api/app/main.py",
+        "from app.database import Base\n",
+    )
 
-    assert DEFAULT_REGION == "ru"
-    assert DEFAULT_TENANT_ID == "anytoolai"
-    assert as_utc is auth.as_utc
-    assert get_current_session is http_get_current_session
+    errors = check_removed_api_compatibility(tmp_path)
+
+    assert any(error.startswith("apps/api/app/database.py is a removed compatibility path") for error in errors)
+    assert any("apps/api/app/main.py:1 imports removed compatibility module app.database" in error for error in errors)
+
+
+def test_canonical_api_imports_pass_removed_compatibility_guard(tmp_path: Path) -> None:
+    write_module(
+        tmp_path,
+        "apps/api/app/main.py",
+        "from app.core.database import Base\n"
+        "from app.http.dependencies import get_current_session\n"
+        "from app.http.errors import app_error_handler\n",
+    )
+
+    assert check_removed_api_compatibility(tmp_path) == []
