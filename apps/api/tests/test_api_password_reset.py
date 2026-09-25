@@ -493,5 +493,3 @@ def test_password_reset_email_delivery_failure_is_observable(monkeypatch, caplog
         str(original_error),
     ):
         assert marker not in caplog.text
-
-

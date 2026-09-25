@@ -511,4 +511,3 @@ def test_auth_sessions_and_login_require_active_user() -> None:
     assert login_response.json() == {"detail": {"code": "invalid_credentials"}}
     assert session_response.status_code == 401
     assert session_response.json() == {"detail": "invalid_session"}
-

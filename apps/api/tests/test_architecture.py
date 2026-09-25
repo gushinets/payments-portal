@@ -78,9 +78,9 @@ def test_ordinary_json_routes_have_named_openapi_response_schemas() -> None:
 
     assert "/metrics" not in openapi["paths"]
 
-    readiness_unavailable_schema = openapi["paths"]["/api/health/ready"]["get"]["responses"]["503"][
-        "content"
-    ]["application/json"]["schema"]
+    readiness_unavailable_schema = openapi["paths"]["/api/health/ready"]["get"]["responses"]["503"]["content"][
+        "application/json"
+    ]["schema"]
     assert readiness_unavailable_schema == {
         "$ref": "#/components/schemas/ReadinessUnavailableResponse",
     }
@@ -940,14 +940,8 @@ def test_removed_api_compatibility_paths_and_imports_are_rejected(tmp_path: Path
 
     errors = check_removed_api_compatibility(tmp_path)
 
-    assert any(
-        error.startswith("apps/api/app/database.py is a removed compatibility path")
-        for error in errors
-    )
-    assert any(
-        "apps/api/app/main.py:1 imports removed compatibility module app.database" in error
-        for error in errors
-    )
+    assert any(error.startswith("apps/api/app/database.py is a removed compatibility path") for error in errors)
+    assert any("apps/api/app/main.py:1 imports removed compatibility module app.database" in error for error in errors)
 
 
 def test_canonical_api_imports_pass_removed_compatibility_guard(tmp_path: Path) -> None:

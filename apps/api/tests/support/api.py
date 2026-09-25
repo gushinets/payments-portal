@@ -42,11 +42,7 @@ def create_legal_entity(
         tenant_id=tenant_id,
         region=region,
         name=f"AnytoolAI {region.upper()}",
-        entity_type=(
-            LegalEntityType.INDIVIDUAL_ENTREPRENEUR
-            if region == "ru"
-            else LegalEntityType.MERCHANT_OF_RECORD
-        ),
+        entity_type=(LegalEntityType.INDIVIDUAL_ENTREPRENEUR if region == "ru" else LegalEntityType.MERCHANT_OF_RECORD),
         legal_address="Draft legal address",
         support_email="support@example.com",
         status=LegalEntityStatus.ACTIVE,

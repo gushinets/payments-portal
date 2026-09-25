@@ -115,4 +115,3 @@ def test_readiness_database_failure_is_safe(monkeypatch) -> None:
 @pytest.mark.parametrize("path", ["/health", "/health/live", "/health/ready"])
 def test_legacy_health_routes_are_not_registered(path: str) -> None:
     assert client.get(path).status_code == 404
-
