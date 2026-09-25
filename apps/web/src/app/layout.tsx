@@ -1,5 +1,9 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "./catalog.css";
+import "./account.css";
+import "./legal-and-footer.css";
+import "./responsive.css";
 import {
   paymentMethods,
   seller,

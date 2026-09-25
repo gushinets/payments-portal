@@ -1,9 +1,4 @@
 {
   "defaultMaxLines": 500,
-  "exceptions": {
-    "apps/web/src/app/globals.css": {
-      "maxLines": 1150,
-      "reason": "Existing styles remain behavior-compatible while generated design tokens remove value drift."
-    }
-  }
+  "exceptions": {}
 }
