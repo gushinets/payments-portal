@@ -14,7 +14,7 @@ from fastapi import Depends, FastAPI  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app.core.database import get_db  # noqa: E402
-from app.http_dependencies import get_current_session  # noqa: E402
+from app.http.dependencies import get_current_session  # noqa: E402
 from app.main import create_app  # noqa: E402
 from app.models import AuthSession, User, UserStatus  # noqa: E402
 

@@ -10,17 +10,19 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.observability import traced
 from app.core.settings import settings
+from app.domains.legal.acceptance_text import (
+    build_acceptance_text,
+    expected_acceptance_text_hash,
+)
 from app.domains.legal.errors import (
     DocumentVersionNotFoundError,
     InvalidAcceptanceTextHashError,
 )
 from app.domains.legal.service import (
     accept_legal_document,
-    build_acceptance_text,
-    expected_acceptance_text_hash,
     get_active_required_documents,
 )
-from app.http_dependencies import get_current_session
+from app.http.dependencies import get_current_session
 from app.models import AuthSession, DocumentVersion, User
 
 router = APIRouter(prefix="/api/legal", tags=["legal"])

@@ -1,10 +1,6 @@
 {
   "defaultMaxLines": 500,
   "exceptions": {
-    "apps/api/app/domains/identity/router.py": {
-      "maxLines": 711,
-      "reason": "Behavior-preserving transition keeps legacy auth flow together until its product redesign; do not add identity routes here without extracting helpers."
-    },
     "apps/web/src/app/globals.css": {
       "maxLines": 1150,
       "reason": "Existing styles remain behavior-compatible while generated design tokens remove value drift."

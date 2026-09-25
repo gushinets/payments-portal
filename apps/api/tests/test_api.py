@@ -17,7 +17,7 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware  # noqa: E40
 from app.domains.identity.router import present_user  # noqa: E402
 import app.domains.identity.services.auth as identity_auth_service  # noqa: E402
 import app.domains.identity.services.password_reset as password_reset_service  # noqa: E402
-from app.database import Base, SessionLocal, engine  # noqa: E402
+from app.core.database import Base, SessionLocal, engine  # noqa: E402
 from app.infrastructure.persistence.password_reset import (  # noqa: E402
     prune_expired_password_reset_rate_limits,
     prune_expired_password_reset_tokens,
@@ -268,7 +268,7 @@ def test_generic_legal_acceptance_rejects_checkout_context(field: str, value: ob
             version="2026-09-generic-recurring-v1",
         )
         document_id = document.id
-        from app.domains.legal.service import expected_acceptance_text_hash
+        from app.domains.legal.acceptance_text import expected_acceptance_text_hash
 
         acceptance_text_hash = expected_acceptance_text_hash(document)
 
@@ -296,7 +296,7 @@ def test_generic_legal_acceptance_keeps_exact_version_event_evidence() -> None:
             version="2026-09-generic-recurring-v1",
         )
         document_id = document.id
-        from app.domains.legal.service import expected_acceptance_text_hash
+        from app.domains.legal.acceptance_text import expected_acceptance_text_hash
 
         acceptance_text_hash = expected_acceptance_text_hash(document)
 
@@ -334,7 +334,7 @@ def test_invalid_request_id_is_replaced() -> None:
 
 
 def test_seeded_registration_documents_are_accepted_atomically() -> None:
-    from app.domains.legal.service import expected_registration_acceptance_text_hash
+    from app.domains.legal.acceptance_text import expected_registration_acceptance_text_hash
 
     with SessionLocal() as db:
         legal_entity = db.query(LegalEntity).filter(LegalEntity.region == "ru").one()
@@ -395,7 +395,7 @@ def test_seeded_registration_documents_are_accepted_atomically() -> None:
 
 
 def test_registration_acceptance_statements_and_hashes_are_frozen() -> None:
-    from app.domains.legal.service import (
+    from app.domains.legal.acceptance_text import (
         REGISTRATION_OFFER_CONSENT_TEXT,
         REGISTRATION_PERSONAL_CONSENT_TEXT,
         expected_registration_acceptance_text_hash,
@@ -636,7 +636,7 @@ def test_required_document_acceptance_creates_a_new_noncommercial_event_per_call
         document = create_document_version(db, legal_entity=legal_entity, doc_type="offer")
 
     token = register_test_user(email="acceptance-events@example.com")
-    from app.domains.legal.service import expected_acceptance_text_hash
+    from app.domains.legal.acceptance_text import expected_acceptance_text_hash
 
     request_payload = {
         "document_version_id": str(document.id),

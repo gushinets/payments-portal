@@ -13,11 +13,9 @@ from app.domains.identity.services.auth import (
     AuthenticationResult,
     login_user,
     logout_session,
-    normalize_email as normalize_email,
     register_user,
 )
-from app.domains.identity.services.account import load_account_session
-from app.http_dependencies import get_current_session
+from app.http.dependencies import get_current_session
 from app.models import AuthSession, User
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -109,15 +107,13 @@ def get_session(
     current: Annotated[tuple[User, AuthSession], Depends(get_current_session)],
 ) -> SessionResponse:
     user, _ = current
-    result = load_account_session(user=user)
-
     return SessionResponse(
         authenticated=True,
         user=SessionUserResponse(
-            tenant_id=result.tenant_id,
-            region=result.region,
-            user_id=result.user_id,
-            email=result.email,
+            tenant_id=user.tenant_id,
+            region=user.region,
+            user_id=user.id,
+            email=user.email,
         ),
     )
 
