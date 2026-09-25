@@ -7,7 +7,7 @@
 | Program | `ANY-504` |
 | Ticket | `ANY-408` / Step 4A |
 | Baseline | `main` after merged `ANY-522` / PR #119 (`f6feebdacee856d543d8cf3e9d5b009040c7dd84`) |
-| Overall status | `todo` |
+| Overall status | `done` |
 | Execution order | Sequential: implement one step -> manual verification -> commit -> next step |
 | Steps / commits | 6 |
 | Fixed predecessor baseline | `ANY-505`, `ANY-509`, `ANY-510`, `ANY-522` |
@@ -64,7 +64,7 @@ Do not implement LBX/provider runtime semantics, paid-access delivery, Platform 
 
 ## Step 1 — Consolidate API structure and remove compatibility debt
 
-**Status:** `todo`
+**Status:** `done`
 
 ### Goal
 
@@ -149,7 +149,7 @@ Additionally verify by repository search that no imports of deleted compatibilit
 
 ## Step 2 — Make API response contracts explicit and enforce OpenAPI guardrails
 
-**Status:** `todo`
+**Status:** `done`
 
 ### Goal
 
@@ -218,7 +218,7 @@ Review the generated OpenAPI diff before committing.
 
 ## Step 3 — Harden the web JSON boundary
 
-**Status:** `todo`
+**Status:** `done`
 
 ### Goal
 
@@ -269,7 +269,7 @@ npm run typecheck:web
 
 ## Step 4 — Split global stylesheet without visual changes
 
-**Status:** `todo`
+**Status:** `done`
 
 ### Goal
 
@@ -326,7 +326,7 @@ Review representative desktop/mobile browser evidence for the touched screens wh
 
 ## Step 5 — Split reconciliation ORM source without schema changes
 
-**Status:** `todo`
+**Status:** `done`
 
 ### Goal
 
@@ -388,7 +388,7 @@ If `generate:check` shows database-schema drift, do not regenerate or accept it.
 
 ## Step 6 — Reconcile affected docs, remove obsolete active plans, and finalize the baseline
 
-**Status:** `todo`
+**Status:** `done`
 
 ### Goal
 
