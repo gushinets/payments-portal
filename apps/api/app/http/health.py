@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -9,6 +12,18 @@ import app.core.database as database
 
 
 health_router = APIRouter(prefix="/api/health", tags=["health"])
+
+
+class LivenessResponse(BaseModel):
+    status: Literal["alive"]
+
+
+class ReadinessSuccessResponse(BaseModel):
+    status: Literal["ready"]
+
+
+class ReadinessUnavailableResponse(BaseModel):
+    status: Literal["not_ready"]
 
 
 def database_is_ready() -> bool:
@@ -27,10 +42,14 @@ def readiness_response() -> JSONResponse:
 
 
 @health_router.get("/live")
-def liveness():
-    return {"status": "alive"}
+def liveness() -> LivenessResponse:
+    return LivenessResponse(status="alive")
 
 
-@health_router.get("/ready")
-def readiness():
+@health_router.get(
+    "/ready",
+    response_model=ReadinessSuccessResponse,
+    responses={503: {"model": ReadinessUnavailableResponse}},
+)
+def readiness() -> JSONResponse:
     return readiness_response()

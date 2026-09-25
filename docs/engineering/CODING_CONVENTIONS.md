@@ -219,10 +219,7 @@ unsafe-assertion rule as `error` only after current `json()` /
 These checks are **not** implemented by this documentation change. They need
 separate Linear tickets:
 
-1. Architecture test: every JSON route has a named response schema in generated
-   OpenAPI, or appears on `raw_response_routes` or the frozen
-   `legacy_untyped_routes` list beside that test.
-2. ESLint/AST: forbid `response.json() as T` and `JSON.parse(...) as T` in
+1. ESLint/AST: forbid `response.json() as T` and `JSON.parse(...) as T` in
    production `src/` after those call sites use decoders.
-3. The decoder rejection test in Common item 5 applies as soon as a decoder is
+2. The decoder rejection test in Common item 5 applies as soon as a decoder is
    added.

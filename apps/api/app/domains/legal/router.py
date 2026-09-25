@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
@@ -35,35 +35,67 @@ class AcceptDocumentRequest(BaseModel):
     acceptance_text_hash: str = Field(min_length=32, max_length=256)
 
 
-def present_document(document: DocumentVersion) -> dict:
-    return {
-        "document_version_id": str(document.id),
-        "tenant_id": document.tenant_id,
-        "region": document.region,
-        "legal_entity_id": str(document.legal_entity_id),
-        "doc_type": document.doc_type,
-        "version": document.version,
-        "title": document.title,
-        "url_path": document.url_path,
-        "content_hash": document.content_hash,
-        "published_at": document.published_at.isoformat(),
-        "effective_from": document.effective_from.isoformat(),
-        "requires_acceptance": document.requires_acceptance,
-        "acceptance_text": build_acceptance_text(document),
-        "acceptance_text_hash": expected_acceptance_text_hash(document),
-    }
+class RequiredDocumentResponse(BaseModel):
+    document_version_id: str
+    tenant_id: str
+    region: str
+    legal_entity_id: str
+    doc_type: str
+    version: str
+    title: str
+    url_path: str
+    content_hash: str
+    published_at: str
+    effective_from: str
+    requires_acceptance: bool
+    acceptance_text: str
+    acceptance_text_hash: str
+
+
+class RequiredDocumentsResponse(BaseModel):
+    documents: list[RequiredDocumentResponse]
+
+
+class AcceptDocumentResponse(BaseModel):
+    status: Literal["accepted"]
+    acceptance_id: str
+    document_version_id: str
+    doc_type: str
+    version: str
+    accepted_at: str
+
+
+def present_document(document: DocumentVersion) -> RequiredDocumentResponse:
+    return RequiredDocumentResponse(
+        document_version_id=str(document.id),
+        tenant_id=document.tenant_id,
+        region=document.region,
+        legal_entity_id=str(document.legal_entity_id),
+        doc_type=document.doc_type,
+        version=document.version,
+        title=document.title,
+        url_path=document.url_path,
+        content_hash=document.content_hash,
+        published_at=document.published_at.isoformat(),
+        effective_from=document.effective_from.isoformat(),
+        requires_acceptance=document.requires_acceptance,
+        acceptance_text=build_acceptance_text(document),
+        acceptance_text_hash=expected_acceptance_text_hash(document),
+    )
 
 
 @router.get("/required-documents")
 def list_required_documents(
     db: Annotated[Session, Depends(get_db)],
-):
+) -> RequiredDocumentsResponse:
     documents = get_active_required_documents(
         db,
         tenant_id=settings.instance_tenant_id,
         region=settings.instance_region,
     )
-    return {"documents": [present_document(document) for document in documents]}
+    return RequiredDocumentsResponse(
+        documents=[present_document(document) for document in documents],
+    )
 
 
 @router.post("/acceptances")
@@ -73,7 +105,7 @@ def accept_document(
     request: Request,
     current: Annotated[tuple[User, AuthSession], Depends(get_current_session)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> AcceptDocumentResponse:
     user, _ = current
     try:
         result = accept_legal_document(
@@ -89,11 +121,11 @@ def accept_document(
     except InvalidAcceptanceTextHashError as exc:
         raise HTTPException(status_code=400, detail=exc.code) from exc
 
-    return {
-        "status": "accepted",
-        "acceptance_id": str(result.acceptance_id),
-        "document_version_id": str(result.document_version_id),
-        "doc_type": result.doc_type,
-        "version": result.version,
-        "accepted_at": result.accepted_at.isoformat(),
-    }
+    return AcceptDocumentResponse(
+        status="accepted",
+        acceptance_id=str(result.acceptance_id),
+        document_version_id=str(result.document_version_id),
+        doc_type=result.doc_type,
+        version=result.version,
+        accepted_at=result.accepted_at.isoformat(),
+    )

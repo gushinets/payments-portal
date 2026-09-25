@@ -8,6 +8,7 @@ import pytest
 os.environ["DATABASE_URL"] = "sqlite+pysqlite:///:memory:"
 
 from app.core.database import Base
+from app.main import create_app
 from app.models import (
     AccessInvalidationOutbox,
     AuthSession,
@@ -47,6 +48,42 @@ def write_module(root: Path, relative: str, source: str) -> None:
     path = root / relative
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(source, encoding="utf-8")
+
+
+def test_ordinary_json_routes_have_named_openapi_response_schemas() -> None:
+    openapi = create_app().openapi()
+    schemas = openapi["components"]["schemas"]
+
+    for path, path_item in openapi["paths"].items():
+        for method in ("get", "put", "post", "delete", "options", "head", "patch", "trace"):
+            operation = path_item.get(method)
+            if operation is None:
+                continue
+
+            for status_code, response in operation["responses"].items():
+                if not status_code.startswith("2"):
+                    continue
+
+                for media_type, media_response in response.get("content", {}).items():
+                    if media_type != "application/json" and not media_type.endswith("+json"):
+                        continue
+
+                    response_schema = media_response.get("schema", {})
+                    endpoint = f"{method.upper()} {path} {status_code} {media_type}"
+                    assert set(response_schema) == {"$ref"}, f"{endpoint} must use a named response schema"
+                    schema_ref = response_schema["$ref"]
+                    assert schema_ref.startswith("#/components/schemas/"), endpoint
+                    schema_name = schema_ref.removeprefix("#/components/schemas/")
+                    assert schema_name in schemas, endpoint
+
+    assert "/metrics" not in openapi["paths"]
+
+    readiness_unavailable_schema = openapi["paths"]["/api/health/ready"]["get"]["responses"]["503"][
+        "content"
+    ]["application/json"]["schema"]
+    assert readiness_unavailable_schema == {
+        "$ref": "#/components/schemas/ReadinessUnavailableResponse",
+    }
 
 
 def test_ast_import_forms_are_rejected_with_actionable_errors(tmp_path: Path) -> None:

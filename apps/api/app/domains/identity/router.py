@@ -40,18 +40,34 @@ class SessionUserResponse(BaseModel):
     email: EmailStr
 
 
+class RegisterResponse(BaseModel):
+    status: Literal["registered"]
+    token: str
+    user: SessionUserResponse
+
+
+class LoginResponse(BaseModel):
+    status: Literal["authenticated"]
+    token: str
+    user: SessionUserResponse
+
+
 class SessionResponse(BaseModel):
     authenticated: Literal[True]
     user: SessionUserResponse
 
 
-def present_user(result: AuthenticationResult) -> dict:
-    return {
-        "tenant_id": result.tenant_id,
-        "region": result.region,
-        "user_id": str(result.user_id),
-        "email": result.email,
-    }
+class LogoutResponse(BaseModel):
+    status: Literal["logged_out"]
+
+
+def present_user(result: AuthenticationResult) -> SessionUserResponse:
+    return SessionUserResponse(
+        tenant_id=result.tenant_id,
+        region=result.region,
+        user_id=str(result.user_id),
+        email=result.email,
+    )
 
 
 @router.post("/register")
@@ -59,7 +75,7 @@ def register(
     payload: RegisterRequest,
     request: Request,
     db: Annotated[Session, Depends(get_db)],
-):
+) -> RegisterResponse:
     result = register_user(
         db,
         tenant_id=settings.instance_tenant_id,
@@ -72,11 +88,11 @@ def register(
         user_agent=request.headers.get("user-agent"),
     )
 
-    return {
-        "status": "registered",
-        "token": result.token,
-        "user": present_user(result),
-    }
+    return RegisterResponse(
+        status="registered",
+        token=result.token,
+        user=present_user(result),
+    )
 
 
 @router.post("/login")
@@ -84,7 +100,7 @@ def login(
     payload: LoginRequest,
     request: Request,
     db: Annotated[Session, Depends(get_db)],
-):
+) -> LoginResponse:
     result = login_user(
         db,
         tenant_id=settings.instance_tenant_id,
@@ -95,11 +111,11 @@ def login(
         user_agent=request.headers.get("user-agent"),
     )
 
-    return {
-        "status": "authenticated",
-        "token": result.token,
-        "user": present_user(result),
-    }
+    return LoginResponse(
+        status="authenticated",
+        token=result.token,
+        user=present_user(result),
+    )
 
 
 @router.get("/session")
@@ -122,7 +138,7 @@ def get_session(
 def logout(
     current: Annotated[tuple[User, AuthSession], Depends(get_current_session)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> LogoutResponse:
     _, session = current
     logout_session(db, auth_session=session)
-    return {"status": "logged_out"}
+    return LogoutResponse(status="logged_out")
