@@ -2,6 +2,7 @@
   "components": {
     "schemas": {
       "AcceptDocumentRequest": {
+        "additionalProperties": false,
         "properties": {
           "acceptance_text_hash": {
             "maxLength": 256,
@@ -13,56 +14,6 @@
             "format": "uuid",
             "title": "Document Version Id",
             "type": "string"
-          },
-          "entrypoint_type": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Entrypoint Type"
-          },
-          "entrypoint_value": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Entrypoint Value"
-          },
-          "metadata": {
-            "additionalProperties": true,
-            "title": "Metadata",
-            "type": "object"
-          },
-          "plan_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Plan Id"
-          },
-          "source_url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Source Url"
           }
         },
         "required": [
@@ -71,641 +22,6 @@
         ],
         "title": "AcceptDocumentRequest",
         "type": "object"
-      },
-      "AccountSubscriptionCancellationResponse": {
-        "properties": {
-          "cancel_requested_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cancel Requested At"
-          },
-          "canceled_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Canceled At"
-          }
-        },
-        "required": [
-          "cancel_requested_at",
-          "canceled_at"
-        ],
-        "title": "AccountSubscriptionCancellationResponse",
-        "type": "object"
-      },
-      "AccountSubscriptionCurrentPeriodResponse": {
-        "properties": {
-          "ends_at": {
-            "format": "date-time",
-            "title": "Ends At",
-            "type": "string"
-          },
-          "starts_at": {
-            "format": "date-time",
-            "title": "Starts At",
-            "type": "string"
-          }
-        },
-        "required": [
-          "starts_at",
-          "ends_at"
-        ],
-        "title": "AccountSubscriptionCurrentPeriodResponse",
-        "type": "object"
-      },
-      "AccountSubscriptionEntitlementValidityResponse": {
-        "properties": {
-          "status": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/EntitlementStatus"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "valid_from": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Valid From"
-          },
-          "valid_until": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Valid Until"
-          }
-        },
-        "required": [
-          "status",
-          "valid_from",
-          "valid_until"
-        ],
-        "title": "AccountSubscriptionEntitlementValidityResponse",
-        "type": "object"
-      },
-      "AccountSubscriptionPlanResponse": {
-        "properties": {
-          "billing_period": {
-            "title": "Billing Period",
-            "type": "string"
-          },
-          "code": {
-            "title": "Code",
-            "type": "string"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "plan_id": {
-            "format": "uuid",
-            "title": "Plan Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "plan_id",
-          "code",
-          "name",
-          "billing_period"
-        ],
-        "title": "AccountSubscriptionPlanResponse",
-        "type": "object"
-      },
-      "AccountSubscriptionResponse": {
-        "properties": {
-          "cancellation": {
-            "$ref": "#/components/schemas/AccountSubscriptionCancellationResponse"
-          },
-          "current_period": {
-            "$ref": "#/components/schemas/AccountSubscriptionCurrentPeriodResponse"
-          },
-          "entitlement_validity": {
-            "$ref": "#/components/schemas/AccountSubscriptionEntitlementValidityResponse"
-          },
-          "plan": {
-            "$ref": "#/components/schemas/AccountSubscriptionPlanResponse"
-          },
-          "renewal_mode": {
-            "$ref": "#/components/schemas/SubscriptionRenewalMode"
-          },
-          "scope": {
-            "$ref": "#/components/schemas/AccountSubscriptionScopeResponse"
-          },
-          "status": {
-            "$ref": "#/components/schemas/SubscriptionStatus"
-          },
-          "subscription_id": {
-            "format": "uuid",
-            "title": "Subscription Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "subscription_id",
-          "plan",
-          "scope",
-          "status",
-          "renewal_mode",
-          "current_period",
-          "cancellation",
-          "entitlement_validity"
-        ],
-        "title": "AccountSubscriptionResponse",
-        "type": "object"
-      },
-      "AccountSubscriptionScopeResponse": {
-        "properties": {
-          "bundle_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Bundle Id"
-          },
-          "included_product_ids": {
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "title": "Included Product Ids",
-            "type": "array"
-          },
-          "product_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Product Id"
-          },
-          "scope_type": {
-            "$ref": "#/components/schemas/SubscriptionScopeType"
-          }
-        },
-        "required": [
-          "scope_type",
-          "product_id",
-          "bundle_id",
-          "included_product_ids"
-        ],
-        "title": "AccountSubscriptionScopeResponse",
-        "type": "object"
-      },
-      "AccountSubscriptionsResponse": {
-        "properties": {
-          "subscriptions": {
-            "items": {
-              "$ref": "#/components/schemas/AccountSubscriptionResponse"
-            },
-            "title": "Subscriptions",
-            "type": "array"
-          }
-        },
-        "required": [
-          "subscriptions"
-        ],
-        "title": "AccountSubscriptionsResponse",
-        "type": "object"
-      },
-      "BillingPeriod": {
-        "enum": [
-          "day",
-          "days",
-          "week",
-          "weeks",
-          "month",
-          "months",
-          "year",
-          "years",
-          "annual",
-          "yearly"
-        ],
-        "title": "BillingPeriod",
-        "type": "string"
-      },
-      "CatalogPlanResponse": {
-        "properties": {
-          "billing_period": {
-            "$ref": "#/components/schemas/BillingPeriod"
-          },
-          "code": {
-            "title": "Code",
-            "type": "string"
-          },
-          "currency": {
-            "title": "Currency",
-            "type": "string"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "plan_id": {
-            "format": "uuid",
-            "title": "Plan Id",
-            "type": "string"
-          },
-          "price_amount_minor": {
-            "title": "Price Amount Minor",
-            "type": "integer"
-          },
-          "renewal_mode": {
-            "$ref": "#/components/schemas/SubscriptionRenewalMode"
-          },
-          "trial_days": {
-            "title": "Trial Days",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "plan_id",
-          "code",
-          "name",
-          "price_amount_minor",
-          "currency",
-          "billing_period",
-          "renewal_mode",
-          "trial_days"
-        ],
-        "title": "CatalogPlanResponse",
-        "type": "object"
-      },
-      "CatalogProductResponse": {
-        "properties": {
-          "code": {
-            "title": "Code",
-            "type": "string"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "plan": {
-            "$ref": "#/components/schemas/CatalogPlanResponse"
-          },
-          "product_id": {
-            "format": "uuid",
-            "title": "Product Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "product_id",
-          "code",
-          "name",
-          "description",
-          "plan"
-        ],
-        "title": "CatalogProductResponse",
-        "type": "object"
-      },
-      "CatalogProductsResponse": {
-        "properties": {
-          "products": {
-            "items": {
-              "$ref": "#/components/schemas/CatalogProductResponse"
-            },
-            "title": "Products",
-            "type": "array"
-          }
-        },
-        "required": [
-          "products"
-        ],
-        "title": "CatalogProductsResponse",
-        "type": "object"
-      },
-      "CheckoutAction": {
-        "additionalProperties": false,
-        "description": "Data returned to the client to start checkout with a payment provider.",
-        "properties": {
-          "account_id": {
-            "title": "Account Id",
-            "type": "string"
-          },
-          "amount": {
-            "title": "Amount",
-            "type": "number"
-          },
-          "amount_minor": {
-            "title": "Amount Minor",
-            "type": "integer"
-          },
-          "currency": {
-            "title": "Currency",
-            "type": "string"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description"
-          },
-          "experience": {
-            "enum": [
-              "widget",
-              "redirect",
-              "embedded"
-            ],
-            "title": "Experience",
-            "type": "string"
-          },
-          "merchant_order_id": {
-            "title": "Merchant Order Id",
-            "type": "string"
-          },
-          "metadata": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Metadata"
-          },
-          "mode": {
-            "title": "Mode",
-            "type": "string"
-          },
-          "provider": {
-            "title": "Provider",
-            "type": "string"
-          },
-          "provider_invoice_id": {
-            "title": "Provider Invoice Id",
-            "type": "string"
-          },
-          "public_identifier": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Public Identifier"
-          }
-        },
-        "required": [
-          "provider",
-          "experience",
-          "mode",
-          "public_identifier",
-          "amount_minor",
-          "amount",
-          "currency",
-          "merchant_order_id",
-          "provider_invoice_id",
-          "account_id"
-        ],
-        "title": "CheckoutAction",
-        "type": "object"
-      },
-      "CheckoutIntentRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "auto_renew": {
-            "default": false,
-            "title": "Auto Renew",
-            "type": "boolean"
-          },
-          "entrypoint_type": {
-            "title": "Entrypoint Type",
-            "type": "string"
-          },
-          "entrypoint_value": {
-            "title": "Entrypoint Value",
-            "type": "string"
-          },
-          "frontend_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Frontend Id"
-          },
-          "plan_id": {
-            "format": "uuid",
-            "title": "Plan Id",
-            "type": "string"
-          },
-          "recurring_consent_acceptance_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Recurring Consent Acceptance Id"
-          },
-          "source_url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Source Url"
-          }
-        },
-        "required": [
-          "plan_id",
-          "entrypoint_type",
-          "entrypoint_value"
-        ],
-        "title": "CheckoutIntentRequest",
-        "type": "object"
-      },
-      "CheckoutIntentResponse": {
-        "properties": {
-          "checkout": {
-            "$ref": "#/components/schemas/CheckoutPaymentResponse"
-          },
-          "purchase": {
-            "$ref": "#/components/schemas/CheckoutPurchaseResponse"
-          },
-          "status": {
-            "const": "pending",
-            "default": "pending",
-            "title": "Status",
-            "type": "string"
-          }
-        },
-        "required": [
-          "purchase",
-          "checkout"
-        ],
-        "title": "CheckoutIntentResponse",
-        "type": "object"
-      },
-      "CheckoutPaymentResponse": {
-        "properties": {
-          "action": {
-            "$ref": "#/components/schemas/CheckoutAction"
-          },
-          "amount": {
-            "title": "Amount",
-            "type": "number"
-          },
-          "amount_minor": {
-            "title": "Amount Minor",
-            "type": "integer"
-          },
-          "currency": {
-            "title": "Currency",
-            "type": "string"
-          }
-        },
-        "required": [
-          "amount_minor",
-          "amount",
-          "currency",
-          "action"
-        ],
-        "title": "CheckoutPaymentResponse",
-        "type": "object"
-      },
-      "CheckoutPurchaseResponse": {
-        "properties": {
-          "bundle_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Bundle Id"
-          },
-          "invoice_id": {
-            "title": "Invoice Id",
-            "type": "string"
-          },
-          "order_id": {
-            "format": "uuid",
-            "title": "Order Id",
-            "type": "string"
-          },
-          "plan_code": {
-            "title": "Plan Code",
-            "type": "string"
-          },
-          "plan_id": {
-            "format": "uuid",
-            "title": "Plan Id",
-            "type": "string"
-          },
-          "plan_name": {
-            "title": "Plan Name",
-            "type": "string"
-          },
-          "product_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Product Id"
-          },
-          "scope_type": {
-            "$ref": "#/components/schemas/SubscriptionScopeType"
-          }
-        },
-        "required": [
-          "order_id",
-          "plan_id",
-          "plan_code",
-          "plan_name",
-          "scope_type",
-          "product_id",
-          "bundle_id",
-          "invoice_id"
-        ],
-        "title": "CheckoutPurchaseResponse",
-        "type": "object"
-      },
-      "EntitlementStatus": {
-        "enum": [
-          "active",
-          "expired",
-          "revoked",
-          "superseded"
-        ],
-        "title": "EntitlementStatus",
-        "type": "string"
       },
       "HTTPValidationError": {
         "properties": {
@@ -808,35 +124,53 @@
         "title": "RegisterRequest",
         "type": "object"
       },
-      "SubscriptionRenewalMode": {
-        "enum": [
-          "manual",
-          "automatic"
+      "SessionResponse": {
+        "properties": {
+          "authenticated": {
+            "const": true,
+            "title": "Authenticated",
+            "type": "boolean"
+          },
+          "user": {
+            "$ref": "#/components/schemas/SessionUserResponse"
+          }
+        },
+        "required": [
+          "authenticated",
+          "user"
         ],
-        "title": "SubscriptionRenewalMode",
-        "type": "string"
+        "title": "SessionResponse",
+        "type": "object"
       },
-      "SubscriptionScopeType": {
-        "enum": [
-          "product",
-          "bundle",
-          "all_access"
+      "SessionUserResponse": {
+        "properties": {
+          "email": {
+            "format": "email",
+            "title": "Email",
+            "type": "string"
+          },
+          "region": {
+            "title": "Region",
+            "type": "string"
+          },
+          "tenant_id": {
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenant_id",
+          "region",
+          "user_id",
+          "email"
         ],
-        "title": "SubscriptionScopeType",
-        "type": "string"
-      },
-      "SubscriptionStatus": {
-        "enum": [
-          "trialing",
-          "active",
-          "past_due",
-          "canceled",
-          "expired",
-          "refunded",
-          "paused"
-        ],
-        "title": "SubscriptionStatus",
-        "type": "string"
+        "title": "SessionUserResponse",
+        "type": "object"
       },
       "ValidationError": {
         "properties": {
@@ -886,173 +220,6 @@
   },
   "openapi": "3.1.0",
   "paths": {
-    "/api/account/subscriptions": {
-      "get": {
-        "operationId": "list_subscriptions_api_account_subscriptions_get",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AccountSubscriptionsResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "List Subscriptions",
-        "tags": [
-          "account"
-        ]
-      }
-    },
-    "/api/account/subscriptions/{subscription_id}": {
-      "get": {
-        "operationId": "get_subscription_api_account_subscriptions__subscription_id__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "subscription_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Subscription Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AccountSubscriptionResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Subscription",
-        "tags": [
-          "account"
-        ]
-      }
-    },
-    "/api/auth/checkout-intent": {
-      "post": {
-        "operationId": "create_checkout_intent_api_auth_checkout_intent_post",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CheckoutIntentRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CheckoutIntentResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Create Checkout Intent",
-        "tags": [
-          "auth"
-        ]
-      }
-    },
     "/api/auth/login": {
       "post": {
         "operationId": "login_api_auth_login_post",
@@ -1217,77 +384,6 @@
         ]
       }
     },
-    "/api/auth/payment-status": {
-      "get": {
-        "operationId": "get_payment_status_api_auth_payment_status_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "invoice_id",
-            "required": true,
-            "schema": {
-              "minLength": 1,
-              "title": "Invoice Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "email",
-            "required": true,
-            "schema": {
-              "format": "email",
-              "title": "Email",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "tenant_id",
-            "required": false,
-            "schema": {
-              "default": "anytoolai",
-              "title": "Tenant Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "region",
-            "required": false,
-            "schema": {
-              "default": "ru",
-              "title": "Region",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Payment Status",
-        "tags": [
-          "auth"
-        ]
-      }
-    },
     "/api/auth/register": {
       "post": {
         "operationId": "register_api_auth_register_post",
@@ -1332,22 +428,6 @@
         "operationId": "get_session_api_auth_session_get",
         "parameters": [
           {
-            "in": "query",
-            "name": "product",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Product"
-            }
-          },
-          {
             "in": "header",
             "name": "authorization",
             "required": false,
@@ -1368,7 +448,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/SessionResponse"
+                }
               }
             },
             "description": "Successful Response"
@@ -1387,27 +469,6 @@
         "summary": "Get Session",
         "tags": [
           "auth"
-        ]
-      }
-    },
-    "/api/catalog/products": {
-      "get": {
-        "operationId": "list_catalog_products_api_catalog_products_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CatalogProductsResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "List Catalog Products",
-        "tags": [
-          "catalog"
         ]
       }
     },

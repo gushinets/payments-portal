@@ -1,7 +1,7 @@
 # Deployment Architecture
 
 Status: authoritative current deployment plus target contour isolation
-Last verified: 2026-09-21
+Last verified: 2026-09-24
 
 ## Current `ru` deployment
 
@@ -32,12 +32,16 @@ lowercase and are the implemented server authority for registration, login,
 password reset, required legal-document discovery, authenticated session
 scope, and legal writes. They are descriptive deployment identity, not
 caller-selectable routing inputs. Local repository defaults are explicitly
-`anytoolai` / `ru`; production has no silent contour default.
+`anytoolai` / `ru`; production has no silent contour default. The current
+bootstrap and legal source support exactly `anytoolai` / `ru`. Settings,
+Alembic bootstrap, and runtime legal seeding fail before successful startup or
+bootstrap when a different tenant/region pair is configured. Enabling another
+scope requires its dedicated contour/legal enablement ticket; the current
+deployment variables are not a generic contour bootstrap selector.
 
-Normal runtime does not load or invoke CloudPayments. The API composes an empty
-payment-provider registry, no CloudPayments callback route is mounted, and the
-current checkout flow is unavailable. Retained CloudPayments source and
-configuration are cleanup inputs, not active deployment components.
+The direct-provider and CloudPayments runtime has been physically removed.
+Current API composition exposes no provider registry, callback route, provider
+configuration, or billing lifecycle command. Checkout remains unavailable.
 
 Production exposes optional `SENTRY_DSN` and `SENTRY_RELEASE` values to the
 shared API/migration environment. An empty DSN keeps Sentry disabled; when a
@@ -67,18 +71,90 @@ and return HTTP 404.
 
 ## Target contour deployments
 
-Each production contour is its own data plane: web, API, PostgreSQL, provider
-credentials, and webhook endpoints. A `ru` instance does not serve `eu` or `us`.
-No user or payment data may be silently replicated between contour data planes.
+Each production contour is its own data plane: web, API, PostgreSQL, and any
+future External Billing credentials and webhook endpoints. A `ru` instance
+does not serve `eu` or `us`. No user or payment data may be silently replicated
+between contour data planes.
 
 Region Resolver is deployed separately. It is not part of this Compose stack.
 This portal may later receive the resolver origin as instance configuration.
-Provider webhooks continue to hit the contour API directly.
+There is no current provider webhook runtime or callback endpoint. If a future
+External Billing webhook integration is implemented by its owning later step,
+it is contour-local and terminates at that contour's API; Region Resolver is
+not a webhook proxy.
 
-The pre-reset schema can physically hold more than one `regions` row. That does
-not authorize one production database to operate as two contours. The planned
-clean baseline bootstraps only the configured contour and its local country
-membership.
+The clean baseline validates the configured scope and then bootstraps only the
+currently supported `anytoolai` / `ru` contour and its RU country membership.
+It never silently substitutes RU data for a different configured scope or
+authorizes one production database to operate as two contours.
+
+## One-time Step-4 recreate and bootstrap
+
+The Step-4 database is a destructive compatibility boundary. Pre-Step-4
+application binaries must never run against it. A database stamped with any
+discarded migration revision is recreated, not upgraded, downgraded, stamped,
+or bridged into the sole clean head. Image-only rollback across this boundary
+is forbidden: rollback or recovery restores a matching application and
+database baseline. Any reset, bootstrap, schema verification, or smoke failure
+blocks rollout.
+
+Before starting, identify the exact Step-4 application revision/image and
+target environment, and record the pre-reset application/database pairing.
+Stop every pre-Step-4 API, web, worker, and scheduler process that can access
+the database and verify that it cannot restart against the clean database.
+
+For the repository-managed local harness, read `worktree_id` from
+`.harness/runtime.json` or from the JSON previously printed by
+`python scripts/repo.py up`, then run exactly:
+
+```bash
+python scripts/repo.py reset --confirm <worktree_id>
+python scripts/repo.py test-db up
+python scripts/repo.py migrate-api
+```
+
+`reset` executes the harness-scoped Compose
+`down --volumes --remove-orphans`; it is the supported destructive local reset.
+`test-db up` starts only PostgreSQL. `migrate-api` applies `alembic upgrade head`
+to that harness database.
+
+The sole clean migration owns schema creation plus configured-contour and legal
+bootstrap. Do not create a separate bootstrap CLI. Before starting normal
+runtime, perform the Step-7 PostgreSQL schema/bootstrap verification and prove:
+
+- Alembic reports one head and the database is at that head;
+- exactly 25 application tables exist;
+- every removed legacy catalog/order/payment/provider/subscription/
+  entitlement/trial table is absent;
+- all fifteen target billing tables are empty;
+- only the configured contour/country state is present;
+- the expected legal entity and six current legal document rows match the
+  canonical legal source.
+
+After verification succeeds, start only the matching Step-4 stack:
+
+```bash
+python scripts/repo.py up --reuse
+```
+
+The Compose `migrate` service runs the same `alembic upgrade head` before API
+startup. The API legal seed remains an idempotent, fail-closed runtime check of
+canonical legal material, not a second schema authority. Run retained
+provider-independent registration, login, session, password-recovery, and
+legal smoke checks.
+
+For shared dev/test/pre-production environments, operators must use that
+environment's authoritative process-stop and database destroy/recreate
+mechanisms. This repository has no canonical shared-environment commands for
+those actions, so the runbook does not fabricate them. The required order is
+still: stop and fence old consumers; recreate the old-stamped database; apply
+the sole clean head/bootstrap from the matching Step-4 build; perform the same
+schema/bootstrap checks; start only the matching runtime; run the
+provider-independent auth/legal smoke suite.
+
+On any failure, keep rollout blocked. Recovery restores or recreates a matching
+application+database pair. Never roll back only the image while preserving the
+Step-4 database.
 
 ## Local worktree deployment
 

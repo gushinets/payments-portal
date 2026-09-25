@@ -3,7 +3,6 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -26,19 +25,13 @@ from app.domains.legal.errors import (
     DocumentVersionNotFoundError,
     InvalidAcceptanceTextHashError,
     RegistrationLegalPackInvalidError,
-    RecurringConsentContextRequiredError,
-    RecurringConsentPlanInvalidError,
 )
 from app.infrastructure.queries.legal import (
     get_active_required_document_by_id,
-    get_document_acceptance_candidate,
-    get_document_version_by_id,
-    get_legal_acceptance_event_by_id,
     list_active_required_documents,
     list_active_required_documents_for_registration,
     list_document_acceptance_fingerprints,
 )
-from app.infrastructure.queries.plans import get_current_sellable_plan
 from app.models import (
     AcceptanceKind,
     DocumentAcceptance,
@@ -144,142 +137,10 @@ def get_missing_required_documents_for_user(
     ]
 
 
-def is_current_recurring_consent_acceptance(
-    db: Session,
-    *,
-    acceptance: DocumentAcceptance,
-    user: User,
-    entrypoint_type: str,
-    entrypoint_value: str,
-    plan_id: uuid.UUID,
-    now: datetime | None = None,
-) -> bool:
-    return _is_current_recurring_consent_acceptance_with_metadata(
-        db,
-        acceptance=acceptance,
-        user=user,
-        entrypoint_type=entrypoint_type,
-        entrypoint_value=entrypoint_value,
-        metadata_key="plan_id",
-        metadata_value=str(plan_id),
-        now=now,
-    )
-
-
-def is_current_legacy_recurring_consent_acceptance(
-    db: Session,
-    *,
-    acceptance: DocumentAcceptance,
-    user: User,
-    entrypoint_type: str,
-    entrypoint_value: str,
-    plan_code: str,
-    now: datetime | None = None,
-) -> bool:
-    """Validate the pre-ANY-327 consent shape for an existing order only."""
-    metadata = acceptance.metadata_
-    if not isinstance(metadata, dict) or "plan_id" in metadata:
-        return False
-    return _is_current_recurring_consent_acceptance_with_metadata(
-        db,
-        acceptance=acceptance,
-        user=user,
-        entrypoint_type=entrypoint_type,
-        entrypoint_value=entrypoint_value,
-        metadata_key="plan_code",
-        metadata_value=plan_code,
-        now=now,
-    )
-
-
-def _is_current_recurring_consent_acceptance_with_metadata(
-    db: Session,
-    *,
-    acceptance: DocumentAcceptance,
-    user: User,
-    entrypoint_type: str,
-    entrypoint_value: str,
-    metadata_key: str,
-    metadata_value: str,
-    now: datetime | None = None,
-) -> bool:
-    effective_at = now or utc_now()
-    comparable_effective_at = _as_utc_naive(effective_at)
-    document = get_document_version_by_id(db, acceptance.document_version_id)
-    acceptance_event = get_legal_acceptance_event_by_id(
-        db,
-        acceptance.legal_acceptance_event_id,
-    )
-    metadata = acceptance.metadata_
-    persisted_metadata_value = metadata.get(metadata_key) if isinstance(metadata, dict) else None
-    return not (
-        document is None
-        or acceptance_event is None
-        or document.tenant_id != user.tenant_id
-        or document.region != user.region
-        or document.doc_type != "recurring_consent"
-        or not document.is_active
-        or not document.requires_acceptance
-        or _as_utc_naive(document.effective_from) > comparable_effective_at
-        or acceptance.tenant_id != user.tenant_id
-        or acceptance.region != user.region
-        or acceptance.user_id != user.id
-        or acceptance_event.tenant_id != user.tenant_id
-        or acceptance_event.region != user.region
-        or acceptance_event.user_id != user.id
-        or acceptance.doc_type != "recurring_consent"
-        or acceptance.acceptance_kind != AcceptanceKind.RECURRING_CONSENT
-        or _as_utc_naive(acceptance_event.accepted_at) > comparable_effective_at
-        or acceptance.acceptance_text_hash != expected_acceptance_text_hash(document)
-        or acceptance.entrypoint_type != entrypoint_type
-        or acceptance.entrypoint_value != entrypoint_value
-        or not isinstance(metadata, dict)
-        or metadata_key not in metadata
-        or not isinstance(persisted_metadata_value, str)
-        or persisted_metadata_value != metadata_value
-    )
-
-
 def _as_utc_naive(value: datetime) -> datetime:
     if value.tzinfo is None:
         return value
     return value.astimezone(UTC).replace(tzinfo=None)
-
-
-def get_current_recurring_consent_acceptance(
-    db: Session,
-    *,
-    acceptance_id: uuid.UUID,
-    user: User,
-    entrypoint_type: str,
-    entrypoint_value: str,
-    plan_id: uuid.UUID,
-    now: datetime | None = None,
-) -> DocumentAcceptance | None:
-    effective_at = now or utc_now()
-    acceptance = get_document_acceptance_candidate(
-        db,
-        acceptance_id=acceptance_id,
-        tenant_id=user.tenant_id,
-        region=user.region,
-        user_id=user.id,
-        doc_type="recurring_consent",
-        acceptance_kind=AcceptanceKind.RECURRING_CONSENT,
-        effective_at=effective_at,
-    )
-    if acceptance is None:
-        return None
-    if not is_current_recurring_consent_acceptance(
-        db,
-        acceptance=acceptance,
-        user=user,
-        entrypoint_type=entrypoint_type,
-        entrypoint_value=entrypoint_value,
-        plan_id=plan_id,
-        now=effective_at,
-    ):
-        return None
-    return acceptance
 
 
 def create_document_acceptance(
@@ -288,12 +149,6 @@ def create_document_acceptance(
     document: DocumentVersion,
     acceptance_event: LegalAcceptanceEvent,
     acceptance_text_hash: str,
-    entrypoint_session_id: uuid.UUID | None = None,
-    entrypoint_type: str | None = None,
-    entrypoint_value: str | None = None,
-    source_url: str | None = None,
-    metadata: dict[str, Any] | None = None,
-    plan_id: uuid.UUID | None = None,
 ) -> DocumentAcceptance:
     if acceptance_text_hash != expected_acceptance_text_hash(document):
         raise InvalidAcceptanceTextHashError()
@@ -303,12 +158,6 @@ def create_document_acceptance(
         document=document,
         acceptance_event=acceptance_event,
         acceptance_text_hash=acceptance_text_hash,
-        entrypoint_session_id=entrypoint_session_id,
-        entrypoint_type=entrypoint_type,
-        entrypoint_value=entrypoint_value,
-        source_url=source_url,
-        metadata=metadata,
-        plan_id=plan_id,
     )
 
 
@@ -318,35 +167,15 @@ def _create_document_acceptance(
     document: DocumentVersion,
     acceptance_event: LegalAcceptanceEvent,
     acceptance_text_hash: str,
-    entrypoint_session_id: uuid.UUID | None = None,
-    entrypoint_type: str | None = None,
-    entrypoint_value: str | None = None,
-    source_url: str | None = None,
-    metadata: dict[str, Any] | None = None,
-    plan_id: uuid.UUID | None = None,
 ) -> DocumentAcceptance:
-    acceptance_metadata = {key: value for key, value in (metadata or {}).items() if key != "plan_id"}
-    if document.doc_type == "recurring_consent" and plan_id is not None:
-        acceptance_metadata["plan_id"] = str(plan_id)
-
     acceptance = DocumentAcceptance(
         legal_acceptance_event_id=acceptance_event.id,
         tenant_id=acceptance_event.tenant_id,
         region=acceptance_event.region,
         user_id=acceptance_event.user_id,
-        entrypoint_session_id=entrypoint_session_id,
         document_version_id=document.id,
-        doc_type=document.doc_type,
-        version=document.version,
         acceptance_kind=ACCEPTANCE_KIND_BY_DOC_TYPE.get(document.doc_type, AcceptanceKind.TERMS_ACCEPTANCE),
-        accepted_at=acceptance_event.accepted_at,
-        ip=None,
-        user_agent=None,
         acceptance_text_hash=acceptance_text_hash,
-        entrypoint_type=entrypoint_type,
-        entrypoint_value=entrypoint_value,
-        source_url=source_url,
-        metadata_=acceptance_metadata,
     )
     db.add(acceptance)
     return acceptance
@@ -409,11 +238,6 @@ def accept_legal_document(
     user: User,
     document_version_id: uuid.UUID,
     acceptance_text_hash: str,
-    plan_id: uuid.UUID | None,
-    entrypoint_type: str | None,
-    entrypoint_value: str | None,
-    source_url: str | None,
-    metadata: dict[str, Any],
     client_ip: str | None,
     user_agent: str | None,
 ) -> LegalAcceptanceResult:
@@ -427,21 +251,6 @@ def accept_legal_document(
     if document is None:
         record_legal_acceptance("document_not_found")
         raise DocumentVersionNotFoundError()
-
-    if document.doc_type == "recurring_consent":
-        if plan_id is None or not entrypoint_type or not entrypoint_value:
-            raise RecurringConsentContextRequiredError()
-        if (
-            get_current_sellable_plan(
-                db,
-                plan_id=plan_id,
-                tenant_id=user.tenant_id,
-                region=user.region,
-                now=utc_now(),
-            )
-            is None
-        ):
-            raise RecurringConsentPlanInvalidError()
 
     try:
         if acceptance_text_hash != expected_acceptance_text_hash(document):
@@ -457,11 +266,6 @@ def accept_legal_document(
             document=document,
             acceptance_event=acceptance_event,
             acceptance_text_hash=acceptance_text_hash,
-            entrypoint_type=entrypoint_type,
-            entrypoint_value=entrypoint_value,
-            source_url=source_url,
-            metadata=metadata,
-            plan_id=plan_id,
         )
     except InvalidAcceptanceTextHashError:
         record_legal_acceptance("invalid_text_hash")
@@ -473,8 +277,8 @@ def accept_legal_document(
     result = LegalAcceptanceResult(
         acceptance_id=acceptance.id,
         document_version_id=acceptance.document_version_id,
-        doc_type=acceptance.doc_type,
-        version=acceptance.version,
+        doc_type=document.doc_type,
+        version=document.version,
         accepted_at=acceptance_event.accepted_at,
     )
     record_legal_acceptance("accepted")

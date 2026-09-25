@@ -1,6 +1,17 @@
 # External Billing Persistence Reset
 
-Status: implementation handoff under ADR 0005 and the accepted billing designs
+Status: completed persistence/reset design handoff; retained implementation history
+
+> **COMPLETED HANDOFF NOTICE**
+>
+> The clean 25-table baseline and physical direct-provider removal described by
+> this handoff are now implemented. Pre-reset inventories, future-tense
+> instructions, readiness checklists, and step assignments below are retained
+> as reviewed implementation history, not current-state evidence or an
+> executable reset runbook. The current schema is documented in
+> [Payment Portal Data Model](payment-portal-data-model.md); the operational
+> recreate/recovery procedure is in
+> [Deployment Architecture](deployment.md#one-time-step-4-recreate-and-bootstrap).
 
 ## Authority and current baseline
 
@@ -11,21 +22,11 @@ is subordinate to, and cannot override, the following authority chain:
 2. [External Billing Boundary Design](../superpowers/specs/2026-09-15-external-billing-boundary-design.md);
 3. [Portal <-> Kernel Access Contract Design](../superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md).
 
-This is an implementation inventory, not a competing ADR. `ANY-504` controls
-implementation order. `ANY-505` is complete and PR #113 is merged, so the
-repository already classifies the direct-provider documentation and persistence
-model as retained current-state context rather than target authority.
-
-`ANY-457` is also complete. Normal API composition creates an empty
-`PaymentProviderRegistry`; it does not initialize or mount CloudPayments, and
-the frontend checkout path is deliberately unavailable. Retained
-CloudPayments source, settings, ORM state, migrations, tests, and frontend code
-are characterization and cleanup inputs only. External Billing is not, and
-must never become, a `PaymentProviderAdapter`.
-
-The current Portal-owned `Product`, `Plan`, `Order`, `Payment`, `Subscription`,
-and `Entitlement` models describe the legacy implementation. They are not
-target commercial authority.
+This is a completed implementation inventory, not a competing ADR. `ANY-504`
+controls later runtime order. The repository no longer contains executable
+CloudPayments/direct-provider architecture or Portal-owned `Product`, `Plan`,
+`Order`, `Payment`, `Subscription`, and `Entitlement` models. External Billing
+is not, and must never become, a `PaymentProviderAdapter`.
 
 ## No-production reset premise
 
@@ -47,10 +48,10 @@ the repository must not destroy or silently reinterpret that data.
 No dual-write layer, old/new billing compatibility layer, or data-preserving
 billing migration is required under the current premise.
 
-## Current table disposition
+## Historical pre-reset table disposition
 
-The following classification covers all 27 current tables after the completed
-`ANY-504` Step-3 identity/session/legal work. The resolved physical contract is
+The following classification covered all 27 pre-reset tables after the completed
+`ANY-504` Step-3 identity/session/legal work. The resolved physical contract was
 the [Portal Identity, Session, and Legal Baseline](portal-identity-session-legal-baseline.md).
 
 | Current table | `ANY-509` disposition | Locked rationale |
@@ -87,7 +88,7 @@ the [Portal Identity, Session, and Legal Baseline](portal-identity-session-legal
 fields, constraints, provider-evidence gates, and reset sequence are defined in
 the later sections of this completed handoff.
 
-## Runtime and code-surface disposition
+## Historical runtime and code-surface disposition
 
 Every material current surface has an explicit owner and disposition. There is
 no unowned "keep for now" category.
@@ -174,8 +175,8 @@ below; later `ANY-504` runtime steps still own scheduling behavior.
 | `ANY-163` | Blocked CloudPayments umbrella; historical/transitional context only and no authority for new direct-provider work. |
 | `ANY-79`, `ANY-286`, and `ANY-287` | Must not execute as written against the old entitlement contract. Formal rewrite, close, or supersession remains owned by `ANY-504` Step 10. |
 | `ANY-497` | Canceled; historical `ANY-407` context only. |
-| `docs/exec-plans/active/ANY-135-split-alembic-baseline.md` | Describes completed current-state work. It is characterization evidence only, not executable target guidance. Broad exec-plan housekeeping is outside `ANY-509`. |
-| `docs/exec-plans/active/ANY-76-refund-result-status.md` | Describes completed current-state work. It is characterization evidence only, not executable target guidance. Broad exec-plan housekeeping is outside `ANY-509`. |
+| `docs/exec-plans/superseded/ANY-135-split-alembic-baseline.md` | Retained historical evidence for the discarded commerce migration chain. It is not executable target guidance. |
+| `docs/exec-plans/superseded/ANY-76-refund-result-status.md` | Retained historical evidence for the removed Portal-owned refund result flow. It is not executable target guidance. |
 
 ## `ANY-504` Step 3 handoff boundary
 
@@ -196,7 +197,7 @@ baseline.
 
 ## Target persistence contract
 
-The planned clean baseline will add exactly these 15 target tables; none is
+The implemented clean baseline adds exactly these 15 target tables; none is
 implemented by `ANY-509`:
 
 1. `capability_manifest_projections`

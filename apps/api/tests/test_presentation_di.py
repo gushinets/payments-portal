@@ -14,13 +14,9 @@ from fastapi import Depends, FastAPI  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app.core.database import get_db  # noqa: E402
-from app.http_dependencies import (  # noqa: E402
-    get_current_session,
-    get_payment_provider_registry,
-)
+from app.http_dependencies import get_current_session  # noqa: E402
 from app.main import create_app  # noqa: E402
 from app.models import AuthSession, User, UserStatus  # noqa: E402
-from app.payment_providers.registry import PaymentProviderRegistry  # noqa: E402
 
 
 @contextmanager
@@ -73,7 +69,6 @@ def test_current_session_dependency_can_be_overridden_for_active_endpoint() -> N
             "user_id": str(user_id),
             "email": "override@example.com",
         },
-        "product_state": None,
     }
     assert application.dependency_overrides == {}
     client.close()
@@ -93,26 +88,6 @@ def test_database_dependency_can_be_overridden_without_monkeypatching() -> None:
 
     with dependency_overrides(application, {get_db: override_get_db}):
         response = client.get("/_test/database-dependency")
-
-    assert response.status_code == 200
-    assert response.json() == {"is_replacement": True}
-    assert application.dependency_overrides == {}
-    client.close()
-
-
-def test_provider_registry_dependency_can_be_overridden() -> None:
-    application = create_app()
-    client = TestClient(application)
-    replacement = PaymentProviderRegistry()
-
-    @application.get("/_test/provider-registry-dependency")
-    def provider_registry_dependency_probe(
-        registry: Annotated[PaymentProviderRegistry, Depends(get_payment_provider_registry)],
-    ) -> dict[str, bool]:
-        return {"is_replacement": registry is replacement}
-
-    with dependency_overrides(application, {get_payment_provider_registry: lambda: replacement}):
-        response = client.get("/_test/provider-registry-dependency")
 
     assert response.status_code == 200
     assert response.json() == {"is_replacement": True}

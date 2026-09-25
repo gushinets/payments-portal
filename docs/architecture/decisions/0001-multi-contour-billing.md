@@ -10,6 +10,14 @@ for new external-billing development and supersedes conflicting target billing
 semantics in ADR 0004. The contour-isolation and Region Resolver decisions in
 this ADR remain in force.
 
+Current-state amendment (ANY-522): CloudPayments and the Portal-managed direct-
+provider runtime are physically removed. The former shared `ru`/`eu` seed and
+provider-adapter descriptions below are historical context, not the current
+schema or executable direction. The implemented clean bootstrap supports only
+`anytoolai` / `ru` and rejects a different configured scope. Contour isolation
+and the Region Resolver decisions remain active; target billing ownership and
+integration boundaries follow ADR 0005.
+
 ## Context
 
 The implemented product is the `ru` contour with CloudPayments. Billing, provider

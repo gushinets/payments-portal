@@ -2,9 +2,6 @@ from __future__ import annotations
 
 import json
 import logging
-import re
-import uuid
-from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -13,194 +10,149 @@ from alembic.script import ScriptDirectory
 from sqlalchemy import inspect, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import Engine, URL
-from sqlalchemy.exc import DatabaseError, IntegrityError
+from sqlalchemy.exc import IntegrityError
 
 from apps.api.tests.support.postgres import alembic_test_config, reset_public_schema
-from app.models import SubscriptionStatus
 
 
-EXPECTED_REVISION_CHAIN = [
-    "20260707_0001",
-    "20260707_0002",
-    "20260707_0003",
-    "20260729_0004",
-    "20260826_0005",
-    "20260921_0006",
-    "20260921_0007",
-    "20260923_0008",
-]
+BASELINE_REVISION = "20260924_0001"
 
-IDENTITY_LEGAL_TENANT_TABLES = (
+SURVIVOR_TABLES = {
+    "regions",
+    "country_region_rules",
     "users",
     "auth_sessions",
     "magic_link_tokens",
+    "password_reset_rate_limits",
     "legal_entities",
     "document_versions",
     "legal_acceptance_events",
     "document_acceptances",
-)
+}
 
-pytestmark = pytest.mark.postgres
+TARGET_TABLES = {
+    "capability_manifest_projections",
+    "external_billing_catalog_projections",
+    "commercial_mapping_revisions",
+    "external_billing_customers",
+    "purchase_intents",
+    "external_create_operations",
+    "billing_product_access_scopes",
+    "external_subscriptions",
+    "billing_state_observations",
+    "purchased_allowances",
+    "external_billing_webhook_deliveries",
+    "billing_work_items",
+    "manual_review_cases",
+    "paid_access_states",
+    "access_invalidation_outbox",
+}
 
+APPLICATION_TABLES = SURVIVOR_TABLES | TARGET_TABLES
 
-def public_table_names(postgres_engine: Engine) -> set[str]:
-    inspector = inspect(postgres_engine)
-    return set(inspector.get_table_names(schema="public"))
+LEGACY_TABLES = {
+    "products",
+    "bundles",
+    "bundle_products",
+    "plans",
+    "plan_price_components",
+    "plan_limits",
+    "orders",
+    "payments",
+    "refunds",
+    "payment_provider_accounts",
+    "payment_webhook_events",
+    "subscriptions",
+    "entitlements",
+    "subscription_events",
+    "product_access_states",
+    "external_billing_accounts",
+}
 
-
-def alembic_version_count(postgres_engine: Engine) -> int:
-    with postgres_engine.connect() as connection:
-        return connection.execute(text("SELECT count(*) FROM alembic_version")).scalar_one()
-
-
-def current_alembic_revision(postgres_engine: Engine) -> str:
-    with postgres_engine.connect() as connection:
-        return connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-
-
-def seeded_legal_documents(postgres_engine: Engine) -> list[dict[str, str]]:
-    with postgres_engine.connect() as connection:
-        rows = connection.execute(
-            text("SELECT id::text, doc_type, version, content_hash FROM document_versions ORDER BY id")
-        ).mappings()
-        return [dict(row) for row in rows]
-
-
-def seeded_catalog_summary(postgres_engine: Engine) -> dict[str, object]:
-    with postgres_engine.connect() as connection:
-        products = connection.execute(text("SELECT code FROM products ORDER BY code")).scalars().all()
-        plans = (
-            connection.execute(
-                text(
-                    "SELECT code, scope_type, price_amount_minor, currency, "
-                    "billing_period, trial_days FROM plans ORDER BY code"
-                )
-            )
-            .mappings()
-            .all()
-        )
-        bundle_products = (
-            connection.execute(
-                text(
-                    "SELECT b.code AS bundle_code, p.code AS product_code "
-                    "FROM bundle_products bp "
-                    "JOIN bundles b ON b.id = bp.bundle_id "
-                    "JOIN products p ON p.id = bp.product_id "
-                    "ORDER BY b.code, p.code"
-                )
-            )
-            .mappings()
-            .all()
-        )
-        price_components = (
-            connection.execute(
-                text(
-                    "SELECT p.code AS plan_code, pc.component_code_snapshot, "
-                    "pc.list_amount_minor, pc.discount_amount_minor, pc.amount_minor "
-                    "FROM plan_price_components pc "
-                    "JOIN plans p ON p.id = pc.plan_id "
-                    "ORDER BY p.code, pc.position"
-                )
-            )
-            .mappings()
-            .all()
-        )
-        limits = (
-            connection.execute(
-                text(
-                    "SELECT p.code AS plan_code, pl.metric, pl.limit_count, pl.period "
-                    "FROM plan_limits pl "
-                    "JOIN plans p ON p.id = pl.plan_id "
-                    "ORDER BY p.code, pl.metric"
-                )
-            )
-            .mappings()
-            .all()
-        )
-        return {
-            "products": list(products),
-            "plans": [dict(row) for row in plans],
-            "bundle_products": [dict(row) for row in bundle_products],
-            "price_components": [dict(row) for row in price_components],
-            "limits": [dict(row) for row in limits],
-        }
-
-
-def seeded_catalog_ids(postgres_engine: Engine) -> dict[str, str]:
-    with postgres_engine.connect() as connection:
-        rows = connection.execute(
-            text(
-                "SELECT 'product:' || code AS seed_key, id::text AS id FROM products "
-                "UNION ALL "
-                "SELECT 'bundle:' || code AS seed_key, id::text AS id FROM bundles "
-                "UNION ALL "
-                "SELECT 'bundle_product:' || b.code || ':' || p.code AS seed_key, "
-                "bp.id::text AS id "
-                "FROM bundle_products bp "
-                "JOIN bundles b ON b.id = bp.bundle_id "
-                "JOIN products p ON p.id = bp.product_id "
-                "UNION ALL "
-                "SELECT 'plan:' || code AS seed_key, id::text AS id FROM plans "
-                "UNION ALL "
-                "SELECT 'price_component:' || p.code || ':' || pc.position AS seed_key, "
-                "pc.id::text AS id "
-                "FROM plan_price_components pc "
-                "JOIN plans p ON p.id = pc.plan_id "
-                "UNION ALL "
-                "SELECT 'limit:' || p.code || ':' || pl.metric AS seed_key, pl.id::text AS id "
-                "FROM plan_limits pl "
-                "JOIN plans p ON p.id = pl.plan_id "
-                "ORDER BY seed_key"
-            )
-        ).mappings()
-        return {row["seed_key"]: row["id"] for row in rows}
-
-
-def assert_postgres_schema_contract(postgres_engine: Engine) -> None:
-    inspector = inspect(postgres_engine)
-    for table_name in IDENTITY_LEGAL_TENANT_TABLES:
-        columns = {column["name"]: column for column in inspector.get_columns(table_name)}
-        assert columns["tenant_id"]["nullable"] is False
-        assert columns["tenant_id"]["default"] is None
-
-    user_unique_constraints = {
-        constraint["name"]: tuple(constraint["column_names"])
-        for constraint in inspector.get_unique_constraints("users")
-    }
-    assert user_unique_constraints["uq_users_id_tenant_region"] == (
+EXPECTED_COLUMNS = {
+    "regions": {"code", "name", "residency_zone", "default_currency", "default_locale", "status"},
+    "country_region_rules": {
+        "id",
+        "country_code",
+        "region",
+        "market_enabled",
+        "strict_mismatch",
+        "default_document_set",
+    },
+    "users": {
         "id",
         "tenant_id",
         "region",
-    )
-
-    auth_session_foreign_keys = {
-        foreign_key["name"]: foreign_key for foreign_key in inspector.get_foreign_keys("auth_sessions")
-    }
-    auth_user_scope = auth_session_foreign_keys["fk_auth_sessions_user_scope"]
-    assert tuple(auth_user_scope["constrained_columns"]) == ("user_id", "tenant_id", "region")
-    assert auth_user_scope["referred_table"] == "users"
-    assert tuple(auth_user_scope["referred_columns"]) == ("id", "tenant_id", "region")
-    assert auth_user_scope["options"]["ondelete"] == "RESTRICT"
-
-    magic_link_columns = {column["name"]: column for column in inspector.get_columns("magic_link_tokens")}
-    assert "user_id" in magic_link_columns
-    assert magic_link_columns["user_id"]["nullable"] is True
-    assert "entrypoint_session_id" not in magic_link_columns
-    magic_link_foreign_keys = {
-        foreign_key["name"]: foreign_key for foreign_key in inspector.get_foreign_keys("magic_link_tokens")
-    }
-    magic_link_user_scope = magic_link_foreign_keys["fk_magic_link_tokens_user_scope"]
-    assert tuple(magic_link_user_scope["constrained_columns"]) == (
-        "user_id",
+        "email",
+        "email_normalized",
+        "email_verified_at",
+        "status",
+        "last_login_at",
+        "password_hash",
+        "metadata",
+        "created_at",
+        "updated_at",
+    },
+    "auth_sessions": {
+        "id",
         "tenant_id",
         "region",
-    )
-    assert magic_link_user_scope["referred_table"] == "users"
-    assert tuple(magic_link_user_scope["referred_columns"]) == ("id", "tenant_id", "region")
-    assert magic_link_user_scope["options"]["ondelete"] == "RESTRICT"
-
-    legal_event_columns = {column["name"]: column for column in inspector.get_columns("legal_acceptance_events")}
-    assert set(legal_event_columns) == {
+        "user_id",
+        "token_hash",
+        "created_at",
+        "expires_at",
+        "last_seen_at",
+        "revoked_at",
+        "ip",
+        "user_agent",
+    },
+    "magic_link_tokens": {
+        "id",
+        "tenant_id",
+        "region",
+        "user_id",
+        "email_normalized",
+        "token_hash",
+        "purpose",
+        "created_at",
+        "expires_at",
+        "used_at",
+        "ip",
+        "user_agent",
+    },
+    "password_reset_rate_limits": {"rate_limit_key", "count", "window_start", "expires_at", "created_at", "updated_at"},
+    "legal_entities": {
+        "id",
+        "tenant_id",
+        "region",
+        "name",
+        "entity_type",
+        "tax_id",
+        "registration_id",
+        "legal_address",
+        "support_email",
+        "status",
+        "created_at",
+        "updated_at",
+    },
+    "document_versions": {
+        "id",
+        "tenant_id",
+        "region",
+        "legal_entity_id",
+        "doc_type",
+        "version",
+        "title",
+        "url_path",
+        "content_hash",
+        "published_at",
+        "effective_from",
+        "is_active",
+        "requires_acceptance",
+        "created_at",
+        "updated_at",
+    },
+    "legal_acceptance_events": {
         "id",
         "tenant_id",
         "region",
@@ -212,263 +164,517 @@ def assert_postgres_schema_contract(postgres_engine: Engine) -> None:
         "ip",
         "user_agent",
         "created_at",
-    }
-    legal_event_unique_constraints = {
-        constraint["name"]: tuple(constraint["column_names"])
-        for constraint in inspector.get_unique_constraints("legal_acceptance_events")
-    }
-    assert legal_event_unique_constraints["uq_legal_acceptance_events_scope"] == (
+    },
+    "document_acceptances": {
         "id",
-        "tenant_id",
-        "region",
-        "user_id",
-    )
-    assert legal_event_unique_constraints["uq_legal_acceptance_events_purchase_binding"] == (
-        "id",
-        "user_id",
-        "external_billing_account_id",
-        "billing_offer_id",
-        "accepted_commercial_fingerprint",
-    )
-    document_acceptance_columns = {column["name"]: column for column in inspector.get_columns("document_acceptances")}
-    assert document_acceptance_columns["legal_acceptance_event_id"]["nullable"] is False
-    assert document_acceptance_columns["user_id"]["nullable"] is False
-    document_acceptance_foreign_keys = {
-        foreign_key["name"]: foreign_key for foreign_key in inspector.get_foreign_keys("document_acceptances")
-    }
-    assert tuple(document_acceptance_foreign_keys["fk_document_acceptances_event_scope"]["constrained_columns"]) == (
         "legal_acceptance_event_id",
         "tenant_id",
         "region",
         "user_id",
-    )
-    assert tuple(document_acceptance_foreign_keys["fk_document_acceptances_document_scope"]["constrained_columns"]) == (
         "document_version_id",
+        "acceptance_kind",
+        "acceptance_text_hash",
+        "created_at",
+    },
+    "capability_manifest_projections": {
+        "projection_id",
         "tenant_id",
         "region",
-    )
-
-    webhook_columns = {column["name"]: column for column in inspector.get_columns("payment_webhook_events")}
-    payment_columns = {column["name"]: column for column in inspector.get_columns("payments")}
-    subscription_columns = {column["name"]: column for column in inspector.get_columns("subscriptions")}
-    entitlement_columns = {column["name"]: column for column in inspector.get_columns("entitlements")}
-    event_columns = {column["name"]: column for column in inspector.get_columns("subscription_events")}
-    assert set(subscription_columns) == {
-        "id",
+        "schema_version",
+        "manifest_version",
+        "generated_at",
+        "last_complete_sync_at",
+        "manifest_document",
+    },
+    "external_billing_catalog_projections": {
+        "projection_id",
+        "external_billing_account_id",
+        "schema_version",
+        "catalog_version",
+        "catalog_digest",
+        "last_complete_sync_at",
+        "catalog_document",
+    },
+    "commercial_mapping_revisions": {
+        "mapping_revision_id",
+        "external_billing_account_id",
+        "billing_offer_id",
+        "revision_number",
+        "manifest_version",
+        "catalog_version",
+        "catalog_digest",
+        "mapping_schema_version",
+        "mapping_document",
+        "published_at",
+        "published_by_principal",
+    },
+    "external_billing_customers": {
+        "customer_id",
+        "external_billing_account_id",
+        "user_id",
+        "billing_customer_key",
+        "provider_customer_id",
+        "binding_state",
+        "binding_updated_at",
+        "created_at",
+    },
+    "purchase_intents": {
+        "purchase_intent_id",
+        "user_id",
+        "external_billing_account_id",
+        "customer_id",
+        "product_id",
+        "billing_offer_id",
+        "mapping_revision_id",
+        "accepted_commercial_fingerprint",
+        "client_idempotency_key",
+        "state",
+        "accepted_snapshot_schema_version",
+        "accepted_snapshot",
+        "legal_acceptance_event_id",
+        "created_at",
+        "state_updated_at",
+        "resolved_at",
+    },
+    "external_create_operations": {
+        "create_operation_id",
+        "operation_kind",
+        "customer_id",
+        "purchase_intent_id",
+        "request_correlation_key",
+        "operation_state",
+        "unknown_since",
+        "unknown_recovery_deadline_at",
+        "recovery_hint_schema_version",
+        "recovery_hint_document",
+        "bound_external_object_id",
+        "created_at",
+        "updated_at",
+        "resolved_at",
+    },
+    "billing_product_access_scopes": {
+        "access_scope_id",
+        "user_id",
+        "product_id",
+        "primary_subscription_id",
+        "updated_at",
+    },
+    "external_subscriptions": {
+        "subscription_id",
+        "external_billing_account_id",
+        "customer_id",
+        "user_id",
+        "product_id",
+        "purchase_intent_id",
+        "mapping_revision_id",
+        "external_subscription_id",
+        "external_agreement_id",
+        "lifecycle_status",
+        "financial_access_status",
+        "commercial_access_status",
+        "last_authoritative_read_at",
+        "projection_valid_until",
+        "reconciliation_lease_owner",
+        "reconciliation_lease_expires_at",
+        "reconciliation_fencing_token",
+        "latest_observation_id",
+        "created_at",
+        "updated_at",
+    },
+    "billing_state_observations": {
+        "observation_id",
+        "observation_kind",
+        "external_billing_account_id",
+        "user_id",
+        "product_id",
+        "access_scope_id",
+        "subscription_id",
+        "purchase_intent_id",
+        "work_item_id",
+        "basis_observation_id",
+        "observed_at",
+        "effective_at",
+        "evidence_schema_version",
+        "evidence_document",
+        "completeness_classification",
+        "result_classification",
+        "resulting_access_revision",
+        "created_at",
+    },
+    "purchased_allowances": {
+        "allowance_id",
+        "subscription_id",
+        "source_component_id",
+        "product_id",
+        "metric_key",
+        "quantity",
+        "provider_cycle_key",
+        "provider_cycle_start",
+        "provider_cycle_end",
+        "period_start",
+        "period_end",
+        "created_at",
+    },
+    "external_billing_webhook_deliveries": {
+        "delivery_id",
+        "external_billing_account_id",
+        "provider_event_id",
+        "payload_hash",
+        "correlation_schema_version",
+        "correlation_document",
+        "evidence_schema_version",
+        "evidence_document",
+        "processing_state",
+        "received_at",
+        "processing_started_at",
+        "processed_at",
+        "last_error_classification",
+    },
+    "billing_work_items": {
+        "work_item_id",
+        "work_kind",
+        "scope_kind",
+        "scope_reference",
+        "coalescing_key",
+        "payload_schema_version",
+        "payload_document",
+        "priority",
+        "next_attempt_at",
+        "attempt_count",
+        "work_state",
+        "lease_owner",
+        "lease_expires_at",
+        "last_error_classification",
+        "created_at",
+        "updated_at",
+    },
+    "manual_review_cases": {
+        "review_case_id",
+        "reason_code",
+        "scope_kind",
+        "scope_reference",
+        "evidence_schema_version",
+        "evidence_document",
+        "case_state",
+        "created_at",
+        "resolved_at",
+        "resolved_by_principal",
+        "resolution_schema_version",
+        "resolution_document",
+    },
+    "paid_access_states": {
+        "paid_access_state_id",
         "tenant_id",
         "region",
         "user_id",
-        "plan_id",
-        "scope_type",
-        "product_id",
-        "bundle_id",
-        "status",
-        "renewal_mode",
-        "trial_start_at",
-        "trial_end_at",
-        "current_period_start",
-        "current_period_end",
-        "cancel_requested_at",
-        "canceled_at",
-        "provider_account_id",
-        "provider_subscription_id",
-        "recurring_consent_acceptance_id",
-        "created_at",
-        "updated_at",
-    }
-    assert set(entitlement_columns) == {
-        "id",
+        "access_revision",
+        "effective_state_schema_version",
+        "effective_state_document",
+        "committed_at",
+    },
+    "access_invalidation_outbox": {
+        "outbox_id",
         "tenant_id",
         "region",
         "user_id",
-        "subscription_id",
-        "plan_id",
-        "scope_type",
-        "product_id",
-        "bundle_id",
-        "status",
-        "valid_from",
-        "valid_until",
-        "source",
-        "order_id",
-        "revoked_at",
-        "expired_at",
-        "superseded_at",
-        "superseded_by_entitlement_id",
+        "pending_revision",
+        "delivered_revision",
+        "attempt_count",
+        "next_attempt_at",
+        "last_error_classification",
         "created_at",
         "updated_at",
-    }
-    assert set(event_columns) == {
-        "id",
-        "subscription_id",
-        "event_type",
-        "previous_status",
-        "next_status",
-        "occurred_at",
-        "operation_idempotency_key",
-        "order_id",
-        "payment_id",
-        "refund_id",
-        "webhook_event_id",
-        "metadata",
-    }
-    assert isinstance(webhook_columns["raw_payload"]["type"], JSONB)
-    assert isinstance(webhook_columns["headers"]["type"], JSONB)
-    assert isinstance(payment_columns["raw_summary"]["type"], JSONB)
-    assert isinstance(event_columns["metadata"]["type"], JSONB)
-    assert "updated_at" in entitlement_columns
-    assert "updated_at" not in event_columns
-    plan_check_names = {constraint["name"] for constraint in inspector.get_check_constraints("plans")}
-    assert "ck_plans_scope_references" in plan_check_names
-    subscription_check_names = {constraint["name"] for constraint in inspector.get_check_constraints("subscriptions")}
-    assert {
-        "ck_subscriptions_status",
-        "ck_subscriptions_renewal_mode",
-        "ck_subscriptions_scope_references",
-        "ck_subscriptions_trial_period",
-        "ck_subscriptions_current_period",
-    } <= subscription_check_names
-    entitlement_check_names = {constraint["name"] for constraint in inspector.get_check_constraints("entitlements")}
-    assert {
-        "ck_entitlements_status",
-        "ck_entitlements_source",
-        "ck_entitlements_scope_references",
-        "ck_entitlements_valid_period",
-        "ck_entitlements_source_order",
-    } <= entitlement_check_names
-    event_unique_constraints = {
-        constraint["name"] for constraint in inspector.get_unique_constraints("subscription_events")
-    }
-    assert "uq_subscription_events_operation_key" in event_unique_constraints
+    },
+}
 
-    payment_foreign_keys = {
-        (
-            tuple(foreign_key["constrained_columns"]),
-            foreign_key["referred_table"],
-            tuple(foreign_key["referred_columns"]),
-        )
-        for foreign_key in inspector.get_foreign_keys("payments")
-    }
-    assert (("order_id",), "orders", ("id",)) in payment_foreign_keys
-    assert (
-        ("provider_account_id",),
-        "payment_provider_accounts",
-        ("id",),
-    ) in payment_foreign_keys
+EXPECTED_CHECKS = {
+    "legal_acceptance_events": {"ck_legal_acceptance_events_commercial_triplet"},
+    "capability_manifest_projections": set(),
+    "external_billing_catalog_projections": set(),
+    "commercial_mapping_revisions": {
+        "ck_commercial_mapping_revisions_revision_positive",
+        "ck_commercial_mapping_revisions_schema_nonempty",
+    },
+    "external_billing_customers": {
+        "ck_external_billing_customers_key_nonempty",
+        "ck_external_billing_customers_binding_state",
+    },
+    "purchase_intents": {
+        "ck_purchase_intents_fingerprint_nonempty",
+        "ck_purchase_intents_idempotency_nonempty",
+        "ck_purchase_intents_snapshot_schema_nonempty",
+        "ck_purchase_intents_state",
+    },
+    "external_create_operations": {
+        "ck_external_create_operations_purchase_requirement",
+        "ck_external_create_operations_kind",
+        "ck_external_create_operations_correlation_nonempty",
+        "ck_external_create_operations_unknown_pair",
+        "ck_external_create_operations_unknown_deadline",
+        "ck_external_create_operations_recovery_hint_pair",
+    },
+    "billing_product_access_scopes": set(),
+    "external_subscriptions": {
+        "ck_external_subscriptions_purchase_mapping",
+        "ck_external_subscriptions_lifecycle_status",
+        "ck_external_subscriptions_financial_access_status",
+        "ck_external_subscriptions_commercial_access_status",
+        "ck_external_subscriptions_reconciliation_lease_pair",
+        "ck_external_subscriptions_fencing_token_nonnegative",
+    },
+    "billing_state_observations": {
+        "ck_billing_state_observations_provenance_exclusive",
+        "ck_billing_state_observations_subject_shape",
+        "ck_billing_state_observations_kind",
+        "ck_billing_state_observations_kind_shape",
+        "ck_billing_state_observations_evidence_schema_nonempty",
+    },
+    "purchased_allowances": {
+        "ck_purchased_allowances_quantity_nonnegative",
+        "ck_purchased_allowances_provider_cycle_pair",
+        "ck_purchased_allowances_period_order",
+    },
+    "external_billing_webhook_deliveries": {
+        "ck_external_billing_webhook_deliveries_hash_nonempty",
+        "ck_external_billing_webhook_deliveries_corr_schema_nonempty",
+        "ck_external_billing_webhook_deliveries_evidence_schema_nonempty",
+    },
+    "billing_work_items": {"ck_billing_work_items_payload_schema_nonempty", "ck_billing_work_items_lease_pair"},
+    "manual_review_cases": {"ck_manual_review_cases_evidence_schema_nonempty"},
+    "paid_access_states": set(),
+    "access_invalidation_outbox": {
+        "ck_access_invalidation_outbox_pending_revision_positive",
+        "ck_access_invalidation_outbox_revision_order",
+    },
+}
 
-    with postgres_engine.connect() as connection:
-        partial_indexes = dict(
-            connection.execute(
-                text(
-                    "SELECT indexname, indexdef FROM pg_indexes "
-                    "WHERE schemaname = 'public' AND indexdef LIKE '% WHERE %'"
-                )
-            ).all()
-        )
+EXPECTED_UNIQUE_CONSTRAINTS = {
+    "country_region_rules": {"uq_country_region_rules_country_code"},
+    "users": {"uq_users_tenant_region_email_normalized", "uq_users_id_tenant_region"},
+    "auth_sessions": {"uq_auth_sessions_token_hash"},
+    "magic_link_tokens": {"uq_magic_link_tokens_token_hash"},
+    "legal_entities": {"uq_legal_entities_id_tenant_region"},
+    "document_versions": {
+        "uq_document_versions_tenant_region_doc_type_version",
+        "uq_document_versions_id_tenant_region",
+    },
+    "legal_acceptance_events": {
+        "uq_legal_acceptance_events_purchase_binding",
+        "uq_legal_acceptance_events_scope",
+    },
+    "document_acceptances": {"uq_document_acceptances_event_document"},
+    "capability_manifest_projections": {"uq_capability_manifest_projections_scope"},
+    "external_billing_catalog_projections": {"uq_external_billing_catalog_projections_account"},
+    "commercial_mapping_revisions": {
+        "uq_commercial_mapping_revisions_id_account",
+        "uq_commercial_mapping_revisions_id_account_offer",
+        "uq_commercial_mapping_revisions_account_offer_revision",
+    },
+    "external_billing_customers": {
+        "uq_external_billing_customers_id_account_user",
+        "uq_external_billing_customers_account_user",
+        "uq_external_billing_customers_billing_customer_key",
+    },
+    "purchase_intents": {
+        "uq_purchase_intents_client_idempotency",
+        "uq_purchase_intents_id_customer",
+        "uq_purchase_intents_id_account_user_product",
+        "uq_purchase_intents_full_scope",
+    },
+    "billing_product_access_scopes": {
+        "uq_billing_product_access_scopes_id_user_product",
+        "uq_billing_product_access_scopes_user_product",
+    },
+    "external_subscriptions": {
+        "uq_external_subscriptions_id_product",
+        "uq_external_subscriptions_id_user_product",
+        "uq_external_subscriptions_id_account_user_product",
+    },
+    "billing_state_observations": {
+        "uq_billing_state_observations_id_scope",
+        "uq_billing_state_observations_id_subscription",
+    },
+    "paid_access_states": {"uq_paid_access_states_tenant_region_user"},
+    "access_invalidation_outbox": {"uq_access_invalidation_outbox_tenant_region_user"},
+}
 
-    assert {
-        "uq_bundle_products_active_product",
+EXPECTED_INDEXES = {
+    "country_region_rules": {"ix_country_region_rules_country_code", "ix_country_region_rules_region"},
+    "users": {"ix_users_tenant_id", "ix_users_region", "ix_users_email_normalized", "ix_users_status"},
+    "auth_sessions": {
+        "ix_auth_sessions_tenant_id",
+        "ix_auth_sessions_region",
+        "ix_auth_sessions_user_id",
+        "ix_auth_sessions_token_hash",
+    },
+    "magic_link_tokens": {
+        "ix_magic_link_tokens_tenant_id",
+        "ix_magic_link_tokens_region",
+        "ix_magic_link_tokens_user_id",
+        "ix_magic_link_tokens_email_normalized",
+        "ix_magic_link_tokens_token_hash",
+    },
+    "password_reset_rate_limits": {"ix_password_reset_rate_limits_expires_at"},
+    "legal_entities": {
+        "ix_legal_entities_tenant_id",
+        "ix_legal_entities_region",
+        "ix_legal_entities_status",
+        "ix_legal_entities_tenant_region_status",
+    },
+    "document_versions": {
+        "ix_document_versions_tenant_id",
+        "ix_document_versions_region",
+        "ix_document_versions_legal_entity_id",
+        "ix_document_versions_doc_type",
+        "ix_document_versions_is_active",
         "uq_document_versions_active_doc",
-        "uq_payment_provider_accounts_default",
-        "uq_payments_provider_account_payment_id",
-        "uq_plans_active_code",
-        "uq_refunds_provider_account_refund_id",
-        "uq_subscriptions_live_all_access_scope",
-        "uq_subscriptions_live_bundle_scope",
-        "uq_subscriptions_live_product_scope",
-        "uq_subscriptions_provider_reference",
-    } <= partial_indexes.keys()
-    payment_predicate = " ".join(
-        partial_indexes["uq_payments_provider_account_payment_id"].upper().replace("(", " ").replace(")", " ").split()
-    )
-    assert payment_predicate.endswith("WHERE PROVIDER_PAYMENT_ID IS NOT NULL")
-    subscription_index_names = {index["name"] for index in inspector.get_indexes("subscriptions")}
-    assert {
-        "ix_subscriptions_tenant_id",
-        "ix_subscriptions_region",
-        "ix_subscriptions_user_id",
-        "ix_subscriptions_user_region_status",
-        "ix_subscriptions_plan_id",
-        "ix_subscriptions_status",
-        "ix_subscriptions_provider_account_id",
-        "ix_subscriptions_recurring_consent_acceptance_id",
-        "uq_subscriptions_provider_reference",
-        "uq_subscriptions_live_all_access_scope",
-        "uq_subscriptions_live_bundle_scope",
-        "uq_subscriptions_live_product_scope",
-    } <= subscription_index_names
-    entitlement_indexes = {
-        index["name"]: tuple(index["column_names"]) for index in inspector.get_indexes("entitlements")
-    }
-    assert {
-        "ix_entitlements_tenant_id": ("tenant_id",),
-        "ix_entitlements_region": ("region",),
-        "ix_entitlements_user_id": ("user_id",),
-        "ix_entitlements_user_region_status": ("user_id", "region", "status"),
-        "ix_entitlements_subscription_id": ("subscription_id",),
-        "ix_entitlements_subscription_status_validity": (
-            "subscription_id",
-            "status",
-            "valid_from",
-            "valid_until",
-        ),
-        "ix_entitlements_order_status_validity": ("order_id", "status", "valid_from", "valid_until"),
-        "ix_entitlements_plan_id": ("plan_id",),
-        "ix_entitlements_status": ("status",),
-        "ix_entitlements_order_id": ("order_id",),
-    }.items() <= entitlement_indexes.items()
-    event_indexes = {
-        index["name"]: tuple(index["column_names"]) for index in inspector.get_indexes("subscription_events")
-    }
-    assert {
-        "ix_subscription_events_subscription_id": ("subscription_id",),
-        "ix_subscription_events_subscription_occurred_at": ("subscription_id", "occurred_at"),
-        "ix_subscription_events_order_id": ("order_id",),
-        "ix_subscription_events_payment_id": ("payment_id",),
-        "ix_subscription_events_refund_id": ("refund_id",),
-        "ix_subscription_events_webhook_event_id": ("webhook_event_id",),
-    }.items() <= event_indexes.items()
-    for index_name, scope_type in (
-        ("uq_subscriptions_live_all_access_scope", "ALL_ACCESS"),
-        ("uq_subscriptions_live_bundle_scope", "BUNDLE"),
-        ("uq_subscriptions_live_product_scope", "PRODUCT"),
-    ):
-        predicate = " ".join(partial_indexes[index_name].upper().replace("(", " ").replace(")", " ").split())
-        assert f"SCOPE_TYPE = '{scope_type}'" in predicate
-        for status in ("TRIALING", "ACTIVE", "PAST_DUE", "PAUSED"):
-            assert f"'{status}'" in predicate
+        "ix_document_versions_region_is_active",
+    },
+    "legal_acceptance_events": {
+        "ix_legal_acceptance_events_tenant_id",
+        "ix_legal_acceptance_events_region",
+        "ix_legal_acceptance_events_user_id",
+        "ix_legal_acceptance_events_accepted_at",
+    },
+    "document_acceptances": {
+        "ix_document_acceptances_legal_acceptance_event_id",
+        "ix_document_acceptances_tenant_id",
+        "ix_document_acceptances_region",
+        "ix_document_acceptances_user_id",
+        "ix_document_acceptances_document_version_id",
+    },
+    "capability_manifest_projections": {
+        "ix_capability_manifest_projections_manifest_version",
+        "ix_capability_manifest_projections_last_sync",
+    },
+    "external_billing_catalog_projections": {
+        "ix_external_billing_catalog_projections_catalog_version",
+        "ix_external_billing_catalog_projections_catalog_digest",
+        "ix_external_billing_catalog_projections_last_sync",
+    },
+    "commercial_mapping_revisions": {
+        "ix_commercial_mapping_revisions_publication",
+        "ix_commercial_mapping_revisions_manifest",
+        "ix_commercial_mapping_revisions_principal",
+    },
+    "external_billing_customers": {
+        "ix_external_billing_customers_provider_customer_id",
+        "ix_external_billing_customers_binding_state",
+    },
+    "purchase_intents": {
+        "ix_purchase_intents_user_product",
+        "ix_purchase_intents_account_offer",
+        "ix_purchase_intents_customer_purchase",
+        "ix_purchase_intents_mapping_revision",
+        "ix_purchase_intents_commercial_fingerprint",
+        "ix_purchase_intents_state",
+        "ix_purchase_intents_state_updated_at",
+    },
+    "external_create_operations": {
+        "uq_external_create_operations_unresolved_customer",
+        "ix_external_create_operations_customer_state",
+        "ix_external_create_operations_purchase",
+        "ix_external_create_operations_correlation",
+        "ix_external_create_operations_unknown_deadline",
+        "ix_external_create_operations_bound_object",
+        "ix_external_create_operations_recovery_scan",
+    },
+    "billing_product_access_scopes": {"ix_billing_product_access_scopes_primary_subscription"},
+    "external_subscriptions": {
+        "uq_external_subscriptions_purchase_intent",
+        "ix_external_subscriptions_account_customer",
+        "ix_external_subscriptions_user_product_status",
+        "ix_external_subscriptions_customer_product_status",
+        "ix_external_subscriptions_purchase_provenance",
+        "ix_external_subscriptions_mapping_provenance",
+        "ix_external_subscriptions_external_id",
+        "ix_external_subscriptions_agreement_id",
+        "ix_external_subscriptions_lifecycle_status",
+        "ix_external_subscriptions_financial_status",
+        "ix_external_subscriptions_commercial_status",
+        "ix_external_subscriptions_last_read",
+        "ix_external_subscriptions_valid_until",
+        "ix_external_subscriptions_lease_expiry",
+        "ix_external_subscriptions_reconciliation_claim",
+        "ix_external_subscriptions_latest_observation",
+    },
+    "billing_state_observations": {
+        "ix_billing_state_observations_kind_time",
+        "ix_billing_state_observations_account_kind_time",
+        "ix_billing_state_observations_user_product_time",
+        "ix_billing_state_observations_scope_time",
+        "ix_billing_state_observations_subscription_time",
+        "ix_billing_state_observations_purchase_time",
+        "ix_billing_state_observations_work_item",
+        "ix_billing_state_observations_basis",
+        "ix_billing_state_observations_effective_at",
+        "ix_billing_state_observations_completeness",
+        "ix_billing_state_observations_result",
+        "ix_billing_state_observations_scope_revision",
+    },
+    "purchased_allowances": {
+        "ix_purchased_allowances_provider_cycle_key",
+        "ix_purchased_allowances_subscription_cycle",
+        "ix_purchased_allowances_subscription_component_cycle",
+        "ix_purchased_allowances_product_metric",
+    },
+    "external_billing_webhook_deliveries": {
+        "ix_external_billing_webhook_deliveries_account_received",
+        "ix_external_billing_webhook_deliveries_processing_received",
+        "ix_external_billing_webhook_deliveries_received_at",
+        "ix_external_billing_webhook_deliveries_provider_event",
+        "ix_external_billing_webhook_deliveries_payload_hash",
+    },
+    "billing_work_items": {
+        "ix_billing_work_items_kind_state_due",
+        "ix_billing_work_items_scope",
+        "ix_billing_work_items_coalescing_key",
+        "ix_billing_work_items_priority_retry",
+        "ix_billing_work_items_lease_expiry",
+        "ix_billing_work_items_claim_scan",
+        "ix_billing_work_items_kind_state",
+    },
+    "manual_review_cases": {
+        "ix_manual_review_cases_reason_state",
+        "ix_manual_review_cases_scope",
+        "ix_manual_review_cases_state",
+        "ix_manual_review_cases_state_created",
+        "ix_manual_review_cases_resolved_by",
+    },
+    "access_invalidation_outbox": {"ix_access_invalidation_outbox_next_attempt_at"},
+}
+
+ORM_ONLY_DEFAULT_COLUMNS = {
+    ("regions", "status"),
+    ("country_region_rules", "market_enabled"),
+    ("country_region_rules", "strict_mismatch"),
+    ("users", "status"),
+    ("users", "metadata"),
+    ("password_reset_rate_limits", "count"),
+    ("legal_entities", "status"),
+    ("document_versions", "is_active"),
+    ("document_versions", "requires_acceptance"),
+}
+
+DATABASE_DEFAULT_COLUMNS = {
+    ("external_billing_customers", "binding_state"): "'unbound'",
+    ("purchase_intents", "state"): "'created'",
+    ("external_subscriptions", "reconciliation_fencing_token"): "0",
+    ("billing_work_items", "priority"): "0",
+    ("billing_work_items", "attempt_count"): "0",
+    ("access_invalidation_outbox", "delivered_revision"): "0",
+    ("access_invalidation_outbox", "attempt_count"): "0",
+}
+
+pytestmark = pytest.mark.postgres
 
 
-def live_subscription_index_predicates(postgres_engine: Engine) -> dict[str, str]:
-    with postgres_engine.connect() as connection:
-        rows = (
-            connection.execute(
-                text(
-                    "SELECT c.relname AS index_name, pg_get_expr(i.indpred, i.indrelid) AS predicate "
-                    "FROM pg_index i "
-                    "JOIN pg_class c ON c.oid = i.indexrelid "
-                    "WHERE c.relname IN ("
-                    "'uq_subscriptions_live_all_access_scope', "
-                    "'uq_subscriptions_live_bundle_scope', "
-                    "'uq_subscriptions_live_product_scope'"
-                    ")"
-                )
-            )
-            .mappings()
-            .all()
-        )
-    return {row["index_name"]: row["predicate"] for row in rows}
+def _public_table_names(engine: Engine) -> set[str]:
+    return set(inspect(engine).get_table_names(schema="public"))
 
 
-def live_statuses_from_predicate(predicate: str) -> set[str]:
-    match = re.search(r"status\s*=\s*ANY\s*\(ARRAY\[(?P<statuses>.*?)\]\)", predicate)
-    assert match is not None
-    return set(re.findall(r"'([^']+)'::text", match.group("statuses")))
-
-
-def expected_legal_documents() -> list[dict[str, str]]:
-    repository_root = Path(__file__).resolve().parents[3]
-    manifest_path = repository_root / "apps/web/src/generated/legal-manifest.json"
+def _expected_legal_documents() -> list[dict[str, str]]:
+    manifest_path = Path(__file__).resolve().parents[3] / "apps/web/src/generated/legal-manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     return sorted(
         [
@@ -484,746 +690,236 @@ def expected_legal_documents() -> list[dict[str, str]]:
     )
 
 
-def test_clean_postgres_alembic_upgrade_and_downgrade(
+def test_clean_first_install_has_one_revision_and_exact_application_schema(
     postgres_engine: Engine,
     database_test_url: URL,
 ) -> None:
     reset_public_schema(postgres_engine)
-    pytest_logging_handlers = tuple(logging.getLogger().handlers)
+    handlers = tuple(logging.getLogger().handlers)
 
     with alembic_test_config(database_test_url) as config:
         script = ScriptDirectory.from_config(config)
-        heads = script.get_heads()
-        assert heads == [EXPECTED_REVISION_CHAIN[-1]]
-        assert script.get_bases() == [EXPECTED_REVISION_CHAIN[0]]
-        assert [revision.revision for revision in reversed(list(script.walk_revisions()))] == EXPECTED_REVISION_CHAIN
+        assert script.get_heads() == [BASELINE_REVISION]
+        assert script.get_bases() == [BASELINE_REVISION]
+        assert [item.revision for item in script.walk_revisions()] == [BASELINE_REVISION]
         command.upgrade(config, "head")
 
-    assert tuple(logging.getLogger().handlers) == pytest_logging_handlers
-    tables = public_table_names(postgres_engine)
-    assert "alembic_version" in tables
-    assert "payment_provider_accounts" in tables
-    assert "payment_webhook_events" in tables
-    assert "password_reset_rate_limits" in tables
-    assert "subscriptions" in tables
-    assert "entitlements" in tables
-    assert "subscription_events" in tables
-    assert "product_access_states" not in tables
-    assert seeded_legal_documents(postgres_engine) == expected_legal_documents()
-    assert_postgres_schema_contract(postgres_engine)
+    assert tuple(logging.getLogger().handlers) == handlers
+    assert len(APPLICATION_TABLES) == 25
+    assert _public_table_names(postgres_engine) == APPLICATION_TABLES | {"alembic_version"}
+    assert LEGACY_TABLES.isdisjoint(_public_table_names(postgres_engine))
+    with postgres_engine.connect() as connection:
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == BASELINE_REVISION
 
-    with alembic_test_config(database_test_url) as config:
-        command.downgrade(config, "base")
-
-    assert public_table_names(postgres_engine) == {"alembic_version"}
-    assert alembic_version_count(postgres_engine) == 0
-
-    with alembic_test_config(database_test_url) as config:
-        command.upgrade(config, "head")
-
-    tables = public_table_names(postgres_engine)
-    assert "alembic_version" in tables
-    assert "payment_provider_accounts" in tables
-    assert "plans" in tables
-    assert "payment_webhook_events" in tables
-    assert "password_reset_rate_limits" in tables
-    assert "subscriptions" in tables
-    assert "entitlements" in tables
-    assert "subscription_events" in tables
-    assert "product_access_states" not in tables
-    assert alembic_version_count(postgres_engine) == 1
-    assert current_alembic_revision(postgres_engine) == EXPECTED_REVISION_CHAIN[-1]
-    assert seeded_legal_documents(postgres_engine) == expected_legal_documents()
-    assert_postgres_schema_contract(postgres_engine)
-    assert seeded_catalog_ids(postgres_engine) == {
-        "bundle:core-tools-bundle": "77777777-7777-4777-8777-777777777701",
-        "bundle_product:core-tools-bundle:document-summary": ("88888888-8888-4888-8888-888888888801"),
-        "bundle_product:core-tools-bundle:prompt-optimizer": ("88888888-8888-4888-8888-888888888802"),
-        "limit:all-access-pro-ru:document_summary_runs": ("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb5"),
-        "limit:all-access-pro-ru:prompt_optimizations": ("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb6"),
-        "limit:core-tools-bundle-pro-ru:document_summary_runs": ("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb3"),
-        "limit:core-tools-bundle-pro-ru:prompt_optimizations": ("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb4"),
-        "limit:document-summary-pro:document_summary_runs": ("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1"),
-        "limit:prompt-optimizer-pro:prompt_optimizations": ("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2"),
-        "plan:all-access-pro-ru": "99999999-9999-4999-8999-999999999904",
-        "plan:core-tools-bundle-pro-ru": "99999999-9999-4999-8999-999999999903",
-        "plan:document-summary-pro": "99999999-9999-4999-8999-999999999901",
-        "plan:prompt-optimizer-pro": "99999999-9999-4999-8999-999999999902",
-        "price_component:all-access-pro-ru:1": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3",
-        "price_component:all-access-pro-ru:2": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa4",
-        "price_component:core-tools-bundle-pro-ru:1": ("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1"),
-        "price_component:core-tools-bundle-pro-ru:2": ("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2"),
-        "product:document-summary": "66666666-6666-4666-8666-666666666601",
-        "product:prompt-optimizer": "66666666-6666-4666-8666-666666666602",
-    }
-    assert seeded_catalog_summary(postgres_engine) == {
-        "products": ["document-summary", "prompt-optimizer"],
-        "plans": [
-            {
-                "code": "all-access-pro-ru",
-                "scope_type": "all_access",
-                "price_amount_minor": 198000,
-                "currency": "RUB",
-                "billing_period": "month",
-                "trial_days": 7,
-            },
-            {
-                "code": "core-tools-bundle-pro-ru",
-                "scope_type": "bundle",
-                "price_amount_minor": 198000,
-                "currency": "RUB",
-                "billing_period": "month",
-                "trial_days": 7,
-            },
-            {
-                "code": "document-summary-pro",
-                "scope_type": "product",
-                "price_amount_minor": 99000,
-                "currency": "RUB",
-                "billing_period": "month",
-                "trial_days": 7,
-            },
-            {
-                "code": "prompt-optimizer-pro",
-                "scope_type": "product",
-                "price_amount_minor": 99000,
-                "currency": "RUB",
-                "billing_period": "month",
-                "trial_days": 7,
-            },
-        ],
-        "bundle_products": [
-            {
-                "bundle_code": "core-tools-bundle",
-                "product_code": "document-summary",
-            },
-            {
-                "bundle_code": "core-tools-bundle",
-                "product_code": "prompt-optimizer",
-            },
-        ],
-        "price_components": [
-            {
-                "plan_code": "all-access-pro-ru",
-                "component_code_snapshot": "document-summary-pro",
-                "list_amount_minor": 99000,
-                "discount_amount_minor": 0,
-                "amount_minor": 99000,
-            },
-            {
-                "plan_code": "all-access-pro-ru",
-                "component_code_snapshot": "prompt-optimizer-pro",
-                "list_amount_minor": 99000,
-                "discount_amount_minor": 0,
-                "amount_minor": 99000,
-            },
-            {
-                "plan_code": "core-tools-bundle-pro-ru",
-                "component_code_snapshot": "document-summary-pro",
-                "list_amount_minor": 99000,
-                "discount_amount_minor": 0,
-                "amount_minor": 99000,
-            },
-            {
-                "plan_code": "core-tools-bundle-pro-ru",
-                "component_code_snapshot": "prompt-optimizer-pro",
-                "list_amount_minor": 99000,
-                "discount_amount_minor": 0,
-                "amount_minor": 99000,
-            },
-        ],
-        "limits": [
-            {
-                "plan_code": "all-access-pro-ru",
-                "metric": "document_summary_runs",
-                "limit_count": 1000,
-                "period": "month",
-            },
-            {
-                "plan_code": "all-access-pro-ru",
-                "metric": "prompt_optimizations",
-                "limit_count": 1000,
-                "period": "month",
-            },
-            {
-                "plan_code": "core-tools-bundle-pro-ru",
-                "metric": "document_summary_runs",
-                "limit_count": 1000,
-                "period": "month",
-            },
-            {
-                "plan_code": "core-tools-bundle-pro-ru",
-                "metric": "prompt_optimizations",
-                "limit_count": 1000,
-                "period": "month",
-            },
-            {
-                "plan_code": "document-summary-pro",
-                "metric": "document_summary_runs",
-                "limit_count": 1000,
-                "period": "month",
-            },
-            {
-                "plan_code": "prompt-optimizer-pro",
-                "metric": "prompt_optimizations",
-                "limit_count": 1000,
-                "period": "month",
-            },
-        ],
-    }
-
-
-def test_identity_scope_migration_backfills_only_exact_known_users(
-    postgres_engine: Engine,
-    database_test_url: URL,
-) -> None:
-    reset_public_schema(postgres_engine)
-    ru_user_id = uuid.UUID("10000000-0000-4000-8000-000000000001")
-    eu_user_id = uuid.UUID("10000000-0000-4000-8000-000000000002")
-
-    with alembic_test_config(database_test_url) as config:
-        command.upgrade(config, "20260826_0005")
-
-    with postgres_engine.begin() as connection:
-        connection.execute(
-            text(
-                """
-                INSERT INTO users (
-                    id, tenant_id, region, email, email_normalized, status
-                )
-                VALUES
-                    (
-                        :ru_user_id,
-                        'anytoolai',
-                        'ru',
-                        'shared@example.com',
-                        'shared@example.com',
-                        'active'
-                    ),
-                    (
-                        :eu_user_id,
-                        'anytoolai',
-                        'eu',
-                        'shared@example.com',
-                        'shared@example.com',
-                        'active'
-                    )
-                """
-            ),
-            {"ru_user_id": ru_user_id, "eu_user_id": eu_user_id},
-        )
-        connection.execute(
-            text(
-                """
-                INSERT INTO magic_link_tokens (
-                    id,
-                    tenant_id,
-                    region,
-                    email_normalized,
-                    token_hash,
-                    purpose,
-                    expires_at
-                )
-                VALUES
-                    (
-                        :ru_token_id,
-                        'anytoolai',
-                        'ru',
-                        'shared@example.com',
-                        'known-ru-token-hash',
-                        'password_reset',
-                        now() + interval '30 minutes'
-                    ),
-                    (
-                        :eu_token_id,
-                        'anytoolai',
-                        'eu',
-                        'shared@example.com',
-                        'known-eu-token-hash',
-                        'password_reset',
-                        now() + interval '30 minutes'
-                    ),
-                    (
-                        :decoy_token_id,
-                        'anytoolai',
-                        'ru',
-                        'password-reset-decoy:missing',
-                        'decoy-token-hash',
-                        'password_reset',
-                        now() + interval '30 minutes'
-                    )
-                """
-            ),
-            {
-                "ru_token_id": uuid.UUID("20000000-0000-4000-8000-000000000001"),
-                "eu_token_id": uuid.UUID("20000000-0000-4000-8000-000000000002"),
-                "decoy_token_id": uuid.UUID("20000000-0000-4000-8000-000000000003"),
-            },
-        )
-
-    with alembic_test_config(database_test_url) as config:
-        command.upgrade(config, "20260921_0006")
+    inspector = inspect(postgres_engine)
+    for table_name, expected_columns in EXPECTED_COLUMNS.items():
+        assert {column["name"] for column in inspector.get_columns(table_name)} == expected_columns
+    for table_name, expected_checks in EXPECTED_CHECKS.items():
+        actual_checks = {constraint["name"] for constraint in inspector.get_check_constraints(table_name)}
+        assert actual_checks == expected_checks
+    for table_name, expected_constraints in EXPECTED_UNIQUE_CONSTRAINTS.items():
+        actual_constraints = {constraint["name"] for constraint in inspector.get_unique_constraints(table_name)}
+        assert actual_constraints == expected_constraints
+    for table_name, expected_indexes in EXPECTED_INDEXES.items():
+        actual_indexes = {index["name"] for index in inspector.get_indexes(table_name)}
+        assert expected_indexes <= actual_indexes
 
     with postgres_engine.connect() as connection:
-        migrated_tokens = dict(
-            connection.execute(text("SELECT token_hash, user_id FROM magic_link_tokens ORDER BY token_hash")).all()
-        )
-
-    assert migrated_tokens == {
-        "decoy-token-hash": None,
-        "known-eu-token-hash": eu_user_id,
-        "known-ru-token-hash": ru_user_id,
-    }
-
-
-def test_legal_acceptance_migration_backfills_one_noncommercial_event_per_user_acceptance(
-    postgres_engine: Engine,
-    database_test_url: URL,
-) -> None:
-    reset_public_schema(postgres_engine)
-    user_id = uuid.UUID("30000000-0000-4000-8000-000000000001")
-    acceptance_id = uuid.UUID("30000000-0000-4000-8000-000000000002")
-    document_id = uuid.UUID("55555555-5555-4555-8555-555555555503")
-
-    with alembic_test_config(database_test_url) as config:
-        command.upgrade(config, "20260921_0006")
-
-    with postgres_engine.begin() as connection:
-        connection.execute(
-            text(
-                """
-                INSERT INTO users (
-                    id, tenant_id, region, email, email_normalized, status
-                )
-                VALUES (
-                    :user_id,
-                    'anytoolai',
-                    'ru',
-                    'legal-backfill@example.com',
-                    'legal-backfill@example.com',
-                    'active'
-                )
-                """
-            ),
-            {"user_id": user_id},
-        )
-        connection.execute(
-            text(
-                """
-                INSERT INTO document_acceptances (
-                    id,
-                    tenant_id,
-                    region,
-                    user_id,
-                    document_version_id,
-                    doc_type,
-                    version,
-                    acceptance_kind,
-                    accepted_at,
-                    ip,
-                    user_agent,
-                    acceptance_text_hash,
-                    metadata
-                )
-                VALUES (
-                    :acceptance_id,
-                    'anytoolai',
-                    'ru',
-                    :user_id,
-                    :document_id,
-                    'offer',
-                    '2026-07-11',
-                    'terms_acceptance',
-                    '2026-09-21T10:00:00+00:00',
-                    '192.0.2.10',
-                    'migration-test-agent',
-                    'acceptance-hash',
-                    '{}'::jsonb
-                )
-                """
-            ),
-            {
-                "acceptance_id": acceptance_id,
-                "user_id": user_id,
-                "document_id": document_id,
-            },
-        )
-
-    with alembic_test_config(database_test_url) as config:
-        command.upgrade(config, "20260921_0007")
-
-    with postgres_engine.connect() as connection:
-        event = connection.execute(
-            text(
-                """
-                SELECT
-                    id,
-                    tenant_id,
-                    region,
-                    user_id,
-                    external_billing_account_id,
-                    billing_offer_id,
-                    accepted_commercial_fingerprint,
-                    accepted_at,
-                    ip::text AS ip,
-                    user_agent
-                FROM legal_acceptance_events
-                WHERE id = :acceptance_id
-                """
-            ),
-            {"acceptance_id": acceptance_id},
-        ).one()
-        linked_event_id = connection.execute(
-            text("SELECT legal_acceptance_event_id FROM document_acceptances WHERE id = :acceptance_id"),
-            {"acceptance_id": acceptance_id},
-        ).scalar_one()
-
-    assert event.id == acceptance_id
-    assert event.tenant_id == "anytoolai"
-    assert event.region == "ru"
-    assert event.user_id == user_id
-    assert event.external_billing_account_id is None
-    assert event.billing_offer_id is None
-    assert event.accepted_commercial_fingerprint is None
-    assert event.accepted_at == datetime(2026, 9, 21, 10, 0, tzinfo=UTC)
-    assert event.ip == "192.0.2.10/32"
-    assert event.user_agent == "migration-test-agent"
-    assert linked_event_id == acceptance_id
-
-
-def test_legal_acceptance_migration_rejects_evidence_without_a_canonical_user(
-    postgres_engine: Engine,
-    database_test_url: URL,
-) -> None:
-    reset_public_schema(postgres_engine)
-    acceptance_id = uuid.UUID("30000000-0000-4000-8000-000000000003")
-    document_id = uuid.UUID("55555555-5555-4555-8555-555555555503")
-
-    with alembic_test_config(database_test_url) as config:
-        command.upgrade(config, "20260921_0006")
-
-    with postgres_engine.begin() as connection:
-        connection.execute(
-            text(
-                """
-                INSERT INTO document_acceptances (
-                    id,
-                    tenant_id,
-                    region,
-                    user_id,
-                    guest_id,
-                    document_version_id,
-                    doc_type,
-                    version,
-                    acceptance_kind,
-                    acceptance_text_hash,
-                    metadata
-                )
-                VALUES (
-                    :acceptance_id,
-                    'anytoolai',
-                    'ru',
-                    NULL,
-                    'legacy-guest',
-                    :document_id,
-                    'offer',
-                    '2026-07-11',
-                    'terms_acceptance',
-                    'acceptance-hash',
-                    '{}'::jsonb
-                )
-                """
-            ),
-            {"acceptance_id": acceptance_id, "document_id": document_id},
-        )
-
-    with pytest.raises(DatabaseError, match="without a canonical user"):
-        with alembic_test_config(database_test_url) as config:
-            command.upgrade(config, "20260921_0007")
-
-    assert current_alembic_revision(postgres_engine) == "20260921_0006"
-
-
-def test_any78_upgrade_downgrade_cycle_preserves_clean_baseline(
-    postgres_engine: Engine,
-    database_test_url: URL,
-) -> None:
-    reset_public_schema(postgres_engine)
-
-    with alembic_test_config(database_test_url) as config:
-        command.upgrade(config, "20260729_0004")
-
-    tables = public_table_names(postgres_engine)
-    assert "product_access_states" in tables
-    assert "subscriptions" not in tables
-    assert "entitlements" not in tables
-    assert "subscription_events" not in tables
-
-    with alembic_test_config(database_test_url) as config:
-        command.upgrade(config, "head")
-
-    tables = public_table_names(postgres_engine)
-    assert "product_access_states" not in tables
-    assert "subscriptions" in tables
-    assert "entitlements" in tables
-    assert "subscription_events" in tables
-    assert current_alembic_revision(postgres_engine) == EXPECTED_REVISION_CHAIN[-1]
-    assert_postgres_schema_contract(postgres_engine)
-
-    with alembic_test_config(database_test_url) as config:
-        command.downgrade(config, "20260729_0004")
-
-    tables = public_table_names(postgres_engine)
-    assert "product_access_states" in tables
-    assert "subscriptions" not in tables
-    assert "entitlements" not in tables
-    assert "subscription_events" not in tables
-    assert current_alembic_revision(postgres_engine) == "20260729_0004"
-
-    with alembic_test_config(database_test_url) as config:
-        command.upgrade(config, "head")
-
-    tables = public_table_names(postgres_engine)
-    assert "product_access_states" not in tables
-    assert "subscriptions" in tables
-    assert "entitlements" in tables
-    assert "subscription_events" in tables
-    assert current_alembic_revision(postgres_engine) == EXPECTED_REVISION_CHAIN[-1]
-    assert_postgres_schema_contract(postgres_engine)
-
-
-def test_live_subscription_index_predicates_match_runtime_live_statuses(
-    postgres_engine: Engine,
-    database_test_url: URL,
-) -> None:
-    reset_public_schema(postgres_engine)
-
-    with alembic_test_config(database_test_url) as config:
-        command.upgrade(config, "head")
-
-    expected_live_statuses = set(SubscriptionStatus.live_values())
-    predicates = live_subscription_index_predicates(postgres_engine)
-    assert set(predicates) == {
-        "uq_subscriptions_live_all_access_scope",
-        "uq_subscriptions_live_bundle_scope",
-        "uq_subscriptions_live_product_scope",
-    }
-    assert all(live_statuses_from_predicate(predicate) == expected_live_statuses for predicate in predicates.values())
-
-
-def test_live_subscription_unique_indexes_are_removed_on_downgrade(
-    postgres_engine: Engine,
-    database_test_url: URL,
-) -> None:
-    reset_public_schema(postgres_engine)
-    index_names = {
-        "uq_subscriptions_live_all_access_scope",
-        "uq_subscriptions_live_bundle_scope",
-        "uq_subscriptions_live_product_scope",
-    }
-
-    with alembic_test_config(database_test_url) as config:
-        command.upgrade(config, "head")
-
-    with postgres_engine.connect() as connection:
-        upgraded_indexes = set(
+        partial_indexes = dict(
             connection.execute(
-                text("SELECT indexname FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'subscriptions'")
-            ).scalars()
+                text(
+                    "SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = 'public' "
+                    "AND indexname IN ('uq_document_versions_active_doc', "
+                    "'uq_external_create_operations_unresolved_customer', "
+                    "'uq_external_subscriptions_purchase_intent')"
+                )
+            ).all()
         )
-    assert index_names <= upgraded_indexes
+    normalized_predicates = {
+        name: " ".join(definition.upper().replace("(", " ").replace(")", " ").split())
+        for name, definition in partial_indexes.items()
+    }
+    assert normalized_predicates["uq_document_versions_active_doc"].endswith("WHERE IS_ACTIVE = TRUE")
+    assert normalized_predicates["uq_external_create_operations_unresolved_customer"].endswith(
+        "WHERE OPERATION_KIND = 'CUSTOMER'::TEXT AND RESOLVED_AT IS NULL"
+    )
+    assert normalized_predicates["uq_external_subscriptions_purchase_intent"].endswith(
+        "WHERE PURCHASE_INTENT_ID IS NOT NULL"
+    )
 
-    with alembic_test_config(database_test_url) as config:
-        command.downgrade(config, "20260729_0004")
-
-    with postgres_engine.connect() as connection:
-        downgraded_indexes = set(
-            connection.execute(
-                text("SELECT indexname FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'subscriptions'")
-            ).scalars()
+    all_foreign_keys = {
+        foreign_key["name"]: (
+            table_name,
+            tuple(foreign_key["constrained_columns"]),
+            foreign_key["referred_table"],
+            tuple(foreign_key["referred_columns"]),
         )
-        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "20260729_0004"
-    assert index_names.isdisjoint(downgraded_indexes)
+        for table_name in APPLICATION_TABLES
+        for foreign_key in inspector.get_foreign_keys(table_name)
+    }
+    required_restrict_foreign_keys = {
+        "fk_auth_sessions_user_scope",
+        "fk_magic_link_tokens_user_scope",
+        "fk_document_versions_legal_entity_scope",
+        "fk_legal_acceptance_events_user_scope",
+        "fk_document_acceptances_event_scope",
+        "fk_document_acceptances_document_scope",
+        "fk_purchase_intents_customer_scope",
+        "fk_purchase_intents_mapping_scope",
+        "fk_purchase_intents_legal_evidence",
+        "fk_external_create_operations_purchase_customer",
+        "fk_billing_product_access_scopes_primary_subscription",
+        "fk_external_subscriptions_customer_scope",
+        "fk_external_subscriptions_purchase_provenance",
+        "fk_external_subscriptions_mapping_scope",
+        "fk_external_subscriptions_latest_observation",
+        "fk_billing_state_observations_access_scope",
+        "fk_billing_state_observations_subscription_scope",
+        "fk_billing_state_observations_purchase_scope",
+        "fk_billing_state_observations_basis_scope",
+        "fk_purchased_allowances_subscription_product",
+        "fk_paid_access_states_user_scope",
+        "fk_access_invalidation_outbox_user_scope",
+    }
+    assert required_restrict_foreign_keys <= all_foreign_keys.keys()
+    foreign_key_ondelete = {
+        foreign_key["name"]: foreign_key["options"].get("ondelete")
+        for table_name in APPLICATION_TABLES
+        for foreign_key in inspector.get_foreign_keys(table_name)
+    }
+    assert all(foreign_key_ondelete[name] == "RESTRICT" for name in required_restrict_foreign_keys)
+    assert all_foreign_keys["fk_billing_product_access_scopes_primary_subscription"] == (
+        "billing_product_access_scopes",
+        ("primary_subscription_id", "user_id", "product_id"),
+        "external_subscriptions",
+        ("subscription_id", "user_id", "product_id"),
+    )
+    assert all_foreign_keys["fk_external_subscriptions_latest_observation"] == (
+        "external_subscriptions",
+        ("latest_observation_id", "subscription_id"),
+        "billing_state_observations",
+        ("observation_id", "subscription_id"),
+    )
+
+    json_columns = {
+        ("users", "metadata"),
+        ("capability_manifest_projections", "manifest_document"),
+        ("external_billing_catalog_projections", "catalog_document"),
+        ("commercial_mapping_revisions", "mapping_document"),
+        ("purchase_intents", "accepted_snapshot"),
+        ("external_create_operations", "recovery_hint_document"),
+        ("billing_state_observations", "evidence_document"),
+        ("external_billing_webhook_deliveries", "correlation_document"),
+        ("external_billing_webhook_deliveries", "evidence_document"),
+        ("billing_work_items", "payload_document"),
+        ("manual_review_cases", "evidence_document"),
+        ("manual_review_cases", "resolution_document"),
+        ("paid_access_states", "effective_state_document"),
+    }
+    for table_name, column_name in json_columns:
+        columns = {column["name"]: column for column in inspector.get_columns(table_name)}
+        assert isinstance(columns[column_name]["type"], JSONB)
+    for table_name, column_name in ORM_ONLY_DEFAULT_COLUMNS:
+        columns = {column["name"]: column for column in inspector.get_columns(table_name)}
+        assert columns[column_name]["default"] is None
+    for (table_name, column_name), expected_default in DATABASE_DEFAULT_COLUMNS.items():
+        columns = {column["name"]: column for column in inspector.get_columns(table_name)}
+        actual_default = columns[column_name]["default"]
+        assert actual_default is not None
+        assert actual_default.removesuffix("::text") == expected_default
 
 
-def test_plan_scope_references_constraint_is_removed_on_downgrade(
+def test_clean_first_install_bootstraps_supported_configured_scope_and_empty_targets(
     postgres_engine: Engine,
     database_test_url: URL,
 ) -> None:
     reset_public_schema(postgres_engine)
-
     with alembic_test_config(database_test_url) as config:
         command.upgrade(config, "head")
 
     with postgres_engine.connect() as connection:
-        upgraded_constraints = set(
-            connection.execute(
-                text("SELECT conname FROM pg_constraint WHERE conrelid = 'plans'::regclass AND contype = 'c'")
-            ).scalars()
-        )
-    assert "ck_plans_scope_references" in upgraded_constraints
-
-    with alembic_test_config(database_test_url) as config:
-        command.downgrade(config, "20260729_0004")
-
-    with postgres_engine.connect() as connection:
-        downgraded_constraints = set(
-            connection.execute(
-                text("SELECT conname FROM pg_constraint WHERE conrelid = 'plans'::regclass AND contype = 'c'")
-            ).scalars()
-        )
-        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "20260729_0004"
-    assert "ck_plans_scope_references" not in downgraded_constraints
+        assert connection.execute(text("SELECT code FROM regions ORDER BY code")).scalars().all() == ["ru"]
+        assert connection.execute(
+            text("SELECT country_code, region, default_document_set FROM country_region_rules")
+        ).one() == ("RU", "ru", "ru_ip_v1")
+        assert connection.execute(
+            text("SELECT tenant_id, region, count(*) FROM legal_entities GROUP BY tenant_id, region")
+        ).one() == ("anytoolai", "ru", 1)
+        documents = [
+            dict(row)
+            for row in connection.execute(
+                text("SELECT id::text, doc_type, version, content_hash FROM document_versions ORDER BY id")
+            ).mappings()
+        ]
+        assert documents == _expected_legal_documents()
+        for table_name in TARGET_TABLES:
+            assert connection.execute(text(f'SELECT count(*) FROM "{table_name}"')).scalar_one() == 0
 
 
 @pytest.mark.parametrize(
-    ("scope_type", "has_product", "has_bundle", "is_valid"),
-    (
-        ("product", True, False, True),
-        ("product", False, False, False),
-        ("product", True, True, False),
-        ("product", False, True, False),
-        ("bundle", False, True, True),
-        ("bundle", False, False, False),
-        ("bundle", True, True, False),
-        ("bundle", True, False, False),
-        ("all_access", False, False, True),
-        ("all_access", True, False, False),
-        ("all_access", False, True, False),
-        ("all_access", True, True, False),
-    ),
+    ("instance_tenant_id", "instance_region"),
+    [("other", "ru"), ("anytoolai", "eu")],
 )
-def test_plan_scope_references_constraint_accepts_only_matching_references(
+def test_clean_first_install_rejects_unsupported_configured_scope(
     postgres_engine: Engine,
     database_test_url: URL,
-    scope_type: str,
-    has_product: bool,
-    has_bundle: bool,
-    is_valid: bool,
+    instance_tenant_id: str,
+    instance_region: str,
 ) -> None:
     reset_public_schema(postgres_engine)
 
-    with alembic_test_config(database_test_url) as config:
-        command.upgrade(config, "head")
+    with alembic_test_config(
+        database_test_url,
+        instance_tenant_id=instance_tenant_id,
+        instance_region=instance_region,
+    ) as config:
+        with pytest.raises(ValueError, match="current bootstrap supports only anytoolai/ru"):
+            command.upgrade(config, "head")
 
-    with postgres_engine.connect() as connection:
-        references = (
-            connection.execute(
-                text(
-                    "SELECT "
-                    "(SELECT id FROM products ORDER BY code LIMIT 1) AS product_id, "
-                    "(SELECT id FROM bundles ORDER BY code LIMIT 1) AS bundle_id"
-                )
-            )
-            .mappings()
-            .one()
-        )
-
-    insert_plan = text(
-        "INSERT INTO plans ("
-        "id, tenant_id, region, code, name, scope_type, product_id, bundle_id, "
-        "price_amount_minor, currency, billing_period, renewal_mode, trial_days, status, valid_from"
-        ") VALUES ("
-        ":id, 'anytoolai', 'ru', :code, :name, :scope_type, :product_id, :bundle_id, "
-        "100, 'RUB', 'month', 'manual', 0, 'active', :valid_from"
-        ")"
-    )
-    values = {
-        "id": str(uuid.uuid4()),
-        "code": f"scope-check-{scope_type}-{has_product}-{has_bundle}",
-        "name": "Scope check plan",
-        "scope_type": scope_type,
-        "product_id": references["product_id"] if has_product else None,
-        "bundle_id": references["bundle_id"] if has_bundle else None,
-        "valid_from": datetime.now(UTC),
-    }
-
-    if is_valid:
-        with postgres_engine.begin() as connection:
-            connection.execute(insert_plan, values)
-    else:
-        with pytest.raises(IntegrityError), postgres_engine.begin() as connection:
-            connection.execute(insert_plan, values)
+    assert _public_table_names(postgres_engine) == set()
 
 
-def test_plan_scope_references_migration_fails_on_existing_invalid_rows(
-    postgres_engine: Engine,
-    database_test_url: URL,
-) -> None:
-    reset_public_schema(postgres_engine)
-
-    with alembic_test_config(database_test_url) as config:
-        command.upgrade(config, "20260729_0004")
-
-    with postgres_engine.begin() as connection:
+def test_survivor_scope_constraints_reject_cross_contour_references(migrated_database: Engine) -> None:
+    with migrated_database.begin() as connection:
         connection.execute(
             text(
-                "INSERT INTO plans ("
-                "id, tenant_id, region, code, name, scope_type, product_id, bundle_id, "
-                "price_amount_minor, currency, billing_period, renewal_mode, trial_days, status, valid_from"
-                ") VALUES ("
-                "'99999999-9999-4999-8999-999999999905', "
-                "'anytoolai', 'ru', 'invalid-plan-scope', 'Invalid Plan Scope', "
-                "'product', NULL, NULL, 100, 'RUB', 'month', 'manual', 0, 'active', :valid_from"
-                ")"
-            ),
-            {"valid_from": datetime.now(UTC)},
+                "INSERT INTO users "
+                "(id, tenant_id, region, email, email_normalized, status, metadata) VALUES "
+                "('10000000-0000-4000-8000-000000000001', 'anytoolai', 'ru', "
+                "'scope@example.com', 'scope@example.com', 'active', '{}'::jsonb)"
+            )
         )
 
-    with (
-        pytest.raises(RuntimeError, match="Cannot add ck_plans_scope_references"),
-        alembic_test_config(database_test_url) as config,
-    ):
-        command.upgrade(config, "head")
+    with pytest.raises(IntegrityError), migrated_database.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO auth_sessions "
+                "(id, tenant_id, region, user_id, token_hash, expires_at) VALUES "
+                "('10000000-0000-4000-8000-000000000002', 'other', 'ru', "
+                "'10000000-0000-4000-8000-000000000001', 'scope-token', now() + interval '1 hour')"
+            )
+        )
 
-    with postgres_engine.connect() as connection:
-        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "20260729_0004"
-        assert (
-            connection.execute(text("SELECT count(*) FROM plans WHERE code = 'invalid-plan-scope'")).scalar_one() == 1
+    with pytest.raises(IntegrityError), migrated_database.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO legal_acceptance_events "
+                "(id, tenant_id, region, user_id) VALUES "
+                "('10000000-0000-4000-8000-000000000003', 'anytoolai', 'other', "
+                "'10000000-0000-4000-8000-000000000001')"
+            )
         )
 
 
-def test_active_plan_versions_cannot_overlap(
+def test_clean_first_install_downgrades_to_empty_public_schema(
     postgres_engine: Engine,
     database_test_url: URL,
 ) -> None:
     reset_public_schema(postgres_engine)
-
     with alembic_test_config(database_test_url) as config:
         command.upgrade(config, "head")
+        command.downgrade(config, "base")
 
+    assert _public_table_names(postgres_engine) == {"alembic_version"}
     with postgres_engine.connect() as connection:
-        with connection.begin():
-            seed_plan = (
-                connection.execute(text("SELECT product_id, valid_from FROM plans WHERE code = 'document-summary-pro'"))
-                .mappings()
-                .one()
-            )
-            product_id = seed_plan["product_id"]
-            valid_from = seed_plan["valid_from"]
-            connection.execute(
-                text("UPDATE plans SET valid_to = :valid_to WHERE code = 'document-summary-pro'"),
-                {"valid_to": valid_from + timedelta(days=1)},
-            )
-
-        with pytest.raises(IntegrityError), connection.begin():
-            connection.execute(
-                text(
-                    "INSERT INTO plans ("
-                    "id, tenant_id, region, code, name, scope_type, product_id, "
-                    "price_amount_minor, currency, billing_period, renewal_mode, "
-                    "trial_days, status, valid_from, valid_to"
-                    ") VALUES ("
-                    "'99999999-9999-4999-8999-999999999905', "
-                    "'anytoolai', 'ru', 'document-summary-pro', "
-                    "'Document Summary Pro overlap', 'product', :product_id, "
-                    "99000, 'RUB', 'month', 'manual', 7, 'active', "
-                    ":valid_from, :valid_to"
-                    ")"
-                ),
-                {
-                    "product_id": product_id,
-                    "valid_from": valid_from - timedelta(days=1),
-                    "valid_to": valid_from + timedelta(days=2),
-                },
-            )
+        assert connection.execute(text("SELECT count(*) FROM alembic_version")).scalar_one() == 0

@@ -6,23 +6,25 @@ from typing import Annotated, Any
 from urllib.parse import quote
 
 from dotenv import load_dotenv
-from pydantic import Field, StringConstraints, ValidationInfo, field_validator, model_validator
+from pydantic import StringConstraints, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
-from app.core.payment_api_limits import (
-    PAYMENTS_API_MAX_CONNECT_TIMEOUT_SECONDS,
-    PAYMENTS_API_MAX_POOL_TIMEOUT_SECONDS,
-    PAYMENTS_API_MAX_READ_TIMEOUT_SECONDS,
-    PAYMENTS_API_MAX_RETRIES,
-    PAYMENTS_API_MAX_RETRY_BACKOFF_SECONDS,
-    PAYMENTS_API_MAX_TIMEOUT_SECONDS,
-    PAYMENTS_API_MAX_WRITE_TIMEOUT_SECONDS,
-)
 from app.core.url_validation import (
-    validate_https_origin_url,
     validate_production_cors_origin,
     validate_production_public_url,
 )
+
+SUPPORTED_INSTANCE_TENANT_ID = "anytoolai"
+SUPPORTED_INSTANCE_REGION = "ru"
+
+
+def require_supported_instance_scope(*, tenant_id: str, region: str) -> None:
+    """Reject deployment scopes that do not have a supported bootstrap."""
+    if (tenant_id, region) != (SUPPORTED_INSTANCE_TENANT_ID, SUPPORTED_INSTANCE_REGION):
+        raise ValueError(
+            "unsupported instance scope: the current bootstrap supports only "
+            f"{SUPPORTED_INSTANCE_TENANT_ID}/{SUPPORTED_INSTANCE_REGION}"
+        )
 
 
 def _split_csv_value(raw: str) -> tuple[str, ...]:
@@ -60,38 +62,6 @@ class Settings(BaseSettings):
     postgres_password: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
     postgres_host: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
     postgres_port: int
-    cloudpayments_public_id: str = ""
-    cloudpayments_api_secret: str = ""
-    cloudpayments_api_base_url: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)] = (
-        "https://api.cloudpayments.ru"
-    )
-    cloudpayments_api_timeout_seconds: float = Field(default=10.0, gt=0, le=PAYMENTS_API_MAX_TIMEOUT_SECONDS)
-    cloudpayments_api_connect_timeout_seconds: float = Field(
-        default=3.0,
-        gt=0,
-        le=PAYMENTS_API_MAX_CONNECT_TIMEOUT_SECONDS,
-    )
-    cloudpayments_api_read_timeout_seconds: float = Field(
-        default=10.0,
-        gt=0,
-        le=PAYMENTS_API_MAX_READ_TIMEOUT_SECONDS,
-    )
-    cloudpayments_api_write_timeout_seconds: float = Field(
-        default=10.0,
-        gt=0,
-        le=PAYMENTS_API_MAX_WRITE_TIMEOUT_SECONDS,
-    )
-    cloudpayments_api_pool_timeout_seconds: float = Field(
-        default=3.0,
-        gt=0,
-        le=PAYMENTS_API_MAX_POOL_TIMEOUT_SECONDS,
-    )
-    cloudpayments_api_max_retries: int = Field(default=2, ge=0, le=PAYMENTS_API_MAX_RETRIES)
-    cloudpayments_api_retry_backoff_seconds: float = Field(
-        default=0.5,
-        ge=0,
-        le=PAYMENTS_API_MAX_RETRY_BACKOFF_SECONDS,
-    )
     smtp_host: str = ""
     smtp_port: int = 587
     smtp_username: str = ""
@@ -131,15 +101,6 @@ class Settings(BaseSettings):
             return validate_production_public_url(value, "SENTRY_DSN")
         return value
 
-    @field_validator("cloudpayments_api_base_url")
-    @classmethod
-    def require_cloudpayments_api_origin(cls, value: str) -> str:
-        return validate_https_origin_url(
-            value,
-            "CLOUDPAYMENTS_API_BASE_URL",
-            allowed_hostname="api.cloudpayments.ru",
-        )
-
     @model_validator(mode="before")
     @classmethod
     def derive_database_url_from_postgres_environment(cls, data: Any) -> Any:
@@ -178,6 +139,14 @@ class Settings(BaseSettings):
         if info.data.get("app_env") == AppEnv.PRODUCTION:
             return tuple(validate_production_cors_origin(origin) for origin in value)
         return value
+
+    @model_validator(mode="after")
+    def require_supported_bootstrap_scope(self) -> Settings:
+        require_supported_instance_scope(
+            tenant_id=self.instance_tenant_id,
+            region=self.instance_region,
+        )
+        return self
 
     @model_validator(mode="after")
     def require_sentry_release_when_enabled(self) -> Settings:

@@ -1,95 +1,86 @@
 # Payment Portal Architecture
 
 Status: authoritative current-state map
-Last verified: 2026-09-18
+Last verified: 2026-09-24
 
 ## System boundary
 
-In the current implementation, this repository owns identity, legal-document
-and acceptance records, catalog semantics, entitlement rules, local
-entitlements, checkout and local billing records, and the payment portal UI for
-**one contour per production instance**. Normal runtime has no active direct
-payment provider, and retained provider/webhook source is not part of normal
-application composition. The repository does not own workflow execution,
-scenario runtime, artifacts, or usage consumption. Those belong to the separate
-Platform Kernel repository.
+This repository currently owns the `ru` contour's identity, authenticated
+sessions, password recovery, legal-document/version/acceptance records, the
+Payment Portal UI, and a provider-neutral external-billing persistence
+baseline. It does not own workflow execution, artifacts, usage consumption, or
+quota enforcement; those belong to the separate Platform Kernel repository.
 
-The implemented instance is the `ru` contour. Target contours are `ru`, `eu`,
-and `us`. See [contours](docs/architecture/contours.md).
-
-Region Resolver is a separate UI-less service planned for contour selection.
-When implemented, frontends will ask it for deployed contours and base URLs,
-then talk to this portal and Platform Kernel directly. See
+Each production deployment serves exactly one contour. Region Resolver is a
+separate planned service for contour selection; it is not implemented here.
+See [contours](docs/architecture/contours.md) and the
 [Region Resolver contract](docs/architecture/region-resolver-contract.md).
 
 ```mermaid
 flowchart LR
   Browser -. "planned contour lookup" .-> Resolver["Planned Region Resolver"]
-  Resolver -. "deployed contours and 3 base URLs" .-> Browser
+  Resolver -. "deployed contour URLs" .-> Browser
   Browser --> Web["Next.js web"]
   Web --> API["FastAPI API"]
   API --> DB[("PostgreSQL")]
-  API -. "future access contract" .-> PK["Platform Kernel in this contour"]
-  Web -. "planned contour switch" .-> Resolver
+  API -. "future AccessSnapshot contract" .-> Kernel["Platform Kernel"]
+  API -. "future external-billing integration" .-> Billing["External Billing"]
 ```
 
 ## Billing architecture status
 
-### CURRENT / RETAINED
+The direct-provider architecture has been physically removed. There is no
+CloudPayments runtime, `PaymentProviderAdapter`, `PaymentProviderRegistry`,
+provider-account routing model, direct-payment webhook path, or Portal-owned
+catalog/order/payment/subscription/entitlement lifecycle. Checkout is
+deliberately unavailable and the current web catalog is presentational.
 
-The diagram shows current implementation code, not a production billing
-deployment. Payment Portal is still under development and has no production
-CloudPayments subscribers or subscriptions. The implemented schema and code
-contain Portal-owned `Product`, `Plan`, `Order`, `Payment`, `Subscription`, and
-`Entitlement` records plus transitional direct-provider source. Normal backend
-and frontend runtime does not initialize, register, load, or invoke
-CloudPayments, and checkout is deliberately unavailable. These commercial and
-access objects remain current-state implementation facts; they do not establish
-future commercial authority or the final paid-access wire model.
-
-The retained Portal-managed path and its documents remain available for
-characterization and controlled cleanup. No CloudPayments-to-external-billing
-migration or coexistence mechanism is required while there are no production
-subscriptions to migrate.
-
-### TARGET
+The clean first-install schema contains ten retained identity/session/legal
+tables and fifteen provider-neutral target persistence tables. Those fifteen
+tables are empty after bootstrap and no current application behavior populates
+them. They establish physical storage only; provider integration, purchase
+orchestration, workers, paid-access derivation, invalidation delivery, and
+Platform Kernel transport remain later work.
 
 The canonical target is defined, in precedence order, by
 [ADR 0005](docs/architecture/decisions/0005-external-billing-boundary.md), the
 accepted [External Billing Boundary Design](docs/superpowers/specs/2026-09-15-external-billing-boundary-design.md),
 and the accepted
-[Portal ↔ Kernel Access Contract Design](docs/superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md).
+[Portal <-> Kernel Access Contract Design](docs/superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md).
 External Billing owns commercial billing truth and lifecycle. Payment Portal
-owns AnyToolAI identity and legal acceptance, the external-billing anti-
-corruption/projection/reconciliation/recovery boundary, and provider-neutral
-paid-access projection and delivery. Platform Kernel owns technical product and
-metric vocabulary, durable actual usage, and quota enforcement.
+owns AnyToolAI identity and legal acceptance, the external-billing
+anti-corruption/projection/reconciliation/recovery boundary, and
+provider-neutral paid-access projection and delivery. Platform Kernel owns
+technical product and metric vocabulary, durable actual usage, and quota
+enforcement.
 
-External Billing is not a `PaymentProviderAdapter`, is never registered in
-`PaymentProviderRegistry`, and does not make Payment Portal the target payment
-orchestrator. The accepted Portal-Kernel `AccessSnapshot` and invalidation
-contract is the target access boundary; the current local `Entitlement`
-representation is not automatically that final wire model. This target remains
-future work controlled by `ANY-504`; it is not implemented by the current code.
-Provider-independent clean pre-production cleanup may precede Phase 0, while
-provider-dependent LBX production semantics, paid-access derivation, Widget
-behavior, and launch remain Phase 0 gated.
+External Billing is not a direct payment provider and must never be modeled as
+or registered through an adapter registry. The removed architecture is
+described only as history in
+[Payment Provider Boundary History](docs/architecture/payment-providers.md).
 
-## Current / retained domains
+Provider-independent cleanup and persistence may precede Phase 0.
+Provider-dependent LBX semantics, Widget behavior, paid-access derivation, and
+launch remain gated by Phase 0 and their owning `ANY-504` steps.
 
-- **Identity** — contour-local users and hashed authentication sessions.
-- **Legal** — legal entities, document versions, and append-only acceptances.
-- **Billing** — entrypoints, checkout sessions, orders, items, payments,
-  refunds, webhook inbox, subscriptions, entitlements, and subscription audit.
-- **Portal-managed payment provider boundary** — the retained direct-provider
-  contract for a separately enabled integration; normal runtime has no
-  registered provider and generic checkout fails closed. This boundary does
-  not represent an external billing system.
-- **CloudPayments integration** — retained source for request validation,
-  redaction, idempotency keys, response formatting, and translation into
-  billing operations; it is not registered or mounted in normal runtime.
+## Current domains and API
 
-The target logical API dependency direction is:
+- **Identity** — contour-local users, hashed sessions, registration, login,
+  logout, and password reset.
+- **Legal** — legal entities, versioned documents, required-document discovery,
+  and append-only acceptance evidence.
+- **Billing persistence** — the approved projections, immutable commercial
+  mapping/purchase evidence, reconciliation/operation records, paid-access
+  state, and invalidation outbox. There is no billing runtime yet.
+- **Presentation** — the `ru` landing, product snapshot, auth/account shells,
+  unavailable checkout/payment-result surfaces, and legal pages.
+
+Current API composition exposes authentication, password reset, legal, health,
+and metrics routes. Removed catalog, checkout-intent, payment-status, account
+subscription, provider callback, and lifecycle-command contracts are not
+compatibility surfaces.
+
+The target logical dependency direction is:
 
 ```text
 Presentation -> Application -> Domain
@@ -99,7 +90,7 @@ Persistence / Integrations -> implementations of those capabilities
 Composition -> concrete wiring
 ```
 
-For active FastAPI domain endpoints, the implemented request path is:
+For active FastAPI domain endpoints:
 
 ```text
 FastAPI Presentation
@@ -107,256 +98,117 @@ FastAPI Presentation
     -> Domain + focused query/persistence capabilities
 ```
 
-Presentation owns transport parsing and validation, dependency composition,
-response DTOs, and HTTP error mapping. Active domain modules that own an
-`APIRouter` do not import `app.infrastructure.queries` or
-`app.infrastructure.persistence` and do not issue SQLAlchemy `Session` query
-or persistence operations directly. `app.http_dependencies` is the explicit
-HTTP composition boundary and follows the same restriction. Retained provider
-integration routers and operational health/metrics endpoints are outside this
-active-domain rule because they have different boundary responsibilities.
-
-Application owns use-case and transaction orchestration while Domain owns
-transport- and vendor-independent rules. Persistence and Integrations implement
-the outer capabilities required by Application, and Composition binds their
-concrete implementations. This is the target logical model, not a claim that
-the current physical package tree fully conforms. Current exceptions and the
-transitional package mapping are recorded in the retained
-[Billing Authority and Consistency](docs/architecture/billing-authority.md)
-current-state/historical reference.
-The selective persistence rules are defined below; they do not require a
-repository for every model.
+Presentation owns transport parsing/validation, dependency composition,
+response DTOs, and HTTP error mapping. Application owns use-case and
+transaction orchestration. Domain owns transport- and vendor-independent
+rules. Persistence and future Integrations implement outer capabilities.
 
 ## Persistence boundary
 
-`app.models` is the canonical persisted ORM model contract. Persistence code
-and its consumers use those SQLAlchemy models and closed persisted
-vocabularies directly; this architecture does not introduce a parallel set of
-pure-domain entities.
+`app.models` is the canonical ORM contract. SQLAlchemy models and closed
+persisted vocabularies are exported explicitly from that package; there is no
+parallel pure-domain entity graph. The authoritative current inventory is the
+[as-built data model](docs/architecture/payment-portal-data-model.md).
 
-`app.infrastructure.queries` is the concern-oriented boundary for SQLAlchemy
-read mechanics, including query construction, filtering, joins, ordering,
-loading strategy, and requested row locking. Focused functions or query
-objects are the default when sufficient. Repository classes are not required
-per entity or table.
+`app.infrastructure.queries` owns focused SQLAlchemy read mechanics such as
+query construction, filtering, ordering, loading, and requested row locks.
+`app.infrastructure.persistence` owns focused write/storage mechanics whose
+complexity justifies a separate capability, including atomic DML,
+PostgreSQL-specific behavior, constraint interpretation, and targeted nested
+savepoints.
 
-`app.infrastructure.persistence` is reserved for focused write or storage
-mechanics whose complexity justifies a separate capability: raw SQL, bulk
-DML, PostgreSQL-specific atomic operations, physical database constraint
-interpretation, or storage-specific savepoint behavior required by an active
-use case. Application owns business decisions and canonical ORM entity state
-transitions. A SQLAlchemy `Session` may still pass through Application or
-session orchestration at this architecture stage. Simple `db.add(entity)`,
-`db.delete(entity)`, canonical ORM mutation, or equivalent enlistment does not
-require an artificial repository wrapper.
+Application orchestration owns the outer business transaction and decides when
+to commit or roll it back. Query/persistence helpers may query, lock, mutate,
+flush, interpret storage exceptions, and use a targeted nested savepoint; they
+must not begin, commit, or roll back the outer transaction. SQLAlchemy
+`Session` autobegin does not transfer logical ownership.
 
-Application orchestration owns each outer business transaction and decides when
-to commit or roll it back. Focused query and persistence helpers may construct
-queries, lock rows, perform atomic DML, flush, interpret storage exceptions, and
-use a targeted nested savepoint. They do not start, commit, or roll back the
-outer business transaction. SQLAlchemy `Session` autobegin is a session/database
-mechanism and does not transfer logical transaction ownership to the first
-helper that happens to issue SQL. The repository architecture checker protects
-this boundary in `app.infrastructure.queries` and
-`app.infrastructure.persistence`.
+### Target billing storage boundary
 
-Current physical placement remains transitional even though active FastAPI
-domain routes now delegate their use-case orchestration inward. Application
-functions may remain in existing domain `service.py`, `services/`, or
-`application/` modules; this does not require a repository per model or a
-service container. Retained integration routes and CLI entrypoints keep their
-documented boundary-specific responsibilities. Later physical package moves
-must not change the transaction contract.
+The external-billing tables are provider-neutral persistence, not executable
+commercial behavior:
 
-### Commercial transition boundary
+- projection rows hold complete last-known-good capability/catalog documents;
+- immutable mapping revisions and purchase snapshots preserve accepted
+  commercial/legal provenance;
+- external create operations preserve uncertain outcomes for safe recovery;
+- webhook delivery rows preserve bounded/redacted evidence, not authority;
+- work items are scheduling state, not business truth;
+- normalized subscription/observation/allowance rows support later
+  reconciliation;
+- paid-access state and the invalidation outbox support later provider-neutral
+  access delivery.
 
-Application owns the canonical `Order`/`Payment`/`Refund` commercial state
-machine. Integration authenticates and validates provider input, correlates a
-candidate local Order, and maps the verified fact into a typed provider-neutral
-command. It does not import or mutate canonical `Payment`, `Refund`,
-`PaymentStatus`, or `RefundStatus` state. Application reloads and locks the
-Order first, revalidates provider/account/tenant/region and financial
-correlation, and then applies the Payment or Refund projection.
+`external_billing_account_id` is an opaque configuration scope. No
+`external_billing_accounts` entity or table exists. Platform Kernel product
+and metric identifiers and External Billing object identifiers remain opaque
+at this boundary.
 
-Commercial transition functions participate in the caller-owned transaction:
-they may lock, mutate, and flush, but never commit or roll back the outer
-transaction. Their results distinguish `APPLIED`, commercial `DUPLICATE`,
-stale `IGNORED`, and contradictory `CONFLICT` facts. Database uniqueness is
-the final external Payment/Refund identity invariant; focused persistence may
-use a targeted savepoint for the candidate identity insert and recover only
-the named identity uniqueness race.
-
-The retained webhook inbox is a compatibility boundary with two transactions.
-The redacted receipt is committed first. Normalized processing then invokes the
-Application commercial transition and, only for a newly applicable result,
-hands the result to the existing subscription/entitlement lifecycle (Step 9)
-in the same second transaction. A downstream failure rolls back the commercial
-projection and lifecycle effects while preserving the durable inbox receipt.
-Future reconciliation must feed the same Application transition path rather
-than introduce another state machine. Retained CloudPayments remains absent
-from normal runtime composition.
-
-### Subscription and entitlement transition boundary
-
-`app.domains.billing.service` is the public Application facade for local
-Subscription and Entitlement mutations. Presentation, Integration, CLI, and job
-entrypoints construct an operation-specific lifecycle command and invoke that
-facade; they do not import lifecycle implementation modules, query subscription
-persistence to make mutation-policy decisions, or maintain another access state
-machine. Read-side account and access queries remain separate and valid.
-
-The Step-8 commercial transition remains authoritative for canonical Order,
-Payment, Refund, and confirmed commercial outcome state. Only a newly
-applicable paid or refund outcome is handed to the Step-9 lifecycle boundary.
-Step 9 validates the persisted commercial context and owns the resulting local
-Subscription projection, Entitlement consequence, audit event, or legitimate
-no-op. In particular, Integration does not decide whether a confirmed Refund
-affects access. Local Entitlement state and validity are the Payment Portal
-source of truth for product access; neither Subscription status nor provider or
-vendor state is a second read-time access authority.
-
-Lifecycle operation keys identify persisted operations. For normalized
-authoritative subscription-state input, exact replay must match the
-subscription, transition kind, normalized target, and authoritative occurrence
-time; reuse with different semantic input fails closed. That input requires an
-explicit timezone-aware authoritative `occurred_at`. Ordering compares only
-new ordering-aware authoritative-state events: an older fact is recorded as a
-stale no-op, equal-time same-target input is a safe no-op, equal-time
-conflicting target fails closed, and a newer fact still passes through the
-canonical transition graph. Legacy events whose timestamps may be processing
-time are not silently promoted into ordering facts. Unknown or
-non-normalizable authoritative state is rejected before mutation. These
-freshness rules do not apply generically to trials, payments, refunds,
-cancellation requests, or expiry commands.
-
-The outer caller owns commit and rollback. Lifecycle and focused query or
-persistence helpers may load, lock, mutate, and flush, but do not finalize the
-outer transaction. The retained webhook keeps its two durable phases: the
-redacted inbox receipt commits first, then the Step-8 commercial transition and
-Step-9 consequence share the second transaction. A lifecycle failure rolls
-back both transition groups while preserving the receipt. Trial and manual
-access lifecycles remain valid without a provider subscription identity.
-
-Retained CloudPayments/direct-provider code is deactivated compatibility
-source, not the target billing architecture. The transition behavior above
-describes only the retained implementation and does not constrain the target
-external-billing recovery or reconciliation design. `ANY-504` controls that
-future implementation sequence under ADR 0005 and the accepted designs.
+Browser returns, Widget callbacks, webhook receipt, outbound command success,
+payment state, or manual operator input alone never grant paid access.
 
 ### FastAPI dependency lifetimes
 
-Request-scoped resources and context are composed explicitly:
-
-- `get_db()` creates and closes the SQLAlchemy `Session`; it owns Session
-  lifetime, not a request-wide business transaction;
+- `get_db()` creates and closes the request SQLAlchemy `Session`; it owns
+  resource lifetime, not a request-wide transaction.
 - `app.http_dependencies.get_current_session()` resolves authenticated
-  user/session context from that request Session. Its established
-  `last_seen_at` commit is a separate bookkeeping transaction.
-
-`PaymentProviderRegistry` is app-scoped. `create_app()` creates it once on
-application state, and `app.http_dependencies.get_payment_provider_registry()`
-exposes that instance to routes without moving request-state access into the
-provider-neutral registry.
-
-Stateless Application/service functions are ordinary code called directly by
-Presentation. They are not wrapped in `Depends()` merely for test substitution;
-tests call them directly or override their actual resource/context dependencies.
+  user/session context and retains its separate `last_seen_at` bookkeeping
+  transaction.
+- Stateless Application/service functions are called directly; they are not
+  wrapped in `Depends()` solely for substitution.
 
 ### Current transaction map
 
-| Operation | Current transaction owner and boundary |
+| Operation | Current owner and boundary |
 | --- | --- |
-| User registration | `app.domains.identity.services.auth.register_user()` atomically commits the canonical `User`, one registration `LegalAcceptanceEvent`, all required registration `DocumentAcceptance` rows, and the initial `AuthSession`. A pre-commit failure leaves none of them durable. |
-| Login | `app.domains.identity.services.auth.login_user()` owns the existing single local commit for login bookkeeping and the new `AuthSession`. |
-| Authenticated-request bookkeeping | `app.http_dependencies.get_current_session()` delegates authentication to `app.domains.identity.services.auth.authenticate_session()`, which commits `last_seen_at` before endpoint execution. This is a separate bookkeeping transaction. |
-| Logout | Authentication bookkeeping commits first through the current-session dependency; `app.domains.identity.services.auth.logout_session()` then deletes the session in a separate commit. The whole request is not one transaction. |
-| Legal acceptance | `app.domains.legal.service.accept_legal_document()` owns the acceptance commit and refresh. Any preceding authenticated-request bookkeeping remains a separate transaction. |
-| Password-reset request | `app.domains.identity.services.password_reset.prepare_password_reset()` deliberately commits cleanup, IP rate-limit accounting, account rate-limit accounting, and reset-token creation as separate durable phases so a later failure does not erase already-consumed protection. |
-| Password-reset confirmation | `app.domains.identity.services.password_reset.confirm_password_reset()` atomically commits token claim, password replacement, outstanding-token invalidation, and active-session revocation. |
-| Commercial Payment/Refund transition (Step 8) | Application locks the Order first, applies the canonical commercial projection, and participates in the caller-owned transaction without finalizing it. |
-| Subscription/entitlement lifecycle (Step 9) | Lifecycle functions consume newly applicable commercial results in the same caller-owned transaction and never finalize the outer transaction themselves. |
-| Scheduled subscription expiry | The CLI owns one explicit transaction. It validates persisted identities before transaction exit and emits committed/success diagnostics only after commit. |
-| Provider-account uniqueness recovery | The current checkout helper uses a nested savepoint to recover a concurrent unique insert; this is not a business commit. |
-| Checkout | `app.domains.identity.services.checkout.create_checkout()` owns provider-configuration rollback and the final local commit. Checkout state and `prepare_checkout_action()` are local work before that commit; preparation performs no network command and is not evidence that future external-command ordering is already implemented. |
-| Retained CloudPayments webhook source | The redacted inbox receipt commits first; normalized commercial processing and any Step-9 handoff share a second transaction. Delivery idempotency remains distinct from commercial replay. The source is not mounted in normal runtime. |
+| Registration | `register_user()` atomically commits the user, one legal-acceptance event, all required document-acceptance rows, and initial auth session. |
+| Login | `login_user()` owns login bookkeeping and new-session commit. |
+| Authenticated bookkeeping | `authenticate_session()` commits `last_seen_at` before endpoint execution as a separate transaction. |
+| Logout | Auth bookkeeping commits first; `logout_session()` then deletes the session in a separate commit. |
+| Legal acceptance | `accept_legal_document()` owns the acceptance commit and refresh. |
+| Password-reset request | `prepare_password_reset()` intentionally commits cleanup, IP/account rate limits, and token creation as separate durable phases. |
+| Password-reset confirmation | `confirm_password_reset()` atomically commits token claim, password change, outstanding-token invalidation, and active-session revocation. |
+| Target billing tables | No current runtime transaction populates them. Their behavior belongs to later `ANY-504` steps. |
 
-Retained CloudPayments and direct-provider persistence is transitional legacy
-expected to be physically decommissioned later. It is not the architectural
-template for future external billing, and new generic persistence boundaries
-must remain independent of it so they do not make that removal harder. When an
-active generic consumer and retained provider code share a helper, the helper
-remains provider-neutral; CloudPayments-only semantics are not promoted into
-the generic boundary merely to preserve legacy code.
+## Enforced architecture guards
 
-When a direct-provider integration is explicitly enabled, provider adapters are
-registered at the API composition root by provider code. In the current normal
-runtime the registry is empty, so generic checkout fails closed and the
-frontend checkout is unavailable. Provider-neutral modules do not import
-provider integrations or branch on provider-specific literals. An external
-billing system is a separate authority boundary and is not registered in
-`PaymentProviderRegistry`. Core configuration, database, logging, telemetry,
-and security helpers are shared infrastructure.
+Repository AST/static checks currently enforce:
 
-Python AST analysis currently enforces selected dependency constraints in the
-transitional package tree, including core/domain-to-integration restrictions,
-persistence-to-outward-layer restrictions, router import boundaries,
-provider-neutrality, transport-neutral domain service/application trees, and
-the active FastAPI domain Presentation persistence boundary. Active domain
-Presentation is detected from actual `APIRouter` ownership rather than a router
-filename list; `app.http_dependencies` and the app-scoped provider registry have
-their explicit composition rules. The checker does not
-mechanically enforce the complete target logical layering above;
-Presentation/Application/Domain/Persistence/Integration is not yet fully
-represented by the physical packages. Routers share authentication through
-session or service modules rather than importing one another. `app.models` is
-the canonical persisted model layer: SQLAlchemy models and closed persisted
-vocabularies are imported from its explicit public exports, while model modules
-import canonical enums directly from `app.models.enums`. Provider contract
-enums and open/provider/configuration identifiers remain owned by their
-boundaries and are not persisted model enums.
+- core/domain-to-integration and router dependency direction;
+- active FastAPI Presentation and HTTP-composition persistence boundaries;
+- focused persistence helpers cannot own outer commit/rollback;
+- transport-neutral domain service/application trees;
+- Sentry SDK access only through the infrastructure adapter;
+- canonical ORM and persisted-enum ownership;
+- no executable CloudPayments or direct-provider adapter/registry runtime;
+- no legacy Portal Product/Plan/Order/Payment/Subscription/Entitlement/trial
+  ORM/table graph;
+- no `external_billing_accounts` table or foreign-key target.
+
+The guards reject reintroduction without requiring deleted source files to
+exist as evidence.
 
 ## Runtime execution model
 
-ANY-454 is not an async migration. Payment Portal remains sync-first. Domain,
-Application, Persistence, synchronous SQLAlchemy, and current synchronous
-integrations use ordinary synchronous functions. Async is limited to
-unavoidable FastAPI/ASGI framework boundaries or concrete genuinely awaitable
-outer I/O.
+Payment Portal remains sync-first. Domain, Application, Persistence, and
+synchronous SQLAlchemy code use ordinary synchronous functions. Async is
+limited to unavoidable FastAPI/ASGI framework boundaries or genuinely
+awaitable outer I/O.
 
-Current blocking database and application flows use normal synchronous
-FastAPI `def` endpoints so the framework owns worker dispatch. Blocking
-SQLAlchemy operations, synchronous HTTP clients, sleeps, and similar work must
-not execute directly on an event-loop path. If an async framework boundary
-must invoke blocking work, it passes a complete resource-owning synchronous
-unit through the framework worker mechanism. It must not create a
-request-scoped resource such as a SQLAlchemy `Session` and then move that
-resource through a manually introduced thread bridge. Execution modality does
-not justify duplicate sync/async application services or generic sync/async
-adapters.
+Blocking database/application work uses synchronous FastAPI endpoints so the
+framework owns worker dispatch. An async framework boundary that must run a
+blocking operation delegates a complete resource-owning synchronous unit; it
+does not move a request-created SQLAlchemy `Session` across a manual thread
+bridge. The delegated unit creates, owns, and closes its complete synchronous
+resources inside the worker. Cancellation of the async waiter does not mean
+the synchronous worker was forcibly stopped, so cancellation must not trigger
+unsafe resource reuse or overlapping duplicate work. Request ID,
+trace/span, and structured-log context remain correlated across the framework
+worker boundary.
 
-Async request and error middleware, FastAPI lifespan coordination, and the
-shared exact-body dependency are valid framework boundaries. Retained provider
-source, the password-reset background callback, scheduled expiry CLI,
-provider-neutral business operations, and Application, Domain, and
-Persistence code remain synchronous. The `traced()` helper supports both sync
-and async callables because it is boundary-neutral observability infrastructure,
-not because application code should become async.
-
-Exact raw request bytes are a Presentation/HTTP concern. A route with a concrete
-exact-bytes requirement, such as webhook signature verification, uses the
-shared `get_raw_request_body()` dependency. Integration routers do not create
-their own `await request.body()` readers when that dependency satisfies the
-requirement. The dependency only awaits the ASGI body and returns its bytes; it
-does not parse payloads, verify signatures, apply provider logic, access
-persistence, define logging policy, or call Application or Domain code.
-Ordinary JSON APIs continue to use FastAPI/Pydantic request models. The shared
-dependency is not a general async application abstraction.
-
-CloudPayments source and its legacy lifecycle cleanup remain retained
-transitional code, not active provider lifecycle architecture. A future
-integration chooses sync or async according to its actual outer I/O client and
-keeps that modality at the integration boundary rather than propagating it
-into Application, Domain, or Persistence.
+Password-reset email delivery remains the existing synchronous framework
+background task. The clean baseline does not introduce a billing worker
+runtime merely because durable work tables exist.
 
 The web dependency direction is:
 
@@ -364,89 +216,41 @@ The web dependency direction is:
 shared contracts and UI -> features -> app routes
 ```
 
-Shared modules do not import features or app routes. App routes and
-cross-feature dependencies import public feature entrypoints; code within one
-feature uses relative imports for its internal modules. ESLint enforces these
-directions and rejects deep alias imports.
+Shared modules do not import features/routes. Routes and cross-feature code use
+public feature entrypoints; feature-internal code uses relative imports.
 
-## Error ownership and HTTP failure boundary
+## Error ownership and observability
 
-Core owns only neutral shared error primitives, including `AppError`. It does
-not own feature-specific error vocabularies. Application and Domain own
-business and use-case failure meaning. Their exceptions may use concrete
-semantic types and may carry stable internal codes and safe diagnostics where
-justified, but do not depend on FastAPI, HTTP status codes, or vendor response
-semantics. `AppError.code` is optional: it remains available for justified
-stable internal codes, especially existing integration/provider errors, while
-semantic no-code exceptions use their type as their internal identity.
+Domain/Application errors carry stable internal meaning. Presentation owns HTTP
+status and public error DTO mapping. Unexpected failures return only the
+generic structured response
+`{"detail":{"code":"internal_server_error"}}`; exception messages, payloads,
+headers, secrets, card/token/payment fields, and raw tracebacks are never
+serialized.
 
-The reviewed checkout/password-reset slice uses concrete semantic exception
-types rather than a generic exception plus a string code. This is not a rule
-to create a class for every API code throughout the repository, and it does
-not introduce a global error-code registry.
+The outer failure boundary for an operation owns application error reporting:
+the HTTP failure boundary for propagated request failures, or the bounded
+boundary that intentionally catches and absorbs a background failure. Failures
+that continue propagating are not also reported by lower layers. Domain and
+Application logic remain independent of direct Sentry SDK reporting, and all
+`sentry_sdk` access stays behind the application-owned
+`app.infrastructure.sentry` adapter. Each reportable failure has one reporting
+owner so application logging/reporting and Sentry capture are not duplicated.
 
-Integrations and the payment-provider boundary normalize vendor failures while
-preserving retryability, idempotency, and unknown or ambiguous-outcome
-semantics. Raw vendor responses and status vocabularies are not
-Application/Domain error contracts.
-
-Presentation owns HTTP status mapping and public error DTO/body shape. Only
-explicitly allowlisted safe fields are serialized, and changed public errors
-use structured `detail.code`. The frontend branches on `ApiError.status` and
-structured `detail.code`; it does not parse serialized exception text.
-
-Unexpected application failures are converted by the Presentation HTTP
-middleware to a generic structured 500 response. The boundary emits one
-bounded application-level diagnostic while request-ID context is active. The
-diagnostic may include the request ID supplied by the logging context, method,
-matched route template, exception type, and one application-owned
-failure-location fingerprint containing only a repository-relative module/file
-identifier, function name, and line number. It never includes source text,
-locals, arguments, exception messages, raw traceback text, request inputs,
-provider payloads, secrets, or payment data.
-
-Reportable failures follow the same ownership direction:
-
-```text
-Domain/Application
-    -> semantic errors
-
-outer Presentation/process boundary
-    -> structured diagnostic
-    -> explicit Sentry report according to policy
-```
-
-The centralized HTTP failure boundary is the default owner of HTTP failure
-reporting. When an existing outer boundary catches a reportable exception and
-converts or absorbs it before that centralized boundary can observe it, the
-catching boundary owns exactly one explicit report before conversion or
-absorption. This applies to retained CloudPayments webhook conversion source
-and the password-reset email background callback; the retained webhook source
-is not mounted in normal runtime. It does not change the dependency direction
-or permit Sentry reporting from Domain/Application business logic.
-
-The outer boundary owns at most one explicit report while preserving the
-application log as an independent diagnostic signal. Mapped expected business
-errors are not Sentry issues. Errors carry semantic meaning rather than Sentry
-flags, and Domain/Application remain independent from Sentry. Direct
-`sentry_sdk` imports are restricted to `app/infrastructure/sentry.py`; boundary
-callers and composition roots use that application-owned adapter. Sentry is the
-backend application-failure investigation entry point, not a replacement for
-OpenTelemetry traces, bounded JSON logs, Prometheus/OpenTelemetry metrics, or
-persisted business state.
+Sentry is an optional application-error destination. OpenTelemetry,
+Prometheus-compatible metrics, structured logs, and persisted records keep
+their separate roles. Diagnostics aid correlation but never become commercial,
+idempotency, reconciliation, or access authority.
 
 ## Authoritative details
 
-- [ADR 0005: External billing boundary](docs/architecture/decisions/0005-external-billing-boundary.md)
+- [ADR 0005](docs/architecture/decisions/0005-external-billing-boundary.md)
 - [External Billing Boundary Design](docs/superpowers/specs/2026-09-15-external-billing-boundary-design.md)
-- [Portal ↔ Kernel Access Contract Design](docs/superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md)
-- [Contours](docs/architecture/contours.md)
-- [Region Resolver contract](docs/architecture/region-resolver-contract.md)
-- [Retained payment-provider characterization](docs/architecture/payment-providers.md)
-- [Superseded billing-authority design and current-state context](docs/architecture/billing-authority.md)
-- [Current-state data model](docs/architecture/payment-portal-data-model.md)
-- [Deployment](docs/architecture/deployment.md)
-- [Superseded planned Platform Kernel contract](docs/architecture/platform-kernel-contract.md) — retained historical context
+- [Portal <-> Kernel Access Contract Design](docs/superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md)
+- [Current as-built data model](docs/architecture/payment-portal-data-model.md)
+- [Deployment and reset contract](docs/architecture/deployment.md)
 - [Implemented `ru` journey](docs/product/ru-mvp.md)
-- [Security](docs/SECURITY.md)
-- [Reliability](docs/RELIABILITY.md)
+- [Reliability requirements](docs/RELIABILITY.md)
+- [Security requirements](docs/SECURITY.md)
+- [Superseded billing authority](docs/architecture/billing-authority.md) —
+  historical/superseded only; neither current-state nor target authority

@@ -18,14 +18,6 @@ class DocumentVersionNotFoundError(LegalAcceptanceError):
     code = "document_version_not_found"
 
 
-class RecurringConsentContextRequiredError(LegalAcceptanceError):
-    code = "recurring_consent_context_required"
-
-
-class RecurringConsentPlanInvalidError(LegalAcceptanceError):
-    code = "recurring_consent_plan_invalid"
-
-
 class InvalidAcceptanceTextHashError(LegalAcceptanceError):
     code = "invalid_acceptance_text_hash"
 

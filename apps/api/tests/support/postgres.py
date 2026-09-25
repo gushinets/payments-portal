@@ -70,7 +70,12 @@ def reset_public_schema(engine: Engine) -> None:
 
 
 @contextmanager
-def alembic_test_config(database_test_url: URL) -> Iterator[Config]:
+def alembic_test_config(
+    database_test_url: URL,
+    *,
+    instance_tenant_id: str = "anytoolai",
+    instance_region: str = "ru",
+) -> Iterator[Config]:
     """Configure Alembic for a test database without replacing pytest logging."""
     validate_test_database_url(database_test_url)
     database_url = database_test_url.render_as_string(hide_password=False)
@@ -83,6 +88,8 @@ def alembic_test_config(database_test_url: URL) -> Iterator[Config]:
     # handlers while migrations run inside the test process.
     env_overrides = {
         "DATABASE_URL": database_url,
+        "INSTANCE_TENANT_ID": instance_tenant_id,
+        "INSTANCE_REGION": instance_region,
         "POSTGRES_DB": database_test_url.database or "",
         "POSTGRES_USER": database_test_url.username or "",
         "POSTGRES_PASSWORD": database_test_url.password or "",
@@ -92,12 +99,19 @@ def alembic_test_config(database_test_url: URL) -> Iterator[Config]:
     with patch.dict(os.environ, env_overrides), patch("logging.config.fileConfig"):
         from app.core.settings import settings
 
-        original_database_url = settings.database_url
+        original_values = {
+            "database_url": settings.database_url,
+            "instance_tenant_id": settings.instance_tenant_id,
+            "instance_region": settings.instance_region,
+        }
         try:
             object.__setattr__(settings, "database_url", database_url)
+            object.__setattr__(settings, "instance_tenant_id", instance_tenant_id)
+            object.__setattr__(settings, "instance_region", instance_region)
             yield config
         finally:
-            object.__setattr__(settings, "database_url", original_database_url)
+            for name, value in original_values.items():
+                object.__setattr__(settings, name, value)
 
 
 def run_migrations(database_test_url: URL) -> None:

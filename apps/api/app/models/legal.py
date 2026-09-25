@@ -16,7 +16,6 @@ from app.models._shared import (
     datetime,
     func,
     ip_type,
-    json_type,
     mapped_column,
     text,
     uuid,
@@ -186,23 +185,6 @@ class DocumentAcceptance(Base):
             "document_version_id",
             name="uq_document_acceptances_event_document",
         ),
-        Index(
-            "ix_document_acceptances_user_region_doc_accepted_at",
-            "user_id",
-            "region",
-            "doc_type",
-            "accepted_at",
-        ),
-        Index(
-            "ix_document_acceptances_entrypoint_session_id",
-            "entrypoint_session_id",
-        ),
-        Index(
-            "ix_document_acceptances_region_doc_version",
-            "region",
-            "doc_type",
-            "version",
-        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(uuid_type, primary_key=True, default=uuid.uuid4)
@@ -210,20 +192,7 @@ class DocumentAcceptance(Base):
     tenant_id: Mapped[str] = mapped_column(Text, nullable=False, index=True)
     region: Mapped[str] = mapped_column(ForeignKey("regions.code"), nullable=False, index=True)
     user_id: Mapped[uuid.UUID] = mapped_column(uuid_type, nullable=False, index=True)
-    guest_id: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
-    entrypoint_session_id: Mapped[uuid.UUID | None] = mapped_column(uuid_type, nullable=True)
     document_version_id: Mapped[uuid.UUID] = mapped_column(uuid_type, nullable=False, index=True)
-    doc_type: Mapped[str] = mapped_column(Text, nullable=False, index=True)
-    version: Mapped[str] = mapped_column(Text, nullable=False)
     acceptance_kind: Mapped[AcceptanceKind] = mapped_column(PersistedEnumType(AcceptanceKind), nullable=False)
-    accepted_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
-    )
-    ip: Mapped[str | None] = mapped_column(ip_type, nullable=True)
-    user_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
     acceptance_text_hash: Mapped[str] = mapped_column(Text, nullable=False)
-    entrypoint_type: Mapped[str | None] = mapped_column(Text, nullable=True)
-    entrypoint_value: Mapped[str | None] = mapped_column(Text, nullable=True)
-    source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
-    metadata_: Mapped[dict] = mapped_column("metadata", json_type, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())

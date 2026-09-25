@@ -1,30 +1,31 @@
 # RU MVP User Journey and Pages
 
 Status: authoritative implemented-product specification
-Last verified: 2026-08-18
+Last verified: 2026-09-24
 
 This is the implemented journey for contour `ru`. Multi-contour architecture is
 defined in [contours](../architecture/contours.md). Login/registration contour
-confirmation via Region Resolver is planned and is not part of this journey.
+confirmation through Region Resolver is planned and is not part of this
+journey.
 
 ## Goal
 
-A user arriving from an AnytoolAI product can understand the relevant product,
-create or enter an account, accept the current RU legal documents, and see
-that checkout is temporarily unavailable until a billing integration is
-selected and implemented.
+A user can understand the two currently presented AnytoolAI products, create or
+enter an account, recover a password, accept current RU legal documents, and
+see that checkout and billing/account details remain unavailable until the
+approved external-billing runtime is implemented.
 
 ## Current routes
 
 | Route | Purpose | Status |
-|---|---|---|
-| `/ru` | RU landing and catalog | Implemented |
-| `/ru/products` | Product catalog | Implemented |
-| `/ru/auth-checkout` | Product-aware authentication and checkout | Implemented |
-| `/ru/forgot-password` | Password reset email request | Implemented |
+| --- | --- | --- |
+| `/ru` | RU landing and product snapshot | Implemented |
+| `/ru/products` | Presentational product snapshot | Implemented |
+| `/ru/auth-checkout` | Authentication and unavailable-checkout shell | Implemented |
+| `/ru/forgot-password` | Password-reset email request | Implemented |
 | `/ru/reset-password` | Password replacement from emailed reset link | Implemented |
-| `/ru/account` | Current account and product state | Implemented |
-| `/ru/payment-result` | Informational post-payment result | Implemented |
+| `/ru/account` | Authenticated account shell; billing details unavailable | Implemented |
+| `/ru/payment-result` | Informational unavailable-payment state | Implemented |
 | `/ru/privacy` | Personal-data policy | Implemented |
 | `/ru/consent-personal-data` | Personal-data consent | Implemented |
 | `/ru/offer` | Public offer | Implemented |
@@ -35,70 +36,69 @@ selected and implemented.
 
 ## Primary journey
 
-1. The user opens `/ru/auth-checkout?product=<product-code>` from a product or
-   selects a product from the catalog.
-2. The page validates the product code and prioritizes that product.
-3. An unauthenticated user registers or signs in.
-4. A returning user who forgot their password can request an email reset link
-   and set a new password from `/ru/reset-password`.
-5. Registration requires explicit personal-data and offer confirmation.
-6. The checkout surface reports that payment is temporarily unavailable because
-   no direct payment provider is registered in normal runtime.
-7. The disabled payment action does not request a checkout intent, write payment
-   result state, load a provider widget, or start provider work.
-8. The payment-result page remains informational and never declares payment
-   success solely because the browser returned from a provider.
+1. The user opens `/ru/auth-checkout` from a product presentation or navigation.
+2. An unauthenticated user registers or signs in.
+3. A returning user can request a password-reset email and set a new password.
+4. Registration requires explicit personal-data and offer confirmation.
+5. The checkout surface reports that purchases and billing are temporarily
+   unavailable while the new billing system is being implemented.
+6. The unavailable action does not call a catalog, checkout-intent,
+   payment-status, subscription, Widget, callback, or provider API and does not
+   populate any target billing table.
+7. The payment-result route remains informational and never declares success
+   from browser state.
 
 ## Returning user
 
 An authenticated user with current required acceptances skips repeated legal
-steps. A new active legal version requires a new explicit acceptance. Existing
-paid or pending state is displayed from the API rather than inferred locally.
+steps. A new active legal version requires a new explicit acceptance. The
+account page shows identity/session information and an explicit unavailable
+billing state; it does not infer paid, pending, subscription, entitlement, or
+quota state locally.
 
-## Product catalog
+## Product presentation
 
-The current web snapshot contains:
+The web snapshot contains:
 
-- `document-summary`
-- `prompt-optimizer`
+- `document-summary`;
+- `prompt-optimizer`.
 
-The frontend catalog remains a temporary snapshot until ANY-71 introduces the
-database catalog and plan model.
+This is static presentation content, not a Portal database catalog or
+commercial offer authority. Target technical product and metric identity comes
+from Platform Kernel capability projection; target commercial offers come from
+External Billing. Their import/publication runtimes are not implemented.
 
 ## Legal and compliance UX
 
 - Legal links and operator details appear in the site footer.
-- Forms that collect account data link to relevant legal documents.
+- Forms collecting account data link to relevant legal documents.
 - Required acceptance checkboxes are never preselected.
-- Automatic-renewal consent is separate from general legal acceptance.
 - The cookie banner stores only the user's local choice in the current MVP.
-- Payment method marks are shown only for configured/represented methods; no
-  payment method is active in the current checkout runtime.
+- Payment-method marks are shown only when configured; the current configured
+  list is empty.
+- Legal pages remain drafts and are not presented as counsel-approved.
 
 ## Page states
 
-The implemented UI uses practical component state rather than a persisted page
-state machine. These conceptual states remain useful for tests:
+The implemented UI uses component state rather than a persisted page state
+machine:
 
 ```text
 product introduction
 authentication
 missing legal acceptances
-account/product state
+authenticated account
 checkout unavailable
 informational payment-result state
 ```
 
-Planned trial, subscription, entitlement, bundle, all-access, and Platform
-Kernel handoff behavior belongs to ANY-71 or the external Platform Kernel repo.
-
 ## Acceptance criteria
 
-- Invalid product codes do not produce checkout state.
 - Authentication errors are actionable and do not expose sensitive detail.
-- Checkout is explicitly unavailable when no direct payment provider is
-  registered, and its disabled action cannot initiate payment preparation.
+- Checkout and account billing details are explicitly unavailable and cannot
+  initiate payment preparation or billing persistence.
 - A browser return never activates access or substitutes for authoritative
   billing facts.
-- No card data is stored or logged.
+- No card data, provider payload, authorization material, or billing secret is
+  collected or logged.
 - Desktop and mobile routes pass browser smoke and accessibility checks.

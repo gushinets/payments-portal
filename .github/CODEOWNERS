@@ -1,8 +1,6 @@
 # High-risk Payment Portal paths require human review.
 /apps/api/app/domains/identity/ @gushinets
 /apps/api/app/domains/legal/ @gushinets
-/apps/api/app/domains/billing/ @gushinets
-/apps/api/app/integrations/cloudpayments/ @gushinets
 /apps/api/alembic/ @gushinets
 /docs/legal/ @gushinets
 /docs/SECURITY.md @gushinets

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import {
-  CatalogProductsClient,
+  ProductOverview,
   platformFacts,
   platformHighlights
 } from "@/features/catalog";
@@ -24,17 +24,14 @@ export default function RuHomePage() {
               <p className="hero-copy">
                 AnytoolAI объединяет цифровые сервисы, которые помогают быстрее
                 работать с контентом, документами и AI-инструментами. На сайте
-                можно выбрать продукт, ознакомиться с тарифом и оформить
-                подписку.
+                можно узнать о продуктах и создать единый аккаунт.
               </p>
               <div className="hero-actions">
-                <Link className="btn-primary" href="#products">
-                  Оформить подписку <ArrowRight size={16} aria-hidden="true" />
+                <Link className="btn-primary" href="/ru/auth-checkout">
+                  Войти или зарегистрироваться
+                  <ArrowRight size={16} aria-hidden="true" />
                 </Link>
-                <Link
-                  className="btn-secondary"
-                  href="#products"
-                >
+                <Link className="btn-secondary" href="#products">
                   Выбрать продукт
                 </Link>
               </div>
@@ -78,10 +75,10 @@ export default function RuHomePage() {
         </div>
         <h2 className="section-title">Сервисы для повседневной работы</h2>
         <p className="section-copy">
-          Выберите продукт, чтобы увидеть актуальную цену и условия пробного
-          периода в его карточке.
+          Ознакомьтесь с продуктами AnytoolAI. Тарифы и оформление покупок
+          временно недоступны.
         </p>
-        <CatalogProductsClient />
+        <ProductOverview />
       </section>
     </>
   );

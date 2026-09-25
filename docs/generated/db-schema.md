@@ -2,6 +2,30 @@
 
 Generated from SQLAlchemy metadata. Do not edit directly.
 
+## `access_invalidation_outbox`
+
+| Column | Type | Nullable | Key |
+|---|---|---:|---|
+| `outbox_id` | `CHAR(32)` | no | PK |
+| `tenant_id` | `TEXT` | no | FK |
+| `region` | `TEXT` | no | FK |
+| `user_id` | `CHAR(32)` | no | FK |
+| `pending_revision` | `BIGINT` | no |  |
+| `delivered_revision` | `BIGINT` | no |  |
+| `attempt_count` | `INTEGER` | no |  |
+| `next_attempt_at` | `DATETIME` | no |  |
+| `last_error_classification` | `TEXT` | yes |  |
+| `created_at` | `DATETIME` | no |  |
+| `updated_at` | `DATETIME` | no |  |
+
+Indexes and constraints:
+
+- `ck_access_invalidation_outbox_pending_revision_positive`
+- `ck_access_invalidation_outbox_revision_order`
+- `fk_access_invalidation_outbox_user_scope`
+- `uq_access_invalidation_outbox_tenant_region_user`
+- `ix_access_invalidation_outbox_next_attempt_at`
+
 ## `auth_sessions`
 
 | Column | Type | Nullable | Key |
@@ -26,73 +50,150 @@ Indexes and constraints:
 - `ix_auth_sessions_token_hash`
 - `ix_auth_sessions_user_id`
 
-## `bundle_products`
+## `billing_product_access_scopes`
 
 | Column | Type | Nullable | Key |
 |---|---|---:|---|
-| `id` | `CHAR(32)` | no | PK |
-| `tenant_id` | `TEXT` | no |  |
-| `bundle_id` | `CHAR(32)` | no | FK |
-| `product_id` | `CHAR(32)` | no | FK |
-| `status` | `TEXT` | no |  |
-| `valid_from` | `DATETIME` | no |  |
-| `valid_to` | `DATETIME` | yes |  |
-| `created_at` | `DATETIME` | no |  |
-
-Indexes and constraints:
-
-- `ix_bundle_products_bundle_status`
-- `ix_bundle_products_product_id`
-- `ix_bundle_products_tenant_id`
-- `uq_bundle_products_active_product`
-
-## `bundles`
-
-| Column | Type | Nullable | Key |
-|---|---|---:|---|
-| `id` | `CHAR(32)` | no | PK |
-| `tenant_id` | `TEXT` | no |  |
-| `code` | `TEXT` | no |  |
-| `name` | `TEXT` | no |  |
-| `description` | `TEXT` | yes |  |
-| `status` | `TEXT` | no |  |
-| `created_at` | `DATETIME` | no |  |
-| `updated_at` | `DATETIME` | no |  |
-
-Indexes and constraints:
-
-- `uq_bundles_tenant_code`
-- `ix_bundles_code`
-- `ix_bundles_status`
-- `ix_bundles_tenant_id`
-- `ix_bundles_tenant_status`
-
-## `checkout_sessions`
-
-| Column | Type | Nullable | Key |
-|---|---|---:|---|
-| `id` | `CHAR(32)` | no | PK |
-| `tenant_id` | `TEXT` | no |  |
-| `region` | `TEXT` | no | FK |
+| `access_scope_id` | `CHAR(32)` | no | PK |
 | `user_id` | `CHAR(32)` | no | FK |
-| `entrypoint_session_id` | `CHAR(32)` | yes | FK |
-| `plan_id` | `CHAR(32)` | yes | FK |
-| `status` | `TEXT` | no |  |
-| `amount_minor` | `INTEGER` | no |  |
-| `currency` | `VARCHAR(3)` | no |  |
-| `expires_at` | `DATETIME` | no |  |
-| `metadata` | `JSON` | no |  |
+| `product_id` | `TEXT` | no | FK |
+| `primary_subscription_id` | `CHAR(32)` | yes | FK |
+| `updated_at` | `DATETIME` | no |  |
+
+Indexes and constraints:
+
+- `fk_billing_product_access_scopes_primary_subscription`
+- `uq_billing_product_access_scopes_id_user_product`
+- `uq_billing_product_access_scopes_user_product`
+- `ix_billing_product_access_scopes_primary_subscription`
+
+## `billing_state_observations`
+
+| Column | Type | Nullable | Key |
+|---|---|---:|---|
+| `observation_id` | `CHAR(32)` | no | PK |
+| `observation_kind` | `TEXT` | no |  |
+| `external_billing_account_id` | `TEXT` | no | FK |
+| `user_id` | `CHAR(32)` | yes | FK |
+| `product_id` | `TEXT` | yes | FK |
+| `access_scope_id` | `CHAR(32)` | yes | FK |
+| `subscription_id` | `CHAR(32)` | yes | FK |
+| `purchase_intent_id` | `CHAR(32)` | yes | FK |
+| `work_item_id` | `CHAR(32)` | yes | FK |
+| `basis_observation_id` | `CHAR(32)` | yes | FK |
+| `observed_at` | `DATETIME` | no |  |
+| `effective_at` | `DATETIME` | yes |  |
+| `evidence_schema_version` | `TEXT` | no |  |
+| `evidence_document` | `JSON` | no |  |
+| `completeness_classification` | `TEXT` | no |  |
+| `result_classification` | `TEXT` | no |  |
+| `resulting_access_revision` | `BIGINT` | yes |  |
+| `created_at` | `DATETIME` | no |  |
+
+Indexes and constraints:
+
+- `ck_billing_state_observations_evidence_schema_nonempty`
+- `ck_billing_state_observations_kind`
+- `ck_billing_state_observations_kind_shape`
+- `ck_billing_state_observations_provenance_exclusive`
+- `ck_billing_state_observations_subject_shape`
+- `fk_billing_state_observations_access_scope`
+- `fk_billing_state_observations_basis_scope`
+- `fk_billing_state_observations_purchase_scope`
+- `fk_billing_state_observations_subscription_scope`
+- `uq_billing_state_observations_id_scope`
+- `uq_billing_state_observations_id_subscription`
+- `ix_billing_state_observations_account_kind_time`
+- `ix_billing_state_observations_basis`
+- `ix_billing_state_observations_completeness`
+- `ix_billing_state_observations_effective_at`
+- `ix_billing_state_observations_kind_time`
+- `ix_billing_state_observations_purchase_time`
+- `ix_billing_state_observations_result`
+- `ix_billing_state_observations_scope_revision`
+- `ix_billing_state_observations_scope_time`
+- `ix_billing_state_observations_subscription_time`
+- `ix_billing_state_observations_user_product_time`
+- `ix_billing_state_observations_work_item`
+
+## `billing_work_items`
+
+| Column | Type | Nullable | Key |
+|---|---|---:|---|
+| `work_item_id` | `CHAR(32)` | no | PK |
+| `work_kind` | `TEXT` | no |  |
+| `scope_kind` | `TEXT` | no |  |
+| `scope_reference` | `TEXT` | no |  |
+| `coalescing_key` | `TEXT` | yes |  |
+| `payload_schema_version` | `TEXT` | no |  |
+| `payload_document` | `JSON` | no |  |
+| `priority` | `INTEGER` | no |  |
+| `next_attempt_at` | `DATETIME` | no |  |
+| `attempt_count` | `INTEGER` | no |  |
+| `work_state` | `TEXT` | no |  |
+| `lease_owner` | `TEXT` | yes |  |
+| `lease_expires_at` | `DATETIME` | yes |  |
+| `last_error_classification` | `TEXT` | yes |  |
 | `created_at` | `DATETIME` | no |  |
 | `updated_at` | `DATETIME` | no |  |
 
 Indexes and constraints:
 
-- `ix_checkout_sessions_entrypoint_session_id`
-- `ix_checkout_sessions_region`
-- `ix_checkout_sessions_status_expires_at`
-- `ix_checkout_sessions_tenant_id`
-- `ix_checkout_sessions_user_id`
-- `ix_checkout_sessions_user_id_created_at`
+- `ck_billing_work_items_lease_pair`
+- `ck_billing_work_items_payload_schema_nonempty`
+- `ix_billing_work_items_claim_scan`
+- `ix_billing_work_items_coalescing_key`
+- `ix_billing_work_items_kind_state`
+- `ix_billing_work_items_kind_state_due`
+- `ix_billing_work_items_lease_expiry`
+- `ix_billing_work_items_priority_retry`
+- `ix_billing_work_items_scope`
+
+## `capability_manifest_projections`
+
+| Column | Type | Nullable | Key |
+|---|---|---:|---|
+| `projection_id` | `CHAR(32)` | no | PK |
+| `tenant_id` | `TEXT` | no |  |
+| `region` | `TEXT` | no |  |
+| `schema_version` | `INTEGER` | no |  |
+| `manifest_version` | `TEXT` | no |  |
+| `generated_at` | `DATETIME` | no |  |
+| `last_complete_sync_at` | `DATETIME` | no |  |
+| `manifest_document` | `JSON` | no |  |
+
+Indexes and constraints:
+
+- `uq_capability_manifest_projections_scope`
+- `ix_capability_manifest_projections_last_sync`
+- `ix_capability_manifest_projections_manifest_version`
+
+## `commercial_mapping_revisions`
+
+| Column | Type | Nullable | Key |
+|---|---|---:|---|
+| `mapping_revision_id` | `CHAR(32)` | no | PK |
+| `external_billing_account_id` | `TEXT` | no |  |
+| `billing_offer_id` | `TEXT` | no |  |
+| `revision_number` | `BIGINT` | no |  |
+| `manifest_version` | `TEXT` | no |  |
+| `catalog_version` | `TEXT` | yes |  |
+| `catalog_digest` | `TEXT` | no |  |
+| `mapping_schema_version` | `TEXT` | no |  |
+| `mapping_document` | `JSON` | no |  |
+| `published_at` | `DATETIME` | no |  |
+| `published_by_principal` | `TEXT` | no |  |
+
+Indexes and constraints:
+
+- `ck_commercial_mapping_revisions_revision_positive`
+- `ck_commercial_mapping_revisions_schema_nonempty`
+- `uq_commercial_mapping_revisions_account_offer_revision`
+- `uq_commercial_mapping_revisions_id_account`
+- `uq_commercial_mapping_revisions_id_account_offer`
+- `ix_commercial_mapping_revisions_manifest`
+- `ix_commercial_mapping_revisions_principal`
+- `ix_commercial_mapping_revisions_publication`
 
 ## `country_region_rules`
 
@@ -102,10 +203,8 @@ Indexes and constraints:
 | `country_code` | `VARCHAR(2)` | no |  |
 | `region` | `TEXT` | no | FK |
 | `market_enabled` | `BOOLEAN` | no |  |
-| `allow_region_override` | `BOOLEAN` | no |  |
 | `strict_mismatch` | `BOOLEAN` | no |  |
 | `default_document_set` | `TEXT` | no |  |
-| `default_payment_provider` | `TEXT` | no |  |
 
 Indexes and constraints:
 
@@ -121,20 +220,9 @@ Indexes and constraints:
 | `tenant_id` | `TEXT` | no | FK |
 | `region` | `TEXT` | no | FK |
 | `user_id` | `CHAR(32)` | no | FK |
-| `guest_id` | `TEXT` | yes |  |
-| `entrypoint_session_id` | `CHAR(32)` | yes |  |
 | `document_version_id` | `CHAR(32)` | no | FK |
-| `doc_type` | `TEXT` | no |  |
-| `version` | `TEXT` | no |  |
 | `acceptance_kind` | `TEXT` | no |  |
-| `accepted_at` | `DATETIME` | no |  |
-| `ip` | `VARCHAR(45)` | yes |  |
-| `user_agent` | `TEXT` | yes |  |
 | `acceptance_text_hash` | `TEXT` | no |  |
-| `entrypoint_type` | `TEXT` | yes |  |
-| `entrypoint_value` | `TEXT` | yes |  |
-| `source_url` | `TEXT` | yes |  |
-| `metadata` | `JSON` | no |  |
 | `created_at` | `DATETIME` | no |  |
 
 Indexes and constraints:
@@ -142,17 +230,11 @@ Indexes and constraints:
 - `fk_document_acceptances_document_scope`
 - `fk_document_acceptances_event_scope`
 - `uq_document_acceptances_event_document`
-- `ix_document_acceptances_accepted_at`
-- `ix_document_acceptances_doc_type`
 - `ix_document_acceptances_document_version_id`
-- `ix_document_acceptances_entrypoint_session_id`
-- `ix_document_acceptances_guest_id`
 - `ix_document_acceptances_legal_acceptance_event_id`
 - `ix_document_acceptances_region`
-- `ix_document_acceptances_region_doc_version`
 - `ix_document_acceptances_tenant_id`
 - `ix_document_acceptances_user_id`
-- `ix_document_acceptances_user_region_doc_accepted_at`
 
 ## `document_versions`
 
@@ -187,87 +269,169 @@ Indexes and constraints:
 - `ix_document_versions_tenant_id`
 - `uq_document_versions_active_doc`
 
-## `entitlements`
+## `external_billing_catalog_projections`
 
 | Column | Type | Nullable | Key |
 |---|---|---:|---|
-| `id` | `CHAR(32)` | no | PK |
-| `tenant_id` | `TEXT` | no |  |
-| `region` | `TEXT` | no | FK |
+| `projection_id` | `CHAR(32)` | no | PK |
+| `external_billing_account_id` | `TEXT` | no |  |
+| `schema_version` | `TEXT` | no |  |
+| `catalog_version` | `TEXT` | yes |  |
+| `catalog_digest` | `TEXT` | no |  |
+| `last_complete_sync_at` | `DATETIME` | no |  |
+| `catalog_document` | `JSON` | no |  |
+
+Indexes and constraints:
+
+- `uq_external_billing_catalog_projections_account`
+- `ix_external_billing_catalog_projections_catalog_digest`
+- `ix_external_billing_catalog_projections_catalog_version`
+- `ix_external_billing_catalog_projections_last_sync`
+
+## `external_billing_customers`
+
+| Column | Type | Nullable | Key |
+|---|---|---:|---|
+| `customer_id` | `CHAR(32)` | no | PK |
+| `external_billing_account_id` | `TEXT` | no |  |
 | `user_id` | `CHAR(32)` | no | FK |
-| `subscription_id` | `CHAR(32)` | no | FK |
-| `plan_id` | `CHAR(32)` | no | FK |
-| `scope_type` | `TEXT` | no |  |
-| `product_id` | `CHAR(32)` | yes | FK |
-| `bundle_id` | `CHAR(32)` | yes | FK |
-| `status` | `TEXT` | no |  |
-| `valid_from` | `DATETIME` | no |  |
-| `valid_until` | `DATETIME` | no |  |
-| `source` | `TEXT` | no |  |
-| `order_id` | `CHAR(32)` | yes | FK |
-| `revoked_at` | `DATETIME` | yes |  |
-| `expired_at` | `DATETIME` | yes |  |
-| `superseded_at` | `DATETIME` | yes |  |
-| `superseded_by_entitlement_id` | `CHAR(32)` | yes | FK |
+| `billing_customer_key` | `TEXT` | no |  |
+| `provider_customer_id` | `TEXT` | yes |  |
+| `binding_state` | `TEXT` | no |  |
+| `binding_updated_at` | `DATETIME` | no |  |
+| `created_at` | `DATETIME` | no |  |
+
+Indexes and constraints:
+
+- `ck_external_billing_customers_binding_state`
+- `ck_external_billing_customers_key_nonempty`
+- `uq_external_billing_customers_account_user`
+- `uq_external_billing_customers_billing_customer_key`
+- `uq_external_billing_customers_id_account_user`
+- `ix_external_billing_customers_binding_state`
+- `ix_external_billing_customers_provider_customer_id`
+
+## `external_billing_webhook_deliveries`
+
+| Column | Type | Nullable | Key |
+|---|---|---:|---|
+| `delivery_id` | `CHAR(32)` | no | PK |
+| `external_billing_account_id` | `TEXT` | no |  |
+| `provider_event_id` | `TEXT` | yes |  |
+| `payload_hash` | `TEXT` | no |  |
+| `correlation_schema_version` | `TEXT` | no |  |
+| `correlation_document` | `JSON` | no |  |
+| `evidence_schema_version` | `TEXT` | no |  |
+| `evidence_document` | `JSON` | no |  |
+| `processing_state` | `TEXT` | no |  |
+| `received_at` | `DATETIME` | no |  |
+| `processing_started_at` | `DATETIME` | yes |  |
+| `processed_at` | `DATETIME` | yes |  |
+| `last_error_classification` | `TEXT` | yes |  |
+
+Indexes and constraints:
+
+- `ck_external_billing_webhook_deliveries_corr_schema_nonempty`
+- `ck_external_billing_webhook_deliveries_evidence_schema_nonempty`
+- `ck_external_billing_webhook_deliveries_hash_nonempty`
+- `ix_external_billing_webhook_deliveries_account_received`
+- `ix_external_billing_webhook_deliveries_payload_hash`
+- `ix_external_billing_webhook_deliveries_processing_received`
+- `ix_external_billing_webhook_deliveries_provider_event`
+- `ix_external_billing_webhook_deliveries_received_at`
+
+## `external_create_operations`
+
+| Column | Type | Nullable | Key |
+|---|---|---:|---|
+| `create_operation_id` | `CHAR(32)` | no | PK |
+| `operation_kind` | `TEXT` | no |  |
+| `customer_id` | `CHAR(32)` | no | FK |
+| `purchase_intent_id` | `CHAR(32)` | yes | FK |
+| `request_correlation_key` | `TEXT` | no |  |
+| `operation_state` | `TEXT` | no |  |
+| `unknown_since` | `DATETIME` | yes |  |
+| `unknown_recovery_deadline_at` | `DATETIME` | yes |  |
+| `recovery_hint_schema_version` | `TEXT` | yes |  |
+| `recovery_hint_document` | `JSON` | yes |  |
+| `bound_external_object_id` | `TEXT` | yes |  |
+| `created_at` | `DATETIME` | no |  |
+| `updated_at` | `DATETIME` | no |  |
+| `resolved_at` | `DATETIME` | yes |  |
+
+Indexes and constraints:
+
+- `ck_external_create_operations_correlation_nonempty`
+- `ck_external_create_operations_kind`
+- `ck_external_create_operations_purchase_requirement`
+- `ck_external_create_operations_recovery_hint_pair`
+- `ck_external_create_operations_unknown_deadline`
+- `ck_external_create_operations_unknown_pair`
+- `fk_external_create_operations_purchase_customer`
+- `ix_external_create_operations_bound_object`
+- `ix_external_create_operations_correlation`
+- `ix_external_create_operations_customer_state`
+- `ix_external_create_operations_purchase`
+- `ix_external_create_operations_recovery_scan`
+- `ix_external_create_operations_unknown_deadline`
+- `uq_external_create_operations_unresolved_customer`
+
+## `external_subscriptions`
+
+| Column | Type | Nullable | Key |
+|---|---|---:|---|
+| `subscription_id` | `CHAR(32)` | no | PK |
+| `external_billing_account_id` | `TEXT` | no | FK |
+| `customer_id` | `CHAR(32)` | no | FK |
+| `user_id` | `CHAR(32)` | no | FK |
+| `product_id` | `TEXT` | no | FK |
+| `purchase_intent_id` | `CHAR(32)` | yes | FK |
+| `mapping_revision_id` | `CHAR(32)` | yes | FK |
+| `external_subscription_id` | `TEXT` | yes |  |
+| `external_agreement_id` | `TEXT` | yes |  |
+| `lifecycle_status` | `TEXT` | no |  |
+| `financial_access_status` | `TEXT` | no |  |
+| `commercial_access_status` | `TEXT` | no |  |
+| `last_authoritative_read_at` | `DATETIME` | no |  |
+| `projection_valid_until` | `DATETIME` | no |  |
+| `reconciliation_lease_owner` | `TEXT` | yes |  |
+| `reconciliation_lease_expires_at` | `DATETIME` | yes |  |
+| `reconciliation_fencing_token` | `BIGINT` | no |  |
+| `latest_observation_id` | `CHAR(32)` | yes | FK |
 | `created_at` | `DATETIME` | no |  |
 | `updated_at` | `DATETIME` | no |  |
 
 Indexes and constraints:
 
-- `ck_entitlements_scope_references`
-- `ck_entitlements_source`
-- `ck_entitlements_source_order`
-- `ck_entitlements_status`
-- `ck_entitlements_valid_period`
-- `ix_entitlements_order_id`
-- `ix_entitlements_order_status_validity`
-- `ix_entitlements_plan_id`
-- `ix_entitlements_region`
-- `ix_entitlements_status`
-- `ix_entitlements_subscription_id`
-- `ix_entitlements_subscription_status_validity`
-- `ix_entitlements_tenant_id`
-- `ix_entitlements_user_id`
-- `ix_entitlements_user_region_status`
-
-## `entrypoint_sessions`
-
-| Column | Type | Nullable | Key |
-|---|---|---:|---|
-| `id` | `CHAR(32)` | no | PK |
-| `tenant_id` | `TEXT` | no |  |
-| `route_region` | `TEXT` | no |  |
-| `resolved_region` | `TEXT` | no | FK |
-| `ip_country` | `VARCHAR(2)` | yes |  |
-| `declared_country` | `VARCHAR(2)` | yes |  |
-| `browser_language` | `TEXT` | yes |  |
-| `region_mismatch_status` | `TEXT` | no |  |
-| `entrypoint_type` | `TEXT` | no |  |
-| `entrypoint_value` | `TEXT` | no |  |
-| `product_id` | `CHAR(32)` | yes | FK |
-| `bundle_id` | `CHAR(32)` | yes | FK |
-| `frontend_id` | `TEXT` | yes |  |
-| `platform_guest_id` | `TEXT` | yes |  |
-| `platform_user_id` | `TEXT` | yes |  |
-| `scenario_session_id` | `TEXT` | yes |  |
-| `artifact_id` | `TEXT` | yes |  |
-| `user_id` | `CHAR(32)` | yes | FK |
-| `source_url` | `TEXT` | yes |  |
-| `acquisition_source` | `TEXT` | yes |  |
-| `ip` | `VARCHAR(45)` | yes |  |
-| `user_agent` | `TEXT` | yes |  |
-| `metadata` | `JSON` | no |  |
-| `created_at` | `DATETIME` | no |  |
-
-Indexes and constraints:
-
-- `ix_entrypoint_sessions_frontend_id_created_at`
-- `ix_entrypoint_sessions_resolved_region_created_at`
-- `ix_entrypoint_sessions_scenario_session_id`
-- `ix_entrypoint_sessions_tenant_id`
-- `ix_entrypoint_sessions_type_value`
-- `ix_entrypoint_sessions_user_id`
-- `ix_entrypoint_sessions_user_id_created_at`
+- `ck_external_subscriptions_commercial_access_status`
+- `ck_external_subscriptions_fencing_token_nonnegative`
+- `ck_external_subscriptions_financial_access_status`
+- `ck_external_subscriptions_lifecycle_status`
+- `ck_external_subscriptions_purchase_mapping`
+- `ck_external_subscriptions_reconciliation_lease_pair`
+- `fk_external_subscriptions_customer_scope`
+- `fk_external_subscriptions_latest_observation`
+- `fk_external_subscriptions_mapping_scope`
+- `fk_external_subscriptions_purchase_provenance`
+- `uq_external_subscriptions_id_account_user_product`
+- `uq_external_subscriptions_id_product`
+- `uq_external_subscriptions_id_user_product`
+- `ix_external_subscriptions_account_customer`
+- `ix_external_subscriptions_agreement_id`
+- `ix_external_subscriptions_commercial_status`
+- `ix_external_subscriptions_customer_product_status`
+- `ix_external_subscriptions_external_id`
+- `ix_external_subscriptions_financial_status`
+- `ix_external_subscriptions_last_read`
+- `ix_external_subscriptions_latest_observation`
+- `ix_external_subscriptions_lease_expiry`
+- `ix_external_subscriptions_lifecycle_status`
+- `ix_external_subscriptions_mapping_provenance`
+- `ix_external_subscriptions_purchase_provenance`
+- `ix_external_subscriptions_reconciliation_claim`
+- `ix_external_subscriptions_user_product_status`
+- `ix_external_subscriptions_valid_until`
+- `uq_external_subscriptions_purchase_intent`
 
 ## `legal_acceptance_events`
 
@@ -347,81 +511,49 @@ Indexes and constraints:
 - `ix_magic_link_tokens_token_hash`
 - `ix_magic_link_tokens_user_id`
 
-## `order_items`
+## `manual_review_cases`
 
 | Column | Type | Nullable | Key |
 |---|---|---:|---|
-| `id` | `CHAR(32)` | no | PK |
-| `order_id` | `CHAR(32)` | no | FK |
-| `item_type` | `TEXT` | no |  |
-| `product_id` | `CHAR(32)` | yes | FK |
-| `bundle_id` | `CHAR(32)` | yes | FK |
-| `plan_id` | `CHAR(32)` | yes | FK |
-| `product_code_snapshot` | `TEXT` | yes |  |
-| `plan_code_snapshot` | `TEXT` | yes |  |
-| `title_snapshot` | `TEXT` | no |  |
-| `quantity` | `INTEGER` | no |  |
-| `list_amount_minor` | `INTEGER` | no |  |
-| `discount_amount_minor` | `INTEGER` | no |  |
-| `unit_amount_minor` | `INTEGER` | no |  |
-| `amount_minor` | `INTEGER` | no |  |
-| `currency` | `VARCHAR(3)` | no |  |
-| `trial_days_snapshot` | `INTEGER` | no |  |
-| `pricing_snapshot` | `JSON` | no |  |
-| `metadata` | `JSON` | no |  |
+| `review_case_id` | `CHAR(32)` | no | PK |
+| `reason_code` | `TEXT` | no |  |
+| `scope_kind` | `TEXT` | no |  |
+| `scope_reference` | `TEXT` | no |  |
+| `evidence_schema_version` | `TEXT` | no |  |
+| `evidence_document` | `JSON` | no |  |
+| `case_state` | `TEXT` | no |  |
 | `created_at` | `DATETIME` | no |  |
+| `resolved_at` | `DATETIME` | yes |  |
+| `resolved_by_principal` | `TEXT` | yes |  |
+| `resolution_schema_version` | `TEXT` | yes |  |
+| `resolution_document` | `JSON` | yes |  |
 
 Indexes and constraints:
 
-- `ix_order_items_bundle_id`
-- `ix_order_items_order_id`
-- `ix_order_items_product_id`
+- `ck_manual_review_cases_evidence_schema_nonempty`
+- `ix_manual_review_cases_reason_state`
+- `ix_manual_review_cases_resolved_by`
+- `ix_manual_review_cases_scope`
+- `ix_manual_review_cases_state`
+- `ix_manual_review_cases_state_created`
 
-## `orders`
+## `paid_access_states`
 
 | Column | Type | Nullable | Key |
 |---|---|---:|---|
-| `id` | `CHAR(32)` | no | PK |
-| `tenant_id` | `TEXT` | no |  |
+| `paid_access_state_id` | `CHAR(32)` | no | PK |
+| `tenant_id` | `TEXT` | no | FK |
 | `region` | `TEXT` | no | FK |
-| `order_number` | `TEXT` | no |  |
 | `user_id` | `CHAR(32)` | no | FK |
-| `checkout_session_id` | `CHAR(32)` | yes | FK |
-| `entrypoint_session_id` | `CHAR(32)` | yes | FK |
-| `plan_id` | `CHAR(32)` | yes | FK |
-| `status` | `TEXT` | no |  |
-| `amount_minor` | `INTEGER` | no |  |
-| `currency` | `VARCHAR(3)` | no |  |
-| `tax_amount_minor` | `INTEGER` | no |  |
-| `discount_amount_minor` | `INTEGER` | no |  |
-| `provider` | `TEXT` | no |  |
-| `provider_account_id` | `CHAR(32)` | no | FK |
-| `merchant_order_id` | `TEXT` | no |  |
-| `provider_invoice_id` | `TEXT` | yes |  |
-| `billing_country` | `VARCHAR(2)` | yes |  |
-| `region_mismatch_status` | `TEXT` | no |  |
-| `paid_at` | `DATETIME` | yes |  |
-| `failed_at` | `DATETIME` | yes |  |
-| `canceled_at` | `DATETIME` | yes |  |
-| `expires_at` | `DATETIME` | yes |  |
-| `metadata` | `JSON` | no |  |
-| `created_at` | `DATETIME` | no |  |
-| `updated_at` | `DATETIME` | no |  |
+| `access_revision` | `BIGINT` | no |  |
+| `effective_state_schema_version` | `TEXT` | no |  |
+| `effective_state_document` | `JSON` | no |  |
+| `committed_at` | `DATETIME` | no |  |
 
 Indexes and constraints:
 
-- `uq_orders_provider_account_merchant_order`
-- `uq_orders_tenant_region_order_number`
-- `ix_orders_checkout_session_id`
-- `ix_orders_entrypoint_session_id`
-- `ix_orders_provider_account_id`
-- `ix_orders_provider_invoice_id`
-- `ix_orders_region`
-- `ix_orders_region_status_created_at`
-- `ix_orders_status`
-- `ix_orders_tenant_id`
-- `ix_orders_user_id`
-- `ix_orders_user_id_created_at`
+- `fk_paid_access_states_user_scope`
+- `uq_paid_access_states_tenant_region_user`
 
 ## `password_reset_rate_limits`
 
@@ -438,253 +570,75 @@ Indexes and constraints:
 
 - `ix_password_reset_rate_limits_expires_at`
 
-## `payment_provider_accounts`
+## `purchase_intents`
 
 | Column | Type | Nullable | Key |
 |---|---|---:|---|
-| `id` | `CHAR(32)` | no | PK |
-| `tenant_id` | `TEXT` | no |  |
-| `region` | `TEXT` | no | FK |
-| `legal_entity_id` | `CHAR(32)` | yes | FK |
-| `provider` | `TEXT` | no |  |
-| `public_identifier` | `TEXT` | yes |  |
-| `default_currency` | `VARCHAR(3)` | no |  |
-| `enabled` | `BOOLEAN` | no |  |
-| `test_mode` | `BOOLEAN` | no |  |
-| `config` | `JSON` | no |  |
+| `purchase_intent_id` | `CHAR(32)` | no | PK |
+| `user_id` | `CHAR(32)` | no | FK |
+| `external_billing_account_id` | `TEXT` | no | FK |
+| `customer_id` | `CHAR(32)` | no | FK |
+| `product_id` | `TEXT` | no |  |
+| `billing_offer_id` | `TEXT` | no | FK |
+| `mapping_revision_id` | `CHAR(32)` | no | FK |
+| `accepted_commercial_fingerprint` | `TEXT` | no | FK |
+| `client_idempotency_key` | `TEXT` | no |  |
+| `state` | `TEXT` | no |  |
+| `accepted_snapshot_schema_version` | `TEXT` | no |  |
+| `accepted_snapshot` | `JSON` | no |  |
+| `legal_acceptance_event_id` | `CHAR(32)` | no | FK |
 | `created_at` | `DATETIME` | no |  |
-| `updated_at` | `DATETIME` | no |  |
+| `state_updated_at` | `DATETIME` | no |  |
+| `resolved_at` | `DATETIME` | yes |  |
 
 Indexes and constraints:
 
-- `uq_pay_provider_accounts_tenant_region_provider_entity`
-- `ix_payment_provider_accounts_legal_entity_id`
-- `ix_payment_provider_accounts_provider`
-- `ix_payment_provider_accounts_region`
-- `ix_payment_provider_accounts_region_enabled`
-- `ix_payment_provider_accounts_tenant_id`
-- `uq_payment_provider_accounts_default`
+- `ck_purchase_intents_fingerprint_nonempty`
+- `ck_purchase_intents_idempotency_nonempty`
+- `ck_purchase_intents_snapshot_schema_nonempty`
+- `ck_purchase_intents_state`
+- `fk_purchase_intents_customer_scope`
+- `fk_purchase_intents_legal_evidence`
+- `fk_purchase_intents_mapping_scope`
+- `uq_purchase_intents_client_idempotency`
+- `uq_purchase_intents_full_scope`
+- `uq_purchase_intents_id_account_user_product`
+- `uq_purchase_intents_id_customer`
+- `ix_purchase_intents_account_offer`
+- `ix_purchase_intents_commercial_fingerprint`
+- `ix_purchase_intents_customer_purchase`
+- `ix_purchase_intents_mapping_revision`
+- `ix_purchase_intents_state`
+- `ix_purchase_intents_state_updated_at`
+- `ix_purchase_intents_user_product`
 
-## `payment_webhook_events`
-
-| Column | Type | Nullable | Key |
-|---|---|---:|---|
-| `id` | `CHAR(32)` | no | PK |
-| `tenant_id` | `TEXT` | no |  |
-| `region` | `TEXT` | no | FK |
-| `provider_account_id` | `CHAR(32)` | yes | FK |
-| `provider` | `VARCHAR` | no |  |
-| `endpoint` | `TEXT` | no |  |
-| `event_type` | `TEXT` | yes |  |
-| `provider_event_id` | `TEXT` | yes |  |
-| `idempotency_key` | `TEXT` | yes |  |
-| `payload_hash` | `TEXT` | no |  |
-| `invoice_id` | `TEXT` | yes |  |
-| `transaction_id` | `TEXT` | yes |  |
-| `account_id` | `TEXT` | yes |  |
-| `order_id` | `CHAR(32)` | yes | FK |
-| `payment_id` | `CHAR(32)` | yes | FK |
-| `amount_minor` | `INTEGER` | yes |  |
-| `amount` | `NUMERIC(12, 2)` | yes |  |
-| `currency` | `TEXT` | yes |  |
-| `raw_payload` | `JSON` | no |  |
-| `headers` | `JSON` | yes |  |
-| `received_at` | `DATETIME` | no |  |
-| `processed_at` | `DATETIME` | yes |  |
-| `status` | `TEXT` | no |  |
-| `error_code` | `TEXT` | yes |  |
-| `error_message` | `TEXT` | yes |  |
-
-Indexes and constraints:
-
-- `ix_payment_webhook_events_idempotency_lookup`
-- `ix_payment_webhook_events_order_id`
-- `ix_payment_webhook_events_payment_id`
-- `ix_payment_webhook_events_provider_account_id`
-- `ix_payment_webhook_events_provider_endpoint_event_type`
-- `ix_payment_webhook_events_provider_event_id`
-- `ix_payment_webhook_events_region`
-- `ix_payment_webhook_events_region_provider_received_at`
-- `ix_payment_webhook_events_tenant_id`
-
-## `payments`
+## `purchased_allowances`
 
 | Column | Type | Nullable | Key |
 |---|---|---:|---|
-| `id` | `CHAR(32)` | no | PK |
-| `tenant_id` | `TEXT` | no |  |
-| `region` | `TEXT` | no | FK |
-| `order_id` | `CHAR(32)` | no | FK |
-| `provider_account_id` | `CHAR(32)` | no | FK |
-| `provider` | `TEXT` | no |  |
-| `provider_payment_id` | `TEXT` | yes |  |
-| `provider_invoice_id` | `TEXT` | yes |  |
-| `status` | `TEXT` | no |  |
-| `amount_minor` | `INTEGER` | no |  |
-| `currency` | `VARCHAR(3)` | no |  |
-| `payment_method_type` | `TEXT` | yes |  |
-| `authorized_at` | `DATETIME` | yes |  |
-| `captured_at` | `DATETIME` | yes |  |
-| `failed_at` | `DATETIME` | yes |  |
-| `refunded_amount_minor` | `INTEGER` | no |  |
-| `failure_code` | `TEXT` | yes |  |
-| `failure_message_safe` | `TEXT` | yes |  |
-| `raw_summary` | `JSON` | no |  |
-| `created_at` | `DATETIME` | no |  |
-| `updated_at` | `DATETIME` | no |  |
-
-Indexes and constraints:
-
-- `ix_payments_order_id`
-- `ix_payments_provider_account_id`
-- `ix_payments_region`
-- `ix_payments_region_status_created_at`
-- `ix_payments_status`
-- `ix_payments_tenant_id`
-- `uq_payments_provider_account_payment_id`
-
-## `plan_limits`
-
-| Column | Type | Nullable | Key |
-|---|---|---:|---|
-| `id` | `CHAR(32)` | no | PK |
-| `plan_id` | `CHAR(32)` | no | FK |
-| `product_id` | `CHAR(32)` | yes | FK |
-| `metric` | `TEXT` | no |  |
-| `limit_count` | `INTEGER` | no |  |
-| `period` | `TEXT` | no |  |
-| `reset_policy` | `TEXT` | no |  |
-| `overage_policy` | `TEXT` | no |  |
-| `created_at` | `DATETIME` | no |  |
-| `updated_at` | `DATETIME` | no |  |
-
-Indexes and constraints:
-
-- `ck_plan_limits_limit_count_non_negative`
-- `uq_plan_limits_plan_metric`
-- `ix_plan_limits_metric`
-- `ix_plan_limits_plan_id`
-
-## `plan_price_components`
-
-| Column | Type | Nullable | Key |
-|---|---|---:|---|
-| `id` | `CHAR(32)` | no | PK |
-| `plan_id` | `CHAR(32)` | no | FK |
-| `component_type` | `TEXT` | no |  |
-| `source_product_id` | `CHAR(32)` | yes | FK |
-| `source_bundle_id` | `CHAR(32)` | yes | FK |
-| `source_plan_id` | `CHAR(32)` | yes | FK |
-| `component_code_snapshot` | `TEXT` | no |  |
-| `title_snapshot` | `TEXT` | no |  |
-| `quantity` | `INTEGER` | no |  |
-| `list_amount_minor` | `INTEGER` | no |  |
-| `discount_amount_minor` | `INTEGER` | no |  |
-| `amount_minor` | `INTEGER` | no |  |
-| `currency` | `VARCHAR(3)` | no |  |
-| `position` | `INTEGER` | no |  |
-| `metadata` | `JSON` | no |  |
+| `allowance_id` | `CHAR(32)` | no | PK |
+| `subscription_id` | `CHAR(32)` | no | FK |
+| `source_component_id` | `TEXT` | no |  |
+| `product_id` | `TEXT` | no | FK |
+| `metric_key` | `TEXT` | no |  |
+| `quantity` | `BIGINT` | no |  |
+| `provider_cycle_key` | `TEXT` | yes |  |
+| `provider_cycle_start` | `DATETIME` | yes |  |
+| `provider_cycle_end` | `DATETIME` | yes |  |
+| `period_start` | `DATETIME` | no |  |
+| `period_end` | `DATETIME` | no |  |
 | `created_at` | `DATETIME` | no |  |
 
 Indexes and constraints:
 
-- `ck_plan_price_components_amounts_non_negative`
-- `ck_plan_price_components_quantity_positive`
-- `ix_plan_price_components_plan_position`
-- `ix_plan_price_components_source_plan_id`
-
-## `plans`
-
-| Column | Type | Nullable | Key |
-|---|---|---:|---|
-| `id` | `CHAR(32)` | no | PK |
-| `tenant_id` | `TEXT` | no |  |
-| `region` | `TEXT` | no | FK |
-| `code` | `TEXT` | no |  |
-| `name` | `TEXT` | no |  |
-| `scope_type` | `TEXT` | no |  |
-| `product_id` | `CHAR(32)` | yes | FK |
-| `bundle_id` | `CHAR(32)` | yes | FK |
-| `price_amount_minor` | `INTEGER` | no |  |
-| `currency` | `VARCHAR(3)` | no |  |
-| `billing_period` | `TEXT` | no |  |
-| `renewal_mode` | `TEXT` | no |  |
-| `trial_days` | `INTEGER` | no |  |
-| `status` | `TEXT` | no |  |
-| `valid_from` | `DATETIME` | no |  |
-| `valid_to` | `DATETIME` | yes |  |
-| `metadata` | `JSON` | no |  |
-| `created_at` | `DATETIME` | no |  |
-| `updated_at` | `DATETIME` | no |  |
-
-Indexes and constraints:
-
-- `ck_plans_price_non_negative`
-- `ck_plans_scope_references`
-- `ck_plans_scope_type`
-- `ck_plans_trial_days_non_negative`
-- `ck_plans_valid_window`
-- `uq_plans_tenant_region_code_valid_from`
-- `ix_plans_bundle_id`
-- `ix_plans_code`
-- `ix_plans_product_id`
-- `ix_plans_region`
-- `ix_plans_region_status`
-- `ix_plans_status`
-- `ix_plans_tenant_id`
-- `uq_plans_active_code`
-
-## `products`
-
-| Column | Type | Nullable | Key |
-|---|---|---:|---|
-| `id` | `CHAR(32)` | no | PK |
-| `tenant_id` | `TEXT` | no |  |
-| `code` | `TEXT` | no |  |
-| `platform_product_id` | `TEXT` | no |  |
-| `name` | `TEXT` | no |  |
-| `description` | `TEXT` | yes |  |
-| `status` | `TEXT` | no |  |
-| `created_at` | `DATETIME` | no |  |
-| `updated_at` | `DATETIME` | no |  |
-
-Indexes and constraints:
-
-- `uq_products_tenant_code`
-- `uq_products_tenant_platform_product_id`
-- `ix_products_code`
-- `ix_products_status`
-- `ix_products_tenant_id`
-- `ix_products_tenant_status`
-
-## `refunds`
-
-| Column | Type | Nullable | Key |
-|---|---|---:|---|
-| `id` | `CHAR(32)` | no | PK |
-| `tenant_id` | `TEXT` | no |  |
-| `region` | `TEXT` | no | FK |
-| `order_id` | `CHAR(32)` | no | FK |
-| `payment_id` | `CHAR(32)` | no | FK |
-| `provider_account_id` | `CHAR(32)` | no | FK |
-| `provider_refund_id` | `TEXT` | yes |  |
-| `status` | `TEXT` | no |  |
-| `amount_minor` | `INTEGER` | no |  |
-| `currency` | `VARCHAR(3)` | no |  |
-| `reason` | `TEXT` | yes |  |
-| `requested_at` | `DATETIME` | no |  |
-| `succeeded_at` | `DATETIME` | yes |  |
-| `metadata` | `JSON` | no |  |
-| `created_at` | `DATETIME` | no |  |
-
-Indexes and constraints:
-
-- `ix_refunds_order_id`
-- `ix_refunds_payment_id`
-- `ix_refunds_provider_account_id`
-- `ix_refunds_region`
-- `ix_refunds_tenant_id`
-- `uq_refunds_provider_account_refund_id`
+- `ck_purchased_allowances_period_order`
+- `ck_purchased_allowances_provider_cycle_pair`
+- `ck_purchased_allowances_quantity_nonnegative`
+- `fk_purchased_allowances_subscription_product`
+- `ix_purchased_allowances_product_metric`
+- `ix_purchased_allowances_provider_cycle_key`
+- `ix_purchased_allowances_subscription_component_cycle`
+- `ix_purchased_allowances_subscription_cycle`
 
 ## `regions`
 
@@ -699,79 +653,6 @@ Indexes and constraints:
 
 Indexes and constraints:
 
-
-## `subscription_events`
-
-| Column | Type | Nullable | Key |
-|---|---|---:|---|
-| `id` | `CHAR(32)` | no | PK |
-| `subscription_id` | `CHAR(32)` | no | FK |
-| `event_type` | `TEXT` | no |  |
-| `previous_status` | `TEXT` | yes |  |
-| `next_status` | `TEXT` | yes |  |
-| `occurred_at` | `DATETIME` | no |  |
-| `operation_idempotency_key` | `TEXT` | no |  |
-| `order_id` | `CHAR(32)` | yes | FK |
-| `payment_id` | `CHAR(32)` | yes | FK |
-| `refund_id` | `CHAR(32)` | yes | FK |
-| `webhook_event_id` | `CHAR(32)` | yes | FK |
-| `metadata` | `JSON` | no |  |
-
-Indexes and constraints:
-
-- `uq_subscription_events_operation_key`
-- `ix_subscription_events_order_id`
-- `ix_subscription_events_payment_id`
-- `ix_subscription_events_refund_id`
-- `ix_subscription_events_subscription_id`
-- `ix_subscription_events_subscription_occurred_at`
-- `ix_subscription_events_webhook_event_id`
-
-## `subscriptions`
-
-| Column | Type | Nullable | Key |
-|---|---|---:|---|
-| `id` | `CHAR(32)` | no | PK |
-| `tenant_id` | `TEXT` | no |  |
-| `region` | `TEXT` | no | FK |
-| `user_id` | `CHAR(32)` | no | FK |
-| `plan_id` | `CHAR(32)` | no | FK |
-| `scope_type` | `TEXT` | no |  |
-| `product_id` | `CHAR(32)` | yes | FK |
-| `bundle_id` | `CHAR(32)` | yes | FK |
-| `status` | `TEXT` | no |  |
-| `renewal_mode` | `TEXT` | no |  |
-| `trial_start_at` | `DATETIME` | yes |  |
-| `trial_end_at` | `DATETIME` | yes |  |
-| `current_period_start` | `DATETIME` | no |  |
-| `current_period_end` | `DATETIME` | no |  |
-| `cancel_requested_at` | `DATETIME` | yes |  |
-| `canceled_at` | `DATETIME` | yes |  |
-| `provider_account_id` | `CHAR(32)` | yes | FK |
-| `provider_subscription_id` | `TEXT` | yes |  |
-| `recurring_consent_acceptance_id` | `CHAR(32)` | yes | FK |
-| `created_at` | `DATETIME` | no |  |
-| `updated_at` | `DATETIME` | no |  |
-
-Indexes and constraints:
-
-- `ck_subscriptions_current_period`
-- `ck_subscriptions_renewal_mode`
-- `ck_subscriptions_scope_references`
-- `ck_subscriptions_status`
-- `ck_subscriptions_trial_period`
-- `ix_subscriptions_plan_id`
-- `ix_subscriptions_provider_account_id`
-- `ix_subscriptions_recurring_consent_acceptance_id`
-- `ix_subscriptions_region`
-- `ix_subscriptions_status`
-- `ix_subscriptions_tenant_id`
-- `ix_subscriptions_user_id`
-- `ix_subscriptions_user_region_status`
-- `uq_subscriptions_live_all_access_scope`
-- `uq_subscriptions_live_bundle_scope`
-- `uq_subscriptions_live_product_scope`
-- `uq_subscriptions_provider_reference`
 
 ## `users`
 

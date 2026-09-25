@@ -79,21 +79,6 @@ def test_settings_require_critical_environment_values_when_environment_is_absent
     }
 
 
-def test_default_api_test_environment_clears_legacy_cloudpayments_values() -> None:
-    with patch.dict(
-        os.environ,
-        {
-            "CLOUDPAYMENTS_ENABLED": "stale-value",
-            "CLOUDPAYMENTS_PUBLIC_ID": "stale-value",
-            "CLOUDPAYMENTS_API_SECRET": "stale-value",
-        },
-        clear=True,
-    ):
-        configure_api_test_environment()
-
-        assert not any(name.startswith("CLOUDPAYMENTS_") for name in os.environ)
-
-
 @pytest.mark.parametrize("app_env", ["development", "test", "production"])
 def test_settings_accept_supported_app_environments(app_env: str) -> None:
     environment = {
@@ -110,8 +95,6 @@ def test_settings_accept_supported_app_environments(app_env: str) -> None:
     assert loaded_settings.instance_region == "ru"
     assert loaded_settings.app_public_base_url == "https://payments.example.com"
     assert loaded_settings.database_url == "sqlite+pysqlite:///:memory:"
-    assert loaded_settings.cloudpayments_public_id == ""
-    assert loaded_settings.cloudpayments_api_secret == ""
     assert loaded_settings.cors_allow_origins == ("https://payments.example.com",)
     assert loaded_settings.smtp_host == ""
     assert loaded_settings.smtp_port == 587
@@ -119,6 +102,24 @@ def test_settings_accept_supported_app_environments(app_env: str) -> None:
     assert loaded_settings.smtp_password == ""
     assert loaded_settings.smtp_from_email == "support@any-tool-ai.ru"
     assert loaded_settings.smtp_use_tls is True
+
+
+@pytest.mark.parametrize(
+    ("instance_tenant_id", "instance_region"),
+    [("other", "ru"), ("anytoolai", "eu")],
+)
+def test_settings_reject_instance_scope_without_supported_bootstrap(
+    instance_tenant_id: str,
+    instance_region: str,
+) -> None:
+    environment = {
+        **DEFAULT_API_TEST_ENV,
+        "INSTANCE_TENANT_ID": instance_tenant_id,
+        "INSTANCE_REGION": instance_region,
+    }
+    with patch.dict(os.environ, environment, clear=True):
+        with pytest.raises(ValidationError, match="current bootstrap supports only anytoolai/ru"):
+            Settings(_env_file=None)
 
 
 @pytest.mark.parametrize(
@@ -166,8 +167,6 @@ def test_settings_preserve_dotenv_parsing_and_process_environment_precedence(
                 "POSTGRES_PASSWORD=dotenv_password",
                 "POSTGRES_HOST=postgres",
                 "POSTGRES_PORT=5432",
-                "CLOUDPAYMENTS_PUBLIC_ID=pk_from_dotenv",
-                "CLOUDPAYMENTS_API_SECRET=secret-from-dotenv",
                 'CORS_ALLOW_ORIGINS="https://web.example, https://admin.example"',
                 "SMTP_HOST=smtp.dotenv.example",
                 "SMTP_PORT=2525",
@@ -196,8 +195,6 @@ def test_settings_preserve_dotenv_parsing_and_process_environment_precedence(
     assert loaded_settings.instance_region == "ru"
     assert loaded_settings.app_public_base_url == "https://process.example/app"
     assert loaded_settings.database_url == "sqlite+pysqlite:///from-dotenv.db"
-    assert loaded_settings.cloudpayments_public_id == "pk_from_dotenv"
-    assert loaded_settings.cloudpayments_api_secret == "secret-from-dotenv"
     assert loaded_settings.cors_allow_origins == (
         "https://web.example",
         "https://admin.example",
@@ -368,8 +365,7 @@ def test_settings_validation_messages_do_not_include_sensitive_values() -> None:
         "APP_ENV": "production",
         "APP_PUBLIC_BASE_URL": "http://secret-host.example/app",
         "DATABASE_URL": "postgresql+psycopg://secret-user:secret-password@db.example/payments",
-        "CLOUDPAYMENTS_PUBLIC_ID": "pk_secret_public_id",
-        "CLOUDPAYMENTS_API_SECRET": "secret-cloudpayments-api-key",
+        "SMTP_PASSWORD": "secret-smtp-password",
     }
     with patch.dict(os.environ, environment, clear=True):
         with pytest.raises(ValidationError) as error:
@@ -379,8 +375,7 @@ def test_settings_validation_messages_do_not_include_sensitive_values() -> None:
     assert "secret-host.example" not in message
     assert "secret-user" not in message
     assert "secret-password" not in message
-    assert "pk_secret_public_id" not in message
-    assert "secret-cloudpayments-api-key" not in message
+    assert "secret-smtp-password" not in message
 
 
 def test_settings_expose_required_instance_scope_without_legacy_default_names() -> None:

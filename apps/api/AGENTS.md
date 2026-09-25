@@ -13,12 +13,13 @@ retained billing document:
 3. [Portal ↔ Kernel Access Contract Design](../../docs/superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md)
 
 The [payment-provider document](../../docs/architecture/payment-providers.md)
-characterizes the retained direct-provider implementation, the
+is historical characterization of the physically removed direct-provider
+boundary, the
 [billing-authority document](../../docs/architecture/billing-authority.md) is
-superseded target history plus current-state context, and the
+historical/superseded only, not current-state or target authority, and the
 [data-model document](../../docs/architecture/payment-portal-data-model.md) is
-the authoritative current-state schema reference. None overrides the target
-authority chain or defines the future external-billing persistence model.
+the authoritative current as-built schema reference. None overrides the target
+authority chain or defines later external-billing runtime behavior.
 
 ## Conventions
 
@@ -58,13 +59,11 @@ and do not yet map one-to-one to every layer:
 
 Domain modules must not import routers or external integrations. Raw external
 payloads must be authenticated or verified, validated, redacted, and
-normalized at the owning Integration boundary. CloudPayments source is retained
-for transitional cleanup but is not registered or used by normal `ru` runtime;
-an external billing system is a distinct boundary and is not another
-`PaymentProviderAdapter` or a member of `PaymentProviderRegistry`. Do not extend
-those retained abstractions for new external billing except under explicitly
-scoped characterization or removal work. Do not make the current Portal-owned
-`Product`/`Plan`/`Order`/`Payment` model the target commercial authority.
+normalized at the owning Integration boundary. CloudPayments, the direct-
+provider adapter/registry, and the Portal-owned
+`Product`/`Plan`/`Order`/`Payment`/`Subscription`/`Entitlement` runtime are
+physically removed. An external billing system is a distinct boundary; do not
+recreate those abstractions for it.
 Provider-independent clean pre-production cleanup may precede Phase 0;
 provider-dependent LBX production semantics and paid-access derivation remain
 Phase 0 gated under `ANY-504`.
@@ -85,15 +84,14 @@ database lifecycle.
 
 ## Safety
 
-- Current retained access behavior is characterization, not the final target
-  wire model. Target paid access changes only from the authoritative sources
+- Target paid access changes only from the authoritative sources
   permitted by ADR 0005 and the accepted designs; a browser return, Widget
   callback, webhook, outbound request success, or payment state alone is not
-  access authority. Normal runtime has no CloudPayments callback path.
+  access authority. No billing producer/callback runtime is currently present.
 - Never log authentication tokens, authorization headers, secrets, card fields,
   or unredacted webhook bodies.
 - Legal acceptance records are append-only.
-- Use forward migrations after the corrected initial baseline is frozen.
+- Use forward migrations after the clean first-install baseline is frozen.
 - Add PostgreSQL coverage for schema or migration changes.
 
 ## Checks

@@ -22,16 +22,7 @@ export type PaymentMethod = {
   href?: string;
 };
 
-export const paymentMethods: PaymentMethod[] = [
-  { code: "card", label: "Банковская карта" },
-  { code: "sbp", label: "СБП" },
-  {
-    code: "tpay",
-    label: "T-Pay",
-    href: "https://www.tbank.ru/"
-  },
-  { code: "mir", label: "Мир" }
-];
+export const paymentMethods: PaymentMethod[] = [];
 
 export type ProductPresentation = {
   type: string;
@@ -78,25 +69,25 @@ export const platformFacts = [
   {
     label: "Каталог",
     value: "RU",
-    detail: "Актуальные предложения загружаются из API",
+    detail: "Информация о продуктах AnytoolAI",
     Icon: Sparkles
   },
   {
     label: "Тарифы",
-    value: "API",
-    detail: "Цена и условия указаны в карточках",
+    value: "Скоро",
+    detail: "Оформление временно недоступно",
     Icon: ShieldCheck
   },
   {
     label: "Доступ",
     value: "1 аккаунт",
-    detail: "Статус подписки проверяется перед оформлением",
+    detail: "Регистрация и вход уже доступны",
     Icon: FileText
   },
   {
     label: "Локализация",
     value: "RU",
-    detail: "юридические документы и оплата",
+    detail: "интерфейс и юридические документы",
     Icon: Languages
   }
 ];
@@ -105,51 +96,19 @@ export const platformHighlights = [
   {
     title: "Простой старт",
     description:
-      "Оформление подписки и юридические документы собраны в одном понятном портале.",
+      "Регистрация и юридические документы собраны в одном понятном портале.",
     Icon: Sparkles
   },
   {
     title: "Один аккаунт",
     description:
-      "Единый вход для сервисов готовится. На этом этапе можно оформить доступ по email.",
+      "Можно создать аккаунт или войти по email, пока биллинг обновляется.",
     Icon: MessageSquareQuote
   },
   {
-    title: "Безопасная оплата",
+    title: "Контролируемый запуск",
     description:
-      "Платёж подтверждается через платёжного партнёра, а данные карт не хранятся на стороне платформы.",
+      "Покупки останутся недоступны до подключения новой биллинговой системы.",
     Icon: ShieldCheck
   }
 ];
-
-export function formatRubles(value: number): string {
-  return new Intl.NumberFormat("ru-RU").format(value) + " ₽";
-}
-
-export function formatCatalogPrice(
-  priceAmountMinor: number,
-  currency: string
-): string {
-  if (currency.toUpperCase() !== "RUB") {
-    throw new Error("unsupported_catalog_currency");
-  }
-
-  return formatRubles(priceAmountMinor / 100);
-}
-
-export function formatBillingPeriod(period: string): string {
-  const labels: Record<string, string> = {
-    day: "день",
-    days: "дней",
-    week: "неделю",
-    weeks: "недель",
-    month: "месяц",
-    months: "месяцев",
-    year: "год",
-    years: "лет",
-    annual: "год",
-    yearly: "год"
-  };
-
-  return labels[period] ?? period;
-}

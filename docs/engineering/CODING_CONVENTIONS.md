@@ -1,7 +1,7 @@
 # Coding Conventions
 
 Status: authoritative
-Last verified: 2026-09-14
+Last verified: 2026-09-24
 
 How to write **new and changed** code so types, states, and trust boundaries
 stay explicit. This is not a backlog and not a mass-migration plan.
@@ -13,11 +13,10 @@ Related documents:
   the accepted [External Billing Boundary Design](../superpowers/specs/2026-09-15-external-billing-boundary-design.md)
   and [Portal-Kernel Access Contract Design](../superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md)
   — target billing ownership, authoritative facts, and implementation baselines
-- [Billing authority](../architecture/billing-authority.md) — superseded target
-  architecture retained for historical and current-state context
+- [Billing authority](../architecture/billing-authority.md) —
+  historical/superseded only; neither current-state nor target authority
 - [Data model](../architecture/payment-portal-data-model.md) — authoritative
-  current-state schema and persistence invariants, not target external-billing
-  persistence design
+  current as-built schema and persistence invariants
 - [DDD-lite audit](../architecture/ddd-lite-audit.md) — smell catalog; not a
   burn-down list
 - [API agent guide](../../apps/api/AGENTS.md) and
@@ -109,9 +108,13 @@ unsafe-assertion rule as `error` only after current `json()` /
     resource-owning synchronous unit through the framework worker mechanism.
     Do not create a request-scoped resource such as a SQLAlchemy `Session` and
     move it through a manually introduced thread bridge.
-12. Do not use `asyncio.run()` to bridge application layers, create duplicate
+12. Cancellation of the async waiter does not mean delegated synchronous work
+    was forcibly stopped. The delegated unit creates, owns, and closes its
+    complete resources, and cancellation must not cause unsafe reuse or an
+    overlapping duplicate operation.
+13. Do not use `asyncio.run()` to bridge application layers, create duplicate
     sync/async application services, or introduce generic sync/async adapters.
-13. Request ID and trace/span/log context must remain correlated across
+14. Request ID and trace/span/log context must remain correlated across
     framework worker boundaries. New or materially changed functions retain
     explicit parameter and return annotations without unintentionally changing
     FastAPI response-model inference.
@@ -129,9 +132,10 @@ unsafe-assertion rule as `error` only after current `json()` /
 3. Response presenters are pure mappings. They do not receive a Session, issue
    queries, or intentionally trigger ORM lazy loading.
 4. FastAPI dependency injection composes explicit resources and context, such
-   as the request-scoped Session, authenticated context, and app-scoped provider
-   registry. Stateless Application/service functions remain ordinary direct
-   calls and are not placed behind `Depends()` only for testability.
+   as the request-scoped Session, authenticated context, and application-scoped
+   infrastructure adapters. Stateless Application/service functions remain
+   ordinary direct calls and are not placed behind `Depends()` only for
+   testability.
 5. Public Pydantic request/response DTOs are owned by Presentation. Inward use
    cases accept validated primitives or their own small concrete typed contract
    when structured input/output warrants it; they do not accept router-owned
@@ -144,6 +148,13 @@ unsafe-assertion rule as `error` only after current `json()` /
    types, not arbitrary `.code` strings. Stable codes remain payload or
    diagnostic identifiers; do not create a global class-per-code hierarchy.
    Preserve legacy response shapes in Presentation when compatibility requires it.
+8. The outer failure boundary for an operation owns application error
+   reporting. Do not report a failure in a lower layer when it will continue
+   propagating to that boundary. A bounded operation that intentionally catches
+   and absorbs a failure reports it at that catch boundary. Domain and
+   Application logic do not import or call `sentry_sdk`; all SDK access stays
+   behind `app.infrastructure.sentry`. Keep one reporting owner per failure so
+   application reporting and Sentry capture are not duplicated.
 
 ### API persistence
 
@@ -170,20 +181,18 @@ unsafe-assertion rule as `error` only after current `json()` /
    `commit()`, or `rollback()` to own or finalize the outer transaction.
    SQLAlchemy `Session` autobegin is a database/session mechanism, not an
    application ownership signal.
-6. Provider-neutral billing lifecycle functions participate in a caller-owned
-   transaction. A caller must establish the transaction boundary and may not
-   rely on a lifecycle helper to commit partial work. Use the persisted
-   operation identity, the established row-lock order, a post-lock idempotency
-   recheck, and database uniqueness to make same-key concurrency converge.
+6. Future provider-neutral billing mutations participate in a caller-owned
+   transaction. The caller establishes the transaction boundary and may not
+   rely on a focused helper to commit partial work. Use the approved durable
+   operation identity, row-lock order, post-lock idempotency recheck, and
+   database uniqueness assigned by the owning runtime step.
 7. Retry a definitely rolled-back database operation only as the complete
    logical operation, with the same operation identity where one exists. If the
    commit result is uncertain, inspect authoritative persisted state before
    deciding whether replay is safe. Do not add a generic automatic retry loop.
-8. Retained CloudPayments/direct-provider persistence is transitional legacy,
-   not the template for future external billing. Generic persistence helpers
-   remain provider-neutral and independent of retained provider code; do not
-   promote CloudPayments-only behavior into them merely to preserve legacy
-   callers.
+8. CloudPayments/direct-provider persistence has been removed and is not the
+   template for external billing. Persistence helpers remain provider-neutral;
+   do not recreate direct-provider behavior or a Portal-owned commercial model.
 
 ## Web / TypeScript
 

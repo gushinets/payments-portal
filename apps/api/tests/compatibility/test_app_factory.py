@@ -152,9 +152,16 @@ def test_app_factory_runs_lifespan_once(monkeypatch: pytest.MonkeyPatch) -> None
         assert_no_running_loop()
         lifecycle_events.append("session_closed")
 
-    def seed_documents(received_session: object) -> None:
+    def seed_documents(
+        received_session: object,
+        *,
+        tenant_id: str,
+        region: str,
+    ) -> None:
         assert_no_running_loop()
         assert received_session is session
+        assert tenant_id == "anytoolai"
+        assert region == "ru"
         lifecycle_events.append("documents_seeded")
 
     session_context.__enter__.side_effect = enter_session

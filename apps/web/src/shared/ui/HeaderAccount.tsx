@@ -127,7 +127,7 @@ export function HeaderAccount() {
         <Link className="btn-secondary nav-account" href="/ru/account">
           <UserRound size={15} aria-hidden="true" />
           <span className="nav-account-email">{email}</span>
-          <small>статус подписки</small>
+          <small>личный кабинет</small>
         </Link>
       ) : (
         <button

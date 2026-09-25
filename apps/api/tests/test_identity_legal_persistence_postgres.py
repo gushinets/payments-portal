@@ -27,6 +27,7 @@ from app.models import (
     LegalEntityType,
     MagicLinkPurpose,
     MagicLinkToken,
+    Region,
     User,
     UserStatus,
 )
@@ -48,6 +49,19 @@ def create_user(db_session: Session, *, email: str) -> User:
     db_session.commit()
     db_session.refresh(user)
     return user
+
+
+def create_foreign_test_region(db_session: Session) -> None:
+    db_session.add(
+        Region(
+            code="eu",
+            name="European Union test region",
+            residency_zone="test-eu",
+            default_currency="EUR",
+            default_locale="en-EU",
+        )
+    )
+    db_session.flush()
 
 
 def create_legal_evidence(
@@ -100,14 +114,8 @@ def create_legal_evidence(
         region=user.region,
         user_id=user.id,
         document_version_id=document.id,
-        doc_type=document.doc_type,
-        version=document.version,
         acceptance_kind=AcceptanceKind.TERMS_ACCEPTANCE,
-        accepted_at=accepted_at,
-        ip=acceptance_event.ip,
-        user_agent=acceptance_event.user_agent,
         acceptance_text_hash=f"acceptance:{user.id.hex}",
-        metadata_={},
     )
     db_session.add(acceptance)
     db_session.commit()
@@ -146,6 +154,11 @@ def test_registration_persists_canonical_identity_hashed_session_and_legal_event
         db_session.query(LegalAcceptanceEvent).filter(LegalAcceptanceEvent.user_id == result.user_id).one()
     )
     acceptances = db_session.query(DocumentAcceptance).filter(DocumentAcceptance.user_id == result.user_id).all()
+    accepted_documents = (
+        db_session.query(DocumentVersion)
+        .filter(DocumentVersion.id.in_([acceptance.document_version_id for acceptance in acceptances]))
+        .all()
+    )
 
     assert user is not None
     assert isinstance(user.id, uuid.UUID)
@@ -154,7 +167,7 @@ def test_registration_persists_canonical_identity_hashed_session_and_legal_event
     assert auth_session.token_hash == hashlib.sha256(result.token.encode("utf-8")).hexdigest()
     assert auth_session.token_hash != result.token
     assert {acceptance.legal_acceptance_event_id for acceptance in acceptances} == {acceptance_event.id}
-    assert {acceptance.doc_type for acceptance in acceptances} == {
+    assert {document.doc_type for document in accepted_documents} == {
         "privacy",
         "pd_consent",
         "offer",
@@ -307,6 +320,7 @@ def test_password_reset_binds_canonical_user_and_revokes_security_state(
 def test_foreign_password_reset_token_is_not_claimed_or_mutated(
     db_session: Session,
 ) -> None:
+    create_foreign_test_region(db_session)
     raw_token = "foreign-canonical-user-reset-token-with-enough-entropy"
     token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
     original_password_hash = hash_password("foreign-old-password")
@@ -616,12 +630,8 @@ def test_document_acceptance_scope_must_match_event_user(db_session: Session) ->
         region=owner.region,
         user_id=other_user.id,
         document_version_id=document.id,
-        doc_type=document.doc_type,
-        version=document.version,
         acceptance_kind=AcceptanceKind.TERMS_ACCEPTANCE,
-        accepted_at=acceptance_event.accepted_at,
         acceptance_text_hash="acceptance:scope-mismatch",
-        metadata_={},
     )
     db_session.add(mismatched_acceptance)
 
@@ -631,6 +641,7 @@ def test_document_acceptance_scope_must_match_event_user(db_session: Session) ->
 
 def test_document_acceptance_scope_must_match_document_version(db_session: Session) -> None:
     owner = create_user(db_session, email="acceptance-document-scope@example.com")
+    create_foreign_test_region(db_session)
     eu_entity = LegalEntity(
         tenant_id=owner.tenant_id,
         region="eu",
@@ -671,12 +682,8 @@ def test_document_acceptance_scope_must_match_document_version(db_session: Sessi
             region=owner.region,
             user_id=owner.id,
             document_version_id=eu_document.id,
-            doc_type=eu_document.doc_type,
-            version=eu_document.version,
             acceptance_kind=AcceptanceKind.TERMS_ACCEPTANCE,
-            accepted_at=acceptance_event.accepted_at,
             acceptance_text_hash="acceptance:document-scope-mismatch",
-            metadata_={},
         )
     )
 
@@ -795,9 +802,14 @@ def test_concurrent_duplicate_registration_keeps_one_complete_result(
         sessions = session.query(AuthSession).filter(AuthSession.user_id == user.id).all()
         events = session.query(LegalAcceptanceEvent).filter(LegalAcceptanceEvent.user_id == user.id).all()
         acceptances = session.query(DocumentAcceptance).filter(DocumentAcceptance.user_id == user.id).all()
+        accepted_documents = (
+            session.query(DocumentVersion)
+            .filter(DocumentVersion.id.in_([acceptance.document_version_id for acceptance in acceptances]))
+            .all()
+        )
 
     assert len(sessions) == 1
     assert len(events) == 1
     assert len(acceptances) == 3
     assert {acceptance.legal_acceptance_event_id for acceptance in acceptances} == {events[0].id}
-    assert {acceptance.doc_type for acceptance in acceptances} == {"privacy", "pd_consent", "offer"}
+    assert {document.doc_type for document in accepted_documents} == {"privacy", "pd_consent", "offer"}

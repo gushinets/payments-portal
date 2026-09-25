@@ -17,8 +17,6 @@ from app.core.observability import (
     request_context_middleware,
 )
 from app.core.settings import AppEnv, settings
-from app.domains.billing.catalog import router as catalog_router
-from app.domains.billing.router import router as billing_router
 from app.domains.identity.password_reset import router as password_reset_router
 from app.domains.identity.router import router as auth_router
 from app.domains.legal.router import router as legal_router
@@ -26,14 +24,17 @@ from app.health import health_router
 from app.http_errors import app_error_handler, unexpected_failure_middleware
 from app.infrastructure.sentry import configure_sentry
 from app.legal_seed import seed_legal_documents
-from app.payment_providers.registry import PaymentProviderRegistry
 
 metrics_router = APIRouter(prefix="/metrics", tags=["metrics"])
 
 
 def _seed_legal_documents_sync() -> None:
     with SessionLocal() as db:
-        seed_legal_documents(db)
+        seed_legal_documents(
+            db,
+            tenant_id=settings.instance_tenant_id,
+            region=settings.instance_region,
+        )
 
 
 @asynccontextmanager
@@ -70,7 +71,6 @@ def create_app() -> FastAPI:
         version="0.1.0",
         lifespan=lifespan,
     )
-    app.state.payment_provider_registry = PaymentProviderRegistry()
     # Middleware is inserted in reverse registration order: request context
     # must wrap the unexpected-failure boundary so it can add X-Request-ID to
     # the converted response and record request completion.
@@ -87,8 +87,6 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(auth_router)
-    app.include_router(billing_router)
-    app.include_router(catalog_router)
     app.include_router(password_reset_router)
     app.include_router(legal_router)
     app.include_router(health_router)
