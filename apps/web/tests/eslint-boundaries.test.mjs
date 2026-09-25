@@ -56,6 +56,53 @@ test("flat config parses JSX and applies Next.js rules to JavaScript", async () 
   );
 });
 
+test("typed JSON assertions are rejected at production web boundaries", async () => {
+  const [result] = await eslint.lintText(
+    `
+      declare const rawBody: string;
+      declare const response: Response;
+      const parsed = JSON.parse(rawBody) as { detail: unknown };
+      const payload = (await response.json()) as { status: string };
+      const promised = response.json() as Promise<{ status: string }>;
+      void parsed;
+      void payload;
+      void promised;
+    `,
+    { filePath: `${webRoot}/src/shared/api/BoundaryFixture.ts` }
+  );
+  const messages = result.messages.filter(
+    (message) => message.ruleId === "no-restricted-syntax"
+  );
+
+  assert.equal(messages.length, 3);
+  assert.ok(
+    messages.every((message) =>
+      /must remain unknown until a runtime decoder validates/.test(message.message)
+    )
+  );
+});
+
+test("unknown JSON results remain allowed for runtime decoding", async () => {
+  const [result] = await eslint.lintText(
+    `
+      declare const rawBody: string;
+      declare const response: Response;
+      const parsed: unknown = JSON.parse(rawBody);
+      const payload: unknown = await response.json();
+      void parsed;
+      void payload;
+    `,
+    { filePath: `${webRoot}/src/shared/api/BoundaryFixture.ts` }
+  );
+
+  assert.equal(
+    result.messages.filter(
+      (message) => message.ruleId === "no-restricted-syntax"
+    ).length,
+    0
+  );
+});
+
 test("shared modules cannot import features", async () => {
   const messages = await restrictedImportMessages(
     'import { products } from "@/features/catalog";',

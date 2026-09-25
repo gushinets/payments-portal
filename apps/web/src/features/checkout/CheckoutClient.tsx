@@ -6,6 +6,7 @@ import { LogOut, ShieldCheck, UserRound } from "lucide-react";
 import {
   authErrorMessage,
   decodeAuthSessionResponse,
+  decodeLogoutResponse,
   getJson,
   postJson,
   sessionChangedEvent,
@@ -106,7 +107,7 @@ export function CheckoutClient() {
     setLoading(true);
     try {
       if (token) {
-        await postJson<{ status: string }>("/api/auth/logout", {}, token);
+        await postJson("/api/auth/logout", {}, decodeLogoutResponse, token);
       }
     } catch {
       // Local session removal still leaves this browser signed out.
