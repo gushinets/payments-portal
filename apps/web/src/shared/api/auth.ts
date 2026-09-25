@@ -66,6 +66,13 @@ export class ApiError extends Error {
   }
 }
 
+export class ApiContractError extends Error {
+  constructor() {
+    super("invalid_api_response");
+    this.name = "ApiContractError";
+  }
+}
+
 export function apiErrorCode(error: unknown): string | null {
   if (!(error instanceof ApiError) || !isRecord(error.detail)) {
     return null;
@@ -120,6 +127,27 @@ async function makeApiError(response: Response): Promise<ApiError> {
   return new ApiError(response.status, detail, rawBody);
 }
 
+async function decodeSuccessfulResponse<T>(
+  response: Response,
+  decoder: JsonDecoder<T>
+): Promise<T> {
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      throw new ApiContractError();
+    }
+    throw error;
+  }
+
+  try {
+    return decoder(payload);
+  } catch {
+    throw new ApiContractError();
+  }
+}
+
 export async function postJson<T>(
   path: string,
   body: unknown,
@@ -142,8 +170,7 @@ export async function postJson<T>(
     throw await makeApiError(response);
   }
 
-  const payload: unknown = await response.json();
-  return decoder(payload);
+  return decodeSuccessfulResponse(response, decoder);
 }
 
 export async function getJson<T>(
@@ -164,8 +191,7 @@ export async function getJson<T>(
     throw await makeApiError(response);
   }
 
-  const payload: unknown = await response.json();
-  return decoder(payload);
+  return decodeSuccessfulResponse(response, decoder);
 }
 
 export function decodeRegisterResponse(payload: unknown): AuthResponse {

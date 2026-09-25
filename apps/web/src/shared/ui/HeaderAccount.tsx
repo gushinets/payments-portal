@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { LogIn, UserRound } from "lucide-react";
 import {
+  ApiContractError,
   ApiError,
   authErrorMessage,
   decodeAuthSessionResponse,
@@ -46,7 +47,10 @@ export function HeaderAccount() {
           setEmail(payload.user.email);
         }
       } catch (requestError) {
-        if (requestError instanceof ApiError) {
+        if (
+          requestError instanceof ApiError ||
+          requestError instanceof ApiContractError
+        ) {
           window.localStorage.removeItem(sessionStorageKey);
           window.dispatchEvent(new Event(sessionChangedEvent));
           setEmail("");

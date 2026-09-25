@@ -4,6 +4,7 @@ import hashlib
 from datetime import UTC, datetime, timedelta, timezone
 from unittest.mock import Mock
 
+import pytest
 from fastapi.testclient import TestClient
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
@@ -28,11 +29,11 @@ def setup_function() -> None:
     reset_api_database()
 
 
-def test_password_reset_email_token_and_session_revocation(monkeypatch) -> None:
+def test_password_reset_email_token_and_session_revocation(monkeypatch: pytest.MonkeyPatch) -> None:
     sent_messages: list[tuple[str, str]] = []
     reset_token = "known-reset-token-value-with-enough-entropy"
 
-    def fake_make_password_reset_token():
+    def fake_make_password_reset_token() -> tuple[str, str, datetime]:
         token_hash = hashlib.sha256(reset_token.encode("utf-8")).hexdigest()
         return (
             reset_token,
@@ -184,7 +185,7 @@ def test_foreign_contour_password_reset_token_is_rejected_without_mutation() -> 
         assert retained_token.used_at is None
 
 
-def test_password_reset_request_does_not_reveal_unknown_email(monkeypatch) -> None:
+def test_password_reset_request_does_not_reveal_unknown_email(monkeypatch: pytest.MonkeyPatch) -> None:
     sent_messages: list[tuple[str, str]] = []
     monkeypatch.setattr(
         password_reset_service,
@@ -293,7 +294,7 @@ def test_password_reset_account_limit_does_not_rollback_ip_counter() -> None:
 
 
 def test_password_reset_confirm_invalidates_other_outstanding_reset_tokens(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     first_token = "first-reset-token-with-enough-length-123"
     second_token = "second-reset-token-with-enough-length-456"
@@ -445,7 +446,10 @@ def test_password_reset_request_prunes_expired_reset_tokens() -> None:
         assert db.query(MagicLinkToken).count() == 0
 
 
-def test_password_reset_email_delivery_disabled_is_observable(monkeypatch, caplog) -> None:
+def test_password_reset_email_delivery_disabled_is_observable(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     monkeypatch.setattr(password_reset_service, "send_password_reset_email", lambda email, url: False)
 
     with caplog.at_level("WARNING", logger="payment_portal.identity.password_reset"):
@@ -457,7 +461,10 @@ def test_password_reset_email_delivery_disabled_is_observable(monkeypatch, caplo
     assert "password_reset_email_delivery_disabled" in caplog.text
 
 
-def test_password_reset_email_delivery_failure_is_observable(monkeypatch, caplog) -> None:
+def test_password_reset_email_delivery_failure_is_observable(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     original_error = TimeoutError("synthetic timeout with reset-token-secret")
     record_password_reset_email = Mock()
     report_exception = Mock()

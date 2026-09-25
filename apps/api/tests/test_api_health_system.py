@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from types import TracebackType
+from typing import NoReturn
+
 import pytest
 from sqlalchemy.exc import OperationalError
 
@@ -63,13 +66,18 @@ def test_invalid_request_id_is_replaced() -> None:
 
 
 class FailingSession:
-    def __enter__(self):
+    def __enter__(self) -> FailingSession:
         return self
 
-    def __exit__(self, exc_type, exc_value, traceback):
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> bool:
         return False
 
-    def execute(self, statement):
+    def execute(self, statement: object) -> NoReturn:
         raise OperationalError(
             "SELECT 1",
             {},
@@ -92,7 +100,7 @@ def test_canonical_health_contract() -> None:
     assert ready_response.headers["X-Request-ID"]
 
 
-def test_liveness_does_not_use_database(monkeypatch) -> None:
+def test_liveness_does_not_use_database(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(database_module, "SessionLocal", FailingSession)
 
     response = client.get("/api/health/live")
@@ -101,7 +109,7 @@ def test_liveness_does_not_use_database(monkeypatch) -> None:
     assert response.json() == {"status": "alive"}
 
 
-def test_readiness_database_failure_is_safe(monkeypatch) -> None:
+def test_readiness_database_failure_is_safe(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(database_module, "SessionLocal", FailingSession)
 
     response = client.get("/api/health/ready")
