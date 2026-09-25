@@ -7,8 +7,8 @@ Scope: `apps/api/app`, `apps/web/src`
 
 This is a smell catalog plus two targeted moves. It is not a DDD migration
 programme and not a second source of truth.
-[ARCHITECTURE.md](../../ARCHITECTURE.md) and
-[the data model](payment-portal-data-model.md) remain authoritative for
+[ARCHITECTURE.md](../../../ARCHITECTURE.md) and
+[the data model](../../architecture/payment-portal-data-model.md) remain authoritative for
 implemented behavior.
 
 The RU MVP is not claimed broken. Findings are maintainability and
@@ -16,9 +16,9 @@ extensibility gaps unless marked as a product display issue.
 
 Related retained CloudPayments implementation history (superseded):
 
-- [ANY-165 payment provider boundary](../exec-plans/superseded/ANY-165-payment-provider-boundary.md)
-- [ANY-166 browser checkout adapter](../exec-plans/superseded/ANY-166-cloudpayments-browser-checkout-adapter.md)
-- [ANY-167 notification adapter](../exec-plans/superseded/ANY-167-cloudpayments-notification-adapter.md)
+- [ANY-165 payment provider boundary](ANY-165-payment-provider-boundary.md)
+- [ANY-166 browser checkout adapter](ANY-166-cloudpayments-browser-checkout-adapter.md)
+- [ANY-167 notification adapter](ANY-167-cloudpayments-notification-adapter.md)
 
 ANY-112 already enforced a **minimal** import graph. ANY-112 deferred
 repository/service decomposition. This document does not reopen that as a
@@ -39,7 +39,7 @@ Everything else is ANY-71, opportunistic cleanup when a file is already in the
 diff, a product/ops decision, or work to skip until a later re-evaluation
 proves it is needed.
 
-[ARCHITECTURE.md](../../ARCHITECTURE.md) states the API arrow as an **allowed
+[ARCHITECTURE.md](../../../ARCHITECTURE.md) states the API arrow as an **allowed
 dependency direction**, not a requirement to route every query through a
 repository class, interface, or unit-of-work framework. A billing application
 service may take a SQLAlchemy `Session`. Extract persistence functions only

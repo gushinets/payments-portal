@@ -24,8 +24,10 @@ authority chain or defines later external-billing runtime behavior.
 ## Conventions
 
 - JSON request bodies and ordinary JSON responses use Pydantic models; response
-  schemas are exposed in OpenAPI. Untyped routes belong only on the frozen
-  legacy list or the raw-response list beside the architecture test.
+  schemas are exposed as named OpenAPI components. The architecture test
+  rejects active ordinary JSON success responses without a named component,
+  explicitly covers readiness `503`, and keeps metrics outside OpenAPI. There
+  is no legacy untyped-route escape list.
 - Keep `dict[str, Any]` only at an untrusted external/integration edge; decode
   to a validated internal type before Application or Domain logic.
 - New or changed errors use `detail: {"code": "..."}`. Use `StrEnum` only for
