@@ -1,12 +1,14 @@
 "use client";
 
-import Link from "next/link";
+import CanonicalLink from "next/link";
 import { type ReactNode, type Ref, useState } from "react";
 import { ArrowRight } from "lucide-react";
 import {
   REGISTRATION_OFFER_CONSENT_TEXT,
   REGISTRATION_PERSONAL_CONSENT_TEXT
 } from "@/generated/registration-acceptance";
+import { Link } from "@/i18n/navigation";
+import { CANONICAL_LEGAL_PATH_BY_SLUG } from "@/shared/config/legal-links";
 
 export type AuthMode = "login" | "register";
 
@@ -49,17 +51,17 @@ type ConsentTextLink = {
 
 const personalConsentLinks: ConsentTextLink[] = [
   {
-    href: "/ru/consent-personal-data",
+    href: CANONICAL_LEGAL_PATH_BY_SLUG["consent-personal-data"],
     text: "Согласием на обработку персональных данных"
   },
   {
-    href: "/ru/privacy",
+    href: CANONICAL_LEGAL_PATH_BY_SLUG.privacy,
     text: "Политикой в отношении обработки персональных данных"
   }
 ];
 const offerConsentLinks: ConsentTextLink[] = [
   {
-    href: "/ru/offer",
+    href: CANONICAL_LEGAL_PATH_BY_SLUG.offer,
     text: "Публичной оферты"
   }
 ];
@@ -78,7 +80,7 @@ function renderConsentText(
     }
     content.push(statement.slice(cursor, start));
     content.push(
-      <Link
+      <CanonicalLink
         className="inline-link"
         href={link.href}
         target="_blank"
@@ -86,7 +88,7 @@ function renderConsentText(
         key={link.href}
       >
         {statement.slice(start, start + link.text.length)}
-      </Link>
+      </CanonicalLink>
     );
     cursor = start + link.text.length;
   }
@@ -105,7 +107,7 @@ export function AuthForm({
   loading,
   personalConsentError,
   offerConsentError,
-  passwordResetHref = "/ru/forgot-password",
+  passwordResetHref = "/forgot-password",
   telegramLoginUrl,
   telegramIcon,
   feedbackRef,
@@ -244,11 +246,12 @@ export function AuthForm({
           <label className="checkbox-label">
             <input
               type="checkbox"
+              lang="ru"
               aria-label={REGISTRATION_PERSONAL_CONSENT_TEXT}
               checked={personalConsent}
               onChange={(event) => setPersonalConsent(event.target.checked)}
             />
-            <span>
+            <span lang="ru">
               {renderConsentText(
                 REGISTRATION_PERSONAL_CONSENT_TEXT,
                 personalConsentLinks
@@ -259,11 +262,12 @@ export function AuthForm({
           <label className="checkbox-label">
             <input
               type="checkbox"
+              lang="ru"
               aria-label={REGISTRATION_OFFER_CONSENT_TEXT}
               checked={offerConsent}
               onChange={(event) => setOfferConsent(event.target.checked)}
             />
-            <span>
+            <span lang="ru">
               {renderConsentText(
                 REGISTRATION_OFFER_CONSENT_TEXT,
                 offerConsentLinks

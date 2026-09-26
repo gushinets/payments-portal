@@ -58,6 +58,7 @@ export default async function LocaleLayout({
         <NextIntlClientProvider locale={locale} messages={messages}>
           <SiteShell
             footer={{ seller, supportEmail, legalLinks, paymentMethods }}
+            locale={locale}
           >
             {children}
           </SiteShell>

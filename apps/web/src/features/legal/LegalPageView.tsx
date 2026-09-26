@@ -114,7 +114,7 @@ function renderBlock(block: LegalBlock, index: number) {
 
 export function LegalPageView({ page }: { page: LegalDocument }) {
   return (
-    <section className="page-section compact">
+    <section className="page-section compact" lang="ru">
       <div className="eyebrow">
         <span className="eyebrow-dot" />
         Юридический документ

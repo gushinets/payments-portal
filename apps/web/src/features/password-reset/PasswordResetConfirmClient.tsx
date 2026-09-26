@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { ArrowRight, KeyRound } from "lucide-react";
+import { Link } from "@/i18n/navigation";
 import {
   confirmPasswordReset,
   passwordResetErrorMessage
@@ -122,7 +122,7 @@ export function PasswordResetConfirmClient() {
             <ArrowRight size={15} aria-hidden="true" />
           </button>
 
-          <Link className="btn-secondary" href="/ru/auth-checkout">
+          <Link className="btn-secondary" href="/auth-checkout">
             Перейти ко входу
           </Link>
         </form>

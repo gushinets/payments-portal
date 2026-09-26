@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { LogOut, ShieldCheck, UserRound } from "lucide-react";
+import { Link } from "@/i18n/navigation";
 import {
   authErrorMessage,
   decodeAuthSessionResponse,
@@ -145,7 +145,7 @@ export function CheckoutClient() {
               <p className="card-copy">{sessionUser.email}</p>
               {notice ? <div className="notice">{notice}</div> : null}
               <div className="hero-actions">
-                <Link className="btn-primary" href="/ru/account">
+                <Link className="btn-primary" href="/account">
                   Открыть аккаунт
                 </Link>
                 <button
