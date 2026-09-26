@@ -2,6 +2,7 @@ import { cache } from "react";
 import fs from "node:fs/promises";
 import path from "node:path";
 import legalManifest from "@/generated/legal-manifest.json";
+import { isRouteLocale, type RouteLocale } from "@/generated/locales";
 
 export type LegalBlock =
   | {
@@ -49,6 +50,16 @@ type LegalDocumentMeta = {
 };
 
 const legalDocsRoot = path.resolve(process.cwd(), "../../docs/legal/ru");
+
+function resolveLegalRouteLocale(): RouteLocale {
+  if (!isRouteLocale(legalManifest.region)) {
+    throw new Error("Generated legal region is not a supported route locale");
+  }
+
+  return legalManifest.region;
+}
+
+export const legalRouteLocale = resolveLegalRouteLocale();
 
 export const legalDocuments = Object.fromEntries(
   legalManifest.documents.map((document) => [

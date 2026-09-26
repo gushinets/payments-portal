@@ -21,7 +21,9 @@ test("web lint uses ESLint 10", () => {
 });
 
 test("critical Next.js and React Hooks rules remain enabled", async () => {
-  const config = await eslint.calculateConfigForFile("src/app/page.tsx");
+  const config = await eslint.calculateConfigForFile(
+    "src/app/[locale]/page.tsx"
+  );
 
   assert.ok(config);
   assert.equal(config.rules["@next/next/no-html-link-for-pages"][0], 2);
@@ -115,7 +117,7 @@ test("shared modules cannot import features", async () => {
 
 test("features cannot import app modules", async () => {
   const messages = await restrictedImportMessages(
-    'import RootLayout from "@/app/layout";',
+    'import LocaleLayout from "@/app/[locale]/layout";',
     "src/features/catalog/BoundaryFixture.ts"
   );
 
