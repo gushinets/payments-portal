@@ -7,7 +7,7 @@
 | Parent | `ANY-525 — 4B. Establish Portal Internationalization (EFIGS + RU + PT)` |
 | Ticket | `ANY-526 — 4B.1 Establish Locale Runtime, Routing & Navigation Foundation` |
 | Baseline | Final `ANY-408` baseline; at plan validation time represented by PR #120 head |
-| Overall status | `todo` |
+| Overall status | `done` |
 | Execution order | Sequential only: Step 1 → manual verification → commit → Step 2 → manual verification → commit → Step 3 → manual verification → commit → Step 4 |
 | Steps / commits | 4 |
 | Successor | `4B.2 — Localize Existing Portal UI & Client-Facing Application Copy` |
@@ -350,7 +350,7 @@ Complete UI translation, localized API/error presentation and catalog parity bel
 
 # Step 1 — Establish the canonical locale contract and next-intl routing primitives
 
-**Status:** `todo`
+**Status:** `done`
 
 **Goal**  
 Create the single locale authority, derive web/API locale artifacts through the existing generator, install `next-intl`, and establish reusable routing/navigation primitives. The request/plugin runtime is intentionally wired in Step 2 together with the actual `[locale]` tree.
@@ -573,7 +573,7 @@ feat(i18n): establish canonical locale contract
 
 # Step 2 — Establish the locale route tree, localized root layout and root-only negotiation
 
-**Status:** `todo`
+**Status:** `done`
 
 **Goal**  
 Replace the static RU application route tree with a single finite `[locale]` route tree, make locale available at the root document-layout boundary, and make `/` the only deterministic `Accept-Language` negotiation entrypoint.
@@ -860,7 +860,7 @@ feat(i18n): establish locale-prefixed routing
 
 # Step 3 — Make navigation locale-aware and preserve legal/reset-token boundaries
 
-**Status:** `todo`
+**Status:** `done`
 
 **Goal**  
 Migrate routing-owned navigation away from literal `/ru`, add the locale switcher, preserve the RU-only legal routing boundary already established in Step 2, and enforce reset-confirmation/switcher presentation rules without touching authentication state or legal evidence.
@@ -1107,7 +1107,7 @@ feat(i18n): add locale-aware navigation
 
 # Step 4 — Add durable routing guards, complete verification coverage and document the 4B.1 baseline
 
-**Status:** `todo`
+**Status:** `done`
 
 **Goal**  
 Protect the completed 4B.1 architecture with bounded tests/static guards and update durable project guidance so 4B.2 can consume the result without reopening routing design.
