@@ -24,6 +24,54 @@ const eslintConfig = defineConfig([
         "error",
         {
           selector:
+            "VariableDeclarator[id.name=/^(?:href|destination|link|path|pathname|route|url)$/i] > Literal[value=/^\\/ru(?:\\/|$)/]",
+          message:
+            "Ordinary application routes must use locale-aware navigation instead of a literal /ru path."
+        },
+        {
+          selector:
+            "VariableDeclarator[id.name=/^(?:href|destination|link|path|pathname|route|url)$/i] TemplateElement[value.raw=/^\\/ru(?:\\/|$)/]",
+          message:
+            "Ordinary application routes must use locale-aware navigation instead of a literal /ru path."
+        },
+        {
+          selector:
+            "CallExpression[callee.name='redirect'] > Literal[value=/^\\/ru(?:\\/|$)/]",
+          message:
+            "Ordinary application routes must use locale-aware navigation instead of a literal /ru path."
+        },
+        {
+          selector:
+            "CallExpression[callee.name='redirect'] TemplateElement[value.raw=/^\\/ru(?:\\/|$)/]",
+          message:
+            "Ordinary application routes must use locale-aware navigation instead of a literal /ru path."
+        },
+        {
+          selector:
+            "CallExpression[callee.property.name=/^(?:push|replace)$/] > Literal[value=/^\\/ru(?:\\/|$)/]",
+          message:
+            "Ordinary application routes must use locale-aware navigation instead of a literal /ru path."
+        },
+        {
+          selector:
+            "CallExpression[callee.property.name=/^(?:push|replace)$/] TemplateElement[value.raw=/^\\/ru(?:\\/|$)/]",
+          message:
+            "Ordinary application routes must use locale-aware navigation instead of a literal /ru path."
+        },
+        {
+          selector:
+            "JSXAttribute[name.name='href'] > Literal[value=/^\\/ru(?:\\/|$)/]",
+          message:
+            "Ordinary application routes must use locale-aware navigation instead of a literal /ru path."
+        },
+        {
+          selector:
+            "JSXAttribute[name.name='href'] TemplateElement[value.raw=/^\\/ru(?:\\/|$)/]",
+          message:
+            "Ordinary application routes must use locale-aware navigation instead of a literal /ru path."
+        },
+        {
+          selector:
             "TSAsExpression > CallExpression[callee.object.name='JSON'][callee.property.name='parse']",
           message:
             "JSON.parse results must remain unknown until a runtime decoder validates them."

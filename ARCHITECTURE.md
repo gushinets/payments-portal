@@ -1,7 +1,7 @@
 # Payment Portal Architecture
 
 Status: authoritative current-state map
-Last verified: 2026-09-25
+Last verified: 2026-09-26
 
 ## System boundary
 
@@ -72,8 +72,45 @@ launch remain gated by Phase 0 and their owning `ANY-504` steps.
 - **Billing persistence** — the approved projections, immutable commercial
   mapping/purchase evidence, reconciliation/operation records, paid-access
   state, and invalidation outbox. There is no billing runtime yet.
-- **Presentation** — the `ru` landing, product snapshot, auth/account shells,
-  unavailable checkout/payment-result surfaces, and legal pages.
+- **Presentation** — locale-prefixed landing, product snapshot, auth/account
+  shells, unavailable checkout/payment-result surfaces, and canonical RU legal
+  pages. The current customer-facing copy remains Russian pending the separate
+  UI-localization slice.
+
+## Locale runtime and public routing
+
+`config/locales.json` is the canonical machine-readable locale contract.
+`npm run generate` derives the web contract at
+`apps/web/src/generated/locales.ts` and the API contract at
+`apps/api/app/generated/locales.py`; generated files are not hand-edited, and
+`npm run generate:check` detects drift.
+
+The exact supported route locales are `en`, `fr`, `it`, `de`, `es`, `ru`, and
+`pt`, with `ru` as the default. `routeLocale` is the short identity used in
+URLs and by next-intl routing. `languageTag` is the document language, and
+`intlLocale` is the formatting identity. For Portuguese, the route identity is
+`pt` while both language and formatting identities are `pt-BR`. Locale does
+not determine contour/region, provider, currency, or timezone.
+
+Ordinary public routes live under `apps/web/src/app/[locale]`. The localized
+root layout owns the document and derives `<html lang>` from the locale
+contract. `/` is the only Accept-Language negotiation entry and falls back to
+`ru`; an explicit locale-prefixed URL is authoritative. Other unprefixed
+application paths are not localized implicitly. next-intl routing therefore
+uses `localeDetection: false`, `localeCookie: false`, and application-owned
+alternate metadata.
+
+Canonical and alternate metadata is anchored to the required server/build-side
+`APP_PUBLIC_BASE_URL` origin. Normal application navigation uses the
+locale-aware exports from `apps/web/src/i18n/navigation.ts`; it must not
+construct a `/ru` ordinary route. Locale is not persisted in cookies,
+localStorage, or user records.
+
+Generated RU legal paths remain canonical and RU-only, without invented locale
+alternates. Password-reset confirmation (`/[locale]/reset-password`) does not
+offer locale switching so its fragment token stays on the current client-only
+flow. Complete UI copy localization belongs to 4B.2. Propagating locale in
+frontend-to-backend communication belongs to 4B.3.
 
 Current API composition exposes authentication, password reset, legal, health,
 and metrics routes. Removed catalog, checkout-intent, payment-status, account

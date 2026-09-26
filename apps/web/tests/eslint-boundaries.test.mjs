@@ -105,6 +105,61 @@ test("unknown JSON results remain allowed for runtime decoding", async () => {
   );
 });
 
+test("routing-owned literal RU application paths are rejected", async () => {
+  const [result] = await eslint.lintText(
+    [
+      'const href = "/ru/products";',
+      'redirect("/ru/account");',
+      "const destination = `/ru/${productSlug}`;",
+      "void href;",
+      "void destination;"
+    ].join("\n"),
+    { filePath: `${webRoot}/src/app/BoundaryFixture.tsx` }
+  );
+  const messages = result.messages.filter(
+    (message) =>
+      message.ruleId === "no-restricted-syntax" &&
+      /locale-aware navigation/.test(message.message)
+  );
+
+  assert.equal(messages.length, 3);
+});
+
+test("canonical RU legal paths sourced from generated authority remain allowed", async () => {
+  const [result] = await eslint.lintText(
+    [
+      'import legalManifest from "@/generated/legal-manifest.json";',
+      "export const canonicalLegalPath = legalManifest.documents[0].urlPath;"
+    ].join("\n"),
+    { filePath: `${webRoot}/src/shared/config/BoundaryFixture.ts` }
+  );
+
+  assert.equal(
+    result.messages.filter(
+      (message) =>
+        message.ruleId === "no-restricted-syntax" &&
+        /locale-aware navigation/.test(message.message)
+    ).length,
+    0
+  );
+});
+
+test("unrelated RU-prefixed strings are not globally rejected", async () => {
+  const [result] = await eslint.lintText(
+    'export const auditMessage = "/ru/products appeared in a diagnostic event";',
+    { filePath: `${webRoot}/src/shared/config/BoundaryFixture.ts` }
+  );
+
+  assert.equal(
+    result.messages.filter(
+      (message) =>
+        message.ruleId === "no-restricted-syntax" &&
+        /locale-aware navigation/.test(message.message)
+    ).length,
+    0
+  );
+});
+
 test("shared modules cannot import features", async () => {
   const messages = await restrictedImportMessages(
     'import { products } from "@/features/catalog";',
