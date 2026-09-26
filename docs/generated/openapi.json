@@ -23,6 +23,45 @@
         "title": "AcceptDocumentRequest",
         "type": "object"
       },
+      "AcceptDocumentResponse": {
+        "properties": {
+          "acceptance_id": {
+            "title": "Acceptance Id",
+            "type": "string"
+          },
+          "accepted_at": {
+            "title": "Accepted At",
+            "type": "string"
+          },
+          "doc_type": {
+            "title": "Doc Type",
+            "type": "string"
+          },
+          "document_version_id": {
+            "title": "Document Version Id",
+            "type": "string"
+          },
+          "status": {
+            "const": "accepted",
+            "title": "Status",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "acceptance_id",
+          "document_version_id",
+          "doc_type",
+          "version",
+          "accepted_at"
+        ],
+        "title": "AcceptDocumentResponse",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -34,6 +73,20 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "LivenessResponse": {
+        "properties": {
+          "status": {
+            "const": "alive",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "LivenessResponse",
         "type": "object"
       },
       "LoginRequest": {
@@ -55,6 +108,43 @@
           "password"
         ],
         "title": "LoginRequest",
+        "type": "object"
+      },
+      "LoginResponse": {
+        "properties": {
+          "status": {
+            "const": "authenticated",
+            "title": "Status",
+            "type": "string"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          },
+          "user": {
+            "$ref": "#/components/schemas/SessionUserResponse"
+          }
+        },
+        "required": [
+          "status",
+          "token",
+          "user"
+        ],
+        "title": "LoginResponse",
+        "type": "object"
+      },
+      "LogoutResponse": {
+        "properties": {
+          "status": {
+            "const": "logged_out",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "LogoutResponse",
         "type": "object"
       },
       "PasswordResetConfirmRequest": {
@@ -79,6 +169,20 @@
         "title": "PasswordResetConfirmRequest",
         "type": "object"
       },
+      "PasswordResetConfirmResponse": {
+        "properties": {
+          "status": {
+            "const": "password_reset",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "PasswordResetConfirmResponse",
+        "type": "object"
+      },
       "PasswordResetRequest": {
         "properties": {
           "email": {
@@ -91,6 +195,48 @@
           "email"
         ],
         "title": "PasswordResetRequest",
+        "type": "object"
+      },
+      "PasswordResetRequestResponse": {
+        "properties": {
+          "status": {
+            "const": "accepted",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "PasswordResetRequestResponse",
+        "type": "object"
+      },
+      "ReadinessSuccessResponse": {
+        "properties": {
+          "status": {
+            "const": "ready",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "ReadinessSuccessResponse",
+        "type": "object"
+      },
+      "ReadinessUnavailableResponse": {
+        "properties": {
+          "status": {
+            "const": "not_ready",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "ReadinessUnavailableResponse",
         "type": "object"
       },
       "RegisterRequest": {
@@ -122,6 +268,123 @@
           "offer_consent"
         ],
         "title": "RegisterRequest",
+        "type": "object"
+      },
+      "RegisterResponse": {
+        "properties": {
+          "status": {
+            "const": "registered",
+            "title": "Status",
+            "type": "string"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          },
+          "user": {
+            "$ref": "#/components/schemas/SessionUserResponse"
+          }
+        },
+        "required": [
+          "status",
+          "token",
+          "user"
+        ],
+        "title": "RegisterResponse",
+        "type": "object"
+      },
+      "RequiredDocumentResponse": {
+        "properties": {
+          "acceptance_text": {
+            "title": "Acceptance Text",
+            "type": "string"
+          },
+          "acceptance_text_hash": {
+            "title": "Acceptance Text Hash",
+            "type": "string"
+          },
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "doc_type": {
+            "title": "Doc Type",
+            "type": "string"
+          },
+          "document_version_id": {
+            "title": "Document Version Id",
+            "type": "string"
+          },
+          "effective_from": {
+            "title": "Effective From",
+            "type": "string"
+          },
+          "legal_entity_id": {
+            "title": "Legal Entity Id",
+            "type": "string"
+          },
+          "published_at": {
+            "title": "Published At",
+            "type": "string"
+          },
+          "region": {
+            "title": "Region",
+            "type": "string"
+          },
+          "requires_acceptance": {
+            "title": "Requires Acceptance",
+            "type": "boolean"
+          },
+          "tenant_id": {
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "url_path": {
+            "title": "Url Path",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "document_version_id",
+          "tenant_id",
+          "region",
+          "legal_entity_id",
+          "doc_type",
+          "version",
+          "title",
+          "url_path",
+          "content_hash",
+          "published_at",
+          "effective_from",
+          "requires_acceptance",
+          "acceptance_text",
+          "acceptance_text_hash"
+        ],
+        "title": "RequiredDocumentResponse",
+        "type": "object"
+      },
+      "RequiredDocumentsResponse": {
+        "properties": {
+          "documents": {
+            "items": {
+              "$ref": "#/components/schemas/RequiredDocumentResponse"
+            },
+            "title": "Documents",
+            "type": "array"
+          }
+        },
+        "required": [
+          "documents"
+        ],
+        "title": "RequiredDocumentsResponse",
         "type": "object"
       },
       "SessionResponse": {
@@ -237,7 +500,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponse"
+                }
               }
             },
             "description": "Successful Response"
@@ -284,7 +549,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/LogoutResponse"
+                }
               }
             },
             "description": "Successful Response"
@@ -323,7 +590,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PasswordResetConfirmResponse"
+                }
               }
             },
             "description": "Successful Response"
@@ -362,7 +631,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PasswordResetRequestResponse"
+                }
               }
             },
             "description": "Successful Response"
@@ -401,7 +672,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/RegisterResponse"
+                }
               }
             },
             "description": "Successful Response"
@@ -479,7 +752,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/LivenessResponse"
+                }
               }
             },
             "description": "Successful Response"
@@ -498,10 +773,22 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessSuccessResponse"
+                }
               }
             },
             "description": "Successful Response"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessUnavailableResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
         "summary": "Readiness",
@@ -545,7 +832,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/AcceptDocumentResponse"
+                }
               }
             },
             "description": "Successful Response"
@@ -574,7 +863,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/RequiredDocumentsResponse"
+                }
               }
             },
             "description": "Successful Response"

@@ -1,10 +1,11 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { LogOut, UserRound } from "lucide-react";
+import { Link } from "@/i18n/navigation";
 import {
   decodeAuthSessionResponse,
+  decodeLogoutResponse,
   getJson,
   postJson,
   sessionChangedEvent,
@@ -78,7 +79,7 @@ export function AccountClient() {
     setLoggingOut(true);
     try {
       if (token) {
-        await postJson<{ status: string }>("/api/auth/logout", {}, token);
+        await postJson("/api/auth/logout", {}, decodeLogoutResponse, token);
       }
     } catch {
       // Local session removal still leaves this browser signed out.
@@ -115,7 +116,7 @@ export function AccountClient() {
             Войдите в аккаунт, чтобы открыть личный кабинет.
           </div>
           <div className="hero-actions">
-            <Link className="btn-primary" href="/ru/auth-checkout">
+            <Link className="btn-primary" href="/auth-checkout">
               Войти или зарегистрироваться
             </Link>
           </div>

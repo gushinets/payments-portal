@@ -1,0 +1,133 @@
+@media (max-width: 860px) {
+  .nav-inner,
+  .page-section,
+  .footer-inner {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+
+  .nav-inner {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .nav-links {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .nav-link,
+  .nav-account,
+  .locale-switcher {
+    flex: 1 1 auto;
+  }
+
+  .locale-switcher-summary {
+    width: 100%;
+  }
+
+  .bento-grid,
+  .tools-grid,
+  .two-column,
+  .account-layout,
+  .account-products-grid,
+  .hero-card,
+  .footer-inner {
+    grid-template-columns: 1fr;
+  }
+
+  .account-summary-panel {
+    min-height: 0;
+  }
+
+  .page-section {
+    padding-top: 48px;
+    padding-bottom: 48px;
+  }
+
+  .hero-card {
+    padding: 26px 22px;
+  }
+
+  #checkout-form {
+    order: -1;
+  }
+
+  .auth-modal-panel {
+    top: 82px;
+    max-height: calc(100vh - 104px);
+  }
+
+  .footer-links {
+    grid-template-columns: 1fr;
+  }
+
+  .footer-payments {
+    justify-self: stretch;
+    text-align: left;
+  }
+
+  .payment-list {
+    grid-template-columns: repeat(4, minmax(48px, 56px));
+    justify-content: start;
+  }
+
+  .hero-h1 {
+    font-size: 40px;
+  }
+
+  .legal-title,
+  .result-title {
+    font-size: 34px;
+  }
+}
+
+@media (max-width: 520px) {
+  body {
+    font-size: 13px;
+  }
+
+  .hero-h1 {
+    font-size: 34px;
+  }
+
+  .section-title {
+    font-size: 28px;
+  }
+
+  .legal-title,
+  .result-title {
+    font-size: 30px;
+  }
+
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .btn-primary,
+  .btn-secondary,
+  .btn-danger {
+    width: 100%;
+  }
+
+  .hero-actions,
+  .button-row,
+  .cookie-actions {
+    flex-direction: column;
+  }
+
+  .account-card,
+  .telegram-placeholder,
+  .auth-mode-row {
+    flex-direction: column;
+  }
+
+  .telegram-button {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .mobile-only-break {
+    display: block;
+  }
+}

@@ -11,7 +11,7 @@ api_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(api_root))
 
 from app.core.settings import require_supported_instance_scope, settings  # noqa: E402
-from app.database import Base  # noqa: E402
+from app.core.database import Base  # noqa: E402
 from app import models  # noqa: E402,F401
 
 require_supported_instance_scope(

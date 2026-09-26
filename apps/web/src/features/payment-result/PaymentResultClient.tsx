@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { Clock3, ShieldCheck } from "lucide-react";
+import { Link } from "@/i18n/navigation";
 
 export function PaymentResultClient() {
   return (
@@ -21,10 +21,10 @@ export function PaymentResultClient() {
           Дождитесь запуска новой биллинговой системы перед оформлением покупки.
         </div>
         <div className="hero-actions">
-          <Link className="btn-primary" href="/ru/auth-checkout">
+          <Link className="btn-primary" href="/auth-checkout">
             Войти в аккаунт
           </Link>
-          <Link className="btn-secondary" href="/ru">
+          <Link className="btn-secondary" href="/">
             На главную
           </Link>
         </div>

@@ -3,16 +3,22 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-const layoutPath = fileURLToPath(new URL("../src/app/layout.tsx", import.meta.url));
+const layoutPath = fileURLToPath(
+  new URL("../src/app/[locale]/layout.tsx", import.meta.url)
+);
 const checkoutPagePath = fileURLToPath(
-  new URL("../src/app/ru/auth-checkout/page.tsx", import.meta.url)
+  new URL("../src/app/[locale]/auth-checkout/page.tsx", import.meta.url)
 );
 const checkoutClientPath = fileURLToPath(
   new URL("../src/features/checkout/CheckoutClient.tsx", import.meta.url)
 );
+const routingPath = fileURLToPath(
+  new URL("../src/i18n/routing.ts", import.meta.url)
+);
+const proxyPath = fileURLToPath(new URL("../src/proxy.ts", import.meta.url));
 const srcRootPath = fileURLToPath(new URL("../src", import.meta.url));
 
-test("root metadata keeps public RU branding copy", async () => {
+test("localized root metadata keeps public RU branding copy", async () => {
   const source = await readFile(layoutPath, "utf8");
 
   assert.match(source, /title:\s*"AnytoolAI - RU"/);
@@ -22,6 +28,29 @@ test("root metadata keeps public RU branding copy", async () => {
   );
   assert.doesNotMatch(source, /MVP/);
   assert.doesNotMatch(source, /подготовки подключения CloudPayments/);
+});
+
+test("localized routes retain a generated static locale boundary", async () => {
+  const source = await readFile(layoutPath, "utf8");
+
+  assert.match(source, /export const dynamicParams = false/);
+  assert.match(
+    source,
+    /SUPPORTED_ROUTE_LOCALES\.map\(\(locale\) => \(\{ locale \}\)\)/
+  );
+  assert.match(source, /<html lang=\{LANGUAGE_TAG_BY_ROUTE_LOCALE\[locale\]\}>/);
+});
+
+test("locale routing keeps root-only negotiation and persistence disabled", async () => {
+  const [routingSource, proxySource] = await Promise.all([
+    readFile(routingPath, "utf8"),
+    readFile(proxyPath, "utf8")
+  ]);
+
+  assert.match(routingSource, /localeDetection:\s*false/);
+  assert.match(routingSource, /localeCookie:\s*false/);
+  assert.match(routingSource, /alternateLinks:\s*false/);
+  assert.match(proxySource, /matcher:\s*\["\/"\]/);
 });
 
 test("frontend source does not reach provider scripts or browser SDK", async () => {

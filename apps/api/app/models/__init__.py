@@ -14,12 +14,12 @@ from app.models.billing_purchase import (
     ExternalCreateOperation,
     PurchaseIntent,
 )
-from app.models.billing_reconciliation import (
+from app.models.billing_subscriptions import (
     BillingProductAccessScope,
-    BillingStateObservation,
     ExternalSubscription,
-    PurchasedAllowance,
 )
+from app.models.billing_observations import BillingStateObservation
+from app.models.billing_allowances import PurchasedAllowance
 from app.models.enums import (
     AcceptanceKind,
     BillingStateObservationKind,

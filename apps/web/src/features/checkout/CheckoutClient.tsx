@@ -1,11 +1,12 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { LogOut, ShieldCheck, UserRound } from "lucide-react";
+import { Link } from "@/i18n/navigation";
 import {
   authErrorMessage,
   decodeAuthSessionResponse,
+  decodeLogoutResponse,
   getJson,
   postJson,
   sessionChangedEvent,
@@ -106,7 +107,7 @@ export function CheckoutClient() {
     setLoading(true);
     try {
       if (token) {
-        await postJson<{ status: string }>("/api/auth/logout", {}, token);
+        await postJson("/api/auth/logout", {}, decodeLogoutResponse, token);
       }
     } catch {
       // Local session removal still leaves this browser signed out.
@@ -144,7 +145,7 @@ export function CheckoutClient() {
               <p className="card-copy">{sessionUser.email}</p>
               {notice ? <div className="notice">{notice}</div> : null}
               <div className="hero-actions">
-                <Link className="btn-primary" href="/ru/account">
+                <Link className="btn-primary" href="/account">
                   Открыть аккаунт
                 </Link>
                 <button

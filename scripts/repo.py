@@ -37,6 +37,9 @@ GENERATED_OPENAPI = ROOT / "docs" / "generated" / "openapi.json"
 GENERATED_TOKENS = ROOT / "apps" / "web" / "src" / "app" / "tokens.generated.css"
 GENERATED_LEGAL_PY = ROOT / "apps" / "api" / "app" / "generated" / "legal_manifest.py"
 GENERATED_LEGAL_JSON = ROOT / "apps" / "web" / "src" / "generated" / "legal-manifest.json"
+LOCALES_SOURCE = ROOT / "config" / "locales.json"
+GENERATED_LOCALES_PY = ROOT / "apps" / "api" / "app" / "generated" / "locales.py"
+GENERATED_LOCALES_TS = ROOT / "apps" / "web" / "src" / "generated" / "locales.ts"
 REGISTRATION_ACCEPTANCE_TEXT_SOURCE = (
     ROOT / "apps" / "api" / "app" / "domains" / "legal" / "acceptance_text.py"
 )
@@ -645,6 +648,169 @@ def render_json(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, indent=2) + "\n"
 
 
+def locale_contract() -> list[dict[str, str | bool]]:
+    try:
+        source = json.loads(LOCALES_SOURCE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise HarnessError(f"Unable to read locale contract: {LOCALES_SOURCE}") from error
+
+    if not isinstance(source, dict) or set(source) != {"schemaVersion", "locales"}:
+        raise HarnessError(
+            "Locale contract must contain only schemaVersion and locales"
+        )
+    if source["schemaVersion"] != 1:
+        raise HarnessError("Unsupported locale contract schemaVersion")
+
+    raw_locales = source["locales"]
+    if not isinstance(raw_locales, list) or len(raw_locales) != 7:
+        raise HarnessError("Locale contract must define exactly seven locales")
+
+    required_fields = {
+        "routeLocale",
+        "languageTag",
+        "intlLocale",
+        "displayName",
+        "default",
+    }
+    locales: list[dict[str, str | bool]] = []
+    route_locales: set[str] = set()
+    default_count = 0
+    for index, raw_locale in enumerate(raw_locales):
+        if not isinstance(raw_locale, dict) or set(raw_locale) != required_fields:
+            raise HarnessError(
+                f"Locale contract entry {index} must contain exactly "
+                + ", ".join(sorted(required_fields))
+            )
+
+        route_locale = raw_locale["routeLocale"]
+        language_tag = raw_locale["languageTag"]
+        intl_locale = raw_locale["intlLocale"]
+        display_name = raw_locale["displayName"]
+        is_default = raw_locale["default"]
+        if not isinstance(route_locale, str) or not re.fullmatch(
+            r"[a-z]{2}", route_locale
+        ):
+            raise HarnessError(
+                f"Locale contract entry {index} has an invalid routeLocale"
+            )
+        if route_locale in route_locales:
+            raise HarnessError(f"Duplicate routeLocale in locale contract: {route_locale}")
+        if not all(
+            isinstance(value, str) and value
+            for value in (language_tag, intl_locale, display_name)
+        ):
+            raise HarnessError(
+                f"Locale contract entry {index} has an invalid locale value"
+            )
+        if not isinstance(is_default, bool):
+            raise HarnessError(
+                f"Locale contract entry {index} must use a boolean default"
+            )
+
+        route_locales.add(route_locale)
+        default_count += int(is_default)
+        locales.append(
+            {
+                "routeLocale": route_locale,
+                "languageTag": language_tag,
+                "intlLocale": intl_locale,
+                "displayName": display_name,
+                "default": is_default,
+            }
+        )
+
+    if default_count != 1:
+        raise HarnessError("Locale contract must define exactly one default locale")
+    return locales
+
+
+def render_locales_typescript(locales: list[dict[str, str | bool]]) -> str:
+    route_locales = [locale["routeLocale"] for locale in locales]
+    default_locale = next(
+        locale["routeLocale"] for locale in locales if locale["default"]
+    )
+    lines = [
+        "// Generated from config/locales.json. Do not edit.",
+        "",
+        "export const SUPPORTED_ROUTE_LOCALES = [",
+        *(f"  {json.dumps(locale)}," for locale in route_locales),
+        "] as const;",
+        "",
+        "export type RouteLocale = (typeof SUPPORTED_ROUTE_LOCALES)[number];",
+        "",
+        f"export const DEFAULT_ROUTE_LOCALE: RouteLocale = {json.dumps(default_locale)};",
+        "",
+        "const ROUTE_LOCALE_SET: ReadonlySet<string> = new Set(",
+        "  SUPPORTED_ROUTE_LOCALES,",
+        ");",
+        "",
+        "export function isRouteLocale(value: unknown): value is RouteLocale {",
+        '  return typeof value === "string" && ROUTE_LOCALE_SET.has(value);',
+        "}",
+    ]
+    for export_name, field in (
+        ("LANGUAGE_TAG_BY_ROUTE_LOCALE", "languageTag"),
+        ("INTL_LOCALE_BY_ROUTE_LOCALE", "intlLocale"),
+        ("DISPLAY_NAME_BY_ROUTE_LOCALE", "displayName"),
+    ):
+        lines.extend(["", f"export const {export_name} = {{"])
+        lines.extend(
+            f"  {json.dumps(locale['routeLocale'])}: "
+            f"{json.dumps(locale[field], ensure_ascii=False)},"
+            for locale in locales
+        )
+        lines.append("} as const satisfies Record<RouteLocale, string>;")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def render_locales_python(locales: list[dict[str, str | bool]]) -> str:
+    route_locales = [locale["routeLocale"] for locale in locales]
+    default_locale = next(
+        locale["routeLocale"] for locale in locales if locale["default"]
+    )
+    literal_values = ", ".join(repr(locale) for locale in route_locales)
+    lines = [
+        '"""Generated from config/locales.json. Do not edit."""',
+        "",
+        "from typing import Final, Literal, TypeGuard",
+        "",
+        f"RouteLocale = Literal[{literal_values}]",
+        "",
+        "SUPPORTED_ROUTE_LOCALES: Final[tuple[RouteLocale, ...]] = (",
+        *(f"    {locale!r}," for locale in route_locales),
+        ")",
+        f"DEFAULT_ROUTE_LOCALE: Final[RouteLocale] = {default_locale!r}",
+        "",
+        "_ROUTE_LOCALE_SET: Final[frozenset[str]] = frozenset(",
+        "    SUPPORTED_ROUTE_LOCALES",
+        ")",
+        "",
+        "",
+        "def is_route_locale(value: object) -> TypeGuard[RouteLocale]:",
+        "    return isinstance(value, str) and value in _ROUTE_LOCALE_SET",
+    ]
+    for export_name, field in (
+        ("LANGUAGE_TAG_BY_ROUTE_LOCALE", "languageTag"),
+        ("INTL_LOCALE_BY_ROUTE_LOCALE", "intlLocale"),
+        ("DISPLAY_NAME_BY_ROUTE_LOCALE", "displayName"),
+    ):
+        lines.extend(
+            [
+                "",
+                "",
+                f"{export_name}: Final[dict[RouteLocale, str]] = {{",
+                *(
+                    f"    {locale['routeLocale']!r}: {locale[field]!r},"
+                    for locale in locales
+                ),
+                "}",
+            ]
+        )
+    lines.append("")
+    return "\n".join(lines)
+
+
 def write_or_check(path: Path, content: str, *, check: bool) -> bool:
     existing = path.read_text(encoding="utf-8") if path.exists() else None
     if existing == content:
@@ -682,7 +848,7 @@ def import_api() -> tuple[object, object]:
     os.environ.setdefault("POSTGRES_PORT", "5432")
     os.environ.setdefault("CORS_ALLOW_ORIGINS", "http://localhost:3000")
     os.environ.setdefault("SKIP_LEGAL_SEED", "true")
-    from app.database import Base  # type: ignore
+    from app.core.database import Base  # type: ignore
     from app.main import app as fastapi_app  # type: ignore
     importlib.import_module("app.models")
 
@@ -812,6 +978,17 @@ def render_registration_acceptance_typescript() -> str:
 
 def generate_all(*, check: bool) -> bool:
     stale = generate_legal(check=check)
+    locales = locale_contract()
+    stale |= write_or_check(
+        GENERATED_LOCALES_TS,
+        render_locales_typescript(locales),
+        check=check,
+    )
+    stale |= write_or_check(
+        GENERATED_LOCALES_PY,
+        render_locales_python(locales),
+        check=check,
+    )
     stale |= write_or_check(GENERATED_DB, render_db_schema(), check=check)
     stale |= write_or_check(GENERATED_OPENAPI, render_openapi(), check=check)
     stale |= write_or_check(GENERATED_TOKENS, render_tokens(), check=check)
@@ -1398,6 +1575,99 @@ def router_module(module: str) -> bool:
     return module.endswith(".router") or ".router." in module
 
 
+_REMOVED_API_COMPATIBILITY_PATHS = {
+    Path("apps/api/app/auth.py"): (
+        "app.auth",
+        "the owning identity modules and app.http.dependencies",
+    ),
+    Path("apps/api/app/database.py"): ("app.database", "app.core.database"),
+    Path("apps/api/app/legal.py"): ("app.legal", "app.domains.legal.router"),
+    Path("apps/api/app/legal_consents.py"): (
+        "app.legal_consents",
+        "app.domains.legal.service",
+    ),
+    Path("apps/api/app/settings.py"): ("app.settings", "app.core.settings"),
+    Path("apps/api/app/domains/identity/session.py"): (
+        "app.domains.identity.session",
+        "app.core.settings or app.domains.identity.services.auth",
+    ),
+    Path("apps/api/app/domains/identity/models.py"): (
+        "app.domains.identity.models",
+        "app.models",
+    ),
+    Path("apps/api/app/domains/legal/models.py"): (
+        "app.domains.legal.models",
+        "app.models",
+    ),
+    Path("apps/api/app/domains/identity/services/account.py"): (
+        "app.domains.identity.services.account",
+        "the authenticated app.models.User",
+    ),
+    Path("apps/api/app/health.py"): ("app.health", "app.http.health"),
+    Path("apps/api/app/http_dependencies.py"): (
+        "app.http_dependencies",
+        "app.http.dependencies",
+    ),
+    Path("apps/api/app/http_errors.py"): ("app.http_errors", "app.http.errors"),
+}
+
+
+def check_removed_api_compatibility(root: Path = ROOT) -> list[str]:
+    """Reject removed post-reset compatibility modules and their imports."""
+    errors: list[str] = []
+    removed_modules = {
+        module: replacement
+        for module, replacement in _REMOVED_API_COMPATIBILITY_PATHS.values()
+    }
+
+    for relative, (module, replacement) in _REMOVED_API_COMPATIBILITY_PATHS.items():
+        if (root / relative).exists():
+            errors.append(
+                f"{relative.as_posix()} is a removed compatibility path; "
+                f"import from {replacement} instead of {module}"
+            )
+
+    for source_root in (root / "apps/api", root / "scripts"):
+        if not source_root.exists():
+            continue
+        for path in sorted(source_root.rglob("*.py")):
+            relative = path.relative_to(root).as_posix()
+            try:
+                tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            except SyntaxError:
+                continue
+            for node in ast.walk(tree):
+                targets: set[str] = set()
+                if isinstance(node, ast.Import):
+                    targets.update(alias.name for alias in node.names)
+                elif isinstance(node, ast.ImportFrom) and node.level == 0:
+                    module = node.module or ""
+                    if module:
+                        targets.add(module)
+                        targets.update(
+                            f"{module}.{alias.name}"
+                            for alias in node.names
+                            if alias.name != "*"
+                        )
+                else:
+                    continue
+
+                imported_removed_modules = {
+                    removed_module
+                    for target in targets
+                    for removed_module in removed_modules
+                    if module_matches(target, removed_module)
+                }
+                for removed_module in sorted(imported_removed_modules):
+                    errors.append(
+                        f"{relative}:{node.lineno} imports removed compatibility module "
+                        f"{removed_module}; import from "
+                        f"{removed_modules[removed_module]} instead"
+                    )
+
+    return errors
+
+
 _REMOVED_LEGACY_MODEL_NAMES = frozenset(
     {
         "Bundle",
@@ -1982,7 +2252,7 @@ def check_python_boundaries(root: Path = ROOT) -> list[str]:
             and path_parts[0] == "infrastructure"
             and path_parts[1] in {"persistence", "queries"}
         )
-        is_http_dependencies = path_parts == ("http_dependencies.py",)
+        is_http_dependencies = path_parts == ("http", "dependencies.py")
         is_refactored_application_persistence = (
             _is_refactored_application_persistence_surface(path_parts)
         )
@@ -2361,7 +2631,8 @@ def check_canonical_persisted_model_layer(root: Path = ROOT) -> list[str]:
 
 
 def cmd_architecture(_: argparse.Namespace) -> None:
-    errors = check_removed_billing_architecture()
+    errors = check_removed_api_compatibility()
+    errors.extend(check_removed_billing_architecture())
     errors.extend(check_python_boundaries())
     errors.extend(check_persistence_transaction_ownership())
     errors.extend(check_canonical_persisted_model_layer())

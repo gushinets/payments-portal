@@ -21,7 +21,9 @@ test("web lint uses ESLint 10", () => {
 });
 
 test("critical Next.js and React Hooks rules remain enabled", async () => {
-  const config = await eslint.calculateConfigForFile("src/app/page.tsx");
+  const config = await eslint.calculateConfigForFile(
+    "src/app/[locale]/page.tsx"
+  );
 
   assert.ok(config);
   assert.equal(config.rules["@next/next/no-html-link-for-pages"][0], 2);
@@ -56,6 +58,108 @@ test("flat config parses JSX and applies Next.js rules to JavaScript", async () 
   );
 });
 
+test("typed JSON assertions are rejected at production web boundaries", async () => {
+  const [result] = await eslint.lintText(
+    `
+      declare const rawBody: string;
+      declare const response: Response;
+      const parsed = JSON.parse(rawBody) as { detail: unknown };
+      const payload = (await response.json()) as { status: string };
+      const promised = response.json() as Promise<{ status: string }>;
+      void parsed;
+      void payload;
+      void promised;
+    `,
+    { filePath: `${webRoot}/src/shared/api/BoundaryFixture.ts` }
+  );
+  const messages = result.messages.filter(
+    (message) => message.ruleId === "no-restricted-syntax"
+  );
+
+  assert.equal(messages.length, 3);
+  assert.ok(
+    messages.every((message) =>
+      /must remain unknown until a runtime decoder validates/.test(message.message)
+    )
+  );
+});
+
+test("unknown JSON results remain allowed for runtime decoding", async () => {
+  const [result] = await eslint.lintText(
+    `
+      declare const rawBody: string;
+      declare const response: Response;
+      const parsed: unknown = JSON.parse(rawBody);
+      const payload: unknown = await response.json();
+      void parsed;
+      void payload;
+    `,
+    { filePath: `${webRoot}/src/shared/api/BoundaryFixture.ts` }
+  );
+
+  assert.equal(
+    result.messages.filter(
+      (message) => message.ruleId === "no-restricted-syntax"
+    ).length,
+    0
+  );
+});
+
+test("routing-owned literal RU application paths are rejected", async () => {
+  const [result] = await eslint.lintText(
+    [
+      'const href = "/ru/products";',
+      'redirect("/ru/account");',
+      "const destination = `/ru/${productSlug}`;",
+      "void href;",
+      "void destination;"
+    ].join("\n"),
+    { filePath: `${webRoot}/src/app/BoundaryFixture.tsx` }
+  );
+  const messages = result.messages.filter(
+    (message) =>
+      message.ruleId === "no-restricted-syntax" &&
+      /locale-aware navigation/.test(message.message)
+  );
+
+  assert.equal(messages.length, 3);
+});
+
+test("canonical RU legal paths sourced from generated authority remain allowed", async () => {
+  const [result] = await eslint.lintText(
+    [
+      'import legalManifest from "@/generated/legal-manifest.json";',
+      "export const canonicalLegalPath = legalManifest.documents[0].urlPath;"
+    ].join("\n"),
+    { filePath: `${webRoot}/src/shared/config/BoundaryFixture.ts` }
+  );
+
+  assert.equal(
+    result.messages.filter(
+      (message) =>
+        message.ruleId === "no-restricted-syntax" &&
+        /locale-aware navigation/.test(message.message)
+    ).length,
+    0
+  );
+});
+
+test("unrelated RU-prefixed strings are not globally rejected", async () => {
+  const [result] = await eslint.lintText(
+    'export const auditMessage = "/ru/products appeared in a diagnostic event";',
+    { filePath: `${webRoot}/src/shared/config/BoundaryFixture.ts` }
+  );
+
+  assert.equal(
+    result.messages.filter(
+      (message) =>
+        message.ruleId === "no-restricted-syntax" &&
+        /locale-aware navigation/.test(message.message)
+    ).length,
+    0
+  );
+});
+
 test("shared modules cannot import features", async () => {
   const messages = await restrictedImportMessages(
     'import { products } from "@/features/catalog";',
@@ -68,7 +172,7 @@ test("shared modules cannot import features", async () => {
 
 test("features cannot import app modules", async () => {
   const messages = await restrictedImportMessages(
-    'import RootLayout from "@/app/layout";',
+    'import LocaleLayout from "@/app/[locale]/layout";',
     "src/features/catalog/BoundaryFixture.ts"
   );
 

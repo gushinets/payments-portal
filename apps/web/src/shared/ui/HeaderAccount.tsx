@@ -1,29 +1,21 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { LogIn, UserRound } from "lucide-react";
+import { Link } from "@/i18n/navigation";
 import {
+  ApiContractError,
+  ApiError,
   authErrorMessage,
-  requestTimeoutMs,
-  resolveApiBase,
+  decodeAuthSessionResponse,
+  getJson,
+  sessionChangedEvent,
+  sessionStorageKey,
   submitAuth
 } from "@/shared/api/auth";
 import { AuthForm, AuthFormSubmitValues, AuthMode } from "./AuthForm";
 
-type SessionResponse = {
-  authenticated: boolean;
-  user?: {
-    tenant_id: string;
-    region: string;
-    user_id: string;
-    email: string;
-  };
-};
-
 const telegramLoginUrl = process.env.NEXT_PUBLIC_TELEGRAM_LOGIN_URL ?? "";
-const sessionStorageKey = "anytoolai_session_token_v1";
-const sessionChangedEvent = "anytoolai_session_changed";
 
 export function HeaderAccount() {
   const [email, setEmail] = useState("");
@@ -45,34 +37,26 @@ export function HeaderAccount() {
         return;
       }
 
-      const controller = new AbortController();
-      const timeoutId = window.setTimeout(() => controller.abort(), requestTimeoutMs);
-
       try {
-        const response = await fetch(`${resolveApiBase()}/api/auth/session`, {
-          headers: { Authorization: `Bearer ${token}` },
-          signal: controller.signal
-        });
-
-        if (!response.ok) {
-          window.localStorage.removeItem(sessionStorageKey);
-          window.dispatchEvent(new Event(sessionChangedEvent));
-          setEmail("");
-          return;
-        }
-
-        const payload = (await response.json()) as SessionResponse;
-        if (!cancelled && payload.authenticated && payload.user?.email) {
+        const payload = await getJson(
+          "/api/auth/session",
+          token,
+          decodeAuthSessionResponse
+        );
+        if (!cancelled && payload.authenticated) {
           setEmail(payload.user.email);
-        } else {
+        }
+      } catch (requestError) {
+        if (
+          requestError instanceof ApiError ||
+          requestError instanceof ApiContractError
+        ) {
           window.localStorage.removeItem(sessionStorageKey);
           window.dispatchEvent(new Event(sessionChangedEvent));
           setEmail("");
         }
-      } catch {
         // Keep the existing token during transient network failures.
       } finally {
-        window.clearTimeout(timeoutId);
         if (!cancelled) {
           setLoaded(true);
         }
@@ -124,7 +108,7 @@ export function HeaderAccount() {
           Аккаунт
         </button>
       ) : email ? (
-        <Link className="btn-secondary nav-account" href="/ru/account">
+        <Link className="btn-secondary nav-account" href="/account">
           <UserRound size={15} aria-hidden="true" />
           <span className="nav-account-email">{email}</span>
           <small>личный кабинет</small>

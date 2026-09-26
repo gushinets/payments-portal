@@ -1,7 +1,7 @@
 # Payment Portal Architecture
 
 Status: authoritative current-state map
-Last verified: 2026-09-24
+Last verified: 2026-09-26
 
 ## System boundary
 
@@ -72,13 +72,56 @@ launch remain gated by Phase 0 and their owning `ANY-504` steps.
 - **Billing persistence** — the approved projections, immutable commercial
   mapping/purchase evidence, reconciliation/operation records, paid-access
   state, and invalidation outbox. There is no billing runtime yet.
-- **Presentation** — the `ru` landing, product snapshot, auth/account shells,
-  unavailable checkout/payment-result surfaces, and legal pages.
+- **Presentation** — locale-prefixed landing, product snapshot, auth/account
+  shells, unavailable checkout/payment-result surfaces, and canonical RU legal
+  pages. The current customer-facing copy remains Russian pending the separate
+  UI-localization slice.
+
+## Locale runtime and public routing
+
+`config/locales.json` is the canonical machine-readable locale contract.
+`npm run generate` derives the web contract at
+`apps/web/src/generated/locales.ts` and the API contract at
+`apps/api/app/generated/locales.py`; generated files are not hand-edited, and
+`npm run generate:check` detects drift.
+
+The exact supported route locales are `en`, `fr`, `it`, `de`, `es`, `ru`, and
+`pt`, with `ru` as the default. `routeLocale` is the short identity used in
+URLs and by next-intl routing. `languageTag` is the document language, and
+`intlLocale` is the formatting identity. For Portuguese, the route identity is
+`pt` while both language and formatting identities are `pt-BR`. Locale does
+not determine contour/region, provider, currency, or timezone.
+
+Ordinary public routes live under `apps/web/src/app/[locale]`. The localized
+root layout owns the document and derives `<html lang>` from the locale
+contract. `/` is the only Accept-Language negotiation entry and falls back to
+`ru`; an explicit locale-prefixed URL is authoritative. Other unprefixed
+application paths are not localized implicitly. next-intl routing therefore
+uses `localeDetection: false`, `localeCookie: false`, and application-owned
+alternate metadata.
+
+Canonical and alternate metadata is anchored to the required server/build-side
+`APP_PUBLIC_BASE_URL` origin. Normal application navigation uses the
+locale-aware exports from `apps/web/src/i18n/navigation.ts`; it must not
+construct a `/ru` ordinary route. Locale is not persisted in cookies,
+localStorage, or user records.
+
+Generated RU legal paths remain canonical and RU-only, without invented locale
+alternates. Password-reset confirmation (`/[locale]/reset-password`) does not
+offer locale switching so its fragment token stays on the current client-only
+flow. Complete UI copy localization belongs to 4B.2. Propagating locale in
+frontend-to-backend communication belongs to 4B.3.
 
 Current API composition exposes authentication, password reset, legal, health,
 and metrics routes. Removed catalog, checkout-intent, payment-status, account
 subscription, provider callback, and lifecycle-command contracts are not
 compatibility surfaces.
+
+Cross-cutting FastAPI Presentation code lives under `app.http`: dependency
+composition in `app.http.dependencies`, failure mapping in `app.http.errors`,
+and operational health and metrics routes in `app.http.health` and
+`app.http.metrics`. Feature routers remain with their identity and legal
+slices, while `app.main` owns only application composition.
 
 The target logical dependency direction is:
 
@@ -151,7 +194,7 @@ payment state, or manual operator input alone never grant paid access.
 
 - `get_db()` creates and closes the request SQLAlchemy `Session`; it owns
   resource lifetime, not a request-wide transaction.
-- `app.http_dependencies.get_current_session()` resolves authenticated
+- `app.http.dependencies.get_current_session()` resolves authenticated
   user/session context and retains its separate `last_seen_at` bookkeeping
   transaction.
 - Stateless Application/service functions are called directly; they are not
@@ -174,6 +217,7 @@ payment state, or manual operator input alone never grant paid access.
 
 Repository AST/static checks currently enforce:
 
+- removed post-reset API compatibility modules and their imports cannot return;
 - core/domain-to-integration and router dependency direction;
 - active FastAPI Presentation and HTTP-composition persistence boundaries;
 - focused persistence helpers cannot own outer commit/rollback;
@@ -184,6 +228,12 @@ Repository AST/static checks currently enforce:
 - no legacy Portal Product/Plan/Order/Payment/Subscription/Entitlement/trial
   ORM/table graph;
 - no `external_billing_accounts` table or foreign-key target.
+
+Contract guards require named OpenAPI component schemas for active ordinary
+JSON `2xx` success responses. The readiness `503` response is checked
+separately and requires its named response schema; metrics remains outside
+OpenAPI. Web lint rejects direct type assertions on `response.json()` and
+`JSON.parse(...)` results in production source.
 
 The guards reject reintroduction without requiring deleted source files to
 exist as evidence.
