@@ -1,7 +1,7 @@
 # Coding Conventions
 
 Status: authoritative
-Last verified: 2026-09-25
+Last verified: 2026-09-26
 
 How to write **new and changed** code so types, states, and trust boundaries
 stay explicit. This is not a backlog and not a mass-migration plan.
@@ -206,6 +206,35 @@ Frontend ESLint rejects direct type assertions on `response.json()` and
 8. Do not add a schema library or OpenAPI client generator for a single
    contract.
 
+### Web locale routing
+
+1. `config/locales.json` is the single machine-readable locale contract. Run
+   `npm run generate`; do not hand-edit the generated TypeScript or Python
+   locale artifacts. The exact route locales are `en`, `fr`, `it`, `de`, `es`,
+   `ru`, and `pt`.
+2. Keep locale identities distinct. `routeLocale` is the URL/next-intl routing
+   identity; `languageTag` sets the document language; `intlLocale` controls
+   formatting. The `pt` route maps to `pt-BR` for both language and formatting.
+3. Ordinary pages live below `app/[locale]`, and the localized root layout
+   derives `<html lang>` from the locale contract. `/` is the only
+   Accept-Language negotiation entry. An explicit locale-prefixed URL always
+   wins, and arbitrary unprefixed app paths stay not-found.
+4. Keep next-intl `localeDetection` and `localeCookie` disabled. Do not persist
+   locale in a cookie, localStorage, or a user record. Locale is independent of
+   contour/region, provider, currency, and timezone.
+5. Use the locale-aware navigation exports in `src/i18n/navigation.ts` for
+   normal links, redirects, and route construction. Do not hardcode `/ru` for
+   ordinary application navigation. Generated canonical RU legal paths are the
+   intentional exception.
+6. Canonical and alternate metadata must use the explicit server/build-side
+   `APP_PUBLIC_BASE_URL` origin; next-intl does not own alternate metadata.
+7. Generated legal routes remain canonical and RU-only and do not receive fake
+   locale alternates or switch targets. Reset confirmation does not offer
+   locale switching because its token remains fragment/client-only.
+8. Complete UI copy localization belongs to 4B.2. Frontend-to-backend locale
+   propagation belongs to 4B.3; neither concern is inferred from the route
+   locale in this foundation.
+
 ## Implemented contract guardrails
 
 1. The API architecture test rejects active ordinary JSON success responses
@@ -215,3 +244,5 @@ Frontend ESLint rejects direct type assertions on `response.json()` and
    `JSON.parse(...)` results in production `src/`.
 3. Decoder tests cover both valid payloads and rejection of invalid payloads,
    as required by Common item 5.
+4. Web lint rejects routing-owned literal `/ru` ordinary application paths
+   while leaving generated canonical legal artifacts available.

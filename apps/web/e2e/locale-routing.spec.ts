@@ -35,6 +35,10 @@ function publicUrl(pathname: string): string {
 test("all supported locale roots render with their canonical document language", async ({
   page
 }) => {
+  expect(SUPPORTED_ROUTE_LOCALES).toEqual(
+    localeLanguages.map(([locale]) => locale)
+  );
+
   for (const [locale, languageTag] of localeLanguages) {
     const response = await page.goto(`/${locale}`);
 
@@ -188,6 +192,7 @@ test("locale switching preserves pathname, query and auth storage across seven d
   await expect(page).toHaveURL(
     /\/fr\/products\?source=campaign&filter=active$/
   );
+  await expect(page.getByText("locale-switch@example.com")).toBeVisible();
   expect(
     await page.evaluate(
       (key) => window.localStorage.getItem(key),
@@ -198,7 +203,9 @@ test("locale switching preserves pathname, query and auth storage across seven d
     sessionStorageKey
   ]);
   expect(
-    (await context.cookies()).some((cookie) => cookie.name === "NEXT_LOCALE")
+    (await context.cookies()).some((cookie) =>
+      /^(?:NEXT_LOCALE|.*locale.*)$/i.test(cookie.name)
+    )
   ).toBe(false);
 });
 

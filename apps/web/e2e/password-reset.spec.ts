@@ -25,6 +25,12 @@ test("password reset request submits email and shows generic success", async ({ 
 
 test("password reset confirmation submits token and new password", async ({ page }) => {
   const requests: unknown[] = [];
+  const documentRequests: string[] = [];
+  page.on("request", (request) => {
+    if (request.resourceType() === "document") {
+      documentRequests.push(request.url());
+    }
+  });
   await page.route("**/api/auth/password-reset/confirm", async (route) => {
     requests.push(route.request().postDataJSON());
     await route.fulfill({
@@ -36,6 +42,8 @@ test("password reset confirmation submits token and new password", async ({ page
 
   await page.goto("/ru/reset-password#token=test-only-reset-token");
   await expect(page).toHaveURL(/\/ru\/reset-password$/);
+  expect(documentRequests).toHaveLength(1);
+  expect(documentRequests[0]).not.toContain("test-only-reset-token");
   await expect(page.locator(".locale-switcher")).toHaveCount(0);
   await page.getByLabel("Новый пароль").fill("new-password-123");
   await page.getByLabel("Повторите пароль").fill("new-password-123");

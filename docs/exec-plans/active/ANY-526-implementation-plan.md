@@ -104,7 +104,7 @@ Canonical values:
 | `it` | `it` | `it` | `Italiano` | no |
 | `de` | `de` | `de` | `Deutsch` | no |
 | `es` | `es` | `es` | `Español` | no |
-| `ru` | `ru` | `ru` | `Русский` | yes |
+| `ru` | `ru` | `ru` | `Russian` | yes |
 | `pt` | `pt-BR` | `pt-BR` | `Português` | no |
 
 `ru` is the routing/negotiation fallback only. It must not become the normal missing-message fallback policy for later complete catalogs.
@@ -474,7 +474,7 @@ fr -> languageTag=fr, intlLocale=fr, displayName=Français
 it -> languageTag=it, intlLocale=it, displayName=Italiano
 de -> languageTag=de, intlLocale=de, displayName=Deutsch
 es -> languageTag=es, intlLocale=es, displayName=Español
-ru -> languageTag=ru, intlLocale=ru, displayName=Русский, default=true
+ru -> languageTag=ru, intlLocale=ru, displayName=Russian, default=true
 pt -> languageTag=pt-BR, intlLocale=pt-BR, displayName=Português
 
 No other locale is default.
