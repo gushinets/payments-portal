@@ -17,8 +17,13 @@
   }
 
   .nav-link,
-  .nav-account {
+  .nav-account,
+  .locale-switcher {
     flex: 1 1 auto;
+  }
+
+  .locale-switcher-summary {
+    width: 100%;
   }
 
   .bento-grid,

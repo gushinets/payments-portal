@@ -5,6 +5,8 @@ import { server } from "./msw-server";
 
 declare global {
   var __NEXT_SEARCH_PARAMS__: string | undefined;
+  var __NEXT_INTL_PATHNAME__: string | undefined;
+  var __NEXT_INTL_LOCALE__: string | undefined;
   var __ANYTOOLAI_FETCH_SIGNAL_STRIPPED_COUNT__: number | undefined;
 }
 
@@ -27,6 +29,31 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(globalThis.__NEXT_SEARCH_PARAMS__ ?? "")
 }));
 
+vi.mock("@/i18n/navigation", () => ({
+  Link: ({
+    href,
+    locale,
+    children,
+    ...props
+  }: {
+    href: string;
+    locale?: string;
+    children: React.ReactNode;
+  }) => {
+    const activeLocale = locale ?? globalThis.__NEXT_INTL_LOCALE__ ?? "ru";
+    const localizedHref = href.startsWith("/")
+      ? `/${activeLocale}${href === "/" ? "" : href}`
+      : href;
+
+    return (
+      <a href={localizedHref} {...props}>
+        {children}
+      </a>
+    );
+  },
+  usePathname: () => globalThis.__NEXT_INTL_PATHNAME__ ?? "/"
+}));
+
 beforeAll(() => {
   window.HTMLElement.prototype.scrollIntoView = vi.fn();
   server.listen({ onUnhandledRequest: "error" });
@@ -39,6 +66,8 @@ afterEach(() => {
   window.localStorage.clear();
   window.sessionStorage.clear();
   globalThis.__NEXT_SEARCH_PARAMS__ = "";
+  globalThis.__NEXT_INTL_PATHNAME__ = "/";
+  globalThis.__NEXT_INTL_LOCALE__ = "ru";
   globalThis.__ANYTOOLAI_FETCH_SIGNAL_STRIPPED_COUNT__ = 0;
   vi.unstubAllEnvs();
   vi.restoreAllMocks();

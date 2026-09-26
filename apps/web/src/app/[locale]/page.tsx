@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import {
   ProductOverview,
@@ -8,6 +7,7 @@ import {
 } from "@/features/catalog";
 import { getCurrentRouteLocale } from "@/i18n/current-locale";
 import { createLocalizedMetadata } from "@/i18n/metadata";
+import { Link } from "@/i18n/navigation";
 
 export async function generateMetadata(): Promise<Metadata> {
   return createLocalizedMetadata(await getCurrentRouteLocale(), "/");
@@ -34,7 +34,7 @@ export default function RuHomePage() {
                 можно узнать о продуктах и создать единый аккаунт.
               </p>
               <div className="hero-actions">
-                <Link className="btn-primary" href="/ru/auth-checkout">
+                <Link className="btn-primary" href="/auth-checkout">
                   Войти или зарегистрироваться
                   <ArrowRight size={16} aria-hidden="true" />
                 </Link>

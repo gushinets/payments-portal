@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { LogIn, UserRound } from "lucide-react";
+import { Link } from "@/i18n/navigation";
 import {
   ApiContractError,
   ApiError,
@@ -108,7 +108,7 @@ export function HeaderAccount() {
           Аккаунт
         </button>
       ) : email ? (
-        <Link className="btn-secondary nav-account" href="/ru/account">
+        <Link className="btn-secondary nav-account" href="/account">
           <UserRound size={15} aria-hidden="true" />
           <span className="nav-account-email">{email}</span>
           <small>личный кабинет</small>

@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { ArrowRight } from "lucide-react";
+import { Link } from "@/i18n/navigation";
 import { productPresentation } from "./catalog";
 
 export function ProductOverview() {
@@ -27,7 +27,7 @@ export function ProductOverview() {
         })}
       </div>
       <div className="hero-actions">
-        <Link className="btn-primary" href="/ru/auth-checkout">
+        <Link className="btn-primary" href="/auth-checkout">
           Войти или зарегистрироваться
           <ArrowRight size={15} aria-hidden="true" />
         </Link>

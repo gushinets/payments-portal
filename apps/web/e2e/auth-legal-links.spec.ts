@@ -32,6 +32,7 @@ test("auth-shell registration asks to repeat password and opens legal docs in ne
   const authShell = page.getByRole("main");
   await authShell.getByRole("button", { name: "Регистрация" }).click();
   await expect(authShell.getByLabel("Повторите пароль")).toBeVisible();
+  await expect(authShell.locator("label span[lang=ru]")).toHaveCount(2);
   await expectLegalLinksOpenInNewTab(authShell);
 
   await authShell.getByLabel("Email").fill("audit-user@example.com");

@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { LogOut, UserRound } from "lucide-react";
+import { Link } from "@/i18n/navigation";
 import {
   decodeAuthSessionResponse,
   decodeLogoutResponse,
@@ -116,7 +116,7 @@ export function AccountClient() {
             Войдите в аккаунт, чтобы открыть личный кабинет.
           </div>
           <div className="hero-actions">
-            <Link className="btn-primary" href="/ru/auth-checkout">
+            <Link className="btn-primary" href="/auth-checkout">
               Войти или зарегистрироваться
             </Link>
           </div>

@@ -80,16 +80,23 @@ describe("AuthForm characterization", () => {
   it("renders the canonical backend-owned registration statements", () => {
     renderAuthForm({ initialMode: "register" });
 
+    const personalConsent = screen.getByRole("checkbox", {
+      name: REGISTRATION_PERSONAL_CONSENT_TEXT
+    });
+    const offerConsent = screen.getByRole("checkbox", {
+      name: REGISTRATION_OFFER_CONSENT_TEXT
+    });
+
+    expect(personalConsent).toBeVisible();
+    expect(offerConsent).toBeVisible();
+    expect(personalConsent).toHaveAttribute("lang", "ru");
+    expect(offerConsent).toHaveAttribute("lang", "ru");
     expect(
-      screen.getByRole("checkbox", {
-        name: REGISTRATION_PERSONAL_CONSENT_TEXT
-      })
-    ).toBeVisible();
+      personalConsent.closest("label")?.querySelector("span")
+    ).toHaveAttribute("lang", "ru");
     expect(
-      screen.getByRole("checkbox", {
-        name: REGISTRATION_OFFER_CONSENT_TEXT
-      })
-    ).toBeVisible();
+      offerConsent.closest("label")?.querySelector("span")
+    ).toHaveAttribute("lang", "ru");
     expect(
       screen.queryByText(/отмены подписки и возврата денежных средств/)
     ).not.toBeInTheDocument();

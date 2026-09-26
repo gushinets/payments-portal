@@ -1,4 +1,8 @@
 import { expect, test } from "@playwright/test";
+import {
+  DISPLAY_NAME_BY_ROUTE_LOCALE,
+  SUPPORTED_ROUTE_LOCALES
+} from "../src/generated/locales";
 
 const localeLanguages = [
   ["en", "en"],
@@ -105,12 +109,107 @@ test("ordinary locale metadata uses the configured public origin and canonical l
   }
 });
 
+test("ordinary navigation keeps the active locale", async ({ page }) => {
+  await page.goto("/de");
+
+  await expect(page.getByRole("link", { name: "AnytoolAI" })).toHaveAttribute(
+    "href",
+    "/de"
+  );
+  await expect(page.getByRole("link", { name: "Продукты" })).toHaveAttribute(
+    "href",
+    "/de/products"
+  );
+  await expect(
+    page.getByRole("main").getByRole("link", {
+      name: "Войти или зарегистрироваться"
+    }).first()
+  ).toHaveAttribute("href", "/de/auth-checkout");
+
+  await page.getByRole("button", { name: "Войти" }).click();
+  await expect(
+    page.getByRole("dialog").getByRole("link", { name: "Забыли пароль?" })
+  ).toHaveAttribute("href", "/de/forgot-password");
+});
+
+test("locale switching preserves pathname, query and auth storage across seven destinations", async ({
+  context,
+  page
+}) => {
+  const sessionStorageKey = "anytoolai_session_token_v1";
+  const sessionToken = "locale-switch-session-token";
+
+  await page.route("**/api/auth/session", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        authenticated: true,
+        user: {
+          tenant_id: "anytoolai",
+          region: "ru",
+          user_id: "locale-switch-user",
+          email: "locale-switch@example.com"
+        }
+      })
+    });
+  });
+  await page.goto("/de/products?source=campaign&filter=active");
+  await page.evaluate(
+    ({ key, token }) => {
+      window.localStorage.setItem(key, token);
+      window.dispatchEvent(new Event("anytoolai_session_changed"));
+    },
+    { key: sessionStorageKey, token: sessionToken }
+  );
+  await expect(page.getByText("locale-switch@example.com")).toBeVisible();
+  await page.getByLabel(/Выбор языка\. Текущий язык:/).click();
+
+  const switcher = page.getByRole("navigation", { name: "Выбор языка" });
+  const destinations = switcher.getByRole("link");
+  await expect(destinations).toHaveCount(SUPPORTED_ROUTE_LOCALES.length);
+
+  for (const locale of SUPPORTED_ROUTE_LOCALES) {
+    const destination = switcher.getByRole("link", {
+      name: DISPLAY_NAME_BY_ROUTE_LOCALE[locale]
+    });
+    const href = await destination.getAttribute("href");
+    expect(href).not.toBeNull();
+    const url = new URL(href!, publicUrl("/"));
+
+    expect(url.pathname).toBe(`/${locale}/products`);
+    expect(url.searchParams.get("source")).toBe("campaign");
+    expect(url.searchParams.get("filter")).toBe("active");
+  }
+
+  await switcher
+    .getByRole("link", { name: DISPLAY_NAME_BY_ROUTE_LOCALE.fr })
+    .click();
+  await expect(page).toHaveURL(
+    /\/fr\/products\?source=campaign&filter=active$/
+  );
+  expect(
+    await page.evaluate(
+      (key) => window.localStorage.getItem(key),
+      sessionStorageKey
+    )
+  ).toBe(sessionToken);
+  expect(await page.evaluate(() => Object.keys(window.localStorage))).toEqual([
+    sessionStorageKey
+  ]);
+  expect(
+    (await context.cookies()).some((cookie) => cookie.name === "NEXT_LOCALE")
+  ).toBe(false);
+});
+
 test("legal documents remain canonical RU-only routes without locale alternates", async ({
   page
 }) => {
   for (const legalSlug of legalSlugs) {
     let response = await page.goto(`/ru/${legalSlug}`);
     expect(response?.status()).toBe(200);
+    await expect(page.locator(".locale-switcher")).toHaveCount(0);
+    await expect(page.locator("main section[lang=ru]")).toHaveCount(1);
 
     response = await page.goto(`/en/${legalSlug}`);
     expect(response?.status()).toBe(404);
