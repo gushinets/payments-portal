@@ -1,4 +1,5 @@
 import { fileURLToPath } from "node:url";
+import createNextIntlPlugin from "next-intl/plugin";
 
 const repositoryRoot = fileURLToPath(new URL("../..", import.meta.url));
 
@@ -21,4 +22,6 @@ const nextConfig = {
   }
 };
 
-export default nextConfig;
+const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
+
+export default withNextIntl(nextConfig);
