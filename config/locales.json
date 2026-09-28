@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "locales": [
+    {
+      "routeLocale": "en",
+      "languageTag": "en",
+      "intlLocale": "en",
+      "displayName": "English",
+      "default": false
+    },
+    {
+      "routeLocale": "fr",
+      "languageTag": "fr",
+      "intlLocale": "fr",
+      "displayName": "Français",
+      "default": false
+    },
+    {
+      "routeLocale": "it",
+      "languageTag": "it",
+      "intlLocale": "it",
+      "displayName": "Italiano",
+      "default": false
+    },
+    {
+      "routeLocale": "de",
+      "languageTag": "de",
+      "intlLocale": "de",
+      "displayName": "Deutsch",
+      "default": false
+    },
+    {
+      "routeLocale": "es",
+      "languageTag": "es",
+      "intlLocale": "es",
+      "displayName": "Español",
+      "default": false
+    },
+    {
+      "routeLocale": "ru",
+      "languageTag": "ru",
+      "intlLocale": "ru",
+      "displayName": "Русский",
+      "default": true
+    },
+    {
+      "routeLocale": "pt",
+      "languageTag": "pt-BR",
+      "intlLocale": "pt-BR",
+      "displayName": "Português",
+      "default": false
+    }
+  ]
+}

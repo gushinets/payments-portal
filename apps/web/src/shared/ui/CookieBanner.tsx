@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { CANONICAL_LEGAL_PATH_BY_SLUG } from "@/shared/config/legal-links";
 
 const storageKey = "anytoolai_cookie_notice_v1";
 
@@ -39,7 +40,10 @@ export function CookieBanner() {
         >
           Принять
         </button>
-        <Link className="btn-secondary" href="/ru/cookies">
+        <Link
+          className="btn-secondary"
+          href={CANONICAL_LEGAL_PATH_BY_SLUG.cookies}
+        >
           Настроить
         </Link>
       </div>

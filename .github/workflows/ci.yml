@@ -20,6 +20,7 @@ jobs:
     env:
       UV_PROJECT_ENVIRONMENT: ${{ github.workspace }}/.venv
       UV_PYTHON_DOWNLOADS: "never"
+      APP_PUBLIC_BASE_URL: https://payments.example.test
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

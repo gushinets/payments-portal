@@ -17,6 +17,7 @@ concurrency:
 
 env:
   API_IMAGE: payment-portal-api:trivy-${{ github.sha }}
+  APP_PUBLIC_BASE_URL: https://payments.example.test
   TRIVY_REPORT_DIR: .harness/trivy
   WEB_IMAGE: payment-portal-web:trivy-${{ github.sha }}
 
@@ -91,6 +92,7 @@ jobs:
       - name: Build production web image
         run: >-
           docker build --file apps/web/Dockerfile
+          --build-arg "APP_PUBLIC_BASE_URL=$APP_PUBLIC_BASE_URL"
           --tag "$WEB_IMAGE" .
 
       - name: Verify production web runtime

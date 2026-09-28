@@ -114,13 +114,15 @@ function renderBlock(block: LegalBlock, index: number) {
 
 export function LegalPageView({ page }: { page: LegalDocument }) {
   return (
-    <section className="page-section compact">
+    <section className="page-section compact" lang="ru">
       <div className="eyebrow">
         <span className="eyebrow-dot" />
         Юридический документ
       </div>
       <h1 className="legal-title">{page.title}</h1>
       <p className="hero-copy">
+        Каноническая версия юридического документа представлена на русском языке.
+        <br />
         Документ опубликован в отдельном версионируемом файле.
         <br className="mobile-only-break" /> Редакция: {page.version}
       </p>

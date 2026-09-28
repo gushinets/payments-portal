@@ -104,6 +104,7 @@ services:
       context: .
       dockerfile: apps/web/Dockerfile
       args:
+        APP_PUBLIC_BASE_URL: ${APP_PUBLIC_BASE_URL:?APP_PUBLIC_BASE_URL is required}
         NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:?NEXT_PUBLIC_API_BASE_URL is required}
     restart: unless-stopped
     security_opt:
@@ -113,6 +114,7 @@ services:
       api:
         condition: service_healthy
     environment:
+      APP_PUBLIC_BASE_URL: ${APP_PUBLIC_BASE_URL:?APP_PUBLIC_BASE_URL is required}
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:?NEXT_PUBLIC_API_BASE_URL is required}
     networks:
       - edge

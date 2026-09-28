@@ -1292,7 +1292,7 @@ def test_full_check_runs_explicit_postgres_partition(
     invocations: list[tuple[list[str], dict[str, str] | None]] = []
 
     monkeypatch.delenv("TEST_POSTGRES_DATABASE_URL", raising=False)
-    monkeypatch.delenv("RUN_E2E", raising=False)
+    monkeypatch.setenv("RUN_E2E", "true")
     monkeypatch.setattr(repo, "canonical_check_environment", lambda: check_environment)
     monkeypatch.setattr(repo, "cmd_docs", lambda _: None)
     monkeypatch.setattr(repo, "cmd_generate", lambda _: None)
@@ -1305,6 +1305,24 @@ def test_full_check_runs_explicit_postgres_partition(
     )
 
     repo.cmd_check(argparse.Namespace(fast=False))
+
+    web_build_invocations = [
+        (command, environment) for command, environment in invocations if command[-2:] == ["run", "build:web"]
+    ]
+    assert web_build_invocations == [
+        (
+            ["npm", "run", "build:web"],
+            {
+                **check_environment,
+                "APP_PUBLIC_BASE_URL": "https://payments.example.test",
+            },
+        )
+    ]
+
+    e2e_invocations = [
+        (command, environment) for command, environment in invocations if command[-2:] == ["run", "test:e2e"]
+    ]
+    assert e2e_invocations == [(["npm", "run", "test:e2e"], check_environment)]
 
     postgres_invocations = [
         (command, environment)
