@@ -351,47 +351,6 @@ export async function confirmPasswordReset(
   );
 }
 
-export function authErrorMessage(
-  requestError: unknown,
-  fallback = "Не удалось выполнить авторизацию. Попробуйте ещё раз."
-): string {
-  const code = apiErrorCode(requestError);
-
-  if (
-    requestError instanceof ApiError &&
-    requestError.status === 409 &&
-    code === "email_already_registered"
-  ) {
-    return "Аккаунт с таким email уже существует. Попробуйте войти.";
-  }
-
-  if (
-    requestError instanceof ApiError &&
-    requestError.status === 401 &&
-    code === "invalid_credentials"
-  ) {
-    return "Неверный email или пароль.";
-  }
-
-  if (
-    requestError instanceof ApiError &&
-    requestError.status === 400 &&
-    code === "missing_personal_consent"
-  ) {
-    return "Нужно дать согласие на обработку персональных данных.";
-  }
-
-  if (
-    requestError instanceof ApiError &&
-    requestError.status === 400 &&
-    code === "missing_offer_consent"
-  ) {
-    return "Нужно принять условия оферты.";
-  }
-
-  return fallback;
-}
-
 export function passwordResetErrorMessage(requestError: unknown): string {
   const code = apiErrorCode(requestError);
 

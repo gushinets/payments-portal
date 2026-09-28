@@ -1,12 +1,14 @@
 import "@testing-library/jest-dom/vitest";
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CheckoutClient } from "@/features/checkout";
+import ruMessages from "@/messages/ru.json";
 import {
   sessionChangedEvent,
   sessionStorageKey
 } from "@/shared/api/auth";
+import { renderWithIntl } from "../setup/render-with-intl";
 
 const fetchMock = vi.fn<typeof fetch>();
 
@@ -14,6 +16,13 @@ function jsonResponse(payload: unknown): Response {
   return new Response(JSON.stringify(payload), {
     status: 200,
     headers: { "Content-Type": "application/json" }
+  });
+}
+
+function renderCheckoutClient() {
+  return renderWithIntl(<CheckoutClient />, {
+    locale: "ru",
+    messages: { Auth: ruMessages.Auth, Checkout: ruMessages.Checkout }
   });
 }
 
@@ -30,7 +39,7 @@ describe("provider-independent auth shell", () => {
   });
 
   it("renders login and registration without loading commerce APIs", async () => {
-    render(<CheckoutClient />);
+    renderCheckoutClient();
 
     expect(
       await screen.findByRole("heading", { name: "Вход или регистрация" })
@@ -67,7 +76,7 @@ describe("provider-independent auth shell", () => {
         })
       );
     const user = userEvent.setup();
-    render(<CheckoutClient />);
+    renderCheckoutClient();
 
     await user.type(await screen.findByLabelText("Email"), "user@example.com");
     await user.type(screen.getByLabelText("Пароль"), "very-secret-password");
@@ -106,7 +115,7 @@ describe("provider-independent auth shell", () => {
         })
       );
     const user = userEvent.setup();
-    render(<CheckoutClient />);
+    renderCheckoutClient();
 
     await user.click(
       await screen.findByRole("button", { name: "Регистрация" })
@@ -145,7 +154,7 @@ describe("provider-independent auth shell", () => {
       })
     );
 
-    render(<CheckoutClient />);
+    renderCheckoutClient();
 
     expect(await screen.findByText("returning@example.com")).toBeVisible();
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
@@ -153,7 +162,7 @@ describe("provider-independent auth shell", () => {
   });
 
   it("synchronizes login and logout events after mounting", async () => {
-    render(<CheckoutClient />);
+    renderCheckoutClient();
 
     expect(
       await screen.findByRole("heading", { name: "Вход или регистрация" })

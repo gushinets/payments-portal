@@ -1,25 +1,32 @@
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import {
   REGISTRATION_OFFER_CONSENT_TEXT,
   REGISTRATION_PERSONAL_CONSENT_TEXT
 } from "@/generated/registration-acceptance";
+import ruMessages from "@/messages/ru.json";
+import {
+  CANONICAL_LEGAL_PATH_BY_SLUG,
+  REGISTRATION_ACCEPTANCE_SOURCE_LINKS
+} from "@/shared/config/legal-links";
 import { AuthForm } from "@/shared/ui";
+import { renderWithIntl } from "../setup/render-with-intl";
 
 function renderAuthForm(overrides: Partial<Parameters<typeof AuthForm>[0]> = {}) {
   const props: Parameters<typeof AuthForm>[0] = {
     title: "Аккаунт",
     badgeIcon: <span aria-hidden="true" />,
     loading: false,
-    personalConsentError: "Нужно согласие на персональные данные.",
-    offerConsentError: "Нужно принять оферту.",
     onBeforeSubmit: vi.fn(),
     onValidationError: vi.fn(),
     onSubmit: vi.fn(),
     ...overrides
   };
-  render(<AuthForm {...props} />);
+  renderWithIntl(<AuthForm {...props} />, {
+    locale: "ru",
+    messages: { Auth: ruMessages.Auth }
+  });
   return props;
 }
 
@@ -51,7 +58,7 @@ describe("AuthForm characterization", () => {
     await user.click(screen.getByRole("button", { name: /Создать аккаунт/ }));
 
     expect(props.onValidationError).toHaveBeenCalledWith(
-      "Нужно согласие на персональные данные."
+      "Нужно дать согласие на обработку персональных данных."
     );
     expect(props.onSubmit).not.toHaveBeenCalled();
 
@@ -61,7 +68,7 @@ describe("AuthForm characterization", () => {
     await user.click(screen.getByRole("button", { name: /Создать аккаунт/ }));
 
     expect(props.onValidationError).toHaveBeenLastCalledWith(
-      "Нужно принять оферту."
+      "Нужно принять условия оферты."
     );
     expect(props.onSubmit).not.toHaveBeenCalled();
 
@@ -100,5 +107,34 @@ describe("AuthForm characterization", () => {
     expect(
       screen.queryByText(/отмены подписки и возврата денежных средств/)
     ).not.toBeInTheDocument();
+  });
+
+  it("keeps consent anchors coupled to generated statements and paths", () => {
+    const cases: Array<{
+      statement: string;
+      links: readonly { text: string; href: string }[];
+      expectedPaths: readonly string[];
+    }> = [
+      {
+        statement: REGISTRATION_PERSONAL_CONSENT_TEXT,
+        links: REGISTRATION_ACCEPTANCE_SOURCE_LINKS.personal,
+        expectedPaths: [
+          CANONICAL_LEGAL_PATH_BY_SLUG["consent-personal-data"],
+          CANONICAL_LEGAL_PATH_BY_SLUG.privacy
+        ]
+      },
+      {
+        statement: REGISTRATION_OFFER_CONSENT_TEXT,
+        links: REGISTRATION_ACCEPTANCE_SOURCE_LINKS.offer,
+        expectedPaths: [CANONICAL_LEGAL_PATH_BY_SLUG.offer]
+      }
+    ];
+
+    for (const { statement, links, expectedPaths } of cases) {
+      for (const { text } of links) {
+        expect(statement).toContain(text);
+      }
+      expect(links.map(({ href }) => href)).toEqual(expectedPaths);
+    }
   });
 });

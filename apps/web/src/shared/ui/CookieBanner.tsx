@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
 import { CANONICAL_LEGAL_PATH_BY_SLUG } from "@/shared/config/legal-links";
 
 const storageKey = "anytoolai_cookie_notice_v1";
 
 export function CookieBanner() {
+  const t = useTranslations("CookieBanner");
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
@@ -22,13 +24,9 @@ export function CookieBanner() {
   }
 
   return (
-    <aside className="cookie-banner" aria-label="Уведомление о cookies">
-      <span className="badge badge-running">Cookie</span>
-      <p>
-        Сайт использует cookie для корректной работы интерфейса и сохранения
-        выбранных настроек. Подробнее это описано в Политике использования
-        файлов cookie.
-      </p>
+    <aside className="cookie-banner" aria-label={t("ariaLabel")}>
+      <span className="badge badge-running">{t("badge")}</span>
+      <p>{t("description")}</p>
       <div className="cookie-actions">
         <button
           className="btn-primary"
@@ -38,13 +36,13 @@ export function CookieBanner() {
             setVisible(false);
           }}
         >
-          Принять
+          {t("acceptAction")}
         </button>
         <Link
           className="btn-secondary"
           href={CANONICAL_LEGAL_PATH_BY_SLUG.cookies}
         >
-          Настроить
+          {t("settingsAction")}
         </Link>
       </div>
     </aside>

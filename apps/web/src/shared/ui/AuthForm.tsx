@@ -1,6 +1,7 @@
 "use client";
 
 import CanonicalLink from "next/link";
+import { useTranslations } from "next-intl";
 import { type ReactNode, type Ref, useState } from "react";
 import { ArrowRight } from "lucide-react";
 import {
@@ -8,7 +9,7 @@ import {
   REGISTRATION_PERSONAL_CONSENT_TEXT
 } from "@/generated/registration-acceptance";
 import { Link } from "@/i18n/navigation";
-import { CANONICAL_LEGAL_PATH_BY_SLUG } from "@/shared/config/legal-links";
+import { REGISTRATION_ACCEPTANCE_SOURCE_LINKS } from "@/shared/config/legal-links";
 
 export type AuthMode = "login" | "register";
 
@@ -29,8 +30,6 @@ type AuthFormProps = {
   notice?: string;
   error?: string;
   loading: boolean;
-  personalConsentError: string;
-  offerConsentError: string;
   passwordResetHref?: string;
   telegramLoginUrl?: string;
   telegramIcon?: ReactNode;
@@ -49,26 +48,9 @@ type ConsentTextLink = {
   text: string;
 };
 
-const personalConsentLinks: ConsentTextLink[] = [
-  {
-    href: CANONICAL_LEGAL_PATH_BY_SLUG["consent-personal-data"],
-    text: "Согласием на обработку персональных данных"
-  },
-  {
-    href: CANONICAL_LEGAL_PATH_BY_SLUG.privacy,
-    text: "Политикой в отношении обработки персональных данных"
-  }
-];
-const offerConsentLinks: ConsentTextLink[] = [
-  {
-    href: CANONICAL_LEGAL_PATH_BY_SLUG.offer,
-    text: "Публичной оферты"
-  }
-];
-
 function renderConsentText(
   statement: string,
-  links: ConsentTextLink[]
+  links: readonly ConsentTextLink[]
 ): ReactNode[] {
   const content: ReactNode[] = [];
   let cursor = 0;
@@ -105,8 +87,6 @@ export function AuthForm({
   notice,
   error,
   loading,
-  personalConsentError,
-  offerConsentError,
   passwordResetHref = "/forgot-password",
   telegramLoginUrl,
   telegramIcon,
@@ -117,6 +97,7 @@ export function AuthForm({
   onValidationError,
   onSubmit
 }: AuthFormProps) {
+  const t = useTranslations("Auth");
   const [mode, setMode] = useState<AuthMode>(initialMode);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -133,28 +114,28 @@ export function AuthForm({
     onBeforeSubmit();
 
     if (!email.includes("@")) {
-      onValidationError("Укажите корректный email.");
+      onValidationError(t("validation.invalidEmail"));
       return;
     }
 
     if (password.length < 8) {
-      onValidationError("Пароль должен содержать не менее 8 символов.");
+      onValidationError(t("validation.passwordTooShort"));
       return;
     }
 
     if (mode === "register") {
       if (password !== passwordConfirm) {
-        onValidationError("Пароли не совпадают.");
+        onValidationError(t("validation.passwordMismatch"));
         return;
       }
 
       if (!personalConsent) {
-        onValidationError(personalConsentError);
+        onValidationError(t("validation.personalConsentRequired"));
         return;
       }
 
       if (!offerConsent) {
-        onValidationError(offerConsentError);
+        onValidationError(t("validation.offerConsentRequired"));
         return;
       }
     }
@@ -174,7 +155,7 @@ export function AuthForm({
     <div className="form-grid">
       <span className="badge badge-running">
         {badgeIcon}
-        Единый аккаунт
+        {t("form.badge")}
       </span>
       <h2>{title}</h2>
       {prompt}
@@ -190,13 +171,15 @@ export function AuthForm({
             onClick={() => selectMode(authMode)}
             key={authMode}
           >
-            {authMode === "register" ? "Регистрация" : "Вход"}
+            {authMode === "register"
+              ? t("modes.register")
+              : t("modes.login")}
           </button>
         ))}
       </div>
 
       <label className="field-label">
-        Email
+        {t("fields.emailLabel")}
         <input
           className="input"
           type="email"
@@ -208,12 +191,12 @@ export function AuthForm({
       </label>
 
       <label className="field-label">
-        Пароль
+        {t("fields.passwordLabel")}
         <input
           className="input"
           type="password"
           autoComplete={mode === "register" ? "new-password" : "current-password"}
-          placeholder="Не менее 8 символов"
+          placeholder={t("fields.passwordPlaceholder")}
           value={password}
           onChange={(event) => setPassword(event.target.value)}
         />
@@ -225,19 +208,19 @@ export function AuthForm({
           href={passwordResetHref}
           onClick={onPasswordResetClick}
         >
-          Забыли пароль?
+          {t("forgotPasswordAction")}
         </Link>
       ) : null}
 
       {mode === "register" ? (
         <>
           <label className="field-label">
-            Повторите пароль
+            {t("fields.passwordConfirmLabel")}
             <input
               className="input"
               type="password"
               autoComplete="new-password"
-              placeholder="Введите пароль ещё раз"
+              placeholder={t("fields.passwordConfirmPlaceholder")}
               value={passwordConfirm}
               onChange={(event) => setPasswordConfirm(event.target.value)}
             />
@@ -254,7 +237,7 @@ export function AuthForm({
             <span lang="ru">
               {renderConsentText(
                 REGISTRATION_PERSONAL_CONSENT_TEXT,
-                personalConsentLinks
+                REGISTRATION_ACCEPTANCE_SOURCE_LINKS.personal
               )}
             </span>
           </label>
@@ -270,7 +253,7 @@ export function AuthForm({
             <span lang="ru">
               {renderConsentText(
                 REGISTRATION_OFFER_CONSENT_TEXT,
-                offerConsentLinks
+                REGISTRATION_ACCEPTANCE_SOURCE_LINKS.offer
               )}
             </span>
           </label>
@@ -285,14 +268,16 @@ export function AuthForm({
         }}
         disabled={loading}
       >
-        {mode === "register" ? "Создать аккаунт" : "Войти"}
+        {mode === "register"
+          ? t("actions.createAccount")
+          : t("actions.signIn")}
         <ArrowRight size={15} aria-hidden="true" />
       </button>
 
       {telegramLoginUrl ? (
         <a className="btn-secondary telegram-button" href={telegramLoginUrl}>
           {telegramIcon}
-          Войти через Telegram
+          {t("actions.telegramSignIn")}
         </a>
       ) : null}
     </div>

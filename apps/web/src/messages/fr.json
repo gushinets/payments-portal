@@ -1,7 +1,82 @@
 {
   "Navigation": {
     "mainAriaLabel": "Navigation principale",
-    "products": "Produits"
+    "products": "Produits",
+    "localeSwitcher": {
+      "summaryAriaLabel": "Choisir la langue. Langue actuelle : {language}",
+      "menuAriaLabel": "Choisir la langue"
+    }
+  },
+  "Auth": {
+    "header": {
+      "account": "Compte",
+      "accountArea": "espace personnel",
+      "signIn": "Se connecter",
+      "closeDialogAriaLabel": "Fermer la fenêtre de connexion",
+      "dialogAriaLabel": "Se connecter à son compte"
+    },
+    "dialogTitle": "Connexion ou inscription",
+    "form": {
+      "badge": "Compte unique"
+    },
+    "modes": {
+      "login": "Connexion",
+      "register": "Inscription"
+    },
+    "fields": {
+      "emailLabel": "E-mail",
+      "passwordLabel": "Mot de passe",
+      "passwordPlaceholder": "Au moins 8 caractères",
+      "passwordConfirmLabel": "Répéter le mot de passe",
+      "passwordConfirmPlaceholder": "Saisissez à nouveau le mot de passe"
+    },
+    "forgotPasswordAction": "Mot de passe oublié ?",
+    "actions": {
+      "createAccount": "Créer un compte",
+      "signIn": "Se connecter",
+      "telegramSignIn": "Se connecter avec Telegram"
+    },
+    "validation": {
+      "invalidEmail": "Saisissez une adresse e-mail valide.",
+      "passwordTooShort": "Le mot de passe doit contenir au moins 8 caractères.",
+      "passwordMismatch": "Les mots de passe ne correspondent pas.",
+      "personalConsentRequired": "Vous devez consentir au traitement des données personnelles.",
+      "offerConsentRequired": "Vous devez accepter les conditions de l’offre publique."
+    },
+    "notices": {
+      "registered": "Compte créé. Vous êtes connecté.",
+      "signedIn": "Vous êtes connecté.",
+      "signedOut": "Vous êtes déconnecté."
+    },
+    "errors": {
+      "emailAlreadyRegistered": "Un compte associé à cet e-mail existe déjà. Essayez de vous connecter.",
+      "invalidCredentials": "L’e-mail ou le mot de passe est incorrect.",
+      "missingPersonalConsent": "Vous devez consentir au traitement des données personnelles.",
+      "missingOfferConsent": "Vous devez accepter les conditions de l’offre publique.",
+      "internalServer": "Le service est temporairement indisponible. Réessayez plus tard.",
+      "contract": "Le service a renvoyé une réponse inattendue. Réessayez.",
+      "network": "Impossible de se connecter au service. Vérifiez votre connexion et réessayez.",
+      "generic": "Impossible de terminer l’authentification. Réessayez."
+    }
+  },
+  "Checkout": {
+    "sessionChecking": "Vérification de votre session...",
+    "authenticatedBadge": "Connecté",
+    "accountTitle": "Compte AnytoolAI",
+    "openAccountAction": "Ouvrir le compte",
+    "signOutAction": "Se déconnecter",
+    "unavailable": {
+      "badge": "Information",
+      "title": "Les paiements sont temporairement indisponibles",
+      "description": "Le Portail prend actuellement en charge l’inscription, la connexion, la récupération du mot de passe et les consentements juridiques. Le catalogue, les abonnements et les paiements seront disponibles après la connexion du nouveau système de facturation."
+    }
+  },
+  "CookieBanner": {
+    "ariaLabel": "Avis relatif aux cookies",
+    "badge": "Cookie",
+    "description": "Ce site utilise des cookies pour assurer le bon fonctionnement de l’interface et enregistrer les paramètres sélectionnés. Vous trouverez plus de détails dans la Politique relative aux cookies.",
+    "acceptAction": "Accepter",
+    "settingsAction": "Paramètres"
   },
   "Home": {
     "eyebrow": "AnytoolAI {region}",

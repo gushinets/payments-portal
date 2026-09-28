@@ -1,7 +1,82 @@
 {
   "Navigation": {
     "mainAriaLabel": "Navigazione principale",
-    "products": "Prodotti"
+    "products": "Prodotti",
+    "localeSwitcher": {
+      "summaryAriaLabel": "Scegli la lingua. Lingua attuale: {language}",
+      "menuAriaLabel": "Scegli la lingua"
+    }
+  },
+  "Auth": {
+    "header": {
+      "account": "Account",
+      "accountArea": "area personale",
+      "signIn": "Accedi",
+      "closeDialogAriaLabel": "Chiudi la finestra di accesso",
+      "dialogAriaLabel": "Accedi al tuo account"
+    },
+    "dialogTitle": "Accedi o registrati",
+    "form": {
+      "badge": "Un solo account"
+    },
+    "modes": {
+      "login": "Accesso",
+      "register": "Registrazione"
+    },
+    "fields": {
+      "emailLabel": "Email",
+      "passwordLabel": "Password",
+      "passwordPlaceholder": "Almeno 8 caratteri",
+      "passwordConfirmLabel": "Ripeti la password",
+      "passwordConfirmPlaceholder": "Inserisci di nuovo la password"
+    },
+    "forgotPasswordAction": "Hai dimenticato la password?",
+    "actions": {
+      "createAccount": "Crea account",
+      "signIn": "Accedi",
+      "telegramSignIn": "Accedi con Telegram"
+    },
+    "validation": {
+      "invalidEmail": "Inserisci un indirizzo email valido.",
+      "passwordTooShort": "La password deve contenere almeno 8 caratteri.",
+      "passwordMismatch": "Le password non corrispondono.",
+      "personalConsentRequired": "Devi acconsentire al trattamento dei dati personali.",
+      "offerConsentRequired": "Devi accettare i termini dell’offerta pubblica."
+    },
+    "notices": {
+      "registered": "Account creato. Accesso effettuato.",
+      "signedIn": "Accesso effettuato.",
+      "signedOut": "Hai effettuato la disconnessione."
+    },
+    "errors": {
+      "emailAlreadyRegistered": "Esiste già un account con questa email. Prova ad accedere.",
+      "invalidCredentials": "L’email o la password non sono corrette.",
+      "missingPersonalConsent": "Devi acconsentire al trattamento dei dati personali.",
+      "missingOfferConsent": "Devi accettare i termini dell’offerta pubblica.",
+      "internalServer": "Il servizio non è temporaneamente disponibile. Riprova più tardi.",
+      "contract": "Il servizio ha restituito una risposta imprevista. Riprova.",
+      "network": "Impossibile connettersi al servizio. Controlla la connessione e riprova.",
+      "generic": "Impossibile completare l’autenticazione. Riprova."
+    }
+  },
+  "Checkout": {
+    "sessionChecking": "Verifica della sessione...",
+    "authenticatedBadge": "Accesso effettuato",
+    "accountTitle": "Account AnytoolAI",
+    "openAccountAction": "Apri account",
+    "signOutAction": "Esci",
+    "unavailable": {
+      "badge": "Informazioni",
+      "title": "I pagamenti sono temporaneamente non disponibili",
+      "description": "Il Portale supporta attualmente registrazione, accesso, recupero della password e consensi legali. Il catalogo, gli abbonamenti e i pagamenti saranno disponibili dopo il collegamento del nuovo sistema di fatturazione."
+    }
+  },
+  "CookieBanner": {
+    "ariaLabel": "Avviso sui cookie",
+    "badge": "Cookie",
+    "description": "Questo sito utilizza i cookie per garantire il corretto funzionamento dell’interfaccia e salvare le impostazioni selezionate. Ulteriori dettagli sono disponibili nell’Informativa sui cookie.",
+    "acceptAction": "Accetta",
+    "settingsAction": "Impostazioni"
   },
   "Home": {
     "eyebrow": "AnytoolAI {region}",

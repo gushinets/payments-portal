@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { LogOut, ShieldCheck, UserRound } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import {
-  authErrorMessage,
   decodeAuthSessionResponse,
   decodeLogoutResponse,
   getJson,
@@ -14,11 +14,17 @@ import {
   submitAuth,
   type AuthUser
 } from "@/shared/api/auth";
-import { AuthForm, type AuthFormSubmitValues } from "@/shared/ui";
+import {
+  AuthForm,
+  authErrorMessageKey,
+  type AuthFormSubmitValues
+} from "@/shared/ui";
 
 const telegramLoginUrl = process.env.NEXT_PUBLIC_TELEGRAM_LOGIN_URL ?? "";
 
 export function CheckoutClient() {
+  const authT = useTranslations("Auth");
+  const checkoutT = useTranslations("Checkout");
   const [sessionUser, setSessionUser] = useState<AuthUser | null>(null);
   const [sessionResolved, setSessionResolved] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -92,11 +98,11 @@ export function CheckoutClient() {
       setSessionUser(response.user);
       setNotice(
         values.mode === "register"
-          ? "Аккаунт создан. Вход выполнен."
-          : "Вход выполнен."
+          ? authT("notices.registered")
+          : authT("notices.signedIn")
       );
     } catch (requestError) {
-      setError(authErrorMessage(requestError));
+      setError(authT(authErrorMessageKey(requestError)));
     } finally {
       setLoading(false);
     }
@@ -115,7 +121,7 @@ export function CheckoutClient() {
       window.localStorage.removeItem(sessionStorageKey);
       window.dispatchEvent(new Event(sessionChangedEvent));
       setSessionUser(null);
-      setNotice("Вы вышли из аккаунта.");
+      setNotice(authT("notices.signedOut"));
       setError("");
       setLoading(false);
     }
@@ -125,7 +131,7 @@ export function CheckoutClient() {
     return (
       <section className="page-section compact">
         <div className="form-panel" role="status">
-          Проверяем сессию...
+          {checkoutT("sessionChecking")}
         </div>
       </section>
     );
@@ -139,14 +145,14 @@ export function CheckoutClient() {
             <div className="form-grid">
               <span className="badge badge-live">
                 <UserRound size={12} aria-hidden="true" />
-                Вход выполнен
+                {checkoutT("authenticatedBadge")}
               </span>
-              <h1>Аккаунт AnytoolAI</h1>
+              <h1>{checkoutT("accountTitle")}</h1>
               <p className="card-copy">{sessionUser.email}</p>
               {notice ? <div className="notice">{notice}</div> : null}
               <div className="hero-actions">
                 <Link className="btn-primary" href="/account">
-                  Открыть аккаунт
+                  {checkoutT("openAccountAction")}
                 </Link>
                 <button
                   className="btn-secondary"
@@ -155,19 +161,17 @@ export function CheckoutClient() {
                   onClick={() => void logout()}
                 >
                   <LogOut size={15} aria-hidden="true" />
-                  Выйти
+                  {checkoutT("signOutAction")}
                 </button>
               </div>
             </div>
           ) : (
             <AuthForm
-              title="Вход или регистрация"
+              title={authT("dialogTitle")}
               badgeIcon={<ShieldCheck size={12} aria-hidden="true" />}
               notice={notice}
               error={error}
               loading={loading}
-              personalConsentError="Нужно дать согласие на обработку персональных данных."
-              offerConsentError="Нужно принять условия оферты."
               telegramLoginUrl={telegramLoginUrl}
               onModeChange={() => {
                 setNotice("");
@@ -184,13 +188,11 @@ export function CheckoutClient() {
         </article>
 
         <aside className="form-panel">
-          <span className="badge badge-demo">Информация</span>
-          <h2 style={{ marginTop: 14 }}>Оплата временно недоступна</h2>
-          <p className="card-copy">
-            Сейчас портал поддерживает регистрацию, вход, восстановление пароля
-            и юридические согласия. Каталог, подписки и оплата будут доступны
-            после подключения новой биллинговой системы.
-          </p>
+          <span className="badge badge-demo">
+            {checkoutT("unavailable.badge")}
+          </span>
+          <h2 style={{ marginTop: 14 }}>{checkoutT("unavailable.title")}</h2>
+          <p className="card-copy">{checkoutT("unavailable.description")}</p>
         </aside>
       </div>
     </section>

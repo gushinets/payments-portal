@@ -1,7 +1,82 @@
 {
   "Navigation": {
     "mainAriaLabel": "Основная навигация",
-    "products": "Продукты"
+    "products": "Продукты",
+    "localeSwitcher": {
+      "summaryAriaLabel": "Выбор языка. Текущий язык: {language}",
+      "menuAriaLabel": "Выбор языка"
+    }
+  },
+  "Auth": {
+    "header": {
+      "account": "Аккаунт",
+      "accountArea": "личный кабинет",
+      "signIn": "Войти",
+      "closeDialogAriaLabel": "Закрыть окно входа",
+      "dialogAriaLabel": "Вход в аккаунт"
+    },
+    "dialogTitle": "Вход или регистрация",
+    "form": {
+      "badge": "Единый аккаунт"
+    },
+    "modes": {
+      "login": "Вход",
+      "register": "Регистрация"
+    },
+    "fields": {
+      "emailLabel": "Email",
+      "passwordLabel": "Пароль",
+      "passwordPlaceholder": "Не менее 8 символов",
+      "passwordConfirmLabel": "Повторите пароль",
+      "passwordConfirmPlaceholder": "Введите пароль ещё раз"
+    },
+    "forgotPasswordAction": "Забыли пароль?",
+    "actions": {
+      "createAccount": "Создать аккаунт",
+      "signIn": "Войти",
+      "telegramSignIn": "Войти через Telegram"
+    },
+    "validation": {
+      "invalidEmail": "Укажите корректный email.",
+      "passwordTooShort": "Пароль должен содержать не менее 8 символов.",
+      "passwordMismatch": "Пароли не совпадают.",
+      "personalConsentRequired": "Нужно дать согласие на обработку персональных данных.",
+      "offerConsentRequired": "Нужно принять условия оферты."
+    },
+    "notices": {
+      "registered": "Аккаунт создан. Вход выполнен.",
+      "signedIn": "Вход выполнен.",
+      "signedOut": "Вы вышли из аккаунта."
+    },
+    "errors": {
+      "emailAlreadyRegistered": "Аккаунт с таким email уже существует. Попробуйте войти.",
+      "invalidCredentials": "Неверный email или пароль.",
+      "missingPersonalConsent": "Нужно дать согласие на обработку персональных данных.",
+      "missingOfferConsent": "Нужно принять условия оферты.",
+      "internalServer": "Сервис временно недоступен. Попробуйте позже.",
+      "contract": "Сервис вернул неожиданный ответ. Попробуйте ещё раз.",
+      "network": "Не удалось связаться с сервисом. Проверьте соединение и попробуйте ещё раз.",
+      "generic": "Не удалось выполнить авторизацию. Попробуйте ещё раз."
+    }
+  },
+  "Checkout": {
+    "sessionChecking": "Проверяем сессию...",
+    "authenticatedBadge": "Вход выполнен",
+    "accountTitle": "Аккаунт AnytoolAI",
+    "openAccountAction": "Открыть аккаунт",
+    "signOutAction": "Выйти",
+    "unavailable": {
+      "badge": "Информация",
+      "title": "Оплата временно недоступна",
+      "description": "Сейчас портал поддерживает регистрацию, вход, восстановление пароля и юридические согласия. Каталог, подписки и оплата будут доступны после подключения новой биллинговой системы."
+    }
+  },
+  "CookieBanner": {
+    "ariaLabel": "Уведомление о cookies",
+    "badge": "Cookie",
+    "description": "Сайт использует cookie для корректной работы интерфейса и сохранения выбранных настроек. Подробнее это описано в Политике использования файлов cookie.",
+    "acceptAction": "Принять",
+    "settingsAction": "Настроить"
   },
   "Home": {
     "eyebrow": "AnytoolAI {region}",

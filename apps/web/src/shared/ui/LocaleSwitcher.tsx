@@ -1,6 +1,7 @@
 "use client";
 
 import { Languages } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { useSearchParams } from "next/navigation";
 
 import {
@@ -27,6 +28,7 @@ export function isLocaleSwitchingBlockedPathname(pathname: string): boolean {
 }
 
 export function LocaleSwitcher({ locale }: { locale: RouteLocale }) {
+  const t = useTranslations("Navigation.localeSwitcher");
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
@@ -41,12 +43,14 @@ export function LocaleSwitcher({ locale }: { locale: RouteLocale }) {
     <details className="locale-switcher">
       <summary
         className="locale-switcher-summary"
-        aria-label={`Выбор языка. Текущий язык: ${DISPLAY_NAME_BY_ROUTE_LOCALE[locale]}`}
+        aria-label={t("summaryAriaLabel", {
+          language: DISPLAY_NAME_BY_ROUTE_LOCALE[locale]
+        })}
       >
         <Languages size={15} aria-hidden="true" />
         <span>{DISPLAY_NAME_BY_ROUTE_LOCALE[locale]}</span>
       </summary>
-      <nav className="locale-switcher-menu" aria-label="Выбор языка">
+      <nav className="locale-switcher-menu" aria-label={t("menuAriaLabel")}>
         {SUPPORTED_ROUTE_LOCALES.map((routeLocale) => (
           <Link
             className="locale-switcher-link"
