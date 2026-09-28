@@ -2953,7 +2953,11 @@ def cmd_check(args: argparse.Namespace) -> None:
         environment=check_env,
     )
     if not args.fast:
-        run([tool("npm"), "run", "build:web"], env=check_env)
+        web_build_env = dict(check_env)
+        web_build_env.setdefault(
+            "APP_PUBLIC_BASE_URL", "https://payments.example.test"
+        )
+        run([tool("npm"), "run", "build:web"], env=web_build_env)
         cmd_test(
             argparse.Namespace(target="api-postgres", junitxml=None),
             environment=check_env,

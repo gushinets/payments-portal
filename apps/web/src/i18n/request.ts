@@ -1,3 +1,4 @@
+import type { AbstractIntlMessages } from "next-intl";
 import { getRequestConfig } from "next-intl/server";
 
 import { type RouteLocale } from "@/generated/locales";
@@ -6,7 +7,7 @@ import { getCurrentRouteLocale } from "./current-locale";
 
 const messageLoaders: Record<
   RouteLocale,
-  () => Promise<Record<string, never>>
+  () => Promise<AbstractIntlMessages>
 > = {
   en: async () => (await import("../messages/en.json")).default,
   fr: async () => (await import("../messages/fr.json")).default,
