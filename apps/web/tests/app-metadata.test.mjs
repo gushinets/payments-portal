@@ -39,6 +39,11 @@ test("localized routes retain a generated static locale boundary", async () => {
     /SUPPORTED_ROUTE_LOCALES\.map\(\(locale\) => \(\{ locale \}\)\)/
   );
   assert.match(source, /<html lang=\{LANGUAGE_TAG_BY_ROUTE_LOCALE\[locale\]\}>/);
+  assert.match(
+    source,
+    /<NextIntlClientProvider locale=\{locale\} messages=\{null\}>/
+  );
+  assert.doesNotMatch(source, /getMessages/);
 });
 
 test("locale routing keeps root-only negotiation and persistence disabled", async () => {

@@ -56,6 +56,7 @@ export default defineConfig({
     cwd: repositoryRoot,
     env: {
       ...process.env,
+      APP_PUBLIC_BASE_URL: process.env.APP_PUBLIC_BASE_URL ?? baseURL,
       NEXT_TELEMETRY_DISABLED: "1"
     },
     url: `${baseURL}/ru`,

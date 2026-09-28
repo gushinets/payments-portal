@@ -92,6 +92,13 @@ URLs and by next-intl routing. `languageTag` is the document language, and
 `pt` while both language and formatting identities are `pt-BR`. Locale does
 not determine contour/region, provider, currency, or timezone.
 
+The locale returned by next-intl's `useLocale` is the `routeLocale`; formatting
+code resolves the canonical `intlLocale` through the generated mapping instead
+of passing that route identity blindly to `Intl`. The localized root client
+provider supplies locale/runtime context without the complete message catalog.
+Client Component translations receive only the required message namespace or
+subset from their nearest appropriate server boundary.
+
 Ordinary public routes live under `apps/web/src/app/[locale]`. The localized
 root layout owns the document and derives `<html lang>` from the locale
 contract. `/` is the only Accept-Language negotiation entry and falls back to

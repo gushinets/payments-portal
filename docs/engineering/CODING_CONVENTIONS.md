@@ -215,6 +215,8 @@ Frontend ESLint rejects direct type assertions on `response.json()` and
 2. Keep locale identities distinct. `routeLocale` is the URL/next-intl routing
    identity; `languageTag` sets the document language; `intlLocale` controls
    formatting. The `pt` route maps to `pt-BR` for both language and formatting.
+   `useLocale` returns the `routeLocale`; formatting code must resolve the
+   canonical `intlLocale` rather than use that value blindly with `Intl`.
 3. Ordinary pages live below `app/[locale]`, and the localized root layout
    derives `<html lang>` from the locale contract. `/` is the only
    Accept-Language negotiation entry. An explicit locale-prefixed URL always
@@ -234,6 +236,10 @@ Frontend ESLint rejects direct type assertions on `response.json()` and
 8. Complete UI copy localization belongs to 4B.2. Frontend-to-backend locale
    propagation belongs to 4B.3; neither concern is inferred from the route
    locale in this foundation.
+9. The localized root `NextIntlClientProvider` supplies locale/runtime context
+   without the complete message catalog. Client Components that need
+   translations receive only their required namespace or message subset from
+   the nearest appropriate server boundary.
 
 ## Implemented contract guardrails
 

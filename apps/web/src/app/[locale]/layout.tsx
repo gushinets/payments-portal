@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { NextIntlClientProvider } from "next-intl";
-import { getMessages } from "next-intl/server";
 
 import {
   paymentMethods,
@@ -50,12 +49,10 @@ export default async function LocaleLayout({
     notFound();
   }
 
-  const messages = await getMessages();
-
   return (
     <html lang={LANGUAGE_TAG_BY_ROUTE_LOCALE[locale]}>
       <body>
-        <NextIntlClientProvider locale={locale} messages={messages}>
+        <NextIntlClientProvider locale={locale} messages={null}>
           <SiteShell
             footer={{ seller, supportEmail, legalLinks, paymentMethods }}
             locale={locale}
