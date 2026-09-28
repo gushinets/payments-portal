@@ -133,9 +133,7 @@ def _assert_openapi_response_schema_contract(
 
     for exception in exceptions:
         routes = registered_routes.get(exception)
-        assert routes is not None, (
-            f"{exception[0]} {exception[1]} is a stale raw/schema-hidden route exception"
-        )
+        assert routes is not None, f"{exception[0]} {exception[1]} is a stale raw/schema-hidden route exception"
 
         is_schema_hidden = any(not route.include_in_schema for route in routes)
         method, path = exception
@@ -146,9 +144,7 @@ def _assert_openapi_response_schema_contract(
                 if not status_code.startswith("2"):
                     continue
                 content = response.get("content", {})
-                if not content or any(
-                    not _is_json_media_type(media_type) for media_type in content
-                ):
+                if not content or any(not _is_json_media_type(media_type) for media_type in content):
                     has_raw_success_response = True
 
         assert is_schema_hidden or has_raw_success_response, (
