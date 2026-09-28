@@ -217,6 +217,11 @@ test("legal documents remain canonical RU-only routes without locale alternates"
     expect(response?.status()).toBe(200);
     await expect(page.locator(".locale-switcher")).toHaveCount(0);
     await expect(page.locator("main section[lang=ru]")).toHaveCount(1);
+    await expect(
+      page.getByText(
+        "Каноническая версия юридического документа представлена на русском языке."
+      )
+    ).toBeVisible();
 
     response = await page.goto(`/en/${legalSlug}`);
     expect(response?.status()).toBe(404);

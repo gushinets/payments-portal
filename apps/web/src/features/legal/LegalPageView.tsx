@@ -121,6 +121,8 @@ export function LegalPageView({ page }: { page: LegalDocument }) {
       </div>
       <h1 className="legal-title">{page.title}</h1>
       <p className="hero-copy">
+        Каноническая версия юридического документа представлена на русском языке.
+        <br />
         Документ опубликован в отдельном версионируемом файле.
         <br className="mobile-only-break" /> Редакция: {page.version}
       </p>
