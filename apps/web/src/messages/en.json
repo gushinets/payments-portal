@@ -71,6 +71,80 @@
       "description": "The Portal currently supports registration, sign-in, password recovery, and legal consent. The catalog, subscriptions, and payments will become available after the new billing system is connected."
     }
   },
+  "Account": {
+    "loading": "Loading account...",
+    "badge": "Account",
+    "eyebrow": "Account",
+    "title": "Account area",
+    "signedOut": {
+      "notice": "Sign in to your account to open the account area.",
+      "action": "Sign in or register"
+    },
+    "authenticated": {
+      "description": "Subscription and payment management is temporarily unavailable.",
+      "badge": "Signed in",
+      "summaryTitle": "Account",
+      "signOutAction": "Sign out"
+    },
+    "billingUnavailable": {
+      "badge": "Information",
+      "title": "Billing is being updated",
+      "description": "The catalog, purchases, and subscription details will appear here after the new billing system is connected."
+    }
+  },
+  "PasswordReset": {
+    "request": {
+      "badge": "Account recovery",
+      "title": "Reset password",
+      "description": "Enter the email address for your AnytoolAI account. We will send a link to change your password.",
+      "fields": {
+        "emailLabel": "Email"
+      },
+      "validation": {
+        "invalidEmail": "Enter a valid email address."
+      },
+      "notices": {
+        "accepted": "If an account with this email exists, we sent a link to change the password."
+      },
+      "actions": {
+        "submit": "Send link",
+        "backToSignIn": "Back to sign in"
+      }
+    },
+    "confirm": {
+      "loading": "Loading the password change form...",
+      "badge": "New password",
+      "title": "Change password",
+      "description": "Set a new password for your AnytoolAI account. Active sessions will end after the change.",
+      "fields": {
+        "passwordLabel": "New password",
+        "passwordPlaceholder": "At least 8 characters",
+        "passwordConfirmLabel": "Repeat password",
+        "passwordConfirmPlaceholder": "Enter the password again"
+      },
+      "validation": {
+        "missingToken": "The password change link is invalid. Request a new link.",
+        "passwordTooShort": "The password must contain at least 8 characters.",
+        "passwordMismatch": "The passwords do not match."
+      },
+      "notices": {
+        "success": "Password changed. You can now sign in with the new password."
+      },
+      "actions": {
+        "submit": "Change password",
+        "signIn": "Go to sign in"
+      }
+    },
+    "errors": {
+      "invalidOrExpiredToken": "The link is invalid or has expired. Request a new link.",
+      "rateLimited": "Too many password recovery attempts. Try again later.",
+      "invalidInput": "Check the email address and password. The password must contain at least 8 characters.",
+      "internalServer": "The service is temporarily unavailable. Try again later.",
+      "contract": "The service returned an unexpected response. Try again.",
+      "network": "Could not connect to the service. Check your connection and try again.",
+      "generic": "Could not complete password recovery. Try again."
+    }
+  },
   "CookieBanner": {
     "ariaLabel": "Cookie notice",
     "badge": "Cookie",

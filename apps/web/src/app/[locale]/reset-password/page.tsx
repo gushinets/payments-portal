@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { NextIntlClientProvider } from "next-intl";
+import { getMessages, getTranslations } from "next-intl/server";
 import { Suspense } from "react";
 
 import { PasswordResetConfirmClient } from "@/features/password-reset";
@@ -12,18 +14,29 @@ export async function generateMetadata(): Promise<Metadata> {
   );
 }
 
-export default function ResetPasswordPage() {
+export default async function ResetPasswordPage() {
+  const [messages, t] = await Promise.all([
+    getMessages(),
+    getTranslations("PasswordReset")
+  ]);
+
   return (
-    <Suspense fallback={<ResetPasswordFallback />}>
-      <PasswordResetConfirmClient />
-    </Suspense>
+    <NextIntlClientProvider
+      messages={{ PasswordReset: messages.PasswordReset }}
+    >
+      <Suspense
+        fallback={<ResetPasswordFallback message={t("confirm.loading")} />}
+      >
+        <PasswordResetConfirmClient />
+      </Suspense>
+    </NextIntlClientProvider>
   );
 }
 
-function ResetPasswordFallback() {
+function ResetPasswordFallback({ message }: { message: string }) {
   return (
     <section className="page-section compact auth-page-section">
-      <div className="form-panel auth-page-panel">Загрузка формы смены пароля...</div>
+      <div className="form-panel auth-page-panel">{message}</div>
     </section>
   );
 }

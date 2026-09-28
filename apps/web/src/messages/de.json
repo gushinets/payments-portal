@@ -71,6 +71,80 @@
       "description": "Das Portal unterstützt derzeit Registrierung, Anmeldung, Passwortwiederherstellung und rechtliche Einwilligungen. Katalog, Abonnements und Zahlungen werden nach der Anbindung des neuen Abrechnungssystems verfügbar."
     }
   },
+  "Account": {
+    "loading": "Konto wird geladen...",
+    "badge": "Konto",
+    "eyebrow": "Konto",
+    "title": "Kontobereich",
+    "signedOut": {
+      "notice": "Melden Sie sich an, um Ihren Kontobereich zu öffnen.",
+      "action": "Anmelden oder registrieren"
+    },
+    "authenticated": {
+      "description": "Die Verwaltung von Abonnements und Zahlungen ist vorübergehend nicht verfügbar.",
+      "badge": "Angemeldet",
+      "summaryTitle": "Konto",
+      "signOutAction": "Abmelden"
+    },
+    "billingUnavailable": {
+      "badge": "Information",
+      "title": "Abrechnung wird aktualisiert",
+      "description": "Der Katalog, Käufe und Abonnementdetails werden hier angezeigt, sobald das neue Abrechnungssystem verbunden ist."
+    }
+  },
+  "PasswordReset": {
+    "request": {
+      "badge": "Zugang wiederherstellen",
+      "title": "Passwort zurücksetzen",
+      "description": "Geben Sie die E-Mail-Adresse Ihres AnytoolAI-Kontos ein. Wir senden Ihnen einen Link zum Ändern Ihres Passworts.",
+      "fields": {
+        "emailLabel": "E-Mail"
+      },
+      "validation": {
+        "invalidEmail": "Geben Sie eine gültige E-Mail-Adresse ein."
+      },
+      "notices": {
+        "accepted": "Wenn ein Konto mit dieser E-Mail-Adresse existiert, haben wir einen Link zum Ändern des Passworts gesendet."
+      },
+      "actions": {
+        "submit": "Link senden",
+        "backToSignIn": "Zurück zur Anmeldung"
+      }
+    },
+    "confirm": {
+      "loading": "Formular zum Ändern des Passworts wird geladen...",
+      "badge": "Neues Passwort",
+      "title": "Passwort ändern",
+      "description": "Legen Sie ein neues Passwort für Ihr AnytoolAI-Konto fest. Aktive Sitzungen werden nach der Änderung beendet.",
+      "fields": {
+        "passwordLabel": "Neues Passwort",
+        "passwordPlaceholder": "Mindestens 8 Zeichen",
+        "passwordConfirmLabel": "Passwort wiederholen",
+        "passwordConfirmPlaceholder": "Passwort erneut eingeben"
+      },
+      "validation": {
+        "missingToken": "Der Link zum Ändern des Passworts ist ungültig. Fordern Sie einen neuen Link an.",
+        "passwordTooShort": "Das Passwort muss mindestens 8 Zeichen enthalten.",
+        "passwordMismatch": "Die Passwörter stimmen nicht überein."
+      },
+      "notices": {
+        "success": "Passwort geändert. Sie können sich jetzt mit dem neuen Passwort anmelden."
+      },
+      "actions": {
+        "submit": "Passwort ändern",
+        "signIn": "Zur Anmeldung"
+      }
+    },
+    "errors": {
+      "invalidOrExpiredToken": "Der Link ist ungültig oder abgelaufen. Fordern Sie einen neuen Link an.",
+      "rateLimited": "Zu viele Versuche zur Passwortwiederherstellung. Versuchen Sie es später erneut.",
+      "invalidInput": "Prüfen Sie die E-Mail-Adresse und das Passwort. Das Passwort muss mindestens 8 Zeichen enthalten.",
+      "internalServer": "Der Dienst ist vorübergehend nicht verfügbar. Versuchen Sie es später erneut.",
+      "contract": "Der Dienst hat eine unerwartete Antwort zurückgegeben. Versuchen Sie es erneut.",
+      "network": "Verbindung zum Dienst fehlgeschlagen. Prüfen Sie Ihre Verbindung und versuchen Sie es erneut.",
+      "generic": "Die Passwortwiederherstellung konnte nicht abgeschlossen werden. Versuchen Sie es erneut."
+    }
+  },
   "CookieBanner": {
     "ariaLabel": "Cookie-Hinweis",
     "badge": "Cookie",

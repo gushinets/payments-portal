@@ -2,16 +2,16 @@
 
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { ArrowRight, KeyRound } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
-import {
-  confirmPasswordReset,
-  passwordResetErrorMessage
-} from "@/shared/api/auth";
+import { confirmPasswordReset } from "@/shared/api/auth";
+import { passwordResetErrorMessageKey } from "./errors";
 
 const sessionStorageKey = "anytoolai_session_token_v1";
 const sessionChangedEvent = "anytoolai_session_changed";
 
 export function PasswordResetConfirmClient() {
+  const t = useTranslations("PasswordReset");
   const tokenRef = useRef("");
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
@@ -40,17 +40,17 @@ export function PasswordResetConfirmClient() {
 
     const token = tokenRef.current;
     if (!token) {
-      setError("Ссылка для смены пароля недействительна. Запросите новую ссылку.");
+      setError(t("confirm.validation.missingToken"));
       return;
     }
 
     if (password.length < 8) {
-      setError("Пароль должен содержать не менее 8 символов.");
+      setError(t("confirm.validation.passwordTooShort"));
       return;
     }
 
     if (password !== passwordConfirm) {
-      setError("Пароли не совпадают.");
+      setError(t("confirm.validation.passwordMismatch"));
       return;
     }
 
@@ -62,9 +62,9 @@ export function PasswordResetConfirmClient() {
       window.dispatchEvent(new Event(sessionChangedEvent));
       setPassword("");
       setPasswordConfirm("");
-      setNotice("Пароль изменён. Теперь можно войти с новым паролем.");
+      setNotice(t("confirm.notices.success"));
     } catch (requestError) {
-      setError(passwordResetErrorMessage(requestError));
+      setError(t(passwordResetErrorMessageKey(requestError)));
     } finally {
       setLoading(false);
     }
@@ -76,13 +76,10 @@ export function PasswordResetConfirmClient() {
         <form className="form-grid" onSubmit={submit}>
           <span className="badge badge-running">
             <KeyRound size={12} aria-hidden="true" />
-            Новый пароль
+            {t("confirm.badge")}
           </span>
-          <h1 className="result-title">Смена пароля</h1>
-          <p className="card-copy">
-            Задайте новый пароль для аккаунта AnytoolAI. После смены активные
-            сессии будут завершены.
-          </p>
+          <h1 className="result-title">{t("confirm.title")}</h1>
+          <p className="card-copy">{t("confirm.description")}</p>
 
           <div aria-live="polite">
             {notice ? <div className="notice">{notice}</div> : null}
@@ -90,24 +87,24 @@ export function PasswordResetConfirmClient() {
           </div>
 
           <label className="field-label">
-            Новый пароль
+            {t("confirm.fields.passwordLabel")}
             <input
               className="input"
               type="password"
               autoComplete="new-password"
-              placeholder="Не менее 8 символов"
+              placeholder={t("confirm.fields.passwordPlaceholder")}
               value={password}
               onChange={(event) => setPassword(event.target.value)}
             />
           </label>
 
           <label className="field-label">
-            Повторите пароль
+            {t("confirm.fields.passwordConfirmLabel")}
             <input
               className="input"
               type="password"
               autoComplete="new-password"
-              placeholder="Введите пароль ещё раз"
+              placeholder={t("confirm.fields.passwordConfirmPlaceholder")}
               value={passwordConfirm}
               onChange={(event) => setPasswordConfirm(event.target.value)}
             />
@@ -118,12 +115,12 @@ export function PasswordResetConfirmClient() {
             type="submit"
             disabled={loading}
           >
-            Сменить пароль
+            {t("confirm.actions.submit")}
             <ArrowRight size={15} aria-hidden="true" />
           </button>
 
           <Link className="btn-secondary" href="/auth-checkout">
-            Перейти ко входу
+            {t("confirm.actions.signIn")}
           </Link>
         </form>
       </div>

@@ -71,6 +71,80 @@
       "description": "Le Portail prend actuellement en charge l’inscription, la connexion, la récupération du mot de passe et les consentements juridiques. Le catalogue, les abonnements et les paiements seront disponibles après la connexion du nouveau système de facturation."
     }
   },
+  "Account": {
+    "loading": "Chargement du compte...",
+    "badge": "Compte",
+    "eyebrow": "Compte",
+    "title": "Espace personnel",
+    "signedOut": {
+      "notice": "Connectez-vous à votre compte pour accéder à votre espace personnel.",
+      "action": "Se connecter ou s’inscrire"
+    },
+    "authenticated": {
+      "description": "La gestion des abonnements et des paiements est temporairement indisponible.",
+      "badge": "Connecté",
+      "summaryTitle": "Compte",
+      "signOutAction": "Se déconnecter"
+    },
+    "billingUnavailable": {
+      "badge": "Informations",
+      "title": "Mise à jour de la facturation",
+      "description": "Le catalogue, les achats et les informations sur les abonnements apparaîtront ici après la connexion du nouveau système de facturation."
+    }
+  },
+  "PasswordReset": {
+    "request": {
+      "badge": "Récupération de l’accès",
+      "title": "Réinitialiser le mot de passe",
+      "description": "Saisissez l’adresse e-mail de votre compte AnytoolAI. Nous vous enverrons un lien pour modifier votre mot de passe.",
+      "fields": {
+        "emailLabel": "E-mail"
+      },
+      "validation": {
+        "invalidEmail": "Saisissez une adresse e-mail valide."
+      },
+      "notices": {
+        "accepted": "Si un compte associé à cette adresse e-mail existe, nous avons envoyé un lien pour modifier le mot de passe."
+      },
+      "actions": {
+        "submit": "Envoyer le lien",
+        "backToSignIn": "Retour à la connexion"
+      }
+    },
+    "confirm": {
+      "loading": "Chargement du formulaire de changement de mot de passe...",
+      "badge": "Nouveau mot de passe",
+      "title": "Modifier le mot de passe",
+      "description": "Définissez un nouveau mot de passe pour votre compte AnytoolAI. Les sessions actives seront fermées après la modification.",
+      "fields": {
+        "passwordLabel": "Nouveau mot de passe",
+        "passwordPlaceholder": "Au moins 8 caractères",
+        "passwordConfirmLabel": "Répétez le mot de passe",
+        "passwordConfirmPlaceholder": "Saisissez de nouveau le mot de passe"
+      },
+      "validation": {
+        "missingToken": "Le lien de changement de mot de passe n’est pas valide. Demandez un nouveau lien.",
+        "passwordTooShort": "Le mot de passe doit contenir au moins 8 caractères.",
+        "passwordMismatch": "Les mots de passe ne correspondent pas."
+      },
+      "notices": {
+        "success": "Mot de passe modifié. Vous pouvez maintenant vous connecter avec le nouveau mot de passe."
+      },
+      "actions": {
+        "submit": "Modifier le mot de passe",
+        "signIn": "Accéder à la connexion"
+      }
+    },
+    "errors": {
+      "invalidOrExpiredToken": "Le lien n’est pas valide ou a expiré. Demandez un nouveau lien.",
+      "rateLimited": "Trop de tentatives de récupération du mot de passe. Réessayez plus tard.",
+      "invalidInput": "Vérifiez l’adresse e-mail et le mot de passe. Le mot de passe doit contenir au moins 8 caractères.",
+      "internalServer": "Le service est temporairement indisponible. Réessayez plus tard.",
+      "contract": "Le service a renvoyé une réponse inattendue. Réessayez.",
+      "network": "Impossible de contacter le service. Vérifiez votre connexion et réessayez.",
+      "generic": "Impossible de terminer la récupération du mot de passe. Réessayez."
+    }
+  },
   "CookieBanner": {
     "ariaLabel": "Avis relatif aux cookies",
     "badge": "Cookie",

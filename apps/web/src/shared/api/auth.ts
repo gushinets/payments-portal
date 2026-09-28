@@ -350,21 +350,3 @@ export async function confirmPasswordReset(
     decodePasswordResetConfirmResponse
   );
 }
-
-export function passwordResetErrorMessage(requestError: unknown): string {
-  const code = apiErrorCode(requestError);
-
-  if (
-    requestError instanceof ApiError &&
-    requestError.status === 400 &&
-    code === "invalid_or_expired_reset_token"
-  ) {
-    return "Ссылка недействительна или срок её действия истёк. Запросите новую ссылку.";
-  }
-
-  if (requestError instanceof ApiError && requestError.status === 422) {
-    return "Проверьте email и пароль. Пароль должен содержать не менее 8 символов.";
-  }
-
-  return "Не удалось выполнить восстановление пароля. Попробуйте ещё раз.";
-}

@@ -71,6 +71,80 @@
       "description": "El Portal admite actualmente el registro, el inicio de sesión, la recuperación de contraseña y los consentimientos legales. El catálogo, las suscripciones y los pagos estarán disponibles cuando se conecte el nuevo sistema de facturación."
     }
   },
+  "Account": {
+    "loading": "Cargando la cuenta...",
+    "badge": "Cuenta",
+    "eyebrow": "Cuenta",
+    "title": "Área personal",
+    "signedOut": {
+      "notice": "Inicia sesión en tu cuenta para abrir el área personal.",
+      "action": "Iniciar sesión o registrarse"
+    },
+    "authenticated": {
+      "description": "La gestión de suscripciones y pagos no está disponible temporalmente.",
+      "badge": "Sesión iniciada",
+      "summaryTitle": "Cuenta",
+      "signOutAction": "Cerrar sesión"
+    },
+    "billingUnavailable": {
+      "badge": "Información",
+      "title": "Actualizando la facturación",
+      "description": "El catálogo, las compras y los detalles de las suscripciones aparecerán aquí cuando se conecte el nuevo sistema de facturación."
+    }
+  },
+  "PasswordReset": {
+    "request": {
+      "badge": "Recuperación de acceso",
+      "title": "Restablecer contraseña",
+      "description": "Introduce el correo electrónico de tu cuenta de AnytoolAI. Te enviaremos un enlace para cambiar la contraseña.",
+      "fields": {
+        "emailLabel": "Correo electrónico"
+      },
+      "validation": {
+        "invalidEmail": "Introduce una dirección de correo electrónico válida."
+      },
+      "notices": {
+        "accepted": "Si existe una cuenta con este correo electrónico, hemos enviado un enlace para cambiar la contraseña."
+      },
+      "actions": {
+        "submit": "Enviar enlace",
+        "backToSignIn": "Volver al inicio de sesión"
+      }
+    },
+    "confirm": {
+      "loading": "Cargando el formulario para cambiar la contraseña...",
+      "badge": "Nueva contraseña",
+      "title": "Cambiar contraseña",
+      "description": "Establece una nueva contraseña para tu cuenta de AnytoolAI. Las sesiones activas finalizarán después del cambio.",
+      "fields": {
+        "passwordLabel": "Nueva contraseña",
+        "passwordPlaceholder": "Al menos 8 caracteres",
+        "passwordConfirmLabel": "Repite la contraseña",
+        "passwordConfirmPlaceholder": "Introduce la contraseña de nuevo"
+      },
+      "validation": {
+        "missingToken": "El enlace para cambiar la contraseña no es válido. Solicita un enlace nuevo.",
+        "passwordTooShort": "La contraseña debe contener al menos 8 caracteres.",
+        "passwordMismatch": "Las contraseñas no coinciden."
+      },
+      "notices": {
+        "success": "Contraseña cambiada. Ya puedes iniciar sesión con la nueva contraseña."
+      },
+      "actions": {
+        "submit": "Cambiar contraseña",
+        "signIn": "Ir al inicio de sesión"
+      }
+    },
+    "errors": {
+      "invalidOrExpiredToken": "El enlace no es válido o ha caducado. Solicita un enlace nuevo.",
+      "rateLimited": "Demasiados intentos de recuperación de contraseña. Inténtalo de nuevo más tarde.",
+      "invalidInput": "Comprueba el correo electrónico y la contraseña. La contraseña debe contener al menos 8 caracteres.",
+      "internalServer": "El servicio no está disponible temporalmente. Inténtalo de nuevo más tarde.",
+      "contract": "El servicio devolvió una respuesta inesperada. Inténtalo de nuevo.",
+      "network": "No se pudo conectar con el servicio. Comprueba tu conexión e inténtalo de nuevo.",
+      "generic": "No se pudo completar la recuperación de la contraseña. Inténtalo de nuevo."
+    }
+  },
   "CookieBanner": {
     "ariaLabel": "Aviso de cookies",
     "badge": "Cookie",

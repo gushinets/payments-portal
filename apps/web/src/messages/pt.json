@@ -71,6 +71,80 @@
       "description": "No momento, o Portal oferece cadastro, acesso, recuperação de senha e consentimentos jurídicos. O catálogo, as assinaturas e os pagamentos estarão disponíveis depois que o novo sistema de cobrança for conectado."
     }
   },
+  "Account": {
+    "loading": "Carregando a conta...",
+    "badge": "Conta",
+    "eyebrow": "Conta",
+    "title": "Área da conta",
+    "signedOut": {
+      "notice": "Entre na sua conta para acessar a área da conta.",
+      "action": "Entrar ou criar uma conta"
+    },
+    "authenticated": {
+      "description": "O gerenciamento de assinaturas e pagamentos está temporariamente indisponível.",
+      "badge": "Conectado",
+      "summaryTitle": "Conta",
+      "signOutAction": "Sair"
+    },
+    "billingUnavailable": {
+      "badge": "Informações",
+      "title": "Atualização do faturamento",
+      "description": "O catálogo, as compras e os detalhes das assinaturas aparecerão aqui depois que o novo sistema de faturamento for conectado."
+    }
+  },
+  "PasswordReset": {
+    "request": {
+      "badge": "Recuperação de acesso",
+      "title": "Redefinir senha",
+      "description": "Digite o e-mail da sua conta AnytoolAI. Enviaremos um link para alterar sua senha.",
+      "fields": {
+        "emailLabel": "E-mail"
+      },
+      "validation": {
+        "invalidEmail": "Digite um endereço de e-mail válido."
+      },
+      "notices": {
+        "accepted": "Se existir uma conta com este e-mail, enviamos um link para alterar a senha."
+      },
+      "actions": {
+        "submit": "Enviar link",
+        "backToSignIn": "Voltar para o login"
+      }
+    },
+    "confirm": {
+      "loading": "Carregando o formulário de alteração de senha...",
+      "badge": "Nova senha",
+      "title": "Alterar senha",
+      "description": "Defina uma nova senha para sua conta AnytoolAI. As sessões ativas serão encerradas após a alteração.",
+      "fields": {
+        "passwordLabel": "Nova senha",
+        "passwordPlaceholder": "Pelo menos 8 caracteres",
+        "passwordConfirmLabel": "Repita a senha",
+        "passwordConfirmPlaceholder": "Digite a senha novamente"
+      },
+      "validation": {
+        "missingToken": "O link para alterar a senha é inválido. Solicite um novo link.",
+        "passwordTooShort": "A senha deve ter pelo menos 8 caracteres.",
+        "passwordMismatch": "As senhas não são iguais."
+      },
+      "notices": {
+        "success": "Senha alterada. Agora você pode entrar com a nova senha."
+      },
+      "actions": {
+        "submit": "Alterar senha",
+        "signIn": "Ir para o login"
+      }
+    },
+    "errors": {
+      "invalidOrExpiredToken": "O link é inválido ou expirou. Solicite um novo link.",
+      "rateLimited": "Muitas tentativas de recuperação de senha. Tente novamente mais tarde.",
+      "invalidInput": "Verifique o e-mail e a senha. A senha deve ter pelo menos 8 caracteres.",
+      "internalServer": "O serviço está temporariamente indisponível. Tente novamente mais tarde.",
+      "contract": "O serviço retornou uma resposta inesperada. Tente novamente.",
+      "network": "Não foi possível conectar ao serviço. Verifique sua conexão e tente novamente.",
+      "generic": "Não foi possível concluir a recuperação da senha. Tente novamente."
+    }
+  },
   "CookieBanner": {
     "ariaLabel": "Aviso sobre cookies",
     "badge": "Cookie",
