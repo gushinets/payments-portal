@@ -59,7 +59,10 @@ export function proxy(request: NextRequest): NextResponse {
   const routeLocale =
     routeLocaleByLanguageTag.get(matchedLanguageTag) ?? DEFAULT_ROUTE_LOCALE;
 
-  return NextResponse.redirect(new URL(`/${routeLocale}`, request.url));
+  const redirectUrl = request.nextUrl.clone();
+  redirectUrl.pathname = `/${routeLocale}`;
+
+  return NextResponse.redirect(redirectUrl);
 }
 
 export const config = {

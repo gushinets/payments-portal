@@ -125,6 +125,20 @@ test("routing-owned literal RU application paths are rejected", async () => {
   assert.equal(messages.length, 3);
 });
 
+test("expression-valued JSX href literals for RU application paths are rejected", async () => {
+  const [result] = await eslint.lintText(
+    'export default function Fixture() { return <Link href={"/ru/products"} />; }',
+    { filePath: `${webRoot}/src/app/BoundaryFixture.tsx` }
+  );
+  const messages = result.messages.filter(
+    (message) =>
+      message.ruleId === "no-restricted-syntax" &&
+      /locale-aware navigation/.test(message.message)
+  );
+
+  assert.equal(messages.length, 1);
+});
+
 test("canonical RU legal paths sourced from generated authority remain allowed", async () => {
   const [result] = await eslint.lintText(
     [

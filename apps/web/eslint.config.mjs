@@ -66,6 +66,12 @@ const eslintConfig = defineConfig([
         },
         {
           selector:
+            "JSXAttribute[name.name='href'] > JSXExpressionContainer > Literal[value=/^\\/ru(?:\\/|$)/]",
+          message:
+            "Ordinary application routes must use locale-aware navigation instead of a literal /ru path."
+        },
+        {
+          selector:
             "JSXAttribute[name.name='href'] TemplateElement[value.raw=/^\\/ru(?:\\/|$)/]",
           message:
             "Ordinary application routes must use locale-aware navigation instead of a literal /ru path."

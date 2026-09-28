@@ -136,7 +136,7 @@ export function Footer({
           </p>
           <div className="footer-links" aria-label="Юридические документы">
             {legalLinks.map((link) => (
-              <Link href={link.href} key={link.href}>
+              <Link href={link.href} key={link.href} lang="ru">
                 {link.label}
               </Link>
             ))}

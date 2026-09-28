@@ -72,6 +72,24 @@ test("only the root negotiates Accept-Language and does not persist a locale coo
   }
 });
 
+test("root locale negotiation preserves query parameters", async ({ request }) => {
+  const response = await request.get(
+    "/?source=campaign&return_to=/account",
+    {
+      headers: { "Accept-Language": "de-AT,de;q=0.9" },
+      maxRedirects: 0
+    }
+  );
+  const location = new URL(response.headers().location, publicUrl("/"));
+
+  expect(response.status()).toBe(307);
+  expect(location.pathname).toBe("/de");
+  expect([...location.searchParams]).toEqual([
+    ["source", "campaign"],
+    ["return_to", "/account"]
+  ]);
+});
+
 test("explicit locale routes win and arbitrary unprefixed paths stay not-found", async ({
   page
 }) => {
@@ -134,6 +152,19 @@ test("ordinary navigation keeps the active locale", async ({ page }) => {
   await expect(
     page.getByRole("dialog").getByRole("link", { name: "Забыли пароль?" })
   ).toHaveAttribute("href", "/de/forgot-password");
+});
+
+test("canonical RU footer labels retain Russian language metadata on non-RU routes", async ({
+  page
+}) => {
+  await page.goto("/de");
+
+  const legalLinks = page.locator(".footer-links a");
+  await expect(legalLinks).toHaveCount(legalSlugs.length);
+
+  for (const legalLink of await legalLinks.all()) {
+    await expect(legalLink).toHaveAttribute("lang", "ru");
+  }
 });
 
 test("locale switching preserves pathname, query and auth storage across seven destinations", async ({
