@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Any
 
 import pytest
+from fastapi import FastAPI
+from fastapi.responses import PlainTextResponse
+from fastapi.routing import APIRoute
 
 os.environ["DATABASE_URL"] = "sqlite+pysqlite:///:memory:"
 
@@ -44,18 +48,58 @@ from scripts.repo import (
 )
 
 
+OPENAPI_HTTP_METHODS = (
+    "get",
+    "put",
+    "post",
+    "delete",
+    "options",
+    "head",
+    "patch",
+    "trace",
+)
+RAW_OR_SCHEMA_HIDDEN_ROUTE_EXCEPTIONS = {
+    ("GET", "/metrics"),
+}
+
+
+def _is_json_media_type(media_type: str) -> bool:
+    return media_type == "application/json" or media_type.endswith("+json")
+
+
 def write_module(root: Path, relative: str, source: str) -> None:
     path = root / relative
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(source, encoding="utf-8")
 
 
-def test_ordinary_json_routes_have_named_openapi_response_schemas() -> None:
-    openapi = create_app().openapi()
-    schemas = openapi["components"]["schemas"]
+def _assert_openapi_response_schema_contract(
+    app: FastAPI,
+    *,
+    exceptions: set[tuple[str, str]],
+) -> dict[str, Any]:
+    openapi = app.openapi()
+    schemas = openapi.get("components", {}).get("schemas", {})
+    registered_routes: dict[tuple[str, str], list[APIRoute]] = {}
+
+    for route in app.routes:
+        if not isinstance(route, APIRoute):
+            continue
+
+        for method in route.methods:
+            if method.lower() not in OPENAPI_HTTP_METHODS:
+                continue
+            registered_routes.setdefault((method, route.path), []).append(route)
+
+    for route_identity, routes in registered_routes.items():
+        if any(not route.include_in_schema for route in routes):
+            assert route_identity in exceptions, (
+                f"{route_identity[0]} {route_identity[1]} is hidden from OpenAPI and must be "
+                "an explicit raw/schema-hidden route exception"
+            )
 
     for path, path_item in openapi["paths"].items():
-        for method in ("get", "put", "post", "delete", "options", "head", "patch", "trace"):
+        for method in OPENAPI_HTTP_METHODS:
             operation = path_item.get(method)
             if operation is None:
                 continue
@@ -64,8 +108,19 @@ def test_ordinary_json_routes_have_named_openapi_response_schemas() -> None:
                 if not status_code.startswith("2"):
                     continue
 
-                for media_type, media_response in response.get("content", {}).items():
-                    if media_type != "application/json" and not media_type.endswith("+json"):
+                route_identity = (method.upper(), path)
+                content = response.get("content", {})
+                assert content or route_identity in exceptions, (
+                    f"{method.upper()} {path} {status_code} has no JSON response media type "
+                    "and must be an explicit raw/schema-hidden route exception"
+                )
+
+                for media_type, media_response in content.items():
+                    if not _is_json_media_type(media_type):
+                        assert route_identity in exceptions, (
+                            f"{method.upper()} {path} {status_code} {media_type} is non-JSON and "
+                            "must be an explicit raw/schema-hidden route exception"
+                        )
                         continue
 
                     response_schema = media_response.get("schema", {})
@@ -76,7 +131,38 @@ def test_ordinary_json_routes_have_named_openapi_response_schemas() -> None:
                     schema_name = schema_ref.removeprefix("#/components/schemas/")
                     assert schema_name in schemas, endpoint
 
-    assert "/metrics" not in openapi["paths"]
+    for exception in exceptions:
+        routes = registered_routes.get(exception)
+        assert routes is not None, (
+            f"{exception[0]} {exception[1]} is a stale raw/schema-hidden route exception"
+        )
+
+        is_schema_hidden = any(not route.include_in_schema for route in routes)
+        method, path = exception
+        operation = openapi["paths"].get(path, {}).get(method.lower())
+        has_raw_success_response = False
+        if operation is not None:
+            for status_code, response in operation["responses"].items():
+                if not status_code.startswith("2"):
+                    continue
+                content = response.get("content", {})
+                if not content or any(
+                    not _is_json_media_type(media_type) for media_type in content
+                ):
+                    has_raw_success_response = True
+
+        assert is_schema_hidden or has_raw_success_response, (
+            f"{method} {path} is a stale raw/schema-hidden route exception"
+        )
+
+    return openapi
+
+
+def test_ordinary_json_routes_have_named_openapi_response_schemas() -> None:
+    openapi = _assert_openapi_response_schema_contract(
+        create_app(),
+        exceptions=RAW_OR_SCHEMA_HIDDEN_ROUTE_EXCEPTIONS,
+    )
 
     readiness_unavailable_schema = openapi["paths"]["/api/health/ready"]["get"]["responses"]["503"]["content"][
         "application/json"
@@ -84,6 +170,39 @@ def test_ordinary_json_routes_have_named_openapi_response_schemas() -> None:
     assert readiness_unavailable_schema == {
         "$ref": "#/components/schemas/ReadinessUnavailableResponse",
     }
+
+
+def test_openapi_guard_rejects_unlisted_non_json_routes() -> None:
+    app = FastAPI()
+
+    @app.get("/export", response_class=PlainTextResponse)
+    def export() -> str:
+        return "export"
+
+    with pytest.raises(AssertionError, match=r"GET /export 200 text/plain is non-JSON"):
+        _assert_openapi_response_schema_contract(app, exceptions=set())
+
+
+def test_openapi_guard_rejects_unlisted_schema_hidden_routes() -> None:
+    app = FastAPI()
+
+    @app.get("/internal", include_in_schema=False)
+    def internal() -> dict[str, str]:
+        return {"status": "internal"}
+
+    with pytest.raises(AssertionError, match=r"GET /internal is hidden from OpenAPI"):
+        _assert_openapi_response_schema_contract(app, exceptions=set())
+
+
+def test_openapi_guard_rejects_unnamed_json_response_schemas() -> None:
+    app = FastAPI()
+
+    @app.get("/inline")
+    def inline() -> dict[str, str]:
+        return {"status": "inline"}
+
+    with pytest.raises(AssertionError, match=r"GET /inline 200 application/json must use a named response schema"):
+        _assert_openapi_response_schema_contract(app, exceptions=set())
 
 
 def test_ast_import_forms_are_rejected_with_actionable_errors(tmp_path: Path) -> None:
