@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 from fastapi import FastAPI
 from fastapi.responses import PlainTextResponse
-from fastapi.routing import APIRoute
+from fastapi.routing import APIRoute, RouteContext, iter_route_contexts
 
 os.environ["DATABASE_URL"] = "sqlite+pysqlite:///:memory:"
 
@@ -80,16 +80,18 @@ def _assert_openapi_response_schema_contract(
 ) -> dict[str, Any]:
     openapi = app.openapi()
     schemas = openapi.get("components", {}).get("schemas", {})
-    registered_routes: dict[tuple[str, str], list[APIRoute]] = {}
+    registered_routes: dict[tuple[str, str], list[RouteContext]] = {}
 
-    for route in app.routes:
-        if not isinstance(route, APIRoute):
+    for route_context in iter_route_contexts(app.routes):
+        if not isinstance(route_context.original_route, APIRoute):
             continue
 
-        for method in route.methods:
+        assert route_context.path is not None
+        assert route_context.methods is not None
+        for method in route_context.methods:
             if method.lower() not in OPENAPI_HTTP_METHODS:
                 continue
-            registered_routes.setdefault((method, route.path), []).append(route)
+            registered_routes.setdefault((method, route_context.path), []).append(route_context)
 
     for route_identity, routes in registered_routes.items():
         if any(not route.include_in_schema for route in routes):
