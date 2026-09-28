@@ -1,7 +1,7 @@
 # Documentation Index
 
 Status: authoritative index
-Last verified: 2026-09-24
+Last verified: 2026-09-25
 
 Start with the smallest document that matches the task.
 
@@ -66,8 +66,6 @@ Start with the smallest document that matches the task.
 - [Region Resolver contract](architecture/region-resolver-contract.md)
 - [Deployment](architecture/deployment.md)
 - [Architecture decisions](architecture/decisions/README.md)
-- [DDD-lite audit and safe remediation](architecture/ddd-lite-audit.md) —
-  smell catalog and two billing slices; not current-state authority
 
 ## Engineering
 

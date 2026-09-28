@@ -682,7 +682,7 @@ def import_api() -> tuple[object, object]:
     os.environ.setdefault("POSTGRES_PORT", "5432")
     os.environ.setdefault("CORS_ALLOW_ORIGINS", "http://localhost:3000")
     os.environ.setdefault("SKIP_LEGAL_SEED", "true")
-    from app.database import Base  # type: ignore
+    from app.core.database import Base  # type: ignore
     from app.main import app as fastapi_app  # type: ignore
     importlib.import_module("app.models")
 
@@ -1398,6 +1398,99 @@ def router_module(module: str) -> bool:
     return module.endswith(".router") or ".router." in module
 
 
+_REMOVED_API_COMPATIBILITY_PATHS = {
+    Path("apps/api/app/auth.py"): (
+        "app.auth",
+        "the owning identity modules and app.http.dependencies",
+    ),
+    Path("apps/api/app/database.py"): ("app.database", "app.core.database"),
+    Path("apps/api/app/legal.py"): ("app.legal", "app.domains.legal.router"),
+    Path("apps/api/app/legal_consents.py"): (
+        "app.legal_consents",
+        "app.domains.legal.service",
+    ),
+    Path("apps/api/app/settings.py"): ("app.settings", "app.core.settings"),
+    Path("apps/api/app/domains/identity/session.py"): (
+        "app.domains.identity.session",
+        "app.core.settings or app.domains.identity.services.auth",
+    ),
+    Path("apps/api/app/domains/identity/models.py"): (
+        "app.domains.identity.models",
+        "app.models",
+    ),
+    Path("apps/api/app/domains/legal/models.py"): (
+        "app.domains.legal.models",
+        "app.models",
+    ),
+    Path("apps/api/app/domains/identity/services/account.py"): (
+        "app.domains.identity.services.account",
+        "the authenticated app.models.User",
+    ),
+    Path("apps/api/app/health.py"): ("app.health", "app.http.health"),
+    Path("apps/api/app/http_dependencies.py"): (
+        "app.http_dependencies",
+        "app.http.dependencies",
+    ),
+    Path("apps/api/app/http_errors.py"): ("app.http_errors", "app.http.errors"),
+}
+
+
+def check_removed_api_compatibility(root: Path = ROOT) -> list[str]:
+    """Reject removed post-reset compatibility modules and their imports."""
+    errors: list[str] = []
+    removed_modules = {
+        module: replacement
+        for module, replacement in _REMOVED_API_COMPATIBILITY_PATHS.values()
+    }
+
+    for relative, (module, replacement) in _REMOVED_API_COMPATIBILITY_PATHS.items():
+        if (root / relative).exists():
+            errors.append(
+                f"{relative.as_posix()} is a removed compatibility path; "
+                f"import from {replacement} instead of {module}"
+            )
+
+    for source_root in (root / "apps/api", root / "scripts"):
+        if not source_root.exists():
+            continue
+        for path in sorted(source_root.rglob("*.py")):
+            relative = path.relative_to(root).as_posix()
+            try:
+                tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            except SyntaxError:
+                continue
+            for node in ast.walk(tree):
+                targets: set[str] = set()
+                if isinstance(node, ast.Import):
+                    targets.update(alias.name for alias in node.names)
+                elif isinstance(node, ast.ImportFrom) and node.level == 0:
+                    module = node.module or ""
+                    if module:
+                        targets.add(module)
+                        targets.update(
+                            f"{module}.{alias.name}"
+                            for alias in node.names
+                            if alias.name != "*"
+                        )
+                else:
+                    continue
+
+                imported_removed_modules = {
+                    removed_module
+                    for target in targets
+                    for removed_module in removed_modules
+                    if module_matches(target, removed_module)
+                }
+                for removed_module in sorted(imported_removed_modules):
+                    errors.append(
+                        f"{relative}:{node.lineno} imports removed compatibility module "
+                        f"{removed_module}; import from "
+                        f"{removed_modules[removed_module]} instead"
+                    )
+
+    return errors
+
+
 _REMOVED_LEGACY_MODEL_NAMES = frozenset(
     {
         "Bundle",
@@ -1982,7 +2075,7 @@ def check_python_boundaries(root: Path = ROOT) -> list[str]:
             and path_parts[0] == "infrastructure"
             and path_parts[1] in {"persistence", "queries"}
         )
-        is_http_dependencies = path_parts == ("http_dependencies.py",)
+        is_http_dependencies = path_parts == ("http", "dependencies.py")
         is_refactored_application_persistence = (
             _is_refactored_application_persistence_surface(path_parts)
         )
@@ -2361,7 +2454,8 @@ def check_canonical_persisted_model_layer(root: Path = ROOT) -> list[str]:
 
 
 def cmd_architecture(_: argparse.Namespace) -> None:
-    errors = check_removed_billing_architecture()
+    errors = check_removed_api_compatibility()
+    errors.extend(check_removed_billing_architecture())
     errors.extend(check_python_boundaries())
     errors.extend(check_persistence_transaction_ownership())
     errors.extend(check_canonical_persisted_model_layer())

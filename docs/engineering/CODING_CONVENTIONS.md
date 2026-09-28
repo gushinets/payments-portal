@@ -1,7 +1,7 @@
 # Coding Conventions
 
 Status: authoritative
-Last verified: 2026-09-24
+Last verified: 2026-09-25
 
 How to write **new and changed** code so types, states, and trust boundaries
 stay explicit. This is not a backlog and not a mass-migration plan.
@@ -17,8 +17,6 @@ Related documents:
   historical/superseded only; neither current-state nor target authority
 - [Data model](../architecture/payment-portal-data-model.md) — authoritative
   current as-built schema and persistence invariants
-- [DDD-lite audit](../architecture/ddd-lite-audit.md) — smell catalog; not a
-  burn-down list
 - [API agent guide](../../apps/api/AGENTS.md) and
   [web agent guide](../../apps/web/AGENTS.md) — MUST digests for each subtree
 
@@ -32,20 +30,14 @@ parameter and return annotations. Untouched Python code does not require a
 typing migration, and this ratchet does not introduce or require a
 type-checking tool.
 
-When the OpenAPI guardrail lands, two route lists live **next to that
-architecture test**, not in this file:
+The API OpenAPI guard requires every active ordinary JSON success response to
+reference a named component schema. Readiness explicitly documents both its
+named `200` and `503` bodies, and metrics remains excluded from OpenAPI. There
+is no legacy untyped-route escape list.
 
-- `legacy_untyped_routes` — existing untyped JSON debt. New entries are
-  forbidden. Removing an entry is welcome. Each entry is a route plus a Linear
-  ticket.
-- `raw_response_routes` — permanent exceptions: webhook responses, metrics,
-  readiness, and other raw `Response` objects.
-
-Do not put dates on either list.
-
-Frontend `eslint --max-warnings=0` makes `warn` equal `error`. Enable the
-unsafe-assertion rule as `error` only after current `json()` /
-`JSON.parse` assertions are removed.
+Frontend ESLint rejects direct type assertions on `response.json()` and
+`JSON.parse(...)` results in production `src/`. Boundary values remain
+`unknown` until a runtime decoder validates them.
 
 ## Common
 
@@ -98,12 +90,12 @@ unsafe-assertion rule as `error` only after current `json()` /
 9. Use normal FastAPI `def` endpoints for flows built on synchronous database or
    network libraries. Never execute blocking SQLAlchemy, synchronous HTTP
    clients, blocking sleeps, or similar work directly on an event-loop path.
-10. Exact raw request bytes are a Presentation/HTTP concern. Routes with a
-    concrete exact-bytes requirement reuse
-    `app.http_dependencies.get_raw_request_body`; integration routers do not
-    create local body readers when it applies. The dependency owns only ASGI
-    body acquisition. Ordinary JSON APIs continue to use FastAPI/Pydantic
-    request models rather than manual raw-body parsing.
+10. Exact raw request bytes are a Presentation/HTTP concern. No active route
+    currently requires exact raw bytes, so there is no shared raw-body helper.
+    If a concrete requirement is introduced, keep ASGI body acquisition in a
+    provider-neutral Presentation/HTTP dependency rather than duplicating local
+    body readers in integration routers. Ordinary JSON APIs continue to use
+    FastAPI/Pydantic request models rather than manual raw-body parsing.
 11. When an async framework boundary must invoke blocking work, send a complete
     resource-owning synchronous unit through the framework worker mechanism.
     Do not create a request-scoped resource such as a SQLAlchemy `Session` and
@@ -124,7 +116,7 @@ unsafe-assertion rule as `error` only after current `json()` /
 1. Active domain routers parse and validate transport input, invoke an inward
    Application/service use case, and map its result or semantic errors to the
    public HTTP contract. They do not own use-case orchestration.
-2. Active domain Presentation and `app.http_dependencies` do not import
+2. Active domain Presentation and `app.http.dependencies` do not import
    `app.infrastructure.queries` or `app.infrastructure.persistence` and do not
    call SQLAlchemy Session query or persistence mechanics directly. Importing
    `Session` for a FastAPI dependency annotation and passing it inward is
@@ -214,15 +206,12 @@ unsafe-assertion rule as `error` only after current `json()` /
 8. Do not add a schema library or OpenAPI client generator for a single
    contract.
 
-## Planned guardrails
+## Implemented contract guardrails
 
-These checks are **not** implemented by this documentation change. They need
-separate Linear tickets:
-
-1. Architecture test: every JSON route has a named response schema in generated
-   OpenAPI, or appears on `raw_response_routes` or the frozen
-   `legacy_untyped_routes` list beside that test.
-2. ESLint/AST: forbid `response.json() as T` and `JSON.parse(...) as T` in
-   production `src/` after those call sites use decoders.
-3. The decoder rejection test in Common item 5 applies as soon as a decoder is
-   added.
+1. The API architecture test rejects active ordinary JSON success responses
+   whose OpenAPI schema is not a named component reference. It also verifies
+   the named readiness `503` response and metrics exclusion.
+2. Web ESLint rejects direct TypeScript assertions on `response.json()` and
+   `JSON.parse(...)` results in production `src/`.
+3. Decoder tests cover both valid payloads and rejection of invalid payloads,
+   as required by Common item 5.

@@ -9,13 +9,13 @@ from app.core.settings import SUPPORTED_INSTANCE_REGION, require_supported_insta
 from app.generated.legal_manifest import LEGAL_MANIFEST
 from app.models import DocumentVersion, LegalEntity, LegalEntityStatus, LegalEntityType
 
-DEFAULT_TENANT_ID = LEGAL_MANIFEST["tenantId"]
+LEGAL_MANIFEST_TENANT_ID = LEGAL_MANIFEST["tenantId"]
 RU_LEGAL_ENTITY_ID = uuid.UUID(LEGAL_MANIFEST["legalEntityId"])
 LEGAL_PUBLISHED_AT = datetime.fromisoformat(LEGAL_MANIFEST["publishedAt"])
 
 RU_LEGAL_ENTITY = {
     "id": RU_LEGAL_ENTITY_ID,
-    "tenant_id": DEFAULT_TENANT_ID,
+    "tenant_id": LEGAL_MANIFEST_TENANT_ID,
     "region": "ru",
     "name": "ИП Говоров Роман Стальевич",
     "entity_type": LegalEntityType.INDIVIDUAL_ENTREPRENEUR,
@@ -90,7 +90,7 @@ def _document_material_mismatches(
 def seed_legal_documents(
     db: Session,
     *,
-    tenant_id: str = DEFAULT_TENANT_ID,
+    tenant_id: str = LEGAL_MANIFEST_TENANT_ID,
     region: str = SUPPORTED_INSTANCE_REGION,
 ) -> None:
     """Idempotently seed the current legal entity and document metadata."""

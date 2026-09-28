@@ -22,9 +22,9 @@ from app.infrastructure.sentry import Operation, report_exception
 
 logger = logging.getLogger("payment_portal.http")
 INTERNAL_ERROR_CODE = "internal_server_error"
-REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
-APPLICATION_ROOT = Path(__file__).resolve().parent
 HTTP_ERRORS_MODULE = Path(__file__).resolve()
+APPLICATION_ROOT = HTTP_ERRORS_MODULE.parents[1]
+REPOSITORY_ROOT = APPLICATION_ROOT.parents[2]
 HTTP_ERROR_RESPONSES: dict[type[AppError], tuple[int, str]] = {
     MissingPersonalConsentError: (400, "missing_personal_consent"),
     MissingOfferConsentError: (400, "missing_offer_consent"),

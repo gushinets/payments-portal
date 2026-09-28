@@ -4,28 +4,25 @@ import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import APIRouter, FastAPI
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.concurrency import run_in_threadpool
 
-from app.core.database import SessionLocal
-from app.core.database import engine
+from app.core.database import SessionLocal, engine
 from app.core.errors import AppError
 from app.core.observability import (
     configure_observability,
-    metrics_response,
     request_context_middleware,
 )
 from app.core.settings import AppEnv, settings
 from app.domains.identity.password_reset import router as password_reset_router
 from app.domains.identity.router import router as auth_router
 from app.domains.legal.router import router as legal_router
-from app.health import health_router
-from app.http_errors import app_error_handler, unexpected_failure_middleware
+from app.http.errors import app_error_handler, unexpected_failure_middleware
+from app.http.health import health_router
+from app.http.metrics import metrics_router
 from app.infrastructure.sentry import configure_sentry
 from app.legal_seed import seed_legal_documents
-
-metrics_router = APIRouter(prefix="/metrics", tags=["metrics"])
 
 
 def _seed_legal_documents_sync() -> None:
@@ -43,11 +40,6 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         await run_in_threadpool(_seed_legal_documents_sync)
 
     yield
-
-
-@metrics_router.get("", include_in_schema=False)
-def metrics():
-    return metrics_response()
 
 
 def get_cors_origins() -> tuple[str, ...]:

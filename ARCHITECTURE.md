@@ -1,7 +1,7 @@
 # Payment Portal Architecture
 
 Status: authoritative current-state map
-Last verified: 2026-09-24
+Last verified: 2026-09-25
 
 ## System boundary
 
@@ -80,6 +80,12 @@ and metrics routes. Removed catalog, checkout-intent, payment-status, account
 subscription, provider callback, and lifecycle-command contracts are not
 compatibility surfaces.
 
+Cross-cutting FastAPI Presentation code lives under `app.http`: dependency
+composition in `app.http.dependencies`, failure mapping in `app.http.errors`,
+and operational health and metrics routes in `app.http.health` and
+`app.http.metrics`. Feature routers remain with their identity and legal
+slices, while `app.main` owns only application composition.
+
 The target logical dependency direction is:
 
 ```text
@@ -151,7 +157,7 @@ payment state, or manual operator input alone never grant paid access.
 
 - `get_db()` creates and closes the request SQLAlchemy `Session`; it owns
   resource lifetime, not a request-wide transaction.
-- `app.http_dependencies.get_current_session()` resolves authenticated
+- `app.http.dependencies.get_current_session()` resolves authenticated
   user/session context and retains its separate `last_seen_at` bookkeeping
   transaction.
 - Stateless Application/service functions are called directly; they are not
@@ -174,6 +180,7 @@ payment state, or manual operator input alone never grant paid access.
 
 Repository AST/static checks currently enforce:
 
+- removed post-reset API compatibility modules and their imports cannot return;
 - core/domain-to-integration and router dependency direction;
 - active FastAPI Presentation and HTTP-composition persistence boundaries;
 - focused persistence helpers cannot own outer commit/rollback;
@@ -184,6 +191,12 @@ Repository AST/static checks currently enforce:
 - no legacy Portal Product/Plan/Order/Payment/Subscription/Entitlement/trial
   ORM/table graph;
 - no `external_billing_accounts` table or foreign-key target.
+
+Contract guards require named OpenAPI component schemas for active ordinary
+JSON `2xx` success responses. The readiness `503` response is checked
+separately and requires its named response schema; metrics remains outside
+OpenAPI. Web lint rejects direct type assertions on `response.json()` and
+`JSON.parse(...)` results in production source.
 
 The guards reject reintroduction without requiring deleted source files to
 exist as evidence.

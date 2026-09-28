@@ -16,7 +16,7 @@ from opentelemetry.trace import SpanKind, StatusCode
 
 from app.core import observability
 from app.core.observability import JsonFormatter, redact
-from app.http_errors import unexpected_failure_middleware
+from app.http.errors import unexpected_failure_middleware
 
 
 async def _get(

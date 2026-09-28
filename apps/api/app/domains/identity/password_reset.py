@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from pydantic import BaseModel, EmailStr, Field
@@ -27,13 +27,21 @@ class PasswordResetConfirmRequest(BaseModel):
     password: str = Field(min_length=8, max_length=128)
 
 
+class PasswordResetRequestResponse(BaseModel):
+    status: Literal["accepted"]
+
+
+class PasswordResetConfirmResponse(BaseModel):
+    status: Literal["password_reset"]
+
+
 @router.post("/password-reset/request")
 def request_password_reset(
     payload: PasswordResetRequest,
     request: Request,
     background_tasks: BackgroundTasks,
     db: Annotated[Session, Depends(get_db)],
-):
+) -> PasswordResetRequestResponse:
     delivery = prepare_password_reset(
         db,
         tenant_id=settings.instance_tenant_id,
@@ -48,14 +56,14 @@ def request_password_reset(
         delivery.reset_url,
     )
 
-    return {"status": "accepted"}
+    return PasswordResetRequestResponse(status="accepted")
 
 
 @router.post("/password-reset/confirm")
 def confirm_password_reset(
     payload: PasswordResetConfirmRequest,
     db: Annotated[Session, Depends(get_db)],
-):
+) -> PasswordResetConfirmResponse:
     confirm_password_reset_use_case(
         db,
         token=payload.token,
@@ -63,4 +71,4 @@ def confirm_password_reset(
         tenant_id=settings.instance_tenant_id,
         region=settings.instance_region,
     )
-    return {"status": "password_reset"}
+    return PasswordResetConfirmResponse(status="password_reset")

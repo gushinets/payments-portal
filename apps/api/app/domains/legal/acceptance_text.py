@@ -55,15 +55,3 @@ def valid_acceptance_text_hashes(document: DocumentVersion) -> frozenset[str]:
     if registration_text is not None:
         hashes.add(hash_acceptance_text(registration_text))
     return frozenset(hashes)
-
-
-def present_required_document(document: DocumentVersion) -> dict[str, str]:
-    return {
-        "document_version_id": str(document.id),
-        "doc_type": document.doc_type,
-        "version": document.version,
-        "title": document.title,
-        "url_path": document.url_path,
-        "acceptance_text": build_acceptance_text(document),
-        "acceptance_text_hash": expected_acceptance_text_hash(document),
-    }

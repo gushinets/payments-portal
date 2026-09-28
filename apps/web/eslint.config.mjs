@@ -18,6 +18,50 @@ const eslintConfig = defineConfig([
   },
   globalIgnores([".next/**", "out/**", "build/**", "next-env.d.ts"]),
   {
+    files: ["src/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            "TSAsExpression > CallExpression[callee.object.name='JSON'][callee.property.name='parse']",
+          message:
+            "JSON.parse results must remain unknown until a runtime decoder validates them."
+        },
+        {
+          selector:
+            "TSAsExpression > AwaitExpression > CallExpression[callee.property.name='json']",
+          message:
+            "response.json() results must remain unknown until a runtime decoder validates them."
+        },
+        {
+          selector:
+            "TSAsExpression > CallExpression[callee.property.name='json']",
+          message:
+            "response.json() results must remain unknown until a runtime decoder validates them."
+        },
+        {
+          selector:
+            "TSTypeAssertion > CallExpression[callee.object.name='JSON'][callee.property.name='parse']",
+          message:
+            "JSON.parse results must remain unknown until a runtime decoder validates them."
+        },
+        {
+          selector:
+            "TSTypeAssertion > AwaitExpression > CallExpression[callee.property.name='json']",
+          message:
+            "response.json() results must remain unknown until a runtime decoder validates them."
+        },
+        {
+          selector:
+            "TSTypeAssertion > CallExpression[callee.property.name='json']",
+          message:
+            "response.json() results must remain unknown until a runtime decoder validates them."
+        }
+      ]
+    }
+  },
+  {
     files: ["src/app/**/*.{ts,tsx}"],
     rules: {
       "no-restricted-imports": [

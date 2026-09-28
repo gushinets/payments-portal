@@ -10,15 +10,9 @@ from app.core.observability import record_legal_acceptance
 from app.core.time import utc_now
 from app.domains.legal.acceptance_text import (
     ACCEPTANCE_KIND_BY_DOC_TYPE,
-    REGISTRATION_ACCEPTANCE_TEXT_BY_DOC_TYPE as REGISTRATION_ACCEPTANCE_TEXT_BY_DOC_TYPE,
     REGISTRATION_DOCUMENT_TYPES,
-    REGISTRATION_OFFER_CONSENT_TEXT as REGISTRATION_OFFER_CONSENT_TEXT,
-    REGISTRATION_PERSONAL_CONSENT_TEXT as REGISTRATION_PERSONAL_CONSENT_TEXT,
-    build_acceptance_text as build_acceptance_text,
     expected_acceptance_text_hash,
     expected_registration_acceptance_text_hash,
-    hash_acceptance_text as hash_acceptance_text,
-    present_required_document as present_required_document,
     valid_acceptance_text_hashes,
 )
 from app.domains.legal.errors import (

@@ -10,14 +10,26 @@ export type AuthUser = {
 };
 
 export type AuthResponse = {
-  status: string;
+  status: "registered" | "authenticated";
   token: string;
   user: AuthUser;
 };
 
 export type AuthSessionResponse = {
-  authenticated: boolean;
+  authenticated: true;
   user: AuthUser;
+};
+
+export type LogoutResponse = {
+  status: "logged_out";
+};
+
+export type PasswordResetRequestResponse = {
+  status: "accepted";
+};
+
+export type PasswordResetConfirmResponse = {
+  status: "password_reset";
 };
 
 export type SubmitAuthValues = {
@@ -39,6 +51,10 @@ export type PasswordResetConfirmValues = {
 
 export type ApiErrorDetail = unknown;
 
+export type ApiErrorEnvelope = {
+  detail: ApiErrorDetail;
+};
+
 export class ApiError extends Error {
   status: number;
   detail: ApiErrorDetail;
@@ -47,6 +63,13 @@ export class ApiError extends Error {
     super(`${status}:${rawBody}`);
     this.status = status;
     this.detail = detail;
+  }
+}
+
+export class ApiContractError extends Error {
+  constructor() {
+    super("invalid_api_response");
+    this.name = "ApiContractError";
   }
 }
 
@@ -95,8 +118,8 @@ async function makeApiError(response: Response): Promise<ApiError> {
   let detail: ApiErrorDetail = rawBody;
 
   try {
-    const payload = JSON.parse(rawBody) as { detail?: ApiErrorDetail };
-    detail = payload.detail ?? rawBody;
+    const payload: unknown = JSON.parse(rawBody);
+    detail = decodeApiErrorEnvelope(payload).detail ?? rawBody;
   } catch {
     detail = rawBody;
   }
@@ -104,9 +127,31 @@ async function makeApiError(response: Response): Promise<ApiError> {
   return new ApiError(response.status, detail, rawBody);
 }
 
+async function decodeSuccessfulResponse<T>(
+  response: Response,
+  decoder: JsonDecoder<T>
+): Promise<T> {
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      throw new ApiContractError();
+    }
+    throw error;
+  }
+
+  try {
+    return decoder(payload);
+  } catch {
+    throw new ApiContractError();
+  }
+}
+
 export async function postJson<T>(
   path: string,
   body: unknown,
+  decoder: JsonDecoder<T>,
   token?: string
 ): Promise<T> {
   const controller = new AbortController();
@@ -125,29 +170,41 @@ export async function postJson<T>(
     throw await makeApiError(response);
   }
 
-  return response.json() as Promise<T>;
+  return decodeSuccessfulResponse(response, decoder);
 }
 
-export async function getJson<T = unknown>(
+export async function getJson<T>(
   path: string,
   token: string,
-  decoder?: JsonDecoder<T>
+  decoder: JsonDecoder<T>
 ): Promise<T> {
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => controller.abort(), requestTimeoutMs);
-  const response = await fetch(`${resolveApiBase()}${path}`, {
-    headers: {
-      Authorization: `Bearer ${token}`
-    },
-    signal: controller.signal
-  }).finally(() => window.clearTimeout(timeoutId));
 
-  if (!response.ok) {
-    throw await makeApiError(response);
+  try {
+    const response = await fetch(`${resolveApiBase()}${path}`, {
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
+      signal: controller.signal
+    });
+
+    if (!response.ok) {
+      throw await makeApiError(response);
+    }
+
+    return await decodeSuccessfulResponse(response, decoder);
+  } finally {
+    window.clearTimeout(timeoutId);
   }
+}
 
-  const payload = (await response.json()) as unknown;
-  return decoder ? decoder(payload) : (payload as T);
+export function decodeRegisterResponse(payload: unknown): AuthResponse {
+  return decodeAuthResponse(payload, "registered");
+}
+
+export function decodeLoginResponse(payload: unknown): AuthResponse {
+  return decodeAuthResponse(payload, "authenticated");
 }
 
 export function decodeAuthSessionResponse(payload: unknown): AuthSessionResponse {
@@ -158,7 +215,7 @@ export function decodeAuthSessionResponse(payload: unknown): AuthSessionResponse
   const authenticated = payload.authenticated;
   const user = payload.user;
 
-  if (typeof authenticated !== "boolean" || !isAuthUser(user)) {
+  if (authenticated !== true || !isAuthUser(user)) {
     throw new Error("invalid_session_response");
   }
 
@@ -166,6 +223,73 @@ export function decodeAuthSessionResponse(payload: unknown): AuthSessionResponse
     authenticated,
     user
   };
+}
+
+export function decodeLogoutResponse(payload: unknown): LogoutResponse {
+  return decodeStatusResponse(payload, "logged_out", "invalid_logout_response");
+}
+
+export function decodePasswordResetRequestResponse(
+  payload: unknown
+): PasswordResetRequestResponse {
+  return decodeStatusResponse(
+    payload,
+    "accepted",
+    "invalid_password_reset_request_response"
+  );
+}
+
+export function decodePasswordResetConfirmResponse(
+  payload: unknown
+): PasswordResetConfirmResponse {
+  return decodeStatusResponse(
+    payload,
+    "password_reset",
+    "invalid_password_reset_confirm_response"
+  );
+}
+
+export function decodeApiErrorEnvelope(payload: unknown): ApiErrorEnvelope {
+  if (!isRecord(payload) || !("detail" in payload)) {
+    throw new Error("invalid_api_error_response");
+  }
+
+  return { detail: payload.detail };
+}
+
+function decodeAuthResponse(
+  payload: unknown,
+  expectedStatus: AuthResponse["status"]
+): AuthResponse {
+  if (!isRecord(payload)) {
+    throw new Error("invalid_auth_response");
+  }
+
+  const status = payload.status;
+  const token = payload.token;
+  const user = payload.user;
+
+  if (
+    status !== expectedStatus ||
+    typeof token !== "string" ||
+    !isAuthUser(user)
+  ) {
+    throw new Error("invalid_auth_response");
+  }
+
+  return { status: expectedStatus, token, user };
+}
+
+function decodeStatusResponse<Status extends string>(
+  payload: unknown,
+  expectedStatus: Status,
+  errorCode: string
+): { status: Status } {
+  if (!isRecord(payload) || payload.status !== expectedStatus) {
+    throw new Error(errorCode);
+  }
+
+  return { status: expectedStatus };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -184,33 +308,47 @@ function isAuthUser(value: unknown): value is AuthUser {
 
 export async function submitAuth(values: SubmitAuthValues): Promise<AuthResponse> {
   return values.mode === "register"
-    ? postJson<AuthResponse>("/api/auth/register", {
-        email: values.email,
-        password: values.password,
-        personal_consent: values.personalConsent,
-        offer_consent: values.offerConsent
-      })
-    : postJson<AuthResponse>("/api/auth/login", {
-        email: values.email,
-        password: values.password
-      });
+    ? postJson(
+        "/api/auth/register",
+        {
+          email: values.email,
+          password: values.password,
+          personal_consent: values.personalConsent,
+          offer_consent: values.offerConsent
+        },
+        decodeRegisterResponse
+      )
+    : postJson(
+        "/api/auth/login",
+        {
+          email: values.email,
+          password: values.password
+        },
+        decodeLoginResponse
+      );
 }
 
 export async function requestPasswordReset(
   values: PasswordResetRequestValues
-): Promise<{ status: string }> {
-  return postJson<{ status: string }>("/api/auth/password-reset/request", {
-    email: values.email
-  });
+): Promise<PasswordResetRequestResponse> {
+  return postJson(
+    "/api/auth/password-reset/request",
+    { email: values.email },
+    decodePasswordResetRequestResponse
+  );
 }
 
 export async function confirmPasswordReset(
   values: PasswordResetConfirmValues
-): Promise<{ status: string }> {
-  return postJson<{ status: string }>("/api/auth/password-reset/confirm", {
-    token: values.token,
-    password: values.password
-  });
+): Promise<PasswordResetConfirmResponse> {
+  return postJson(
+    "/api/auth/password-reset/confirm",
+    {
+      token: values.token,
+      password: values.password
+    },
+    decodePasswordResetConfirmResponse
+  );
 }
 
 export function authErrorMessage(
