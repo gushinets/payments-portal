@@ -25,90 +25,69 @@ export type PaymentMethod = {
 export const paymentMethods: PaymentMethod[] = [];
 
 export type ProductPresentation = {
-  type: string;
-  tagline: string;
-  description: string;
-  valuePoints: string[];
-  freeLimit: string;
+  code: "document-summary" | "prompt-optimizer";
+  messageKey: "documentSummary" | "promptOptimizer";
+  messageValues: Record<string, string | number>;
   Icon: typeof FileText;
 };
 
-export const productPresentation: Record<string, ProductPresentation> = {
-  "document-summary": {
-    type: "Chrome extension",
-    tagline: "Мгновенное краткое содержание любого документа",
-    description:
-      "Расширение помогает быстро получать summary документов и веб-страниц без лишних ручных действий.",
-    valuePoints: [
-      "Три режима: полное summary, короткое summary и тезисы",
-      "Работает с PDF, TXT и веб-страницами",
-      "Определяет язык документа и отвечает на нём же",
-      "Позволяет экспортировать результат в PDF",
-      "Файлы не сохраняются на серверах"
-    ],
-    freeLimit: "3 summary в месяц",
+export const productPresentation: readonly ProductPresentation[] = [
+  {
+    code: "document-summary",
+    messageKey: "documentSummary",
+    messageValues: {
+      freeLimitAmount: 3,
+      summaryModeCount: 3,
+      supportedFormats: "PDF, TXT",
+      exportFormat: "PDF"
+    },
     Icon: FileText
   },
-  "prompt-optimizer": {
-    type: "Chrome extension",
-    tagline: "Улучшение промптов для ИИ в один клик",
-    description:
-      "Расширение улучшает промпты прямо в привычном интерфейсе и показывает, что именно стало лучше.",
-    valuePoints: [
-      "Работает поверх ChatGPT, Claude, Perplexity, Groq и DeepSeek",
-      "Показывает, что именно улучшено в промпте",
-      "Возвращает улучшенный промпт обратно в чат одним кликом",
-      "Сохраняет готовые промпты в библиотеке"
-    ],
-    freeLimit: "50 оптимизаций в месяц",
+  {
+    code: "prompt-optimizer",
+    messageKey: "promptOptimizer",
+    messageValues: {
+      freeLimitAmount: 50,
+      supportedServices: "ChatGPT, Claude, Perplexity, Groq, DeepSeek"
+    },
     Icon: WandSparkles
   }
-};
+];
+
+export const catalogRegion = "RU";
+export const accountCount = 1;
+export const legalDocumentLanguage = "RU";
 
 export const platformFacts = [
   {
-    label: "Каталог",
-    value: "RU",
-    detail: "Информация о продуктах AnytoolAI",
+    messageKey: "catalog",
     Icon: Sparkles
   },
   {
-    label: "Тарифы",
-    value: "Скоро",
-    detail: "Оформление временно недоступно",
+    messageKey: "pricing",
     Icon: ShieldCheck
   },
   {
-    label: "Доступ",
-    value: "1 аккаунт",
-    detail: "Регистрация и вход уже доступны",
+    messageKey: "account",
     Icon: FileText
   },
   {
-    label: "Локализация",
-    value: "RU",
-    detail: "интерфейс и юридические документы",
+    messageKey: "localization",
     Icon: Languages
   }
-];
+] as const;
 
 export const platformHighlights = [
   {
-    title: "Простой старт",
-    description:
-      "Регистрация и юридические документы собраны в одном понятном портале.",
+    messageKey: "simpleStart",
     Icon: Sparkles
   },
   {
-    title: "Один аккаунт",
-    description:
-      "Можно создать аккаунт или войти по email, пока биллинг обновляется.",
+    messageKey: "singleAccount",
     Icon: MessageSquareQuote
   },
   {
-    title: "Контролируемый запуск",
-    description:
-      "Покупки останутся недоступны до подключения новой биллинговой системы.",
+    messageKey: "controlledLaunch",
     Icon: ShieldCheck
   }
-];
+] as const;

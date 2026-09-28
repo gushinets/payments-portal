@@ -1,1 +1,121 @@
-{}
+{
+  "Navigation": {
+    "mainAriaLabel": "Main navigation",
+    "products": "Products"
+  },
+  "Home": {
+    "eyebrow": "AnytoolAI {region}",
+    "hero": {
+      "heading": "Tools for working with documents and <em>improving prompts</em>",
+      "description": "AnytoolAI brings together digital services that help you work faster with content, documents, and AI tools. Explore the products and create one account on this site.",
+      "primaryAction": "Sign in or register",
+      "secondaryAction": "Choose a product"
+    },
+    "factsAriaLabel": "Key details",
+    "facts": {
+      "catalog": {
+        "label": "Catalog",
+        "value": "{region}",
+        "detail": "Information about AnytoolAI products"
+      },
+      "pricing": {
+        "label": "Plans",
+        "value": "Coming soon",
+        "detail": "Purchases are temporarily unavailable"
+      },
+      "account": {
+        "label": "Access",
+        "value": "{accountCount, plural, one {# account} other {# accounts}}",
+        "detail": "Registration and sign-in are already available"
+      },
+      "localization": {
+        "label": "Languages",
+        "value": "{localeCount, plural, one {# UI language} other {# UI languages}}",
+        "detail": "Canonical legal authority: {legalLanguage}"
+      }
+    },
+    "highlights": {
+      "simpleStart": {
+        "title": "A simple start",
+        "description": "Registration and legal documents are brought together in one clear portal."
+      },
+      "singleAccount": {
+        "title": "One account",
+        "description": "Create an account or sign in by email while billing is being updated."
+      },
+      "controlledLaunch": {
+        "title": "Controlled launch",
+        "description": "Purchases will remain unavailable until the new billing system is connected."
+      }
+    },
+    "products": {
+      "eyebrow": "Products",
+      "title": "Services for everyday work",
+      "description": "Explore AnytoolAI products. Plans and purchases are temporarily unavailable."
+    }
+  },
+  "Catalog": {
+    "page": {
+      "eyebrow": "Catalog",
+      "title": "Products and plans",
+      "description": "Explore AnytoolAI services. Plans and purchases are temporarily unavailable."
+    },
+    "availabilityNotice": "The plan catalog and purchases are temporarily unavailable.",
+    "productInfoBadge": "Product information",
+    "signInAction": "Sign in or register",
+    "products": {
+      "documentSummary": {
+        "type": "Chrome extension",
+        "tagline": "Instant summaries of any document",
+        "description": "The extension quickly summarizes documents and web pages without unnecessary manual steps.",
+        "valuePoints": {
+          "modes": "{summaryModeCount} modes: full summary, short summary, and key points",
+          "formats": "Works with {supportedFormats} and web pages",
+          "language": "Detects the document language and responds in the same language",
+          "export": "Exports the result to {exportFormat}",
+          "storage": "Files are not stored on servers"
+        },
+        "freeLimit": "{freeLimitAmount, plural, one {# summary per month} other {# summaries per month}}"
+      },
+      "promptOptimizer": {
+        "type": "Chrome extension",
+        "tagline": "Improve AI prompts in one click",
+        "description": "The extension improves prompts in the interface you already use and shows exactly what changed.",
+        "valuePoints": {
+          "services": "Works with {supportedServices}",
+          "changes": "Shows exactly what was improved in the prompt",
+          "return": "Returns the improved prompt to the chat in one click",
+          "library": "Saves ready-to-use prompts in a library"
+        },
+        "freeLimit": "{freeLimitAmount, plural, one {# optimization per month} other {# optimizations per month}}"
+      }
+    }
+  },
+  "PaymentResult": {
+    "badge": "Payment unavailable",
+    "title": "There is no payment result here yet",
+    "description": "The Portal no longer handles the previous payment flow. Returning in the browser does not confirm a purchase or grant access.",
+    "notice": "Wait until the new billing system launches before making a purchase.",
+    "accountAction": "Sign in to your account",
+    "homeAction": "Go to home"
+  },
+  "Footer": {
+    "registrationNumbers": "TIN (ИНН): {inn} · PSRNIE (ОГРНИП): {ogrnip}",
+    "legalAddress": "Legal address: {address}",
+    "supportEmail": "Support email: <email>{supportEmail}</email>",
+    "legalLinksAriaLabel": "Legal documents in Russian",
+    "paymentMethodsTitle": "Supported payment methods",
+    "paymentMethodsAriaLabel": "Payment methods"
+  },
+  "Metadata": {
+    "title": "AnytoolAI — Digital services",
+    "description": "AnytoolAI digital services for working with documents, content, and AI tools."
+  },
+  "LegalPresentation": {
+    "eyebrow": "Legal document",
+    "canonicalLanguageHelp": "The canonical version of this legal document is provided in Russian.",
+    "versioningHelp": "The document is published in a separate versioned file.",
+    "revision": "Revision: {version}",
+    "tableAccessibilityLabel": "Scrollable legal document table"
+  }
+}

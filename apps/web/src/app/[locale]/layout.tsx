@@ -28,9 +28,7 @@ type LocaleLayoutProps = Readonly<{
 }>;
 
 export const metadata: Metadata = {
-  metadataBase: APP_METADATA_BASE,
-  title: "AnytoolAI - RU",
-  description: "RU-версия платформы цифровых сервисов AnytoolAI."
+  metadataBase: APP_METADATA_BASE
 };
 
 export const dynamicParams = false;

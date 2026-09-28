@@ -6,6 +6,9 @@ import { fileURLToPath } from "node:url";
 const layoutPath = fileURLToPath(
   new URL("../src/app/[locale]/layout.tsx", import.meta.url)
 );
+const metadataPath = fileURLToPath(
+  new URL("../src/i18n/metadata.ts", import.meta.url)
+);
 const checkoutPagePath = fileURLToPath(
   new URL("../src/app/[locale]/auth-checkout/page.tsx", import.meta.url)
 );
@@ -18,16 +21,22 @@ const routingPath = fileURLToPath(
 const proxyPath = fileURLToPath(new URL("../src/proxy.ts", import.meta.url));
 const srcRootPath = fileURLToPath(new URL("../src", import.meta.url));
 
-test("localized root metadata keeps public RU branding copy", async () => {
-  const source = await readFile(layoutPath, "utf8");
+test("localized root layout has no Russian-only metadata fallback", async () => {
+  const [layoutSource, metadataSource] = await Promise.all([
+    readFile(layoutPath, "utf8"),
+    readFile(metadataPath, "utf8")
+  ]);
 
-  assert.match(source, /title:\s*"AnytoolAI - RU"/);
-  assert.match(
-    source,
-    /description:\s*"RU-версия платформы цифровых сервисов AnytoolAI\."/
-  );
-  assert.doesNotMatch(source, /MVP/);
-  assert.doesNotMatch(source, /подготовки подключения CloudPayments/);
+  assert.match(layoutSource, /metadataBase:\s*APP_METADATA_BASE/);
+  assert.doesNotMatch(layoutSource, /title:/);
+  assert.doesNotMatch(layoutSource, /description:/);
+  assert.doesNotMatch(layoutSource, /AnytoolAI - RU/);
+  assert.doesNotMatch(layoutSource, /RU-версия/);
+  assert.doesNotMatch(layoutSource, /MVP/);
+  assert.doesNotMatch(layoutSource, /подготовки подключения CloudPayments/);
+  assert.match(metadataSource, /namespace:\s*"Metadata"/);
+  assert.match(metadataSource, /title:\s*t\("title"\)/);
+  assert.match(metadataSource, /description:\s*t\("description"\)/);
 });
 
 test("localized routes retain a generated static locale boundary", async () => {

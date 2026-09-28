@@ -24,6 +24,7 @@
   "devDependencies": {
     "@axe-core/playwright": "^4.10.2",
     "@eslint/compat": "^2.1.0",
+    "@formatjs/icu-messageformat-parser": "^3.5.20",
     "@playwright/test": "^1.53.2",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.1.0",

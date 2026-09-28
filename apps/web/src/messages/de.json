@@ -1,1 +1,121 @@
-{}
+{
+  "Navigation": {
+    "mainAriaLabel": "Hauptnavigation",
+    "products": "Produkte"
+  },
+  "Home": {
+    "eyebrow": "AnytoolAI {region}",
+    "hero": {
+      "heading": "Werkzeuge für die Arbeit mit Dokumenten und zum <em>Verbessern von Prompts</em>",
+      "description": "AnytoolAI bündelt digitale Dienste, mit denen Sie schneller mit Inhalten, Dokumenten und KI-Werkzeugen arbeiten können. Entdecken Sie die Produkte und erstellen Sie auf dieser Website ein gemeinsames Konto.",
+      "primaryAction": "Anmelden oder registrieren",
+      "secondaryAction": "Produkt auswählen"
+    },
+    "factsAriaLabel": "Wichtige Informationen",
+    "facts": {
+      "catalog": {
+        "label": "Katalog",
+        "value": "{region}",
+        "detail": "Informationen zu AnytoolAI-Produkten"
+      },
+      "pricing": {
+        "label": "Tarife",
+        "value": "Demnächst",
+        "detail": "Käufe sind vorübergehend nicht verfügbar"
+      },
+      "account": {
+        "label": "Zugang",
+        "value": "{accountCount, plural, one {# Konto} other {# Konten}}",
+        "detail": "Registrierung und Anmeldung sind bereits verfügbar"
+      },
+      "localization": {
+        "label": "Sprachen",
+        "value": "{localeCount, plural, one {# Oberflächensprache} other {# Oberflächensprachen}}",
+        "detail": "Maßgebliche Rechtsgrundlage: {legalLanguage}"
+      }
+    },
+    "highlights": {
+      "simpleStart": {
+        "title": "Einfacher Einstieg",
+        "description": "Registrierung und Rechtsdokumente sind in einem übersichtlichen Portal gebündelt."
+      },
+      "singleAccount": {
+        "title": "Ein Konto",
+        "description": "Erstellen Sie ein Konto oder melden Sie sich per E-Mail an, während die Abrechnung aktualisiert wird."
+      },
+      "controlledLaunch": {
+        "title": "Kontrollierter Start",
+        "description": "Käufe bleiben bis zur Anbindung des neuen Abrechnungssystems nicht verfügbar."
+      }
+    },
+    "products": {
+      "eyebrow": "Produkte",
+      "title": "Dienste für den Arbeitsalltag",
+      "description": "Entdecken Sie die Produkte von AnytoolAI. Tarife und Käufe sind vorübergehend nicht verfügbar."
+    }
+  },
+  "Catalog": {
+    "page": {
+      "eyebrow": "Katalog",
+      "title": "Produkte und Tarife",
+      "description": "Entdecken Sie die Dienste von AnytoolAI. Tarife und Käufe sind vorübergehend nicht verfügbar."
+    },
+    "availabilityNotice": "Der Tarifkatalog und Käufe sind vorübergehend nicht verfügbar.",
+    "productInfoBadge": "Produktinformationen",
+    "signInAction": "Anmelden oder registrieren",
+    "products": {
+      "documentSummary": {
+        "type": "Chrome-Erweiterung",
+        "tagline": "Sofortige Zusammenfassungen für jedes Dokument",
+        "description": "Die Erweiterung fasst Dokumente und Webseiten schnell und ohne unnötige manuelle Schritte zusammen.",
+        "valuePoints": {
+          "modes": "{summaryModeCount} Modi: vollständige Zusammenfassung, Kurzfassung und Kernaussagen",
+          "formats": "Funktioniert mit {supportedFormats} und Webseiten",
+          "language": "Erkennt die Dokumentsprache und antwortet in derselben Sprache",
+          "export": "Exportiert das Ergebnis als {exportFormat}",
+          "storage": "Dateien werden nicht auf Servern gespeichert"
+        },
+        "freeLimit": "{freeLimitAmount, plural, one {# Zusammenfassung pro Monat} other {# Zusammenfassungen pro Monat}}"
+      },
+      "promptOptimizer": {
+        "type": "Chrome-Erweiterung",
+        "tagline": "KI-Prompts mit einem Klick verbessern",
+        "description": "Die Erweiterung verbessert Prompts direkt in Ihrer gewohnten Oberfläche und zeigt genau, was geändert wurde.",
+        "valuePoints": {
+          "services": "Funktioniert mit {supportedServices}",
+          "changes": "Zeigt genau, was am Prompt verbessert wurde",
+          "return": "Überträgt den verbesserten Prompt mit einem Klick zurück in den Chat",
+          "library": "Speichert einsatzbereite Prompts in einer Bibliothek"
+        },
+        "freeLimit": "{freeLimitAmount, plural, one {# Optimierung pro Monat} other {# Optimierungen pro Monat}}"
+      }
+    }
+  },
+  "PaymentResult": {
+    "badge": "Zahlung nicht verfügbar",
+    "title": "Hier liegt noch kein Zahlungsergebnis vor",
+    "description": "Das Portal verarbeitet den bisherigen Zahlungsablauf nicht mehr. Die Rückkehr im Browser bestätigt keinen Kauf und gewährt keinen Zugang.",
+    "notice": "Warten Sie mit einem Kauf, bis das neue Abrechnungssystem gestartet ist.",
+    "accountAction": "Beim Konto anmelden",
+    "homeAction": "Zur Startseite"
+  },
+  "Footer": {
+    "registrationNumbers": "Steuer-ID (ИНН): {inn} · OGRNIP (ОГРНИП): {ogrnip}",
+    "legalAddress": "Geschäftsanschrift: {address}",
+    "supportEmail": "Support-E-Mail: <email>{supportEmail}</email>",
+    "legalLinksAriaLabel": "Rechtsdokumente auf Russisch",
+    "paymentMethodsTitle": "Unterstützte Zahlungsmethoden",
+    "paymentMethodsAriaLabel": "Zahlungsmethoden"
+  },
+  "Metadata": {
+    "title": "AnytoolAI — Digitale Dienste",
+    "description": "Digitale Dienste von AnytoolAI für die Arbeit mit Dokumenten, Inhalten und KI-Werkzeugen."
+  },
+  "LegalPresentation": {
+    "eyebrow": "Rechtsdokument",
+    "canonicalLanguageHelp": "Die maßgebliche Fassung dieses Rechtsdokuments wird auf Russisch bereitgestellt.",
+    "versioningHelp": "Das Dokument wird in einer separaten versionierten Datei veröffentlicht.",
+    "revision": "Fassung: {version}",
+    "tableAccessibilityLabel": "Scrollbare Tabelle des Rechtsdokuments"
+  }
+}

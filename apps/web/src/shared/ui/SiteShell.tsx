@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { getTranslations } from "next-intl/server";
 import type { RouteLocale } from "@/generated/locales";
 import { Link } from "@/i18n/navigation";
 import { CookieBanner } from "./CookieBanner";
@@ -6,7 +7,7 @@ import { Footer, FooterContent } from "./Footer";
 import { HeaderAccount } from "./HeaderAccount";
 import { LocaleSwitcher } from "./LocaleSwitcher";
 
-export function SiteShell({
+export async function SiteShell({
   children,
   footer,
   locale
@@ -15,6 +16,8 @@ export function SiteShell({
   footer: FooterContent;
   locale: RouteLocale;
 }) {
+  const t = await getTranslations("Navigation");
+
   return (
     <div className="site-shell">
       <header className="top-nav">
@@ -22,9 +25,9 @@ export function SiteShell({
           <Link className="logo" href="/" aria-label="AnytoolAI">
             Anytool<span>AI</span>
           </Link>
-          <nav className="nav-links" aria-label="Основная навигация">
+          <nav className="nav-links" aria-label={t("mainAriaLabel")}>
             <Link className="nav-link" href="/products">
-              Продукты
+              {t("products")}
             </Link>
             <Suspense fallback={null}>
               <LocaleSwitcher locale={locale} />

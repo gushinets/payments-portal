@@ -1,1 +1,121 @@
-{}
+{
+  "Navigation": {
+    "mainAriaLabel": "Navigation principale",
+    "products": "Produits"
+  },
+  "Home": {
+    "eyebrow": "AnytoolAI {region}",
+    "hero": {
+      "heading": "Des outils pour travailler avec les documents et <em>améliorer les prompts</em>",
+      "description": "AnytoolAI réunit des services numériques qui vous aident à travailler plus vite avec les contenus, les documents et les outils d’IA. Découvrez les produits et créez un compte unique sur ce site.",
+      "primaryAction": "Se connecter ou s’inscrire",
+      "secondaryAction": "Choisir un produit"
+    },
+    "factsAriaLabel": "Informations clés",
+    "facts": {
+      "catalog": {
+        "label": "Catalogue",
+        "value": "{region}",
+        "detail": "Informations sur les produits AnytoolAI"
+      },
+      "pricing": {
+        "label": "Offres",
+        "value": "Bientôt disponible",
+        "detail": "Les achats sont temporairement indisponibles"
+      },
+      "account": {
+        "label": "Accès",
+        "value": "{accountCount, plural, one {# compte} other {# comptes}}",
+        "detail": "L’inscription et la connexion sont déjà disponibles"
+      },
+      "localization": {
+        "label": "Langues",
+        "value": "{localeCount, plural, one {# langue d’interface} other {# langues d’interface}}",
+        "detail": "Autorité juridique canonique : {legalLanguage}"
+      }
+    },
+    "highlights": {
+      "simpleStart": {
+        "title": "Un démarrage simple",
+        "description": "L’inscription et les documents juridiques sont réunis dans un portail clair."
+      },
+      "singleAccount": {
+        "title": "Un seul compte",
+        "description": "Créez un compte ou connectez-vous par e-mail pendant la mise à jour de la facturation."
+      },
+      "controlledLaunch": {
+        "title": "Lancement maîtrisé",
+        "description": "Les achats resteront indisponibles jusqu’à la connexion du nouveau système de facturation."
+      }
+    },
+    "products": {
+      "eyebrow": "Produits",
+      "title": "Des services pour le travail quotidien",
+      "description": "Découvrez les produits AnytoolAI. Les offres et les achats sont temporairement indisponibles."
+    }
+  },
+  "Catalog": {
+    "page": {
+      "eyebrow": "Catalogue",
+      "title": "Produits et offres",
+      "description": "Découvrez les services AnytoolAI. Les offres et les achats sont temporairement indisponibles."
+    },
+    "availabilityNotice": "Le catalogue des offres et les achats sont temporairement indisponibles.",
+    "productInfoBadge": "Informations sur le produit",
+    "signInAction": "Se connecter ou s’inscrire",
+    "products": {
+      "documentSummary": {
+        "type": "Extension Chrome",
+        "tagline": "Le résumé instantané de tout document",
+        "description": "L’extension résume rapidement les documents et les pages web, sans étapes manuelles superflues.",
+        "valuePoints": {
+          "modes": "{summaryModeCount} modes : résumé complet, résumé court et points clés",
+          "formats": "Fonctionne avec {supportedFormats} et les pages web",
+          "language": "Détecte la langue du document et répond dans la même langue",
+          "export": "Exporte le résultat au format {exportFormat}",
+          "storage": "Les fichiers ne sont pas stockés sur les serveurs"
+        },
+        "freeLimit": "{freeLimitAmount, plural, one {# résumé par mois} other {# résumés par mois}}"
+      },
+      "promptOptimizer": {
+        "type": "Extension Chrome",
+        "tagline": "Améliorez vos prompts d’IA en un clic",
+        "description": "L’extension améliore les prompts dans votre interface habituelle et indique précisément les changements apportés.",
+        "valuePoints": {
+          "services": "Fonctionne avec {supportedServices}",
+          "changes": "Indique précisément ce qui a été amélioré dans le prompt",
+          "return": "Renvoie le prompt amélioré dans le chat en un clic",
+          "library": "Enregistre les prompts prêts à l’emploi dans une bibliothèque"
+        },
+        "freeLimit": "{freeLimitAmount, plural, one {# optimisation par mois} other {# optimisations par mois}}"
+      }
+    }
+  },
+  "PaymentResult": {
+    "badge": "Paiement indisponible",
+    "title": "Aucun résultat de paiement n’est encore disponible ici",
+    "description": "Le Portail ne traite plus l’ancien parcours de paiement. Le retour dans le navigateur ne confirme pas un achat et n’accorde aucun accès.",
+    "notice": "Attendez le lancement du nouveau système de facturation avant d’effectuer un achat.",
+    "accountAction": "Se connecter au compte",
+    "homeAction": "Retour à l’accueil"
+  },
+  "Footer": {
+    "registrationNumbers": "NIF (ИНН) : {inn} · OGRNIP (ОГРНИП) : {ogrnip}",
+    "legalAddress": "Adresse légale : {address}",
+    "supportEmail": "E-mail de l’assistance : <email>{supportEmail}</email>",
+    "legalLinksAriaLabel": "Documents juridiques en russe",
+    "paymentMethodsTitle": "Moyens de paiement acceptés",
+    "paymentMethodsAriaLabel": "Moyens de paiement"
+  },
+  "Metadata": {
+    "title": "AnytoolAI — Services numériques",
+    "description": "Les services numériques AnytoolAI pour travailler avec les documents, les contenus et les outils d’IA."
+  },
+  "LegalPresentation": {
+    "eyebrow": "Document juridique",
+    "canonicalLanguageHelp": "La version canonique de ce document juridique est fournie en russe.",
+    "versioningHelp": "Le document est publié dans un fichier versionné distinct.",
+    "revision": "Révision : {version}",
+    "tableAccessibilityLabel": "Tableau de document juridique avec défilement"
+  }
+}
