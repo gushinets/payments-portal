@@ -6,7 +6,7 @@
 | --- | --- |
 | Parent feature | `ANY-525 — 4B. Establish Portal Internationalization (EFIGS + RU + PT)` |
 | Ticket | `ANY-533 — 4B.3 Locale-Aware User Communications & Multi-Locale Hardening` |
-| Overall status | `todo` |
+| Overall status | `done` |
 | Execution order | Sequential only: Step 1 → manual verification → commit → Step 2 → manual verification → commit → Step 3 → manual verification → commit → Step 4 → final verification |
 | Steps / proposed commits | 4 |
 | Blocking predecessor | `ANY-529 — 4B.2 Localize Existing Portal UI & Client-Facing Application Copy` |
@@ -277,7 +277,7 @@ These decisions are resolved by the ticket, current code, predecessor architectu
 
 # Step 1 — Propagate the canonical password-reset request language from the explicit route
 
-**Status:** `todo`
+**Status:** `done`
 
 **Goal**  
 Make the localized forgot-password UI send the canonical generated language tag through `Accept-Language` on the password-reset request only, while keeping generic API transport and the JSON business payload language-neutral.
@@ -426,7 +426,7 @@ feat(i18n): propagate password reset request locale
 
 # Step 2 — Normalize request language at API Presentation and make reset URLs locale-aware
 
-**Status:** `todo`
+**Status:** `done`
 
 **Goal**  
 Convert untrusted `Accept-Language` request metadata into one canonical generated `RouteLocale` at the FastAPI Presentation boundary and use it only to build the reset delivery route, without changing password-reset security/business behavior.
@@ -617,7 +617,7 @@ feat(i18n): normalize password reset delivery locale
 
 # Step 3 — Localize backend-owned password-reset email presentation for all seven locales
 
-**Status:** `todo`
+**Status:** `done`
 
 **Goal**  
 Use the same canonical route locale from Step 2 to select a complete backend-owned password-reset email template for all seven locales, while preserving generic SMTP delivery, observability, token security, and the 30-minute reset policy.
@@ -798,7 +798,7 @@ feat(i18n): localize password reset emails
 
 # Step 4 — Add the final ordinary-copy guard, update durable 4B guidance, and close the multi-locale contract
 
-**Status:** `todo`
+**Status:** `done`
 
 **Goal**  
 Protect the completed 4B baseline against concrete locale regressions, correct stale predecessor documentation, and run the final bounded multi-locale contract matrix without expanding scope into a new localization framework or future billing work.
