@@ -9,11 +9,34 @@ const webRoot = fileURLToPath(new URL("..", import.meta.url));
 const authApiPath = fileURLToPath(
   new URL("../src/shared/api/auth.ts", import.meta.url)
 );
-const messagesPath = fileURLToPath(new URL("../src/messages", import.meta.url));
 const sharedApiPath = fileURLToPath(
   new URL("../src/shared/api", import.meta.url)
 );
 const eslint = new ESLint({ cwd: webRoot });
+
+// Exact single-word and otherwise unstructured literals required by current
+// transport and decoder mechanics.
+const sharedApiMachineLiteralAllowlist = new Set([
+  "use client",
+  "ApiContractError",
+  "Authorization",
+  "Content-Type",
+  "POST",
+  "accepted",
+  "authenticated",
+  "detail",
+  "localhost",
+  "login",
+  "object",
+  "register",
+  "registered",
+  "status",
+  "string",
+  "undefined",
+  "${status}:${rawBody}",
+  "${resolveApiBase()}${path}",
+  "Bearer ${token}"
+]);
 
 async function sourceFiles(directory) {
   const entries = await readdir(directory);
@@ -30,21 +53,6 @@ async function sourceFiles(directory) {
   return files.flat();
 }
 
-function catalogMessages(value, result = []) {
-  if (typeof value === "string") {
-    result.push(value);
-    return result;
-  }
-
-  if (value !== null && typeof value === "object" && !Array.isArray(value)) {
-    for (const child of Object.values(value)) {
-      catalogMessages(child, result);
-    }
-  }
-
-  return result;
-}
-
 function importSpecifiers(source) {
   return [
     ...source.matchAll(
@@ -59,9 +67,23 @@ function staticStringLiterals(source) {
   ].map((match) => match[2]);
 }
 
-function catalogPresentationLiterals(source, localizedMessages) {
-  return staticStringLiterals(source).filter((literal) =>
-    localizedMessages.has(literal)
+function isSharedApiMachineLiteral(literal) {
+  return (
+    literal === "" ||
+    sharedApiMachineLiteralAllowlist.has(literal) ||
+    /^\/(?:api\/)?[a-z0-9-]+(?:\/[a-z0-9-]+)*$/.test(literal) ||
+    /^(?:@\/|\.\.?\/)[A-Za-z0-9_./-]+$/.test(literal) ||
+    /^https?:\/\/[^\s]+$/.test(literal) ||
+    /^application\/[a-z0-9.+-]+$/.test(literal) ||
+    /^Bearer [A-Za-z0-9._~+/=-]+$/.test(literal) ||
+    /^(?:\d{1,3}\.){3}\d{1,3}$/.test(literal) ||
+    /^[a-z][a-z0-9]*(?:[_-][a-z0-9]+)+$/.test(literal)
+  );
+}
+
+function sharedApiPresentationLiterals(source) {
+  return staticStringLiterals(source).filter(
+    (literal) => !isSharedApiMachineLiteral(literal)
   );
 }
 
@@ -164,10 +186,9 @@ test("unknown JSON results remain allowed for runtime decoding", async () => {
 });
 
 test("shared API transport cannot own localized auth presentation", async () => {
-  const [authApiSource, apiFiles, catalogFiles] = await Promise.all([
+  const [authApiSource, apiFiles] = await Promise.all([
     readFile(authApiPath, "utf8"),
-    sourceFiles(sharedApiPath),
-    readdir(messagesPath)
+    sourceFiles(sharedApiPath)
   ]);
 
   assert.doesNotMatch(
@@ -176,28 +197,30 @@ test("shared API transport cannot own localized auth presentation", async () => 
     "shared/api/auth.ts must expose language-neutral facts, not UI message mapping"
   );
 
-  const localizedMessages = new Set(
-    (
-      await Promise.all(
-        catalogFiles
-          .filter((fileName) => fileName.endsWith(".json"))
-          .map(async (fileName) =>
-            catalogMessages(
-              JSON.parse(await readFile(`${messagesPath}/${fileName}`, "utf8"))
-            )
-          )
-      )
-    ).flat()
-  );
   const neutralTransportSource = [
-    'const authorization = "Bearer test-token";',
-    'throw new Error("invalid_api_response");'
+    'const loginPath = "/api/auth/login";',
+    'const contentType = "application/json";',
+    'const code = "invalid_api_response";',
+    'const authorization = "Bearer test-token";'
+  ].join("\n");
+  const uncataloguedPresentationSource = [
+    'const english = "Could not sign in. Try again.";',
+    'const russian = "Не удалось войти. Попробуйте ещё раз.";',
+    'const singleWordPresentation = "retry";'
   ].join("\n");
 
   assert.deepEqual(
-    catalogPresentationLiterals(neutralTransportSource, localizedMessages),
+    sharedApiPresentationLiterals(neutralTransportSource),
     [],
     "language-neutral machine and transport literals must remain allowed"
+  );
+  assert.deepEqual(
+    sharedApiPresentationLiterals(uncataloguedPresentationSource),
+    [
+      "Could not sign in. Try again.",
+      "Не удалось войти. Попробуйте ещё раз.",
+      "retry"
+    ]
   );
 
   const offenders = [];
@@ -210,10 +233,7 @@ test("shared API transport cannot own localized auth presentation", async () => 
         specifier.startsWith("next-intl/") ||
         /(?:^|\/)messages(?:\/|$)/.test(specifier)
     );
-    const presentationLiterals = catalogPresentationLiterals(
-      source,
-      localizedMessages
-    );
+    const presentationLiterals = sharedApiPresentationLiterals(source);
 
     if (forbiddenImports.length > 0 || presentationLiterals.length > 0) {
       offenders.push({
@@ -227,7 +247,7 @@ test("shared API transport cannot own localized auth presentation", async () => 
   assert.deepEqual(
     offenders,
     [],
-    "shared/api must remain language-neutral and must not own catalog presentation"
+    "shared/api must remain language-neutral and must not own human-readable presentation"
   );
 });
 
