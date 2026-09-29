@@ -216,27 +216,12 @@
       "documentSummary": {
         "type": "Chrome extension",
         "tagline": "Instant summaries of any document",
-        "description": "The extension quickly summarizes documents and web pages without unnecessary manual steps.",
-        "valuePoints": {
-          "modes": "{summaryModeCount} modes: full summary, short summary, and key points",
-          "formats": "Works with {supportedFormats} and web pages",
-          "language": "Detects the document language and responds in the same language",
-          "export": "Exports the result to {exportFormat}",
-          "storage": "Files are not stored on servers"
-        },
-        "freeLimit": "{freeLimitAmount, plural, one {# summary per month} other {# summaries per month}}"
+        "description": "The extension quickly summarizes documents and web pages without unnecessary manual steps."
       },
       "promptOptimizer": {
         "type": "Chrome extension",
         "tagline": "Improve AI prompts in one click",
-        "description": "The extension improves prompts in the interface you already use and shows exactly what changed.",
-        "valuePoints": {
-          "services": "Works with {supportedServices}",
-          "changes": "Shows exactly what was improved in the prompt",
-          "return": "Returns the improved prompt to the chat in one click",
-          "library": "Saves ready-to-use prompts in a library"
-        },
-        "freeLimit": "{freeLimitAmount, plural, one {# optimization per month} other {# optimizations per month}}"
+        "description": "The extension improves prompts in the interface you already use and shows exactly what changed."
       }
     }
   },

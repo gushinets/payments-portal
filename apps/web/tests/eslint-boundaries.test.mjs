@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
-import { readdir, readFile, stat } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { ESLint } from "eslint";
+import { sourceFiles } from "./setup/source-files.mjs";
 
 const webRoot = fileURLToPath(new URL("..", import.meta.url));
 const authApiPath = fileURLToPath(
@@ -14,85 +15,21 @@ const sharedApiPath = fileURLToPath(
 );
 const eslint = new ESLint({ cwd: webRoot });
 
-// Exact single-word and otherwise unstructured literals required by current
-// transport and decoder mechanics.
-const sharedApiMachineLiteralAllowlist = new Set([
-  "use client",
-  "ApiContractError",
-  "Authorization",
-  "Content-Type",
-  "POST",
-  "accepted",
-  "authenticated",
-  "detail",
-  "localhost",
-  "login",
-  "object",
-  "register",
-  "registered",
-  "status",
-  "string",
-  "undefined",
-  "${status}:${rawBody}",
-  "${resolveApiBase()}${path}",
-  "Bearer ${token}"
-]);
-
-async function sourceFiles(directory) {
-  const entries = await readdir(directory);
-  const files = await Promise.all(
-    entries.map(async (entry) => {
-      const entryPath = `${directory}/${entry}`;
-      const entryStat = await stat(entryPath);
-      if (entryStat.isDirectory()) {
-        return sourceFiles(entryPath);
-      }
-      return /\.(ts|tsx|js|jsx)$/.test(entryPath) ? [entryPath] : [];
-    })
-  );
-  return files.flat();
-}
-
-function importSpecifiers(source) {
-  return [
-    ...source.matchAll(
-      /(?:\bfrom\s+|\bimport\s*(?:\(\s*)?|\brequire\s*\(\s*)["']([^"']+)["']/g
-    )
-  ].map((match) => match[1]);
-}
-
-function staticStringLiterals(source) {
-  return [
-    ...source.matchAll(/(["'`])((?:\\.|(?!\1)[^\\\r\n])*)\1/g)
-  ].map((match) => match[2]);
-}
-
-function isSharedApiMachineLiteral(literal) {
-  return (
-    literal === "" ||
-    sharedApiMachineLiteralAllowlist.has(literal) ||
-    /^\/(?:api\/)?[a-z0-9-]+(?:\/[a-z0-9-]+)*$/.test(literal) ||
-    /^(?:@\/|\.\.?\/)[A-Za-z0-9_./-]+$/.test(literal) ||
-    /^https?:\/\/[^\s]+$/.test(literal) ||
-    /^application\/[a-z0-9.+-]+$/.test(literal) ||
-    /^Bearer [A-Za-z0-9._~+/=-]+$/.test(literal) ||
-    /^(?:\d{1,3}\.){3}\d{1,3}$/.test(literal) ||
-    /^[a-z][a-z0-9]*(?:[_-][a-z0-9]+)+$/.test(literal)
-  );
-}
-
-function sharedApiPresentationLiterals(source) {
-  return staticStringLiterals(source).filter(
-    (literal) => !isSharedApiMachineLiteral(literal)
-  );
-}
-
 async function restrictedImportMessages(source, relativePath) {
   const [result] = await eslint.lintText(source, {
     filePath: `${webRoot}/${relativePath}`
   });
   return result.messages.filter(
     (message) => message.ruleId === "no-restricted-imports"
+  );
+}
+
+async function sharedApiBoundaryMessages(source, relativePath) {
+  const [result] = await eslint.lintText(source, {
+    filePath: `${webRoot}/${relativePath}`
+  });
+  return result.messages.filter(
+    (message) => message.ruleId === "shared-api-boundaries/language-neutral"
   );
 }
 
@@ -203,43 +140,56 @@ test("shared API transport cannot own localized auth presentation", async () => 
     'const code = "invalid_api_response";',
     'const authorization = "Bearer test-token";'
   ].join("\n");
-  const uncataloguedPresentationSource = [
-    'const english = "Could not sign in. Try again.";',
-    'const russian = "Не удалось войти. Попробуйте ещё раз.";',
-    'const singleWordPresentation = "retry";'
+  const commentOnlySource = [
+    '// The UI may offer "try-again" after a transport failure.',
+    '// import messages from "next-intl";',
+    'const code = "invalid_api_response";'
   ].join("\n");
 
   assert.deepEqual(
-    sharedApiPresentationLiterals(neutralTransportSource),
+    await sharedApiBoundaryMessages(
+      neutralTransportSource,
+      "src/shared/api/BoundaryFixture.ts"
+    ),
     [],
     "language-neutral machine and transport literals must remain allowed"
   );
   assert.deepEqual(
-    sharedApiPresentationLiterals(uncataloguedPresentationSource),
-    [
-      "Could not sign in. Try again.",
-      "Не удалось войти. Попробуйте ещё раз.",
-      "retry"
-    ]
+    await sharedApiBoundaryMessages(
+      commentOnlySource,
+      "src/shared/api/BoundaryFixture.ts"
+    ),
+    [],
+    "comments must not be treated as executable presentation or imports"
   );
+
+  const presentationMessages = await sharedApiBoundaryMessages(
+    'const fallback = "try-again";',
+    "src/shared/api/BoundaryFixture.ts"
+  );
+  assert.equal(presentationMessages.length, 1);
+  assert.match(presentationMessages[0].message, /try-again/);
+
+  const localizedImportMessages = await sharedApiBoundaryMessages(
+    'import {useTranslations} from "next-intl";',
+    "src/shared/api/BoundaryFixture.ts"
+  );
+  assert.equal(localizedImportMessages.length, 1);
+  assert.match(localizedImportMessages[0].message, /next-intl/);
 
   const offenders = [];
 
   for (const filePath of apiFiles) {
     const source = await readFile(filePath, "utf8");
-    const forbiddenImports = importSpecifiers(source).filter(
-      (specifier) =>
-        specifier === "next-intl" ||
-        specifier.startsWith("next-intl/") ||
-        /(?:^|\/)messages(?:\/|$)/.test(specifier)
+    const messages = await sharedApiBoundaryMessages(
+      source,
+      filePath.slice(webRoot.length + 1)
     );
-    const presentationLiterals = sharedApiPresentationLiterals(source);
 
-    if (forbiddenImports.length > 0 || presentationLiterals.length > 0) {
+    if (messages.length > 0) {
       offenders.push({
         filePath,
-        forbiddenImports,
-        presentationLiterals
+        messages: messages.map((message) => message.message)
       });
     }
   }

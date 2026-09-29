@@ -2,7 +2,7 @@ import { Clock3, ShieldCheck } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 import { Link } from "@/i18n/navigation";
 
-export async function PaymentResultClient() {
+export async function PaymentResultView() {
   const t = await getTranslations("PaymentResult");
 
   return (

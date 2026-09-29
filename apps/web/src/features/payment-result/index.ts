@@ -1,1 +1,1 @@
-export { PaymentResultClient } from "./PaymentResultClient";
+export { PaymentResultView } from "./PaymentResultView";

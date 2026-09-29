@@ -27,7 +27,6 @@ export const paymentMethods: PaymentMethod[] = [];
 export type ProductPresentation = {
   code: "document-summary" | "prompt-optimizer";
   messageKey: "documentSummary" | "promptOptimizer";
-  messageValues: Record<string, string | number>;
   Icon: typeof FileText;
 };
 
@@ -35,21 +34,11 @@ export const productPresentation: readonly ProductPresentation[] = [
   {
     code: "document-summary",
     messageKey: "documentSummary",
-    messageValues: {
-      freeLimitAmount: 3,
-      summaryModeCount: 3,
-      supportedFormats: "PDF, TXT",
-      exportFormat: "PDF"
-    },
     Icon: FileText
   },
   {
     code: "prompt-optimizer",
     messageKey: "promptOptimizer",
-    messageValues: {
-      freeLimitAmount: 50,
-      supportedServices: "ChatGPT, Claude, Perplexity, Groq, DeepSeek"
-    },
     Icon: WandSparkles
   }
 ];

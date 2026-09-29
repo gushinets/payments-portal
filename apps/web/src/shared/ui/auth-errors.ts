@@ -1,8 +1,8 @@
+import { ApiError, apiErrorCode } from "@/shared/api/auth";
 import {
-  ApiContractError,
-  ApiError,
-  apiErrorCode
-} from "@/shared/api/auth";
+  transportErrorMessageKey,
+  type TransportErrorMessageKey
+} from "./transport-error";
 
 export type AuthErrorMessageKey =
   | "errors.emailAlreadyRegistered"
@@ -10,9 +10,7 @@ export type AuthErrorMessageKey =
   | "errors.missingPersonalConsent"
   | "errors.missingOfferConsent"
   | "errors.internalServer"
-  | "errors.contract"
-  | "errors.network"
-  | "errors.generic";
+  | TransportErrorMessageKey;
 
 export function authErrorMessageKey(error: unknown): AuthErrorMessageKey {
   const code = apiErrorCode(error);
@@ -35,17 +33,5 @@ export function authErrorMessageKey(error: unknown): AuthErrorMessageKey {
     }
   }
 
-  if (error instanceof ApiContractError) {
-    return "errors.contract";
-  }
-
-  if (
-    error instanceof TypeError ||
-    (error instanceof DOMException && error.name === "AbortError") ||
-    (error instanceof Error && error.name === "AbortError")
-  ) {
-    return "errors.network";
-  }
-
-  return "errors.generic";
+  return transportErrorMessageKey(error);
 }

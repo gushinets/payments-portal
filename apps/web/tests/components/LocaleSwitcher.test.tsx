@@ -61,15 +61,18 @@ describe("LocaleSwitcher", () => {
     );
   });
 
-  it("localizes presentation without replacing generated language names", () => {
+  it("localizes presentation without replacing generated language names", async () => {
+    const user = userEvent.setup();
     const { container } = renderWithIntl(<LocaleSwitcher locale="de" />, {
       locale: "en",
       messages: { Navigation: enMessages.Navigation }
     });
 
-    expect(container.querySelector("summary")).toHaveAccessibleName(
+    const summary = container.querySelector("summary");
+    expect(summary).toHaveAccessibleName(
       `Choose language. Current language: ${DISPLAY_NAME_BY_ROUTE_LOCALE.de}`
     );
+    await user.click(summary!);
     expect(
       screen.getByRole("navigation", { name: "Choose language" })
     ).toBeInTheDocument();

@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
-import { readdir, readFile, stat } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+
+import { sourceFiles } from "./setup/source-files.mjs";
 
 const layoutPath = fileURLToPath(
   new URL("../src/app/[locale]/layout.tsx", import.meta.url)
@@ -111,18 +113,3 @@ test("frontend source does not call removed billing contracts", async () => {
 
   assert.deepEqual(offenders, []);
 });
-
-async function sourceFiles(directory) {
-  const entries = await readdir(directory);
-  const files = await Promise.all(
-    entries.map(async (entry) => {
-      const entryPath = `${directory}/${entry}`;
-      const entryStat = await stat(entryPath);
-      if (entryStat.isDirectory()) {
-        return sourceFiles(entryPath);
-      }
-      return /\.(ts|tsx|js|jsx)$/.test(entryPath) ? [entryPath] : [];
-    })
-  );
-  return files.flat();
-}

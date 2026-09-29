@@ -216,27 +216,12 @@
       "documentSummary": {
         "type": "Chrome-Erweiterung",
         "tagline": "Sofortige Zusammenfassungen für jedes Dokument",
-        "description": "Die Erweiterung fasst Dokumente und Webseiten schnell und ohne unnötige manuelle Schritte zusammen.",
-        "valuePoints": {
-          "modes": "{summaryModeCount} Modi: vollständige Zusammenfassung, Kurzfassung und Kernaussagen",
-          "formats": "Funktioniert mit {supportedFormats} und Webseiten",
-          "language": "Erkennt die Dokumentsprache und antwortet in derselben Sprache",
-          "export": "Exportiert das Ergebnis als {exportFormat}",
-          "storage": "Dateien werden nicht auf Servern gespeichert"
-        },
-        "freeLimit": "{freeLimitAmount, plural, one {# Zusammenfassung pro Monat} other {# Zusammenfassungen pro Monat}}"
+        "description": "Die Erweiterung fasst Dokumente und Webseiten schnell und ohne unnötige manuelle Schritte zusammen."
       },
       "promptOptimizer": {
         "type": "Chrome-Erweiterung",
         "tagline": "KI-Prompts mit einem Klick verbessern",
-        "description": "Die Erweiterung verbessert Prompts direkt in Ihrer gewohnten Oberfläche und zeigt genau, was geändert wurde.",
-        "valuePoints": {
-          "services": "Funktioniert mit {supportedServices}",
-          "changes": "Zeigt genau, was am Prompt verbessert wurde",
-          "return": "Überträgt den verbesserten Prompt mit einem Klick zurück in den Chat",
-          "library": "Speichert einsatzbereite Prompts in einer Bibliothek"
-        },
-        "freeLimit": "{freeLimitAmount, plural, one {# Optimierung pro Monat} other {# Optimierungen pro Monat}}"
+        "description": "Die Erweiterung verbessert Prompts direkt in Ihrer gewohnten Oberfläche und zeigt genau, was geändert wurde."
       }
     }
   },

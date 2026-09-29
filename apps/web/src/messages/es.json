@@ -216,27 +216,12 @@
       "documentSummary": {
         "type": "Extensión de Chrome",
         "tagline": "Resúmenes instantáneos de cualquier documento",
-        "description": "La extensión resume rápidamente documentos y páginas web sin pasos manuales innecesarios.",
-        "valuePoints": {
-          "modes": "{summaryModeCount} modos: resumen completo, resumen breve y puntos clave",
-          "formats": "Funciona con {supportedFormats} y páginas web",
-          "language": "Detecta el idioma del documento y responde en el mismo idioma",
-          "export": "Exporta el resultado a {exportFormat}",
-          "storage": "Los archivos no se almacenan en servidores"
-        },
-        "freeLimit": "{freeLimitAmount, plural, one {# resumen al mes} other {# resúmenes al mes}}"
+        "description": "La extensión resume rápidamente documentos y páginas web sin pasos manuales innecesarios."
       },
       "promptOptimizer": {
         "type": "Extensión de Chrome",
         "tagline": "Mejora prompts de IA con un clic",
-        "description": "La extensión mejora los prompts en la interfaz que ya utilizas y muestra exactamente qué ha cambiado.",
-        "valuePoints": {
-          "services": "Funciona con {supportedServices}",
-          "changes": "Muestra exactamente qué se ha mejorado en el prompt",
-          "return": "Devuelve el prompt mejorado al chat con un clic",
-          "library": "Guarda prompts listos para usar en una biblioteca"
-        },
-        "freeLimit": "{freeLimitAmount, plural, one {# optimización al mes} other {# optimizaciones al mes}}"
+        "description": "La extensión mejora los prompts en la interfaz que ya utilizas y muestra exactamente qué ha cambiado."
       }
     }
   },

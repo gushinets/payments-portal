@@ -1,17 +1,15 @@
+import { ApiError, apiErrorCode } from "@/shared/api/auth";
 import {
-  ApiContractError,
-  ApiError,
-  apiErrorCode
-} from "@/shared/api/auth";
+  transportErrorMessageKey,
+  type TransportErrorMessageKey
+} from "@/shared/ui/transport-error";
 
 export type PasswordResetErrorMessageKey =
   | "errors.invalidOrExpiredToken"
   | "errors.rateLimited"
   | "errors.invalidInput"
   | "errors.internalServer"
-  | "errors.contract"
-  | "errors.network"
-  | "errors.generic";
+  | TransportErrorMessageKey;
 
 export function passwordResetErrorMessageKey(
   error: unknown
@@ -33,17 +31,5 @@ export function passwordResetErrorMessageKey(
     }
   }
 
-  if (error instanceof ApiContractError) {
-    return "errors.contract";
-  }
-
-  if (
-    error instanceof TypeError ||
-    (error instanceof DOMException && error.name === "AbortError") ||
-    (error instanceof Error && error.name === "AbortError")
-  ) {
-    return "errors.network";
-  }
-
-  return "errors.generic";
+  return transportErrorMessageKey(error);
 }

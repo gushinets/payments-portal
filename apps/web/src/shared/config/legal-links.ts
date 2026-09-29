@@ -26,7 +26,8 @@ export const CANONICAL_LEGAL_PATHS = Object.values(
 export const CANONICAL_LEGAL_LOCALE_PREFIX = `/${legalManifest.region}`;
 
 // Exact grammatical anchors in the generated RU acceptance statements.
-// They are source-coupled structure, not translatable presentation copy.
+// Keep these fragments coupled to generated/registration-acceptance.ts; the
+// AuthForm characterization test fails if a generated statement drops one.
 export const REGISTRATION_ACCEPTANCE_SOURCE_LINKS = {
   personal: [
     {

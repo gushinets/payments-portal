@@ -216,27 +216,12 @@
       "documentSummary": {
         "type": "Estensione Chrome",
         "tagline": "Riassunti istantanei di qualsiasi documento",
-        "description": "L’estensione riassume rapidamente documenti e pagine web senza passaggi manuali superflui.",
-        "valuePoints": {
-          "modes": "{summaryModeCount} modalità: riassunto completo, riassunto breve e punti chiave",
-          "formats": "Funziona con {supportedFormats} e pagine web",
-          "language": "Rileva la lingua del documento e risponde nella stessa lingua",
-          "export": "Esporta il risultato in {exportFormat}",
-          "storage": "I file non vengono archiviati sui server"
-        },
-        "freeLimit": "{freeLimitAmount, plural, one {# riassunto al mese} other {# riassunti al mese}}"
+        "description": "L’estensione riassume rapidamente documenti e pagine web senza passaggi manuali superflui."
       },
       "promptOptimizer": {
         "type": "Estensione Chrome",
         "tagline": "Migliora i prompt per l’IA con un clic",
-        "description": "L’estensione migliora i prompt nell’interfaccia che usi già e mostra esattamente cosa è cambiato.",
-        "valuePoints": {
-          "services": "Funziona con {supportedServices}",
-          "changes": "Mostra esattamente cosa è stato migliorato nel prompt",
-          "return": "Riporta il prompt migliorato nella chat con un clic",
-          "library": "Salva i prompt pronti all’uso in una raccolta"
-        },
-        "freeLimit": "{freeLimitAmount, plural, one {# ottimizzazione al mese} other {# ottimizzazioni al mese}}"
+        "description": "L’estensione migliora i prompt nell’interfaccia che usi già e mostra esattamente cosa è cambiato."
       }
     }
   },
