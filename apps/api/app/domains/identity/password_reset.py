@@ -25,8 +25,7 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 _ROUTE_LOCALE_BY_LANGUAGE_TAG: dict[str, RouteLocale] = {
-    language_tag.casefold(): route_locale
-    for route_locale, language_tag in LANGUAGE_TAG_BY_ROUTE_LOCALE.items()
+    language_tag.casefold(): route_locale for route_locale, language_tag in LANGUAGE_TAG_BY_ROUTE_LOCALE.items()
 }
 if len(_ROUTE_LOCALE_BY_LANGUAGE_TAG) != len(LANGUAGE_TAG_BY_ROUTE_LOCALE):
     raise RuntimeError("Generated locale language tags must be unique after case-folding")
@@ -112,6 +111,7 @@ def request_password_reset(
         send_password_reset_email_safely if delivery.send_email else skip_password_reset_email,
         delivery.recipient_email,
         delivery.reset_url,
+        delivery.route_locale,
     )
 
     return PasswordResetRequestResponse(status="accepted")

@@ -235,9 +235,18 @@ def confirm_password_reset(
     db.commit()
 
 
-def send_password_reset_email_safely(email: str, reset_url: str) -> None:
+def send_password_reset_email_safely(
+    email: str,
+    reset_url: str,
+    route_locale: RouteLocale,
+) -> None:
     try:
-        sent = send_password_reset_email(email, reset_url)
+        sent = send_password_reset_email(
+            email,
+            reset_url,
+            route_locale,
+            PASSWORD_RESET_TTL_MINUTES,
+        )
     except Exception as error:
         record_password_reset_email("failed")
         logger.warning(
@@ -265,5 +274,9 @@ def send_password_reset_email_safely(email: str, reset_url: str) -> None:
         )
 
 
-def skip_password_reset_email(email: str, reset_url: str) -> None:
+def skip_password_reset_email(
+    email: str,
+    reset_url: str,
+    route_locale: RouteLocale,
+) -> None:
     return None
