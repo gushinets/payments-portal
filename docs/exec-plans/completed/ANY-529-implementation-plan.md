@@ -6,7 +6,7 @@
 | --- | --- |
 | Parent feature | `ANY-525 — 4B. Establish Portal Internationalization (EFIGS + RU + PT)` |
 | Ticket | `ANY-529 — 4B.2 Localize Existing Portal UI & Client-Facing Application Copy` |
-| Overall status | `todo` |
+| Overall status | `done` |
 | Execution order | Sequential only: Step 1 → manual verification → commit → Step 2 → manual verification → commit → Step 3 → manual verification → commit → Step 4 |
 | Steps / proposed commits | 4 |
 | Blocking predecessor | `ANY-526 — 4B.1 Establish Locale Runtime, Routing & Navigation Foundation` |
@@ -335,7 +335,7 @@ Do not create a runtime fallback or a second locale registry for validation.
 
 # Step 1 — Establish the catalog contract and localize server-rendered Portal copy
 
-**Status:** `todo`
+**Status:** `done`
 
 **Goal**  
 Establish mechanically validated seven-locale message catalogs and move the server-rendered/currently server-compatible Portal presentation into them without changing routing, legal authority, commercial meaning, or client bundle boundaries.
@@ -538,7 +538,7 @@ npm run typecheck:web
 
 # Step 2 — Localize the shared shell, auth UI, and auth-checkout boundary
 
-**Status:** `todo`
+**Status:** `done`
 
 **Goal**  
 Localize the true Client Components used globally and by auth-checkout, introduce bounded current-locale message delivery for them, and move auth error presentation out of shared transport without changing auth/session semantics.
@@ -759,7 +759,7 @@ npm run typecheck:web
 
 # Step 3 — Localize account and password recovery and finish the UI error boundary
 
-**Status:** `todo`
+**Status:** `done`
 
 **Goal**  
 Localize the remaining interactive account/password-recovery surfaces, move password-reset presentation mapping out of shared API transport, and leave the entire shared auth transport layer language-neutral.
@@ -952,7 +952,7 @@ If Step 3 adds or updates a focused password-reset component test, include that 
 
 # Step 4 — Add cross-locale guards, smoke coverage, documentation, and final 4B.2 verification
 
-**Status:** `todo`
+**Status:** `done`
 
 **Goal**  
 Protect the completed localization baseline against missing/incompatible catalogs, accidental broad client message delivery, language-specific presentation leaking back into shared API transport, and regressions in locale/legal/formatting behavior; update durable project guidance and prove the 4B.2 acceptance surface without multiplying the whole suite by seven. The broader cross-language sweep/guard for newly hardcoded ordinary UI copy remains 4B.3 work.
