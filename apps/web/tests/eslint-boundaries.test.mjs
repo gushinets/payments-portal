@@ -1,11 +1,69 @@
 import assert from "node:assert/strict";
+import { readdir, readFile, stat } from "node:fs/promises";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { ESLint } from "eslint";
 
 const webRoot = fileURLToPath(new URL("..", import.meta.url));
+const authApiPath = fileURLToPath(
+  new URL("../src/shared/api/auth.ts", import.meta.url)
+);
+const messagesPath = fileURLToPath(new URL("../src/messages", import.meta.url));
+const sharedApiPath = fileURLToPath(
+  new URL("../src/shared/api", import.meta.url)
+);
 const eslint = new ESLint({ cwd: webRoot });
+
+async function sourceFiles(directory) {
+  const entries = await readdir(directory);
+  const files = await Promise.all(
+    entries.map(async (entry) => {
+      const entryPath = `${directory}/${entry}`;
+      const entryStat = await stat(entryPath);
+      if (entryStat.isDirectory()) {
+        return sourceFiles(entryPath);
+      }
+      return /\.(ts|tsx|js|jsx)$/.test(entryPath) ? [entryPath] : [];
+    })
+  );
+  return files.flat();
+}
+
+function catalogMessages(value, result = []) {
+  if (typeof value === "string") {
+    result.push(value);
+    return result;
+  }
+
+  if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+    for (const child of Object.values(value)) {
+      catalogMessages(child, result);
+    }
+  }
+
+  return result;
+}
+
+function importSpecifiers(source) {
+  return [
+    ...source.matchAll(
+      /(?:\bfrom\s+|\bimport\s*(?:\(\s*)?|\brequire\s*\(\s*)["']([^"']+)["']/g
+    )
+  ].map((match) => match[1]);
+}
+
+function staticStringLiterals(source) {
+  return [
+    ...source.matchAll(/(["'`])((?:\\.|(?!\1)[^\\\r\n])*)\1/g)
+  ].map((match) => match[2]);
+}
+
+function catalogPresentationLiterals(source, localizedMessages) {
+  return staticStringLiterals(source).filter((literal) =>
+    localizedMessages.has(literal)
+  );
+}
 
 async function restrictedImportMessages(source, relativePath) {
   const [result] = await eslint.lintText(source, {
@@ -102,6 +160,74 @@ test("unknown JSON results remain allowed for runtime decoding", async () => {
       (message) => message.ruleId === "no-restricted-syntax"
     ).length,
     0
+  );
+});
+
+test("shared API transport cannot own localized auth presentation", async () => {
+  const [authApiSource, apiFiles, catalogFiles] = await Promise.all([
+    readFile(authApiPath, "utf8"),
+    sourceFiles(sharedApiPath),
+    readdir(messagesPath)
+  ]);
+
+  assert.doesNotMatch(
+    authApiSource,
+    /\b(?:authErrorMessage|passwordResetErrorMessage)\b/,
+    "shared/api/auth.ts must expose language-neutral facts, not UI message mapping"
+  );
+
+  const localizedMessages = new Set(
+    (
+      await Promise.all(
+        catalogFiles
+          .filter((fileName) => fileName.endsWith(".json"))
+          .map(async (fileName) =>
+            catalogMessages(
+              JSON.parse(await readFile(`${messagesPath}/${fileName}`, "utf8"))
+            )
+          )
+      )
+    ).flat()
+  );
+  const neutralTransportSource = [
+    'const authorization = "Bearer test-token";',
+    'throw new Error("invalid_api_response");'
+  ].join("\n");
+
+  assert.deepEqual(
+    catalogPresentationLiterals(neutralTransportSource, localizedMessages),
+    [],
+    "language-neutral machine and transport literals must remain allowed"
+  );
+
+  const offenders = [];
+
+  for (const filePath of apiFiles) {
+    const source = await readFile(filePath, "utf8");
+    const forbiddenImports = importSpecifiers(source).filter(
+      (specifier) =>
+        specifier === "next-intl" ||
+        specifier.startsWith("next-intl/") ||
+        /(?:^|\/)messages(?:\/|$)/.test(specifier)
+    );
+    const presentationLiterals = catalogPresentationLiterals(
+      source,
+      localizedMessages
+    );
+
+    if (forbiddenImports.length > 0 || presentationLiterals.length > 0) {
+      offenders.push({
+        filePath,
+        forbiddenImports,
+        presentationLiterals
+      });
+    }
+  }
+
+  assert.deepEqual(
+    offenders,
+    [],
+    "shared/api must remain language-neutral and must not own catalog presentation"
   );
 });
 

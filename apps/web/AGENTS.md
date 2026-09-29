@@ -40,8 +40,26 @@ before frontend work.
 - Canonical and alternate metadata uses the required `APP_PUBLIC_BASE_URL`
   server/build origin and is owned by the application.
 - Do not offer locale switching on generated legal pages or reset-password
-  confirmation. Complete copy localization is 4B.2; backend locale propagation
-  is 4B.3.
+  confirmation. The broader hardcoded ordinary-UI-copy sweep/guard, backend
+  `Accept-Language` propagation, and reset URL/email localization are 4B.3.
+
+## Localization ownership
+
+- `src/messages/*.json` is the canonical home of Portal-owned UI and ordinary
+  metadata copy. The `en`, `fr`, `it`, `de`, `es`, `ru`, and `pt` catalogs must
+  have exact leaf-key parity, valid ICU syntax, and matching argument and tag
+  signatures. `pt` copy is Brazilian Portuguese.
+- Translate in Server Components first. The root `NextIntlClientProvider`
+  remains `messages={null}`; a true Client Component receives only the
+  current-locale namespace or subset it needs from the nearest server boundary.
+- `shared/api` stays language-neutral. It exposes machine status/error facts;
+  the owning Presentation/UI maps those facts to localized messages.
+- Canonical RU legal documents and generated registration acceptance text stay
+  source-owned and retain `lang="ru"`. Seller/provider facts, support addresses,
+  identifiers, and user-entered content also remain source-owned; localize only
+  the surrounding Portal presentation.
+- Formatting resolves `routeLocale` through the generated `intlLocale` mapping.
+  Locale never selects contour/region, provider, currency, or timezone.
 
 ## Boundaries
 
@@ -52,8 +70,9 @@ before frontend work.
 
 ## UI rules
 
-- Preserve the current contour's customer-facing copy. The implemented `ru`
-  contour still uses Russian copy across every route locale until 4B.2.
+- Ordinary Portal-owned customer-facing copy follows the active route catalog.
+  Do not translate or relabel canonical RU legal/source-owned content as if it
+  were ordinary UI copy.
 - Use Bundle 3 tokens and glass/bento patterns; do not invent replacement tokens.
 - Prefer semantic roles and labels. Add `data-testid` only when a stable semantic
   selector is unavailable.
