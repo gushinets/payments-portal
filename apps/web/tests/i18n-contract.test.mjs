@@ -9,6 +9,15 @@ const localeConfigPath = fileURLToPath(
   new URL("../../../config/locales.json", import.meta.url)
 );
 const messagesPath = fileURLToPath(new URL("../src/messages", import.meta.url));
+const requiredPresentationErrorKeys = [
+  "Auth.errors.contract",
+  "Auth.errors.network",
+  "Auth.errors.internalServer",
+  "PasswordReset.errors.contract",
+  "PasswordReset.errors.network",
+  "PasswordReset.errors.internalServer",
+  "PasswordReset.errors.rateLimited"
+];
 
 function flattenCatalog(value, locale, keyPath = "", result = new Map()) {
   if (typeof value === "string") {
@@ -106,6 +115,14 @@ test("message catalogs have exact locale, key, and ICU signature parity", async 
       referenceKeys,
       `[${locale}] leaf keys differ from [${referenceLocale}]`
     );
+
+    for (const key of requiredPresentationErrorKeys) {
+      assert.equal(
+        typeof catalog.get(key),
+        "string",
+        `[${locale}] ${key} must exist as a string leaf`
+      );
+    }
   }
 
   for (const key of referenceKeys) {
