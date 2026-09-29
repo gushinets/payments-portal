@@ -250,7 +250,7 @@
   },
   "Footer": {
     "registrationNumbers": "ИНН: {inn} · ОГРНИП: {ogrnip}",
-    "legalAddress": "Юридический адрес: {address}",
+    "legalAddress": "Юридический адрес: <addressValue>{address}</addressValue>",
     "supportEmail": "Email поддержки: <email>{supportEmail}</email>",
     "legalLinksAriaLabel": "Юридические документы",
     "paymentMethodsTitle": "Поддерживаемые способы оплаты",

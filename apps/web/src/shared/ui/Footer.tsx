@@ -126,14 +126,17 @@ export async function Footer({
       <div className="footer-inner">
         <div>
           <p className="footer-text">
-            <strong>{seller.name}</strong>
+            <strong lang="ru">{seller.name}</strong>
             <br />
             {t("registrationNumbers", {
               inn: seller.inn,
               ogrnip: seller.ogrnip
             })}
             <br />
-            {t("legalAddress", { address: seller.address })}
+            {t.rich("legalAddress", {
+              address: seller.address,
+              addressValue: (chunks) => <span lang="ru">{chunks}</span>
+            })}
             <br />
             {t.rich("supportEmail", {
               supportEmail,

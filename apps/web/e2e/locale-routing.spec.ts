@@ -199,6 +199,24 @@ test("canonical RU footer labels retain Russian language metadata on non-RU rout
   }
 });
 
+test("source-owned seller facts retain Russian language metadata on non-RU routes", async ({
+  page
+}) => {
+  await page.goto("/de");
+
+  await expect(
+    page.locator("footer").getByText("ИП Говоров Роман Стальевич", {
+      exact: true
+    })
+  ).toHaveAttribute("lang", "ru");
+  await expect(
+    page.locator("footer").getByText(
+      "630091 , Новосибирская область, г. Новосибирск",
+      { exact: true }
+    )
+  ).toHaveAttribute("lang", "ru");
+});
+
 test("locale switching preserves pathname, query and auth storage across seven destinations", async ({
   context,
   page

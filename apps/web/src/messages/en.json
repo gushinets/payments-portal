@@ -250,7 +250,7 @@
   },
   "Footer": {
     "registrationNumbers": "INN (ИНН): {inn} · OGRNIP (ОГРНИП): {ogrnip}",
-    "legalAddress": "Legal address: {address}",
+    "legalAddress": "Legal address: <addressValue>{address}</addressValue>",
     "supportEmail": "Support email: <email>{supportEmail}</email>",
     "legalLinksAriaLabel": "Legal documents in Russian",
     "paymentMethodsTitle": "Supported payment methods",
