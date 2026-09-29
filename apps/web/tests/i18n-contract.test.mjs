@@ -1,10 +1,15 @@
 import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
+import { relative, resolve, sep } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { parse, TYPE } from "@formatjs/icu-messageformat-parser";
+import ts from "typescript";
 
+const repositoryRootPath = fileURLToPath(
+  new URL("../../../", import.meta.url)
+);
 const localeConfigPath = fileURLToPath(
   new URL("../../../config/locales.json", import.meta.url)
 );
@@ -18,6 +23,157 @@ const requiredPresentationErrorKeys = [
   "PasswordReset.errors.internalServer",
   "PasswordReset.errors.rateLimited"
 ];
+const presentationSourceDirectories = [
+  "apps/web/src/app/[locale]",
+  "apps/web/src/features",
+  "apps/web/src/shared/ui"
+];
+const directCopyAttributeNames = new Set([
+  "aria-label",
+  "title",
+  "placeholder",
+  "alt"
+]);
+
+function directCopyKey({ filePath, surface, value }) {
+  return JSON.stringify([filePath, surface, value]);
+}
+
+const directCopyExceptions = new Set(
+  [
+    {
+      filePath: "apps/web/src/shared/ui/SiteShell.tsx",
+      surface: "JsxText",
+      value: "Anytool"
+    },
+    {
+      filePath: "apps/web/src/shared/ui/SiteShell.tsx",
+      surface: "JsxText",
+      value: "AI"
+    },
+    {
+      filePath: "apps/web/src/shared/ui/SiteShell.tsx",
+      surface: "aria-label",
+      value: "AnytoolAI"
+    },
+    {
+      filePath: "apps/web/src/shared/ui/AuthForm.tsx",
+      surface: "placeholder",
+      value: "user@example.com"
+    },
+    {
+      filePath:
+        "apps/web/src/features/password-reset/PasswordResetRequestClient.tsx",
+      surface: "placeholder",
+      value: "user@example.com"
+    }
+  ].map(directCopyKey)
+);
+
+function hasUnicodeLetter(value) {
+  return /\p{L}/u.test(value);
+}
+
+function directLiteralValue(expression) {
+  return expression &&
+    (ts.isStringLiteral(expression) ||
+      ts.isNoSubstitutionTemplateLiteral(expression))
+    ? expression.text
+    : null;
+}
+
+function collectDirectCopyFindings(filePath, source) {
+  const sourceFile = ts.createSourceFile(
+    filePath,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX
+  );
+  const findings = [];
+
+  function record(surface, value) {
+    if (hasUnicodeLetter(value)) {
+      findings.push({ filePath, surface, value });
+    }
+  }
+
+  function visit(node) {
+    if (ts.isJsxText(node)) {
+      const value = node.getText(sourceFile).trim();
+      if (value) {
+        record("JsxText", value);
+      }
+    } else if (
+      ts.isJsxExpression(node) &&
+      !ts.isJsxAttribute(node.parent)
+    ) {
+      const value = directLiteralValue(node.expression);
+      if (value !== null) {
+        record("JsxExpression", value);
+      }
+    } else if (ts.isJsxAttribute(node)) {
+      const attributeName = node.name.getText(sourceFile);
+      if (directCopyAttributeNames.has(attributeName)) {
+        let value = null;
+        if (node.initializer && ts.isStringLiteral(node.initializer)) {
+          value = node.initializer.text;
+        } else if (
+          node.initializer &&
+          ts.isJsxExpression(node.initializer)
+        ) {
+          value = directLiteralValue(node.initializer.expression);
+        }
+
+        if (value !== null) {
+          record(attributeName, value);
+        }
+      }
+    }
+
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
+  return findings;
+}
+
+function unexpectedDirectCopyFindings(findings) {
+  return findings.filter(
+    (finding) => !directCopyExceptions.has(directCopyKey(finding))
+  );
+}
+
+async function collectTsxFiles(directoryPath) {
+  const entries = await readdir(directoryPath, { withFileTypes: true });
+  const files = [];
+
+  for (const entry of entries.sort((left, right) =>
+    left.name.localeCompare(right.name)
+  )) {
+    const entryPath = resolve(directoryPath, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...(await collectTsxFiles(entryPath)));
+    } else if (entry.isFile() && entry.name.endsWith(".tsx")) {
+      files.push(entryPath);
+    }
+  }
+
+  return files;
+}
+
+function toRepositoryRelativePath(filePath) {
+  return relative(repositoryRootPath, filePath).split(sep).join("/");
+}
+
+function formatDirectCopyFindings(findings) {
+  return findings
+    .map(
+      ({ filePath, surface, value }) =>
+        `${filePath} [${surface}] ${JSON.stringify(value)}`
+    )
+    .join("\n");
+}
 
 function flattenCatalog(value, locale, keyPath = "", result = new Map()) {
   if (typeof value === "string") {
@@ -152,4 +308,95 @@ test("message catalogs have exact locale, key, and ICU signature parity", async 
       );
     }
   }
+});
+
+test("ordinary UI direct-copy detector covers only bounded literal surfaces", () => {
+  const ordinaryCopySource = [
+    "const Example = () => (",
+    "  <>",
+    "    <p>Reset your password</p>",
+    '    <p>{"Reset your password"}</p>',
+    "    <p>{`Reset your password`}</p>",
+    "    <p>   </p>",
+    '    <img alt="" />',
+    '    <p>{t("PasswordReset.request.title")}</p>',
+    "  </>",
+    ");"
+  ].join("\n");
+  const findings = collectDirectCopyFindings(
+    "apps/web/src/features/example/Example.tsx",
+    ordinaryCopySource
+  );
+
+  assert.deepEqual(
+    findings.map(({ surface, value }) => ({ surface, value })),
+    [
+      { surface: "JsxText", value: "Reset your password" },
+      { surface: "JsxExpression", value: "Reset your password" },
+      { surface: "JsxExpression", value: "Reset your password" }
+    ]
+  );
+
+  const modeledExceptions = [
+    ...collectDirectCopyFindings(
+      "apps/web/src/shared/ui/SiteShell.tsx",
+      '<a aria-label="AnytoolAI">Anytool<span>AI</span></a>'
+    ),
+    ...collectDirectCopyFindings(
+      "apps/web/src/shared/ui/AuthForm.tsx",
+      '<input placeholder="user@example.com" />'
+    ),
+    ...collectDirectCopyFindings(
+      "apps/web/src/features/password-reset/PasswordResetRequestClient.tsx",
+      '<input placeholder={"user@example.com"} />'
+    )
+  ];
+  assert.deepEqual(unexpectedDirectCopyFindings(modeledExceptions), []);
+  assert.deepEqual(
+    new Set(modeledExceptions.map(directCopyKey)),
+    directCopyExceptions
+  );
+
+  const sameValuesOutsideModeledFiles = collectDirectCopyFindings(
+    "apps/web/src/shared/ui/Other.tsx",
+    '<><a aria-label="AnytoolAI">Anytool</a><input placeholder="user@example.com" /></>'
+  );
+  assert.deepEqual(
+    unexpectedDirectCopyFindings(sameValuesOutsideModeledFiles),
+    sameValuesOutsideModeledFiles,
+    "exceptions must be scoped by file, surface, and exact value"
+  );
+});
+
+test("active presentation TSX has no unmodeled ordinary direct copy", async () => {
+  const findings = [];
+
+  for (const sourceDirectory of presentationSourceDirectories) {
+    const directoryPath = resolve(repositoryRootPath, sourceDirectory);
+    for (const filePath of await collectTsxFiles(directoryPath)) {
+      const repositoryRelativePath = toRepositoryRelativePath(filePath);
+      const source = await readFile(filePath, "utf8");
+      findings.push(
+        ...collectDirectCopyFindings(repositoryRelativePath, source)
+      );
+    }
+  }
+
+  const unexpected = unexpectedDirectCopyFindings(findings);
+  assert.deepEqual(
+    unexpected,
+    [],
+    `ordinary Portal-owned UI copy must use locale catalogs:\n${formatDirectCopyFindings(unexpected)}`
+  );
+
+  const observedExceptionKeys = new Set(
+    findings
+      .map(directCopyKey)
+      .filter((findingKey) => directCopyExceptions.has(findingKey))
+  );
+  assert.deepEqual(
+    observedExceptionKeys,
+    directCopyExceptions,
+    "direct-copy exceptions must remain exact and in active use"
+  );
 });

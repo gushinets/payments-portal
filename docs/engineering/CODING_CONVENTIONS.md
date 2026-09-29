@@ -1,7 +1,7 @@
 # Coding Conventions
 
 Status: authoritative
-Last verified: 2026-09-26
+Last verified: 2026-09-29
 
 How to write **new and changed** code so types, states, and trust boundaries
 stay explicit. This is not a backlog and not a mass-migration plan.
@@ -222,8 +222,9 @@ Frontend ESLint rejects direct type assertions on `response.json()` and
    Accept-Language negotiation entry. An explicit locale-prefixed URL always
    wins, and arbitrary unprefixed app paths stay not-found.
 4. Keep next-intl `localeDetection` and `localeCookie` disabled. Do not persist
-   locale in a cookie, localStorage, or a user record. Locale is independent of
-   contour/region, provider, currency, and timezone.
+   locale in a cookie, localStorage, a user record, or other application state.
+   Locale never selects tenant, contour/region, identity, provider, currency,
+   or timezone.
 5. Use the locale-aware navigation exports in `src/i18n/navigation.ts` for
    normal links, redirects, and route construction. Do not hardcode `/ru` for
    ordinary application navigation. Generated canonical RU legal paths are the
@@ -251,9 +252,19 @@ Frontend ESLint rejects direct type assertions on `response.json()` and
     Seller/provider facts, support addresses, identifiers, and user-entered
     content also stay outside ordinary message ownership; localize only their
     surrounding Portal labels.
-12. The broader hardcoded ordinary-UI-copy sweep/guard, frontend-to-backend
-    `Accept-Language` propagation, and reset URL/email localization belong to
-    4B.3. Do not infer any of them from route locale.
+12. Password-reset communication is the narrow locale-metadata exception. The
+    forgot-password route derives the canonical `languageTag` from its explicit
+    validated `routeLocale` through the generated locale mapping, then sends
+    that value as `Accept-Language` metadata on the password-reset request only.
+    Keep route-to-language mapping outside `shared/api`; generic transport may
+    carry the already-canonical value but does not own localized presentation.
+    API Presentation ignores malformed or unsupported candidates individually
+    and passes only the winning canonical `RouteLocale` inward. It falls back
+    to the generated default `ru` route locale only when normalization leaves
+    no valid supported canonical language candidate, including a missing header
+    or a header containing only malformed or unsupported candidates. Never
+    derive or persist tenant, region, identity, provider, currency, timezone,
+    or other application semantics from locale.
 
 ## Implemented contract guardrails
 
@@ -269,6 +280,9 @@ Frontend ESLint rejects direct type assertions on `response.json()` and
 5. Web i18n contract tests require exact seven-catalog key, ICU argument, and
    rich-text tag parity. Boundary tests keep localized auth presentation and
    next-intl/catalog dependencies out of `shared/api`.
-6. The general guard against hardcoded ordinary UI copy is intentionally
-   deferred to 4B.3; the 4B.2 boundary check is limited to catalog integrity
-   and language-neutral shared API transport.
+6. Web i18n contract tests use the TypeScript AST to reject direct ordinary
+   human-readable copy in active localized app, feature, and shared UI `.tsx`
+   presentation. The guard covers JSX text, direct child string literals, and
+   literal `aria-label`, `title`, `placeholder`, and `alt` values. Intentional
+   source-owned brand/example exceptions are exact path/surface/value entries;
+   new ordinary Portal copy belongs in the locale catalogs.
