@@ -249,7 +249,7 @@
     "homeAction": "Go to home"
   },
   "Footer": {
-    "registrationNumbers": "TIN (ИНН): {inn} · PSRNIE (ОГРНИП): {ogrnip}",
+    "registrationNumbers": "INN (ИНН): {inn} · OGRNIP (ОГРНИП): {ogrnip}",
     "legalAddress": "Legal address: {address}",
     "supportEmail": "Support email: <email>{supportEmail}</email>",
     "legalLinksAriaLabel": "Legal documents in Russian",

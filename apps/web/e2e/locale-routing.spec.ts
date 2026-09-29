@@ -301,18 +301,24 @@ test("legal documents remain canonical RU-only routes without locale alternates"
 });
 
 test("all seven locales render representative shell and catalog content", async ({
-  request
+  page
 }) => {
   expect(SUPPORTED_ROUTE_LOCALES).toEqual(
     localePresentation.map(([locale]) => locale)
   );
 
   for (const [locale, productsLabel, catalogTitle] of localePresentation) {
-    const response = await request.get(`/${locale}/products`);
-    const html = await response.text();
+    const response = await page.goto(`/${locale}/products`);
 
-    expect(response.status()).toBe(200);
-    expect(html).toContain(productsLabel);
-    expect(html).toContain(catalogTitle);
+    expect(response?.status()).toBe(200);
+    await expect(
+      page.getByRole("navigation").getByRole("link", {
+        name: productsLabel,
+        exact: true
+      })
+    ).toHaveAttribute("href", `/${locale}/products`);
+    await expect(
+      page.getByRole("heading", { name: catalogTitle, exact: true })
+    ).toBeVisible();
   }
 });

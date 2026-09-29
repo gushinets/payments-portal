@@ -249,7 +249,7 @@
     "homeAction": "Retour à l’accueil"
   },
   "Footer": {
-    "registrationNumbers": "NIF (ИНН) : {inn} · OGRNIP (ОГРНИП) : {ogrnip}",
+    "registrationNumbers": "INN (ИНН) : {inn} · OGRNIP (ОГРНИП) : {ogrnip}",
     "legalAddress": "Adresse légale : {address}",
     "supportEmail": "E-mail de l’assistance : <email>{supportEmail}</email>",
     "legalLinksAriaLabel": "Documents juridiques en russe",

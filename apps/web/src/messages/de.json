@@ -249,7 +249,7 @@
     "homeAction": "Zur Startseite"
   },
   "Footer": {
-    "registrationNumbers": "Steuer-ID (ИНН): {inn} · OGRNIP (ОГРНИП): {ogrnip}",
+    "registrationNumbers": "INN (ИНН): {inn} · OGRNIP (ОГРНИП): {ogrnip}",
     "legalAddress": "Geschäftsanschrift: {address}",
     "supportEmail": "Support-E-Mail: <email>{supportEmail}</email>",
     "legalLinksAriaLabel": "Rechtsdokumente auf Russisch",
