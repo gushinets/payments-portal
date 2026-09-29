@@ -7,7 +7,11 @@ import { Link } from "@/i18n/navigation";
 import { requestPasswordReset } from "@/shared/api/auth";
 import { passwordResetErrorMessageKey } from "./errors";
 
-export function PasswordResetRequestClient() {
+export function PasswordResetRequestClient({
+  languageTag
+}: {
+  languageTag: string;
+}) {
   const t = useTranslations("PasswordReset");
   const [email, setEmail] = useState("");
   const [notice, setNotice] = useState("");
@@ -26,7 +30,7 @@ export function PasswordResetRequestClient() {
 
     setLoading(true);
     try {
-      await requestPasswordReset({ email });
+      await requestPasswordReset({ email }, { languageTag });
       setNotice(t("request.notices.accepted"));
     } catch (requestError) {
       setError(t(passwordResetErrorMessageKey(requestError)));
