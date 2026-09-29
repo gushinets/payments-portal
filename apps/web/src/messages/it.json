@@ -53,7 +53,7 @@
       "invalidCredentials": "L’email o la password non sono corrette.",
       "missingPersonalConsent": "Devi acconsentire al trattamento dei dati personali.",
       "missingOfferConsent": "Devi accettare i termini dell’offerta pubblica.",
-      "internalServer": "Il servizio non è temporaneamente disponibile. Riprova più tardi.",
+      "internalServer": "Il servizio è temporaneamente non disponibile. Riprova più tardi.",
       "contract": "Il servizio ha restituito una risposta imprevista. Riprova.",
       "network": "Impossibile connettersi al servizio. Controlla la connessione e riprova.",
       "generic": "Impossibile completare l’autenticazione. Riprova."

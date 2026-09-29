@@ -96,7 +96,7 @@ The current reviewed 4B.1 branch still contains Russian-only ordinary Portal cop
 - `apps/web/src/features/checkout/CheckoutClient.tsx`;
 - `apps/web/src/features/password-reset/PasswordResetRequestClient.tsx`;
 - `apps/web/src/features/password-reset/PasswordResetConfirmClient.tsx`;
-- `apps/web/src/features/payment-result/PaymentResultClient.tsx`;
+- `apps/web/src/features/payment-result/PaymentResultView.tsx`;
 - presentation chrome in `apps/web/src/features/legal/LegalPageView.tsx`;
 - ordinary metadata in `apps/web/src/i18n/metadata.ts`;
 - Russian user-facing auth/password-reset error mapping in `apps/web/src/shared/api/auth.ts`.
@@ -112,7 +112,7 @@ The current component tree already gives a clean implementation path:
   - `ProductOverview`;
   - `Footer`;
   - `LegalPageView`;
-  - `PaymentResultClient` despite its historical name;
+  - `PaymentResultView`;
 - genuine Client Components:
   - `LocaleSwitcher`;
   - `CookieBanner`;
@@ -356,7 +356,7 @@ Primary files:
 - `apps/web/src/shared/ui/Footer.tsx`
 - `apps/web/src/features/catalog/catalog.ts`
 - `apps/web/src/features/catalog/ProductOverview.tsx`
-- `apps/web/src/features/payment-result/PaymentResultClient.tsx`
+- `apps/web/src/features/payment-result/PaymentResultView.tsx`
 - `apps/web/src/features/legal/LegalPageView.tsx`
 - `apps/web/tests/app-metadata.test.mjs`
 
@@ -397,7 +397,7 @@ Relevant existing contracts to preserve:
    - do not change product codes, numeric/commercial facts, seller facts, payment availability, or expose new product functionality;
    - distinguish RU contour/legal facts from obsolete language-state copy: keep genuine RU contour/commercial/legal facts unchanged, but update Portal-owned claims that currently say or imply the **interface itself is RU-only** so they become truthful after 4B.2 (seven UI locales while canonical legal authority remains RU). In particular, the current presentation meaning `Localization = RU / interface and legal documents` must not survive unchanged as a claim about the localized UI. Do not use this copy cleanup to change region, tenant, currency, provider, or legal authority.
 8. `ProductOverview` and the landing/products pages must resolve localized presentation through the catalogs.
-9. `PaymentResultClient` currently has no client-only behavior. Keep its public export/name for compatibility, but localize it server-side; do not rename it merely because the historical name contains `Client`.
+9. The server-rendered payment-result component is named `PaymentResultView` and resolves its localized presentation server-side.
 10. Localize only the **surrounding** legal presentation in `LegalPageView`:
     - eyebrow/help/accessibility/revision chrome → `LegalPresentation`;
     - `page.title`, `page.version`, and document blocks remain generated/source-owned RU content;
@@ -479,7 +479,7 @@ Implement these exact decisions:
    - the server-owned navigation labels in SiteShell.tsx
    - Footer.tsx
    - ProductOverview.tsx
-   - PaymentResultClient.tsx, keeping its current export/name
+   - PaymentResultView.tsx as the server-rendered component
    - LegalPageView.tsx presentation chrome only
 8. Preserve legal authority:
    - generated legal title/body/version/path remain source-owned RU;
@@ -565,7 +565,7 @@ Primary files:
 - `apps/web/tests/components/LocaleSwitcher.test.tsx`
 - `apps/web/tests/components/CheckoutClient.test.tsx`
 - `apps/web/tests/components/AuthApiError.test.ts`
-- `apps/web/tests/components/PresentationErrors.test.ts` (new)
+- `apps/web/tests/components/PresentationErrors.test.tsx` (new)
 
 **Implementation decisions**
 
@@ -624,8 +624,8 @@ Primary files:
 17. Migrate the auth-presentation assertions currently owned by `AuthApiError.test.ts`:
     - keep its language-neutral transport / `apiErrorCode` coverage;
     - remove assertions that depend on `authErrorMessage`;
-    - move equivalent auth semantic-key classification coverage into `PresentationErrors.test.ts`.
-18. Add focused auth error-key mapping tests in `PresentationErrors.test.ts`.
+    - move equivalent auth semantic-key classification coverage into `PresentationErrors.test.tsx`.
+18. Add focused auth error-key mapping tests in `PresentationErrors.test.tsx`.
 
 **Invariants**
 
@@ -710,7 +710,7 @@ Implement these exact decisions:
     - retain language-neutral ApiError/apiErrorCode transport classification coverage;
     - remove assertions/imports that depend on authErrorMessage;
     - do not delete passwordResetErrorMessage coverage yet because Step 3 still owns that migration.
-19. Add PresentationErrors.test.ts with focused auth semantic-key mapping coverage.
+19. Add PresentationErrors.test.tsx with focused auth semantic-key mapping coverage.
 
 Implement only this step.
 Follow the decisions defined in this prompt.
@@ -739,7 +739,7 @@ Run manually:
 
 ```bash
 node --test apps/web/tests/i18n-contract.test.mjs
-npm --workspace @anytoolai/web run test:components -- tests/components/AuthForm.test.tsx tests/components/HeaderAccount.test.tsx tests/components/LocaleSwitcher.test.tsx tests/components/CheckoutClient.test.tsx tests/components/AuthApiError.test.ts tests/components/PresentationErrors.test.ts
+npm --workspace @anytoolai/web run test:components -- tests/components/AuthForm.test.tsx tests/components/HeaderAccount.test.tsx tests/components/LocaleSwitcher.test.tsx tests/components/CheckoutClient.test.tsx tests/components/AuthApiError.test.ts tests/components/PresentationErrors.test.tsx
 npm run typecheck:web
 ```
 
@@ -778,7 +778,7 @@ Primary files:
 - `apps/web/src/features/password-reset/errors.ts` (new)
 - `apps/web/src/features/password-reset/index.ts`
 - `apps/web/src/shared/api/auth.ts`
-- `apps/web/tests/components/PresentationErrors.test.ts`
+- `apps/web/tests/components/PresentationErrors.test.tsx`
 - `apps/web/tests/components/AuthApiError.test.ts`
 - `apps/web/tests/components/AccountClient.test.tsx`
 - focused password-reset component tests only if needed to preserve touched behavior
@@ -831,8 +831,8 @@ Primary files:
 18. Finish migrating the existing `AuthApiError.test.ts` ownership:
     - retain language-neutral `ApiError` / `apiErrorCode` transport coverage;
     - remove remaining assertions/imports that depend on `passwordResetErrorMessage`;
-    - move equivalent password-reset semantic-key classification coverage into `PresentationErrors.test.ts`.
-19. Extend `PresentationErrors.test.ts` with the password-reset mapping matrix, especially the explicit 429 rate-limit case.
+    - move equivalent password-reset semantic-key classification coverage into `PresentationErrors.test.tsx`.
+19. Extend `PresentationErrors.test.tsx` with the password-reset mapping matrix, especially the explicit 429 rate-limit case.
 20. Update the existing RU password-reset E2E text expectations only as necessary; keep the current deep behavioral test in one representative locale rather than multiplying it by seven in this step.
 
 **Invariants**
@@ -899,7 +899,7 @@ Implement these exact decisions:
 16. Do not add Accept-Language, route locale, or any locale metadata to API requests. That is 4B.3.
 17. Update AccountClient.test.tsx to use the bounded RU intl test wrapper while preserving the current signed-out/session/logout behavioral coverage.
 18. Update AuthApiError.test.ts to remove the remaining passwordResetErrorMessage imports/assertions after the production helper is removed. Keep language-neutral ApiError/apiErrorCode transport coverage.
-19. Extend PresentationErrors.test.ts with the full password-reset semantic-key mapping matrix including the explicit rate-limit case.
+19. Extend PresentationErrors.test.tsx with the full password-reset semantic-key mapping matrix including the explicit rate-limit case.
 20. Update existing RU password-reset E2E text expectations only if required by the localized RU catalog. Do not create a seven-locale password-reset E2E matrix here.
 
 Implement only this step.
@@ -930,7 +930,7 @@ Run manually:
 
 ```bash
 node --test apps/web/tests/i18n-contract.test.mjs
-npm --workspace @anytoolai/web run test:components -- tests/components/AccountClient.test.tsx tests/components/AuthApiError.test.ts tests/components/PresentationErrors.test.ts
+npm --workspace @anytoolai/web run test:components -- tests/components/AccountClient.test.tsx tests/components/AuthApiError.test.ts tests/components/PresentationErrors.test.tsx
 npm run typecheck:web
 ```
 
