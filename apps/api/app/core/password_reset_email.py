@@ -4,12 +4,13 @@ from urllib.parse import urlencode
 
 from app.core.email import send_text_email
 from app.core.settings import settings
+from app.generated.locales import RouteLocale
 
 
-def build_password_reset_url(token: str) -> str:
+def build_password_reset_url(token: str, route_locale: RouteLocale) -> str:
     base_url = settings.app_public_base_url.rstrip("/")
     fragment = urlencode({"token": token})
-    return f"{base_url}/ru/reset-password#{fragment}"
+    return f"{base_url}/{route_locale}/reset-password#{fragment}"
 
 
 def send_password_reset_email(email: str, reset_url: str) -> bool:

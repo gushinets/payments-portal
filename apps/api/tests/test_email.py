@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from urllib.parse import parse_qs, urlsplit
+
+import pytest
 
 import app.core.email as email_sender
 import app.core.password_reset_email as password_reset_email
+from app.generated.locales import SUPPORTED_ROUTE_LOCALES, RouteLocale
 
 
 class FakeSmtp:
@@ -62,14 +66,23 @@ def test_send_text_email_uses_verifying_tls_context(monkeypatch) -> None:
     assert smtp.sent
 
 
-def test_password_reset_url_keeps_token_out_of_query_string(monkeypatch) -> None:
+@pytest.mark.parametrize("route_locale", SUPPORTED_ROUTE_LOCALES)
+def test_password_reset_url_keeps_token_in_fragment_only(
+    monkeypatch: pytest.MonkeyPatch,
+    route_locale: RouteLocale,
+) -> None:
     monkeypatch.setattr(
         password_reset_email,
         "settings",
         SimpleNamespace(app_public_base_url="https://payments.example.com/"),
     )
+    token = "secret-token?&/value"
 
-    reset_url = password_reset_email.build_password_reset_url("secret-token")
+    reset_url = password_reset_email.build_password_reset_url(token, route_locale)
+    parsed_url = urlsplit(reset_url)
 
-    assert reset_url == ("https://payments.example.com/ru/reset-password#token=secret-token")
-    assert "?" not in reset_url
+    assert parsed_url.path == f"/{route_locale}/reset-password"
+    assert parsed_url.query == ""
+    assert parse_qs(parsed_url.fragment) == {"token": [token]}
+    assert token not in parsed_url.path
+    assert token not in parsed_url.query

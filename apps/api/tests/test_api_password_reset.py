@@ -8,8 +8,13 @@ import pytest
 from fastapi.testclient import TestClient
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
+import app.domains.identity.password_reset as password_reset_presentation
 import app.domains.identity.services.password_reset as password_reset_service
 from app.core.database import SessionLocal
+from app.generated.locales import (
+    LANGUAGE_TAG_BY_ROUTE_LOCALE,
+    RouteLocale,
+)
 from app.infrastructure.persistence.password_reset import (
     prune_expired_password_reset_rate_limits,
     prune_expired_password_reset_tokens,
@@ -67,13 +72,14 @@ def test_password_reset_email_token_and_session_revocation(monkeypatch: pytest.M
     request_response = client.post(
         "/api/auth/password-reset/request",
         json={"email": "reset-user@example.com"},
+        headers={"accept-language": "de"},
     )
     assert request_response.status_code == 200
     assert request_response.json() == {"status": "accepted"}
     assert sent_messages == [
         (
             "reset-user@example.com",
-            password_reset_service.build_password_reset_url(reset_token),
+            password_reset_service.build_password_reset_url(reset_token, "de"),
         )
     ]
 
@@ -85,6 +91,7 @@ def test_password_reset_email_token_and_session_revocation(monkeypatch: pytest.M
         assert stored_token.token_hash
         assert stored_token.token_hash != reset_token
         assert len(stored_token.token_hash) == 64
+        assert (stored_token.tenant_id, stored_token.region) == ("anytoolai", "ru")
 
     confirm_response = client.post(
         "/api/auth/password-reset/confirm",
@@ -208,6 +215,103 @@ def test_password_reset_request_does_not_reveal_unknown_email(monkeypatch: pytes
         assert stored_token.email_normalized.startswith("password-reset-decoy:")
 
 
+@pytest.mark.parametrize(
+    ("accept_language", "expected_route_locale"),
+    tuple(
+        (language_tag, route_locale)
+        for route_locale, language_tag in LANGUAGE_TAG_BY_ROUTE_LOCALE.items()
+    ),
+)
+def test_password_reset_request_normalizes_every_canonical_language_tag(
+    monkeypatch: pytest.MonkeyPatch,
+    accept_language: str,
+    expected_route_locale: RouteLocale,
+) -> None:
+    prepare_password_reset = Mock(
+        return_value=password_reset_service.PasswordResetDeliveryResult(
+            recipient_email="reset-user@example.com",
+            reset_url="https://payments.example.com/reset#token=secret",
+            send_email=False,
+            route_locale=expected_route_locale,
+        )
+    )
+    monkeypatch.setattr(
+        password_reset_presentation,
+        "prepare_password_reset",
+        prepare_password_reset,
+    )
+
+    response = client.post(
+        "/api/auth/password-reset/request",
+        json={"email": "reset-user@example.com"},
+        headers={"accept-language": accept_language},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "accepted"}
+    assert prepare_password_reset.call_args.kwargs["route_locale"] == expected_route_locale
+
+
+@pytest.mark.parametrize(
+    ("accept_language", "expected_route_locale"),
+    [
+        ("PT-br", "pt"),
+        ("DE", "de"),
+        ("de ; q=0.8", "de"),
+        ("de; q=0.8", "de"),
+        ("en;q=0.4,de;q=0.9", "de"),
+        ("de;q=0.8,en;q=0.8", "de"),
+        ("de;q=0,en;q=0.5", "en"),
+        ("de;q=0", "ru"),
+        ("ja-JP,de;q=0.7", "de"),
+        ("de;foo=bar,en;q=0.6", "en"),
+        (None, "ru"),
+        ("", "ru"),
+        ("ja-JP", "ru"),
+        ("*", "ru"),
+        ("de;q=.5", "ru"),
+        ("de;q=1.1", "ru"),
+        ("de;q=0.0000", "ru"),
+        ("de;q=0.5;path=/reset-password", "ru"),
+        ("../../de/reset-password", "ru"),
+    ],
+)
+def test_password_reset_request_strictly_normalizes_accept_language(
+    monkeypatch: pytest.MonkeyPatch,
+    accept_language: str | None,
+    expected_route_locale: RouteLocale,
+) -> None:
+    prepare_password_reset = Mock(
+        return_value=password_reset_service.PasswordResetDeliveryResult(
+            recipient_email="reset-user@example.com",
+            reset_url="https://payments.example.com/reset#token=secret",
+            send_email=False,
+            route_locale=expected_route_locale,
+        )
+    )
+    monkeypatch.setattr(
+        password_reset_presentation,
+        "prepare_password_reset",
+        prepare_password_reset,
+    )
+    headers = {} if accept_language is None else {"accept-language": accept_language}
+
+    response = client.post(
+        "/api/auth/password-reset/request",
+        json={"email": "reset-user@example.com"},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "accepted"}
+    assert prepare_password_reset.call_args.kwargs["route_locale"] == expected_route_locale
+    assert "accept_language" not in prepare_password_reset.call_args.kwargs
+
+
+def test_password_reset_request_rejects_unicode_qvalue_digit() -> None:
+    assert password_reset_presentation._normalize_request_language("de;q=0.\u0661") == "ru"
+
+
 def test_password_reset_request_uses_forwarded_client_ip_from_trusted_proxy() -> None:
     proxy_client = TestClient(
         ProxyHeadersMiddleware(app, trusted_hosts=["testclient"]),
@@ -234,6 +338,7 @@ def test_password_reset_request_derives_scope_server_side_for_rate_limits() -> N
                 "region": "not-a-region",
                 "email": f"scope-probe-{index}@example.com",
             },
+            headers={"accept-language": "de"},
         )
         assert response.status_code == 200
 
@@ -244,6 +349,7 @@ def test_password_reset_request_derives_scope_server_side_for_rate_limits() -> N
             "region": "still-not-a-region",
             "email": "scope-probe-final@example.com",
         },
+        headers={"accept-language": "de"},
     )
     assert limited_response.status_code == 429
     assert limited_response.json() == {"detail": {"code": "password_reset_rate_limited"}}
