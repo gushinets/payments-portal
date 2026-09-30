@@ -249,10 +249,12 @@ def test_unknown_email_password_reset_uses_hashed_decoy_without_user_binding(
         email="unknown-reset@example.com",
         client_ip="192.0.2.12",
         user_agent="identity-legal-survivor-test",
+        route_locale="ru",
     )
     stored_token = db_session.query(MagicLinkToken).one()
 
     assert delivery.send_email is False
+    assert delivery.route_locale == "ru"
     assert stored_token.user_id is None
     assert stored_token.email_normalized.startswith("password-reset-decoy:")
     assert stored_token.token_hash == token_hash
@@ -295,10 +297,12 @@ def test_password_reset_binds_canonical_user_and_revokes_security_state(
         email="canonical-reset@example.com",
         client_ip="192.0.2.14",
         user_agent="identity-legal-survivor-test",
+        route_locale="ru",
     )
     stored_token = db_session.query(MagicLinkToken).one()
 
     assert delivery.send_email is True
+    assert delivery.route_locale == "ru"
     assert stored_token.user_id == registration.user_id
     assert (stored_token.tenant_id, stored_token.region) == ("anytoolai", "ru")
 

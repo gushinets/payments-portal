@@ -44,6 +44,10 @@ export type PasswordResetRequestValues = {
   email: string;
 };
 
+export type PasswordResetRequestOptions = {
+  languageTag: string;
+};
+
 export type PasswordResetConfirmValues = {
   token: string;
   password: string;
@@ -152,13 +156,15 @@ export async function postJson<T>(
   path: string,
   body: unknown,
   decoder: JsonDecoder<T>,
-  token?: string
+  token?: string,
+  extraHeaders?: Readonly<Record<string, string>>
 ): Promise<T> {
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => controller.abort(), requestTimeoutMs);
   const response = await fetch(`${resolveApiBase()}${path}`, {
     method: "POST",
     headers: {
+      ...extraHeaders,
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {})
     },
@@ -329,12 +335,15 @@ export async function submitAuth(values: SubmitAuthValues): Promise<AuthResponse
 }
 
 export async function requestPasswordReset(
-  values: PasswordResetRequestValues
+  values: PasswordResetRequestValues,
+  options: PasswordResetRequestOptions
 ): Promise<PasswordResetRequestResponse> {
   return postJson(
     "/api/auth/password-reset/request",
     { email: values.email },
-    decodePasswordResetRequestResponse
+    decodePasswordResetRequestResponse,
+    undefined,
+    { "Accept-Language": options.languageTag }
   );
 }
 

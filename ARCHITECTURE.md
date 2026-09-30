@@ -1,7 +1,7 @@
 # Payment Portal Architecture
 
 Status: authoritative current-state map
-Last verified: 2026-09-26
+Last verified: 2026-09-29
 
 ## System boundary
 
@@ -90,7 +90,8 @@ The exact supported route locales are `en`, `fr`, `it`, `de`, `es`, `ru`, and
 URLs and by next-intl routing. `languageTag` is the document language, and
 `intlLocale` is the formatting identity. For Portuguese, the route identity is
 `pt` while both language and formatting identities are `pt-BR`. Locale does
-not determine contour/region, provider, currency, or timezone.
+not select or persist tenant, contour/region, identity, provider, currency,
+timezone, or any other application state.
 
 The locale returned by next-intl's `useLocale` is the `routeLocale`; formatting
 code resolves the canonical `intlLocale` through the generated mapping instead
@@ -109,6 +110,29 @@ ordinary client boundaries.
 Shared API transport remains language-neutral. It exposes status, error codes,
 and other machine facts; the owning web Presentation/UI boundary maps those
 facts to localized human-readable messages.
+
+Password-reset communication has one bounded locale-metadata flow:
+
+```text
+explicit validated routeLocale
+  → generated languageTag
+  → password-reset Accept-Language request metadata
+  → API Presentation normalization to canonical RouteLocale
+  → localized reset URL + backend-owned email
+```
+
+The web route boundary owns the `routeLocale` to `languageTag` mapping, and
+only the password-reset request sends the resulting canonical language tag.
+Generic shared API transport may carry that already-canonical header value but
+does not own locale mapping or localized presentation. API Presentation
+normalizes the request metadata before invoking password-reset application
+code. Malformed and unsupported candidates are ignored individually so another
+supported canonical candidate can still win. If normalization leaves no valid
+supported canonical language candidate, such as when the header is missing or
+contains only malformed or unsupported candidates, API Presentation falls back
+to the generated default `ru` route locale. The canonical locale is ephemeral
+delivery metadata only and never selects or persists tenant, region, identity,
+provider, currency, or timezone.
 
 Ordinary public routes live under `apps/web/src/app/[locale]`. The localized
 root layout owns the document and derives `<html lang>` from the locale
@@ -131,9 +155,9 @@ flow. Generated legal titles, bodies, versions, paths, and registration
 acceptance statements remain source-owned canonical RU content. Seller facts,
 support addresses, payment-method/provider facts, and user-entered content also
 stay source-owned; catalogs localize only their surrounding Portal presentation.
-The broader guard against newly hardcoded ordinary UI copy, backend
-`Accept-Language` propagation, and localized reset URLs and email content belong
-to 4B.3.
+The ordinary-copy guard, backend `Accept-Language` propagation, and localized
+reset URLs and email content are implemented as part of the completed 4B
+contract.
 
 Current API composition exposes authentication, password reset, legal, health,
 and metrics routes. Removed catalog, checkout-intent, payment-status, account
@@ -259,8 +283,12 @@ OpenAPI. Web lint rejects direct type assertions on `response.json()` and
 `JSON.parse(...)` results in production source. Web localization guards require
 exact seven-catalog key and ICU signature parity and prevent shared API
 transport from regaining localized auth presentation ownership. The existing
-bounded `/ru` route-literal guard remains in force; the broader hardcoded
-ordinary-UI-copy guard is deferred to 4B.3.
+bounded `/ru` route-literal guard remains in force. An AST-based ordinary-copy
+guard scans active `.tsx` presentation under localized app routes, features,
+and shared UI for direct human-readable JSX text, child string literals, and
+the bounded user-facing literal attributes. Its exact path/surface/value
+exceptions are limited to source-owned AnytoolAI brand fragments and the
+`user@example.com` example placeholder.
 
 The guards reject reintroduction without requiring deleted source files to
 exist as evidence.

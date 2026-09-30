@@ -17,6 +17,7 @@ from app.domains.identity.errors import (
     PasswordResetRateLimitedError,
 )
 from app.domains.identity.passwords import hash_password
+from app.generated.locales import RouteLocale
 from app.infrastructure.persistence.password_reset import (
     claim_valid_password_reset_token,
     increment_password_reset_rate_limit,
@@ -47,6 +48,7 @@ class PasswordResetDeliveryResult:
     recipient_email: str
     reset_url: str
     send_email: bool
+    route_locale: RouteLocale
 
 
 def make_password_reset_token() -> tuple[str, str, datetime]:
@@ -98,6 +100,7 @@ def prepare_password_reset(
     email: str,
     client_ip: str,
     user_agent: str | None,
+    route_locale: RouteLocale,
 ) -> PasswordResetDeliveryResult:
     normalized_email = normalize_email(email)
     now = utc_now()
@@ -162,8 +165,9 @@ def prepare_password_reset(
 
     return PasswordResetDeliveryResult(
         recipient_email=recipient_email,
-        reset_url=build_password_reset_url(token),
+        reset_url=build_password_reset_url(token, route_locale),
         send_email=send_email,
+        route_locale=route_locale,
     )
 
 
@@ -231,9 +235,18 @@ def confirm_password_reset(
     db.commit()
 
 
-def send_password_reset_email_safely(email: str, reset_url: str) -> None:
+def send_password_reset_email_safely(
+    email: str,
+    reset_url: str,
+    route_locale: RouteLocale,
+) -> None:
     try:
-        sent = send_password_reset_email(email, reset_url)
+        sent = send_password_reset_email(
+            email,
+            reset_url,
+            route_locale,
+            PASSWORD_RESET_TTL_MINUTES,
+        )
     except Exception as error:
         record_password_reset_email("failed")
         logger.warning(
@@ -261,5 +274,9 @@ def send_password_reset_email_safely(email: str, reset_url: str) -> None:
         )
 
 
-def skip_password_reset_email(email: str, reset_url: str) -> None:
+def skip_password_reset_email(
+    email: str,
+    reset_url: str,
+    route_locale: RouteLocale,
+) -> None:
     return None

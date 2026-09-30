@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+from string import Formatter
 from types import SimpleNamespace
+from unittest.mock import Mock
+from urllib.parse import parse_qs, urlsplit
+
+import pytest
 
 import app.core.email as email_sender
 import app.core.password_reset_email as password_reset_email
+from app.generated.locales import SUPPORTED_ROUTE_LOCALES, RouteLocale
 
 
 class FakeSmtp:
@@ -62,14 +68,108 @@ def test_send_text_email_uses_verifying_tls_context(monkeypatch) -> None:
     assert smtp.sent
 
 
-def test_password_reset_url_keeps_token_out_of_query_string(monkeypatch) -> None:
+@pytest.mark.parametrize("route_locale", SUPPORTED_ROUTE_LOCALES)
+def test_password_reset_url_keeps_token_in_fragment_only(
+    monkeypatch: pytest.MonkeyPatch,
+    route_locale: RouteLocale,
+) -> None:
     monkeypatch.setattr(
         password_reset_email,
         "settings",
         SimpleNamespace(app_public_base_url="https://payments.example.com/"),
     )
+    token = "secret-token?&/value"
 
-    reset_url = password_reset_email.build_password_reset_url("secret-token")
+    reset_url = password_reset_email.build_password_reset_url(token, route_locale)
+    parsed_url = urlsplit(reset_url)
 
-    assert reset_url == ("https://payments.example.com/ru/reset-password#token=secret-token")
-    assert "?" not in reset_url
+    assert parsed_url.path == f"/{route_locale}/reset-password"
+    assert parsed_url.query == ""
+    assert parse_qs(parsed_url.fragment) == {"token": [token]}
+    assert token not in parsed_url.path
+    assert token not in parsed_url.query
+
+
+def test_password_reset_email_templates_cover_supported_locales_exactly() -> None:
+    assert set(password_reset_email.PASSWORD_RESET_EMAIL_TEMPLATES) == set(SUPPORTED_ROUTE_LOCALES)
+
+    for template in password_reset_email.PASSWORD_RESET_EMAIL_TEMPLATES.values():
+        field_names = {field_name for _, field_name, _, _ in Formatter().parse(template.body) if field_name is not None}
+        assert field_names == {"reset_url", "ttl_minutes"}
+
+
+@pytest.mark.parametrize("route_locale", SUPPORTED_ROUTE_LOCALES)
+def test_password_reset_email_renders_every_supported_locale(
+    route_locale: RouteLocale,
+) -> None:
+    reset_url = f"https://payments.example.com/{route_locale}/reset-password#token=secret"
+    ttl_minutes = 37
+
+    content = password_reset_email.render_password_reset_email(
+        route_locale=route_locale,
+        reset_url=reset_url,
+        ttl_minutes=ttl_minutes,
+    )
+
+    assert content.subject.strip()
+    assert content.body.strip()
+    assert reset_url in content.body
+    assert str(ttl_minutes) in content.body
+
+
+def test_password_reset_email_uses_authored_brazilian_portuguese_template() -> None:
+    expected_subject = "Redefinição de senha do AnytoolAI"
+    expected_body_template = "\n".join(
+        [
+            "Olá!",
+            "",
+            "Para alterar sua senha do AnytoolAI, acesse este link:",
+            "{reset_url}",
+            "",
+            "Se você não solicitou a redefinição da senha, basta ignorar este e-mail.",
+            "O link é válido por {ttl_minutes} minutos.",
+        ]
+    )
+    reset_url = "https://payments.example.com/pt/reset-password#token=secret"
+
+    template = password_reset_email.PASSWORD_RESET_EMAIL_TEMPLATES["pt"]
+    content = password_reset_email.render_password_reset_email(
+        route_locale="pt",
+        reset_url=reset_url,
+        ttl_minutes=30,
+    )
+
+    assert template.subject == expected_subject
+    assert template.body == expected_body_template
+    assert content.subject == expected_subject
+    assert content.body == expected_body_template.format(
+        reset_url=reset_url,
+        ttl_minutes=30,
+    )
+
+
+def test_send_password_reset_email_delegates_rendered_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    send_text_email = Mock(return_value=True)
+    monkeypatch.setattr(password_reset_email, "send_text_email", send_text_email)
+    reset_url = "https://payments.example.com/fr/reset-password#token=secret"
+    expected_content = password_reset_email.render_password_reset_email(
+        route_locale="fr",
+        reset_url=reset_url,
+        ttl_minutes=30,
+    )
+
+    sent = password_reset_email.send_password_reset_email(
+        "user@example.com",
+        reset_url,
+        "fr",
+        30,
+    )
+
+    assert sent is True
+    send_text_email.assert_called_once_with(
+        to_email="user@example.com",
+        subject=expected_content.subject,
+        body=expected_content.body,
+    )

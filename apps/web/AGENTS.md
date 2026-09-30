@@ -40,8 +40,16 @@ before frontend work.
 - Canonical and alternate metadata uses the required `APP_PUBLIC_BASE_URL`
   server/build origin and is owned by the application.
 - Do not offer locale switching on generated legal pages or reset-password
-  confirmation. The broader hardcoded ordinary-UI-copy sweep/guard, backend
-  `Accept-Language` propagation, and reset URL/email localization are 4B.3.
+  confirmation.
+- Password-reset communication derives the canonical `languageTag` from the
+  explicit validated `routeLocale` at the forgot-password route boundary and
+  sends it as `Accept-Language` metadata on that request only. API Presentation
+  ignores malformed and unsupported candidates individually, then passes only
+  the winning canonical `RouteLocale` inward. If no valid supported canonical
+  candidate remains, including for a missing header or one containing only
+  malformed or unsupported candidates, it falls back to the generated default
+  `ru` route locale. Do not derive or persist tenant, region, identity,
+  provider, currency, timezone, or other application state from locale.
 
 ## Localization ownership
 
@@ -53,7 +61,9 @@ before frontend work.
   remains `messages={null}`; a true Client Component receives only the
   current-locale namespace or subset it needs from the nearest server boundary.
 - `shared/api` stays language-neutral. It exposes machine status/error facts;
-  the owning Presentation/UI maps those facts to localized messages.
+  the owning Presentation/UI maps those facts to localized messages. It may
+  carry an already-canonical password-reset language tag as request metadata,
+  but it does not own route-to-language mapping or localized presentation.
 - Canonical RU legal documents and generated registration acceptance text stay
   source-owned and retain `lang="ru"`. Seller/provider facts, support addresses,
   identifiers, and user-entered content also remain source-owned; localize only
@@ -73,6 +83,10 @@ before frontend work.
 - Ordinary Portal-owned customer-facing copy follows the active route catalog.
   Do not translate or relabel canonical RU legal/source-owned content as if it
   were ordinary UI copy.
+- The i18n contract test rejects direct human-readable JSX copy in active
+  localized app, feature, and shared UI presentation. New ordinary copy belongs
+  in the locale catalogs; intentional source-owned exceptions must be exact,
+  reviewable path/surface/value entries.
 - Use Bundle 3 tokens and glass/bento patterns; do not invent replacement tokens.
 - Prefer semantic roles and labels. Add `data-testid` only when a stable semantic
   selector is unavailable.

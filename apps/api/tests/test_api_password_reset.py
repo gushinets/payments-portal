@@ -8,8 +8,14 @@ import pytest
 from fastapi.testclient import TestClient
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
+import app.core.password_reset_email as password_reset_email
+import app.domains.identity.password_reset as password_reset_presentation
 import app.domains.identity.services.password_reset as password_reset_service
 from app.core.database import SessionLocal
+from app.generated.locales import (
+    LANGUAGE_TAG_BY_ROUTE_LOCALE,
+    RouteLocale,
+)
 from app.infrastructure.persistence.password_reset import (
     prune_expired_password_reset_rate_limits,
     prune_expired_password_reset_tokens,
@@ -30,7 +36,7 @@ def setup_function() -> None:
 
 
 def test_password_reset_email_token_and_session_revocation(monkeypatch: pytest.MonkeyPatch) -> None:
-    sent_messages: list[tuple[str, str]] = []
+    sent_messages: list[tuple[str, str, RouteLocale, int]] = []
     reset_token = "known-reset-token-value-with-enough-entropy"
 
     def fake_make_password_reset_token() -> tuple[str, str, datetime]:
@@ -49,7 +55,9 @@ def test_password_reset_email_token_and_session_revocation(monkeypatch: pytest.M
     monkeypatch.setattr(
         password_reset_service,
         "send_password_reset_email",
-        lambda email, url: sent_messages.append((email, url)) or True,
+        lambda email, url, route_locale, ttl_minutes: (
+            sent_messages.append((email, url, route_locale, ttl_minutes)) or True
+        ),
     )
 
     register_response = client.post(
@@ -67,13 +75,16 @@ def test_password_reset_email_token_and_session_revocation(monkeypatch: pytest.M
     request_response = client.post(
         "/api/auth/password-reset/request",
         json={"email": "reset-user@example.com"},
+        headers={"accept-language": "de"},
     )
     assert request_response.status_code == 200
     assert request_response.json() == {"status": "accepted"}
     assert sent_messages == [
         (
             "reset-user@example.com",
-            password_reset_service.build_password_reset_url(reset_token),
+            password_reset_service.build_password_reset_url(reset_token, "de"),
+            "de",
+            password_reset_service.PASSWORD_RESET_TTL_MINUTES,
         )
     ]
 
@@ -85,6 +96,7 @@ def test_password_reset_email_token_and_session_revocation(monkeypatch: pytest.M
         assert stored_token.token_hash
         assert stored_token.token_hash != reset_token
         assert len(stored_token.token_hash) == 64
+        assert (stored_token.tenant_id, stored_token.region) == ("anytoolai", "ru")
 
     confirm_response = client.post(
         "/api/auth/password-reset/confirm",
@@ -186,11 +198,13 @@ def test_foreign_contour_password_reset_token_is_rejected_without_mutation() -> 
 
 
 def test_password_reset_request_does_not_reveal_unknown_email(monkeypatch: pytest.MonkeyPatch) -> None:
-    sent_messages: list[tuple[str, str]] = []
+    sent_messages: list[tuple[str, str, RouteLocale, int]] = []
     monkeypatch.setattr(
         password_reset_service,
         "send_password_reset_email",
-        lambda email, url: sent_messages.append((email, url)) or True,
+        lambda email, url, route_locale, ttl_minutes: (
+            sent_messages.append((email, url, route_locale, ttl_minutes)) or True
+        ),
     )
 
     response = client.post(
@@ -206,6 +220,153 @@ def test_password_reset_request_does_not_reveal_unknown_email(monkeypatch: pytes
         assert stored_token.purpose == MagicLinkPurpose.PASSWORD_RESET
         assert stored_token.user_id is None
         assert stored_token.email_normalized.startswith("password-reset-decoy:")
+
+
+@pytest.mark.parametrize(
+    ("accept_language", "expected_route_locale"),
+    tuple((language_tag, route_locale) for route_locale, language_tag in LANGUAGE_TAG_BY_ROUTE_LOCALE.items()),
+)
+def test_password_reset_request_normalizes_every_canonical_language_tag(
+    monkeypatch: pytest.MonkeyPatch,
+    accept_language: str,
+    expected_route_locale: RouteLocale,
+) -> None:
+    prepare_password_reset = Mock(
+        return_value=password_reset_service.PasswordResetDeliveryResult(
+            recipient_email="reset-user@example.com",
+            reset_url="https://payments.example.com/reset#token=secret",
+            send_email=False,
+            route_locale=expected_route_locale,
+        )
+    )
+    monkeypatch.setattr(
+        password_reset_presentation,
+        "prepare_password_reset",
+        prepare_password_reset,
+    )
+
+    response = client.post(
+        "/api/auth/password-reset/request",
+        json={"email": "reset-user@example.com"},
+        headers={"accept-language": accept_language},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "accepted"}
+    assert prepare_password_reset.call_args.kwargs["route_locale"] == expected_route_locale
+
+
+@pytest.mark.parametrize(
+    ("accept_language", "expected_route_locale"),
+    [
+        ("PT-br", "pt"),
+        ("DE", "de"),
+        ("de ; q=0.8", "de"),
+        ("de; q=0.8", "de"),
+        ("en;q=0.4,de;q=0.9", "de"),
+        ("de;q=0.8,en;q=0.8", "de"),
+        ("de;q=0,en;q=0.5", "en"),
+        ("de;q=0", "ru"),
+        ("ja-JP,de;q=0.7", "de"),
+        ("de;foo=bar,en;q=0.6", "en"),
+        (None, "ru"),
+        ("", "ru"),
+        ("ja-JP", "ru"),
+        ("*", "ru"),
+        ("de;q=.5", "ru"),
+        ("de;q=1.1", "ru"),
+        ("de;q=0.0000", "ru"),
+        ("de;q=0.5;path=/reset-password", "ru"),
+        ("../../de/reset-password", "ru"),
+    ],
+)
+def test_password_reset_request_strictly_normalizes_accept_language(
+    monkeypatch: pytest.MonkeyPatch,
+    accept_language: str | None,
+    expected_route_locale: RouteLocale,
+) -> None:
+    prepare_password_reset = Mock(
+        return_value=password_reset_service.PasswordResetDeliveryResult(
+            recipient_email="reset-user@example.com",
+            reset_url="https://payments.example.com/reset#token=secret",
+            send_email=False,
+            route_locale=expected_route_locale,
+        )
+    )
+    monkeypatch.setattr(
+        password_reset_presentation,
+        "prepare_password_reset",
+        prepare_password_reset,
+    )
+    headers = {} if accept_language is None else {"accept-language": accept_language}
+
+    response = client.post(
+        "/api/auth/password-reset/request",
+        json={"email": "reset-user@example.com"},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "accepted"}
+    assert prepare_password_reset.call_args.kwargs["route_locale"] == expected_route_locale
+    assert "accept_language" not in prepare_password_reset.call_args.kwargs
+
+
+@pytest.mark.parametrize("accept_language", [None, "ja-JP"])
+def test_password_reset_request_uses_ru_email_template_for_fallback_language(
+    monkeypatch: pytest.MonkeyPatch,
+    accept_language: str | None,
+) -> None:
+    delivered_messages: list[dict[str, str]] = []
+
+    def capture_text_email(*, to_email: str, subject: str, body: str) -> bool:
+        delivered_messages.append(
+            {
+                "to_email": to_email,
+                "subject": subject,
+                "body": body,
+            }
+        )
+        return True
+
+    monkeypatch.setattr(password_reset_email, "send_text_email", capture_text_email)
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "fallback-reset@example.com",
+            "password": "old-password-123",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    assert register_response.status_code == 200
+    headers = {} if accept_language is None else {"accept-language": accept_language}
+
+    response = client.post(
+        "/api/auth/password-reset/request",
+        json={"email": "fallback-reset@example.com"},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert len(delivered_messages) == 1
+    delivered = delivered_messages[0]
+    reset_url = delivered["body"].splitlines()[3]
+    assert "/ru/reset-password#" in reset_url
+    expected_content = password_reset_email.render_password_reset_email(
+        route_locale="ru",
+        reset_url=reset_url,
+        ttl_minutes=password_reset_service.PASSWORD_RESET_TTL_MINUTES,
+    )
+    assert delivered == {
+        "to_email": "fallback-reset@example.com",
+        "subject": expected_content.subject,
+        "body": expected_content.body,
+    }
+
+
+def test_password_reset_request_rejects_unicode_qvalue_digit() -> None:
+    assert password_reset_presentation._normalize_request_language("de;q=0.\u0661") == "ru"
 
 
 def test_password_reset_request_uses_forwarded_client_ip_from_trusted_proxy() -> None:
@@ -234,6 +395,7 @@ def test_password_reset_request_derives_scope_server_side_for_rate_limits() -> N
                 "region": "not-a-region",
                 "email": f"scope-probe-{index}@example.com",
             },
+            headers={"accept-language": "de"},
         )
         assert response.status_code == 200
 
@@ -244,6 +406,7 @@ def test_password_reset_request_derives_scope_server_side_for_rate_limits() -> N
             "region": "still-not-a-region",
             "email": "scope-probe-final@example.com",
         },
+        headers={"accept-language": "de"},
     )
     assert limited_response.status_code == 429
     assert limited_response.json() == {"detail": {"code": "password_reset_rate_limited"}}
@@ -309,7 +472,11 @@ def test_password_reset_confirm_invalidates_other_outstanding_reset_tokens(
         )
 
     monkeypatch.setattr(password_reset_service, "make_password_reset_token", make_token)
-    monkeypatch.setattr(password_reset_service, "send_password_reset_email", lambda email, url: True)
+    monkeypatch.setattr(
+        password_reset_service,
+        "send_password_reset_email",
+        lambda email, url, route_locale, ttl_minutes: True,
+    )
 
     register_response = client.post(
         "/api/auth/register",
@@ -450,15 +617,26 @@ def test_password_reset_email_delivery_disabled_is_observable(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    monkeypatch.setattr(password_reset_service, "send_password_reset_email", lambda email, url: False)
+    monkeypatch.setattr(
+        password_reset_service,
+        "send_password_reset_email",
+        lambda email, url, route_locale, ttl_minutes: False,
+    )
 
     with caplog.at_level("WARNING", logger="payment_portal.identity.password_reset"):
         password_reset_service.send_password_reset_email_safely(
             "reset-user@example.com",
-            "http://localhost/reset",
+            "http://localhost/reset?token=reset-token-secret",
+            "ru",
         )
 
     assert "password_reset_email_delivery_disabled" in caplog.text
+    for marker in (
+        "reset-user@example.com",
+        "http://localhost/reset?token=reset-token-secret",
+        "reset-token-secret",
+    ):
+        assert marker not in caplog.text
 
 
 def test_password_reset_email_delivery_failure_is_observable(
@@ -469,7 +647,12 @@ def test_password_reset_email_delivery_failure_is_observable(
     record_password_reset_email = Mock()
     report_exception = Mock()
 
-    def fail_delivery(email: str, url: str) -> bool:
+    def fail_delivery(
+        email: str,
+        url: str,
+        route_locale: RouteLocale,
+        ttl_minutes: int,
+    ) -> bool:
         raise original_error
 
     monkeypatch.setattr(password_reset_service, "send_password_reset_email", fail_delivery)
@@ -480,6 +663,7 @@ def test_password_reset_email_delivery_failure_is_observable(
         result = password_reset_service.send_password_reset_email_safely(
             "reset-user@example.com",
             "http://localhost/reset?token=reset-token-secret",
+            "ru",
         )
 
     assert result is None

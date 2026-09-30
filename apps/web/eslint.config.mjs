@@ -6,6 +6,7 @@ import { defineConfig, globalIgnores } from "eslint/config";
 const sharedApiMachineLiteralAllowlist = new Set([
   "",
   "use client",
+  "Accept-Language",
   "ApiContractError",
   "Authorization",
   "Content-Type",

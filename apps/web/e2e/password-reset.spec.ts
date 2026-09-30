@@ -22,6 +22,40 @@ test("password reset request submits email and shows generic success", async ({ 
   expect(requests).toEqual([{ email: "reset-user@example.com" }]);
 });
 
+for (const { routeLocale, languageTag } of [
+  { routeLocale: "de", languageTag: "de" },
+  { routeLocale: "pt", languageTag: "pt-BR" }
+]) {
+  test(`${routeLocale} password reset request sends canonical language metadata`, async ({
+    page
+  }) => {
+    const requests: Array<{ body: unknown; languageTag: string | null }> = [];
+    await page.route("**/api/auth/password-reset/request", async (route) => {
+      requests.push({
+        body: route.request().postDataJSON(),
+        languageTag: await route.request().headerValue("accept-language")
+      });
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ status: "accepted" })
+      });
+    });
+
+    await page.goto(`/${routeLocale}/forgot-password`);
+    await page.locator('input[type="email"]').fill("reset-user@example.com");
+    await page.locator('input[type="email"]').press("Enter");
+
+    await expect(page.locator('[aria-live="polite"] .notice')).toBeVisible();
+    expect(requests).toEqual([
+      {
+        body: { email: "reset-user@example.com" },
+        languageTag
+      }
+    ]);
+  });
+}
+
 
 test("password reset confirmation submits token and new password", async ({ page }) => {
   const requests: unknown[] = [];
