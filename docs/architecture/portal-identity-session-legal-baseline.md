@@ -1,13 +1,14 @@
 # Portal Identity, Session, and Legal Baseline
 
-Status: authoritative as-built `ANY-504` Step 3 handoff to Step 4  
-Last verified against code: 2026-09-23
+Status: authoritative as-built identity/session/legal baseline  
+Last verified against code: 2026-09-30
 
 ## Authority and scope
 
 This document freezes the provider-independent identity, session, recovery,
-and legal baseline implemented by `ANY-510`. It is the retained-schema input
-to `ANY-504` Step 4. For target billing ownership and persistence, it is
+mailbox-verification, and legal baseline implemented by `ANY-510` and
+`ANY-538`. It remains the retained-schema input to later `ANY-504` work. For
+target billing ownership and persistence, it is
 subordinate to [ADR 0005](decisions/0005-external-billing-boundary.md), the
 accepted [External Billing Boundary Design](../superpowers/specs/2026-09-15-external-billing-boundary-design.md),
 the accepted [Portal <-> Kernel Access Contract Design](../superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md),
@@ -48,6 +49,15 @@ identity. The implemented `UserStatus` vocabulary is deliberately only
 query for an active user explicitly; adding another status requires deliberate
 authentication and recovery semantics.
 
+For rows created or remediated by `ANY-538`, a non-null
+`users.email_verified_at` means that mailbox ownership was proven with a valid
+email-verification token and the account's current password. It is not a
+registration-time default or an assertion imported from the predecessor
+runtime. The `ANY-538` forward migration revoked every active session belonging
+to a predecessor user whose timestamp was non-null, then cleared all existing
+`email_verified_at` values. Those users must complete the current verification
+flow before authentication can resume.
+
 Application code does not hard-delete canonical users. `users.id` is immutable
 and is never reassigned or reused. Restrictive identity and legal FKs prevent a
 referenced user from being deleted and orphaning evidence. PII erasure or
@@ -62,11 +72,15 @@ approved legal and retention authority changes that rule.
 
 - A session secret is an opaque random token generated with
   `secrets.token_urlsafe(32)`. Only its SHA-256 hash is stored.
+- The HTTP transport remains the existing `Authorization: Bearer <token>`
+  contract. `ANY-538` did not move sessions to cookies or redesign session
+  transport.
 - The implemented TTL is 30 days. A session is valid only when its row exists,
   is not revoked, is not expired, belongs to the configured instance tenant
   and region, matches the same canonical `(user_id, tenant_id, region)`, and
-  resolves to an active user. A structurally valid foreign-contour session is
-  rejected as HTTP 401 `invalid_session` before `last_seen_at` is updated.
+  resolves to an active user whose `email_verified_at` is non-null. A
+  structurally valid foreign-contour or unverified-user session is rejected as
+  HTTP 401 `invalid_session` before `last_seen_at` is updated.
 - Successful authentication updates `last_seen_at`. Session IP and user agent
   are nullable ancillary security metadata, not identity.
 - Normal logout deletes only the selected session row. Replaying that bearer
@@ -74,6 +88,52 @@ approved legal and retention authority changes that rule.
 - Security invalidation is intentionally different: password reset sets
   `revoked_at` on every active session in the canonical user's scope. Revoked
   rows remain invalid. No pruning or retention period is invented here.
+
+### Password storage and policy
+
+The public password contract remains 8-128 characters. `ANY-538` changed
+storage, not password-string normalization, composition, or strength policy.
+New passwords use Argon2id through `argon2-cffi==25.1.0` with 19,456 KiB memory,
+two iterations, parallelism one, and a 32-byte hash. A successfully proved
+legacy `pbkdf2_sha256` password is rehashed to the current Argon2id parameters
+during login or verification. Malformed and unsupported stored hashes fail
+authentication safely.
+
+There is no common-password or breach-list check, MFA, 15-character minimum,
+Unicode normalization change, or new password-strength UX in this baseline.
+
+### Email verification
+
+Registration still accepts email, password, and the existing legal-consent
+booleans. A successful new registration atomically creates an active user with
+`email_verified_at=NULL` and `last_login_at=NULL`, its current password hash,
+the existing non-commercial legal evidence, and one verification token. It
+creates no `AuthSession` and returns `{"status":"verification_required"}`.
+Duplicate and concurrent-loser registration returns the same public response,
+creates no additional records or session, and does not implicitly resend.
+
+Verification tokens reuse `magic_link_tokens` with purpose
+`email_verification`. The raw value is generated with
+`secrets.token_urlsafe(48)`, only its SHA-256 hash is stored, its TTL is 24
+hours, and it is single-use. Email links place the raw token in the URL fragment
+at `/{routeLocale}/verify-email#token=<secret>`; the browser removes that
+fragment from the visible URL, keeps the token only in memory, and submits it
+only after the user explicitly supplies the current password.
+
+`POST /api/auth/email-verification/request` has one generic accepted response
+for unknown, verified, and unverified accounts. Only an active unverified
+account receives a replacement token and email. Replacement is serialized by
+the canonical user row lock and invalidates every outstanding sibling token
+before creating the new token.
+
+`POST /api/auth/email-verification/confirm` requires both a valid token and the
+correct current password. Under the canonical user row lock it revalidates and
+atomically claims the token, verifies and if necessary upgrades the password
+hash, sets `email_verified_at` and `last_login_at`, consumes sibling
+verification tokens, and creates the first session. Concurrent confirmation
+has one winner. Wrong, expired, replayed, or already-used tokens all return the
+same `invalid_or_expired_verification_token` state; token replay cannot create
+another session.
 
 ### Password reset
 
@@ -95,9 +155,35 @@ approved legal and retention authority changes that rule.
   minutes, with maxima of five account requests and twenty IP requests.
 - `MagicLinkToken.entrypoint_session_id` is removed. Recovery has no retained
   checkout, provider, trial, or entrypoint dependency.
+- Resetting an unverified account changes the password, revokes sessions,
+  invalidates outstanding verification tokens, clears its login-account
+  failure state, leaves `email_verified_at=NULL`, and creates no session. The
+  user must request a new verification email and prove the new password.
+  Resetting a verified account preserves its existing verification timestamp.
 
-Raw session and reset secrets, authorization headers, and passwords must not
-be persisted or logged.
+Raw session, verification, and reset secrets, authorization headers, and
+passwords must not be persisted or logged.
+
+### Authentication abuse controls
+
+`authentication_rate_limits` is a dedicated durable fixed-window table for
+registration, verification-resend, and login controls. Its namespaced keys
+separate account and source-IP state by tenant and region; raw bucket keys are
+never log fields or metric labels.
+
+- Registration and verification resend allow five account attempts and twenty
+  source-IP attempts per 15 minutes.
+- Login allows fifty source-IP attempts per 15 minutes. Account failures use a
+  15-minute observation window; accepted invalid credential number 10 begins a
+  one-second cooldown, then cooldown doubles through 32 seconds and caps at 60
+  seconds from failure 16 onward. A request rejected during cooldown does not
+  mutate or extend the failure state.
+- Correct credentials clear account failure state, including when the account
+  is still unverified and login returns `email_verification_required`.
+  Successful password reset also clears it.
+- Unknown or absent stored hashes perform one dummy current Argon2 verification.
+  A wrong legacy PBKDF2 password performs the legacy verification plus one
+  dummy current Argon2 verification. No random delay or sleep was added.
 
 ## Relational scope integrity
 
@@ -168,12 +254,13 @@ informational (`requires_acceptance=false`) and registration neither claims
 its acknowledgement nor creates a `DocumentAcceptance` for it.
 
 One non-commercial `LegalAcceptanceEvent`, its three
-`DocumentAcceptance` rows, the canonical `User`, and the initial
-`AuthSession` commit in one transaction with one acceptance timestamp. A
-failure leaves none durable. The scoped email unique constraint is the final
-concurrency guard: two concurrent registrations produce one complete winner;
-the loser rolls back its entire user/session/legal result and receives the
-duplicate-email error.
+`DocumentAcceptance` rows, the canonical unverified `User`, and one
+email-verification token commit in one transaction with one acceptance
+timestamp. Registration creates no session. A failure leaves none durable.
+The scoped email unique constraint is the final concurrency guard: two
+concurrent registrations produce one complete winner; the loser rolls back its
+entire user/token/legal result and receives the generic
+`verification_required` response without sending another message.
 
 `acceptance_text_hash` proves the actual approved acceptance surface, not one
 universal statement for a document version. The generic authenticated legal
@@ -350,10 +437,10 @@ anchor that Step-9 writers acquire before deriving and committing a semantic
 access revision. This handoff defines the physical scope and lock anchor; it
 does not implement paid-access state, locking, or serialization runtime.
 
-## Step-4 retained, cleanup, and install handoff
+## Completed clean-reset baseline
 
-After revalidating the no-production reset premise, Step 4 must preserve these
-retained tables using the as-built contract above:
+The completed clean reset retained these tables using the as-built contract
+above:
 
 1. `regions`;
 2. `country_region_rules`, after the cleanup below;
@@ -366,52 +453,101 @@ retained tables using the as-built contract above:
 9. `legal_acceptance_events`;
 10. `document_acceptances` in its clean retained subset.
 
-Step 4 must also:
+The reset also:
 
-- remove `entrypoint_sessions`; Step 3 found no provider-independent identity,
-  legal, or origin purpose for it, and no replacement origin table is created;
-- remove the transitional `DocumentAcceptance` columns listed above after
+- removed `entrypoint_sessions`; the preceding analysis found no
+  provider-independent identity, legal, or origin purpose for it, and no
+  replacement origin table was created;
+- removed the transitional `DocumentAcceptance` columns listed above after
   removing legacy checkout consumers;
-- remove foreign `eu`/DE/ES seed rows from the clean RU data plane and retain
+- removed foreign `eu`/DE/ES seed rows from the clean RU data plane and retained
   only the configured contour's region, country membership, and legal bootstrap;
-- remove `country_region_rules.default_payment_provider` and
+- removed `country_region_rules.default_payment_provider` and
   `allow_region_override`; direct-provider routing is not contour authority and
   a client cannot override the instance data plane;
-- preserve provider-independent local country membership, market enablement,
-  strict validation, and document-set configuration where still used;
-- remove the old Portal trial/commercial lifecycle. Identity, session,
+- retained provider-independent local country membership, market enablement,
+  strict validation, and document-set configuration;
+- removed the old Portal trial/commercial lifecycle. Identity, session,
   recovery, and legal behavior has no provider-independent dependency on it;
-- preserve core `/api/auth/session` while applying the public-contract removals
+- preserved core `/api/auth/session` while applying the public-contract removals
   above; and
-- install the 15 approved target billing tables and only the Step-4-safe
+- installed the 15 approved target billing tables and only the reset-safe
   constraints defined by the persistence-reset handoff, without later-step
   runtime.
 
-Step 4 replaces the entire pre-reset Alembic history present when it begins
-with one fresh first-install baseline and one head. Migrations
-`20260921_0006` and `20260921_0007` are transitional upgrade history, not a
-template to copy mechanically. The clean baseline must reconstruct every
-retained column, key, index, legal bootstrap rule, and PostgreSQL-only trigger
-semantic recorded here.
+The reset replaced the pre-reset Alembic history with the fresh first-install
+baseline. Migrations `20260921_0006` and `20260921_0007` remain transitional
+history rather than templates for the current schema. The resulting baseline
+reconstructed the retained columns, keys, indexes, legal bootstrap rules, and
+PostgreSQL-only trigger semantics recorded here; later forward migrations build
+on that baseline.
 
-The required removal order remains: neutralize public/backend/frontend
-consumers; remove legacy runtime, integration, provider, configuration, and
-persistence consumers; install retained and approved target models; replace
-the migration chain and bootstrap; replace affected tests; regenerate schema
-and OpenAPI artifacts; then prove no removed dependency remains.
+## Production boundary and coordinated handoff
+
+Production startup requires a non-empty SMTP host, a valid sender address and
+port, TLS enabled, and either both SMTP username/password values or neither.
+SMTP delivery remains an in-process background task: there is no readiness
+probe, queue, worker, or outbox. A transient delivery failure does not make
+readiness fail; the account remains unverified and can use the generic resend
+flow.
+
+Client-IP abuse controls trust Uvicorn proxy headers only from the configured,
+explicit `FORWARDED_ALLOW_IPS` range. Production rejects an empty value, `*`,
+`0.0.0.0/0`, and `::/0`. Compose places Caddy and the API together on the
+dedicated `api_proxy` network, configures its bounded subnet, and sends API
+traffic to `api:8000`; no application-owned forwarded-address parser was
+introduced.
+
+Caddy sets exactly the authentication-baseline edge headers:
+
+```text
+Strict-Transport-Security: max-age=31536000
+X-Content-Type-Options: nosniff
+X-Frame-Options: DENY
+Referrer-Policy: strict-origin-when-cross-origin
+```
+
+The four implementation commits are one coordinated production release.
+Cutover stops predecessor writes, takes a pre-cutover database backup,
+provides final SMTP and bounded proxy configuration, applies the forward
+migration, starts the final API, deploys the matching web build, restores
+traffic, and smokes registration -> verification -> login -> reset/session.
+The cleanup migration must not run while a predecessor API can still create
+registration-time verified users.
+
+Downgrade removes the new rate-limit table but intentionally does not fabricate
+predecessor verification timestamps or revive revoked sessions. A full rollback
+after migration therefore restores the pre-cutover database backup together
+with the matching predecessor application and configuration.
+
+`ANY-539` owns any Portal shell, navigation, catalog/product, mobile,
+responsive, or broad accessibility redesign. `ANY-538` added only the UI needed
+for the verification and authentication behavior above. Provider-specific
+origins, LBX integration and Phase 0 semantics, and a broader CSP or edge-header
+program remain deferred to their owning work; the baseline does not add CSP,
+Permissions-Policy, COOP/COEP/CORP, HSTS preload/includeSubDomains, or
+Server-header handling.
+
+The stable prerequisite handed to later `ANY-504` work is: an authenticated
+Portal identity implies a mailbox whose ownership is represented by non-null
+`email_verified_at`. This prerequisite does not expand `ANY-504` into the
+deferred authentication or presentation work above.
 
 ## Provider-independent regression matrix
 
-These tests are the survivor baseline. Step 4 may adapt fixtures and schema
-expectations, but it must preserve each provider-independent proof.
+These tests are the retained provider-independent regression baseline. Later
+`ANY-504` work may adapt fixtures or schema expectations only while preserving
+each documented proof.
 
 | Proof | Owning tests |
 | --- | --- |
-| Server-authoritative registration/login and legal discovery scope | `apps/api/tests/test_api.py::test_same_email_foreign_client_scope_cannot_create_foreign_contour_user`, `::test_register_and_login_foreign_client_scope_cannot_select_foreign_contour_user`, `::test_legal_required_documents_use_instance_scope` |
-| Canonical UUID user, hashed initial session, event-backed three-document registration | `apps/api/tests/test_identity_legal_persistence_postgres.py::test_registration_persists_canonical_identity_hashed_session_and_legal_event` |
-| Atomic failure rollback and concurrent duplicate registration | `apps/api/tests/test_identity_legal_persistence_postgres.py::test_registration_failure_rolls_back_identity_session_and_legal_evidence`, `::test_concurrent_duplicate_registration_keeps_one_complete_result` |
-| Normal logout deletes one row; revoked/expired and foreign-contour sessions remain invalid without mutation | `apps/api/tests/test_identity_legal_persistence_postgres.py::test_normal_logout_deletes_only_the_selected_session`; `apps/api/tests/test_api.py::test_security_revoked_and_expired_auth_sessions_remain_invalid`, `::test_foreign_contour_bearer_session_is_rejected_without_mutation` |
-| Unknown-email reset anti-enumeration, hash-only storage, canonical-user and instance-scope binding, token consumption, security revocation, and shared throttling | `apps/api/tests/test_identity_legal_persistence_postgres.py::test_unknown_email_password_reset_uses_hashed_decoy_without_user_binding`, `::test_password_reset_binds_canonical_user_and_revokes_security_state`, `::test_foreign_password_reset_token_is_not_claimed_or_mutated`; `apps/api/tests/test_api.py::test_foreign_contour_password_reset_token_is_rejected_without_mutation`; `apps/api/tests/test_password_reset_persistence_postgres.py::test_password_reset_rate_limit_upsert_returns_persisted_attempt_count` |
+| Server-authoritative registration/login and legal discovery scope | `apps/api/tests/test_api_identity_session.py::test_same_email_foreign_client_scope_cannot_create_foreign_contour_user`, `::test_register_and_login_foreign_client_scope_cannot_select_foreign_contour_user`; `apps/api/tests/test_api_legal.py::test_legal_required_documents_use_instance_scope` |
+| Canonical UUID unverified user, no initial session, hashed verification token, and event-backed three-document registration | `apps/api/tests/test_identity_legal_persistence_postgres.py::test_registration_persists_canonical_identity_hashed_session_and_legal_event`, `apps/api/tests/test_api_email_verification.py::test_registration_requires_email_verification_before_authentication` |
+| Atomic failure rollback, concurrent duplicate registration, and generic duplicate response without implicit resend | `apps/api/tests/test_identity_legal_persistence_postgres.py::test_registration_failure_rolls_back_identity_session_and_legal_evidence`, `::test_concurrent_duplicate_registration_keeps_one_complete_result`; `apps/api/tests/test_api_email_verification.py::test_duplicate_registration_is_generic_and_does_not_resend` |
+| Verification replacement, password-bound atomic confirmation, sibling invalidation, replay rejection, and legacy-hash upgrade | `apps/api/tests/test_api_email_verification.py::test_resend_replaces_outstanding_token_and_remains_generic`, `::test_confirmation_rehashes_legacy_password_and_rejects_reuse`; `apps/api/tests/test_email_verification_persistence_postgres.py` |
+| Argon2id writes, bounded PBKDF2 compatibility, login abuse controls, and safe dummy verification | `apps/api/tests/test_api_identity_session.py::test_password_hashes_use_locked_argon2id_parameters`, `::test_legacy_password_with_historical_iterations_is_verified_and_rehashed_on_login`, `::test_password_verification_fails_safely_for_malformed_or_unsupported_hashes`; `apps/api/tests/test_api_email_verification.py::test_registration_rate_limit_accounting_survives_429`, `::test_login_cooldown_rejection_does_not_extend_failure_state`, `::test_unknown_login_runs_one_dummy_argon2_verification`, `::test_wrong_legacy_password_also_runs_dummy_argon2_verification`; `apps/api/tests/test_auth_rate_limits_postgres.py` |
+| Normal logout deletes one row; revoked/expired and foreign-contour sessions remain invalid without mutation | `apps/api/tests/test_identity_legal_persistence_postgres.py::test_normal_logout_deletes_only_the_selected_session`; `apps/api/tests/test_api_identity_session.py::test_security_revoked_and_expired_auth_sessions_remain_invalid`, `::test_foreign_contour_bearer_session_is_rejected_without_mutation` |
+| Unknown-email reset anti-enumeration, hash-only storage, canonical-user and instance-scope binding, token consumption, security revocation, unverified-state preservation, and shared throttling | `apps/api/tests/test_identity_legal_persistence_postgres.py::test_unknown_email_password_reset_uses_hashed_decoy_without_user_binding`, `::test_password_reset_binds_canonical_user_and_revokes_security_state`, `::test_foreign_password_reset_token_is_not_claimed_or_mutated`; `apps/api/tests/test_api_password_reset.py`; `apps/api/tests/test_password_reset_persistence_postgres.py` |
 | User/session/reset/legal relational scope and restrictive deletion | `apps/api/tests/test_identity_legal_persistence_postgres.py::test_auth_session_scope_must_match_canonical_user`, `::test_known_reset_token_scope_must_match_canonical_user`, `::test_canonical_user_delete_is_restricted_by_auth_session`, `::test_legal_event_scope_must_match_canonical_user`, `::test_document_version_scope_must_match_legal_entity`, `::test_document_acceptance_scope_must_match_event_user`, `::test_document_acceptance_scope_must_match_document_version` |
 | Event immutability, ancillary clearing only, append-only document acceptance, immutable same-version material with mutable active selection | `apps/api/tests/test_identity_legal_persistence_postgres.py::test_legal_acceptance_event_core_evidence_cannot_be_updated_or_deleted`, `::test_legal_acceptance_event_audit_metadata_may_only_be_cleared`, `::test_document_acceptance_rows_are_append_only`, `::test_document_version_material_is_immutable_but_active_selection_may_change` |
 | Commercial triplet all-or-none/non-empty and complete-triplet support | `apps/api/tests/test_identity_legal_persistence_postgres.py::test_legal_acceptance_event_commercial_triplet_is_all_or_none_and_nonempty`, `::test_legal_acceptance_event_accepts_a_complete_commercial_triplet` |
@@ -429,4 +565,6 @@ publication, commercial acceptance writing, PurchaseIntent/customer binding,
 Widget flow, webhooks, reconciliation, paid-access derivation, invalidation
 delivery, AccessSnapshot transport, or Platform Kernel changes. Those remain
 owned by their later `ANY-504` steps. No legal or PII retention duration is
-defined without Legal/Finance authority.
+defined without Legal/Finance authority. It also does not add a common-password
+policy, MFA, session-transport redesign, broad edge hardening, provider/LBX
+runtime, or a Portal/mobile redesign.

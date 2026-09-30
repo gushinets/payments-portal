@@ -1,7 +1,7 @@
 # Deployment Architecture
 
 Status: authoritative current deployment plus target contour isolation
-Last verified: 2026-09-24
+Last verified: 2026-09-30
 
 ## Current `ru` deployment
 
@@ -13,6 +13,7 @@ flowchart LR
   DB[("PostgreSQL 18")] -->|"healthy"| Migrate["One-shot Alembic service"]
   Migrate -->|"completed successfully"| API
   API --> DB
+  API --> SMTP["Required production SMTP"]
   API --> OTEL["Optional telemetry backend"]
   API --> Sentry["Optional Sentry error reporting"]
 ```
@@ -38,6 +39,34 @@ Alembic bootstrap, and runtime legal seeding fail before successful startup or
 bootstrap when a different tenant/region pair is configured. Enabling another
 scope requires its dedicated contour/legal enablement ticket; the current
 deployment variables are not a generic contour bootstrap selector.
+
+Production account verification requires explicit SMTP configuration shared by
+the API and migration services. Startup rejects an empty `SMTP_HOST`, a port
+outside 1-65535, an invalid `SMTP_FROM_EMAIL`, `SMTP_USE_TLS=false`, or only one
+of `SMTP_USERNAME` and `SMTP_PASSWORD`. There is no SMTP readiness probe,
+queue, worker, or outbox. A transient SMTP failure is reported through bounded
+diagnostics without failing API readiness; the user remains unverified and can
+use the generic resend flow.
+
+Caddy and the API share only the dedicated `api_proxy` network, whose Compose
+subnet is `172.30.0.0/24`; Caddy proxies API traffic to `api:8000`. The
+production Uvicorn command enables proxy headers only for the explicit
+`FORWARDED_ALLOW_IPS` value. Production rejects an empty value, `*`,
+`0.0.0.0/0`, and `::/0`; the checked-in production example keeps the value in
+sync with the dedicated Compose subnet. No custom forwarded-address parser is
+used.
+
+The production Caddy boundary sets these four baseline response headers:
+
+```text
+Strict-Transport-Security: max-age=31536000
+X-Content-Type-Options: nosniff
+X-Frame-Options: DENY
+Referrer-Policy: strict-origin-when-cross-origin
+```
+
+This change does not add CSP or provider/LBX origins, Permissions-Policy,
+COOP/COEP/CORP, HSTS preload/includeSubDomains, or Server-header handling.
 
 The direct-provider and CloudPayments runtime has been physically removed.
 Current API composition exposes no provider registry, callback route, provider
@@ -88,6 +117,31 @@ currently supported `anytoolai` / `ru` contour and its RU country membership.
 It never silently substitutes RU data for a different configured scope or
 authorizes one production database to operate as two contours.
 
+## ANY-538 coordinated authentication rollout
+
+The authentication foundation, verified-account runtime, and final production
+boundary/browser flow are one release. The intermediate mandatory-verification
+API is not deployed without its matching SMTP/proxy configuration and web
+verification UI.
+
+Cut over in this order:
+
+1. Enter maintenance and stop predecessor API writes.
+2. Take and retain a pre-cutover database backup.
+3. Provide final SMTP and bounded proxy configuration.
+4. Apply the forward migration.
+5. Start the final `ANY-538` API image.
+6. Deploy the matching web image.
+7. Restore traffic.
+8. Smoke registration -> verification -> login -> reset/session.
+
+Do not apply the false-verification cleanup while a predecessor API can still
+create registration-time verified users. Downgrade removes the new
+authentication-rate-limit table but does not fabricate predecessor verification
+timestamps or revive revoked sessions. Full rollback after migration restores
+the pre-cutover database backup together with the predecessor application and
+configuration; an image-only rollback is unsupported.
+
 ## One-time Step-4 recreate and bootstrap
 
 The Step-4 database is a destructive compatibility boundary. Pre-Step-4
@@ -118,12 +172,14 @@ python scripts/repo.py migrate-api
 `test-db up` starts only PostgreSQL. `migrate-api` applies `alembic upgrade head`
 to that harness database.
 
-The sole clean migration owns schema creation plus configured-contour and legal
-bootstrap. Do not create a separate bootstrap CLI. Before starting normal
-runtime, perform the Step-7 PostgreSQL schema/bootstrap verification and prove:
+The clean first-install migration owns schema creation plus configured-contour
+and legal bootstrap; the current forward authentication migration then applies
+the verified-account cleanup and adds its rate-limit table. Do not create a
+separate bootstrap CLI. Before starting normal runtime, perform the Step-7
+PostgreSQL schema/bootstrap verification and prove:
 
 - Alembic reports one head and the database is at that head;
-- exactly 25 application tables exist;
+- exactly 26 application tables exist;
 - every removed legacy catalog/order/payment/provider/subscription/
   entitlement/trial table is absent;
 - all fifteen target billing tables are empty;
@@ -140,8 +196,8 @@ python scripts/repo.py up --reuse
 The Compose `migrate` service runs the same `alembic upgrade head` before API
 startup. The API legal seed remains an idempotent, fail-closed runtime check of
 canonical legal material, not a second schema authority. Run retained
-provider-independent registration, login, session, password-recovery, and
-legal smoke checks.
+provider-independent registration, verification, login, session,
+password-recovery, and legal smoke checks.
 
 For shared dev/test/pre-production environments, operators must use that
 environment's authoritative process-stop and database destroy/recreate

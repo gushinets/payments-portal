@@ -1,15 +1,17 @@
 # Payment Portal Data Model and Backend Invariants
 
 Status: authoritative current-state schema reference
-Last verified: 2026-09-24
+Last verified: 2026-09-30
 
 > **CURRENT AS-BUILT SCHEMA REFERENCE**
 
-This document describes the schema created by the sole first-install migration,
-`20260924_0001_clean_first_install`. It is authoritative for the implemented
-SQLAlchemy table inventory and physical persistence rules. Step 9 owns final
-regeneration of the column-level schema artifact after this source/doc/guard
-checkpoint; that generated artifact is intentionally not updated here.
+This document describes the schema created by the clean first-install migration,
+`20260924_0001_clean_first_install`, and advanced by
+`20260930_0002_authentication_security_foundation`. It is authoritative for the
+implemented SQLAlchemy table inventory and physical persistence rules. Step 9
+owns final regeneration of the column-level schema artifact after this
+source/doc/guard checkpoint; that generated artifact is intentionally not
+updated here.
 
 Target commercial ownership and runtime behavior follow, in precedence order:
 
@@ -23,9 +25,9 @@ paid-access derivation, or Kernel invalidation delivery is implemented.
 
 ## Physical baseline
 
-A fresh database has exactly 25 application tables: ten retained
-identity/session/legal tables and fifteen target external-billing persistence
-tables. Alembic has one revision and one head.
+A database upgraded to the current head has exactly 26 application tables:
+eleven identity/session/legal/authentication-security tables and fifteen target
+external-billing persistence tables. Alembic has two revisions and one head.
 
 There is no Portal-owned product, plan, order, payment, refund, subscription,
 entitlement, trial, provider-account, or direct-payment webhook table. There is
@@ -39,8 +41,9 @@ to a Portal-managed routing catalog.
 | `country_region_rules` | Identity/contour | Country membership, market enablement, strict mismatch, and legal document-set selection. |
 | `users` | Identity | Canonical contour-scoped Portal user. |
 | `auth_sessions` | Identity | Hashed, expiring and revocable authenticated sessions. |
-| `magic_link_tokens` | Identity | Hash-only password-reset tokens, including decoy-safe nullable user binding. |
+| `magic_link_tokens` | Identity | Hash-only password-reset and mailbox-verification tokens, including decoy-safe nullable reset binding. |
 | `password_reset_rate_limits` | Identity | Durable password-reset rate-limit windows. |
+| `authentication_rate_limits` | Identity | Durable namespaced fixed-window state for registration, verification resend, and login abuse controls. |
 | `legal_entities` | Legal | Contour operator metadata. |
 | `document_versions` | Legal | Versioned legal material and active-version selection. |
 | `legal_acceptance_events` | Legal | User acceptance actions with immutable core evidence and clear-only IP/user-agent audit metadata. |
@@ -89,8 +92,21 @@ to have a row in this inventory.
 identifier. Direct-provider defaults and region override flags do not exist.
 
 `users`, `auth_sessions`, `magic_link_tokens`, and
-`password_reset_rate_limits` retain the provider-independent authentication and
-recovery behavior. Session and token secrets are stored only as hashes.
+the two rate-limit tables retain the provider-independent authentication and
+recovery behavior. A non-null `users.email_verified_at` means current mailbox
+ownership proof. Registration stores an active unverified user and one
+`email_verification` token but no session; verification requires that token and
+the current password before setting the timestamp and creating the first
+session. Session queries require active, verified users. The authentication
+security migration revoked active predecessor sessions associated with prior
+non-null verification timestamps and then cleared every predecessor timestamp.
+
+Session, verification, and reset secrets are stored only as hashes.
+`magic_link_tokens.purpose` distinguishes `password_reset` from
+`email_verification`. New password hashes use Argon2id; supported legacy
+`pbkdf2_sha256` values remain readable only for successful-proof rehash
+compatibility. `authentication_rate_limits` stores only namespaced bucket state
+and expiry; its raw keys are not telemetry dimensions.
 
 `legal_acceptance_events` is the acceptance-action parent. Its
 `external_billing_account_id`, `billing_offer_id`, and
@@ -221,7 +237,11 @@ facades.
 
 The first-install migration owns schema creation and deterministic bootstrap of
 the currently supported configured `anytoolai` / `ru` contour, local RU country
-membership, legal entity, and six current RU legal document versions. The API
+membership, legal entity, and six current RU legal document versions. The
+forward authentication-security migration adds
+`authentication_rate_limits`, revokes affected predecessor sessions, and
+clears predecessor verification timestamps. Its downgrade drops only the new
+table and index; it does not recreate timestamps or revive sessions. The API
 legal seed is an idempotent, fail-closed runtime validation of the same
 canonical legal material and rejects any other configured scope; it is not a
 second schema or migration authority.

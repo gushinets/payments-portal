@@ -1,7 +1,7 @@
 # Security Requirements
 
 Status: authoritative
-Last verified: 2026-09-24
+Last verified: 2026-09-30
 
 ## Sensitive data
 
@@ -11,6 +11,51 @@ and private billing or payment configuration before logging or tracing.
 
 Email and IP data are personal data. Record them only where the documented legal
 or security purpose requires them, and never add them to metric labels.
+
+## Authentication and mailbox proof
+
+A non-null `users.email_verified_at` means proven mailbox ownership. New
+registration creates an active, unverified user plus non-commercial legal
+evidence and one hash-only verification token, but no authenticated session.
+Verification requires both the single-use 24-hour token and the account's
+current password; success claims the token, records verification, invalidates
+sibling tokens, and creates the first session atomically under the canonical
+user lock. Session authentication accepts only active, verified users.
+
+The authentication-security migration treats predecessor verification state as
+untrusted: it revokes active sessions belonging to users with a predecessor
+verification timestamp and then clears every existing timestamp. Downgrade does
+not recreate those timestamps or revive sessions.
+
+New password writes use Argon2id with 19,456 KiB memory, two iterations,
+parallelism one, and a 32-byte hash. Supported legacy `pbkdf2_sha256` hashes are
+verified only for compatibility and rehashed after successful password proof;
+malformed or unsupported hashes fail safely. The public password contract
+remains 8-128 characters. No common-password blocklist, MFA, normalization
+change, composition rule, breach service, or password-strength redesign is part
+of this baseline.
+
+The dedicated `authentication_rate_limits` table applies separate tenant- and
+region-scoped account/source namespaces. Registration and verification resend
+allow 5 account and 20 source-IP attempts per 15 minutes; login allows 50
+source-IP attempts per 15 minutes. Login account cooldown starts at one second
+on accepted invalid credential number 10, doubles through 32 seconds, and caps
+at 60 seconds from failure 16. Cooldown rejections do not mutate or extend
+failure state. Correct credentials and successful password reset clear the
+account failure state. Unknown/no-hash login performs one dummy current Argon2
+verification, while a wrong legacy password performs legacy verification plus
+one dummy current Argon2 verification; no sleep or random delay is added.
+
+Verification resend is generic for unknown, verified, and unverified accounts;
+only an active unverified account receives mail. Password reset leaves an
+unverified account unverified, invalidates its verification tokens, revokes
+sessions, and creates no new session. Bearer-token session transport is
+unchanged.
+
+Raw authentication bucket keys, passwords, session/reset/verification tokens,
+authorization headers, and token-bearing URL fragments must never be logged or
+used as metric labels. The browser removes a verification fragment immediately
+and keeps the raw token in memory only until explicit confirmation.
 
 ## Telemetry correlation and emission
 

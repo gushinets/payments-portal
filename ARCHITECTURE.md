@@ -1,7 +1,7 @@
 # Payment Portal Architecture
 
 Status: authoritative current-state map
-Last verified: 2026-09-29
+Last verified: 2026-09-30
 
 ## System boundary
 
@@ -35,12 +35,12 @@ provider-account routing model, direct-payment webhook path, or Portal-owned
 catalog/order/payment/subscription/entitlement lifecycle. Checkout is
 deliberately unavailable and the current web catalog is presentational.
 
-The clean first-install schema contains ten retained identity/session/legal
-tables and fifteen provider-neutral target persistence tables. Those fifteen
-tables are empty after bootstrap and no current application behavior populates
-them. They establish physical storage only; provider integration, purchase
-orchestration, workers, paid-access derivation, invalidation delivery, and
-Platform Kernel transport remain later work.
+The current schema contains eleven identity/session/legal/authentication-
+security tables and fifteen provider-neutral target persistence tables. Those
+fifteen tables are empty after bootstrap and no current application behavior
+populates them. They establish physical storage only; provider integration,
+purchase orchestration, workers, paid-access derivation, invalidation delivery,
+and Platform Kernel transport remain later work.
 
 The canonical target is defined, in precedence order, by
 [ADR 0005](docs/architecture/decisions/0005-external-billing-boundary.md), the
@@ -65,8 +65,9 @@ launch remain gated by Phase 0 and their owning `ANY-504` steps.
 
 ## Current domains and API
 
-- **Identity** — contour-local users, hashed sessions, registration, login,
-  logout, and password reset.
+- **Identity** — contour-local users, password hashing, proven-mailbox
+  verification, hashed bearer sessions, registration, login, logout, password
+  reset, and authentication abuse controls.
 - **Legal** — legal entities, versioned documents, required-document discovery,
   and append-only acceptance evidence.
 - **Billing persistence** — the approved projections, immutable commercial
@@ -251,13 +252,15 @@ payment state, or manual operator input alone never grant paid access.
 
 | Operation | Current owner and boundary |
 | --- | --- |
-| Registration | `register_user()` atomically commits the user, one legal-acceptance event, all required document-acceptance rows, and initial auth session. |
-| Login | `login_user()` owns login bookkeeping and new-session commit. |
+| Registration | `register_user()` atomically commits the unverified user, one legal-acceptance event, all required document-acceptance rows, and one email-verification token; it creates no auth session. Registration account/source rate-limit attempts are committed in separate durable phases before the registration transaction. |
+| Verification resend | `request_email_verification()` commits fixed-window account/source attempts separately, then under the user lock invalidates outstanding verification tokens and commits one replacement token for an active unverified account. |
+| Verification confirmation | `confirm_email_verification()` owns the user lock and atomically claims/revalidates the token, proves and optionally rehashes the current password, marks the mailbox verified, consumes sibling tokens, and creates the first session. |
+| Login | `login_user()` durably accounts for the source attempt, enforces/updates account failure cooldown state, and creates a new session only for an active verified user. |
 | Authenticated bookkeeping | `authenticate_session()` commits `last_seen_at` before endpoint execution as a separate transaction. |
 | Logout | Auth bookkeeping commits first; `logout_session()` then deletes the session in a separate commit. |
 | Legal acceptance | `accept_legal_document()` owns the acceptance commit and refresh. |
 | Password-reset request | `prepare_password_reset()` intentionally commits cleanup, IP/account rate limits, and token creation as separate durable phases. |
-| Password-reset confirmation | `confirm_password_reset()` atomically commits token claim, password change, outstanding-token invalidation, and active-session revocation. |
+| Password-reset confirmation | `confirm_password_reset()` atomically commits token claim, Argon2id password change, outstanding reset-token invalidation, active-session revocation, login-failure-state clearing, and verification-token invalidation for an unverified user without changing that user's verification state. |
 | Target billing tables | No current runtime transaction populates them. Their behavior belongs to later `ANY-504` steps. |
 
 ## Enforced architecture guards
@@ -311,9 +314,9 @@ unsafe resource reuse or overlapping duplicate work. Request ID,
 trace/span, and structured-log context remain correlated across the framework
 worker boundary.
 
-Password-reset email delivery remains the existing synchronous framework
-background task. The clean baseline does not introduce a billing worker
-runtime merely because durable work tables exist.
+Password-reset and email-verification delivery remain synchronous framework
+background tasks. The clean baseline does not introduce an email queue or a
+billing worker runtime merely because durable work tables exist.
 
 The web dependency direction is:
 
