@@ -18,6 +18,8 @@ from app.domains.identity.errors import (
 )
 from app.domains.identity.passwords import hash_password
 from app.generated.locales import RouteLocale
+from app.infrastructure.persistence.authentication_rate_limit import clear_authentication_rate_limit
+from app.infrastructure.persistence.email_verification import invalidate_outstanding_email_verification_tokens
 from app.infrastructure.persistence.password_reset import (
     claim_valid_password_reset_token,
     increment_password_reset_rate_limit,
@@ -218,6 +220,14 @@ def confirm_password_reset(
 
     user.password_hash = hash_password(password)
     db.add(user)
+    if user.email_verified_at is None:
+        invalidate_outstanding_email_verification_tokens(
+            db,
+            tenant_id=user.tenant_id,
+            region=user.region,
+            user_id=user.id,
+            now=now,
+        )
     invalidate_outstanding_password_reset_tokens(
         db,
         tenant_id=user.tenant_id,
@@ -231,6 +241,10 @@ def confirm_password_reset(
         region=user.region,
         user_id=user.id,
         now=now,
+    )
+    clear_authentication_rate_limit(
+        db,
+        key=f"login:account:{user.tenant_id}:{user.region}:{user.email_normalized}",
     )
     db.commit()
 

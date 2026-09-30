@@ -18,6 +18,7 @@ from fastapi import FastAPI, Request, Response
 request_id_context: contextvars.ContextVar[str] = contextvars.ContextVar("request_id", default="")
 OTEL_LEGAL_ACCEPTANCES = None
 OTEL_PASSWORD_RESET_EMAILS = None
+OTEL_EMAIL_VERIFICATION_EMAILS = None
 REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 SENSITIVE_KEYS = {
     "authorization",
@@ -145,6 +146,11 @@ try:
         "Password reset email delivery outcomes",
         ("outcome",),
     )
+    EMAIL_VERIFICATION_EMAILS = Counter(
+        "payment_portal_email_verification_emails_total",
+        "Email verification delivery outcomes",
+        ("outcome",),
+    )
 except ImportError:  # pragma: no cover - production dependencies include the package
     CONTENT_TYPE_LATEST = "text/plain; version=0.0.4"
 
@@ -158,7 +164,7 @@ except ImportError:  # pragma: no cover - production dependencies include the pa
         def observe(self, *_: object, **__: object) -> None:
             return None
 
-    REQUEST_DURATION = LEGAL_ACCEPTANCES = PASSWORD_RESET_EMAILS = _DummyMetric()
+    REQUEST_DURATION = LEGAL_ACCEPTANCES = PASSWORD_RESET_EMAILS = EMAIL_VERIFICATION_EMAILS = _DummyMetric()
 
     def generate_latest() -> bytes:
         return b""
@@ -186,6 +192,12 @@ def record_password_reset_email(outcome: str) -> None:
     PASSWORD_RESET_EMAILS.labels(outcome).inc()
     if OTEL_PASSWORD_RESET_EMAILS is not None:
         OTEL_PASSWORD_RESET_EMAILS.add(1, {"outcome": outcome})
+
+
+def record_email_verification_email(outcome: str) -> None:
+    EMAIL_VERIFICATION_EMAILS.labels(outcome).inc()
+    if OTEL_EMAIL_VERIFICATION_EMAILS is not None:
+        OTEL_EMAIL_VERIFICATION_EMAILS.add(1, {"outcome": outcome})
 
 
 def tracer(name: str):
@@ -304,7 +316,7 @@ def _sanitize_http_server_span(span: Any, _scope: Mapping[str, Any]) -> None:
 
 
 def configure_observability(app: FastAPI, engine: object) -> None:
-    global OTEL_LEGAL_ACCEPTANCES, OTEL_PASSWORD_RESET_EMAILS
+    global OTEL_EMAIL_VERIFICATION_EMAILS, OTEL_LEGAL_ACCEPTANCES, OTEL_PASSWORD_RESET_EMAILS
     configure_logging()
     endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "").rstrip("/")
     if not endpoint:
@@ -342,6 +354,7 @@ def configure_observability(app: FastAPI, engine: object) -> None:
         meter = metrics.get_meter("payment-portal.business")
         OTEL_LEGAL_ACCEPTANCES = meter.create_counter("payment_portal_legal_acceptances")
         OTEL_PASSWORD_RESET_EMAILS = meter.create_counter("payment_portal_password_reset_emails")
+        OTEL_EMAIL_VERIFICATION_EMAILS = meter.create_counter("payment_portal_email_verification_emails")
 
         logger_provider = LoggerProvider(resource=resource)
         logger_provider.add_log_record_processor(

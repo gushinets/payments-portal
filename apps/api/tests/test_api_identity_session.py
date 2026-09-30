@@ -78,7 +78,7 @@ def test_legacy_password_with_historical_iterations_is_verified_and_rehashed_on_
     assert password_hash_needs_rehash(legacy_hash)
 
     with SessionLocal() as db:
-        registration = identity_auth_service.register_user(
+        identity_auth_service.register_user(
             db,
             tenant_id="anytoolai",
             region="ru",
@@ -88,10 +88,12 @@ def test_legacy_password_with_historical_iterations_is_verified_and_rehashed_on_
             offer_consent=True,
             client_ip=None,
             user_agent=None,
+            route_locale="ru",
         )
-        user = db.get(User, registration.user_id)
-        assert user is not None
+        user = db.query(User).filter(User.email_normalized == email).one()
+        user_id = user.id
         user.password_hash = legacy_hash
+        user.email_verified_at = datetime.now(UTC)
         db.commit()
 
     with SessionLocal() as db:
@@ -106,7 +108,7 @@ def test_legacy_password_with_historical_iterations_is_verified_and_rehashed_on_
         )
 
     with SessionLocal() as db:
-        user = db.get(User, registration.user_id)
+        user = db.get(User, user_id)
         assert user is not None
         assert user.password_hash != legacy_hash
         assert user.password_hash.startswith("$argon2id$")
@@ -126,7 +128,7 @@ def test_argon2_password_with_stale_parameters_is_rehashed_on_login() -> None:
     assert password_hash_needs_rehash(stale_hash)
 
     with SessionLocal() as db:
-        registration = identity_auth_service.register_user(
+        identity_auth_service.register_user(
             db,
             tenant_id="anytoolai",
             region="ru",
@@ -136,10 +138,12 @@ def test_argon2_password_with_stale_parameters_is_rehashed_on_login() -> None:
             offer_consent=True,
             client_ip=None,
             user_agent=None,
+            route_locale="ru",
         )
-        user = db.get(User, registration.user_id)
-        assert user is not None
+        user = db.query(User).filter(User.email_normalized == email).one()
+        user_id = user.id
         user.password_hash = stale_hash
+        user.email_verified_at = datetime.now(UTC)
         db.commit()
 
     with SessionLocal() as db:
@@ -154,16 +158,16 @@ def test_argon2_password_with_stale_parameters_is_rehashed_on_login() -> None:
         )
 
     with SessionLocal() as db:
-        user = db.get(User, registration.user_id)
+        user = db.get(User, user_id)
         assert user is not None
         assert user.password_hash != stale_hash
         assert not password_hash_needs_rehash(user.password_hash)
 
 
-def test_register_and_login_results_are_presentable_after_session_close() -> None:
+def test_login_result_is_presentable_after_session_close() -> None:
     email = "auth-result-snapshot@example.com"
     with SessionLocal() as db:
-        registration = identity_auth_service.register_user(
+        identity_auth_service.register_user(
             db,
             tenant_id="anytoolai",
             region="ru",
@@ -173,9 +177,12 @@ def test_register_and_login_results_are_presentable_after_session_close() -> Non
             offer_consent=True,
             client_ip=None,
             user_agent=None,
+            route_locale="ru",
         )
-
-    registration_user = present_user(registration)
+        user = db.query(User).filter(User.email_normalized == email).one()
+        user_id = user.id
+        user.email_verified_at = datetime.now(UTC)
+        db.commit()
 
     with SessionLocal() as db:
         authentication = identity_auth_service.login_user(
@@ -190,11 +197,10 @@ def test_register_and_login_results_are_presentable_after_session_close() -> Non
 
     authentication_user = present_user(authentication)
 
-    assert registration_user == authentication_user
-    assert registration_user.model_dump(mode="json") == {
+    assert authentication_user.model_dump(mode="json") == {
         "tenant_id": "anytoolai",
         "region": "ru",
-        "user_id": str(registration.user_id),
+        "user_id": str(user_id),
         "email": email,
     }
 
@@ -260,10 +266,9 @@ def test_same_email_foreign_client_scope_cannot_create_foreign_contour_user() ->
     )
 
     assert first_response.status_code == 200
-    assert second_response.status_code == 409
-    assert second_response.json() == {"detail": {"code": "email_already_registered"}}
-    assert first_response.json()["user"]["tenant_id"] == "anytoolai"
-    assert first_response.json()["user"]["region"] == "ru"
+    assert second_response.status_code == 200
+    assert first_response.json() == {"status": "verification_required"}
+    assert second_response.json() == first_response.json()
 
     with SessionLocal() as db:
         users = db.query(User).filter(User.email_normalized == "shared@example.com").all()
@@ -286,7 +291,11 @@ def test_register_and_login_foreign_client_scope_cannot_select_foreign_contour_u
             offer_consent=True,
             client_ip=None,
             user_agent=None,
+            route_locale="ru",
         )
+        local_user = db.query(User).filter(User.region == "ru", User.email_normalized == email).one()
+        local_user.email_verified_at = datetime.now(UTC)
+        db.commit()
     with SessionLocal() as db:
         db.add(
             User(
@@ -338,8 +347,9 @@ def test_same_email_cannot_register_twice_in_local_scope() -> None:
     second_response = client.post("/api/auth/register", json=payload)
 
     assert first_response.status_code == 200
-    assert second_response.status_code == 409
-    assert second_response.json() == {"detail": {"code": "email_already_registered"}}
+    assert second_response.status_code == 200
+    assert first_response.json() == {"status": "verification_required"}
+    assert second_response.json() == first_response.json()
 
 
 def test_registration_failure_before_initial_session_rolls_back_and_allows_retry(
@@ -353,14 +363,14 @@ def test_registration_failure_before_initial_session_rolls_back_and_allows_retry
         "offer_consent": True,
     }
 
-    def fail_session_token_generation() -> tuple[str, str, datetime]:
-        raise RuntimeError("session token generation failed")
+    def fail_verification_token_generation() -> tuple[str, str, datetime]:
+        raise RuntimeError("verification token generation failed")
 
     with monkeypatch.context() as context:
         context.setattr(
             identity_auth_service,
-            "make_session_token",
-            fail_session_token_generation,
+            "make_email_verification_token",
+            fail_verification_token_generation,
         )
         failed_response = client.post("/api/auth/register", json=payload)
 
@@ -376,7 +386,6 @@ def test_registration_failure_before_initial_session_rolls_back_and_allows_retry
     assert retry_response.status_code == 200
     with SessionLocal() as db:
         user = db.query(User).filter(User.email_normalized == payload["email"]).one()
-        session = db.query(AuthSession).filter(AuthSession.user_id == user.id).one()
         event = db.query(LegalAcceptanceEvent).filter(LegalAcceptanceEvent.user_id == user.id).one()
         acceptances = db.query(DocumentAcceptance).filter(DocumentAcceptance.user_id == user.id).all()
         documents = (
@@ -384,7 +393,7 @@ def test_registration_failure_before_initial_session_rolls_back_and_allows_retry
             .filter(DocumentVersion.id.in_([acceptance.document_version_id for acceptance in acceptances]))
             .all()
         )
-        assert session.user_id == user.id
+        assert db.query(AuthSession).count() == 0
         assert {acceptance.legal_acceptance_event_id for acceptance in acceptances} == {event.id}
         assert {document.doc_type for document in documents} == {"privacy", "pd_consent", "offer"}
 
@@ -422,16 +431,7 @@ def test_selected_auth_failures_use_structured_error_codes() -> None:
 
 
 def test_auth_sessions_store_only_token_hash() -> None:
-    register_response = client.post(
-        "/api/auth/register",
-        json={
-            "email": "user@example.com",
-            "password": "very-secret-password",
-            "personal_consent": True,
-            "offer_consent": True,
-        },
-    )
-    token = register_response.json()["token"]
+    token = register_test_user(email="user@example.com")
 
     with SessionLocal() as db:
         session = db.query(AuthSession).one()
@@ -443,27 +443,13 @@ def test_auth_sessions_store_only_token_hash() -> None:
 
 
 def test_login_and_logout_flow() -> None:
-    register_response = client.post(
-        "/api/auth/register",
-        json={
-            "email": "user@example.com",
-            "password": "very-secret-password",
-            "personal_consent": True,
-            "offer_consent": True,
-        },
+    first_token = register_test_user(email="user@example.com")
+    first_session_response = client.get(
+        "/api/auth/session",
+        headers={"Authorization": f"Bearer {first_token}"},
     )
-    assert register_response.status_code == 200
-    register_payload = register_response.json()
-    assert register_payload == {
-        "status": "registered",
-        "token": register_payload["token"],
-        "user": {
-            "tenant_id": "anytoolai",
-            "region": "ru",
-            "user_id": register_payload["user"]["user_id"],
-            "email": "user@example.com",
-        },
-    }
+    assert first_session_response.status_code == 200
+    registered_user = first_session_response.json()["user"]
 
     login_response = client.post(
         "/api/auth/login",
@@ -478,7 +464,7 @@ def test_login_and_logout_flow() -> None:
     assert login_payload == {
         "status": "authenticated",
         "token": login_payload["token"],
-        "user": register_payload["user"],
+        "user": registered_user,
     }
     token = login_payload["token"]
     login_token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
@@ -497,10 +483,7 @@ def test_login_and_logout_flow() -> None:
 
     with SessionLocal() as db:
         remaining_session = db.query(AuthSession).one()
-        assert (
-            remaining_session.token_hash
-            == hashlib.sha256(register_response.json()["token"].encode("utf-8")).hexdigest()
-        )
+        assert remaining_session.token_hash == hashlib.sha256(first_token.encode("utf-8")).hexdigest()
 
     session_response = client.get(
         "/api/auth/session",
@@ -511,15 +494,7 @@ def test_login_and_logout_flow() -> None:
 
 
 def test_security_revoked_and_expired_auth_sessions_remain_invalid() -> None:
-    register_response = client.post(
-        "/api/auth/register",
-        json={
-            "email": "inactive-sessions@example.com",
-            "password": "very-secret-password",
-            "personal_consent": True,
-            "offer_consent": True,
-        },
-    )
+    revoked_token = register_test_user(email="inactive-sessions@example.com")
     login_response = client.post(
         "/api/auth/login",
         json={
@@ -527,7 +502,6 @@ def test_security_revoked_and_expired_auth_sessions_remain_invalid() -> None:
             "password": "very-secret-password",
         },
     )
-    revoked_token = register_response.json()["token"]
     expired_token = login_response.json()["token"]
     revoked_token_hash = hashlib.sha256(revoked_token.encode("utf-8")).hexdigest()
     expired_token_hash = hashlib.sha256(expired_token.encode("utf-8")).hexdigest()
@@ -554,19 +528,10 @@ def test_security_revoked_and_expired_auth_sessions_remain_invalid() -> None:
 
 
 def test_foreign_contour_bearer_session_is_rejected_without_mutation() -> None:
-    local_registration = client.post(
-        "/api/auth/register",
-        json={
-            "email": "local-session@example.com",
-            "password": "very-secret-password",
-            "personal_consent": True,
-            "offer_consent": True,
-        },
-    )
-    assert local_registration.status_code == 200
+    local_token = register_test_user(email="local-session@example.com")
     local_session_response = client.get(
         "/api/auth/session",
-        headers={"Authorization": f"Bearer {local_registration.json()['token']}"},
+        headers={"Authorization": f"Bearer {local_token}"},
     )
     assert local_session_response.status_code == 200
 
@@ -613,16 +578,7 @@ def test_foreign_contour_bearer_session_is_rejected_without_mutation() -> None:
 
 
 def test_auth_sessions_and_login_require_active_user() -> None:
-    register_response = client.post(
-        "/api/auth/register",
-        json={
-            "email": "non-active-user@example.com",
-            "password": "very-secret-password",
-            "personal_consent": True,
-            "offer_consent": True,
-        },
-    )
-    token = register_response.json()["token"]
+    token = register_test_user(email="non-active-user@example.com")
 
     with SessionLocal() as db:
         db.execute(

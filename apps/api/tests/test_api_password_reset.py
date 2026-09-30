@@ -21,6 +21,7 @@ from app.infrastructure.persistence.password_reset import (
     prune_expired_password_reset_tokens,
 )
 from app.models import (
+    AuthenticationRateLimit,
     AuthSession,
     MagicLinkPurpose,
     MagicLinkToken,
@@ -28,7 +29,7 @@ from app.models import (
     User,
     UserStatus,
 )
-from apps.api.tests.support.api import app, client, reset_api_database
+from apps.api.tests.support.api import app, client, register_test_user, reset_api_database
 
 
 def setup_function() -> None:
@@ -60,17 +61,11 @@ def test_password_reset_email_token_and_session_revocation(monkeypatch: pytest.M
         ),
     )
 
-    register_response = client.post(
-        "/api/auth/register",
-        json={
-            "email": "reset-user@example.com",
-            "password": "old-password-123",
-            "personal_consent": True,
-            "offer_consent": True,
-        },
-    )
-    assert register_response.status_code == 200
-    old_session_token = register_response.json()["token"]
+    old_session_token = register_test_user(email="reset-user@example.com")
+    with SessionLocal() as db:
+        user = db.query(User).filter(User.email_normalized == "reset-user@example.com").one()
+        user.password_hash = password_reset_service.hash_password("old-password-123")
+        db.commit()
 
     request_response = client.post(
         "/api/auth/password-reset/request",
@@ -89,7 +84,7 @@ def test_password_reset_email_token_and_session_revocation(monkeypatch: pytest.M
     ]
 
     with SessionLocal() as db:
-        stored_token = db.query(MagicLinkToken).one()
+        stored_token = db.query(MagicLinkToken).filter_by(purpose=MagicLinkPurpose.PASSWORD_RESET).one()
         stored_user = db.query(User).filter(User.email_normalized == "reset-user@example.com").one()
         assert stored_token.purpose == MagicLinkPurpose.PASSWORD_RESET
         assert stored_token.user_id == stored_user.id
@@ -112,7 +107,7 @@ def test_password_reset_email_token_and_session_revocation(monkeypatch: pytest.M
             .one()
         )
         assert revoked_session.revoked_at is not None
-        assert db.query(MagicLinkToken).one().used_at is not None
+        assert db.query(MagicLinkToken).filter_by(purpose=MagicLinkPurpose.PASSWORD_RESET).one().used_at is not None
 
     old_session_response = client.get(
         "/api/auth/session",
@@ -330,16 +325,7 @@ def test_password_reset_request_uses_ru_email_template_for_fallback_language(
         return True
 
     monkeypatch.setattr(password_reset_email, "send_text_email", capture_text_email)
-    register_response = client.post(
-        "/api/auth/register",
-        json={
-            "email": "fallback-reset@example.com",
-            "password": "old-password-123",
-            "personal_consent": True,
-            "offer_consent": True,
-        },
-    )
-    assert register_response.status_code == 200
+    register_test_user(email="fallback-reset@example.com")
     headers = {} if accept_language is None else {"accept-language": accept_language}
 
     response = client.post(
@@ -478,16 +464,11 @@ def test_password_reset_confirm_invalidates_other_outstanding_reset_tokens(
         lambda email, url, route_locale, ttl_minutes: True,
     )
 
-    register_response = client.post(
-        "/api/auth/register",
-        json={
-            "email": "multi-reset@example.com",
-            "password": "old-password-123",
-            "personal_consent": True,
-            "offer_consent": True,
-        },
-    )
-    assert register_response.status_code == 200
+    register_test_user(email="multi-reset@example.com")
+    with SessionLocal() as db:
+        user = db.query(User).filter(User.email_normalized == "multi-reset@example.com").one()
+        user.password_hash = password_reset_service.hash_password("old-password-123")
+        db.commit()
 
     first_request = client.post(
         "/api/auth/password-reset/request",
@@ -502,7 +483,7 @@ def test_password_reset_confirm_invalidates_other_outstanding_reset_tokens(
 
     with SessionLocal() as db:
         user = db.query(User).filter(User.email_normalized == "multi-reset@example.com").one()
-        stored_tokens = db.query(MagicLinkToken).all()
+        stored_tokens = db.query(MagicLinkToken).filter_by(purpose=MagicLinkPurpose.PASSWORD_RESET).all()
         assert len(stored_tokens) == 2
         assert {stored_token.user_id for stored_token in stored_tokens} == {user.id}
 
@@ -513,7 +494,7 @@ def test_password_reset_confirm_invalidates_other_outstanding_reset_tokens(
     assert confirm_response.status_code == 200
 
     with SessionLocal() as db:
-        stored_tokens = db.query(MagicLinkToken).all()
+        stored_tokens = db.query(MagicLinkToken).filter_by(purpose=MagicLinkPurpose.PASSWORD_RESET).all()
         assert len(stored_tokens) == 2
         assert all(stored_token.used_at is not None for stored_token in stored_tokens)
 
@@ -684,3 +665,58 @@ def test_password_reset_email_delivery_failure_is_observable(
         str(original_error),
     ):
         assert marker not in caplog.text
+
+
+def test_unverified_password_reset_preserves_unverified_state_and_invalidates_verification(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reset_token = "unverified-reset-token-with-enough-entropy"
+    monkeypatch.setattr(
+        password_reset_service,
+        "make_password_reset_token",
+        lambda: (
+            reset_token,
+            hashlib.sha256(reset_token.encode("utf-8")).hexdigest(),
+            datetime.now(UTC) + timedelta(minutes=30),
+        ),
+    )
+    registration = client.post(
+        "/api/auth/register",
+        json={
+            "email": "unverified-reset@example.com",
+            "password": "old-password-123",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    assert registration.status_code == 200
+    failed_login = client.post(
+        "/api/auth/login",
+        json={"email": "unverified-reset@example.com", "password": "wrong-password-123"},
+    )
+    assert failed_login.status_code == 401
+
+    requested = client.post(
+        "/api/auth/password-reset/request",
+        json={"email": "unverified-reset@example.com"},
+    )
+    confirmed = client.post(
+        "/api/auth/password-reset/confirm",
+        json={"token": reset_token, "password": "new-password-123"},
+    )
+
+    assert requested.status_code == 200
+    assert confirmed.status_code == 200
+    with SessionLocal() as db:
+        user = db.query(User).filter_by(email_normalized="unverified-reset@example.com").one()
+        verification_tokens = db.query(MagicLinkToken).filter_by(purpose=MagicLinkPurpose.EMAIL_VERIFICATION).all()
+        assert user.email_verified_at is None
+        assert db.query(AuthSession).filter_by(user_id=user.id).count() == 0
+        assert verification_tokens
+        assert all(token.used_at is not None for token in verification_tokens)
+        assert (
+            db.query(AuthenticationRateLimit)
+            .filter_by(rate_limit_key="login:account:anytoolai:ru:unverified-reset@example.com")
+            .count()
+            == 0
+        )

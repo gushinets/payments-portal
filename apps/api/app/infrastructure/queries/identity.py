@@ -19,6 +19,7 @@ def get_active_user_for_auth_session(db: Session, auth_session: AuthSession) -> 
             User.tenant_id == auth_session.tenant_id,
             User.region == auth_session.region,
             User.status == UserStatus.ACTIVE,
+            User.email_verified_at.is_not(None),
         )
         .first()
     )
@@ -57,6 +58,26 @@ def get_active_user_by_normalized_email(
             User.email_normalized == email_normalized,
             User.status == UserStatus.ACTIVE,
         )
+        .first()
+    )
+
+
+def lock_active_user_by_normalized_email(
+    db: Session,
+    *,
+    tenant_id: str,
+    region: str,
+    email_normalized: str,
+) -> User | None:
+    return (
+        db.query(User)
+        .filter(
+            User.tenant_id == tenant_id,
+            User.region == region,
+            User.email_normalized == email_normalized,
+            User.status == UserStatus.ACTIVE,
+        )
+        .with_for_update()
         .first()
     )
 

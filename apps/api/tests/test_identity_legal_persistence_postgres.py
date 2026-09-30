@@ -14,8 +14,9 @@ from sqlalchemy.orm import Session, sessionmaker
 
 import app.domains.identity.services.auth as identity_auth_service
 import app.domains.identity.services.password_reset as password_reset_service
-from app.domains.identity.errors import EmailAlreadyRegisteredError, InvalidOrExpiredResetTokenError
+from app.domains.identity.errors import InvalidOrExpiredResetTokenError
 from app.domains.identity.passwords import hash_password
+from app.domains.identity.services.email_verification import EmailVerificationDeliveryResult
 from app.models import (
     AcceptanceKind,
     AuthSession,
@@ -126,7 +127,7 @@ def register_user_with_legal_evidence(
     db_session: Session,
     *,
     email: str,
-) -> identity_auth_service.AuthenticationResult:
+) -> EmailVerificationDeliveryResult:
     return identity_auth_service.register_user(
         db_session,
         tenant_id="anytoolai",
@@ -149,7 +150,14 @@ def test_registration_persists_canonical_identity_hashed_session_and_legal_event
     )
 
     user = db_session.get(User, result.user_id)
-    auth_session = db_session.query(AuthSession).filter(AuthSession.user_id == result.user_id).one()
+    verification_token = (
+        db_session.query(MagicLinkToken)
+        .filter(
+            MagicLinkToken.user_id == result.user_id,
+            MagicLinkToken.purpose == MagicLinkPurpose.EMAIL_VERIFICATION,
+        )
+        .one()
+    )
     acceptance_event = (
         db_session.query(LegalAcceptanceEvent).filter(LegalAcceptanceEvent.user_id == result.user_id).one()
     )
@@ -164,8 +172,11 @@ def test_registration_persists_canonical_identity_hashed_session_and_legal_event
     assert isinstance(user.id, uuid.UUID)
     assert user.id == result.user_id
     assert (user.tenant_id, user.region) == ("anytoolai", "ru")
-    assert auth_session.token_hash == hashlib.sha256(result.token.encode("utf-8")).hexdigest()
-    assert auth_session.token_hash != result.token
+    assert user.email_verified_at is None
+    assert user.last_login_at is None
+    assert db_session.query(AuthSession).filter(AuthSession.user_id == result.user_id).count() == 0
+    assert verification_token.token_hash
+    assert verification_token.used_at is None
     assert {acceptance.legal_acceptance_event_id for acceptance in acceptances} == {acceptance_event.id}
     assert {document.doc_type for document in accepted_documents} == {
         "privacy",
@@ -178,16 +189,16 @@ def test_registration_failure_rolls_back_identity_session_and_legal_evidence(
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def fail_session_token_generation() -> tuple[str, str, datetime]:
-        raise RuntimeError("session token generation failed")
+    def fail_verification_token_generation() -> tuple[str, str, datetime]:
+        raise RuntimeError("verification token generation failed")
 
     monkeypatch.setattr(
         identity_auth_service,
-        "make_session_token",
-        fail_session_token_generation,
+        "make_email_verification_token",
+        fail_verification_token_generation,
     )
 
-    with pytest.raises(RuntimeError, match="session token generation failed"):
+    with pytest.raises(RuntimeError, match="verification token generation failed"):
         register_user_with_legal_evidence(
             db_session,
             email="rolled-back-registration@example.com",
@@ -206,7 +217,12 @@ def test_normal_logout_deletes_only_the_selected_session(
         db_session,
         email="logout-survivor@example.com",
     )
-    login = identity_auth_service.login_user(
+    user = db_session.get(User, registration.user_id)
+    assert user is not None
+    user.email_verified_at = datetime.now(UTC)
+    db_session.commit()
+
+    first_login = identity_auth_service.login_user(
         db_session,
         tenant_id="anytoolai",
         region="ru",
@@ -215,14 +231,23 @@ def test_normal_logout_deletes_only_the_selected_session(
         client_ip="192.0.2.11",
         user_agent="identity-legal-survivor-test",
     )
-    login_token_hash = hashlib.sha256(login.token.encode("utf-8")).hexdigest()
-    login_session = db_session.query(AuthSession).filter(AuthSession.token_hash == login_token_hash).one()
+    second_login = identity_auth_service.login_user(
+        db_session,
+        tenant_id="anytoolai",
+        region="ru",
+        email="logout-survivor@example.com",
+        password="very-secret-password",
+        client_ip="192.0.2.12",
+        user_agent="identity-legal-survivor-test",
+    )
+    second_login_token_hash = hashlib.sha256(second_login.token.encode("utf-8")).hexdigest()
+    login_session = db_session.query(AuthSession).filter(AuthSession.token_hash == second_login_token_hash).one()
 
     identity_auth_service.logout_session(db_session, auth_session=login_session)
 
     remaining_sessions = db_session.query(AuthSession).all()
     assert [session.token_hash for session in remaining_sessions] == [
-        hashlib.sha256(registration.token.encode("utf-8")).hexdigest()
+        hashlib.sha256(first_login.token.encode("utf-8")).hexdigest()
     ]
 
 
@@ -269,6 +294,10 @@ def test_password_reset_binds_canonical_user_and_revokes_security_state(
         db_session,
         email="canonical-reset@example.com",
     )
+    user = db_session.get(User, registration.user_id)
+    assert user is not None
+    user.email_verified_at = datetime.now(UTC)
+    db_session.commit()
     identity_auth_service.login_user(
         db_session,
         tenant_id="anytoolai",
@@ -299,7 +328,7 @@ def test_password_reset_binds_canonical_user_and_revokes_security_state(
         user_agent="identity-legal-survivor-test",
         route_locale="ru",
     )
-    stored_token = db_session.query(MagicLinkToken).one()
+    stored_token = db_session.query(MagicLinkToken).filter_by(purpose=MagicLinkPurpose.PASSWORD_RESET).one()
 
     assert delivery.send_email is True
     assert delivery.route_locale == "ru"
@@ -316,7 +345,7 @@ def test_password_reset_binds_canonical_user_and_revokes_security_state(
 
     sessions = db_session.query(AuthSession).filter(AuthSession.user_id == registration.user_id).all()
     db_session.refresh(stored_token)
-    assert len(sessions) == 2
+    assert len(sessions) == 1
     assert all(session.revoked_at is not None for session in sessions)
     assert stored_token.used_at is not None
 
@@ -779,21 +808,18 @@ def test_concurrent_duplicate_registration_keeps_one_complete_result(
 
     def register_once() -> str:
         with postgres_session_factory() as session:
-            try:
-                identity_auth_service.register_user(
-                    session,
-                    tenant_id="anytoolai",
-                    region="ru",
-                    email=email,
-                    password="very-secret-password",
-                    personal_consent=True,
-                    offer_consent=True,
-                    client_ip="192.0.2.10",
-                    user_agent="registration-concurrency-test",
-                )
-            except EmailAlreadyRegisteredError:
-                return "duplicate"
-        return "registered"
+            result = identity_auth_service.register_user(
+                session,
+                tenant_id="anytoolai",
+                region="ru",
+                email=email,
+                password="very-secret-password",
+                personal_consent=True,
+                offer_consent=True,
+                client_ip="192.0.2.10",
+                user_agent="registration-concurrency-test",
+            )
+        return "registered" if result.user_id is not None else "duplicate"
 
     with ThreadPoolExecutor(max_workers=2) as executor:
         outcomes = list(executor.map(lambda _: register_once(), range(2)))
@@ -812,7 +838,7 @@ def test_concurrent_duplicate_registration_keeps_one_complete_result(
             .all()
         )
 
-    assert len(sessions) == 1
+    assert len(sessions) == 0
     assert len(events) == 1
     assert len(acceptances) == 3
     assert {acceptance.legal_acceptance_event_id for acceptance in acceptances} == {events[0].id}

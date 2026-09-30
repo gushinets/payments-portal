@@ -6,6 +6,8 @@ from datetime import datetime
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.models import AuthenticationRateLimit
+
 
 @dataclass(frozen=True)
 class LoginAccountRateLimitState:
@@ -22,10 +24,9 @@ def _increment_authentication_rate_limit(
     now: datetime,
     expires_at: datetime,
 ) -> LoginAccountRateLimitState:
-    row = (
-        db.execute(
-            text(
-                """
+    db.execute(
+        text(
+            """
             INSERT INTO authentication_rate_limits (
                 rate_limit_key,
                 count,
@@ -49,19 +50,17 @@ def _increment_authentication_rate_limit(
                     ELSE authentication_rate_limits.expires_at
                 END,
                 updated_at = :now
-            RETURNING count, window_start, expires_at, updated_at
+            RETURNING count
             """
-            ),
-            {"key": key, "now": now, "expires_at": expires_at},
-        )
-        .mappings()
-        .one()
-    )
+        ),
+        {"key": key, "now": now, "expires_at": expires_at},
+    ).scalar_one()
+    row = db.query(AuthenticationRateLimit).populate_existing().filter_by(rate_limit_key=key).one()
     return LoginAccountRateLimitState(
-        count=row["count"],
-        window_start=row["window_start"],
-        expires_at=row["expires_at"],
-        updated_at=row["updated_at"],
+        count=row.count,
+        window_start=row.window_start,
+        expires_at=row.expires_at,
+        updated_at=row.updated_at,
     )
 
 
@@ -85,27 +84,14 @@ def get_login_account_rate_limit_state(
     *,
     key: str,
 ) -> LoginAccountRateLimitState | None:
-    row = (
-        db.execute(
-            text(
-                """
-            SELECT count, window_start, expires_at, updated_at
-            FROM authentication_rate_limits
-            WHERE rate_limit_key = :key
-            """
-            ),
-            {"key": key},
-        )
-        .mappings()
-        .one_or_none()
-    )
+    row = db.query(AuthenticationRateLimit).filter_by(rate_limit_key=key).one_or_none()
     if row is None:
         return None
     return LoginAccountRateLimitState(
-        count=row["count"],
-        window_start=row["window_start"],
-        expires_at=row["expires_at"],
-        updated_at=row["updated_at"],
+        count=row.count,
+        window_start=row.window_start,
+        expires_at=row.expires_at,
+        updated_at=row.updated_at,
     )
 
 

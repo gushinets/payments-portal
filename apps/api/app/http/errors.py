@@ -10,9 +10,12 @@ from starlette.responses import Response
 
 from app.core.errors import AppError
 from app.domains.identity.errors import (
+    AuthenticationRateLimitedError,
     EmailAlreadyRegisteredError,
+    EmailVerificationRequiredError,
     InvalidCredentialsError,
     InvalidOrExpiredResetTokenError,
+    InvalidOrExpiredVerificationTokenError,
     MissingOfferConsentError,
     MissingPersonalConsentError,
     PasswordResetRateLimitedError,
@@ -30,6 +33,9 @@ HTTP_ERROR_RESPONSES: dict[type[AppError], tuple[int, str]] = {
     MissingOfferConsentError: (400, "missing_offer_consent"),
     EmailAlreadyRegisteredError: (409, "email_already_registered"),
     InvalidCredentialsError: (401, "invalid_credentials"),
+    EmailVerificationRequiredError: (403, "email_verification_required"),
+    InvalidOrExpiredVerificationTokenError: (400, "invalid_or_expired_verification_token"),
+    AuthenticationRateLimitedError: (429, "authentication_rate_limited"),
     PasswordResetRateLimitedError: (429, "password_reset_rate_limited"),
     InvalidOrExpiredResetTokenError: (400, "invalid_or_expired_reset_token"),
 }

@@ -23,6 +23,18 @@ class InvalidCredentialsError(AppError):
     pass
 
 
+class EmailVerificationRequiredError(AppError):
+    pass
+
+
+class InvalidOrExpiredVerificationTokenError(AppError):
+    pass
+
+
+class AuthenticationRateLimitedError(AppError):
+    pass
+
+
 class PasswordResetError(AppError):
     pass
 

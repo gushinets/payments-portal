@@ -8,6 +8,7 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 
 import app.core.email as email_sender
+import app.core.email_verification_email as email_verification_email
 import app.core.password_reset_email as password_reset_email
 from app.generated.locales import SUPPORTED_ROUTE_LOCALES, RouteLocale
 
@@ -146,6 +147,62 @@ def test_password_reset_email_uses_authored_brazilian_portuguese_template() -> N
         reset_url=reset_url,
         ttl_minutes=30,
     )
+
+
+@pytest.mark.parametrize("route_locale", SUPPORTED_ROUTE_LOCALES)
+def test_email_verification_url_keeps_token_in_fragment_only(
+    monkeypatch: pytest.MonkeyPatch,
+    route_locale: RouteLocale,
+) -> None:
+    monkeypatch.setattr(
+        email_verification_email,
+        "settings",
+        SimpleNamespace(app_public_base_url="https://payments.example.com/"),
+    )
+    token = "secret-token?&/value"
+
+    verification_url = email_verification_email.build_email_verification_url(token, route_locale)
+    parsed_url = urlsplit(verification_url)
+
+    assert parsed_url.path == f"/{route_locale}/verify-email"
+    assert parsed_url.query == ""
+    assert parse_qs(parsed_url.fragment) == {"token": [token]}
+    assert token not in parsed_url.path
+    assert token not in parsed_url.query
+
+
+def test_email_verification_templates_cover_supported_locales_exactly() -> None:
+    assert set(email_verification_email.EMAIL_VERIFICATION_TEMPLATES) == set(SUPPORTED_ROUTE_LOCALES)
+
+    for template in email_verification_email.EMAIL_VERIFICATION_TEMPLATES.values():
+        field_names = {field_name for _, field_name, _, _ in Formatter().parse(template.body) if field_name is not None}
+        assert field_names == {"verification_url", "ttl_hours"}
+
+
+@pytest.mark.parametrize("route_locale", SUPPORTED_ROUTE_LOCALES)
+def test_email_verification_email_renders_every_supported_locale(
+    route_locale: RouteLocale,
+) -> None:
+    verification_url = f"https://payments.example.com/{route_locale}/verify-email#token=secret"
+    content = email_verification_email.render_email_verification_email(
+        route_locale=route_locale,
+        verification_url=verification_url,
+        ttl_hours=24,
+    )
+
+    assert content.subject.strip()
+    assert content.body.strip()
+    assert verification_url in content.body
+    assert "24" in content.body
+
+
+def test_email_verification_uses_authored_brazilian_portuguese_template() -> None:
+    template = email_verification_email.EMAIL_VERIFICATION_TEMPLATES["pt"]
+
+    assert template.subject == "Confirme seu e-mail do AnytoolAI"
+    assert "confirme" in template.body.lower()
+    assert "{verification_url}" in template.body
+    assert "{ttl_hours}" in template.body
 
 
 def test_send_password_reset_email_delegates_rendered_text(

@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy.orm import Session  # noqa: E402
 
 from app.core.database import Base, SessionLocal, engine  # noqa: E402
+from app.core.settings import settings  # noqa: E402
 from app.legal_seed import seed_legal_documents  # noqa: E402
 from app.main import create_app  # noqa: E402
 from app.models import (  # noqa: E402
@@ -18,6 +19,8 @@ from app.models import (  # noqa: E402
     LegalEntity,
     LegalEntityStatus,
     LegalEntityType,
+    MagicLinkToken,
+    User,
 )
 
 
@@ -117,4 +120,29 @@ def register_test_user(
         },
     )
     assert register_response.status_code == 200, register_response.text
-    return register_response.json()["token"]
+    assert register_response.json() == {"status": "verification_required"}
+    with SessionLocal() as db:
+        user = (
+            db.query(User)
+            .filter(
+                User.tenant_id == settings.instance_tenant_id,
+                User.region == settings.instance_region,
+                User.email_normalized == email.strip().lower(),
+            )
+            .one()
+        )
+        verified_at = datetime.now(timezone.utc)
+        user.email_verified_at = verified_at
+        (
+            db.query(MagicLinkToken)
+            .filter(MagicLinkToken.user_id == user.id, MagicLinkToken.used_at.is_(None))
+            .update({"used_at": verified_at}, synchronize_session=False)
+        )
+        db.commit()
+
+    login_response = client.post(
+        "/api/auth/login",
+        json={"email": email, "password": "very-secret-password"},
+    )
+    assert login_response.status_code == 200, login_response.text
+    return login_response.json()["token"]

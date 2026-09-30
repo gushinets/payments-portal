@@ -3,18 +3,22 @@ from __future__ import annotations
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.settings import settings
+from app.domains.identity.password_reset import _normalize_request_language
 from app.domains.identity.services.auth import (
     AuthenticationResult,
+    confirm_email_verification,
     login_user,
     logout_session,
     register_user,
+    request_email_verification,
 )
+from app.domains.identity.services.email_verification import send_email_verification_email_safely
 from app.http.dependencies import get_current_session
 from app.models import AuthSession, User
 
@@ -33,6 +37,15 @@ class LoginRequest(BaseModel):
     password: str = Field(min_length=8, max_length=128)
 
 
+class EmailVerificationRequest(BaseModel):
+    email: EmailStr
+
+
+class EmailVerificationConfirmRequest(BaseModel):
+    token: str = Field(min_length=32, max_length=256)
+    password: str = Field(min_length=8, max_length=128)
+
+
 class SessionUserResponse(BaseModel):
     tenant_id: str
     region: str
@@ -41,7 +54,15 @@ class SessionUserResponse(BaseModel):
 
 
 class RegisterResponse(BaseModel):
-    status: Literal["registered"]
+    status: Literal["verification_required"]
+
+
+class EmailVerificationRequestResponse(BaseModel):
+    status: Literal["accepted"]
+
+
+class EmailVerificationConfirmResponse(BaseModel):
+    status: Literal["verified"]
     token: str
     user: SessionUserResponse
 
@@ -74,9 +95,10 @@ def present_user(result: AuthenticationResult) -> SessionUserResponse:
 def register(
     payload: RegisterRequest,
     request: Request,
+    background_tasks: BackgroundTasks,
     db: Annotated[Session, Depends(get_db)],
 ) -> RegisterResponse:
-    result = register_user(
+    delivery = register_user(
         db,
         tenant_id=settings.instance_tenant_id,
         region=settings.instance_region,
@@ -86,10 +108,62 @@ def register(
         offer_consent=payload.offer_consent,
         client_ip=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
+        route_locale=_normalize_request_language(request.headers.get("accept-language")),
     )
+    if delivery.send_email:
+        background_tasks.add_task(
+            send_email_verification_email_safely,
+            delivery.recipient_email,
+            delivery.verification_url,
+            delivery.route_locale,
+        )
 
-    return RegisterResponse(
-        status="registered",
+    return RegisterResponse(status="verification_required")
+
+
+@router.post("/email-verification/request")
+def request_verification(
+    payload: EmailVerificationRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: Annotated[Session, Depends(get_db)],
+) -> EmailVerificationRequestResponse:
+    delivery = request_email_verification(
+        db,
+        tenant_id=settings.instance_tenant_id,
+        region=settings.instance_region,
+        email=str(payload.email),
+        client_ip=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+        route_locale=_normalize_request_language(request.headers.get("accept-language")),
+    )
+    if delivery.send_email:
+        background_tasks.add_task(
+            send_email_verification_email_safely,
+            delivery.recipient_email,
+            delivery.verification_url,
+            delivery.route_locale,
+        )
+    return EmailVerificationRequestResponse(status="accepted")
+
+
+@router.post("/email-verification/confirm")
+def confirm_verification(
+    payload: EmailVerificationConfirmRequest,
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+) -> EmailVerificationConfirmResponse:
+    result = confirm_email_verification(
+        db,
+        token=payload.token,
+        password=payload.password,
+        tenant_id=settings.instance_tenant_id,
+        region=settings.instance_region,
+        client_ip=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    return EmailVerificationConfirmResponse(
+        status="verified",
         token=result.token,
         user=present_user(result),
     )
