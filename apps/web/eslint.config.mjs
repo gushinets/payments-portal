@@ -3,6 +3,133 @@ import nextVitals from "eslint-config-next/core-web-vitals";
 import * as espree from "espree";
 import { defineConfig, globalIgnores } from "eslint/config";
 
+const sharedApiMachineLiteralAllowlist = new Set([
+  "",
+  "use client",
+  "ApiContractError",
+  "Authorization",
+  "Content-Type",
+  "POST",
+  "accepted",
+  "authenticated",
+  "detail",
+  "localhost",
+  "login",
+  "object",
+  "register",
+  "registered",
+  "status",
+  "string",
+  "undefined",
+  "${status}:${rawBody}",
+  "${resolveApiBase()}${path}",
+  "Bearer ${token}"
+]);
+
+function isSharedApiMachineLiteral(literal) {
+  return (
+    sharedApiMachineLiteralAllowlist.has(literal) ||
+    /^\/(?:api\/)?[a-z0-9-]+(?:\/[a-z0-9-]+)*$/.test(literal) ||
+    /^(?:@\/|\.\.?\/)[A-Za-z0-9_./-]+$/.test(literal) ||
+    /^https?:\/\/[^\s]+$/.test(literal) ||
+    /^application\/[a-z0-9.+-]+$/.test(literal) ||
+    /^Bearer [A-Za-z0-9._~+/=-]+$/.test(literal) ||
+    /^(?:\d{1,3}\.){3}\d{1,3}$/.test(literal) ||
+    /^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$/.test(literal)
+  );
+}
+
+function isLocalizedImport(specifier) {
+  return (
+    specifier === "next-intl" ||
+    specifier.startsWith("next-intl/") ||
+    /(?:^|\/)messages(?:\/|$)/.test(specifier)
+  );
+}
+
+const sharedApiBoundariesPlugin = {
+  rules: {
+    "language-neutral": {
+      meta: {
+        type: "problem",
+        schema: [],
+        messages: {
+          presentationLiteral:
+            'shared/api must not own presentation-like text: "{{literal}}".',
+          localizedImport:
+            'shared/api must not import localized presentation from "{{specifier}}".'
+        }
+      },
+      create(context) {
+        function isModuleSpecifier(node) {
+          return (
+            (node.parent.type === "ImportDeclaration" &&
+              node.parent.source === node) ||
+            (node.parent.type === "ImportExpression" &&
+              node.parent.source === node) ||
+            ((node.parent.type === "ExportNamedDeclaration" ||
+              node.parent.type === "ExportAllDeclaration") &&
+              node.parent.source === node)
+          );
+        }
+
+        function reportImport(node, specifier) {
+          if (isLocalizedImport(specifier)) {
+            context.report({
+              node,
+              messageId: "localizedImport",
+              data: { specifier }
+            });
+          }
+        }
+
+        return {
+          Literal(node) {
+            if (
+              typeof node.value === "string" &&
+              !isModuleSpecifier(node) &&
+              !isSharedApiMachineLiteral(node.value)
+            ) {
+              context.report({
+                node,
+                messageId: "presentationLiteral",
+                data: { literal: node.value }
+              });
+            }
+          },
+          TemplateLiteral(node) {
+            const source = context.sourceCode.getText(node);
+            const literal = source.slice(1, -1);
+            if (!isSharedApiMachineLiteral(literal)) {
+              context.report({
+                node,
+                messageId: "presentationLiteral",
+                data: { literal }
+              });
+            }
+          },
+          ImportDeclaration(node) {
+            reportImport(node.source, node.source.value);
+          },
+          ImportExpression(node) {
+            if (node.source.type === "Literal") {
+              reportImport(node.source, node.source.value);
+            }
+          },
+          ExportNamedDeclaration(node) {
+            if (node.source) {
+              reportImport(node.source, node.source.value);
+            }
+          },
+          ExportAllDeclaration(node) {
+            reportImport(node.source, node.source.value);
+          }
+        };
+      }
+    }
+  }
+};
+
 const eslintConfig = defineConfig([
   ...fixupConfigRules(nextVitals),
   {
@@ -147,6 +274,15 @@ const eslintConfig = defineConfig([
           ]
         }
       ]
+    }
+  },
+  {
+    files: ["src/shared/api/**/*.{ts,tsx}"],
+    plugins: {
+      "shared-api-boundaries": sharedApiBoundariesPlugin
+    },
+    rules: {
+      "shared-api-boundaries/language-neutral": "error"
     }
   },
   {

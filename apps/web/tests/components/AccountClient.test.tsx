@@ -1,12 +1,14 @@
 import "@testing-library/jest-dom/vitest";
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AccountClient } from "@/features/account";
+import ruMessages from "@/messages/ru.json";
 import {
   sessionChangedEvent,
   sessionStorageKey
 } from "@/shared/api/auth";
+import { renderWithIntl } from "../setup/render-with-intl";
 
 const fetchMock = vi.fn<typeof fetch>();
 
@@ -14,6 +16,13 @@ function jsonResponse(payload: unknown): Response {
   return new Response(JSON.stringify(payload), {
     status: 200,
     headers: { "Content-Type": "application/json" }
+  });
+}
+
+function renderAccountClient() {
+  return renderWithIntl(<AccountClient />, {
+    locale: "ru",
+    messages: { Account: ruMessages.Account }
   });
 }
 
@@ -30,7 +39,7 @@ describe("identity-only account", () => {
   });
 
   it("directs a signed-out user to the retained auth surface", async () => {
-    render(<AccountClient />);
+    renderAccountClient();
 
     expect(
       await screen.findByRole("link", { name: "Войти или зарегистрироваться" })
@@ -52,7 +61,7 @@ describe("identity-only account", () => {
       })
     );
 
-    render(<AccountClient />);
+    renderAccountClient();
 
     expect(await screen.findByText("account@example.com")).toBeVisible();
     expect(screen.getByText("Биллинг обновляется")).toBeVisible();
@@ -61,7 +70,7 @@ describe("identity-only account", () => {
   });
 
   it("synchronizes login and logout events after mounting", async () => {
-    render(<AccountClient />);
+    renderAccountClient();
 
     expect(
       await screen.findByRole("link", { name: "Войти или зарегистрироваться" })
@@ -113,7 +122,7 @@ describe("identity-only account", () => {
       )
       .mockResolvedValueOnce(jsonResponse({ status: "logged_out" }));
     const user = userEvent.setup();
-    render(<AccountClient />);
+    renderAccountClient();
 
     await user.click(await screen.findByRole("button", { name: "Выйти" }));
 

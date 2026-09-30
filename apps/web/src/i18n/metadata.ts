@@ -1,14 +1,11 @@
 import type { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
 
 import {
   LANGUAGE_TAG_BY_ROUTE_LOCALE,
   SUPPORTED_ROUTE_LOCALES,
   type RouteLocale
 } from "@/generated/locales";
-
-const DEFAULT_TITLE = "AnytoolAI - RU";
-const DEFAULT_DESCRIPTION =
-  "RU-версия платформы цифровых сервисов AnytoolAI.";
 
 function loadMetadataBase(): URL {
   const configuredBaseUrl = process.env.APP_PUBLIC_BASE_URL;
@@ -40,10 +37,14 @@ function localizedPath(routeLocale: RouteLocale, pathname: string): string {
   return `/${routeLocale}${suffix}`;
 }
 
-export function createLocalizedMetadata(
+export async function createLocalizedMetadata(
   routeLocale: RouteLocale,
   pathname: string
-): Metadata {
+): Promise<Metadata> {
+  const t = await getTranslations({
+    locale: routeLocale,
+    namespace: "Metadata"
+  });
   const canonicalPath = localizedPath(routeLocale, pathname);
   const languages = Object.fromEntries(
     SUPPORTED_ROUTE_LOCALES.map((alternateLocale) => [
@@ -57,8 +58,8 @@ export function createLocalizedMetadata(
 
   return {
     metadataBase: APP_METADATA_BASE,
-    title: DEFAULT_TITLE,
-    description: DEFAULT_DESCRIPTION,
+    title: t("title"),
+    description: t("description"),
     alternates: {
       canonical: new URL(canonicalPath, APP_METADATA_BASE).href,
       languages

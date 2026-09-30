@@ -1,31 +1,31 @@
 import { Clock3, ShieldCheck } from "lucide-react";
+import { getTranslations } from "next-intl/server";
 import { Link } from "@/i18n/navigation";
 
-export function PaymentResultClient() {
+export async function PaymentResultView() {
+  const t = await getTranslations("PaymentResult");
+
   return (
     <section className="page-section compact">
       <div className="result-panel">
         <span className="badge badge-demo">
           <Clock3 size={12} aria-hidden="true" />
-          Оплата недоступна
+          {t("badge")}
         </span>
         <h1 className="legal-title" style={{ marginTop: 14 }}>
-          Здесь пока нет результата платежа
+          {t("title")}
         </h1>
-        <p className="hero-copy">
-          Портал больше не обрабатывает прежний сценарий оплаты. Возврат в
-          браузер не подтверждает покупку и не предоставляет доступ.
-        </p>
+        <p className="hero-copy">{t("description")}</p>
         <div className="notice" role="status">
           <ShieldCheck size={16} aria-hidden="true" />
-          Дождитесь запуска новой биллинговой системы перед оформлением покупки.
+          {t("notice")}
         </div>
         <div className="hero-actions">
           <Link className="btn-primary" href="/auth-checkout">
-            Войти в аккаунт
+            {t("accountAction")}
           </Link>
           <Link className="btn-secondary" href="/">
-            На главную
+            {t("homeAction")}
           </Link>
         </div>
       </div>

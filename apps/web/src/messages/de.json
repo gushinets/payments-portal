@@ -1,1 +1,255 @@
-{}
+{
+  "Navigation": {
+    "mainAriaLabel": "Hauptnavigation",
+    "products": "Produkte",
+    "localeSwitcher": {
+      "summaryAriaLabel": "Sprache wählen. Aktuelle Sprache: {language}",
+      "menuAriaLabel": "Sprache wählen"
+    }
+  },
+  "Auth": {
+    "header": {
+      "account": "Konto",
+      "accountArea": "persönlicher Bereich",
+      "signIn": "Anmelden",
+      "closeDialogAriaLabel": "Anmeldedialog schließen",
+      "dialogAriaLabel": "Beim Konto anmelden"
+    },
+    "dialogTitle": "Anmelden oder registrieren",
+    "form": {
+      "badge": "Ein Konto"
+    },
+    "modes": {
+      "login": "Anmeldung",
+      "register": "Registrierung"
+    },
+    "fields": {
+      "emailLabel": "E-Mail",
+      "passwordLabel": "Passwort",
+      "passwordPlaceholder": "Mindestens 8 Zeichen",
+      "passwordConfirmLabel": "Passwort wiederholen",
+      "passwordConfirmPlaceholder": "Passwort erneut eingeben"
+    },
+    "forgotPasswordAction": "Passwort vergessen?",
+    "actions": {
+      "createAccount": "Konto erstellen",
+      "signIn": "Anmelden",
+      "telegramSignIn": "Mit Telegram anmelden"
+    },
+    "validation": {
+      "invalidEmail": "Geben Sie eine gültige E-Mail-Adresse ein.",
+      "passwordTooShort": "Das Passwort muss mindestens 8 Zeichen enthalten.",
+      "passwordMismatch": "Die Passwörter stimmen nicht überein.",
+      "personalConsentRequired": "Sie müssen der Verarbeitung personenbezogener Daten zustimmen.",
+      "offerConsentRequired": "Sie müssen die Bedingungen des öffentlichen Angebots akzeptieren."
+    },
+    "notices": {
+      "registered": "Konto erstellt. Sie sind angemeldet.",
+      "signedIn": "Sie sind angemeldet.",
+      "signedOut": "Sie wurden abgemeldet."
+    },
+    "errors": {
+      "emailAlreadyRegistered": "Ein Konto mit dieser E-Mail-Adresse besteht bereits. Versuchen Sie, sich anzumelden.",
+      "invalidCredentials": "E-Mail-Adresse oder Passwort ist falsch.",
+      "missingPersonalConsent": "Sie müssen der Verarbeitung personenbezogener Daten zustimmen.",
+      "missingOfferConsent": "Sie müssen die Bedingungen des öffentlichen Angebots akzeptieren.",
+      "internalServer": "Der Dienst ist vorübergehend nicht verfügbar. Versuchen Sie es später erneut.",
+      "contract": "Der Dienst hat eine unerwartete Antwort zurückgegeben. Versuchen Sie es erneut.",
+      "network": "Verbindung zum Dienst fehlgeschlagen. Prüfen Sie Ihre Verbindung und versuchen Sie es erneut.",
+      "generic": "Die Authentifizierung konnte nicht abgeschlossen werden. Versuchen Sie es erneut."
+    }
+  },
+  "Checkout": {
+    "sessionChecking": "Sitzung wird geprüft...",
+    "authenticatedBadge": "Angemeldet",
+    "accountTitle": "AnytoolAI-Konto",
+    "openAccountAction": "Konto öffnen",
+    "signOutAction": "Abmelden",
+    "unavailable": {
+      "badge": "Information",
+      "title": "Zahlungen sind vorübergehend nicht verfügbar",
+      "description": "Das Portal unterstützt derzeit Registrierung, Anmeldung, Passwortwiederherstellung und rechtliche Einwilligungen. Katalog, Abonnements und Zahlungen werden nach der Anbindung des neuen Abrechnungssystems verfügbar."
+    }
+  },
+  "Account": {
+    "loading": "Konto wird geladen...",
+    "badge": "Konto",
+    "eyebrow": "Konto",
+    "title": "Kontobereich",
+    "signedOut": {
+      "notice": "Melden Sie sich an, um Ihren Kontobereich zu öffnen.",
+      "action": "Anmelden oder registrieren"
+    },
+    "authenticated": {
+      "description": "Die Verwaltung von Abonnements und Zahlungen ist vorübergehend nicht verfügbar.",
+      "badge": "Angemeldet",
+      "summaryTitle": "Konto",
+      "signOutAction": "Abmelden"
+    },
+    "billingUnavailable": {
+      "badge": "Information",
+      "title": "Abrechnung wird aktualisiert",
+      "description": "Der Katalog, Käufe und Abonnementdetails werden hier angezeigt, sobald das neue Abrechnungssystem verbunden ist."
+    }
+  },
+  "PasswordReset": {
+    "request": {
+      "badge": "Zugang wiederherstellen",
+      "title": "Passwort zurücksetzen",
+      "description": "Geben Sie die E-Mail-Adresse Ihres AnytoolAI-Kontos ein. Wir senden Ihnen einen Link zum Ändern Ihres Passworts.",
+      "fields": {
+        "emailLabel": "E-Mail"
+      },
+      "validation": {
+        "invalidEmail": "Geben Sie eine gültige E-Mail-Adresse ein."
+      },
+      "notices": {
+        "accepted": "Wenn ein Konto mit dieser E-Mail-Adresse existiert, haben wir einen Link zum Ändern des Passworts gesendet."
+      },
+      "actions": {
+        "submit": "Link senden",
+        "backToSignIn": "Zurück zur Anmeldung"
+      }
+    },
+    "confirm": {
+      "loading": "Formular zum Ändern des Passworts wird geladen...",
+      "badge": "Neues Passwort",
+      "title": "Passwort ändern",
+      "description": "Legen Sie ein neues Passwort für Ihr AnytoolAI-Konto fest. Aktive Sitzungen werden nach der Änderung beendet.",
+      "fields": {
+        "passwordLabel": "Neues Passwort",
+        "passwordPlaceholder": "Mindestens 8 Zeichen",
+        "passwordConfirmLabel": "Passwort wiederholen",
+        "passwordConfirmPlaceholder": "Passwort erneut eingeben"
+      },
+      "validation": {
+        "missingToken": "Der Link zum Ändern des Passworts ist ungültig. Fordern Sie einen neuen Link an.",
+        "passwordTooShort": "Das Passwort muss mindestens 8 Zeichen enthalten.",
+        "passwordMismatch": "Die Passwörter stimmen nicht überein."
+      },
+      "notices": {
+        "success": "Passwort geändert. Sie können sich jetzt mit dem neuen Passwort anmelden."
+      },
+      "actions": {
+        "submit": "Passwort ändern",
+        "signIn": "Zur Anmeldung"
+      }
+    },
+    "errors": {
+      "invalidOrExpiredToken": "Der Link ist ungültig oder abgelaufen. Fordern Sie einen neuen Link an.",
+      "rateLimited": "Zu viele Versuche zur Passwortwiederherstellung. Versuchen Sie es später erneut.",
+      "invalidInput": "Prüfen Sie die E-Mail-Adresse und das Passwort. Das Passwort muss mindestens 8 Zeichen enthalten.",
+      "internalServer": "Der Dienst ist vorübergehend nicht verfügbar. Versuchen Sie es später erneut.",
+      "contract": "Der Dienst hat eine unerwartete Antwort zurückgegeben. Versuchen Sie es erneut.",
+      "network": "Verbindung zum Dienst fehlgeschlagen. Prüfen Sie Ihre Verbindung und versuchen Sie es erneut.",
+      "generic": "Die Passwortwiederherstellung konnte nicht abgeschlossen werden. Versuchen Sie es erneut."
+    }
+  },
+  "CookieBanner": {
+    "ariaLabel": "Cookie-Hinweis",
+    "badge": "Cookie",
+    "description": "Diese Website verwendet Cookies, damit die Oberfläche korrekt funktioniert und ausgewählte Einstellungen gespeichert werden. Weitere Informationen finden Sie in der Cookie-Richtlinie.",
+    "acceptAction": "Akzeptieren",
+    "settingsAction": "Einstellungen"
+  },
+  "Home": {
+    "eyebrow": "AnytoolAI {region}",
+    "hero": {
+      "heading": "Werkzeuge für die Arbeit mit Dokumenten und zum <em>Verbessern von Prompts</em>",
+      "description": "AnytoolAI bündelt digitale Dienste, mit denen Sie schneller mit Inhalten, Dokumenten und KI-Werkzeugen arbeiten können. Entdecken Sie die Produkte und erstellen Sie auf dieser Website ein gemeinsames Konto.",
+      "primaryAction": "Anmelden oder registrieren",
+      "secondaryAction": "Produkt auswählen"
+    },
+    "factsAriaLabel": "Wichtige Informationen",
+    "facts": {
+      "catalog": {
+        "label": "Katalog",
+        "value": "{region}",
+        "detail": "Informationen zu AnytoolAI-Produkten"
+      },
+      "pricing": {
+        "label": "Tarife",
+        "value": "Demnächst",
+        "detail": "Käufe sind vorübergehend nicht verfügbar"
+      },
+      "account": {
+        "label": "Zugang",
+        "value": "{accountCount, plural, one {# Konto} other {# Konten}}",
+        "detail": "Registrierung und Anmeldung sind bereits verfügbar"
+      },
+      "localization": {
+        "label": "Sprachen",
+        "value": "{localeCount, plural, one {# Oberflächensprache} other {# Oberflächensprachen}}",
+        "detail": "Maßgebliche Rechtsgrundlage: {legalLanguage}"
+      }
+    },
+    "highlights": {
+      "simpleStart": {
+        "title": "Einfacher Einstieg",
+        "description": "Registrierung und Rechtsdokumente sind in einem übersichtlichen Portal gebündelt."
+      },
+      "singleAccount": {
+        "title": "Ein Konto",
+        "description": "Erstellen Sie ein Konto oder melden Sie sich per E-Mail an, während die Abrechnung aktualisiert wird."
+      },
+      "controlledLaunch": {
+        "title": "Kontrollierter Start",
+        "description": "Käufe bleiben bis zur Anbindung des neuen Abrechnungssystems nicht verfügbar."
+      }
+    },
+    "products": {
+      "eyebrow": "Produkte",
+      "title": "Dienste für den Arbeitsalltag",
+      "description": "Entdecken Sie die Produkte von AnytoolAI. Tarife und Käufe sind vorübergehend nicht verfügbar."
+    }
+  },
+  "Catalog": {
+    "page": {
+      "eyebrow": "Katalog",
+      "title": "Produkte und Tarife",
+      "description": "Entdecken Sie die Dienste von AnytoolAI. Tarife und Käufe sind vorübergehend nicht verfügbar."
+    },
+    "availabilityNotice": "Der Tarifkatalog und Käufe sind vorübergehend nicht verfügbar.",
+    "productInfoBadge": "Produktinformationen",
+    "signInAction": "Anmelden oder registrieren",
+    "products": {
+      "documentSummary": {
+        "type": "Chrome-Erweiterung",
+        "tagline": "Sofortige Zusammenfassungen für jedes Dokument",
+        "description": "Die Erweiterung fasst Dokumente und Webseiten schnell und ohne unnötige manuelle Schritte zusammen."
+      },
+      "promptOptimizer": {
+        "type": "Chrome-Erweiterung",
+        "tagline": "KI-Prompts mit einem Klick verbessern",
+        "description": "Die Erweiterung verbessert Prompts direkt in Ihrer gewohnten Oberfläche und zeigt genau, was geändert wurde."
+      }
+    }
+  },
+  "PaymentResult": {
+    "badge": "Zahlung nicht verfügbar",
+    "title": "Hier liegt noch kein Zahlungsergebnis vor",
+    "description": "Das Portal verarbeitet den bisherigen Zahlungsablauf nicht mehr. Die Rückkehr im Browser bestätigt keinen Kauf und gewährt keinen Zugang.",
+    "notice": "Warten Sie mit einem Kauf, bis das neue Abrechnungssystem gestartet ist.",
+    "accountAction": "Beim Konto anmelden",
+    "homeAction": "Zur Startseite"
+  },
+  "Footer": {
+    "registrationNumbers": "INN (ИНН): {inn} · OGRNIP (ОГРНИП): {ogrnip}",
+    "legalAddress": "Geschäftsanschrift: <addressValue>{address}</addressValue>",
+    "supportEmail": "Support-E-Mail: <email>{supportEmail}</email>",
+    "legalLinksAriaLabel": "Rechtsdokumente auf Russisch",
+    "paymentMethodsTitle": "Unterstützte Zahlungsmethoden",
+    "paymentMethodsAriaLabel": "Zahlungsmethoden"
+  },
+  "Metadata": {
+    "title": "AnytoolAI — Digitale Dienste",
+    "description": "Digitale Dienste von AnytoolAI für die Arbeit mit Dokumenten, Inhalten und KI-Werkzeugen."
+  },
+  "LegalPresentation": {
+    "eyebrow": "Rechtsdokument",
+    "canonicalLanguageHelp": "Die maßgebliche Fassung dieses Rechtsdokuments wird auf Russisch bereitgestellt.",
+    "versioningHelp": "Das Dokument wird in einer separaten versionierten Datei veröffentlicht.",
+    "revision": "Fassung: {version}",
+    "tableAccessibilityLabel": "Scrollbare Tabelle des Rechtsdokuments"
+  }
+}

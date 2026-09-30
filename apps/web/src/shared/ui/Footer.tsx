@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { getTranslations } from "next-intl/server";
 
 export type FooterContent = {
   seller: {
@@ -112,29 +113,41 @@ function PaymentMethodIcon({ code }: { code: string }) {
   );
 }
 
-export function Footer({
+export async function Footer({
   seller,
   supportEmail,
   legalLinks,
   paymentMethods
 }: FooterContent) {
+  const t = await getTranslations("Footer");
+
   return (
     <footer className="footer">
       <div className="footer-inner">
         <div>
           <p className="footer-text">
-            <strong>{seller.name}</strong>
+            <strong lang="ru">{seller.name}</strong>
             <br />
-            ИНН: {seller.inn} · ОГРНИП: {seller.ogrnip}
+            {t("registrationNumbers", {
+              inn: seller.inn,
+              ogrnip: seller.ogrnip
+            })}
             <br />
-            Юридический адрес: {seller.address}
+            {t.rich("legalAddress", {
+              address: seller.address,
+              addressValue: (chunks) => <span lang="ru">{chunks}</span>
+            })}
             <br />
-            Email поддержки:{" "}
-            <a className="inline-link" href={`mailto:${supportEmail}`}>
-              {supportEmail}
-            </a>
+            {t.rich("supportEmail", {
+              supportEmail,
+              email: (chunks) => (
+                <a className="inline-link" href={`mailto:${supportEmail}`}>
+                  {chunks}
+                </a>
+              )
+            })}
           </p>
-          <div className="footer-links" aria-label="Юридические документы">
+          <div className="footer-links" aria-label={t("legalLinksAriaLabel")}>
             {legalLinks.map((link) => (
               <Link href={link.href} key={link.href} lang="ru">
                 {link.label}
@@ -144,8 +157,11 @@ export function Footer({
         </div>
         {paymentMethods.length > 0 ? (
           <div className="footer-payments">
-            <p className="footer-text">Поддерживаемые способы оплаты</p>
-            <div className="payment-list" aria-label="Способы оплаты">
+            <p className="footer-text">{t("paymentMethodsTitle")}</p>
+            <div
+              className="payment-list"
+              aria-label={t("paymentMethodsAriaLabel")}
+            >
               {paymentMethods.map((method) =>
                 method.href ? (
                   <a

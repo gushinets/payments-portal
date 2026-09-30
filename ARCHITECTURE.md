@@ -74,8 +74,8 @@ launch remain gated by Phase 0 and their owning `ANY-504` steps.
   state, and invalidation outbox. There is no billing runtime yet.
 - **Presentation** — locale-prefixed landing, product snapshot, auth/account
   shells, unavailable checkout/payment-result surfaces, and canonical RU legal
-  pages. The current customer-facing copy remains Russian pending the separate
-  UI-localization slice.
+  pages. Ordinary Portal-owned UI and metadata are localized across the seven
+  supported route locales; canonical legal authority remains Russian.
 
 ## Locale runtime and public routing
 
@@ -94,10 +94,21 @@ not determine contour/region, provider, currency, or timezone.
 
 The locale returned by next-intl's `useLocale` is the `routeLocale`; formatting
 code resolves the canonical `intlLocale` through the generated mapping instead
-of passing that route identity blindly to `Intl`. The localized root client
-provider supplies locale/runtime context without the complete message catalog.
-Client Component translations receive only the required message namespace or
-subset from their nearest appropriate server boundary.
+of passing that route identity blindly to `Intl`. Currency and timezone remain
+independent application facts and are never inferred from locale.
+
+`apps/web/src/messages` owns canonical ordinary Portal UI and metadata copy.
+All seven catalogs must have exact key parity, valid ICU syntax, and matching
+argument and rich-text tag signatures. Server Components translate server-first.
+The localized root client provider remains `messages={null}` and supplies only
+locale/runtime context; true Client Components receive only their required
+current-locale namespace or subset from the nearest appropriate server boundary.
+The full current-locale catalog and catalogs for other locales are not sent to
+ordinary client boundaries.
+
+Shared API transport remains language-neutral. It exposes status, error codes,
+and other machine facts; the owning web Presentation/UI boundary maps those
+facts to localized human-readable messages.
 
 Ordinary public routes live under `apps/web/src/app/[locale]`. The localized
 root layout owns the document and derives `<html lang>` from the locale
@@ -116,8 +127,13 @@ localStorage, or user records.
 Generated RU legal paths remain canonical and RU-only, without invented locale
 alternates. Password-reset confirmation (`/[locale]/reset-password`) does not
 offer locale switching so its fragment token stays on the current client-only
-flow. Complete UI copy localization belongs to 4B.2. Propagating locale in
-frontend-to-backend communication belongs to 4B.3.
+flow. Generated legal titles, bodies, versions, paths, and registration
+acceptance statements remain source-owned canonical RU content. Seller facts,
+support addresses, payment-method/provider facts, and user-entered content also
+stay source-owned; catalogs localize only their surrounding Portal presentation.
+The broader guard against newly hardcoded ordinary UI copy, backend
+`Accept-Language` propagation, and localized reset URLs and email content belong
+to 4B.3.
 
 Current API composition exposes authentication, password reset, legal, health,
 and metrics routes. Removed catalog, checkout-intent, payment-status, account
@@ -240,7 +256,11 @@ Contract guards require named OpenAPI component schemas for active ordinary
 JSON `2xx` success responses. The readiness `503` response is checked
 separately and requires its named response schema; metrics remains outside
 OpenAPI. Web lint rejects direct type assertions on `response.json()` and
-`JSON.parse(...)` results in production source.
+`JSON.parse(...)` results in production source. Web localization guards require
+exact seven-catalog key and ICU signature parity and prevent shared API
+transport from regaining localized auth presentation ownership. The existing
+bounded `/ru` route-literal guard remains in force; the broader hardcoded
+ordinary-UI-copy guard is deferred to 4B.3.
 
 The guards reject reintroduction without requiring deleted source files to
 exist as evidence.

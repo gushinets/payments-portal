@@ -13,6 +13,29 @@ const localeLanguages = [
   ["ru", "ru"],
   ["pt", "pt-BR"]
 ] as const;
+const localePresentation = [
+  ["en", "Products", "Products and plans"],
+  ["fr", "Produits", "Produits et offres"],
+  ["it", "Prodotti", "Prodotti e piani"],
+  ["de", "Produkte", "Produkte und Tarife"],
+  ["es", "Productos", "Productos y planes"],
+  ["ru", "Продукты", "Продукты и тарифы"],
+  ["pt", "Produtos", "Produtos e planos"]
+] as const;
+const metadataCases = [
+  {
+    locale: "de",
+    title: "AnytoolAI — Digitale Dienste",
+    description:
+      "Digitale Dienste von AnytoolAI für die Arbeit mit Dokumenten, Inhalten und KI-Werkzeugen."
+  },
+  {
+    locale: "pt",
+    title: "AnytoolAI — Serviços digitais",
+    description:
+      "Serviços digitais da AnytoolAI para trabalhar com documentos, conteúdo e ferramentas de IA."
+  }
+] as const;
 const legalSlugs = [
   "privacy",
   "consent-personal-data",
@@ -111,23 +134,30 @@ test("explicit locale routes win and arbitrary unprefixed paths stay not-found",
   expect(response?.status()).toBe(404);
 });
 
-test("ordinary locale metadata uses the configured public origin and canonical language tags", async ({
+test("representative localized metadata uses the public origin and canonical language tags", async ({
   page
 }) => {
-  await page.goto("/de/products");
+  for (const metadataCase of metadataCases) {
+    await page.goto(`/${metadataCase.locale}/products`);
 
-  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
-    "href",
-    publicUrl("/de/products")
-  );
+    await expect(page).toHaveTitle(metadataCase.title);
+    await expect(page.locator('meta[name="description"]')).toHaveAttribute(
+      "content",
+      metadataCase.description
+    );
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
+      "href",
+      publicUrl(`/${metadataCase.locale}/products`)
+    );
 
-  const alternateLinks = page.locator('link[rel="alternate"][hreflang]');
-  await expect(alternateLinks).toHaveCount(localeLanguages.length);
+    const alternateLinks = page.locator('link[rel="alternate"][hreflang]');
+    await expect(alternateLinks).toHaveCount(localeLanguages.length);
 
-  for (const [locale, languageTag] of localeLanguages) {
-    await expect(
-      page.locator(`link[rel="alternate"][hreflang="${languageTag}"]`)
-    ).toHaveAttribute("href", publicUrl(`/${locale}/products`));
+    for (const [locale, languageTag] of localeLanguages) {
+      await expect(
+        page.locator(`link[rel="alternate"][hreflang="${languageTag}"]`)
+      ).toHaveAttribute("href", publicUrl(`/${locale}/products`));
+    }
   }
 });
 
@@ -138,19 +168,21 @@ test("ordinary navigation keeps the active locale", async ({ page }) => {
     "href",
     "/de"
   );
-  await expect(page.getByRole("link", { name: "Продукты" })).toHaveAttribute(
+  await expect(page.getByRole("link", { name: "Produkte" })).toHaveAttribute(
     "href",
     "/de/products"
   );
   await expect(
     page.getByRole("main").getByRole("link", {
-      name: "Войти или зарегистрироваться"
+      name: "Anmelden oder registrieren"
     }).first()
   ).toHaveAttribute("href", "/de/auth-checkout");
 
-  await page.getByRole("button", { name: "Войти" }).click();
+  await page.getByRole("button", { name: "Anmelden" }).click();
   await expect(
-    page.getByRole("dialog").getByRole("link", { name: "Забыли пароль?" })
+    page
+      .getByRole("dialog")
+      .getByRole("link", { name: "Passwort vergessen?" })
   ).toHaveAttribute("href", "/de/forgot-password");
 });
 
@@ -165,6 +197,24 @@ test("canonical RU footer labels retain Russian language metadata on non-RU rout
   for (const legalLink of await legalLinks.all()) {
     await expect(legalLink).toHaveAttribute("lang", "ru");
   }
+});
+
+test("source-owned seller facts retain Russian language metadata on non-RU routes", async ({
+  page
+}) => {
+  await page.goto("/de");
+
+  await expect(
+    page.locator("footer").getByText("ИП Говоров Роман Стальевич", {
+      exact: true
+    })
+  ).toHaveAttribute("lang", "ru");
+  await expect(
+    page.locator("footer").getByText(
+      "630091 , Новосибирская область, г. Новосибирск",
+      { exact: true }
+    )
+  ).toHaveAttribute("lang", "ru");
 });
 
 test("locale switching preserves pathname, query and auth storage across seven destinations", async ({
@@ -198,9 +248,9 @@ test("locale switching preserves pathname, query and auth storage across seven d
     { key: sessionStorageKey, token: sessionToken }
   );
   await expect(page.getByText("locale-switch@example.com")).toBeVisible();
-  await page.getByLabel(/Выбор языка\. Текущий язык:/).click();
+  await page.getByLabel(/Sprache wählen\. Aktuelle Sprache:/).click();
 
-  const switcher = page.getByRole("navigation", { name: "Выбор языка" });
+  const switcher = page.getByRole("navigation", { name: "Sprache wählen" });
   const destinations = switcher.getByRole("link");
   await expect(destinations).toHaveCount(SUPPORTED_ROUTE_LOCALES.length);
 
@@ -268,11 +318,25 @@ test("legal documents remain canonical RU-only routes without locale alternates"
   ).toHaveCount(0);
 });
 
-test("representative localized content is present in the server response", async ({
-  request
+test("all seven locales render representative shell and catalog content", async ({
+  page
 }) => {
-  const response = await request.get("/de/products");
+  expect(SUPPORTED_ROUTE_LOCALES).toEqual(
+    localePresentation.map(([locale]) => locale)
+  );
 
-  expect(response.status()).toBe(200);
-  expect(await response.text()).toContain("Продукты и тарифы");
+  for (const [locale, productsLabel, catalogTitle] of localePresentation) {
+    const response = await page.goto(`/${locale}/products`);
+
+    expect(response?.status()).toBe(200);
+    await expect(
+      page.getByRole("navigation").getByRole("link", {
+        name: productsLabel,
+        exact: true
+      })
+    ).toHaveAttribute("href", `/${locale}/products`);
+    await expect(
+      page.getByRole("heading", { name: catalogTitle, exact: true })
+    ).toBeVisible();
+  }
 });

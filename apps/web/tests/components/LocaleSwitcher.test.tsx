@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
@@ -7,10 +7,13 @@ import {
   DISPLAY_NAME_BY_ROUTE_LOCALE,
   SUPPORTED_ROUTE_LOCALES
 } from "@/generated/locales";
+import enMessages from "@/messages/en.json";
+import ruMessages from "@/messages/ru.json";
 import {
   isLocaleSwitchingBlockedPathname,
   LocaleSwitcher
 } from "@/shared/ui/LocaleSwitcher";
+import { renderWithIntl } from "../setup/render-with-intl";
 
 const sessionStorageKey = "anytoolai_session_token_v1";
 
@@ -21,7 +24,10 @@ describe("LocaleSwitcher", () => {
     globalThis.__NEXT_SEARCH_PARAMS__ = "source=campaign&filter=active";
     window.localStorage.setItem(sessionStorageKey, "session-token");
 
-    const { container } = render(<LocaleSwitcher locale="de" />);
+    const { container } = renderWithIntl(<LocaleSwitcher locale="de" />, {
+      locale: "ru",
+      messages: { Navigation: ruMessages.Navigation }
+    });
     const summary = container.querySelector("summary");
     expect(summary).not.toBeNull();
     await user.click(summary!);
@@ -53,6 +59,26 @@ describe("LocaleSwitcher", () => {
     expect(window.localStorage.getItem(sessionStorageKey)).toBe(
       "session-token"
     );
+  });
+
+  it("localizes presentation without replacing generated language names", async () => {
+    const user = userEvent.setup();
+    const { container } = renderWithIntl(<LocaleSwitcher locale="de" />, {
+      locale: "en",
+      messages: { Navigation: enMessages.Navigation }
+    });
+
+    const summary = container.querySelector("summary");
+    expect(summary).toHaveAccessibleName(
+      `Choose language. Current language: ${DISPLAY_NAME_BY_ROUTE_LOCALE.de}`
+    );
+    await user.click(summary!);
+    expect(
+      screen.getByRole("navigation", { name: "Choose language" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: DISPLAY_NAME_BY_ROUTE_LOCALE.fr })
+    ).toBeInTheDocument();
   });
 
   it("blocks switching on reset confirmation and every generated legal pathname", () => {

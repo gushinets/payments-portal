@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { getTranslations } from "next-intl/server";
 import { Fragment, ReactNode } from "react";
 import { LegalBlock, LegalDocument } from "./legal";
 
@@ -56,7 +57,11 @@ function renderInline(text: string): ReactNode[] {
   return result;
 }
 
-function renderBlock(block: LegalBlock, index: number) {
+function renderBlock(
+  block: LegalBlock,
+  index: number,
+  tableAccessibilityLabel: string
+) {
   if (block.type === "heading") {
     return block.level === 2 ? (
       <h2 key={index}>{block.text}</h2>
@@ -84,7 +89,7 @@ function renderBlock(block: LegalBlock, index: number) {
 
   return (
     <div
-      aria-label="Прокручиваемая таблица юридического документа"
+      aria-label={tableAccessibilityLabel}
       className="legal-table-wrap"
       key={index}
       role="region"
@@ -112,24 +117,29 @@ function renderBlock(block: LegalBlock, index: number) {
   );
 }
 
-export function LegalPageView({ page }: { page: LegalDocument }) {
+export async function LegalPageView({ page }: { page: LegalDocument }) {
+  const t = await getTranslations("LegalPresentation");
+
   return (
     <section className="page-section compact" lang="ru">
       <div className="eyebrow">
         <span className="eyebrow-dot" />
-        Юридический документ
+        {t("eyebrow")}
       </div>
       <h1 className="legal-title">{page.title}</h1>
       <p className="hero-copy">
-        Каноническая версия юридического документа представлена на русском языке.
+        {t("canonicalLanguageHelp")}
         <br />
-        Документ опубликован в отдельном версионируемом файле.
-        <br className="mobile-only-break" /> Редакция: {page.version}
+        {t("versioningHelp")}
+        <br className="mobile-only-break" />{" "}
+        {t("revision", { version: page.version })}
       </p>
 
       <article className="legal-panel legal-document-panel" style={{ marginTop: 28 }}>
         {page.blocks.map((block, index) => (
-          <Fragment key={`${page.slug}-${index}`}>{renderBlock(block, index)}</Fragment>
+          <Fragment key={`${page.slug}-${index}`}>
+            {renderBlock(block, index, t("tableAccessibilityLabel"))}
+          </Fragment>
         ))}
       </article>
     </section>

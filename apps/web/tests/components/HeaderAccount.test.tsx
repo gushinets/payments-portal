@@ -1,12 +1,14 @@
 import "@testing-library/jest-dom/vitest";
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import ruMessages from "@/messages/ru.json";
 import {
   requestTimeoutMs,
   sessionChangedEvent,
   sessionStorageKey
 } from "@/shared/api/auth";
 import { HeaderAccount } from "@/shared/ui/HeaderAccount";
+import { renderWithIntl } from "../setup/render-with-intl";
 
 const fetchMock = vi.fn<typeof fetch>();
 
@@ -14,6 +16,13 @@ function jsonResponse(payload: unknown): Response {
   return new Response(JSON.stringify(payload), {
     status: 200,
     headers: { "Content-Type": "application/json" }
+  });
+}
+
+function renderHeaderAccount() {
+  return renderWithIntl(<HeaderAccount />, {
+    locale: "ru",
+    messages: { Auth: ruMessages.Auth }
   });
 }
 
@@ -48,7 +57,7 @@ describe("header account session", () => {
         jsonResponse({ authenticated: true, user: { email: 123 } })
       );
 
-    render(<HeaderAccount />);
+    renderHeaderAccount();
 
     expect(await screen.findByText("header@example.com")).toBeVisible();
 
@@ -67,7 +76,7 @@ describe("header account session", () => {
     window.localStorage.setItem(sessionStorageKey, "session-token");
     fetchMock.mockRejectedValueOnce(new TypeError("network unavailable"));
 
-    render(<HeaderAccount />);
+    renderHeaderAccount();
 
     expect(await screen.findByRole("button", { name: "Войти" })).toBeVisible();
     expect(window.localStorage.getItem(sessionStorageKey)).toBe("session-token");
@@ -112,7 +121,7 @@ describe("header account session", () => {
     });
 
     try {
-      render(<HeaderAccount />);
+      renderHeaderAccount();
 
       await act(async () => {
         await vi.advanceTimersByTimeAsync(0);

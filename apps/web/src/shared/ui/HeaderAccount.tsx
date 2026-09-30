@@ -2,11 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { LogIn, UserRound } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import {
   ApiContractError,
   ApiError,
-  authErrorMessage,
   decodeAuthSessionResponse,
   getJson,
   sessionChangedEvent,
@@ -14,10 +14,12 @@ import {
   submitAuth
 } from "@/shared/api/auth";
 import { AuthForm, AuthFormSubmitValues, AuthMode } from "./AuthForm";
+import { authErrorMessageKey } from "./auth-errors";
 
 const telegramLoginUrl = process.env.NEXT_PUBLIC_TELEGRAM_LOGIN_URL ?? "";
 
 export function HeaderAccount() {
+  const t = useTranslations("Auth");
   const [email, setEmail] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
@@ -94,7 +96,7 @@ export function HeaderAccount() {
       setEmail(payload.user.email);
       setModalOpen(false);
     } catch (requestError) {
-      setError(authErrorMessage(requestError));
+      setError(t(authErrorMessageKey(requestError)));
     } finally {
       setLoading(false);
     }
@@ -105,13 +107,13 @@ export function HeaderAccount() {
       {!loaded ? (
         <button className="btn-secondary nav-account" type="button" disabled>
           <UserRound size={15} aria-hidden="true" />
-          Аккаунт
+          {t("header.account")}
         </button>
       ) : email ? (
         <Link className="btn-secondary nav-account" href="/account">
           <UserRound size={15} aria-hidden="true" />
           <span className="nav-account-email">{email}</span>
-          <small>личный кабинет</small>
+          <small>{t("header.accountArea")}</small>
         </Link>
       ) : (
         <button
@@ -120,7 +122,7 @@ export function HeaderAccount() {
           onClick={() => openAuthModal("login")}
         >
           <LogIn size={15} aria-hidden="true" />
-          Войти
+          {t("header.signIn")}
         </button>
       )}
 
@@ -129,25 +131,23 @@ export function HeaderAccount() {
           <button
             className="auth-modal-overlay"
             type="button"
-            aria-label="Закрыть окно входа"
+            aria-label={t("header.closeDialogAriaLabel")}
             onClick={() => setModalOpen(false)}
           />
           <div
             className="form-panel auth-modal-panel auth-header-modal"
             role="dialog"
             aria-modal="true"
-            aria-label="Вход в аккаунт"
+            aria-label={t("header.dialogAriaLabel")}
           >
             <AuthForm
-              title="Вход или регистрация"
+              title={t("dialogTitle")}
               badgeIcon={<UserRound size={12} aria-hidden="true" />}
               initialMode={initialAuthMode}
               modeOrder={["login", "register"]}
               notice={notice}
               error={error}
               loading={loading}
-              personalConsentError="Нужно дать согласие на обработку персональных данных."
-              offerConsentError="Нужно принять условия оферты."
               telegramLoginUrl={telegramLoginUrl}
               onModeChange={() => {
                 setNotice("");

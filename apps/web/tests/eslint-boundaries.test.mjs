@@ -1,10 +1,18 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { ESLint } from "eslint";
+import { sourceFiles } from "./setup/source-files.mjs";
 
 const webRoot = fileURLToPath(new URL("..", import.meta.url));
+const authApiPath = fileURLToPath(
+  new URL("../src/shared/api/auth.ts", import.meta.url)
+);
+const sharedApiPath = fileURLToPath(
+  new URL("../src/shared/api", import.meta.url)
+);
 const eslint = new ESLint({ cwd: webRoot });
 
 async function restrictedImportMessages(source, relativePath) {
@@ -13,6 +21,15 @@ async function restrictedImportMessages(source, relativePath) {
   });
   return result.messages.filter(
     (message) => message.ruleId === "no-restricted-imports"
+  );
+}
+
+async function sharedApiBoundaryMessages(source, relativePath) {
+  const [result] = await eslint.lintText(source, {
+    filePath: `${webRoot}/${relativePath}`
+  });
+  return result.messages.filter(
+    (message) => message.ruleId === "shared-api-boundaries/language-neutral"
   );
 }
 
@@ -102,6 +119,85 @@ test("unknown JSON results remain allowed for runtime decoding", async () => {
       (message) => message.ruleId === "no-restricted-syntax"
     ).length,
     0
+  );
+});
+
+test("shared API transport cannot own localized auth presentation", async () => {
+  const [authApiSource, apiFiles] = await Promise.all([
+    readFile(authApiPath, "utf8"),
+    sourceFiles(sharedApiPath)
+  ]);
+
+  assert.doesNotMatch(
+    authApiSource,
+    /\b(?:authErrorMessage|passwordResetErrorMessage)\b/,
+    "shared/api/auth.ts must expose language-neutral facts, not UI message mapping"
+  );
+
+  const neutralTransportSource = [
+    'const loginPath = "/api/auth/login";',
+    'const contentType = "application/json";',
+    'const code = "invalid_api_response";',
+    'const authorization = "Bearer test-token";'
+  ].join("\n");
+  const commentOnlySource = [
+    '// The UI may offer "try-again" after a transport failure.',
+    '// import messages from "next-intl";',
+    'const code = "invalid_api_response";'
+  ].join("\n");
+
+  assert.deepEqual(
+    await sharedApiBoundaryMessages(
+      neutralTransportSource,
+      "src/shared/api/BoundaryFixture.ts"
+    ),
+    [],
+    "language-neutral machine and transport literals must remain allowed"
+  );
+  assert.deepEqual(
+    await sharedApiBoundaryMessages(
+      commentOnlySource,
+      "src/shared/api/BoundaryFixture.ts"
+    ),
+    [],
+    "comments must not be treated as executable presentation or imports"
+  );
+
+  const presentationMessages = await sharedApiBoundaryMessages(
+    'const fallback = "try-again";',
+    "src/shared/api/BoundaryFixture.ts"
+  );
+  assert.equal(presentationMessages.length, 1);
+  assert.match(presentationMessages[0].message, /try-again/);
+
+  const localizedImportMessages = await sharedApiBoundaryMessages(
+    'import {useTranslations} from "next-intl";',
+    "src/shared/api/BoundaryFixture.ts"
+  );
+  assert.equal(localizedImportMessages.length, 1);
+  assert.match(localizedImportMessages[0].message, /next-intl/);
+
+  const offenders = [];
+
+  for (const filePath of apiFiles) {
+    const source = await readFile(filePath, "utf8");
+    const messages = await sharedApiBoundaryMessages(
+      source,
+      filePath.slice(webRoot.length + 1)
+    );
+
+    if (messages.length > 0) {
+      offenders.push({
+        filePath,
+        messages: messages.map((message) => message.message)
+      });
+    }
+  }
+
+  assert.deepEqual(
+    offenders,
+    [],
+    "shared/api must remain language-neutral and must not own human-readable presentation"
   );
 });
 

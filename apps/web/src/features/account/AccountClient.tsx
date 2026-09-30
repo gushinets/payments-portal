@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { LogOut, UserRound } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import {
   decodeAuthSessionResponse,
@@ -19,6 +20,7 @@ type AccountState =
   | { status: "authenticated"; user: AuthUser };
 
 export function AccountClient() {
+  const t = useTranslations("Account");
   const [accountState, setAccountState] = useState<AccountState>({
     status: "loading"
   });
@@ -95,7 +97,7 @@ export function AccountClient() {
     return (
       <section className="page-section compact">
         <div className="form-panel" role="status">
-          Загрузка аккаунта...
+          {t("loading")}
         </div>
       </section>
     );
@@ -107,17 +109,17 @@ export function AccountClient() {
         <div className="form-panel">
           <span className="badge badge-running">
             <UserRound size={12} aria-hidden="true" />
-            Аккаунт
+            {t("badge")}
           </span>
           <h1 className="legal-title" style={{ marginTop: 14 }}>
-            Личный кабинет
+            {t("title")}
           </h1>
           <div className="notice" style={{ marginTop: 20 }}>
-            Войдите в аккаунт, чтобы открыть личный кабинет.
+            {t("signedOut.notice")}
           </div>
           <div className="hero-actions">
             <Link className="btn-primary" href="/auth-checkout">
-              Войти или зарегистрироваться
+              {t("signedOut.action")}
             </Link>
           </div>
         </div>
@@ -129,20 +131,18 @@ export function AccountClient() {
     <section className="page-section compact">
       <div className="eyebrow">
         <span className="eyebrow-dot" />
-        Аккаунт
+        {t("eyebrow")}
       </div>
-      <h1 className="legal-title">Личный кабинет</h1>
-      <p className="hero-copy">
-        Управление подписками и оплатой временно недоступно.
-      </p>
+      <h1 className="legal-title">{t("title")}</h1>
+      <p className="hero-copy">{t("authenticated.description")}</p>
 
       <div className="account-layout">
         <article className="form-panel account-summary-panel">
           <span className="badge badge-live">
             <UserRound size={12} aria-hidden="true" />
-            Вход выполнен
+            {t("authenticated.badge")}
           </span>
-          <h2 style={{ marginTop: 14 }}>Аккаунт</h2>
+          <h2 style={{ marginTop: 14 }}>{t("authenticated.summaryTitle")}</h2>
           <p className="card-copy account-summary-email">
             {accountState.user.email}
           </p>
@@ -154,18 +154,19 @@ export function AccountClient() {
               onClick={() => void logout()}
             >
               <LogOut size={15} aria-hidden="true" />
-              Выйти
+              {t("authenticated.signOutAction")}
             </button>
           </div>
         </article>
 
         <aside className="form-panel">
-          <span className="badge badge-demo">Информация</span>
-          <h2 style={{ marginTop: 14 }}>Биллинг обновляется</h2>
-          <p className="card-copy">
-            Каталог, покупки и сведения о подписках появятся здесь после
-            подключения новой биллинговой системы.
-          </p>
+          <span className="badge badge-demo">
+            {t("billingUnavailable.badge")}
+          </span>
+          <h2 style={{ marginTop: 14 }}>
+            {t("billingUnavailable.title")}
+          </h2>
+          <p className="card-copy">{t("billingUnavailable.description")}</p>
         </aside>
       </div>
     </section>

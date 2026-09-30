@@ -2,13 +2,13 @@
 
 import { type FormEvent, useState } from "react";
 import { ArrowRight, Mail } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
-import {
-  passwordResetErrorMessage,
-  requestPasswordReset
-} from "@/shared/api/auth";
+import { requestPasswordReset } from "@/shared/api/auth";
+import { passwordResetErrorMessageKey } from "./errors";
 
 export function PasswordResetRequestClient() {
+  const t = useTranslations("PasswordReset");
   const [email, setEmail] = useState("");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
@@ -20,18 +20,16 @@ export function PasswordResetRequestClient() {
     setError("");
 
     if (!email.includes("@")) {
-      setError("Укажите корректный email.");
+      setError(t("request.validation.invalidEmail"));
       return;
     }
 
     setLoading(true);
     try {
       await requestPasswordReset({ email });
-      setNotice(
-        "Если аккаунт с таким email существует, мы отправили ссылку для смены пароля."
-      );
+      setNotice(t("request.notices.accepted"));
     } catch (requestError) {
-      setError(passwordResetErrorMessage(requestError));
+      setError(t(passwordResetErrorMessageKey(requestError)));
     } finally {
       setLoading(false);
     }
@@ -43,12 +41,10 @@ export function PasswordResetRequestClient() {
         <form className="form-grid" onSubmit={submit}>
           <span className="badge badge-running">
             <Mail size={12} aria-hidden="true" />
-            Восстановление доступа
+            {t("request.badge")}
           </span>
-          <h1 className="result-title">Сброс пароля</h1>
-          <p className="card-copy">
-            Введите email аккаунта AnytoolAI. Мы отправим ссылку для смены пароля.
-          </p>
+          <h1 className="result-title">{t("request.title")}</h1>
+          <p className="card-copy">{t("request.description")}</p>
 
           <div aria-live="polite">
             {notice ? <div className="notice">{notice}</div> : null}
@@ -56,7 +52,7 @@ export function PasswordResetRequestClient() {
           </div>
 
           <label className="field-label">
-            Email
+            {t("request.fields.emailLabel")}
             <input
               className="input"
               type="email"
@@ -72,12 +68,12 @@ export function PasswordResetRequestClient() {
             type="submit"
             disabled={loading}
           >
-            Отправить ссылку
+            {t("request.actions.submit")}
             <ArrowRight size={15} aria-hidden="true" />
           </button>
 
           <Link className="btn-secondary" href="/auth-checkout">
-            Вернуться ко входу
+            {t("request.actions.backToSignIn")}
           </Link>
         </form>
       </div>

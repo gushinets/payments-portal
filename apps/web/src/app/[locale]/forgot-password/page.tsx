@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { NextIntlClientProvider } from "next-intl";
+import { getMessages } from "next-intl/server";
 
 import { PasswordResetRequestClient } from "@/features/password-reset";
 import { getCurrentRouteLocale } from "@/i18n/current-locale";
@@ -11,6 +13,14 @@ export async function generateMetadata(): Promise<Metadata> {
   );
 }
 
-export default function ForgotPasswordPage() {
-  return <PasswordResetRequestClient />;
+export default async function ForgotPasswordPage() {
+  const messages = await getMessages();
+
+  return (
+    <NextIntlClientProvider
+      messages={{ PasswordReset: messages.PasswordReset }}
+    >
+      <PasswordResetRequestClient />
+    </NextIntlClientProvider>
+  );
 }

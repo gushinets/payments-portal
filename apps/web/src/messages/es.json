@@ -1,1 +1,255 @@
-{}
+{
+  "Navigation": {
+    "mainAriaLabel": "Navegación principal",
+    "products": "Productos",
+    "localeSwitcher": {
+      "summaryAriaLabel": "Elegir idioma. Idioma actual: {language}",
+      "menuAriaLabel": "Elegir idioma"
+    }
+  },
+  "Auth": {
+    "header": {
+      "account": "Cuenta",
+      "accountArea": "área personal",
+      "signIn": "Iniciar sesión",
+      "closeDialogAriaLabel": "Cerrar la ventana de inicio de sesión",
+      "dialogAriaLabel": "Iniciar sesión en la cuenta"
+    },
+    "dialogTitle": "Iniciar sesión o registrarse",
+    "form": {
+      "badge": "Una sola cuenta"
+    },
+    "modes": {
+      "login": "Inicio de sesión",
+      "register": "Registro"
+    },
+    "fields": {
+      "emailLabel": "Correo electrónico",
+      "passwordLabel": "Contraseña",
+      "passwordPlaceholder": "Al menos 8 caracteres",
+      "passwordConfirmLabel": "Repetir contraseña",
+      "passwordConfirmPlaceholder": "Introduce de nuevo la contraseña"
+    },
+    "forgotPasswordAction": "¿Has olvidado la contraseña?",
+    "actions": {
+      "createAccount": "Crear cuenta",
+      "signIn": "Iniciar sesión",
+      "telegramSignIn": "Iniciar sesión con Telegram"
+    },
+    "validation": {
+      "invalidEmail": "Introduce una dirección de correo válida.",
+      "passwordTooShort": "La contraseña debe contener al menos 8 caracteres.",
+      "passwordMismatch": "Las contraseñas no coinciden.",
+      "personalConsentRequired": "Debes consentir el tratamiento de datos personales.",
+      "offerConsentRequired": "Debes aceptar las condiciones de la oferta pública."
+    },
+    "notices": {
+      "registered": "Cuenta creada. Has iniciado sesión.",
+      "signedIn": "Has iniciado sesión.",
+      "signedOut": "Has cerrado sesión."
+    },
+    "errors": {
+      "emailAlreadyRegistered": "Ya existe una cuenta con este correo. Prueba a iniciar sesión.",
+      "invalidCredentials": "El correo electrónico o la contraseña son incorrectos.",
+      "missingPersonalConsent": "Debes consentir el tratamiento de datos personales.",
+      "missingOfferConsent": "Debes aceptar las condiciones de la oferta pública.",
+      "internalServer": "El servicio no está disponible temporalmente. Inténtalo de nuevo más tarde.",
+      "contract": "El servicio ha devuelto una respuesta inesperada. Inténtalo de nuevo.",
+      "network": "No se ha podido conectar con el servicio. Comprueba tu conexión e inténtalo de nuevo.",
+      "generic": "No se ha podido completar la autenticación. Inténtalo de nuevo."
+    }
+  },
+  "Checkout": {
+    "sessionChecking": "Comprobando la sesión...",
+    "authenticatedBadge": "Sesión iniciada",
+    "accountTitle": "Cuenta de AnytoolAI",
+    "openAccountAction": "Abrir cuenta",
+    "signOutAction": "Cerrar sesión",
+    "unavailable": {
+      "badge": "Información",
+      "title": "Los pagos no están disponibles temporalmente",
+      "description": "El Portal admite actualmente el registro, el inicio de sesión, la recuperación de contraseña y los consentimientos legales. El catálogo, las suscripciones y los pagos estarán disponibles cuando se conecte el nuevo sistema de facturación."
+    }
+  },
+  "Account": {
+    "loading": "Cargando la cuenta...",
+    "badge": "Cuenta",
+    "eyebrow": "Cuenta",
+    "title": "Área personal",
+    "signedOut": {
+      "notice": "Inicia sesión en tu cuenta para abrir el área personal.",
+      "action": "Iniciar sesión o registrarse"
+    },
+    "authenticated": {
+      "description": "La gestión de suscripciones y pagos no está disponible temporalmente.",
+      "badge": "Sesión iniciada",
+      "summaryTitle": "Cuenta",
+      "signOutAction": "Cerrar sesión"
+    },
+    "billingUnavailable": {
+      "badge": "Información",
+      "title": "Actualizando la facturación",
+      "description": "El catálogo, las compras y los detalles de las suscripciones aparecerán aquí cuando se conecte el nuevo sistema de facturación."
+    }
+  },
+  "PasswordReset": {
+    "request": {
+      "badge": "Recuperación de acceso",
+      "title": "Restablecer contraseña",
+      "description": "Introduce el correo electrónico de tu cuenta de AnytoolAI. Te enviaremos un enlace para cambiar la contraseña.",
+      "fields": {
+        "emailLabel": "Correo electrónico"
+      },
+      "validation": {
+        "invalidEmail": "Introduce una dirección de correo electrónico válida."
+      },
+      "notices": {
+        "accepted": "Si existe una cuenta con este correo electrónico, hemos enviado un enlace para cambiar la contraseña."
+      },
+      "actions": {
+        "submit": "Enviar enlace",
+        "backToSignIn": "Volver al inicio de sesión"
+      }
+    },
+    "confirm": {
+      "loading": "Cargando el formulario para cambiar la contraseña...",
+      "badge": "Nueva contraseña",
+      "title": "Cambiar contraseña",
+      "description": "Establece una nueva contraseña para tu cuenta de AnytoolAI. Las sesiones activas finalizarán después del cambio.",
+      "fields": {
+        "passwordLabel": "Nueva contraseña",
+        "passwordPlaceholder": "Al menos 8 caracteres",
+        "passwordConfirmLabel": "Repite la contraseña",
+        "passwordConfirmPlaceholder": "Introduce la contraseña de nuevo"
+      },
+      "validation": {
+        "missingToken": "El enlace para cambiar la contraseña no es válido. Solicita un enlace nuevo.",
+        "passwordTooShort": "La contraseña debe contener al menos 8 caracteres.",
+        "passwordMismatch": "Las contraseñas no coinciden."
+      },
+      "notices": {
+        "success": "Contraseña cambiada. Ya puedes iniciar sesión con la nueva contraseña."
+      },
+      "actions": {
+        "submit": "Cambiar contraseña",
+        "signIn": "Ir al inicio de sesión"
+      }
+    },
+    "errors": {
+      "invalidOrExpiredToken": "El enlace no es válido o ha caducado. Solicita un enlace nuevo.",
+      "rateLimited": "Demasiados intentos de recuperación de contraseña. Inténtalo de nuevo más tarde.",
+      "invalidInput": "Comprueba el correo electrónico y la contraseña. La contraseña debe contener al menos 8 caracteres.",
+      "internalServer": "El servicio no está disponible temporalmente. Inténtalo de nuevo más tarde.",
+      "contract": "El servicio devolvió una respuesta inesperada. Inténtalo de nuevo.",
+      "network": "No se pudo conectar con el servicio. Comprueba tu conexión e inténtalo de nuevo.",
+      "generic": "No se pudo completar la recuperación de la contraseña. Inténtalo de nuevo."
+    }
+  },
+  "CookieBanner": {
+    "ariaLabel": "Aviso de cookies",
+    "badge": "Cookie",
+    "description": "Este sitio utiliza cookies para que la interfaz funcione correctamente y para guardar la configuración seleccionada. Encontrarás más información en la Política de cookies.",
+    "acceptAction": "Aceptar",
+    "settingsAction": "Configuración"
+  },
+  "Home": {
+    "eyebrow": "AnytoolAI {region}",
+    "hero": {
+      "heading": "Herramientas para trabajar con documentos y <em>mejorar prompts</em>",
+      "description": "AnytoolAI reúne servicios digitales que te ayudan a trabajar más rápido con contenidos, documentos y herramientas de IA. Descubre los productos y crea una sola cuenta en este sitio.",
+      "primaryAction": "Iniciar sesión o registrarse",
+      "secondaryAction": "Elegir un producto"
+    },
+    "factsAriaLabel": "Datos principales",
+    "facts": {
+      "catalog": {
+        "label": "Catálogo",
+        "value": "{region}",
+        "detail": "Información sobre los productos de AnytoolAI"
+      },
+      "pricing": {
+        "label": "Planes",
+        "value": "Próximamente",
+        "detail": "Las compras no están disponibles temporalmente"
+      },
+      "account": {
+        "label": "Acceso",
+        "value": "{accountCount, plural, one {# cuenta} other {# cuentas}}",
+        "detail": "El registro y el inicio de sesión ya están disponibles"
+      },
+      "localization": {
+        "label": "Idiomas",
+        "value": "{localeCount, plural, one {# idioma de interfaz} other {# idiomas de interfaz}}",
+        "detail": "Autoridad jurídica canónica: {legalLanguage}"
+      }
+    },
+    "highlights": {
+      "simpleStart": {
+        "title": "Un comienzo sencillo",
+        "description": "El registro y los documentos legales están reunidos en un portal claro."
+      },
+      "singleAccount": {
+        "title": "Una sola cuenta",
+        "description": "Crea una cuenta o inicia sesión por correo electrónico mientras se actualiza la facturación."
+      },
+      "controlledLaunch": {
+        "title": "Lanzamiento controlado",
+        "description": "Las compras seguirán sin estar disponibles hasta que se conecte el nuevo sistema de facturación."
+      }
+    },
+    "products": {
+      "eyebrow": "Productos",
+      "title": "Servicios para el trabajo diario",
+      "description": "Descubre los productos de AnytoolAI. Los planes y las compras no están disponibles temporalmente."
+    }
+  },
+  "Catalog": {
+    "page": {
+      "eyebrow": "Catálogo",
+      "title": "Productos y planes",
+      "description": "Descubre los servicios de AnytoolAI. Los planes y las compras no están disponibles temporalmente."
+    },
+    "availabilityNotice": "El catálogo de planes y las compras no están disponibles temporalmente.",
+    "productInfoBadge": "Información del producto",
+    "signInAction": "Iniciar sesión o registrarse",
+    "products": {
+      "documentSummary": {
+        "type": "Extensión de Chrome",
+        "tagline": "Resúmenes instantáneos de cualquier documento",
+        "description": "La extensión resume rápidamente documentos y páginas web sin pasos manuales innecesarios."
+      },
+      "promptOptimizer": {
+        "type": "Extensión de Chrome",
+        "tagline": "Mejora prompts de IA con un clic",
+        "description": "La extensión mejora los prompts en la interfaz que ya utilizas y muestra exactamente qué ha cambiado."
+      }
+    }
+  },
+  "PaymentResult": {
+    "badge": "Pago no disponible",
+    "title": "Todavía no hay un resultado de pago aquí",
+    "description": "El Portal ya no procesa el flujo de pago anterior. Volver en el navegador no confirma una compra ni concede acceso.",
+    "notice": "Espera al lanzamiento del nuevo sistema de facturación antes de realizar una compra.",
+    "accountAction": "Iniciar sesión en la cuenta",
+    "homeAction": "Ir al inicio"
+  },
+  "Footer": {
+    "registrationNumbers": "INN (ИНН): {inn} · OGRNIP (ОГРНИП): {ogrnip}",
+    "legalAddress": "Domicilio legal: <addressValue>{address}</addressValue>",
+    "supportEmail": "Correo de soporte: <email>{supportEmail}</email>",
+    "legalLinksAriaLabel": "Documentos legales en ruso",
+    "paymentMethodsTitle": "Métodos de pago admitidos",
+    "paymentMethodsAriaLabel": "Métodos de pago"
+  },
+  "Metadata": {
+    "title": "AnytoolAI — Servicios digitales",
+    "description": "Servicios digitales de AnytoolAI para trabajar con documentos, contenidos y herramientas de IA."
+  },
+  "LegalPresentation": {
+    "eyebrow": "Documento legal",
+    "canonicalLanguageHelp": "La versión canónica de este documento legal se ofrece en ruso.",
+    "versioningHelp": "El documento se publica en un archivo versionado independiente.",
+    "revision": "Revisión: {version}",
+    "tableAccessibilityLabel": "Tabla desplazable del documento legal"
+  }
+}

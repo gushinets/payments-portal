@@ -206,7 +206,7 @@ Frontend ESLint rejects direct type assertions on `response.json()` and
 8. Do not add a schema library or OpenAPI client generator for a single
    contract.
 
-### Web locale routing
+### Web locale routing and localization
 
 1. `config/locales.json` is the single machine-readable locale contract. Run
    `npm run generate`; do not hand-edit the generated TypeScript or Python
@@ -233,13 +233,27 @@ Frontend ESLint rejects direct type assertions on `response.json()` and
 7. Generated legal routes remain canonical and RU-only and do not receive fake
    locale alternates or switch targets. Reset confirmation does not offer
    locale switching because its token remains fragment/client-only.
-8. Complete UI copy localization belongs to 4B.2. Frontend-to-backend locale
-   propagation belongs to 4B.3; neither concern is inferred from the route
-   locale in this foundation.
-9. The localized root `NextIntlClientProvider` supplies locale/runtime context
-   without the complete message catalog. Client Components that need
-   translations receive only their required namespace or message subset from
-   the nearest appropriate server boundary.
+8. `apps/web/src/messages/*.json` owns canonical Portal UI and ordinary
+   metadata copy. The seven catalogs must have exact leaf-key parity, valid ICU
+   syntax, and matching argument and rich-text tag signatures. `pt` uses
+   Brazilian Portuguese copy; `ru` is a complete catalog, not a missing-message
+   fallback.
+9. Translate in Server Components first. The localized root
+   `NextIntlClientProvider` stays `messages={null}` and supplies locale/runtime
+   context without the complete catalog. True Client Components receive only
+   their required current-locale namespace or subset from the nearest server
+   boundary. Do not serialize all locales or the full current-locale catalog.
+10. `shared/api` owns language-neutral transport facts only. Stable status and
+    error identifiers remain untranslated there; the owning web Presentation/UI
+    maps them to localized human-readable messages.
+11. Canonical RU legal title/body/version/path and generated registration
+    acceptance evidence remain source-owned and retain `lang="ru"` where shown.
+    Seller/provider facts, support addresses, identifiers, and user-entered
+    content also stay outside ordinary message ownership; localize only their
+    surrounding Portal labels.
+12. The broader hardcoded ordinary-UI-copy sweep/guard, frontend-to-backend
+    `Accept-Language` propagation, and reset URL/email localization belong to
+    4B.3. Do not infer any of them from route locale.
 
 ## Implemented contract guardrails
 
@@ -252,3 +266,9 @@ Frontend ESLint rejects direct type assertions on `response.json()` and
    as required by Common item 5.
 4. Web lint rejects routing-owned literal `/ru` ordinary application paths
    while leaving generated canonical legal artifacts available.
+5. Web i18n contract tests require exact seven-catalog key, ICU argument, and
+   rich-text tag parity. Boundary tests keep localized auth presentation and
+   next-intl/catalog dependencies out of `shared/api`.
+6. The general guard against hardcoded ordinary UI copy is intentionally
+   deferred to 4B.3; the 4B.2 boundary check is limited to catalog integrity
+   and language-neutral shared API transport.
