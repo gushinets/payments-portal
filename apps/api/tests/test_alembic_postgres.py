@@ -16,6 +16,7 @@ from apps.api.tests.support.postgres import alembic_test_config, reset_public_sc
 
 
 BASELINE_REVISION = "20260924_0001"
+HEAD_REVISION = "20260930_0002"
 
 SURVIVOR_TABLES = {
     "regions",
@@ -24,6 +25,7 @@ SURVIVOR_TABLES = {
     "auth_sessions",
     "magic_link_tokens",
     "password_reset_rate_limits",
+    "authentication_rate_limits",
     "legal_entities",
     "document_versions",
     "legal_acceptance_events",
@@ -121,6 +123,14 @@ EXPECTED_COLUMNS = {
         "user_agent",
     },
     "password_reset_rate_limits": {"rate_limit_key", "count", "window_start", "expires_at", "created_at", "updated_at"},
+    "authentication_rate_limits": {
+        "rate_limit_key",
+        "count",
+        "window_start",
+        "expires_at",
+        "created_at",
+        "updated_at",
+    },
     "legal_entities": {
         "id",
         "tenant_id",
@@ -515,6 +525,7 @@ EXPECTED_INDEXES = {
         "ix_magic_link_tokens_token_hash",
     },
     "password_reset_rate_limits": {"ix_password_reset_rate_limits_expires_at"},
+    "authentication_rate_limits": {"ix_authentication_rate_limits_expires_at"},
     "legal_entities": {
         "ix_legal_entities_tenant_id",
         "ix_legal_entities_region",
@@ -651,6 +662,7 @@ ORM_ONLY_DEFAULT_COLUMNS = {
     ("users", "status"),
     ("users", "metadata"),
     ("password_reset_rate_limits", "count"),
+    ("authentication_rate_limits", "count"),
     ("legal_entities", "status"),
     ("document_versions", "is_active"),
     ("document_versions", "requires_acceptance"),
@@ -690,7 +702,7 @@ def _expected_legal_documents() -> list[dict[str, str]]:
     )
 
 
-def test_clean_first_install_has_one_revision_and_exact_application_schema(
+def test_migration_chain_has_exact_application_schema(
     postgres_engine: Engine,
     database_test_url: URL,
 ) -> None:
@@ -699,17 +711,17 @@ def test_clean_first_install_has_one_revision_and_exact_application_schema(
 
     with alembic_test_config(database_test_url) as config:
         script = ScriptDirectory.from_config(config)
-        assert script.get_heads() == [BASELINE_REVISION]
+        assert script.get_heads() == [HEAD_REVISION]
         assert script.get_bases() == [BASELINE_REVISION]
-        assert [item.revision for item in script.walk_revisions()] == [BASELINE_REVISION]
+        assert [item.revision for item in script.walk_revisions()] == [HEAD_REVISION, BASELINE_REVISION]
         command.upgrade(config, "head")
 
     assert tuple(logging.getLogger().handlers) == handlers
-    assert len(APPLICATION_TABLES) == 25
+    assert len(APPLICATION_TABLES) == 26
     assert _public_table_names(postgres_engine) == APPLICATION_TABLES | {"alembic_version"}
     assert LEGACY_TABLES.isdisjoint(_public_table_names(postgres_engine))
     with postgres_engine.connect() as connection:
-        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == BASELINE_REVISION
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == HEAD_REVISION
 
     inspector = inspect(postgres_engine)
     for table_name, expected_columns in EXPECTED_COLUMNS.items():
@@ -908,6 +920,77 @@ def test_survivor_scope_constraints_reject_cross_contour_references(migrated_dat
                 "('10000000-0000-4000-8000-000000000003', 'anytoolai', 'other', "
                 "'10000000-0000-4000-8000-000000000001')"
             )
+        )
+
+
+def test_authentication_security_migration_clears_predecessor_verification_and_revokes_sessions(
+    postgres_engine: Engine,
+    database_test_url: URL,
+) -> None:
+    reset_public_schema(postgres_engine)
+    with alembic_test_config(database_test_url) as config:
+        command.upgrade(config, BASELINE_REVISION)
+
+        with postgres_engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO users "
+                    "(id, tenant_id, region, email, email_normalized, email_verified_at, status, metadata) VALUES "
+                    "('10000000-0000-4000-8000-000000000010', 'anytoolai', 'ru', "
+                    "'predecessor@example.com', 'predecessor@example.com', "
+                    "'2026-09-20T00:00:00+00:00', 'active', '{}'::jsonb), "
+                    "('10000000-0000-4000-8000-000000000011', 'anytoolai', 'ru', "
+                    "'unverified@example.com', 'unverified@example.com', NULL, 'active', '{}'::jsonb)"
+                )
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO auth_sessions "
+                    "(id, tenant_id, region, user_id, token_hash, expires_at, revoked_at) VALUES "
+                    "('10000000-0000-4000-8000-000000000020', 'anytoolai', 'ru', "
+                    "'10000000-0000-4000-8000-000000000010', 'predecessor-active', "
+                    "now() + interval '1 hour', NULL), "
+                    "('10000000-0000-4000-8000-000000000021', 'anytoolai', 'ru', "
+                    "'10000000-0000-4000-8000-000000000010', 'predecessor-revoked', "
+                    "now() + interval '1 hour', '2026-09-21T00:00:00+00:00'), "
+                    "('10000000-0000-4000-8000-000000000022', 'anytoolai', 'ru', "
+                    "'10000000-0000-4000-8000-000000000011', 'unverified-active', "
+                    "now() + interval '1 hour', NULL)"
+                )
+            )
+
+        command.upgrade(config, "head")
+
+        with postgres_engine.connect() as connection:
+            users = dict(
+                connection.execute(
+                    text("SELECT email_normalized, email_verified_at FROM users ORDER BY email_normalized")
+                ).all()
+            )
+            sessions = dict(
+                connection.execute(text("SELECT token_hash, revoked_at FROM auth_sessions ORDER BY token_hash")).all()
+            )
+            assert "authentication_rate_limits" in _public_table_names(postgres_engine)
+            assert users == {"predecessor@example.com": None, "unverified@example.com": None}
+            assert sessions["predecessor-active"] is not None
+            assert sessions["predecessor-revoked"].isoformat() == "2026-09-21T00:00:00+00:00"
+            assert sessions["unverified-active"] is None
+
+        command.downgrade(config, BASELINE_REVISION)
+
+    assert "authentication_rate_limits" not in _public_table_names(postgres_engine)
+    with postgres_engine.connect() as connection:
+        assert (
+            connection.execute(
+                text("SELECT email_verified_at FROM users WHERE email_normalized = 'predecessor@example.com'")
+            ).scalar_one_or_none()
+            is None
+        )
+        assert (
+            connection.execute(
+                text("SELECT revoked_at FROM auth_sessions WHERE token_hash = 'predecessor-active'")
+            ).scalar_one()
+            is not None
         )
 
 

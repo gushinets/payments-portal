@@ -80,6 +80,26 @@ def get_active_user_by_id_and_scope(
     )
 
 
+def lock_active_user_by_id_and_scope(
+    db: Session,
+    *,
+    user_id: uuid.UUID,
+    tenant_id: str,
+    region: str,
+) -> User | None:
+    return (
+        db.query(User)
+        .filter(
+            User.id == user_id,
+            User.tenant_id == tenant_id,
+            User.region == region,
+            User.status == UserStatus.ACTIVE,
+        )
+        .with_for_update()
+        .first()
+    )
+
+
 def get_magic_link_token_by_hash_and_purpose(
     db: Session,
     *,

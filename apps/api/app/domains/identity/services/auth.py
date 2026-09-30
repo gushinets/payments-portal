@@ -16,7 +16,7 @@ from app.domains.identity.errors import (
     MissingOfferConsentError,
     MissingPersonalConsentError,
 )
-from app.domains.identity.passwords import hash_password, verify_password
+from app.domains.identity.passwords import hash_password, password_hash_needs_rehash, verify_password
 from app.domains.legal.service import (
     create_registration_legal_evidence,
     get_registration_required_documents,
@@ -214,6 +214,8 @@ def login_user(
     if user is None or user.password_hash is None or not verify_password(password, user.password_hash):
         raise InvalidCredentialsError()
 
+    if password_hash_needs_rehash(user.password_hash):
+        user.password_hash = hash_password(password)
     user.last_login_at = utc_now()
     db.add(user)
     token, token_hash, expires_at = make_session_token()

@@ -36,6 +36,7 @@ from app.models.enums import (
     UserStatus,
 )
 from app.models.identity import (
+    AuthenticationRateLimit,
     AuthSession,
     CountryRegionRule,
     MagicLinkToken,
@@ -53,6 +54,7 @@ from app.models.legal import (
 __all__ = [
     "AcceptanceKind",
     "AccessInvalidationOutbox",
+    "AuthenticationRateLimit",
     "AuthSession",
     "BillingProductAccessScope",
     "BillingStateObservation",

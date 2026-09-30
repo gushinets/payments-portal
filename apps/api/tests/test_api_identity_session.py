@@ -4,10 +4,21 @@ import hashlib
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from argon2 import PasswordHasher, Type
 from sqlalchemy import text
 
 import app.domains.identity.services.auth as identity_auth_service
 from app.core.database import SessionLocal
+from app.domains.identity.passwords import (
+    ARGON2_HASH_LEN,
+    ARGON2_MEMORY_COST,
+    ARGON2_PARALLELISM,
+    ARGON2_TIME_COST,
+    PBKDF2_ITERATIONS,
+    hash_password,
+    password_hash_needs_rehash,
+    verify_password,
+)
 from app.domains.identity.router import present_user
 from app.models import (
     AuthSession,
@@ -22,6 +33,131 @@ from apps.api.tests.support.api import app, client, register_test_user, reset_ap
 
 def setup_function() -> None:
     reset_api_database()
+
+
+def _legacy_password_hash(password: str, *, iterations: int = PBKDF2_ITERATIONS) -> str:
+    salt = "0123456789abcdef0123456789abcdef"
+    digest = hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        salt.encode("utf-8"),
+        iterations,
+    ).hex()
+    return f"pbkdf2_sha256${iterations}${salt}${digest}"
+
+
+def test_password_hashes_use_locked_argon2id_parameters() -> None:
+    encoded = hash_password("very-secret-password")
+
+    assert encoded.startswith(f"$argon2id$v=19$m={ARGON2_MEMORY_COST},t={ARGON2_TIME_COST},p={ARGON2_PARALLELISM}$")
+    assert verify_password("very-secret-password", encoded)
+    assert not verify_password("wrong-password", encoded)
+    assert not password_hash_needs_rehash(encoded)
+
+
+def test_password_verification_fails_safely_for_malformed_or_unsupported_hashes() -> None:
+    malformed_hashes = (
+        "",
+        "$argon2id$malformed",
+        "pbkdf2_sha256$not-an-integer$salt$digest",
+        f"pbkdf2_sha256${PBKDF2_ITERATIONS}$salt$short",
+        "unsupported$hash",
+    )
+
+    assert all(not verify_password("very-secret-password", encoded) for encoded in malformed_hashes)
+    assert all(not password_hash_needs_rehash(encoded) for encoded in malformed_hashes)
+
+
+def test_legacy_password_with_historical_iterations_is_verified_and_rehashed_on_login() -> None:
+    password = "very-secret-password"
+    email = "legacy-password@example.com"
+    legacy_hash = _legacy_password_hash(password, iterations=100_000)
+
+    assert verify_password(password, legacy_hash)
+    assert not verify_password("wrong-password", legacy_hash)
+    assert password_hash_needs_rehash(legacy_hash)
+
+    with SessionLocal() as db:
+        registration = identity_auth_service.register_user(
+            db,
+            tenant_id="anytoolai",
+            region="ru",
+            email=email,
+            password=password,
+            personal_consent=True,
+            offer_consent=True,
+            client_ip=None,
+            user_agent=None,
+        )
+        user = db.get(User, registration.user_id)
+        assert user is not None
+        user.password_hash = legacy_hash
+        db.commit()
+
+    with SessionLocal() as db:
+        identity_auth_service.login_user(
+            db,
+            tenant_id="anytoolai",
+            region="ru",
+            email=email,
+            password=password,
+            client_ip=None,
+            user_agent=None,
+        )
+
+    with SessionLocal() as db:
+        user = db.get(User, registration.user_id)
+        assert user is not None
+        assert user.password_hash != legacy_hash
+        assert user.password_hash.startswith("$argon2id$")
+        assert verify_password(password, user.password_hash)
+
+
+def test_argon2_password_with_stale_parameters_is_rehashed_on_login() -> None:
+    password = "very-secret-password"
+    email = "stale-argon2-password@example.com"
+    stale_hash = PasswordHasher(
+        memory_cost=ARGON2_MEMORY_COST,
+        time_cost=1,
+        parallelism=ARGON2_PARALLELISM,
+        hash_len=ARGON2_HASH_LEN,
+        type=Type.ID,
+    ).hash(password)
+    assert password_hash_needs_rehash(stale_hash)
+
+    with SessionLocal() as db:
+        registration = identity_auth_service.register_user(
+            db,
+            tenant_id="anytoolai",
+            region="ru",
+            email=email,
+            password=password,
+            personal_consent=True,
+            offer_consent=True,
+            client_ip=None,
+            user_agent=None,
+        )
+        user = db.get(User, registration.user_id)
+        assert user is not None
+        user.password_hash = stale_hash
+        db.commit()
+
+    with SessionLocal() as db:
+        identity_auth_service.login_user(
+            db,
+            tenant_id="anytoolai",
+            region="ru",
+            email=email,
+            password=password,
+            client_ip=None,
+            user_agent=None,
+        )
+
+    with SessionLocal() as db:
+        user = db.get(User, registration.user_id)
+        assert user is not None
+        assert user.password_hash != stale_hash
+        assert not password_hash_needs_rehash(user.password_hash)
 
 
 def test_register_and_login_results_are_presentable_after_session_close() -> None:
