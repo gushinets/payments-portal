@@ -31,6 +31,17 @@
       "passwordConfirmPlaceholder": "Digite a senha novamente"
     },
     "forgotPasswordAction": "Esqueceu a senha?",
+    "verification": {
+      "title": "Confira seu e-mail",
+      "description": "Enviamos um link de confirmação para {email}. Abra-o para confirmar sua conta.",
+      "actions": {
+        "resend": "Enviar outro link",
+        "backToSignIn": "Voltar para o login"
+      },
+      "notices": {
+        "resent": "Se esta conta ainda precisar de confirmação, enviamos um novo link."
+      }
+    },
     "actions": {
       "createAccount": "Criar conta",
       "signIn": "Entrar",
@@ -90,6 +101,53 @@
       "badge": "Informações",
       "title": "Atualização do faturamento",
       "description": "O catálogo, as compras e os detalhes das assinaturas aparecerão aqui depois que o novo sistema de faturamento for conectado."
+    }
+  },
+  "EmailVerification": {
+    "loading": "Carregando o formulário de confirmação de e-mail...",
+    "confirm": {
+      "badge": "Confirmação de e-mail",
+      "title": "Confirme seu e-mail",
+      "description": "Digite sua senha atual e confirme seu endereço de e-mail."
+    },
+    "recovery": {
+      "badge": "Novo link de confirmação",
+      "title": "Solicite outro link",
+      "description": "Digite o e-mail da sua conta. Enviaremos um novo link se a conta ainda precisar de confirmação."
+    },
+    "success": {
+      "badge": "E-mail confirmado",
+      "title": "Sua conta está pronta"
+    },
+    "fields": {
+      "emailLabel": "E-mail",
+      "passwordLabel": "Senha atual",
+      "passwordPlaceholder": "Pelo menos 8 caracteres"
+    },
+    "validation": {
+      "missingToken": "Este link de confirmação é inválido. Solicite um novo link.",
+      "invalidEmail": "Digite um endereço de e-mail válido.",
+      "passwordTooShort": "A senha deve ter pelo menos 8 caracteres."
+    },
+    "notices": {
+      "verified": "E-mail confirmado. Você entrou na conta.",
+      "resent": "Se esta conta ainda precisar de confirmação, enviamos um novo link."
+    },
+    "actions": {
+      "verify": "Confirmar",
+      "resend": "Enviar novo link",
+      "backToSignIn": "Voltar para o login",
+      "openAccount": "Abrir conta"
+    },
+    "errors": {
+      "invalidOrExpiredToken": "O link é inválido, expirou ou já foi usado. Solicite um novo link.",
+      "invalidCredentials": "A senha está incorreta.",
+      "rateLimited": "Muitas tentativas de confirmação. Tente novamente mais tarde.",
+      "invalidInput": "Verifique o e-mail e a senha. A senha deve ter pelo menos 8 caracteres.",
+      "internalServer": "O serviço está temporariamente indisponível. Tente novamente mais tarde.",
+      "contract": "O serviço retornou uma resposta inesperada. Tente novamente.",
+      "network": "Não foi possível conectar ao serviço. Verifique sua conexão e tente novamente.",
+      "generic": "Não foi possível concluir a confirmação do e-mail. Tente novamente."
     }
   },
   "PasswordReset": {

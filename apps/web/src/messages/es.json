@@ -31,6 +31,17 @@
       "passwordConfirmPlaceholder": "Introduce de nuevo la contraseña"
     },
     "forgotPasswordAction": "¿Has olvidado la contraseña?",
+    "verification": {
+      "title": "Revisa tu correo",
+      "description": "Hemos enviado un enlace de verificación a {email}. Ábrelo para verificar tu cuenta.",
+      "actions": {
+        "resend": "Enviar otro enlace",
+        "backToSignIn": "Volver al inicio de sesión"
+      },
+      "notices": {
+        "resent": "Si esta cuenta aún necesita verificación, hemos enviado un enlace nuevo."
+      }
+    },
     "actions": {
       "createAccount": "Crear cuenta",
       "signIn": "Iniciar sesión",
@@ -90,6 +101,53 @@
       "badge": "Información",
       "title": "Actualizando la facturación",
       "description": "El catálogo, las compras y los detalles de las suscripciones aparecerán aquí cuando se conecte el nuevo sistema de facturación."
+    }
+  },
+  "EmailVerification": {
+    "loading": "Cargando el formulario de verificación del correo...",
+    "confirm": {
+      "badge": "Verificación del correo",
+      "title": "Verifica tu correo",
+      "description": "Introduce tu contraseña actual y verifica tu dirección de correo."
+    },
+    "recovery": {
+      "badge": "Nuevo enlace de verificación",
+      "title": "Solicita otro enlace",
+      "description": "Introduce el correo de tu cuenta. Enviaremos un enlace nuevo si la cuenta aún necesita verificación."
+    },
+    "success": {
+      "badge": "Correo verificado",
+      "title": "Tu cuenta está lista"
+    },
+    "fields": {
+      "emailLabel": "Correo electrónico",
+      "passwordLabel": "Contraseña actual",
+      "passwordPlaceholder": "Al menos 8 caracteres"
+    },
+    "validation": {
+      "missingToken": "Este enlace de verificación no es válido. Solicita un enlace nuevo.",
+      "invalidEmail": "Introduce una dirección de correo válida.",
+      "passwordTooShort": "La contraseña debe contener al menos 8 caracteres."
+    },
+    "notices": {
+      "verified": "Correo verificado. Ya has iniciado sesión.",
+      "resent": "Si esta cuenta aún necesita verificación, hemos enviado un enlace nuevo."
+    },
+    "actions": {
+      "verify": "Verificar",
+      "resend": "Enviar enlace nuevo",
+      "backToSignIn": "Volver al inicio de sesión",
+      "openAccount": "Abrir cuenta"
+    },
+    "errors": {
+      "invalidOrExpiredToken": "El enlace no es válido, ha caducado o ya se ha usado. Solicita un enlace nuevo.",
+      "invalidCredentials": "La contraseña es incorrecta.",
+      "rateLimited": "Demasiados intentos de verificación. Inténtalo de nuevo más tarde.",
+      "invalidInput": "Comprueba el correo electrónico y la contraseña. La contraseña debe contener al menos 8 caracteres.",
+      "internalServer": "El servicio no está disponible temporalmente. Inténtalo de nuevo más tarde.",
+      "contract": "El servicio devolvió una respuesta inesperada. Inténtalo de nuevo.",
+      "network": "No se pudo conectar con el servicio. Comprueba tu conexión e inténtalo de nuevo.",
+      "generic": "No se pudo completar la verificación del correo. Inténtalo de nuevo."
     }
   },
   "PasswordReset": {

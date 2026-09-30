@@ -18,6 +18,7 @@ import {
 
 const localeSwitchingBlockedPathnames = new Set([
   "/reset-password",
+  "/verify-email",
   ...CANONICAL_LEGAL_PATHS.map((pathname) =>
     pathname.slice(CANONICAL_LEGAL_LOCALE_PREFIX.length)
   )

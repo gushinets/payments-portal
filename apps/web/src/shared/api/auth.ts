@@ -9,11 +9,17 @@ export type AuthUser = {
   email: string;
 };
 
-export type AuthResponse = {
-  status: "registered" | "authenticated";
+export type LoginResponse = {
+  status: "authenticated";
   token: string;
   user: AuthUser;
 };
+
+export type RegisterResponse = {
+  status: "verification_required";
+};
+
+export type AuthResponse = LoginResponse | RegisterResponse;
 
 export type AuthSessionResponse = {
   authenticated: true;
@@ -32,12 +38,26 @@ export type PasswordResetConfirmResponse = {
   status: "password_reset";
 };
 
+export type EmailVerificationRequestResponse = {
+  status: "accepted";
+};
+
+export type EmailVerificationConfirmResponse = {
+  status: "verified";
+  token: string;
+  user: AuthUser;
+};
+
 export type SubmitAuthValues = {
   mode: AuthMode;
   email: string;
   password: string;
   personalConsent: boolean;
   offerConsent: boolean;
+};
+
+export type SubmitAuthOptions = {
+  languageTag: string;
 };
 
 export type PasswordResetRequestValues = {
@@ -49,6 +69,19 @@ export type PasswordResetRequestOptions = {
 };
 
 export type PasswordResetConfirmValues = {
+  token: string;
+  password: string;
+};
+
+export type EmailVerificationRequestValues = {
+  email: string;
+};
+
+export type EmailVerificationRequestOptions = {
+  languageTag: string;
+};
+
+export type EmailVerificationConfirmValues = {
   token: string;
   password: string;
 };
@@ -205,12 +238,20 @@ export async function getJson<T>(
   }
 }
 
-export function decodeRegisterResponse(payload: unknown): AuthResponse {
-  return decodeAuthResponse(payload, "registered");
+export function decodeRegisterResponse(payload: unknown): RegisterResponse {
+  return decodeStatusResponse(
+    payload,
+    "verification_required",
+    "invalid_register_response"
+  );
 }
 
-export function decodeLoginResponse(payload: unknown): AuthResponse {
-  return decodeAuthResponse(payload, "authenticated");
+export function decodeLoginResponse(payload: unknown): LoginResponse {
+  return decodeSessionIssuingResponse(
+    payload,
+    "authenticated",
+    "invalid_login_response"
+  );
 }
 
 export function decodeAuthSessionResponse(payload: unknown): AuthSessionResponse {
@@ -255,6 +296,26 @@ export function decodePasswordResetConfirmResponse(
   );
 }
 
+export function decodeEmailVerificationRequestResponse(
+  payload: unknown
+): EmailVerificationRequestResponse {
+  return decodeStatusResponse(
+    payload,
+    "accepted",
+    "invalid_email_verification_request_response"
+  );
+}
+
+export function decodeEmailVerificationConfirmResponse(
+  payload: unknown
+): EmailVerificationConfirmResponse {
+  return decodeSessionIssuingResponse(
+    payload,
+    "verified",
+    "invalid_email_verification_confirm_response"
+  );
+}
+
 export function decodeApiErrorEnvelope(payload: unknown): ApiErrorEnvelope {
   if (!isRecord(payload) || !("detail" in payload)) {
     throw new Error("invalid_api_error_response");
@@ -263,12 +324,13 @@ export function decodeApiErrorEnvelope(payload: unknown): ApiErrorEnvelope {
   return { detail: payload.detail };
 }
 
-function decodeAuthResponse(
+function decodeSessionIssuingResponse<Status extends "authenticated" | "verified">(
   payload: unknown,
-  expectedStatus: AuthResponse["status"]
-): AuthResponse {
+  expectedStatus: Status,
+  errorCode: string
+): { status: Status; token: string; user: AuthUser } {
   if (!isRecord(payload)) {
-    throw new Error("invalid_auth_response");
+    throw new Error(errorCode);
   }
 
   const status = payload.status;
@@ -280,7 +342,7 @@ function decodeAuthResponse(
     typeof token !== "string" ||
     !isAuthUser(user)
   ) {
-    throw new Error("invalid_auth_response");
+    throw new Error(errorCode);
   }
 
   return { status: expectedStatus, token, user };
@@ -312,7 +374,10 @@ function isAuthUser(value: unknown): value is AuthUser {
   );
 }
 
-export async function submitAuth(values: SubmitAuthValues): Promise<AuthResponse> {
+export async function submitAuth(
+  values: SubmitAuthValues,
+  options: SubmitAuthOptions
+): Promise<AuthResponse> {
   return values.mode === "register"
     ? postJson(
         "/api/auth/register",
@@ -322,7 +387,9 @@ export async function submitAuth(values: SubmitAuthValues): Promise<AuthResponse
           personal_consent: values.personalConsent,
           offer_consent: values.offerConsent
         },
-        decodeRegisterResponse
+        decodeRegisterResponse,
+        undefined,
+        { "Accept-Language": options.languageTag }
       )
     : postJson(
         "/api/auth/login",
@@ -332,6 +399,32 @@ export async function submitAuth(values: SubmitAuthValues): Promise<AuthResponse
         },
         decodeLoginResponse
       );
+}
+
+export async function requestEmailVerification(
+  values: EmailVerificationRequestValues,
+  options: EmailVerificationRequestOptions
+): Promise<EmailVerificationRequestResponse> {
+  return postJson(
+    "/api/auth/email-verification/request",
+    { email: values.email },
+    decodeEmailVerificationRequestResponse,
+    undefined,
+    { "Accept-Language": options.languageTag }
+  );
+}
+
+export async function confirmEmailVerification(
+  values: EmailVerificationConfirmValues
+): Promise<EmailVerificationConfirmResponse> {
+  return postJson(
+    "/api/auth/email-verification/confirm",
+    {
+      token: values.token,
+      password: values.password
+    },
+    decodeEmailVerificationConfirmResponse
+  );
 }
 
 export async function requestPasswordReset(

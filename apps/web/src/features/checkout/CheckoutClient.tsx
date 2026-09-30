@@ -2,13 +2,19 @@
 
 import { useEffect, useState } from "react";
 import { LogOut, ShieldCheck, UserRound } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
+import {
+  DEFAULT_ROUTE_LOCALE,
+  isRouteLocale,
+  LANGUAGE_TAG_BY_ROUTE_LOCALE
+} from "@/generated/locales";
 import { Link } from "@/i18n/navigation";
 import {
   decodeAuthSessionResponse,
   decodeLogoutResponse,
   getJson,
   postJson,
+  requestEmailVerification,
   sessionChangedEvent,
   sessionStorageKey,
   submitAuth,
@@ -19,17 +25,23 @@ import {
   authErrorMessageKey,
   type AuthFormSubmitValues
 } from "@/shared/ui";
+import { isEmailVerificationRequiredError } from "@/shared/ui/auth-errors";
 
 const telegramLoginUrl = process.env.NEXT_PUBLIC_TELEGRAM_LOGIN_URL ?? "";
 
 export function CheckoutClient() {
   const authT = useTranslations("Auth");
   const checkoutT = useTranslations("Checkout");
+  const locale = useLocale();
+  const languageTag = LANGUAGE_TAG_BY_ROUTE_LOCALE[
+    isRouteLocale(locale) ? locale : DEFAULT_ROUTE_LOCALE
+  ];
   const [sessionUser, setSessionUser] = useState<AuthUser | null>(null);
   const [sessionResolved, setSessionResolved] = useState(false);
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const [verificationRequired, setVerificationRequired] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -92,7 +104,11 @@ export function CheckoutClient() {
     setLoading(true);
 
     try {
-      const response = await submitAuth(values);
+      const response = await submitAuth(values, { languageTag });
+      if (response.status === "verification_required") {
+        setVerificationRequired(true);
+        return;
+      }
       window.localStorage.setItem(sessionStorageKey, response.token);
       window.dispatchEvent(new Event(sessionChangedEvent));
       setSessionUser(response.user);
@@ -101,6 +117,24 @@ export function CheckoutClient() {
           ? authT("notices.registered")
           : authT("notices.signedIn")
       );
+    } catch (requestError) {
+      if (isEmailVerificationRequiredError(requestError)) {
+        setVerificationRequired(true);
+        return;
+      }
+      setError(authT(authErrorMessageKey(requestError)));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function resendVerification(emailAddress: string) {
+    setError("");
+    setNotice("");
+    setLoading(true);
+    try {
+      await requestEmailVerification({ email: emailAddress }, { languageTag });
+      setNotice(authT("verification.notices.resent"));
     } catch (requestError) {
       setError(authT(authErrorMessageKey(requestError)));
     } finally {
@@ -171,17 +205,25 @@ export function CheckoutClient() {
               badgeIcon={<ShieldCheck size={12} aria-hidden="true" />}
               notice={notice}
               error={error}
+              verificationRequired={verificationRequired}
               loading={loading}
               telegramLoginUrl={telegramLoginUrl}
               onModeChange={() => {
                 setNotice("");
                 setError("");
+                setVerificationRequired(false);
               }}
               onBeforeSubmit={() => {
                 setNotice("");
                 setError("");
               }}
               onValidationError={setError}
+              onResendVerification={resendVerification}
+              onVerificationBack={() => {
+                setVerificationRequired(false);
+                setNotice("");
+                setError("");
+              }}
               onSubmit={authenticate}
             />
           )}

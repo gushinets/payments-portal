@@ -22,13 +22,13 @@ x-api-environment: &api-environment
   POSTGRES_PORT: 5432
   CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:?CORS_ALLOW_ORIGINS is required}
   APP_PUBLIC_BASE_URL: ${APP_PUBLIC_BASE_URL:?APP_PUBLIC_BASE_URL is required}
-  SMTP_HOST: ${SMTP_HOST:-}
-  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_HOST: ${SMTP_HOST:?SMTP_HOST is required}
+  SMTP_PORT: ${SMTP_PORT:?SMTP_PORT is required}
   SMTP_USERNAME: ${SMTP_USERNAME:-}
   SMTP_PASSWORD: ${SMTP_PASSWORD:-}
-  SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-support@any-tool-ai.ru}
-  SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
-  FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-*}
+  SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:?SMTP_FROM_EMAIL is required}
+  SMTP_USE_TLS: ${SMTP_USE_TLS:?SMTP_USE_TLS is required}
+  FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:?FORWARDED_ALLOW_IPS is required}
   OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
   OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-payment-portal-api}
   SENTRY_DSN: ${SENTRY_DSN:-}
@@ -87,8 +87,8 @@ services:
         condition: service_completed_successfully
     environment: *api-environment
     networks:
-      - edge
       - backend
+      - api_proxy
     healthcheck:
       test:
         - CMD
@@ -141,6 +141,7 @@ services:
       - caddy_config:/config
     networks:
       - edge
+      - api_proxy
 
 volumes:
   postgres18_prod_data:
@@ -150,3 +151,7 @@ volumes:
 networks:
   edge:
   backend:
+  api_proxy:
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24

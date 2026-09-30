@@ -12,6 +12,14 @@ export type AuthErrorMessageKey =
   | "errors.internalServer"
   | TransportErrorMessageKey;
 
+export function isEmailVerificationRequiredError(error: unknown): boolean {
+  return (
+    error instanceof ApiError &&
+    error.status === 403 &&
+    apiErrorCode(error) === "email_verification_required"
+  );
+}
+
 export function authErrorMessageKey(error: unknown): AuthErrorMessageKey {
   const code = apiErrorCode(error);
 

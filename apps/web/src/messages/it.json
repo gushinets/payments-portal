@@ -31,6 +31,17 @@
       "passwordConfirmPlaceholder": "Inserisci di nuovo la password"
     },
     "forgotPasswordAction": "Hai dimenticato la password?",
+    "verification": {
+      "title": "Controlla la tua email",
+      "description": "Abbiamo inviato un link di verifica a {email}. Aprilo per verificare il tuo account.",
+      "actions": {
+        "resend": "Invia un altro link",
+        "backToSignIn": "Torna all’accesso"
+      },
+      "notices": {
+        "resent": "Se l’account deve ancora essere verificato, abbiamo inviato un nuovo link."
+      }
+    },
     "actions": {
       "createAccount": "Crea account",
       "signIn": "Accedi",
@@ -90,6 +101,53 @@
       "badge": "Informazioni",
       "title": "Aggiornamento della fatturazione",
       "description": "Il catalogo, gli acquisti e i dettagli degli abbonamenti saranno disponibili qui dopo il collegamento del nuovo sistema di fatturazione."
+    }
+  },
+  "EmailVerification": {
+    "loading": "Caricamento del modulo di verifica dell’email...",
+    "confirm": {
+      "badge": "Verifica email",
+      "title": "Verifica la tua email",
+      "description": "Inserisci la password attuale, quindi verifica il tuo indirizzo email."
+    },
+    "recovery": {
+      "badge": "Nuovo link di verifica",
+      "title": "Richiedi un altro link",
+      "description": "Inserisci l’email del tuo account. Invieremo un nuovo link se l’account deve ancora essere verificato."
+    },
+    "success": {
+      "badge": "Email verificata",
+      "title": "Il tuo account è pronto"
+    },
+    "fields": {
+      "emailLabel": "Email",
+      "passwordLabel": "Password attuale",
+      "passwordPlaceholder": "Almeno 8 caratteri"
+    },
+    "validation": {
+      "missingToken": "Questo link di verifica non è valido. Richiedi un nuovo link.",
+      "invalidEmail": "Inserisci un indirizzo email valido.",
+      "passwordTooShort": "La password deve contenere almeno 8 caratteri."
+    },
+    "notices": {
+      "verified": "Email verificata. Ora hai effettuato l’accesso.",
+      "resent": "Se l’account deve ancora essere verificato, abbiamo inviato un nuovo link."
+    },
+    "actions": {
+      "verify": "Verifica",
+      "resend": "Invia nuovo link",
+      "backToSignIn": "Torna all’accesso",
+      "openAccount": "Apri account"
+    },
+    "errors": {
+      "invalidOrExpiredToken": "Il link non è valido, è scaduto o è già stato usato. Richiedi un nuovo link.",
+      "invalidCredentials": "La password non è corretta.",
+      "rateLimited": "Troppi tentativi di verifica. Riprova più tardi.",
+      "invalidInput": "Controlla l’indirizzo email e la password. La password deve contenere almeno 8 caratteri.",
+      "internalServer": "Il servizio è temporaneamente non disponibile. Riprova più tardi.",
+      "contract": "Il servizio ha restituito una risposta imprevista. Riprova.",
+      "network": "Impossibile connettersi al servizio. Controlla la connessione e riprova.",
+      "generic": "Impossibile completare la verifica dell’email. Riprova."
     }
   },
   "PasswordReset": {

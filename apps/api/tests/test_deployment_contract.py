@@ -409,3 +409,48 @@ def test_caddy_proxies_canonical_health_routes(path: str) -> None:
     caddyfile = (ROOT / path).read_text(encoding="utf-8")
 
     assert "reverse_proxy /api/*" in caddyfile
+
+
+def test_production_api_isolated_behind_dedicated_caddy_network() -> None:
+    compose = load_compose("docker-compose.prod.yml")
+    services = compose["services"]
+
+    assert set(services["api"]["networks"]) == {"backend", "api_proxy"}
+    assert set(services["caddy"]["networks"]) == {"edge", "api_proxy"}
+    assert services["web"]["networks"] == ["edge"]
+    assert services["postgres"]["networks"] == ["backend"]
+    assert compose["networks"]["api_proxy"]["ipam"]["config"] == [{"subnet": "172.30.0.0/24"}]
+
+
+def test_production_proxy_trust_and_smtp_are_explicit() -> None:
+    compose = load_compose("docker-compose.prod.yml")
+    api_environment = compose["services"]["api"]["environment"]
+    example = load_env_example(".env.production.example")
+    dockerfile = (ROOT / "apps/api/Dockerfile").read_text(encoding="utf-8")
+
+    assert api_environment["FORWARDED_ALLOW_IPS"] == ("${FORWARDED_ALLOW_IPS:?FORWARDED_ALLOW_IPS is required}")
+    assert api_environment["SMTP_HOST"] == "${SMTP_HOST:?SMTP_HOST is required}"
+    assert api_environment["SMTP_PORT"] == "${SMTP_PORT:?SMTP_PORT is required}"
+    assert api_environment["SMTP_FROM_EMAIL"] == ("${SMTP_FROM_EMAIL:?SMTP_FROM_EMAIL is required}")
+    assert api_environment["SMTP_USE_TLS"] == "${SMTP_USE_TLS:?SMTP_USE_TLS is required}"
+    assert example["FORWARDED_ALLOW_IPS"] == "172.30.0.0/24"
+    assert example["SMTP_HOST"] == "smtp.example.com"
+    assert example["SMTP_USE_TLS"] == "true"
+    assert "${FORWARDED_ALLOW_IPS:-*}" not in dockerfile
+    assert '--forwarded-allow-ips "${FORWARDED_ALLOW_IPS}"' in dockerfile
+
+
+def test_production_caddy_uses_api_service_and_only_locked_edge_headers() -> None:
+    caddyfile = (ROOT / "deploy/caddy/Caddyfile.prod").read_text(encoding="utf-8")
+    expected_headers = {
+        'Strict-Transport-Security "max-age=31536000"',
+        'X-Content-Type-Options "nosniff"',
+        'X-Frame-Options "DENY"',
+        'Referrer-Policy "strict-origin-when-cross-origin"',
+    }
+
+    assert "reverse_proxy /api/* api:8000" in caddyfile
+    assert "payments-portal-prod-api-1" not in caddyfile
+    assert expected_headers <= {line.strip() for line in caddyfile.splitlines()}
+    assert "Content-Security-Policy" not in caddyfile
+    assert "Permissions-Policy" not in caddyfile

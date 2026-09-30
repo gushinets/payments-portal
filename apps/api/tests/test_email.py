@@ -10,6 +10,7 @@ import pytest
 import app.core.email as email_sender
 import app.core.email_verification_email as email_verification_email
 import app.core.password_reset_email as password_reset_email
+from app.core.settings import Settings
 from app.generated.locales import SUPPORTED_ROUTE_LOCALES, RouteLocale
 
 
@@ -32,6 +33,63 @@ class FakeSmtp:
 
     def send_message(self, _message: object) -> None:
         self.sent = True
+
+
+def production_settings(**overrides: object) -> Settings:
+    values: dict[str, object] = {
+        "app_env": "production",
+        "instance_tenant_id": "anytoolai",
+        "instance_region": "ru",
+        "app_public_base_url": "https://payments.example.com",
+        "database_url": "postgresql+psycopg://portal:secret@postgres/payments",
+        "cors_allow_origins": ("https://payments.example.com",),
+        "postgres_db": "payments",
+        "postgres_user": "portal",
+        "postgres_password": "secret",
+        "postgres_host": "postgres",
+        "postgres_port": 5432,
+        "smtp_host": "smtp.example.com",
+        "smtp_port": 587,
+        "smtp_username": "mailer",
+        "smtp_password": "secret",
+        "smtp_from_email": "support@example.com",
+        "smtp_use_tls": True,
+        "forwarded_allow_ips": "172.30.0.0/24",
+    }
+    values.update(overrides)
+    return Settings(_env_file=None, **values)
+
+
+def test_production_accepts_secure_email_and_proxy_configuration() -> None:
+    configured = production_settings()
+
+    assert configured.smtp_host == "smtp.example.com"
+    assert configured.smtp_use_tls is True
+    assert configured.forwarded_allow_ips == "172.30.0.0/24"
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"smtp_host": ""},
+        {"smtp_host": "   "},
+        {"smtp_use_tls": False},
+        {"smtp_from_email": "not-an-email"},
+        {"smtp_port": 0},
+        {"smtp_port": 65536},
+        {"smtp_username": "mailer", "smtp_password": ""},
+        {"smtp_username": "", "smtp_password": "secret"},
+        {"forwarded_allow_ips": ""},
+        {"forwarded_allow_ips": "*"},
+        {"forwarded_allow_ips": "0.0.0.0/0"},
+        {"forwarded_allow_ips": "::/0"},
+    ],
+)
+def test_production_rejects_insecure_email_or_proxy_configuration(
+    overrides: dict[str, object],
+) -> None:
+    with pytest.raises(ValueError):
+        production_settings(**overrides)
 
 
 def test_send_text_email_uses_verifying_tls_context(monkeypatch) -> None:

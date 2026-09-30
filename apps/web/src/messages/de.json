@@ -31,6 +31,17 @@
       "passwordConfirmPlaceholder": "Passwort erneut eingeben"
     },
     "forgotPasswordAction": "Passwort vergessen?",
+    "verification": {
+      "title": "Prüfen Sie Ihre E-Mails",
+      "description": "Wir haben einen Bestätigungslink an {email} gesendet. Öffnen Sie ihn, um Ihr Konto zu bestätigen.",
+      "actions": {
+        "resend": "Weiteren Link senden",
+        "backToSignIn": "Zurück zur Anmeldung"
+      },
+      "notices": {
+        "resent": "Falls dieses Konto noch bestätigt werden muss, haben wir einen neuen Link gesendet."
+      }
+    },
     "actions": {
       "createAccount": "Konto erstellen",
       "signIn": "Anmelden",
@@ -90,6 +101,53 @@
       "badge": "Information",
       "title": "Abrechnung wird aktualisiert",
       "description": "Der Katalog, Käufe und Abonnementdetails werden hier angezeigt, sobald das neue Abrechnungssystem verbunden ist."
+    }
+  },
+  "EmailVerification": {
+    "loading": "Formular zur E-Mail-Bestätigung wird geladen...",
+    "confirm": {
+      "badge": "E-Mail-Bestätigung",
+      "title": "Bestätigen Sie Ihre E-Mail",
+      "description": "Geben Sie Ihr aktuelles Passwort ein und bestätigen Sie dann Ihre E-Mail-Adresse."
+    },
+    "recovery": {
+      "badge": "Neuer Bestätigungslink",
+      "title": "Weiteren Link anfordern",
+      "description": "Geben Sie die E-Mail-Adresse Ihres Kontos ein. Wir senden einen neuen Link, falls das Konto noch bestätigt werden muss."
+    },
+    "success": {
+      "badge": "E-Mail bestätigt",
+      "title": "Ihr Konto ist bereit"
+    },
+    "fields": {
+      "emailLabel": "E-Mail",
+      "passwordLabel": "Aktuelles Passwort",
+      "passwordPlaceholder": "Mindestens 8 Zeichen"
+    },
+    "validation": {
+      "missingToken": "Dieser Bestätigungslink ist ungültig. Fordern Sie einen neuen Link an.",
+      "invalidEmail": "Geben Sie eine gültige E-Mail-Adresse ein.",
+      "passwordTooShort": "Das Passwort muss mindestens 8 Zeichen enthalten."
+    },
+    "notices": {
+      "verified": "E-Mail bestätigt. Sie sind jetzt angemeldet.",
+      "resent": "Falls dieses Konto noch bestätigt werden muss, haben wir einen neuen Link gesendet."
+    },
+    "actions": {
+      "verify": "Bestätigen",
+      "resend": "Neuen Link senden",
+      "backToSignIn": "Zurück zur Anmeldung",
+      "openAccount": "Konto öffnen"
+    },
+    "errors": {
+      "invalidOrExpiredToken": "Der Link ist ungültig, abgelaufen oder wurde bereits verwendet. Fordern Sie einen neuen Link an.",
+      "invalidCredentials": "Das Passwort ist falsch.",
+      "rateLimited": "Zu viele Bestätigungsversuche. Versuchen Sie es später erneut.",
+      "invalidInput": "Prüfen Sie die E-Mail-Adresse und das Passwort. Das Passwort muss mindestens 8 Zeichen enthalten.",
+      "internalServer": "Der Dienst ist vorübergehend nicht verfügbar. Versuchen Sie es später erneut.",
+      "contract": "Der Dienst hat eine unerwartete Antwort zurückgegeben. Versuchen Sie es erneut.",
+      "network": "Verbindung zum Dienst fehlgeschlagen. Prüfen Sie Ihre Verbindung und versuchen Sie es erneut.",
+      "generic": "Die E-Mail-Bestätigung konnte nicht abgeschlossen werden. Versuchen Sie es erneut."
     }
   },
   "PasswordReset": {

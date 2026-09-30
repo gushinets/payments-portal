@@ -29,6 +29,7 @@ type AuthFormProps = {
   prompt?: ReactNode;
   notice?: string;
   error?: string;
+  verificationRequired?: boolean;
   loading: boolean;
   passwordResetHref?: string;
   telegramLoginUrl?: string;
@@ -36,6 +37,8 @@ type AuthFormProps = {
   feedbackRef?: Ref<HTMLDivElement>;
   onModeChange?: (mode: AuthMode) => void;
   onPasswordResetClick?: () => void;
+  onResendVerification?: (email: string) => Promise<void>;
+  onVerificationBack?: () => void;
   onBeforeSubmit: () => void;
   onValidationError: (message: string) => void;
   onSubmit: (values: AuthFormSubmitValues) => Promise<void>;
@@ -86,6 +89,7 @@ export function AuthForm({
   prompt,
   notice,
   error,
+  verificationRequired = false,
   loading,
   passwordResetHref = "/forgot-password",
   telegramLoginUrl,
@@ -93,6 +97,8 @@ export function AuthForm({
   feedbackRef,
   onModeChange,
   onPasswordResetClick,
+  onResendVerification,
+  onVerificationBack,
   onBeforeSubmit,
   onValidationError,
   onSubmit
@@ -149,6 +155,51 @@ export function AuthForm({
     });
     setPassword("");
     setPasswordConfirm("");
+  }
+
+  function returnToSignIn() {
+    selectMode("login");
+    onVerificationBack?.();
+  }
+
+  if (verificationRequired) {
+    return (
+      <div className="form-grid">
+        <span className="badge badge-running">
+          {badgeIcon}
+          {t("form.badge")}
+        </span>
+        <h2>{t("verification.title")}</h2>
+        <p className="card-copy">
+          {t("verification.description", { email })}
+        </p>
+        <div ref={feedbackRef} aria-live="polite">
+          {notice ? <div className="notice">{notice}</div> : null}
+          {error ? <div className="notice error">{error}</div> : null}
+        </div>
+        <button
+          className="btn-primary"
+          type="button"
+          disabled={loading}
+          onClick={() => {
+            if (onResendVerification) {
+              void onResendVerification(email);
+            }
+          }}
+        >
+          {t("verification.actions.resend")}
+          <ArrowRight size={15} aria-hidden="true" />
+        </button>
+        <button
+          className="btn-secondary"
+          type="button"
+          disabled={loading}
+          onClick={returnToSignIn}
+        >
+          {t("verification.actions.backToSignIn")}
+        </button>
+      </div>
+    );
   }
 
   return (

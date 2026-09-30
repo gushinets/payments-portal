@@ -6,7 +6,7 @@ from typing import Annotated, Any
 from urllib.parse import quote
 
 from dotenv import load_dotenv
-from pydantic import StringConstraints, ValidationInfo, field_validator, model_validator
+from pydantic import EmailStr, StringConstraints, TypeAdapter, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from app.core.url_validation import (
@@ -16,6 +16,8 @@ from app.core.url_validation import (
 
 SUPPORTED_INSTANCE_TENANT_ID = "anytoolai"
 SUPPORTED_INSTANCE_REGION = "ru"
+_EMAIL_ADAPTER = TypeAdapter(EmailStr)
+_UNSAFE_FORWARDED_ALLOW_IPS = {"", "*", "0.0.0.0/0", "::/0"}
 
 
 def require_supported_instance_scope(*, tenant_id: str, region: str) -> None:
@@ -68,6 +70,7 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     smtp_from_email: str = "support@any-tool-ai.ru"
     smtp_use_tls: bool = True
+    forwarded_allow_ips: Annotated[str, StringConstraints(strip_whitespace=True)] = "127.0.0.1"
     sentry_dsn: Annotated[str, StringConstraints(strip_whitespace=True)] = ""
     sentry_release: Annotated[str, StringConstraints(strip_whitespace=True)] = ""
 
@@ -152,6 +155,24 @@ class Settings(BaseSettings):
     def require_sentry_release_when_enabled(self) -> Settings:
         if self.sentry_dsn and not self.sentry_release:
             raise ValueError("SENTRY_RELEASE is required when SENTRY_DSN is configured")
+        return self
+
+    @model_validator(mode="after")
+    def require_secure_production_email_and_proxy_configuration(self) -> Settings:
+        if self.app_env != AppEnv.PRODUCTION:
+            return self
+
+        if not self.smtp_host.strip():
+            raise ValueError("SMTP_HOST is required in production")
+        if not 1 <= self.smtp_port <= 65535:
+            raise ValueError("SMTP_PORT must be between 1 and 65535 in production")
+        if not self.smtp_use_tls:
+            raise ValueError("SMTP_USE_TLS must be true in production")
+        _EMAIL_ADAPTER.validate_python(self.smtp_from_email)
+        if bool(self.smtp_username.strip()) != bool(self.smtp_password):
+            raise ValueError("SMTP_USERNAME and SMTP_PASSWORD must be configured together")
+        if self.forwarded_allow_ips in _UNSAFE_FORWARDED_ALLOW_IPS:
+            raise ValueError("FORWARDED_ALLOW_IPS must be an explicit bounded proxy range in production")
         return self
 
 

@@ -2,24 +2,37 @@
 
 import { useEffect, useState } from "react";
 import { LogIn, UserRound } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
+import {
+  DEFAULT_ROUTE_LOCALE,
+  isRouteLocale,
+  LANGUAGE_TAG_BY_ROUTE_LOCALE
+} from "@/generated/locales";
 import { Link } from "@/i18n/navigation";
 import {
   ApiContractError,
   ApiError,
   decodeAuthSessionResponse,
   getJson,
+  requestEmailVerification,
   sessionChangedEvent,
   sessionStorageKey,
   submitAuth
 } from "@/shared/api/auth";
 import { AuthForm, AuthFormSubmitValues, AuthMode } from "./AuthForm";
-import { authErrorMessageKey } from "./auth-errors";
+import {
+  authErrorMessageKey,
+  isEmailVerificationRequiredError
+} from "./auth-errors";
 
 const telegramLoginUrl = process.env.NEXT_PUBLIC_TELEGRAM_LOGIN_URL ?? "";
 
 export function HeaderAccount() {
   const t = useTranslations("Auth");
+  const locale = useLocale();
+  const languageTag = LANGUAGE_TAG_BY_ROUTE_LOCALE[
+    isRouteLocale(locale) ? locale : DEFAULT_ROUTE_LOCALE
+  ];
   const [email, setEmail] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
@@ -27,6 +40,7 @@ export function HeaderAccount() {
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [verificationRequired, setVerificationRequired] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -81,6 +95,7 @@ export function HeaderAccount() {
     setInitialAuthMode(nextMode);
     setNotice("");
     setError("");
+    setVerificationRequired(false);
     setModalOpen(true);
   }
 
@@ -90,11 +105,33 @@ export function HeaderAccount() {
 
     setLoading(true);
     try {
-      const payload = await submitAuth(values);
+      const payload = await submitAuth(values, { languageTag });
+      if (payload.status === "verification_required") {
+        setVerificationRequired(true);
+        return;
+      }
       window.localStorage.setItem(sessionStorageKey, payload.token);
       window.dispatchEvent(new Event(sessionChangedEvent));
       setEmail(payload.user.email);
       setModalOpen(false);
+    } catch (requestError) {
+      if (isEmailVerificationRequiredError(requestError)) {
+        setVerificationRequired(true);
+        return;
+      }
+      setError(t(authErrorMessageKey(requestError)));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function resendVerification(emailAddress: string) {
+    setError("");
+    setNotice("");
+    setLoading(true);
+    try {
+      await requestEmailVerification({ email: emailAddress }, { languageTag });
+      setNotice(t("verification.notices.resent"));
     } catch (requestError) {
       setError(t(authErrorMessageKey(requestError)));
     } finally {
@@ -147,11 +184,13 @@ export function HeaderAccount() {
               modeOrder={["login", "register"]}
               notice={notice}
               error={error}
+              verificationRequired={verificationRequired}
               loading={loading}
               telegramLoginUrl={telegramLoginUrl}
               onModeChange={() => {
                 setNotice("");
                 setError("");
+                setVerificationRequired(false);
               }}
               onPasswordResetClick={() => setModalOpen(false)}
               onBeforeSubmit={() => {
@@ -159,6 +198,12 @@ export function HeaderAccount() {
                 setNotice("");
               }}
               onValidationError={setError}
+              onResendVerification={resendVerification}
+              onVerificationBack={() => {
+                setVerificationRequired(false);
+                setNotice("");
+                setError("");
+              }}
               onSubmit={authenticate}
             />
           </div>
