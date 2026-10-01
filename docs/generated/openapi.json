@@ -62,6 +62,55 @@
         "title": "AcceptDocumentResponse",
         "type": "object"
       },
+      "EmailVerificationConfirmRequest": {
+        "properties": {
+          "token": {
+            "maxLength": 256,
+            "minLength": 32,
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "title": "EmailVerificationConfirmRequest",
+        "type": "object"
+      },
+      "EmailVerificationConfirmResponse": {
+        "properties": {
+          "status": {
+            "const": "verified",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "EmailVerificationConfirmResponse",
+        "type": "object"
+      },
+      "EmailVerificationRequest": {
+        "additionalProperties": false,
+        "properties": {},
+        "title": "EmailVerificationRequest",
+        "type": "object"
+      },
+      "EmailVerificationRequestResponse": {
+        "properties": {
+          "status": {
+            "const": "accepted",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "EmailVerificationRequestResponse",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -151,7 +200,7 @@
         "properties": {
           "password": {
             "maxLength": 128,
-            "minLength": 8,
+            "minLength": 12,
             "title": "Password",
             "type": "string"
           },
@@ -252,7 +301,7 @@
           },
           "password": {
             "maxLength": 128,
-            "minLength": 8,
+            "minLength": 12,
             "title": "Password",
             "type": "string"
           },
@@ -412,6 +461,10 @@
             "title": "Email",
             "type": "string"
           },
+          "email_verified": {
+            "title": "Email Verified",
+            "type": "boolean"
+          },
           "region": {
             "title": "Region",
             "type": "string"
@@ -430,7 +483,8 @@
           "tenant_id",
           "region",
           "user_id",
-          "email"
+          "email",
+          "email_verified"
         ],
         "title": "SessionUserResponse",
         "type": "object"
@@ -483,6 +537,124 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/auth/email-verification/confirm": {
+      "post": {
+        "operationId": "confirm_verification_api_auth_email_verification_confirm_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailVerificationConfirmRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmailVerificationConfirmResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Confirm Verification",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/email-verification/request": {
+      "post": {
+        "operationId": "request_email_verification_api_auth_email_verification_request_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailVerificationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmailVerificationRequestResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Request Email Verification",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/api/auth/login": {
       "post": {
         "operationId": "login_api_auth_login_post",

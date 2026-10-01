@@ -15,12 +15,18 @@ from app.domains.identity.errors import (
     InvalidCredentialsError,
     MissingOfferConsentError,
     MissingPersonalConsentError,
+    PasswordPolicyError,
 )
-from app.domains.identity.passwords import hash_password, verify_password
+from app.domains.identity.passwords import hash_password, password_meets_policy, verify_password
+from app.domains.identity.services.email_verification import (
+    EmailVerificationDelivery,
+    create_email_verification,
+)
 from app.domains.legal.service import (
     create_registration_legal_evidence,
     get_registration_required_documents,
 )
+from app.generated.locales import RouteLocale
 from app.infrastructure.persistence.identity import is_scoped_email_unique_conflict
 from app.infrastructure.queries.identity import (
     get_active_user_by_normalized_email,
@@ -41,6 +47,13 @@ class AuthenticationResult:
     tenant_id: str
     region: str
     email: str
+    email_verified: bool
+
+
+@dataclass(frozen=True)
+class RegistrationResult:
+    authentication: AuthenticationResult
+    verification_delivery: EmailVerificationDelivery
 
 
 def as_utc(value: datetime) -> datetime:
@@ -75,6 +88,7 @@ def _authentication_result(*, user: User, token: str) -> AuthenticationResult:
         tenant_id=user.tenant_id,
         region=user.region,
         email=user.email,
+        email_verified=user.email_verified_at is not None,
     )
 
 
@@ -118,11 +132,14 @@ def register_user(
     offer_consent: bool,
     client_ip: str | None,
     user_agent: str | None,
-) -> AuthenticationResult:
+    route_locale: RouteLocale,
+) -> RegistrationResult:
     if not personal_consent:
         raise MissingPersonalConsentError()
     if not offer_consent:
         raise MissingOfferConsentError()
+    if not password_meets_policy(password):
+        raise PasswordPolicyError()
 
     normalized_tenant_id = normalize_tenant_id(tenant_id)
     normalized_region = normalize_region(region)
@@ -150,7 +167,7 @@ def register_user(
             email=email,
             email_normalized=normalized_email,
             password_hash=hash_password(password),
-            email_verified_at=accepted_at,
+            email_verified_at=None,
             status=UserStatus.ACTIVE,
             last_login_at=accepted_at,
         )
@@ -177,7 +194,17 @@ def register_user(
             user_agent=user_agent,
         )
         db.add(auth_session)
-        result = _authentication_result(user=user, token=token)
+        verification_delivery = create_email_verification(
+            db,
+            user=user,
+            route_locale=route_locale,
+            client_ip=client_ip,
+            user_agent=user_agent,
+        )
+        result = RegistrationResult(
+            authentication=_authentication_result(user=user, token=token),
+            verification_delivery=verification_delivery,
+        )
         db.commit()
         return result
     except Exception as exc:
