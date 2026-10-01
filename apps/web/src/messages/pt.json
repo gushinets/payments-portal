@@ -26,9 +26,18 @@
     "fields": {
       "emailLabel": "E-mail",
       "passwordLabel": "Senha",
-      "passwordPlaceholder": "Pelo menos 8 caracteres",
+      "passwordPlaceholder": "Digite sua senha",
+      "newPasswordPlaceholder": "De 12 a 128 caracteres",
       "passwordConfirmLabel": "Repita a senha",
       "passwordConfirmPlaceholder": "Digite a senha novamente"
+    },
+    "passwordRequirements": {
+      "label": "Requisitos da senha",
+      "length": "De 12 a 128 caracteres",
+      "uppercase": "Pelo menos uma letra latina maiúscula (A–Z)",
+      "lowercase": "Pelo menos uma letra latina minúscula (a–z)",
+      "digit": "Pelo menos um dígito (0–9)",
+      "special": "Pelo menos um dos caracteres {characters}"
     },
     "forgotPasswordAction": "Esqueceu a senha?",
     "actions": {
@@ -39,6 +48,7 @@
     "validation": {
       "invalidEmail": "Digite um endereço de e-mail válido.",
       "passwordTooShort": "A senha deve ter pelo menos 8 caracteres.",
+      "passwordPolicyNotMet": "A senha não atende a todos os requisitos.",
       "passwordMismatch": "As senhas não coincidem.",
       "personalConsentRequired": "Você deve consentir com o tratamento de dados pessoais.",
       "offerConsentRequired": "Você deve aceitar os termos da oferta pública."
@@ -53,10 +63,47 @@
       "invalidCredentials": "O e-mail ou a senha está incorreto.",
       "missingPersonalConsent": "Você deve consentir com o tratamento de dados pessoais.",
       "missingOfferConsent": "Você deve aceitar os termos da oferta pública.",
+      "passwordPolicyNotMet": "A senha não atende a todos os requisitos.",
       "internalServer": "O serviço está temporariamente indisponível. Tente novamente mais tarde.",
       "contract": "O serviço retornou uma resposta inesperada. Tente novamente.",
       "network": "Não foi possível conectar ao serviço. Verifique sua conexão e tente novamente.",
       "generic": "Não foi possível concluir a autenticação. Tente novamente."
+    }
+  },
+  "EmailVerification": {
+    "pending": {
+      "badge": "Verificação de e-mail",
+      "title": "Verifique seu e-mail",
+      "description": "Você entrou. Verifique o endereço de e-mail antes de usar recursos pagos.",
+      "resend": "Enviar o e-mail de verificação novamente",
+      "resending": "Enviando...",
+      "accepted": "Se outra mensagem puder ser enviada, ela está a caminho. Confira sua caixa de entrada."
+    },
+    "verify": {
+      "loading": "Carregando a verificação de e-mail...",
+      "badge": "Verificação de e-mail",
+      "title": "Verifique seu e-mail",
+      "description": "Confirme este endereço de e-mail para a conta AnytoolAI em que você entrou.",
+      "missingToken": "Esta página não tem um token de verificação. Abra novamente o link do e-mail ou solicite outra mensagem.",
+      "signInTitle": "Entre para verificar seu e-mail",
+      "signInWithToken": "O link de verificação está pronto. Entre normalmente e confirme o e-mail nesta página.",
+      "signedOutWithoutToken": "Entre normalmente e solicite um e-mail de verificação na sua conta.",
+      "signInAction": "Entrar",
+      "action": "Verificar e-mail",
+      "verifying": "Verificando...",
+      "successTitle": "E-mail verificado",
+      "successDescription": "Seu endereço de e-mail foi verificado. A sessão atual permanece ativa.",
+      "alreadyVerifiedTitle": "E-mail já verificado",
+      "alreadyVerifiedDescription": "Esta conta já tem um endereço de e-mail verificado.",
+      "openAccount": "Abrir conta"
+    },
+    "errors": {
+      "invalidOrExpiredToken": "Este link de verificação é inválido, expirou ou já foi usado.",
+      "signInRequired": "Entre normalmente antes de verificar ou solicitar outro e-mail.",
+      "internalServer": "O serviço está temporariamente indisponível. Tente novamente mais tarde.",
+      "contract": "O serviço retornou uma resposta inesperada. Tente novamente.",
+      "network": "Não foi possível conectar ao serviço. Verifique sua conexão e tente novamente.",
+      "generic": "Não foi possível concluir a verificação do e-mail. Tente novamente."
     }
   },
   "Checkout": {
@@ -118,13 +165,21 @@
       "description": "Defina uma nova senha para sua conta AnytoolAI. As sessões ativas serão encerradas após a alteração.",
       "fields": {
         "passwordLabel": "Nova senha",
-        "passwordPlaceholder": "Pelo menos 8 caracteres",
+        "passwordPlaceholder": "De 12 a 128 caracteres",
         "passwordConfirmLabel": "Repita a senha",
         "passwordConfirmPlaceholder": "Digite a senha novamente"
       },
+      "passwordRequirements": {
+        "label": "Requisitos da senha",
+        "length": "De 12 a 128 caracteres",
+        "uppercase": "Pelo menos uma letra latina maiúscula (A–Z)",
+        "lowercase": "Pelo menos uma letra latina minúscula (a–z)",
+        "digit": "Pelo menos um dígito (0–9)",
+        "special": "Pelo menos um dos caracteres {characters}"
+      },
       "validation": {
         "missingToken": "O link para alterar a senha é inválido. Solicite um novo link.",
-        "passwordTooShort": "A senha deve ter pelo menos 8 caracteres.",
+        "passwordPolicyNotMet": "A senha não atende a todos os requisitos.",
         "passwordMismatch": "As senhas não são iguais."
       },
       "notices": {
@@ -138,7 +193,8 @@
     "errors": {
       "invalidOrExpiredToken": "O link é inválido ou expirou. Solicite um novo link.",
       "rateLimited": "Muitas tentativas de recuperação de senha. Tente novamente mais tarde.",
-      "invalidInput": "Verifique o e-mail e a senha. A senha deve ter pelo menos 8 caracteres.",
+      "invalidInput": "Verifique o e-mail e confirme se a senha atende a todos os requisitos.",
+      "passwordPolicyNotMet": "A senha não atende a todos os requisitos.",
       "internalServer": "O serviço está temporariamente indisponível. Tente novamente mais tarde.",
       "contract": "O serviço retornou uma resposta inesperada. Tente novamente.",
       "network": "Não foi possível conectar ao serviço. Verifique sua conexão e tente novamente.",

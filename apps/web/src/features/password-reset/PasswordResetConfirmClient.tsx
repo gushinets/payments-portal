@@ -5,6 +5,11 @@ import { ArrowRight, KeyRound } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import { confirmPasswordReset } from "@/shared/api/auth";
+import {
+  evaluatePasswordPolicy,
+  PASSWORD_REQUIREMENTS,
+  PASSWORD_SPECIAL_CHARACTERS
+} from "@/shared/password-policy";
 import { passwordResetErrorMessageKey } from "./errors";
 
 const sessionStorageKey = "anytoolai_session_token_v1";
@@ -18,6 +23,7 @@ export function PasswordResetConfirmClient() {
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const passwordPolicy = evaluatePasswordPolicy(password);
 
   useEffect(() => {
     const fragment = new URLSearchParams(window.location.hash.slice(1));
@@ -44,8 +50,8 @@ export function PasswordResetConfirmClient() {
       return;
     }
 
-    if (password.length < 8) {
-      setError(t("confirm.validation.passwordTooShort"));
+    if (!passwordPolicy.valid) {
+      setError(t("confirm.validation.passwordPolicyNotMet"));
       return;
     }
 
@@ -93,10 +99,39 @@ export function PasswordResetConfirmClient() {
               type="password"
               autoComplete="new-password"
               placeholder={t("confirm.fields.passwordPlaceholder")}
+              aria-describedby="reset-password-requirements"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
             />
           </label>
+
+          <div
+            className="password-requirements"
+            id="reset-password-requirements"
+          >
+            <p>{t("confirm.passwordRequirements.label")}</p>
+            <ul>
+              {PASSWORD_REQUIREMENTS.map((requirement) => (
+                <li
+                  className={
+                    passwordPolicy.unmetRequirements.includes(requirement)
+                      ? undefined
+                      : "password-requirement-met"
+                  }
+                  key={requirement}
+                >
+                  {!passwordPolicy.unmetRequirements.includes(requirement) ? (
+                    <span>✓ </span>
+                  ) : null}
+                  {requirement === "special"
+                    ? t("confirm.passwordRequirements.special", {
+                        characters: PASSWORD_SPECIAL_CHARACTERS
+                      })
+                    : t(`confirm.passwordRequirements.${requirement}`)}
+                </li>
+              ))}
+            </ul>
+          </div>
 
           <label className="field-label">
             {t("confirm.fields.passwordConfirmLabel")}

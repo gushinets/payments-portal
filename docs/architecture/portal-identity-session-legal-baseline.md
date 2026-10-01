@@ -1,7 +1,7 @@
 # Portal Identity, Session, and Legal Baseline
 
-Status: authoritative as-built `ANY-504` Step 3 handoff to Step 4  
-Last verified against code: 2026-09-23
+Status: authoritative as-built `ANY-504` identity/session/legal handoff  
+Last verified against code: 2026-10-01
 
 ## Authority and scope
 
@@ -98,6 +98,45 @@ approved legal and retention authority changes that rule.
 
 Raw session and reset secrets, authorization headers, and passwords must not
 be persisted or logged.
+
+### New-password policy
+
+Registration and password-reset confirmation apply one shared backend policy
+to new passwords: 12 through 128 Unicode code points, at least one ASCII
+uppercase letter `A-Z`, one ASCII lowercase letter `a-z`, one ASCII digit
+`0-9`, and one character from `!@#$%^&*()-_=+[]{}:,.?`. Values are not trimmed,
+normalized, escaped, or otherwise mutated. Login continues to validate existing
+credentials and does not retroactively apply the new-password policy.
+
+Password hashing and verification remain unchanged: passwords are encoded as
+UTF-8 and hashed with PBKDF2-HMAC-SHA256 using 120,000 iterations and a random
+per-password salt. Registration still creates the existing bearer session, and
+password-reset confirmation still revokes active sessions as described above.
+
+### Email verification
+
+`users.email_verified_at IS NOT NULL` is the authoritative proof of mailbox
+ownership. Ordinary Portal registration, login, and authenticated session use
+do not require a verified email. Registration creates a hashed, purpose-bound,
+24-hour verification token and sends a localized fragment URL; resend requires
+the current bearer session, accepts no email address, and returns the same
+accepted response for verified and cooldown no-ops. Confirmation requires both
+the current bearer session and a matching unexpired token for the same canonical
+user and contour. Success consumes outstanding verification capabilities and
+sets `email_verified_at` without creating, replacing, removing, or otherwise
+mutating the bearer session.
+
+The browser keeps the verification token only in memory, removes it from the
+URL fragment immediately, and never persists it in local storage, session
+storage, cookies, or query parameters. Raw verification tokens share the same
+no-persistence and no-logging requirement as session and reset secrets.
+
+Future external-customer creation, PurchaseIntent creation, and every billing
+initiation path must fail closed while `users.email_verified_at IS NULL`.
+Registration legal evidence remains non-commercial and cannot satisfy future
+purchase-bound legal evidence. Before billing is enabled, verification-email
+delivery must be configured and smoke-tested; this baseline does not add SMTP
+readiness infrastructure.
 
 ## Relational scope integrity
 
@@ -275,13 +314,15 @@ if these exact semantics and their PostgreSQL tests remain intact.
 ## Public API survivor contract
 
 Step 4 retains the provider-independent registration, login, logout,
-password-reset request/confirmation, authenticated legal acceptance, required
-legal-document discovery, and core session identity behavior. Registration,
-login, recovery, and legal discovery remain server-scoped as described above.
+email-verification request/confirmation, password-reset request/confirmation,
+authenticated legal acceptance, required legal-document discovery, and core
+session identity behavior. Registration, login, verification, recovery, and
+legal discovery remain server-scoped as described above.
 
 Core `GET /api/auth/session` continues to authenticate the bearer session and
 return `authenticated: true` plus the canonical user's server-derived
-`tenant_id`, `region`, `user_id`, and email. Step 4 removes its optional
+`tenant_id`, `region`, `user_id`, email, and `email_verified` fact. Step 4
+removes its optional
 `product` input and billing-derived `product_state` output. It also removes the
 checkout-intent, payment-status, Portal catalog, and old account-subscription
 contracts and their frontend callers. Plan-bound recurring-consent and legacy

@@ -234,7 +234,8 @@ test("locale switching preserves pathname, query and auth storage across seven d
           tenant_id: "anytoolai",
           region: "ru",
           user_id: "locale-switch-user",
-          email: "locale-switch@example.com"
+          email: "locale-switch@example.com",
+          email_verified: true
         }
       })
     });

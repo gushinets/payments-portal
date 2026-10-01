@@ -2,7 +2,7 @@
 
 import CanonicalLink from "next/link";
 import { useTranslations } from "next-intl";
-import { type ReactNode, type Ref, useState } from "react";
+import { type ReactNode, type Ref, useId, useState } from "react";
 import { ArrowRight } from "lucide-react";
 import {
   REGISTRATION_OFFER_CONSENT_TEXT,
@@ -10,6 +10,11 @@ import {
 } from "@/generated/registration-acceptance";
 import { Link } from "@/i18n/navigation";
 import { REGISTRATION_ACCEPTANCE_SOURCE_LINKS } from "@/shared/config/legal-links";
+import {
+  evaluatePasswordPolicy,
+  PASSWORD_REQUIREMENTS,
+  PASSWORD_SPECIAL_CHARACTERS
+} from "@/shared/password-policy";
 
 export type AuthMode = "login" | "register";
 
@@ -42,7 +47,6 @@ type AuthFormProps = {
 };
 
 const defaultModeOrder: AuthMode[] = ["login", "register"];
-
 type ConsentTextLink = {
   href: string;
   text: string;
@@ -104,6 +108,8 @@ export function AuthForm({
   const [passwordConfirm, setPasswordConfirm] = useState("");
   const [personalConsent, setPersonalConsent] = useState(false);
   const [offerConsent, setOfferConsent] = useState(false);
+  const passwordRequirementsId = useId();
+  const passwordPolicy = evaluatePasswordPolicy(password);
 
   function selectMode(nextMode: AuthMode) {
     setMode(nextMode);
@@ -118,12 +124,17 @@ export function AuthForm({
       return;
     }
 
-    if (password.length < 8) {
+    if (mode === "login" && password.length < 8) {
       onValidationError(t("validation.passwordTooShort"));
       return;
     }
 
     if (mode === "register") {
+      if (!passwordPolicy.valid) {
+        onValidationError(t("validation.passwordPolicyNotMet"));
+        return;
+      }
+
       if (password !== passwordConfirm) {
         onValidationError(t("validation.passwordMismatch"));
         return;
@@ -196,7 +207,14 @@ export function AuthForm({
           className="input"
           type="password"
           autoComplete={mode === "register" ? "new-password" : "current-password"}
-          placeholder={t("fields.passwordPlaceholder")}
+          placeholder={
+            mode === "register"
+              ? t("fields.newPasswordPlaceholder")
+              : t("fields.passwordPlaceholder")
+          }
+          aria-describedby={
+            mode === "register" ? passwordRequirementsId : undefined
+          }
           value={password}
           onChange={(event) => setPassword(event.target.value)}
         />
@@ -214,6 +232,34 @@ export function AuthForm({
 
       {mode === "register" ? (
         <>
+          <div
+            className="password-requirements"
+            id={passwordRequirementsId}
+          >
+            <p>{t("passwordRequirements.label")}</p>
+            <ul>
+              {PASSWORD_REQUIREMENTS.map((requirement) => (
+                <li
+                  className={
+                    passwordPolicy.unmetRequirements.includes(requirement)
+                      ? undefined
+                      : "password-requirement-met"
+                  }
+                  key={requirement}
+                >
+                  {!passwordPolicy.unmetRequirements.includes(requirement) ? (
+                    <span>✓ </span>
+                  ) : null}
+                  {requirement === "special"
+                    ? t("passwordRequirements.special", {
+                        characters: PASSWORD_SPECIAL_CHARACTERS
+                      })
+                    : t(`passwordRequirements.${requirement}`)}
+                </li>
+              ))}
+            </ul>
+          </div>
+
           <label className="field-label">
             {t("fields.passwordConfirmLabel")}
             <input

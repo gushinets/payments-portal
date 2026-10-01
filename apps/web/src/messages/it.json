@@ -26,9 +26,18 @@
     "fields": {
       "emailLabel": "Email",
       "passwordLabel": "Password",
-      "passwordPlaceholder": "Almeno 8 caratteri",
+      "passwordPlaceholder": "Inserisci la password",
+      "newPasswordPlaceholder": "Da 12 a 128 caratteri",
       "passwordConfirmLabel": "Ripeti la password",
       "passwordConfirmPlaceholder": "Inserisci di nuovo la password"
+    },
+    "passwordRequirements": {
+      "label": "Requisiti della password",
+      "length": "Da 12 a 128 caratteri",
+      "uppercase": "Almeno una lettera latina maiuscola (A–Z)",
+      "lowercase": "Almeno una lettera latina minuscola (a–z)",
+      "digit": "Almeno una cifra (0–9)",
+      "special": "Almeno uno dei caratteri {characters}"
     },
     "forgotPasswordAction": "Hai dimenticato la password?",
     "actions": {
@@ -39,6 +48,7 @@
     "validation": {
       "invalidEmail": "Inserisci un indirizzo email valido.",
       "passwordTooShort": "La password deve contenere almeno 8 caratteri.",
+      "passwordPolicyNotMet": "La password non soddisfa tutti i requisiti.",
       "passwordMismatch": "Le password non corrispondono.",
       "personalConsentRequired": "Devi acconsentire al trattamento dei dati personali.",
       "offerConsentRequired": "Devi accettare i termini dell’offerta pubblica."
@@ -53,10 +63,47 @@
       "invalidCredentials": "L’email o la password non sono corrette.",
       "missingPersonalConsent": "Devi acconsentire al trattamento dei dati personali.",
       "missingOfferConsent": "Devi accettare i termini dell’offerta pubblica.",
+      "passwordPolicyNotMet": "La password non soddisfa tutti i requisiti.",
       "internalServer": "Il servizio è temporaneamente non disponibile. Riprova più tardi.",
       "contract": "Il servizio ha restituito una risposta imprevista. Riprova.",
       "network": "Impossibile connettersi al servizio. Controlla la connessione e riprova.",
       "generic": "Impossibile completare l’autenticazione. Riprova."
+    }
+  },
+  "EmailVerification": {
+    "pending": {
+      "badge": "Verifica dell’email",
+      "title": "Verifica la tua email",
+      "description": "Hai effettuato l’accesso. Verifica l’indirizzo email prima di usare le funzioni a pagamento.",
+      "resend": "Invia di nuovo l’email di verifica",
+      "resending": "Invio...",
+      "accepted": "Se è possibile inviare un altro messaggio, è in arrivo. Controlla la posta."
+    },
+    "verify": {
+      "loading": "Caricamento della verifica email...",
+      "badge": "Verifica dell’email",
+      "title": "Verifica la tua email",
+      "description": "Conferma questo indirizzo email per l’account AnytoolAI con cui hai effettuato l’accesso.",
+      "missingToken": "Questa pagina non contiene un token di verifica. Riapri il link nell’email o richiedi un nuovo messaggio.",
+      "signInTitle": "Accedi per verificare l’email",
+      "signInWithToken": "Il link di verifica è pronto. Accedi normalmente, quindi conferma l’email in questa pagina.",
+      "signedOutWithoutToken": "Accedi normalmente, quindi richiedi un’email di verifica dal tuo account.",
+      "signInAction": "Accedi",
+      "action": "Verifica email",
+      "verifying": "Verifica...",
+      "successTitle": "Email verificata",
+      "successDescription": "Il tuo indirizzo email è verificato. La sessione esistente rimane attiva.",
+      "alreadyVerifiedTitle": "Email già verificata",
+      "alreadyVerifiedDescription": "Questo account ha già un indirizzo email verificato.",
+      "openAccount": "Apri account"
+    },
+    "errors": {
+      "invalidOrExpiredToken": "Questo link di verifica non è valido, è scaduto o è già stato utilizzato.",
+      "signInRequired": "Accedi normalmente prima di verificare o richiedere un’altra email.",
+      "internalServer": "Il servizio è temporaneamente non disponibile. Riprova più tardi.",
+      "contract": "Il servizio ha restituito una risposta imprevista. Riprova.",
+      "network": "Impossibile connettersi al servizio. Controlla la connessione e riprova.",
+      "generic": "Impossibile completare la verifica dell’email. Riprova."
     }
   },
   "Checkout": {
@@ -118,13 +165,21 @@
       "description": "Imposta una nuova password per il tuo account AnytoolAI. Dopo la modifica, le sessioni attive verranno terminate.",
       "fields": {
         "passwordLabel": "Nuova password",
-        "passwordPlaceholder": "Almeno 8 caratteri",
+        "passwordPlaceholder": "Da 12 a 128 caratteri",
         "passwordConfirmLabel": "Ripeti la password",
         "passwordConfirmPlaceholder": "Inserisci di nuovo la password"
       },
+      "passwordRequirements": {
+        "label": "Requisiti della password",
+        "length": "Da 12 a 128 caratteri",
+        "uppercase": "Almeno una lettera latina maiuscola (A–Z)",
+        "lowercase": "Almeno una lettera latina minuscola (a–z)",
+        "digit": "Almeno una cifra (0–9)",
+        "special": "Almeno uno dei caratteri {characters}"
+      },
       "validation": {
         "missingToken": "Il link per modificare la password non è valido. Richiedi un nuovo link.",
-        "passwordTooShort": "La password deve contenere almeno 8 caratteri.",
+        "passwordPolicyNotMet": "La password non soddisfa tutti i requisiti.",
         "passwordMismatch": "Le password non corrispondono."
       },
       "notices": {
@@ -138,7 +193,8 @@
     "errors": {
       "invalidOrExpiredToken": "Il link non è valido o è scaduto. Richiedi un nuovo link.",
       "rateLimited": "Troppi tentativi di recupero della password. Riprova più tardi.",
-      "invalidInput": "Controlla l’indirizzo email e la password. La password deve contenere almeno 8 caratteri.",
+      "invalidInput": "Controlla l’indirizzo email e assicurati che la password soddisfi tutti i requisiti.",
+      "passwordPolicyNotMet": "La password non soddisfa tutti i requisiti.",
       "internalServer": "Il servizio è temporaneamente non disponibile. Riprova più tardi.",
       "contract": "Il servizio ha restituito una risposta imprevista. Riprova.",
       "network": "Impossibile connettersi al servizio. Controlla la connessione e riprova.",

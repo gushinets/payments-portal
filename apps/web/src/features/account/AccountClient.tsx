@@ -13,13 +13,14 @@ import {
   sessionStorageKey,
   type AuthUser
 } from "@/shared/api/auth";
+import { EmailVerificationPending } from "@/shared/ui";
 
 type AccountState =
   | { status: "loading" }
   | { status: "signed_out" }
   | { status: "authenticated"; user: AuthUser };
 
-export function AccountClient() {
+export function AccountClient({ languageTag }: { languageTag: string }) {
   const t = useTranslations("Account");
   const [accountState, setAccountState] = useState<AccountState>({
     status: "loading"
@@ -146,6 +147,9 @@ export function AccountClient() {
           <p className="card-copy account-summary-email">
             {accountState.user.email}
           </p>
+          {!accountState.user.email_verified ? (
+            <EmailVerificationPending languageTag={languageTag} />
+          ) : null}
           <div className="account-summary-actions">
             <button
               className="btn-secondary"

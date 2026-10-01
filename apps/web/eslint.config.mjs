@@ -13,6 +13,7 @@ const sharedApiMachineLiteralAllowlist = new Set([
   "POST",
   "accepted",
   "authenticated",
+  "boolean",
   "detail",
   "localhost",
   "login",
@@ -22,6 +23,7 @@ const sharedApiMachineLiteralAllowlist = new Set([
   "status",
   "string",
   "undefined",
+  "verified",
   "${status}:${rawBody}",
   "${resolveApiBase()}${path}",
   "Bearer ${token}"

@@ -26,9 +26,18 @@
     "fields": {
       "emailLabel": "Correo electrónico",
       "passwordLabel": "Contraseña",
-      "passwordPlaceholder": "Al menos 8 caracteres",
+      "passwordPlaceholder": "Introduce tu contraseña",
+      "newPasswordPlaceholder": "Entre 12 y 128 caracteres",
       "passwordConfirmLabel": "Repetir contraseña",
       "passwordConfirmPlaceholder": "Introduce de nuevo la contraseña"
+    },
+    "passwordRequirements": {
+      "label": "Requisitos de la contraseña",
+      "length": "Entre 12 y 128 caracteres",
+      "uppercase": "Al menos una letra latina mayúscula (A–Z)",
+      "lowercase": "Al menos una letra latina minúscula (a–z)",
+      "digit": "Al menos un dígito (0–9)",
+      "special": "Al menos uno de {characters}"
     },
     "forgotPasswordAction": "¿Has olvidado la contraseña?",
     "actions": {
@@ -39,6 +48,7 @@
     "validation": {
       "invalidEmail": "Introduce una dirección de correo válida.",
       "passwordTooShort": "La contraseña debe contener al menos 8 caracteres.",
+      "passwordPolicyNotMet": "La contraseña no cumple todos los requisitos.",
       "passwordMismatch": "Las contraseñas no coinciden.",
       "personalConsentRequired": "Debes consentir el tratamiento de datos personales.",
       "offerConsentRequired": "Debes aceptar las condiciones de la oferta pública."
@@ -53,10 +63,47 @@
       "invalidCredentials": "El correo electrónico o la contraseña son incorrectos.",
       "missingPersonalConsent": "Debes consentir el tratamiento de datos personales.",
       "missingOfferConsent": "Debes aceptar las condiciones de la oferta pública.",
+      "passwordPolicyNotMet": "La contraseña no cumple todos los requisitos.",
       "internalServer": "El servicio no está disponible temporalmente. Inténtalo de nuevo más tarde.",
       "contract": "El servicio ha devuelto una respuesta inesperada. Inténtalo de nuevo.",
       "network": "No se ha podido conectar con el servicio. Comprueba tu conexión e inténtalo de nuevo.",
       "generic": "No se ha podido completar la autenticación. Inténtalo de nuevo."
+    }
+  },
+  "EmailVerification": {
+    "pending": {
+      "badge": "Verificación del correo",
+      "title": "Verifica tu correo electrónico",
+      "description": "Has iniciado sesión. Verifica tu correo antes de usar funciones de pago.",
+      "resend": "Volver a enviar el correo de verificación",
+      "resending": "Enviando...",
+      "accepted": "Si se puede enviar otro mensaje, ya está en camino. Revisa tu bandeja de entrada."
+    },
+    "verify": {
+      "loading": "Cargando la verificación del correo...",
+      "badge": "Verificación del correo",
+      "title": "Verifica tu correo electrónico",
+      "description": "Confirma este correo para la cuenta de AnytoolAI en la que has iniciado sesión.",
+      "missingToken": "Esta página no contiene un token de verificación. Vuelve a abrir el enlace del correo o solicita otro mensaje.",
+      "signInTitle": "Inicia sesión para verificar tu correo",
+      "signInWithToken": "El enlace de verificación está listo. Inicia sesión normalmente y confirma el correo en esta página.",
+      "signedOutWithoutToken": "Inicia sesión normalmente y solicita un correo de verificación desde tu cuenta.",
+      "signInAction": "Iniciar sesión",
+      "action": "Verificar correo",
+      "verifying": "Verificando...",
+      "successTitle": "Correo verificado",
+      "successDescription": "Tu correo está verificado. La sesión actual sigue activa.",
+      "alreadyVerifiedTitle": "Correo ya verificado",
+      "alreadyVerifiedDescription": "Esta cuenta ya tiene un correo verificado.",
+      "openAccount": "Abrir cuenta"
+    },
+    "errors": {
+      "invalidOrExpiredToken": "Este enlace de verificación no es válido, ha caducado o ya se ha utilizado.",
+      "signInRequired": "Inicia sesión normalmente antes de verificar o solicitar otro correo.",
+      "internalServer": "El servicio no está disponible temporalmente. Inténtalo de nuevo más tarde.",
+      "contract": "El servicio devolvió una respuesta inesperada. Inténtalo de nuevo.",
+      "network": "No se pudo conectar con el servicio. Comprueba tu conexión e inténtalo de nuevo.",
+      "generic": "No se pudo completar la verificación del correo. Inténtalo de nuevo."
     }
   },
   "Checkout": {
@@ -118,13 +165,21 @@
       "description": "Establece una nueva contraseña para tu cuenta de AnytoolAI. Las sesiones activas finalizarán después del cambio.",
       "fields": {
         "passwordLabel": "Nueva contraseña",
-        "passwordPlaceholder": "Al menos 8 caracteres",
+        "passwordPlaceholder": "Entre 12 y 128 caracteres",
         "passwordConfirmLabel": "Repite la contraseña",
         "passwordConfirmPlaceholder": "Introduce la contraseña de nuevo"
       },
+      "passwordRequirements": {
+        "label": "Requisitos de la contraseña",
+        "length": "Entre 12 y 128 caracteres",
+        "uppercase": "Al menos una letra latina mayúscula (A–Z)",
+        "lowercase": "Al menos una letra latina minúscula (a–z)",
+        "digit": "Al menos un dígito (0–9)",
+        "special": "Al menos uno de {characters}"
+      },
       "validation": {
         "missingToken": "El enlace para cambiar la contraseña no es válido. Solicita un enlace nuevo.",
-        "passwordTooShort": "La contraseña debe contener al menos 8 caracteres.",
+        "passwordPolicyNotMet": "La contraseña no cumple todos los requisitos.",
         "passwordMismatch": "Las contraseñas no coinciden."
       },
       "notices": {
@@ -138,7 +193,8 @@
     "errors": {
       "invalidOrExpiredToken": "El enlace no es válido o ha caducado. Solicita un enlace nuevo.",
       "rateLimited": "Demasiados intentos de recuperación de contraseña. Inténtalo de nuevo más tarde.",
-      "invalidInput": "Comprueba el correo electrónico y la contraseña. La contraseña debe contener al menos 8 caracteres.",
+      "invalidInput": "Comprueba el correo electrónico y asegúrate de que la contraseña cumple todos los requisitos.",
+      "passwordPolicyNotMet": "La contraseña no cumple todos los requisitos.",
       "internalServer": "El servicio no está disponible temporalmente. Inténtalo de nuevo más tarde.",
       "contract": "El servicio devolvió una respuesta inesperada. Inténtalo de nuevo.",
       "network": "No se pudo conectar con el servicio. Comprueba tu conexión e inténtalo de nuevo.",

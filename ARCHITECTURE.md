@@ -6,10 +6,11 @@ Last verified: 2026-09-29
 ## System boundary
 
 This repository currently owns the `ru` contour's identity, authenticated
-sessions, password recovery, legal-document/version/acceptance records, the
-Payment Portal UI, and a provider-neutral external-billing persistence
-baseline. It does not own workflow execution, artifacts, usage consumption, or
-quota enforcement; those belong to the separate Platform Kernel repository.
+sessions, email verification, password recovery,
+legal-document/version/acceptance records, the Payment Portal UI, and a
+provider-neutral external-billing persistence baseline. It does not own
+workflow execution, artifacts, usage consumption, or quota enforcement; those
+belong to the separate Platform Kernel repository.
 
 Each production deployment serves exactly one contour. Region Resolver is a
 separate planned service for contour selection; it is not implemented here.
@@ -66,7 +67,7 @@ launch remain gated by Phase 0 and their owning `ANY-504` steps.
 ## Current domains and API
 
 - **Identity** — contour-local users, hashed sessions, registration, login,
-  logout, and password reset.
+  logout, authenticated email verification, and password reset.
 - **Legal** — legal entities, versioned documents, required-document discovery,
   and append-only acceptance evidence.
 - **Billing persistence** — the approved projections, immutable commercial
@@ -111,18 +112,20 @@ Shared API transport remains language-neutral. It exposes status, error codes,
 and other machine facts; the owning web Presentation/UI boundary maps those
 facts to localized human-readable messages.
 
-Password-reset communication has one bounded locale-metadata flow:
+Identity email communication has bounded locale-metadata flows:
 
 ```text
 explicit validated routeLocale
   → generated languageTag
-  → password-reset Accept-Language request metadata
+  → registration, verification-resend, or password-reset Accept-Language metadata
   → API Presentation normalization to canonical RouteLocale
-  → localized reset URL + backend-owned email
+  → localized verification/reset URL + backend-owned email
 ```
 
-The web route boundary owns the `routeLocale` to `languageTag` mapping, and
-only the password-reset request sends the resulting canonical language tag.
+The web route boundary owns the `routeLocale` to `languageTag` mapping.
+Registration and authenticated verification resend send the resulting canonical
+language tag for verification delivery; password-reset request does the same
+for recovery delivery. Login sends no locale metadata.
 Generic shared API transport may carry that already-canonical header value but
 does not own locale mapping or localized presentation. API Presentation
 normalizes the request metadata before invoking password-reset application
@@ -149,9 +152,10 @@ construct a `/ru` ordinary route. Locale is not persisted in cookies,
 localStorage, or user records.
 
 Generated RU legal paths remain canonical and RU-only, without invented locale
-alternates. Password-reset confirmation (`/[locale]/reset-password`) does not
-offer locale switching so its fragment token stays on the current client-only
-flow. Generated legal titles, bodies, versions, paths, and registration
+alternates. Password-reset confirmation (`/[locale]/reset-password`) and email
+verification (`/[locale]/verify-email`) do not preserve fragment tokens through
+locale navigation; each token stays on its current client-only flow. Generated
+legal titles, bodies, versions, paths, and registration
 acceptance statements remain source-owned canonical RU content. Seller facts,
 support addresses, payment-method/provider facts, and user-entered content also
 stay source-owned; catalogs localize only their surrounding Portal presentation.
@@ -159,8 +163,9 @@ The ordinary-copy guard, backend `Accept-Language` propagation, and localized
 reset URLs and email content are implemented as part of the completed 4B
 contract.
 
-Current API composition exposes authentication, password reset, legal, health,
-and metrics routes. Removed catalog, checkout-intent, payment-status, account
+Current API composition exposes authentication, email verification, password
+reset, legal, health, and metrics routes. Removed catalog, checkout-intent,
+payment-status, account
 subscription, provider callback, and lifecycle-command contracts are not
 compatibility surfaces.
 

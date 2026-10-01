@@ -26,9 +26,18 @@
     "fields": {
       "emailLabel": "E-mail",
       "passwordLabel": "Mot de passe",
-      "passwordPlaceholder": "Au moins 8 caractères",
+      "passwordPlaceholder": "Saisissez votre mot de passe",
+      "newPasswordPlaceholder": "De 12 à 128 caractères",
       "passwordConfirmLabel": "Répéter le mot de passe",
       "passwordConfirmPlaceholder": "Saisissez à nouveau le mot de passe"
+    },
+    "passwordRequirements": {
+      "label": "Exigences du mot de passe",
+      "length": "De 12 à 128 caractères",
+      "uppercase": "Au moins une lettre latine majuscule (A–Z)",
+      "lowercase": "Au moins une lettre latine minuscule (a–z)",
+      "digit": "Au moins un chiffre (0–9)",
+      "special": "Au moins un caractère parmi {characters}"
     },
     "forgotPasswordAction": "Mot de passe oublié ?",
     "actions": {
@@ -39,6 +48,7 @@
     "validation": {
       "invalidEmail": "Saisissez une adresse e-mail valide.",
       "passwordTooShort": "Le mot de passe doit contenir au moins 8 caractères.",
+      "passwordPolicyNotMet": "Le mot de passe ne respecte pas toutes les exigences.",
       "passwordMismatch": "Les mots de passe ne correspondent pas.",
       "personalConsentRequired": "Vous devez consentir au traitement des données personnelles.",
       "offerConsentRequired": "Vous devez accepter les conditions de l’offre publique."
@@ -53,10 +63,47 @@
       "invalidCredentials": "L’e-mail ou le mot de passe est incorrect.",
       "missingPersonalConsent": "Vous devez consentir au traitement des données personnelles.",
       "missingOfferConsent": "Vous devez accepter les conditions de l’offre publique.",
+      "passwordPolicyNotMet": "Le mot de passe ne respecte pas toutes les exigences.",
       "internalServer": "Le service est temporairement indisponible. Réessayez plus tard.",
       "contract": "Le service a renvoyé une réponse inattendue. Réessayez.",
       "network": "Impossible de se connecter au service. Vérifiez votre connexion et réessayez.",
       "generic": "Impossible de terminer l’authentification. Réessayez."
+    }
+  },
+  "EmailVerification": {
+    "pending": {
+      "badge": "Vérification de l’e-mail",
+      "title": "Vérifiez votre e-mail",
+      "description": "Vous êtes connecté. Vérifiez votre adresse e-mail avant d’utiliser les fonctions payantes.",
+      "resend": "Renvoyer l’e-mail de vérification",
+      "resending": "Envoi...",
+      "accepted": "Si un autre message peut être envoyé, il est en route. Consultez votre boîte de réception."
+    },
+    "verify": {
+      "loading": "Chargement de la vérification de l’e-mail...",
+      "badge": "Vérification de l’e-mail",
+      "title": "Vérifiez votre e-mail",
+      "description": "Confirmez cette adresse e-mail pour le compte AnytoolAI auquel vous êtes connecté.",
+      "missingToken": "Cette page ne contient aucun jeton de vérification. Rouvrez le lien de l’e-mail ou demandez un nouveau message.",
+      "signInTitle": "Connectez-vous pour vérifier votre e-mail",
+      "signInWithToken": "Le lien de vérification est prêt. Connectez-vous normalement, puis confirmez votre e-mail sur cette page.",
+      "signedOutWithoutToken": "Connectez-vous normalement, puis demandez un e-mail de vérification depuis votre compte.",
+      "signInAction": "Se connecter",
+      "action": "Vérifier l’e-mail",
+      "verifying": "Vérification...",
+      "successTitle": "E-mail vérifié",
+      "successDescription": "Votre adresse e-mail est vérifiée. Votre session actuelle reste active.",
+      "alreadyVerifiedTitle": "E-mail déjà vérifié",
+      "alreadyVerifiedDescription": "Ce compte possède déjà une adresse e-mail vérifiée.",
+      "openAccount": "Ouvrir le compte"
+    },
+    "errors": {
+      "invalidOrExpiredToken": "Ce lien de vérification est invalide, expiré ou a déjà été utilisé.",
+      "signInRequired": "Connectez-vous normalement avant de vérifier ou de demander un autre e-mail.",
+      "internalServer": "Le service est temporairement indisponible. Réessayez plus tard.",
+      "contract": "Le service a renvoyé une réponse inattendue. Réessayez.",
+      "network": "Impossible de contacter le service. Vérifiez votre connexion et réessayez.",
+      "generic": "Impossible de terminer la vérification de l’e-mail. Réessayez."
     }
   },
   "Checkout": {
@@ -118,13 +165,21 @@
       "description": "Définissez un nouveau mot de passe pour votre compte AnytoolAI. Les sessions actives seront fermées après la modification.",
       "fields": {
         "passwordLabel": "Nouveau mot de passe",
-        "passwordPlaceholder": "Au moins 8 caractères",
+        "passwordPlaceholder": "De 12 à 128 caractères",
         "passwordConfirmLabel": "Répétez le mot de passe",
         "passwordConfirmPlaceholder": "Saisissez de nouveau le mot de passe"
       },
+      "passwordRequirements": {
+        "label": "Exigences du mot de passe",
+        "length": "De 12 à 128 caractères",
+        "uppercase": "Au moins une lettre latine majuscule (A–Z)",
+        "lowercase": "Au moins une lettre latine minuscule (a–z)",
+        "digit": "Au moins un chiffre (0–9)",
+        "special": "Au moins un caractère parmi {characters}"
+      },
       "validation": {
         "missingToken": "Le lien de changement de mot de passe n’est pas valide. Demandez un nouveau lien.",
-        "passwordTooShort": "Le mot de passe doit contenir au moins 8 caractères.",
+        "passwordPolicyNotMet": "Le mot de passe ne respecte pas toutes les exigences.",
         "passwordMismatch": "Les mots de passe ne correspondent pas."
       },
       "notices": {
@@ -138,7 +193,8 @@
     "errors": {
       "invalidOrExpiredToken": "Le lien n’est pas valide ou a expiré. Demandez un nouveau lien.",
       "rateLimited": "Trop de tentatives de récupération du mot de passe. Réessayez plus tard.",
-      "invalidInput": "Vérifiez l’adresse e-mail et le mot de passe. Le mot de passe doit contenir au moins 8 caractères.",
+      "invalidInput": "Vérifiez l’adresse e-mail et assurez-vous que le mot de passe respecte toutes les exigences.",
+      "passwordPolicyNotMet": "Le mot de passe ne respecte pas toutes les exigences.",
       "internalServer": "Le service est temporairement indisponible. Réessayez plus tard.",
       "contract": "Le service a renvoyé une réponse inattendue. Réessayez.",
       "network": "Impossible de contacter le service. Vérifiez votre connexion et réessayez.",

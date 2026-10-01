@@ -26,9 +26,18 @@
     "fields": {
       "emailLabel": "E-Mail",
       "passwordLabel": "Passwort",
-      "passwordPlaceholder": "Mindestens 8 Zeichen",
+      "passwordPlaceholder": "Passwort eingeben",
+      "newPasswordPlaceholder": "12–128 Zeichen",
       "passwordConfirmLabel": "Passwort wiederholen",
       "passwordConfirmPlaceholder": "Passwort erneut eingeben"
+    },
+    "passwordRequirements": {
+      "label": "Passwortanforderungen",
+      "length": "12–128 Zeichen",
+      "uppercase": "Mindestens ein lateinischer Großbuchstabe (A–Z)",
+      "lowercase": "Mindestens ein lateinischer Kleinbuchstabe (a–z)",
+      "digit": "Mindestens eine Ziffer (0–9)",
+      "special": "Mindestens eines der Zeichen {characters}"
     },
     "forgotPasswordAction": "Passwort vergessen?",
     "actions": {
@@ -39,6 +48,7 @@
     "validation": {
       "invalidEmail": "Geben Sie eine gültige E-Mail-Adresse ein.",
       "passwordTooShort": "Das Passwort muss mindestens 8 Zeichen enthalten.",
+      "passwordPolicyNotMet": "Das Passwort erfüllt nicht alle Anforderungen.",
       "passwordMismatch": "Die Passwörter stimmen nicht überein.",
       "personalConsentRequired": "Sie müssen der Verarbeitung personenbezogener Daten zustimmen.",
       "offerConsentRequired": "Sie müssen die Bedingungen des öffentlichen Angebots akzeptieren."
@@ -53,10 +63,47 @@
       "invalidCredentials": "E-Mail-Adresse oder Passwort ist falsch.",
       "missingPersonalConsent": "Sie müssen der Verarbeitung personenbezogener Daten zustimmen.",
       "missingOfferConsent": "Sie müssen die Bedingungen des öffentlichen Angebots akzeptieren.",
+      "passwordPolicyNotMet": "Das Passwort erfüllt nicht alle Anforderungen.",
       "internalServer": "Der Dienst ist vorübergehend nicht verfügbar. Versuchen Sie es später erneut.",
       "contract": "Der Dienst hat eine unerwartete Antwort zurückgegeben. Versuchen Sie es erneut.",
       "network": "Verbindung zum Dienst fehlgeschlagen. Prüfen Sie Ihre Verbindung und versuchen Sie es erneut.",
       "generic": "Die Authentifizierung konnte nicht abgeschlossen werden. Versuchen Sie es erneut."
+    }
+  },
+  "EmailVerification": {
+    "pending": {
+      "badge": "E-Mail-Bestätigung",
+      "title": "E-Mail bestätigen",
+      "description": "Sie sind angemeldet. Bestätigen Sie Ihre E-Mail-Adresse, bevor Sie kostenpflichtige Funktionen nutzen.",
+      "resend": "Bestätigungs-E-Mail erneut senden",
+      "resending": "Wird gesendet...",
+      "accepted": "Wenn eine weitere Nachricht gesendet werden kann, ist sie unterwegs. Prüfen Sie Ihren Posteingang."
+    },
+    "verify": {
+      "loading": "E-Mail-Bestätigung wird geladen...",
+      "badge": "E-Mail-Bestätigung",
+      "title": "E-Mail bestätigen",
+      "description": "Bestätigen Sie diese E-Mail-Adresse für Ihr angemeldetes AnytoolAI-Konto.",
+      "missingToken": "Diese Seite enthält kein Bestätigungs-Token. Öffnen Sie den Link aus Ihrer E-Mail erneut oder fordern Sie eine neue Nachricht an.",
+      "signInTitle": "Zum Bestätigen der E-Mail anmelden",
+      "signInWithToken": "Der Bestätigungslink ist bereit. Melden Sie sich normal an und bestätigen Sie dann Ihre E-Mail auf dieser Seite.",
+      "signedOutWithoutToken": "Melden Sie sich normal an und fordern Sie dann in Ihrem Konto eine Bestätigungs-E-Mail an.",
+      "signInAction": "Anmelden",
+      "action": "E-Mail bestätigen",
+      "verifying": "Wird bestätigt...",
+      "successTitle": "E-Mail bestätigt",
+      "successDescription": "Ihre E-Mail-Adresse ist bestätigt. Ihre bestehende Sitzung bleibt aktiv.",
+      "alreadyVerifiedTitle": "E-Mail bereits bestätigt",
+      "alreadyVerifiedDescription": "Dieses Konto hat bereits eine bestätigte E-Mail-Adresse.",
+      "openAccount": "Konto öffnen"
+    },
+    "errors": {
+      "invalidOrExpiredToken": "Dieser Bestätigungslink ist ungültig, abgelaufen oder wurde bereits verwendet.",
+      "signInRequired": "Melden Sie sich normal an, bevor Sie bestätigen oder eine weitere E-Mail anfordern.",
+      "internalServer": "Der Dienst ist vorübergehend nicht verfügbar. Versuchen Sie es später erneut.",
+      "contract": "Der Dienst hat eine unerwartete Antwort zurückgegeben. Versuchen Sie es erneut.",
+      "network": "Verbindung zum Dienst fehlgeschlagen. Prüfen Sie Ihre Verbindung und versuchen Sie es erneut.",
+      "generic": "Die E-Mail-Bestätigung konnte nicht abgeschlossen werden. Versuchen Sie es erneut."
     }
   },
   "Checkout": {
@@ -118,13 +165,21 @@
       "description": "Legen Sie ein neues Passwort für Ihr AnytoolAI-Konto fest. Aktive Sitzungen werden nach der Änderung beendet.",
       "fields": {
         "passwordLabel": "Neues Passwort",
-        "passwordPlaceholder": "Mindestens 8 Zeichen",
+        "passwordPlaceholder": "12–128 Zeichen",
         "passwordConfirmLabel": "Passwort wiederholen",
         "passwordConfirmPlaceholder": "Passwort erneut eingeben"
       },
+      "passwordRequirements": {
+        "label": "Passwortanforderungen",
+        "length": "12–128 Zeichen",
+        "uppercase": "Mindestens ein lateinischer Großbuchstabe (A–Z)",
+        "lowercase": "Mindestens ein lateinischer Kleinbuchstabe (a–z)",
+        "digit": "Mindestens eine Ziffer (0–9)",
+        "special": "Mindestens eines der Zeichen {characters}"
+      },
       "validation": {
         "missingToken": "Der Link zum Ändern des Passworts ist ungültig. Fordern Sie einen neuen Link an.",
-        "passwordTooShort": "Das Passwort muss mindestens 8 Zeichen enthalten.",
+        "passwordPolicyNotMet": "Das Passwort erfüllt nicht alle Anforderungen.",
         "passwordMismatch": "Die Passwörter stimmen nicht überein."
       },
       "notices": {
@@ -138,7 +193,8 @@
     "errors": {
       "invalidOrExpiredToken": "Der Link ist ungültig oder abgelaufen. Fordern Sie einen neuen Link an.",
       "rateLimited": "Zu viele Versuche zur Passwortwiederherstellung. Versuchen Sie es später erneut.",
-      "invalidInput": "Prüfen Sie die E-Mail-Adresse und das Passwort. Das Passwort muss mindestens 8 Zeichen enthalten.",
+      "invalidInput": "Prüfen Sie die E-Mail-Adresse und stellen Sie sicher, dass das Passwort alle Anforderungen erfüllt.",
+      "passwordPolicyNotMet": "Das Passwort erfüllt nicht alle Anforderungen.",
       "internalServer": "Der Dienst ist vorübergehend nicht verfügbar. Versuchen Sie es später erneut.",
       "contract": "Der Dienst hat eine unerwartete Antwort zurückgegeben. Versuchen Sie es erneut.",
       "network": "Verbindung zum Dienst fehlgeschlagen. Prüfen Sie Ihre Verbindung und versuchen Sie es erneut.",

@@ -79,13 +79,46 @@ test("password reset confirmation submits token and new password", async ({ page
   expect(documentRequests).toHaveLength(1);
   expect(documentRequests[0]).not.toContain("test-only-reset-token");
   await expect(page.locator(".locale-switcher")).toHaveCount(0);
-  await page.getByLabel("Новый пароль").fill("new-password-123");
-  await page.getByLabel("Повторите пароль").fill("new-password-123");
+  await page.getByLabel("Новый пароль").fill("New-password-123!");
+  await page.getByLabel("Повторите пароль").fill("New-password-123!");
   await page.getByLabel("Повторите пароль").press("Enter");
 
   await expect(page.getByText("Пароль изменён. Теперь можно войти с новым паролем.")).toBeVisible();
   expect(requests).toEqual([
-    { token: "test-only-reset-token", password: "new-password-123" }
+    { token: "test-only-reset-token", password: "New-password-123!" }
+  ]);
+});
+
+test("password reset confirmation enforces the shared new-password policy", async ({ page }) => {
+  const requests: unknown[] = [];
+  await page.route("**/api/auth/password-reset/confirm", async (route) => {
+    requests.push(route.request().postDataJSON());
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ status: "password_reset" })
+    });
+  });
+
+  await page.goto("/ru/reset-password#token=shared-policy-token");
+  await page.getByLabel("Новый пароль").fill("Aa1!aaaaaaa");
+  await page.getByLabel("Повторите пароль").fill("Aa1!aaaaaaa");
+  await page.getByRole("button", { name: "Сменить пароль" }).click();
+
+  await expect(
+    page.getByText("Пароль не соответствует всем требованиям.")
+  ).toBeVisible();
+  expect(requests).toEqual([]);
+
+  await page.getByLabel("Новый пароль").fill("Valid-reset-123!");
+  await page.getByLabel("Повторите пароль").fill("Valid-reset-123!");
+  await page.getByRole("button", { name: "Сменить пароль" }).click();
+
+  await expect(
+    page.getByText("Пароль изменён. Теперь можно войти с новым паролем.")
+  ).toBeVisible();
+  expect(requests).toEqual([
+    { token: "shared-policy-token", password: "Valid-reset-123!" }
   ]);
 });
 

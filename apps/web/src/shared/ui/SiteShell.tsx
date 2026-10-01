@@ -1,7 +1,10 @@
 import { Suspense } from "react";
 import { NextIntlClientProvider } from "next-intl";
 import { getMessages, getTranslations } from "next-intl/server";
-import type { RouteLocale } from "@/generated/locales";
+import {
+  LANGUAGE_TAG_BY_ROUTE_LOCALE,
+  type RouteLocale
+} from "@/generated/locales";
 import { Link } from "@/i18n/navigation";
 import { CookieBanner } from "./CookieBanner";
 import { Footer, FooterContent } from "./Footer";
@@ -25,7 +28,11 @@ export async function SiteShell({
   return (
     <div className="site-shell">
       <NextIntlClientProvider
-        messages={{ Navigation: messages.Navigation, Auth: messages.Auth }}
+        messages={{
+          Navigation: messages.Navigation,
+          Auth: messages.Auth,
+          EmailVerification: messages.EmailVerification
+        }}
       >
         <header className="top-nav">
           <div className="nav-inner">
@@ -39,7 +46,9 @@ export async function SiteShell({
               <Suspense fallback={null}>
                 <LocaleSwitcher locale={locale} />
               </Suspense>
-              <HeaderAccount />
+              <HeaderAccount
+                languageTag={LANGUAGE_TAG_BY_ROUTE_LOCALE[locale]}
+              />
             </nav>
           </div>
         </header>

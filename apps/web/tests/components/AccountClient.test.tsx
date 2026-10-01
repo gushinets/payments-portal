@@ -20,9 +20,12 @@ function jsonResponse(payload: unknown): Response {
 }
 
 function renderAccountClient() {
-  return renderWithIntl(<AccountClient />, {
+  return renderWithIntl(<AccountClient languageTag="ru" />, {
     locale: "ru",
-    messages: { Account: ruMessages.Account }
+    messages: {
+      Account: ruMessages.Account,
+      EmailVerification: ruMessages.EmailVerification
+    }
   });
 }
 
@@ -56,7 +59,8 @@ describe("identity-only account", () => {
           tenant_id: "anytoolai",
           region: "ru",
           user_id: "user-id",
-          email: "account@example.com"
+          email: "account@example.com",
+          email_verified: true
         }
       })
     );
@@ -83,7 +87,8 @@ describe("identity-only account", () => {
           tenant_id: "anytoolai",
           region: "ru",
           user_id: "user-id",
-          email: "synced-account@example.com"
+          email: "synced-account@example.com",
+          email_verified: true
         }
       })
     );
@@ -116,7 +121,8 @@ describe("identity-only account", () => {
             tenant_id: "anytoolai",
             region: "ru",
             user_id: "user-id",
-            email: "account@example.com"
+            email: "account@example.com",
+            email_verified: true
           }
         })
       )

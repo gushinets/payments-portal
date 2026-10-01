@@ -20,9 +20,12 @@ function jsonResponse(payload: unknown): Response {
 }
 
 function renderHeaderAccount() {
-  return renderWithIntl(<HeaderAccount />, {
+  return renderWithIntl(<HeaderAccount languageTag="ru" />, {
     locale: "ru",
-    messages: { Auth: ruMessages.Auth }
+    messages: {
+      Auth: ruMessages.Auth,
+      EmailVerification: ruMessages.EmailVerification
+    }
   });
 }
 
@@ -49,7 +52,8 @@ describe("header account session", () => {
             tenant_id: "anytoolai",
             region: "ru",
             user_id: "user-id",
-            email: "header@example.com"
+            email: "header@example.com",
+            email_verified: true
           }
         })
       )

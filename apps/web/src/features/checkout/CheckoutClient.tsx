@@ -17,12 +17,13 @@ import {
 import {
   AuthForm,
   authErrorMessageKey,
+  EmailVerificationPending,
   type AuthFormSubmitValues
 } from "@/shared/ui";
 
 const telegramLoginUrl = process.env.NEXT_PUBLIC_TELEGRAM_LOGIN_URL ?? "";
 
-export function CheckoutClient() {
+export function CheckoutClient({ languageTag }: { languageTag: string }) {
   const authT = useTranslations("Auth");
   const checkoutT = useTranslations("Checkout");
   const [sessionUser, setSessionUser] = useState<AuthUser | null>(null);
@@ -92,7 +93,7 @@ export function CheckoutClient() {
     setLoading(true);
 
     try {
-      const response = await submitAuth(values);
+      const response = await submitAuth(values, { languageTag });
       window.localStorage.setItem(sessionStorageKey, response.token);
       window.dispatchEvent(new Event(sessionChangedEvent));
       setSessionUser(response.user);
@@ -149,6 +150,9 @@ export function CheckoutClient() {
               </span>
               <h1>{checkoutT("accountTitle")}</h1>
               <p className="card-copy">{sessionUser.email}</p>
+              {!sessionUser.email_verified ? (
+                <EmailVerificationPending languageTag={languageTag} />
+              ) : null}
               {notice ? <div className="notice">{notice}</div> : null}
               <div className="hero-actions">
                 <Link className="btn-primary" href="/account">
