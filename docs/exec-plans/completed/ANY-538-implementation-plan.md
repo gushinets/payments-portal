@@ -6,7 +6,7 @@
 | --- | --- |
 | Feature | `ANY-504` |
 | Ticket | `ANY-538` |
-| Overall status | `todo` |
+| Overall status | `done` |
 | Baseline | `main` @ `6ff3464c7e8bf63f8ca582026d2efcf45904511d` (`ANY-533` merged) |
 | Execution order | reset/recreate `ANY-538` from baseline → Step 1 → manual verification → commit → Step 2 → manual verification → commit |
 | Steps / commits | 2 |
@@ -194,7 +194,7 @@ Do not revoke sessions. Downgrade must not restore those timestamps as verificat
 
 # Step 1 — Implement backend email verification and password policy
 
-**Status:** `todo`  
+**Status:** `done`  
 **Commit:** `feat(identity): add email verification and password policy`
 
 ## Prompt
@@ -663,14 +663,14 @@ feat(identity): add email verification and password policy
 Status:
 
 ```text
-todo
+done
 ```
 
 ---
 
 # Step 2 — Add verification/password UX and publish the ANY-504 handoff
 
-**Status:** `todo`  
+**Status:** `done`  
 **Commit:** `feat(web): add email verification and password policy UX`  
 **Depends on:** Step 1 completed, manually verified, and committed.
 
@@ -1043,7 +1043,7 @@ feat(web): add email verification and password policy UX
 Status:
 
 ```text
-todo
+done
 ```
 
 ---
