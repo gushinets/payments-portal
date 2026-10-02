@@ -18,6 +18,7 @@ from app.domains.identity.errors import InvalidOrExpiredVerificationTokenError
 from app.generated.locales import RouteLocale
 from app.infrastructure.persistence.email_verification import (
     claim_valid_email_verification_token,
+    delete_other_outstanding_email_verification_tokens,
     get_email_verification_token,
     get_newest_outstanding_email_verification_token,
     invalidate_outstanding_email_verification_tokens,
@@ -127,20 +128,33 @@ def confirm_email_verification(
         db.rollback()
         raise InvalidOrExpiredVerificationTokenError()
 
-    now = utc_now()
     candidate = get_email_verification_token(
         db,
         token_hash=token_hash,
         tenant_id=user.tenant_id,
         region=user.region,
     )
+    if not _belongs_to_user(candidate, user=user):
+        db.rollback()
+        raise InvalidOrExpiredVerificationTokenError()
+
+    if (
+        user.email_verified_at is not None
+        and candidate is not None
+        and candidate.used_at is not None
+        and _as_utc(candidate.used_at) == _as_utc(user.email_verified_at)
+    ):
+        db.rollback()
+        return
+
+    now = utc_now()
     if not _is_valid_candidate(candidate, user=user, now=now):
         db.rollback()
         raise InvalidOrExpiredVerificationTokenError()
 
     if user.email_verified_at is not None:
         db.rollback()
-        return
+        raise InvalidOrExpiredVerificationTokenError()
 
     claimed = claim_valid_email_verification_token(
         db,
@@ -156,12 +170,12 @@ def confirm_email_verification(
 
     user.email_verified_at = now
     db.add(user)
-    invalidate_outstanding_email_verification_tokens(
+    delete_other_outstanding_email_verification_tokens(
         db,
         tenant_id=user.tenant_id,
         region=user.region,
         user_id=user.id,
-        now=now,
+        retained_token_id=candidate.id,
     )
     db.commit()
 

@@ -90,6 +90,7 @@
       "signedOutWithoutToken": "Sign in normally, then request a verification email from your account.",
       "signInAction": "Sign in",
       "action": "Verify email",
+      "retrySession": "Retry session load",
       "verifying": "Verifying...",
       "successTitle": "Email verified",
       "successDescription": "Your email address is verified. Your existing session remains active.",

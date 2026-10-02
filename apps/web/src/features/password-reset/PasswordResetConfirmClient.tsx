@@ -5,11 +5,6 @@ import { ArrowRight, KeyRound } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import { confirmPasswordReset } from "@/shared/api/auth";
-import {
-  evaluatePasswordPolicy,
-  PASSWORD_REQUIREMENTS,
-  PASSWORD_SPECIAL_CHARACTERS
-} from "@/shared/password-policy";
 import { passwordResetErrorMessageKey } from "./errors";
 
 const sessionStorageKey = "anytoolai_session_token_v1";
@@ -23,7 +18,6 @@ export function PasswordResetConfirmClient() {
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const passwordPolicy = evaluatePasswordPolicy(password);
 
   useEffect(() => {
     const fragment = new URLSearchParams(window.location.hash.slice(1));
@@ -47,11 +41,6 @@ export function PasswordResetConfirmClient() {
     const token = tokenRef.current;
     if (!token) {
       setError(t("confirm.validation.missingToken"));
-      return;
-    }
-
-    if (!passwordPolicy.valid) {
-      setError(t("confirm.validation.passwordPolicyNotMet"));
       return;
     }
 
@@ -111,25 +100,15 @@ export function PasswordResetConfirmClient() {
           >
             <p>{t("confirm.passwordRequirements.label")}</p>
             <ul>
-              {PASSWORD_REQUIREMENTS.map((requirement) => (
-                <li
-                  className={
-                    passwordPolicy.unmetRequirements.includes(requirement)
-                      ? undefined
-                      : "password-requirement-met"
-                  }
-                  key={requirement}
-                >
-                  {!passwordPolicy.unmetRequirements.includes(requirement) ? (
-                    <span>✓ </span>
-                  ) : null}
-                  {requirement === "special"
-                    ? t("confirm.passwordRequirements.special", {
-                        characters: PASSWORD_SPECIAL_CHARACTERS
-                      })
-                    : t(`confirm.passwordRequirements.${requirement}`)}
-                </li>
-              ))}
+              <li>{t("confirm.passwordRequirements.length")}</li>
+              <li>{t("confirm.passwordRequirements.uppercase")}</li>
+              <li>{t("confirm.passwordRequirements.lowercase")}</li>
+              <li>{t("confirm.passwordRequirements.digit")}</li>
+              <li>
+                {t("confirm.passwordRequirements.special", {
+                  characters: "!@#$%^&*()-_=+[]{}:,.?"
+                })}
+              </li>
             </ul>
           </div>
 

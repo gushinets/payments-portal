@@ -157,8 +157,8 @@ def test_authenticated_confirmation_preserves_session_and_last_login(
     )
     assert session.status_code == 200
     assert session.json()["user"]["email_verified"] is True
-    assert replay.status_code == 400
-    assert replay.json() == {"detail": {"code": "invalid_or_expired_verification_token"}}
+    assert replay.status_code == 200
+    assert replay.json() == {"status": "verified"}
 
 
 def test_invalid_and_expired_verification_tokens_are_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -334,6 +334,7 @@ def test_authenticated_resend_obeys_cooldown_then_rotates_and_verified_user_is_n
 
     with SessionLocal() as db:
         first = db.query(MagicLinkToken).one()
+        user_id = first.user_id
         first.created_at = datetime.now(UTC) - timedelta(seconds=61)
         db.commit()
     _install_token(monkeypatch, second_token)
@@ -368,6 +369,34 @@ def test_authenticated_resend_obeys_cooldown_then_rotates_and_verified_user_is_n
         ).status_code
         == 200
     )
+    assert (
+        client.post(
+            "/api/auth/email-verification/confirm",
+            headers=auth_header,
+            json={"token": first_token},
+        ).status_code
+        == 400
+    )
+    assert (
+        client.post(
+            "/api/auth/email-verification/confirm",
+            headers=auth_header,
+            json={"token": second_token},
+        ).status_code
+        == 200
+    )
+    with SessionLocal() as db:
+        tokens = (
+            db.query(MagicLinkToken)
+            .filter(
+                MagicLinkToken.user_id == user_id,
+                MagicLinkToken.purpose == MagicLinkPurpose.EMAIL_VERIFICATION,
+            )
+            .order_by(MagicLinkToken.created_at)
+            .all()
+        )
+        assert len(tokens) == 2
+        assert all(token.used_at is not None for token in tokens)
 
     verified_resend = client.post(
         "/api/auth/email-verification/request",

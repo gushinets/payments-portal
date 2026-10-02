@@ -47,6 +47,7 @@ export function EmailVerificationClient({
   const [authError, setAuthError] = useState("");
   const [verificationError, setVerificationError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [sessionLoadAttempt, setSessionLoadAttempt] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -109,7 +110,12 @@ export function EmailVerificationClient({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [sessionLoadAttempt]);
+
+  function retrySessionLoad() {
+    setVerificationState({ status: "loading" });
+    setSessionLoadAttempt((attempt) => attempt + 1);
+  }
 
   async function authenticate(values: AuthFormSubmitValues) {
     setAuthError("");
@@ -188,6 +194,13 @@ export function EmailVerificationClient({
         <div className="notice" role="alert">
           {t(verificationState.messageKey)}
         </div>
+        <button
+          className="btn-primary"
+          type="button"
+          onClick={retrySessionLoad}
+        >
+          {t("verify.retrySession")}
+        </button>
       </VerificationPanel>
     );
   }

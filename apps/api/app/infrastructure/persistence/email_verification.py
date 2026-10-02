@@ -73,6 +73,28 @@ def invalidate_outstanding_email_verification_tokens(
     )
 
 
+def delete_other_outstanding_email_verification_tokens(
+    db: Session,
+    *,
+    tenant_id: str,
+    region: str,
+    user_id: uuid.UUID,
+    retained_token_id: uuid.UUID,
+) -> int:
+    return (
+        db.query(MagicLinkToken)
+        .filter(
+            MagicLinkToken.tenant_id == tenant_id,
+            MagicLinkToken.region == region,
+            MagicLinkToken.user_id == user_id,
+            MagicLinkToken.purpose == MagicLinkPurpose.EMAIL_VERIFICATION,
+            MagicLinkToken.used_at.is_(None),
+            MagicLinkToken.id != retained_token_id,
+        )
+        .delete(synchronize_session=False)
+    )
+
+
 def get_newest_outstanding_email_verification_token(
     db: Session,
     *,

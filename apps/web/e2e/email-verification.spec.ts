@@ -1,8 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
 const sessionStorageKey = "anytoolai_session_token_v1";
-const allowedSpecialCharacters = "!@#$%^&*()-_=+[]{}:,.?";
-
 type MockUser = {
   tenant_id: string;
   region: string;
@@ -45,62 +43,43 @@ async function installSession(page: Page, token: string) {
   );
 }
 
-test("registration mirrors every backend password-policy requirement", async ({
+test("registration shows guidance but leaves password-policy authority to the API", async ({
   page
 }) => {
-  let authRequests = 0;
-  page.on("request", (request) => {
-    if (new URL(request.url()).pathname === "/api/auth/register") {
-      authRequests += 1;
-    }
+  const requests: unknown[] = [];
+  await page.route("**/api/auth/register", async (route) => {
+    requests.push(route.request().postDataJSON());
+    await route.fulfill({
+      status: 400,
+      contentType: "application/json",
+      body: JSON.stringify({
+        detail: { code: "password_policy_not_met" }
+      })
+    });
   });
 
   await page.goto("/ru/auth-checkout");
   const scope = page.getByRole("main");
-  await scope.getByRole("button", { name: "Регистрация" }).click();
-  await scope.getByLabel("Email").fill("policy@example.com");
-
-  for (const password of [
-    "Aa1!aaaaaaa",
-    "aa1!aaaaaaaa",
-    "AA1!AAAAAAAA",
-    "Aaa!aaaaaaaa",
-    "Aaa1aaaaaaaa"
-  ]) {
-    await scope.getByLabel("Пароль", { exact: true }).fill(password);
-    await scope.getByLabel("Повторите пароль").fill(password);
-    await scope.getByRole("button", { name: /Создать аккаунт/ }).click();
-    await expect(
-      scope.getByText("Пароль не соответствует всем требованиям.")
-    ).toBeVisible();
-  }
-
-  await scope.getByLabel("Пароль", { exact: true }).fill("Aa1!aaaaaaaa");
-  await scope.getByLabel("Повторите пароль").fill("Aa1!aaaaaaaa");
-  await scope.getByRole("button", { name: /Создать аккаунт/ }).click();
+  await completeRegistrationForm(scope, "policy@example.com", "Aa1!aaaaaaa");
+  await expect(scope.getByText("Требования к паролю")).toBeVisible();
   await expect(
-    scope.getByText("Нужно дать согласие на обработку персональных данных.")
+    scope.getByText("Не менее одного символа из !@#$%^&*()-_=+[]{}:,.?", {
+      exact: true
+    })
   ).toBeVisible();
-  expect(authRequests).toBe(0);
-});
+  await scope.getByRole("button", { name: /Создать аккаунт/ }).click();
 
-test("every allowed special character satisfies registration policy", async ({
-  page
-}) => {
-  await page.goto("/ru/auth-checkout");
-  const scope = page.getByRole("main");
-  await scope.getByRole("button", { name: "Регистрация" }).click();
-  await scope.getByLabel("Email").fill("specials@example.com");
-
-  for (const specialCharacter of allowedSpecialCharacters) {
-    const password = `ValidPass123${specialCharacter}`;
-    await scope.getByLabel("Пароль", { exact: true }).fill(password);
-    await scope.getByLabel("Повторите пароль").fill(password);
-    await scope.getByRole("button", { name: /Создать аккаунт/ }).click();
-    await expect(
-      scope.getByText("Нужно дать согласие на обработку персональных данных.")
-    ).toBeVisible();
-  }
+  await expect(
+    scope.getByText("Пароль не соответствует всем требованиям.")
+  ).toBeVisible();
+  expect(requests).toEqual([
+    {
+      email: "policy@example.com",
+      password: "Aa1!aaaaaaa",
+      personal_consent: true,
+      offer_consent: true
+    }
+  ]);
 });
 
 test("registration preserves valid Unicode, spaces, quotes, and semicolons", async ({
@@ -316,6 +295,9 @@ test("account reload derives pending state from session and resends without an e
     main.getByRole("heading", { name: "Подтвердите email", exact: true })
   ).toBeVisible();
   await main.getByRole("button", { name: "Отправить письмо ещё раз" }).click();
+  await expect(
+    main.getByText("Если можно отправить новое письмо, оно уже в пути. Проверьте почту.")
+  ).toBeVisible();
 
   expect(resendRequests).toEqual([
     {
@@ -400,6 +382,58 @@ test("fragment token stays memory-only, waits for sign-in and verifies without r
     await page.evaluate((key) => window.localStorage.getItem(key), sessionStorageKey)
   ).toBe("existing-bearer");
   await expect.poll(() => sessionFacts.includes(true)).toBe(true);
+});
+
+test("transient session failure retries in place and preserves the verification capability", async ({
+  page
+}) => {
+  const user = mockUser("retry-verification@example.com");
+  let sessionRequests = 0;
+  const confirmationTokens: string[] = [];
+  await installSession(page, "retry-session");
+  await page.route("**/api/auth/session", async (route) => {
+    sessionRequests += 1;
+    if (sessionRequests === 1) {
+      await route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({ detail: { code: "internal_server_error" } })
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ authenticated: true, user })
+    });
+  });
+  await page.route("**/api/auth/email-verification/confirm", async (route) => {
+    confirmationTokens.push(route.request().postDataJSON().token);
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ status: "verified" })
+    });
+  });
+
+  await page.goto("/ru/verify-email#token=retry-fragment-token");
+
+  await expect(page).toHaveURL(/\/ru\/verify-email$/);
+  await expect(page.getByRole("main").getByRole("alert")).toContainText(
+    "Сервис временно недоступен"
+  );
+  await page
+    .getByRole("button", { name: "Повторить загрузку сессии" })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Подтвердить email" })
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Подтвердить email" }).click();
+
+  await expect(
+    page.getByRole("heading", { name: "Email подтверждён" })
+  ).toBeVisible();
+  expect(confirmationTokens).toEqual(["retry-fragment-token"]);
 });
 
 test("invalid, expired, or used verification capability has one generic error", async ({

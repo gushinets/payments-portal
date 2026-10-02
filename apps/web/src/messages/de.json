@@ -90,6 +90,7 @@
       "signedOutWithoutToken": "Melden Sie sich normal an und fordern Sie dann in Ihrem Konto eine Bestätigungs-E-Mail an.",
       "signInAction": "Anmelden",
       "action": "E-Mail bestätigen",
+      "retrySession": "Sitzung erneut laden",
       "verifying": "Wird bestätigt...",
       "successTitle": "E-Mail bestätigt",
       "successDescription": "Ihre E-Mail-Adresse ist bestätigt. Ihre bestehende Sitzung bleibt aktiv.",

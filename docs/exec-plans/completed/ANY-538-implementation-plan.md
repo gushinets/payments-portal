@@ -45,6 +45,12 @@
 1. `email_verified_at` currently claims mailbox verification without proof;
 2. there are no production users, so the password policy can be strengthened before launch without legacy-user migration.
 
+Architectural-review disposition: the backend/domain policy is the sole
+password-validity authority. The final web implementation keeps localized
+guidance and maps the backend `password_policy_not_met` result, but removes the
+independently maintained TypeScript evaluator. `ANY-541` owns generated
+backend/frontend API contract migration.
+
 ### Verified email
 
 After this ticket:
@@ -1052,7 +1058,10 @@ done
 
 - Step 1 and Step 2 are separately implemented, manually verified, and committed.
 - Superseded broad ANY-538 hardening is absent.
-- Registration/reset enforce the same 12–128 + `A-Z` + `a-z` + `0-9` + allowed-special policy.
+- Backend registration/reset enforce the same 12–128 + `A-Z` + `a-z` + `0-9` + allowed-special policy.
+- Backend/domain validation is the sole password-policy authority; web guidance
+  is non-enforcing and `ANY-541` owns generated backend/frontend API contract
+  migration.
 - Login proves existing credentials without applying the new-password policy.
 - Password hashing/storage is unchanged.
 - `email_verified_at` means proven mailbox ownership.

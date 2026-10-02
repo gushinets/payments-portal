@@ -90,6 +90,7 @@
       "signedOutWithoutToken": "Entre normalmente e solicite um e-mail de verificação na sua conta.",
       "signInAction": "Entrar",
       "action": "Verificar e-mail",
+      "retrySession": "Tentar carregar a sessão novamente",
       "verifying": "Verificando...",
       "successTitle": "E-mail verificado",
       "successDescription": "Seu endereço de e-mail foi verificado. A sessão atual permanece ativa.",

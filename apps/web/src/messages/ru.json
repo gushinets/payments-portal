@@ -90,6 +90,7 @@
       "signedOutWithoutToken": "Войдите обычным способом, затем запросите письмо подтверждения в аккаунте.",
       "signInAction": "Войти",
       "action": "Подтвердить email",
+      "retrySession": "Повторить загрузку сессии",
       "verifying": "Подтверждаем...",
       "successTitle": "Email подтверждён",
       "successDescription": "Email подтверждён. Текущая сессия остаётся активной.",

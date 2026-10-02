@@ -1,15 +1,23 @@
 # Payment Portal Data Model and Backend Invariants
 
 Status: authoritative current-state schema reference
-Last verified: 2026-09-24
+Last verified: 2026-10-02
 
 > **CURRENT AS-BUILT SCHEMA REFERENCE**
 
-This document describes the schema created by the sole first-install migration,
-`20260924_0001_clean_first_install`. It is authoritative for the implemented
-SQLAlchemy table inventory and physical persistence rules. Step 9 owns final
-regeneration of the column-level schema artifact after this source/doc/guard
-checkpoint; that generated artifact is intentionally not updated here.
+This document describes the schema produced by the current Alembic chain:
+
+```text
+20260924_0001 -> 20261001_0002 (head)
+```
+
+`20260924_0001_clean_first_install` creates the 25-table first-install schema.
+`20261001_0002_clear_false_email_verification` is a data-only forward migration
+that clears predecessor registration-time `users.email_verified_at` values,
+because those timestamps did not prove mailbox ownership. The chain has one
+current head. This document is authoritative for the implemented SQLAlchemy
+table inventory and physical persistence rules; the generated column-level
+artifact remains `docs/generated/db-schema.md`.
 
 Target commercial ownership and runtime behavior follow, in precedence order:
 
@@ -25,7 +33,7 @@ paid-access derivation, or Kernel invalidation delivery is implemented.
 
 A fresh database has exactly 25 application tables: ten retained
 identity/session/legal tables and fifteen target external-billing persistence
-tables. Alembic has one revision and one head.
+tables. Alembic has two revisions in one linear chain and one current head.
 
 There is no Portal-owned product, plan, order, payment, refund, subscription,
 entitlement, trial, provider-account, or direct-payment webhook table. There is
@@ -39,7 +47,7 @@ to a Portal-managed routing catalog.
 | `country_region_rules` | Identity/contour | Country membership, market enablement, strict mismatch, and legal document-set selection. |
 | `users` | Identity | Canonical contour-scoped Portal user. |
 | `auth_sessions` | Identity | Hashed, expiring and revocable authenticated sessions. |
-| `magic_link_tokens` | Identity | Hash-only password-reset tokens, including decoy-safe nullable user binding. |
+| `magic_link_tokens` | Identity | Purpose-bound hash-only password-reset and email-verification capabilities, including decoy-safe nullable user binding for password reset. |
 | `password_reset_rate_limits` | Identity | Durable password-reset rate-limit windows. |
 | `legal_entities` | Legal | Contour operator metadata. |
 | `document_versions` | Legal | Versioned legal material and active-version selection. |
@@ -89,8 +97,14 @@ to have a row in this inventory.
 identifier. Direct-provider defaults and region override flags do not exist.
 
 `users`, `auth_sessions`, `magic_link_tokens`, and
-`password_reset_rate_limits` retain the provider-independent authentication and
-recovery behavior. Session and token secrets are stored only as hashes.
+`password_reset_rate_limits` retain the provider-independent authentication,
+mailbox-verification, and recovery behavior. Session and capability secrets are
+stored only as hashes. `magic_link_tokens.purpose` distinguishes
+`password_reset` from `email_verification`; both capabilities are scoped to the
+configured tenant/region and the canonical user when `user_id` is present.
+Password-reset requests for unknown email addresses alone may use the nullable
+user binding and one-way decoy email key. `users.email_verified_at IS NOT NULL`
+is the single authoritative mailbox-verification fact.
 
 `legal_acceptance_events` is the acceptance-action parent. Its
 `external_billing_account_id`, `billing_offer_id`, and
@@ -219,12 +233,14 @@ facades.
 
 ## Bootstrap and runtime boundary
 
-The first-install migration owns schema creation and deterministic bootstrap of
-the currently supported configured `anytoolai` / `ru` contour, local RU country
-membership, legal entity, and six current RU legal document versions. The API
-legal seed is an idempotent, fail-closed runtime validation of the same
-canonical legal material and rejects any other configured scope; it is not a
-second schema or migration authority.
+The first revision owns schema creation and deterministic bootstrap of the
+currently supported configured `anytoolai` / `ru` contour, local RU country
+membership, legal entity, and six current RU legal document versions. The
+second revision clears every non-null predecessor `email_verified_at` value and
+cannot reconstruct those false-positive values on downgrade. The API legal seed
+is an idempotent, fail-closed runtime validation of the same canonical legal
+material and rejects any other configured scope; it is not a second schema or
+migration authority.
 
 All fifteen target billing tables are empty after bootstrap. Step-4 application
 runtime does not populate them. Browser returns, callbacks, webhook receipt,

@@ -89,10 +89,19 @@ test("password reset confirmation submits token and new password", async ({ page
   ]);
 });
 
-test("password reset confirmation enforces the shared new-password policy", async ({ page }) => {
+test("password reset confirmation relies on backend new-password policy", async ({ page }) => {
   const requests: unknown[] = [];
   await page.route("**/api/auth/password-reset/confirm", async (route) => {
-    requests.push(route.request().postDataJSON());
+    const payload = route.request().postDataJSON();
+    requests.push(payload);
+    if (payload.password === "Aa1!aaaaaaa") {
+      await route.fulfill({
+        status: 400,
+        contentType: "application/json",
+        body: JSON.stringify({ detail: { code: "password_policy_not_met" } })
+      });
+      return;
+    }
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -108,7 +117,9 @@ test("password reset confirmation enforces the shared new-password policy", asyn
   await expect(
     page.getByText("Пароль не соответствует всем требованиям.")
   ).toBeVisible();
-  expect(requests).toEqual([]);
+  expect(requests).toEqual([
+    { token: "shared-policy-token", password: "Aa1!aaaaaaa" }
+  ]);
 
   await page.getByLabel("Новый пароль").fill("Valid-reset-123!");
   await page.getByLabel("Повторите пароль").fill("Valid-reset-123!");
@@ -118,6 +129,7 @@ test("password reset confirmation enforces the shared new-password policy", asyn
     page.getByText("Пароль изменён. Теперь можно войти с новым паролем.")
   ).toBeVisible();
   expect(requests).toEqual([
+    { token: "shared-policy-token", password: "Aa1!aaaaaaa" },
     { token: "shared-policy-token", password: "Valid-reset-123!" }
   ]);
 });
