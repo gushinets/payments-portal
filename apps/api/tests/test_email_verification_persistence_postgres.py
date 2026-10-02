@@ -13,8 +13,8 @@ from app.domains.identity.errors import InvalidOrExpiredVerificationTokenError
 from app.domains.identity.services.auth import register_user
 from app.infrastructure.persistence.email_verification import (
     claim_valid_email_verification_token,
-    get_email_verification_token,
 )
+from app.infrastructure.queries.email_verification import get_email_verification_token
 from app.models import MagicLinkPurpose, MagicLinkToken, User
 
 

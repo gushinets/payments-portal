@@ -1,7 +1,7 @@
 # Payment Portal Architecture
 
 Status: authoritative current-state map
-Last verified: 2026-09-29
+Last verified: 2026-10-02
 
 ## System boundary
 
@@ -256,13 +256,15 @@ payment state, or manual operator input alone never grant paid access.
 
 | Operation | Current owner and boundary |
 | --- | --- |
-| Registration | `register_user()` atomically commits the user, one legal-acceptance event, all required document-acceptance rows, and initial auth session. |
+| Registration | `register_user()` atomically commits the user, one legal-acceptance event, all required document-acceptance rows, initial auth session, and the email-verification capability. |
 | Login | `login_user()` owns login bookkeeping and new-session commit. |
 | Authenticated bookkeeping | `authenticate_session()` commits `last_seen_at` before endpoint execution as a separate transaction. |
 | Logout | Auth bookkeeping commits first; `logout_session()` then deletes the session in a separate commit. |
 | Legal acceptance | `accept_legal_document()` owns the acceptance commit and refresh. |
 | Password-reset request | `prepare_password_reset()` intentionally commits cleanup, IP/account rate limits, and token creation as separate durable phases. |
 | Password-reset confirmation | `confirm_password_reset()` atomically commits token claim, password change, outstanding-token invalidation, and active-session revocation. |
+| Email-verification confirmation | `confirm_email_verification()` atomically commits the mailbox-verification fact, token claim, and invalidation of other outstanding verification capabilities. |
+| Email-verification resend/rotation | `prepare_email_verification_resend()` atomically commits invalidation of the previous outstanding capability and creation of its replacement after the cooldown/lock checks. |
 | Target billing tables | No current runtime transaction populates them. Their behavior belongs to later `ANY-504` steps. |
 
 ## Enforced architecture guards

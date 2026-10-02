@@ -19,9 +19,11 @@ from app.generated.locales import RouteLocale
 from app.infrastructure.persistence.email_verification import (
     claim_valid_email_verification_token,
     delete_other_outstanding_email_verification_tokens,
+    invalidate_outstanding_email_verification_tokens,
+)
+from app.infrastructure.queries.email_verification import (
     get_email_verification_token,
     get_newest_outstanding_email_verification_token,
-    invalidate_outstanding_email_verification_tokens,
 )
 from app.infrastructure.queries.identity import lock_active_user_by_id_and_scope
 from app.models import MagicLinkPurpose, MagicLinkToken, User

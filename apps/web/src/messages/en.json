@@ -88,6 +88,7 @@
       "signInTitle": "Sign in to verify your email",
       "signInWithToken": "The verification link is ready. Sign in normally, then confirm your email on this page.",
       "signedOutWithoutToken": "Sign in normally, then request a verification email from your account.",
+      "switchAccountAction": "Sign out to switch accounts",
       "signInAction": "Sign in",
       "action": "Verify email",
       "retrySession": "Retry session load",

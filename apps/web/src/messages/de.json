@@ -88,6 +88,7 @@
       "signInTitle": "Zum Bestätigen der E-Mail anmelden",
       "signInWithToken": "Der Bestätigungslink ist bereit. Melden Sie sich normal an und bestätigen Sie dann Ihre E-Mail auf dieser Seite.",
       "signedOutWithoutToken": "Melden Sie sich normal an und fordern Sie dann in Ihrem Konto eine Bestätigungs-E-Mail an.",
+      "switchAccountAction": "Abmelden, um das Konto zu wechseln",
       "signInAction": "Anmelden",
       "action": "E-Mail bestätigen",
       "retrySession": "Sitzung erneut laden",

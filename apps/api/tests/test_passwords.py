@@ -31,7 +31,7 @@ def test_password_policy_boundaries(password: str, expected: bool) -> None:
     assert password_meets_policy(password) is expected
 
 
-def test_password_policy_constants_define_transport_bounds() -> None:
+def test_password_policy_constants_define_business_bounds() -> None:
     assert (PASSWORD_MIN_LENGTH, PASSWORD_MAX_LENGTH) == (12, 128)
     assert PASSWORD_SPECIAL_CHARACTERS == "!@#$%^&*()-_=+[]{}:,.?"
 
@@ -47,6 +47,39 @@ def test_password_policy_constants_define_transport_bounds() -> None:
 )
 def test_password_policy_requires_each_character_class(password: str) -> None:
     assert password_meets_policy(password) is False
+
+
+@pytest.mark.parametrize(
+    "password",
+    [
+        "Aa1!aaaaaaa",  # 11 characters
+        "Aa1!" + "a" * 125,  # 129 characters
+        "aa1!" + "a" * 8,  # missing uppercase
+        "AA1!" + "A" * 8,  # missing lowercase
+        "Aaa!" + "a" * 8,  # missing digit
+        "Aa11" + "a" * 8,  # missing special character
+    ],
+)
+@pytest.mark.parametrize("endpoint", ["register", "password-reset/confirm"])
+def test_api_returns_password_policy_error_for_invalid_new_password(
+    endpoint: str,
+    password: str,
+) -> None:
+    payload = (
+        {
+            "email": f"invalid-password-{len(password)}-{endpoint.replace('/', '-')}@example.com",
+            "password": password,
+            "personal_consent": True,
+            "offer_consent": True,
+        }
+        if endpoint == "register"
+        else {"token": "t" * 32, "password": password}
+    )
+
+    response = client.post(f"/api/auth/{endpoint}", json=payload)
+
+    assert response.status_code == 400
+    assert response.json() == {"detail": {"code": "password_policy_not_met"}}
 
 
 @pytest.mark.parametrize("special", PASSWORD_SPECIAL_CHARACTERS)

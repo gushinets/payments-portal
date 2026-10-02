@@ -88,6 +88,7 @@
       "signInTitle": "Entre para verificar seu e-mail",
       "signInWithToken": "O link de verificação está pronto. Entre normalmente e confirme o e-mail nesta página.",
       "signedOutWithoutToken": "Entre normalmente e solicite um e-mail de verificação na sua conta.",
+      "switchAccountAction": "Sair para trocar de conta",
       "signInAction": "Entrar",
       "action": "Verificar e-mail",
       "retrySession": "Tentar carregar a sessão novamente",

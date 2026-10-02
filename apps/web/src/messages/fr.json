@@ -88,6 +88,7 @@
       "signInTitle": "Connectez-vous pour vérifier votre e-mail",
       "signInWithToken": "Le lien de vérification est prêt. Connectez-vous normalement, puis confirmez votre e-mail sur cette page.",
       "signedOutWithoutToken": "Connectez-vous normalement, puis demandez un e-mail de vérification depuis votre compte.",
+      "switchAccountAction": "Se déconnecter pour changer de compte",
       "signInAction": "Se connecter",
       "action": "Vérifier l’e-mail",
       "retrySession": "Réessayer le chargement de la session",

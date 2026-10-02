@@ -8,7 +8,6 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.settings import settings
-from app.domains.identity.passwords import PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH
 from app.domains.identity.services.password_reset import (
     confirm_password_reset as confirm_password_reset_use_case,
     prepare_password_reset,
@@ -26,7 +25,7 @@ class PasswordResetRequest(BaseModel):
 
 class PasswordResetConfirmRequest(BaseModel):
     token: str = Field(min_length=32, max_length=256)
-    password: str = Field(min_length=PASSWORD_MIN_LENGTH, max_length=PASSWORD_MAX_LENGTH)
+    password: str
 
 
 class PasswordResetRequestResponse(BaseModel):

@@ -9,7 +9,6 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.settings import settings
-from app.domains.identity.passwords import PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH
 from app.domains.identity.services.auth import (
     AuthenticationResult,
     login_user,
@@ -30,7 +29,7 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 class RegisterRequest(BaseModel):
     email: EmailStr
-    password: str = Field(min_length=PASSWORD_MIN_LENGTH, max_length=PASSWORD_MAX_LENGTH)
+    password: str
     personal_consent: bool
     offer_consent: bool
 

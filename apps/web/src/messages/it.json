@@ -88,6 +88,7 @@
       "signInTitle": "Accedi per verificare l’email",
       "signInWithToken": "Il link di verifica è pronto. Accedi normalmente, quindi conferma l’email in questa pagina.",
       "signedOutWithoutToken": "Accedi normalmente, quindi richiedi un’email di verifica dal tuo account.",
+      "switchAccountAction": "Esci per cambiare account",
       "signInAction": "Accedi",
       "action": "Verifica email",
       "retrySession": "Riprova a caricare la sessione",

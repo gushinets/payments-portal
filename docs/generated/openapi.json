@@ -199,8 +199,6 @@
       "PasswordResetConfirmRequest": {
         "properties": {
           "password": {
-            "maxLength": 128,
-            "minLength": 12,
             "title": "Password",
             "type": "string"
           },
@@ -300,8 +298,6 @@
             "type": "boolean"
           },
           "password": {
-            "maxLength": 128,
-            "minLength": 12,
             "title": "Password",
             "type": "string"
           },

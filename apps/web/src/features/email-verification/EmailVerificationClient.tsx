@@ -1,14 +1,16 @@
 "use client";
 
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import { MailCheck } from "lucide-react";
+import { LogOut, MailCheck } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import {
   ApiError,
   confirmEmailVerification,
   decodeAuthSessionResponse,
+  decodeLogoutResponse,
   getJson,
+  postJson,
   sessionChangedEvent,
   sessionStorageKey,
   submitAuth,
@@ -132,6 +134,25 @@ export function EmailVerificationClient({
     }
   }
 
+  async function switchAccount() {
+    const sessionToken = window.localStorage.getItem(sessionStorageKey);
+    setLoading(true);
+    try {
+      if (sessionToken) {
+        await postJson("/api/auth/logout", {}, decodeLogoutResponse, sessionToken);
+      }
+    } catch {
+      // Removing the local bearer still leaves this browser signed out.
+    } finally {
+      window.localStorage.removeItem(sessionStorageKey);
+      window.dispatchEvent(new Event(sessionChangedEvent));
+      setVerificationState({ status: "signed_out" });
+      setAuthError("");
+      setVerificationError("");
+      setLoading(false);
+    }
+  }
+
   async function verify() {
     const sessionToken = window.localStorage.getItem(sessionStorageKey);
     const verificationToken = verificationTokenRef.current;
@@ -243,7 +264,7 @@ export function EmailVerificationClient({
     );
   }
 
-  if (verificationState.user.email_verified) {
+  if (verificationState.user.email_verified && !hasVerificationToken) {
     return (
       <VerificationPanel title={t("verify.alreadyVerifiedTitle")}>
         <div className="notice">{t("verify.alreadyVerifiedDescription")}</div>
@@ -268,19 +289,31 @@ export function EmailVerificationClient({
   return (
     <VerificationPanel title={t("verify.title")}>
       <p className="card-copy">{t("verify.description")}</p>
+      <p className="card-copy">{verificationState.user.email}</p>
       <div aria-live="polite">
         {verificationError ? (
           <div className="notice error">{verificationError}</div>
         ) : null}
       </div>
-      <button
-        className="btn-primary"
-        type="button"
-        disabled={loading}
-        onClick={() => void verify()}
-      >
-        {loading ? t("verify.verifying") : t("verify.action")}
-      </button>
+      <div className="hero-actions">
+        <button
+          className="btn-primary"
+          type="button"
+          disabled={loading}
+          onClick={() => void verify()}
+        >
+          {loading ? t("verify.verifying") : t("verify.action")}
+        </button>
+        <button
+          className="btn-secondary"
+          type="button"
+          disabled={loading}
+          onClick={() => void switchAccount()}
+        >
+          <LogOut size={15} aria-hidden="true" />
+          {t("verify.switchAccountAction")}
+        </button>
+      </div>
     </VerificationPanel>
   );
 }

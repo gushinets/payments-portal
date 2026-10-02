@@ -384,6 +384,98 @@ test("fragment token stays memory-only, waits for sign-in and verifies without r
   await expect.poll(() => sessionFacts.includes(true)).toBe(true);
 });
 
+test("wrong authenticated account can switch without losing the in-memory verification token", async ({
+  page
+}) => {
+  const wrongUser = mockUser("wrong-account@example.com", true);
+  const correctUser = mockUser("correct-account@example.com");
+  let confirmRequests = 0;
+  await installSession(page, "wrong-account-bearer");
+  await page.route("**/api/auth/session", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ authenticated: true, user: wrongUser })
+    });
+  });
+  await page.route("**/api/auth/email-verification/confirm", async (route) => {
+    confirmRequests += 1;
+    expect(route.request().postDataJSON()).toEqual({ token: "correct-account-token" });
+    if (confirmRequests === 1) {
+      await route.fulfill({
+        status: 400,
+        contentType: "application/json",
+        body: JSON.stringify({
+          detail: { code: "invalid_or_expired_verification_token" }
+        })
+      });
+      return;
+    }
+    expect(await route.request().headerValue("authorization")).toBe(
+      "Bearer correct-account-bearer"
+    );
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ status: "verified" })
+    });
+  });
+  await page.route("**/api/auth/logout", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ status: "logged_out" })
+    });
+  });
+  await page.route("**/api/auth/login", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        status: "authenticated",
+        token: "correct-account-bearer",
+        user: correctUser
+      })
+    });
+  });
+
+  await page.goto("/ru/verify-email#token=correct-account-token");
+  await expect(page).toHaveURL(/\/ru\/verify-email$/);
+  await expect(
+    page.getByRole("heading", { name: "Подтвердите email", exact: true })
+  ).toBeVisible();
+  await expect(
+    page.getByRole("main").getByText(wrongUser.email, { exact: true })
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Email уже подтверждён", exact: true })
+  ).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Подтвердить email" }).click();
+  await expect(
+    page.getByText(
+      "Ссылка подтверждения недействительна, истекла или уже была использована."
+    )
+  ).toBeVisible();
+
+  await page.getByRole("button", { name: "Выйти и сменить аккаунт" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Войдите, чтобы подтвердить email" })
+  ).toBeVisible();
+  expect(
+    await page.evaluate((key) => window.localStorage.getItem(key), sessionStorageKey)
+  ).toBeNull();
+
+  await page.getByLabel("Email").fill(correctUser.email);
+  await page.getByLabel("Пароль").fill("password");
+  await page.getByRole("main").getByRole("button", { name: "Войти", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Подтвердить email" })).toBeVisible();
+  await page.getByRole("button", { name: "Подтвердить email" }).click();
+
+  await expect(page.getByRole("heading", { name: "Email подтверждён" })).toBeVisible();
+  expect(confirmRequests).toBe(2);
+});
+
 test("transient session failure retries in place and preserves the verification capability", async ({
   page
 }) => {

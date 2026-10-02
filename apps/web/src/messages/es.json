@@ -88,6 +88,7 @@
       "signInTitle": "Inicia sesión para verificar tu correo",
       "signInWithToken": "El enlace de verificación está listo. Inicia sesión normalmente y confirma el correo en esta página.",
       "signedOutWithoutToken": "Inicia sesión normalmente y solicita un correo de verificación desde tu cuenta.",
+      "switchAccountAction": "Cerrar sesión para cambiar de cuenta",
       "signInAction": "Iniciar sesión",
       "action": "Verificar correo",
       "retrySession": "Volver a cargar la sesión",
