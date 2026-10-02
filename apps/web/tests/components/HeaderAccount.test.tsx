@@ -12,9 +12,9 @@ import { renderWithIntl } from "../setup/render-with-intl";
 
 const fetchMock = vi.fn<typeof fetch>();
 
-function jsonResponse(payload: unknown): Response {
+function jsonResponse(payload: unknown, status = 200): Response {
   return new Response(JSON.stringify(payload), {
-    status: 200,
+    status,
     headers: { "Content-Type": "application/json" }
   });
 }
@@ -42,7 +42,7 @@ describe("header account session", () => {
     vi.unstubAllGlobals();
   });
 
-  it("clears the trusted session when a successful response is malformed", async () => {
+  it("retains the trusted session when a successful response is malformed", async () => {
     window.localStorage.setItem(sessionStorageKey, "session-token");
     fetchMock
       .mockResolvedValueOnce(
@@ -70,10 +70,50 @@ describe("header account session", () => {
     });
 
     await waitFor(() =>
-      expect(window.localStorage.getItem(sessionStorageKey)).toBeNull()
+      expect(window.localStorage.getItem(sessionStorageKey)).toBe("session-token")
     );
-    expect(await screen.findByRole("button", { name: "Войти" })).toBeVisible();
+    expect(await screen.findByText("header@example.com")).toBeVisible();
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("clears the trusted session and dispatches a session change after a 401", async () => {
+    const sessionChangedListener = vi.fn();
+    window.addEventListener(sessionChangedEvent, sessionChangedListener);
+    window.localStorage.setItem(sessionStorageKey, "session-token");
+    fetchMock.mockResolvedValueOnce(jsonResponse({ detail: "unauthorized" }, 401));
+
+    try {
+      renderHeaderAccount();
+
+      await waitFor(() =>
+        expect(window.localStorage.getItem(sessionStorageKey)).toBeNull()
+      );
+      expect(sessionChangedListener).toHaveBeenCalledTimes(1);
+      expect(await screen.findByRole("button", { name: "Войти" })).toBeVisible();
+    } finally {
+      window.removeEventListener(sessionChangedEvent, sessionChangedListener);
+    }
+  });
+
+  it("retains the trusted session after a transient 500 response", async () => {
+    const sessionChangedListener = vi.fn();
+    window.addEventListener(sessionChangedEvent, sessionChangedListener);
+    window.localStorage.setItem(sessionStorageKey, "session-token");
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ detail: { code: "internal_server_error" } }, 500)
+    );
+
+    try {
+      renderHeaderAccount();
+
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+      expect(window.localStorage.getItem(sessionStorageKey)).toBe("session-token");
+      expect(sessionChangedListener).not.toHaveBeenCalled();
+      expect(screen.getByRole("button", { name: "Аккаунт" })).toBeDisabled();
+      expect(screen.queryByRole("button", { name: "Войти" })).not.toBeInTheDocument();
+    } finally {
+      window.removeEventListener(sessionChangedEvent, sessionChangedListener);
+    }
   });
 
   it("retains the trusted session during a transient network failure", async () => {
@@ -82,8 +122,10 @@ describe("header account session", () => {
 
     renderHeaderAccount();
 
-    expect(await screen.findByRole("button", { name: "Войти" })).toBeVisible();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     expect(window.localStorage.getItem(sessionStorageKey)).toBe("session-token");
+    expect(screen.getByRole("button", { name: "Аккаунт" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Войти" })).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -138,7 +180,8 @@ describe("header account session", () => {
       });
 
       expect(requestSignals[0]?.aborted).toBe(true);
-      expect(screen.getByRole("button", { name: "Войти" })).toBeEnabled();
+      expect(screen.getByRole("button", { name: "Аккаунт" })).toBeDisabled();
+      expect(screen.queryByRole("button", { name: "Войти" })).not.toBeInTheDocument();
       expect(window.localStorage.getItem(sessionStorageKey)).toBe(
         "session-token"
       );

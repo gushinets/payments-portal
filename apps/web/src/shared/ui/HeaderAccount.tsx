@@ -5,7 +5,6 @@ import { LogIn, UserRound } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import {
-  ApiContractError,
   ApiError,
   decodeAuthSessionResponse,
   getJson,
@@ -50,21 +49,16 @@ export function HeaderAccount({ languageTag }: { languageTag: string }) {
         );
         if (!cancelled && payload.authenticated) {
           setSessionUser(payload.user);
+          setLoaded(true);
         }
       } catch (requestError) {
-        if (
-          requestError instanceof ApiError ||
-          requestError instanceof ApiContractError
-        ) {
+        if (requestError instanceof ApiError && requestError.status === 401) {
           window.localStorage.removeItem(sessionStorageKey);
           window.dispatchEvent(new Event(sessionChangedEvent));
           setSessionUser(null);
-        }
-        // Keep the existing token during transient network failures.
-      } finally {
-        if (!cancelled) {
           setLoaded(true);
         }
+        // Keep the existing token during transient network failures.
       }
     }
 

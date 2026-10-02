@@ -100,4 +100,35 @@ describe("email verification session loading", () => {
       }
     }
   );
+
+  it("shows already-verified UI and ignores an old fragment token", async () => {
+    window.history.replaceState(
+      window.history.state,
+      "",
+      "/ru/verify-email#token=old-verification-token"
+    );
+    window.localStorage.setItem(sessionStorageKey, "session-token");
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        authenticated: true,
+        user: {
+          tenant_id: "anytoolai",
+          region: "ru",
+          user_id: "user-id",
+          email: "verified@example.com",
+          email_verified: true
+        }
+      })
+    );
+
+    renderEmailVerificationClient();
+
+    expect(
+      await screen.findByRole("heading", { name: "Email уже подтверждён" })
+    ).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Подтвердить email" })).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(window.localStorage.getItem(sessionStorageKey)).toBe("session-token");
+    expect(window.location.hash).toBe("");
+  });
 });
