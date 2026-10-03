@@ -47,12 +47,20 @@ export function HeaderAccount({ languageTag }: { languageTag: string }) {
           token,
           decodeAuthSessionResponse
         );
-        if (!cancelled && payload.authenticated) {
+        if (
+          !cancelled &&
+          window.localStorage.getItem(sessionStorageKey) === token &&
+          payload.authenticated
+        ) {
           setSessionUser(payload.user);
           setLoaded(true);
         }
       } catch (requestError) {
-        if (requestError instanceof ApiError && requestError.status === 401) {
+        if (
+          requestError instanceof ApiError &&
+          requestError.status === 401 &&
+          window.localStorage.getItem(sessionStorageKey) === token
+        ) {
           window.localStorage.removeItem(sessionStorageKey);
           window.dispatchEvent(new Event(sessionChangedEvent));
           setSessionUser(null);

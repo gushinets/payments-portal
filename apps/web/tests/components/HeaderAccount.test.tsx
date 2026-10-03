@@ -95,6 +95,69 @@ describe("header account session", () => {
     }
   });
 
+  it("ignores a stale 401 after the bearer changes", async () => {
+    const sessionChangedListener = vi.fn();
+    let resolveSession: (response: Response) => void = () => undefined;
+    const sessionRequest = new Promise<Response>((resolve) => {
+      resolveSession = resolve;
+    });
+
+    window.addEventListener(sessionChangedEvent, sessionChangedListener);
+    window.localStorage.setItem(sessionStorageKey, "token-a");
+    fetchMock.mockReturnValueOnce(sessionRequest);
+
+    try {
+      renderHeaderAccount();
+
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+      window.localStorage.setItem(sessionStorageKey, "token-b");
+
+      await act(async () => {
+        resolveSession(jsonResponse({ detail: "unauthorized" }, 401));
+      });
+
+      expect(window.localStorage.getItem(sessionStorageKey)).toBe("token-b");
+      expect(sessionChangedListener).not.toHaveBeenCalled();
+      expect(screen.queryByRole("button", { name: "Войти" })).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Аккаунт" })).toBeDisabled();
+    } finally {
+      window.removeEventListener(sessionChangedEvent, sessionChangedListener);
+    }
+  });
+
+  it("ignores a stale successful response after the bearer changes", async () => {
+    let resolveSession: (response: Response) => void = () => undefined;
+    const sessionRequest = new Promise<Response>((resolve) => {
+      resolveSession = resolve;
+    });
+
+    window.localStorage.setItem(sessionStorageKey, "token-a");
+    fetchMock.mockReturnValueOnce(sessionRequest);
+
+    renderHeaderAccount();
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    window.localStorage.setItem(sessionStorageKey, "token-b");
+
+    await act(async () => {
+      resolveSession(
+        jsonResponse({
+          authenticated: true,
+          user: {
+            tenant_id: "anytoolai",
+            region: "ru",
+            user_id: "user-a",
+            email: "user-a@example.com",
+            email_verified: true
+          }
+        })
+      );
+    });
+
+    expect(screen.queryByText("user-a@example.com")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Аккаунт" })).toBeDisabled();
+  });
+
   it("retains the trusted session after a transient 500 response", async () => {
     const sessionChangedListener = vi.fn();
     window.addEventListener(sessionChangedEvent, sessionChangedListener);
