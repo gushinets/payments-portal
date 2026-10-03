@@ -32,14 +32,15 @@ def test_register_and_login_results_are_presentable_after_session_close() -> Non
             tenant_id="anytoolai",
             region="ru",
             email=email,
-            password="very-secret-password",
+            password="Very-secret-pass1!",
             personal_consent=True,
             offer_consent=True,
             client_ip=None,
             user_agent=None,
+            route_locale="ru",
         )
 
-    registration_user = present_user(registration)
+    registration_user = present_user(registration.authentication)
 
     with SessionLocal() as db:
         authentication = identity_auth_service.login_user(
@@ -47,7 +48,7 @@ def test_register_and_login_results_are_presentable_after_session_close() -> Non
             tenant_id="anytoolai",
             region="ru",
             email=email,
-            password="very-secret-password",
+            password="Very-secret-pass1!",
             client_ip=None,
             user_agent=None,
         )
@@ -58,8 +59,9 @@ def test_register_and_login_results_are_presentable_after_session_close() -> Non
     assert registration_user.model_dump(mode="json") == {
         "tenant_id": "anytoolai",
         "region": "ru",
-        "user_id": str(registration.user_id),
+        "user_id": str(registration.authentication.user_id),
         "email": email,
+        "email_verified": False,
     }
 
 
@@ -79,6 +81,7 @@ def test_session_contract_returns_only_canonical_identity() -> None:
             "region": "ru",
             "user_id": response.json()["user"]["user_id"],
             "email": "identity-session-only@example.com",
+            "email_verified": False,
         },
     }
     assert "product_state" not in response.json()
@@ -96,6 +99,7 @@ def test_session_contract_returns_only_canonical_identity() -> None:
         "region",
         "user_id",
         "email",
+        "email_verified",
     }
 
 
@@ -106,7 +110,7 @@ def test_same_email_foreign_client_scope_cannot_create_foreign_contour_user() ->
             "tenant_id": "foreign-tenant",
             "region": "eu",
             "email": "shared@example.com",
-            "password": "very-secret-password",
+            "password": "Very-secret-pass1!",
             "personal_consent": True,
             "offer_consent": True,
         },
@@ -117,7 +121,7 @@ def test_same_email_foreign_client_scope_cannot_create_foreign_contour_user() ->
             "tenant_id": "another-foreign-tenant",
             "region": "eu",
             "email": "shared@example.com",
-            "password": "very-secret-password",
+            "password": "Very-secret-pass1!",
             "personal_consent": True,
             "offer_consent": True,
         },
@@ -145,11 +149,12 @@ def test_register_and_login_foreign_client_scope_cannot_select_foreign_contour_u
             tenant_id="anytoolai",
             region="ru",
             email=email,
-            password="local-password-123",
+            password="Local-password1!",
             personal_consent=True,
             offer_consent=True,
             client_ip=None,
             user_agent=None,
+            route_locale="ru",
         )
     with SessionLocal() as db:
         db.add(
@@ -179,7 +184,7 @@ def test_register_and_login_foreign_client_scope_cannot_select_foreign_contour_u
             "tenant_id": "foreign-tenant",
             "region": "eu",
             "email": email,
-            "password": "local-password-123",
+            "password": "Local-password1!",
         },
     )
 
@@ -193,7 +198,7 @@ def test_same_email_cannot_register_twice_in_local_scope() -> None:
     payload = {
         "region": "ru",
         "email": "shared@example.com",
-        "password": "very-secret-password",
+        "password": "Very-secret-pass1!",
         "personal_consent": True,
         "offer_consent": True,
     }
@@ -212,7 +217,7 @@ def test_registration_failure_before_initial_session_rolls_back_and_allows_retry
     payload = {
         "region": "ru",
         "email": "atomic-registration@example.com",
-        "password": "very-secret-password",
+        "password": "Very-secret-pass1!",
         "personal_consent": True,
         "offer_consent": True,
     }
@@ -258,7 +263,7 @@ def test_selected_auth_failures_use_structured_error_codes() -> None:
         "/api/auth/register",
         json={
             "email": "missing-personal-consent@example.com",
-            "password": "very-secret-password",
+            "password": "Very-secret-pass1!",
             "personal_consent": False,
             "offer_consent": True,
         },
@@ -267,7 +272,7 @@ def test_selected_auth_failures_use_structured_error_codes() -> None:
         "/api/auth/register",
         json={
             "email": "missing-offer-consent@example.com",
-            "password": "very-secret-password",
+            "password": "Very-secret-pass1!",
             "personal_consent": True,
             "offer_consent": False,
         },
@@ -290,7 +295,7 @@ def test_auth_sessions_store_only_token_hash() -> None:
         "/api/auth/register",
         json={
             "email": "user@example.com",
-            "password": "very-secret-password",
+            "password": "Very-secret-pass1!",
             "personal_consent": True,
             "offer_consent": True,
         },
@@ -311,7 +316,7 @@ def test_login_and_logout_flow() -> None:
         "/api/auth/register",
         json={
             "email": "user@example.com",
-            "password": "very-secret-password",
+            "password": "Very-secret-pass1!",
             "personal_consent": True,
             "offer_consent": True,
         },
@@ -326,6 +331,7 @@ def test_login_and_logout_flow() -> None:
             "region": "ru",
             "user_id": register_payload["user"]["user_id"],
             "email": "user@example.com",
+            "email_verified": False,
         },
     }
 
@@ -333,7 +339,7 @@ def test_login_and_logout_flow() -> None:
         "/api/auth/login",
         json={
             "email": "user@example.com",
-            "password": "very-secret-password",
+            "password": "Very-secret-pass1!",
         },
     )
 
@@ -379,7 +385,7 @@ def test_security_revoked_and_expired_auth_sessions_remain_invalid() -> None:
         "/api/auth/register",
         json={
             "email": "inactive-sessions@example.com",
-            "password": "very-secret-password",
+            "password": "Very-secret-pass1!",
             "personal_consent": True,
             "offer_consent": True,
         },
@@ -388,7 +394,7 @@ def test_security_revoked_and_expired_auth_sessions_remain_invalid() -> None:
         "/api/auth/login",
         json={
             "email": "inactive-sessions@example.com",
-            "password": "very-secret-password",
+            "password": "Very-secret-pass1!",
         },
     )
     revoked_token = register_response.json()["token"]
@@ -422,7 +428,7 @@ def test_foreign_contour_bearer_session_is_rejected_without_mutation() -> None:
         "/api/auth/register",
         json={
             "email": "local-session@example.com",
-            "password": "very-secret-password",
+            "password": "Very-secret-pass1!",
             "personal_consent": True,
             "offer_consent": True,
         },
@@ -481,7 +487,7 @@ def test_auth_sessions_and_login_require_active_user() -> None:
         "/api/auth/register",
         json={
             "email": "non-active-user@example.com",
-            "password": "very-secret-password",
+            "password": "Very-secret-pass1!",
             "personal_consent": True,
             "offer_consent": True,
         },
@@ -499,7 +505,7 @@ def test_auth_sessions_and_login_require_active_user() -> None:
         "/api/auth/login",
         json={
             "email": "non-active-user@example.com",
-            "password": "very-secret-password",
+            "password": "Very-secret-pass1!",
         },
     )
     session_response = client.get(

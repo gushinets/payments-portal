@@ -172,7 +172,7 @@ def test_trivy_ignore_entries_are_scoped_explained_and_unexpired() -> None:
         expiration = entry["expired_at"]
         if isinstance(expiration, str):
             expiration = date.fromisoformat(expiration)
-        assert expiration == date(2026, 9, 30)
+        assert expiration == date(2026, 10, 31)
 
 
 def test_non_compose_iac_fixture_requires_yaml_and_json_findings(

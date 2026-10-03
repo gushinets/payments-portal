@@ -16,6 +16,7 @@ from apps.api.tests.support.postgres import alembic_test_config, reset_public_sc
 
 
 BASELINE_REVISION = "20260924_0001"
+HEAD_REVISION = "20261001_0002"
 
 SURVIVOR_TABLES = {
     "regions",
@@ -690,7 +691,7 @@ def _expected_legal_documents() -> list[dict[str, str]]:
     )
 
 
-def test_clean_first_install_has_one_revision_and_exact_application_schema(
+def test_clean_first_install_has_expected_revisions_and_exact_application_schema(
     postgres_engine: Engine,
     database_test_url: URL,
 ) -> None:
@@ -699,9 +700,9 @@ def test_clean_first_install_has_one_revision_and_exact_application_schema(
 
     with alembic_test_config(database_test_url) as config:
         script = ScriptDirectory.from_config(config)
-        assert script.get_heads() == [BASELINE_REVISION]
+        assert script.get_heads() == [HEAD_REVISION]
         assert script.get_bases() == [BASELINE_REVISION]
-        assert [item.revision for item in script.walk_revisions()] == [BASELINE_REVISION]
+        assert [item.revision for item in script.walk_revisions()] == [HEAD_REVISION, BASELINE_REVISION]
         command.upgrade(config, "head")
 
     assert tuple(logging.getLogger().handlers) == handlers
@@ -709,7 +710,7 @@ def test_clean_first_install_has_one_revision_and_exact_application_schema(
     assert _public_table_names(postgres_engine) == APPLICATION_TABLES | {"alembic_version"}
     assert LEGACY_TABLES.isdisjoint(_public_table_names(postgres_engine))
     with postgres_engine.connect() as connection:
-        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == BASELINE_REVISION
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == HEAD_REVISION
 
     inspector = inspect(postgres_engine)
     for table_name, expected_columns in EXPECTED_COLUMNS.items():
@@ -909,6 +910,63 @@ def test_survivor_scope_constraints_reject_cross_contour_references(migrated_dat
                 "'10000000-0000-4000-8000-000000000001')"
             )
         )
+
+
+def test_email_verification_migration_clears_false_timestamp_without_revoking_session(
+    postgres_engine: Engine,
+    database_test_url: URL,
+) -> None:
+    reset_public_schema(postgres_engine)
+    user_id = "10000000-0000-4000-8000-000000000010"
+    session_id = "10000000-0000-4000-8000-000000000011"
+    with alembic_test_config(database_test_url) as config:
+        command.upgrade(config, BASELINE_REVISION)
+        with postgres_engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO users "
+                    "(id, tenant_id, region, email, email_normalized, email_verified_at, status, metadata) VALUES "
+                    "(:user_id, 'anytoolai', 'ru', 'predecessor@example.com', "
+                    "'predecessor@example.com', now(), 'active', '{}'::jsonb)"
+                ),
+                {"user_id": user_id},
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO auth_sessions "
+                    "(id, tenant_id, region, user_id, token_hash, expires_at) VALUES "
+                    "(:session_id, 'anytoolai', 'ru', :user_id, 'retained-session', now() + interval '1 day')"
+                ),
+                {"session_id": session_id, "user_id": user_id},
+            )
+
+        command.upgrade(config, HEAD_REVISION)
+
+        with postgres_engine.connect() as connection:
+            assert (
+                connection.execute(
+                    text("SELECT email_verified_at FROM users WHERE id = :user_id"),
+                    {"user_id": user_id},
+                ).scalar_one_or_none()
+                is None
+            )
+            assert (
+                connection.execute(
+                    text("SELECT revoked_at FROM auth_sessions WHERE id = :session_id"),
+                    {"session_id": session_id},
+                ).scalar_one_or_none()
+                is None
+            )
+
+        command.downgrade(config, BASELINE_REVISION)
+        with postgres_engine.connect() as connection:
+            assert (
+                connection.execute(
+                    text("SELECT email_verified_at FROM users WHERE id = :user_id"),
+                    {"user_id": user_id},
+                ).scalar_one_or_none()
+                is None
+            )
 
 
 def test_clean_first_install_downgrades_to_empty_public_schema(

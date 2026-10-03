@@ -26,9 +26,18 @@
     "fields": {
       "emailLabel": "Email",
       "passwordLabel": "Password",
-      "passwordPlaceholder": "At least 8 characters",
+      "passwordPlaceholder": "Enter your password",
+      "newPasswordPlaceholder": "12–128 characters",
       "passwordConfirmLabel": "Repeat password",
       "passwordConfirmPlaceholder": "Enter the password again"
+    },
+    "passwordRequirements": {
+      "label": "Password requirements",
+      "length": "12–128 characters",
+      "uppercase": "At least one uppercase Latin letter (A–Z)",
+      "lowercase": "At least one lowercase Latin letter (a–z)",
+      "digit": "At least one digit (0–9)",
+      "special": "At least one of {characters}"
     },
     "forgotPasswordAction": "Forgot your password?",
     "actions": {
@@ -39,6 +48,7 @@
     "validation": {
       "invalidEmail": "Enter a valid email address.",
       "passwordTooShort": "The password must contain at least 8 characters.",
+      "passwordPolicyNotMet": "The password does not meet all requirements.",
       "passwordMismatch": "The passwords do not match.",
       "personalConsentRequired": "You must consent to personal data processing.",
       "offerConsentRequired": "You must accept the public offer terms."
@@ -53,10 +63,49 @@
       "invalidCredentials": "The email or password is incorrect.",
       "missingPersonalConsent": "You must consent to personal data processing.",
       "missingOfferConsent": "You must accept the public offer terms.",
+      "passwordPolicyNotMet": "The password does not meet all requirements.",
       "internalServer": "The service is temporarily unavailable. Try again later.",
       "contract": "The service returned an unexpected response. Try again.",
       "network": "Could not connect to the service. Check your connection and try again.",
       "generic": "Could not complete authentication. Try again."
+    }
+  },
+  "EmailVerification": {
+    "pending": {
+      "badge": "Email verification",
+      "title": "Verify your email",
+      "description": "You are signed in. Verify your email address before using paid features.",
+      "resend": "Send verification email again",
+      "resending": "Sending...",
+      "accepted": "If another message can be sent, it is on its way. Check your inbox."
+    },
+    "verify": {
+      "loading": "Loading email verification...",
+      "badge": "Email verification",
+      "title": "Verify your email",
+      "description": "Confirm this email address for your signed-in AnytoolAI account.",
+      "missingToken": "This page has no verification token. Reopen the link from your email or request another message.",
+      "signInTitle": "Sign in to verify your email",
+      "signInWithToken": "The verification link is ready. Sign in normally, then confirm your email on this page.",
+      "signedOutWithoutToken": "Sign in normally, then request a verification email from your account.",
+      "switchAccountAction": "Sign out to switch accounts",
+      "signInAction": "Sign in",
+      "action": "Verify email",
+      "retrySession": "Retry session load",
+      "verifying": "Verifying...",
+      "successTitle": "Email verified",
+      "successDescription": "Your email address is verified. Your existing session remains active.",
+      "alreadyVerifiedTitle": "Email already verified",
+      "alreadyVerifiedDescription": "This account already has a verified email address.",
+      "openAccount": "Open account"
+    },
+    "errors": {
+      "invalidOrExpiredToken": "This verification link is invalid, expired, or has already been used.",
+      "signInRequired": "Sign in normally before verifying or requesting another email.",
+      "internalServer": "The service is temporarily unavailable. Try again later.",
+      "contract": "The service returned an unexpected response. Try again.",
+      "network": "Could not connect to the service. Check your connection and try again.",
+      "generic": "Could not complete email verification. Try again."
     }
   },
   "Checkout": {
@@ -118,13 +167,21 @@
       "description": "Set a new password for your AnytoolAI account. Active sessions will end after the change.",
       "fields": {
         "passwordLabel": "New password",
-        "passwordPlaceholder": "At least 8 characters",
+        "passwordPlaceholder": "12–128 characters",
         "passwordConfirmLabel": "Repeat password",
         "passwordConfirmPlaceholder": "Enter the password again"
       },
+      "passwordRequirements": {
+        "label": "Password requirements",
+        "length": "12–128 characters",
+        "uppercase": "At least one uppercase Latin letter (A–Z)",
+        "lowercase": "At least one lowercase Latin letter (a–z)",
+        "digit": "At least one digit (0–9)",
+        "special": "At least one of {characters}"
+      },
       "validation": {
         "missingToken": "The password change link is invalid. Request a new link.",
-        "passwordTooShort": "The password must contain at least 8 characters.",
+        "passwordPolicyNotMet": "The password does not meet all requirements.",
         "passwordMismatch": "The passwords do not match."
       },
       "notices": {
@@ -138,7 +195,8 @@
     "errors": {
       "invalidOrExpiredToken": "The link is invalid or has expired. Request a new link.",
       "rateLimited": "Too many password recovery attempts. Try again later.",
-      "invalidInput": "Check the email address and password. The password must contain at least 8 characters.",
+      "invalidInput": "Check the email address and make sure the password meets all requirements.",
+      "passwordPolicyNotMet": "The password does not meet all requirements.",
       "internalServer": "The service is temporarily unavailable. Try again later.",
       "contract": "The service returned an unexpected response. Try again.",
       "network": "Could not connect to the service. Check your connection and try again.",

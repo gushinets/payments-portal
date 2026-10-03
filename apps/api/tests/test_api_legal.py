@@ -141,7 +141,7 @@ def test_seeded_registration_documents_are_accepted_atomically() -> None:
         },
         json={
             "email": "seeded-legal@example.com",
-            "password": "very-secret-password",
+            "password": "Very-secret-pass1!",
             "personal_consent": True,
             "offer_consent": True,
         },
@@ -247,7 +247,7 @@ def test_registration_fails_closed_for_incomplete_or_unmapped_legal_pack(invalid
         "/api/auth/register",
         json={
             "email": f"invalid-pack-{invalid_pack}@example.com",
-            "password": "very-secret-password",
+            "password": "Very-secret-pass1!",
             "personal_consent": True,
             "offer_consent": True,
         },
@@ -499,7 +499,7 @@ def test_create_document_acceptance_rejects_substituted_hash_in_endpoint_and_ser
         "/api/auth/register",
         json={
             "email": "legal-service-hash@example.com",
-            "password": "very-secret-password",
+            "password": "Very-secret-pass1!",
             "personal_consent": True,
             "offer_consent": True,
         },

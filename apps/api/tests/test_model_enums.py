@@ -36,7 +36,7 @@ def _values(enum_cls: type) -> set[str]:
 def test_canonical_enum_layer_contains_approved_vocabularies() -> None:
     assert _values(RegionStatus) == {"active"}
     assert _values(UserStatus) == {"active"}
-    assert _values(MagicLinkPurpose) == {"password_reset"}
+    assert _values(MagicLinkPurpose) == {"password_reset", "email_verification"}
     assert _values(LegalEntityStatus) == {"active"}
     assert _values(LegalEntityType) == {
         "individual_entrepreneur",

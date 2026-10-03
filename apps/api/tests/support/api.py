@@ -111,7 +111,7 @@ def register_test_user(
             "tenant_id": tenant_id,
             "region": region,
             "email": email,
-            "password": "very-secret-password",
+            "password": "Very-secret-pass1!",
             "personal_consent": True,
             "offer_consent": True,
         },

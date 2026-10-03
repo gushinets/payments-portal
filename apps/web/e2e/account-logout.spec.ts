@@ -10,7 +10,7 @@ test("account logout revokes the session and returns to the signed-out account s
     const registration = await api.post("/api/auth/register", {
       data: {
         email,
-        password: "synthetic-password-123",
+        password: "Synthetic-password-123!",
         personal_consent: true,
         offer_consent: true
       }

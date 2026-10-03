@@ -126,17 +126,18 @@ def register_user_with_legal_evidence(
     db_session: Session,
     *,
     email: str,
-) -> identity_auth_service.AuthenticationResult:
+) -> identity_auth_service.RegistrationResult:
     return identity_auth_service.register_user(
         db_session,
         tenant_id="anytoolai",
         region="ru",
         email=email,
-        password="very-secret-password",
+        password="Very-secret-pass1!",
         personal_consent=True,
         offer_consent=True,
         client_ip="192.0.2.10",
         user_agent="identity-legal-survivor-test",
+        route_locale="ru",
     )
 
 
@@ -148,12 +149,15 @@ def test_registration_persists_canonical_identity_hashed_session_and_legal_event
         email="provider-independent-registration@example.com",
     )
 
-    user = db_session.get(User, result.user_id)
-    auth_session = db_session.query(AuthSession).filter(AuthSession.user_id == result.user_id).one()
+    authentication = result.authentication
+    user = db_session.get(User, authentication.user_id)
+    auth_session = db_session.query(AuthSession).filter(AuthSession.user_id == authentication.user_id).one()
     acceptance_event = (
-        db_session.query(LegalAcceptanceEvent).filter(LegalAcceptanceEvent.user_id == result.user_id).one()
+        db_session.query(LegalAcceptanceEvent).filter(LegalAcceptanceEvent.user_id == authentication.user_id).one()
     )
-    acceptances = db_session.query(DocumentAcceptance).filter(DocumentAcceptance.user_id == result.user_id).all()
+    acceptances = (
+        db_session.query(DocumentAcceptance).filter(DocumentAcceptance.user_id == authentication.user_id).all()
+    )
     accepted_documents = (
         db_session.query(DocumentVersion)
         .filter(DocumentVersion.id.in_([acceptance.document_version_id for acceptance in acceptances]))
@@ -162,10 +166,10 @@ def test_registration_persists_canonical_identity_hashed_session_and_legal_event
 
     assert user is not None
     assert isinstance(user.id, uuid.UUID)
-    assert user.id == result.user_id
+    assert user.id == authentication.user_id
     assert (user.tenant_id, user.region) == ("anytoolai", "ru")
-    assert auth_session.token_hash == hashlib.sha256(result.token.encode("utf-8")).hexdigest()
-    assert auth_session.token_hash != result.token
+    assert auth_session.token_hash == hashlib.sha256(authentication.token.encode("utf-8")).hexdigest()
+    assert auth_session.token_hash != authentication.token
     assert {acceptance.legal_acceptance_event_id for acceptance in acceptances} == {acceptance_event.id}
     assert {document.doc_type for document in accepted_documents} == {
         "privacy",
@@ -211,7 +215,7 @@ def test_normal_logout_deletes_only_the_selected_session(
         tenant_id="anytoolai",
         region="ru",
         email="logout-survivor@example.com",
-        password="very-secret-password",
+        password="Very-secret-pass1!",
         client_ip="192.0.2.11",
         user_agent="identity-legal-survivor-test",
     )
@@ -222,7 +226,7 @@ def test_normal_logout_deletes_only_the_selected_session(
 
     remaining_sessions = db_session.query(AuthSession).all()
     assert [session.token_hash for session in remaining_sessions] == [
-        hashlib.sha256(registration.token.encode("utf-8")).hexdigest()
+        hashlib.sha256(registration.authentication.token.encode("utf-8")).hexdigest()
     ]
 
 
@@ -251,7 +255,7 @@ def test_unknown_email_password_reset_uses_hashed_decoy_without_user_binding(
         user_agent="identity-legal-survivor-test",
         route_locale="ru",
     )
-    stored_token = db_session.query(MagicLinkToken).one()
+    stored_token = db_session.query(MagicLinkToken).filter_by(purpose=MagicLinkPurpose.PASSWORD_RESET).one()
 
     assert delivery.send_email is False
     assert delivery.route_locale == "ru"
@@ -274,7 +278,7 @@ def test_password_reset_binds_canonical_user_and_revokes_security_state(
         tenant_id="anytoolai",
         region="ru",
         email="canonical-reset@example.com",
-        password="very-secret-password",
+        password="Very-secret-pass1!",
         client_ip="192.0.2.13",
         user_agent="identity-legal-survivor-test",
     )
@@ -299,22 +303,22 @@ def test_password_reset_binds_canonical_user_and_revokes_security_state(
         user_agent="identity-legal-survivor-test",
         route_locale="ru",
     )
-    stored_token = db_session.query(MagicLinkToken).one()
+    stored_token = db_session.query(MagicLinkToken).filter_by(purpose=MagicLinkPurpose.PASSWORD_RESET).one()
 
     assert delivery.send_email is True
     assert delivery.route_locale == "ru"
-    assert stored_token.user_id == registration.user_id
+    assert stored_token.user_id == registration.authentication.user_id
     assert (stored_token.tenant_id, stored_token.region) == ("anytoolai", "ru")
 
     password_reset_service.confirm_password_reset(
         db_session,
         token=raw_token,
-        password="new-very-secret-password",
+        password="New-very-secret1!",
         tenant_id="anytoolai",
         region="ru",
     )
 
-    sessions = db_session.query(AuthSession).filter(AuthSession.user_id == registration.user_id).all()
+    sessions = db_session.query(AuthSession).filter(AuthSession.user_id == registration.authentication.user_id).all()
     db_session.refresh(stored_token)
     assert len(sessions) == 2
     assert all(session.revoked_at is not None for session in sessions)
@@ -364,7 +368,7 @@ def test_foreign_password_reset_token_is_not_claimed_or_mutated(
         password_reset_service.confirm_password_reset(
             db_session,
             token=raw_token,
-            password="foreign-new-password",
+            password="Foreign-new-pass1!",
             tenant_id="anytoolai",
             region="ru",
         )
@@ -785,11 +789,12 @@ def test_concurrent_duplicate_registration_keeps_one_complete_result(
                     tenant_id="anytoolai",
                     region="ru",
                     email=email,
-                    password="very-secret-password",
+                    password="Very-secret-pass1!",
                     personal_consent=True,
                     offer_consent=True,
                     client_ip="192.0.2.10",
                     user_agent="registration-concurrency-test",
+                    route_locale="ru",
                 )
             except EmailAlreadyRegisteredError:
                 return "duplicate"

@@ -7,6 +7,7 @@ export type AuthUser = {
   region: string;
   user_id: string;
   email: string;
+  email_verified: boolean;
 };
 
 export type AuthResponse = {
@@ -32,12 +33,24 @@ export type PasswordResetConfirmResponse = {
   status: "password_reset";
 };
 
+export type EmailVerificationRequestResponse = {
+  status: "accepted";
+};
+
+export type EmailVerificationConfirmResponse = {
+  status: "verified";
+};
+
 export type SubmitAuthValues = {
   mode: AuthMode;
   email: string;
   password: string;
   personalConsent: boolean;
   offerConsent: boolean;
+};
+
+export type SubmitAuthOptions = {
+  languageTag: string;
 };
 
 export type PasswordResetRequestValues = {
@@ -255,6 +268,26 @@ export function decodePasswordResetConfirmResponse(
   );
 }
 
+export function decodeEmailVerificationRequestResponse(
+  payload: unknown
+): EmailVerificationRequestResponse {
+  return decodeStatusResponse(
+    payload,
+    "accepted",
+    "invalid_email_verification_request_response"
+  );
+}
+
+export function decodeEmailVerificationConfirmResponse(
+  payload: unknown
+): EmailVerificationConfirmResponse {
+  return decodeStatusResponse(
+    payload,
+    "verified",
+    "invalid_email_verification_confirm_response"
+  );
+}
+
 export function decodeApiErrorEnvelope(payload: unknown): ApiErrorEnvelope {
   if (!isRecord(payload) || !("detail" in payload)) {
     throw new Error("invalid_api_error_response");
@@ -308,11 +341,15 @@ function isAuthUser(value: unknown): value is AuthUser {
     typeof value.tenant_id === "string" &&
     typeof value.region === "string" &&
     typeof value.user_id === "string" &&
-    typeof value.email === "string"
+    typeof value.email === "string" &&
+    typeof value.email_verified === "boolean"
   );
 }
 
-export async function submitAuth(values: SubmitAuthValues): Promise<AuthResponse> {
+export async function submitAuth(
+  values: SubmitAuthValues,
+  options: SubmitAuthOptions
+): Promise<AuthResponse> {
   return values.mode === "register"
     ? postJson(
         "/api/auth/register",
@@ -322,7 +359,9 @@ export async function submitAuth(values: SubmitAuthValues): Promise<AuthResponse
           personal_consent: values.personalConsent,
           offer_consent: values.offerConsent
         },
-        decodeRegisterResponse
+        decodeRegisterResponse,
+        undefined,
+        { "Accept-Language": options.languageTag }
       )
     : postJson(
         "/api/auth/login",
@@ -332,6 +371,31 @@ export async function submitAuth(values: SubmitAuthValues): Promise<AuthResponse
         },
         decodeLoginResponse
       );
+}
+
+export async function requestEmailVerification(
+  sessionToken: string,
+  languageTag: string
+): Promise<EmailVerificationRequestResponse> {
+  return postJson(
+    "/api/auth/email-verification/request",
+    {},
+    decodeEmailVerificationRequestResponse,
+    sessionToken,
+    { "Accept-Language": languageTag }
+  );
+}
+
+export async function confirmEmailVerification(
+  sessionToken: string,
+  token: string
+): Promise<EmailVerificationConfirmResponse> {
+  return postJson(
+    "/api/auth/email-verification/confirm",
+    { token },
+    decodeEmailVerificationConfirmResponse,
+    sessionToken
+  );
 }
 
 export async function requestPasswordReset(

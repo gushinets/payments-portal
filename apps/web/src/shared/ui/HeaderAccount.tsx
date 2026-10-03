@@ -5,28 +5,30 @@ import { LogIn, UserRound } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import {
-  ApiContractError,
   ApiError,
   decodeAuthSessionResponse,
   getJson,
   sessionChangedEvent,
   sessionStorageKey,
-  submitAuth
+  submitAuth,
+  type AuthUser
 } from "@/shared/api/auth";
 import { AuthForm, AuthFormSubmitValues, AuthMode } from "./AuthForm";
+import { EmailVerificationPending } from "./EmailVerificationPending";
 import { authErrorMessageKey } from "./auth-errors";
 
 const telegramLoginUrl = process.env.NEXT_PUBLIC_TELEGRAM_LOGIN_URL ?? "";
 
-export function HeaderAccount() {
+export function HeaderAccount({ languageTag }: { languageTag: string }) {
   const t = useTranslations("Auth");
-  const [email, setEmail] = useState("");
+  const [sessionUser, setSessionUser] = useState<AuthUser | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [initialAuthMode, setInitialAuthMode] = useState<AuthMode>("login");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [verificationPending, setVerificationPending] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -34,7 +36,7 @@ export function HeaderAccount() {
     async function loadHeaderSession() {
       const token = window.localStorage.getItem(sessionStorageKey);
       if (!token) {
-        setEmail("");
+        setSessionUser(null);
         setLoaded(true);
         return;
       }
@@ -45,23 +47,26 @@ export function HeaderAccount() {
           token,
           decodeAuthSessionResponse
         );
-        if (!cancelled && payload.authenticated) {
-          setEmail(payload.user.email);
+        if (
+          !cancelled &&
+          window.localStorage.getItem(sessionStorageKey) === token &&
+          payload.authenticated
+        ) {
+          setSessionUser(payload.user);
+          setLoaded(true);
         }
       } catch (requestError) {
         if (
-          requestError instanceof ApiError ||
-          requestError instanceof ApiContractError
+          requestError instanceof ApiError &&
+          requestError.status === 401 &&
+          window.localStorage.getItem(sessionStorageKey) === token
         ) {
           window.localStorage.removeItem(sessionStorageKey);
           window.dispatchEvent(new Event(sessionChangedEvent));
-          setEmail("");
-        }
-        // Keep the existing token during transient network failures.
-      } finally {
-        if (!cancelled) {
+          setSessionUser(null);
           setLoaded(true);
         }
+        // Keep the existing token during transient network failures.
       }
     }
 
@@ -81,6 +86,7 @@ export function HeaderAccount() {
     setInitialAuthMode(nextMode);
     setNotice("");
     setError("");
+    setVerificationPending(false);
     setModalOpen(true);
   }
 
@@ -90,11 +96,15 @@ export function HeaderAccount() {
 
     setLoading(true);
     try {
-      const payload = await submitAuth(values);
+      const payload = await submitAuth(values, { languageTag });
       window.localStorage.setItem(sessionStorageKey, payload.token);
       window.dispatchEvent(new Event(sessionChangedEvent));
-      setEmail(payload.user.email);
-      setModalOpen(false);
+      setSessionUser(payload.user);
+      if (payload.user.email_verified) {
+        setModalOpen(false);
+      } else {
+        setVerificationPending(true);
+      }
     } catch (requestError) {
       setError(t(authErrorMessageKey(requestError)));
     } finally {
@@ -109,10 +119,10 @@ export function HeaderAccount() {
           <UserRound size={15} aria-hidden="true" />
           {t("header.account")}
         </button>
-      ) : email ? (
+      ) : sessionUser ? (
         <Link className="btn-secondary nav-account" href="/account">
           <UserRound size={15} aria-hidden="true" />
-          <span className="nav-account-email">{email}</span>
+          <span className="nav-account-email">{sessionUser.email}</span>
           <small>{t("header.accountArea")}</small>
         </Link>
       ) : (
@@ -140,27 +150,31 @@ export function HeaderAccount() {
             aria-modal="true"
             aria-label={t("header.dialogAriaLabel")}
           >
-            <AuthForm
-              title={t("dialogTitle")}
-              badgeIcon={<UserRound size={12} aria-hidden="true" />}
-              initialMode={initialAuthMode}
-              modeOrder={["login", "register"]}
-              notice={notice}
-              error={error}
-              loading={loading}
-              telegramLoginUrl={telegramLoginUrl}
-              onModeChange={() => {
-                setNotice("");
-                setError("");
-              }}
-              onPasswordResetClick={() => setModalOpen(false)}
-              onBeforeSubmit={() => {
-                setError("");
-                setNotice("");
-              }}
-              onValidationError={setError}
-              onSubmit={authenticate}
-            />
+            {verificationPending ? (
+              <EmailVerificationPending languageTag={languageTag} />
+            ) : (
+              <AuthForm
+                title={t("dialogTitle")}
+                badgeIcon={<UserRound size={12} aria-hidden="true" />}
+                initialMode={initialAuthMode}
+                modeOrder={["login", "register"]}
+                notice={notice}
+                error={error}
+                loading={loading}
+                telegramLoginUrl={telegramLoginUrl}
+                onModeChange={() => {
+                  setNotice("");
+                  setError("");
+                }}
+                onPasswordResetClick={() => setModalOpen(false)}
+                onBeforeSubmit={() => {
+                  setError("");
+                  setNotice("");
+                }}
+                onValidationError={setError}
+                onSubmit={authenticate}
+              />
+            )}
           </div>
         </>
       ) : null}

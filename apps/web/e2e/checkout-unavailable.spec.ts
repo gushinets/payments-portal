@@ -17,7 +17,8 @@ test("auth shell exposes no legacy commerce or provider execution", async ({
           tenant_id: "anytoolai",
           region: "ru",
           user_id: "11111111-1111-4111-8111-111111111111",
-          email: "auth-shell@example.com"
+          email: "auth-shell@example.com",
+          email_verified: true
         }
       })
     });

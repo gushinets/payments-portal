@@ -8,6 +8,7 @@ export type PasswordResetErrorMessageKey =
   | "errors.invalidOrExpiredToken"
   | "errors.rateLimited"
   | "errors.invalidInput"
+  | "errors.passwordPolicyNotMet"
   | "errors.internalServer"
   | TransportErrorMessageKey;
 
@@ -22,6 +23,9 @@ export function passwordResetErrorMessageKey(
     }
     if (error.status === 429 && code === "password_reset_rate_limited") {
       return "errors.rateLimited";
+    }
+    if (error.status === 400 && code === "password_policy_not_met") {
+      return "errors.passwordPolicyNotMet";
     }
     if (error.status === 422) {
       return "errors.invalidInput";

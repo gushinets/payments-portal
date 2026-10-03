@@ -2,7 +2,7 @@
 
 import CanonicalLink from "next/link";
 import { useTranslations } from "next-intl";
-import { type ReactNode, type Ref, useState } from "react";
+import { type ReactNode, type Ref, useId, useState } from "react";
 import { ArrowRight } from "lucide-react";
 import {
   REGISTRATION_OFFER_CONSENT_TEXT,
@@ -42,7 +42,6 @@ type AuthFormProps = {
 };
 
 const defaultModeOrder: AuthMode[] = ["login", "register"];
-
 type ConsentTextLink = {
   href: string;
   text: string;
@@ -104,6 +103,7 @@ export function AuthForm({
   const [passwordConfirm, setPasswordConfirm] = useState("");
   const [personalConsent, setPersonalConsent] = useState(false);
   const [offerConsent, setOfferConsent] = useState(false);
+  const passwordRequirementsId = useId();
 
   function selectMode(nextMode: AuthMode) {
     setMode(nextMode);
@@ -118,7 +118,7 @@ export function AuthForm({
       return;
     }
 
-    if (password.length < 8) {
+    if (mode === "login" && password.length < 8) {
       onValidationError(t("validation.passwordTooShort"));
       return;
     }
@@ -196,7 +196,14 @@ export function AuthForm({
           className="input"
           type="password"
           autoComplete={mode === "register" ? "new-password" : "current-password"}
-          placeholder={t("fields.passwordPlaceholder")}
+          placeholder={
+            mode === "register"
+              ? t("fields.newPasswordPlaceholder")
+              : t("fields.passwordPlaceholder")
+          }
+          aria-describedby={
+            mode === "register" ? passwordRequirementsId : undefined
+          }
           value={password}
           onChange={(event) => setPassword(event.target.value)}
         />
@@ -214,6 +221,24 @@ export function AuthForm({
 
       {mode === "register" ? (
         <>
+          <div
+            className="password-requirements"
+            id={passwordRequirementsId}
+          >
+            <p>{t("passwordRequirements.label")}</p>
+            <ul>
+              <li>{t("passwordRequirements.length")}</li>
+              <li>{t("passwordRequirements.uppercase")}</li>
+              <li>{t("passwordRequirements.lowercase")}</li>
+              <li>{t("passwordRequirements.digit")}</li>
+              <li>
+                {t("passwordRequirements.special", {
+                  characters: "!@#$%^&*()-_=+[]{}:,.?"
+                })}
+              </li>
+            </ul>
+          </div>
+
           <label className="field-label">
             {t("fields.passwordConfirmLabel")}
             <input

@@ -11,7 +11,7 @@ class RegisterRequestFactory(ModelFactory[RegisterRequest]):
     __model__ = RegisterRequest
 
     email = "user@example.com"
-    password = "very-secret-password"
+    password = "Very-secret-pass1!"
     personal_consent = True
     offer_consent = True
 
@@ -24,7 +24,7 @@ class LoginRequestFactory(ModelFactory[LoginRequest]):
     __model__ = LoginRequest
 
     email = "user@example.com"
-    password = "very-secret-password"
+    password = "Very-secret-pass1!"
 
     @classmethod
     def payload(cls, **overrides: Any) -> dict[str, Any]:

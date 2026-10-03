@@ -1,22 +1,29 @@
 # Portal Identity, Session, and Legal Baseline
 
-Status: authoritative as-built `ANY-504` Step 3 handoff to Step 4  
-Last verified against code: 2026-09-23
+Status: authoritative retained `ANY-510` baseline with `ANY-538` / 4C extensions
+Last verified against code: 2026-10-02
 
 ## Authority and scope
 
-This document freezes the provider-independent identity, session, recovery,
-and legal baseline implemented by `ANY-510`. It is the retained-schema input
-to `ANY-504` Step 4. For target billing ownership and persistence, it is
-subordinate to [ADR 0005](decisions/0005-external-billing-boundary.md), the
-accepted [External Billing Boundary Design](../superpowers/specs/2026-09-15-external-billing-boundary-design.md),
-the accepted [Portal <-> Kernel Access Contract Design](../superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md),
-and the reviewed [External Billing Persistence Reset](external-billing-persistence-reset.md).
+This document records the provider-independent identity, session, recovery,
+and legal baseline established by `ANY-510`, as retained in the clean
+persistence baseline, plus the email-verification and new-password extensions
+implemented by `ANY-538` / 4C. It is the durable predecessor contract for
+`ANY-541` / 4D and later 4F work.
 
-The current ORM and migrations are the as-built authority for the details
-recorded here. Step 4 must consume their final semantics before replacing the
-pre-reset Alembic history. This document does not authorize target billing
-runtime, provider behavior, or the destructive reset itself.
+For target billing ownership and behavior, it is subordinate, in order, to
+[ADR 0005](decisions/0005-external-billing-boundary.md), the accepted
+[External Billing Boundary Design](../superpowers/specs/2026-09-15-external-billing-boundary-design.md),
+and the accepted
+[Portal <-> Kernel Access Contract Design](../superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md).
+The [current data model](payment-portal-data-model.md) is authoritative for the
+as-built physical schema. The
+[External Billing Persistence Reset](external-billing-persistence-reset.md) is
+retained implementation history, not current-state or target authority.
+
+The current ORM and Alembic chain are the as-built authority for implementation
+details recorded here. This document does not authorize provider behavior,
+billing initiation, paid-access derivation, or API contract generation.
 
 ## Canonical Portal identity and contour scope
 
@@ -99,6 +106,51 @@ approved legal and retention authority changes that rule.
 Raw session and reset secrets, authorization headers, and passwords must not
 be persisted or logged.
 
+### New-password policy
+
+Registration and password-reset confirmation apply one shared backend policy
+to new passwords: 12 through 128 Unicode code points, at least one ASCII
+uppercase letter `A-Z`, one ASCII lowercase letter `a-z`, one ASCII digit
+`0-9`, and one character from `!@#$%^&*()-_=+[]{}:,.?`. Values are not trimmed,
+normalized, escaped, or otherwise mutated. Login continues to validate existing
+credentials and does not retroactively apply the new-password policy.
+
+The backend/domain `password_meets_policy()` decision is the only current
+business and security authority. Web registration and reset surfaces display
+localized guidance and present the backend `password_policy_not_met` result,
+but they do not independently decide whether a password satisfies the policy.
+Generated backend/frontend API contract work remains owned by `ANY-541`.
+
+Password hashing and verification remain unchanged: passwords are encoded as
+UTF-8 and hashed with PBKDF2-HMAC-SHA256 using 120,000 iterations and a random
+per-password salt. Registration still creates the existing bearer session, and
+password-reset confirmation still revokes active sessions as described above.
+
+### Email verification
+
+`users.email_verified_at IS NOT NULL` is the authoritative proof of mailbox
+ownership. Ordinary Portal registration, login, and authenticated session use
+do not require a verified email. Registration creates a hashed, purpose-bound,
+24-hour verification token and sends a localized fragment URL; resend requires
+the current bearer session, accepts no email address, and returns the same
+accepted response for verified and cooldown no-ops. Confirmation requires both
+the current bearer session and a matching unexpired token for the same canonical
+user and contour. Success consumes outstanding verification capabilities and
+sets `email_verified_at` without creating, replacing, removing, or otherwise
+mutating the bearer session.
+
+The browser keeps the verification token only in memory, removes it from the
+URL fragment immediately, and never persists it in local storage, session
+storage, cookies, or query parameters. Raw verification tokens share the same
+no-persistence and no-logging requirement as session and reset secrets.
+
+Future external-customer creation, PurchaseIntent creation, and every billing
+initiation path must fail closed while `users.email_verified_at IS NULL`.
+Registration legal evidence remains non-commercial and cannot satisfy future
+purchase-bound legal evidence. Before billing is enabled, verification-email
+delivery must be configured and smoke-tested; this baseline does not add SMTP
+readiness infrastructure.
+
 ## Relational scope integrity
 
 The following alternate keys and composite foreign keys are implemented. The
@@ -168,12 +220,13 @@ informational (`requires_acceptance=false`) and registration neither claims
 its acknowledgement nor creates a `DocumentAcceptance` for it.
 
 One non-commercial `LegalAcceptanceEvent`, its three
-`DocumentAcceptance` rows, the canonical `User`, and the initial
-`AuthSession` commit in one transaction with one acceptance timestamp. A
-failure leaves none durable. The scoped email unique constraint is the final
-concurrency guard: two concurrent registrations produce one complete winner;
-the loser rolls back its entire user/session/legal result and receives the
-duplicate-email error.
+`DocumentAcceptance` rows, the canonical `User`, the initial `AuthSession`, and
+one hash-only email-verification capability commit in one application-owned
+transaction with one acceptance timestamp. A failure leaves none durable.
+Localized verification delivery is scheduled only after that commit. The
+scoped email unique constraint is the final concurrency guard: two concurrent
+registrations produce one complete winner; the loser rolls back its entire
+user/session/legal/verification result and receives the duplicate-email error.
 
 `acceptance_text_hash` proves the actual approved acceptance surface, not one
 universal statement for a document version. The generic authenticated legal
@@ -275,13 +328,15 @@ if these exact semantics and their PostgreSQL tests remain intact.
 ## Public API survivor contract
 
 Step 4 retains the provider-independent registration, login, logout,
-password-reset request/confirmation, authenticated legal acceptance, required
-legal-document discovery, and core session identity behavior. Registration,
-login, recovery, and legal discovery remain server-scoped as described above.
+email-verification request/confirmation, password-reset request/confirmation,
+authenticated legal acceptance, required legal-document discovery, and core
+session identity behavior. Registration, login, verification, recovery, and
+legal discovery remain server-scoped as described above.
 
 Core `GET /api/auth/session` continues to authenticate the bearer session and
-return `authenticated: true` plus the canonical user's server-derived
-`tenant_id`, `region`, `user_id`, and email. Step 4 removes its optional
+returns `authenticated: true` plus the canonical user's server-derived
+`tenant_id`, `region`, `user_id`, email, and `email_verified` fact. Step 4
+removes its optional
 `product` input and billing-derived `product_state` output. It also removes the
 checkout-intent, payment-status, Portal catalog, and old account-subscription
 contracts and their frontend callers. Plan-bound recurring-consent and legacy

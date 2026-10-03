@@ -23,6 +23,10 @@ class InvalidCredentialsError(AppError):
     pass
 
 
+class PasswordPolicyError(AppError):
+    pass
+
+
 class PasswordResetError(AppError):
     pass
 
@@ -32,4 +36,8 @@ class PasswordResetRateLimitedError(PasswordResetError):
 
 
 class InvalidOrExpiredResetTokenError(PasswordResetError):
+    pass
+
+
+class InvalidOrExpiredVerificationTokenError(AppError):
     pass

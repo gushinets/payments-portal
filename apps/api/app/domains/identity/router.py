@@ -3,8 +3,8 @@ from __future__ import annotations
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request
-from pydantic import BaseModel, EmailStr, Field
+from fastapi import APIRouter, BackgroundTasks, Depends, Request
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -15,7 +15,13 @@ from app.domains.identity.services.auth import (
     logout_session,
     register_user,
 )
+from app.domains.identity.services.email_verification import (
+    confirm_email_verification,
+    prepare_email_verification_resend,
+    send_email_verification_email_safely,
+)
 from app.http.dependencies import get_current_session
+from app.http.request_locale import normalize_request_language
 from app.models import AuthSession, User
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -23,7 +29,7 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 class RegisterRequest(BaseModel):
     email: EmailStr
-    password: str = Field(min_length=8, max_length=128)
+    password: str
     personal_consent: bool
     offer_consent: bool
 
@@ -38,6 +44,7 @@ class SessionUserResponse(BaseModel):
     region: str
     user_id: UUID
     email: EmailStr
+    email_verified: bool
 
 
 class RegisterResponse(BaseModel):
@@ -61,12 +68,29 @@ class LogoutResponse(BaseModel):
     status: Literal["logged_out"]
 
 
+class EmailVerificationConfirmRequest(BaseModel):
+    token: str = Field(min_length=32, max_length=256)
+
+
+class EmailVerificationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class EmailVerificationConfirmResponse(BaseModel):
+    status: Literal["verified"]
+
+
+class EmailVerificationRequestResponse(BaseModel):
+    status: Literal["accepted"]
+
+
 def present_user(result: AuthenticationResult) -> SessionUserResponse:
     return SessionUserResponse(
         tenant_id=result.tenant_id,
         region=result.region,
         user_id=str(result.user_id),
         email=result.email,
+        email_verified=result.email_verified,
     )
 
 
@@ -74,8 +98,10 @@ def present_user(result: AuthenticationResult) -> SessionUserResponse:
 def register(
     payload: RegisterRequest,
     request: Request,
+    background_tasks: BackgroundTasks,
     db: Annotated[Session, Depends(get_db)],
 ) -> RegisterResponse:
+    route_locale = normalize_request_language(request.headers.get("accept-language"))
     result = register_user(
         db,
         tenant_id=settings.instance_tenant_id,
@@ -86,12 +112,21 @@ def register(
         offer_consent=payload.offer_consent,
         client_ip=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
+        route_locale=route_locale,
+    )
+    authentication = result.authentication
+    delivery = result.verification_delivery
+    background_tasks.add_task(
+        send_email_verification_email_safely,
+        delivery.recipient_email,
+        delivery.verification_url,
+        delivery.route_locale,
     )
 
     return RegisterResponse(
         status="registered",
-        token=result.token,
-        user=present_user(result),
+        token=authentication.token,
+        user=present_user(authentication),
     )
 
 
@@ -130,6 +165,7 @@ def get_session(
             region=user.region,
             user_id=user.id,
             email=user.email,
+            email_verified=user.email_verified_at is not None,
         ),
     )
 
@@ -142,3 +178,46 @@ def logout(
     _, session = current
     logout_session(db, auth_session=session)
     return LogoutResponse(status="logged_out")
+
+
+@router.post("/email-verification/confirm")
+def confirm_verification(
+    payload: EmailVerificationConfirmRequest,
+    current: Annotated[tuple[User, AuthSession], Depends(get_current_session)],
+    db: Annotated[Session, Depends(get_db)],
+) -> EmailVerificationConfirmResponse:
+    user, _ = current
+    confirm_email_verification(
+        db,
+        token=payload.token,
+        authenticated_user=user,
+    )
+    return EmailVerificationConfirmResponse(status="verified")
+
+
+@router.post("/email-verification/request")
+def request_email_verification(
+    payload: EmailVerificationRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    current: Annotated[tuple[User, AuthSession], Depends(get_current_session)],
+    db: Annotated[Session, Depends(get_db)],
+) -> EmailVerificationRequestResponse:
+    user, _ = current
+    delivery = prepare_email_verification_resend(
+        db,
+        user_id=user.id,
+        tenant_id=user.tenant_id,
+        region=user.region,
+        route_locale=normalize_request_language(request.headers.get("accept-language")),
+        client_ip=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    if delivery is not None:
+        background_tasks.add_task(
+            send_email_verification_email_safely,
+            delivery.recipient_email,
+            delivery.verification_url,
+            delivery.route_locale,
+        )
+    return EmailVerificationRequestResponse(status="accepted")

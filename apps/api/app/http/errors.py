@@ -13,8 +13,10 @@ from app.domains.identity.errors import (
     EmailAlreadyRegisteredError,
     InvalidCredentialsError,
     InvalidOrExpiredResetTokenError,
+    InvalidOrExpiredVerificationTokenError,
     MissingOfferConsentError,
     MissingPersonalConsentError,
+    PasswordPolicyError,
     PasswordResetRateLimitedError,
 )
 from app.infrastructure.sentry import Operation, report_exception
@@ -30,8 +32,10 @@ HTTP_ERROR_RESPONSES: dict[type[AppError], tuple[int, str]] = {
     MissingOfferConsentError: (400, "missing_offer_consent"),
     EmailAlreadyRegisteredError: (409, "email_already_registered"),
     InvalidCredentialsError: (401, "invalid_credentials"),
+    PasswordPolicyError: (400, "password_policy_not_met"),
     PasswordResetRateLimitedError: (429, "password_reset_rate_limited"),
     InvalidOrExpiredResetTokenError: (400, "invalid_or_expired_reset_token"),
+    InvalidOrExpiredVerificationTokenError: (400, "invalid_or_expired_verification_token"),
 }
 
 
