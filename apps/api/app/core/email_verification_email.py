@@ -81,7 +81,7 @@ EMAIL_VERIFICATION_TEMPLATES: Final[Mapping[RouteLocale, EmailVerificationTempla
                 "Чтобы подтвердить адрес электронной почты AnytoolAI, откройте ссылку:\n"
                 "{verification_url}\n\n"
                 "Если вы не создавали эту учетную запись, просто проигнорируйте письмо.\n"
-                "Ссылка действует {ttl_hours} часов."
+                "Срок действия ссылки: {ttl_hours} ч."
             ),
         ),
         "pt": EmailVerificationTemplate(
