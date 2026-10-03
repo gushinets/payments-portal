@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EmailVerificationClient } from "@/features/email-verification";
 import ruMessages from "@/messages/ru.json";
@@ -101,7 +101,7 @@ describe("email verification session loading", () => {
     }
   );
 
-  it("shows already-verified UI and ignores an old fragment token", async () => {
+  it("preserves a pending fragment token for an already-verified session", async () => {
     window.history.replaceState(
       window.history.state,
       "",
@@ -120,14 +120,35 @@ describe("email verification session loading", () => {
         }
       })
     );
+    fetchMock.mockResolvedValueOnce(jsonResponse({ status: "verified" }));
 
     renderEmailVerificationClient();
 
     expect(
-      await screen.findByRole("heading", { name: "Email уже подтверждён" })
+      await screen.findByRole("heading", { name: "Подтвердите email" })
     ).toBeVisible();
-    expect(screen.queryByRole("button", { name: "Подтвердить email" })).not.toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(
+      screen.getByRole("button", { name: "Подтвердить email" })
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("heading", { name: "Email уже подтверждён" })
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Подтвердить email" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        2,
+        expect.stringContaining("/api/auth/email-verification/confirm"),
+        expect.objectContaining({
+          body: JSON.stringify({ token: "old-verification-token" })
+        })
+      );
+    });
+    expect(
+      await screen.findByRole("heading", { name: "Email подтверждён" })
+    ).toBeVisible();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(window.localStorage.getItem(sessionStorageKey)).toBe("session-token");
     expect(window.location.hash).toBe("");
   });

@@ -85,10 +85,6 @@ export function EmailVerificationClient({
           decodeAuthSessionResponse
         );
         if (!cancelled) {
-          if (session.user.email_verified) {
-            verificationTokenRef.current = "";
-            setHasVerificationToken(false);
-          }
           setVerificationState({
             status: "authenticated",
             user: session.user
@@ -130,10 +126,6 @@ export function EmailVerificationClient({
       const response = await submitAuth(values, { languageTag });
       window.localStorage.setItem(sessionStorageKey, response.token);
       window.dispatchEvent(new Event(sessionChangedEvent));
-      if (response.user.email_verified) {
-        verificationTokenRef.current = "";
-        setHasVerificationToken(false);
-      }
       setVerificationState({ status: "authenticated", user: response.user });
     } catch (requestError) {
       setAuthError(authT(authErrorMessageKey(requestError)));
@@ -272,7 +264,7 @@ export function EmailVerificationClient({
     );
   }
 
-  if (verificationState.user.email_verified) {
+  if (verificationState.user.email_verified && !hasVerificationToken) {
     return (
       <VerificationPanel title={t("verify.alreadyVerifiedTitle")}>
         <div className="notice">{t("verify.alreadyVerifiedDescription")}</div>
