@@ -385,7 +385,7 @@ release / environment
 stack trace
 ```
 
-The frontend Sentry configuration must use the Sentry JavaScript v11 privacy controls explicitly rather than legacy `sendDefaultPii`. Configure restrictive `dataCollection` so user info, cookies, request/response headers, HTTP bodies, URL query parameters and other unnecessary request/application data are not collected; keep Logs disabled with `enableLogs: false`; keep tracing disabled for this error-only baseline. Sanitize events before delivery so SDK defaults cannot reintroduce sensitive browser/request context. Do not attach raw API payloads or raw validation errors.
+The frontend Sentry configuration must use the Sentry JavaScript v11 privacy controls explicitly rather than legacy `sendDefaultPii`. Configure restrictive `dataCollection` so user info, cookies, request/response headers, HTTP bodies, URL query parameters and other unnecessary request/application data are not collected; keep Sentry Logs unused by not calling `Sentry.logger.*` and not adding logging integrations such as `consoleLoggingIntegration()` or Pino; keep tracing disabled for this error-only baseline. Sanitize events before delivery so SDK defaults cannot reintroduce sensitive browser/request context. Do not attach raw API payloads or raw validation errors.
 
 This step is **error reporting only**. Do not add Session Replay, performance tracing, profiling, Sentry Logs, user/session identity tracking, a custom error ingestion API, or a generic frontend error framework. Source-map upload is not required by ANY-541 and must not introduce insecure build-secret handling; it may be enabled later through a secure build pipeline.
 
@@ -863,7 +863,7 @@ Step 2 only establishes the reporter; Step 3 wires generated-validation failures
 
 ### 6. Keep event data safe
 
-Use the Sentry JavaScript v11 privacy controls, not the removed legacy `sendDefaultPii` option. Configure restrictive `dataCollection` for this error-only baseline so user info, cookies, request/response headers, HTTP bodies, URL query parameters and other unnecessary request/application data are not collected. Explicitly set `enableLogs: false` and `tracesSampleRate: 0`. For explicit contract events, send only the metadata above plus normal sanitized exception/stack information.
+Use the Sentry JavaScript v11 privacy controls, not the removed legacy `sendDefaultPii` option. Configure restrictive `dataCollection` for this error-only baseline so user info, cookies, request/response headers, HTTP bodies, URL query parameters and other unnecessary request/application data are not collected. Do not call `Sentry.logger.*` and do not add logging integrations such as `consoleLoggingIntegration()` or Pino; in Sentry JavaScript v11 this keeps Logs unused without an `enableLogs` option. Explicitly set `tracesSampleRate: 0`. For explicit contract events, send only the metadata above plus normal sanitized exception/stack information.
 
 Do not attach:
 
@@ -976,7 +976,7 @@ Requirements:
 
    Do not wire it into auth.ts yet; Step 3 owns that migration. Do not create a generic frontend error registry.
 
-6. Privacy: this plan uses @sentry/nextjs v11, where legacy sendDefaultPii is removed. Use restrictive `dataCollection` settings supported by the pinned SDK instead. Disable collection of user info, cookies, request/response headers, HTTP bodies, URL query parameters and other unnecessary request/application data. Explicitly set `enableLogs: false` and `tracesSampleRate: 0` for this error-only baseline. Do not send storage contents, tokens, fragments, raw API payloads, raw Zod issues/payload values or arbitrary extra objects. Add only the minimum event sanitization needed to enforce this.
+6. Privacy: this plan uses @sentry/nextjs v11, where legacy sendDefaultPii is removed. Use restrictive `dataCollection` settings supported by the pinned SDK instead. Disable collection of user info, cookies, request/response headers, HTTP bodies, URL query parameters and other unnecessary request/application data. Do not call `Sentry.logger.*` and do not add logging integrations such as `consoleLoggingIntegration()` or Pino; Sentry JavaScript v11 has no `enableLogs` option and Logs stay unused unless logging APIs/integrations are used. Explicitly set `tracesSampleRate: 0` for this error-only baseline. Do not send storage contents, tokens, fragments, raw API payloads, raw Zod issues/payload values or arbitrary extra objects. Add only the minimum event sanitization needed to enforce this.
 
 7. Do not explicitly report expected ApiError/4xx, authentication/form/business outcomes, payment declines, signed-out/session-expired states or handled network/transient failures. Do not duplicate every backend 5xx into web Sentry.
 
