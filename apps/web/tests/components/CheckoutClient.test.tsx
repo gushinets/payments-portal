@@ -20,9 +20,13 @@ function jsonResponse(payload: unknown): Response {
 }
 
 function renderCheckoutClient() {
-  return renderWithIntl(<CheckoutClient />, {
+  return renderWithIntl(<CheckoutClient languageTag="ru" />, {
     locale: "ru",
-    messages: { Auth: ruMessages.Auth, Checkout: ruMessages.Checkout }
+    messages: {
+      Auth: ruMessages.Auth,
+      Checkout: ruMessages.Checkout,
+      EmailVerification: ruMessages.EmailVerification
+    }
   });
 }
 
@@ -60,7 +64,8 @@ describe("provider-independent auth shell", () => {
             tenant_id: "anytoolai",
             region: "ru",
             user_id: "user-id",
-            email: "user@example.com"
+            email: "user@example.com",
+            email_verified: true
           }
         })
       )
@@ -71,7 +76,8 @@ describe("provider-independent auth shell", () => {
             tenant_id: "anytoolai",
             region: "ru",
             user_id: "user-id",
-            email: "user@example.com"
+            email: "user@example.com",
+            email_verified: true
           }
         })
       );
@@ -99,7 +105,8 @@ describe("provider-independent auth shell", () => {
             tenant_id: "anytoolai",
             region: "ru",
             user_id: "registered-user-id",
-            email: "new-user@example.com"
+            email: "new-user@example.com",
+            email_verified: false
           }
         })
       )
@@ -110,7 +117,8 @@ describe("provider-independent auth shell", () => {
             tenant_id: "anytoolai",
             region: "ru",
             user_id: "registered-user-id",
-            email: "new-user@example.com"
+            email: "new-user@example.com",
+            email_verified: false
           }
         })
       );
@@ -121,10 +129,10 @@ describe("provider-independent auth shell", () => {
       await screen.findByRole("button", { name: "Регистрация" })
     );
     await user.type(screen.getByLabelText("Email"), "new-user@example.com");
-    await user.type(screen.getByLabelText("Пароль"), "very-secret-password");
+    await user.type(screen.getByLabelText("Пароль"), "Very-secret-password1!");
     await user.type(
       screen.getByLabelText("Повторите пароль"),
-      "very-secret-password"
+      "Very-secret-password1!"
     );
     for (const checkbox of screen.getAllByRole("checkbox")) {
       await user.click(checkbox);
@@ -149,7 +157,8 @@ describe("provider-independent auth shell", () => {
           tenant_id: "anytoolai",
           region: "ru",
           user_id: "user-id",
-          email: "returning@example.com"
+          email: "returning@example.com",
+          email_verified: true
         }
       })
     );
@@ -175,7 +184,8 @@ describe("provider-independent auth shell", () => {
           tenant_id: "anytoolai",
           region: "ru",
           user_id: "user-id",
-          email: "synced-checkout@example.com"
+          email: "synced-checkout@example.com",
+          email_verified: true
         }
       })
     );

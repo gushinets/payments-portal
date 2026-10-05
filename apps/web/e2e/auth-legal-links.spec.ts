@@ -36,8 +36,8 @@ test("auth-shell registration asks to repeat password and opens legal docs in ne
   await expectLegalLinksOpenInNewTab(authShell);
 
   await authShell.getByLabel("Email").fill("audit-user@example.com");
-  await authShell.getByLabel("Пароль", { exact: true }).fill("synthetic-password-123");
-  await authShell.getByLabel("Повторите пароль").fill("synthetic-password-456");
+  await authShell.getByLabel("Пароль", { exact: true }).fill("Synthetic-password-123!");
+  await authShell.getByLabel("Повторите пароль").fill("Synthetic-password-456!");
   await authShell.getByRole("button", { name: /Создать аккаунт/ }).click();
 
   await expect(authShell.getByText("Пароли не совпадают.")).toBeVisible();
@@ -74,8 +74,8 @@ test("auth-shell registration validation rejects invalid inputs before submittin
   expect(authRequests).toBe(0);
 
   await authShell.getByLabel("Email").fill("audit-user@example.com");
-  await authShell.getByLabel("Пароль", { exact: true }).fill("synthetic-password-123");
-  await authShell.getByLabel("Повторите пароль").fill("synthetic-password-123");
+  await authShell.getByLabel("Пароль", { exact: true }).fill("Synthetic-password-123!");
+  await authShell.getByLabel("Повторите пароль").fill("Synthetic-password-123!");
   await authShell.getByRole("button", { name: /Создать аккаунт/ }).click();
   await expect(
     authShell.getByText("Нужно дать согласие на обработку персональных данных.")

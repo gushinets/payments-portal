@@ -53,8 +53,11 @@ describe("AuthForm characterization", () => {
     const props = renderAuthForm({ initialMode: "register" });
 
     await user.type(screen.getByLabelText("Email"), "new@example.com");
-    await user.type(screen.getByLabelText("Пароль"), "password-123");
-    await user.type(screen.getByLabelText("Повторите пароль"), "password-123");
+    await user.type(screen.getByLabelText("Пароль"), "Valid-password-123");
+    await user.type(
+      screen.getByLabelText("Повторите пароль"),
+      "Valid-password-123"
+    );
     await user.click(screen.getByRole("button", { name: /Создать аккаунт/ }));
 
     expect(props.onValidationError).toHaveBeenCalledWith(
@@ -78,7 +81,7 @@ describe("AuthForm characterization", () => {
     expect(props.onSubmit).toHaveBeenCalledWith({
       mode: "register",
       email: "new@example.com",
-      password: "password-123",
+      password: "Valid-password-123",
       personalConsent: true,
       offerConsent: true
     });

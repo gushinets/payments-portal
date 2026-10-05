@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { act, cleanup, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ruMessages from "@/messages/ru.json";
 import {
@@ -12,17 +12,20 @@ import { renderWithIntl } from "../setup/render-with-intl";
 
 const fetchMock = vi.fn<typeof fetch>();
 
-function jsonResponse(payload: unknown): Response {
+function jsonResponse(payload: unknown, status = 200): Response {
   return new Response(JSON.stringify(payload), {
-    status: 200,
+    status,
     headers: { "Content-Type": "application/json" }
   });
 }
 
 function renderHeaderAccount() {
-  return renderWithIntl(<HeaderAccount />, {
+  return renderWithIntl(<HeaderAccount languageTag="ru" />, {
     locale: "ru",
-    messages: { Auth: ruMessages.Auth }
+    messages: {
+      Auth: ruMessages.Auth,
+      EmailVerification: ruMessages.EmailVerification
+    }
   });
 }
 
@@ -39,7 +42,7 @@ describe("header account session", () => {
     vi.unstubAllGlobals();
   });
 
-  it("clears the trusted session when a successful response is malformed", async () => {
+  it("retains the trusted session when a successful response is malformed", async () => {
     window.localStorage.setItem(sessionStorageKey, "session-token");
     fetchMock
       .mockResolvedValueOnce(
@@ -49,7 +52,8 @@ describe("header account session", () => {
             tenant_id: "anytoolai",
             region: "ru",
             user_id: "user-id",
-            email: "header@example.com"
+            email: "header@example.com",
+            email_verified: true
           }
         })
       )
@@ -66,10 +70,130 @@ describe("header account session", () => {
     });
 
     await waitFor(() =>
-      expect(window.localStorage.getItem(sessionStorageKey)).toBeNull()
+      expect(window.localStorage.getItem(sessionStorageKey)).toBe("session-token")
     );
-    expect(await screen.findByRole("button", { name: "Войти" })).toBeVisible();
+    expect(await screen.findByText("header@example.com")).toBeVisible();
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("clears the trusted session and dispatches a session change after a 401", async () => {
+    const sessionChangedListener = vi.fn();
+    window.addEventListener(sessionChangedEvent, sessionChangedListener);
+    window.localStorage.setItem(sessionStorageKey, "session-token");
+    fetchMock.mockResolvedValueOnce(jsonResponse({ detail: "unauthorized" }, 401));
+
+    try {
+      renderHeaderAccount();
+
+      await waitFor(() =>
+        expect(window.localStorage.getItem(sessionStorageKey)).toBeNull()
+      );
+      expect(sessionChangedListener).toHaveBeenCalledTimes(1);
+      expect(await screen.findByRole("button", { name: "Войти" })).toBeVisible();
+    } finally {
+      window.removeEventListener(sessionChangedEvent, sessionChangedListener);
+    }
+  });
+
+  it("ignores a stale 401 after the bearer changes", async () => {
+    const sessionChangedListener = vi.fn();
+    let resolveSession: (response: Response) => void = () => undefined;
+    const sessionRequest = new Promise<Response>((resolve) => {
+      resolveSession = resolve;
+    });
+
+    window.addEventListener(sessionChangedEvent, sessionChangedListener);
+    window.localStorage.setItem(sessionStorageKey, "token-a");
+    fetchMock.mockReturnValueOnce(sessionRequest);
+
+    try {
+      renderHeaderAccount();
+
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+      window.localStorage.setItem(sessionStorageKey, "token-b");
+
+      await act(async () => {
+        resolveSession(jsonResponse({ detail: "unauthorized" }, 401));
+      });
+
+      expect(window.localStorage.getItem(sessionStorageKey)).toBe("token-b");
+      expect(sessionChangedListener).not.toHaveBeenCalled();
+      expect(screen.queryByRole("button", { name: "Войти" })).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Аккаунт" })).toBeDisabled();
+    } finally {
+      window.removeEventListener(sessionChangedEvent, sessionChangedListener);
+    }
+  });
+
+  it("ignores a stale successful response after the bearer changes", async () => {
+    let resolveSession: (response: Response) => void = () => undefined;
+    const sessionRequest = new Promise<Response>((resolve) => {
+      resolveSession = resolve;
+    });
+
+    window.localStorage.setItem(sessionStorageKey, "token-a");
+    fetchMock.mockReturnValueOnce(sessionRequest);
+
+    renderHeaderAccount();
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    window.localStorage.setItem(sessionStorageKey, "token-b");
+
+    await act(async () => {
+      resolveSession(
+        jsonResponse({
+          authenticated: true,
+          user: {
+            tenant_id: "anytoolai",
+            region: "ru",
+            user_id: "user-a",
+            email: "user-a@example.com",
+            email_verified: true
+          }
+        })
+      );
+    });
+
+    expect(screen.queryByText("user-a@example.com")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Аккаунт" })).toBeDisabled();
+  });
+
+  it("retains the trusted session after a transient 500 response", async () => {
+    const sessionChangedListener = vi.fn();
+    window.addEventListener(sessionChangedEvent, sessionChangedListener);
+    window.localStorage.setItem(sessionStorageKey, "session-token");
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ detail: { code: "internal_server_error" } }, 500)
+    );
+
+    try {
+      renderHeaderAccount();
+
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+      expect(window.localStorage.getItem(sessionStorageKey)).toBe("session-token");
+      expect(sessionChangedListener).not.toHaveBeenCalled();
+      expect(screen.getByRole("button", { name: "Аккаунт" })).not.toBeDisabled();
+      expect(screen.queryByRole("button", { name: "Войти" })).not.toBeInTheDocument();
+
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse({
+          authenticated: true,
+          user: {
+            tenant_id: "anytoolai",
+            region: "ru",
+            user_id: "user-id",
+            email: "header@example.com",
+            email_verified: true
+          }
+        })
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Аккаунт" }));
+
+      expect(await screen.findByText("header@example.com")).toBeVisible();
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      window.removeEventListener(sessionChangedEvent, sessionChangedListener);
+    }
   });
 
   it("retains the trusted session during a transient network failure", async () => {
@@ -78,8 +202,10 @@ describe("header account session", () => {
 
     renderHeaderAccount();
 
-    expect(await screen.findByRole("button", { name: "Войти" })).toBeVisible();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     expect(window.localStorage.getItem(sessionStorageKey)).toBe("session-token");
+    expect(screen.getByRole("button", { name: "Аккаунт" })).not.toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Войти" })).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -134,7 +260,8 @@ describe("header account session", () => {
       });
 
       expect(requestSignals[0]?.aborted).toBe(true);
-      expect(screen.getByRole("button", { name: "Войти" })).toBeEnabled();
+      expect(screen.getByRole("button", { name: "Аккаунт" })).not.toBeDisabled();
+      expect(screen.queryByRole("button", { name: "Войти" })).not.toBeInTheDocument();
       expect(window.localStorage.getItem(sessionStorageKey)).toBe(
         "session-token"
       );

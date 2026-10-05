@@ -138,6 +138,8 @@ test("shared API transport cannot own localized auth presentation", async () => 
     'const loginPath = "/api/auth/login";',
     'const contentType = "application/json";',
     'const code = "invalid_api_response";',
+    'const verificationStatus = "verified";',
+    'const valueType = "boolean";',
     'const authorization = "Bearer test-token";'
   ].join("\n");
   const commentOnlySource = [

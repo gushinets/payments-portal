@@ -5,6 +5,19 @@ import hmac
 import secrets
 
 PBKDF2_ITERATIONS = 120_000
+PASSWORD_MIN_LENGTH = 12
+PASSWORD_MAX_LENGTH = 128
+PASSWORD_SPECIAL_CHARACTERS = "!@#$%^&*()-_=+[]{}:,.?"
+
+
+def password_meets_policy(password: str) -> bool:
+    return (
+        PASSWORD_MIN_LENGTH <= len(password) <= PASSWORD_MAX_LENGTH
+        and any("A" <= character <= "Z" for character in password)
+        and any("a" <= character <= "z" for character in password)
+        and any("0" <= character <= "9" for character in password)
+        and any(character in PASSWORD_SPECIAL_CHARACTERS for character in password)
+    )
 
 
 def hash_password(password: str) -> str:

@@ -81,6 +81,29 @@
   font-weight: 700;
 }
 
+.password-requirements {
+  color: var(--txt2);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.password-requirements p {
+  margin: 0 0 6px;
+  color: var(--txt);
+  font-weight: 700;
+}
+
+.password-requirements ul {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding-left: 20px;
+}
+
+.password-requirement-met {
+  color: var(--green);
+}
+
 .input {
   width: 100%;
   min-height: 44px;

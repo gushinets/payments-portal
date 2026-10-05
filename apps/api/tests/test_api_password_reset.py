@@ -12,6 +12,7 @@ import app.core.password_reset_email as password_reset_email
 import app.domains.identity.password_reset as password_reset_presentation
 import app.domains.identity.services.password_reset as password_reset_service
 from app.core.database import SessionLocal
+from app.domains.identity.errors import PasswordPolicyError
 from app.generated.locales import (
     LANGUAGE_TAG_BY_ROUTE_LOCALE,
     RouteLocale,
@@ -20,6 +21,7 @@ from app.infrastructure.persistence.password_reset import (
     prune_expired_password_reset_rate_limits,
     prune_expired_password_reset_tokens,
 )
+from app.http.request_locale import normalize_request_language
 from app.models import (
     AuthSession,
     MagicLinkPurpose,
@@ -64,7 +66,7 @@ def test_password_reset_email_token_and_session_revocation(monkeypatch: pytest.M
         "/api/auth/register",
         json={
             "email": "reset-user@example.com",
-            "password": "old-password-123",
+            "password": "Old-password-pass1!",
             "personal_consent": True,
             "offer_consent": True,
         },
@@ -89,7 +91,7 @@ def test_password_reset_email_token_and_session_revocation(monkeypatch: pytest.M
     ]
 
     with SessionLocal() as db:
-        stored_token = db.query(MagicLinkToken).one()
+        stored_token = db.query(MagicLinkToken).filter_by(purpose=MagicLinkPurpose.PASSWORD_RESET).one()
         stored_user = db.query(User).filter(User.email_normalized == "reset-user@example.com").one()
         assert stored_token.purpose == MagicLinkPurpose.PASSWORD_RESET
         assert stored_token.user_id == stored_user.id
@@ -100,7 +102,7 @@ def test_password_reset_email_token_and_session_revocation(monkeypatch: pytest.M
 
     confirm_response = client.post(
         "/api/auth/password-reset/confirm",
-        json={"token": reset_token, "password": "new-password-123"},
+        json={"token": reset_token, "password": "New-password-pass1!"},
     )
     assert confirm_response.status_code == 200
     assert confirm_response.json() == {"status": "password_reset"}
@@ -112,7 +114,7 @@ def test_password_reset_email_token_and_session_revocation(monkeypatch: pytest.M
             .one()
         )
         assert revoked_session.revoked_at is not None
-        assert db.query(MagicLinkToken).one().used_at is not None
+        assert db.query(MagicLinkToken).filter_by(purpose=MagicLinkPurpose.PASSWORD_RESET).one().used_at is not None
 
     old_session_response = client.get(
         "/api/auth/session",
@@ -122,22 +124,75 @@ def test_password_reset_email_token_and_session_revocation(monkeypatch: pytest.M
 
     old_login_response = client.post(
         "/api/auth/login",
-        json={"email": "reset-user@example.com", "password": "old-password-123"},
+        json={"email": "reset-user@example.com", "password": "Old-password-pass1!"},
     )
     assert old_login_response.status_code == 401
 
     new_login_response = client.post(
         "/api/auth/login",
-        json={"email": "reset-user@example.com", "password": "new-password-123"},
+        json={"email": "reset-user@example.com", "password": "New-password-pass1!"},
     )
     assert new_login_response.status_code == 200
 
     reuse_response = client.post(
         "/api/auth/password-reset/confirm",
-        json={"token": reset_token, "password": "another-password-123"},
+        json={"token": reset_token, "password": "Another-password1!"},
     )
     assert reuse_response.status_code == 400
     assert reuse_response.json() == {"detail": {"code": "invalid_or_expired_reset_token"}}
+
+
+def test_invalid_replacement_password_does_not_consume_reset_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    reset_token = "policy-reset-token-value-with-enough-entropy"
+    monkeypatch.setattr(
+        password_reset_service,
+        "make_password_reset_token",
+        lambda: (
+            reset_token,
+            hashlib.sha256(reset_token.encode("utf-8")).hexdigest(),
+            datetime.now(UTC) + timedelta(minutes=30),
+        ),
+    )
+    monkeypatch.setattr(
+        password_reset_service,
+        "send_password_reset_email",
+        lambda email, url, route_locale, ttl_minutes: True,
+    )
+    registration = client.post(
+        "/api/auth/register",
+        json={
+            "email": "reset-policy@example.com",
+            "password": "Original-pass1!",
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+    assert registration.status_code == 200
+    assert (
+        client.post(
+            "/api/auth/password-reset/request",
+            json={"email": "reset-policy@example.com"},
+        ).status_code
+        == 200
+    )
+
+    with SessionLocal() as db:
+        with pytest.raises(PasswordPolicyError):
+            password_reset_service.confirm_password_reset(
+                db,
+                token=reset_token,
+                password="alllowercase1!",
+                tenant_id="anytoolai",
+                region="ru",
+            )
+        stored_token = db.query(MagicLinkToken).filter_by(purpose=MagicLinkPurpose.PASSWORD_RESET).one()
+        assert stored_token.used_at is None
+
+    accepted = client.post(
+        "/api/auth/password-reset/confirm",
+        json={"token": reset_token, "password": "Replacement-pass1!"},
+    )
+    assert accepted.status_code == 200
 
 
 def test_foreign_contour_password_reset_token_is_rejected_without_mutation() -> None:
@@ -180,7 +235,7 @@ def test_foreign_contour_password_reset_token_is_rejected_without_mutation() -> 
 
     response = client.post(
         "/api/auth/password-reset/confirm",
-        json={"token": raw_token, "password": "foreign-new-password"},
+        json={"token": raw_token, "password": "Foreign-new-pass1!"},
     )
 
     assert response.status_code == 400
@@ -334,7 +389,7 @@ def test_password_reset_request_uses_ru_email_template_for_fallback_language(
         "/api/auth/register",
         json={
             "email": "fallback-reset@example.com",
-            "password": "old-password-123",
+            "password": "Old-password-pass1!",
             "personal_consent": True,
             "offer_consent": True,
         },
@@ -366,7 +421,7 @@ def test_password_reset_request_uses_ru_email_template_for_fallback_language(
 
 
 def test_password_reset_request_rejects_unicode_qvalue_digit() -> None:
-    assert password_reset_presentation._normalize_request_language("de;q=0.\u0661") == "ru"
+    assert normalize_request_language("de;q=0.\u0661") == "ru"
 
 
 def test_password_reset_request_uses_forwarded_client_ip_from_trusted_proxy() -> None:
@@ -482,7 +537,7 @@ def test_password_reset_confirm_invalidates_other_outstanding_reset_tokens(
         "/api/auth/register",
         json={
             "email": "multi-reset@example.com",
-            "password": "old-password-123",
+            "password": "Old-password-pass1!",
             "personal_consent": True,
             "offer_consent": True,
         },
@@ -502,24 +557,24 @@ def test_password_reset_confirm_invalidates_other_outstanding_reset_tokens(
 
     with SessionLocal() as db:
         user = db.query(User).filter(User.email_normalized == "multi-reset@example.com").one()
-        stored_tokens = db.query(MagicLinkToken).all()
+        stored_tokens = db.query(MagicLinkToken).filter_by(purpose=MagicLinkPurpose.PASSWORD_RESET).all()
         assert len(stored_tokens) == 2
         assert {stored_token.user_id for stored_token in stored_tokens} == {user.id}
 
     confirm_response = client.post(
         "/api/auth/password-reset/confirm",
-        json={"token": first_token, "password": "new-password-123"},
+        json={"token": first_token, "password": "New-password-pass1!"},
     )
     assert confirm_response.status_code == 200
 
     with SessionLocal() as db:
-        stored_tokens = db.query(MagicLinkToken).all()
+        stored_tokens = db.query(MagicLinkToken).filter_by(purpose=MagicLinkPurpose.PASSWORD_RESET).all()
         assert len(stored_tokens) == 2
         assert all(stored_token.used_at is not None for stored_token in stored_tokens)
 
     second_confirm_response = client.post(
         "/api/auth/password-reset/confirm",
-        json={"token": second_token, "password": "another-password-123"},
+        json={"token": second_token, "password": "Another-password1!"},
     )
     assert second_confirm_response.status_code == 400
     assert second_confirm_response.json() == {"detail": {"code": "invalid_or_expired_reset_token"}}

@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   decodeApiErrorEnvelope,
   decodeAuthSessionResponse,
+  decodeEmailVerificationConfirmResponse,
+  decodeEmailVerificationRequestResponse,
   decodeLoginResponse,
   decodeLogoutResponse,
   decodePasswordResetConfirmResponse,
@@ -13,7 +15,8 @@ const authUser = {
   tenant_id: "anytoolai",
   region: "ru",
   user_id: "11111111-1111-4111-8111-111111111111",
-  email: "user@example.com"
+  email: "user@example.com",
+  email_verified: false
 };
 
 const invalidStatusCases: Array<[
@@ -22,7 +25,9 @@ const invalidStatusCases: Array<[
 ]> = [
   [decodeLogoutResponse, { status: "accepted" }],
   [decodePasswordResetRequestResponse, { status: "password_reset" }],
-  [decodePasswordResetConfirmResponse, { status: "accepted" }]
+  [decodePasswordResetConfirmResponse, { status: "accepted" }],
+  [decodeEmailVerificationRequestResponse, { status: "verified" }],
+  [decodeEmailVerificationConfirmResponse, { status: "accepted" }]
 ];
 
 describe("auth API decoders", () => {
@@ -54,7 +59,16 @@ describe("auth API decoders", () => {
   it.each([
     null,
     { status: "authenticated", token: 123, user: authUser },
-    { status: "authenticated", token: "token", user: { ...authUser, email: null } },
+    {
+      status: "authenticated",
+      token: "token",
+      user: { ...authUser, email: null }
+    },
+    {
+      status: "authenticated",
+      token: "token",
+      user: { ...authUser, email_verified: "false" }
+    },
     { status: "registered", token: "token", user: authUser }
   ])("rejects malformed login responses", (payload) => {
     expect(() => decodeLoginResponse(payload)).toThrow("invalid_auth_response");
@@ -77,7 +91,7 @@ describe("auth API decoders", () => {
     );
   });
 
-  it("decodes logout and password-reset status responses", () => {
+  it("decodes logout, password-reset, and verification status responses", () => {
     expect(decodeLogoutResponse({ status: "logged_out" })).toEqual({
       status: "logged_out"
     });
@@ -87,11 +101,20 @@ describe("auth API decoders", () => {
     expect(
       decodePasswordResetConfirmResponse({ status: "password_reset" })
     ).toEqual({ status: "password_reset" });
+    expect(
+      decodeEmailVerificationRequestResponse({ status: "accepted" })
+    ).toEqual({ status: "accepted" });
+    expect(
+      decodeEmailVerificationConfirmResponse({ status: "verified" })
+    ).toEqual({ status: "verified" });
   });
 
-  it.each(invalidStatusCases)("rejects an unexpected status response", (decoder, payload) => {
-    expect(() => decoder(payload)).toThrow();
-  });
+  it.each(invalidStatusCases)(
+    "rejects an unexpected status response",
+    (decoder, payload) => {
+      expect(() => decoder(payload)).toThrow();
+    }
+  );
 
   it("decodes structured API error envelopes without trusting detail", () => {
     expect(

@@ -13,10 +13,11 @@ from app.core.password_reset_email import build_password_reset_url, send_passwor
 from app.core.time import utc_now
 from app.domains.identity.errors import (
     InvalidOrExpiredResetTokenError,
+    PasswordPolicyError,
     PasswordResetError,
     PasswordResetRateLimitedError,
 )
-from app.domains.identity.passwords import hash_password
+from app.domains.identity.passwords import hash_password, password_meets_policy
 from app.generated.locales import RouteLocale
 from app.infrastructure.persistence.password_reset import (
     claim_valid_password_reset_token,
@@ -179,6 +180,9 @@ def confirm_password_reset(
     tenant_id: str,
     region: str,
 ) -> None:
+    if not password_meets_policy(password):
+        raise PasswordPolicyError()
+
     now = utc_now()
     token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
     claimed = claim_valid_password_reset_token(

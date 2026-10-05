@@ -6,8 +6,9 @@ Last verified: 2026-09-24
 ## Sensitive data
 
 Never collect, persist, or log full card data. Redact card-related external
-fields, raw session tokens, authorization headers, webhook secrets, passwords,
-and private billing or payment configuration before logging or tracing.
+fields, raw session, password-reset, and email-verification tokens,
+authorization headers, webhook secrets, passwords, and private billing or
+payment configuration before logging or tracing.
 
 Email and IP data are personal data. Record them only where the documented legal
 or security purpose requires them, and never add them to metric labels.
@@ -95,6 +96,8 @@ need, security treatment, and retention.
 - Treat request IDs and external billing or payment metadata as untrusted input
   with length and character limits.
 - Store session tokens only as hashes.
+- Store password-reset and email-verification tokens only as hashes, and keep
+  fragment tokens out of browser persistence and query parameters.
 - Keep external integration secrets in environment or a secret manager, never
   migrations, seed files, telemetry, or source control.
 - Paid access changes only from authenticated, validated authoritative billing

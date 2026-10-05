@@ -44,11 +44,6 @@ export function PasswordResetConfirmClient() {
       return;
     }
 
-    if (password.length < 8) {
-      setError(t("confirm.validation.passwordTooShort"));
-      return;
-    }
-
     if (password !== passwordConfirm) {
       setError(t("confirm.validation.passwordMismatch"));
       return;
@@ -93,10 +88,29 @@ export function PasswordResetConfirmClient() {
               type="password"
               autoComplete="new-password"
               placeholder={t("confirm.fields.passwordPlaceholder")}
+              aria-describedby="reset-password-requirements"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
             />
           </label>
+
+          <div
+            className="password-requirements"
+            id="reset-password-requirements"
+          >
+            <p>{t("confirm.passwordRequirements.label")}</p>
+            <ul>
+              <li>{t("confirm.passwordRequirements.length")}</li>
+              <li>{t("confirm.passwordRequirements.uppercase")}</li>
+              <li>{t("confirm.passwordRequirements.lowercase")}</li>
+              <li>{t("confirm.passwordRequirements.digit")}</li>
+              <li>
+                {t("confirm.passwordRequirements.special", {
+                  characters: "!@#$%^&*()-_=+[]{}:,.?"
+                })}
+              </li>
+            </ul>
+          </div>
 
           <label className="field-label">
             {t("confirm.fields.passwordConfirmLabel")}
