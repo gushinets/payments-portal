@@ -9,7 +9,7 @@
 **Relevant predecessor:** `ANY-510 — Identity / Session / Legal baseline`  
 **Future consumer:** `ANY-539 / Step 4F — Portal frontend evolution`
 
-**Status:** `in progress — Step 1 complete`
+**Status:** `done`
 
 ### Objective
 
@@ -747,7 +747,7 @@ ANY-541 generate frontend API contracts from OpenAPI
 
 # Step 2 — Establish Minimal Frontend Sentry Error Reporting
 
-**Status:** `todo`  
+**Status:** `done`  
 **Recommended model:** `Sol` — small implementation, but production observability/privacy and current Next.js runtime hooks must be correct.
 
 ## Goal
@@ -1029,7 +1029,7 @@ ANY-541 add minimal frontend Sentry reporting
 
 # Step 3 — Migrate Current Auth Consumers to Generated Wire Contracts
 
-**Status:** `todo`  
+**Status:** `done`  
 **Recommended model:** `Sol` — production auth/session consumers and runtime validation are changed here, so preserve behavior carefully.
 
 ## Goal
@@ -1715,7 +1715,7 @@ ANY-541 migrate auth API to generated contracts
 
 # Step 4 — Enforce the Boundary and Publish the Durable 4F Handoff
 
-**Status:** `todo`  
+**Status:** `done`  
 **Recommended model:** `Luna` — the architecture is already settled; this step adds a focused guard and documents the completed boundary without changing production behavior.
 
 ## Goal

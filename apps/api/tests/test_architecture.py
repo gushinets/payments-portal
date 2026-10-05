@@ -149,9 +149,9 @@ def _assert_openapi_response_schema_contract(
                 if not content or any(not _is_json_media_type(media_type) for media_type in content):
                     has_raw_success_response = True
 
-        assert is_schema_hidden or has_raw_success_response, (
-            f"{method} {path} is a stale raw/schema-hidden route exception"
-        )
+        assert (
+            is_schema_hidden or has_raw_success_response
+        ), f"{method} {path} is a stale raw/schema-hidden route exception"
 
     return openapi
 
