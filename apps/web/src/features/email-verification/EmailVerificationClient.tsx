@@ -43,6 +43,7 @@ export function EmailVerificationClient({
   const authT = useTranslations("Auth");
   const verificationTokenRef = useRef("");
   const fragmentReadRef = useRef(false);
+  const skipSessionRefreshRef = useRef(false);
   const [hasVerificationToken, setHasVerificationToken] = useState(false);
   const [verificationState, setVerificationState] =
     useState<VerificationState>({ status: "loading" });
@@ -84,22 +85,32 @@ export function EmailVerificationClient({
           sessionToken,
           decodeAuthSessionResponse
         );
-        if (!cancelled) {
+        if (
+          !cancelled &&
+          window.localStorage.getItem(sessionStorageKey) === sessionToken
+        ) {
           setVerificationState({
             status: "authenticated",
             user: session.user
           });
         }
       } catch (requestError) {
-        if (requestError instanceof ApiError && requestError.status === 401) {
+        const isCurrentSession =
+          window.localStorage.getItem(sessionStorageKey) === sessionToken;
+        if (
+          !cancelled &&
+          isCurrentSession &&
+          requestError instanceof ApiError &&
+          requestError.status === 401
+        ) {
           window.localStorage.removeItem(sessionStorageKey);
-          window.dispatchEvent(new Event(sessionChangedEvent));
+          notifySessionChanged();
           if (!cancelled) {
             setVerificationState({ status: "signed_out" });
           }
           return;
         }
-        if (!cancelled) {
+        if (!cancelled && isCurrentSession) {
           setVerificationState({
             status: "session_error",
             messageKey: emailVerificationErrorMessageKey(requestError)
@@ -108,11 +119,29 @@ export function EmailVerificationClient({
       }
     }
 
+    function handleSessionChanged() {
+      if (skipSessionRefreshRef.current) {
+        skipSessionRefreshRef.current = false;
+        return;
+      }
+      if (!cancelled) {
+        setVerificationState({ status: "loading" });
+        void loadSession();
+      }
+    }
+
     void loadSession();
+    window.addEventListener(sessionChangedEvent, handleSessionChanged);
     return () => {
       cancelled = true;
+      window.removeEventListener(sessionChangedEvent, handleSessionChanged);
     };
   }, [sessionLoadAttempt]);
+
+  function notifySessionChanged() {
+    skipSessionRefreshRef.current = true;
+    window.dispatchEvent(new Event(sessionChangedEvent));
+  }
 
   function retrySessionLoad() {
     setVerificationState({ status: "loading" });
@@ -125,7 +154,7 @@ export function EmailVerificationClient({
     try {
       const response = await submitAuth(values, { languageTag });
       window.localStorage.setItem(sessionStorageKey, response.token);
-      window.dispatchEvent(new Event(sessionChangedEvent));
+      notifySessionChanged();
       setVerificationState({ status: "authenticated", user: response.user });
     } catch (requestError) {
       setAuthError(authT(authErrorMessageKey(requestError)));
@@ -144,11 +173,13 @@ export function EmailVerificationClient({
     } catch {
       // Removing the local bearer still leaves this browser signed out.
     } finally {
-      window.localStorage.removeItem(sessionStorageKey);
-      window.dispatchEvent(new Event(sessionChangedEvent));
-      setVerificationState({ status: "signed_out" });
-      setAuthError("");
-      setVerificationError("");
+      if (window.localStorage.getItem(sessionStorageKey) === sessionToken) {
+        window.localStorage.removeItem(sessionStorageKey);
+        notifySessionChanged();
+        setVerificationState({ status: "signed_out" });
+        setAuthError("");
+        setVerificationError("");
+      }
       setLoading(false);
     }
   }
@@ -172,14 +203,20 @@ export function EmailVerificationClient({
     setLoading(true);
     try {
       await confirmEmailVerification(sessionToken, verificationToken);
+      if (window.localStorage.getItem(sessionStorageKey) !== sessionToken) {
+        return;
+      }
       verificationTokenRef.current = "";
       setHasVerificationToken(false);
       setVerificationState({ status: "verified" });
-      window.dispatchEvent(new Event(sessionChangedEvent));
+      notifySessionChanged();
     } catch (requestError) {
+      if (window.localStorage.getItem(sessionStorageKey) !== sessionToken) {
+        return;
+      }
       if (requestError instanceof ApiError && requestError.status === 401) {
         window.localStorage.removeItem(sessionStorageKey);
-        window.dispatchEvent(new Event(sessionChangedEvent));
+        notifySessionChanged();
         setVerificationState({ status: "signed_out" });
       }
       setVerificationError(t(emailVerificationErrorMessageKey(requestError)));

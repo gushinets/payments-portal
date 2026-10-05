@@ -3,23 +3,7 @@
 # OS-package vulnerabilities normally require purls because Trivy image reports
 # do not provide a file path for dpkg packages.
 
-vulnerabilities:
-  - id: CVE-2026-13221
-    purls: ["pkg:deb/debian/perl-base"]
-    statement: "Affected image: payment-portal-api built from apps/api/Dockerfile. Debian Trixie had no fixed perl-base package on 2026-08-17. Owner: @gushinets. Remove after the upstream fix; tracked by ANY-314."
-    expired_at: 2026-10-31
-  - id: CVE-2026-42496
-    purls: ["pkg:deb/debian/perl-base"]
-    statement: "Affected image: payment-portal-api built from apps/api/Dockerfile. Debian Trixie had no fixed perl-base package on 2026-08-17. Owner: @gushinets. Remove after the upstream fix; tracked by ANY-314."
-    expired_at: 2026-10-31
-  - id: CVE-2026-57433
-    purls: ["pkg:deb/debian/perl-base"]
-    statement: "Affected image: payment-portal-api built from apps/api/Dockerfile. Debian Trixie had no fixed perl-base package on 2026-08-17. Owner: @gushinets. Remove after the upstream fix; tracked by ANY-314."
-    expired_at: 2026-10-31
-  - id: CVE-2026-8376
-    purls: ["pkg:deb/debian/perl-base"]
-    statement: "Affected image: payment-portal-api built from apps/api/Dockerfile. Debian Trixie had no fixed perl-base package on 2026-08-17. Owner: @gushinets. Remove after the upstream fix; tracked by ANY-314."
-    expired_at: 2026-10-31
+vulnerabilities: []
 
 misconfigurations: []
 secrets: []

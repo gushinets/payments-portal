@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { LogIn, UserRound } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
@@ -22,7 +22,10 @@ const telegramLoginUrl = process.env.NEXT_PUBLIC_TELEGRAM_LOGIN_URL ?? "";
 export function HeaderAccount({ languageTag }: { languageTag: string }) {
   const t = useTranslations("Auth");
   const [sessionUser, setSessionUser] = useState<AuthUser | null>(null);
+  const sessionUserRef = useRef<AuthUser | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [sessionLoadError, setSessionLoadError] = useState(false);
+  const [sessionLoadAttempt, setSessionLoadAttempt] = useState(0);
   const [modalOpen, setModalOpen] = useState(false);
   const [initialAuthMode, setInitialAuthMode] = useState<AuthMode>("login");
   const [notice, setNotice] = useState("");
@@ -36,7 +39,9 @@ export function HeaderAccount({ languageTag }: { languageTag: string }) {
     async function loadHeaderSession() {
       const token = window.localStorage.getItem(sessionStorageKey);
       if (!token) {
+        sessionUserRef.current = null;
         setSessionUser(null);
+        setSessionLoadError(false);
         setLoaded(true);
         return;
       }
@@ -52,7 +57,9 @@ export function HeaderAccount({ languageTag }: { languageTag: string }) {
           window.localStorage.getItem(sessionStorageKey) === token &&
           payload.authenticated
         ) {
+          sessionUserRef.current = payload.user;
           setSessionUser(payload.user);
+          setSessionLoadError(false);
           setLoaded(true);
         }
       } catch (requestError) {
@@ -63,8 +70,16 @@ export function HeaderAccount({ languageTag }: { languageTag: string }) {
         ) {
           window.localStorage.removeItem(sessionStorageKey);
           window.dispatchEvent(new Event(sessionChangedEvent));
+          sessionUserRef.current = null;
           setSessionUser(null);
+          setSessionLoadError(false);
           setLoaded(true);
+        } else if (
+          !cancelled &&
+          window.localStorage.getItem(sessionStorageKey) === token &&
+          sessionUserRef.current === null
+        ) {
+          setSessionLoadError(true);
         }
         // Keep the existing token during transient network failures.
       }
@@ -80,7 +95,13 @@ export function HeaderAccount({ languageTag }: { languageTag: string }) {
       window.clearTimeout(timerId);
       window.removeEventListener(sessionChangedEvent, loadHeaderSession);
     };
-  }, []);
+  }, [sessionLoadAttempt]);
+
+  function retrySessionLoad() {
+    setSessionLoadError(false);
+    setLoaded(false);
+    setSessionLoadAttempt((attempt) => attempt + 1);
+  }
 
   function openAuthModal(nextMode: AuthMode = "login") {
     setInitialAuthMode(nextMode);
@@ -99,6 +120,7 @@ export function HeaderAccount({ languageTag }: { languageTag: string }) {
       const payload = await submitAuth(values, { languageTag });
       window.localStorage.setItem(sessionStorageKey, payload.token);
       window.dispatchEvent(new Event(sessionChangedEvent));
+      sessionUserRef.current = payload.user;
       setSessionUser(payload.user);
       if (payload.user.email_verified) {
         setModalOpen(false);
@@ -114,7 +136,16 @@ export function HeaderAccount({ languageTag }: { languageTag: string }) {
 
   return (
     <>
-      {!loaded ? (
+      {sessionLoadError ? (
+        <button
+          className="btn-secondary nav-account"
+          type="button"
+          onClick={retrySessionLoad}
+        >
+          <UserRound size={15} aria-hidden="true" />
+          {t("header.account")}
+        </button>
+      ) : !loaded ? (
         <button className="btn-secondary nav-account" type="button" disabled>
           <UserRound size={15} aria-hidden="true" />
           {t("header.account")}

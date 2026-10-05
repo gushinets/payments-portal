@@ -35,8 +35,14 @@ export function EmailVerificationPending({
     setLoading(true);
     try {
       await requestEmailVerification(sessionToken, languageTag);
+      if (window.localStorage.getItem(sessionStorageKey) !== sessionToken) {
+        return;
+      }
       setNotice(t("pending.accepted"));
     } catch (requestError) {
+      if (window.localStorage.getItem(sessionStorageKey) !== sessionToken) {
+        return;
+      }
       if (requestError instanceof ApiError && requestError.status === 401) {
         window.localStorage.removeItem(sessionStorageKey);
         window.dispatchEvent(new Event(sessionChangedEvent));

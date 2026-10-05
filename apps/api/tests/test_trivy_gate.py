@@ -127,17 +127,6 @@ def test_report_redaction_removes_secret_match_and_code(tmp_path: Path) -> None:
 
 def test_trivy_ignore_entries_are_scoped_explained_and_unexpired() -> None:
     policy = yaml.safe_load((ROOT / ".trivyignore.yaml").read_text(encoding="utf-8"))
-    approved_api_image_cves = {
-        "CVE-2026-13221",
-        "CVE-2026-42496",
-        "CVE-2026-57433",
-        "CVE-2026-8376",
-    }
-    vulnerability_entries = policy.get("vulnerabilities", [])
-    configured_vulnerability_ids = {entry["id"] for entry in vulnerability_entries}
-
-    assert len(vulnerability_entries) == len(approved_api_image_cves)
-    assert configured_vulnerability_ids == approved_api_image_cves
 
     for section in ("vulnerabilities", "misconfigurations", "secrets"):
         entries = policy.get(section, [])
@@ -160,20 +149,6 @@ def test_trivy_ignore_entries_are_scoped_explained_and_unexpired() -> None:
             if isinstance(expiration, str):
                 expiration = date.fromisoformat(expiration)
             assert expiration >= date.today()
-
-    for entry in vulnerability_entries:
-        assert entry["purls"] == ["pkg:deb/debian/perl-base"]
-        assert not entry.get("paths")
-        statement = entry["statement"]
-        assert "Affected image: payment-portal-api built from apps/api/Dockerfile." in statement
-        assert "Debian Trixie had no fixed perl-base package on 2026-08-17." in statement
-        assert "Owner: @gushinets." in statement
-        assert "tracked by ANY-314." in statement
-        expiration = entry["expired_at"]
-        if isinstance(expiration, str):
-            expiration = date.fromisoformat(expiration)
-        assert expiration == date(2026, 10, 31)
-
 
 def test_non_compose_iac_fixture_requires_yaml_and_json_findings(
     tmp_path: Path,

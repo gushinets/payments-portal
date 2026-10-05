@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { act, cleanup, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ruMessages from "@/messages/ru.json";
 import {
@@ -172,8 +172,25 @@ describe("header account session", () => {
       await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
       expect(window.localStorage.getItem(sessionStorageKey)).toBe("session-token");
       expect(sessionChangedListener).not.toHaveBeenCalled();
-      expect(screen.getByRole("button", { name: "Аккаунт" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "Аккаунт" })).not.toBeDisabled();
       expect(screen.queryByRole("button", { name: "Войти" })).not.toBeInTheDocument();
+
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse({
+          authenticated: true,
+          user: {
+            tenant_id: "anytoolai",
+            region: "ru",
+            user_id: "user-id",
+            email: "header@example.com",
+            email_verified: true
+          }
+        })
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Аккаунт" }));
+
+      expect(await screen.findByText("header@example.com")).toBeVisible();
+      expect(fetchMock).toHaveBeenCalledTimes(2);
     } finally {
       window.removeEventListener(sessionChangedEvent, sessionChangedListener);
     }
@@ -187,7 +204,7 @@ describe("header account session", () => {
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     expect(window.localStorage.getItem(sessionStorageKey)).toBe("session-token");
-    expect(screen.getByRole("button", { name: "Аккаунт" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Аккаунт" })).not.toBeDisabled();
     expect(screen.queryByRole("button", { name: "Войти" })).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
@@ -243,7 +260,7 @@ describe("header account session", () => {
       });
 
       expect(requestSignals[0]?.aborted).toBe(true);
-      expect(screen.getByRole("button", { name: "Аккаунт" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "Аккаунт" })).not.toBeDisabled();
       expect(screen.queryByRole("button", { name: "Войти" })).not.toBeInTheDocument();
       expect(window.localStorage.getItem(sessionStorageKey)).toBe(
         "session-token"
