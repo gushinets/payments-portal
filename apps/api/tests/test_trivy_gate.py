@@ -150,6 +150,7 @@ def test_trivy_ignore_entries_are_scoped_explained_and_unexpired() -> None:
                 expiration = date.fromisoformat(expiration)
             assert expiration >= date.today()
 
+
 def test_non_compose_iac_fixture_requires_yaml_and_json_findings(
     tmp_path: Path,
 ) -> None:
