@@ -150,7 +150,7 @@ describe("email verification session loading", () => {
         user: {
           tenant_id: "anytoolai",
           region: "ru",
-          user_id: "user-id",
+          user_id: "11111111-1111-4111-8111-111111111111",
           email: "signed-in@example.com",
           email_verified: false
         }
@@ -202,7 +202,7 @@ describe("email verification session loading", () => {
           user: {
             tenant_id: "anytoolai",
             region: "ru",
-            user_id: "user-id",
+            user_id: "11111111-1111-4111-8111-111111111111",
             email: "signed-in@example.com",
             email_verified: false
           }
@@ -248,7 +248,7 @@ describe("email verification session loading", () => {
           user: {
             tenant_id: "anytoolai",
             region: "ru",
-            user_id: "user-id",
+            user_id: "11111111-1111-4111-8111-111111111111",
             email: "signed-in@example.com",
             email_verified: false
           }
@@ -293,7 +293,7 @@ describe("email verification session loading", () => {
           user: {
             tenant_id: "anytoolai",
             region: "ru",
-            user_id: "user-id",
+            user_id: "11111111-1111-4111-8111-111111111111",
             email: "signed-in@example.com",
             email_verified: false
           }
@@ -344,7 +344,7 @@ describe("email verification session loading", () => {
           user: {
             tenant_id: "anytoolai",
             region: "ru",
-            user_id: "user-id",
+            user_id: "11111111-1111-4111-8111-111111111111",
             email: "signed-in@example.com",
             email_verified: false
           }
@@ -383,7 +383,7 @@ describe("email verification session loading", () => {
         user: {
           tenant_id: "anytoolai",
           region: "ru",
-          user_id: "user-id",
+          user_id: "11111111-1111-4111-8111-111111111111",
           email: "verified@example.com",
           email_verified: true
         }

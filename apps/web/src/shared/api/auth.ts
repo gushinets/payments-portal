@@ -1,45 +1,34 @@
 "use client";
 
+import {
+  zEmailVerificationConfirmResponse,
+  zEmailVerificationRequestResponse,
+  zLoginResponse,
+  zLogoutResponse,
+  zPasswordResetConfirmResponse,
+  zPasswordResetRequestResponse,
+  zRegisterResponse,
+  zSessionResponse,
+  type EmailVerificationConfirmRequest,
+  type EmailVerificationConfirmResponse,
+  type EmailVerificationRequest,
+  type EmailVerificationRequestResponse,
+  type LoginRequest,
+  type LoginResponse,
+  type LogoutResponse,
+  type PasswordResetConfirmRequest,
+  type PasswordResetConfirmResponse,
+  type PasswordResetRequest,
+  type PasswordResetRequestResponse,
+  type RegisterRequest,
+  type RegisterResponse,
+  type SessionResponse
+} from "@/generated/api-contracts/zod.gen";
+import { reportApiContractError } from "@/shared/observability/sentry";
+
 export type AuthMode = "login" | "register";
 
-export type AuthUser = {
-  tenant_id: string;
-  region: string;
-  user_id: string;
-  email: string;
-  email_verified: boolean;
-};
-
-export type AuthResponse = {
-  status: "registered" | "authenticated";
-  token: string;
-  user: AuthUser;
-};
-
-export type AuthSessionResponse = {
-  authenticated: true;
-  user: AuthUser;
-};
-
-export type LogoutResponse = {
-  status: "logged_out";
-};
-
-export type PasswordResetRequestResponse = {
-  status: "accepted";
-};
-
-export type PasswordResetConfirmResponse = {
-  status: "password_reset";
-};
-
-export type EmailVerificationRequestResponse = {
-  status: "accepted";
-};
-
-export type EmailVerificationConfirmResponse = {
-  status: "verified";
-};
+export type AuthResponse = RegisterResponse | LoginResponse;
 
 export type SubmitAuthValues = {
   mode: AuthMode;
@@ -53,17 +42,8 @@ export type SubmitAuthOptions = {
   languageTag: string;
 };
 
-export type PasswordResetRequestValues = {
-  email: string;
-};
-
 export type PasswordResetRequestOptions = {
   languageTag: string;
-};
-
-export type PasswordResetConfirmValues = {
-  token: string;
-  password: string;
 };
 
 export type ApiErrorDetail = unknown;
@@ -105,7 +85,11 @@ const configuredApiBase =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 export const requestTimeoutMs = 5000;
 
-type JsonDecoder<T> = (payload: unknown) => T;
+type JsonSchema<T> = {
+  safeParse: (payload: unknown) =>
+    | { success: true; data: T }
+    | { success: false };
+};
 
 export function resolveApiBase(): string {
   if (typeof window === "undefined") {
@@ -146,29 +130,43 @@ async function makeApiError(response: Response): Promise<ApiError> {
 
 async function decodeSuccessfulResponse<T>(
   response: Response,
-  decoder: JsonDecoder<T>
+  path: string,
+  schema: JsonSchema<T>,
+  contract: string
 ): Promise<T> {
   let payload: unknown;
   try {
     payload = await response.json();
   } catch (error) {
     if (error instanceof SyntaxError) {
-      throw new ApiContractError();
+      throwApiContractError(path, contract);
     }
     throw error;
   }
 
-  try {
-    return decoder(payload);
-  } catch {
-    throw new ApiContractError();
+  const result = schema.safeParse(payload);
+  if (!result.success) {
+    throwApiContractError(path, contract);
   }
+
+  return result.data;
+}
+
+function throwApiContractError(path: string, contract: string): never {
+  const error = new ApiContractError();
+  try {
+    reportApiContractError(error, { route: path, contract });
+  } catch {
+    // Optional reporting must not replace the stable transport error.
+  }
+  throw error;
 }
 
 export async function postJson<T>(
   path: string,
   body: unknown,
-  decoder: JsonDecoder<T>,
+  schema: JsonSchema<T>,
+  contract: string,
   token?: string,
   extraHeaders?: Readonly<Record<string, string>>
 ): Promise<T> {
@@ -189,13 +187,14 @@ export async function postJson<T>(
     throw await makeApiError(response);
   }
 
-  return decodeSuccessfulResponse(response, decoder);
+  return decodeSuccessfulResponse(response, path, schema, contract);
 }
 
 export async function getJson<T>(
   path: string,
   token: string,
-  decoder: JsonDecoder<T>
+  schema: JsonSchema<T>,
+  contract: string
 ): Promise<T> {
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => controller.abort(), requestTimeoutMs);
@@ -212,80 +211,10 @@ export async function getJson<T>(
       throw await makeApiError(response);
     }
 
-    return await decodeSuccessfulResponse(response, decoder);
+    return await decodeSuccessfulResponse(response, path, schema, contract);
   } finally {
     window.clearTimeout(timeoutId);
   }
-}
-
-export function decodeRegisterResponse(payload: unknown): AuthResponse {
-  return decodeAuthResponse(payload, "registered");
-}
-
-export function decodeLoginResponse(payload: unknown): AuthResponse {
-  return decodeAuthResponse(payload, "authenticated");
-}
-
-export function decodeAuthSessionResponse(payload: unknown): AuthSessionResponse {
-  if (!isRecord(payload)) {
-    throw new Error("invalid_session_response");
-  }
-
-  const authenticated = payload.authenticated;
-  const user = payload.user;
-
-  if (authenticated !== true || !isAuthUser(user)) {
-    throw new Error("invalid_session_response");
-  }
-
-  return {
-    authenticated,
-    user
-  };
-}
-
-export function decodeLogoutResponse(payload: unknown): LogoutResponse {
-  return decodeStatusResponse(payload, "logged_out", "invalid_logout_response");
-}
-
-export function decodePasswordResetRequestResponse(
-  payload: unknown
-): PasswordResetRequestResponse {
-  return decodeStatusResponse(
-    payload,
-    "accepted",
-    "invalid_password_reset_request_response"
-  );
-}
-
-export function decodePasswordResetConfirmResponse(
-  payload: unknown
-): PasswordResetConfirmResponse {
-  return decodeStatusResponse(
-    payload,
-    "password_reset",
-    "invalid_password_reset_confirm_response"
-  );
-}
-
-export function decodeEmailVerificationRequestResponse(
-  payload: unknown
-): EmailVerificationRequestResponse {
-  return decodeStatusResponse(
-    payload,
-    "accepted",
-    "invalid_email_verification_request_response"
-  );
-}
-
-export function decodeEmailVerificationConfirmResponse(
-  payload: unknown
-): EmailVerificationConfirmResponse {
-  return decodeStatusResponse(
-    payload,
-    "verified",
-    "invalid_email_verification_confirm_response"
-  );
 }
 
 export function decodeApiErrorEnvelope(payload: unknown): ApiErrorEnvelope {
@@ -296,91 +225,76 @@ export function decodeApiErrorEnvelope(payload: unknown): ApiErrorEnvelope {
   return { detail: payload.detail };
 }
 
-function decodeAuthResponse(
-  payload: unknown,
-  expectedStatus: AuthResponse["status"]
-): AuthResponse {
-  if (!isRecord(payload)) {
-    throw new Error("invalid_auth_response");
-  }
-
-  const status = payload.status;
-  const token = payload.token;
-  const user = payload.user;
-
-  if (
-    status !== expectedStatus ||
-    typeof token !== "string" ||
-    !isAuthUser(user)
-  ) {
-    throw new Error("invalid_auth_response");
-  }
-
-  return { status: expectedStatus, token, user };
-}
-
-function decodeStatusResponse<Status extends string>(
-  payload: unknown,
-  expectedStatus: Status,
-  errorCode: string
-): { status: Status } {
-  if (!isRecord(payload) || payload.status !== expectedStatus) {
-    throw new Error(errorCode);
-  }
-
-  return { status: expectedStatus };
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isAuthUser(value: unknown): value is AuthUser {
-  return (
-    isRecord(value) &&
-    typeof value.tenant_id === "string" &&
-    typeof value.region === "string" &&
-    typeof value.user_id === "string" &&
-    typeof value.email === "string" &&
-    typeof value.email_verified === "boolean"
-  );
 }
 
 export async function submitAuth(
   values: SubmitAuthValues,
   options: SubmitAuthOptions
 ): Promise<AuthResponse> {
-  return values.mode === "register"
-    ? postJson(
-        "/api/auth/register",
-        {
-          email: values.email,
-          password: values.password,
-          personal_consent: values.personalConsent,
-          offer_consent: values.offerConsent
-        },
-        decodeRegisterResponse,
-        undefined,
-        { "Accept-Language": options.languageTag }
-      )
-    : postJson(
-        "/api/auth/login",
-        {
-          email: values.email,
-          password: values.password
-        },
-        decodeLoginResponse
-      );
+  if (values.mode === "register") {
+    const request: RegisterRequest = {
+      email: values.email,
+      password: values.password,
+      personal_consent: values.personalConsent,
+      offer_consent: values.offerConsent
+    };
+    return postJson(
+      "/api/auth/register",
+      request,
+      zRegisterResponse,
+      "RegisterResponse",
+      undefined,
+      { "Accept-Language": options.languageTag }
+    );
+  }
+
+  const request: LoginRequest = {
+    email: values.email,
+    password: values.password
+  };
+  return postJson(
+    "/api/auth/login",
+    request,
+    zLoginResponse,
+    "LoginResponse"
+  );
+}
+
+export async function getSession(
+  sessionToken: string
+): Promise<SessionResponse> {
+  return getJson(
+    "/api/auth/session",
+    sessionToken,
+    zSessionResponse,
+    "SessionResponse"
+  );
+}
+
+export async function logoutSession(
+  sessionToken: string
+): Promise<LogoutResponse> {
+  return postJson(
+    "/api/auth/logout",
+    {},
+    zLogoutResponse,
+    "LogoutResponse",
+    sessionToken
+  );
 }
 
 export async function requestEmailVerification(
   sessionToken: string,
   languageTag: string
 ): Promise<EmailVerificationRequestResponse> {
+  const request: EmailVerificationRequest = {};
   return postJson(
     "/api/auth/email-verification/request",
-    {},
-    decodeEmailVerificationRequestResponse,
+    request,
+    zEmailVerificationRequestResponse,
+    "EmailVerificationRequestResponse",
     sessionToken,
     { "Accept-Language": languageTag }
   );
@@ -390,36 +304,42 @@ export async function confirmEmailVerification(
   sessionToken: string,
   token: string
 ): Promise<EmailVerificationConfirmResponse> {
+  const request: EmailVerificationConfirmRequest = { token };
   return postJson(
     "/api/auth/email-verification/confirm",
-    { token },
-    decodeEmailVerificationConfirmResponse,
+    request,
+    zEmailVerificationConfirmResponse,
+    "EmailVerificationConfirmResponse",
     sessionToken
   );
 }
 
 export async function requestPasswordReset(
-  values: PasswordResetRequestValues,
+  values: PasswordResetRequest,
   options: PasswordResetRequestOptions
 ): Promise<PasswordResetRequestResponse> {
+  const request: PasswordResetRequest = { email: values.email };
   return postJson(
     "/api/auth/password-reset/request",
-    { email: values.email },
-    decodePasswordResetRequestResponse,
+    request,
+    zPasswordResetRequestResponse,
+    "PasswordResetRequestResponse",
     undefined,
     { "Accept-Language": options.languageTag }
   );
 }
 
 export async function confirmPasswordReset(
-  values: PasswordResetConfirmValues
+  values: PasswordResetConfirmRequest
 ): Promise<PasswordResetConfirmResponse> {
+  const request: PasswordResetConfirmRequest = {
+    token: values.token,
+    password: values.password
+  };
   return postJson(
     "/api/auth/password-reset/confirm",
-    {
-      token: values.token,
-      password: values.password
-    },
-    decodePasswordResetConfirmResponse
+    request,
+    zPasswordResetConfirmResponse,
+    "PasswordResetConfirmResponse"
   );
 }

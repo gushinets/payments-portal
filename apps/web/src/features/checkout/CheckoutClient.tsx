@@ -3,16 +3,14 @@
 import { useEffect, useState } from "react";
 import { LogOut, ShieldCheck, UserRound } from "lucide-react";
 import { useTranslations } from "next-intl";
+import type { SessionUserResponse } from "@/generated/api-contracts/zod.gen";
 import { Link } from "@/i18n/navigation";
 import {
-  decodeAuthSessionResponse,
-  decodeLogoutResponse,
-  getJson,
-  postJson,
+  getSession,
+  logoutSession,
   sessionChangedEvent,
   sessionStorageKey,
-  submitAuth,
-  type AuthUser
+  submitAuth
 } from "@/shared/api/auth";
 import {
   AuthForm,
@@ -26,7 +24,8 @@ const telegramLoginUrl = process.env.NEXT_PUBLIC_TELEGRAM_LOGIN_URL ?? "";
 export function CheckoutClient({ languageTag }: { languageTag: string }) {
   const authT = useTranslations("Auth");
   const checkoutT = useTranslations("Checkout");
-  const [sessionUser, setSessionUser] = useState<AuthUser | null>(null);
+  const [sessionUser, setSessionUser] =
+    useState<SessionUserResponse | null>(null);
   const [sessionResolved, setSessionResolved] = useState(false);
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState("");
@@ -48,11 +47,7 @@ export function CheckoutClient({ languageTag }: { languageTag: string }) {
       }
 
       try {
-        const session = await getJson(
-          "/api/auth/session",
-          token,
-          decodeAuthSessionResponse
-        );
+        const session = await getSession(token);
         if (
           !cancelled &&
           currentRefreshId === refreshId &&
@@ -114,7 +109,7 @@ export function CheckoutClient({ languageTag }: { languageTag: string }) {
     setLoading(true);
     try {
       if (token) {
-        await postJson("/api/auth/logout", {}, decodeLogoutResponse, token);
+        await logoutSession(token);
       }
     } catch {
       // Local session removal still leaves this browser signed out.

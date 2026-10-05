@@ -3,22 +3,20 @@
 import { useEffect, useState } from "react";
 import { LogOut, UserRound } from "lucide-react";
 import { useTranslations } from "next-intl";
+import type { SessionUserResponse } from "@/generated/api-contracts/zod.gen";
 import { Link } from "@/i18n/navigation";
 import {
-  decodeAuthSessionResponse,
-  decodeLogoutResponse,
-  getJson,
-  postJson,
+  getSession,
+  logoutSession,
   sessionChangedEvent,
-  sessionStorageKey,
-  type AuthUser
+  sessionStorageKey
 } from "@/shared/api/auth";
 import { EmailVerificationPending } from "@/shared/ui";
 
 type AccountState =
   | { status: "loading" }
   | { status: "signed_out" }
-  | { status: "authenticated"; user: AuthUser };
+  | { status: "authenticated"; user: SessionUserResponse };
 
 export function AccountClient({ languageTag }: { languageTag: string }) {
   const t = useTranslations("Account");
@@ -42,11 +40,7 @@ export function AccountClient({ languageTag }: { languageTag: string }) {
       }
 
       try {
-        const session = await getJson(
-          "/api/auth/session",
-          token,
-          decodeAuthSessionResponse
-        );
+        const session = await getSession(token);
         if (
           !cancelled &&
           currentRefreshId === refreshId &&
@@ -82,7 +76,7 @@ export function AccountClient({ languageTag }: { languageTag: string }) {
     setLoggingOut(true);
     try {
       if (token) {
-        await postJson("/api/auth/logout", {}, decodeLogoutResponse, token);
+        await logoutSession(token);
       }
     } catch {
       // Local session removal still leaves this browser signed out.

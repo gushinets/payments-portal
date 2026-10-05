@@ -140,7 +140,15 @@ test("shared API transport cannot own localized auth presentation", async () => 
     'const code = "invalid_api_response";',
     'const verificationStatus = "verified";',
     'const valueType = "boolean";',
-    'const authorization = "Bearer test-token";'
+    'const authorization = "Bearer test-token";',
+    'const registerContract = "RegisterResponse";',
+    'const loginContract = "LoginResponse";',
+    'const sessionContract = "SessionResponse";',
+    'const logoutContract = "LogoutResponse";',
+    'const verificationRequestContract = "EmailVerificationRequestResponse";',
+    'const verificationConfirmContract = "EmailVerificationConfirmResponse";',
+    'const resetRequestContract = "PasswordResetRequestResponse";',
+    'const resetConfirmContract = "PasswordResetConfirmResponse";'
   ].join("\n");
   const commentOnlySource = [
     '// The UI may offer "try-again" after a transport failure.',

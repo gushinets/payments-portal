@@ -3,18 +3,16 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { LogOut, MailCheck } from "lucide-react";
 import { useTranslations } from "next-intl";
+import type { SessionUserResponse } from "@/generated/api-contracts/zod.gen";
 import { Link } from "@/i18n/navigation";
 import {
   ApiError,
   confirmEmailVerification,
-  decodeAuthSessionResponse,
-  decodeLogoutResponse,
-  getJson,
-  postJson,
+  getSession,
+  logoutSession,
   sessionChangedEvent,
   sessionStorageKey,
-  submitAuth,
-  type AuthUser
+  submitAuth
 } from "@/shared/api/auth";
 import {
   AuthForm,
@@ -31,7 +29,7 @@ type VerificationState =
   | { status: "loading" }
   | { status: "signed_out" }
   | { status: "session_error"; messageKey: EmailVerificationErrorMessageKey }
-  | { status: "authenticated"; user: AuthUser }
+  | { status: "authenticated"; user: SessionUserResponse }
   | { status: "verified" };
 
 export function EmailVerificationClient({
@@ -80,11 +78,7 @@ export function EmailVerificationClient({
       }
 
       try {
-        const session = await getJson(
-          "/api/auth/session",
-          sessionToken,
-          decodeAuthSessionResponse
-        );
+        const session = await getSession(sessionToken);
         if (
           !cancelled &&
           window.localStorage.getItem(sessionStorageKey) === sessionToken
@@ -168,7 +162,7 @@ export function EmailVerificationClient({
     setLoading(true);
     try {
       if (sessionToken) {
-        await postJson("/api/auth/logout", {}, decodeLogoutResponse, sessionToken);
+        await logoutSession(sessionToken);
       }
     } catch {
       // Removing the local bearer still leaves this browser signed out.

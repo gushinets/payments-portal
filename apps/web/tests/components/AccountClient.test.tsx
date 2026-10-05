@@ -58,7 +58,7 @@ describe("identity-only account", () => {
         user: {
           tenant_id: "anytoolai",
           region: "ru",
-          user_id: "user-id",
+          user_id: "11111111-1111-4111-8111-111111111111",
           email: "account@example.com",
           email_verified: true
         }
@@ -86,7 +86,7 @@ describe("identity-only account", () => {
         user: {
           tenant_id: "anytoolai",
           region: "ru",
-          user_id: "user-id",
+          user_id: "11111111-1111-4111-8111-111111111111",
           email: "synced-account@example.com",
           email_verified: true
         }
@@ -120,7 +120,7 @@ describe("identity-only account", () => {
           user: {
             tenant_id: "anytoolai",
             region: "ru",
-            user_id: "user-id",
+            user_id: "11111111-1111-4111-8111-111111111111",
             email: "account@example.com",
             email_verified: true
           }
