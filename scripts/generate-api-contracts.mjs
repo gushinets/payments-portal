@@ -1,4 +1,4 @@
-import { createClient } from "@hey-api/openapi-ts";
+import { $, createClient } from "@hey-api/openapi-ts";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -25,6 +25,25 @@ await createClient({
       name: "zod",
       case: "preserve",
       compatibilityVersion: 4,
+      $resolvers: {
+        string(context) {
+          if (context.schema.format !== "email") {
+            return;
+          }
+
+          context.nodes.format = ({ plugin }) => {
+            const { z } = plugin.imports;
+            return $(z)
+              .attr("email")
+              .call(
+                $.object().prop(
+                  "pattern",
+                  $(z).attr("regexes").attr("idnEmail"),
+                ),
+              );
+          };
+        },
+      },
       definitions: {
         enabled: true,
         name: "z{{name}}",

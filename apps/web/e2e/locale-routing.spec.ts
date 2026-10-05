@@ -233,7 +233,7 @@ test("locale switching preserves pathname, query and auth storage across seven d
         user: {
           tenant_id: "anytoolai",
           region: "ru",
-          user_id: "locale-switch-user",
+          user_id: "11111111-1111-4111-8111-111111111111",
           email: "locale-switch@example.com",
           email_verified: true
         }

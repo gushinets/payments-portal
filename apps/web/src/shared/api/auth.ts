@@ -56,8 +56,8 @@ export class ApiError extends Error {
   status: number;
   detail: ApiErrorDetail;
 
-  constructor(status: number, detail: ApiErrorDetail, rawBody: string) {
-    super(`${status}:${rawBody}`);
+  constructor(status: number, detail: ApiErrorDetail) {
+    super("api_request_failed");
     this.status = status;
     this.detail = detail;
   }
@@ -125,7 +125,7 @@ async function makeApiError(response: Response): Promise<ApiError> {
     detail = rawBody;
   }
 
-  return new ApiError(response.status, detail, rawBody);
+  return new ApiError(response.status, detail);
 }
 
 async function decodeSuccessfulResponse<T>(

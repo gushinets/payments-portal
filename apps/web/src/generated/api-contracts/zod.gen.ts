@@ -73,7 +73,7 @@ export type LivenessResponse = z.infer<typeof zLivenessResponse>;
  * LoginRequest
  */
 export const zLoginRequest = z.object({
-    email: z.email(),
+    email: z.email({ pattern: z.regexes.idnEmail }),
     password: z.string().min(8).max(128)
 });
 
@@ -111,7 +111,7 @@ export type PasswordResetConfirmResponse = z.infer<typeof zPasswordResetConfirmR
  * PasswordResetRequest
  */
 export const zPasswordResetRequest = z.object({
-    email: z.email()
+    email: z.email({ pattern: z.regexes.idnEmail })
 });
 
 export type PasswordResetRequest = z.infer<typeof zPasswordResetRequest>;
@@ -147,7 +147,7 @@ export type ReadinessUnavailableResponse = z.infer<typeof zReadinessUnavailableR
  * RegisterRequest
  */
 export const zRegisterRequest = z.object({
-    email: z.email(),
+    email: z.email({ pattern: z.regexes.idnEmail }),
     offer_consent: z.boolean(),
     password: z.string(),
     personal_consent: z.boolean()
@@ -190,7 +190,7 @@ export type RequiredDocumentsResponse = z.infer<typeof zRequiredDocumentsRespons
  * SessionUserResponse
  */
 export const zSessionUserResponse = z.object({
-    email: z.email(),
+    email: z.email({ pattern: z.regexes.idnEmail }),
     email_verified: z.boolean(),
     region: z.string(),
     tenant_id: z.string(),

@@ -32,7 +32,6 @@ const sharedApiMachineLiteralAllowlist = new Set([
   "string",
   "undefined",
   "verified",
-  "${status}:${rawBody}",
   "${resolveApiBase()}${path}",
   "Bearer ${token}"
 ]);

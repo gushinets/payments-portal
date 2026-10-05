@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ApiContractError,
+  ApiError,
+  apiErrorCode,
   confirmEmailVerification,
   confirmPasswordReset,
   getSession,
@@ -119,6 +121,19 @@ describe("generated auth contract validation", () => {
     });
   });
 
+  it("accepts a backend-serialized IDN email in a session response", async () => {
+    const backendSerializedIdnEmail = "user@пример.рф";
+    const user = { ...validUser, email: backendSerializedIdnEmail };
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ authenticated: true, user })
+    );
+
+    await expect(getSession("session-token")).resolves.toEqual({
+      authenticated: true,
+      user
+    });
+  });
+
   it("accepts valid logout, verification, and password-reset responses", async () => {
     fetchMock
       .mockResolvedValueOnce(jsonResponse({ status: "logged_out" }))
@@ -174,6 +189,41 @@ describe("generated auth contract validation", () => {
     expect(JSON.stringify(reportApiContractError.mock.calls[0])).not.toContain(
       "private@example.com"
     );
+  });
+
+  it("keeps API error facts without exposing the raw response body", async () => {
+    const rawBody = JSON.stringify({
+      detail: {
+        code: "email_already_registered",
+        email: "private@example.com",
+        token: "private-token"
+      }
+    });
+    fetchMock.mockResolvedValueOnce(
+      new Response(rawBody, {
+        status: 409,
+        headers: { "Content-Type": "application/json" }
+      })
+    );
+
+    const error: unknown = await getSession("session-token").catch(
+      (caught: unknown) => caught
+    );
+
+    expect(error).toBeInstanceOf(ApiError);
+    if (!(error instanceof ApiError)) {
+      throw new Error("expected_api_error");
+    }
+    expect(error.status).toBe(409);
+    expect(error.detail).toEqual({
+      code: "email_already_registered",
+      email: "private@example.com",
+      token: "private-token"
+    });
+    expect(apiErrorCode(error)).toBe("email_already_registered");
+    expect(error.message).toBe("api_request_failed");
+    expect(error.message).not.toContain(rawBody);
+    expect(reportApiContractError).not.toHaveBeenCalled();
   });
 
   it("rejects an invalid user_id UUID", async () => {

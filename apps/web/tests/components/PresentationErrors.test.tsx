@@ -11,7 +11,7 @@ import { transportErrorMessageKey } from "@/shared/ui/transport-error";
 import { renderWithIntl } from "../setup/render-with-intl";
 
 function apiError(status: number, detail: unknown) {
-  return new ApiError(status, detail, JSON.stringify({ detail }));
+  return new ApiError(status, detail);
 }
 
 function AuthErrorText({ error }: { error: unknown }) {
