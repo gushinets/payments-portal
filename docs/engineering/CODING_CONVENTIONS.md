@@ -206,6 +206,63 @@ Frontend ESLint rejects direct type assertions on `response.json()` and
 8. Do not add a schema library or OpenAPI client generator for a single
    contract.
 
+### HTTP API contract boundary
+
+For a value crossing the backend/frontend HTTP boundary, use the repository
+authority chain:
+
+```text
+FastAPI/Pydantic
+  → app.openapi()
+  → docs/generated/openapi.json
+  → apps/web/src/generated/api-contracts/
+  → generated Zod runtime validation + inferred wire types
+  → shared API transport
+  → feature/UI adapters and view state
+```
+
+Backend owns request/response wire contracts and OpenAPI. Repository
+generation owns the generated frontend runtime contracts/types and freshness
+checking; the canonical commands are `npm run generate` and
+`npm run generate:check`, and the generated API contracts live under
+`apps/web/src/generated/api-contracts/`. Frontend owns transport, forms, view
+models, presentation state, derived UI types, and endpoint adapters; it must
+not independently redeclare backend DTO fields.
+
+This boundary applies to HTTP API contracts, not every value shared by Python
+and TypeScript. Route locales and mappings remain sourced by
+`config/locales.json`, legal acceptance text remains sourced by the legal
+source, and other shared non-HTTP constants may retain their own canonical
+generation path. API statuses, enums, and values belong to the generated
+Pydantic/OpenAPI contract only when they cross HTTP; frontend-only UI/view
+state remains frontend-owned.
+
+For each future Portal-owned, web-consumed API: define backend Pydantic
+request/response models, expose durable named OpenAPI components, run
+repository generation, consume the generated schema/type in the shared API
+boundary, runtime-validate successful JSON, and keep form/UI/view state local.
+Do not mirror External Billing commercial catalog/pricing/sellability truth,
+future paid-access authority, or Platform Kernel usage/quota truth in the
+Portal. Stop and obtain the owning architecture/API decision when the backend
+API is missing, the OpenAPI schema is unnamed or unsuitable, generation cannot
+represent its semantics faithfully, the frontend would need to redefine wire
+meaning, the data belongs to External Billing or Platform Kernel, or a
+transport/auth redesign is required.
+
+For the migrated auth surface, successful JSON uses generated runtime
+validation. `ApiError.detail` remains `unknown`, `apiErrorCode()` extracts only
+stable machine codes used by current UI, and no universal generated error model
+is implied. The migrated production surface is registration, login, session,
+logout, password reset, email verification, and the `email_verified`
+session/user fact; account uses auth session/logout contracts, and no current
+legal endpoint DTO needed migration because the legal frontend has no parallel
+handwritten backend API wire DTO consumer. Web Sentry reporting remains
+minimal and privacy-preserving: uncaught failures may reach the separate
+`payment-portal-web` project when configured, handled contract failures may use
+the sanitized reporter, expected application outcomes are not blanket-reported,
+and events contain no payloads, tokens, identity, query/fragment data, or raw
+validation data.
+
 ### Web locale routing and localization
 
 1. `config/locales.json` is the single machine-readable locale contract. Run

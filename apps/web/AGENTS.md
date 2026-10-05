@@ -19,6 +19,34 @@ before frontend work.
 - Inspect errors with `ApiError.status` and `detail.code`, never
   `message.includes(...)`.
 
+## HTTP API contract authority
+
+Web API boundaries consume generated contracts from
+`src/generated/api-contracts/`; they do not independently redeclare backend
+wire DTO fields. The authority chain is:
+
+```text
+FastAPI/Pydantic
+  → app.openapi()
+  → docs/generated/openapi.json
+  → apps/web/src/generated/api-contracts/
+  → generated Zod runtime validation + inferred wire types
+  → shared API transport
+  → feature/UI adapters and view state
+```
+
+Use `npm run generate` to update generated contracts and
+`npm run generate:check` to check freshness. For a future Portal-owned,
+web-consumed API, define backend Pydantic models, expose durable named OpenAPI
+components, generate, consume the generated schema/type in the shared API
+boundary, runtime-validate successful JSON, and keep form/UI/view state local.
+Stop for the owning architecture/API decision if the backend API or suitable
+named schema is missing, generation cannot represent its semantics faithfully,
+the frontend would redefine wire meaning, the data belongs to External Billing
+or Platform Kernel, or transport/auth redesign is required. Shared values that
+do not cross HTTP, such as locale mappings or legal source text, retain their
+own canonical source and generation path.
+
 ## Locale routing
 
 - `config/locales.json` is the canonical locale contract; generated web and API

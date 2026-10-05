@@ -169,6 +169,83 @@ payment-status, account
 subscription, provider callback, and lifecycle-command contracts are not
 compatibility surfaces.
 
+## HTTP API contract authority
+
+For values that cross the backend/frontend HTTP boundary, the contract
+authority chain is:
+
+```text
+FastAPI/Pydantic
+  → app.openapi()
+  → docs/generated/openapi.json
+  → apps/web/src/generated/api-contracts/
+  → generated Zod runtime validation + inferred wire types
+  → shared API transport
+  → feature/UI adapters and view state
+```
+
+The backend owns HTTP API request/response wire contracts and the OpenAPI
+schema. Repository generation owns the generated frontend runtime
+contracts/types and freshness checking; run `npm run generate` to update them
+and `npm run generate:check` to detect drift. The generated API contracts live
+under `apps/web/src/generated/api-contracts/`. The frontend owns HTTP
+transport, form state, view models, presentation state, derived UI types, and
+endpoint-orchestration adapters. Frontend code must not independently
+re-author backend DTO fields.
+
+ANY-541 covers HTTP API contracts only. Shared values that do not cross HTTP
+retain their own canonical source and generation path, including route locales
+and locale mappings from `config/locales.json` to generated Python and
+TypeScript, legal acceptance text from the legal source to its generated web
+artifact, and other repository-owned shared non-HTTP constants. A status,
+enum, or value in an API request or response belongs to the
+Pydantic/OpenAPI-generated contract. A shared backend/frontend value that does
+not cross HTTP may retain a separate authority path, while a value used only
+by frontend UI or view state remains frontend-owned.
+
+ANY-541 migrated the current production API surface for registration, login,
+session, logout, password reset, email verification, and the
+`email_verified` session/user fact. Account uses the generated auth session and
+logout contracts. No current legal endpoint DTO required migration because the
+current legal frontend does not maintain a parallel handwritten backend API
+wire DTO consumer.
+
+Successful response JSON is runtime-validated by generated contracts before
+application code trusts it. Current application errors remain intentionally
+narrow: `ApiError.detail` is `unknown`, and `apiErrorCode()` extracts only the
+stable machine codes used by current UI. ANY-541 does not create a universal
+generated error model. When a DSN is enabled, standard uncaught web/server/
+request failures go to the `payment-portal-web` Sentry project. A handled
+`ApiContractError` may use the optional sanitized reporter and follows the same
+application error flow regardless of Sentry state; expected `ApiError` and
+business outcomes are not blanket-reported as exceptions. Backend and web use
+separate Sentry projects/DSNs in the same organization and share only the
+diagnostic vocabulary `service`, `failure_category`, and `operation`. Sentry
+events contain no payloads, tokens, user identity, query/fragment data, or raw
+validation data.
+
+For every future Portal-owned, web-consumed API, the implementation rule is:
+
+1. Define request/response models with backend Pydantic.
+2. Expose durable named OpenAPI components.
+3. Run repository generation.
+4. Consume the generated schema/type in the frontend shared API boundary.
+5. Runtime-validate successful JSON before trusting it.
+6. Keep form, UI, and view state local instead of putting it into API DTOs.
+
+Generated contracts do not change domain-data ownership. Future 4F work must
+not mirror or re-author External Billing commercial catalog, pricing, or
+sellability truth; paid-access authority owned by later `ANY-504` steps; or
+Platform Kernel actual usage and remaining-quota truth.
+
+Implementation must stop before inventing a frontend wire contract when the
+required backend API does not exist, the OpenAPI response is unnamed or
+unsuitable for durable consumption, the generator cannot faithfully represent
+backend wire semantics, the frontend would need to redefine wire meaning, the
+data belongs to External Billing or Platform Kernel, or the change requires a
+transport/auth redesign rather than a new contract. Those cases require the
+owning architecture/API decision first.
+
 Cross-cutting FastAPI Presentation code lives under `app.http`: dependency
 composition in `app.http.dependencies`, failure mapping in `app.http.errors`,
 and operational health and metrics routes in `app.http.health` and
@@ -296,6 +373,14 @@ and shared UI for direct human-readable JSX text, child string literals, and
 the bounded user-facing literal attributes. Its exact path/surface/value
 exceptions are limited to source-owned AnytoolAI brand fragments and the
 `user@example.com` example placeholder.
+
+The web boundary suite also requires `apps/web/src/shared/api/auth.ts` to
+consume `@/generated/api-contracts/zod.gen`, rejects local declarations of the
+migrated auth wire DTOs and the replaced handwritten auth/session/status,
+password-reset, and email-verification response decoders, and continues to
+allow frontend-only adapter, form, view, and error types. Generated artifact
+freshness remains owned by `npm run generate:check`, not by the web boundary
+suite.
 
 The guards reject reintroduction without requiring deleted source files to
 exist as evidence.

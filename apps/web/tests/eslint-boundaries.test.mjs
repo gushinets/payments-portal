@@ -4,6 +4,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { ESLint } from "eslint";
+import ts from "typescript";
 import { sourceFiles } from "./setup/source-files.mjs";
 
 const webRoot = fileURLToPath(new URL("..", import.meta.url));
@@ -13,7 +14,113 @@ const authApiPath = fileURLToPath(
 const sharedApiPath = fileURLToPath(
   new URL("../src/shared/api", import.meta.url)
 );
+const generatedAuthContractModule = "@/generated/api-contracts/zod.gen";
+const migratedAuthDtoNames = new Set([
+  "RegisterRequest",
+  "RegisterResponse",
+  "LoginRequest",
+  "LoginResponse",
+  "SessionResponse",
+  "SessionUserResponse",
+  "LogoutResponse",
+  "PasswordResetRequest",
+  "PasswordResetRequestResponse",
+  "PasswordResetConfirmRequest",
+  "PasswordResetConfirmResponse",
+  "EmailVerificationRequest",
+  "EmailVerificationRequestResponse",
+  "EmailVerificationConfirmRequest",
+  "EmailVerificationConfirmResponse"
+]);
+const removedAuthDecoderNames = new Set([
+  "isAuthUser",
+  "decodeAuthResponse",
+  "decodeStatusResponse",
+  "decodeRegisterResponse",
+  "decodeLoginResponse",
+  "decodeAuthSessionResponse",
+  "decodeLogoutResponse",
+  "decodePasswordResetRequestResponse",
+  "decodePasswordResetConfirmResponse",
+  "decodeEmailVerificationRequestResponse",
+  "decodeEmailVerificationConfirmResponse"
+]);
 const eslint = new ESLint({ cwd: webRoot });
+
+function bindingNames(binding) {
+  if (ts.isIdentifier(binding)) {
+    return [binding.text];
+  }
+
+  if (ts.isObjectBindingPattern(binding) || ts.isArrayBindingPattern(binding)) {
+    return binding.elements.flatMap((element) =>
+      ts.isBindingElement(element) ? bindingNames(element.name) : []
+    );
+  }
+
+  return [];
+}
+
+function localDeclarationNames(source) {
+  const sourceFile = ts.createSourceFile(
+    "auth.ts",
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS
+  );
+  const names = [];
+
+  function visit(node) {
+    if (ts.isImportDeclaration(node) || ts.isImportEqualsDeclaration(node)) {
+      return;
+    }
+
+    if (
+      (ts.isClassDeclaration(node) ||
+        ts.isEnumDeclaration(node) ||
+        ts.isFunctionDeclaration(node) ||
+        ts.isInterfaceDeclaration(node) ||
+        ts.isModuleDeclaration(node) ||
+        ts.isTypeAliasDeclaration(node)) &&
+      node.name
+    ) {
+      names.push(node.name.text);
+    }
+
+    if (ts.isVariableDeclaration(node)) {
+      names.push(...bindingNames(node.name));
+    }
+
+    ts.forEachChild(node, visit);
+  }
+
+  ts.forEachChild(sourceFile, visit);
+  return names;
+}
+
+function matchingLocalDeclarations(source, names) {
+  return [
+    ...new Set(localDeclarationNames(source).filter((name) => names.has(name)))
+  ].sort();
+}
+
+function hasGeneratedAuthContractImport(source) {
+  const sourceFile = ts.createSourceFile(
+    "auth.ts",
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS
+  );
+
+  return sourceFile.statements.some(
+    (statement) =>
+      ts.isImportDeclaration(statement) &&
+      ts.isStringLiteral(statement.moduleSpecifier) &&
+      statement.moduleSpecifier.text === generatedAuthContractModule
+  );
+}
 
 async function restrictedImportMessages(source, relativePath) {
   const [result] = await eslint.lintText(source, {
@@ -119,6 +226,60 @@ test("unknown JSON results remain allowed for runtime decoding", async () => {
       (message) => message.ruleId === "no-restricted-syntax"
     ).length,
     0
+  );
+});
+
+test("migrated auth API consumes generated contracts", async () => {
+  const authApiSource = await readFile(authApiPath, "utf8");
+
+  assert.ok(
+    hasGeneratedAuthContractImport(authApiSource),
+    "auth.ts must consume the generated API-contract module"
+  );
+  assert.deepEqual(
+    matchingLocalDeclarations(authApiSource, migratedAuthDtoNames),
+    [],
+    "auth.ts must not locally redeclare migrated backend wire DTOs"
+  );
+  assert.deepEqual(
+    matchingLocalDeclarations(authApiSource, removedAuthDecoderNames),
+    [],
+    "auth.ts must not restore removed handwritten auth response decoders"
+  );
+
+  const importedTypesOnly = `
+    import type {
+      RegisterRequest,
+      RegisterResponse,
+      SessionUserResponse
+    } from "${generatedAuthContractModule}";
+    export type AuthResponse = RegisterResponse;
+  `;
+  assert.deepEqual(
+    matchingLocalDeclarations(importedTypesOnly, migratedAuthDtoNames),
+    [],
+    "generated DTO imports must remain allowed"
+  );
+
+  const localBackendTypesAndDecoders = `
+    import type { RegisterResponse } from "${generatedAuthContractModule}";
+    type RegisterRequest = { email: string };
+    interface LoginResponse { authenticated: boolean }
+    const SessionResponse = {};
+    function decodePasswordResetConfirmResponse() {}
+  `;
+  assert.deepEqual(
+    matchingLocalDeclarations(
+      localBackendTypesAndDecoders,
+      new Set([...migratedAuthDtoNames, ...removedAuthDecoderNames])
+    ),
+    [
+      "LoginResponse",
+      "RegisterRequest",
+      "SessionResponse",
+      "decodePasswordResetConfirmResponse"
+    ],
+    "local migrated DTOs and removed decoders must be rejected"
   );
 });
 
