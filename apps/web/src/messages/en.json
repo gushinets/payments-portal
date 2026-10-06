@@ -122,15 +122,33 @@
       "retryAction": "Retry session load"
     },
     "authenticated": {
-      "description": "Subscription and payment management is temporarily unavailable.",
+      "description": "Your account and AnytoolAI products in one place.",
       "badge": "Signed in",
       "summaryTitle": "Account",
-      "signOutAction": "Sign out"
+      "signOutAction": "Sign out",
+      "emailLabel": "Email",
+      "emailVerified": "Email verified",
+      "emailUnverified": "Email not verified"
     },
-    "billingUnavailable": {
-      "badge": "Information",
-      "title": "Billing is being updated",
-      "description": "The catalog, purchases, and subscription details will appear here after the new billing system is connected."
+    "products": {
+      "title": "Products",
+      "description": "Explore the products and open their information pages.",
+      "detailAction": "View product details"
+    },
+    "readiness": {
+      "badge": "Data not ready",
+      "access": {
+        "title": "Access",
+        "description": "Authoritative product access status is not available yet."
+      },
+      "billing": {
+        "title": "Billing and subscription",
+        "description": "Plan, subscription and billing information is not ready yet."
+      },
+      "usage": {
+        "title": "Usage and quota",
+        "description": "Usage and quota data is not available yet."
+      }
     }
   },
   "PasswordReset": {
@@ -275,14 +293,6 @@
         "description": "The extension improves prompts in the interface you already use and shows exactly what changed."
       }
     }
-  },
-  "PaymentResult": {
-    "badge": "Payment unavailable",
-    "title": "There is no payment result here yet",
-    "description": "The Portal no longer handles the previous payment flow. Returning in the browser does not confirm a purchase or grant access.",
-    "notice": "Wait until the new billing system launches before making a purchase.",
-    "accountAction": "Sign in to your account",
-    "homeAction": "Go to home"
   },
   "Footer": {
     "registrationNumbers": "INN (ИНН): {inn} · OGRNIP (ОГРНИП): {ogrnip}",

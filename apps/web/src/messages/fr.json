@@ -122,15 +122,33 @@
       "retryAction": "Réessayer de charger la session"
     },
     "authenticated": {
-      "description": "La gestion des abonnements et des paiements est temporairement indisponible.",
+      "description": "Votre compte et les produits AnytoolAI au même endroit.",
       "badge": "Connecté",
       "summaryTitle": "Compte",
-      "signOutAction": "Se déconnecter"
+      "signOutAction": "Se déconnecter",
+      "emailLabel": "Adresse e-mail",
+      "emailVerified": "Adresse e-mail vérifiée",
+      "emailUnverified": "Adresse e-mail non vérifiée"
     },
-    "billingUnavailable": {
-      "badge": "Informations",
-      "title": "Mise à jour de la facturation",
-      "description": "Le catalogue, les achats et les informations sur les abonnements apparaîtront ici après la connexion du nouveau système de facturation."
+    "products": {
+      "title": "Produits",
+      "description": "Découvrez les produits et consultez leurs pages de présentation.",
+      "detailAction": "Voir les détails du produit"
+    },
+    "readiness": {
+      "badge": "Données pas encore disponibles",
+      "access": {
+        "title": "Accès",
+        "description": "Le statut d’accès aux produits issu d’une source faisant autorité n’est pas encore disponible."
+      },
+      "billing": {
+        "title": "Facturation et abonnement",
+        "description": "Les informations sur la formule, l’abonnement et la facturation ne sont pas encore disponibles."
+      },
+      "usage": {
+        "title": "Utilisation et quota",
+        "description": "Les données d’utilisation et de quota ne sont pas encore disponibles."
+      }
     }
   },
   "PasswordReset": {
@@ -275,14 +293,6 @@
         "description": "L’extension améliore les prompts dans votre interface habituelle et indique précisément les changements apportés."
       }
     }
-  },
-  "PaymentResult": {
-    "badge": "Paiement indisponible",
-    "title": "Aucun résultat de paiement n’est encore disponible ici",
-    "description": "Le Portail ne traite plus l’ancien parcours de paiement. Le retour dans le navigateur ne confirme pas un achat et n’accorde aucun accès.",
-    "notice": "Attendez le lancement du nouveau système de facturation avant d’effectuer un achat.",
-    "accountAction": "Se connecter au compte",
-    "homeAction": "Retour à l’accueil"
   },
   "Footer": {
     "registrationNumbers": "INN (ИНН) : {inn} · OGRNIP (ОГРНИП) : {ogrnip}",

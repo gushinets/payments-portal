@@ -241,7 +241,6 @@ button:disabled {
 .feature-card,
 .form-panel,
 .legal-panel,
-.result-panel,
 .cookie-banner {
   background: var(--surf1);
   backdrop-filter: blur(16px);

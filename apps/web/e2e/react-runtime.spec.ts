@@ -22,7 +22,7 @@ async function captureVisualEvidence(
   });
 }
 
-test("retained auth and neutral commerce pages render without runtime warnings", async ({
+test("public portal and account cabinet render without runtime warnings", async ({
   page
 }, testInfo) => {
   const runtimeIssues: string[] = [];
@@ -70,14 +70,10 @@ test("retained auth and neutral commerce pages render without runtime warnings",
   await expect(
     page.getByRole("main").getByText(email, { exact: true })
   ).toBeVisible();
-  await expect(page.getByText("Биллинг обновляется")).toBeVisible();
-  await captureVisualEvidence(page, testInfo, "account");
-
-  await page.goto("/ru/payment-result");
   await expect(
-    page.getByRole("heading", { name: "Здесь пока нет результата платежа" })
-  ).toBeVisible();
-  await captureVisualEvidence(page, testInfo, "payment-result");
+    page.getByRole("article", { name: "Биллинг и подписка" })
+  ).toContainText("Сведения о тарифе, подписке и биллинге пока не готовы.");
+  await captureVisualEvidence(page, testInfo, "account");
 
   expect(runtimeIssues).toEqual([]);
 });

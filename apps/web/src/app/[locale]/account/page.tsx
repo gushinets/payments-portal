@@ -22,6 +22,7 @@ export default async function AccountPage() {
       messages={{
         Auth: messages.Auth,
         Account: messages.Account,
+        Catalog: messages.Catalog,
         EmailVerification: messages.EmailVerification
       }}
     >

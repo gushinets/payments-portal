@@ -122,15 +122,33 @@
       "retryAction": "Carregar a sessão novamente"
     },
     "authenticated": {
-      "description": "O gerenciamento de assinaturas e pagamentos está temporariamente indisponível.",
+      "description": "Sua conta e os produtos AnytoolAI em um só lugar.",
       "badge": "Conectado",
       "summaryTitle": "Conta",
-      "signOutAction": "Sair"
+      "signOutAction": "Sair",
+      "emailLabel": "E-mail",
+      "emailVerified": "E-mail verificado",
+      "emailUnverified": "E-mail não verificado"
     },
-    "billingUnavailable": {
-      "badge": "Informações",
-      "title": "Atualização do faturamento",
-      "description": "O catálogo, as compras e os detalhes das assinaturas aparecerão aqui depois que o novo sistema de faturamento for conectado."
+    "products": {
+      "title": "Produtos",
+      "description": "Conheça os produtos e abra suas páginas de informações.",
+      "detailAction": "Ver detalhes do produto"
+    },
+    "readiness": {
+      "badge": "Dados ainda não disponíveis",
+      "access": {
+        "title": "Acesso",
+        "description": "O status de acesso aos produtos da fonte oficial ainda não está disponível."
+      },
+      "billing": {
+        "title": "Cobrança e assinatura",
+        "description": "As informações sobre plano, assinatura e cobrança ainda não estão prontas."
+      },
+      "usage": {
+        "title": "Uso e cota",
+        "description": "Os dados de uso e cota ainda não estão disponíveis."
+      }
     }
   },
   "PasswordReset": {
@@ -275,14 +293,6 @@
         "description": "A extensão melhora os prompts na interface que você já usa e mostra exatamente o que mudou."
       }
     }
-  },
-  "PaymentResult": {
-    "badge": "Pagamento indisponível",
-    "title": "Ainda não há um resultado de pagamento aqui",
-    "description": "O Portal não processa mais o fluxo de pagamento anterior. Voltar pelo navegador não confirma uma compra nem libera o acesso.",
-    "notice": "Aguarde o lançamento do novo sistema de cobrança antes de fazer uma compra.",
-    "accountAction": "Entrar na conta",
-    "homeAction": "Ir para o início"
   },
   "Footer": {
     "registrationNumbers": "INN (ИНН): {inn} · OGRNIP (ОГРНИП): {ogrnip}",

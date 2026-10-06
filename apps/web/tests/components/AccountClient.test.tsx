@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { act, cleanup, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AccountClient } from "@/features/account";
@@ -50,6 +50,7 @@ function renderAccountClient(locale: "ru" | "pt" = "ru") {
       messages: {
         Auth: messages.Auth,
         Account: messages.Account,
+        Catalog: messages.Catalog,
         EmailVerification: messages.EmailVerification
       }
     }
@@ -91,28 +92,87 @@ describe("direct account authentication and session", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("loads only the canonical session and shows billing as unavailable", async () => {
-    window.localStorage.setItem(sessionStorageKey, "session-token");
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse({
-        authenticated: true,
-        user: {
-          tenant_id: "anytoolai",
-          region: "ru",
-          user_id: "11111111-1111-4111-8111-111111111111",
-          email: "account@example.com",
-          email_verified: true
-        }
-      })
-    );
+  it.each([
+    ["ru", true],
+    ["ru", false],
+    ["pt", true],
+    ["pt", false]
+  ] as const)(
+    "shows identity, product discovery and honest not-ready states in %s (email verified: %s)",
+    async (locale, emailVerified) => {
+      const messages = locale === "pt" ? ptMessages : ruMessages;
+      window.localStorage.setItem(sessionStorageKey, "session-token");
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse({
+          authenticated: true,
+          user: { ...accountUser, email_verified: emailVerified }
+        })
+      );
 
-    renderAccountClient();
+      renderAccountClient(locale);
 
-    expect(await screen.findByText("account@example.com")).toBeVisible();
-    expect(screen.getByText("Биллинг обновляется")).toBeVisible();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/api/auth/session");
-  });
+      expect(await screen.findByText(accountUser.email)).toBeVisible();
+      expect(
+        screen.getByText(
+          emailVerified
+            ? messages.Account.authenticated.emailVerified
+            : messages.Account.authenticated.emailUnverified
+        )
+      ).toBeVisible();
+      const pendingVerification = screen.queryByRole("heading", {
+        name: messages.EmailVerification.pending.title
+      });
+      if (emailVerified) {
+        expect(pendingVerification).not.toBeInTheDocument();
+      } else {
+        expect(pendingVerification).toBeVisible();
+        expect(
+          screen.getByRole("button", {
+            name: messages.EmailVerification.pending.resend
+          })
+        ).toBeEnabled();
+      }
+
+      const products = screen.getByRole("region", {
+        name: messages.Account.products.title
+      });
+      expect(within(products).getAllByRole("link")).toHaveLength(2);
+      expect(
+        within(products).getByRole("link", {
+          name: messages.Catalog.products.documentSummary.tagline
+        })
+      ).toHaveAttribute("href", `/${locale}/products/document-summary`);
+      expect(
+        within(products).getByRole("link", {
+          name: messages.Catalog.products.promptOptimizer.tagline
+        })
+      ).toHaveAttribute("href", `/${locale}/products/prompt-optimizer`);
+
+      for (const block of ["access", "billing", "usage"] as const) {
+        const panel = screen.getByRole("article", {
+          name: messages.Account.readiness[block].title
+        });
+        expect(
+          within(panel).getByText(messages.Account.readiness.badge)
+        ).toBeVisible();
+        expect(
+          within(panel).getByText(messages.Account.readiness[block].description)
+        ).toBeVisible();
+        expect(within(panel).queryByRole("button")).not.toBeInTheDocument();
+        expect(within(panel).queryByRole("link")).not.toBeInTheDocument();
+        expect(within(panel).queryByRole("progressbar")).not.toBeInTheDocument();
+        expect(panel).not.toHaveTextContent(/\d|₽|€|\$/);
+      }
+      expect(screen.queryByText(accountUser.user_id)).not.toBeInTheDocument();
+      expect(
+        screen.getByRole("button", {
+          name: messages.Account.authenticated.signOutAction
+        })
+      ).toBeVisible();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/api/auth/session");
+    }
+  );
 
   it("synchronizes login and logout events after mounting", async () => {
     renderAccountClient();
