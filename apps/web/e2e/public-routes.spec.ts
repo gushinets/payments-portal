@@ -5,6 +5,9 @@ import { expect, test } from "@playwright/test";
 const routes = [
   "/ru",
   "/ru/products",
+  "/ru/products/document-summary",
+  "/ru/products/prompt-optimizer",
+  "/ru/account",
   "/ru/forgot-password",
   "/ru/reset-password",
   "/ru/privacy",
@@ -33,6 +36,11 @@ for (const route of routes) {
     const response = await page.goto(route, { waitUntil: "networkidle" });
     expect(response?.ok()).toBeTruthy();
     await expect(page.locator("main")).toBeVisible();
+    if (route === "/ru/account") {
+      await expect(
+        page.getByRole("main").getByRole("heading", { name: "Вход или регистрация" })
+      ).toBeVisible();
+    }
 
     const accessibility = await new AxeBuilder({ page }).analyze();
     const critical = accessibility.violations.filter((violation) =>

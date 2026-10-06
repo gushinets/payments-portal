@@ -107,3 +107,20 @@ test("frontend source does not call removed billing contracts", async () => {
 
   assert.deepEqual(offenders, []);
 });
+
+test("frontend source does not link to retired checkout or payment-result routes", async () => {
+  const files = await sourceFiles(srcRootPath);
+  const retiredRoutes = ["/auth-checkout", "/payment-result"];
+  const offenders = [];
+
+  await Promise.all(
+    files.map(async (filePath) => {
+      const source = await readFile(filePath, "utf8");
+      if (retiredRoutes.some((route) => source.includes(route))) {
+        offenders.push(filePath);
+      }
+    })
+  );
+
+  assert.deepEqual(offenders, []);
+});
