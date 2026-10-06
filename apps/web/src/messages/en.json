@@ -226,13 +226,13 @@
         "detail": "Information about AnytoolAI products"
       },
       "pricing": {
-        "label": "Plans",
-        "value": "Coming soon",
-        "detail": "Purchases are temporarily unavailable"
+        "label": "Purchases",
+        "value": "Not ready",
+        "detail": "Purchases are not available yet"
       },
       "account": {
-        "label": "Access",
-        "value": "{accountCount, plural, one {# account} other {# accounts}}",
+        "label": "Account",
+        "value": "Available",
         "detail": "Registration and sign-in are already available"
       },
       "localization": {
@@ -258,18 +258,19 @@
     "products": {
       "eyebrow": "Products",
       "title": "Services for everyday work",
-      "description": "Explore AnytoolAI products. Plans and purchases are temporarily unavailable."
+      "description": "Explore the two AnytoolAI products. Purchases are not available yet."
     }
   },
   "Catalog": {
     "page": {
       "eyebrow": "Catalog",
-      "title": "Products and plans",
-      "description": "Explore AnytoolAI services. Plans and purchases are temporarily unavailable."
+      "title": "Products",
+      "description": "Explore the two AnytoolAI products. Purchases are not available yet."
     },
-    "availabilityNotice": "The plan catalog and purchases are temporarily unavailable.",
+    "availabilityNotice": "Purchases are not available yet.",
     "productInfoBadge": "Product information",
     "signInAction": "Sign in or register",
+    "backToCatalog": "Back to products",
     "products": {
       "documentSummary": {
         "type": "Chrome extension",

@@ -45,6 +45,30 @@
   padding: 22px 20px;
 }
 
+.product-back-link {
+  width: fit-content;
+  margin-bottom: 12px;
+}
+
+.product-detail-card {
+  display: flex;
+  flex-direction: column;
+  max-width: 840px;
+  min-height: 360px;
+  margin: 12px auto 0;
+  padding: 36px 40px;
+  border-radius: 24px;
+}
+
+.product-detail-card .hero-copy {
+  max-width: 680px;
+}
+
+.product-detail-card .hero-actions {
+  margin-top: auto;
+  padding-top: 26px;
+}
+
 .feature-card strong,
 .tool-card h3,
 .form-panel h2,
@@ -85,6 +109,11 @@
   background: rgba(99, 102, 241, 0.1);
   border-color: rgba(129, 140, 248, 0.28);
   transform: translateY(-2px);
+}
+
+.tool-card:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 3px;
 }
 
 .tool-card-bottom {

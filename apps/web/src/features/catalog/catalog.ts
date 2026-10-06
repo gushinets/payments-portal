@@ -24,27 +24,28 @@ export type PaymentMethod = {
 
 export const paymentMethods: PaymentMethod[] = [];
 
+export type ProductSlug = "document-summary" | "prompt-optimizer";
+
 export type ProductPresentation = {
-  code: "document-summary" | "prompt-optimizer";
+  slug: ProductSlug;
   messageKey: "documentSummary" | "promptOptimizer";
   Icon: typeof FileText;
 };
 
 export const productPresentation: readonly ProductPresentation[] = [
   {
-    code: "document-summary",
+    slug: "document-summary",
     messageKey: "documentSummary",
     Icon: FileText
   },
   {
-    code: "prompt-optimizer",
+    slug: "prompt-optimizer",
     messageKey: "promptOptimizer",
     Icon: WandSparkles
   }
 ];
 
 export const catalogRegion = "RU";
-export const accountCount = 1;
 export const legalDocumentLanguage = "RU";
 
 export const platformFacts = [

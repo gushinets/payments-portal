@@ -15,7 +15,11 @@ export async function ProductOverview() {
         {productPresentation.map((product) => {
           const Icon = product.Icon;
           return (
-            <article className="tool-card" key={product.code}>
+            <Link
+              className="tool-card"
+              href={`/products/${product.slug}`}
+              key={product.slug}
+            >
               <div className="tool-icon-wrap">
                 <Icon size={22} aria-hidden="true" />
               </div>
@@ -29,12 +33,12 @@ export async function ProductOverview() {
               <div className="tool-card-bottom">
                 <span className="badge badge-demo">{t("productInfoBadge")}</span>
               </div>
-            </article>
+            </Link>
           );
         })}
       </div>
       <div className="hero-actions">
-        <Link className="btn-primary" href="/auth-checkout">
+        <Link className="btn-primary" href="/account">
           {t("signInAction")}
           <ArrowRight size={15} aria-hidden="true" />
         </Link>

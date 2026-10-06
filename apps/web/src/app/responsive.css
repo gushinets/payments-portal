@@ -49,6 +49,11 @@
     padding: 26px 22px;
   }
 
+  .product-detail-card {
+    min-height: 0;
+    padding: 26px 22px;
+  }
+
   #checkout-form {
     order: -1;
   }

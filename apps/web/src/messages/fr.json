@@ -226,13 +226,13 @@
         "detail": "Informations sur les produits AnytoolAI"
       },
       "pricing": {
-        "label": "Offres",
-        "value": "Bientôt disponible",
-        "detail": "Les achats sont temporairement indisponibles"
+        "label": "Achats",
+        "value": "Pas encore prêts",
+        "detail": "Les achats ne sont pas encore disponibles"
       },
       "account": {
-        "label": "Accès",
-        "value": "{accountCount, plural, one {# compte} other {# comptes}}",
+        "label": "Compte",
+        "value": "Disponible",
         "detail": "L’inscription et la connexion sont déjà disponibles"
       },
       "localization": {
@@ -258,18 +258,19 @@
     "products": {
       "eyebrow": "Produits",
       "title": "Des services pour le travail quotidien",
-      "description": "Découvrez les produits AnytoolAI. Les offres et les achats sont temporairement indisponibles."
+      "description": "Découvrez les deux produits AnytoolAI. Les achats ne sont pas encore disponibles."
     }
   },
   "Catalog": {
     "page": {
       "eyebrow": "Catalogue",
-      "title": "Produits et offres",
-      "description": "Découvrez les services AnytoolAI. Les offres et les achats sont temporairement indisponibles."
+      "title": "Produits",
+      "description": "Découvrez les deux produits AnytoolAI. Les achats ne sont pas encore disponibles."
     },
-    "availabilityNotice": "Le catalogue des offres et les achats sont temporairement indisponibles.",
+    "availabilityNotice": "Les achats ne sont pas encore disponibles.",
     "productInfoBadge": "Informations sur le produit",
     "signInAction": "Se connecter ou s’inscrire",
+    "backToCatalog": "Retour aux produits",
     "products": {
       "documentSummary": {
         "type": "Extension Chrome",

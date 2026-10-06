@@ -226,13 +226,13 @@
         "detail": "Informações sobre os produtos AnytoolAI"
       },
       "pricing": {
-        "label": "Planos",
-        "value": "Em breve",
-        "detail": "As compras estão temporariamente indisponíveis"
+        "label": "Compras",
+        "value": "Ainda indisponíveis",
+        "detail": "As compras ainda não estão disponíveis"
       },
       "account": {
-        "label": "Acesso",
-        "value": "{accountCount, plural, one {# conta} other {# contas}}",
+        "label": "Conta",
+        "value": "Disponível",
         "detail": "O cadastro e o login já estão disponíveis"
       },
       "localization": {
@@ -258,18 +258,19 @@
     "products": {
       "eyebrow": "Produtos",
       "title": "Serviços para o dia a dia",
-      "description": "Conheça os produtos AnytoolAI. Os planos e as compras estão temporariamente indisponíveis."
+      "description": "Conheça os dois produtos AnytoolAI. As compras ainda não estão disponíveis."
     }
   },
   "Catalog": {
     "page": {
       "eyebrow": "Catálogo",
-      "title": "Produtos e planos",
-      "description": "Conheça os serviços AnytoolAI. Os planos e as compras estão temporariamente indisponíveis."
+      "title": "Produtos",
+      "description": "Conheça os dois produtos AnytoolAI. As compras ainda não estão disponíveis."
     },
-    "availabilityNotice": "O catálogo de planos e as compras estão temporariamente indisponíveis.",
+    "availabilityNotice": "As compras ainda não estão disponíveis.",
     "productInfoBadge": "Informações do produto",
     "signInAction": "Entrar ou criar uma conta",
+    "backToCatalog": "Voltar aos produtos",
     "products": {
       "documentSummary": {
         "type": "Extensão do Chrome",

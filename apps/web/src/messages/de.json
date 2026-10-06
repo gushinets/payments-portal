@@ -226,13 +226,13 @@
         "detail": "Informationen zu AnytoolAI-Produkten"
       },
       "pricing": {
-        "label": "Tarife",
-        "value": "Demnächst",
-        "detail": "Käufe sind vorübergehend nicht verfügbar"
+        "label": "Käufe",
+        "value": "Noch nicht bereit",
+        "detail": "Käufe sind noch nicht verfügbar"
       },
       "account": {
-        "label": "Zugang",
-        "value": "{accountCount, plural, one {# Konto} other {# Konten}}",
+        "label": "Konto",
+        "value": "Verfügbar",
         "detail": "Registrierung und Anmeldung sind bereits verfügbar"
       },
       "localization": {
@@ -258,18 +258,19 @@
     "products": {
       "eyebrow": "Produkte",
       "title": "Dienste für den Arbeitsalltag",
-      "description": "Entdecken Sie die Produkte von AnytoolAI. Tarife und Käufe sind vorübergehend nicht verfügbar."
+      "description": "Entdecken Sie die beiden AnytoolAI-Produkte. Käufe sind noch nicht verfügbar."
     }
   },
   "Catalog": {
     "page": {
       "eyebrow": "Katalog",
-      "title": "Produkte und Tarife",
-      "description": "Entdecken Sie die Dienste von AnytoolAI. Tarife und Käufe sind vorübergehend nicht verfügbar."
+      "title": "Produkte",
+      "description": "Entdecken Sie die beiden AnytoolAI-Produkte. Käufe sind noch nicht verfügbar."
     },
-    "availabilityNotice": "Der Tarifkatalog und Käufe sind vorübergehend nicht verfügbar.",
+    "availabilityNotice": "Käufe sind noch nicht verfügbar.",
     "productInfoBadge": "Produktinformationen",
     "signInAction": "Anmelden oder registrieren",
+    "backToCatalog": "Zurück zu den Produkten",
     "products": {
       "documentSummary": {
         "type": "Chrome-Erweiterung",
