@@ -3,6 +3,8 @@ import * as Sentry from "@sentry/nextjs";
 const SERVICE = "payment-portal-web";
 const FAILURE_CATEGORY = "consistency_invariant_violation";
 const OPERATION = "api_contract_validation";
+const CONTRACT_EVENT_MESSAGE = "Generated API contract validation failed";
+const GENERIC_EVENT_MESSAGE = "Frontend error";
 const CONTRACT_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9_.-]{0,127}$/;
 const DISABLED_INTEGRATION_NAMES = new Set([
   "BrowserSession",
@@ -89,19 +91,34 @@ export function reportApiContractError(
 export function sanitizeSentryEvent(
   event: Sentry.ErrorEvent
 ): Sentry.ErrorEvent {
-  const sanitizedEvent = { ...event };
+  const isContractEvent = event.tags?.operation === OPERATION;
+  const genericMessage = isContractEvent
+    ? CONTRACT_EVENT_MESSAGE
+    : GENERIC_EVENT_MESSAGE;
+  const sanitizedEvent: Sentry.ErrorEvent = {
+    type: event.type,
+    ...(event.event_id !== undefined ? { event_id: event.event_id } : {}),
+    ...(event.timestamp !== undefined ? { timestamp: event.timestamp } : {}),
+    ...(event.start_timestamp !== undefined
+      ? { start_timestamp: event.start_timestamp }
+      : {}),
+    ...(event.level !== undefined ? { level: event.level } : {}),
+    ...(event.platform !== undefined ? { platform: event.platform } : {}),
+    ...(event.release !== undefined ? { release: event.release } : {}),
+    ...(event.dist !== undefined ? { dist: event.dist } : {}),
+    ...(event.environment !== undefined
+      ? { environment: event.environment }
+      : {}),
+    ...(event.sdk !== undefined ? { sdk: event.sdk } : {}),
+    message: genericMessage,
+    ...(event.exception !== undefined
+      ? { exception: sanitizeException(event.exception, genericMessage) }
+      : {})
+  };
 
-  delete sanitizedEvent.breadcrumbs;
-  delete sanitizedEvent.contexts;
-  delete sanitizedEvent.extra;
-  delete sanitizedEvent.modules;
-  delete sanitizedEvent.request;
-  delete sanitizedEvent.server_name;
-  delete sanitizedEvent.user;
-
-  if (sanitizedEvent.tags?.operation === OPERATION) {
-    const route = sanitizedEvent.tags.route;
-    const contract = sanitizedEvent.tags.contract;
+  if (isContractEvent) {
+    const route = event.tags?.route;
+    const contract = event.tags?.contract;
 
     sanitizedEvent.tags = {
       service: SERVICE,
@@ -113,11 +130,41 @@ export function sanitizeSentryEvent(
           ? contractName(contract)
           : "unknown_contract"
     };
-    delete sanitizedEvent.transaction;
-    delete sanitizedEvent.transaction_info;
   }
 
   return sanitizedEvent;
+}
+
+function sanitizeException(
+  exception: Sentry.ErrorEvent["exception"],
+  genericMessage: string
+): Sentry.ErrorEvent["exception"] {
+  if (!exception) {
+    return undefined;
+  }
+
+  return {
+    values: exception.values?.map((value) => ({
+      type: value.type,
+      value: genericMessage,
+      stacktrace: value.stacktrace
+        ? {
+            frames: value.stacktrace.frames?.map((frame) => ({
+              function: frame.function,
+              module: frame.module,
+              platform: frame.platform,
+              lineno: frame.lineno,
+              colno: frame.colno,
+              in_app: frame.in_app,
+              instruction_addr: frame.instruction_addr,
+              addr_mode: frame.addr_mode,
+              debug_id: frame.debug_id
+            })),
+            frames_omitted: value.stacktrace.frames_omitted
+          }
+        : undefined
+    }))
+  };
 }
 
 function sentryDsn(): string | undefined {
@@ -138,7 +185,7 @@ function contractName(contract: string): string {
 }
 
 function sanitizeContractError(error: unknown): Error {
-  const sanitizedError = new Error("Generated API contract validation failed");
+  const sanitizedError = new Error(CONTRACT_EVENT_MESSAGE);
   sanitizedError.name = "ApiContractError";
 
   if (!(error instanceof Error) || !error.stack) {

@@ -73,7 +73,23 @@ export type LivenessResponse = z.infer<typeof zLivenessResponse>;
  * LoginRequest
  */
 export const zLoginRequest = z.object({
-    email: z.email({ pattern: z.regexes.idnEmail }),
+    email: z.email({ pattern: z.regexes.idnEmail }).refine(value => {
+        const separator = value.lastIndexOf('@');
+        const domain = value.slice(separator + 1);
+        const normalizedDomain = domain.replace(/[.。．｡]/gu, '.');
+        const labels = normalizedDomain.split('.');
+        if (labels.length < 2 || labels.some(label => label.length === 0 || label.startsWith('-') || label.endsWith('-') || label.includes('_') || /[\/%?#:@\\\s]/u.test(label))) {
+            return false;
+        }
+        try {
+            const hostname = new URL('https://' + normalizedDomain).hostname;
+            const hostnameLabels = hostname.split('.');
+            return hostnameLabels.length >= 2 && hostname.length <= 253 && hostnameLabels.every(label => label.length > 0 && label.length <= 63 && /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label));
+        }
+        catch {
+            return false;
+        }
+    }),
     password: z.string().min(8).max(128)
 });
 
@@ -111,7 +127,23 @@ export type PasswordResetConfirmResponse = z.infer<typeof zPasswordResetConfirmR
  * PasswordResetRequest
  */
 export const zPasswordResetRequest = z.object({
-    email: z.email({ pattern: z.regexes.idnEmail })
+    email: z.email({ pattern: z.regexes.idnEmail }).refine(value => {
+        const separator = value.lastIndexOf('@');
+        const domain = value.slice(separator + 1);
+        const normalizedDomain = domain.replace(/[.。．｡]/gu, '.');
+        const labels = normalizedDomain.split('.');
+        if (labels.length < 2 || labels.some(label => label.length === 0 || label.startsWith('-') || label.endsWith('-') || label.includes('_') || /[\/%?#:@\\\s]/u.test(label))) {
+            return false;
+        }
+        try {
+            const hostname = new URL('https://' + normalizedDomain).hostname;
+            const hostnameLabels = hostname.split('.');
+            return hostnameLabels.length >= 2 && hostname.length <= 253 && hostnameLabels.every(label => label.length > 0 && label.length <= 63 && /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label));
+        }
+        catch {
+            return false;
+        }
+    })
 });
 
 export type PasswordResetRequest = z.infer<typeof zPasswordResetRequest>;
@@ -147,7 +179,23 @@ export type ReadinessUnavailableResponse = z.infer<typeof zReadinessUnavailableR
  * RegisterRequest
  */
 export const zRegisterRequest = z.object({
-    email: z.email({ pattern: z.regexes.idnEmail }),
+    email: z.email({ pattern: z.regexes.idnEmail }).refine(value => {
+        const separator = value.lastIndexOf('@');
+        const domain = value.slice(separator + 1);
+        const normalizedDomain = domain.replace(/[.。．｡]/gu, '.');
+        const labels = normalizedDomain.split('.');
+        if (labels.length < 2 || labels.some(label => label.length === 0 || label.startsWith('-') || label.endsWith('-') || label.includes('_') || /[\/%?#:@\\\s]/u.test(label))) {
+            return false;
+        }
+        try {
+            const hostname = new URL('https://' + normalizedDomain).hostname;
+            const hostnameLabels = hostname.split('.');
+            return hostnameLabels.length >= 2 && hostname.length <= 253 && hostnameLabels.every(label => label.length > 0 && label.length <= 63 && /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label));
+        }
+        catch {
+            return false;
+        }
+    }),
     offer_consent: z.boolean(),
     password: z.string(),
     personal_consent: z.boolean()
@@ -190,7 +238,23 @@ export type RequiredDocumentsResponse = z.infer<typeof zRequiredDocumentsRespons
  * SessionUserResponse
  */
 export const zSessionUserResponse = z.object({
-    email: z.email({ pattern: z.regexes.idnEmail }),
+    email: z.email({ pattern: z.regexes.idnEmail }).refine(value => {
+        const separator = value.lastIndexOf('@');
+        const domain = value.slice(separator + 1);
+        const normalizedDomain = domain.replace(/[.。．｡]/gu, '.');
+        const labels = normalizedDomain.split('.');
+        if (labels.length < 2 || labels.some(label => label.length === 0 || label.startsWith('-') || label.endsWith('-') || label.includes('_') || /[\/%?#:@\\\s]/u.test(label))) {
+            return false;
+        }
+        try {
+            const hostname = new URL('https://' + normalizedDomain).hostname;
+            const hostnameLabels = hostname.split('.');
+            return hostnameLabels.length >= 2 && hostname.length <= 253 && hostnameLabels.every(label => label.length > 0 && label.length <= 63 && /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label));
+        }
+        catch {
+            return false;
+        }
+    }),
     email_verified: z.boolean(),
     region: z.string(),
     tenant_id: z.string(),

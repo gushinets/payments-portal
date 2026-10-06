@@ -176,7 +176,7 @@ describe("frontend Sentry boundary", () => {
     expect(sanitizedEvent).toEqual({
       type: undefined,
       event_id: "event-id",
-      message: "safe message",
+      message: "Generated API contract validation failed",
       tags: {
         service: "payment-portal-web",
         failure_category: "consistency_invariant_violation",
@@ -185,6 +185,99 @@ describe("frontend Sentry boundary", () => {
         contract: "AuthSessionResponse"
       }
     });
+  });
+
+  it("replaces free-form data in a non-contract event", async () => {
+    const token = "private-reset-token";
+    const email = "private@example.com";
+    const unsafeUrl = `https://portal.example/ru/account?token=${token}#fragment`;
+    const unsafeMessage = `reset token ${token} for ${email} at ${unsafeUrl}`;
+    const { sanitizeSentryEvent } = await import(
+      "@/shared/observability/sentry"
+    );
+
+    const sanitizedEvent = sanitizeSentryEvent({
+      type: undefined,
+      event_id: "non-contract-event-id",
+      message: unsafeMessage,
+      transaction: unsafeUrl,
+      transaction_info: { source: "url" },
+      request: { url: unsafeUrl, data: { token, email } },
+      user: { email },
+      contexts: { application: { unsafeUrl } },
+      extra: { token, email },
+      breadcrumbs: [{ message: unsafeMessage }],
+      tags: { arbitrary: unsafeMessage },
+      release: "portal-web@1.0.0",
+      environment: "test",
+      sdk: { name: "sentry.javascript.nextjs", version: "10.0.0" },
+      exception: {
+        values: [
+          {
+            type: "Error",
+            value: unsafeMessage,
+            module: unsafeMessage,
+            mechanism: {
+              type: "generic",
+              handled: false,
+              data: { token, email }
+            },
+            stacktrace: {
+              frames: [
+                {
+                  filename: unsafeUrl,
+                  abs_path: unsafeUrl,
+                  function: "throwSensitiveError",
+                  lineno: 42,
+                  colno: 7,
+                  context_line: unsafeMessage,
+                  pre_context: [unsafeMessage],
+                  post_context: [unsafeMessage],
+                  vars: { token, email }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    });
+
+    expect(sanitizedEvent).toMatchObject({
+      type: undefined,
+      event_id: "non-contract-event-id",
+      message: "Frontend error",
+      release: "portal-web@1.0.0",
+      environment: "test",
+      sdk: { name: "sentry.javascript.nextjs", version: "10.0.0" },
+      exception: {
+        values: [
+          {
+            type: "Error",
+            value: "Frontend error",
+            stacktrace: {
+              frames: [
+                {
+                  function: "throwSensitiveError",
+                  lineno: 42,
+                  colno: 7
+                }
+              ]
+            }
+          }
+        ]
+      }
+    });
+    expect(sanitizedEvent).not.toHaveProperty("tags");
+    expect(sanitizedEvent).not.toHaveProperty("transaction");
+    expect(sanitizedEvent).not.toHaveProperty("transaction_info");
+
+    const serializedEvent = JSON.stringify(sanitizedEvent);
+    expect(serializedEvent).not.toContain(token);
+    expect(serializedEvent).not.toContain(email);
+    expect(serializedEvent).not.toContain("?token=");
+    expect(serializedEvent).not.toContain("#fragment");
+    expect(serializedEvent).not.toContain("arbitrary");
+    expect(serializedEvent).not.toContain(unsafeMessage);
   });
 
   it("does not throw when capture fails", async () => {

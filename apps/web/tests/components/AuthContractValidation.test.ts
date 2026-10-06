@@ -121,9 +121,12 @@ describe("generated auth contract validation", () => {
     });
   });
 
-  it("accepts a backend-serialized IDN email in a session response", async () => {
-    const backendSerializedIdnEmail = "user@пример.рф";
-    const user = { ...validUser, email: backendSerializedIdnEmail };
+  it.each([
+    ["Unicode IDN", "user@пример.рф"],
+    ["contextual Unicode IDN", "user@l·l.cat"],
+    ["Punycode IDN", "user@xn--e1afmkfd.xn--p1ai"]
+  ])("accepts a valid %s email in a session response", async (_, email) => {
+    const user = { ...validUser, email };
     fetchMock.mockResolvedValueOnce(
       jsonResponse({ authenticated: true, user })
     );
@@ -133,6 +136,54 @@ describe("generated auth contract validation", () => {
       user
     });
   });
+
+  it.each([
+    "user@.",
+    "user@example..com",
+    "user@.example.com",
+    "user@example.com.",
+    "user@-example.com",
+    "user@example-.com",
+    "user@exa_mple.com",
+    "user@exa%6dple.com",
+    "user@example.com/path",
+    "user@example.com:80"
+  ])(
+    "rejects a malformed email in successful session and login responses: %s",
+    async email => {
+      fetchMock
+        .mockResolvedValueOnce(
+          jsonResponse({
+            authenticated: true,
+            user: { ...validUser, email }
+          })
+        )
+        .mockResolvedValueOnce(
+          jsonResponse({
+            status: "authenticated",
+            token: "login-token",
+            user: { ...validUser, email }
+          })
+        );
+
+      await expect(getSession("session-token")).rejects.toBeInstanceOf(
+        ApiContractError
+      );
+
+      await expect(
+        submitAuth(
+          {
+            mode: "login",
+            email: "user@example.com",
+            password: "very-secret-password",
+            personalConsent: false,
+            offerConsent: false
+          },
+          { languageTag: "ru" }
+        )
+      ).rejects.toBeInstanceOf(ApiContractError);
+    }
+  );
 
   it("accepts valid logout, verification, and password-reset responses", async () => {
     fetchMock
