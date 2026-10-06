@@ -11,7 +11,6 @@
 }
 
 .form-panel,
-.result-panel,
 .legal-panel {
   border-radius: 20px;
   padding: 24px;
@@ -255,10 +254,28 @@
 .account-summary-panel {
   display: flex;
   flex-direction: column;
+  min-width: 0;
+}
+
+.form-panel .account-panel-title {
+  margin-top: 14px;
+}
+
+.account-identity {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 16px;
+}
+
+.account-identity dt {
+  color: var(--txt3);
+  font-size: 12px;
 }
 
 .account-summary-email {
   margin: 0;
+  color: var(--txt2);
+  overflow-wrap: anywhere;
 }
 
 .account-summary-actions {
@@ -272,4 +289,23 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: stretch;
   gap: 10px;
+}
+
+.account-products-panel {
+  min-width: 0;
+}
+
+.account-product-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--teal);
+  font-weight: 700;
+}
+
+.account-readiness-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 10px;
 }

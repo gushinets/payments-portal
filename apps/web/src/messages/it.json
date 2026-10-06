@@ -122,15 +122,33 @@
       "retryAction": "Riprova a caricare la sessione"
     },
     "authenticated": {
-      "description": "La gestione degli abbonamenti e dei pagamenti è temporaneamente non disponibile.",
+      "description": "Il tuo account e i prodotti AnytoolAI in un unico posto.",
       "badge": "Accesso effettuato",
       "summaryTitle": "Account",
-      "signOutAction": "Esci"
+      "signOutAction": "Esci",
+      "emailLabel": "Email",
+      "emailVerified": "Email verificata",
+      "emailUnverified": "Email non verificata"
     },
-    "billingUnavailable": {
-      "badge": "Informazioni",
-      "title": "Aggiornamento della fatturazione",
-      "description": "Il catalogo, gli acquisti e i dettagli degli abbonamenti saranno disponibili qui dopo il collegamento del nuovo sistema di fatturazione."
+    "products": {
+      "title": "Prodotti",
+      "description": "Scopri i prodotti e apri le loro pagine informative.",
+      "detailAction": "Visualizza i dettagli del prodotto"
+    },
+    "readiness": {
+      "badge": "Dati non ancora disponibili",
+      "access": {
+        "title": "Accesso",
+        "description": "Lo stato di accesso ai prodotti proveniente dalla fonte autorevole non è ancora disponibile."
+      },
+      "billing": {
+        "title": "Fatturazione e abbonamento",
+        "description": "Le informazioni su piano, abbonamento e fatturazione non sono ancora disponibili."
+      },
+      "usage": {
+        "title": "Utilizzo e quota",
+        "description": "I dati di utilizzo e quota non sono ancora disponibili."
+      }
     }
   },
   "PasswordReset": {
@@ -275,14 +293,6 @@
         "description": "L’estensione migliora i prompt nell’interfaccia che usi già e mostra esattamente cosa è cambiato."
       }
     }
-  },
-  "PaymentResult": {
-    "badge": "Pagamento non disponibile",
-    "title": "Non è ancora disponibile alcun risultato di pagamento",
-    "description": "Il Portale non gestisce più il precedente flusso di pagamento. Il ritorno nel browser non conferma un acquisto e non concede l’accesso.",
-    "notice": "Attendi il lancio del nuovo sistema di fatturazione prima di effettuare un acquisto.",
-    "accountAction": "Accedi al tuo account",
-    "homeAction": "Vai alla home"
   },
   "Footer": {
     "registrationNumbers": "INN (ИНН): {inn} · OGRNIP (ОГРНИП): {ogrnip}",

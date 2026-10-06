@@ -71,8 +71,7 @@
 
 .feature-card strong,
 .tool-card h3,
-.form-panel h2,
-.result-panel h2 {
+.form-panel h2 {
   display: block;
   margin: 0 0 8px;
   color: var(--txt);

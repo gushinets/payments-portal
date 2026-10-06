@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { LogOut, ShieldCheck, UserRound } from "lucide-react";
+import { ArrowRight, Clock3, LogOut, ShieldCheck, UserRound } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { productPresentation } from "@/features/catalog";
 import type { SessionUserResponse } from "@/generated/api-contracts/zod.gen";
+import { Link } from "@/i18n/navigation";
 import {
   ApiError,
   getSession,
@@ -30,6 +32,7 @@ type AccountState =
 export function AccountClient({ languageTag }: { languageTag: string }) {
   const t = useTranslations("Account");
   const authT = useTranslations("Auth");
+  const catalogT = useTranslations("Catalog");
   const skipSessionRefreshRef = useRef(false);
   const [accountState, setAccountState] = useState<AccountState>({
     status: "loading"
@@ -233,10 +236,27 @@ export function AccountClient({ languageTag }: { languageTag: string }) {
             <UserRound size={12} aria-hidden="true" />
             {t("authenticated.badge")}
           </span>
-          <h2 style={{ marginTop: 14 }}>{t("authenticated.summaryTitle")}</h2>
-          <p className="card-copy account-summary-email">
-            {accountState.user.email}
-          </p>
+          <h2 className="account-panel-title">
+            {t("authenticated.summaryTitle")}
+          </h2>
+          <dl className="account-identity">
+            <dt>{t("authenticated.emailLabel")}</dt>
+            <dd className="account-summary-email">{accountState.user.email}</dd>
+          </dl>
+          <span
+            className={`badge ${accountState.user.email_verified ? "badge-live" : "badge-demo"}`}
+          >
+            {accountState.user.email_verified ? (
+              <ShieldCheck size={12} aria-hidden="true" />
+            ) : (
+              <Clock3 size={12} aria-hidden="true" />
+            )}
+            {t(
+              accountState.user.email_verified
+                ? "authenticated.emailVerified"
+                : "authenticated.emailUnverified"
+            )}
+          </span>
           <div aria-live="polite">
             {notice ? <div className="notice">{notice}</div> : null}
           </div>
@@ -256,15 +276,66 @@ export function AccountClient({ languageTag }: { languageTag: string }) {
           </div>
         </article>
 
-        <aside className="form-panel">
-          <span className="badge badge-demo">
-            {t("billingUnavailable.badge")}
-          </span>
-          <h2 style={{ marginTop: 14 }}>
-            {t("billingUnavailable.title")}
-          </h2>
-          <p className="card-copy">{t("billingUnavailable.description")}</p>
-        </aside>
+        <section
+          className="form-panel account-products-panel"
+          aria-labelledby="account-products-title"
+        >
+          <h2 id="account-products-title">{t("products.title")}</h2>
+          <p className="card-copy">{t("products.description")}</p>
+          <div className="account-products-grid">
+            {productPresentation.map((product) => {
+              const Icon = product.Icon;
+              const titleId = `account-product-${product.slug}`;
+
+              return (
+                <Link
+                  className="tool-card"
+                  href={`/products/${product.slug}`}
+                  aria-labelledby={titleId}
+                  key={product.slug}
+                >
+                  <div className="tool-icon-wrap">
+                    <Icon size={22} aria-hidden="true" />
+                  </div>
+                  <span className="tool-tag">
+                    {catalogT(`products.${product.messageKey}.type`)}
+                  </span>
+                  <h3 id={titleId}>
+                    {catalogT(`products.${product.messageKey}.tagline`)}
+                  </h3>
+                  <p className="card-copy">
+                    {catalogT(`products.${product.messageKey}.description`)}
+                  </p>
+                  <div className="tool-card-bottom">
+                    <span className="account-product-action">
+                      {t("products.detailAction")}
+                      <ArrowRight size={15} aria-hidden="true" />
+                    </span>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        </section>
+      </div>
+
+      <div className="account-readiness-grid">
+        {(["access", "billing", "usage"] as const).map((block) => (
+          <article
+            className="form-panel"
+            aria-labelledby={`account-${block}-title`}
+            key={block}
+          >
+            <span className="badge badge-demo">
+              <Clock3 size={12} aria-hidden="true" />
+              {t("readiness.badge")}
+            </span>
+            <h2 className="account-panel-title" id={`account-${block}-title`}>
+              {t(`readiness.${block}.title`)}
+            </h2>
+            <p className="card-copy">{t(`readiness.${block}.description`)}</p>
+          </article>
+        ))}
       </div>
     </section>
   );

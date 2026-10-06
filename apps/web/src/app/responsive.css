@@ -31,6 +31,7 @@
   .two-column,
   .account-layout,
   .account-products-grid,
+  .account-readiness-grid,
   .hero-card,
   .footer-inner {
     grid-template-columns: 1fr;

@@ -122,15 +122,33 @@
       "retryAction": "Sitzung erneut laden"
     },
     "authenticated": {
-      "description": "Die Verwaltung von Abonnements und Zahlungen ist vorübergehend nicht verfügbar.",
+      "description": "Ihr Konto und die AnytoolAI-Produkte an einem Ort.",
       "badge": "Angemeldet",
       "summaryTitle": "Konto",
-      "signOutAction": "Abmelden"
+      "signOutAction": "Abmelden",
+      "emailLabel": "E-Mail",
+      "emailVerified": "E-Mail bestätigt",
+      "emailUnverified": "E-Mail nicht bestätigt"
     },
-    "billingUnavailable": {
-      "badge": "Information",
-      "title": "Abrechnung wird aktualisiert",
-      "description": "Der Katalog, Käufe und Abonnementdetails werden hier angezeigt, sobald das neue Abrechnungssystem verbunden ist."
+    "products": {
+      "title": "Produkte",
+      "description": "Entdecken Sie die Produkte und öffnen Sie ihre Informationsseiten.",
+      "detailAction": "Produktdetails ansehen"
+    },
+    "readiness": {
+      "badge": "Daten noch nicht verfügbar",
+      "access": {
+        "title": "Zugriff",
+        "description": "Der maßgebliche Zugriffsstatus für die Produkte ist noch nicht verfügbar."
+      },
+      "billing": {
+        "title": "Abrechnung und Abonnement",
+        "description": "Informationen zu Tarif, Abonnement und Abrechnung sind noch nicht verfügbar."
+      },
+      "usage": {
+        "title": "Nutzung und Kontingent",
+        "description": "Daten zu Nutzung und Kontingent sind noch nicht verfügbar."
+      }
     }
   },
   "PasswordReset": {
@@ -275,14 +293,6 @@
         "description": "Die Erweiterung verbessert Prompts direkt in Ihrer gewohnten Oberfläche und zeigt genau, was geändert wurde."
       }
     }
-  },
-  "PaymentResult": {
-    "badge": "Zahlung nicht verfügbar",
-    "title": "Hier liegt noch kein Zahlungsergebnis vor",
-    "description": "Das Portal verarbeitet den bisherigen Zahlungsablauf nicht mehr. Die Rückkehr im Browser bestätigt keinen Kauf und gewährt keinen Zugang.",
-    "notice": "Warten Sie mit einem Kauf, bis das neue Abrechnungssystem gestartet ist.",
-    "accountAction": "Beim Konto anmelden",
-    "homeAction": "Zur Startseite"
   },
   "Footer": {
     "registrationNumbers": "INN (ИНН): {inn} · OGRNIP (ОГРНИП): {ogrnip}",

@@ -32,12 +32,28 @@ test("account logout revokes the session and returns to the signed-out account s
     await page.goto("/ru/account");
     const accountMain = page.getByRole("main");
     await expect(accountMain.getByText(email, { exact: true })).toBeVisible();
+    await expect(
+      accountMain.getByRole("heading", { name: "Подтвердите email", exact: true })
+    ).toBeVisible();
+    const products = accountMain.getByRole("region", { name: "Продукты" });
+    await expect(products.getByRole("link")).toHaveCount(2);
+    await expect(
+      accountMain.getByRole("article", { name: "Доступ", exact: true })
+    ).toContainText("Достоверный статус доступа к продуктам пока недоступен.");
+    await expect(
+      accountMain.getByRole("article", { name: "Биллинг и подписка" })
+    ).toContainText("Сведения о тарифе, подписке и биллинге пока не готовы.");
+    await expect(
+      accountMain.getByRole("article", { name: "Использование и квота" })
+    ).toContainText("Данные об использовании и квоте пока недоступны.");
 
     await accountMain.getByRole("button", { name: /Выйти/ }).click();
     await expect(
       accountMain.getByRole("heading", { name: "Вход или регистрация" })
     ).toBeVisible();
     await expect(accountMain.getByLabel("Email")).toBeVisible();
+    await expect(products).toHaveCount(0);
+    await expect(accountMain.getByRole("article")).toHaveCount(0);
     await expect(
       accountMain.getByRole("button", { name: "Регистрация", exact: true })
     ).toBeVisible();

@@ -122,15 +122,33 @@
       "retryAction": "Volver a cargar la sesión"
     },
     "authenticated": {
-      "description": "La gestión de suscripciones y pagos no está disponible temporalmente.",
+      "description": "Tu cuenta y los productos AnytoolAI en un solo lugar.",
       "badge": "Sesión iniciada",
       "summaryTitle": "Cuenta",
-      "signOutAction": "Cerrar sesión"
+      "signOutAction": "Cerrar sesión",
+      "emailLabel": "Correo electrónico",
+      "emailVerified": "Correo electrónico verificado",
+      "emailUnverified": "Correo electrónico sin verificar"
     },
-    "billingUnavailable": {
-      "badge": "Información",
-      "title": "Actualizando la facturación",
-      "description": "El catálogo, las compras y los detalles de las suscripciones aparecerán aquí cuando se conecte el nuevo sistema de facturación."
+    "products": {
+      "title": "Productos",
+      "description": "Descubre los productos y abre sus páginas informativas.",
+      "detailAction": "Ver detalles del producto"
+    },
+    "readiness": {
+      "badge": "Datos aún no disponibles",
+      "access": {
+        "title": "Acceso",
+        "description": "El estado de acceso a los productos de la fuente autorizada aún no está disponible."
+      },
+      "billing": {
+        "title": "Facturación y suscripción",
+        "description": "La información sobre el plan, la suscripción y la facturación aún no está disponible."
+      },
+      "usage": {
+        "title": "Uso y cuota",
+        "description": "Los datos de uso y cuota aún no están disponibles."
+      }
     }
   },
   "PasswordReset": {
@@ -275,14 +293,6 @@
         "description": "La extensión mejora los prompts en la interfaz que ya utilizas y muestra exactamente qué ha cambiado."
       }
     }
-  },
-  "PaymentResult": {
-    "badge": "Pago no disponible",
-    "title": "Todavía no hay un resultado de pago aquí",
-    "description": "El Portal ya no procesa el flujo de pago anterior. Volver en el navegador no confirma una compra ni concede acceso.",
-    "notice": "Espera al lanzamiento del nuevo sistema de facturación antes de realizar una compra.",
-    "accountAction": "Iniciar sesión en la cuenta",
-    "homeAction": "Ir al inicio"
   },
   "Footer": {
     "registrationNumbers": "INN (ИНН): {inn} · OGRNIP (ОГРНИП): {ogrnip}",
