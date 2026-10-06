@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { ArrowRight } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 import {
-  accountCount,
   catalogRegion,
   legalDocumentLanguage,
   ProductOverview,
@@ -38,7 +37,7 @@ export default async function HomePage() {
               </h1>
               <p className="hero-copy">{t("hero.description")}</p>
               <div className="hero-actions">
-                <Link className="btn-primary" href="/auth-checkout">
+                <Link className="btn-primary" href="/account">
                   {t("hero.primaryAction")}
                   <ArrowRight size={16} aria-hidden="true" />
                 </Link>
@@ -52,7 +51,6 @@ export default async function HomePage() {
                 {platformFacts.map((fact) => {
                   const Icon = fact.Icon;
                   const values = {
-                    accountCount,
                     legalLanguage: legalDocumentLanguage,
                     localeCount: SUPPORTED_ROUTE_LOCALES.length,
                     region: catalogRegion

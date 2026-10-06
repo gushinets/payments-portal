@@ -14,13 +14,13 @@ const localeLanguages = [
   ["pt", "pt-BR"]
 ] as const;
 const localePresentation = [
-  ["en", "Products", "Products and plans"],
-  ["fr", "Produits", "Produits et offres"],
-  ["it", "Prodotti", "Prodotti e piani"],
-  ["de", "Produkte", "Produkte und Tarife"],
-  ["es", "Productos", "Productos y planes"],
-  ["ru", "Продукты", "Продукты и тарифы"],
-  ["pt", "Produtos", "Produtos e planos"]
+  ["en", "Products"],
+  ["fr", "Produits"],
+  ["it", "Prodotti"],
+  ["de", "Produkte"],
+  ["es", "Productos"],
+  ["ru", "Продукты"],
+  ["pt", "Produtos"]
 ] as const;
 const metadataCases = [
   {
@@ -176,7 +176,7 @@ test("ordinary navigation keeps the active locale", async ({ page }) => {
     page.getByRole("main").getByRole("link", {
       name: "Anmelden oder registrieren"
     }).first()
-  ).toHaveAttribute("href", "/de/auth-checkout");
+  ).toHaveAttribute("href", "/de/account");
 
   await page.getByRole("button", { name: "Anmelden" }).click();
   await expect(
@@ -326,7 +326,7 @@ test("all seven locales render representative shell and catalog content", async 
     localePresentation.map(([locale]) => locale)
   );
 
-  for (const [locale, productsLabel, catalogTitle] of localePresentation) {
+  for (const [locale, productsLabel] of localePresentation) {
     const response = await page.goto(`/${locale}/products`);
 
     expect(response?.status()).toBe(200);
@@ -337,7 +337,7 @@ test("all seven locales render representative shell and catalog content", async 
       })
     ).toHaveAttribute("href", `/${locale}/products`);
     await expect(
-      page.getByRole("heading", { name: catalogTitle, exact: true })
+      page.getByRole("heading", { name: productsLabel, exact: true })
     ).toBeVisible();
   }
 });
