@@ -5,11 +5,15 @@ Last verified: 2026-09-24
 
 ## Current `ru` deployment
 
+The AnyToolAI Portal remains pre-production. This topology is the supported
+deployment composition, not evidence of a launched billing service. Its web
+entry combines public product discovery and the account/auth cabinet.
+
 ```mermaid
 flowchart LR
   Browser["Browser"] --> Caddy["Caddy"]
-  Caddy --> Web["Next.js web container"]
-  Caddy --> API["FastAPI API container"]
+  Caddy --> Web["AnyToolAI Portal · Next.js web container"]
+  Caddy --> API["Portal backend · FastAPI API container"]
   DB[("PostgreSQL 18")] -->|"healthy"| Migrate["One-shot Alembic service"]
   Migrate -->|"completed successfully"| API
   API --> DB
@@ -42,6 +46,8 @@ deployment variables are not a generic contour bootstrap selector.
 The direct-provider and CloudPayments runtime has been physically removed.
 Current API composition exposes no provider registry, callback route, provider
 configuration, or billing lifecycle command. Checkout remains unavailable.
+ANY-636 4F adds no External Billing/provider runtime, purchase/Widget,
+confirmed paid-access, or usage/quota integration.
 
 Production exposes optional `SENTRY_DSN` and `SENTRY_RELEASE` values to the
 shared API/migration environment. An empty DSN keeps Sentry disabled; when a
@@ -78,6 +84,10 @@ between contour data planes.
 
 Region Resolver is deployed separately. It is not part of this Compose stack.
 This portal may later receive the resolver origin as instance configuration.
+The conceptual user-facing destination is the AnyToolAI Portal for the selected
+contour, with Platform Kernel as a separate API/service boundary; no separate
+Application Portal peer frontend is required. The Resolver API schema remains
+undefined, and this topology defines no response fields or client behavior.
 There is no current provider webhook runtime or callback endpoint. If a future
 External Billing webhook integration is implemented by its owning later step,
 it is contour-local and terminates at that contour's API; Region Resolver is

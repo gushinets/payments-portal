@@ -1,10 +1,12 @@
 # Design System
 
 Status: authoritative entry point
-Last verified: 2026-08-18
+Last updated: 2026-10-06
 
-Payment Portal UI follows AnytoolAI Bundle 3: a dark AI-native glass and bento
-system with indigo gradients and restrained teal status accents.
+AnyToolAI Portal UI follows AnyToolAI Bundle 3: a dark AI-native glass and bento
+system with indigo gradients and restrained teal status accents. The public
+landing, product discovery/detail pages, and account/auth cabinet share this
+system; 4F introduces no replacement tokens or parallel visual framework.
 
 Before UI work, read:
 
@@ -15,5 +17,10 @@ Before UI work, read:
 
 The machine-readable tokens are canonical for values consumed by the app. UI
 changes must include desktop and mobile screenshots plus accessibility results.
-Customer-facing copy uses the current contour's locale. The implemented `ru`
-contour remains Russian.
+Ordinary Portal-owned copy follows the active route locale (`en`, `fr`, `it`,
+`de`, `es`, `ru`, or `pt`) within the implemented `ru` contour. Locale does not
+select a contour or data plane. Canonical RU legal content and acceptance text
+remain source-owned and Russian. Billing, paid-access, and usage/quota panels
+must present unavailable/unknown states without implying no subscription, no
+access, or zero usage/quota. See the
+[as-built RU Portal 4F handoff](product/ru-mvp.md).

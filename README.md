@@ -1,8 +1,9 @@
-# AnytoolAI Payment Portal
+# AnyToolAI Portal
 
-The Payment Portal is the identity, legal-consent, checkout, and access-entry
-service for AnytoolAI products. Each production deployment is one contour
-(compliance zone). This repository currently ships the `ru` contour.
+The AnyToolAI Portal brings together public product discovery, direct account
+entry, and identity and legal-consent flows for AnyToolAI products. Each
+production deployment serves one contour (compliance zone). This repository
+currently implements the `ru` contour; route locale does not select a contour.
 
 It contains a Next.js web application, a FastAPI identity/legal API, PostgreSQL
 persistence, and the clean provider-neutral external-billing storage baseline.
@@ -13,11 +14,12 @@ paid-access boundary, but its runtime implementation remains future program
 work. Platform Kernel code is maintained in the separate
 [anytoolai-platform](https://github.com/gushinets/anytoolai-platform) repository.
 
-Payment Portal is still under development and is not running as a production
-billing service. Checkout is temporarily unavailable while the approved
-external-billing runtime remains unimplemented; there are no production
-direct-provider subscribers or subscriptions to migrate. The fifteen target
-billing tables start empty and no current application behavior populates them.
+The repository remains pre-production and provider-independent after the
+ANY-636 4F implementation. External Billing/provider runtime, commercial
+catalog, purchase/Widget, confirmed paid access, and actual usage/quota
+integration are not implemented. There are no production direct-provider
+subscribers or subscriptions to migrate. The fifteen target billing tables
+start empty and no current application behavior populates them.
 For target billing work, follow [ADR 0005](docs/architecture/decisions/0005-external-billing-boundary.md),
 the accepted [External Billing Boundary Design](docs/superpowers/specs/2026-09-15-external-billing-boundary-design.md),
 and the accepted
@@ -27,6 +29,17 @@ is historical/superseded only; it is neither current-state nor target
 authority. See also the current
 [product scope](docs/PRODUCT.md) and contour and Region Resolver architecture
 in [ARCHITECTURE.md](ARCHITECTURE.md).
+
+External Billing owns commercial billing truth and lifecycle. The Portal owns
+identity/legal and the later projection, reconciliation, recovery, and
+paid-access delivery boundary. Platform Kernel owns technical product/metric
+identity, actual usage, and quota enforcement. The component historically named
+“Payments Portal” in the accepted ADR/design records is this Portal backend
+boundary; those records retain their authority and historical names.
+
+The durable [RU Portal 4F handoff](docs/product/ru-mvp.md) records the current
+UI/data sources and the deferred ANY-504 Steps 6–10. UI “not ready/unknown”
+does not establish no subscription, no access, or zero usage/quota.
 
 ## Start here
 
@@ -140,8 +153,8 @@ do not use `alembic stamp`, downgrade, or an upgrade bridge.
 
 ## Repository layout
 
-- `apps/web` — Next.js portal UI. Current routes are the `ru` contour and its
-  legal-page renderer.
+- `apps/web` — Next.js AnyToolAI Portal UI: public product discovery, direct
+  account/auth entry, recovery, verification, and canonical RU legal pages.
 - `apps/api` — FastAPI identity, password-reset, legal, health, and metrics API,
   plus the provider-neutral target persistence model. Billing runtime is not
   implemented.
@@ -149,6 +162,38 @@ do not use `alembic stamp`, downgrade, or an upgrade bridge.
 - `docs` — authoritative product, architecture, design, reliability, security,
   legal, planning, and generated documentation.
 - `scripts/repo.py` — cross-platform development and agent harness.
+
+## Current Portal routes
+
+Ordinary routes support `en`, `fr`, `it`, `de`, `es`, `ru`, and `pt` within the
+same `ru` contour, with `ru` as the default locale:
+
+```text
+/[locale]
+/[locale]/products
+/[locale]/products/document-summary
+/[locale]/products/prompt-optimizer
+/[locale]/account
+/[locale]/forgot-password
+/[locale]/reset-password
+/[locale]/verify-email
+```
+
+`/account` is the direct sign-in/registration entry and authenticated cabinet;
+the header also retains its sign-in modal. Legal routes remain canonical:
+`/ru/privacy`, `/ru/consent-personal-data`, `/ru/offer`, `/ru/cancellation`,
+`/ru/cookies`, and `/ru/security`.
+
+The transitional pre-production `/{locale}/auth-checkout` and
+`/{locale}/payment-result` routes were removed without redirects or compatibility
+routes because there is no production compatibility obligation for them. Future
+production route changes require their own compatibility decision.
+
+ANY-636 required no new Portal HTTP API: existing generated auth contracts and
+canonical legal assets supply the current server facts, while product discovery
+uses frontend presentation metadata. Future web-consumed Portal APIs follow the
+ANY-541 backend Pydantic → named OpenAPI → repository generation → generated
+TypeScript wire contracts → shared API transport trust boundary.
 
 ## Direct development commands
 
@@ -232,12 +277,15 @@ repository. No direct-provider runtime exists in this repository.
 
 ## Current limitations
 
-- Implemented routes and legal documents are the `ru` contour only.
-- Password-based demo authentication with SMTP-backed password reset;
-  production email verification is planned.
+- The implemented data plane and legal documents are the `ru` contour only;
+  ordinary UI supports the seven route locales independently of contour.
+- Password-based registration, sessions, logout, email verification, and
+  SMTP-backed password reset are implemented; the repository remains
+  pre-production.
 - Contour confirmation via Region Resolver is planned and not implemented.
 - The accepted Portal-Kernel capability, access-snapshot, and invalidation
   contracts are target architecture and are not implemented yet.
-- Checkout is deliberately unavailable until the external-billing program is
-  implemented for normal runtime, subject to its Phase 0 gates.
+- Purchase/Widget, billing state, paid-access state, and usage/quota remain
+  unavailable until their owning external-billing/Kernel integration steps;
+  provider-dependent work remains subject to Phase 0 gates.
 - Legal documents are drafts until reviewed and approved by counsel.

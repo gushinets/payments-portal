@@ -38,7 +38,7 @@ When sources conflict, use the following precedence for this ticket:
 
 1. `ANY-636` and the `ANY-504` execution sequence for the current 4F scope and future-step boundaries.
 2. ADR 0005 and the accepted External Billing / Portal-Kernel designs for ownership and authority.
-3. The current `ANY-541` / PR #129 implementation for actual existing behavior and the backend→OpenAPI→generated-Zod contract boundary.
+3. The current `ANY-541` / PR #129 implementation for actual existing behavior and the backend→OpenAPI→generated-TypeScript→shared-transport contract boundary.
 4. Current repository tests for behavior that must remain working.
 5. Bundle 3 for visual/layout rules.
 6. The ANY-539 RU mockup and handoff for product/UI direction only; they are **not** authority for tariffs, prices, subscriptions, provider facts, paid access, usage, quota, or runtime product identity.
@@ -152,9 +152,9 @@ For every value that actually crosses the backend/frontend HTTP boundary:
 FastAPI/Pydantic
   → app.openapi()
   → docs/generated/openapi.json
-  → apps/web/src/generated/api-contracts/
-  → generated Zod runtime validation + inferred wire types
-  → shared API transport
+  → generated TypeScript wire contracts in apps/web/src/generated/api-contracts/
+  → shared API transport trust boundary
+  → endpoint adapters
   → feature/UI state
 ```
 
@@ -549,7 +549,7 @@ Implement these settled decisions:
 3. Reuse submitAuth(), getSession(), logoutSession() and generated SessionUserResponse from the ANY-541 boundary. Do not introduce handwritten backend response DTOs or decoders.
 4. Update the account page provider so the client receives only the needed Auth, Account and EmailVerification message namespaces.
 5. Signed-out AccountClient must render login/registration directly rather than link to /auth-checkout.
-6. Preserve current registration legal confirmations, password-policy ownership, Accept-Language behavior and generated-contract runtime validation.
+6. Preserve current registration legal confirmations, password-policy ownership, Accept-Language behavior and the generated-TypeScript/shared-transport contract boundary.
 7. After successful login/registration, store the bearer and dispatch the existing sessionChangedEvent using the current conventions, then present the returned generated user state. Keep EmailVerificationPending for an unverified user.
 8. Keep HeaderAccount as the current modal sign-in entry. Do not redesign it.
 9. Make account session loading truthful and retryable using the already established trust rule from HeaderAccount/email verification:
@@ -1164,7 +1164,7 @@ Implement these settled decisions:
    - Platform Kernel actual usage/quota deferred to ANY-504 Step 10.
 6. State explicitly that UI “not ready/unknown” is not evidence of no subscription, no access or zero usage/quota.
 7. State explicitly that document-summary and prompt-optimizer are current presentation/route slugs only, not claimed Platform Kernel product_id or External Billing IDs.
-8. Record the ANY-541 rule: any future Portal-owned web-consumed API must start with backend Pydantic, named OpenAPI, repository generation and generated Zod runtime validation. Record that ANY-636 itself required no new API because no additional Portal-owned server fact was needed.
+8. Record the ANY-541 rule: any future Portal-owned web-consumed API must start with backend Pydantic, named OpenAPI, repository generation, generated TypeScript wire contracts and the shared API transport trust boundary. Record that ANY-636 itself required no new API because no additional Portal-owned server fact was needed.
 9. Remove the obsolete target assumption that Region Resolver publishes separate “Payment Portal” and “Application Portal” frontend destinations. The user-facing target is this AnyToolAI Portal; Platform Kernel remains a separate API/service boundary.
 10. Region Resolver still has no defined API schema. Do not invent fields, environment variables, CORS/cache/redirect details or implementation behavior.
 11. Preserve contour isolation and locale orthogonality exactly. Do not describe /en or another locale as a contour.
@@ -1274,7 +1274,7 @@ After all five steps are complete and manually verified, the implementation must
 | Provider network | None |
 | CloudPayments | Not restored |
 | FastAPI/Pydantic | No new/changed 4F API contract required |
-| OpenAPI/generated Zod | No new 4F API contract required; existing ANY-541 boundary preserved |
+| OpenAPI/generated TypeScript | No new 4F API contract required; existing ANY-541 boundary preserved |
 | Database schema | Unchanged |
 | Target billing persistence | Not used as UI/runtime authority |
 | Locale parity | `en/fr/it/de/es/ru/pt` exact key/ICU-signature parity |
