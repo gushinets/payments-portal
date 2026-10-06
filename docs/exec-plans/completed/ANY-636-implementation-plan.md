@@ -8,11 +8,48 @@
 | Ticket | `ANY-636 — 4F. Evolve Payments Portal into the RU AnyToolAI Portal` |
 | Direct predecessor / required code baseline | `ANY-541`, PR `#129`, branch `ANY-541` |
 | Planning baseline commit | `3e53f1cc7756cc6825b05b4fcbd580479a196a64` (`ANY-541: Fix email contract validation and Sentry sanitization`) |
-| Overall status | `todo` |
+| Overall status | `done` |
+| Completed | `2026-10-06` |
 | Execution order | Sequential only: Step 1 → manual verification → commit → Step 2 → ... → Step 5 |
 | Steps / commits | 5 |
 | Blocks | `ANY-634 — Step 5. LBX Phase 0 provider research` |
 | Backend/API/schema work expected | None, unless execution discovers a material contradiction with the researched baseline and stops for replanning |
+
+## Completion Evidence
+
+All five implementation steps are complete on branch `ANY-636`, based on
+`3e53f1cc7756cc6825b05b4fcbd580479a196a64`. The implementation history contains
+one commit per step:
+
+- Step 1: `3cfddc1` — public product discovery and product-detail routes.
+- Step 2: `d6f7e46` — direct authentication on `/account`; retired `/auth-checkout`.
+- Step 3: `46a30c5` — honest account cabinet states; retired `/payment-result`.
+- Step 4: `a8fbe72` — focused route, state, boundary, mobile, and accessibility coverage.
+- Step 5: `7c1fded` — current-authority docs and durable future-step handoff,
+  including the reviewed Kernel capability / External Billing commercial /
+  Portal projection-mapping distinction.
+
+The completion review inspected the current route inventory, account/product
+implementation, focused test coverage, current handoff, and baseline-to-HEAD
+file inventory. Changes are confined to web presentation, web tests, and
+documentation; backend, API contracts, generated artifacts, and schema are
+unchanged.
+
+Existing local browser evidence was inspected without rerunning checks:
+
+- `.harness/playwright-report/results.json`, updated on 2026-10-06 at 14:53
+  (UTC+08:00), records 116 passing tests across the seven focused non-runtime
+  suites, with no failures, skipped tests, flaky tests, or global errors.
+- `.harness/playwright-react-runtime-report/results.json`, updated at 14:01
+  that day, records two passing runtime tests with no failures. This report
+  predates the Step 4 commit and is not evidence of a fresh run of its final
+  runtime coverage.
+
+No formatting or automated verification was run during this completion review.
+Saved results for documentation, architecture, generation, web boundaries,
+components, typecheck, lint, build, and the fast repository gate were not
+available in the inspected artifacts; their outcomes are not asserted here.
+The original manual-verification commands remain below for use as required.
 
 ## How to Use This File
 
@@ -254,7 +291,7 @@ There is no production compatibility obligation for the two retired transitional
 
 # Step 1 — Build the Public Portal and Product Discovery Surface
 
-**Status:** `todo`  
+**Status:** `done`  
 **Recommended model:** `Luna`
 
 **Goal**  
@@ -434,7 +471,7 @@ ANY-636 build portal public product discovery
 
 # Step 2 — Make `/account` the Direct Auth Entry and Retire `/auth-checkout`
 
-**Status:** `todo`  
+**Status:** `done`  
 **Recommended model:** `Sol`
 
 **Goal**  
@@ -644,7 +681,7 @@ ANY-636 consolidate authentication on account route
 
 # Step 3 — Build the Honest RU Account Cabinet and Retire `/payment-result`
 
-**Status:** `todo`  
+**Status:** `done`  
 **Recommended model:** `Luna`
 
 **Goal**  
@@ -820,7 +857,7 @@ ANY-636 build honest portal cabinet states
 
 # Step 4 — Add Focused Portal Route, Boundary, Mobile and Accessibility Coverage
 
-**Status:** `todo`  
+**Status:** `done`  
 **Recommended model:** `Luna`
 
 **Goal**  
@@ -1023,7 +1060,7 @@ ANY-636 cover portal routes states and boundaries
 
 # Step 5 — Align Current Authority Docs and Publish the 4F Handoff
 
-**Status:** `todo`  
+**Status:** `done`  
 **Recommended model:** `Sol`
 
 **Goal**  
