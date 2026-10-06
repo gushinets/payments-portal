@@ -133,7 +133,7 @@ export function PasswordResetConfirmClient() {
             <ArrowRight size={15} aria-hidden="true" />
           </button>
 
-          <Link className="btn-secondary" href="/auth-checkout">
+          <Link className="btn-secondary" href="/account">
             {t("confirm.actions.signIn")}
           </Link>
         </form>

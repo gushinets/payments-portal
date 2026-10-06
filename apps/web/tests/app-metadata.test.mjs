@@ -11,12 +11,6 @@ const layoutPath = fileURLToPath(
 const metadataPath = fileURLToPath(
   new URL("../src/i18n/metadata.ts", import.meta.url)
 );
-const checkoutPagePath = fileURLToPath(
-  new URL("../src/app/[locale]/auth-checkout/page.tsx", import.meta.url)
-);
-const checkoutClientPath = fileURLToPath(
-  new URL("../src/features/checkout/CheckoutClient.tsx", import.meta.url)
-);
 const routingPath = fileURLToPath(
   new URL("../src/i18n/routing.ts", import.meta.url)
 );
@@ -49,7 +43,10 @@ test("localized routes retain a generated static locale boundary", async () => {
     source,
     /SUPPORTED_ROUTE_LOCALES\.map\(\(locale\) => \(\{ locale \}\)\)/
   );
-  assert.match(source, /<html lang=\{LANGUAGE_TAG_BY_ROUTE_LOCALE\[locale\]\}>/);
+  assert.match(
+    source,
+    /<html lang=\{LANGUAGE_TAG_BY_ROUTE_LOCALE\[locale\]\}>/
+  );
   assert.match(
     source,
     /<NextIntlClientProvider locale=\{locale\} messages=\{null\}>/
@@ -70,25 +67,22 @@ test("locale routing keeps root-only negotiation and persistence disabled", asyn
 });
 
 test("frontend source does not reach provider scripts or browser SDK", async () => {
-  const [checkoutPageSource, checkoutClientSource] = await Promise.all([
-    readFile(checkoutPagePath, "utf8"),
-    readFile(checkoutClientPath, "utf8")
-  ]);
   const files = await sourceFiles(srcRootPath);
   const offenders = [];
 
   await Promise.all(
     files.map(async (filePath) => {
       const source = await readFile(filePath, "utf8");
-      if (/widget\.cloudpayments\.ru|\bwindow\.cp\b|\bcp\./.test(source)) {
+      if (
+        /widget\.cloudpayments\.ru|\bwindow\.cp\b|\bcp\.|provider-adapters/.test(
+          source
+        )
+      ) {
         offenders.push(filePath);
       }
     })
   );
 
-  assert.doesNotMatch(checkoutPageSource, /next\/script|<Script/);
-  assert.doesNotMatch(checkoutPageSource, /provider-adapters/);
-  assert.doesNotMatch(checkoutClientSource, /provider-adapters|window\.cp|\bcp\./);
   assert.deepEqual(offenders, []);
 });
 

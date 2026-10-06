@@ -35,7 +35,11 @@ test("account logout revokes the session and returns to the signed-out account s
 
     await accountMain.getByRole("button", { name: /Выйти/ }).click();
     await expect(
-      accountMain.getByRole("link", { name: "Войти или зарегистрироваться" })
+      accountMain.getByRole("heading", { name: "Вход или регистрация" })
+    ).toBeVisible();
+    await expect(accountMain.getByLabel("Email")).toBeVisible();
+    await expect(
+      accountMain.getByRole("button", { name: "Регистрация", exact: true })
     ).toBeVisible();
     await expect
       .poll(() =>

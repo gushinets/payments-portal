@@ -453,6 +453,7 @@ apps/web/src/features/checkout/index.ts                   # remove if empty
 apps/web/src/features/password-reset/PasswordResetRequestClient.tsx
 apps/web/src/features/password-reset/PasswordResetConfirmClient.tsx
 apps/web/src/features/email-verification/EmailVerificationClient.tsx
+apps/web/src/features/payment-result/PaymentResultView.tsx # navigation links only
 apps/web/src/messages/{en,fr,it,de,es,ru,pt}.json
 apps/web/src/app/account.css
 ```
@@ -496,7 +497,7 @@ apps/web/tests/app-metadata.test.mjs
    - retry re-runs only the session read.
    This follows the already established `HeaderAccount` / email-verification trust behavior and does not change backend auth semantics.
 10. Logout behavior remains: attempt backend logout, but local bearer removal still wins in the fallback/finally path so the browser becomes signed out.
-11. Update all current “back/sign in” links from reset/verification flows that point to `/auth-checkout` so they point to `/account`.
+11. Update every active `/auth-checkout` reference encountered within the Step 2 dependency surface to the locale-aware `/account` route, including reset/verification links and navigation in `PaymentResultView`, without otherwise modifying the payment-result feature.
 12. Preserve reset/verification fragment-token behavior exactly. Do not put tokens into query strings, localStorage, logs or new UI state.
 13. Delete the `/[locale]/auth-checkout` page and checkout feature. Do not add a redirect, alias, compatibility route, rewrite, or deprecated banner.
 14. Remove the obsolete `Checkout` locale namespace when no active surface consumes it.
@@ -558,14 +559,14 @@ Implement these settled decisions:
    - retry only reloads the session.
    Do not change backend auth/session semantics.
 10. Preserve logout behavior: attempt backend logout when a bearer exists, but always clear the matching local bearer in the fallback/finally path and dispatch the session change.
-11. Change reset/verification “back to sign in” links from /auth-checkout to localized /account.
+11. Update every active /auth-checkout reference encountered within the Step 2 dependency surface to locale-aware /account, including reset/verification “back to sign in” links and navigation in PaymentResultView, without otherwise modifying the payment-result feature.
 12. Preserve password-reset and email-verification fragment-token lifecycle exactly. Do not persist those tokens or move them into query strings.
 13. Delete apps/web/src/app/[locale]/auth-checkout/page.tsx and the checkout feature files once no active code imports them.
 14. Do not add a redirect, rewrite, compatibility alias or deprecated /auth-checkout page. There is no production compatibility obligation.
 15. Remove the obsolete Checkout locale namespace if it has no remaining active consumer, updating all seven catalogs together.
 16. Update directly affected component/E2E tests from auth-checkout to account. Remove CheckoutClient tests and checkout-unavailable E2E coverage that exist only for the retired surface; Step 4 will add final Portal boundary coverage.
 17. Update app-metadata.test.mjs so its provider-script guard no longer reads deleted checkout files directly. Keep or strengthen the repository-wide source scan for provider scripts and removed billing contracts.
-18. Do not change /payment-result yet; that is Step 3.
+18. Do not remove, redesign, or otherwise evolve /payment-result in this step; its removal remains Step 3. Updating its navigation links only as required to remove references to the deleted /auth-checkout route is explicitly allowed.
 19. Do not add FastAPI endpoints, Pydantic models, OpenAPI changes, generated API contracts, database models, migrations, commerce APIs, provider code, billing state, paid access or usage/quota data.
 
 If the current code materially contradicts an assumption required by this step, stop and describe the contradiction instead of inventing a new solution.
@@ -596,6 +597,14 @@ npm --workspace @anytoolai/web run test:components -- \
   tests/components/AuthContractValidation.test.ts \
   tests/components/AuthApiError.test.ts
 ```
+
+Before browser coverage, rebuild and recreate the worktree harness from the current source. `test:e2e` uses the existing running server; it does not start or rebuild the frontend. For an already running harness:
+
+```bash
+npm run repo:up -- --reuse
+```
+
+Preserve any custom `--port-offset` used to start that harness.
 
 Run focused browser flows:
 

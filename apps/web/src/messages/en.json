@@ -108,18 +108,6 @@
       "generic": "Could not complete email verification. Try again."
     }
   },
-  "Checkout": {
-    "sessionChecking": "Checking your session...",
-    "authenticatedBadge": "Signed in",
-    "accountTitle": "AnytoolAI account",
-    "openAccountAction": "Open account",
-    "signOutAction": "Sign out",
-    "unavailable": {
-      "badge": "Information",
-      "title": "Payments are temporarily unavailable",
-      "description": "The Portal currently supports registration, sign-in, password recovery, and legal consent. The catalog, subscriptions, and payments will become available after the new billing system is connected."
-    }
-  },
   "Account": {
     "loading": "Loading account...",
     "badge": "Account",
@@ -128,6 +116,10 @@
     "signedOut": {
       "notice": "Sign in to your account to open the account area.",
       "action": "Sign in or register"
+    },
+    "sessionError": {
+      "notice": "Could not load your account session. Try again.",
+      "retryAction": "Retry session load"
     },
     "authenticated": {
       "description": "Subscription and payment management is temporarily unavailable.",

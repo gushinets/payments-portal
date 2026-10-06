@@ -19,7 +19,7 @@ async function expectLegalLinksOpenInNewTab(
   }
 }
 
-test("auth-shell registration asks to repeat password and opens legal docs in new tabs", async ({ page }) => {
+test("account registration asks to repeat password and opens legal docs in new tabs", async ({ page }) => {
   let authRequests = 0;
   page.on("request", (request) => {
     if (/\/api\/auth\/(login|register)$/.test(new URL(request.url()).pathname)) {
@@ -27,20 +27,20 @@ test("auth-shell registration asks to repeat password and opens legal docs in ne
     }
   });
 
-  await page.goto("/ru/auth-checkout");
+  await page.goto("/ru/account");
 
-  const authShell = page.getByRole("main");
-  await authShell.getByRole("button", { name: "Регистрация" }).click();
-  await expect(authShell.getByLabel("Повторите пароль")).toBeVisible();
-  await expect(authShell.locator("label span[lang=ru]")).toHaveCount(2);
-  await expectLegalLinksOpenInNewTab(authShell);
+  const accountMain = page.getByRole("main");
+  await accountMain.getByRole("button", { name: "Регистрация" }).click();
+  await expect(accountMain.getByLabel("Повторите пароль")).toBeVisible();
+  await expect(accountMain.locator("label span[lang=ru]")).toHaveCount(2);
+  await expectLegalLinksOpenInNewTab(accountMain);
 
-  await authShell.getByLabel("Email").fill("audit-user@example.com");
-  await authShell.getByLabel("Пароль", { exact: true }).fill("Synthetic-password-123!");
-  await authShell.getByLabel("Повторите пароль").fill("Synthetic-password-456!");
-  await authShell.getByRole("button", { name: /Создать аккаунт/ }).click();
+  await accountMain.getByLabel("Email").fill("audit-user@example.com");
+  await accountMain.getByLabel("Пароль", { exact: true }).fill("Synthetic-password-123!");
+  await accountMain.getByLabel("Повторите пароль").fill("Synthetic-password-456!");
+  await accountMain.getByRole("button", { name: /Создать аккаунт/ }).click();
 
-  await expect(authShell.getByText("Пароли не совпадают.")).toBeVisible();
+  await expect(accountMain.getByText("Пароли не совпадают.")).toBeVisible();
   expect(authRequests).toBe(0);
 });
 
@@ -55,7 +55,7 @@ test("header registration legal docs open in new tabs", async ({ page }) => {
   await expectLegalLinksOpenInNewTab(dialog);
 });
 
-test("auth-shell registration validation rejects invalid inputs before submitting", async ({ page }) => {
+test("account registration validation rejects invalid inputs before submitting", async ({ page }) => {
   let authRequests = 0;
   page.on("request", (request) => {
     if (/\/api\/auth\/(login|register)$/.test(new URL(request.url()).pathname)) {
@@ -63,27 +63,27 @@ test("auth-shell registration validation rejects invalid inputs before submittin
     }
   });
 
-  await page.goto("/ru/auth-checkout");
+  await page.goto("/ru/account");
 
-  const authShell = page.getByRole("main");
-  await authShell.getByRole("button", { name: "Регистрация" }).click();
+  const accountMain = page.getByRole("main");
+  await accountMain.getByRole("button", { name: "Регистрация" }).click();
 
-  await authShell.getByLabel("Email").fill("audit-user");
-  await authShell.getByRole("button", { name: /Создать аккаунт/ }).click();
-  await expect(authShell.getByText("Укажите корректный email.")).toBeVisible();
+  await accountMain.getByLabel("Email").fill("audit-user");
+  await accountMain.getByRole("button", { name: /Создать аккаунт/ }).click();
+  await expect(accountMain.getByText("Укажите корректный email.")).toBeVisible();
   expect(authRequests).toBe(0);
 
-  await authShell.getByLabel("Email").fill("audit-user@example.com");
-  await authShell.getByLabel("Пароль", { exact: true }).fill("Synthetic-password-123!");
-  await authShell.getByLabel("Повторите пароль").fill("Synthetic-password-123!");
-  await authShell.getByRole("button", { name: /Создать аккаунт/ }).click();
+  await accountMain.getByLabel("Email").fill("audit-user@example.com");
+  await accountMain.getByLabel("Пароль", { exact: true }).fill("Synthetic-password-123!");
+  await accountMain.getByLabel("Повторите пароль").fill("Synthetic-password-123!");
+  await accountMain.getByRole("button", { name: /Создать аккаунт/ }).click();
   await expect(
-    authShell.getByText("Нужно дать согласие на обработку персональных данных.")
+    accountMain.getByText("Нужно дать согласие на обработку персональных данных.")
   ).toBeVisible();
   expect(authRequests).toBe(0);
 
-  await authShell.getByLabel(/Я даю согласие/).check();
-  await authShell.getByRole("button", { name: /Создать аккаунт/ }).click();
-  await expect(authShell.getByText("Нужно принять условия оферты.")).toBeVisible();
+  await accountMain.getByLabel(/Я даю согласие/).check();
+  await accountMain.getByRole("button", { name: /Создать аккаунт/ }).click();
+  await expect(accountMain.getByText("Нужно принять условия оферты.")).toBeVisible();
   expect(authRequests).toBe(0);
 });

@@ -108,18 +108,6 @@
       "generic": "Die E-Mail-Bestätigung konnte nicht abgeschlossen werden. Versuchen Sie es erneut."
     }
   },
-  "Checkout": {
-    "sessionChecking": "Sitzung wird geprüft...",
-    "authenticatedBadge": "Angemeldet",
-    "accountTitle": "AnytoolAI-Konto",
-    "openAccountAction": "Konto öffnen",
-    "signOutAction": "Abmelden",
-    "unavailable": {
-      "badge": "Information",
-      "title": "Zahlungen sind vorübergehend nicht verfügbar",
-      "description": "Das Portal unterstützt derzeit Registrierung, Anmeldung, Passwortwiederherstellung und rechtliche Einwilligungen. Katalog, Abonnements und Zahlungen werden nach der Anbindung des neuen Abrechnungssystems verfügbar."
-    }
-  },
   "Account": {
     "loading": "Konto wird geladen...",
     "badge": "Konto",
@@ -128,6 +116,10 @@
     "signedOut": {
       "notice": "Melden Sie sich an, um Ihren Kontobereich zu öffnen.",
       "action": "Anmelden oder registrieren"
+    },
+    "sessionError": {
+      "notice": "Ihre Kontositzung konnte nicht geladen werden. Versuchen Sie es erneut.",
+      "retryAction": "Sitzung erneut laden"
     },
     "authenticated": {
       "description": "Die Verwaltung von Abonnements und Zahlungen ist vorübergehend nicht verfügbar.",

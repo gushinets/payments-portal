@@ -55,17 +55,21 @@ test("retained auth and neutral commerce pages render without runtime warnings",
   }, sessionTokenStorageKey);
 
   await page.goto("/ru");
-  await expect(page.getByText("Каталог тарифов и оформление покупок временно недоступны.")).toBeVisible();
+  await expect(
+    page.getByRole("heading", {
+      name: "Инструменты для работы с документами и улучшения промптов",
+      exact: true
+    })
+  ).toBeVisible();
   await captureVisualEvidence(page, testInfo, "landing");
 
-  await page.goto("/ru/auth-checkout");
-  await expect(page.getByRole("main").getByText(email, { exact: true })).toBeVisible();
-  await expect(page.getByText("Оплата временно недоступна")).toBeVisible();
-  await captureVisualEvidence(page, testInfo, "auth-shell");
-
   await page.goto("/ru/account");
-  await expect(page.getByRole("heading", { name: "Личный кабинет" })).toBeVisible();
-  await expect(page.getByRole("main").getByText(email, { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Личный кабинет" })
+  ).toBeVisible();
+  await expect(
+    page.getByRole("main").getByText(email, { exact: true })
+  ).toBeVisible();
   await expect(page.getByText("Биллинг обновляется")).toBeVisible();
   await captureVisualEvidence(page, testInfo, "account");
 
