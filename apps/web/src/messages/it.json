@@ -108,18 +108,6 @@
       "generic": "Impossibile completare la verifica dell’email. Riprova."
     }
   },
-  "Checkout": {
-    "sessionChecking": "Verifica della sessione...",
-    "authenticatedBadge": "Accesso effettuato",
-    "accountTitle": "Account AnytoolAI",
-    "openAccountAction": "Apri account",
-    "signOutAction": "Esci",
-    "unavailable": {
-      "badge": "Informazioni",
-      "title": "I pagamenti sono temporaneamente non disponibili",
-      "description": "Il Portale supporta attualmente registrazione, accesso, recupero della password e consensi legali. Il catalogo, gli abbonamenti e i pagamenti saranno disponibili dopo il collegamento del nuovo sistema di fatturazione."
-    }
-  },
   "Account": {
     "loading": "Caricamento dell’account...",
     "badge": "Account",
@@ -128,6 +116,10 @@
     "signedOut": {
       "notice": "Accedi al tuo account per aprire l’area personale.",
       "action": "Accedi o registrati"
+    },
+    "sessionError": {
+      "notice": "Impossibile caricare la sessione del tuo account. Riprova.",
+      "retryAction": "Riprova a caricare la sessione"
     },
     "authenticated": {
       "description": "La gestione degli abbonamenti e dei pagamenti è temporaneamente non disponibile.",

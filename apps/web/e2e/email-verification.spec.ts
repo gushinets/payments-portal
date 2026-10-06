@@ -58,7 +58,7 @@ test("registration shows guidance but leaves password-policy authority to the AP
     });
   });
 
-  await page.goto("/ru/auth-checkout");
+  await page.goto("/ru/account");
   const scope = page.getByRole("main");
   await completeRegistrationForm(scope, "policy@example.com", "Aa1!aaaaaaa");
   await expect(scope.getByText("Требования к паролю")).toBeVisible();
@@ -105,7 +105,7 @@ test("registration preserves valid Unicode, spaces, quotes, and semicolons", asy
     });
   });
 
-  await page.goto("/ru/auth-checkout");
+  await page.goto("/ru/account");
   const scope = page.getByRole("main");
   await completeRegistrationForm(scope, user.email, password);
   await scope.getByRole("button", { name: /Создать аккаунт/ }).click();
@@ -144,7 +144,7 @@ test("login keeps existing-credential validation and exposes unverified recovery
     });
   });
 
-  await page.goto("/ru/auth-checkout");
+  await page.goto("/ru/account");
   const main = page.getByRole("main");
   await main.getByLabel("Email").fill(user.email);
   await main.getByLabel("Пароль").fill("password");
@@ -164,10 +164,10 @@ test("login keeps existing-credential validation and exposes unverified recovery
     .toBe("login-session");
 });
 
-test("checkout registration and resend use the canonical pt-BR language tag", async ({
+test("account registration and resend use the canonical pt-BR language tag", async ({
   page
 }) => {
-  const user = mockUser("checkout-pt@example.com");
+  const user = mockUser("account-pt@example.com");
   const registrationHeaders: Array<string | null> = [];
   const resendRequests: Array<{
     authorization: string | null;
@@ -179,7 +179,7 @@ test("checkout registration and resend use the canonical pt-BR language tag", as
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ status: "registered", token: "checkout-session", user })
+      body: JSON.stringify({ status: "registered", token: "account-session", user })
     });
   });
   await page.route("**/api/auth/session", async (route) => {
@@ -202,7 +202,7 @@ test("checkout registration and resend use the canonical pt-BR language tag", as
     });
   });
 
-  await page.goto("/pt/auth-checkout");
+  await page.goto("/pt/account");
   const scope = page.getByRole("main");
   await completeRegistrationForm(scope, user.email);
   await scope.getByRole("button", { name: "Criar conta" }).last().click();
@@ -212,7 +212,7 @@ test("checkout registration and resend use the canonical pt-BR language tag", as
   expect(registrationHeaders).toEqual(["pt-BR"]);
   expect(resendRequests).toEqual([
     {
-      authorization: "Bearer checkout-session",
+      authorization: "Bearer account-session",
       languageTag: "pt-BR",
       body: {}
     }
@@ -578,7 +578,7 @@ test("logged-out verification without a token requires normal sign-in", async ({
   ).toBeVisible();
   await expect(page.getByRole("link", { name: "Войти" })).toHaveAttribute(
     "href",
-    "/ru/auth-checkout"
+    "/ru/account"
   );
   await expect(page.getByRole("button", { name: /Отправить письмо/ })).toHaveCount(0);
   expect(resendRequests).toBe(0);

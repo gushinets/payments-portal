@@ -61,6 +61,16 @@
   width: min(100%, 520px);
 }
 
+.account-auth-panel {
+  display: grid;
+  gap: 20px;
+}
+
+.account-auth-panel > .legal-title,
+.account-auth-panel > .card-copy {
+  margin: 0;
+}
+
 .auth-form-secondary-link {
   width: fit-content;
   font-weight: 700;

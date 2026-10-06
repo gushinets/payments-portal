@@ -108,18 +108,6 @@
       "generic": "No se pudo completar la verificación del correo. Inténtalo de nuevo."
     }
   },
-  "Checkout": {
-    "sessionChecking": "Comprobando la sesión...",
-    "authenticatedBadge": "Sesión iniciada",
-    "accountTitle": "Cuenta de AnytoolAI",
-    "openAccountAction": "Abrir cuenta",
-    "signOutAction": "Cerrar sesión",
-    "unavailable": {
-      "badge": "Información",
-      "title": "Los pagos no están disponibles temporalmente",
-      "description": "El Portal admite actualmente el registro, el inicio de sesión, la recuperación de contraseña y los consentimientos legales. El catálogo, las suscripciones y los pagos estarán disponibles cuando se conecte el nuevo sistema de facturación."
-    }
-  },
   "Account": {
     "loading": "Cargando la cuenta...",
     "badge": "Cuenta",
@@ -128,6 +116,10 @@
     "signedOut": {
       "notice": "Inicia sesión en tu cuenta para abrir el área personal.",
       "action": "Iniciar sesión o registrarse"
+    },
+    "sessionError": {
+      "notice": "No se pudo cargar la sesión de tu cuenta. Inténtalo de nuevo.",
+      "retryAction": "Volver a cargar la sesión"
     },
     "authenticated": {
       "description": "La gestión de suscripciones y pagos no está disponible temporalmente.",

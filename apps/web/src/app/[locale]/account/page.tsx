@@ -20,6 +20,7 @@ export default async function AccountPage() {
   return (
     <NextIntlClientProvider
       messages={{
+        Auth: messages.Auth,
         Account: messages.Account,
         EmailVerification: messages.EmailVerification
       }}

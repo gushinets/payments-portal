@@ -108,18 +108,6 @@
       "generic": "Impossible de terminer la vérification de l’e-mail. Réessayez."
     }
   },
-  "Checkout": {
-    "sessionChecking": "Vérification de votre session...",
-    "authenticatedBadge": "Connecté",
-    "accountTitle": "Compte AnytoolAI",
-    "openAccountAction": "Ouvrir le compte",
-    "signOutAction": "Se déconnecter",
-    "unavailable": {
-      "badge": "Information",
-      "title": "Les paiements sont temporairement indisponibles",
-      "description": "Le Portail prend actuellement en charge l’inscription, la connexion, la récupération du mot de passe et les consentements juridiques. Le catalogue, les abonnements et les paiements seront disponibles après la connexion du nouveau système de facturation."
-    }
-  },
   "Account": {
     "loading": "Chargement du compte...",
     "badge": "Compte",
@@ -128,6 +116,10 @@
     "signedOut": {
       "notice": "Connectez-vous à votre compte pour accéder à votre espace personnel.",
       "action": "Se connecter ou s’inscrire"
+    },
+    "sessionError": {
+      "notice": "Impossible de charger la session de votre compte. Réessayez.",
+      "retryAction": "Réessayer de charger la session"
     },
     "authenticated": {
       "description": "La gestion des abonnements et des paiements est temporairement indisponible.",

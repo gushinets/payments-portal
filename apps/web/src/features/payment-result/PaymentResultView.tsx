@@ -21,7 +21,7 @@ export async function PaymentResultView() {
           {t("notice")}
         </div>
         <div className="hero-actions">
-          <Link className="btn-primary" href="/auth-checkout">
+          <Link className="btn-primary" href="/account">
             {t("accountAction")}
           </Link>
           <Link className="btn-secondary" href="/">

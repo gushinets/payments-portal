@@ -108,18 +108,6 @@
       "generic": "Não foi possível concluir a verificação do e-mail. Tente novamente."
     }
   },
-  "Checkout": {
-    "sessionChecking": "Verificando sua sessão...",
-    "authenticatedBadge": "Sessão iniciada",
-    "accountTitle": "Conta AnytoolAI",
-    "openAccountAction": "Abrir conta",
-    "signOutAction": "Sair",
-    "unavailable": {
-      "badge": "Informação",
-      "title": "Os pagamentos estão temporariamente indisponíveis",
-      "description": "No momento, o Portal oferece cadastro, acesso, recuperação de senha e consentimentos jurídicos. O catálogo, as assinaturas e os pagamentos estarão disponíveis depois que o novo sistema de cobrança for conectado."
-    }
-  },
   "Account": {
     "loading": "Carregando a conta...",
     "badge": "Conta",
@@ -128,6 +116,10 @@
     "signedOut": {
       "notice": "Entre na sua conta para acessar a área da conta.",
       "action": "Entrar ou criar uma conta"
+    },
+    "sessionError": {
+      "notice": "Não foi possível carregar a sessão da sua conta. Tente novamente.",
+      "retryAction": "Carregar a sessão novamente"
     },
     "authenticated": {
       "description": "O gerenciamento de assinaturas e pagamentos está temporariamente indisponível.",
