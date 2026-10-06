@@ -14,5 +14,9 @@ Included files:
   [apps/web](../../../apps/web/).
 
 The original archive also contains `extension.md` and `mobile.md`; they are not
-included here because this repository currently implements only the RU web
-payments portal.
+included here because this repository implements the AnyToolAI Portal web
+surface: public product discovery, direct account/auth entry, and the account
+cabinet. Bundle 3 remains the shared design system. The implemented contour is
+`ru`; ordinary UI route locales remain independent of that contour, and
+canonical legal content remains RU-only. See the
+[as-built RU Portal 4F handoff](../../product/ru-mvp.md).
