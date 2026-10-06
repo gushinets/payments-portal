@@ -152,4 +152,4 @@ frontend DTOs, mock billing data, or guessed business states.
   runtime is introduced. Payment-method configuration remains empty.
 - Manual acceptance covers the focused final route, auth/legal, locale,
   mobile/accessibility, generated-contract, lint/type, and build surfaces listed
-  in [ANY-636 Step 5](../exec-plans/active/ANY-636-implementation-plan.md).
+  in [ANY-636 Step 5](../exec-plans/completed/ANY-636-implementation-plan.md).
