@@ -54,6 +54,9 @@
 
   .bento-grid,
   .tools-grid,
+  .product-hero,
+  .product-information-grid,
+  .product-readiness-grid,
   .two-column,
   .account-layout,
   .account-products-grid,
@@ -76,9 +79,22 @@
     padding: 26px 22px;
   }
 
-  .product-detail-card {
-    min-height: 0;
-    padding: 26px 22px;
+  .product-hero {
+    gap: 32px;
+    margin-bottom: 40px;
+  }
+
+  .product-hero .product-detail-title {
+    font-size: 36px;
+  }
+
+  .product-preview {
+    max-width: 560px;
+    width: 100%;
+  }
+
+  .product-readiness-grid {
+    gap: 16px;
   }
 
   #checkout-form {
@@ -162,8 +178,29 @@
   }
 
   .product-collection,
-  .tool-card {
+  .tool-card,
+  .product-info-card {
     padding: 22px 20px;
+  }
+
+  .product-hero .product-detail-title {
+    font-size: 32px;
+  }
+
+  .product-preview {
+    padding: 20px 16px;
+  }
+
+  .product-illustration {
+    gap: 8px;
+    min-height: 200px;
+    padding: 12px;
+  }
+
+  .product-illustration-source,
+  .product-illustration-focus {
+    min-height: 150px;
+    padding: 12px;
   }
 
   .site-shell .footer-links {

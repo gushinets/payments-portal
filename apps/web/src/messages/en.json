@@ -243,18 +243,69 @@
     },
     "signInAction": "Sign in or register",
     "backToCatalog": "Back to products",
+    "detail": {
+      "accountNote": "Signing in opens your AnytoolAI account area.",
+      "previewLabel": "Product illustration",
+      "previewNote": "A schematic illustration, rather than a working extension interface.",
+      "informationTitle": "About the product",
+      "readiness": {
+        "title": "Availability information",
+        "commercial": {
+          "label": "Plans and terms",
+          "description": "Commercial information for this product is not ready yet."
+        },
+        "access": {
+          "label": "Access",
+          "description": "Access status for this product is not available yet."
+        },
+        "usage": {
+          "label": "Usage and quota",
+          "description": "Usage and quota data is not available yet."
+        }
+      }
+    },
     "products": {
       "documentSummary": {
         "name": "Document Summary",
         "type": "Chrome extension",
         "tagline": "Instant summaries of any document",
-        "description": "The extension quickly summarizes documents and web pages without unnecessary manual steps."
+        "description": "The extension quickly summarizes documents and web pages without unnecessary manual steps.",
+        "detail": {
+          "previewCaption": "Documents and their summaries",
+          "focus": {
+            "title": "Document summaries",
+            "description": "The core purpose is to help you get a summary of a document."
+          },
+          "context": {
+            "title": "Documents and web pages",
+            "description": "The extension focuses on working with documents and web pages."
+          },
+          "approach": {
+            "title": "Fewer manual steps",
+            "description": "Helps you get a summary without unnecessary manual steps."
+          }
+        }
       },
       "promptOptimizer": {
         "name": "Prompt Optimizer",
         "type": "Chrome extension",
         "tagline": "Improve AI prompts in one click",
-        "description": "The extension improves prompts in the interface you already use and shows exactly what changed."
+        "description": "The extension improves prompts in the interface you already use and shows exactly what changed.",
+        "detail": {
+          "previewCaption": "Prompts and their improvement",
+          "focus": {
+            "title": "Better prompts",
+            "description": "A tool for improving how you phrase requests to AI."
+          },
+          "context": {
+            "title": "A familiar interface",
+            "description": "Prompts are improved directly in the interface you already use."
+          },
+          "approach": {
+            "title": "Visible changes",
+            "description": "The extension shows exactly what improved in your prompt."
+          }
+        }
       }
     },
     "detailsAction": "Learn more"

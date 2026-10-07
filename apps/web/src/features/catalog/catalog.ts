@@ -1,9 +1,13 @@
 import {
   FileText,
+  Globe,
   Languages,
+  List,
   MessageSquareQuote,
+  MousePointer2,
   ShieldCheck,
   Sparkles,
+  SquarePen,
   WandSparkles
 } from "lucide-react";
 
@@ -30,18 +34,35 @@ export type ProductPresentation = {
   slug: ProductSlug;
   messageKey: "documentSummary" | "promptOptimizer";
   Icon: typeof FileText;
+  PreviewIcon: typeof FileText;
+  highlights: readonly {
+    messageKey: "focus" | "context" | "approach";
+    Icon: typeof FileText;
+  }[];
 };
 
 export const productPresentation: readonly ProductPresentation[] = [
   {
     slug: "document-summary",
     messageKey: "documentSummary",
-    Icon: FileText
+    Icon: FileText,
+    PreviewIcon: List,
+    highlights: [
+      { messageKey: "focus", Icon: FileText },
+      { messageKey: "context", Icon: Globe },
+      { messageKey: "approach", Icon: MousePointer2 }
+    ]
   },
   {
     slug: "prompt-optimizer",
     messageKey: "promptOptimizer",
-    Icon: WandSparkles
+    Icon: WandSparkles,
+    PreviewIcon: MessageSquareQuote,
+    highlights: [
+      { messageKey: "focus", Icon: SquarePen },
+      { messageKey: "context", Icon: MousePointer2 },
+      { messageKey: "approach", Icon: Sparkles }
+    ]
   }
 ];
 

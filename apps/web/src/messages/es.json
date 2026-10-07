@@ -243,18 +243,69 @@
     },
     "signInAction": "Iniciar sesión o registrarse",
     "backToCatalog": "Volver a los productos",
+    "detail": {
+      "accountNote": "Al iniciar sesión se abre tu área de cuenta de AnytoolAI.",
+      "previewLabel": "Ilustración del producto",
+      "previewNote": "Una ilustración esquemática, no una interfaz funcional de la extensión.",
+      "informationTitle": "Acerca del producto",
+      "readiness": {
+        "title": "Información de disponibilidad",
+        "commercial": {
+          "label": "Planes y condiciones",
+          "description": "La información comercial de este producto aún no está lista."
+        },
+        "access": {
+          "label": "Acceso",
+          "description": "El estado de acceso a este producto aún no está disponible."
+        },
+        "usage": {
+          "label": "Uso y cuota",
+          "description": "Los datos de uso y cuota aún no están disponibles."
+        }
+      }
+    },
     "products": {
       "documentSummary": {
         "name": "Document Summary",
         "type": "Extensión de Chrome",
         "tagline": "Resúmenes instantáneos de cualquier documento",
-        "description": "La extensión resume rápidamente documentos y páginas web sin pasos manuales innecesarios."
+        "description": "La extensión resume rápidamente documentos y páginas web sin pasos manuales innecesarios.",
+        "detail": {
+          "previewCaption": "Documentos y sus resúmenes",
+          "focus": {
+            "title": "Resúmenes de documentos",
+            "description": "El objetivo principal es ayudarte a obtener el resumen de un documento."
+          },
+          "context": {
+            "title": "Documentos y páginas web",
+            "description": "La extensión está orientada al trabajo con documentos y páginas web."
+          },
+          "approach": {
+            "title": "Menos pasos manuales",
+            "description": "Te ayuda a obtener un resumen sin pasos manuales innecesarios."
+          }
+        }
       },
       "promptOptimizer": {
         "name": "Prompt Optimizer",
         "type": "Extensión de Chrome",
         "tagline": "Mejora prompts de IA con un clic",
-        "description": "La extensión mejora los prompts en la interfaz que ya utilizas y muestra exactamente qué ha cambiado."
+        "description": "La extensión mejora los prompts en la interfaz que ya utilizas y muestra exactamente qué ha cambiado.",
+        "detail": {
+          "previewCaption": "Prompts y su mejora",
+          "focus": {
+            "title": "Mejores prompts",
+            "description": "Una herramienta para mejorar la formulación de tus solicitudes a la IA."
+          },
+          "context": {
+            "title": "Una interfaz familiar",
+            "description": "Los prompts se mejoran directamente en la interfaz que ya utilizas."
+          },
+          "approach": {
+            "title": "Cambios visibles",
+            "description": "La extensión muestra exactamente qué ha mejorado en tu prompt."
+          }
+        }
       }
     },
     "detailsAction": "Más información"

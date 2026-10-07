@@ -243,18 +243,69 @@
     },
     "signInAction": "Anmelden oder registrieren",
     "backToCatalog": "Zurück zu den Produkten",
+    "detail": {
+      "accountNote": "Die Anmeldung öffnet Ihren AnytoolAI-Kontobereich.",
+      "previewLabel": "Produktillustration",
+      "previewNote": "Eine schematische Illustration, keine funktionsfähige Oberfläche der Erweiterung.",
+      "informationTitle": "Über das Produkt",
+      "readiness": {
+        "title": "Informationen zur Verfügbarkeit",
+        "commercial": {
+          "label": "Tarife und Bedingungen",
+          "description": "Die kommerziellen Informationen zu diesem Produkt sind noch nicht verfügbar."
+        },
+        "access": {
+          "label": "Zugang",
+          "description": "Der Zugangsstatus für dieses Produkt ist noch nicht verfügbar."
+        },
+        "usage": {
+          "label": "Nutzung und Kontingent",
+          "description": "Daten zur Nutzung und zum Kontingent sind noch nicht verfügbar."
+        }
+      }
+    },
     "products": {
       "documentSummary": {
         "name": "Document Summary",
         "type": "Chrome-Erweiterung",
         "tagline": "Sofortige Zusammenfassungen für jedes Dokument",
-        "description": "Die Erweiterung fasst Dokumente und Webseiten schnell und ohne unnötige manuelle Schritte zusammen."
+        "description": "Die Erweiterung fasst Dokumente und Webseiten schnell und ohne unnötige manuelle Schritte zusammen.",
+        "detail": {
+          "previewCaption": "Dokumente und ihre Zusammenfassungen",
+          "focus": {
+            "title": "Dokumentzusammenfassungen",
+            "description": "Das Hauptziel ist, Ihnen eine Zusammenfassung eines Dokuments zu erleichtern."
+          },
+          "context": {
+            "title": "Dokumente und Webseiten",
+            "description": "Die Erweiterung ist auf die Arbeit mit Dokumenten und Webseiten ausgerichtet."
+          },
+          "approach": {
+            "title": "Weniger manuelle Schritte",
+            "description": "Hilft Ihnen, eine Zusammenfassung ohne unnötige manuelle Schritte zu erhalten."
+          }
+        }
       },
       "promptOptimizer": {
         "name": "Prompt Optimizer",
         "type": "Chrome-Erweiterung",
         "tagline": "KI-Prompts mit einem Klick verbessern",
-        "description": "Die Erweiterung verbessert Prompts direkt in Ihrer gewohnten Oberfläche und zeigt genau, was geändert wurde."
+        "description": "Die Erweiterung verbessert Prompts direkt in Ihrer gewohnten Oberfläche und zeigt genau, was geändert wurde.",
+        "detail": {
+          "previewCaption": "Prompts und ihre Verbesserung",
+          "focus": {
+            "title": "Bessere Prompts",
+            "description": "Ein Werkzeug, um die Formulierung Ihrer Anfragen an KI zu verbessern."
+          },
+          "context": {
+            "title": "Eine vertraute Oberfläche",
+            "description": "Prompts werden direkt in der Oberfläche verbessert, die Sie bereits verwenden."
+          },
+          "approach": {
+            "title": "Sichtbare Änderungen",
+            "description": "Die Erweiterung zeigt genau, was an Ihrem Prompt verbessert wurde."
+          }
+        }
       }
     },
     "detailsAction": "Mehr erfahren"
