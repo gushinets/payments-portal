@@ -1,11 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, Clock3, LogOut, ShieldCheck, UserRound } from "lucide-react";
+import { Clock3, LogOut, ShieldCheck, UserRound } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { productPresentation } from "@/features/catalog";
 import type { SessionUserResponse } from "@/generated/api-contracts/types.gen";
-import { Link } from "@/i18n/navigation";
 import {
   ApiError,
   getSession,
@@ -20,6 +19,7 @@ import {
   EmailVerificationPending,
   type AuthFormSubmitValues
 } from "@/shared/ui";
+import { AccountProductCard } from "./AccountProductCard";
 
 const telegramLoginUrl = process.env.NEXT_PUBLIC_TELEGRAM_LOGIN_URL ?? "";
 
@@ -32,7 +32,6 @@ type AccountState =
 export function AccountClient({ languageTag }: { languageTag: string }) {
   const t = useTranslations("Account");
   const authT = useTranslations("Auth");
-  const catalogT = useTranslations("Catalog");
   const skipSessionRefreshRef = useRef(false);
   const [accountState, setAccountState] = useState<AccountState>({
     status: "loading"
@@ -231,12 +230,26 @@ export function AccountClient({ languageTag }: { languageTag: string }) {
       <p className="hero-copy">{t("authenticated.description")}</p>
 
       <div className="account-layout">
-        <article className="form-panel account-summary-panel">
-          <span className="badge badge-live">
-            <UserRound size={12} aria-hidden="true" />
-            {t("authenticated.badge")}
-          </span>
-          <h2 className="account-panel-title">
+        <section
+          className="account-products-panel"
+          aria-labelledby="account-products-title"
+        >
+          <div className="account-products-heading">
+            <h2 id="account-products-title">{t("products.title")}</h2>
+            <p className="card-copy">{t("products.description")}</p>
+          </div>
+          <div className="account-products-grid">
+            {productPresentation.map((product) => (
+              <AccountProductCard product={product} key={product.slug} />
+            ))}
+          </div>
+        </section>
+
+        <aside
+          className="form-panel account-summary-panel"
+          aria-labelledby="account-summary-title"
+        >
+          <h2 id="account-summary-title">
             {t("authenticated.summaryTitle")}
           </h2>
           <dl className="account-identity">
@@ -274,68 +287,7 @@ export function AccountClient({ languageTag }: { languageTag: string }) {
               {t("authenticated.signOutAction")}
             </button>
           </div>
-        </article>
-
-        <section
-          className="form-panel account-products-panel"
-          aria-labelledby="account-products-title"
-        >
-          <h2 id="account-products-title">{t("products.title")}</h2>
-          <p className="card-copy">{t("products.description")}</p>
-          <div className="account-products-grid">
-            {productPresentation.map((product) => {
-              const Icon = product.Icon;
-              const titleId = `account-product-${product.slug}`;
-
-              return (
-                <Link
-                  className="tool-card"
-                  href={`/products/${product.slug}`}
-                  aria-labelledby={titleId}
-                  key={product.slug}
-                >
-                  <div className="tool-icon-wrap">
-                    <Icon size={22} aria-hidden="true" />
-                  </div>
-                  <span className="tool-tag">
-                    {catalogT(`products.${product.messageKey}.type`)}
-                  </span>
-                  <h3 id={titleId}>
-                    {catalogT(`products.${product.messageKey}.tagline`)}
-                  </h3>
-                  <p className="card-copy">
-                    {catalogT(`products.${product.messageKey}.description`)}
-                  </p>
-                  <div className="tool-card-bottom">
-                    <span className="account-product-action">
-                      {t("products.detailAction")}
-                      <ArrowRight size={15} aria-hidden="true" />
-                    </span>
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
-        </section>
-      </div>
-
-      <div className="account-readiness-grid">
-        {(["access", "billing", "usage"] as const).map((block) => (
-          <article
-            className="form-panel"
-            aria-labelledby={`account-${block}-title`}
-            key={block}
-          >
-            <span className="badge badge-demo">
-              <Clock3 size={12} aria-hidden="true" />
-              {t("readiness.badge")}
-            </span>
-            <h2 className="account-panel-title" id={`account-${block}-title`}>
-              {t(`readiness.${block}.title`)}
-            </h2>
-            <p className="card-copy">{t(`readiness.${block}.description`)}</p>
-          </article>
-        ))}
+        </aside>
       </div>
     </section>
   );

@@ -132,22 +132,24 @@
     },
     "products": {
       "title": "Prodotti",
-      "description": "Scopri i prodotti e apri le loro pagine informative.",
-      "detailAction": "Visualizza i dettagli del prodotto"
-    },
-    "readiness": {
-      "badge": "Dati non ancora disponibili",
-      "access": {
-        "title": "Accesso",
-        "description": "Lo stato di accesso ai prodotti proveniente dalla fonte autorevole non è ancora disponibile."
+      "description": "Consulta i dettagli e lo stato di ogni prodotto.",
+      "detailAction": "Visualizza i dettagli del prodotto",
+      "state": {
+        "commercial": {
+          "label": "Piani e condizioni",
+          "description": "Le informazioni commerciali per questo prodotto non sono ancora pronte."
+        },
+        "access": {
+          "label": "Accesso al prodotto",
+          "description": "Lo stato di accesso a questo prodotto proveniente dalla fonte autorevole è sconosciuto."
+        },
+        "usage": {
+          "label": "Utilizzo e quota",
+          "description": "I dati di utilizzo e quota per questo prodotto non sono ancora disponibili."
+        }
       },
-      "billing": {
-        "title": "Fatturazione e abbonamento",
-        "description": "Le informazioni su piano, abbonamento e fatturazione non sono ancora disponibili."
-      },
-      "usage": {
-        "title": "Utilizzo e quota",
-        "description": "I dati di utilizzo e quota non sono ancora disponibili."
+      "action": {
+        "description": "Apri la pagina informativa del prodotto."
       }
     }
   },

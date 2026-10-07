@@ -132,22 +132,24 @@
     },
     "products": {
       "title": "Products",
-      "description": "Explore the products and open their information pages.",
-      "detailAction": "View product details"
-    },
-    "readiness": {
-      "badge": "Data not ready",
-      "access": {
-        "title": "Access",
-        "description": "Authoritative product access status is not available yet."
+      "description": "Explore each product’s details and status.",
+      "detailAction": "View product details",
+      "state": {
+        "commercial": {
+          "label": "Plans and terms",
+          "description": "Commercial information for this product is not ready yet."
+        },
+        "access": {
+          "label": "Product access",
+          "description": "Authoritative access status for this product is unknown."
+        },
+        "usage": {
+          "label": "Usage and quota",
+          "description": "Usage and quota data for this product is not available yet."
+        }
       },
-      "billing": {
-        "title": "Billing and subscription",
-        "description": "Plan, subscription and billing information is not ready yet."
-      },
-      "usage": {
-        "title": "Usage and quota",
-        "description": "Usage and quota data is not available yet."
+      "action": {
+        "description": "Open the product information page."
       }
     }
   },

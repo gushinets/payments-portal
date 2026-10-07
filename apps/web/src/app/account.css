@@ -245,26 +245,31 @@
 
 .account-layout {
   display: grid;
-  grid-template-columns: minmax(260px, 0.78fr) minmax(0, 1.22fr);
-  gap: 10px;
+  grid-template-columns: minmax(0, 240px) minmax(0, 1fr);
+  grid-template-areas: "summary products";
+  gap: 24px;
   margin-top: 28px;
-  align-items: stretch;
+  align-items: start;
 }
 
 .account-summary-panel {
+  grid-area: summary;
   display: flex;
   flex-direction: column;
+  gap: 16px;
   min-width: 0;
+  padding: 20px;
 }
 
-.form-panel .account-panel-title {
-  margin-top: 14px;
+.form-panel.account-summary-panel h2 {
+  margin: 0;
+  font-size: 15px;
 }
 
 .account-identity {
   display: grid;
   gap: 6px;
-  margin: 8px 0 16px;
+  margin: 0;
 }
 
 .account-identity dt {
@@ -275,37 +280,153 @@
 .account-summary-email {
   margin: 0;
   color: var(--txt2);
+  font-size: 13px;
   overflow-wrap: anywhere;
+}
+
+.account-summary-panel .badge {
+  max-width: 100%;
+  white-space: normal;
+}
+
+.account-summary-panel .email-verification-pending {
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.account-summary-panel .email-verification-pending h2 {
+  font-size: 14px;
+}
+
+.account-summary-panel .email-verification-pending .card-copy {
+  margin: 0;
+  font-size: 12px;
+}
+
+.account-summary-panel .btn-secondary {
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 12px;
 }
 
 .account-summary-actions {
   display: flex;
-  margin-top: auto;
-  padding-top: 22px;
+}
+
+.account-summary-panel > div:empty {
+  display: none;
 }
 
 .account-products-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: stretch;
-  gap: 10px;
+  gap: 16px;
 }
 
 .account-products-panel {
+  grid-area: products;
   min-width: 0;
 }
 
-.account-product-action {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--teal);
-  font-weight: 700;
+.account-products-heading {
+  margin-bottom: 20px;
 }
 
-.account-readiness-grid {
+.account-products-heading h2 {
+  margin: 0 0 8px;
+  font-family: "Cabinet Grotesk", "DM Sans", sans-serif;
+  font-size: 22px;
+}
+
+.account-products-heading .card-copy {
+  margin: 0;
+  font-size: 13px;
+}
+
+.account-product-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 24px;
+}
+
+.account-product-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.account-product-heading > div:last-child {
+  min-width: 0;
+}
+
+.account-product-heading .tool-icon-wrap {
+  flex-shrink: 0;
+  margin: 0;
+  color: var(--acc);
+  background: var(--acc-glow);
+}
+
+.account-product-heading .tool-tag {
+  margin-bottom: 6px;
+  color: var(--txt2);
+}
+
+.account-product-heading h3 {
+  margin: 0;
+  color: var(--txt);
+  font-family: "Cabinet Grotesk", "DM Sans", sans-serif;
+  font-size: 18px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.account-product-description {
+  margin: 16px 0 0;
+  font-size: 13px;
+}
+
+.account-product-statuses {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 10px;
+  gap: 8px;
+  margin: 20px 0;
+}
+
+.account-product-status {
+  padding: 12px 14px;
+  background: var(--surf2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.account-product-status dt {
+  margin-bottom: 4px;
+  color: var(--txt);
+  font-weight: 600;
+}
+
+.account-product-status dd {
+  margin: 0;
+  color: var(--txt2);
+}
+
+.account-product-actions {
+  display: grid;
+  gap: 12px;
+  margin-top: auto;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.account-product-actions .card-copy {
+  margin: 0;
+  font-size: 12px;
+}
+
+.account-product-actions .btn-secondary {
+  font-size: 13px;
 }

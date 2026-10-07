@@ -132,22 +132,24 @@
     },
     "products": {
       "title": "Produits",
-      "description": "Découvrez les produits et consultez leurs pages de présentation.",
-      "detailAction": "Voir les détails du produit"
-    },
-    "readiness": {
-      "badge": "Données pas encore disponibles",
-      "access": {
-        "title": "Accès",
-        "description": "Le statut d’accès aux produits issu d’une source faisant autorité n’est pas encore disponible."
+      "description": "Consultez les détails et le statut de chaque produit.",
+      "detailAction": "Voir les détails du produit",
+      "state": {
+        "commercial": {
+          "label": "Formules et conditions",
+          "description": "Les informations commerciales de ce produit ne sont pas encore prêtes."
+        },
+        "access": {
+          "label": "Accès au produit",
+          "description": "Le statut d’accès à ce produit issu d’une source faisant autorité est inconnu."
+        },
+        "usage": {
+          "label": "Utilisation et quota",
+          "description": "Les données d’utilisation et de quota de ce produit ne sont pas encore disponibles."
+        }
       },
-      "billing": {
-        "title": "Facturation et abonnement",
-        "description": "Les informations sur la formule, l’abonnement et la facturation ne sont pas encore disponibles."
-      },
-      "usage": {
-        "title": "Utilisation et quota",
-        "description": "Les données d’utilisation et de quota ne sont pas encore disponibles."
+      "action": {
+        "description": "Ouvrez la page de présentation du produit."
       }
     }
   },

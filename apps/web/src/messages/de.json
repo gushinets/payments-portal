@@ -132,22 +132,24 @@
     },
     "products": {
       "title": "Produkte",
-      "description": "Entdecken Sie die Produkte und öffnen Sie ihre Informationsseiten.",
-      "detailAction": "Produktdetails ansehen"
-    },
-    "readiness": {
-      "badge": "Daten noch nicht verfügbar",
-      "access": {
-        "title": "Zugriff",
-        "description": "Der maßgebliche Zugriffsstatus für die Produkte ist noch nicht verfügbar."
+      "description": "Sehen Sie sich Details und Status jedes Produkts an.",
+      "detailAction": "Produktdetails ansehen",
+      "state": {
+        "commercial": {
+          "label": "Tarife und Bedingungen",
+          "description": "Kommerzielle Informationen zu diesem Produkt sind noch nicht bereit."
+        },
+        "access": {
+          "label": "Produktzugriff",
+          "description": "Der maßgebliche Zugriffsstatus für dieses Produkt ist unbekannt."
+        },
+        "usage": {
+          "label": "Nutzung und Kontingent",
+          "description": "Daten zu Nutzung und Kontingent für dieses Produkt sind noch nicht verfügbar."
+        }
       },
-      "billing": {
-        "title": "Abrechnung und Abonnement",
-        "description": "Informationen zu Tarif, Abonnement und Abrechnung sind noch nicht verfügbar."
-      },
-      "usage": {
-        "title": "Nutzung und Kontingent",
-        "description": "Daten zu Nutzung und Kontingent sind noch nicht verfügbar."
+      "action": {
+        "description": "Öffnen Sie die Informationsseite des Produkts."
       }
     }
   },

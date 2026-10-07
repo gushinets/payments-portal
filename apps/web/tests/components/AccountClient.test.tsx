@@ -89,6 +89,9 @@ describe("direct account authentication and session", () => {
       "href",
       "/ru/forgot-password"
     );
+    expect(
+      screen.queryByRole("region", { name: ruMessages.Account.products.title })
+    ).not.toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -98,7 +101,7 @@ describe("direct account authentication and session", () => {
     ["pt", true],
     ["pt", false]
   ] as const)(
-    "shows identity, product discovery and honest not-ready states in %s (email verified: %s)",
+    "shows compact identity and honest per-product states in %s (email verified: %s)",
     async (locale, emailVerified) => {
       const messages = locale === "pt" ? ptMessages : ruMessages;
       window.localStorage.setItem(sessionStorageKey, "session-token");
@@ -136,30 +139,34 @@ describe("direct account authentication and session", () => {
       const products = screen.getByRole("region", {
         name: messages.Account.products.title
       });
+      expect(screen.getAllByRole("article")).toHaveLength(2);
       expect(within(products).getAllByRole("link")).toHaveLength(2);
-      expect(
-        within(products).getByRole("link", {
-          name: messages.Catalog.products.documentSummary.tagline
-        })
-      ).toHaveAttribute("href", `/${locale}/products/document-summary`);
-      expect(
-        within(products).getByRole("link", {
-          name: messages.Catalog.products.promptOptimizer.tagline
-        })
-      ).toHaveAttribute("href", `/${locale}/products/prompt-optimizer`);
 
-      for (const block of ["access", "billing", "usage"] as const) {
-        const panel = screen.getByRole("article", {
-          name: messages.Account.readiness[block].title
+      for (const [slug, messageKey] of [
+        ["document-summary", "documentSummary"],
+        ["prompt-optimizer", "promptOptimizer"]
+      ] as const) {
+        const product = messages.Catalog.products[messageKey];
+        const panel = within(products).getByRole("article", {
+          name: product.name
         });
+        expect(within(panel).getByText(product.type)).toBeVisible();
+        expect(within(panel).getByText(product.tagline)).toBeVisible();
+        for (const slot of ["commercial", "access", "usage"] as const) {
+          const state = messages.Account.products.state[slot];
+          expect(within(panel).getByText(state.label)).toBeVisible();
+          expect(within(panel).getByText(state.description)).toBeVisible();
+        }
         expect(
-          within(panel).getByText(messages.Account.readiness.badge)
+          within(panel).getByText(messages.Account.products.action.description)
         ).toBeVisible();
+        expect(within(panel).getAllByRole("link")).toHaveLength(1);
         expect(
-          within(panel).getByText(messages.Account.readiness[block].description)
-        ).toBeVisible();
+          within(panel).getByRole("link", {
+            name: `${messages.Account.products.detailAction} ${product.name}`
+          })
+        ).toHaveAttribute("href", `/${locale}/products/${slug}`);
         expect(within(panel).queryByRole("button")).not.toBeInTheDocument();
-        expect(within(panel).queryByRole("link")).not.toBeInTheDocument();
         expect(within(panel).queryByRole("progressbar")).not.toBeInTheDocument();
         expect(panel).not.toHaveTextContent(/\d|₽|€|\$/);
       }
@@ -427,6 +434,9 @@ describe("direct account authentication and session", () => {
       expect(
         screen.queryByRole("heading", { name: ruMessages.Auth.dialogTitle })
       ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("region", { name: ruMessages.Account.products.title })
+      ).not.toBeInTheDocument();
       expect(fetchMock).toHaveBeenCalledTimes(1);
     }
   );
@@ -496,6 +506,9 @@ describe("direct account authentication and session", () => {
       );
 
       expect(await screen.findByText(accountUser.email)).toBeVisible();
+      expect(
+        screen.getByRole("region", { name: ruMessages.Account.products.title })
+      ).toBeVisible();
       expect(window.localStorage.getItem(sessionStorageKey)).toBe("session-token");
       expect(fetchMock).toHaveBeenCalledTimes(2);
       for (const [url, init] of fetchMock.mock.calls) {
@@ -525,6 +538,9 @@ describe("direct account authentication and session", () => {
     expect(window.localStorage.getItem(sessionStorageKey)).toBe("session-token");
     expect(
       screen.queryByRole("heading", { name: ruMessages.Auth.dialogTitle })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("region", { name: ruMessages.Account.products.title })
     ).not.toBeInTheDocument();
   });
 
