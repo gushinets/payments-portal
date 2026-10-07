@@ -445,6 +445,7 @@ button:disabled {
 }
 
 .btn-primary {
+  color: var(--accent-foreground);
   background: var(--acc-grad);
   box-shadow: 0 4px 16px rgba(99, 102, 241, 0.35);
 }

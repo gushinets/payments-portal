@@ -1,150 +1,113 @@
-# Bundle 3 — Web / Landing Page
+# Bundle 3 — Public Portal and Application Layouts
 
-## Layout
+Use [SKILL.md](SKILL.md) for visual/component/accessibility rules and
+[tokens.json](tokens.json) for canonical values. The approved ANY-539 RU Portal
+mockup, supplied as the local visual reference during implementation, defines the
+visual target for HOME, TOOLS, PRODUCT and LK RU. Its example business facts and
+runtime controls are not implementation authority. Preserve the current page
+composition, routes, auth and per-product state semantics when applying style.
 
-```
-max-width: 1160px, centered
-section padding: 80px 40px
-nav padding: 20px 40px
-```
+## Shared language
 
-## Nav
+Both public and authenticated layouts use a deep navy page background, opaque
+dark-blue surfaces, thin blue borders, amber primary actions, compact radii and
+Plus Jakarta Sans. Indigo is a restrained secondary accent, not the page-wide
+identity. Flat backgrounds and panels are normal; shadows/glows are minimal.
+Blur is optional for navigation and is not required on cards or workspaces.
 
-```css
-nav {
-  position: sticky; top: 0; z-index: 100;
-  background: rgba(15,12,41,0.85);
-  backdrop-filter: blur(20px);
-  border-bottom: 1px solid rgba(255,255,255,0.08);
-  padding: 20px 40px;
-  display: flex; align-items: center; justify-content: space-between;
-}
-.logo {
-  font-family: 'Cabinet Grotesk', sans-serif;
-  font-size: 17px; font-weight: 900; color: #F0EFF8;
-  letter-spacing: -0.04em;
-}
-.logo span { color: #818CF8; }
-.nav-link { font-size: 12px; color: rgba(240,239,248,0.45); text-decoration: none; }
-```
+Use semantic Bundle 3 tokens through generated CSS. Do not paste the mockup's
+stylesheet, introduce its short variable names as another palette, or add a
+page-local theme. Existing aliases remain compatible; the historical
+`--acc-grad` and `--headline-grad` slots now resolve to flat amber fills.
 
-## Hero (Bento 3-col)
+## Public shell and navigation
 
-Structure: full-width hero card (col-span 3) + 3 feature cards below.
+- Center ordinary public content within the 1080px `maxWidth` token. Narrower
+  reading, hero and product-detail widths may fit their content; do not force
+  the application workspace into the same centered marketing container.
+- Use approximately 40px desktop horizontal gutters, falling to 16–20px on
+  mobile. Typical section spacing is 48–80px, with compact 12–16px group gaps
+  and the 14px `gridGap` token for public product grids.
+- Navigation is compact and sticky, approximately 62px high on desktop and
+  54px on mobile when content fits. Allow growth/wrapping for translated text
+  rather than clipping it to a fixed height.
+- Use an opaque navy navigation surface and a thin bottom border. A near-opaque
+  background with up to 12px backdrop blur is optional and needs an opaque
+  fallback. Links use 13px body type, compact 8px corners and restrained hover
+  surface changes; active links can use amber text with semantic current state.
+- Logo treatment is compact, approximately 18px/800, with optional amber emphasis.
+  Primary/secondary navigation actions share the normal button language.
+- Keep mobile navigation and account actions reachable; collapsing a navigation
+  group must preserve an accessible way to reach its destinations.
 
-```css
-.bento-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 10px;
-}
-.hero-card {
-  grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 32px;
-  align-items: center;
-  background: rgba(255,255,255,0.06);
-  backdrop-filter: blur(20px);
-  border: 1px solid rgba(255,255,255,0.12);
-  border-radius: 24px;
-  padding: 36px 40px;
-}
-```
+## Home and catalog
 
-Hero H1 pattern:
-```html
-<h1 class="hero-h1">
-  Your arsenal of<br>
-  <em class="h1-grad">AI solutions</em>
-</h1>
-```
-```css
-.hero-h1 {
-  font-family: 'Cabinet Grotesk', sans-serif;
-  font-size: 52px; font-weight: 900;
-  letter-spacing: -0.04em; line-height: 0.95;
-  color: #F0EFF8;
-}
-.h1-grad {
-  font-style: italic; font-weight: 800;
-  background: linear-gradient(120deg, #818CF8 0%, #5EEAD4 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-```
+- The home hero is centered on the page background, with a clear display
+  heading, supporting copy and compact grouped actions. A giant glass hero tile
+  or a mandatory three-column bento composition is not required.
+- Use the shared 32–56px display scale, weight 800 and approximately 1.08 line
+  height. Amber heading emphasis is a text color, not a required gradient.
+  Supporting hero copy may reach 18px; ordinary body text remains 13–15px.
+- Product cards are flat `surfaceCard` surfaces with thin `border` outlines,
+  14px `card` corners and approximately 24px padding. Supporting cards/panels
+  may use 12–16px corners and 18–24px padding according to density.
+- Product grids may use up to three columns where the content fits. Preserve
+  the current product set and grouping; the mockup does not authorize additional
+  products, badges or runtime availability claims.
+- Hover uses a restrained surface/border change. Small motion is optional and
+  must respect reduced motion. Do not require glass blur, glow or hover lift.
+- Card links and secondary actions remain distinct semantic controls; do not
+  copy clickable divs or nested interaction patterns from the mockup.
 
-## Tools Grid
+## Product detail
 
-Same glass-card pattern, 3 columns:
+- Preserve the existing two-column hero/detail composition where it fits:
+  explanatory content and actions beside a preview on desktop, stacked on mobile.
+- Preview surfaces use opaque dark-blue levels, thin borders and 12–16px corners.
+  Supporting feature cards are compact flat panels with restrained spacing.
+- Product headings use 26–32px/700–800; supporting text uses the shared body
+  scale. Actions use flat amber or bordered secondary treatment.
+- Retain current truthful content, previews and safe destinations. Styling a
+  demo control never authorizes an installation, purchase or product runtime.
 
-```css
-.tools-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
-}
-.tool-card {
-  background: rgba(255,255,255,0.05);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255,255,255,0.10);
-  border-radius: 18px;
-  padding: 22px 20px;
-  cursor: pointer;
-  transition: background 0.2s, border-color 0.2s, transform 0.2s;
-}
-.tool-card:hover {
-  background: rgba(99,102,241,0.10);
-  border-color: rgba(129,140,248,0.28);
-  transform: translateY(-2px);
-}
-.tool-icon-wrap {
-  width: 40px; height: 40px; border-radius: 10px;
-  background: rgba(255,255,255,0.08);
-  border: 1px solid rgba(255,255,255,0.10);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 18px; margin-bottom: 16px;
-}
-.tool-tag {
-  font-size: 10px; font-weight: 600;
-  color: #818CF8; letter-spacing: 0.08em; text-transform: uppercase;
-}
-.tool-dot {
-  width: 8px; height: 8px; border-radius: 50%;
-  margin-bottom: 14px;
-  /* colour per category: acc / teal / amber */
-}
-```
+## Authenticated application and cabinet
 
-## Feature Cards (below hero)
+- Use the 220px `dashboardRailWidth` token for a narrow supporting rail beside
+  a wide `minmax(0, 1fr)` workspace. The workspace is flat and may use available
+  width rather than inheriting the centered public page container.
+- Rail: opaque `surfaceCard`, thin separating border, approximately 28px 14px
+  padding, compact 13px navigation rows and 8px control corners.
+- Workspace: `background`, approximately 40px 44px desktop padding, 22–26px
+  headings, readable 11–13px section labels and compact supporting copy.
+- Account/identity context stays supporting content. Existing per-product
+  surfaces retain their semantics and use flat 12–14px panels with approximately
+  18–20px padding, 12px group gaps and around 32px between sections.
+- Selected rail items may use the subtle amber emphasis fill and amber text,
+  alongside an explicit current-state indicator. Product state uses labels and
+  semantic status tokens, never brand color alone.
+- The mockup's subscription banners, payment facts and usage bars do not
+  establish live data. Preserve unavailable, unknown and not-ready meanings.
+- Auth/recovery forms and dialogs share the same palette, body family, opaque
+  surfaces, compact radii and focus rules. Their interaction behavior stays owned
+  by the existing implementation.
 
-```css
-.feat-card {
-  background: rgba(255,255,255,0.05);
-  backdrop-filter: blur(16px);
-  border: 1px solid rgba(255,255,255,0.10);
-  border-radius: 20px;
-  padding: 22px 20px;
-}
-.feat-metric {
-  font-family: 'Cabinet Grotesk', sans-serif;
-  font-size: 28px; font-weight: 900;
-  color: #F0EFF8; letter-spacing: -0.04em;
-  margin-bottom: 2px;
-}
-.feat-metric span { color: rgba(240,239,248,0.35); font-size: 16px; }
-```
+## Responsive and accessible behavior
 
-## Page Background
+- At 860px or earlier when content needs it, collapse product/detail grids to
+  one column and move rail content above the workspace. Use about 20px mobile
+  workspace padding. At 520px, stack/full-width actions where necessary.
+- Permit wrapping and avoid horizontal overflow for translated text, legal
+  content and account identifiers. Keep logical reading/focus order.
+- Compact visual controls must still have usable touch targets, semantic labels,
+  keyboard operation and a clear focus outline. Dialog focus behavior is required.
+- Use `textSecondary` for readable small metadata and section labels. The
+  mockup's tertiary color maps to `textDisabled` for disabled/decorative uses;
+  it is not permission for low-contrast ordinary text.
+- Keep WCAG AA text/control contrast and pair state colors with text/icons.
+  Essential control boundaries can use `borderStrong`; subtle card borders are
+  decorative grouping, not the sole state or interaction cue.
+- Font loading belongs to the application integration step and must use the
+  repository-approved mechanism. Do not copy or add remote CSS font imports.
 
-Always use layered radial glows, not flat colour:
-
-```css
-body {
-  background:
-    radial-gradient(ellipse at 65% -5%,  rgba(99,102,241,0.22) 0%, transparent 50%),
-    radial-gradient(ellipse at 15% 85%,  rgba(94,234,212,0.12) 0%, transparent 48%),
-    linear-gradient(160deg, #0F0C29 0%, #1a1550 60%, #0a1a3a 100%);
-}
-```
+Step 10 establishes this authority and generated tokens. Applying these rules
+to actual page/component CSS and loading Plus Jakarta Sans belongs to Step 11.

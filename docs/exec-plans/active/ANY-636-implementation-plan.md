@@ -10,16 +10,16 @@
 | Original planning baseline | `3e53f1cc7756cc6825b05b4fcbd580479a196a64` — historical ANY-541 baseline used by initial ANY-636 Steps 1–5 |
 | Required predecessor baseline for continuation | final/current `ANY-541` / PR `#129`; planning observation: `bc80eaaee3b0c6051548ff446960791636216436` |
 | Observed ANY-636 head before correction | `af0ea815cf12d2440bdad6a36d8dbf396e5d9950`; branch was `behind 2 / ahead 6` versus `ANY-541` |
-| Overall status | `in progress` — Steps 1–5 completed on the old 541 baseline; Step 6 architecture synchronization + product/visual Steps 7–11 pending |
-| Initial Steps 1–5 completed | `2026-10-06`; final 4F completion pending Steps 6–11 |
-| Execution order | Steps 1–5 are historical completed baseline. Continue sequentially: Step 6 sync final ANY-541 → verify/commit → Step 7 → ... → Step 11 |
-| Steps / commits | 5 completed baseline steps + 1 predecessor-synchronization step + 5 product/visual completion steps |
+| Overall status | `in progress` — Steps 1–5 completed on the old 541 baseline; Step 6 architecture synchronization + product/visual Steps 7–13 pending |
+| Initial Steps 1–5 completed | `2026-10-06`; final 4F completion pending Steps 6–13 |
+| Execution order | Steps 1–5 are historical completed baseline. Continue sequentially: Step 6 sync final ANY-541 → verify/commit → Step 7 → ... → Step 13 |
+| Steps / commits | 5 completed baseline steps + 1 predecessor-synchronization step + 7 product/visual completion steps |
 | Blocks | `ANY-634 — Step 5. LBX Phase 0 provider research` |
 | Backend/API/schema work expected | No new backend API or schema. Step 6 does update inherited frontend generated-contract/transport mechanics to match final ANY-541; later API/schema work remains out of 4F unless a material contradiction forces replanning |
 
 ## Initial Completion Evidence — superseded as final 4F completion
 
-> **Correction:** Steps 1–5 established the provider-independent route/auth/product foundation, but two later facts prevent them from being the final 4F baseline: (1) the RU mockup was unavailable and product/visual DoD was therefore incomplete; (2) ANY-541 / PR #129 subsequently replaced the generated-Zod/browser-runtime-validation design with generated TypeScript wire contracts plus one shared transport trust boundary. ANY-636 was still based on the older `3e53f1c` predecessor state. The ticket therefore remains open until Step 6 synchronizes the final ANY-541 architecture and Steps 7–11 complete the RU product/visual DoD.
+> **Correction:** Steps 1–5 established the provider-independent route/auth/product foundation, but two later facts prevent them from being the final 4F baseline: (1) the RU mockup was unavailable and product/visual DoD was therefore incomplete; (2) ANY-541 / PR #129 subsequently replaced the generated-Zod/browser-runtime-validation design with generated TypeScript wire contracts plus one shared transport trust boundary. ANY-636 was still based on the older `3e53f1c` predecessor state. The ticket therefore remains open until Step 6 synchronizes the final ANY-541 architecture and Steps 7–13 complete the RU product/visual DoD. The corrective sequence now includes an explicit Bundle 3 visual-authority recalibration before applying the approved mockup styling, because the earlier mandatory indigo glass/bento rules materially conflicted with the target RU visual language.
 
 All five initial implementation steps are complete on branch `ANY-636`, based on
 `3e53f1cc7756cc6825b05b4fcbd580479a196a64`. The implementation history contains
@@ -100,11 +100,11 @@ section and by Step 6. Do not use that historical 4D mechanism for new work.
 
 ## How to Use This File
 
-### Current use — Step 6 architecture sync, then corrective Steps 7–11
+### Current use — Step 6 architecture sync, then corrective Steps 7–13
 
 1. Continue from the existing `ANY-636` branch containing completed initial Steps 1–5; do not reset or discard those commits. Step 6 must first merge the current/final `ANY-541` predecessor into this branch and reconcile the changed HTTP contract boundary.
-2. Keep `portal-ru-anytools.html` readable for Steps 7–11. Step 6 does not use the mockup. Recommended: place the HTML beside this plan and treat it as an input-only untracked reference.
-3. Keep this plan under `docs/exec-plans/active/ANY-636-implementation-plan.md` while Steps 6–11 are pending. Do not leave a second authoritative `completed` copy in parallel.
+2. Keep `portal-ru-anytools.html` readable for Steps 7–13. Step 6 does not use the mockup. Recommended: place the HTML beside this plan and treat it as an input-only untracked reference.
+3. Keep this plan under `docs/exec-plans/active/ANY-636-implementation-plan.md` while Steps 6–13 are pending. Do not leave a second authoritative `completed` copy in parallel.
 4. Give the execution model this file and instruct it to implement **one pending step only**.
 5. After each pending step:
    - review the diff against the exact step and the RU mockup where visual composition is involved;
@@ -119,15 +119,15 @@ section and by Step 6. Do not use that historical 4D mechanism for new work.
 
 The original execution began from `ANY-541` / PR #129 at planning baseline commit `3e53f1cc7756cc6825b05b4fcbd580479a196a64`. Those branch-creation instructions are historical only and must not be followed again except for the explicit predecessor merge required by Step 6.
 
-### Continuation instructions for Steps 6–11
+### Continuation instructions for Steps 6–13
 
 1. **Do not recreate or reset the `ANY-636` branch.** Step 6 merges the current/final `ANY-541` branch into the existing 636 history and resolves only the predecessor drift.
 2. Step 6 must finish with the final ANY-541 generated-TypeScript/shared-transport trust boundary actually present in `ANY-636`; no Zod response-validation path may remain.
-3. Before each visual corrective step (Steps 7–11), open the local `portal-ru-anytools.html` reference and compare the exact affected surface against the current implementation.
+3. Before each visual corrective step (Steps 7–13), open the local `portal-ru-anytools.html` reference and compare the exact affected surface against the current implementation.
 4. Preserve the working auth/session/legal/i18n/provider-independent product behavior from Steps 1–5 while replacing only the obsolete inherited 4D mechanics in Step 6. Later steps correct presentation and product composition; they do not reopen settled architecture.
-5. The RU mockup wins over the **incidental current layout** when deciding composition, hierarchy and product-centric UX, while Bundle 3 remains the implementation design-system authority for tokens/components/accessibility.
+5. The RU mockup wins over the **incidental current layout** for both product composition and target visual language. Bundle 3 remains the single implementation design-system authority, but Step 10 must evolve its canonical tokens/components/rules where the previous glass/bento identity conflicts with that approved target; accessibility/responsive discipline remains authoritative.
 6. When the mockup contains demo or unverified business facts, keep the layout role but replace the value/control with current authoritative content or an honest unavailable/not-ready state. If neither is useful, omit the block rather than manufacture a placeholder.
-7. Do not continue to parent ANY-504 Step 6 implementation until ANY-636 Step 11 final acceptance is complete. The numbering below is internal to the ANY-636 plan and must not be confused with parent ANY-504 Steps 6–10.
+7. Do not continue to parent ANY-504 Step 6 implementation until ANY-636 Step 13 final acceptance is complete. The numbering below is internal to the ANY-636 plan and must not be confused with parent ANY-504 Steps 6–10.
 
 ---
 
@@ -135,15 +135,15 @@ The original execution began from `ANY-541` / PR #129 at planning baseline commi
 
 This plan was prepared against the current `ANY-541` PR #129 code, not against `main`.
 
-When sources conflict during Steps 6–11, use the following precedence for this ticket:
+When sources conflict during Steps 6–13, use the following precedence for this ticket:
 
 1. `ANY-636` and the `ANY-504` execution sequence for the current 4F scope and future-step boundaries.
 2. ADR 0005 and the accepted External Billing / Portal-Kernel designs for ownership and authority.
 3. The final/current `ANY-541` / PR #129 architecture for HTTP wire-contract generation, single shared transport trust, and no second browser runtime schema authority.
 4. The current `ANY-636` code for settled route/auth/session/legal/i18n/provider-independent product behavior from Steps 1–5, except where Step 6 explicitly replaces obsolete inherited 4D mechanics.
-5. The ANY-539 `portal-ru-anytools.html` plus its development handoff for **product/UI composition and customer journey direction only**. They are not authority for tariffs, prices, providers, subscription/access truth, usage/quota, legal/privacy claims or runtime product identity.
-6. Bundle 3 for implementation tokens, component language, responsive/accessibility rules and visual consistency.
-7. Current repository tests for behavior that remains authoritative. Tests that merely encode the old transitional visual composition may be updated by Steps 7–10; tests for auth/security/contracts/provider boundaries remain authoritative.
+5. The ANY-539 `portal-ru-anytools.html` plus its development handoff for the **target RU Portal product and visual language**: hierarchy, density, palette direction, typography, surfaces, spacing, navigation/card/dashboard treatment and customer journey. They are not authority for tariffs, prices, providers, subscription/access truth, usage/quota, legal/privacy claims or runtime product identity.
+6. Bundle 3 remains the single implementation design system, but Step 10 deliberately evolves its canonical rules/tokens so they encode the approved RU mockup direction instead of preserving the older indigo glass/bento appearance. Accessibility/responsive discipline remains authoritative.
+7. Current repository tests for behavior that remains authoritative. Tests that merely encode the old transitional visual composition may be updated by Steps 7–12; tests for auth/security/contracts/provider boundaries remain authoritative.
 
 ### Sources reviewed
 
@@ -171,9 +171,9 @@ When sources conflict during Steps 6–11, use the following precedence for this
 
 ### Mockup access note — resolved for corrective completion
 
-The raw `portal-ru-anytools.html` is now available and is a **required input** for product/visual Steps 7–11. The original planning limitation is resolved.
+The raw `portal-ru-anytools.html` is now available and is a **required input** for product/visual Steps 7–13. The original planning limitation is resolved.
 
-For Steps 7–11 the execution model must inspect the RU HTML before editing the affected visual surface. The HTML is a **visual/product composition reference**, not business or runtime authority. It may define layout hierarchy, grouping, density, navigation feel, product-card composition, product-detail composition and cabinet composition, but it must not supply unverified facts.
+For Steps 7–13 the execution model must inspect the RU HTML before editing the affected visual surface. The HTML is a **visual/product reference**, not business or runtime authority. It may define layout hierarchy, grouping, density, palette direction, typography, navigation feel, surface/card treatment, product-detail composition and cabinet composition, but it must not supply unverified facts. Step 10 translates that visual direction into the single Bundle 3 design-system authority rather than copying the stylesheet as a second theme.
 
 The following RU mockup content remains explicitly non-authoritative and must not be copied as production truth unless a current authoritative source independently proves it: prices/tariffs, CloudPayments/provider references, payment-method claims, active-subscription values, renewal dates, usage/quota numbers, product availability labels, user/product counts, release cadence, storage/location/privacy claims, unimplemented products, and install/web-app targets that do not have an authoritative current destination.
 
@@ -183,7 +183,7 @@ For local Codex execution, keep `portal-ru-anytools.html` accessible beside this
 
 ## Historical Planning Baseline Before Initial Steps 1–5
 
-> This section records the repository state that the original plan started from. It is retained for history and must **not** be treated as the current branch state during Steps 6–11. The corrective starting baseline is defined below.
+> This section records the repository state that the original plan started from. It is retained for history and must **not** be treated as the current branch state during Steps 6–13. The corrective starting baseline is defined below.
 
 
 ### Web routes currently present
@@ -347,7 +347,7 @@ There is no production compatibility obligation for the two retired transitional
 - Reset/verification token handling remains unchanged and tokens remain absent from persistent UI/logging surfaces.
 - Bearer/session API contracts remain generated from backend OpenAPI.
 - Ordinary UI copy keeps exact seven-locale key/ICU-signature parity.
-- Bundle 3 remains the design system; no replacement token system or parallel visual framework.
+- Bundle 3 remains the single design system. Step 10 may evolve its canonical tokens/rules to match the approved RU mockup visual language, but no parallel token system or page-local replacement theme is allowed.
 - No opportunistic repository cleanup.
 
 ---
@@ -1413,14 +1413,14 @@ conflicts using these ownership rules:
 - A modify/delete conflict for retired checkout/payment-result code resolves to
   the ANY-636 deletion.
 
-Only after Step 6 is complete do Steps 7–11 change the **customer-facing
+Only after Step 6 is complete do Steps 7–13 change the **customer-facing
 composition and product UX**.
 
 ---
 
 # Corrective Completion — Synchronize Architecture, Then Finish the Actual RU AnyToolAI Portal
 
-## Why Steps 6–11 exist
+## Why Steps 6–13 exist
 
 The initial five steps correctly established route cleanup, direct account auth,
 provider-independent boundaries, honest unknown states, regression coverage and
@@ -1433,19 +1433,19 @@ documentation. Two gaps remain:
    4F because the primary RU mockup was unavailable and the Portal remained too
    account/readiness-centric.
 
-Step 6 closes the predecessor drift. Steps 7–11 finish the product/visual DoD.
+Step 6 closes the predecessor drift. Steps 7–13 finish the product/visual DoD.
 The existing 4F product work is reused, not discarded.
 
 ### Locked corrective product/visual contract
 
-The following interpretation is fixed for Steps 7–11:
+The following interpretation is fixed for Steps 7–13:
 
-- **RU mockup is the primary composition reference.** Copy its hierarchy and interaction intent, not its demo facts or literal inline HTML/CSS.
-- **Bundle 3 remains the implementation design system.** Do not create a second token system or paste the mockup stylesheet wholesale.
+- **RU mockup is the primary product and visual target.** Reproduce its hierarchy, density, palette direction, typography, surface treatment, interaction intent and dashboard/product-card feel where applicable, without importing demo facts or blindly pasting literal inline HTML/CSS.
+- **Bundle 3 remains the single implementation design system, but its previous indigo glass/bento visual identity is not immutable.** Step 10 must evolve Bundle 3 so the design system itself encodes the approved RU mockup direction; later UI work consumes those canonical rules/tokens rather than creating local overrides or a second theme.
 - **Public Portal is product-first.** Home should lead with the AnyToolAI product value proposition and discovery, not engineering/readiness facts such as region, locale count, canonical legal language or billing migration status.
 - **Only current real presentation products are shown.** At the current baseline these are `document-summary` and `prompt-optimizer`. Do not surface Proposal Checker, Scope Guard, “next product”, waitlists or roadmap products merely because they appear in the mockup.
 - **No pricing page or pricing CTA in 4F.** The mockup pricing composition is a future commercial surface owned by parent ANY-504 Step 6/7 once authoritative offers and purchase entry exist.
-- **Product cards must not claim runtime availability.** Labels such as “Доступно”, “На проверке”, “Скоро” are not authoritative unless a current source proves them. Prefer product type/presentation metadata and a neutral detail CTA.
+- **Product cards must not claim runtime availability.** Labels such as “Available”, “Under review”, “Coming soon” are not authoritative unless a current source proves them. Prefer product type/presentation metadata and a neutral detail CTA.
 - **Product detail pages are substantial customer-facing screens.** They should use the RU mockup's two-column hero / preview / supporting-content composition where useful, but only with current truthful presentation facts and current safe actions.
 - **No install/web-app target is invented.** If there is no authoritative current destination, the page may navigate to account/catalog and show the relevant not-ready state instead.
 - **Authenticated cabinet is product-centric.** Identity/account facts are compact supporting content; the primary cabinet content is one card/surface per current product.
@@ -1648,8 +1648,10 @@ reference to `zod.gen`, generated Zod HTTP response validation, response
 - RU mockup/public-shell redesign (Step 7);
 - substantial product pages (Step 8);
 - product-centric cabinet redesign (Step 9);
-- product/visual acceptance screenshots (Step 10);
-- final 4F handoff/closure (Step 11);
+- Bundle 3 RU visual-language recalibration (Step 10);
+- Portal-wide application of the recalibrated visual system (Step 11);
+- product/visual acceptance screenshots (Step 12);
+- final 4F handoff/closure (Step 13);
 - parent ANY-504 Step 5+ implementation.
 
 **AI prompt**  
@@ -1812,7 +1814,7 @@ apps/web/src/app/responsive.css
 apps/web/src/app/account.css                          # only shared shell selectors if genuinely needed
 ```
 
-Touch direct tests only when current assertions become stale; focused corrective E2E expansion is Step 10.
+Touch direct tests only when current assertions become stale; focused corrective E2E expansion is Step 12.
 
 **Implementation decisions**  
 
@@ -1822,18 +1824,18 @@ Touch direct tests only when current assertions become stale; focused corrective
    - product discovery as the primary public navigation concern;
    - existing locale switcher retained;
    - existing `HeaderAccount` auth behavior retained;
-   - do not add “Тарифы” until authoritative commercial catalog/purchase work exists.
+   - do not add “Pricing” until authoritative commercial catalog/purchase work exists.
 3. Rebuild `/[locale]` so the hero reads as a customer product entry, not a platform/readiness dashboard.
 4. Remove or demote home content whose primary purpose is exposing engineering/system facts rather than helping a customer choose/use a product, including region/locale/legal-language style statistics when they dominate the hero.
-5. Do not replace removed statistics with mockup numbers such as `200k+`, `10`, or `2 / мес`.
+5. Do not replace removed statistics with mockup numbers such as `200k+`, `10`, or `2 / month`.
 6. Use the mockup's product-discovery rhythm (group/collection framing + cards) but only with products that are actually present in current Portal presentation metadata.
-7. `AI-утилиты` may be used as UI taxonomy for the current two products if it fits the RU composition. Do not show `Для фрилансеров` as if it contained released/current products when the current presentation catalog has none. A taxonomy label must not invent a roadmap/product fact.
+7. `AI utilities` may be used as UI taxonomy for the current two products if it fits the RU composition. Do not show `For freelancers` as if it contained released/current products when the current presentation catalog has none. A taxonomy label must not invent a roadmap/product fact.
 8. Product cards must expose current truthful presentation facts only:
    - product name;
    - current product type such as Chrome Extension where already established;
    - current approved description;
-   - neutral “Подробнее”/detail navigation.
-9. Remove misleading card/status affordances that look like authoritative runtime/commercial availability when no source exists. Do not copy “Доступно”, “На проверке”, “Скоро”, install targets, web-app targets or waitlist actions from the mockup without an authoritative current destination/state.
+   - neutral “Learn more”/detail navigation.
+9. Remove misleading card/status affordances that look like authoritative runtime/commercial availability when no source exists. Do not copy “Available”, “Under review”, “Coming soon”, install targets, web-app targets or waitlist actions from the mockup without an authoritative current destination/state.
 10. Keep public purchase unavailable semantics honest, but do not make “billing not ready” a primary marketing fact repeated across the whole page. Show it only where a user would otherwise expect a purchase/commercial action.
 11. Keep current footer legal/operator facts sourced from existing authoritative data/components. Do not copy `CloudPayments`, placeholder INN, hosting/location, or FZ-152 claims from the mockup.
 12. Keep all ordinary copy in exact seven-locale key/ICU-signature parity; RU remains the visual acceptance target.
@@ -1853,8 +1855,10 @@ Touch direct tests only when current assertions become stale; focused corrective
 
 - product-detail redesign (Step 8);
 - authenticated cabinet redesign (Step 9);
-- visual acceptance E2E/screenshots (Step 10);
-- documentation correction (Step 11);
+- design-system visual recalibration (Step 10);
+- Portal-wide visual application (Step 11);
+- visual acceptance E2E/screenshots (Step 12);
+- documentation correction/final handoff (Step 13);
 - parent ANY-504 commercial Step 6 or purchase Step 7.
 
 **AI prompt**  
@@ -1971,11 +1975,11 @@ apps/web/src/app/globals.css                        # only shared selectors if r
    - a visual preview/illustration region that is clearly presentation, not runtime state;
    - supporting product information sections only where current facts support them.
 3. Do not copy unverified mockup claims such as:
-   - “бесплатно” unless a current authoritative product policy says so;
-   - “данные не покидают браузер”;
-   - “ничего не сохраняется на серверах”;
-   - “52 языка”;
-   - “аккаунт ChatGPT не нужен”;
+   - “free” unless a current authoritative product policy says so;
+   - “data does not leave the browser”;
+   - “nothing is stored on servers”;
+   - “52 languages”;
+   - “a ChatGPT account is not required”;
    - installation/web-app availability without an authoritative destination.
 4. Do not invent Chrome Web Store URLs, web execution URLs, Kernel URLs or provider/purchase destinations.
 5. Keep the current product type (`Chrome Extension`) only because it already exists in current presentation metadata. If another type is not current authority, omit it.
@@ -2101,7 +2105,7 @@ apps/web/src/app/catalog.css
 apps/web/src/app/responsive.css
 ```
 
-Direct component tests may be updated where current assumptions become stale; complete corrective E2E coverage belongs to Step 10.
+Direct component tests may be updated where current assumptions become stale; complete corrective E2E coverage belongs to Step 12.
 
 **Implementation decisions**  
 
@@ -2126,7 +2130,7 @@ These are frontend-local view composition states only. Do not create backend-lik
    - usage: data unavailable;
    - action: safe detail/account navigation only.
 7. Remove the current global three-card `Access / Billing / Usage` readiness grid if the same information becomes clearer and more future-proof inside each product card. Do not keep both representations just for compatibility.
-8. Do not show mockup values or controls such as `Pro`, `490 ₽/мес`, renewal date, `320/500`, `3/10`, usage bars, “Управление подпиской”, CloudPayments, payment method or active-subscription banners.
+8. Do not show mockup values or controls such as `Pro`, `490 ₽/month`, renewal date, `320/500`, `3/10`, usage bars, “Manage subscription”, CloudPayments, payment method or active-subscription banners.
 9. Do not claim a product is free, paid, active, inactive, available or unavailable unless current authority proves that exact state.
 10. Product cards may navigate to their current product-detail routes. Do not invent execution/purchase/self-service destinations.
 11. Keep `email_verified` and `EmailVerificationPending` behavior authoritative and visible where appropriate without letting it dominate product state.
@@ -2234,9 +2238,379 @@ ANY-636 make portal cabinet product centric
 
 ---
 
-# Step 10 — Add Mockup-Grounded Product UX Acceptance, Screenshots and Regression Coverage
+# Step 10 — Recalibrate Bundle 3 to the Approved RU Portal Visual Language
 
-> **ANY-636 internal Step 10 — not parent ANY-504 Step 10.**
+> **ANY-636 internal Step 10 — design-system authority correction, not parent ANY-504 Step 10.**
+
+**Status:** `pending`  
+**Recommended model:** `Sol`
+
+**Goal**  
+Resolve the visual-authority conflict exposed after Step 9. Keep Bundle 3 as the **single** AnyToolAI Portal design system, but deliberately evolve its canonical visual rules/tokens from the older indigo glass/bento treatment to the approved RU mockup language so later UI work can follow the mockup without fighting repository instructions.
+
+This step defines and encodes the design-system target. It does **not** redesign product/auth/business semantics and does not copy demo facts from the mockup.
+
+**Required reference**  
+
+Inspect side-by-side before editing:
+
+```text
+portal-ru-anytools.html
+current docs/DESIGN.md
+current docs/design-system/bundle3/*
+current apps/web/AGENTS.md
+```
+
+Use the mockup's CSS and rendered surfaces as design evidence, especially its shared root palette/typography plus public navigation/cards and `LK RU` dashboard treatment. The relevant visual direction includes:
+
+```text
+deep navy page background
+flat/opaque dark-blue surfaces
+thin blue borders
+amber primary accent
+restrained indigo as a secondary accent only
+compact 8–16px radii
+compact typography/spacing
+minimal shadow/glow
+little/no glass blur except where the mockup actually uses it
+Plus Jakarta Sans visual direction
+220px-class dashboard rail + flat workspace on desktop
+```
+
+The mockup's tariffs, provider names, usage values, subscription facts, roadmap products and legal/privacy claims remain non-authoritative.
+
+**Scope / affected code/docs**  
+
+Expected design-system authority files:
+
+```text
+docs/DESIGN.md
+docs/design-system/bundle3/README.md
+docs/design-system/bundle3/SKILL.md
+docs/design-system/bundle3/web.md
+docs/design-system/bundle3/PROMPT_SNIPPET.md
+docs/design-system/bundle3/tokens.json
+apps/web/AGENTS.md
+apps/web/src/app/tokens.generated.css          # generated only through the existing generator when tokens change
+this active ANY-636 implementation plan        # status/evidence only if needed
+```
+
+Do **not** perform page-specific CSS/TSX redesign in this step. That is Step 11.
+
+**Implementation decisions**  
+
+1. **Preserve Bundle 3 as the only design-system authority.** Do not create `Bundle 4`, a page-local theme, a second token file or cabinet-only replacement system.
+2. Replace the obsolete mandatory visual identity that currently requires indigo radial glows, translucent glass cards, blur-heavy bento surfaces, large radii and gradient primary actions. Those rules conflict with the approved RU visual target and must no longer be mandatory Portal styling.
+3. Translate the mockup's shared visual palette into canonical Bundle 3 semantics. The target values/direction should be based on the mockup's actual shared variables, including:
+
+```text
+page background        #07101f
+surface level 1        #0d1929
+surface level 2        #122035
+surface level 3        #1a2d45
+border                 #1e3250
+primary amber          #f59e0b
+amber text/highlight   #fcd34d
+success                #10b981
+primary text           #f0f4ff
+secondary text         #8ba3c0
+tertiary text          #4a6480
+secondary indigo       #6366f1 / #818cf8 only where justified
+```
+
+Map these values onto stable semantic Bundle 3 token names rather than exposing mockup variable names (`--s1`, `--amber`, etc.) to application code.
+4. Recalibrate radii/component treatment toward the mockup: compact buttons/controls, roughly `8–12px` common radii and `12–16px` cards/panels unless a specific component needs otherwise. Remove the old rule that all major Portal cards must read as large glass/bento tiles.
+5. Recalibrate surfaces: flat/opaque dark surfaces with thin borders are normal and approved. Blur/glass is optional and restrained; navigation may use the mockup-like subtle backdrop treatment, but the design system must not require blur for every elevated surface.
+6. Recalibrate primary actions: amber can be the flat primary accent where the mockup uses it. Remove the old prohibition against flat primary accents and the requirement for an indigo gradient/glow on every primary action.
+7. Recalibrate page background: a flat deep-navy Portal background is valid. Remove the old requirement that every page must contain layered radial glows.
+8. Recalibrate typography to the mockup direction, including Plus Jakarta Sans as the target Portal family unless current repository/font-loading constraints reveal a concrete blocker. Do not add a remote CSS `@import` merely because the HTML mockup uses one; Step 11 must use the repository's approved font-loading mechanism.
+9. Capture both public and application/dashboard layout guidance in Bundle 3:
+   - public Portal: compact sticky nav, centered hero, flat product cards, restrained section rhythm;
+   - authenticated application: narrow supporting rail + wide workspace, compact section labels and product surfaces;
+   - both share one palette/typography/component language.
+10. Keep accessibility rules strong: visible focus, semantic controls, sufficient contrast, keyboard usability, responsive single-column collapse, and no color-only state meaning.
+11. Update `docs/DESIGN.md` so it no longer claims the current Portal is defined by the old indigo glass/bento appearance. State that the approved RU mockup is the product/visual target and Bundle 3 is the canonical implementation encoding of that target.
+12. Update `apps/web/AGENTS.md` so UI work is no longer instructed to preserve legacy glass/bento patterns. Agents must use the current Bundle 3 tokens/rules and the approved mockup for affected visual surfaces.
+13. If `tokens.json` changes, refresh `tokens.generated.css` only through the existing repository generator. Do not hand-edit generated token output.
+14. Do not change route topology, React composition, auth/session behavior, product state semantics, locale behavior, backend APIs, database state or future billing/access/usage ownership.
+15. Do not copy mockup business/runtime facts into the design system. Design tokens/components must contain no provider/tariff/subscription/product-state assumptions.
+
+**Invariants**  
+
+- Bundle 3 remains the only Portal design system.
+- The RU mockup defines the target visual language; Bundle 3 encodes it instead of opposing it.
+- No second theme/token authority is introduced.
+- No Step 7–9 product/auth/data semantics change.
+- No business/provider/runtime fact is promoted from the mockup.
+- Accessibility/responsive rules remain first-class.
+
+**Out of scope**  
+
+- restyling the actual Portal pages/components (Step 11);
+- product/business copy changes unrelated to visual-system terminology;
+- pricing/purchase/provider runtime;
+- paid-access/usage implementation;
+- backend/API/schema changes;
+- redesigning auth/session/legal semantics;
+- pixel-perfect duplication of the HTML file.
+
+**AI prompt**  
+
+```text
+Implement only ANY-636 Step 10: recalibrate the canonical Bundle 3 design system so it encodes the approved RU Portal visual language from portal-ru-anytools.html.
+
+This is a design-system authority step, not a page redesign step. The Step 9 application structure is the baseline and must not be changed here.
+
+Before editing, inspect:
+- portal-ru-anytools.html shared CSS variables and representative HOME/TOOLS/PRODUCT/LK RU styles;
+- docs/DESIGN.md;
+- docs/design-system/bundle3/README.md, SKILL.md, web.md, PROMPT_SNIPPET.md, tokens.json;
+- apps/web/AGENTS.md;
+- the existing token generation path/output.
+
+The current problem is that the old Bundle 3 authority mandates indigo gradients, radial glows, translucent glass/bento cards, blur-heavy surfaces and large radii, while the approved RU mockup uses a much flatter deep-navy/amber/compact system. Resolve that conflict inside Bundle 3 itself.
+
+Keep Bundle 3 as the single design system. Do not create a second theme or cabinet-only token system.
+
+Translate the mockup's visual language into semantic Bundle 3 rules/tokens, including its deep navy background, dark flat surfaces, thin blue borders, amber primary accent, compact radii/spacing and Plus Jakarta Sans direction. Preserve accessibility/responsive requirements. Do not paste raw mockup CSS wholesale into application styles.
+
+Update docs/DESIGN.md and apps/web/AGENTS.md so future UI work no longer receives instructions to preserve the obsolete glass/bento appearance when it conflicts with the approved mockup.
+
+If tokens.json changes, refresh generated token CSS through the repository generator only. Do not manually edit generated artifacts.
+
+Do not edit page/component-specific layout/CSS/TSX in this step. Do not change routes, auth/session behavior, product-state semantics, APIs, backend, schema or provider/billing/access/usage behavior.
+
+Do not copy demo values or business facts from the mockup.
+
+Do not run tests, linters, formatters, type checks, builds or generators except the specific repository generation command required to refresh token output after changing canonical tokens.
+Do not stage files.
+Do not create commits.
+
+After implementation:
+- report every design-system/doc/generated-token file changed;
+- summarize the old Bundle 3 rules removed or superseded;
+- list the new canonical palette/typography/surface/radius/action rules;
+- confirm there is still exactly one design-system/token authority;
+- confirm no page composition/business/auth/API behavior changed;
+- report exact manual verification commands.
+```
+
+**Manual verification**  
+
+Review the design-system diff against the mockup, then run:
+
+```bash
+npm run docs:check
+npm run generate:check
+```
+
+If token generation changes production CSS, also run:
+
+```bash
+npm run typecheck:web
+npm run lint:web
+```
+
+Before accepting the step, confirm that no current instruction still requires all Portal surfaces to use the old purple/indigo glass+bento treatment or forbids the approved flat navy/amber language.
+
+**Expected completion**  
+
+- Bundle 3 itself now describes/encodes the RU mockup's visual language instead of blocking it.
+- `docs/DESIGN.md`, Bundle 3 docs/tokens and `apps/web/AGENTS.md` agree on one visual authority.
+- No parallel theme/token system exists.
+- Application structure/semantics remain unchanged and ready for Step 11 restyling.
+
+**Proposed commit**  
+
+```text
+ANY-636 align Bundle 3 with RU portal visual language
+```
+
+---
+
+# Step 11 — Apply the Recalibrated Bundle 3 Style Across the RU Portal
+
+> **ANY-636 internal Step 11 — visual implementation, not parent ANY-504 Step 11.**
+
+**Status:** `pending`  
+**Recommended model:** `Sol`
+
+**Goal**  
+Apply the Step 10 Bundle 3 visual system to the actual RU Portal so the public shell, home, catalog, product detail pages and authenticated cabinet materially look like one coherent implementation of the approved mockup. Preserve the structural/product/auth semantics already established by Steps 7–9.
+
+This is the step that should make the running Portal look **obviously different** from the old purple glass/bento implementation.
+
+**Required reference**  
+
+Compare the current rendered Portal after Step 9 with these mockup sections:
+
+```text
+HOME RU
+TOOLS RU
+PRODUCT RU
+LK RU
+```
+
+Use Step 10's canonical Bundle 3 rules/tokens as the implementation authority. The mockup remains the visual target and business-fact filter described above.
+
+**Scope / affected code**  
+
+Expected primary production surfaces:
+
+```text
+apps/web/src/shared/ui/SiteShell.tsx
+apps/web/src/shared/ui/HeaderAccount.tsx               # styling/markup compatibility only if needed
+apps/web/src/app/[locale]/page.tsx                    # markup/classes only if needed for styling
+apps/web/src/app/[locale]/products/page.tsx           # markup/classes only if needed
+apps/web/src/features/catalog/ProductOverview.tsx
+apps/web/src/features/catalog/ProductDetail.tsx
+apps/web/src/features/account/AccountClient.tsx
+apps/web/src/features/account/AccountProductCard.tsx
+apps/web/src/app/globals.css
+apps/web/src/app/catalog.css
+apps/web/src/app/account.css
+apps/web/src/app/responsive.css
+font-loading/root layout files only if required by the canonical typography change
+```
+
+Shared auth/reset/verification/legal surfaces may receive only narrow compatibility styling needed because common tokens/primitives changed. Do not redesign their flows or information architecture.
+
+**Implementation decisions**  
+
+1. Preserve the Step 7–9 route/content/state structure unless a small markup/class adjustment is required to express the new visual system. Do not redo product discovery, product data or account-state modeling.
+2. Replace the old Portal-wide purple/indigo glass/bento appearance on the affected surfaces with the canonical Step 10 language:
+   - deep navy base background;
+   - flat/opaque dark-blue surfaces;
+   - thin blue borders;
+   - amber primary highlight/actions;
+   - compact radii and controls;
+   - restrained shadows/glows;
+   - compact spacing/typography;
+   - Plus Jakarta Sans through the approved repository font-loading mechanism.
+3. Public navigation should materially follow the mockup feel: compact sticky bar, clear brand/accent, restrained links/actions and no oversized translucent glass shell.
+4. Home should preserve Step 7's truthful product-first content while adopting the mockup's visual styling and centered product-entry rhythm. Do not restore demo stats/pricing/free/freelancer content that Step 7 intentionally omitted.
+5. Catalog/product cards should use the flatter mockup-like surface treatment, compact icon/type/name/description hierarchy and amber/secondary action treatment without fake availability badges or execution targets.
+6. Product detail pages should keep Step 8's truthful two-column/product-preview composition while restyling hero, preview, supporting cards, actions and footer rhythm to the new Bundle 3 language. Do not add unsupported mockup claims.
+7. Authenticated `/account` should materially follow `LK RU` styling:
+   - narrow supporting rail/context + wide workspace at desktop widths;
+   - compact heading/section labels;
+   - flat product cards with thin borders and smaller radii;
+   - product state rows visually secondary;
+   - account/email-verification/logout context compact;
+   - no fake sidebar destinations.
+8. Do not resurrect the old Step 10 attempt merely by making its purple glass panels smaller. The final rendered account page must no longer read as the Step 9 purple account page.
+9. Signed-out `/account`, HeaderAccount modal, reset, verification and legal behavior remain semantically unchanged. Shared styling may adapt to the new canonical palette/components so these surfaces remain coherent and accessible.
+10. Preserve the exact seven-locale copy contract. Visual implementation should not require gratuitous copy changes.
+11. Preserve focus/keyboard/ARIA/live-region behavior and sufficient contrast. Do not hide live regions with `display:none` merely for spacing.
+12. Responsive behavior must follow the mockup intent: public navigation/cards collapse cleanly; product detail becomes one column; cabinet rail becomes a compact top/section treatment; no horizontal overflow.
+13. Do not add pricing, tariffs, Pro/Free state, CloudPayments, active subscription, renewal dates, usage values/bars, install/web-app URLs, fake products or fake navigation destinations.
+14. Do not change APIs, generated contracts, backend code, database/schema, auth/session semantics or future commercial/access/usage ownership.
+
+**Invariants**  
+
+- Step 7–9 product/auth semantics remain intact.
+- Bundle 3 from Step 10 is the only style/token authority.
+- The running Portal materially follows the approved RU visual language without copying demo facts.
+- No provider/commercial/access/usage authority is introduced.
+- Accessibility and responsive behavior remain intact.
+
+**Out of scope**  
+
+- new business/product features;
+- pricing/purchase/Widget;
+- provider runtime;
+- paid-access/usage integration;
+- new APIs/schema;
+- semantic redesign of auth/reset/verification/legal flows;
+- automated visual-regression/pixel-diff infrastructure (Step 12 uses human-review screenshots instead).
+
+**AI prompt**  
+
+```text
+Implement only ANY-636 Step 11: apply the recalibrated Bundle 3 visual language from Step 10 across the actual RU Portal surfaces.
+
+Steps 7–9 define the structure/semantics and must be preserved. Step 10 defines the canonical design tokens/rules and is assumed complete.
+
+Before editing, compare the running/current code against portal-ru-anytools.html HOME RU, TOOLS RU, PRODUCT RU and LK RU sections.
+
+Restyle the affected Portal so it materially adopts the mockup's deep-navy, flat dark-surface, thin-border, amber-accent, compact-radius/spacing and typography language. Use the canonical Bundle 3 tokens/rules from Step 10 rather than page-local raw colors or a second theme.
+
+Apply the style coherently to:
+- global SiteShell/navigation;
+- home;
+- products catalog/cards;
+- both product detail pages;
+- authenticated account cabinet;
+- only narrow shared auth/legal compatibility surfaces where token/component changes require it.
+
+Preserve Step 7–9 content and data truth. Do not restore demo stats, pricing, freelancer products, Pro/Free, CloudPayments, subscription/renewal/usage values, fake availability labels, install/web-app URLs or fake sidebar destinations.
+
+The authenticated cabinet must stop looking like the old purple glass/bento account page. Follow LK RU's dashboard feel while keeping the real current account/product semantics and existing auth/session/email-verification behavior.
+
+Do not change backend/API/schema/generated-contract/data ownership. Do not add network calls.
+
+Do not run tests, linters, formatters, type checks, builds or generators.
+Do not stage files.
+Do not create commits.
+
+After implementation:
+- report every changed file;
+- summarize visual changes by home/catalog/product/account surface;
+- identify any old glass/bento selectors/primitives no longer used on active Portal surfaces;
+- list every mockup fact/control intentionally omitted;
+- confirm Step 7–9 semantics/auth/API boundaries are unchanged;
+- report exact manual verification commands.
+```
+
+**Manual verification**  
+
+Run:
+
+```bash
+node --test \
+  apps/web/tests/i18n-contract.test.mjs \
+  apps/web/tests/app-metadata.test.mjs
+npm --workspace @anytoolai/web run test:components -- \
+  tests/components/AccountClient.test.tsx \
+  tests/components/HeaderAccount.test.tsx \
+  tests/components/EmailVerificationClient.test.tsx
+npm run typecheck:web
+npm run lint:web
+```
+
+Then inspect desktop and normal phone widths for:
+
+```text
+/ru
+/ru/products
+/ru/products/document-summary
+/ru/products/prompt-optimizer
+/ru/account signed out
+/ru/account authenticated + verified email
+/ru/account authenticated + unverified email
+```
+
+Compare the RU surfaces side-by-side with the mockup. The test is not pixel equality; the pages must be materially recognizable as the same visual family in palette, typography, surface treatment, density, control treatment and hierarchy while retaining only authoritative content.
+
+**Expected completion**  
+
+- The running Portal is visibly no longer the old purple glass/bento presentation.
+- Public, product and account surfaces share the new Bundle 3 navy/amber/compact language.
+- Step 7–9 product/auth/data semantics remain unchanged.
+- Desktop/mobile remain usable and accessible.
+- Step 12 can now validate the actual intended final UI rather than perform redesign work.
+
+**Proposed commit**  
+
+```text
+ANY-636 apply RU portal visual system
+```
+
+---
+
+# Step 12 — Add Mockup-Grounded Product UX Acceptance, Screenshots and Regression Coverage
+
+> **ANY-636 internal Step 12 — final 4F visual/product acceptance evidence.**
 
 **Status:** `pending`  
 **Recommended model:** `Sol`
@@ -2286,8 +2660,9 @@ Do not create a visual-regression framework or pixel-diff system.
 
 4. Add/retain mobile screenshots for the same key journey at approximately `390x844` (or the repository's existing standard phone viewport).
 5. Screenshot evidence is for human review against `portal-ru-anytools.html`; it is not a pixel-perfect automated baseline.
-6. Keep assertions resilient to incidental text/layout changes. Assert semantic sections, actions, headings, product identities and absence of prohibited facts rather than exact CSS coordinates.
-7. Add negative assertions for the main mockup demo values that must never accidentally leak into the current 4F UI where practical, such as:
+6. Human screenshot review must evaluate the **visual language as well as composition**: deep-navy background, flat dark surfaces, thin borders, amber accent, compact radii/spacing, typography and dashboard/card treatment should materially follow the approved mockup. The old purple/indigo glass+bento appearance must not remain the dominant Portal identity.
+7. Keep assertions resilient to incidental text/layout changes. Assert semantic sections, actions, headings, product identities and absence of prohibited facts rather than exact CSS coordinates.
+8. Add negative assertions for the main mockup demo values that must never accidentally leak into the current 4F UI where practical, such as:
 
 ```text
 490 ₽
@@ -2299,10 +2674,10 @@ CloudPayments
 ```
 
 Do not build a generic forbidden-string framework.
-8. Continue proving that absent future data is not rendered as “нет подписки”, “нет доступа”, zero usage/quota, default/free/pro plan or price.
-9. Verify mobile shell/product/account composition has no horizontal overflow and remains keyboard/focus usable.
-10. Do not add fake APIs/fixtures for commercial/access/usage state. Mock only the existing auth/session endpoint where already appropriate.
-11. Do not change production behavior except a tiny accessibility/testability fix directly required by the intended current UI. Material corrections belong back in Steps 7–9.
+9. Continue proving that absent future data is not rendered as “no subscription”, “no access”, zero usage/quota, default/free/pro plan or price.
+10. Verify mobile shell/product/account composition has no horizontal overflow and remains keyboard/focus usable.
+11. Do not add fake APIs/fixtures for commercial/access/usage state. Mock only the existing auth/session endpoint where already appropriate.
+12. Do not change production behavior except a tiny accessibility/testability fix directly required by the intended current UI. Material corrections belong back in Steps 7–11.
 
 **Invariants**  
 
@@ -2323,9 +2698,9 @@ Do not build a generic forbidden-string framework.
 **AI prompt**  
 
 ```text
-Implement only ANY-636 Step 10: strengthen product/visual acceptance coverage for the corrected RU AnyToolAI Portal and produce reviewable desktop/mobile screenshot evidence.
+Implement only ANY-636 Step 12: strengthen product/visual acceptance coverage for the fully restyled RU AnyToolAI Portal and produce reviewable desktop/mobile screenshot evidence.
 
-Steps 6–9 are assumed complete and manually verified.
+Steps 6–11 are assumed complete and manually verified.
 
 Inspect the final corrected Portal surfaces, existing portal-ru/public-route/account E2E tests, Playwright screenshot conventions and portal-ru-anytools.html.
 
@@ -2339,7 +2714,7 @@ Add focused semantic assertions proving:
 - per-product honest commercial/access/usage states;
 - no fake negative/zero/plan/price state.
 
-Capture human-review screenshots for the main RU desktop and mobile surfaces. Do not add pixel-diff infrastructure.
+Capture human-review screenshots for the main RU desktop and mobile surfaces. Do not add pixel-diff infrastructure. Human review must cover the new canonical visual language (navy/flat/amber/compact treatment), not only block ordering.
 
 Where practical, assert that obvious demo values/providers from the mockup such as 490 ₽, 990 ₽, 200k+, 320/500, 3/10 and CloudPayments do not leak into the current Portal.
 
@@ -2383,21 +2758,21 @@ Then inspect the produced RU desktop/mobile screenshots side-by-side with `porta
 
 **Expected completion**  
 
-- The corrected product experience has objective semantic regression coverage.
+- The final product and visual experience has objective semantic regression coverage.
 - Reviewers have desktop/mobile evidence for actual mockup-direction comparison.
 - The old failure mode (“routes pass, Portal still not actually rebuilt”) is no longer sufficient to satisfy the tests/review.
 
 **Proposed commit**  
 
 ```text
-ANY-636 prove RU portal product experience
+ANY-636 prove RU portal visual and product experience
 ```
 
 ---
 
-# Step 11 — Correct the 4F Handoff, Re-run Final Review and Close ANY-636
+# Step 13 — Correct the 4F Handoff, Re-run Final Review and Close ANY-636
 
-> **ANY-636 internal Step 11 — not parent ANY-504 Step 11.**
+> **ANY-636 internal Step 13 — final handoff/closure, not a parent ANY-504 step.**
 
 **Status:** `pending`  
 **Recommended model:** `Sol`
@@ -2407,7 +2782,7 @@ Bring current-authority documentation and the 4F handoff in line with the correc
 
 **Scope / affected code**  
 
-Update only documents that became stale because Steps 7–10 changed the as-built Portal composition, especially:
+Update only documents that became stale because Steps 7–12 changed the as-built Portal composition, especially:
 
 ```text
 README.md                                  # only if current product surface description is stale
@@ -2435,21 +2810,22 @@ direct account/auth entry
 product-centric authenticated cabinet
 per-product commercial/access/usage/action slots
 ```
+3. Document the final visual-authority correction: the approved RU mockup is the product/visual target, while the evolved Bundle 3 is the single canonical implementation design system. Record that the previous mandatory purple/indigo glass+bento appearance was superseded for the Portal by the navy/amber/flat/compact language encoded in Step 10.
 
-3. Preserve all ownership boundaries already documented:
+4. Preserve all ownership boundaries already documented:
    - External Billing commercial truth → parent Step 6+;
    - purchase/Widget → parent Step 7;
    - reconciliation/recovery → parent Step 8;
    - provider-neutral paid access → parent Step 9;
    - actual usage/quota → parent Step 10.
-4. Explicitly document that later parent steps **populate the existing per-product Portal slots** rather than redesign the main cabinet/product surface.
-5. Keep the current product slugs presentation-only until technical identity mapping is introduced by its owning step.
-6. Keep no-price/no-fake-access/no-fake-usage semantics until authoritative sources exist.
-7. Record the RU mockup as the visual/product reference used to close 4F, while explicitly noting that demo prices/providers/metrics/legal/privacy claims were excluded from authority.
-8. Update this plan's overview/final evidence to `done` only after complete verification and human screenshot review pass.
-9. Run the complete 4F verification surface after the documentation diff is reviewed.
-10. Perform a final intent/DoD review whose first question is: **does the system now look and behave like the RU AnyToolAI Portal expected by ANY-539/ANY-504 4F, not merely pass technical route/boundary checks?**
-11. Do not begin parent ANY-504 Step 6 implementation inside this step.
+5. Explicitly document that later parent steps **populate the existing per-product Portal slots** rather than redesign the main cabinet/product surface.
+6. Keep the current product slugs presentation-only until technical identity mapping is introduced by its owning step.
+7. Keep no-price/no-fake-access/no-fake-usage semantics until authoritative sources exist.
+8. Record the RU mockup as the visual/product reference used to close 4F, while explicitly noting that demo prices/providers/metrics/legal/privacy claims were excluded from authority.
+9. Update this plan's overview/final evidence to `done` only after complete verification and human screenshot review pass.
+10. Run the complete 4F verification surface after the documentation diff is reviewed.
+11. Perform a final intent/DoD review whose first question is: **does the system now look and behave like the RU AnyToolAI Portal expected by ANY-539/ANY-504 4F, not merely pass technical route/boundary checks?**
+12. Do not begin parent ANY-504 Step 6 implementation inside this step.
 
 **Invariants**  
 
@@ -2470,15 +2846,15 @@ per-product commercial/access/usage/action slots
 **AI prompt**  
 
 ```text
-Implement only ANY-636 Step 11: align current-authority documentation and the 4F handoff with the corrected product-centric RU Portal, then prepare the final verification/DoD evidence.
+Implement only ANY-636 Step 13: align current-authority documentation and the 4F handoff with the corrected product-centric RU Portal, then prepare the final verification/DoD evidence.
 
-Steps 6–10 are assumed complete and manually verified.
+Steps 6–12 are assumed complete and manually verified.
 
 Inspect only the final corrected Portal code/routes/tests/screenshots and the current-authority docs that describe the Portal product surface.
 
-Update docs/product/ru-mvp.md so later parent ANY-504 Steps 6/7/8/9/10 integrate through the already-existing product-centric Portal surfaces: Step 6 commercial facts, Step 7 purchase action, Step 8 recovery/reconciliation behavior, Step 9 paid access, and Step 10 usage/quota — without redesigning the main cabinet.
+Update docs/product/ru-mvp.md so it records the final product-centric Portal and the evolved Bundle 3 visual authority, and so later parent ANY-504 Steps 6/7/8/9/10 integrate through the already-existing product-centric Portal surfaces: Step 6 commercial facts, Step 7 purchase action, Step 8 recovery/reconciliation behavior, Step 9 paid access, and Step 10 usage/quota — without redesigning the main cabinet.
 
-Record portal-ru-anytools.html as the visual/product reference used for 4F, while explicitly rejecting its demo prices, provider names, metrics, subscription/usage values, unsupported product states and other non-authoritative facts.
+Record portal-ru-anytools.html as the visual/product reference used for 4F and the evolved Bundle 3 as its canonical implementation encoding, while explicitly rejecting its demo prices, provider names, metrics, subscription/usage values, unsupported product states and other non-authoritative facts.
 
 Preserve all accepted architecture ownership and the final ANY-541 generated-TypeScript/shared-transport trust rule.
 Do not rewrite historical ADR/design records merely for naming.
@@ -2529,7 +2905,7 @@ Then perform the human acceptance review:
 3. Open /ru/products and both RU product pages.
 4. Open authenticated /ru/account.
 5. Repeat the key journey at mobile width.
-6. Confirm the production UI follows the mockup's composition/product hierarchy.
+6. Confirm the production UI follows the mockup's composition/product hierarchy **and the evolved navy/amber/flat/compact visual language**.
 7. Confirm all demo/unverified facts from the mockup were either omitted or replaced with authoritative/honest states.
 8. Confirm later parent Steps 6–10 can attach data/actions without another major shell/catalog/product/cabinet redesign.
 ```
@@ -2545,21 +2921,22 @@ Then perform the human acceptance review:
 **Proposed commit**  
 
 ```text
-ANY-636 finalize RU portal product handoff
+ANY-636 finalize RU portal visual product handoff
 ```
 
 ---
 
 ## Final Acceptance Validation for ANY-636
 
-After **all eleven** ANY-636 implementation steps are complete and manually verified, the implementation must satisfy this matrix.
+After **all thirteen** ANY-636 implementation steps are complete and manually verified, the implementation must satisfy this matrix.
 
 | Requirement | Expected final result |
 | --- | --- |
-| Required baseline | Initial Steps 1–5 preserved; Step 6 merges the final/current ANY-541 predecessor; product/visual Steps 7–11 continue from that synchronized baseline |
-| RU visual authority | `portal-ru-anytools.html` was directly inspected and used for composition/product hierarchy |
-| Design system | Bundle 3 remains the implementation token/component authority; mockup CSS is not pasted as a parallel system |
+| Required baseline | Initial Steps 1–5 preserved; Step 6 merges the final/current ANY-541 predecessor; product/visual Steps 7–13 continue from that synchronized baseline |
+| RU visual authority | `portal-ru-anytools.html` was directly inspected and used for product hierarchy **and visual language** (palette, typography, surfaces, density, spacing and dashboard/card treatment) |
+| Design system | Bundle 3 remains the single implementation token/component authority and is deliberately evolved to encode the approved RU mockup direction; no parallel theme/token system is introduced |
 | Home/shell | Product-first AnyToolAI Portal composition materially aligned with the RU mockup, not a readiness/system-fact dashboard |
+| Visual language | Active Portal surfaces use the evolved deep-navy / flat dark-surface / thin-border / amber-accent / compact-radius language rather than the superseded purple glass/bento identity |
 | Catalog | Current products are discoverable in a mockup-grounded product/catalog composition; no fake roadmap/current products |
 | Product pages | Both current products have substantial localized product screens, not just repeated catalog cards |
 | Product identity | `document-summary` and `prompt-optimizer` remain frontend presentation/route slugs only |
