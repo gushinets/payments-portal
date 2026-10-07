@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { isAbsolute, relative, resolve, sep } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -7,16 +8,11 @@ import { ESLint } from "eslint";
 import ts from "typescript";
 import { sourceFiles } from "./setup/source-files.mjs";
 
-const webRoot = fileURLToPath(new URL("..", import.meta.url));
-const authApiPath = fileURLToPath(
-  new URL("../src/shared/api/auth.ts", import.meta.url)
-);
-const transportApiPath = fileURLToPath(
-  new URL("../src/shared/api/transport.ts", import.meta.url)
-);
-const sharedApiPath = fileURLToPath(
-  new URL("../src/shared/api", import.meta.url)
-);
+const webRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
+const webSourcePath = resolve(webRoot, "src");
+const authApiPath = resolve(webRoot, "src/shared/api/auth.ts");
+const transportApiPath = resolve(webRoot, "src/shared/api/transport.ts");
+const sharedApiPath = resolve(webRoot, "src/shared/api");
 const generatedAuthContractModule = "@/generated/api-contracts/types.gen";
 const migratedAuthDtoNames = new Set([
   "AuthUser",
@@ -194,22 +190,31 @@ function isKnownResponse(receiver) {
   return false;
 }
 
+function isWithinDirectory(filePath, directory) {
+  const relativePath = relative(directory, filePath);
+  return relativePath !== "" && relativePath !== ".." &&
+    !relativePath.startsWith(`..${sep}`) && !isAbsolute(relativePath);
+}
+
 function adapterParsingSites(source, filePath) {
-  if (filePath === transportApiPath || !filePath.startsWith(`${sharedApiPath}/`)) {
+  const normalizedFilePath = resolve(filePath);
+  if (relative(transportApiPath, normalizedFilePath) === "" ||
+      !isWithinDirectory(normalizedFilePath, webSourcePath)) {
     return [];
   }
-  const { jsonCalls, parseCalls } = jsonBoundarySites(source, filePath);
-  // API adapters delegate response/error parsing to transport. Local form/storage
-  // parsing elsewhere stays outside this guard and keeps existing ESLint rules.
+  const { jsonCalls, parseCalls } = jsonBoundarySites(source, normalizedFilePath);
+  // Production code delegates known Fetch/Response JSON to transport, so an
+  // intermediate unknown cannot create a second trust point in features/UI.
+  // JSON.parse stays adapter-only; local form/storage parsing remains allowed.
   return [
     ...jsonCalls.filter((node) => isKnownResponse(node.expression.expression)),
-    ...parseCalls
+    ...(isWithinDirectory(normalizedFilePath, sharedApiPath) ? parseCalls : [])
   ];
 }
 
 async function restrictedImportMessages(source, relativePath) {
   const [result] = await eslint.lintText(source, {
-    filePath: `${webRoot}/${relativePath}`
+    filePath: resolve(webRoot, relativePath)
   });
   return result.messages.filter(
     (message) => message.ruleId === "no-restricted-imports"
@@ -218,7 +223,7 @@ async function restrictedImportMessages(source, relativePath) {
 
 async function sharedApiBoundaryMessages(source, relativePath) {
   const [result] = await eslint.lintText(source, {
-    filePath: `${webRoot}/${relativePath}`
+    filePath: resolve(webRoot, relativePath)
   });
   return result.messages.filter(
     (message) => message.ruleId === "shared-api-boundaries/language-neutral"
@@ -245,7 +250,7 @@ test("flat config lints ECMAScript modules under ESLint 10", async () => {
     "tests/BoundaryFixture.mjs"
   );
   const [result] = await eslint.lintText('export const marker = "ok";', {
-    filePath: `${webRoot}/tests/BoundaryFixture.mjs`
+    filePath: resolve(webRoot, "tests/BoundaryFixture.mjs")
   });
 
   assert.ok(config);
@@ -257,7 +262,7 @@ test("flat config lints ECMAScript modules under ESLint 10", async () => {
 test("flat config parses JSX and applies Next.js rules to JavaScript", async () => {
   const [result] = await eslint.lintText(
     'export default function Fixture() { return <img alt="fixture" src="/fixture.png" />; }',
-    { filePath: `${webRoot}/src/app/BoundaryFixture.jsx` }
+    { filePath: resolve(webRoot, "src/app/BoundaryFixture.jsx") }
   );
 
   assert.ok(
@@ -288,7 +293,7 @@ test("typed JSON assertions are rejected in feature and UI code", async () => {
         void asserted;
         void parsedAssertion;
       `,
-      { filePath: `${webRoot}/${relativePath}` }
+      { filePath: resolve(webRoot, relativePath) }
     );
     const messages = result.messages.filter(
       (message) => message.ruleId === "no-restricted-syntax"
@@ -452,8 +457,8 @@ test("reusable transport owns the one successful JSON read and trust assertion",
     "only HTTP helpers may call the private successful JSON trust point");
 });
 
-test("shared API adapters delegate HTTP JSON parsing to transport", async () => {
-  const files = await sourceFiles(sharedApiPath);
+test("production web code delegates HTTP JSON parsing to transport", async () => {
+  const files = await sourceFiles(webSourcePath);
   const offenders = [];
   for (const filePath of files) {
     const source = await readFile(filePath, "utf8");
@@ -462,12 +467,55 @@ test("shared API adapters delegate HTTP JSON parsing to transport", async () => 
     }
   }
   assert.deepEqual(offenders, [],
-    "shared API adapters must reuse transport for response/error JSON parsing");
+    "API adapters, features and UI must reuse transport for HTTP JSON parsing");
 });
 
-test("sibling API adapters cannot create a second Fetch JSON trust point", () => {
-  const siblingPath = `${sharedApiPath}/products.ts`;
-  for (const secondTrustPoint of [
+test("HTTP JSON guard normalizes transport and fixture paths", async () => {
+  const transportSource = await readFile(transportApiPath, "utf8");
+  for (const filePath of [
+    transportApiPath,
+    `${webSourcePath}/shared/api/transport.ts`,
+    `${sharedApiPath}${sep}.${sep}transport.ts`,
+    `${webSourcePath}/features/../shared/api/transport.ts`
+  ]) {
+    assert.equal(adapterParsingSites(transportSource, filePath).length, 0,
+      `equivalent canonical transport paths must always be excluded: ${filePath}`);
+  }
+
+  const httpJson = `async function load(response: Response) {
+    const payload: unknown = await response.json();
+    return payload as SomeResponse;
+  }`;
+  const localJson = "const state: unknown = JSON.parse(storedForm);";
+  for (const fixture of [
+    "shared/api/BoundaryFixture.ts",
+    "features/account/BoundaryFixture.ts",
+    "app/BoundaryFixture.tsx",
+    "shared/ui/BoundaryFixture.tsx"
+  ]) {
+    for (const filePath of [
+      resolve(webSourcePath, fixture),
+      `${webSourcePath}/${fixture}`,
+      `${webSourcePath}${sep}.${sep}${fixture}`
+    ]) {
+      assert.equal(adapterParsingSites(httpJson, filePath).length, 1,
+        "native and mixed fixture paths must enforce the same HTTP JSON guard");
+      assert.equal(adapterParsingSites(localJson, filePath).length,
+        fixture.startsWith("shared/api/") ? 1 : 0,
+        "path normalization must preserve adapter-only JSON.parse enforcement");
+    }
+  }
+
+  for (const directory of ["tests", "src-other"]) {
+    assert.deepEqual(adapterParsingSites(httpJson,
+      resolve(webRoot, directory, "BoundaryFixture.ts")), [],
+    "directory membership must not expand the production guard scope");
+  }
+});
+
+test("API adapters, features and UI cannot create a second Fetch JSON trust point", () => {
+  const siblingPath = resolve(sharedApiPath, "products.ts");
+  const secondTrustPoints = [
     `
     async function load(response: Response) {
       const payload: unknown = await response.json();
@@ -485,8 +533,23 @@ test("sibling API adapters cannot create a second Fetch JSON trust point", () =>
     `async function load() {
       return (await (await fetch("/api/products")).json()) as SomeResponse;
     }`
+  ];
+  for (const filePath of [
+    siblingPath,
+    resolve(webRoot, "src/features/account/BoundaryFixture.ts"),
+    resolve(webRoot, "src/app/BoundaryFixture.tsx"),
+    resolve(webRoot, "src/shared/ui/BoundaryFixture.tsx")
   ]) {
-    assert.equal(adapterParsingSites(secondTrustPoint, siblingPath).length, 1);
+    for (const secondTrustPoint of secondTrustPoints) {
+      const source = `
+        import type { SessionResponse as SomeResponse } from "${generatedAuthContractModule}";
+        ${secondTrustPoint}
+      `;
+      assert.equal(adapterParsingSites(source, filePath).length, 1,
+        `${filePath} must delegate Fetch/Response JSON to shared transport`);
+      assert.deepEqual(adapterParsingSites(source, transportApiPath), [],
+        "the canonical transport must remain the allowed HTTP JSON boundary");
+    }
   }
   assert.equal(adapterParsingSites(
     "const payload: unknown = JSON.parse(rawBody); return payload as SomeResponse;",
@@ -500,10 +563,38 @@ test("sibling API adapters cannot create a second Fetch JSON trust point", () =>
     const session = getJson<SessionResponse>("/api/auth/session", token, "SessionResponse");
   `, siblingPath), [],
   "transport reuse and unrelated local type assertions must remain allowed");
-  assert.deepEqual(adapterParsingSites(
-    "const state: unknown = JSON.parse(storedForm); return state as LocalFormState;",
-    `${webRoot}/src/features/auth/local-form.ts`
-  ), [], "local form/storage parsing must not be globally forbidden");
+});
+
+test("local JSON and frontend-owned assertions remain outside the HTTP guard", async () => {
+  const localJson = `
+    const stored: unknown = JSON.parse(localStorage.getItem("form") ?? "{}");
+    const form: unknown = JSON.parse(formState);
+    const frontendJson: unknown = JSON.parse(JSON.stringify(viewState));
+    const document: unknown = someClient.json();
+    const localForm = form as LocalFormState;
+    const localView = frontendJson as LocalViewState;
+    const localDocument = document as DocumentModel;
+    const localModel = internalModel as NonHttpModel;
+    const mode = "compact" as const;
+    function readDocument(response: DocumentClient) {
+      const payload: unknown = response.json();
+      return payload as DocumentModel;
+    }
+  `;
+  for (const relativePath of [
+    "src/features/auth/BoundaryFixture.ts",
+    "src/app/BoundaryFixture.tsx",
+    "src/shared/ui/BoundaryFixture.tsx"
+  ]) {
+    assert.deepEqual(adapterParsingSites(localJson, resolve(webRoot, relativePath)), [],
+      "local form/storage, frontend JSON and non-HTTP assertions must remain allowed");
+    const [result] = await eslint.lintText(localJson, {
+      filePath: resolve(webRoot, relativePath)
+    });
+    assert.equal(result.messages.filter(
+      (message) => message.ruleId === "no-restricted-syntax"
+    ).length, 0);
+  }
 });
 
 test("unrelated JSON factories and client methods remain allowed", async () => {
@@ -516,22 +607,22 @@ test("unrelated JSON factories and client methods remain allowed", async () => {
       return response.json();
     }
   `;
-  assert.deepEqual(adapterParsingSites(unrelatedJson, `${sharedApiPath}/products.ts`), []);
+  assert.deepEqual(adapterParsingSites(unrelatedJson, resolve(sharedApiPath, "products.ts")), []);
   // A typed Response in a different function does not classify DocumentClient.json.
   assert.equal(adapterParsingSites(`${unrelatedJson}
     async function readHttpResponse(response: Response) {
       return response.json();
     }
-  `, `${sharedApiPath}/products.ts`).length, 1);
+  `, resolve(sharedApiPath, "products.ts")).length, 1);
   for (const relativePath of [
     "src/shared/api/BoundaryFixture.ts",
     "src/app/BoundaryFixture.ts",
     "src/features/catalog/BoundaryFixture.ts",
     "src/shared/ui/BoundaryFixture.ts"
   ]) {
-    assert.deepEqual(adapterParsingSites(unrelatedJson, `${webRoot}/${relativePath}`), []);
+    assert.deepEqual(adapterParsingSites(unrelatedJson, resolve(webRoot, relativePath)), []);
     const [result] = await eslint.lintText(unrelatedJson, {
-      filePath: `${webRoot}/${relativePath}`
+      filePath: resolve(webRoot, relativePath)
     });
     assert.equal(result.messages.filter(
       (message) => message.ruleId === "no-restricted-syntax"
@@ -610,7 +701,7 @@ test("shared API transport cannot own localized auth presentation", async () => 
     const source = await readFile(filePath, "utf8");
     const messages = await sharedApiBoundaryMessages(
       source,
-      filePath.slice(webRoot.length + 1)
+      relative(webRoot, filePath)
     );
 
     if (messages.length > 0) {
@@ -637,7 +728,7 @@ test("routing-owned literal RU application paths are rejected", async () => {
       "void href;",
       "void destination;"
     ].join("\n"),
-    { filePath: `${webRoot}/src/app/BoundaryFixture.tsx` }
+    { filePath: resolve(webRoot, "src/app/BoundaryFixture.tsx") }
   );
   const messages = result.messages.filter(
     (message) =>
@@ -651,7 +742,7 @@ test("routing-owned literal RU application paths are rejected", async () => {
 test("expression-valued JSX href literals for RU application paths are rejected", async () => {
   const [result] = await eslint.lintText(
     'export default function Fixture() { return <Link href={"/ru/products"} />; }',
-    { filePath: `${webRoot}/src/app/BoundaryFixture.tsx` }
+    { filePath: resolve(webRoot, "src/app/BoundaryFixture.tsx") }
   );
   const messages = result.messages.filter(
     (message) =>
@@ -668,7 +759,7 @@ test("canonical RU legal paths sourced from generated authority remain allowed",
       'import legalManifest from "@/generated/legal-manifest.json";',
       "export const canonicalLegalPath = legalManifest.documents[0].urlPath;"
     ].join("\n"),
-    { filePath: `${webRoot}/src/shared/config/BoundaryFixture.ts` }
+    { filePath: resolve(webRoot, "src/shared/config/BoundaryFixture.ts") }
   );
 
   assert.equal(
@@ -684,7 +775,7 @@ test("canonical RU legal paths sourced from generated authority remain allowed",
 test("unrelated RU-prefixed strings are not globally rejected", async () => {
   const [result] = await eslint.lintText(
     'export const auditMessage = "/ru/products appeared in a diagnostic event";',
-    { filePath: `${webRoot}/src/shared/config/BoundaryFixture.ts` }
+    { filePath: resolve(webRoot, "src/shared/config/BoundaryFixture.ts") }
   );
 
   assert.equal(

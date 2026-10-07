@@ -390,9 +390,10 @@ password-reset, and email-verification response decoders, and continues to
 allow frontend-only adapter, form, view, and error types. It protects the single
 JSON read/trust assertion in `shared/api/transport.ts` and requires auth to
 reuse its exported HTTP helpers with generated response types. Focused guards
-reject shared API adapters' parallel JSON parsing paths for explicit `Response`
-bindings and direct awaited Fetch results, including a separate `unknown` then
-cast. API adapters also delegate error JSON parsing to transport. Unrelated
+scan production web source and reject parallel HTTP JSON parsing paths in API
+adapters, features, and UI for explicit `Response` bindings and direct awaited
+Fetch results, including a separate `unknown` then cast. API adapters also
+delegate error `JSON.parse` calls to transport. Unrelated
 `.json()` methods are not globally prohibited; local form/storage parsing and
 unrelated type assertions remain allowed. Production lint rejects direct JSON
 assertions in features/UI. Generated files are owned
