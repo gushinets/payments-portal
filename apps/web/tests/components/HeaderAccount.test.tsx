@@ -42,7 +42,7 @@ describe("header account session", () => {
     vi.unstubAllGlobals();
   });
 
-  it("retains the trusted session when a successful response is malformed", async () => {
+  it("retains the trusted session when a successful response has invalid JSON syntax", async () => {
     window.localStorage.setItem(sessionStorageKey, "session-token");
     fetchMock
       .mockResolvedValueOnce(
@@ -58,7 +58,7 @@ describe("header account session", () => {
         })
       )
       .mockResolvedValueOnce(
-        jsonResponse({ authenticated: true, user: { email: 123 } })
+        new Response("not-json", { status: 200 })
       );
 
     renderHeaderAccount();

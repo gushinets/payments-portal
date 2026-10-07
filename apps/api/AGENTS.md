@@ -49,18 +49,19 @@ response wire contracts and the OpenAPI schema. The durable chain is:
 FastAPI/Pydantic
   → app.openapi()
   → docs/generated/openapi.json
-  → apps/web/src/generated/api-contracts/
-  → generated Zod runtime validation + inferred wire types
-  → shared API transport
+  → generated TypeScript wire contracts in apps/web/src/generated/api-contracts/
+  → shared API transport trust boundary
   → feature/UI adapters and view state
 ```
 
 Future Portal-owned web-consumed APIs must use backend Pydantic request/response
 models, durable named OpenAPI components, repository generation, and generated
-frontend schemas/types with runtime validation of successful JSON. Do not
-invent a frontend wire contract when the backend API or suitable named schema
-is missing, generation cannot faithfully represent the semantics, the frontend
-would redefine wire meaning, the data belongs to External Billing or Platform
+TypeScript wire contracts consumed through the shared transport trust boundary.
+Pydantic/FastAPI remains the runtime validation authority; frontend TypeScript
+provides compile-time ownership and trusts same-service successful JSON once.
+Do not invent a frontend wire contract when the backend API or suitable named schema
+is missing, generation cannot faithfully generate the required TypeScript
+shape, the frontend would redefine wire meaning, the data belongs to External Billing or Platform
 Kernel, or a transport/auth redesign is required. See the
 [HTTP API contract authority](../../ARCHITECTURE.md#http-api-contract-authority)
 section for the complete ownership, error, observability, and 4F handoff rules.

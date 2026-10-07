@@ -3,7 +3,7 @@ import * as Sentry from "@sentry/nextjs";
 const SERVICE = "payment-portal-web";
 const FAILURE_CATEGORY = "consistency_invariant_violation";
 const OPERATION = "api_contract_validation";
-const CONTRACT_EVENT_MESSAGE = "Generated API contract validation failed";
+const CONTRACT_EVENT_MESSAGE = "Invalid JSON in successful API response";
 const GENERIC_EVENT_MESSAGE = "Frontend error";
 const CONTRACT_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9_.-]{0,127}$/;
 const DISABLED_INTEGRATION_NAMES = new Set([
@@ -145,20 +145,14 @@ function sanitizeException(
 
   return {
     values: exception.values?.map((value) => ({
-      type: value.type,
+      type: "Error",
       value: genericMessage,
       stacktrace: value.stacktrace
         ? {
             frames: value.stacktrace.frames?.map((frame) => ({
-              function: frame.function,
-              module: frame.module,
-              platform: frame.platform,
               lineno: frame.lineno,
               colno: frame.colno,
-              in_app: frame.in_app,
-              instruction_addr: frame.instruction_addr,
-              addr_mode: frame.addr_mode,
-              debug_id: frame.debug_id
+              in_app: frame.in_app
             })),
             frames_omitted: value.stacktrace.frames_omitted
           }

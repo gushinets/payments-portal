@@ -125,7 +125,7 @@ describe("frontend Sentry boundary", () => {
     expect(capturedError).toBeInstanceOf(Error);
     expect(capturedError).toMatchObject({
       name: "ApiContractError",
-      message: "Generated API contract validation failed"
+      message: "Invalid JSON in successful API response"
     });
     expect(capturedError.stack).not.toContain(secret);
     expect(capturedError).not.toHaveProperty("payload");
@@ -176,7 +176,7 @@ describe("frontend Sentry boundary", () => {
     expect(sanitizedEvent).toEqual({
       type: undefined,
       event_id: "event-id",
-      message: "Generated API contract validation failed",
+      message: "Invalid JSON in successful API response",
       tags: {
         service: "payment-portal-web",
         failure_category: "consistency_invariant_violation",
@@ -192,6 +192,9 @@ describe("frontend Sentry boundary", () => {
     const email = "private@example.com";
     const unsafeUrl = `https://portal.example/ru/account?token=${token}#fragment`;
     const unsafeMessage = `reset token ${token} for ${email} at ${unsafeUrl}`;
+    const unsafeExceptionType = `SensitiveError:${unsafeMessage}`;
+    const unsafeFunction = `sensitiveFunction:${unsafeMessage}`;
+    const unsafeModule = `sensitiveModule:${unsafeMessage}`;
     const { sanitizeSentryEvent } = await import(
       "@/shared/observability/sentry"
     );
@@ -214,7 +217,7 @@ describe("frontend Sentry boundary", () => {
       exception: {
         values: [
           {
-            type: "Error",
+            type: unsafeExceptionType,
             value: unsafeMessage,
             module: unsafeMessage,
             mechanism: {
@@ -227,9 +230,15 @@ describe("frontend Sentry boundary", () => {
                 {
                   filename: unsafeUrl,
                   abs_path: unsafeUrl,
-                  function: "throwSensitiveError",
+                  function: unsafeFunction,
+                  module: unsafeModule,
+                  platform: unsafeMessage,
+                  instruction_addr: unsafeMessage,
+                  addr_mode: unsafeMessage,
+                  debug_id: unsafeMessage,
                   lineno: 42,
                   colno: 7,
+                  in_app: true,
                   context_line: unsafeMessage,
                   pre_context: [unsafeMessage],
                   post_context: [unsafeMessage],
@@ -257,9 +266,9 @@ describe("frontend Sentry boundary", () => {
             stacktrace: {
               frames: [
                 {
-                  function: "throwSensitiveError",
                   lineno: 42,
-                  colno: 7
+                  colno: 7,
+                  in_app: true
                 }
               ]
             }
@@ -278,6 +287,15 @@ describe("frontend Sentry boundary", () => {
     expect(serializedEvent).not.toContain("#fragment");
     expect(serializedEvent).not.toContain("arbitrary");
     expect(serializedEvent).not.toContain(unsafeMessage);
+    expect(serializedEvent).not.toContain(unsafeExceptionType);
+    expect(serializedEvent).not.toContain(unsafeFunction);
+    expect(serializedEvent).not.toContain(unsafeModule);
+    expect(serializedEvent).not.toContain("SensitiveError");
+    expect(serializedEvent).not.toContain("sensitiveFunction");
+    expect(serializedEvent).not.toContain("sensitiveModule");
+    expect(sanitizedEvent.exception?.values?.[0].stacktrace?.frames).toEqual([
+      { lineno: 42, colno: 7, in_app: true }
+    ]);
   });
 
   it("does not throw when capture fails", async () => {

@@ -11,11 +11,16 @@ const webRoot = fileURLToPath(new URL("..", import.meta.url));
 const authApiPath = fileURLToPath(
   new URL("../src/shared/api/auth.ts", import.meta.url)
 );
+const transportApiPath = fileURLToPath(
+  new URL("../src/shared/api/transport.ts", import.meta.url)
+);
 const sharedApiPath = fileURLToPath(
   new URL("../src/shared/api", import.meta.url)
 );
-const generatedAuthContractModule = "@/generated/api-contracts/zod.gen";
+const generatedAuthContractModule = "@/generated/api-contracts/types.gen";
 const migratedAuthDtoNames = new Set([
+  "AuthUser",
+  "AuthSessionResponse",
   "RegisterRequest",
   "RegisterResponse",
   "LoginRequest",
@@ -122,6 +127,86 @@ function hasGeneratedAuthContractImport(source) {
   );
 }
 
+function jsonBoundarySites(source, filePath) {
+  const sourceFile = ts.createSourceFile(
+    filePath, source, ts.ScriptTarget.Latest, true,
+    filePath.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS
+  );
+  const assertions = [];
+  const jsonCalls = [];
+  const parseCalls = [];
+
+  function visit(node) {
+    if (ts.isAsExpression(node) || ts.isTypeAssertionExpression(node)) {
+      assertions.push(node);
+    }
+    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
+      if (node.expression.name.text === "json") {
+        jsonCalls.push(node);
+      }
+      if (node.expression.name.text === "parse" &&
+          node.expression.expression.getText(sourceFile) === "JSON") {
+        parseCalls.push(node);
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(sourceFile);
+  return { sourceFile, assertions, jsonCalls, parseCalls };
+}
+
+function isAwaitedFetch(node) {
+  while (node && ts.isParenthesizedExpression(node)) {
+    node = node.expression;
+  }
+  return node && ts.isAwaitExpression(node) &&
+    ts.isCallExpression(node.expression) &&
+    ts.isIdentifier(node.expression.expression) &&
+    node.expression.expression.text === "fetch";
+}
+
+function isKnownResponse(receiver) {
+  if (isAwaitedFetch(receiver)) {
+    return true;
+  }
+  if (!ts.isIdentifier(receiver)) {
+    return false;
+  }
+
+  // Only inspect explicit Response bindings and direct awaited fetch results.
+  // No alias tracking, inferred types, or third-party .json() interpretation.
+  for (let scope = receiver.parent; scope; scope = scope.parent) {
+    const parameters = ts.isFunctionLike(scope) ? scope.parameters : [];
+    const variables = ts.isBlock(scope) || ts.isSourceFile(scope)
+      ? scope.statements.flatMap((statement) => ts.isVariableStatement(statement)
+        ? [...statement.declarationList.declarations] : [])
+      : [];
+    const binding = [...parameters, ...variables].find((node) =>
+      ts.isIdentifier(node.name) && node.name.text === receiver.text
+    );
+    if (binding) {
+      return (binding.type && ts.isTypeReferenceNode(binding.type) &&
+        ts.isIdentifier(binding.type.typeName) &&
+        binding.type.typeName.text === "Response") ||
+        (ts.isVariableDeclaration(binding) && isAwaitedFetch(binding.initializer));
+    }
+  }
+  return false;
+}
+
+function adapterParsingSites(source, filePath) {
+  if (filePath === transportApiPath || !filePath.startsWith(`${sharedApiPath}/`)) {
+    return [];
+  }
+  const { jsonCalls, parseCalls } = jsonBoundarySites(source, filePath);
+  // API adapters delegate response/error parsing to transport. Local form/storage
+  // parsing elsewhere stays outside this guard and keeps existing ESLint rules.
+  return [
+    ...jsonCalls.filter((node) => isKnownResponse(node.expression.expression)),
+    ...parseCalls
+  ];
+}
+
 async function restrictedImportMessages(source, relativePath) {
   const [result] = await eslint.lintText(source, {
     filePath: `${webRoot}/${relativePath}`
@@ -182,33 +267,43 @@ test("flat config parses JSX and applies Next.js rules to JavaScript", async () 
   );
 });
 
-test("typed JSON assertions are rejected at production web boundaries", async () => {
-  const [result] = await eslint.lintText(
-    `
-      declare const rawBody: string;
-      declare const response: Response;
-      const parsed = JSON.parse(rawBody) as { detail: unknown };
-      const payload = (await response.json()) as { status: string };
-      const promised = response.json() as Promise<{ status: string }>;
-      void parsed;
-      void payload;
-      void promised;
-    `,
-    { filePath: `${webRoot}/src/shared/api/BoundaryFixture.ts` }
-  );
-  const messages = result.messages.filter(
-    (message) => message.ruleId === "no-restricted-syntax"
-  );
+test("typed JSON assertions are rejected in feature and UI code", async () => {
+  for (const relativePath of [
+    "src/shared/api/BoundaryFixture.ts",
+    "src/features/account/BoundaryFixture.ts",
+    "src/shared/ui/BoundaryFixture.ts"
+  ]) {
+    const [result] = await eslint.lintText(
+      `
+        declare const rawBody: string;
+        declare const response: Response;
+        const parsed = JSON.parse(rawBody) as { detail: unknown };
+        const payload = (await response.json()) as { status: string };
+        const promised = response.json() as Promise<{ status: string }>;
+        const asserted = <{ status: string }>await response.json();
+        const parsedAssertion = <{ detail: unknown }>JSON.parse(rawBody);
+        void parsed;
+        void payload;
+        void promised;
+        void asserted;
+        void parsedAssertion;
+      `,
+      { filePath: `${webRoot}/${relativePath}` }
+    );
+    const messages = result.messages.filter(
+      (message) => message.ruleId === "no-restricted-syntax"
+    );
 
-  assert.equal(messages.length, 3);
-  assert.ok(
-    messages.every((message) =>
-      /must remain unknown until a runtime decoder validates/.test(message.message)
-    )
-  );
+    assert.equal(messages.length, 5);
+    assert.ok(
+      messages.every((message) =>
+        /must be read as unknown/.test(message.message)
+      )
+    );
+  }
 });
 
-test("unknown JSON results remain allowed for runtime decoding", async () => {
+test("unknown JSON results remain allowed at the transport boundary", async () => {
   const [result] = await eslint.lintText(
     `
       declare const rawBody: string;
@@ -218,7 +313,7 @@ test("unknown JSON results remain allowed for runtime decoding", async () => {
       void parsed;
       void payload;
     `,
-    { filePath: `${webRoot}/src/shared/api/BoundaryFixture.ts` }
+    { filePath: transportApiPath }
   );
 
   assert.equal(
@@ -231,10 +326,35 @@ test("unknown JSON results remain allowed for runtime decoding", async () => {
 
 test("migrated auth API consumes generated contracts", async () => {
   const authApiSource = await readFile(authApiPath, "utf8");
+  const sourceFile = ts.createSourceFile(
+    "auth.ts", authApiSource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS
+  );
+  const generatedTypeImports = sourceFile.statements.flatMap((node) => {
+    if (
+      !ts.isImportDeclaration(node) ||
+      !ts.isStringLiteral(node.moduleSpecifier) ||
+      node.moduleSpecifier.text !== generatedAuthContractModule ||
+      !node.importClause?.isTypeOnly ||
+      !node.importClause.namedBindings ||
+      !ts.isNamedImports(node.importClause.namedBindings)
+    ) {
+      return [];
+    }
+    return node.importClause.namedBindings.elements.map(
+      (element) => (element.propertyName ?? element.name).text
+    );
+  });
 
   assert.ok(
     hasGeneratedAuthContractImport(authApiSource),
     "auth.ts must consume the generated API-contract module"
+  );
+  assert.deepEqual(
+    generatedTypeImports.sort(),
+    [...migratedAuthDtoNames].filter((name) =>
+      !["AuthUser", "AuthSessionResponse", "SessionUserResponse"].includes(name)
+    ).sort(),
+    "all migrated auth request/response contracts must be generated type imports"
   );
   assert.deepEqual(
     matchingLocalDeclarations(authApiSource, migratedAuthDtoNames),
@@ -246,6 +366,27 @@ test("migrated auth API consumes generated contracts", async () => {
     [],
     "auth.ts must not restore removed handwritten auth response decoders"
   );
+  const transportImport = sourceFile.statements.find((node) =>
+    ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier) &&
+    node.moduleSpecifier.text === "./transport"
+  );
+  assert.ok(transportImport, "auth.ts must reuse the shared HTTP transport");
+  for (const name of ["getJson", "postJson", "decodeSuccessfulResponse"]) {
+    assert.ok(!localDeclarationNames(authApiSource).includes(name),
+      "auth.ts must not duplicate generic HTTP transport mechanics");
+  }
+  function verifyTransportCalls(node) {
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) &&
+        ["getJson", "postJson"].includes(node.expression.text)) {
+      assert.equal(node.typeArguments?.length, 1);
+      const responseType = node.typeArguments[0];
+      assert.ok(ts.isTypeReferenceNode(responseType) &&
+        generatedTypeImports.includes(responseType.typeName.getText(sourceFile)),
+      "auth endpoint adapters must specify generated response types");
+    }
+    ts.forEachChild(node, verifyTransportCalls);
+  }
+  verifyTransportCalls(sourceFile);
 
   const importedTypesOnly = `
     import type {
@@ -281,6 +422,121 @@ test("migrated auth API consumes generated contracts", async () => {
     ],
     "local migrated DTOs and removed decoders must be rejected"
   );
+});
+
+test("reusable transport owns the one successful JSON read and trust assertion", async () => {
+  const source = await readFile(transportApiPath, "utf8");
+  const { sourceFile, assertions, jsonCalls } = jsonBoundarySites(source, transportApiPath);
+
+  const boundary = sourceFile.statements.find(
+    (node) => ts.isFunctionDeclaration(node) &&
+      node.name?.text === "decodeSuccessfulResponse"
+  );
+  assert.ok(boundary, "successful JSON must pass through the shared helper");
+  assert.equal(jsonCalls.length, 1, "successful JSON must be read in one place");
+  assert.equal(jsonCalls[0].getText(sourceFile), "response.json()");
+  assert.equal(assertions.length, 1, "transport must have only one trust assertion");
+  for (const node of [...jsonCalls, ...assertions]) {
+    assert.ok(node.pos >= boundary.pos && node.end <= boundary.end);
+  }
+  assert.equal(assertions[0].getText(sourceFile), "payload as T");
+  for (const name of ["getJson", "postJson"]) {
+    const helper = sourceFile.statements.find(
+      (node) => ts.isFunctionDeclaration(node) && node.name?.text === name
+    );
+    assert.ok(helper);
+    assert.ok(helper.modifiers?.some((node) => node.kind === ts.SyntaxKind.ExportKeyword),
+      "HTTP helpers must be reusable by sibling API adapters");
+  }
+  assert.ok(!boundary.modifiers?.some((node) => node.kind === ts.SyntaxKind.ExportKeyword),
+    "only HTTP helpers may call the private successful JSON trust point");
+});
+
+test("shared API adapters delegate HTTP JSON parsing to transport", async () => {
+  const files = await sourceFiles(sharedApiPath);
+  const offenders = [];
+  for (const filePath of files) {
+    const source = await readFile(filePath, "utf8");
+    if (adapterParsingSites(source, filePath).length > 0) {
+      offenders.push(filePath);
+    }
+  }
+  assert.deepEqual(offenders, [],
+    "shared API adapters must reuse transport for response/error JSON parsing");
+});
+
+test("sibling API adapters cannot create a second Fetch JSON trust point", () => {
+  const siblingPath = `${sharedApiPath}/products.ts`;
+  for (const secondTrustPoint of [
+    `
+    async function load(response: Response) {
+      const payload: unknown = await response.json();
+      return payload as SomeResponse;
+    }
+    `,
+    `async function load(response: Response) {
+      return (await response.json()) as SomeResponse;
+    }`,
+    `async function load() {
+      const result = await fetch("/api/products");
+      const payload: unknown = await result.json();
+      return payload as SomeResponse;
+    }`,
+    `async function load() {
+      return (await (await fetch("/api/products")).json()) as SomeResponse;
+    }`
+  ]) {
+    assert.equal(adapterParsingSites(secondTrustPoint, siblingPath).length, 1);
+  }
+  assert.equal(adapterParsingSites(
+    "const payload: unknown = JSON.parse(rawBody); return payload as SomeResponse;",
+    siblingPath
+  ).length, 1);
+  assert.deepEqual(adapterParsingSites(`
+    import type { SessionResponse } from "${generatedAuthContractModule}";
+    import { getJson } from "./transport";
+    const viewMode = "compact" as const;
+    const derivedState = localState as LocalViewState;
+    const session = getJson<SessionResponse>("/api/auth/session", token, "SessionResponse");
+  `, siblingPath), [],
+  "transport reuse and unrelated local type assertions must remain allowed");
+  assert.deepEqual(adapterParsingSites(
+    "const state: unknown = JSON.parse(storedForm); return state as LocalFormState;",
+    `${webRoot}/src/features/auth/local-form.ts`
+  ), [], "local form/storage parsing must not be globally forbidden");
+});
+
+test("unrelated JSON factories and client methods remain allowed", async () => {
+  const unrelatedJson = `
+    import { NextResponse } from "next/server";
+    const response = NextResponse.json({ ok: true });
+    const document = someClient.json();
+    const otherDocument = someObject.json({ format: "document" });
+    function readDocument(response: DocumentClient) {
+      return response.json();
+    }
+  `;
+  assert.deepEqual(adapterParsingSites(unrelatedJson, `${sharedApiPath}/products.ts`), []);
+  // A typed Response in a different function does not classify DocumentClient.json.
+  assert.equal(adapterParsingSites(`${unrelatedJson}
+    async function readHttpResponse(response: Response) {
+      return response.json();
+    }
+  `, `${sharedApiPath}/products.ts`).length, 1);
+  for (const relativePath of [
+    "src/shared/api/BoundaryFixture.ts",
+    "src/app/BoundaryFixture.ts",
+    "src/features/catalog/BoundaryFixture.ts",
+    "src/shared/ui/BoundaryFixture.ts"
+  ]) {
+    assert.deepEqual(adapterParsingSites(unrelatedJson, `${webRoot}/${relativePath}`), []);
+    const [result] = await eslint.lintText(unrelatedJson, {
+      filePath: `${webRoot}/${relativePath}`
+    });
+    assert.equal(result.messages.filter(
+      (message) => message.ruleId === "no-restricted-syntax"
+    ).length, 0);
+  }
 });
 
 test("shared API transport cannot own localized auth presentation", async () => {

@@ -178,15 +178,15 @@ authority chain is:
 FastAPI/Pydantic
   → app.openapi()
   → docs/generated/openapi.json
-  → apps/web/src/generated/api-contracts/
-  → generated Zod runtime validation + inferred wire types
-  → shared API transport
-  → feature/UI adapters and view state
+  → generated TypeScript wire contracts in apps/web/src/generated/api-contracts/
+  → shared API transport trust boundary
+  → endpoint adapters
+  → features/UI and view state
 ```
 
-The backend owns HTTP API request/response wire contracts and the OpenAPI
-schema. Repository generation owns the generated frontend runtime
-contracts/types and freshness checking; run `npm run generate` to update them
+The backend owns runtime request/response validation through Pydantic/FastAPI,
+HTTP API wire contracts, and the OpenAPI schema. Repository generation owns
+the generated frontend TypeScript wire contracts and freshness checking; run `npm run generate` to update them
 and `npm run generate:check` to detect drift. The generated API contracts live
 under `apps/web/src/generated/api-contracts/`. The frontend owns HTTP
 transport, form state, view models, presentation state, derived UI types, and
@@ -210,9 +210,17 @@ logout contracts. No current legal endpoint DTO required migration because the
 current legal frontend does not maintain a parallel handwritten backend API
 wire DTO consumer.
 
-Successful response JSON is runtime-validated by generated contracts before
-application code trusts it. Current application errors remain intentionally
-narrow: `ApiError.detail` is `unknown`, and `apiErrorCode()` extracts only the
+Generated TypeScript provides compile-time contract ownership. Successful JSON
+from our own FastAPI service is read as `unknown` and trusted once, through the
+explicit `payload as T` assertion in `decodeSuccessfulResponse<T>` inside
+`shared/api/transport.ts`. Its exported `getJson<T>` and `postJson<T>` helpers
+are reused by endpoint adapters such as `shared/api/auth.ts`, which specify
+generated response types. This is a same-service trust decision, not runtime
+validation; no second frontend runtime schema authority exists. Features/UI
+consume generated contracts above that boundary and do not cast API JSON.
+Invalid JSON syntax in a successful response still becomes `ApiContractError`;
+structural request/response validation remains the backend's responsibility.
+Current application errors remain intentionally narrow: `ApiError.detail` is `unknown`, and `apiErrorCode()` extracts only the
 stable machine codes used by current UI. ANY-541 does not create a universal
 generated error model. When a DSN is enabled, standard uncaught web/server/
 request failures go to the `payment-portal-web` Sentry project. A handled
@@ -222,15 +230,16 @@ business outcomes are not blanket-reported as exceptions. Backend and web use
 separate Sentry projects/DSNs in the same organization and share only the
 diagnostic vocabulary `service`, `failure_category`, and `operation`. Sentry
 events contain no payloads, tokens, user identity, query/fragment data, or raw
-validation data.
+error data. Exception types are fixed to `Error`; stack frames retain only
+`lineno`, `colno`, and `in_app` (plus stack-level `frames_omitted`).
 
 For every future Portal-owned, web-consumed API, the implementation rule is:
 
 1. Define request/response models with backend Pydantic.
 2. Expose durable named OpenAPI components.
 3. Run repository generation.
-4. Consume the generated schema/type in the frontend shared API boundary.
-5. Runtime-validate successful JSON before trusting it.
+4. Consume the generated TypeScript contract.
+5. Use the shared API transport trust boundary.
 6. Keep form, UI, and view state local instead of putting it into API DTOs.
 
 Generated contracts do not change domain-data ownership. Future 4F work must
@@ -240,9 +249,9 @@ Platform Kernel actual usage and remaining-quota truth.
 
 Implementation must stop before inventing a frontend wire contract when the
 required backend API does not exist, the OpenAPI response is unnamed or
-unsuitable for durable consumption, the generator cannot faithfully represent
-backend wire semantics, the frontend would need to redefine wire meaning, the
-data belongs to External Billing or Platform Kernel, or the change requires a
+unsuitable for durable consumption, the generator cannot faithfully generate
+the required TypeScript wire shape, the frontend would need to redefine wire
+meaning, the data belongs to External Billing or Platform Kernel, or the change requires a
 transport/auth redesign rather than a new contract. Those cases require the
 owning architecture/API decision first.
 
@@ -375,10 +384,19 @@ exceptions are limited to source-owned AnytoolAI brand fragments and the
 `user@example.com` example placeholder.
 
 The web boundary suite also requires `apps/web/src/shared/api/auth.ts` to
-consume `@/generated/api-contracts/zod.gen`, rejects local declarations of the
+consume `@/generated/api-contracts/types.gen`, rejects local declarations of the
 migrated auth wire DTOs and the replaced handwritten auth/session/status,
 password-reset, and email-verification response decoders, and continues to
-allow frontend-only adapter, form, view, and error types. Generated artifact
+allow frontend-only adapter, form, view, and error types. It protects the single
+JSON read/trust assertion in `shared/api/transport.ts` and requires auth to
+reuse its exported HTTP helpers with generated response types. Focused guards
+reject shared API adapters' parallel JSON parsing paths for explicit `Response`
+bindings and direct awaited Fetch results, including a separate `unknown` then
+cast. API adapters also delegate error JSON parsing to transport. Unrelated
+`.json()` methods are not globally prohibited; local form/storage parsing and
+unrelated type assertions remain allowed. Production lint rejects direct JSON
+assertions in features/UI. Generated files are owned
+by repository generation and must not be hand-edited. Generated artifact
 freshness remains owned by `npm run generate:check`, not by the web boundary
 suite.
 

@@ -8,14 +8,17 @@ before frontend work.
 
 ## Conventions
 
-- Treat `response.json()`, `JSON.parse`, storage, and query params as
-  `unknown`. `as T` is not validation; production-source lint rejects direct
-  assertions on `response.json()` and `JSON.parse(...)` results.
-- HTTP helpers take a decoder or return `unknown`; a generic `T` without a
-  decoder is forbidden. A decoder must fail on mismatch and have a test that
-  rejects an invalid value.
-- Keep API types in `shared/api` or the feature API module; do not copy
-  response types in components.
+- Read `response.json()` and `JSON.parse` results as `unknown`; production
+  lint rejects direct assertions on these calls. Storage/query values still
+  require boundary validation.
+- Successful JSON from our own FastAPI service is trusted once in
+  `shared/api/transport.ts` using generated TypeScript contracts. Endpoint
+  adapters reuse its exported `getJson<T>` / `postJson<T>` helpers with
+  generated response types. The private decoding helper's documented assertion
+  is not runtime validation. Do not cast API JSON in features/components or
+  introduce another runtime schema authority.
+- Import backend wire DTOs from generated contracts; keep form/UI/view models
+  local and do not copy response fields in components.
 - Inspect errors with `ApiError.status` and `detail.code`, never
   `message.includes(...)`.
 
@@ -29,20 +32,23 @@ wire DTO fields. The authority chain is:
 FastAPI/Pydantic
   → app.openapi()
   → docs/generated/openapi.json
-  → apps/web/src/generated/api-contracts/
-  → generated Zod runtime validation + inferred wire types
-  → shared API transport
-  → feature/UI adapters and view state
+  → generated TypeScript wire contracts in apps/web/src/generated/api-contracts/
+  → shared API transport trust boundary
+  → endpoint adapters
+  → features/UI and view state
 ```
 
 Use `npm run generate` to update generated contracts and
 `npm run generate:check` to check freshness. For a future Portal-owned,
 web-consumed API, define backend Pydantic models, expose durable named OpenAPI
-components, generate, consume the generated schema/type in the shared API
-boundary, runtime-validate successful JSON, and keep form/UI/view state local.
+components, generate, consume the generated TypeScript contract, use the shared
+API transport trust boundary, and keep form/UI/view state local. Backend owns
+runtime validation; frontend contracts provide compile-time ownership. Invalid
+successful JSON syntax remains `ApiContractError`; no structural response
+re-validation runs in the browser.
 Stop for the owning architecture/API decision if the backend API or suitable
-named schema is missing, generation cannot represent its semantics faithfully,
-the frontend would redefine wire meaning, the data belongs to External Billing
+named schema is missing, generation cannot faithfully generate the required
+TypeScript shape, the frontend would redefine wire meaning, the data belongs to External Billing
 or Platform Kernel, or transport/auth redesign is required. Shared values that
 do not cross HTTP, such as locale mappings or legal source text, retain their
 own canonical source and generation path.

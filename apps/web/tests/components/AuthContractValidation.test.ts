@@ -34,7 +34,7 @@ function jsonResponse(payload: unknown): Response {
   });
 }
 
-describe("generated auth contract validation", () => {
+describe("generated auth transport", () => {
   beforeEach(() => {
     fetchMock.mockReset();
     reportApiContractError.mockReset();
@@ -73,6 +73,8 @@ describe("generated auth contract validation", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining("/api/auth/register"),
       expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({ "Accept-Language": "ru" }),
         body: JSON.stringify({
           email: "user@example.com",
           password: "Very-secret-password1!",
@@ -108,6 +110,15 @@ describe("generated auth contract validation", () => {
       token: "login-token",
       user: validUser
     });
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/api/auth/login"),
+      expect.objectContaining({
+        body: JSON.stringify({
+          email: "user@example.com",
+          password: "very-secret-password"
+        })
+      })
+    );
   });
 
   it("accepts a valid session response and preserves email_verified", async () => {
@@ -119,71 +130,13 @@ describe("generated auth contract validation", () => {
       authenticated: true,
       user: validUser
     });
-  });
-
-  it.each([
-    ["Unicode IDN", "user@пример.рф"],
-    ["contextual Unicode IDN", "user@l·l.cat"],
-    ["Punycode IDN", "user@xn--e1afmkfd.xn--p1ai"]
-  ])("accepts a valid %s email in a session response", async (_, email) => {
-    const user = { ...validUser, email };
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse({ authenticated: true, user })
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/api/auth/session"),
+      expect.objectContaining({
+        headers: { Authorization: "Bearer session-token" }
+      })
     );
-
-    await expect(getSession("session-token")).resolves.toEqual({
-      authenticated: true,
-      user
-    });
   });
-
-  it.each([
-    "user@.",
-    "user@example..com",
-    "user@.example.com",
-    "user@example.com.",
-    "user@-example.com",
-    "user@example-.com",
-    "user@exa_mple.com",
-    "user@exa%6dple.com",
-    "user@example.com/path",
-    "user@example.com:80"
-  ])(
-    "rejects a malformed email in successful session and login responses: %s",
-    async email => {
-      fetchMock
-        .mockResolvedValueOnce(
-          jsonResponse({
-            authenticated: true,
-            user: { ...validUser, email }
-          })
-        )
-        .mockResolvedValueOnce(
-          jsonResponse({
-            status: "authenticated",
-            token: "login-token",
-            user: { ...validUser, email }
-          })
-        );
-
-      await expect(getSession("session-token")).rejects.toBeInstanceOf(
-        ApiContractError
-      );
-
-      await expect(
-        submitAuth(
-          {
-            mode: "login",
-            email: "user@example.com",
-            password: "very-secret-password",
-            personalConsent: false,
-            offerConsent: false
-          },
-          { languageTag: "ru" }
-        )
-      ).rejects.toBeInstanceOf(ApiContractError);
-    }
-  );
 
   it("accepts valid logout, verification, and password-reset responses", async () => {
     fetchMock
@@ -217,14 +170,29 @@ describe("generated auth contract validation", () => {
         password: "Very-secret-password1!"
       })
     ).resolves.toEqual({ status: "password_reset" });
+    const requests = fetchMock.mock.calls.map(([, options]) => options);
+    expect(requests.map(options => options?.body)).toEqual([
+      "{}",
+      "{}",
+      JSON.stringify({ token: "verification-token-with-at-least-32-characters" }),
+      JSON.stringify({ email: "user@example.com" }),
+      JSON.stringify({
+        token: "password-reset-token-with-at-least-32-characters",
+        password: "Very-secret-password1!"
+      })
+    ]);
+    for (const request of requests.slice(0, 3)) {
+      expect(request?.headers).toMatchObject({
+        Authorization: "Bearer session-token"
+      });
+    }
+    expect(requests[1]?.headers).toMatchObject({ "Accept-Language": "ru" });
+    expect(requests[3]?.headers).toMatchObject({ "Accept-Language": "ru" });
   });
 
   it("turns malformed successful JSON into ApiContractError and reports safe metadata", async () => {
     fetchMock.mockResolvedValueOnce(
-      jsonResponse({
-        authenticated: true,
-        user: { email: "private@example.com" }
-      })
+      new Response('{"email":"private@example.com",', { status: 200 })
     );
 
     await expect(getSession("session-token")).rejects.toBeInstanceOf(
@@ -277,25 +245,12 @@ describe("generated auth contract validation", () => {
     expect(reportApiContractError).not.toHaveBeenCalled();
   });
 
-  it("rejects an invalid user_id UUID", async () => {
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse({
-        authenticated: true,
-        user: { ...validUser, user_id: "user-id" }
-      })
-    );
-
-    await expect(getSession("session-token")).rejects.toBeInstanceOf(
-      ApiContractError
-    );
-  });
-
   it("keeps ApiContractError stable when reporting fails", async () => {
     reportApiContractError.mockImplementationOnce(() => {
       throw new Error("reporting unavailable");
     });
     fetchMock.mockResolvedValueOnce(
-      jsonResponse({ authenticated: true, user: { email: 123 } })
+      new Response("not-json", { status: 200 })
     );
 
     await expect(getSession("session-token")).rejects.toBeInstanceOf(
@@ -303,21 +258,13 @@ describe("generated auth contract validation", () => {
     );
   });
 
-  it("rejects a response with missing required fields", async () => {
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse({
-        authenticated: true,
-        user: {
-          tenant_id: validUser.tenant_id,
-          region: validUser.region,
-          user_id: validUser.user_id,
-          email: validUser.email
-        }
-      })
-    );
+  it("preserves non-syntax response-reading failures", async () => {
+    const failure = new TypeError("response body unavailable");
+    const response = jsonResponse({ authenticated: true, user: validUser });
+    vi.spyOn(response, "json").mockRejectedValueOnce(failure);
+    fetchMock.mockResolvedValueOnce(response);
 
-    await expect(getSession("session-token")).rejects.toBeInstanceOf(
-      ApiContractError
-    );
+    await expect(getSession("session-token")).rejects.toBe(failure);
+    expect(reportApiContractError).not.toHaveBeenCalled();
   });
 });

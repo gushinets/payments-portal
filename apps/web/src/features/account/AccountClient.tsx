@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { LogOut, UserRound } from "lucide-react";
 import { useTranslations } from "next-intl";
-import type { SessionUserResponse } from "@/generated/api-contracts/zod.gen";
+import type { SessionUserResponse } from "@/generated/api-contracts/types.gen";
 import { Link } from "@/i18n/navigation";
 import {
   getSession,

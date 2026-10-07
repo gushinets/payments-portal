@@ -101,8 +101,8 @@ describe("email verification session loading", () => {
       ruMessages.EmailVerification.errors.internalServer
     ],
     [
-      "contract error",
-      () => jsonResponse({ authenticated: true }),
+      "invalid JSON syntax",
+      () => new Response("not-json", { status: 200 }),
       ruMessages.EmailVerification.errors.contract
     ]
   ])(

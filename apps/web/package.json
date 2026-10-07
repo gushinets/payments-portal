@@ -20,8 +20,7 @@
     "next": "16.3.1",
     "next-intl": "^4.14.7",
     "react": "19.2.8",
-    "react-dom": "19.2.8",
-    "zod": "4.6.5"
+    "react-dom": "19.2.8"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.10.2",

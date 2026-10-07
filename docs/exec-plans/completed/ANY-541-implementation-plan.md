@@ -2,14 +2,130 @@
 
 ## Plan Overview
 
-**Linear issue:** `ANY-541`  
+**Linear issue:** [ANY-541](https://linear.app/paveldik/issue/ANY-541/4d-establish-generated-backend-frontend-api-contract-boundary)\
 **Parent:** `ANY-504 — External Billing & Paid Access`  
 **Direct predecessor:** `ANY-538 — Establish Email Verification & New-Password Baseline`  
 **Development baseline:** `ANY-538` is implementation-complete and ready to inherit. ANY-541 may be developed from its current final code before the formal PR merge; GitHub merge status alone is not a blocker.  
 **Relevant predecessor:** `ANY-510 — Identity / Session / Legal baseline`  
 **Future consumer:** `ANY-539 / Step 4F — Portal frontend evolution`
 
-**Status:** `done`
+**Status:** `done` — local pre-merge architecture revision; PR #129 is not merged.
+
+### Pre-merge architecture revision (final authority)
+
+Generated Zod/runtime validation was replaced by generated TypeScript-only
+wire contracts after review showed that runtime schema semantics introduced a
+second interpretation of backend/OpenAPI formats (email/IDN was the concrete
+case). Pydantic remains runtime authority; OpenAPI → generated TypeScript +
+`generate:check` is the final boundary. This revision starts from
+`3e53f1cc7756cc6825b05b4fcbd580479a196a64` on ANY-541 before merge.
+
+Keep backend `EmailStr` and OpenAPI `type: string`, `format: email`; generated
+TypeScript represents email as `string`. The generator has no email-specific
+semantics. It uses the pinned `@hey-api/openapi-ts@0.99.0` with only the normal
+`@hey-api/typescript` plugin with `definitions.case: "preserve"`, preserving
+OpenAPI component names such as `HTTPValidationError` without a custom mapper.
+It produces `types.gen.ts` and `index.ts` under
+`apps/web/src/generated/api-contracts/`. No SDK/client/validation code is generated.
+The direct web Zod dependency is removed; any lockfile occurrence belongs to
+development tooling, not the API runtime boundary.
+
+The final production path is:
+
+```text
+FastAPI/Pydantic
+→ app.openapi()
+→ docs/generated/openapi.json
+→ generated TypeScript wire contracts
+→ shared API transport trust boundary
+→ endpoint adapters
+→ features/UI
+```
+
+Repository generation still feeds the same freshly rendered `app.openapi()`
+representation to the committed OpenAPI file and the TypeScript generator;
+the committed JSON file is an artifact, not an independent authority.
+
+`decodeSuccessfulResponse<T>` in `shared/api/transport.ts` reads successful
+JSON as `unknown` and trusts it once with the documented `payload as T` assertion.
+The reusable transport exports `getJson<T>` and `postJson<T>`; its decoding
+helper remains private. `shared/api/auth.ts` is an endpoint adapter that
+specifies generated response types, and future sibling API adapters reuse the
+same helpers. No browser structural response validation remains. Invalid
+JSON syntax still raises the stable `ApiContractError` and uses the optional
+sanitized reporter; current `ApiError`/business outcomes and auth behavior are
+unchanged. Error-envelope redesign remains deferred.
+
+Sentry browser/server/edge/request instrumentation remains optional and
+privacy-preserving. Arbitrary exception names are normalized to `Error`;
+stack frames keep only `lineno`, `colno`, and `in_app`, plus stack-level
+`frames_omitted`. Free-form exception/stack identifiers are omitted.
+
+This overview, Step 4 handoff, final acceptance, and Definition of Done define
+the final state. The original Zod/runtime-validation decisions in Step 1 and
+Step 3 are superseded. Step 2's minimal Sentry integration remains active final
+architecture, with the later privacy hardening applied. Historical Step 2
+implementation details remain valid unless explicitly superseded by the final
+privacy/handoff sections.
+
+External authority still needs a human wording update before merge:
+ANY-504 Step 4D and ANY-541 Goal / Contract generation and runtime validation /
+Verification / Acceptance criteria must replace frontend runtime-schema
+validation with generated TypeScript contracts and the shared same-service
+trust decision. Do not claim those Linear descriptions already match this
+revision; this patch does not edit Linear.
+
+### Revision verification — 2026-10-06
+
+- `npm run generate` and `npm run generate:check`: passed using the repository
+  virtual environment on `PATH`; backend source and canonical OpenAPI unchanged.
+- `npm run test:boundaries:web`: 32 passed. Sandbox subprocess restrictions
+  initially caused `spawnSync npm EPERM`; the authorized run passed unchanged.
+- Focused auth/header/email-verification/Sentry tests: 32 passed, including
+  invalid JSON syntax, preserved bearer/UI error flow, request mapping and
+  sensitive exception/stack identifier sanitization.
+- `npm run lint:web` and `npm run typecheck:web`: passed.
+- Final `npm run check:fast`: passed; 79 web component tests and 605 backend
+  fast tests, plus docs, generation, architecture, Ruff and web boundary/lint checks.
+- Temporary freshness fixtures: missing, changed and obsolete generated files
+  rejected; fresh output accepted without modifying generated artifacts.
+- Full `npm run check` and browser E2E were not run. The sandbox blocks local
+  socket creation; automatic approval for a read-only PostgreSQL readiness
+  probe timed out, so full-check PostgreSQL availability was not confirmed.
+- No commit, push, GitHub comment mutation or Linear update performed. External
+  Linear wording remains a human pre-merge prerequisite.
+
+### Reusable transport follow-up verification — 2026-10-07
+
+- Continued the existing post-Zod-removal worktree without resetting, staging,
+  committing, pushing, or mutating GitHub/Linear. HEAD remains
+  `3e53f1cc7756cc6825b05b4fcbd580479a196a64`.
+- Extracted unchanged HTTP mechanics and error facts to
+  `apps/web/src/shared/api/transport.ts`. Auth remains an endpoint adapter with
+  generated DTOs and compatibility error re-exports. Only the private transport
+  decoding helper reads successful JSON and asserts `payload as T`.
+- Added focused guards for sibling API/UI JSON reads and generated response
+  type arguments on auth transport calls. Local form parsing and unrelated
+  assertions remain allowed; generation continues to own artifact freshness.
+- Used the pinned TypeScript plugin's normal `definitions.case: "preserve"`
+  option. Canonical generation preserves `HTTPValidationError`; no custom
+  mapper or semantic resolver was introduced.
+- Backend source, canonical OpenAPI, dependencies, Sentry instrumentation and
+  its privacy hardening are unchanged by this follow-up. Step 2 remains active;
+  only the original Zod/runtime-validation decisions in Steps 1 and 3 are
+  superseded.
+- `npm run generate`, `npm run generate:check`, `npm run test:boundaries:web`
+  (34 tests), `npm run lint:web`, and `npm run typecheck:web`: passed.
+- Focused component commands for auth (8), Sentry (6), and account/header/email
+  verification (22): 36 tests passed.
+- Final `npm run check:fast`: passed, including 34 boundary tests, 79 component
+  tests, 605 backend fast tests, docs, generation, architecture, Ruff and lint.
+  Backend tests retain their existing SQLite/SQLAlchemy warnings.
+- `types.gen.ts` and `index.ts` remain untracked (`??`), as does the new
+  `transport.ts`. Both generated files and the transport must be included in
+  the eventual commit. Nothing was staged.
+- External Linear wording remains a human pre-merge requirement. Full
+  PostgreSQL/browser checks were not rerun for this narrow follow-up.
 
 ### Objective
 
@@ -18,8 +134,9 @@ Establish one durable backend-to-frontend API contract authority chain:
 ```text
 FastAPI / Pydantic
   → canonical OpenAPI
-  → repository-owned generated Zod schemas + inferred TypeScript wire types
-  → existing shared API transport
+  → repository-owned generated TypeScript wire contracts
+  → shared API transport trust boundary
+  → endpoint adapters
   → frontend consumers
 ```
 
@@ -27,13 +144,13 @@ After ANY-541:
 
 - backend Pydantic models remain the source of truth for web-consumed wire contracts;
 - frontend production code does not independently re-declare migrated backend request/response DTOs;
-- successful JSON remains `unknown` until runtime validation succeeds;
+- successful JSON is read as `unknown` and trusted once inside shared transport;
 - generated contract artifacts participate in normal repository generation and stale checks;
 - existing auth/session/password-reset/email-verification behavior remains unchanged;
 - frontend form/UI/view-state models remain frontend-owned;
 - Step 4F can add new Portal-owned APIs without reopening the contract-authority decision.
 
-### Execution order
+### Original execution order (historical)
 
 ```text
 Step 1 — Establish deterministic OpenAPI → Zod generation                    [DONE / Sol]
@@ -42,15 +159,22 @@ Step 3 — Migrate current production auth consumers                           [
 Step 4 — Enforce the boundary and publish the durable 4F handoff             [Luna]
 ```
 
-Each step is intended for a separate implementation chat with fresh context.
-
-Use one commit per step.
+These steps record the original pre-revision implementation sequence. The current
+revision updates the local patch only; no commit, push, GitHub, or Linear mutation
+is authorized.
 
 ---
 
-# Locked Implementation Decisions
+# Original implementation record — revised contracts and active Sentry
 
-These decisions are already resolved. Do not reopen them during implementation unless the inherited ANY-538 baseline or current repository state materially contradicts them.
+This section retains the original implementation record for traceability.
+The pre-merge revision above supersedes the Zod/runtime-validation decisions in
+Step 1 and Step 3, including runtime-schema requirements and custom generator
+semantics. Step 2's minimal Sentry integration remains active final architecture
+with the later privacy hardening; its implementation details remain valid
+unless explicitly superseded by the final privacy/handoff sections.
+
+## Original implementation decisions (Zod/runtime-validation decisions superseded)
 
 ## Contract authority
 
@@ -440,7 +564,7 @@ Changes elsewhere in ANY-538 that do not affect these contract/generation surfac
 
 ---
 
-# Step 1 — Establish Deterministic OpenAPI-to-Zod Generation
+# Step 1 — Establish Deterministic OpenAPI-to-Zod Generation (Zod decision superseded)
 
 **Status:** `done` — implemented before this plan revision; do not reopen or redo this step.  
 **Recommended model:** `Sol` — highest-risk step; establishes the generation/stale-check infrastructure used by all later work.
@@ -745,10 +869,16 @@ ANY-541 generate frontend API contracts from OpenAPI
 
 ---
 
-# Step 2 — Establish Minimal Frontend Sentry Error Reporting
+# Step 2 — Establish Minimal Frontend Sentry Error Reporting (active final architecture)
 
 **Status:** `done`  
 **Recommended model:** `Sol` — small implementation, but production observability/privacy and current Next.js runtime hooks must be correct.
+
+This integration remains active with the final privacy hardening applied.
+Historical references below to generated-validation failures are superseded by
+handled `ApiContractError` reporting for invalid successful JSON syntax only.
+Other Step 2 implementation details remain valid unless explicitly superseded
+by the final privacy/handoff sections.
 
 ## Goal
 
@@ -1027,7 +1157,7 @@ ANY-541 add minimal frontend Sentry reporting
 
 ---
 
-# Step 3 — Migrate Current Auth Consumers to Generated Wire Contracts
+# Step 3 — Migrate Current Auth Consumers to Generated Wire Contracts (runtime-validation decision superseded)
 
 **Status:** `done`  
 **Recommended model:** `Sol` — production auth/session consumers and runtime validation are changed here, so preserve behavior carefully.
@@ -1768,9 +1898,17 @@ Protect:
 
 ```text
 apps/web/src/shared/api/auth.ts
+apps/web/src/shared/api/transport.ts
 ```
 
 The guard must verify that the migrated auth boundary consumes the generated API-contract module produced by Step 1.
+It also requires endpoint adapters to reuse exported transport helpers with
+generated response types. The one successful JSON read and trust assertion
+live in the private transport decoding helper; focused guards reject parallel
+shared API adapter parsing paths, including a sibling API adapter
+that reads `unknown` then separately asserts it. API adapters delegate error
+JSON parsing to transport. Local form/storage parsing and unrelated assertions
+remain allowed; direct assertions on JSON calls remain lint errors.
 
 ### 3. Prevent known migrated backend DTOs from being re-declared locally
 
@@ -1840,10 +1978,10 @@ Record the completed architecture as:
 FastAPI/Pydantic
 → app.openapi()
 → docs/generated/openapi.json
-→ apps/web/src/generated/api-contracts/
-→ generated Zod runtime validation + inferred wire types
-→ shared API transport
-→ feature/UI adapters and view state
+→ generated TypeScript wire contracts in apps/web/src/generated/api-contracts/
+→ shared API transport trust boundary
+→ endpoint adapters
+→ features/UI and view state
 ```
 
 ### 7. Document ownership clearly
@@ -1858,7 +1996,7 @@ OpenAPI schema
 Repository generation owns:
 
 ```text
-generated frontend runtime contracts/types
+generated frontend TypeScript wire contracts
 freshness checking
 ```
 
@@ -1934,10 +2072,13 @@ Record that:
 
 ```text
 successful response JSON
-→ generated runtime validation
+→ single shared transport trust assertion
 ```
 
-while current application errors remain intentionally narrower:
+This is an explicit same-service trust decision, not browser runtime validation.
+Invalid JSON syntax still becomes `ApiContractError`; structurally invalid but
+valid JSON is backend validation responsibility. No frontend runtime schema
+authority exists. Current application errors remain intentionally narrower:
 
 ```text
 ApiError.detail = unknown
@@ -1964,8 +2105,8 @@ For every future **Portal-owned, web-consumed API**:
 1. define request/response with backend Pydantic models;
 2. ensure durable named OpenAPI components exist;
 3. run repository generation;
-4. consume generated Zod schema/type from the frontend shared API boundary;
-5. validate successful JSON at runtime before trusting it;
+4. consume the generated TypeScript contract;
+5. use the shared API transport trust boundary;
 6. keep UI/form/view state local instead of putting it into API DTOs.
 ```
 
@@ -1990,7 +2131,7 @@ Future implementation must stop before inventing a frontend wire contract when:
 ```text
 required backend API does not exist
 OpenAPI response is unnamed/unsuitable for durable consumption
-generated schema cannot faithfully represent backend wire semantics
+generator cannot faithfully generate the required TypeScript wire shape
 frontend would need to redefine backend wire meaning
 required data belongs to External Billing or Platform Kernel
 a transport/auth redesign would be required rather than a new contract
@@ -2096,10 +2237,10 @@ Part B — durable documentation/handoff
 FastAPI/Pydantic
 → app.openapi()
 → docs/generated/openapi.json
-→ apps/web/src/generated/api-contracts/
-→ generated Zod runtime validation + inferred wire types
-→ shared API transport
-→ frontend adapters/forms/view state
+→ generated TypeScript wire contracts in apps/web/src/generated/api-contracts/
+→ shared API transport trust boundary
+→ endpoint adapters
+→ features/UI/forms/view state
 
 8. Document ownership:
 
@@ -2107,7 +2248,7 @@ Backend:
 - owns HTTP API wire request/response contracts and OpenAPI schema.
 
 Repository generation:
-- owns generated frontend runtime contracts/types and freshness checking.
+- owns generated frontend TypeScript wire contracts and freshness checking.
 
 Frontend:
 - owns HTTP transport, form state, UI/view models, presentation state and derived adapter types.
@@ -2148,7 +2289,7 @@ Document that account uses auth session/logout contracts.
 Document that no current legal API DTO migration was required because the current legal frontend does not maintain a parallel handwritten backend API wire DTO consumer.
 
 12. Document the error rule:
-- successful JSON uses generated runtime validation;
+- successful JSON is trusted once in the shared API transport helper;
 - ApiError.detail remains unknown;
 - apiErrorCode() extracts only stable machine codes used by current UI;
 - ANY-541 does not create a universal generated error platform.
@@ -2158,8 +2299,8 @@ Document that no current legal API DTO migration was required because the curren
 1. define backend Pydantic request/response models;
 2. expose durable named OpenAPI components;
 3. run repository generation;
-4. consume generated schema/type in the frontend API boundary;
-5. runtime-validate successful JSON;
+4. consume the generated TypeScript contract;
+5. use the shared API transport trust boundary;
 6. keep form/UI/view state local.
 
 14. Document that generated contracts do not change domain ownership.
@@ -2172,7 +2313,7 @@ Document that no current legal API DTO migration was required because the curren
 15. Document STOP conditions for:
 - missing backend API,
 - unsuitable/unnamed OpenAPI schema,
-- generator inability to represent backend semantics faithfully,
+- generator inability to faithfully generate the required TypeScript shape,
 - frontend needing to redefine wire meaning,
 - data owned by External Billing or Platform Kernel,
 - required transport/auth redesign.
@@ -2251,7 +2392,13 @@ A separate PostgreSQL-heavy verification pass is not required solely by ANY-541 
 - HTTP API contracts are clearly distinguished from shared non-HTTP constants and frontend-only state.
 - Generated artifact ownership and commands are documented.
 - Current migrated API scope is recorded.
-- Error handling boundary is explicit.
+- Error handling boundary is explicit: only invalid successful JSON syntax uses
+  `ApiContractError`; no structural response validation or error-envelope redesign.
+- Reusable `shared/api/transport.ts` exports `getJson<T>` / `postJson<T>`;
+  its private successful-response helper owns the one JSON read/trust assertion.
+- Auth and future sibling API adapters reuse those helpers with generated
+  response types; focused guards reject parallel shared API adapter parsing paths.
+- Generated DTO imports remain required; features/UI cannot directly cast API JSON.
 - 4F has a deterministic rule for adding Portal-owned APIs.
 - External Billing / paid access / Platform Kernel ownership remains intact.
 - No production behavior or future API has been added.
@@ -2266,17 +2413,17 @@ ANY-541 enforce and document generated API contract boundary
 
 # Final Acceptance Validation
 
-After all four steps, ANY-541 must satisfy the following.
+After the approved pre-merge revision, ANY-541 must satisfy the following.
 
 | Requirement | Expected result |
 |---|---|
 | Backend contract authority | FastAPI/Pydantic remains authoritative |
 | Canonical OpenAPI | Generated from current backend app |
 | Frontend wire contracts | Generated from OpenAPI |
-| Runtime validation | Generated Zod schemas |
-| TypeScript wire types | Inferred from generated schemas |
+| Runtime validation | Backend Pydantic/FastAPI authority only |
+| TypeScript wire types | Generated directly from OpenAPI |
 | Generated SDK | Not introduced |
-| HTTP transport | Existing frontend transport retained |
+| HTTP transport | Reusable shared transport; endpoint adapters specify generated response types |
 | Registration | Migrated |
 | Login | Migrated |
 | Session | Migrated |
@@ -2287,11 +2434,11 @@ After all four steps, ANY-541 must satisfy the following.
 | Account | Uses generated auth session/logout boundary |
 | Legal API | No speculative migration |
 | UI/form/view models | Remain frontend-owned |
-| Success JSON | Remains untrusted until runtime validation |
-| Malformed success | `ApiContractError` |
+| Success JSON | Read as unknown; trusted once in shared transport |
+| Invalid success JSON syntax | `ApiContractError` |
 | Contract failure observability | `ApiContractError` calls the sanitized optional reporter before propagation; no-op without DSN, Sentry delivery when enabled |
 | Standard uncaught web/server/request runtime errors | Captured by configured Next.js Sentry hooks when DSN is enabled; no Sentry initialization without DSN and no custom React global error boundary |
-| Sentry privacy | No API payloads, tokens, user identity, query/fragment data, headers/cookies or raw Zod data |
+| Sentry privacy | No payloads, tokens, identity, query/fragment data, headers/cookies, raw errors or arbitrary exception/stack identifiers |
 | Expected business/API errors | Not blanket-reported as exceptions |
 | Error payloads | No generic redesign; `detail` remains unknown |
 | Bearer auth | Behavior unchanged |
@@ -2310,11 +2457,11 @@ After all four steps, ANY-541 must satisfy the following.
 ANY-541 is complete when:
 
 - all four implementation steps are completed sequentially;
-- every step has been manually verified before its commit;
-- `FastAPI/Pydantic → OpenAPI → generated Zod/types → frontend consumer` is the actual production path;
+- the final pre-merge revision has passed generation, frontend checks, and `check:fast`;
+- `FastAPI/Pydantic → app.openapi() → OpenAPI → generated TypeScript → shared transport → frontend consumer` is the actual production path;
 - migrated production frontend code contains no parallel handwritten backend wire DTO authority;
-- successful JSON still requires runtime validation;
-- invalid generated-contract payloads call the safe optional web reporter and still fail as `ApiContractError`; without DSN reporting is a no-op, and when enabled it sends the sanitized event to web Sentry;
+- successful JSON is trusted once inside the documented shared transport boundary;
+- invalid successful JSON syntax calls the safe optional web reporter and still fails as `ApiContractError`; without DSN reporting is a no-op, and when enabled it sends the sanitized event to web Sentry;
 - Sentry/reporting failure cannot change application control flow;
 - expected `ApiError`/business outcomes are not blanket-reported as exceptions;
 - generation is deterministic and `generate:check` detects stale, missing and obsolete contract output;
@@ -2337,13 +2484,16 @@ Step 3 → Sol
 Step 4 → Luna
 ```
 
-Step 1 is already complete and must not be reopened by later implementation chats. No additional broad research is required before Step 2.
+The original Zod/runtime-validation decisions in Step 1 and Step 3 are
+superseded. Step 2's minimal Sentry integration remains active final architecture
+with the later privacy hardening applied. Future consumers use the final revised
+TypeScript contract boundary above and the canonical architecture documentation.
 
 Execution models should inspect only the files explicitly listed in each step plus immediately adjacent implementation code required to understand those files.
 
 The material predecessor requirement is that implementation inherits from the current final ANY-538 code baseline. ANY-538 is already implementation-complete for sequencing purposes, so formal PR merge is not required before starting ANY-541. If ANY-538 is not yet on `main`, start from its current head/inherited branch state and later rebase/update onto the merged result.
 
-If that inherited baseline materially contradicts the locked assumptions about:
+If that inherited baseline materially contradicts the final authority assumptions about:
 
 ```text
 auth Pydantic request/response contracts
