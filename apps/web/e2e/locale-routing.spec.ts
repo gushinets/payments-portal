@@ -14,13 +14,13 @@ const localeLanguages = [
   ["pt", "pt-BR"]
 ] as const;
 const localePresentation = [
-  ["en", "Products"],
-  ["fr", "Produits"],
-  ["it", "Prodotti"],
-  ["de", "Produkte"],
-  ["es", "Productos"],
-  ["ru", "Продукты"],
-  ["pt", "Produtos"]
+  ["en", "AI utilities"],
+  ["fr", "Outils d’IA"],
+  ["it", "Strumenti di IA"],
+  ["de", "KI-Werkzeuge"],
+  ["es", "Herramientas de IA"],
+  ["ru", "AI-утилиты"],
+  ["pt", "Ferramentas de IA"]
 ] as const;
 const metadataCases = [
   {
@@ -164,11 +164,11 @@ test("representative localized metadata uses the public origin and canonical lan
 test("ordinary navigation keeps the active locale", async ({ page }) => {
   await page.goto("/de");
 
-  await expect(page.getByRole("link", { name: "AnytoolAI" })).toHaveAttribute(
+  await expect(page.getByRole("link", { name: "AnyToolAI" })).toHaveAttribute(
     "href",
     "/de"
   );
-  await expect(page.getByRole("link", { name: "Produkte" })).toHaveAttribute(
+  await expect(page.getByRole("link", { name: "KI-Werkzeuge" })).toHaveAttribute(
     "href",
     "/de/products"
   );

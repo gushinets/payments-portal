@@ -1,7 +1,7 @@
 {
   "Navigation": {
     "mainAriaLabel": "Navegación principal",
-    "products": "Productos",
+    "products": "Herramientas de IA",
     "localeSwitcher": {
       "summaryAriaLabel": "Elegir idioma. Idioma actual: {language}",
       "menuAriaLabel": "Elegir idioma"
@@ -221,78 +221,43 @@
     "settingsAction": "Configuración"
   },
   "Home": {
-    "eyebrow": "AnytoolAI {region}",
+    "eyebrow": "Extensiones de Chrome",
     "hero": {
-      "heading": "Herramientas para trabajar con documentos y <em>mejorar prompts</em>",
-      "description": "AnytoolAI reúne servicios digitales que te ayudan a trabajar más rápido con contenidos, documentos y herramientas de IA. Descubre los productos y crea una sola cuenta en este sitio.",
+      "heading": "Herramientas de IA para <em>el trabajo diario</em>",
+      "description": "Resume documentos y mejora prompts. Elige una herramienta para tu tarea y conoce cómo funciona.",
       "primaryAction": "Iniciar sesión o registrarse",
-      "secondaryAction": "Elegir un producto"
-    },
-    "factsAriaLabel": "Datos principales",
-    "facts": {
-      "catalog": {
-        "label": "Catálogo",
-        "value": "{region}",
-        "detail": "Información sobre los productos de AnytoolAI"
-      },
-      "pricing": {
-        "label": "Compras",
-        "value": "Aún no disponibles",
-        "detail": "Las compras aún no están disponibles"
-      },
-      "account": {
-        "label": "Cuenta",
-        "value": "Disponible",
-        "detail": "El registro y el inicio de sesión ya están disponibles"
-      },
-      "localization": {
-        "label": "Idiomas",
-        "value": "{localeCount, plural, one {# idioma de interfaz} other {# idiomas de interfaz}}",
-        "detail": "Autoridad jurídica canónica: {legalLanguage}"
-      }
-    },
-    "highlights": {
-      "simpleStart": {
-        "title": "Un comienzo sencillo",
-        "description": "El registro y los documentos legales están reunidos en un portal claro."
-      },
-      "singleAccount": {
-        "title": "Una sola cuenta",
-        "description": "Crea una cuenta o inicia sesión por correo electrónico mientras se actualiza la facturación."
-      },
-      "controlledLaunch": {
-        "title": "Lanzamiento controlado",
-        "description": "Las compras seguirán sin estar disponibles hasta que se conecte el nuevo sistema de facturación."
-      }
+      "secondaryAction": "Explorar herramientas"
     },
     "products": {
-      "eyebrow": "Productos",
-      "title": "Servicios para el trabajo diario",
-      "description": "Descubre los dos productos de AnytoolAI. Las compras aún no están disponibles."
+      "eyebrow": "Colección",
+      "title": "Herramientas de IA",
+      "description": "Herramientas para trabajar con documentos y prompts, reunidas en un solo lugar.",
+      "action": "Todas las herramientas"
     }
   },
   "Catalog": {
     "page": {
       "eyebrow": "Catálogo",
-      "title": "Productos",
-      "description": "Descubre los dos productos de AnytoolAI. Las compras aún no están disponibles."
+      "title": "Herramientas de IA",
+      "description": "Descubre Document Summary y Prompt Optimizer para resumir documentos y mejorar prompts."
     },
-    "availabilityNotice": "Las compras aún no están disponibles.",
-    "productInfoBadge": "Información del producto",
     "signInAction": "Iniciar sesión o registrarse",
     "backToCatalog": "Volver a los productos",
     "products": {
       "documentSummary": {
+        "name": "Document Summary",
         "type": "Extensión de Chrome",
         "tagline": "Resúmenes instantáneos de cualquier documento",
         "description": "La extensión resume rápidamente documentos y páginas web sin pasos manuales innecesarios."
       },
       "promptOptimizer": {
+        "name": "Prompt Optimizer",
         "type": "Extensión de Chrome",
         "tagline": "Mejora prompts de IA con un clic",
         "description": "La extensión mejora los prompts en la interfaz que ya utilizas y muestra exactamente qué ha cambiado."
       }
-    }
+    },
+    "detailsAction": "Más información"
   },
   "Footer": {
     "registrationNumbers": "INN (ИНН): {inn} · OGRNIP (ОГРНИП): {ogrnip}",

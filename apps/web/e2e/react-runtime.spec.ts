@@ -57,7 +57,7 @@ test("public portal and account cabinet render without runtime warnings", async 
   await page.goto("/ru");
   await expect(
     page.getByRole("heading", {
-      name: "Инструменты для работы с документами и улучшения промптов",
+      name: "AI-инструменты для повседневной работы",
       exact: true
     })
   ).toBeVisible();

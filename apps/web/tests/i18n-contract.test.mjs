@@ -44,7 +44,7 @@ const directCopyExceptions = new Set(
     {
       filePath: "apps/web/src/shared/ui/SiteShell.tsx",
       surface: "JsxText",
-      value: "Anytool"
+      value: "AnyTool"
     },
     {
       filePath: "apps/web/src/shared/ui/SiteShell.tsx",
@@ -54,7 +54,7 @@ const directCopyExceptions = new Set(
     {
       filePath: "apps/web/src/shared/ui/SiteShell.tsx",
       surface: "aria-label",
-      value: "AnytoolAI"
+      value: "AnyToolAI"
     },
     {
       filePath: "apps/web/src/shared/ui/AuthForm.tsx",
@@ -340,7 +340,7 @@ test("ordinary UI direct-copy detector covers only bounded literal surfaces", ()
   const modeledExceptions = [
     ...collectDirectCopyFindings(
       "apps/web/src/shared/ui/SiteShell.tsx",
-      '<a aria-label="AnytoolAI">Anytool<span>AI</span></a>'
+      '<a aria-label="AnyToolAI">AnyTool<span>AI</span></a>'
     ),
     ...collectDirectCopyFindings(
       "apps/web/src/shared/ui/AuthForm.tsx",
@@ -359,7 +359,7 @@ test("ordinary UI direct-copy detector covers only bounded literal surfaces", ()
 
   const sameValuesOutsideModeledFiles = collectDirectCopyFindings(
     "apps/web/src/shared/ui/Other.tsx",
-    '<><a aria-label="AnytoolAI">Anytool</a><input placeholder="user@example.com" /></>'
+    '<><a aria-label="AnyToolAI">AnyTool</a><input placeholder="user@example.com" /></>'
   );
   assert.deepEqual(
     unexpectedDirectCopyFindings(sameValuesOutsideModeledFiles),

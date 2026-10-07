@@ -1,7 +1,7 @@
 {
   "Navigation": {
     "mainAriaLabel": "Main navigation",
-    "products": "Products",
+    "products": "AI utilities",
     "localeSwitcher": {
       "summaryAriaLabel": "Choose language. Current language: {language}",
       "menuAriaLabel": "Choose language"
@@ -221,78 +221,43 @@
     "settingsAction": "Settings"
   },
   "Home": {
-    "eyebrow": "AnytoolAI {region}",
+    "eyebrow": "Chrome extensions",
     "hero": {
-      "heading": "Tools for working with documents and <em>improving prompts</em>",
-      "description": "AnytoolAI brings together digital services that help you work faster with content, documents, and AI tools. Explore the products and create one account on this site.",
+      "heading": "AI tools for <em>everyday work</em>",
+      "description": "Summarize documents and improve prompts. Choose a tool for your task and learn how it works.",
       "primaryAction": "Sign in or register",
-      "secondaryAction": "Choose a product"
-    },
-    "factsAriaLabel": "Key details",
-    "facts": {
-      "catalog": {
-        "label": "Catalog",
-        "value": "{region}",
-        "detail": "Information about AnytoolAI products"
-      },
-      "pricing": {
-        "label": "Purchases",
-        "value": "Not ready",
-        "detail": "Purchases are not available yet"
-      },
-      "account": {
-        "label": "Account",
-        "value": "Available",
-        "detail": "Registration and sign-in are already available"
-      },
-      "localization": {
-        "label": "Languages",
-        "value": "{localeCount, plural, one {# UI language} other {# UI languages}}",
-        "detail": "Canonical legal authority: {legalLanguage}"
-      }
-    },
-    "highlights": {
-      "simpleStart": {
-        "title": "A simple start",
-        "description": "Registration and legal documents are brought together in one clear portal."
-      },
-      "singleAccount": {
-        "title": "One account",
-        "description": "Create an account or sign in by email while billing is being updated."
-      },
-      "controlledLaunch": {
-        "title": "Controlled launch",
-        "description": "Purchases will remain unavailable until the new billing system is connected."
-      }
+      "secondaryAction": "Explore tools"
     },
     "products": {
-      "eyebrow": "Products",
-      "title": "Services for everyday work",
-      "description": "Explore the two AnytoolAI products. Purchases are not available yet."
+      "eyebrow": "Collection",
+      "title": "AI utilities",
+      "description": "Tools for working with documents and prompts, collected in one place.",
+      "action": "View all tools"
     }
   },
   "Catalog": {
     "page": {
       "eyebrow": "Catalog",
-      "title": "Products",
-      "description": "Explore the two AnytoolAI products. Purchases are not available yet."
+      "title": "AI utilities",
+      "description": "Explore Document Summary and Prompt Optimizer for document summaries and better prompts."
     },
-    "availabilityNotice": "Purchases are not available yet.",
-    "productInfoBadge": "Product information",
     "signInAction": "Sign in or register",
     "backToCatalog": "Back to products",
     "products": {
       "documentSummary": {
+        "name": "Document Summary",
         "type": "Chrome extension",
         "tagline": "Instant summaries of any document",
         "description": "The extension quickly summarizes documents and web pages without unnecessary manual steps."
       },
       "promptOptimizer": {
+        "name": "Prompt Optimizer",
         "type": "Chrome extension",
         "tagline": "Improve AI prompts in one click",
         "description": "The extension improves prompts in the interface you already use and shows exactly what changed."
       }
-    }
+    },
+    "detailsAction": "Learn more"
   },
   "Footer": {
     "registrationNumbers": "INN (ИНН): {inn} · OGRNIP (ОГРНИП): {ogrnip}",

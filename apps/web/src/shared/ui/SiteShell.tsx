@@ -35,22 +35,24 @@ export async function SiteShell({
         }}
       >
         <header className="top-nav">
-          <div className="nav-inner">
-            <Link className="logo" href="/" aria-label="AnytoolAI">
-              Anytool<span>AI</span>
+          <nav className="nav-inner" aria-label={t("mainAriaLabel")}>
+            <Link className="logo" href="/" aria-label="AnyToolAI">
+              AnyTool<span>AI</span>
             </Link>
-            <nav className="nav-links" aria-label={t("mainAriaLabel")}>
+            <div className="nav-links">
               <Link className="nav-link" href="/products">
                 {t("products")}
               </Link>
+            </div>
+            <div className="nav-actions">
               <Suspense fallback={null}>
                 <LocaleSwitcher locale={locale} />
               </Suspense>
               <HeaderAccount
                 languageTag={LANGUAGE_TAG_BY_ROUTE_LOCALE[locale]}
               />
-            </nav>
-          </div>
+            </div>
+          </nav>
         </header>
       </NextIntlClientProvider>
       <main className="site-main">{children}</main>

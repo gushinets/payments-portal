@@ -1,7 +1,7 @@
 {
   "Navigation": {
     "mainAriaLabel": "Navegação principal",
-    "products": "Produtos",
+    "products": "Ferramentas de IA",
     "localeSwitcher": {
       "summaryAriaLabel": "Escolher idioma. Idioma atual: {language}",
       "menuAriaLabel": "Escolher idioma"
@@ -221,78 +221,43 @@
     "settingsAction": "Configurações"
   },
   "Home": {
-    "eyebrow": "AnytoolAI {region}",
+    "eyebrow": "Extensões do Chrome",
     "hero": {
-      "heading": "Ferramentas para trabalhar com documentos e <em>melhorar prompts</em>",
-      "description": "A AnytoolAI reúne serviços digitais que ajudam você a trabalhar mais rápido com conteúdo, documentos e ferramentas de IA. Conheça os produtos e crie uma única conta neste site.",
+      "heading": "Ferramentas de IA para <em>o dia a dia</em>",
+      "description": "Resuma documentos e melhore prompts. Escolha uma ferramenta para sua tarefa e saiba como ela funciona.",
       "primaryAction": "Entrar ou criar uma conta",
-      "secondaryAction": "Escolher um produto"
-    },
-    "factsAriaLabel": "Informações principais",
-    "facts": {
-      "catalog": {
-        "label": "Catálogo",
-        "value": "{region}",
-        "detail": "Informações sobre os produtos AnytoolAI"
-      },
-      "pricing": {
-        "label": "Compras",
-        "value": "Ainda indisponíveis",
-        "detail": "As compras ainda não estão disponíveis"
-      },
-      "account": {
-        "label": "Conta",
-        "value": "Disponível",
-        "detail": "O cadastro e o login já estão disponíveis"
-      },
-      "localization": {
-        "label": "Idiomas",
-        "value": "{localeCount, plural, one {# idioma da interface} other {# idiomas da interface}}",
-        "detail": "Autoridade jurídica canônica: {legalLanguage}"
-      }
-    },
-    "highlights": {
-      "simpleStart": {
-        "title": "Comece com facilidade",
-        "description": "O cadastro e os documentos jurídicos ficam reunidos em um portal simples de entender."
-      },
-      "singleAccount": {
-        "title": "Uma única conta",
-        "description": "Crie uma conta ou entre por e-mail enquanto o sistema de cobrança é atualizado."
-      },
-      "controlledLaunch": {
-        "title": "Lançamento controlado",
-        "description": "As compras continuarão indisponíveis até a conexão do novo sistema de cobrança."
-      }
+      "secondaryAction": "Explorar ferramentas"
     },
     "products": {
-      "eyebrow": "Produtos",
-      "title": "Serviços para o dia a dia",
-      "description": "Conheça os dois produtos AnytoolAI. As compras ainda não estão disponíveis."
+      "eyebrow": "Coleção",
+      "title": "Ferramentas de IA",
+      "description": "Ferramentas para trabalhar com documentos e prompts, reunidas em um só lugar.",
+      "action": "Todas as ferramentas"
     }
   },
   "Catalog": {
     "page": {
       "eyebrow": "Catálogo",
-      "title": "Produtos",
-      "description": "Conheça os dois produtos AnytoolAI. As compras ainda não estão disponíveis."
+      "title": "Ferramentas de IA",
+      "description": "Conheça Document Summary e Prompt Optimizer para resumir documentos e melhorar prompts."
     },
-    "availabilityNotice": "As compras ainda não estão disponíveis.",
-    "productInfoBadge": "Informações do produto",
     "signInAction": "Entrar ou criar uma conta",
     "backToCatalog": "Voltar aos produtos",
     "products": {
       "documentSummary": {
+        "name": "Document Summary",
         "type": "Extensão do Chrome",
         "tagline": "Resumos instantâneos de qualquer documento",
         "description": "A extensão resume documentos e páginas da web rapidamente, sem etapas manuais desnecessárias."
       },
       "promptOptimizer": {
+        "name": "Prompt Optimizer",
         "type": "Extensão do Chrome",
         "tagline": "Melhore prompts de IA com um clique",
         "description": "A extensão melhora os prompts na interface que você já usa e mostra exatamente o que mudou."
       }
-    }
+    },
+    "detailsAction": "Saiba mais"
   },
   "Footer": {
     "registrationNumbers": "INN (ИНН): {inn} · OGRNIP (ОГРНИП): {ogrnip}",

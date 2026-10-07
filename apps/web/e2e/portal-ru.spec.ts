@@ -17,11 +17,13 @@ const portalRoutes = [
 const products = [
   {
     slug: "document-summary",
+    name: "Document Summary",
     title: "Мгновенное краткое содержание любого документа",
     description: "Расширение помогает быстро получать краткое содержание документов и веб-страниц без лишних ручных действий."
   },
   {
     slug: "prompt-optimizer",
+    name: "Prompt Optimizer",
     title: "Улучшение промптов для ИИ в один клик",
     description: "Расширение улучшает промпты прямо в привычном интерфейсе и показывает, что именно стало лучше."
   }
@@ -135,9 +137,7 @@ for (const route of portalRoutes) {
       ).toBeVisible();
     }
     if (route === "/ru" || route === "/ru/products") {
-      await expect(page.getByRole("main").getByRole("status")).toHaveText(
-        "Покупки пока недоступны."
-      );
+      await expect(page.getByRole("main").getByRole("status")).toHaveCount(0);
       for (const product of products) {
         await expect(
           page.getByRole("main").getByRole("link", { name: new RegExp(product.title) })
@@ -155,7 +155,7 @@ for (const product of products) {
     const card = page.getByRole("main").getByRole("link", {
       name: new RegExp(product.title)
     });
-    await expect(card).toContainText("Информация о продукте");
+    await expect(card).toContainText("Подробнее");
     await expect(card).toContainText(product.description);
     await expect(card).toHaveAttribute("href", `/ru/products/${product.slug}`);
     await card.click();
@@ -280,19 +280,19 @@ test("RU Portal navigation, product discovery and account forms remain usable at
 
   const navigation = page.getByRole("navigation", { name: "Основная навигация" });
   await expect(navigation.getByRole("button", { name: "Войти", exact: true })).toBeEnabled();
-  const catalogLink = navigation.getByRole("link", { name: "Продукты", exact: true });
+  const catalogLink = navigation.getByRole("link", { name: "AI-утилиты", exact: true });
   await expect(catalogLink).toBeInViewport();
   await expectMobileLayout(page, testInfo, "home");
   await catalogLink.click();
   await expect(page).toHaveURL(/\/ru\/products$/);
 
   const main = page.getByRole("main");
-  await expect(main.getByRole("heading", { level: 1, name: "Продукты" })).toBeVisible();
+  await expect(main.getByRole("heading", { level: 1, name: "AI-утилиты" })).toBeVisible();
   for (const product of products) {
     const card = main.getByRole("link", { name: new RegExp(product.title) });
     await card.scrollIntoViewIfNeeded();
     await expect(card).toBeInViewport();
-    await expect(card.getByRole("heading", { name: product.title })).toBeVisible();
+    await expect(card.getByRole("heading", { name: product.name })).toBeVisible();
   }
   await expectMobileLayout(page, testInfo, "catalog");
   await main.getByRole("link", { name: new RegExp(products[0].title) }).click();

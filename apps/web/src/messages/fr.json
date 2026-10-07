@@ -1,7 +1,7 @@
 {
   "Navigation": {
     "mainAriaLabel": "Navigation principale",
-    "products": "Produits",
+    "products": "Outils d’IA",
     "localeSwitcher": {
       "summaryAriaLabel": "Choisir la langue. Langue actuelle : {language}",
       "menuAriaLabel": "Choisir la langue"
@@ -221,78 +221,43 @@
     "settingsAction": "Paramètres"
   },
   "Home": {
-    "eyebrow": "AnytoolAI {region}",
+    "eyebrow": "Extensions Chrome",
     "hero": {
-      "heading": "Des outils pour travailler avec les documents et <em>améliorer les prompts</em>",
-      "description": "AnytoolAI réunit des services numériques qui vous aident à travailler plus vite avec les contenus, les documents et les outils d’IA. Découvrez les produits et créez un compte unique sur ce site.",
+      "heading": "Des outils d’IA pour <em>le travail quotidien</em>",
+      "description": "Résumez des documents et améliorez vos prompts. Choisissez un outil adapté à votre tâche et découvrez son fonctionnement.",
       "primaryAction": "Se connecter ou s’inscrire",
-      "secondaryAction": "Choisir un produit"
-    },
-    "factsAriaLabel": "Informations clés",
-    "facts": {
-      "catalog": {
-        "label": "Catalogue",
-        "value": "{region}",
-        "detail": "Informations sur les produits AnytoolAI"
-      },
-      "pricing": {
-        "label": "Achats",
-        "value": "Pas encore prêts",
-        "detail": "Les achats ne sont pas encore disponibles"
-      },
-      "account": {
-        "label": "Compte",
-        "value": "Disponible",
-        "detail": "L’inscription et la connexion sont déjà disponibles"
-      },
-      "localization": {
-        "label": "Langues",
-        "value": "{localeCount, plural, one {# langue d’interface} other {# langues d’interface}}",
-        "detail": "Autorité juridique canonique : {legalLanguage}"
-      }
-    },
-    "highlights": {
-      "simpleStart": {
-        "title": "Un démarrage simple",
-        "description": "L’inscription et les documents juridiques sont réunis dans un portail clair."
-      },
-      "singleAccount": {
-        "title": "Un seul compte",
-        "description": "Créez un compte ou connectez-vous par e-mail pendant la mise à jour de la facturation."
-      },
-      "controlledLaunch": {
-        "title": "Lancement maîtrisé",
-        "description": "Les achats resteront indisponibles jusqu’à la connexion du nouveau système de facturation."
-      }
+      "secondaryAction": "Découvrir les outils"
     },
     "products": {
-      "eyebrow": "Produits",
-      "title": "Des services pour le travail quotidien",
-      "description": "Découvrez les deux produits AnytoolAI. Les achats ne sont pas encore disponibles."
+      "eyebrow": "Collection",
+      "title": "Outils d’IA",
+      "description": "Des outils pour les documents et les prompts, réunis au même endroit.",
+      "action": "Voir tous les outils"
     }
   },
   "Catalog": {
     "page": {
       "eyebrow": "Catalogue",
-      "title": "Produits",
-      "description": "Découvrez les deux produits AnytoolAI. Les achats ne sont pas encore disponibles."
+      "title": "Outils d’IA",
+      "description": "Découvrez Document Summary et Prompt Optimizer pour résumer vos documents et améliorer vos prompts."
     },
-    "availabilityNotice": "Les achats ne sont pas encore disponibles.",
-    "productInfoBadge": "Informations sur le produit",
     "signInAction": "Se connecter ou s’inscrire",
     "backToCatalog": "Retour aux produits",
     "products": {
       "documentSummary": {
+        "name": "Document Summary",
         "type": "Extension Chrome",
         "tagline": "Le résumé instantané de tout document",
         "description": "L’extension résume rapidement les documents et les pages web, sans étapes manuelles superflues."
       },
       "promptOptimizer": {
+        "name": "Prompt Optimizer",
         "type": "Extension Chrome",
         "tagline": "Améliorez vos prompts d’IA en un clic",
         "description": "L’extension améliore les prompts dans votre interface habituelle et indique précisément les changements apportés."
       }
-    }
+    },
+    "detailsAction": "En savoir plus"
   },
   "Footer": {
     "registrationNumbers": "INN (ИНН) : {inn} · OGRNIP (ОГРНИП) : {ogrnip}",

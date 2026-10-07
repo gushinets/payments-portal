@@ -64,10 +64,10 @@ button:disabled {
   width: min(100%, var(--max));
   margin: 0 auto;
   padding: 20px 40px;
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
-  gap: 24px;
+  gap: 32px;
 }
 
 .logo {
@@ -77,6 +77,7 @@ button:disabled {
   font-weight: 900;
   letter-spacing: 0;
   text-decoration: none;
+  white-space: nowrap;
 }
 
 .logo span {
@@ -87,6 +88,32 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.nav-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  min-width: 0;
+}
+
+.nav-links .nav-link {
+  color: var(--txt2);
+  background: transparent;
+  border-color: transparent;
+}
+
+.nav-links .nav-link:hover {
+  color: var(--txt);
+  background: var(--surf1);
+  border-color: var(--border);
+}
+
+.logo:focus-visible,
+.nav-link:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 3px;
 }
 
 .locale-switcher {
@@ -212,6 +239,44 @@ button:disabled {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.site-shell .footer-inner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+}
+
+.site-shell .footer-inner > div:first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.site-shell .footer-text {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+.site-shell .footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 24px;
+  margin-top: 18px;
+}
+
+.site-shell .footer-links a {
+  justify-content: flex-start;
+  padding: 8px 0;
+  background: transparent;
+  border-color: transparent;
+  border-radius: 8px;
+  text-align: left;
+}
+
+.site-shell .footer-links a:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 3px;
 }
 
 .page-section {
