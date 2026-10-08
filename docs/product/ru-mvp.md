@@ -16,6 +16,9 @@ This handoff describes the completed ANY-636 implementation through Step 13.
 All thirteen steps are marked `done`, and the plan was moved to `completed` on
 2026-10-08 at the user's explicit instruction. The completion record preserves
 the historical verification evidence and the scope of the archival checks.
+**Implementation completed; final acceptance pending.** Plan archival does not
+confirm the final CI gate or human product/visual acceptance. Linear ANY-636
+remains In Review, and merge requires both gates to be recorded explicitly.
 
 Only the `ru` contour is implemented. Ordinary UI routes support `en`, `fr`,
 `it`, `de`, `es`, `ru`, and `pt`, with `ru` as the default locale. All use the
@@ -294,3 +297,16 @@ undocumented human screenshot comparison. For future visual regression review,
 compare `/ru`, `/ru/products`, both product pages and
 authenticated `/ru/account` with the input-only mockup; confirm the evolved
 navy/amber/flat/compact language, honest facts and durable integration slots.
+
+The subsequent 2026-10-08 final-review fix pass completed fresh local
+verification: `npm run check:fast`, `RUN_E2E=true npm run check` (including 57
+PostgreSQL and 122 browser tests), the separate React runtime suite (2 tests),
+and the workflow evidence validator passed. The dated
+[final-review record](../exec-plans/completed/ANY-636-implementation-plan.md#final-review-fixes-and-verification--2026-10-08)
+contains exact commands, coverage, environment limitations and the human
+checklist. The input-only HTML is removed from the local tracked contents and
+preserved unchanged outside the repository; its deletion is not yet published.
+**Final acceptance remains pending:** the required remote CI must pass on the
+head containing these fixes, and the user must explicitly accept the
+desktop/mobile product and visual result. Agent screenshot inspection and a
+completed implementation plan do not provide that approval.

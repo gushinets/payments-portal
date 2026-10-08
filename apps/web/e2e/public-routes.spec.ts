@@ -139,7 +139,7 @@ for (const route of routes) {
       body: JSON.stringify({
         route,
         viewport: page.viewportSize(),
-        reference: "docs/exec-plans/active/portal-ru-anytools.html",
+        reference: "ANY-539 portal-ru-anytools.html (input-only local reference, not committed)",
         review: "Compare composition and navy background, flat dark surfaces, thin borders, amber accent, compact radii/spacing, typography and dashboard/cards. Purple/indigo glass and bento must not dominate. Human review only; no pixel baseline."
       }, null, 2),
       contentType: "application/json"

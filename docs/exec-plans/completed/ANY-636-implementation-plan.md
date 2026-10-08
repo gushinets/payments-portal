@@ -10,7 +10,8 @@
 | Original planning baseline | `3e53f1cc7756cc6825b05b4fcbd580479a196a64` — historical ANY-541 baseline used by initial ANY-636 Steps 1–5 |
 | Required predecessor baseline for continuation | final/current `ANY-541` / PR `#129`; planning observation: `bc80eaaee3b0c6051548ff446960791636216436` |
 | Observed ANY-636 head before correction | `af0ea815cf12d2440bdad6a36d8dbf396e5d9950`; branch was `behind 2 / ahead 6` versus `ANY-541` |
-| Overall status | `done` — all thirteen steps complete; closed and archived on 2026-10-08 at the user's explicit instruction |
+| Implementation status | `done` — all thirteen execution steps complete; plan archived on 2026-10-08 at the user's explicit instruction |
+| Final acceptance status | **Pending** — implementation completion and archival do not verify final CI or human product/visual acceptance; Linear ANY-636 remains In Review |
 | Initial Steps 1–5 completed | `2026-10-06`; historical initial handoff, superseded by the corrected product-centric surface |
 | Execution order | Complete — Steps 1–13 are `done`; retained instructions below are implementation history, not pending work |
 | Steps / commits | 5 completed baseline steps + 1 predecessor-synchronization step + 7 product/visual completion steps |
@@ -27,6 +28,9 @@
 - Earlier implementation instructions, prompts, and verification observations
   below are retained as history. They do not reopen completed steps or assert
   fresh verification results.
+- `done` closes the implementation execution queue, not the Linear issue or
+  the pre-merge acceptance gates. Final CI and explicit human desktop/mobile
+  product/visual acceptance must be recorded separately before merge.
 - Archival-update verification used the existing `.venv/bin` on `PATH`:
   `npm run docs:check`, `npm run typecheck:web`, and `git diff --check` passed.
   All thirteen step statuses were checked as `done`, with no active copy left.
@@ -39,6 +43,170 @@
   documentation change. The failed gate is recorded, not claimed as passing.
 - Parent ANY-504 integrations and Phase 0 gates remain outside this completed
   provider-independent frontend plan.
+
+## Final Review Fixes and Verification — 2026-10-08
+
+This record supersedes the archival check limitation above for the current
+working tree. Implementation remains completed and archived; **final acceptance
+is pending**. No commit, push, rebase, ticket status change or human approval
+was performed in this fix pass.
+
+### P1-1 — FIXED locally; remote CI re-verification pending
+
+Run `37727286930` at `07d5aa7` passed 122 browser E2E tests, then failed
+`Validate browser evidence`: both viewport projects lacked `auth-shell.png`
+and `payment-result.png`. The workflow and its deployment-test fixtures still
+required retired-route evidence, while `react-runtime.spec.ts` now produces
+only `landing.png` and `account.png`.
+
+- `.github/workflows/ci.yml` now requires both current screenshots for both
+  desktop and mobile. It still requires a complete single attempt, numeric
+  retry suffixes, non-empty regular files, all four JSON/HTML reports, and
+  evidence upload. No validation bypass or error suppression was added.
+- `apps/api/tests/test_deployment_contract.py` uses the current fixture set,
+  rejects each missing/empty desktop/mobile screenshot, and retains split-
+  attempt, retry, report and directory-masquerade rejection coverage.
+- The focused evidence suite passed **21 tests**. The exact workflow Bash
+  validator also passed against the fresh real Playwright artifacts.
+- The unchanged route-retirement tests passed in the full browser suite:
+  `/ru/auth-checkout` and `/ru/payment-result` return 404 without a Location
+  header, redirect or compatibility route.
+
+### ARCH-1 — FIXED in repository; external wording prepared
+
+The earlier completion wording could conflate the user's explicit closure of
+the implementation execution queue with accepted delivery. The overview,
+completion record, Step 13 status and acceptance matrix now separate
+**implementation completed** from **final acceptance pending**. All thirteen
+statuses remain `done`, and the plan remains in `completed`.
+
+`docs/product/ru-mvp.md` carries the same distinction. Linear ANY-636 was
+observed In Review with its final acceptance criteria still open and no issue
+comments. The PR description already leaves final CI/human approval unchecked
+but has a stale active-plan path; an exact replacement description and Linear
+evidence comment are prepared as local artifacts. Neither external record was
+modified, and the ticket was not closed or moved to Done.
+
+### Input-only mockup cleanup
+
+`docs/exec-plans/active/portal-ru-anytools.html` was a new tracked addition in
+the PR, despite its input-only role. Its deletion is prepared in the current
+working tree. An unchanged copy is preserved outside the repository in the
+local final-review artifact directory, together with rendered reference
+screenshots. SHA-256: `8ada57329820f80d873e4b00b432c9b7b94e7e18e8e6b0af60534388ff28cdf4`.
+
+Public-route and Portal screenshot review metadata now identifies the ANY-539
+local input reference without asserting that it is a committed design source.
+Bundle 3 remains the sole implementation design authority. Publication of the
+deletion to the remote PR remains pending because commit/push is not authorized.
+
+### Executed local verification
+
+Commands used the repository `.venv/bin` on `PATH`. Node was `24.14.0`, npm
+`11.11.1`, Python `3.12.13` and uv `0.12.7`. Checks requiring child processes,
+Chromium, ports or Docker ran outside the restricted sandbox after initial
+`EPERM` failures. Those sandbox failures are not application test failures.
+The first post-edit broad run also exposed two stale deployment fixtures;
+they were corrected before the successful final runs below.
+
+- `.venv/bin/python -m pytest -p no:cacheprovider apps/api/tests/test_deployment_contract.py -k browser_evidence`
+  — **PASS**, 21 passed / 14 deselected.
+- `npm run check:fast` — **PASS**: docs, generation freshness, architecture,
+  Ruff lint/format, 38 web boundary tests (including TypeScript 7/full-project
+  typechecking), 113 component tests, web lint and 611 fast API tests.
+- `RUN_E2E=true npm run check` — **PASS**, exit 0: the complete fast surface,
+  production web build, **57 PostgreSQL tests**, and **122 E2E tests**.
+  PostgreSQL coverage includes migration/bootstrap, identity/legal,
+  verification/recovery and target persistence invariants. The Playwright
+  report has 122 expected, zero unexpected, skipped, flaky or global errors.
+- `npm run test:e2e:react-runtime` — **PASS**, 2 tests, desktop/mobile;
+  zero unexpected, skipped, flaky or global errors. This is a separate run
+  through `playwright.react-runtime.config.ts`, not the ignored ordinary-suite
+  filename.
+- `bash --noprofile --norc -e -o pipefail .harness/any636-final-review/browser-evidence.sh`
+  — **PASS**, exit 0; the script is extracted unchanged from the workflow's
+  validation step and checks the real fresh reports/screenshots.
+- `python scripts/repo.py coverage api-fast` — **PASS**, 611 tests; 95% total
+  coverage and XML produced. `npm --workspace @anytoolai/web run test:components:coverage`
+  — **PASS**, 113 tests; coverage reports produced.
+- `npm run lock:check:api`, `python scripts/repo.py harness-smoke`, and
+  `python scripts/repo.py pr-metadata` with the prepared title/body — **PASS**.
+- With the synthetic local review environment loaded from
+  `/tmp/any636-final-review/production.env`:
+  `python scripts/repo.py validate-production-env`,
+  `docker compose --env-file /tmp/any636-final-review/production.env -f docker-compose.yml config --quiet`,
+  `docker compose --project-name any636-final-review --env-file /tmp/any636-final-review/production.env -f docker-compose.prod.yml config --quiet`, and
+  `docker compose --progress plain --project-name any636-final-review --env-file /tmp/any636-final-review/production.env -f docker-compose.prod.yml build api web`
+  — **PASS**. No production stack was deployed. Review images were built
+  separately from the already-running worktree stack.
+- `sh security/trivy/verify-api-runtime.sh any636-final-review-api` and
+  `sh security/trivy/verify-web-runtime.sh any636-final-review-web` — **PASS**;
+  non-root runtimes, API liveness and the production web runtime packaging
+  constraints were checked.
+- Post-documentation `npm run docs:check` and `git diff --check` — **PASS**.
+
+The existing local stack readiness endpoint returned `ready`. Loki returned
+two text entries matching the review health request ID, but no structured
+JSON entry or correlated Tempo trace was available. The Prometheus query
+completed successfully with no readiness metric series. These read-only
+queries satisfy the runtime-signal inspection step; they do not establish
+complete log/metric/trace correlation or verify the full user journey in the
+already-running stack. Safe aggregate evidence is saved locally in
+`.harness/any636-final-review/observability.json`.
+
+The 1446 fast API warnings concern SQLite fixture foreign-key cycles and the
+Python 3.12 default datetime adapter deprecation; there are no failed tests in
+the final run. The full locally available CI surface above is not a
+new GitHub Actions result. Windows-host smoke and Trivy scanning were not
+rerun locally (Linux host; Trivy executable unavailable). Their latest
+observed remote checks at `07d5aa7` passed, as did Code quality, Production
+gate, Linux harness and PR metadata. The browser check remains red at that
+remote head until the reviewed fixes are published and CI reruns.
+
+### DoD and human visual acceptance
+
+Executed browser/component coverage confirms product-first home/catalog,
+both product details, truthful pricing placeholder, direct account entry,
+registration/login/logout, the retained header modal, legal acceptance,
+password reset, email verification, verified/unverified cabinet states,
+honest future-data slots, seven-locale routing, mobile overflow and keyboard
+behavior. Tested primary routes/cabinet states have zero serious/critical Axe
+violations and no unexpected browser console/network/provider-boundary errors.
+Mocked auth/verification screenshots establish composition, not real mailbox
+delivery or commercial/paid-access facts. Live SMTP delivery is not verified.
+
+Agent visual review compared desktop/mobile home, catalog, both product
+pages and cabinet states with the rendered RU input reference. The navy/amber
+palette, flat surfaces, thin borders, Plus Jakarta Sans, compact controls,
+product hierarchy, two-column desktop product hero and supporting cabinet
+rail match the agreed family. Mobile content stacks and navigation stays
+reachable. No clear disagreement with the accepted intent justified a design
+change. The mockup's demo metrics/prices/provider/usage bars, unsupported
+products/links and legal/privacy claims remain intentionally omitted.
+
+Fresh screenshots and JSON/HTML reports are in `.harness/playwright-results`,
+`.harness/playwright-report`, `.harness/playwright-react-runtime-results` and
+`.harness/playwright-react-runtime-report`. For explicit human acceptance:
+
+1. Compare `/ru`, `/ru/products`, both product pages and verified/unverified
+   `/ru/account` on desktop and at 390×844 with the preserved input reference.
+2. Confirm product hierarchy and customer intent, navy/amber/flat styling,
+   typography, density, spacing, mobile stacking and reachable actions.
+3. Confirm missing commercial/access/usage sources read as not ready/unknown/
+   unavailable, and synthetic screenshot identity facts are understood.
+4. Record explicit human acceptance separately from all implementation `done`
+   statuses; no such approval is asserted by this review pass.
+
+The final fix diff changes only CI validation, its tests, screenshot-reference
+metadata, implementation/acceptance documentation and the tracked mockup
+deletion. Backend runtime, OpenAPI/generated wire contracts, shared API
+transport and migrations are unchanged from merged ANY-541. No ANY-504
+Steps 5–10 behavior or external ownership change was introduced.
+
+**Merge readiness: NOT READY.** Remaining gates are publication and required
+CI on the resulting PR head, followed by explicit human product/visual/final
+approval. Locally executed technical checks pass; that does not satisfy those
+remote/human gates or authorize commit, push, merge or issue completion.
 
 ## Initial Completion Evidence — superseded as final 4F completion
 
@@ -2836,7 +3004,7 @@ ANY-636 prove RU portal visual and product experience
 
 > **ANY-636 internal Step 13 — final handoff/closure, not a parent ANY-504 step.**
 
-**Status:** `done` — documentation/handoff committed as `2e53f00`; closed on 2026-10-08 at the user's explicit instruction
+**Status:** `done` — documentation/handoff committed as `2e53f00`; execution step completed on 2026-10-08 at the user's explicit instruction. Final CI and human acceptance remain separate pending gates.
 
 **Recommended model:** `Sol`
 
@@ -3059,7 +3227,10 @@ ANY-636 finalize RU portal visual product handoff
 
 ## Final Acceptance Validation for ANY-636
 
-After **all thirteen** ANY-636 implementation steps are complete and manually verified, the implementation must satisfy this matrix.
+All thirteen implementation steps are complete. This matrix defines the final
+acceptance requirements; it is not a record that every requirement has passed.
+Use the dated verification record and explicit human approval to establish
+acceptance separately from implementation status.
 
 | Requirement | Expected final result |
 | --- | --- |
