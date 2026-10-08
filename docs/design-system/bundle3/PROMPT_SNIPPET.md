@@ -5,11 +5,12 @@ Load this guidance before every AnyToolAI Portal UI task, along with
 
 ## Authority and identity
 
-Bundle 3 is the single canonical implementation design system. The approved
-ANY-539 RU Portal mockup supplied as the local visual reference during
-implementation defines the product/visual target: deep navy, flat dark-blue
-surfaces, thin blue borders,
-amber actions, compact radii/spacing and Plus Jakarta Sans. The earlier mandatory
+Bundle 3 is the single canonical implementation design system. It encodes the
+approved ANY-539 RU Portal mockup's product/visual direction: deep navy, flat
+dark-blue surfaces, thin blue borders, amber actions and compact radii/spacing.
+The current headline/body family is Manrope following the ANY-636 correction
+for the original Plus Jakarta Sans family's missing basic Cyrillic coverage.
+The earlier mandatory
 indigo glass/bento identity is superseded. The mockup is not authority for
 providers, tariffs, subscriptions, paid access, usage, availability or legal facts.
 
@@ -25,7 +26,7 @@ accent (text/highlight): #fcd34d
 accentSecondary / accentSecondaryText: #6366f1 / #818cf8, restrained secondary use
 text / textSecondary / textDisabled: #f0f4ff / #8ba3c0 / #4a6480
 success: #10b981
-headline / body family: Plus Jakarta Sans; optional technical mono: DM Mono
+headline / body family: Manrope; optional technical mono: DM Mono
 input / button / card / panel / hero radius: 8px / 8px / 14px / 12px / 16px
 public maxWidth / gridGap / dashboardRailWidth: 1080px / 14px / 220px
 ```

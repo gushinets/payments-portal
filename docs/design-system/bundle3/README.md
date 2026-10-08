@@ -11,7 +11,8 @@ ANY-636 Step 10 recalibrated that system to the approved ANY-539 RU Portal
 mockup, supplied and directly inspected as a local input-only product/visual
 reference: deep
 navy, opaque dark-blue surfaces, thin blue borders, amber primary actions,
-compact radii/spacing and Plus Jakarta Sans. The former mandatory indigo glass/bento
+compact radii/spacing. Manrope is the current headline/body family following
+the ANY-636 basic Cyrillic coverage correction. The former mandatory indigo glass/bento
 identity is superseded. The mockup supplies visual direction, not provider,
 commercial, access, usage, availability or legal facts.
 
@@ -33,8 +34,11 @@ available; token values, font families, layout dimensions and radii come from
 this one source.
 
 Step 10 evolved this authority and its generated tokens. Step 11 applied the
-rules and Plus Jakarta Sans loading through `next/font/google` across the active
-Portal. The current composition includes product-first home/catalog,
+rules and originally loaded Plus Jakarta Sans through `next/font/google` across
+the active Portal. The subsequent ANY-636 correction uses Manrope for all seven
+locales because Plus Jakarta Sans lacks basic Cyrillic U+0400–U+045F; the loading
+mechanism and single token authority remain unchanged.
+The current composition includes product-first home/catalog,
 substantial product pages, presentation-only pricing navigation, direct auth
 entry and a product-centric cabinet with compact identity context and
 per-product commercial/access/usage/action slots. Later parent ANY-504 Steps

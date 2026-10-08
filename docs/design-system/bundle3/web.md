@@ -11,7 +11,7 @@ composition, routes, auth and per-product state semantics when applying style.
 
 Both public and authenticated layouts use a deep navy page background, opaque
 dark-blue surfaces, thin blue borders, amber primary actions, compact radii and
-Plus Jakarta Sans. Indigo is a restrained secondary accent, not the page-wide
+Manrope. Indigo is a restrained secondary accent, not the page-wide
 identity. Flat backgrounds and panels are normal; shadows/glows are minimal.
 Blur is optional for navigation and is not required on cards or workspaces.
 
@@ -109,5 +109,6 @@ page-local theme. Existing aliases remain compatible; the historical
 - Font loading belongs to the application integration step and must use the
   repository-approved mechanism. Do not copy or add remote CSS font imports.
 
-Step 10 establishes this authority and generated tokens. Applying these rules
-to actual page/component CSS and loading Plus Jakarta Sans belongs to Step 11.
+Step 10 established this authority and generated tokens; Step 11 applied the
+rules and originally loaded Plus Jakarta Sans. The subsequent ANY-636 correction
+loads Manrope through `next/font/google` for both Cyrillic and Latin text.

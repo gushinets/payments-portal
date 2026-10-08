@@ -70,8 +70,11 @@ canonical implementation encoding of that target. ANY-636 Step 10 superseded
 the previous mandatory purple/indigo glass+bento appearance with deep navy,
 opaque flat dark-blue panels, thin blue borders, amber actions, compact radii
 and spacing, and Plus Jakarta Sans. Step 11 applied that language across the
-active Portal, including font loading through `next/font/google`. Canonical
-tokens remain in `docs/design-system/bundle3/tokens.json`; generated CSS and
+active Portal, including font loading through `next/font/google`. The subsequent
+ANY-636 Cyrillic coverage correction uses Manrope for headlines and body text
+across all seven locales because Plus Jakarta Sans lacks basic Cyrillic
+U+0400–U+045F. Canonical tokens remain in
+`docs/design-system/bundle3/tokens.json`; generated CSS and
 shared rules remain the implementation authority, without a parallel theme or
 the mockup's remote CSS import.
 

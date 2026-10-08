@@ -62,7 +62,8 @@ records maps to this Portal backend boundary; those records remain unchanged.
   current product; the header retains its sign-in modal.
 - The approved RU mockup's product/visual direction encoded by evolved Bundle 3
   and applied across the active Portal: navy/amber, flat dark panels, thin
-  borders, compact radii/spacing and Plus Jakarta Sans. Demo business, metrics,
+  borders, compact radii/spacing and Manrope (the ANY-636 basic Cyrillic coverage
+  correction). Demo business, metrics,
   availability and legal/privacy claims remain excluded from authority.
 - Password-based registration, sessions, logout, and the existing
   `/[locale]/forgot-password`, `/[locale]/reset-password`, and

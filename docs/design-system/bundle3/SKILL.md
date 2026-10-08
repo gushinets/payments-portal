@@ -42,7 +42,7 @@ Newly styled surfaces use semantic color tokens directly.
 
 ## Typography
 
-Plus Jakarta Sans is the target `headline` and `body` family for both public
+Manrope is the target `headline` and `body` family for both public
 and application surfaces, with a sans-serif fallback. Use weights 400–800:
 
 - Public display: 32px on mobile up to 56px on desktop, weight 800,
@@ -56,10 +56,11 @@ and application surfaces, with a sans-serif fallback. Use weights 400–800:
 
 DM Mono remains the optional `mono` family for code/technical values. Ordinary
 numbers, dates and badges use the body family; monospacing is not mandatory.
-Font loading is applied in Step 11 through the repository-approved loading
-mechanism. Declaring a token does not load a font. Do not add a remote CSS
-`@import` or copy the mockup's Google Fonts import. Preserve readable fallbacks
-while the actual font integration is pending.
+The ANY-636 Cyrillic coverage correction replaces the original Plus Jakarta
+Sans family, which lacks basic Cyrillic U+0400–U+045F. Load Manrope through
+`next/font/google` with Cyrillic and Latin subsets across all seven locales.
+Declaring a token does not load a font. Do not add a remote CSS `@import` or
+copy the mockup's Google Fonts import. Preserve readable fallbacks while loading.
 
 ## Surface levels
 

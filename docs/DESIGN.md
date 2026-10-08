@@ -8,7 +8,7 @@ implementation design system. The approved ANY-539 RU Portal mockup, supplied
 and directly inspected as a local input-only visual reference, is the product
 and visual target; Bundle 3 encodes its deep navy background,
 opaque dark-blue surfaces, thin blue borders, amber primary actions, compact
-radii/spacing and Plus Jakarta Sans typography. Public discovery, product details and the
+radii/spacing and Manrope typography. Public discovery, product details and the
 account/auth cabinet share this language. Indigo is a restrained secondary
 accent. Shadows are minimal; subtle navigation blur is optional.
 
@@ -16,9 +16,11 @@ ANY-636 Step 10 supersedes the older mandatory indigo gradients, radial glows,
 glass/bento cards, large radii and blur-heavy surfaces. Flat backgrounds,
 opaque panels and flat amber actions are normal Bundle 3 styling. This step
 recalibrated the canonical design system. Step 11 applied it across the active
-Portal and loads Plus Jakarta Sans through `next/font/google`, without the
-mockup's remote CSS import. No replacement theme or parallel token authority
-is introduced.
+Portal with Plus Jakarta Sans through `next/font/google`. The subsequent
+ANY-636 Cyrillic coverage correction replaces that family with Manrope for
+headlines and body text across all seven locales: Plus Jakarta Sans lacks
+basic Cyrillic U+0400–U+045F. Loading still uses `next/font/google`, without
+the mockup's remote CSS import or a parallel token authority.
 
 The current composition is product-first home/catalog, substantial two-column
 product screens with labeled schematic illustrations and supporting content,

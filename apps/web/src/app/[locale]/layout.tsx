@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Plus_Jakarta_Sans } from "next/font/google";
+import { Manrope } from "next/font/google";
 import { notFound } from "next/navigation";
 import { NextIntlClientProvider } from "next-intl";
 
@@ -23,8 +23,8 @@ import "../globals.css";
 import "../legal-and-footer.css";
 import "../responsive.css";
 
-const portalFont = Plus_Jakarta_Sans({
-  subsets: ["latin", "latin-ext", "cyrillic-ext"],
+const portalFont = Manrope({
+  subsets: ["latin", "latin-ext", "cyrillic", "cyrillic-ext"],
   display: "swap",
   fallback: ["sans-serif"],
   variable: "--font-portal"
