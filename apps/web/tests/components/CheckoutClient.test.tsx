@@ -63,7 +63,7 @@ describe("provider-independent auth shell", () => {
           user: {
             tenant_id: "anytoolai",
             region: "ru",
-            user_id: "user-id",
+            user_id: "11111111-1111-4111-8111-111111111111",
             email: "user@example.com",
             email_verified: true
           }
@@ -75,7 +75,7 @@ describe("provider-independent auth shell", () => {
           user: {
             tenant_id: "anytoolai",
             region: "ru",
-            user_id: "user-id",
+            user_id: "11111111-1111-4111-8111-111111111111",
             email: "user@example.com",
             email_verified: true
           }
@@ -104,7 +104,7 @@ describe("provider-independent auth shell", () => {
           user: {
             tenant_id: "anytoolai",
             region: "ru",
-            user_id: "registered-user-id",
+            user_id: "22222222-2222-4222-8222-222222222222",
             email: "new-user@example.com",
             email_verified: false
           }
@@ -116,7 +116,7 @@ describe("provider-independent auth shell", () => {
           user: {
             tenant_id: "anytoolai",
             region: "ru",
-            user_id: "registered-user-id",
+            user_id: "22222222-2222-4222-8222-222222222222",
             email: "new-user@example.com",
             email_verified: false
           }
@@ -156,7 +156,7 @@ describe("provider-independent auth shell", () => {
         user: {
           tenant_id: "anytoolai",
           region: "ru",
-          user_id: "user-id",
+          user_id: "11111111-1111-4111-8111-111111111111",
           email: "returning@example.com",
           email_verified: true
         }
@@ -183,7 +183,7 @@ describe("provider-independent auth shell", () => {
         user: {
           tenant_id: "anytoolai",
           region: "ru",
-          user_id: "user-id",
+          user_id: "11111111-1111-4111-8111-111111111111",
           email: "synced-checkout@example.com",
           email_verified: true
         }

@@ -15,6 +15,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 import tomllib
 import urllib.parse
 import urllib.request
@@ -34,6 +35,10 @@ LEGAL_DIR = ROOT / "docs" / "legal" / "ru" / "2026-07-11"
 LEGAL_MANIFEST = LEGAL_DIR / "manifest.json"
 GENERATED_DB = ROOT / "docs" / "generated" / "db-schema.md"
 GENERATED_OPENAPI = ROOT / "docs" / "generated" / "openapi.json"
+GENERATED_API_CONTRACTS = (
+    ROOT / "apps" / "web" / "src" / "generated" / "api-contracts"
+)
+API_CONTRACT_GENERATOR = ROOT / "scripts" / "generate-api-contracts.mjs"
 GENERATED_TOKENS = ROOT / "apps" / "web" / "src" / "app" / "tokens.generated.css"
 GENERATED_LEGAL_PY = ROOT / "apps" / "api" / "app" / "generated" / "legal_manifest.py"
 GENERATED_LEGAL_JSON = ROOT / "apps" / "web" / "src" / "generated" / "legal-manifest.json"
@@ -883,6 +888,87 @@ def render_openapi() -> str:
     return json.dumps(app.openapi(), ensure_ascii=False, indent=2, sort_keys=True) + "\n"
 
 
+def generated_files(directory: Path) -> dict[Path, Path]:
+    if not directory.is_dir():
+        return {}
+    return {
+        path.relative_to(directory): path
+        for path in directory.rglob("*")
+        if path.is_file()
+    }
+
+
+def sync_or_check_generated_directory(
+    expected_directory: Path,
+    committed_directory: Path,
+    *,
+    check: bool,
+) -> bool:
+    expected = generated_files(expected_directory)
+    committed = generated_files(committed_directory)
+    stale_paths = {
+        relative_path
+        for relative_path in expected.keys() | committed.keys()
+        if relative_path not in expected
+        or relative_path not in committed
+        or expected[relative_path].read_bytes()
+        != committed[relative_path].read_bytes()
+    }
+    if not stale_paths:
+        return False
+
+    if check:
+        for relative_path in sorted(stale_paths):
+            print(
+                "Generated artifact is stale: "
+                f"{(committed_directory / relative_path).relative_to(ROOT)}"
+            )
+        return True
+
+    if committed_directory.exists() and not committed_directory.is_dir():
+        committed_directory.unlink()
+    committed_directory.mkdir(parents=True, exist_ok=True)
+
+    for relative_path in committed.keys() - expected.keys():
+        committed[relative_path].unlink()
+    for relative_path, source in expected.items():
+        destination = committed_directory / relative_path
+        if not destination.exists() or source.read_bytes() != destination.read_bytes():
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, destination)
+
+    for directory in sorted(
+        (path for path in committed_directory.rglob("*") if path.is_dir()),
+        reverse=True,
+    ):
+        if not any(directory.iterdir()):
+            directory.rmdir()
+
+    print(f"Updated {committed_directory.relative_to(ROOT)}")
+    return True
+
+
+def generate_api_contracts(openapi: str, *, check: bool) -> bool:
+    with tempfile.TemporaryDirectory(prefix="anytoolai-api-contracts-") as temp:
+        temp_directory = Path(temp)
+        openapi_path = temp_directory / "openapi.json"
+        expected_directory = temp_directory / "generated"
+        openapi_path.write_text(openapi, encoding="utf-8", newline="\n")
+        run(
+            [
+                tool("node"),
+                str(API_CONTRACT_GENERATOR),
+                str(openapi_path),
+                str(expected_directory),
+            ]
+        )
+        return sync_or_check_generated_directory(
+            expected_directory,
+            GENERATED_API_CONTRACTS,
+            check=check,
+        )
+
+
 def render_tokens() -> str:
     values = json.loads((ROOT / "docs/design-system/bundle3/tokens.json").read_text(encoding="utf-8"))
     colors = values["colors"]
@@ -979,6 +1065,7 @@ def render_registration_acceptance_typescript() -> str:
 def generate_all(*, check: bool) -> bool:
     stale = generate_legal(check=check)
     locales = locale_contract()
+    openapi = render_openapi()
     stale |= write_or_check(
         GENERATED_LOCALES_TS,
         render_locales_typescript(locales),
@@ -990,7 +1077,8 @@ def generate_all(*, check: bool) -> bool:
         check=check,
     )
     stale |= write_or_check(GENERATED_DB, render_db_schema(), check=check)
-    stale |= write_or_check(GENERATED_OPENAPI, render_openapi(), check=check)
+    stale |= write_or_check(GENERATED_OPENAPI, openapi, check=check)
+    stale |= generate_api_contracts(openapi, check=check)
     stale |= write_or_check(GENERATED_TOKENS, render_tokens(), check=check)
     stale |= write_or_check(
         GENERATED_REGISTRATION_ACCEPTANCE_TS,

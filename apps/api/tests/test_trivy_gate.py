@@ -94,10 +94,7 @@ def test_gate_rejects_missing_report(tmp_path: Path) -> None:
 
     with pytest.raises(
         HarnessError,
-        match=(
-            r"Missing Trivy reports: compose\.json, api-image\.json, "
-            r"web-image\.json"
-        ),
+        match=(r"Missing Trivy reports: compose\.json, api-image\.json, " r"web-image\.json"),
     ):
         args = type("Args", (), {"action": "gate", "report_dir": str(tmp_path)})()
         cmd_trivy(args)

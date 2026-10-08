@@ -1,45 +1,26 @@
 "use client";
 
+import type {
+  EmailVerificationConfirmRequest,
+  EmailVerificationConfirmResponse,
+  EmailVerificationRequest,
+  EmailVerificationRequestResponse,
+  LoginRequest,
+  LoginResponse,
+  LogoutResponse,
+  PasswordResetConfirmRequest,
+  PasswordResetConfirmResponse,
+  PasswordResetRequest,
+  PasswordResetRequestResponse,
+  RegisterRequest,
+  RegisterResponse,
+  SessionResponse
+} from "@/generated/api-contracts/types.gen";
+import { getJson, postJson } from "./transport";
+
 export type AuthMode = "login" | "register";
 
-export type AuthUser = {
-  tenant_id: string;
-  region: string;
-  user_id: string;
-  email: string;
-  email_verified: boolean;
-};
-
-export type AuthResponse = {
-  status: "registered" | "authenticated";
-  token: string;
-  user: AuthUser;
-};
-
-export type AuthSessionResponse = {
-  authenticated: true;
-  user: AuthUser;
-};
-
-export type LogoutResponse = {
-  status: "logged_out";
-};
-
-export type PasswordResetRequestResponse = {
-  status: "accepted";
-};
-
-export type PasswordResetConfirmResponse = {
-  status: "password_reset";
-};
-
-export type EmailVerificationRequestResponse = {
-  status: "accepted";
-};
-
-export type EmailVerificationConfirmResponse = {
-  status: "verified";
-};
+export type AuthResponse = RegisterResponse | LoginResponse;
 
 export type SubmitAuthValues = {
   mode: AuthMode;
@@ -53,334 +34,85 @@ export type SubmitAuthOptions = {
   languageTag: string;
 };
 
-export type PasswordResetRequestValues = {
-  email: string;
-};
-
 export type PasswordResetRequestOptions = {
   languageTag: string;
 };
 
-export type PasswordResetConfirmValues = {
-  token: string;
-  password: string;
-};
-
-export type ApiErrorDetail = unknown;
-
-export type ApiErrorEnvelope = {
-  detail: ApiErrorDetail;
-};
-
-export class ApiError extends Error {
-  status: number;
-  detail: ApiErrorDetail;
-
-  constructor(status: number, detail: ApiErrorDetail, rawBody: string) {
-    super(`${status}:${rawBody}`);
-    this.status = status;
-    this.detail = detail;
-  }
-}
-
-export class ApiContractError extends Error {
-  constructor() {
-    super("invalid_api_response");
-    this.name = "ApiContractError";
-  }
-}
-
-export function apiErrorCode(error: unknown): string | null {
-  if (!(error instanceof ApiError) || !isRecord(error.detail)) {
-    return null;
-  }
-
-  return typeof error.detail.code === "string" ? error.detail.code : null;
-}
+// Preserve existing auth consumers while transport owns these shared error facts.
+export {
+  ApiContractError,
+  ApiError,
+  apiErrorCode,
+  decodeApiErrorEnvelope,
+  requestTimeoutMs,
+  resolveApiBase
+} from "./transport";
+export type { ApiErrorDetail, ApiErrorEnvelope } from "./transport";
 
 export const sessionStorageKey = "anytoolai_session_token_v1";
 export const sessionChangedEvent = "anytoolai_session_changed";
-
-const configuredApiBase =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
-export const requestTimeoutMs = 5000;
-
-type JsonDecoder<T> = (payload: unknown) => T;
-
-export function resolveApiBase(): string {
-  if (typeof window === "undefined") {
-    return configuredApiBase;
-  }
-
-  try {
-    const url = new URL(configuredApiBase);
-    const isLocalApiHost =
-      url.hostname === "localhost" || url.hostname === "127.0.0.1";
-    const isLocalBrowserHost =
-      window.location.hostname === "localhost" ||
-      window.location.hostname === "127.0.0.1";
-
-    if (isLocalApiHost && !isLocalBrowserHost) {
-      url.hostname = window.location.hostname;
-    }
-
-    return url.toString().replace(/\/$/, "");
-  } catch {
-    return configuredApiBase.replace(/\/$/, "");
-  }
-}
-
-async function makeApiError(response: Response): Promise<ApiError> {
-  const rawBody = await response.text();
-  let detail: ApiErrorDetail = rawBody;
-
-  try {
-    const payload: unknown = JSON.parse(rawBody);
-    detail = decodeApiErrorEnvelope(payload).detail ?? rawBody;
-  } catch {
-    detail = rawBody;
-  }
-
-  return new ApiError(response.status, detail, rawBody);
-}
-
-async function decodeSuccessfulResponse<T>(
-  response: Response,
-  decoder: JsonDecoder<T>
-): Promise<T> {
-  let payload: unknown;
-  try {
-    payload = await response.json();
-  } catch (error) {
-    if (error instanceof SyntaxError) {
-      throw new ApiContractError();
-    }
-    throw error;
-  }
-
-  try {
-    return decoder(payload);
-  } catch {
-    throw new ApiContractError();
-  }
-}
-
-export async function postJson<T>(
-  path: string,
-  body: unknown,
-  decoder: JsonDecoder<T>,
-  token?: string,
-  extraHeaders?: Readonly<Record<string, string>>
-): Promise<T> {
-  const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), requestTimeoutMs);
-  const response = await fetch(`${resolveApiBase()}${path}`, {
-    method: "POST",
-    headers: {
-      ...extraHeaders,
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {})
-    },
-    body: JSON.stringify(body),
-    signal: controller.signal
-  }).finally(() => window.clearTimeout(timeoutId));
-
-  if (!response.ok) {
-    throw await makeApiError(response);
-  }
-
-  return decodeSuccessfulResponse(response, decoder);
-}
-
-export async function getJson<T>(
-  path: string,
-  token: string,
-  decoder: JsonDecoder<T>
-): Promise<T> {
-  const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), requestTimeoutMs);
-
-  try {
-    const response = await fetch(`${resolveApiBase()}${path}`, {
-      headers: {
-        Authorization: `Bearer ${token}`
-      },
-      signal: controller.signal
-    });
-
-    if (!response.ok) {
-      throw await makeApiError(response);
-    }
-
-    return await decodeSuccessfulResponse(response, decoder);
-  } finally {
-    window.clearTimeout(timeoutId);
-  }
-}
-
-export function decodeRegisterResponse(payload: unknown): AuthResponse {
-  return decodeAuthResponse(payload, "registered");
-}
-
-export function decodeLoginResponse(payload: unknown): AuthResponse {
-  return decodeAuthResponse(payload, "authenticated");
-}
-
-export function decodeAuthSessionResponse(payload: unknown): AuthSessionResponse {
-  if (!isRecord(payload)) {
-    throw new Error("invalid_session_response");
-  }
-
-  const authenticated = payload.authenticated;
-  const user = payload.user;
-
-  if (authenticated !== true || !isAuthUser(user)) {
-    throw new Error("invalid_session_response");
-  }
-
-  return {
-    authenticated,
-    user
-  };
-}
-
-export function decodeLogoutResponse(payload: unknown): LogoutResponse {
-  return decodeStatusResponse(payload, "logged_out", "invalid_logout_response");
-}
-
-export function decodePasswordResetRequestResponse(
-  payload: unknown
-): PasswordResetRequestResponse {
-  return decodeStatusResponse(
-    payload,
-    "accepted",
-    "invalid_password_reset_request_response"
-  );
-}
-
-export function decodePasswordResetConfirmResponse(
-  payload: unknown
-): PasswordResetConfirmResponse {
-  return decodeStatusResponse(
-    payload,
-    "password_reset",
-    "invalid_password_reset_confirm_response"
-  );
-}
-
-export function decodeEmailVerificationRequestResponse(
-  payload: unknown
-): EmailVerificationRequestResponse {
-  return decodeStatusResponse(
-    payload,
-    "accepted",
-    "invalid_email_verification_request_response"
-  );
-}
-
-export function decodeEmailVerificationConfirmResponse(
-  payload: unknown
-): EmailVerificationConfirmResponse {
-  return decodeStatusResponse(
-    payload,
-    "verified",
-    "invalid_email_verification_confirm_response"
-  );
-}
-
-export function decodeApiErrorEnvelope(payload: unknown): ApiErrorEnvelope {
-  if (!isRecord(payload) || !("detail" in payload)) {
-    throw new Error("invalid_api_error_response");
-  }
-
-  return { detail: payload.detail };
-}
-
-function decodeAuthResponse(
-  payload: unknown,
-  expectedStatus: AuthResponse["status"]
-): AuthResponse {
-  if (!isRecord(payload)) {
-    throw new Error("invalid_auth_response");
-  }
-
-  const status = payload.status;
-  const token = payload.token;
-  const user = payload.user;
-
-  if (
-    status !== expectedStatus ||
-    typeof token !== "string" ||
-    !isAuthUser(user)
-  ) {
-    throw new Error("invalid_auth_response");
-  }
-
-  return { status: expectedStatus, token, user };
-}
-
-function decodeStatusResponse<Status extends string>(
-  payload: unknown,
-  expectedStatus: Status,
-  errorCode: string
-): { status: Status } {
-  if (!isRecord(payload) || payload.status !== expectedStatus) {
-    throw new Error(errorCode);
-  }
-
-  return { status: expectedStatus };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isAuthUser(value: unknown): value is AuthUser {
-  return (
-    isRecord(value) &&
-    typeof value.tenant_id === "string" &&
-    typeof value.region === "string" &&
-    typeof value.user_id === "string" &&
-    typeof value.email === "string" &&
-    typeof value.email_verified === "boolean"
-  );
-}
 
 export async function submitAuth(
   values: SubmitAuthValues,
   options: SubmitAuthOptions
 ): Promise<AuthResponse> {
-  return values.mode === "register"
-    ? postJson(
-        "/api/auth/register",
-        {
-          email: values.email,
-          password: values.password,
-          personal_consent: values.personalConsent,
-          offer_consent: values.offerConsent
-        },
-        decodeRegisterResponse,
-        undefined,
-        { "Accept-Language": options.languageTag }
-      )
-    : postJson(
-        "/api/auth/login",
-        {
-          email: values.email,
-          password: values.password
-        },
-        decodeLoginResponse
-      );
+  if (values.mode === "register") {
+    const request: RegisterRequest = {
+      email: values.email,
+      password: values.password,
+      personal_consent: values.personalConsent,
+      offer_consent: values.offerConsent
+    };
+    return postJson<RegisterResponse>(
+      "/api/auth/register",
+      request,
+      "RegisterResponse",
+      undefined,
+      { "Accept-Language": options.languageTag }
+    );
+  }
+
+  const request: LoginRequest = {
+    email: values.email,
+    password: values.password
+  };
+  return postJson<LoginResponse>(
+    "/api/auth/login",
+    request,
+    "LoginResponse"
+  );
+}
+
+export async function getSession(
+  sessionToken: string
+): Promise<SessionResponse> {
+  return getJson<SessionResponse>(
+    "/api/auth/session",
+    sessionToken,
+    "SessionResponse"
+  );
+}
+
+export async function logoutSession(
+  sessionToken: string
+): Promise<LogoutResponse> {
+  return postJson<LogoutResponse>(
+    "/api/auth/logout",
+    {},
+    "LogoutResponse",
+    sessionToken
+  );
 }
 
 export async function requestEmailVerification(
   sessionToken: string,
   languageTag: string
 ): Promise<EmailVerificationRequestResponse> {
-  return postJson(
+  const request: EmailVerificationRequest = {};
+  return postJson<EmailVerificationRequestResponse>(
     "/api/auth/email-verification/request",
-    {},
-    decodeEmailVerificationRequestResponse,
+    request,
+    "EmailVerificationRequestResponse",
     sessionToken,
     { "Accept-Language": languageTag }
   );
@@ -390,36 +122,39 @@ export async function confirmEmailVerification(
   sessionToken: string,
   token: string
 ): Promise<EmailVerificationConfirmResponse> {
-  return postJson(
+  const request: EmailVerificationConfirmRequest = { token };
+  return postJson<EmailVerificationConfirmResponse>(
     "/api/auth/email-verification/confirm",
-    { token },
-    decodeEmailVerificationConfirmResponse,
+    request,
+    "EmailVerificationConfirmResponse",
     sessionToken
   );
 }
 
 export async function requestPasswordReset(
-  values: PasswordResetRequestValues,
+  values: PasswordResetRequest,
   options: PasswordResetRequestOptions
 ): Promise<PasswordResetRequestResponse> {
-  return postJson(
+  const request: PasswordResetRequest = { email: values.email };
+  return postJson<PasswordResetRequestResponse>(
     "/api/auth/password-reset/request",
-    { email: values.email },
-    decodePasswordResetRequestResponse,
+    request,
+    "PasswordResetRequestResponse",
     undefined,
     { "Accept-Language": options.languageTag }
   );
 }
 
 export async function confirmPasswordReset(
-  values: PasswordResetConfirmValues
+  values: PasswordResetConfirmRequest
 ): Promise<PasswordResetConfirmResponse> {
-  return postJson(
+  const request: PasswordResetConfirmRequest = {
+    token: values.token,
+    password: values.password
+  };
+  return postJson<PasswordResetConfirmResponse>(
     "/api/auth/password-reset/confirm",
-    {
-      token: values.token,
-      password: values.password
-    },
-    decodePasswordResetConfirmResponse
+    request,
+    "PasswordResetConfirmResponse"
   );
 }

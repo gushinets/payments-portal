@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ApiError, apiErrorCode } from "@/shared/api/auth";
 
 function apiError(status: number, detail: unknown) {
-  return new ApiError(status, detail, JSON.stringify({ detail }));
+  return new ApiError(status, detail);
 }
 
 describe("API error classification", () => {

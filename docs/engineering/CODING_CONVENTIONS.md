@@ -37,7 +37,9 @@ is no legacy untyped-route escape list.
 
 Frontend ESLint rejects direct type assertions on `response.json()` and
 `JSON.parse(...)` results in production `src/`. Boundary values remain
-`unknown` until a runtime decoder validates them.
+`unknown` when read. Successful same-service HTTP JSON is trusted only in the
+shared API transport boundary described below; other untrusted inputs require
+boundary validation.
 
 ## Common
 
@@ -188,15 +190,17 @@ Frontend ESLint rejects direct type assertions on `response.json()` and
 
 ## Web / TypeScript
 
-1. `response.json()`, `JSON.parse`, storage, and query parameters are
-   `unknown` until a decoder succeeds.
-2. `as SomeResponse` is not validation. A type assertion inside a decoder is
-   not a decoder. The decoder must throw or otherwise fail on mismatch.
-3. Shared HTTP helpers accept a decoder or return `unknown`. A generic type
-   parameter without a decoder is forbidden. Keep existing auth-token
-   parameters; do not drop them to insert the decoder.
-4. Place API types in `shared/api` or the feature API module. A component must
-   not declare its own copy of a response type.
+1. Read `response.json()` and `JSON.parse` results as `unknown`. Storage and
+   query parameters require boundary validation before typed use.
+2. `as SomeResponse` is not runtime validation. Trust successful JSON from our
+   own FastAPI service once inside the documented shared API transport helper;
+   do not cast API JSON in features/components.
+3. Endpoint adapters reuse `getJson<T>` / `postJson<T>` from
+   `shared/api/transport.ts` with generated response types above that single
+   trust assertion. Keep existing auth-token parameters and malformed
+   successful JSON error handling; do not add browser runtime wire schemas.
+4. Import HTTP wire DTOs from generated contracts. A component must not declare
+   its own copy of a backend response type.
 5. Model UI states as a union or `as const` vocabulary and handle them
    exhaustively.
 6. Inspect errors through `ApiError.status` and `detail.code`, never
@@ -205,6 +209,69 @@ Frontend ESLint rejects direct type assertions on `response.json()` and
    unit in the name.
 8. Do not add a schema library or OpenAPI client generator for a single
    contract.
+
+### HTTP API contract boundary
+
+For a value crossing the backend/frontend HTTP boundary, use the repository
+authority chain:
+
+```text
+FastAPI/Pydantic
+  → app.openapi()
+  → docs/generated/openapi.json
+  → generated TypeScript wire contracts in apps/web/src/generated/api-contracts/
+  → shared API transport trust boundary
+  → endpoint adapters
+  → features/UI and view state
+```
+
+Backend owns runtime request/response validation, wire contracts, and OpenAPI.
+Generated TypeScript provides compile-time ownership; it does not validate
+JSON. The explicit same-service trust assertion lives only in
+the private `decodeSuccessfulResponse<T>` in `shared/api/transport.ts`; no
+second frontend runtime schema authority exists. Repository generation owns
+the generated frontend TypeScript wire contracts and freshness
+checking; the canonical commands are `npm run generate` and
+`npm run generate:check`, and the generated API contracts live under
+`apps/web/src/generated/api-contracts/`. Frontend owns transport, forms, view
+models, presentation state, derived UI types, and endpoint adapters; it must
+not independently redeclare backend DTO fields.
+
+This boundary applies to HTTP API contracts, not every value shared by Python
+and TypeScript. Route locales and mappings remain sourced by
+`config/locales.json`, legal acceptance text remains sourced by the legal
+source, and other shared non-HTTP constants may retain their own canonical
+generation path. API statuses, enums, and values belong to the generated
+Pydantic/OpenAPI contract only when they cross HTTP; frontend-only UI/view
+state remains frontend-owned.
+
+For each future Portal-owned, web-consumed API: define backend Pydantic
+request/response models, expose durable named OpenAPI components, run
+repository generation, consume the generated TypeScript contract, use the shared
+API transport trust boundary, and keep form/UI/view state local.
+Do not mirror External Billing commercial catalog/pricing/sellability truth,
+future paid-access authority, or Platform Kernel usage/quota truth in the
+Portal. Stop and obtain the owning architecture/API decision when the backend
+API is missing, the OpenAPI schema is unnamed or unsuitable, generation cannot
+faithfully generate the required TypeScript shape, the frontend would need to
+redefine wire meaning, the data belongs to External Billing or Platform Kernel, or a
+transport/auth redesign is required.
+
+For the migrated auth surface, successful JSON is trusted once in shared
+transport. Invalid JSON syntax still becomes `ApiContractError`; structural
+validation remains backend-owned. `ApiError.detail` remains `unknown`, and
+`apiErrorCode()` extracts only stable machine codes used by current UI, and no universal generated error model
+is implied. The migrated production surface is registration, login, session,
+logout, password reset, email verification, and the `email_verified`
+session/user fact; account uses auth session/logout contracts, and no current
+legal endpoint DTO needed migration because the legal frontend has no parallel
+handwritten backend API wire DTO consumer. Web Sentry reporting remains
+minimal and privacy-preserving: uncaught failures may reach the separate
+`payment-portal-web` project when configured, handled contract failures may use
+the sanitized reporter, expected application outcomes are not blanket-reported,
+and events contain no payloads, tokens, identity, query/fragment data, or raw
+error data. Exception names are normalized to `Error`; stack frames retain
+only numeric/boolean location metadata, never free-form identifiers.
 
 ### Web locale routing and localization
 

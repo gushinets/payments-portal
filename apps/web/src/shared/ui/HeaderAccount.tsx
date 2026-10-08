@@ -3,15 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import { LogIn, UserRound } from "lucide-react";
 import { useTranslations } from "next-intl";
+import type { SessionUserResponse } from "@/generated/api-contracts/types.gen";
 import { Link } from "@/i18n/navigation";
 import {
   ApiError,
-  decodeAuthSessionResponse,
-  getJson,
+  getSession,
   sessionChangedEvent,
   sessionStorageKey,
-  submitAuth,
-  type AuthUser
+  submitAuth
 } from "@/shared/api/auth";
 import { AuthForm, AuthFormSubmitValues, AuthMode } from "./AuthForm";
 import { EmailVerificationPending } from "./EmailVerificationPending";
@@ -21,8 +20,9 @@ const telegramLoginUrl = process.env.NEXT_PUBLIC_TELEGRAM_LOGIN_URL ?? "";
 
 export function HeaderAccount({ languageTag }: { languageTag: string }) {
   const t = useTranslations("Auth");
-  const [sessionUser, setSessionUser] = useState<AuthUser | null>(null);
-  const sessionUserRef = useRef<AuthUser | null>(null);
+  const [sessionUser, setSessionUser] =
+    useState<SessionUserResponse | null>(null);
+  const sessionUserRef = useRef<SessionUserResponse | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [sessionLoadError, setSessionLoadError] = useState(false);
   const [sessionLoadAttempt, setSessionLoadAttempt] = useState(0);
@@ -47,11 +47,7 @@ export function HeaderAccount({ languageTag }: { languageTag: string }) {
       }
 
       try {
-        const payload = await getJson(
-          "/api/auth/session",
-          token,
-          decodeAuthSessionResponse
-        );
+        const payload = await getSession(token);
         if (
           !cancelled &&
           window.localStorage.getItem(sessionStorageKey) === token &&

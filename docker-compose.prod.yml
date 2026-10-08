@@ -106,6 +106,7 @@ services:
       args:
         APP_PUBLIC_BASE_URL: ${APP_PUBLIC_BASE_URL:?APP_PUBLIC_BASE_URL is required}
         NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:?NEXT_PUBLIC_API_BASE_URL is required}
+        NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-}
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -116,6 +117,7 @@ services:
     environment:
       APP_PUBLIC_BASE_URL: ${APP_PUBLIC_BASE_URL:?APP_PUBLIC_BASE_URL is required}
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:?NEXT_PUBLIC_API_BASE_URL is required}
+      NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-}
     networks:
       - edge
 

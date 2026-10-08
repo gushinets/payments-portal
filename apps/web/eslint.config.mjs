@@ -10,7 +10,15 @@ const sharedApiMachineLiteralAllowlist = new Set([
   "ApiContractError",
   "Authorization",
   "Content-Type",
+  "EmailVerificationConfirmResponse",
+  "EmailVerificationRequestResponse",
+  "LoginResponse",
+  "LogoutResponse",
   "POST",
+  "PasswordResetConfirmResponse",
+  "PasswordResetRequestResponse",
+  "RegisterResponse",
+  "SessionResponse",
   "accepted",
   "authenticated",
   "boolean",
@@ -24,7 +32,6 @@ const sharedApiMachineLiteralAllowlist = new Set([
   "string",
   "undefined",
   "verified",
-  "${status}:${rawBody}",
   "${resolveApiBase()}${path}",
   "Bearer ${token}"
 ]);
@@ -210,37 +217,37 @@ const eslintConfig = defineConfig([
           selector:
             "TSAsExpression > CallExpression[callee.object.name='JSON'][callee.property.name='parse']",
           message:
-            "JSON.parse results must remain unknown until a runtime decoder validates them."
+            "JSON.parse results must be read as unknown; HTTP contract trust belongs in the shared API transport."
         },
         {
           selector:
             "TSAsExpression > AwaitExpression > CallExpression[callee.property.name='json']",
           message:
-            "response.json() results must remain unknown until a runtime decoder validates them."
+            "response.json() results must be read as unknown; HTTP contract trust belongs in the shared API transport."
         },
         {
           selector:
             "TSAsExpression > CallExpression[callee.property.name='json']",
           message:
-            "response.json() results must remain unknown until a runtime decoder validates them."
+            "response.json() results must be read as unknown; HTTP contract trust belongs in the shared API transport."
         },
         {
           selector:
             "TSTypeAssertion > CallExpression[callee.object.name='JSON'][callee.property.name='parse']",
           message:
-            "JSON.parse results must remain unknown until a runtime decoder validates them."
+            "JSON.parse results must be read as unknown; HTTP contract trust belongs in the shared API transport."
         },
         {
           selector:
             "TSTypeAssertion > AwaitExpression > CallExpression[callee.property.name='json']",
           message:
-            "response.json() results must remain unknown until a runtime decoder validates them."
+            "response.json() results must be read as unknown; HTTP contract trust belongs in the shared API transport."
         },
         {
           selector:
             "TSTypeAssertion > CallExpression[callee.property.name='json']",
           message:
-            "response.json() results must remain unknown until a runtime decoder validates them."
+            "response.json() results must be read as unknown; HTTP contract trust belongs in the shared API transport."
         }
       ]
     }
