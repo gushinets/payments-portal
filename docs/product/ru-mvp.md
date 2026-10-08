@@ -12,9 +12,10 @@ pre-production and provider-independent. External Billing/provider runtime,
 commercial catalog, purchase/Widget, confirmed paid-access projection, and
 actual usage/quota integration are not implemented.
 
-This handoff describes the current implementation after Steps 6–12. Step 13
-documentation is prepared; final verification and human screenshot/intent
-review remain pending before ANY-636 can close or parent ANY-504 Step 6 begins.
+This handoff describes the completed ANY-636 implementation through Step 13.
+All thirteen steps are marked `done`, and the plan was moved to `completed` on
+2026-10-08 at the user's explicit instruction. The completion record preserves
+the historical verification evidence and the scope of the archival checks.
 
 Only the `ru` contour is implemented. Ordinary UI routes support `en`, `fr`,
 `it`, `de`, `es`, `ru`, and `pt`, with `ru` as the default locale. All use the
@@ -260,8 +261,9 @@ The first final-review question is: **does the system now look and behave like
 the RU AnyToolAI Portal expected by ANY-539/ANY-504 4F, not merely pass technical
 route/boundary checks?**
 
-Run the complete manual verification commands and human acceptance checklist
-in [ANY-636 Step 13](../exec-plans/active/ANY-636-implementation-plan.md#step-13--correct-the-4f-handoff-re-run-final-review-and-close-any-636).
+The manual verification commands and human acceptance checklist are retained
+in the completed [ANY-636 Step 13](../exec-plans/completed/ANY-636-implementation-plan.md#step-13--correct-the-4f-handoff-re-run-final-review-and-close-any-636)
+for traceability and future regression checks.
 The ordinary Playwright configuration excludes `react-runtime.spec.ts`, even
 when named in the focused route command. Also run the existing canonical
 `npm run test:e2e:react-runtime` command to cover that required surface.
@@ -283,10 +285,12 @@ screenshots use synthetic auth fixtures; they prove composition, not commercial
 or paid-access facts. React runtime evidence uses the separate
 `.harness/playwright-react-runtime-results` and report directories.
 
-Step 13 reviewed current source and existing representative screenshots and
-aligned this documentation; it ran no verification or formatting commands.
-Final command results, current desktop/mobile screenshot comparison, and human
-intent/DoD acceptance must still be recorded in the plan before marking Step 13
-and ANY-636 done. Compare `/ru`, `/ru/products`, both product pages and
+The original Step 13 documentation pass reviewed current source and existing
+representative screenshots and aligned this documentation; that pass ran no
+verification or formatting commands. The plan and all steps were subsequently
+marked `done` at the user's instruction. See the completion record for checks
+performed during archival; it does not assert new browser results or an
+undocumented human screenshot comparison. For future visual regression review,
+compare `/ru`, `/ru/products`, both product pages and
 authenticated `/ru/account` with the input-only mockup; confirm the evolved
 navy/amber/flat/compact language, honest facts and durable integration slots.

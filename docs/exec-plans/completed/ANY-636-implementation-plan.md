@@ -10,12 +10,35 @@
 | Original planning baseline | `3e53f1cc7756cc6825b05b4fcbd580479a196a64` — historical ANY-541 baseline used by initial ANY-636 Steps 1–5 |
 | Required predecessor baseline for continuation | final/current `ANY-541` / PR `#129`; planning observation: `bc80eaaee3b0c6051548ff446960791636216436` |
 | Observed ANY-636 head before correction | `af0ea815cf12d2440bdad6a36d8dbf396e5d9950`; branch was `behind 2 / ahead 6` versus `ANY-541` |
-| Overall status | `in progress` — current repository includes completed Steps 1–12; Step 13 documentation/handoff prepared, complete final verification and human screenshot/intent acceptance pending |
-| Initial Steps 1–5 completed | `2026-10-06`; historical initial handoff, superseded by the corrected product-centric surface; final Step 13 acceptance pending |
-| Execution order | Preserve the current repository baseline and completed Steps 1–12 → Step 13 final verification and human acceptance → close ANY-636; do not re-execute predecessor synchronization or earlier steps |
+| Overall status | `done` — all thirteen steps complete; closed and archived on 2026-10-08 at the user's explicit instruction |
+| Initial Steps 1–5 completed | `2026-10-06`; historical initial handoff, superseded by the corrected product-centric surface |
+| Execution order | Complete — Steps 1–13 are `done`; retained instructions below are implementation history, not pending work |
 | Steps / commits | 5 completed baseline steps + 1 predecessor-synchronization step + 7 product/visual completion steps |
 | Blocks | `ANY-634 — Step 5. LBX Phase 0 provider research` |
 | Backend/API/schema work expected | No new backend API or schema. Step 6 does update inherited frontend generated-contract/transport mechanics to match final ANY-541; later API/schema work remains out of 4F unless a material contradiction forces replanning |
+
+## Completion Record — 2026-10-08
+
+- All thirteen steps are `done`, including the final documentation/handoff
+  committed as `2e53f00` on branch `ANY-636`.
+- The user explicitly requested completion of this plan and every step,
+  archival under `docs/exec-plans/completed`, and a commit pushed to the remote
+  repository. This record captures that closure instruction.
+- Earlier implementation instructions, prompts, and verification observations
+  below are retained as history. They do not reopen completed steps or assert
+  fresh verification results.
+- Archival-update verification used the existing `.venv/bin` on `PATH`:
+  `npm run docs:check`, `npm run typecheck:web`, and `git diff --check` passed.
+  All thirteen step statuses were checked as `done`, with no active copy left.
+- `npm run check` passed documentation, generated-artifact freshness,
+  architecture, and Python lint/format checks, then stopped at
+  `apps/web/tests/typescript-tooling.test.mjs` in the web boundary suite.
+  The isolated test also failed; the direct web typecheck passed and reported
+  TypeScript `7.0.2`. Later component/lint/API/build/PostgreSQL checks were not
+  reached. Browser and React runtime suites were not run for this archival
+  documentation change. The failed gate is recorded, not claimed as passing.
+- Parent ANY-504 integrations and Phase 0 gates remain outside this completed
+  provider-independent frontend plan.
 
 ## Initial Completion Evidence — superseded as final 4F completion
 
@@ -98,9 +121,12 @@ Any historical Steps 1–5 wording below that refers to generated Zod runtime
 validation or frontend structural response validation is superseded by this
 section and by Step 6. Do not use that historical 4D mechanism for new work.
 
-## How to Use This File
+## Historical Execution Instructions
 
-### Current use — Step 6 architecture sync, then corrective Steps 7–13
+These instructions are retained for traceability. All thirteen steps are now
+`done`; this completed plan must not be treated as an active execution queue.
+
+### Original use — Step 6 architecture sync, then corrective Steps 7–13
 
 1. Continue from the existing `ANY-636` branch containing completed initial Steps 1–5; do not reset or discard those commits. Step 6 must first merge the current/final `ANY-541` predecessor into this branch and reconcile the changed HTTP contract boundary.
 2. Keep `portal-ru-anytools.html` readable for Steps 7–13. Step 6 does not use the mockup. Recommended: place the HTML beside this plan and treat it as an input-only untracked reference.
@@ -119,7 +145,7 @@ section and by Step 6. Do not use that historical 4D mechanism for new work.
 
 The original execution began from `ANY-541` / PR #129 at planning baseline commit `3e53f1cc7756cc6825b05b4fcbd580479a196a64`. Those branch-creation instructions are historical only and must not be followed again except for the explicit predecessor merge required by Step 6.
 
-### Continuation instructions for Steps 6–13
+### Historical continuation instructions for Steps 6–13
 
 1. **Do not recreate or reset the `ANY-636` branch.** Step 6 merges the current/final `ANY-541` branch into the existing 636 history and resolves only the predecessor drift.
 2. Step 6 must finish with the final ANY-541 generated-TypeScript/shared-transport trust boundary actually present in `ANY-636`; no Zod response-validation path may remain.
@@ -366,7 +392,8 @@ The user-approved Step 11 topology change supersedes the original blanket prohib
 
 # Step 1 — Build the Public Portal and Product Discovery Surface
 
-**Status:** `done`  
+**Status:** `done`
+
 **Recommended model:** `Luna`
 
 **Goal**  
@@ -546,7 +573,8 @@ ANY-636 build portal public product discovery
 
 # Step 2 — Make `/account` the Direct Auth Entry and Retire `/auth-checkout`
 
-**Status:** `done`  
+**Status:** `done`
+
 **Recommended model:** `Sol`
 
 **Goal**  
@@ -756,7 +784,8 @@ ANY-636 consolidate authentication on account route
 
 # Step 3 — Build the Honest RU Account Cabinet and Retire `/payment-result`
 
-**Status:** `done`  
+**Status:** `done`
+
 **Recommended model:** `Luna`
 
 **Goal**  
@@ -932,7 +961,8 @@ ANY-636 build honest portal cabinet states
 
 # Step 4 — Add Focused Portal Route, Boundary, Mobile and Accessibility Coverage
 
-**Status:** `done`  
+**Status:** `done`
+
 **Recommended model:** `Luna`
 
 **Goal**  
@@ -1135,7 +1165,8 @@ ANY-636 cover portal routes states and boundaries
 
 # Step 5 — Align Current Authority Docs and Publish the 4F Handoff
 
-**Status:** `done`  
+**Status:** `done`
+
 **Recommended model:** `Sol`
 
 **Goal**  
@@ -1472,7 +1503,8 @@ The following interpretation is fixed for Steps 7–13:
 
 > **ANY-636 internal Step 6 — predecessor reconciliation, not parent ANY-504 Step 6.**
 
-**Status:** `pending`  
+**Status:** `done`
+
 **Recommended model:** `Sol`
 
 **Goal**  
@@ -1782,7 +1814,8 @@ ANY-636 sync final ANY-541 API trust boundary
 
 > **ANY-636 internal Step 7 — not parent ANY-504 Step 7.**
 
-**Status:** `pending`  
+**Status:** `done`
+
 **Recommended model:** `Sol`
 
 **Goal**  
@@ -1951,7 +1984,8 @@ ANY-636 align public portal with RU product direction
 
 > **ANY-636 internal Step 8 — not parent ANY-504 Step 8.**
 
-**Status:** `pending`  
+**Status:** `done`
+
 **Recommended model:** `Sol`
 
 **Goal**  
@@ -2092,7 +2126,8 @@ ANY-636 build RU product detail experience
 
 > **ANY-636 internal Step 9 — not parent ANY-504 Step 9.**
 
-**Status:** `pending`  
+**Status:** `done`
+
 **Recommended model:** `Sol`
 
 **Goal**  
@@ -2254,7 +2289,8 @@ ANY-636 make portal cabinet product centric
 
 > **ANY-636 internal Step 10 — design-system authority correction, not parent ANY-504 Step 10.**
 
-**Status:** `pending`  
+**Status:** `done`
+
 **Recommended model:** `Sol`
 
 **Goal**  
@@ -2444,7 +2480,8 @@ ANY-636 align Bundle 3 with RU portal visual language
 
 > **ANY-636 internal Step 11 — visual implementation, not parent ANY-504 Step 11.**
 
-**Status:** `pending`  
+**Status:** `done`
+
 **Recommended model:** `Sol`
 
 **Goal**  
@@ -2634,7 +2671,8 @@ ANY-636 apply RU portal visual system
 
 > **ANY-636 internal Step 12 — final 4F visual/product acceptance evidence.**
 
-**Status:** `pending`  
+**Status:** `done`
+
 **Recommended model:** `Sol`
 
 **Goal**  
@@ -2798,7 +2836,8 @@ ANY-636 prove RU portal visual and product experience
 
 > **ANY-636 internal Step 13 — final handoff/closure, not a parent ANY-504 step.**
 
-**Status:** `in progress` — documentation/handoff prepared on 2026-10-08; final verification and human screenshot/intent acceptance pending  
+**Status:** `done` — documentation/handoff committed as `2e53f00`; closed on 2026-10-08 at the user's explicit instruction
+
 **Recommended model:** `Sol`
 
 **Goal**  
@@ -2944,7 +2983,7 @@ Then perform the human acceptance review:
 - Steps 6–10 of the parent program can integrate into stable existing UI slots.
 - Documentation, tests, screenshots and human review all describe/prove the same as-built Portal.
 
-**Prepared implementation evidence — 2026-10-08**
+**Historical prepared implementation evidence — 2026-10-08, before closure**
 
 - Execution baseline: the current repository and completed Steps 1–12, as
   directed for this selected step. Earlier implementation and the final
@@ -2985,7 +3024,7 @@ Then perform the human acceptance review:
   formatting were run during Step 13 editing. No files were staged and no
   commits or pushes were created.
 
-**Final verification / intent-review gate — pending**
+**Historical final verification / intent-review gate — recorded before closure**
 
 The first review question remains: **does the system now look and behave like
 the RU AnyToolAI Portal expected by ANY-539/ANY-504 4F, not merely pass technical
@@ -3004,14 +3043,11 @@ runtime surface:
 npm run test:e2e:react-runtime
 ```
 
-Closure is pending: review the documentation diff, run the entire manual
-verification surface plus the dedicated React runtime command, and record
-command outcomes, current screenshot/report locations and human intent/DoD
-acceptance. Do not treat existing artifacts or previous-step verification as
-the final Step 13 gate. If the human comparison finds a material product/visual
-gap, record it here instead of marking completion. Only after all gates pass
-may Step 13 and the overview become `done`; parent ANY-504 Step 6 remains
-outside this implementation.
+The user explicitly instructed that this plan and every step be marked `done`
+and moved to `completed` on 2026-10-08. That instruction closes the execution
+queue. The historical verification requirements and observations above remain
+for traceability; closure does not assert new browser results or an undocumented
+human screenshot comparison. Parent ANY-504 Step 6 remains outside this plan.
 
 **Proposed commit**  
 

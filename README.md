@@ -17,8 +17,9 @@ work. Platform Kernel code is maintained in the separate
 [anytoolai-platform](https://github.com/gushinets/anytoolai-platform) repository.
 
 The repository remains pre-production and provider-independent on the current
-ANY-636 4F surface. Final verification and human screenshot/intent review are
-pending before ANY-636 closure. External Billing/provider runtime, commercial
+ANY-636 4F surface. All thirteen ANY-636 steps are marked `done` in the
+[completed plan](docs/exec-plans/completed/ANY-636-implementation-plan.md).
+External Billing/provider runtime, commercial
 catalog, purchase/Widget, confirmed paid access, and actual usage/quota
 integration are not implemented. There are no production direct-provider
 subscribers or subscriptions to migrate. The fifteen target billing tables

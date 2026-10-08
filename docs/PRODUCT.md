@@ -100,8 +100,9 @@ trust boundary under ANY-541.
   delivery in Step 9; actual usage/quota integration in Step 10. These are
   deferred ownership boundaries, not implemented runtime. They populate the
   existing pricing/product/cabinet commercial, access, usage and action slots
-  without redesigning the main cabinet. ANY-636 final verification and human
-  screenshot/intent review must pass before parent Step 6 implementation begins.
+  without redesigning the main cabinet. All thirteen ANY-636 steps are marked
+  `done` in the [completed plan](exec-plans/completed/ANY-636-implementation-plan.md);
+  the parent program's provider-dependent Phase 0 gates remain in force.
 - Portal <-> Kernel integration under the accepted wire contract. Workflow
   execution, artifacts, actual usage, and quota enforcement remain in the
   separate Platform Kernel repository.
