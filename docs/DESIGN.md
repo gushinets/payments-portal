@@ -1,21 +1,33 @@
 # Design System
 
 Status: authoritative entry point
-Last updated: 2026-10-07
+Last updated: 2026-10-08
 
 AnyToolAI Portal UI follows AnyToolAI Bundle 3, the single canonical
-implementation design system. The approved RU Portal mockup attached to ANY-539
-is the product and visual target; Bundle 3 encodes its deep navy background,
-opaque dark-blue surfaces, thin blue borders, amber primary actions, compact radii/spacing and
-Plus Jakarta Sans typography. Public discovery, product details and the
+implementation design system. The approved ANY-539 RU Portal mockup, supplied
+and directly inspected as a local input-only visual reference, is the product
+and visual target; Bundle 3 encodes its deep navy background,
+opaque dark-blue surfaces, thin blue borders, amber primary actions, compact
+radii/spacing and Plus Jakarta Sans typography. Public discovery, product details and the
 account/auth cabinet share this language. Indigo is a restrained secondary
 accent. Shadows are minimal; subtle navigation blur is optional.
 
 ANY-636 Step 10 supersedes the older mandatory indigo gradients, radial glows,
 glass/bento cards, large radii and blur-heavy surfaces. Flat backgrounds,
 opaque panels and flat amber actions are normal Bundle 3 styling. This step
-defines the design-system target; page restyling and font loading belong to
-Step 11. No replacement theme or parallel token authority is introduced.
+recalibrated the canonical design system. Step 11 applied it across the active
+Portal and loads Plus Jakarta Sans through `next/font/google`, without the
+mockup's remote CSS import. No replacement theme or parallel token authority
+is introduced.
+
+The current composition is product-first home/catalog, substantial two-column
+product screens with labeled schematic illustrations and supporting content,
+a presentation-only pricing placeholder, direct auth entry, and a
+product-centric cabinet with compact identity context. Per-product
+commercial/access/usage/action slots are the durable presentation surface for
+later parent ANY-504 Steps 6–10; missing business sources remain honest
+not-ready/unknown/unavailable states. Mobile layouts stack the content while
+preserving discovery, auth and product navigation.
 
 Before UI work, read:
 
@@ -33,8 +45,10 @@ and state meaning beyond color. UI changes must include desktop and mobile
 screenshots plus accessibility results.
 
 The mockup is visual/product evidence only. Its provider names, tariffs,
-subscription/access states, usage/quota values, roadmap products and
-legal/privacy claims are not business or runtime authority.
+subscription/access states, usage/quota values, metrics, unsupported product
+availability, roadmap products and legal/privacy claims are not business or
+runtime authority. Pricing navigation does not authorize commercial offers or
+purchase controls; those remain parent ANY-504 Steps 6 and 7 respectively.
 
 Ordinary Portal-owned copy follows the active route locale (`en`, `fr`, `it`,
 `de`, `es`, `ru`, or `pt`) within the implemented `ru` contour. Locale does not

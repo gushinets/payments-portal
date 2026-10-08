@@ -10,9 +10,9 @@
 | Original planning baseline | `3e53f1cc7756cc6825b05b4fcbd580479a196a64` — historical ANY-541 baseline used by initial ANY-636 Steps 1–5 |
 | Required predecessor baseline for continuation | final/current `ANY-541` / PR `#129`; planning observation: `bc80eaaee3b0c6051548ff446960791636216436` |
 | Observed ANY-636 head before correction | `af0ea815cf12d2440bdad6a36d8dbf396e5d9950`; branch was `behind 2 / ahead 6` versus `ANY-541` |
-| Overall status | `in progress` — Steps 1–5 completed on the old 541 baseline; Step 6 architecture synchronization + product/visual Steps 7–13 pending |
-| Initial Steps 1–5 completed | `2026-10-06`; final 4F completion pending Steps 6–13 |
-| Execution order | Steps 1–5 are historical completed baseline. Continue sequentially: Step 6 sync final ANY-541 → verify/commit → Step 7 → ... → Step 13 |
+| Overall status | `in progress` — current repository includes completed Steps 1–12; Step 13 documentation/handoff prepared, complete final verification and human screenshot/intent acceptance pending |
+| Initial Steps 1–5 completed | `2026-10-06`; historical initial handoff, superseded by the corrected product-centric surface; final Step 13 acceptance pending |
+| Execution order | Preserve the current repository baseline and completed Steps 1–12 → Step 13 final verification and human acceptance → close ANY-636; do not re-execute predecessor synchronization or earlier steps |
 | Steps / commits | 5 completed baseline steps + 1 predecessor-synchronization step + 7 product/visual completion steps |
 | Blocks | `ANY-634 — Step 5. LBX Phase 0 provider research` |
 | Backend/API/schema work expected | No new backend API or schema. Step 6 does update inherited frontend generated-contract/transport mechanics to match final ANY-541; later API/schema work remains out of 4F unless a material contradiction forces replanning |
@@ -2798,7 +2798,7 @@ ANY-636 prove RU portal visual and product experience
 
 > **ANY-636 internal Step 13 — final handoff/closure, not a parent ANY-504 step.**
 
-**Status:** `pending`  
+**Status:** `in progress` — documentation/handoff prepared on 2026-10-08; final verification and human screenshot/intent acceptance pending  
 **Recommended model:** `Sol`
 
 **Goal**  
@@ -2944,6 +2944,75 @@ Then perform the human acceptance review:
 - Steps 6–10 of the parent program can integrate into stable existing UI slots.
 - Documentation, tests, screenshots and human review all describe/prove the same as-built Portal.
 
+**Prepared implementation evidence — 2026-10-08**
+
+- Execution baseline: the current repository and completed Steps 1–12, as
+  directed for this selected step. Earlier implementation and the final
+  ANY-541 generated-TypeScript/shared-transport trust boundary are preserved;
+  no historical merge or earlier step was repeated.
+- Updated `docs/product/ru-mvp.md` as the primary as-built 4F handoff, plus
+  `README.md`, `ARCHITECTURE.md`, `docs/PRODUCT.md`, `docs/DESIGN.md` and
+  `docs/design-system/bundle3/README.md` where route/composition or applied
+  design-system wording was stale. This plan records preparation and pending
+  acceptance only. `apps/web/AGENTS.md` already describes the evolved visual
+  authority and needed no change.
+- Final topology recorded: product-first public home and catalog, substantial
+  screens for the two current presentation products, localized pricing
+  placeholder/navigation, direct account/auth entry, product-centric
+  authenticated cabinet and per-product commercial/access/usage/action slots.
+  Identity/verification/logout context is compact supporting content.
+- Parent ANY-504 handoff: Step 6 fills authoritative commercial/pricing slots
+  and technical identity mapping; Step 7 fills purchase/Widget action areas;
+  Step 8 fills reconciled commercial state and recovery feedback; Step 9 fills
+  confirmed provider-neutral paid-access slots; Step 10 fills actual Kernel
+  usage/quota slots. These are deferred integrations into existing surfaces,
+  without a main cabinet redesign or guessed business facts.
+- Directly read the adjacent `portal-ru-anytools.html` as input-only
+  product/visual reference. Evolved Bundle 3 is its canonical navy/amber,
+  flat/compact implementation encoding; the old mandatory purple/indigo
+  glass+bento identity is superseded. Demo prices/providers/metrics,
+  subscription/access/usage values, unsupported products/availability and
+  legal/privacy claims are excluded from authority. The HTML was not modified
+  or staged; accepted ADR/design records and legal source were not changed.
+- Reviewed current routes/components/transport, focused acceptance test source,
+  and existing representative desktop home/catalog/product/account and mobile
+  home/product/account screenshots under `.harness/playwright-results`.
+  Existing test source captures full-page desktop/mobile route evidence,
+  verified/unverified authenticated account fixtures and the 390×844 journey,
+  with review context pointing to the mockup. Screenshot inspection is not
+  human acceptance and does not establish a new test pass or business facts.
+- No tests, linters, typechecks, builds, Playwright runs, checks, generators or
+  formatting were run during Step 13 editing. No files were staged and no
+  commits or pushes were created.
+
+**Final verification / intent-review gate — pending**
+
+The first review question remains: **does the system now look and behave like
+the RU AnyToolAI Portal expected by ANY-539/ANY-504 4F, not merely pass technical
+route/boundary checks?** The prepared documentation and existing inspected
+screenshots describe the corrected product hierarchy and evolved visual
+language; final acceptance still requires the complete command results and
+human desktop/mobile comparison specified above.
+
+The listed focused E2E command is retained. Current `playwright.config.ts`
+explicitly excludes `react-runtime.spec.ts`; naming that file in the ordinary
+route command does not run it. Also run the existing canonical command below,
+which uses `playwright.react-runtime.config.ts`, to complete the required
+runtime surface:
+
+```bash
+npm run test:e2e:react-runtime
+```
+
+Closure is pending: review the documentation diff, run the entire manual
+verification surface plus the dedicated React runtime command, and record
+command outcomes, current screenshot/report locations and human intent/DoD
+acceptance. Do not treat existing artifacts or previous-step verification as
+the final Step 13 gate. If the human comparison finds a material product/visual
+gap, record it here instead of marking completion. Only after all gates pass
+may Step 13 and the overview become `done`; parent ANY-504 Step 6 remains
+outside this implementation.
+
 **Proposed commit**  
 
 ```text
@@ -2958,7 +3027,7 @@ After **all thirteen** ANY-636 implementation steps are complete and manually ve
 
 | Requirement | Expected final result |
 | --- | --- |
-| Required baseline | Initial Steps 1–5 preserved; Step 6 merges the final/current ANY-541 predecessor; product/visual Steps 7–13 continue from that synchronized baseline |
+| Required baseline | Current completed Steps 1–12 preserved, including the final ANY-541 generated-TypeScript/shared-transport boundary; Step 13 uses the current repository without repeating historical merges or earlier implementation |
 | RU visual authority | `portal-ru-anytools.html` was directly inspected and used for product hierarchy **and visual language** (palette, typography, surfaces, density, spacing and dashboard/card treatment) |
 | Design system | Bundle 3 remains the single implementation token/component authority and is deliberately evolved to encode the approved RU mockup direction; no parallel theme/token system is introduced |
 | Home/shell | Product-first AnyToolAI Portal composition materially aligned with the RU mockup, not a readiness/system-fact dashboard |

@@ -1,7 +1,7 @@
 # Product Scope
 
 Status: authoritative
-Last updated: 2026-10-06
+Last updated: 2026-10-08
 
 AnyToolAI Portal combines public product discovery, direct account entry, and
 identity/legal-consent flows for AnyToolAI products, deployed as one contour
@@ -10,11 +10,15 @@ per production instance. The target contour set is `ru`, `eu`, and `us`; only
 `de`, `es`, `ru`, and `pt` route locales on that same data plane. Locale never
 selects deployment or contour.
 
-The current `ru` surface presents Document Summary and Prompt Optimizer,
-supports account/session/email-verification/password-recovery and
-legal-acceptance flows, and shows billing, paid access, and actual usage/quota
-as unavailable or unknown. The repository remains pre-production and
-provider-independent after ANY-636 4F. External Billing/provider runtime is
+The current `ru` surface is product-centric: product-first home and discovery,
+substantial Document Summary and Prompt Optimizer screens, presentation-only
+pricing navigation, direct auth entry, and an authenticated cabinet led by
+both products. Identity/verification/logout context supports the per-product
+commercial/access/usage/action slots. Account/session/email-verification,
+password-recovery and legal-acceptance flows remain implemented; commercial
+facts, paid access and actual usage/quota remain not ready, unknown or
+unavailable. The repository remains pre-production and provider-independent
+on the current ANY-636 4F surface. External Billing/provider runtime is
 not implemented, and there are no production direct-provider subscribers or
 subscriptions to migrate.
 
@@ -45,11 +49,21 @@ records maps to this Portal backend boundary; those records remain unchanged.
 
 ## Implemented
 
-- Locale-prefixed landing, public product catalog, and detail pages at
+- Locale-prefixed product-first home, public product catalog, and substantial
+  detail pages at
   `/[locale]/products/document-summary` and
-  `/[locale]/products/prompt-optimizer`.
+  `/[locale]/products/prompt-optimizer`, with labeled schematic illustrations,
+  product-specific supporting content and honest readiness slots.
+- `/[locale]/pricing` and localized public Pricing navigation as presentation
+  only: a not-ready state, localized metadata and safe home/products links,
+  without commercial facts, purchase controls or API calls.
 - `/[locale]/account` as the direct sign-in/registration entry and authenticated
-  cabinet; the header retains its sign-in modal.
+  product-centric cabinet, with compact identity context and one card per
+  current product; the header retains its sign-in modal.
+- The approved RU mockup's product/visual direction encoded by evolved Bundle 3
+  and applied across the active Portal: navy/amber, flat dark panels, thin
+  borders, compact radii/spacing and Plus Jakarta Sans. Demo business, metrics,
+  availability and legal/privacy claims remain excluded from authority.
 - Password-based registration, sessions, logout, and the existing
   `/[locale]/forgot-password`, `/[locale]/reset-password`, and
   `/[locale]/verify-email` flows. Region Resolver confirmation is not implemented.
@@ -84,7 +98,10 @@ trust boundary under ANY-541.
   purchase/Widget in Step 7;
   reconciliation/recovery in Step 8; confirmed paid-access projection and
   delivery in Step 9; actual usage/quota integration in Step 10. These are
-  deferred ownership boundaries, not implemented runtime.
+  deferred ownership boundaries, not implemented runtime. They populate the
+  existing pricing/product/cabinet commercial, access, usage and action slots
+  without redesigning the main cabinet. ANY-636 final verification and human
+  screenshot/intent review must pass before parent Step 6 implementation begins.
 - Portal <-> Kernel integration under the accepted wire contract. Workflow
   execution, artifacts, actual usage, and quota enforcement remain in the
   separate Platform Kernel repository.
@@ -110,3 +127,6 @@ trust boundary under ANY-541.
   commercial offers come from External Billing.
 - Discovery CTAs open product detail or account surfaces. No purchase/checkout
   CTA or fabricated product-execution URL is exposed in 4F.
+- Pricing navigation and its unavailable placeholder establish presentation
+  topology only. Offers/prices/sellability remain parent ANY-504 Step 6;
+  purchase/provider Widget behavior remains Step 7.

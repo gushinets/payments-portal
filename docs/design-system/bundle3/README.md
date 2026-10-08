@@ -7,10 +7,11 @@ originated as a local copy of the web-relevant files from:
 D:\Work\AI\Design system\files_Bandl_3.zip
 ```
 
-ANY-636 Step 10 recalibrates that system to the approved RU Portal mockup
-attached to ANY-539: deep navy, opaque dark-blue surfaces, thin blue borders,
-amber primary actions, compact
-radii/spacing and Plus Jakarta Sans. The former mandatory indigo glass/bento
+ANY-636 Step 10 recalibrated that system to the approved ANY-539 RU Portal
+mockup, supplied and directly inspected as a local input-only product/visual
+reference: deep
+navy, opaque dark-blue surfaces, thin blue borders, amber primary actions,
+compact radii/spacing and Plus Jakarta Sans. The former mandatory indigo glass/bento
 identity is superseded. The mockup supplies visual direction, not provider,
 commercial, access, usage, availability or legal facts.
 
@@ -31,9 +32,14 @@ generated CSS or introduce page-local palettes. Existing CSS aliases remain
 available; token values, font families, layout dimensions and radii come from
 this one source.
 
-Step 10 changes this authority and its generated tokens. Step 11 applies the
-rules and approved font loading to the existing pages; product, route, auth,
-session, locale and backend semantics remain unchanged.
+Step 10 evolved this authority and its generated tokens. Step 11 applied the
+rules and Plus Jakarta Sans loading through `next/font/google` across the active
+Portal. The current composition includes product-first home/catalog,
+substantial product pages, presentation-only pricing navigation, direct auth
+entry and a product-centric cabinet with compact identity context and
+per-product commercial/access/usage/action slots. Later parent ANY-504 Steps
+6–10 populate those slots from their owning sources without redesigning the
+main cabinet or introducing a second design system.
 
 The original archive also contains `extension.md` and `mobile.md`; they are not
 included here because this repository implements the AnyToolAI Portal web

@@ -1,9 +1,11 @@
 # AnyToolAI Portal
 
-The AnyToolAI Portal brings together public product discovery, direct account
-entry, and identity and legal-consent flows for AnyToolAI products. Each
-production deployment serves one contour (compliance zone). This repository
-currently implements the `ru` contour; route locale does not select a contour.
+The AnyToolAI Portal brings together a product-first home and catalog,
+substantial product pages, presentation-only pricing navigation, direct account
+entry, and a product-centric cabinet with identity and legal-consent flows.
+Each production deployment serves one contour (compliance zone). This
+repository currently implements the `ru` contour; route locale does not select
+a contour.
 
 It contains a Next.js web application, a FastAPI identity/legal API, PostgreSQL
 persistence, and the clean provider-neutral external-billing storage baseline.
@@ -14,8 +16,9 @@ paid-access boundary, but its runtime implementation remains future program
 work. Platform Kernel code is maintained in the separate
 [anytoolai-platform](https://github.com/gushinets/anytoolai-platform) repository.
 
-The repository remains pre-production and provider-independent after the
-ANY-636 4F implementation. External Billing/provider runtime, commercial
+The repository remains pre-production and provider-independent on the current
+ANY-636 4F surface. Final verification and human screenshot/intent review are
+pending before ANY-636 closure. External Billing/provider runtime, commercial
 catalog, purchase/Widget, confirmed paid access, and actual usage/quota
 integration are not implemented. There are no production direct-provider
 subscribers or subscriptions to migrate. The fifteen target billing tables
@@ -38,8 +41,12 @@ identity, actual usage, and quota enforcement. The component historically named
 boundary; those records retain their authority and historical names.
 
 The durable [RU Portal 4F handoff](docs/product/ru-mvp.md) records the current
-UI/data sources and the deferred ANY-504 Steps 6–10. UI “not ready/unknown”
-does not establish no subscription, no access, or zero usage/quota.
+UI/data sources and the deferred ANY-504 Steps 6–10. Later steps populate the
+existing per-product commercial/access/usage/action slots and pricing surface
+without redesigning the main cabinet. UI “not ready/unknown” does not establish
+no subscription, no access, or zero usage/quota. The approved RU mockup supplies
+product/visual direction; evolved Bundle 3 is its canonical implementation
+design system, using navy/amber, flat dark panels and compact styling.
 
 ## Start here
 
@@ -153,8 +160,9 @@ do not use `alembic stamp`, downgrade, or an upgrade bridge.
 
 ## Repository layout
 
-- `apps/web` — Next.js AnyToolAI Portal UI: public product discovery, direct
-  account/auth entry, recovery, verification, and canonical RU legal pages.
+- `apps/web` — Next.js AnyToolAI Portal UI: product-first discovery and detail
+  screens, pricing placeholder, direct account/auth entry, product-centric
+  cabinet, recovery, verification, and canonical RU legal pages.
 - `apps/api` — FastAPI identity, password-reset, legal, health, and metrics API,
   plus the provider-neutral target persistence model. Billing runtime is not
   implemented.
@@ -173,14 +181,19 @@ same `ru` contour, with `ru` as the default locale:
 /[locale]/products
 /[locale]/products/document-summary
 /[locale]/products/prompt-optimizer
+/[locale]/pricing
 /[locale]/account
 /[locale]/forgot-password
 /[locale]/reset-password
 /[locale]/verify-email
 ```
 
-`/account` is the direct sign-in/registration entry and authenticated cabinet;
-the header also retains its sign-in modal. Legal routes remain canonical:
+`/pricing` is localized presentation/navigation only: an honest not-ready state,
+localized metadata and safe home/products links, without offers, prices or
+purchase controls. Authoritative commercial facts remain parent ANY-504 Step 6;
+purchase/provider Widget behavior remains Step 7. `/account` is the direct
+sign-in/registration entry and product-centric authenticated cabinet; the
+header also retains its sign-in modal. Legal routes remain canonical:
 `/ru/privacy`, `/ru/consent-personal-data`, `/ru/offer`, `/ru/cancellation`,
 `/ru/cookies`, and `/ru/security`.
 

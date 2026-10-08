@@ -1,13 +1,20 @@
 # RU AnyToolAI Portal — As-Built 4F Handoff
 
 Status: authoritative implemented-product specification and deferred-step handoff
-Last updated: 2026-10-06
+Last updated: 2026-10-08
 
-ANY-636 4F brings public product discovery, direct account/auth entry, and the
-account cabinet into this AnyToolAI Portal. The repository remains
+The current ANY-636 4F surface is a product-centric AnyToolAI Portal: public
+product-first home, catalog/discovery, substantial per-product pages,
+presentation-only pricing navigation, direct account/auth entry, and an
+authenticated cabinet whose primary content is one card per current product.
+Identity facts are compact supporting content. The repository remains
 pre-production and provider-independent. External Billing/provider runtime,
 commercial catalog, purchase/Widget, confirmed paid-access projection, and
 actual usage/quota integration are not implemented.
+
+This handoff describes the current implementation after Steps 6–12. Step 13
+documentation is prepared; final verification and human screenshot/intent
+review remain pending before ANY-636 can close or parent ANY-504 Step 6 begins.
 
 Only the `ru` contour is implemented. Ordinary UI routes support `en`, `fr`,
 `it`, `de`, `es`, `ru`, and `pt`, with `ru` as the default locale. All use the
@@ -20,11 +27,12 @@ confirmation through the separate Region Resolver remains planned.
 
 | Route | Implemented purpose |
 | --- | --- |
-| `/[locale]` | Public landing and product discovery |
-| `/[locale]/products` | Static product catalog presentation |
-| `/[locale]/products/document-summary` | Document Summary presentation detail |
-| `/[locale]/products/prompt-optimizer` | Prompt Optimizer presentation detail |
-| `/[locale]/account` | Direct sign-in/registration entry and authenticated cabinet |
+| `/[locale]` | Product-first home with account entry, collection and current-product discovery |
+| `/[locale]/products` | Presentation catalog with two product cards and detail navigation |
+| `/[locale]/products/document-summary` | Substantial Document Summary presentation screen |
+| `/[locale]/products/prompt-optimizer` | Substantial Prompt Optimizer presentation screen |
+| `/[locale]/pricing` | Localized presentation-only not-ready state and home/products navigation |
+| `/[locale]/account` | Direct sign-in/registration entry and product-centric authenticated cabinet |
 | `/[locale]/forgot-password` | Password-reset email request |
 | `/[locale]/reset-password` | Password replacement from emailed reset link |
 | `/[locale]/verify-email` | Authenticated email-verification flow |
@@ -44,21 +52,74 @@ The transitional pre-production `/{locale}/auth-checkout` and
 compatibility routes because there is no production compatibility obligation
 for them. This is not a permanent rule for future production route changes.
 
+## Product composition and visual authority
+
+The approved ANY-539 RU Portal mockup was supplied and directly inspected as a
+local input-only product/visual reference for the corrected 4F surface and its
+final human comparison. It defines product hierarchy,
+composition, density, palette direction, typography, surface treatment and
+dashboard/card feel. It is not repository, commercial, runtime or legal
+authority.
+
+The evolved [Bundle 3](../design-system/bundle3/README.md) is the single
+canonical implementation encoding of that target. ANY-636 Step 10 superseded
+the previous mandatory purple/indigo glass+bento appearance with deep navy,
+opaque flat dark-blue panels, thin blue borders, amber actions, compact radii
+and spacing, and Plus Jakarta Sans. Step 11 applied that language across the
+active Portal, including font loading through `next/font/google`. Canonical
+tokens remain in `docs/design-system/bundle3/tokens.json`; generated CSS and
+shared rules remain the implementation authority, without a parallel theme or
+the mockup's remote CSS import.
+
+- Home leads with customer product value, account entry and discovery of the
+  two current tools. The collection and product cards replace the earlier
+  readiness/system-fact composition.
+- Catalog cards show product name, type, tagline and description, with a
+  neutral detail action. Product type is presentation metadata, not proof of
+  runtime availability.
+- Each detail screen has a two-column hero and labeled schematic illustration,
+  three product-specific supporting blocks, account/catalog navigation, and
+  commercial/access/usage readiness slots. The illustration is explicitly not
+  a working extension interface. No install, web-app or execution destination
+  is fabricated.
+- Pricing is localized public navigation and an honest not-ready page with
+  localized metadata and safe home/products links. Its feature makes no API
+  calls and displays no offers, prices, tariff names, billing periods,
+  sellability, subscription/provider state or purchase controls.
+- The authenticated cabinet places compact email/verification/logout context
+  in a supporting rail and both product cards in the primary workspace. Each
+  card has commercial, access and usage/quota slots plus an action area whose
+  current action opens the local product detail page. Responsive layouts stack
+  the supporting context, cards and product-detail content on narrow screens.
+
+Mockup demo prices (`0/490/990 ₽`), providers such as CloudPayments, plan and
+subscription values, renewal/payment controls, usage (`320/500`, `3/10`),
+metrics (`200k+`, ten products, two releases/month), availability labels and
+roadmap products are excluded from authority. Proposal Checker, Scope Guard,
+waitlists and a fictional next product are not current Portal products.
+Unsupported privacy, data-residency, legal-approval, performance and language
+claims (including the demo's 52-language claim) are not imported. Canonical RU
+legal source and existing operator details retain their own authority; legal
+documents remain drafts.
+
 ## Primary journey and account states
 
-1. The user opens the landing or catalog. Product cards open a local product
-   detail page; home and product account CTAs open `/[locale]/account`.
+1. The user opens the product-first home or catalog. Product cards open a local
+   product detail page; home and product account CTAs open `/[locale]/account`.
+   Public Pricing navigation opens only the presentation placeholder.
 2. A signed-out user signs in or registers directly on `/account` through the
    existing `AuthForm`. The header sign-in modal remains available.
 3. Registration requires explicit, initially unchecked personal-data and offer
    confirmations using generated canonical RU acceptance text and legal links.
-4. The authenticated cabinet renders the returned email and `email_verified`
-   fact, offers verification/resend when needed, links to the two local product
-   detail pages, and provides logout.
+4. The authenticated cabinet leads with both current product cards and their
+   per-product state/action slots. Supporting account context renders the
+   returned email and `email_verified` fact, offers verification/resend when
+   needed, and provides logout.
 5. A user can request a password-reset email, replace the password through the
    existing reset flow, and complete authenticated email verification.
-6. Billing, paid-access, and usage/quota panels show explicit unavailable or
-   unknown states. No purchase/checkout CTA or product-execution URL is invented.
+6. Each product's commercial information is not ready, access is unknown or
+   unavailable, and usage/quota data is unavailable. No purchase/checkout CTA,
+   product-execution URL, plan badge or usage progress is invented.
 
 Account state is frontend component state: loading, signed out, session error
 with retry, or authenticated. Missing or expired sessions lead to the direct
@@ -106,6 +167,39 @@ ANY-634. This handoff adds no provider semantics or later-step implementation.
 The existing target persistence baseline remains empty without producer
 runtime; 4F changes no backend behavior, persistence, migrations, or contracts.
 
+### Stable integration surfaces for parent ANY-504 Steps 6–10
+
+Later parent steps populate the existing Portal/product/cabinet slots rather
+than redesign the main shell, catalog, product pages or cabinet. The slots are
+frontend-local view composition, not new wire DTOs, domain entities or stored
+business facts. Their owning steps must supply authoritative data/actions:
+
+1. **Step 6 — commercial facts:** project/map the Kernel capability manifest and
+   External Billing catalog/offers/prices/periods/sellability into the existing
+   pricing presentation surface and per-product commercial slots. Introduce
+   authoritative technical identity mapping here; the current route slugs are
+   not that mapping. Commercial truth remains owned by External Billing.
+2. **Step 7 — purchase/Widget:** populate the existing per-product action areas
+   and relevant offer presentation with approved purchase entry and Widget
+   orchestration. Account/detail navigation currently remains the safe action;
+   Step 6 facts alone do not implement purchase or confer paid access.
+3. **Step 8 — reconciliation/recovery:** populate relevant commercial/status
+   slots and action feedback with authoritative reconciled state and recovery
+   behavior. UI returns, callbacks, webhooks and outbound success are signals,
+   not commercial or paid-access authority.
+4. **Step 9 — paid access:** populate each product's access slot from the
+   provider-neutral confirmed projection and its accepted authoritative-fact
+   derivation/delivery rules. Authentication or email verification never
+   substitutes for this source.
+5. **Step 10 — usage/quota:** populate each product's usage/quota slot from
+   actual Platform Kernel usage and remaining-quota facts. Kernel retains
+   durable usage and quota enforcement; no guessed zero, allowance or progress
+   value may fill a missing source.
+
+All five are deferred parent-program work. Provider-dependent semantics and
+launch retain the Phase 0 gates. No step may treat an unavailable source as
+“no subscription”, “no access”, a default/free plan or `0/N` usage.
+
 ## Product presentation and API boundary
 
 The two slugs `document-summary` and `prompt-optimizer` in frontend
@@ -136,9 +230,18 @@ Generated contracts do not transfer External Billing or Kernel data ownership
 to the Portal. Missing authoritative backend facts cannot be replaced with
 frontend DTOs, mock billing data, or guessed business states.
 
+The final ANY-541 trust rule remains as built: successful same-service JSON is
+read as `unknown` and trusted exactly once in the private
+`decodeSuccessfulResponse<T>` in `shared/api/transport.ts`. Endpoint adapters
+reuse `getJson<T>` / `postJson<T>` with generated TypeScript response types.
+Pydantic/FastAPI owns runtime structural validation; generated TypeScript owns
+compile-time wire shape. Malformed successful JSON syntax becomes
+`ApiContractError`. There is no browser structural re-validation, Zod response
+schema or feature-local JSON cast authority.
+
 ## Preserved legal, locale, and UI constraints
 
-- Bundle 3 remains the design system for the public Portal and cabinet.
+- Evolved Bundle 3 remains the design system for the public Portal and cabinet.
 - Ordinary UI copy retains exact seven-locale key and ICU-signature parity;
   canonical RU legal titles, bodies, versions, paths, and acceptance text stay
   source-owned.
@@ -150,6 +253,40 @@ frontend DTOs, mock billing data, or guessed business states.
   Locale navigation does not carry those tokens.
 - No provider I/O, card collection, or Portal-owned commercial/access/trial
   runtime is introduced. Payment-method configuration remains empty.
-- Manual acceptance covers the focused final route, auth/legal, locale,
-  mobile/accessibility, generated-contract, lint/type, and build surfaces listed
-  in [ANY-636 Step 5](../exec-plans/active/ANY-636-implementation-plan.md).
+
+## Final verification and intent/DoD evidence
+
+The first final-review question is: **does the system now look and behave like
+the RU AnyToolAI Portal expected by ANY-539/ANY-504 4F, not merely pass technical
+route/boundary checks?**
+
+Run the complete manual verification commands and human acceptance checklist
+in [ANY-636 Step 13](../exec-plans/active/ANY-636-implementation-plan.md#step-13--correct-the-4f-handoff-re-run-final-review-and-close-any-636).
+The ordinary Playwright configuration excludes `react-runtime.spec.ts`, even
+when named in the focused route command. Also run the existing canonical
+`npm run test:e2e:react-runtime` command to cover that required surface.
+
+Existing acceptance coverage is owned by
+[`public-routes.spec.ts`](../../apps/web/e2e/public-routes.spec.ts),
+[`portal-ru.spec.ts`](../../apps/web/e2e/portal-ru.spec.ts) and the account/auth
+component and focused auth/legal/locale/runtime suites. It covers product
+composition, honest per-product states, retired routes, provider/removed-API
+boundaries, keyboard focus, accessibility and mobile overflow. This describes
+coverage, not a new passing test result.
+
+The route suite writes full-page desktop/mobile screenshots under
+`.harness/playwright-results`, including home, catalog, pricing, both product
+pages and signed-out account. The Portal suite adds authenticated account
+screenshots for verified/unverified email and the 390×844 discovery/auth
+journey, with visual-review context naming the RU HTML reference. Account
+screenshots use synthetic auth fixtures; they prove composition, not commercial
+or paid-access facts. React runtime evidence uses the separate
+`.harness/playwright-react-runtime-results` and report directories.
+
+Step 13 reviewed current source and existing representative screenshots and
+aligned this documentation; it ran no verification or formatting commands.
+Final command results, current desktop/mobile screenshot comparison, and human
+intent/DoD acceptance must still be recorded in the plan before marking Step 13
+and ANY-636 done. Compare `/ru`, `/ru/products`, both product pages and
+authenticated `/ru/account` with the input-only mockup; confirm the evolved
+navy/amber/flat/compact language, honest facts and durable integration slots.

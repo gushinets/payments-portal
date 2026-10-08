@@ -1,7 +1,7 @@
 # AnyToolAI Portal Architecture
 
 Status: authoritative current-state map
-Last updated: 2026-10-06
+Last updated: 2026-10-08
 
 ## System boundary
 
@@ -12,9 +12,12 @@ provider-neutral external-billing persistence baseline. It does not own
 workflow execution, artifacts, usage consumption, or quota enforcement; those
 belong to the separate Platform Kernel repository.
 
-The current Portal combines public product discovery and direct account/auth
-entry. It remains pre-production and provider-independent after ANY-636 4F;
-External Billing/provider runtime is not implemented.
+The current Portal combines product-first public discovery, substantial
+per-product pages, presentation-only pricing navigation, direct account/auth
+entry and a product-centric cabinet. It remains pre-production and
+provider-independent on the current ANY-636 4F surface; External
+Billing/provider runtime is not implemented. Final 4F verification and human
+screenshot/intent acceptance remain pending.
 
 Each production deployment serves exactly one contour. Region Resolver is a
 separate planned service for contour selection; it is not implemented here.
@@ -81,13 +84,16 @@ launch remain gated by Phase 0 and their owning `ANY-504` steps.
 - **Billing persistence** — the approved projections, immutable commercial
   mapping/purchase evidence, reconciliation/operation records, paid-access
   state, and invalidation outbox. There is no billing runtime yet.
-- **Presentation** — locale-prefixed landing, product discovery/detail pages,
-  direct account/auth entry, account cabinet, recovery, verification, and
+- **Presentation** — locale-prefixed product-first home, catalog, substantial
+  product detail pages, pricing placeholder, direct account/auth entry,
+  product-centric cabinet, recovery, verification, and
   canonical RU legal pages. Ordinary Portal-owned UI and metadata are localized
   across the seven supported route locales; canonical legal authority remains
-  Russian. Billing, paid-access, and usage/quota panels show unavailable or
-  unknown states, which do not establish no subscription, no access, or zero
-  usage/quota.
+  Russian. Compact identity context supports one card per current product, each
+  with commercial/access/usage/action slots. Missing sources show not-ready,
+  unavailable or unknown states, which do not establish no subscription, no
+  access, or zero usage/quota. These slots are local view composition, not new
+  HTTP contracts or domain models.
 
 ### As-built 4F routes
 
@@ -96,6 +102,7 @@ launch remain gated by Phase 0 and their owning `ANY-504` steps.
 /[locale]/products
 /[locale]/products/document-summary
 /[locale]/products/prompt-optimizer
+/[locale]/pricing
 /[locale]/account
 /[locale]/forgot-password
 /[locale]/reset-password
@@ -104,11 +111,26 @@ launch remain gated by Phase 0 and their owning `ANY-504` steps.
 
 Legal routes remain `/ru/privacy`, `/ru/consent-personal-data`, `/ru/offer`,
 `/ru/cancellation`, `/ru/cookies`, and `/ru/security`. `/account` owns direct
-sign-in/registration and the authenticated cabinet; the header sign-in modal is
-retained. Product cards open local detail pages, and account CTAs enter
-`/account`; no purchase or fabricated product-execution target is exposed.
+sign-in/registration and the product-centric authenticated cabinet; the header
+sign-in modal is retained. Product cards open local detail pages, and account
+CTAs enter `/account`; no purchase or fabricated product-execution target is exposed.
 `document-summary` and `prompt-optimizer` are presentation/route slugs only,
 not claimed Platform Kernel `product_id` or External Billing IDs.
+
+`/pricing` and public Pricing navigation are presentation-only: localized
+metadata, an honest unavailable/not-ready state and home/products links. The
+pricing feature makes no API calls and owns no commercial facts or purchase
+controls. Evolved Bundle 3 encodes the approved RU mockup's navy/amber,
+flat/compact visual direction across these surfaces; the mockup's demo facts
+are excluded from runtime authority.
+
+Parent ANY-504 Step 6 supplies authoritative commercial projections and
+technical identity mapping to existing commercial/pricing slots; Step 7
+supplies purchase/Widget actions; Step 8 supplies reconciled state and recovery
+feedback; Step 9 supplies provider-neutral confirmed paid access; Step 10
+supplies actual Kernel usage/quota. These deferred steps populate the existing
+product/cabinet surfaces without redesigning the main cabinet. Their ownership,
+Phase 0 gates and authoritative-fact rules remain unchanged.
 
 The transitional pre-production `/{locale}/auth-checkout` and
 `/{locale}/payment-result` routes were removed without redirects or compatibility
