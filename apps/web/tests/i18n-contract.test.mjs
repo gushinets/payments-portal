@@ -23,6 +23,16 @@ const requiredPresentationErrorKeys = [
   "PasswordReset.errors.internalServer",
   "PasswordReset.errors.rateLimited"
 ];
+const requiredPricingPresentationKeys = [
+  "Navigation.pricing",
+  "Pricing.title",
+  "Pricing.description",
+  "Pricing.backAction",
+  "Pricing.placeholder.badge",
+  "Pricing.placeholder.title",
+  "Pricing.placeholder.description",
+  "Pricing.productsAction"
+];
 const presentationSourceDirectories = [
   "apps/web/src/app/[locale]",
   "apps/web/src/features",
@@ -272,7 +282,10 @@ test("message catalogs have exact locale, key, and ICU signature parity", async 
       `[${locale}] leaf keys differ from [${referenceLocale}]`
     );
 
-    for (const key of requiredPresentationErrorKeys) {
+    for (const key of [
+      ...requiredPresentationErrorKeys,
+      ...requiredPricingPresentationKeys
+    ]) {
       assert.equal(
         typeof catalog.get(key),
         "string",

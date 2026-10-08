@@ -311,6 +311,7 @@ These decisions are resolved for this plan. The execution model must not reopen 
 | --- | --- |
 | Home | `/{locale}` |
 | Product catalog | `/{locale}/products` |
+| Pricing placeholder | `/{locale}/pricing`; presentation-only unavailable/not-ready state and safe home/products navigation; no commercial facts or purchase controls |
 | Product details | `/{locale}/products/document-summary` and `/{locale}/products/prompt-optimizer` |
 | Account + direct sign-in/registration entry | `/{locale}/account` |
 | Header sign-in | Keep the existing HeaderAccount modal; do not redesign it into another route |
@@ -327,6 +328,17 @@ These decisions are resolved for this plan. The execution model must not reopen 
 | Product execution CTA | Do not invent an external/runtime target; show the honest not-ready state instead |
 
 There is no production compatibility obligation for the two retired transitional UI routes.
+
+### Approved Step 11 pricing placeholder decision
+
+The user-approved Step 11 topology change supersedes the original blanket prohibition on a pricing page or Pricing navigation entry in 4F. It permits only the localized `/[locale]/pricing` **presentation-only placeholder** and its localized public navigation entry.
+
+- The page has localized metadata, honestly states that pricing/terms are not available yet, and offers safe navigation to home/products.
+- It does not own or expose actual commercial catalog data. It contains no prices, tariff names, billing periods, sellability, subscription state, provider data, purchase controls or fake offers. The pricing feature makes no network/API calls and introduces no backend changes.
+- The route exists only to establish the final Portal navigation/topology and a stable future presentation surface; it does not reproduce the HTML mockup's tariff cards.
+- Authoritative offers, prices and sellability may populate this surface only through parent **ANY-504 Step 6**, with commercial truth remaining owned by External Billing.
+- Purchase and provider Widget behavior remain parent **ANY-504 Step 7**. This exception does not move commercial authority into ANY-636 or authorize purchase/provider runtime.
+- Earlier Step 7 pricing prohibitions are retained below as historical restrictions explicitly superseded by this narrow Step 11 decision. Existing product/auth/legal semantics and all other ownership boundaries remain locked.
 
 ---
 
@@ -1444,7 +1456,7 @@ The following interpretation is fixed for Steps 7–13:
 - **Bundle 3 remains the single implementation design system, but its previous indigo glass/bento visual identity is not immutable.** Step 10 must evolve Bundle 3 so the design system itself encodes the approved RU mockup direction; later UI work consumes those canonical rules/tokens rather than creating local overrides or a second theme.
 - **Public Portal is product-first.** Home should lead with the AnyToolAI product value proposition and discovery, not engineering/readiness facts such as region, locale count, canonical legal language or billing migration status.
 - **Only current real presentation products are shown.** At the current baseline these are `document-summary` and `prompt-optimizer`. Do not surface Proposal Checker, Scope Guard, “next product”, waitlists or roadmap products merely because they appear in the mockup.
-- **No pricing page or pricing CTA in 4F.** The mockup pricing composition is a future commercial surface owned by parent ANY-504 Step 6/7 once authoritative offers and purchase entry exist.
+- **Presentation-only pricing navigation is allowed in 4F.** The localized `/[locale]/pricing` placeholder follows the [approved Step 11 decision](#approved-step-11-pricing-placeholder-decision). Actual commercial offers/prices/sellability remain parent ANY-504 Step 6; purchase/provider Widget behavior remains Step 7. The mockup's real tariff composition and purchase CTAs remain deferred.
 - **Product cards must not claim runtime availability.** Labels such as “Available”, “Under review”, “Coming soon” are not authoritative unless a current source proves them. Prefer product type/presentation metadata and a neutral detail CTA.
 - **Product detail pages are substantial customer-facing screens.** They should use the RU mockup's two-column hero / preview / supporting-content composition where useful, but only with current truthful presentation facts and current safe actions.
 - **No install/web-app target is invented.** If there is no authoritative current destination, the page may navigate to account/catalog and show the relevant not-ready state instead.
@@ -1818,13 +1830,13 @@ Touch direct tests only when current assertions become stale; focused corrective
 
 **Implementation decisions**  
 
-1. Preserve current route topology from Steps 1–5. Do not add a `/pricing` route and do not resurrect checkout/payment-result routes.
+1. Preserve current route topology from Steps 1–5 and do not resurrect checkout/payment-result routes. The original Step 7 instruction "Do not add a `/pricing` route" is historical and superseded only by the [approved Step 11 presentation-only placeholder](#approved-step-11-pricing-placeholder-decision).
 2. Rework `SiteShell` visual/navigation composition to match the RU mockup direction using Bundle 3 primitives/tokens:
    - clear AnyToolAI brand;
    - product discovery as the primary public navigation concern;
    - existing locale switcher retained;
    - existing `HeaderAccount` auth behavior retained;
-   - do not add “Pricing” until authoritative commercial catalog/purchase work exists.
+   - historical Step 7 restriction: do not add “Pricing” until authoritative commercial catalog/purchase work exists; superseded only for the [approved Step 11 placeholder navigation entry](#approved-step-11-pricing-placeholder-decision).
 3. Rebuild `/[locale]` so the hero reads as a customer product entry, not a platform/readiness dashboard.
 4. Remove or demote home content whose primary purpose is exposing engineering/system facts rather than helping a customer choose/use a product, including region/locale/legal-language style statistics when they dominate the hero.
 5. Do not replace removed statistics with mockup numbers such as `200k+`, `10`, or `2 / month`.
@@ -1880,7 +1892,7 @@ Implement the locked decisions from Step 7. In particular:
 - use the RU mockup composition through Bundle 3, not by pasting its CSS;
 - show only the current real presentation products document-summary and prompt-optimizer;
 - do not copy pricing, 200k+, 10 products, 2/month, CloudPayments, product availability labels, fake roadmap products, install/web-app targets, quota/usage or other demo facts;
-- no /pricing route or pricing CTA;
+- historical Step 7 restriction: no /pricing route or pricing CTA; superseded only by the approved Step 11 presentation-only placeholder/navigation decision above, with actual commercial/purchase behavior still deferred;
 - no new backend/API/OpenAPI/generated-contract/schema work.
 
 The mockup reference is input-only. Do not modify, stage or commit it.
@@ -2438,6 +2450,8 @@ ANY-636 align Bundle 3 with RU portal visual language
 **Goal**  
 Apply the Step 10 Bundle 3 visual system to the actual RU Portal so the public shell, home, catalog, product detail pages and authenticated cabinet materially look like one coherent implementation of the approved mockup. Preserve the structural/product/auth semantics already established by Steps 7–9.
 
+The sole approved topology addition is the localized presentation-only `/[locale]/pricing` placeholder and Pricing navigation entry defined by the [approved Step 11 decision](#approved-step-11-pricing-placeholder-decision).
+
 This is the step that should make the running Portal look **obviously different** from the old purple glass/bento implementation.
 
 **Required reference**  
@@ -2459,11 +2473,14 @@ Expected primary production surfaces:
 
 ```text
 apps/web/src/shared/ui/SiteShell.tsx
+apps/web/src/shared/ui/HeaderNavigation.tsx           # Products/Pricing navigation and current-section semantics
 apps/web/src/shared/ui/HeaderAccount.tsx               # styling/markup compatibility only if needed
 apps/web/src/app/[locale]/page.tsx                    # markup/classes only if needed for styling
 apps/web/src/app/[locale]/products/page.tsx           # markup/classes only if needed
 apps/web/src/features/catalog/ProductOverview.tsx
 apps/web/src/features/catalog/ProductDetail.tsx
+apps/web/src/app/[locale]/pricing/page.tsx            # localized presentation-only placeholder route/metadata
+apps/web/src/features/pricing/**                     # honest not-ready state and safe home/products links only
 apps/web/src/features/account/AccountClient.tsx
 apps/web/src/features/account/AccountProductCard.tsx
 apps/web/src/app/globals.css
@@ -2503,7 +2520,7 @@ Shared auth/reset/verification/legal surfaces may receive only narrow compatibil
 10. Preserve the exact seven-locale copy contract. Visual implementation should not require gratuitous copy changes.
 11. Preserve focus/keyboard/ARIA/live-region behavior and sufficient contrast. Do not hide live regions with `display:none` merely for spacing.
 12. Responsive behavior must follow the mockup intent: public navigation/cards collapse cleanly; product detail becomes one column; cabinet rail becomes a compact top/section treatment; no horizontal overflow.
-13. Do not add pricing, tariffs, Pro/Free state, CloudPayments, active subscription, renewal dates, usage values/bars, install/web-app URLs, fake products or fake navigation destinations.
+13. Keep the approved `/[locale]/pricing` placeholder and localized navigation entry presentation-only: pricing/terms unavailable, safe home/products links, no commercial catalog data or purchase controls. Do not add prices, tariff names, billing periods, sellability, Pro/Free state, CloudPayments/provider data, active subscription, renewal dates, usage values/bars, install/web-app URLs, fake products or fake navigation destinations.
 14. Do not change APIs, generated contracts, backend code, database/schema, auth/session semantics or future commercial/access/usage ownership.
 
 **Invariants**  
@@ -2512,12 +2529,13 @@ Shared auth/reset/verification/legal surfaces may receive only narrow compatibil
 - Bundle 3 from Step 10 is the only style/token authority.
 - The running Portal materially follows the approved RU visual language without copying demo facts.
 - No provider/commercial/access/usage authority is introduced.
+- The pricing placeholder establishes presentation/navigation topology only; authoritative offers/prices/sellability remain parent ANY-504 Step 6 and purchase/provider Widget behavior remains Step 7.
 - Accessibility and responsive behavior remain intact.
 
 **Out of scope**  
 
 - new business/product features;
-- pricing/purchase/Widget;
+- authoritative commercial pricing/purchase/Widget behavior; only the approved presentation-only pricing placeholder is in scope;
 - provider runtime;
 - paid-access/usage integration;
 - new APIs/schema;
@@ -2544,6 +2562,8 @@ Apply the style coherently to:
 - only narrow shared auth/legal compatibility surfaces where token/component changes require it.
 
 Preserve Step 7–9 content and data truth. Do not restore demo stats, pricing, freelancer products, Pro/Free, CloudPayments, subscription/renewal/usage values, fake availability labels, install/web-app URLs or fake sidebar destinations.
+
+Retain the approved localized /[locale]/pricing placeholder and Pricing navigation entry as the sole topology exception to the historical Step 7 restriction. It must honestly show pricing/terms unavailable, contain no commercial facts or purchase controls, and make no pricing network/API calls. Authoritative offers/prices/sellability remain parent ANY-504 Step 6; purchase/provider Widget behavior remains Step 7.
 
 The authenticated cabinet must stop looking like the old purple glass/bento account page. Follow LK RU's dashboard feel while keeping the real current account/product semantics and existing auth/session/email-verification behavior.
 
@@ -2583,6 +2603,7 @@ Then inspect desktop and normal phone widths for:
 ```text
 /ru
 /ru/products
+/ru/pricing                             # presentation-only placeholder, no tariff cards or commercial actions
 /ru/products/document-summary
 /ru/products/prompt-optimizer
 /ru/account signed out
@@ -2597,6 +2618,7 @@ Compare the RU surfaces side-by-side with the mockup. The test is not pixel equa
 - The running Portal is visibly no longer the old purple glass/bento presentation.
 - Public, product and account surfaces share the new Bundle 3 navy/amber/compact language.
 - Step 7–9 product/auth/data semantics remain unchanged.
+- The localized pricing placeholder and Products/Pricing navigation reflect the approved topology without introducing commercial facts or purchase behavior.
 - Desktop/mobile remain usable and accessible.
 - Step 12 can now validate the actual intended final UI rather than perform redesign work.
 
@@ -2648,6 +2670,7 @@ Do not create a visual-regression framework or pixel-diff system.
    - product detail pages contain meaningful product-specific sections beyond duplicated card text;
    - authenticated cabinet exposes both current products as primary surfaces;
    - each product surface shows honest current commercial/access/usage state without fake negatives or zeroes.
+   - the localized pricing route renders an honest presentation-only not-ready state, safe home/products links and correct Products/Pricing current-section semantics, without commercial facts or purchase controls.
 3. Add or retain desktop screenshots for at least:
 
 ```text
@@ -2759,6 +2782,7 @@ Then inspect the produced RU desktop/mobile screenshots side-by-side with `porta
 **Expected completion**  
 
 - The final product and visual experience has objective semantic regression coverage.
+- The approved pricing placeholder/navigation topology is covered while commercial authority and purchase/provider Widget behavior remain deferred to parent ANY-504 Steps 6/7.
 - Reviewers have desktop/mobile evidence for actual mockup-direction comparison.
 - The old failure mode (“routes pass, Portal still not actually rebuilt”) is no longer sufficient to satisfy the tests/review.
 
@@ -2806,6 +2830,7 @@ Do not rewrite accepted historical ADR/design records merely for visual naming.
 public product-first home
 catalog / product discovery
 substantial per-product pages
+presentation-only localized pricing placeholder / public navigation
 direct account/auth entry
 product-centric authenticated cabinet
 per-product commercial/access/usage/action slots
@@ -2915,6 +2940,7 @@ Then perform the human acceptance review:
 - ANY-636 finally satisfies the actual ANY-539 / ANY-504 4F product intent.
 - The RU mockup has been materially applied to the current Portal surface.
 - The Portal is product-centric and remains provider-independent.
+- The handoff records `/[locale]/pricing` as presentation/navigation only, with authoritative offers/prices/sellability deferred to parent ANY-504 Step 6 and purchase/provider Widget behavior to Step 7.
 - Steps 6–10 of the parent program can integrate into stable existing UI slots.
 - Documentation, tests, screenshots and human review all describe/prove the same as-built Portal.
 
@@ -2953,7 +2979,7 @@ After **all thirteen** ANY-636 implementation steps are complete and manually ve
 | Canonical legal | Existing RU canonical paths/source preserved |
 | `/auth-checkout` | Removed, no redirect/compatibility route |
 | `/payment-result` | Removed, no redirect/compatibility route |
-| Pricing page/CTA | Not implemented in 4F; deferred to authoritative parent commercial/purchase work |
+| Pricing placeholder/navigation | Localized `/[locale]/pricing` and Pricing navigation exist only as an honest presentation-only not-ready surface; no commercial catalog data, prices, tariff names, billing periods, sellability, subscription state, provider data, purchase controls or fake offers; authoritative offers/prices/sellability remain parent ANY-504 Step 6 and purchase/provider Widget behavior remains Step 7 |
 | Commercial offers/prices | Not implemented; no mock `0/490/990 ₽` or plan authority |
 | Purchase / Widget | Not implemented; no purchase CTA |
 | Subscription/payment state | Not implemented; no fake “none” result, renewal date or manage-billing control |

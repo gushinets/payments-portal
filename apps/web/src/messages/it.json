@@ -2,10 +2,22 @@
   "Navigation": {
     "mainAriaLabel": "Navigazione principale",
     "products": "Strumenti di IA",
+    "pricing": "Tariffe",
     "localeSwitcher": {
       "summaryAriaLabel": "Scegli la lingua. Lingua attuale: {language}",
       "menuAriaLabel": "Scegli la lingua"
     }
+  },
+  "Pricing": {
+    "title": "Tariffe",
+    "description": "Le tariffe e le condizioni di utilizzo saranno pubblicate qui.",
+    "backAction": "Torna alla home",
+    "placeholder": {
+      "badge": "In preparazione",
+      "title": "Tariffe in preparazione",
+      "description": "I prezzi e le condizioni di utilizzo dei prodotti non sono ancora disponibili su questa pagina. Nel frattempo puoi consultare le descrizioni degli strumenti di IA."
+    },
+    "productsAction": "Scopri gli strumenti di IA"
   },
   "Auth": {
     "header": {

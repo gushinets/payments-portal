@@ -138,25 +138,27 @@ test("representative localized metadata uses the public origin and canonical lan
   page
 }) => {
   for (const metadataCase of metadataCases) {
-    await page.goto(`/${metadataCase.locale}/products`);
+    for (const pathname of ["/products", "/pricing"]) {
+      await page.goto(`/${metadataCase.locale}${pathname}`);
 
-    await expect(page).toHaveTitle(metadataCase.title);
-    await expect(page.locator('meta[name="description"]')).toHaveAttribute(
-      "content",
-      metadataCase.description
-    );
-    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
-      "href",
-      publicUrl(`/${metadataCase.locale}/products`)
-    );
+      await expect(page).toHaveTitle(metadataCase.title);
+      await expect(page.locator('meta[name="description"]')).toHaveAttribute(
+        "content",
+        metadataCase.description
+      );
+      await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
+        "href",
+        publicUrl(`/${metadataCase.locale}${pathname}`)
+      );
 
-    const alternateLinks = page.locator('link[rel="alternate"][hreflang]');
-    await expect(alternateLinks).toHaveCount(localeLanguages.length);
+      const alternateLinks = page.locator('link[rel="alternate"][hreflang]');
+      await expect(alternateLinks).toHaveCount(localeLanguages.length);
 
-    for (const [locale, languageTag] of localeLanguages) {
-      await expect(
-        page.locator(`link[rel="alternate"][hreflang="${languageTag}"]`)
-      ).toHaveAttribute("href", publicUrl(`/${locale}/products`));
+      for (const [locale, languageTag] of localeLanguages) {
+        await expect(
+          page.locator(`link[rel="alternate"][hreflang="${languageTag}"]`)
+        ).toHaveAttribute("href", publicUrl(`/${locale}${pathname}`));
+      }
     }
   }
 });

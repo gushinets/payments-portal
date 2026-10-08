@@ -9,6 +9,7 @@ import { Link } from "@/i18n/navigation";
 import { CookieBanner } from "./CookieBanner";
 import { Footer, FooterContent } from "./Footer";
 import { HeaderAccount } from "./HeaderAccount";
+import { HeaderNavigation } from "./HeaderNavigation";
 import { LocaleSwitcher } from "./LocaleSwitcher";
 
 export async function SiteShell({
@@ -39,11 +40,7 @@ export async function SiteShell({
             <Link className="logo" href="/" aria-label="AnyToolAI">
               AnyTool<span>AI</span>
             </Link>
-            <div className="nav-links">
-              <Link className="nav-link" href="/products">
-                {t("products")}
-              </Link>
-            </div>
+            <HeaderNavigation />
             <div className="nav-actions">
               <Suspense fallback={null}>
                 <LocaleSwitcher locale={locale} />

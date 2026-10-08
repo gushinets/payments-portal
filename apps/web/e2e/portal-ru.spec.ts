@@ -28,18 +28,18 @@ const products = [
     description: "Расширение улучшает промпты прямо в привычном интерфейсе и показывает, что именно стало лучше."
   }
 ] as const;
-const readinessPanels = [
+const readinessSlots = [
   {
-    title: "Доступ",
-    description: "Достоверный статус доступа к продуктам пока недоступен."
+    label: "Тарифы и условия",
+    description: "Коммерческая информация по этому продукту пока не готова."
   },
   {
-    title: "Биллинг и подписка",
-    description: "Сведения о тарифе, подписке и биллинге пока не готовы."
+    label: "Доступ к продукту",
+    description: "Достоверный статус доступа к этому продукту пока неизвестен."
   },
   {
-    title: "Использование и квота",
-    description: "Данные об использовании и квоте пока недоступны."
+    label: "Использование и квота",
+    description: "Данные об использовании и квоте для этого продукта пока недоступны."
   }
 ];
 
@@ -162,7 +162,8 @@ for (const product of products) {
 
     await expect(page).toHaveURL(new RegExp(`/ru/products/${product.slug}$`));
     const main = page.getByRole("main");
-    await expect(main.getByRole("heading", { level: 1, name: product.title })).toBeVisible();
+    await expect(main.getByRole("heading", { level: 1, name: product.name })).toBeVisible();
+    await expect(main.getByText(product.title, { exact: true })).toBeVisible();
     await expect(main.getByText(product.description, { exact: true })).toBeVisible();
     await expect(
       main.getByRole("link", { name: "Войти или зарегистрироваться" })
@@ -237,18 +238,26 @@ for (const emailVerified of [true, false]) {
 
     const productRegion = main.getByRole("region", { name: "Продукты" });
     await expect(productRegion.getByRole("link")).toHaveCount(2);
+    await expect(productRegion.getByRole("article")).toHaveCount(2);
     for (const product of products) {
-      await expect(productRegion.getByRole("link", { name: product.title, exact: true }))
+      const card = productRegion.getByRole("article", { name: product.name, exact: true });
+      await expect(card).toBeVisible();
+      await expect(card.getByRole("heading", { level: 3, name: product.name })).toBeVisible();
+      await expect(card.getByText(product.title, { exact: true })).toBeVisible();
+      await expect(card.getByRole("link", {
+        name: `Подробнее о продукте ${product.name}`,
+        exact: true
+      }))
         .toHaveAttribute("href", `/ru/products/${product.slug}`);
-    }
-    for (const readiness of readinessPanels) {
-      const panel = main.getByRole("article", { name: readiness.title, exact: true });
-      await expect(panel.getByText("Данные пока недоступны", { exact: true })).toBeVisible();
-      await expect(panel.getByText(readiness.description, { exact: true })).toBeVisible();
-      await expect(panel).not.toContainText(/\d|₽|€|\$/);
-      await expect(panel.getByRole("progressbar")).toHaveCount(0);
-      await expect(panel.getByRole("button")).toHaveCount(0);
-      await expect(panel.getByRole("link")).toHaveCount(0);
+      await expect(card.getByRole("link")).toHaveCount(1);
+      await expect(card.getByRole("term")).toHaveText(readinessSlots.map((slot) => slot.label));
+      await expect(card.getByRole("definition"))
+        .toHaveText(readinessSlots.map((slot) => slot.description));
+      for (const definition of await card.getByRole("definition").all()) {
+        await expect(definition).not.toContainText(/\d|₽|€|\$/);
+      }
+      await expect(card.getByRole("progressbar")).toHaveCount(0);
+      await expect(card.getByRole("button")).toHaveCount(0);
     }
     await expect(main).not.toContainText(
       /нет\s+(?:активн[а-яё]+\s+)?(?:подписк|доступ)|(?:подписк[аи]|доступ)\s+(?:нет|отсутствует)|no\s+(?:subscription|access)/i
@@ -297,9 +306,10 @@ test("RU Portal navigation, product discovery and account forms remain usable at
   await expectMobileLayout(page, testInfo, "catalog");
   await main.getByRole("link", { name: new RegExp(products[0].title) }).click();
   await expect(page).toHaveURL(/\/ru\/products\/document-summary$/);
-  const productTitle = main.getByRole("heading", { level: 1, name: products[0].title });
+  const productTitle = main.getByRole("heading", { level: 1, name: products[0].name });
   await productTitle.scrollIntoViewIfNeeded();
   await expect(productTitle).toBeInViewport();
+  await expect(main.getByText(products[0].title, { exact: true })).toBeVisible();
   await expect(main.getByText(products[0].description, { exact: true })).toBeVisible();
   await expectMobileLayout(page, testInfo, "product-detail");
 

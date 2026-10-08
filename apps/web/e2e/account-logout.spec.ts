@@ -37,15 +37,23 @@ test("account logout revokes the session and returns to the signed-out account s
     ).toBeVisible();
     const products = accountMain.getByRole("region", { name: "Продукты" });
     await expect(products.getByRole("link")).toHaveCount(2);
-    await expect(
-      accountMain.getByRole("article", { name: "Доступ", exact: true })
-    ).toContainText("Достоверный статус доступа к продуктам пока недоступен.");
-    await expect(
-      accountMain.getByRole("article", { name: "Биллинг и подписка" })
-    ).toContainText("Сведения о тарифе, подписке и биллинге пока не готовы.");
-    await expect(
-      accountMain.getByRole("article", { name: "Использование и квота" })
-    ).toContainText("Данные об использовании и квоте пока недоступны.");
+    await expect(products.getByRole("article")).toHaveCount(2);
+    for (const product of [
+      { name: "Document Summary", slug: "document-summary" },
+      { name: "Prompt Optimizer", slug: "prompt-optimizer" }
+    ]) {
+      const card = products.getByRole("article", { name: product.name, exact: true });
+      await expect(card).toBeVisible();
+      await expect(card.getByRole("definition")).toHaveText([
+        "Коммерческая информация по этому продукту пока не готова.",
+        "Достоверный статус доступа к этому продукту пока неизвестен.",
+        "Данные об использовании и квоте для этого продукта пока недоступны."
+      ]);
+      await expect(card.getByRole("link", {
+        name: `Подробнее о продукте ${product.name}`,
+        exact: true
+      })).toHaveAttribute("href", `/ru/products/${product.slug}`);
+    }
 
     await accountMain.getByRole("button", { name: /Выйти/ }).click();
     await expect(

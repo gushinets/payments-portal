@@ -1,0 +1,269 @@
+.account-dashboard {
+  width: 100%;
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+.account-layout {
+  display: grid;
+  grid-template-columns: var(--dashboard-rail-width) minmax(0, 1fr);
+  min-height: calc(100vh - 62px);
+  align-items: stretch;
+}
+
+.account-summary-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
+  min-width: 0;
+  padding: 30px 16px;
+  background: var(--surf1);
+  border-right: 1px solid var(--border);
+}
+
+.account-summary-panel h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.account-identity {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.account-identity dt {
+  color: var(--txt2);
+  font-size: 13px;
+}
+
+.account-summary-email {
+  margin: 0;
+  color: var(--txt2);
+  font-size: 15px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.account-summary-panel .badge {
+  max-width: 100%;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: normal;
+}
+
+.account-summary-panel .email-verification-pending {
+  gap: 14px;
+  width: 100%;
+  min-width: 0;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+
+.account-summary-panel .email-verification-pending h2 {
+  font-size: 15px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.account-summary-panel .email-verification-pending .card-copy {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.account-summary-panel .btn-secondary {
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 12px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.account-summary-panel .notice {
+  line-height: 1.65;
+}
+
+.account-summary-actions {
+  display: flex;
+  width: 100%;
+  margin-top: 4px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+
+.account-workspace {
+  min-width: 0;
+  padding: 40px 44px;
+}
+
+.account-workspace > .account-heading,
+.account-workspace > .account-products-panel {
+  width: 100%;
+  max-width: var(--max);
+}
+
+.account-heading {
+  margin-bottom: 40px;
+}
+
+.account-heading .eyebrow {
+  margin-bottom: 12px;
+  padding: 0;
+  color: var(--txt2);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.account-heading .legal-title {
+  font-size: 26px;
+  font-weight: 700;
+}
+
+.account-heading .hero-copy {
+  margin-top: 8px;
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+.account-products-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
+  gap: 16px;
+}
+
+.account-products-panel {
+  min-width: 0;
+}
+
+.account-products-heading {
+  margin-bottom: 18px;
+}
+
+.account-products-heading h2 {
+  margin: 0 0 8px;
+  color: var(--txt2);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.account-products-heading .card-copy {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.account-product-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 22px 24px;
+  border-radius: var(--radius-panel);
+}
+
+.account-product-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.account-product-heading > div:last-child {
+  min-width: 0;
+}
+
+.account-product-heading .tool-icon-wrap {
+  flex-shrink: 0;
+  margin: 0;
+  color: var(--acc);
+  background: var(--acc-glow);
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-input);
+}
+
+.account-product-heading .tool-tag {
+  margin-bottom: 6px;
+  color: var(--txt2);
+  font-size: 13px;
+}
+
+.account-product-heading h3 {
+  margin: 0;
+  color: var(--txt);
+  font-family: var(--font-portal, var(--font-headline));
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.account-product-card .account-product-description {
+  margin: 16px 0 0;
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+.account-product-statuses {
+  display: grid;
+  margin: 20px 0;
+}
+
+.account-product-status {
+  padding: 16px 0;
+  border-top: 1px solid var(--border);
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+.account-product-status dt {
+  margin-bottom: 8px;
+  color: var(--txt2);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.account-product-status dd {
+  margin: 0;
+  color: var(--txt2);
+}
+
+.account-product-actions {
+  display: grid;
+  gap: 12px;
+  margin-top: auto;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.account-product-actions .card-copy {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.account-product-actions .btn-secondary {
+  justify-self: start;
+  min-height: 44px;
+  padding: 10px 16px;
+  font-size: 14px;
+}
+
+.account-dashboard .card-copy,
+.account-heading .hero-copy,
+.account-summary-email,
+.account-product-status dd,
+.account-summary-panel .notice:not(.error) {
+  color: color-mix(in srgb, var(--txt2) 85%, var(--txt));
+}

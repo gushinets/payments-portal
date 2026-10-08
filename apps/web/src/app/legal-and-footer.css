@@ -8,9 +8,13 @@
   gap: 14px;
 }
 
+.legal-document-panel .inline-link {
+  text-decoration: underline;
+}
+
 .legal-panel h2 {
   margin: 0 0 10px;
-  font-family: "Cabinet Grotesk", "DM Sans", sans-serif;
+  font-family: var(--font-portal, var(--font-headline));
   font-size: 22px;
   letter-spacing: 0;
 }
@@ -60,7 +64,7 @@
 
 .legal-table th {
   color: var(--txt);
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--surf2);
 }
 
 .legal-table td {
@@ -68,16 +72,14 @@
 }
 
 .footer {
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(15, 12, 41, 0.74);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  border-top: 1px solid var(--border);
+  background: var(--surface-nav);
 }
 
 .footer-inner {
   width: min(100%, var(--max));
   margin: 0 auto;
-  padding: 34px 40px;
+  padding: 28px 40px;
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) minmax(280px, 1fr);
   gap: 28px;
@@ -110,9 +112,9 @@
   min-height: 36px;
   padding: 8px 12px;
   color: var(--txt2);
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--surf1);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-button);
   font-size: 12px;
   text-align: center;
   text-decoration: none;
@@ -210,7 +212,7 @@
   z-index: 30;
   width: min(420px, calc(100vw - 48px));
   padding: 18px;
-  border-radius: 18px;
+  border-radius: var(--radius-card);
 }
 
 .cookie-banner p {

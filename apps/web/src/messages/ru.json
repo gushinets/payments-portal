@@ -2,10 +2,22 @@
   "Navigation": {
     "mainAriaLabel": "Основная навигация",
     "products": "AI-утилиты",
+    "pricing": "Тарифы",
     "localeSwitcher": {
       "summaryAriaLabel": "Выбор языка. Текущий язык: {language}",
       "menuAriaLabel": "Выбор языка"
     }
+  },
+  "Pricing": {
+    "title": "Тарифы",
+    "description": "Информация о тарифах и условиях использования появится здесь.",
+    "backAction": "На главную",
+    "placeholder": {
+      "badge": "Готовится",
+      "title": "Тарифы готовятся",
+      "description": "Информация о ценах и условиях использования продуктов пока недоступна на этой странице. Вы можете ознакомиться с описаниями AI-утилит."
+    },
+    "productsAction": "Смотреть AI-утилиты"
   },
   "Auth": {
     "header": {

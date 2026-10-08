@@ -8,16 +8,18 @@
 
   .nav-inner {
     grid-template-columns: minmax(0, 1fr) auto;
-    gap: 12px 20px;
+    min-height: 54px;
+    gap: 8px 16px;
   }
 
   .nav-links {
-    justify-self: end;
+    grid-column: 1 / -1;
+    grid-row: 2;
   }
 
   .nav-actions {
-    grid-column: 1 / -1;
-    flex-wrap: wrap;
+    grid-column: 2;
+    grid-row: 1;
   }
 
   .nav-actions .nav-account,
@@ -27,7 +29,7 @@
 
   .product-collection {
     flex-direction: column;
-    gap: 20px;
+    gap: 16px;
     padding: 24px;
   }
 
@@ -62,13 +64,29 @@
   .account-products-grid,
   .hero-card,
   .footer-inner {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .account-layout {
-    grid-template-areas:
-      "products"
-      "summary";
+    min-height: 0;
+  }
+
+  .account-summary-panel {
+    padding: 20px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .account-summary-panel .email-verification-pending {
+    max-width: 520px;
+  }
+
+  .account-summary-actions {
+    width: auto;
+  }
+
+  .account-workspace {
+    padding: 28px 20px;
   }
 
   .page-section {
@@ -76,17 +94,18 @@
     padding-bottom: 48px;
   }
 
+  .page-section.public-home-hero {
+    padding-top: 60px;
+    padding-bottom: 40px;
+  }
+
   .hero-card {
     padding: 26px 22px;
   }
 
   .product-hero {
-    gap: 32px;
+    gap: 28px;
     margin-bottom: 40px;
-  }
-
-  .product-hero .product-detail-title {
-    font-size: 36px;
   }
 
   .product-preview {
@@ -103,8 +122,8 @@
   }
 
   .auth-modal-panel {
-    top: 82px;
-    max-height: calc(100vh - 104px);
+    top: 16px;
+    max-height: calc(100dvh - 32px);
   }
 
   .footer-links {
@@ -126,10 +145,8 @@
     font-size: 40px;
   }
 
-  .legal-title,
-  .result-title,
-  .catalog-title {
-    font-size: 34px;
+  .public-hero .hero-copy {
+    font-size: 15px;
   }
 }
 
@@ -140,21 +157,43 @@
 
   .hero-h1,
   .public-hero .hero-h1 {
-    font-size: 34px;
+    font-size: 32px;
   }
 
-  .section-title {
-    font-size: 28px;
-  }
-
+  .section-title,
   .legal-title,
   .result-title,
-  .catalog-title {
-    font-size: 30px;
+  .catalog-heading .catalog-title {
+    font-size: 28px;
   }
 
   .stats-grid {
     grid-template-columns: 1fr;
+  }
+
+  .nav-inner {
+    gap: 6px 12px;
+  }
+
+  .logo {
+    font-size: 16px;
+  }
+
+  .nav-links {
+    grid-column: 2;
+    grid-row: 1;
+    justify-content: flex-end;
+  }
+
+  .nav-links .nav-link {
+    padding: 8px;
+    text-align: center;
+  }
+
+  .nav-actions {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    gap: 8px;
   }
 
   .nav-actions .nav-account,
@@ -180,13 +219,20 @@
 
   .product-collection,
   .tool-card,
-  .product-info-card,
+  .product-info-card {
+    padding: 20px;
+  }
+
+  .account-workspace {
+    padding: 20px;
+  }
+
   .account-product-card {
-    padding: 22px 20px;
+    padding: 18px 20px;
   }
 
   .product-hero .product-detail-title {
-    font-size: 32px;
+    font-size: 28px;
   }
 
   .product-preview {
@@ -221,6 +267,10 @@
     flex-direction: column;
   }
 
+  .account-product-actions .btn-secondary {
+    justify-self: stretch;
+  }
+
   .account-card,
   .telegram-placeholder,
   .auth-mode-row {
@@ -234,5 +284,15 @@
 
   .mobile-only-break {
     display: block;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
   }
 }

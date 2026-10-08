@@ -45,7 +45,7 @@ test("localized routes retain a generated static locale boundary", async () => {
   );
   assert.match(
     source,
-    /<html lang=\{LANGUAGE_TAG_BY_ROUTE_LOCALE\[locale\]\}>/
+    /<html\b[^>]*\slang=\{LANGUAGE_TAG_BY_ROUTE_LOCALE\[locale\]\}[^>]*>/
   );
   assert.match(
     source,

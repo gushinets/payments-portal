@@ -221,32 +221,10 @@ export function AccountClient({ languageTag }: { languageTag: string }) {
   }
 
   return (
-    <section className="page-section compact">
-      <div className="eyebrow">
-        <span className="eyebrow-dot" />
-        {t("eyebrow")}
-      </div>
-      <h1 className="legal-title">{t("title")}</h1>
-      <p className="hero-copy">{t("authenticated.description")}</p>
-
+    <section className="account-dashboard">
       <div className="account-layout">
-        <section
-          className="account-products-panel"
-          aria-labelledby="account-products-title"
-        >
-          <div className="account-products-heading">
-            <h2 id="account-products-title">{t("products.title")}</h2>
-            <p className="card-copy">{t("products.description")}</p>
-          </div>
-          <div className="account-products-grid">
-            {productPresentation.map((product) => (
-              <AccountProductCard product={product} key={product.slug} />
-            ))}
-          </div>
-        </section>
-
         <aside
-          className="form-panel account-summary-panel"
+          className="account-summary-panel"
           aria-labelledby="account-summary-title"
         >
           <h2 id="account-summary-title">
@@ -288,6 +266,32 @@ export function AccountClient({ languageTag }: { languageTag: string }) {
             </button>
           </div>
         </aside>
+
+        <div className="account-workspace">
+          <header className="account-heading">
+            <div className="eyebrow">
+              <span className="eyebrow-dot" />
+              {t("eyebrow")}
+            </div>
+            <h1 className="legal-title">{t("title")}</h1>
+            <p className="hero-copy">{t("authenticated.description")}</p>
+          </header>
+
+          <section
+            className="account-products-panel"
+            aria-labelledby="account-products-title"
+          >
+            <div className="account-products-heading">
+              <h2 id="account-products-title">{t("products.title")}</h2>
+              <p className="card-copy">{t("products.description")}</p>
+            </div>
+            <div className="account-products-grid">
+              {productPresentation.map((product) => (
+                <AccountProductCard product={product} key={product.slug} />
+              ))}
+            </div>
+          </section>
+        </div>
       </div>
     </section>
   );

@@ -2,10 +2,22 @@
   "Navigation": {
     "mainAriaLabel": "Hauptnavigation",
     "products": "KI-Werkzeuge",
+    "pricing": "Preise",
     "localeSwitcher": {
       "summaryAriaLabel": "Sprache wählen. Aktuelle Sprache: {language}",
       "menuAriaLabel": "Sprache wählen"
     }
+  },
+  "Pricing": {
+    "title": "Preise",
+    "description": "Hier finden Sie künftig Preise und Nutzungsbedingungen.",
+    "backAction": "Zur Startseite",
+    "placeholder": {
+      "badge": "In Vorbereitung",
+      "title": "Preise werden vorbereitet",
+      "description": "Preise und Nutzungsbedingungen der Produkte sind auf dieser Seite noch nicht verfügbar. In der Zwischenzeit können Sie die Beschreibungen unserer KI-Werkzeuge ansehen."
+    },
+    "productsAction": "KI-Werkzeuge ansehen"
   },
   "Auth": {
     "header": {

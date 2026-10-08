@@ -2,10 +2,22 @@
   "Navigation": {
     "mainAriaLabel": "Navegação principal",
     "products": "Ferramentas de IA",
+    "pricing": "Preços",
     "localeSwitcher": {
       "summaryAriaLabel": "Escolher idioma. Idioma atual: {language}",
       "menuAriaLabel": "Escolher idioma"
     }
+  },
+  "Pricing": {
+    "title": "Preços",
+    "description": "Os preços e as condições de uso serão apresentados aqui.",
+    "backAction": "Voltar ao início",
+    "placeholder": {
+      "badge": "Em preparação",
+      "title": "Preços em preparação",
+      "description": "Os preços e as condições de uso dos produtos ainda não estão disponíveis nesta página. Enquanto isso, você pode consultar as descrições das ferramentas de IA."
+    },
+    "productsAction": "Ver ferramentas de IA"
   },
   "Auth": {
     "header": {

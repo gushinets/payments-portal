@@ -26,7 +26,7 @@ export default async function HomePage() {
           <div className="eyebrow">{t("eyebrow")}</div>
           <h1 className="hero-h1">
             {t.rich("hero.heading", {
-              em: (chunks) => <em className="h1-grad">{chunks}</em>
+              em: (chunks) => <em className="headline-accent">{chunks}</em>
             })}
           </h1>
           <p className="hero-copy">{t("hero.description")}</p>

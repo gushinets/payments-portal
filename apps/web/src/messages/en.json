@@ -2,10 +2,22 @@
   "Navigation": {
     "mainAriaLabel": "Main navigation",
     "products": "AI utilities",
+    "pricing": "Pricing",
     "localeSwitcher": {
       "summaryAriaLabel": "Choose language. Current language: {language}",
       "menuAriaLabel": "Choose language"
     }
+  },
+  "Pricing": {
+    "title": "Pricing",
+    "description": "Pricing and terms of use will appear here.",
+    "backAction": "Back to home",
+    "placeholder": {
+      "badge": "In preparation",
+      "title": "Pricing is being prepared",
+      "description": "Pricing and product terms are not available on this page yet. You can explore the descriptions of our AI utilities in the meantime."
+    },
+    "productsAction": "Explore AI utilities"
   },
   "Auth": {
     "header": {

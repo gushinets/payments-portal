@@ -1,10 +1,12 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
+import ruMessages from "../src/messages/ru.json";
 
 const routes = [
   "/ru",
   "/ru/products",
+  "/ru/pricing",
   "/ru/products/document-summary",
   "/ru/products/prompt-optimizer",
   "/ru/account",
@@ -40,6 +42,27 @@ for (const route of routes) {
       await expect(
         page.getByRole("main").getByRole("heading", { name: "Вход или регистрация" })
       ).toBeVisible();
+    }
+    if (route === "/ru/pricing") {
+      const main = page.getByRole("main");
+      await expect(
+        main.getByRole("heading", { name: ruMessages.Pricing.title, level: 1 })
+      ).toBeVisible();
+      await expect(
+        main.getByText(ruMessages.Pricing.placeholder.description, { exact: true })
+      ).toBeVisible();
+      await expect(main.getByRole("link")).toHaveCount(2);
+      await expect(main.getByRole("button")).toHaveCount(0);
+      await expect(
+        main.getByRole("link", { name: ruMessages.Pricing.backAction })
+      ).toHaveAttribute("href", "/ru");
+      await expect(
+        main.getByRole("link", { name: ruMessages.Pricing.productsAction })
+      ).toHaveAttribute("href", "/ru/products");
+      await expect(
+        page.getByRole("navigation", { name: ruMessages.Navigation.mainAriaLabel })
+          .getByRole("link", { name: ruMessages.Navigation.pricing })
+      ).toHaveAttribute("aria-current", "page");
     }
 
     const accessibility = await new AxeBuilder({ page }).analyze();
