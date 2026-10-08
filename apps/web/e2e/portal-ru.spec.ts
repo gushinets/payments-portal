@@ -1,5 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Page, type TestInfo } from "@playwright/test";
+import { expect, test, type Locator, type Page, type TestInfo } from "@playwright/test";
+
+import ruMessages from "../src/messages/ru.json";
 
 const removedContracts = [
   "/api/catalog/products",
@@ -10,6 +12,7 @@ const removedContracts = [
 const portalRoutes = [
   "/ru",
   "/ru/products",
+  "/ru/pricing",
   "/ru/products/document-summary",
   "/ru/products/prompt-optimizer",
   "/ru/account"
@@ -17,37 +20,32 @@ const portalRoutes = [
 const products = [
   {
     slug: "document-summary",
+    ...ruMessages.Catalog.products.documentSummary,
     name: "Document Summary",
-    title: "Мгновенное краткое содержание любого документа",
-    description: "Расширение помогает быстро получать краткое содержание документов и веб-страниц без лишних ручных действий."
+    title: ruMessages.Catalog.products.documentSummary.tagline
   },
   {
     slug: "prompt-optimizer",
+    ...ruMessages.Catalog.products.promptOptimizer,
     name: "Prompt Optimizer",
-    title: "Улучшение промптов для ИИ в один клик",
-    description: "Расширение улучшает промпты прямо в привычном интерфейсе и показывает, что именно стало лучше."
+    title: ruMessages.Catalog.products.promptOptimizer.tagline
   }
 ] as const;
 const readinessSlots = [
-  {
-    label: "Тарифы и условия",
-    description: "Коммерческая информация по этому продукту пока не готова."
-  },
-  {
-    label: "Доступ к продукту",
-    description: "Достоверный статус доступа к этому продукту пока неизвестен."
-  },
-  {
-    label: "Использование и квота",
-    description: "Данные об использовании и квоте для этого продукта пока недоступны."
-  }
+  ruMessages.Account.products.state.commercial,
+  ruMessages.Account.products.state.access,
+  ruMessages.Account.products.state.usage
 ];
 
 function observePortalTraffic(page: Page) {
   const removedContractRequests: string[] = [];
   const scriptRequests: string[] = [];
+  const apiRequests: string[] = [];
   page.on("request", (request) => {
     const url = new URL(request.url());
+    if (url.pathname.startsWith("/api/")) {
+      apiRequests.push(`${request.method()} ${url.pathname}`);
+    }
     if (removedContracts.includes(url.pathname.replace(/\/+$/, ""))) {
       removedContractRequests.push(`${request.method()} ${url.pathname}`);
     }
@@ -56,7 +54,7 @@ function observePortalTraffic(page: Page) {
     }
   });
 
-  return { removedContractRequests, scriptRequests };
+  return { removedContractRequests, scriptRequests, apiRequests };
 }
 
 async function expectPortalBoundary(
@@ -99,13 +97,83 @@ async function expectPortalBoundary(
   expect(providerScriptRequests).toEqual([]);
   expect(providerScriptSources).toEqual([]);
   expect(hasCloudPaymentsSdk).toBe(false);
+
+  // These journeys may read identity only; no commercial/access/usage source exists yet.
+  expect(traffic.apiRequests.filter((request) => request !== "GET /api/auth/session"))
+    .toEqual([]);
+  const main = page.getByRole("main");
+  const footer = page.getByRole("contentinfo");
+  const navigation = page.getByRole("navigation", { name: ruMessages.Navigation.mainAriaLabel });
+  await expect(main).not.toContainText(/CloudPayments/i);
+  await expect(footer).not.toContainText(/CloudPayments/i);
+  await expect(navigation).not.toContainText(/CloudPayments/i);
+  await expect(main).not.toContainText(/(?:490|990)\s*₽|200\s*k\s*\+|320\s*\/\s*500|3\s*\/\s*10/i);
+  await expect(footer).not.toContainText(/(?:490|990)\s*₽|200\s*k\s*\+|320\s*\/\s*500|3\s*\/\s*10/i);
+  await expect(main).not.toContainText(
+    /нет\s+(?:активн[а-яё]+\s+)?(?:подписк|доступ)|(?:подписк[аи]|доступ)\s+(?:нет|отсутствует)|no\s+(?:subscription|access)/i
+  );
+  await expect(main).not.toContainText(
+    /\d[\d\s.,]*\s*(?:₽|руб|RUB|€|\$)|[€$₽]\s*\d/i
+  );
+  await expect(main).not.toContainText(/\b(?:free|pro|default)\b|бесплатн[а-яё]*|по умолчанию/i);
+  await expect(main).not.toContainText(
+    /(?:^|\D)0\s*(?:\/\s*\d+|(?:из|of)\s+\d+|(?:запрос|использован|usage|quota))/i
+  );
 }
 
-async function expectMobileLayout(page: Page, testInfo: TestInfo, name: string) {
+async function expectKeyboardFocus(page: Page, target: Locator) {
+  // Reach the action through the real tab order rather than assigning focus.
+  for (let attempt = 0; attempt < 24; attempt += 1) {
+    await page.keyboard.press("Tab");
+    if (await target.evaluate((element) => element === document.activeElement)) {
+      break;
+    }
+  }
+  await expect(target).toBeFocused();
+  await expect(target).toBeInViewport();
+  await expect.poll(() => target.evaluate((element) => {
+    const style = window.getComputedStyle(element);
+    return style.outlineStyle !== "none" &&
+      Number.parseFloat(style.outlineWidth) > 0 &&
+      style.outlineColor !== "transparent" &&
+      style.outlineColor !== "rgba(0, 0, 0, 0)";
+  })).toBe(true);
+}
+
+async function capturePortalScreenshot(page: Page, testInfo: TestInfo, name: string) {
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+    window.scrollTo(0, 0);
+  });
+  const screenshotPath = testInfo.outputPath(`${name}.png`);
+  await page.screenshot({
+    path: screenshotPath,
+    animations: "disabled",
+    caret: "hide",
+    scale: "css",
+    fullPage: true
+  });
+  await testInfo.attach(name, { path: screenshotPath, contentType: "image/png" });
+  await testInfo.attach(`${name}-review-context`, {
+    body: JSON.stringify({
+      route: new URL(page.url()).pathname,
+      viewport: page.viewportSize(),
+      reference: "docs/exec-plans/active/portal-ru-anytools.html",
+      review: "Compare composition and navy background, flat dark surfaces, thin borders, amber accent, compact radii/spacing, typography and dashboard/cards. Purple/indigo glass and bento must not dominate. Human review only; no pixel baseline."
+    }, null, 2),
+    contentType: "application/json"
+  });
+}
+
+async function expectNoHorizontalOverflow(page: Page) {
   await expect.poll(() => page.evaluate(() =>
     Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) -
     document.documentElement.clientWidth
   )).toBeLessThanOrEqual(0);
+}
+
+async function expectMobileLayout(page: Page, testInfo: TestInfo, name: string) {
+  await expectNoHorizontalOverflow(page);
 
   await testInfo.attach(`mobile-${name}-runtime-evidence`, {
     body: JSON.stringify(await page.evaluate(() => ({
@@ -116,10 +184,7 @@ async function expectMobileLayout(page: Page, testInfo: TestInfo, name: string) 
     })), null, 2),
     contentType: "application/json"
   });
-  await page.screenshot({
-    path: testInfo.outputPath(`mobile-${name}.png`),
-    fullPage: true
-  });
+  await capturePortalScreenshot(page, testInfo, `mobile-${name}`);
 }
 
 for (const route of portalRoutes) {
@@ -144,19 +209,81 @@ for (const route of portalRoutes) {
         ).toHaveAttribute("href", `/ru/products/${product.slug}`);
       }
     }
+    expect(traffic.apiRequests).toEqual([]);
 
     await expectPortalBoundary(page, traffic, testInfo);
   });
 }
 
+test("home leads with product value, account entry and discovery of the two current tools", async ({
+  page
+}, testInfo) => {
+  const traffic = observePortalTraffic(page);
+  await page.goto("/ru", { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: ruMessages.CookieBanner.acceptAction, exact: true }).click();
+  const main = page.getByRole("main");
+  const heading = main.getByRole("heading", {
+    level: 1,
+    name: ruMessages.Home.hero.heading.replace(/<\/?em>/g, ""),
+    exact: true
+  });
+  const hero = main.locator("section").filter({ has: page.getByRole("heading", { level: 1 }) });
+  await expect(heading).toBeVisible();
+  await expect(hero.getByText(ruMessages.Home.hero.description, { exact: true })).toBeVisible();
+  await expect(hero.getByRole("link")).toHaveText([
+    ruMessages.Home.hero.primaryAction,
+    ruMessages.Home.hero.secondaryAction
+  ]);
+  const accountAction = hero.getByRole("link", { name: ruMessages.Home.hero.primaryAction });
+  const discoveryAction = hero.getByRole("link", { name: ruMessages.Home.hero.secondaryAction });
+  await expect(accountAction).toHaveAttribute("href", "/ru/account");
+  await expect(discoveryAction).toHaveAttribute("href", "#products");
+
+  const discovery = main.locator("#products");
+  await expect(discovery.getByRole("heading", {
+    level: 2,
+    name: ruMessages.Home.products.title,
+    exact: true
+  })).toBeVisible();
+  await expect(discovery.getByRole("listitem")).toHaveText(products.map((product) => product.name));
+  await expect(discovery.getByRole("link", { name: ruMessages.Home.products.action, exact: true }))
+    .toHaveAttribute("href", "/ru/products");
+  await expect(discovery.getByRole("link").filter({ has: page.getByRole("heading", { level: 3 }) }))
+    .toHaveCount(2);
+  for (const product of products) {
+    const card = discovery.getByRole("link", { name: new RegExp(product.name) });
+    await expect(card.getByRole("heading", { level: 3, name: product.name, exact: true })).toBeVisible();
+    await expect(card).toHaveAttribute("href", `/ru/products/${product.slug}`);
+    await expect(card).toContainText(product.type);
+  }
+  await expect(main.getByRole("status")).toHaveCount(0);
+  await expect(main).not.toContainText(/Proposal Checker|Scope Guard|следующий инструмент|лист ожидания/i);
+
+  const navigation = page.getByRole("navigation", { name: ruMessages.Navigation.mainAriaLabel });
+  await expectKeyboardFocus(page, navigation.getByRole("link", { name: ruMessages.Navigation.products, exact: true }));
+  await expectKeyboardFocus(page, accountAction);
+  await expectKeyboardFocus(page, discoveryAction);
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\/ru#products$/);
+  await expect(discovery.getByRole("heading", { level: 2 })).toBeInViewport();
+  await expectNoHorizontalOverflow(page);
+  expect(traffic.apiRequests).toEqual([]);
+  await expectPortalBoundary(page, traffic, testInfo);
+});
+
 for (const product of products) {
-  test(`catalog card opens the localized ${product.slug} detail page`, async ({ page }) => {
+  test(`catalog card opens a substantial localized ${product.slug} detail page`, async ({ page }, testInfo) => {
+    const traffic = observePortalTraffic(page);
     await page.goto("/ru/products");
+    await page.getByRole("button", { name: ruMessages.CookieBanner.acceptAction, exact: true }).click();
+    await expect(page.getByRole("main").getByRole("link")).toHaveCount(2);
     const card = page.getByRole("main").getByRole("link", {
       name: new RegExp(product.title)
     });
     await expect(card).toContainText("Подробнее");
     await expect(card).toContainText(product.description);
+    await expect(card).toContainText(product.type);
+    await expect(card.getByRole("heading", { level: 2, name: product.name, exact: true })).toBeVisible();
     await expect(card).toHaveAttribute("href", `/ru/products/${product.slug}`);
     await card.click();
 
@@ -173,6 +300,46 @@ for (const product of products) {
     for (const backLink of await backLinks.all()) {
       await expect(backLink).toHaveAttribute("href", "/ru/products");
     }
+
+    const preview = main.getByRole("figure");
+    await expect(preview).toHaveCount(1);
+    await expect(preview.getByText(ruMessages.Catalog.detail.previewLabel, { exact: true })).toBeVisible();
+    await expect(preview.getByText(product.detail.previewCaption, { exact: true })).toBeVisible();
+    await expect(preview.getByText(ruMessages.Catalog.detail.previewNote, { exact: true })).toBeVisible();
+
+    const information = main.getByRole("region", { name: ruMessages.Catalog.detail.informationTitle });
+    const highlights = [product.detail.focus, product.detail.context, product.detail.approach];
+    await expect(information.getByRole("heading", { level: 3 }))
+      .toHaveText(highlights.map((highlight) => highlight.title));
+    for (const highlight of highlights) {
+      await expect(information.getByText(highlight.description, { exact: true })).toBeVisible();
+      expect(highlight.description).not.toBe(product.description);
+    }
+    const otherProduct = products[product.slug === "document-summary" ? 1 : 0];
+    await expect(information).not.toContainText(otherProduct.detail.focus.description);
+
+    const readiness = main.getByRole("region", { name: ruMessages.Catalog.detail.readiness.title });
+    const detailSlots = [
+      ruMessages.Catalog.detail.readiness.commercial,
+      ruMessages.Catalog.detail.readiness.access,
+      ruMessages.Catalog.detail.readiness.usage
+    ];
+    await expect(readiness.getByRole("term")).toHaveText(detailSlots.map((slot) => slot.label));
+    await expect(readiness.getByRole("definition"))
+      .toHaveText(detailSlots.map((slot) => slot.description));
+    await expect(readiness.getByRole("definition").nth(0)).toContainText(/не готов|недоступ/i);
+    await expect(readiness.getByRole("definition").nth(1)).toContainText(/неизвест|недоступ/i);
+    await expect(readiness.getByRole("definition").nth(2)).toContainText(/недоступ/i);
+    for (const definition of await readiness.getByRole("definition").all()) {
+      await expect(definition).not.toContainText(/\d|₽|€|\$/);
+    }
+    await expect(main.getByRole("progressbar")).toHaveCount(0);
+    await expect(main.getByRole("button")).toHaveCount(0);
+    await expect(main.getByRole("link")).toHaveCount(3);
+    await expect(main.getByText(ruMessages.Catalog.detail.accountNote, { exact: true })).toBeVisible();
+    await expectKeyboardFocus(page, main.getByRole("link", { name: ruMessages.Catalog.signInAction }));
+    await expectNoHorizontalOverflow(page);
+    await expectPortalBoundary(page, traffic, testInfo);
   });
 }
 
@@ -196,10 +363,13 @@ for (const route of [
 }
 
 for (const emailVerified of [true, false]) {
-  test(`account shows identity and unknown commercial data (email verified: ${emailVerified})`, async ({
+  test(`account centers both products with honest state (email verified: ${emailVerified})`, async ({
     page
   }, testInfo) => {
     const traffic = observePortalTraffic(page);
+    if (testInfo.project.use.isMobile) {
+      await page.setViewportSize({ width: 390, height: 844 });
+    }
     const email = emailVerified ? "verified-portal@example.com" : "pending-portal@example.com";
     await page.addInitScript(() => {
       window.localStorage.setItem("anytoolai_session_token_v1", "portal-session");
@@ -222,7 +392,13 @@ for (const emailVerified of [true, false]) {
     });
 
     await page.goto("/ru/account", { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: ruMessages.CookieBanner.acceptAction, exact: true }).click();
     const main = page.getByRole("main");
+    await expect(main.getByRole("heading", { level: 1, name: ruMessages.Account.title })).toBeVisible();
+    const identity = main.getByRole("complementary", { name: ruMessages.Account.authenticated.summaryTitle });
+    await expect(identity.getByRole("term")).toHaveText([ruMessages.Account.authenticated.emailLabel]);
+    await expect(identity.getByRole("definition")).toHaveText([email]);
+    await expect(identity.getByRole("article")).toHaveCount(0);
     await expect(main.getByText(email, { exact: true })).toBeVisible();
     await expect(main.getByText(
       emailVerified ? "Email подтверждён" : "Email не подтверждён",
@@ -237,6 +413,7 @@ for (const emailVerified of [true, false]) {
     }
 
     const productRegion = main.getByRole("region", { name: "Продукты" });
+    await expect(main.getByRole("article")).toHaveCount(2);
     await expect(productRegion.getByRole("link")).toHaveCount(2);
     await expect(productRegion.getByRole("article")).toHaveCount(2);
     for (const product of products) {
@@ -244,6 +421,7 @@ for (const emailVerified of [true, false]) {
       await expect(card).toBeVisible();
       await expect(card.getByRole("heading", { level: 3, name: product.name })).toBeVisible();
       await expect(card.getByText(product.title, { exact: true })).toBeVisible();
+      await expect(card.getByText(product.type, { exact: true })).toBeVisible();
       await expect(card.getByRole("link", {
         name: `Подробнее о продукте ${product.name}`,
         exact: true
@@ -253,6 +431,9 @@ for (const emailVerified of [true, false]) {
       await expect(card.getByRole("term")).toHaveText(readinessSlots.map((slot) => slot.label));
       await expect(card.getByRole("definition"))
         .toHaveText(readinessSlots.map((slot) => slot.description));
+      await expect(card.getByRole("definition").nth(0)).toContainText(/не готов/i);
+      await expect(card.getByRole("definition").nth(1)).toContainText(/неизвест/i);
+      await expect(card.getByRole("definition").nth(2)).toContainText(/недоступ/i);
       for (const definition of await card.getByRole("definition").all()) {
         await expect(definition).not.toContainText(/\d|₽|€|\$/);
       }
@@ -276,6 +457,16 @@ for (const emailVerified of [true, false]) {
     });
     expect(seriousOrCritical).toEqual([]);
     await expectPortalBoundary(page, traffic, testInfo);
+    await expectNoHorizontalOverflow(page);
+    const viewport = testInfo.project.use.isMobile ? "mobile" : "desktop";
+    const verificationState = emailVerified ? "verified" : "pending-verification";
+    await capturePortalScreenshot(page, testInfo, `${viewport}-account-${verificationState}`);
+    for (const product of products) {
+      await expectKeyboardFocus(page, productRegion.getByRole("link", {
+        name: `${ruMessages.Account.products.detailAction} ${product.name}`,
+        exact: true
+      }));
+    }
   });
 }
 
@@ -311,12 +502,23 @@ test("RU Portal navigation, product discovery and account forms remain usable at
   await expect(productTitle).toBeInViewport();
   await expect(main.getByText(products[0].title, { exact: true })).toBeVisible();
   await expect(main.getByText(products[0].description, { exact: true })).toBeVisible();
-  await expectMobileLayout(page, testInfo, "product-detail");
+  await expectMobileLayout(page, testInfo, "document-summary");
 
-  await main.getByRole("link", { name: "Войти или зарегистрироваться" }).click();
+  await main.getByRole("link", { name: "К списку продуктов" }).last().click();
+  await expect(page).toHaveURL(/\/ru\/products$/);
+  await main.getByRole("link", { name: new RegExp(products[1].title) }).click();
+  await expect(page).toHaveURL(/\/ru\/products\/prompt-optimizer$/);
+  await expect(main.getByRole("heading", { level: 1, name: products[1].name })).toBeVisible();
+  await expectMobileLayout(page, testInfo, "prompt-optimizer");
+
+  await expectKeyboardFocus(page, main.getByRole("link", { name: "Войти или зарегистрироваться" }));
+  await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/\/ru\/account$/);
   await expect(main.getByRole("heading", { name: "Вход или регистрация" })).toBeVisible();
+  await expectKeyboardFocus(page, main.getByLabel("Email"));
   await main.getByLabel("Email").fill("mobile-portal@example.com");
+  await page.keyboard.press("Tab");
+  await expect(main.getByLabel("Пароль", { exact: true })).toBeFocused();
   await main.getByLabel("Пароль", { exact: true }).fill("Synthetic-password-123!");
   await expect(main.getByRole("button", { name: "Войти", exact: true })).toBeEnabled();
   await expect(main.getByRole("link", { name: "Забыли пароль?" }))
