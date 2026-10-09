@@ -131,7 +131,8 @@
     },
     "sessionError": {
       "notice": "Ihre Kontositzung konnte nicht geladen werden. Versuchen Sie es erneut.",
-      "retryAction": "Sitzung erneut laden"
+      "retryAction": "Sitzung erneut laden",
+      "localSignOutAction": "Auf diesem Gerät abmelden"
     },
     "authenticated": {
       "description": "Ihr Konto und die AnytoolAI-Produkte an einem Ort.",

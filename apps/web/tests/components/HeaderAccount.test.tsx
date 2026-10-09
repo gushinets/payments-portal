@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import userEvent from "@testing-library/user-event";
 import ruMessages from "@/messages/ru.json";
 import {
   requestTimeoutMs,
@@ -40,6 +41,44 @@ describe("header account session", () => {
     cleanup();
     vi.useRealTimers();
     vi.unstubAllGlobals();
+  });
+
+  it.each([true, false])("submits modal login once with Enter (email verified: %s)", async (emailVerified) => {
+    const user = userEvent.setup();
+    fetchMock.mockImplementation(async (input) => jsonResponse(
+      String(input).endsWith("/api/auth/login")
+        ? {
+          status: "authenticated",
+          token: "modal-token",
+          user: {
+            tenant_id: "anytoolai", region: "ru",
+            user_id: "11111111-1111-4111-8111-111111111111",
+            email: "modal@example.com", email_verified: emailVerified
+          }
+        }
+        : {
+          authenticated: true,
+          user: {
+            tenant_id: "anytoolai", region: "ru",
+            user_id: "11111111-1111-4111-8111-111111111111",
+            email: "modal@example.com", email_verified: emailVerified
+          }
+        }
+    ));
+    renderHeaderAccount();
+    await user.click(await screen.findByRole("button", { name: "Войти" }));
+    await user.type(screen.getByLabelText("Email"), "modal@example.com");
+    await user.type(screen.getByLabelText("Пароль"), "password-123{Enter}");
+
+    expect(await screen.findByText("modal@example.com")).toBeVisible();
+    expect(window.localStorage.getItem(sessionStorageKey)).toBe("modal-token");
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/api/auth/login"))).toHaveLength(1);
+    if (emailVerified) {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    } else {
+      expect(screen.getByRole("heading", { name: ruMessages.EmailVerification.pending.title })).toBeVisible();
+      expect(screen.getByRole("dialog").querySelector("form")).toBeNull();
+    }
   });
 
   it("retains the trusted session when a successful response has invalid JSON syntax", async () => {

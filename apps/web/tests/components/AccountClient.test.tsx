@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AccountClient } from "@/features/account";
@@ -10,6 +10,7 @@ import {
   sessionChangedEvent,
   sessionStorageKey
 } from "@/shared/api/auth";
+import { HeaderAccount } from "@/shared/ui/HeaderAccount";
 import { renderWithIntl } from "../setup/render-with-intl";
 
 const fetchMock = vi.fn<typeof fetch>();
@@ -41,10 +42,13 @@ function deferredResponse() {
   return { promise, resolveResponse };
 }
 
-function renderAccountClient(locale: "ru" | "pt" = "ru") {
+function renderAccountClient(locale: "ru" | "pt" = "ru", withHeader = false) {
   const messages = locale === "pt" ? ptMessages : ruMessages;
   return renderWithIntl(
-    <AccountClient languageTag={locale === "pt" ? "pt-BR" : "ru"} />,
+    <>
+      {withHeader ? <header><HeaderAccount languageTag="ru" /></header> : null}
+      <AccountClient languageTag={locale === "pt" ? "pt-BR" : "ru"} />
+    </>,
     {
       locale,
       messages: {
@@ -416,8 +420,9 @@ describe("direct account authentication and session", () => {
     ["503", () => jsonResponse({ detail: "unavailable" }, 503)],
     ["invalid JSON", () => new Response("invalid-json", { status: 200 })]
   ])(
-    "preserves the bearer and offers retry after a session %s",
+    "preserves the bearer and permits local sign-out after a session %s",
     async (_label, response) => {
+      const dispatchEvent = vi.spyOn(window, "dispatchEvent");
       window.localStorage.setItem(sessionStorageKey, "session-token");
       fetchMock.mockResolvedValueOnce(response());
       renderAccountClient();
@@ -438,6 +443,18 @@ describe("direct account authentication and session", () => {
         screen.queryByRole("region", { name: ruMessages.Account.products.title })
       ).not.toBeInTheDocument();
       expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(dispatchEvent).not.toHaveBeenCalled();
+      await userEvent.setup().click(screen.getByRole("button", {
+        name: "Выйти на этом устройстве"
+      }));
+      expect(window.localStorage.getItem(sessionStorageKey)).toBeNull();
+      expect(dispatchEvent).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ type: sessionChangedEvent })
+      );
+      expect(await screen.findByRole("heading", { name: ruMessages.Auth.dialogTitle })).toBeVisible();
+      expect(screen.getByLabelText("Email")).toBeVisible();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/api/auth/session");
     }
   );
 
@@ -445,8 +462,9 @@ describe("direct account authentication and session", () => {
     ["network failure", new TypeError("network unavailable")],
     ["abort", new DOMException("Request aborted", "AbortError")]
   ])(
-    "preserves the bearer and offers retry after a session %s",
+    "preserves the bearer and permits local sign-out after a session %s",
     async (_label, error) => {
+      const dispatchEvent = vi.spyOn(window, "dispatchEvent");
       window.localStorage.setItem(sessionStorageKey, "session-token");
       fetchMock.mockRejectedValueOnce(error);
       renderAccountClient();
@@ -458,11 +476,26 @@ describe("direct account authentication and session", () => {
       expect(
         screen.queryByRole("heading", { name: ruMessages.Auth.dialogTitle })
       ).not.toBeInTheDocument();
+      expect(screen.getByRole("button", {
+        name: ruMessages.Account.sessionError.retryAction
+      })).toBeVisible();
+      expect(dispatchEvent).not.toHaveBeenCalled();
+      await userEvent.setup().click(screen.getByRole("button", {
+        name: "Выйти на этом устройстве"
+      }));
+      expect(window.localStorage.getItem(sessionStorageKey)).toBeNull();
+      expect(dispatchEvent).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ type: sessionChangedEvent })
+      );
+      expect(await screen.findByRole("heading", { name: ruMessages.Auth.dialogTitle })).toBeVisible();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/api/auth/session");
     }
   );
 
-  it("keeps the bearer when the session request times out", async () => {
+  it("keeps the bearer on timeout and permits immediate local sign-out", async () => {
     vi.useFakeTimers();
+    const dispatchEvent = vi.spyOn(window, "dispatchEvent");
     window.localStorage.setItem(sessionStorageKey, "session-token");
     fetchMock.mockImplementationOnce(
       (_input, init) => new Promise<Response>((_resolve, reject) => {
@@ -486,6 +519,102 @@ describe("direct account authentication and session", () => {
     expect(
       screen.queryByRole("heading", { name: ruMessages.Auth.dialogTitle })
     ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", {
+      name: ruMessages.Account.sessionError.retryAction
+    })).toBeVisible();
+    expect(dispatchEvent).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Выйти на этом устройстве" }));
+    expect(window.localStorage.getItem(sessionStorageKey)).toBeNull();
+    expect(dispatchEvent).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ type: sessionChangedEvent })
+    );
+    expect(screen.getByRole("heading", { name: ruMessages.Auth.dialogTitle })).toBeVisible();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("reloads a replacement bearer instead of signing out the newer session", async () => {
+    const dispatchEvent = vi.spyOn(window, "dispatchEvent");
+    window.localStorage.setItem(sessionStorageKey, "old-token");
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ detail: "unavailable" }, 503))
+      .mockResolvedValueOnce(sessionResponse("new@example.com"));
+    renderAccountClient();
+    const signOut = await screen.findByRole("button", { name: "Выйти на этом устройстве" });
+    window.localStorage.setItem(sessionStorageKey, "new-token");
+
+    await userEvent.setup().click(signOut);
+
+    expect(await screen.findByText("new@example.com")).toBeVisible();
+    expect(window.localStorage.getItem(sessionStorageKey)).toBe("new-token");
+    expect(screen.queryByRole("heading", { name: ruMessages.Auth.dialogTitle })).not.toBeInTheDocument();
+    expect(dispatchEvent).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(String(fetchMock.mock.calls[1]?.[0])).toContain("/api/auth/session");
+    expect(fetchMock.mock.calls[1]?.[1]?.headers).toMatchObject({ Authorization: "Bearer new-token" });
+  });
+
+  it("shows signed-out without announcing a revoke if the failed bearer is already gone", async () => {
+    const dispatchEvent = vi.spyOn(window, "dispatchEvent");
+    window.localStorage.setItem(sessionStorageKey, "old-token");
+    fetchMock.mockResolvedValueOnce(jsonResponse({ detail: "unavailable" }, 503));
+    renderAccountClient();
+    const signOut = await screen.findByRole("button", { name: "Выйти на этом устройстве" });
+    window.localStorage.removeItem(sessionStorageKey);
+    await userEvent.setup().click(signOut);
+
+    expect(await screen.findByRole("heading", { name: ruMessages.Auth.dialogTitle })).toBeVisible();
+    expect(screen.queryByText(ruMessages.Auth.notices.signedOut)).not.toBeInTheDocument();
+    expect(dispatchEvent).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("synchronizes the header after local sign-out from a failed session", async () => {
+    window.localStorage.setItem(sessionStorageKey, "session-token");
+    fetchMock.mockImplementation(async () => jsonResponse({ detail: "unavailable" }, 503));
+    renderAccountClient("ru", true);
+    const signOut = await screen.findByRole("button", { name: "Выйти на этом устройстве" });
+    await waitFor(() => expect(screen.getByRole("button", { name: ruMessages.Auth.header.account })).toBeEnabled());
+    await userEvent.setup().click(signOut);
+
+    expect(await screen.findByRole("heading", { name: ruMessages.Auth.dialogTitle })).toBeVisible();
+    expect(within(screen.getByRole("banner")).getByRole("button", { name: ruMessages.Auth.header.signIn })).toBeEnabled();
+    expect(window.localStorage.getItem(sessionStorageKey)).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls.every(([url]) => String(url).includes("/api/auth/session"))).toBe(true);
+  });
+
+  it.each(["success", "401", "503"])("ignores an older session %s after local sign-out and a fresh login", async (result) => {
+    const oldSession = deferredResponse();
+    window.localStorage.setItem(sessionStorageKey, "session-token");
+    fetchMock
+      .mockReturnValueOnce(oldSession.promise)
+      .mockResolvedValueOnce(jsonResponse({ detail: "unavailable" }, 503))
+      .mockResolvedValueOnce(jsonResponse({
+        status: "authenticated",
+        token: "session-token",
+        user: { ...accountUser, email: "new@example.com" }
+      }));
+    renderAccountClient();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    act(() => window.dispatchEvent(new Event(sessionChangedEvent)));
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Выйти на этом устройстве" }));
+    await user.type(screen.getByLabelText("Email"), "new@example.com");
+    await user.type(screen.getByLabelText("Пароль"), "existing-password{Enter}");
+    expect(await screen.findByText("new@example.com")).toBeVisible();
+
+    await act(async () => {
+      oldSession.resolveResponse(result === "success"
+        ? sessionResponse("old@example.com")
+        : jsonResponse({ detail: "stale" }, Number(result)));
+    });
+
+    expect(window.localStorage.getItem(sessionStorageKey)).toBe("session-token");
+    expect(screen.getByText("new@example.com")).toBeVisible();
+    expect(screen.queryByText("old@example.com")).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(String(fetchMock.mock.calls[2]?.[0])).toContain("/api/auth/login");
   });
 
   it("retries only the session read after a transient failure", async () => {

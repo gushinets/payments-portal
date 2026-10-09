@@ -131,7 +131,8 @@
     },
     "sessionError": {
       "notice": "Не удалось загрузить сессию аккаунта. Попробуйте ещё раз.",
-      "retryAction": "Повторить загрузку сессии"
+      "retryAction": "Повторить загрузку сессии",
+      "localSignOutAction": "Выйти на этом устройстве"
     },
     "authenticated": {
       "description": "Ваш аккаунт и продукты AnytoolAI в одном месте.",

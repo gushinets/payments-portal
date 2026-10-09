@@ -131,7 +131,8 @@
     },
     "sessionError": {
       "notice": "Não foi possível carregar a sessão da sua conta. Tente novamente.",
-      "retryAction": "Carregar a sessão novamente"
+      "retryAction": "Carregar a sessão novamente",
+      "localSignOutAction": "Sair neste dispositivo"
     },
     "authenticated": {
       "description": "Sua conta e os produtos AnytoolAI em um só lugar.",

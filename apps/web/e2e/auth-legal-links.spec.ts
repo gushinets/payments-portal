@@ -69,21 +69,26 @@ test("account registration validation rejects invalid inputs before submitting",
   await accountMain.getByRole("button", { name: "Регистрация" }).click();
 
   await accountMain.getByLabel("Email").fill("audit-user");
-  await accountMain.getByRole("button", { name: /Создать аккаунт/ }).click();
+  await accountMain.getByLabel("Email").press("Enter");
   await expect(accountMain.getByText("Укажите корректный email.")).toBeVisible();
   expect(authRequests).toBe(0);
 
   await accountMain.getByLabel("Email").fill("audit-user@example.com");
   await accountMain.getByLabel("Пароль", { exact: true }).fill("Synthetic-password-123!");
+  await accountMain.getByLabel("Повторите пароль").fill("Synthetic-password-456!");
+  await accountMain.getByLabel("Повторите пароль").press("Enter");
+  await expect(accountMain.getByText("Пароли не совпадают.")).toBeVisible();
+  expect(authRequests).toBe(0);
+
   await accountMain.getByLabel("Повторите пароль").fill("Synthetic-password-123!");
-  await accountMain.getByRole("button", { name: /Создать аккаунт/ }).click();
+  await accountMain.getByLabel("Повторите пароль").press("Enter");
   await expect(
     accountMain.getByText("Нужно дать согласие на обработку персональных данных.")
   ).toBeVisible();
   expect(authRequests).toBe(0);
 
   await accountMain.getByLabel(/Я даю согласие/).check();
-  await accountMain.getByRole("button", { name: /Создать аккаунт/ }).click();
+  await accountMain.getByLabel("Повторите пароль").press("Enter");
   await expect(accountMain.getByText("Нужно принять условия оферты.")).toBeVisible();
   expect(authRequests).toBe(0);
 });

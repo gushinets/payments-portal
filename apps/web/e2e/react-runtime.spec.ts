@@ -5,6 +5,51 @@ import ruMessages from "../src/messages/ru.json";
 const sessionTokenStorageKey = "anytoolai_session_token_v1";
 const email = "react-runtime@example.com";
 
+test("account and header native auth forms render without runtime warnings", async ({ page }) => {
+  const runtimeIssues: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "warning" || message.type() === "error") {
+      runtimeIssues.push(`${message.type()}: ${message.text()}`);
+    }
+  });
+  page.on("pageerror", (error) => runtimeIssues.push(`pageerror: ${error.message}`));
+  const user = {
+    tenant_id: "anytoolai", region: "ru",
+    user_id: "11111111-1111-4111-8111-111111111111",
+    email, email_verified: false
+  };
+  await page.route("**/api/auth/login", async (route) => {
+    await route.fulfill({ json: { status: "authenticated", token: "runtime-session", user } });
+  });
+  await page.route("**/api/auth/session", async (route) => {
+    await route.fulfill({ json: { authenticated: true, user } });
+  });
+  await page.goto("/ru/account");
+  const account = page.getByRole("main");
+  await expect(account.locator("form")).toHaveCount(1);
+  await expect(page.locator("form form")).toHaveCount(0);
+  await account.getByLabel("Email").fill(email);
+  await account.getByLabel("Пароль", { exact: true }).fill("Synthetic-password-123!");
+  await account.getByLabel("Пароль", { exact: true }).press("Enter");
+  await expect(account.getByRole("heading", { name: ruMessages.EmailVerification.pending.title })).toBeVisible();
+  await expect(account.locator("form")).toHaveCount(0);
+
+  await page.evaluate((key) => {
+    localStorage.removeItem(key);
+    window.dispatchEvent(new Event("anytoolai_session_changed"));
+  }, sessionTokenStorageKey);
+  await page.getByRole("banner").getByRole("button", { name: "Войти", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.locator("form")).toHaveCount(1);
+  await expect(page.locator("form form")).toHaveCount(0);
+  await dialog.getByLabel("Email").fill(email);
+  await dialog.getByLabel("Пароль", { exact: true }).fill("Synthetic-password-123!");
+  await dialog.getByLabel("Пароль", { exact: true }).press("Enter");
+  await expect(dialog.getByRole("heading", { name: ruMessages.EmailVerification.pending.title })).toBeVisible();
+  await expect(dialog.locator("form")).toHaveCount(0);
+  expect(runtimeIssues).toEqual([]);
+});
+
 async function captureVisualEvidence(
   page: Page,
   testInfo: TestInfo,

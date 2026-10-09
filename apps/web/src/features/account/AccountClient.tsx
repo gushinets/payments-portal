@@ -26,7 +26,7 @@ const telegramLoginUrl = process.env.NEXT_PUBLIC_TELEGRAM_LOGIN_URL ?? "";
 type AccountState =
   | { status: "loading" }
   | { status: "signed_out" }
-  | { status: "session_error" }
+  | { status: "session_error"; token: string }
   | { status: "authenticated"; user: SessionUserResponse };
 
 export function AccountClient({ languageTag }: { languageTag: string }) {
@@ -81,7 +81,7 @@ export function AccountClient({ languageTag }: { languageTag: string }) {
           notifySessionChanged();
           setAccountState({ status: "signed_out" });
         } else {
-          setAccountState({ status: "session_error" });
+          setAccountState({ status: "session_error", token });
         }
       }
     }
@@ -113,6 +113,26 @@ export function AccountClient({ languageTag }: { languageTag: string }) {
   function retrySessionLoad() {
     setAccountState({ status: "loading" });
     setSessionLoadAttempt((attempt) => attempt + 1);
+  }
+
+  function signOutLocally() {
+    if (accountState.status !== "session_error") {
+      return;
+    }
+
+    const token = window.localStorage.getItem(sessionStorageKey);
+    setNotice("");
+    setError("");
+    if (token && token !== accountState.token) {
+      retrySessionLoad();
+      return;
+    }
+
+    if (token === accountState.token) {
+      window.localStorage.removeItem(sessionStorageKey);
+      notifySessionChanged();
+    }
+    setAccountState({ status: "signed_out" });
   }
 
   async function authenticate(values: AuthFormSubmitValues) {
@@ -185,6 +205,13 @@ export function AccountClient({ languageTag }: { languageTag: string }) {
             onClick={retrySessionLoad}
           >
             {t("sessionError.retryAction")}
+          </button>
+          <button
+            className="btn-secondary"
+            type="button"
+            onClick={signOutLocally}
+          >
+            {t("sessionError.localSignOutAction")}
           </button>
         </div>
       </section>

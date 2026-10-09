@@ -131,7 +131,8 @@
     },
     "sessionError": {
       "notice": "Could not load your account session. Try again.",
-      "retryAction": "Retry session load"
+      "retryAction": "Retry session load",
+      "localSignOutAction": "Sign out on this device"
     },
     "authenticated": {
       "description": "Your account and AnytoolAI products in one place.",
