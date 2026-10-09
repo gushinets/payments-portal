@@ -1,11 +1,23 @@
 {
   "Navigation": {
     "mainAriaLabel": "Main navigation",
-    "products": "Products",
+    "products": "AI utilities",
+    "pricing": "Pricing",
     "localeSwitcher": {
       "summaryAriaLabel": "Choose language. Current language: {language}",
       "menuAriaLabel": "Choose language"
     }
+  },
+  "Pricing": {
+    "title": "Pricing",
+    "description": "Pricing and terms of use will appear here.",
+    "backAction": "Back to home",
+    "placeholder": {
+      "badge": "In preparation",
+      "title": "Pricing is being prepared",
+      "description": "Pricing and product terms are not available on this page yet. You can explore the descriptions of our AI utilities in the meantime."
+    },
+    "productsAction": "Explore AI utilities"
   },
   "Auth": {
     "header": {
@@ -108,18 +120,6 @@
       "generic": "Could not complete email verification. Try again."
     }
   },
-  "Checkout": {
-    "sessionChecking": "Checking your session...",
-    "authenticatedBadge": "Signed in",
-    "accountTitle": "AnytoolAI account",
-    "openAccountAction": "Open account",
-    "signOutAction": "Sign out",
-    "unavailable": {
-      "badge": "Information",
-      "title": "Payments are temporarily unavailable",
-      "description": "The Portal currently supports registration, sign-in, password recovery, and legal consent. The catalog, subscriptions, and payments will become available after the new billing system is connected."
-    }
-  },
   "Account": {
     "loading": "Loading account...",
     "badge": "Account",
@@ -129,16 +129,41 @@
       "notice": "Sign in to your account to open the account area.",
       "action": "Sign in or register"
     },
+    "sessionError": {
+      "notice": "Could not load your account session. Try again.",
+      "retryAction": "Retry session load",
+      "localSignOutAction": "Sign out on this device"
+    },
     "authenticated": {
-      "description": "Subscription and payment management is temporarily unavailable.",
+      "description": "Your account and AnytoolAI products in one place.",
       "badge": "Signed in",
       "summaryTitle": "Account",
-      "signOutAction": "Sign out"
+      "signOutAction": "Sign out",
+      "emailLabel": "Email",
+      "emailVerified": "Email verified",
+      "emailUnverified": "Email not verified"
     },
-    "billingUnavailable": {
-      "badge": "Information",
-      "title": "Billing is being updated",
-      "description": "The catalog, purchases, and subscription details will appear here after the new billing system is connected."
+    "products": {
+      "title": "Products",
+      "description": "Explore each product’s details and status.",
+      "detailAction": "View product details",
+      "state": {
+        "commercial": {
+          "label": "Plans and terms",
+          "description": "Commercial information for this product is not ready yet."
+        },
+        "access": {
+          "label": "Product access",
+          "description": "Authoritative access status for this product is unknown."
+        },
+        "usage": {
+          "label": "Usage and quota",
+          "description": "Usage and quota data for this product is not available yet."
+        }
+      },
+      "action": {
+        "description": "Open the product information page."
+      }
     }
   },
   "PasswordReset": {
@@ -211,85 +236,94 @@
     "settingsAction": "Settings"
   },
   "Home": {
-    "eyebrow": "AnytoolAI {region}",
+    "eyebrow": "Chrome extensions",
     "hero": {
-      "heading": "Tools for working with documents and <em>improving prompts</em>",
-      "description": "AnytoolAI brings together digital services that help you work faster with content, documents, and AI tools. Explore the products and create one account on this site.",
+      "heading": "AI tools for <em>everyday work</em>",
+      "description": "Summarize documents and improve prompts. Choose a tool for your task and learn how it works.",
       "primaryAction": "Sign in or register",
-      "secondaryAction": "Choose a product"
-    },
-    "factsAriaLabel": "Key details",
-    "facts": {
-      "catalog": {
-        "label": "Catalog",
-        "value": "{region}",
-        "detail": "Information about AnytoolAI products"
-      },
-      "pricing": {
-        "label": "Plans",
-        "value": "Coming soon",
-        "detail": "Purchases are temporarily unavailable"
-      },
-      "account": {
-        "label": "Access",
-        "value": "{accountCount, plural, one {# account} other {# accounts}}",
-        "detail": "Registration and sign-in are already available"
-      },
-      "localization": {
-        "label": "Languages",
-        "value": "{localeCount, plural, one {# UI language} other {# UI languages}}",
-        "detail": "Canonical legal authority: {legalLanguage}"
-      }
-    },
-    "highlights": {
-      "simpleStart": {
-        "title": "A simple start",
-        "description": "Registration and legal documents are brought together in one clear portal."
-      },
-      "singleAccount": {
-        "title": "One account",
-        "description": "Create an account or sign in by email while billing is being updated."
-      },
-      "controlledLaunch": {
-        "title": "Controlled launch",
-        "description": "Purchases will remain unavailable until the new billing system is connected."
-      }
+      "secondaryAction": "Explore tools"
     },
     "products": {
-      "eyebrow": "Products",
-      "title": "Services for everyday work",
-      "description": "Explore AnytoolAI products. Plans and purchases are temporarily unavailable."
+      "eyebrow": "Collection",
+      "title": "AI utilities",
+      "description": "Tools for working with documents and prompts, collected in one place.",
+      "action": "View all tools"
     }
   },
   "Catalog": {
     "page": {
       "eyebrow": "Catalog",
-      "title": "Products and plans",
-      "description": "Explore AnytoolAI services. Plans and purchases are temporarily unavailable."
+      "title": "AI utilities",
+      "description": "Explore Document Summary and Prompt Optimizer for document summaries and better prompts."
     },
-    "availabilityNotice": "The plan catalog and purchases are temporarily unavailable.",
-    "productInfoBadge": "Product information",
     "signInAction": "Sign in or register",
+    "backToCatalog": "Back to products",
+    "detail": {
+      "accountNote": "Signing in opens your AnytoolAI account area.",
+      "previewLabel": "Product illustration",
+      "previewNote": "A schematic illustration, rather than a working extension interface.",
+      "informationTitle": "About the product",
+      "readiness": {
+        "title": "Availability information",
+        "commercial": {
+          "label": "Plans and terms",
+          "description": "Commercial information for this product is not ready yet."
+        },
+        "access": {
+          "label": "Access",
+          "description": "Access status for this product is not available yet."
+        },
+        "usage": {
+          "label": "Usage and quota",
+          "description": "Usage and quota data is not available yet."
+        }
+      }
+    },
     "products": {
       "documentSummary": {
+        "name": "Document Summary",
         "type": "Chrome extension",
         "tagline": "Instant summaries of any document",
-        "description": "The extension quickly summarizes documents and web pages without unnecessary manual steps."
+        "description": "The extension quickly summarizes documents and web pages without unnecessary manual steps.",
+        "detail": {
+          "previewCaption": "Documents and their summaries",
+          "focus": {
+            "title": "Document summaries",
+            "description": "The core purpose is to help you get a summary of a document."
+          },
+          "context": {
+            "title": "Documents and web pages",
+            "description": "The extension focuses on working with documents and web pages."
+          },
+          "approach": {
+            "title": "Fewer manual steps",
+            "description": "Helps you get a summary without unnecessary manual steps."
+          }
+        }
       },
       "promptOptimizer": {
+        "name": "Prompt Optimizer",
         "type": "Chrome extension",
         "tagline": "Improve AI prompts in one click",
-        "description": "The extension improves prompts in the interface you already use and shows exactly what changed."
+        "description": "The extension improves prompts in the interface you already use and shows exactly what changed.",
+        "detail": {
+          "previewCaption": "Prompts and their improvement",
+          "focus": {
+            "title": "Better prompts",
+            "description": "A tool for improving how you phrase requests to AI."
+          },
+          "context": {
+            "title": "A familiar interface",
+            "description": "Prompts are improved directly in the interface you already use."
+          },
+          "approach": {
+            "title": "Visible changes",
+            "description": "The extension shows exactly what improved in your prompt."
+          }
+        }
       }
-    }
-  },
-  "PaymentResult": {
-    "badge": "Payment unavailable",
-    "title": "There is no payment result here yet",
-    "description": "The Portal no longer handles the previous payment flow. Returning in the browser does not confirm a purchase or grant access.",
-    "notice": "Wait until the new billing system launches before making a purchase.",
-    "accountAction": "Sign in to your account",
-    "homeAction": "Go to home"
+    },
+    "detailsAction": "Learn more"
   },
   "Footer": {
     "registrationNumbers": "INN (ИНН): {inn} · OGRNIP (ОГРНИП): {ogrnip}",

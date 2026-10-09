@@ -1,11 +1,23 @@
 {
   "Navigation": {
     "mainAriaLabel": "Hauptnavigation",
-    "products": "Produkte",
+    "products": "KI-Werkzeuge",
+    "pricing": "Preise",
     "localeSwitcher": {
       "summaryAriaLabel": "Sprache wählen. Aktuelle Sprache: {language}",
       "menuAriaLabel": "Sprache wählen"
     }
+  },
+  "Pricing": {
+    "title": "Preise",
+    "description": "Hier finden Sie künftig Preise und Nutzungsbedingungen.",
+    "backAction": "Zur Startseite",
+    "placeholder": {
+      "badge": "In Vorbereitung",
+      "title": "Preise werden vorbereitet",
+      "description": "Preise und Nutzungsbedingungen der Produkte sind auf dieser Seite noch nicht verfügbar. In der Zwischenzeit können Sie die Beschreibungen unserer KI-Werkzeuge ansehen."
+    },
+    "productsAction": "KI-Werkzeuge ansehen"
   },
   "Auth": {
     "header": {
@@ -108,18 +120,6 @@
       "generic": "Die E-Mail-Bestätigung konnte nicht abgeschlossen werden. Versuchen Sie es erneut."
     }
   },
-  "Checkout": {
-    "sessionChecking": "Sitzung wird geprüft...",
-    "authenticatedBadge": "Angemeldet",
-    "accountTitle": "AnytoolAI-Konto",
-    "openAccountAction": "Konto öffnen",
-    "signOutAction": "Abmelden",
-    "unavailable": {
-      "badge": "Information",
-      "title": "Zahlungen sind vorübergehend nicht verfügbar",
-      "description": "Das Portal unterstützt derzeit Registrierung, Anmeldung, Passwortwiederherstellung und rechtliche Einwilligungen. Katalog, Abonnements und Zahlungen werden nach der Anbindung des neuen Abrechnungssystems verfügbar."
-    }
-  },
   "Account": {
     "loading": "Konto wird geladen...",
     "badge": "Konto",
@@ -129,16 +129,41 @@
       "notice": "Melden Sie sich an, um Ihren Kontobereich zu öffnen.",
       "action": "Anmelden oder registrieren"
     },
+    "sessionError": {
+      "notice": "Ihre Kontositzung konnte nicht geladen werden. Versuchen Sie es erneut.",
+      "retryAction": "Sitzung erneut laden",
+      "localSignOutAction": "Auf diesem Gerät abmelden"
+    },
     "authenticated": {
-      "description": "Die Verwaltung von Abonnements und Zahlungen ist vorübergehend nicht verfügbar.",
+      "description": "Ihr Konto und die AnytoolAI-Produkte an einem Ort.",
       "badge": "Angemeldet",
       "summaryTitle": "Konto",
-      "signOutAction": "Abmelden"
+      "signOutAction": "Abmelden",
+      "emailLabel": "E-Mail",
+      "emailVerified": "E-Mail bestätigt",
+      "emailUnverified": "E-Mail nicht bestätigt"
     },
-    "billingUnavailable": {
-      "badge": "Information",
-      "title": "Abrechnung wird aktualisiert",
-      "description": "Der Katalog, Käufe und Abonnementdetails werden hier angezeigt, sobald das neue Abrechnungssystem verbunden ist."
+    "products": {
+      "title": "Produkte",
+      "description": "Sehen Sie sich Details und Status jedes Produkts an.",
+      "detailAction": "Produktdetails ansehen",
+      "state": {
+        "commercial": {
+          "label": "Tarife und Bedingungen",
+          "description": "Kommerzielle Informationen zu diesem Produkt sind noch nicht bereit."
+        },
+        "access": {
+          "label": "Produktzugriff",
+          "description": "Der maßgebliche Zugriffsstatus für dieses Produkt ist unbekannt."
+        },
+        "usage": {
+          "label": "Nutzung und Kontingent",
+          "description": "Daten zu Nutzung und Kontingent für dieses Produkt sind noch nicht verfügbar."
+        }
+      },
+      "action": {
+        "description": "Öffnen Sie die Informationsseite des Produkts."
+      }
     }
   },
   "PasswordReset": {
@@ -211,85 +236,94 @@
     "settingsAction": "Einstellungen"
   },
   "Home": {
-    "eyebrow": "AnytoolAI {region}",
+    "eyebrow": "Chrome-Erweiterungen",
     "hero": {
-      "heading": "Werkzeuge für die Arbeit mit Dokumenten und zum <em>Verbessern von Prompts</em>",
-      "description": "AnytoolAI bündelt digitale Dienste, mit denen Sie schneller mit Inhalten, Dokumenten und KI-Werkzeugen arbeiten können. Entdecken Sie die Produkte und erstellen Sie auf dieser Website ein gemeinsames Konto.",
+      "heading": "KI-Werkzeuge für <em>den Arbeitsalltag</em>",
+      "description": "Fassen Sie Dokumente zusammen und verbessern Sie Prompts. Wählen Sie ein Werkzeug für Ihre Aufgabe und erfahren Sie, wie es funktioniert.",
       "primaryAction": "Anmelden oder registrieren",
-      "secondaryAction": "Produkt auswählen"
-    },
-    "factsAriaLabel": "Wichtige Informationen",
-    "facts": {
-      "catalog": {
-        "label": "Katalog",
-        "value": "{region}",
-        "detail": "Informationen zu AnytoolAI-Produkten"
-      },
-      "pricing": {
-        "label": "Tarife",
-        "value": "Demnächst",
-        "detail": "Käufe sind vorübergehend nicht verfügbar"
-      },
-      "account": {
-        "label": "Zugang",
-        "value": "{accountCount, plural, one {# Konto} other {# Konten}}",
-        "detail": "Registrierung und Anmeldung sind bereits verfügbar"
-      },
-      "localization": {
-        "label": "Sprachen",
-        "value": "{localeCount, plural, one {# Oberflächensprache} other {# Oberflächensprachen}}",
-        "detail": "Maßgebliche Rechtsgrundlage: {legalLanguage}"
-      }
-    },
-    "highlights": {
-      "simpleStart": {
-        "title": "Einfacher Einstieg",
-        "description": "Registrierung und Rechtsdokumente sind in einem übersichtlichen Portal gebündelt."
-      },
-      "singleAccount": {
-        "title": "Ein Konto",
-        "description": "Erstellen Sie ein Konto oder melden Sie sich per E-Mail an, während die Abrechnung aktualisiert wird."
-      },
-      "controlledLaunch": {
-        "title": "Kontrollierter Start",
-        "description": "Käufe bleiben bis zur Anbindung des neuen Abrechnungssystems nicht verfügbar."
-      }
+      "secondaryAction": "Werkzeuge entdecken"
     },
     "products": {
-      "eyebrow": "Produkte",
-      "title": "Dienste für den Arbeitsalltag",
-      "description": "Entdecken Sie die Produkte von AnytoolAI. Tarife und Käufe sind vorübergehend nicht verfügbar."
+      "eyebrow": "Sammlung",
+      "title": "KI-Werkzeuge",
+      "description": "Werkzeuge für Dokumente und Prompts, an einem Ort zusammengestellt.",
+      "action": "Alle Werkzeuge"
     }
   },
   "Catalog": {
     "page": {
       "eyebrow": "Katalog",
-      "title": "Produkte und Tarife",
-      "description": "Entdecken Sie die Dienste von AnytoolAI. Tarife und Käufe sind vorübergehend nicht verfügbar."
+      "title": "KI-Werkzeuge",
+      "description": "Entdecken Sie Document Summary und Prompt Optimizer für Dokumentzusammenfassungen und bessere Prompts."
     },
-    "availabilityNotice": "Der Tarifkatalog und Käufe sind vorübergehend nicht verfügbar.",
-    "productInfoBadge": "Produktinformationen",
     "signInAction": "Anmelden oder registrieren",
+    "backToCatalog": "Zurück zu den Produkten",
+    "detail": {
+      "accountNote": "Die Anmeldung öffnet Ihren AnytoolAI-Kontobereich.",
+      "previewLabel": "Produktillustration",
+      "previewNote": "Eine schematische Illustration, keine funktionsfähige Oberfläche der Erweiterung.",
+      "informationTitle": "Über das Produkt",
+      "readiness": {
+        "title": "Informationen zur Verfügbarkeit",
+        "commercial": {
+          "label": "Tarife und Bedingungen",
+          "description": "Die kommerziellen Informationen zu diesem Produkt sind noch nicht verfügbar."
+        },
+        "access": {
+          "label": "Zugang",
+          "description": "Der Zugangsstatus für dieses Produkt ist noch nicht verfügbar."
+        },
+        "usage": {
+          "label": "Nutzung und Kontingent",
+          "description": "Daten zur Nutzung und zum Kontingent sind noch nicht verfügbar."
+        }
+      }
+    },
     "products": {
       "documentSummary": {
+        "name": "Document Summary",
         "type": "Chrome-Erweiterung",
         "tagline": "Sofortige Zusammenfassungen für jedes Dokument",
-        "description": "Die Erweiterung fasst Dokumente und Webseiten schnell und ohne unnötige manuelle Schritte zusammen."
+        "description": "Die Erweiterung fasst Dokumente und Webseiten schnell und ohne unnötige manuelle Schritte zusammen.",
+        "detail": {
+          "previewCaption": "Dokumente und ihre Zusammenfassungen",
+          "focus": {
+            "title": "Dokumentzusammenfassungen",
+            "description": "Das Hauptziel ist, Ihnen eine Zusammenfassung eines Dokuments zu erleichtern."
+          },
+          "context": {
+            "title": "Dokumente und Webseiten",
+            "description": "Die Erweiterung ist auf die Arbeit mit Dokumenten und Webseiten ausgerichtet."
+          },
+          "approach": {
+            "title": "Weniger manuelle Schritte",
+            "description": "Hilft Ihnen, eine Zusammenfassung ohne unnötige manuelle Schritte zu erhalten."
+          }
+        }
       },
       "promptOptimizer": {
+        "name": "Prompt Optimizer",
         "type": "Chrome-Erweiterung",
         "tagline": "KI-Prompts mit einem Klick verbessern",
-        "description": "Die Erweiterung verbessert Prompts direkt in Ihrer gewohnten Oberfläche und zeigt genau, was geändert wurde."
+        "description": "Die Erweiterung verbessert Prompts direkt in Ihrer gewohnten Oberfläche und zeigt genau, was geändert wurde.",
+        "detail": {
+          "previewCaption": "Prompts und ihre Verbesserung",
+          "focus": {
+            "title": "Bessere Prompts",
+            "description": "Ein Werkzeug, um die Formulierung Ihrer Anfragen an KI zu verbessern."
+          },
+          "context": {
+            "title": "Eine vertraute Oberfläche",
+            "description": "Prompts werden direkt in der Oberfläche verbessert, die Sie bereits verwenden."
+          },
+          "approach": {
+            "title": "Sichtbare Änderungen",
+            "description": "Die Erweiterung zeigt genau, was an Ihrem Prompt verbessert wurde."
+          }
+        }
       }
-    }
-  },
-  "PaymentResult": {
-    "badge": "Zahlung nicht verfügbar",
-    "title": "Hier liegt noch kein Zahlungsergebnis vor",
-    "description": "Das Portal verarbeitet den bisherigen Zahlungsablauf nicht mehr. Die Rückkehr im Browser bestätigt keinen Kauf und gewährt keinen Zugang.",
-    "notice": "Warten Sie mit einem Kauf, bis das neue Abrechnungssystem gestartet ist.",
-    "accountAction": "Beim Konto anmelden",
-    "homeAction": "Zur Startseite"
+    },
+    "detailsAction": "Mehr erfahren"
   },
   "Footer": {
     "registrationNumbers": "INN (ИНН): {inn} · OGRNIP (ОГРНИП): {ogrnip}",

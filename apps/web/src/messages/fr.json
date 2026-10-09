@@ -1,11 +1,23 @@
 {
   "Navigation": {
     "mainAriaLabel": "Navigation principale",
-    "products": "Produits",
+    "products": "Outils d’IA",
+    "pricing": "Tarifs",
     "localeSwitcher": {
       "summaryAriaLabel": "Choisir la langue. Langue actuelle : {language}",
       "menuAriaLabel": "Choisir la langue"
     }
+  },
+  "Pricing": {
+    "title": "Tarifs",
+    "description": "Les tarifs et les conditions d’utilisation seront présentés ici.",
+    "backAction": "Retour à l’accueil",
+    "placeholder": {
+      "badge": "En préparation",
+      "title": "Les tarifs sont en préparation",
+      "description": "Les prix et les conditions d’utilisation des produits ne sont pas encore disponibles sur cette page. Vous pouvez consulter les descriptions des outils d’IA en attendant."
+    },
+    "productsAction": "Découvrir les outils d’IA"
   },
   "Auth": {
     "header": {
@@ -108,18 +120,6 @@
       "generic": "Impossible de terminer la vérification de l’e-mail. Réessayez."
     }
   },
-  "Checkout": {
-    "sessionChecking": "Vérification de votre session...",
-    "authenticatedBadge": "Connecté",
-    "accountTitle": "Compte AnytoolAI",
-    "openAccountAction": "Ouvrir le compte",
-    "signOutAction": "Se déconnecter",
-    "unavailable": {
-      "badge": "Information",
-      "title": "Les paiements sont temporairement indisponibles",
-      "description": "Le Portail prend actuellement en charge l’inscription, la connexion, la récupération du mot de passe et les consentements juridiques. Le catalogue, les abonnements et les paiements seront disponibles après la connexion du nouveau système de facturation."
-    }
-  },
   "Account": {
     "loading": "Chargement du compte...",
     "badge": "Compte",
@@ -129,16 +129,41 @@
       "notice": "Connectez-vous à votre compte pour accéder à votre espace personnel.",
       "action": "Se connecter ou s’inscrire"
     },
+    "sessionError": {
+      "notice": "Impossible de charger la session de votre compte. Réessayez.",
+      "retryAction": "Réessayer de charger la session",
+      "localSignOutAction": "Se déconnecter sur cet appareil"
+    },
     "authenticated": {
-      "description": "La gestion des abonnements et des paiements est temporairement indisponible.",
+      "description": "Votre compte et les produits AnytoolAI au même endroit.",
       "badge": "Connecté",
       "summaryTitle": "Compte",
-      "signOutAction": "Se déconnecter"
+      "signOutAction": "Se déconnecter",
+      "emailLabel": "Adresse e-mail",
+      "emailVerified": "Adresse e-mail vérifiée",
+      "emailUnverified": "Adresse e-mail non vérifiée"
     },
-    "billingUnavailable": {
-      "badge": "Informations",
-      "title": "Mise à jour de la facturation",
-      "description": "Le catalogue, les achats et les informations sur les abonnements apparaîtront ici après la connexion du nouveau système de facturation."
+    "products": {
+      "title": "Produits",
+      "description": "Consultez les détails et le statut de chaque produit.",
+      "detailAction": "Voir les détails du produit",
+      "state": {
+        "commercial": {
+          "label": "Formules et conditions",
+          "description": "Les informations commerciales de ce produit ne sont pas encore prêtes."
+        },
+        "access": {
+          "label": "Accès au produit",
+          "description": "Le statut d’accès à ce produit issu d’une source faisant autorité est inconnu."
+        },
+        "usage": {
+          "label": "Utilisation et quota",
+          "description": "Les données d’utilisation et de quota de ce produit ne sont pas encore disponibles."
+        }
+      },
+      "action": {
+        "description": "Ouvrez la page de présentation du produit."
+      }
     }
   },
   "PasswordReset": {
@@ -211,85 +236,94 @@
     "settingsAction": "Paramètres"
   },
   "Home": {
-    "eyebrow": "AnytoolAI {region}",
+    "eyebrow": "Extensions Chrome",
     "hero": {
-      "heading": "Des outils pour travailler avec les documents et <em>améliorer les prompts</em>",
-      "description": "AnytoolAI réunit des services numériques qui vous aident à travailler plus vite avec les contenus, les documents et les outils d’IA. Découvrez les produits et créez un compte unique sur ce site.",
+      "heading": "Des outils d’IA pour <em>le travail quotidien</em>",
+      "description": "Résumez des documents et améliorez vos prompts. Choisissez un outil adapté à votre tâche et découvrez son fonctionnement.",
       "primaryAction": "Se connecter ou s’inscrire",
-      "secondaryAction": "Choisir un produit"
-    },
-    "factsAriaLabel": "Informations clés",
-    "facts": {
-      "catalog": {
-        "label": "Catalogue",
-        "value": "{region}",
-        "detail": "Informations sur les produits AnytoolAI"
-      },
-      "pricing": {
-        "label": "Offres",
-        "value": "Bientôt disponible",
-        "detail": "Les achats sont temporairement indisponibles"
-      },
-      "account": {
-        "label": "Accès",
-        "value": "{accountCount, plural, one {# compte} other {# comptes}}",
-        "detail": "L’inscription et la connexion sont déjà disponibles"
-      },
-      "localization": {
-        "label": "Langues",
-        "value": "{localeCount, plural, one {# langue d’interface} other {# langues d’interface}}",
-        "detail": "Autorité juridique canonique : {legalLanguage}"
-      }
-    },
-    "highlights": {
-      "simpleStart": {
-        "title": "Un démarrage simple",
-        "description": "L’inscription et les documents juridiques sont réunis dans un portail clair."
-      },
-      "singleAccount": {
-        "title": "Un seul compte",
-        "description": "Créez un compte ou connectez-vous par e-mail pendant la mise à jour de la facturation."
-      },
-      "controlledLaunch": {
-        "title": "Lancement maîtrisé",
-        "description": "Les achats resteront indisponibles jusqu’à la connexion du nouveau système de facturation."
-      }
+      "secondaryAction": "Découvrir les outils"
     },
     "products": {
-      "eyebrow": "Produits",
-      "title": "Des services pour le travail quotidien",
-      "description": "Découvrez les produits AnytoolAI. Les offres et les achats sont temporairement indisponibles."
+      "eyebrow": "Collection",
+      "title": "Outils d’IA",
+      "description": "Des outils pour les documents et les prompts, réunis au même endroit.",
+      "action": "Voir tous les outils"
     }
   },
   "Catalog": {
     "page": {
       "eyebrow": "Catalogue",
-      "title": "Produits et offres",
-      "description": "Découvrez les services AnytoolAI. Les offres et les achats sont temporairement indisponibles."
+      "title": "Outils d’IA",
+      "description": "Découvrez Document Summary et Prompt Optimizer pour résumer vos documents et améliorer vos prompts."
     },
-    "availabilityNotice": "Le catalogue des offres et les achats sont temporairement indisponibles.",
-    "productInfoBadge": "Informations sur le produit",
     "signInAction": "Se connecter ou s’inscrire",
+    "backToCatalog": "Retour aux produits",
+    "detail": {
+      "accountNote": "La connexion ouvre votre espace de compte AnytoolAI.",
+      "previewLabel": "Illustration du produit",
+      "previewNote": "Une illustration schématique, et non une interface fonctionnelle de l’extension.",
+      "informationTitle": "À propos du produit",
+      "readiness": {
+        "title": "Informations sur la disponibilité",
+        "commercial": {
+          "label": "Offres et conditions",
+          "description": "Les informations commerciales de ce produit ne sont pas encore prêtes."
+        },
+        "access": {
+          "label": "Accès",
+          "description": "Le statut d’accès à ce produit n’est pas encore disponible."
+        },
+        "usage": {
+          "label": "Utilisation et quota",
+          "description": "Les données d’utilisation et de quota ne sont pas encore disponibles."
+        }
+      }
+    },
     "products": {
       "documentSummary": {
+        "name": "Document Summary",
         "type": "Extension Chrome",
         "tagline": "Le résumé instantané de tout document",
-        "description": "L’extension résume rapidement les documents et les pages web, sans étapes manuelles superflues."
+        "description": "L’extension résume rapidement les documents et les pages web, sans étapes manuelles superflues.",
+        "detail": {
+          "previewCaption": "Les documents et leurs résumés",
+          "focus": {
+            "title": "Résumés de documents",
+            "description": "L’objectif principal est de vous aider à obtenir le résumé d’un document."
+          },
+          "context": {
+            "title": "Documents et pages web",
+            "description": "L’extension est conçue pour le travail avec les documents et les pages web."
+          },
+          "approach": {
+            "title": "Moins d’étapes manuelles",
+            "description": "Obtenez un résumé sans étapes manuelles superflues."
+          }
+        }
       },
       "promptOptimizer": {
+        "name": "Prompt Optimizer",
         "type": "Extension Chrome",
         "tagline": "Améliorez vos prompts d’IA en un clic",
-        "description": "L’extension améliore les prompts dans votre interface habituelle et indique précisément les changements apportés."
+        "description": "L’extension améliore les prompts dans votre interface habituelle et indique précisément les changements apportés.",
+        "detail": {
+          "previewCaption": "Les prompts et leur amélioration",
+          "focus": {
+            "title": "Amélioration des prompts",
+            "description": "Un outil pour améliorer la formulation de vos requêtes à l’IA."
+          },
+          "context": {
+            "title": "Une interface familière",
+            "description": "Les prompts sont améliorés directement dans l’interface que vous utilisez déjà."
+          },
+          "approach": {
+            "title": "Des changements visibles",
+            "description": "L’extension montre précisément ce qui a été amélioré dans votre prompt."
+          }
+        }
       }
-    }
-  },
-  "PaymentResult": {
-    "badge": "Paiement indisponible",
-    "title": "Aucun résultat de paiement n’est encore disponible ici",
-    "description": "Le Portail ne traite plus l’ancien parcours de paiement. Le retour dans le navigateur ne confirme pas un achat et n’accorde aucun accès.",
-    "notice": "Attendez le lancement du nouveau système de facturation avant d’effectuer un achat.",
-    "accountAction": "Se connecter au compte",
-    "homeAction": "Retour à l’accueil"
+    },
+    "detailsAction": "En savoir plus"
   },
   "Footer": {
     "registrationNumbers": "INN (ИНН) : {inn} · OGRNIP (ОГРНИП) : {ogrnip}",

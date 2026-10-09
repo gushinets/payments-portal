@@ -121,7 +121,18 @@ own canonical source and generation path.
   localized app, feature, and shared UI presentation. New ordinary copy belongs
   in the locale catalogs; intentional source-owned exceptions must be exact,
   reviewable path/surface/value entries.
-- Use Bundle 3 tokens and glass/bento patterns; do not invent replacement tokens.
+- Use the current [Bundle 3 tokens and rules](../../docs/design-system/bundle3/README.md)
+  as the single design-system authority. The approved ANY-539 RU Portal mockup
+  supplied as the local visual reference during implementation defines the
+  target visual language for affected surfaces: deep navy, opaque dark-blue
+  panels, thin blue borders, amber actions, compact radii/spacing and Manrope
+  (the ANY-636 basic Cyrillic coverage correction). Legacy glass/bento, indigo
+  gradient and radial-glow patterns are no longer
+  mandatory. Do not create replacement tokens or copy demo business facts.
+- Refresh token CSS through `npm run generate`; never hand-edit generated output.
+  Apply fonts through the repository-approved loading mechanism, without adding
+  the mockup's remote CSS `@import`. Preserve contrast, visible focus, keyboard
+  controls and responsive single-column collapse.
 - Prefer semantic roles and labels. Add `data-testid` only when a stable semantic
   selector is unavailable.
 - UI changes require desktop and mobile evidence and accessibility checks.

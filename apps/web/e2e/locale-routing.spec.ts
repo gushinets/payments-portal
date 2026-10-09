@@ -14,13 +14,13 @@ const localeLanguages = [
   ["pt", "pt-BR"]
 ] as const;
 const localePresentation = [
-  ["en", "Products", "Products and plans"],
-  ["fr", "Produits", "Produits et offres"],
-  ["it", "Prodotti", "Prodotti e piani"],
-  ["de", "Produkte", "Produkte und Tarife"],
-  ["es", "Productos", "Productos y planes"],
-  ["ru", "Продукты", "Продукты и тарифы"],
-  ["pt", "Produtos", "Produtos e planos"]
+  ["en", "AI utilities"],
+  ["fr", "Outils d’IA"],
+  ["it", "Strumenti di IA"],
+  ["de", "KI-Werkzeuge"],
+  ["es", "Herramientas de IA"],
+  ["ru", "AI-утилиты"],
+  ["pt", "Ferramentas de IA"]
 ] as const;
 const metadataCases = [
   {
@@ -138,25 +138,27 @@ test("representative localized metadata uses the public origin and canonical lan
   page
 }) => {
   for (const metadataCase of metadataCases) {
-    await page.goto(`/${metadataCase.locale}/products`);
+    for (const pathname of ["/products", "/pricing"]) {
+      await page.goto(`/${metadataCase.locale}${pathname}`);
 
-    await expect(page).toHaveTitle(metadataCase.title);
-    await expect(page.locator('meta[name="description"]')).toHaveAttribute(
-      "content",
-      metadataCase.description
-    );
-    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
-      "href",
-      publicUrl(`/${metadataCase.locale}/products`)
-    );
+      await expect(page).toHaveTitle(metadataCase.title);
+      await expect(page.locator('meta[name="description"]')).toHaveAttribute(
+        "content",
+        metadataCase.description
+      );
+      await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
+        "href",
+        publicUrl(`/${metadataCase.locale}${pathname}`)
+      );
 
-    const alternateLinks = page.locator('link[rel="alternate"][hreflang]');
-    await expect(alternateLinks).toHaveCount(localeLanguages.length);
+      const alternateLinks = page.locator('link[rel="alternate"][hreflang]');
+      await expect(alternateLinks).toHaveCount(localeLanguages.length);
 
-    for (const [locale, languageTag] of localeLanguages) {
-      await expect(
-        page.locator(`link[rel="alternate"][hreflang="${languageTag}"]`)
-      ).toHaveAttribute("href", publicUrl(`/${locale}/products`));
+      for (const [locale, languageTag] of localeLanguages) {
+        await expect(
+          page.locator(`link[rel="alternate"][hreflang="${languageTag}"]`)
+        ).toHaveAttribute("href", publicUrl(`/${locale}${pathname}`));
+      }
     }
   }
 });
@@ -164,11 +166,11 @@ test("representative localized metadata uses the public origin and canonical lan
 test("ordinary navigation keeps the active locale", async ({ page }) => {
   await page.goto("/de");
 
-  await expect(page.getByRole("link", { name: "AnytoolAI" })).toHaveAttribute(
+  await expect(page.getByRole("link", { name: "AnyToolAI" })).toHaveAttribute(
     "href",
     "/de"
   );
-  await expect(page.getByRole("link", { name: "Produkte" })).toHaveAttribute(
+  await expect(page.getByRole("link", { name: "KI-Werkzeuge" })).toHaveAttribute(
     "href",
     "/de/products"
   );
@@ -176,7 +178,7 @@ test("ordinary navigation keeps the active locale", async ({ page }) => {
     page.getByRole("main").getByRole("link", {
       name: "Anmelden oder registrieren"
     }).first()
-  ).toHaveAttribute("href", "/de/auth-checkout");
+  ).toHaveAttribute("href", "/de/account");
 
   await page.getByRole("button", { name: "Anmelden" }).click();
   await expect(
@@ -326,7 +328,7 @@ test("all seven locales render representative shell and catalog content", async 
     localePresentation.map(([locale]) => locale)
   );
 
-  for (const [locale, productsLabel, catalogTitle] of localePresentation) {
+  for (const [locale, productsLabel] of localePresentation) {
     const response = await page.goto(`/${locale}/products`);
 
     expect(response?.status()).toBe(200);
@@ -337,7 +339,7 @@ test("all seven locales render representative shell and catalog content", async 
       })
     ).toHaveAttribute("href", `/${locale}/products`);
     await expect(
-      page.getByRole("heading", { name: catalogTitle, exact: true })
+      page.getByRole("heading", { name: productsLabel, exact: true })
     ).toBeVisible();
   }
 });

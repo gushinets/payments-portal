@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Manrope } from "next/font/google";
 import { notFound } from "next/navigation";
 import { NextIntlClientProvider } from "next-intl";
 
@@ -21,6 +22,13 @@ import "../catalog.css";
 import "../globals.css";
 import "../legal-and-footer.css";
 import "../responsive.css";
+
+const portalFont = Manrope({
+  subsets: ["latin", "latin-ext", "cyrillic", "cyrillic-ext"],
+  display: "swap",
+  fallback: ["sans-serif"],
+  variable: "--font-portal"
+});
 
 type LocaleLayoutProps = Readonly<{
   children: React.ReactNode;
@@ -48,7 +56,10 @@ export default async function LocaleLayout({
   }
 
   return (
-    <html lang={LANGUAGE_TAG_BY_ROUTE_LOCALE[locale]}>
+    <html
+      lang={LANGUAGE_TAG_BY_ROUTE_LOCALE[locale]}
+      className={portalFont.variable}
+    >
       <body>
         <NextIntlClientProvider locale={locale} messages={null}>
           <SiteShell

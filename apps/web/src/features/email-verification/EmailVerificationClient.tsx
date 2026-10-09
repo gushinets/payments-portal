@@ -285,7 +285,7 @@ export function EmailVerificationClient({
               </span>
               <h1>{t("verify.title")}</h1>
               <div className="notice">{t("verify.signedOutWithoutToken")}</div>
-              <Link className="btn-primary" href="/auth-checkout">
+              <Link className="btn-primary" href="/account">
                 {t("verify.signInAction")}
               </Link>
             </div>

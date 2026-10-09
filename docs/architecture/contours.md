@@ -1,9 +1,9 @@
 # Contours
 
 Status: authoritative target architecture; implemented product remains `ru`
-Last verified: 2026-09-24
+Last updated: 2026-10-06
 
-A **contour** is the compliance zone in which this Payment Portal is deployed.
+A **contour** is the compliance zone in which this AnyToolAI Portal is deployed.
 It may serve any number of countries assigned to that zone. It is not a locale,
 not a URL prefix, and not a payment provider.
 
@@ -79,10 +79,13 @@ authenticate a foreign-contour user through the public identity/legal API.
 
 ## Current vs planned product surface
 
-Implemented today: `ru` web routes, `docs/legal/ru`, identity/legal runtime,
-and the clean provider-neutral persistence baseline. Direct-provider runtime
-has been removed and target billing tables have no producer behavior. See
-[RU MVP journey](../product/ru-mvp.md).
+Implemented today: the `ru` data plane, AnyToolAI Portal public product
+discovery/detail and account/auth surfaces, `docs/legal/ru`, identity/legal
+runtime, and the clean provider-neutral persistence baseline. The repository
+remains pre-production and provider-independent. Direct-provider runtime has
+been removed, External Billing/provider runtime is not implemented, and target
+billing tables have no producer behavior. See the
+[as-built RU Portal 4F handoff](../product/ru-mvp.md).
 
 Planned, not implemented:
 
@@ -92,7 +95,9 @@ Planned, not implemented:
 - per-contour data planes and residency.
 
 Do not add `/en` or other locales as a substitute for a contour. Locale is
-orthogonal. `/en/**` remains out of the implemented `ru` journey.
+orthogonal: the supported `en`, `fr`, `it`, `de`, `es`, `ru`, and `pt` routes
+all present the same implemented `ru` contour. They do not enable another
+deployment or data plane. Canonical legal routes remain RU-only.
 
 ## Enablement checklist
 
@@ -120,16 +125,18 @@ Enabling a contour requires a dedicated ticket. Minimum set:
 7. Contour locale and routes in the web application.
 8. Isolated data plane and billing-notification URLs on that plane.
 9. Region Resolver registry entry with the public ISO country mapping and the
-   Payment Portal, Application Portal, and Platform Kernel API base URLs. At
-   deployment, the Resolver country mappings for a contour must equal that
-   contour's enabled local country rules.
+   conceptual AnyToolAI Portal user-facing entry and Platform Kernel API
+   boundary for that contour. No separate Application Portal peer frontend is
+   required. The Resolver API/URL schema remains undefined. At deployment, the
+   Resolver country mappings for a contour must equal that contour's enabled
+   local country rules.
 
 ## Billing ownership and integration
 
 The current `ru` implementation has no direct-provider runtime and no
 Portal-owned checkout/order/payment/subscription/entitlement authority. The
 clean target persistence baseline is contour-local but has no producer runtime.
-Payment Portal is not yet a production billing service.
+AnyToolAI Portal is not yet a production billing service.
 
 The long-term production target requires contour enablement/deployment
 configuration to select one concrete external-billing integration. Target

@@ -7,18 +7,46 @@
   }
 
   .nav-inner {
-    align-items: flex-start;
-    flex-direction: column;
+    grid-template-columns: minmax(0, 1fr) auto;
+    min-height: 54px;
+    gap: 8px 16px;
   }
 
   .nav-links {
-    flex-wrap: wrap;
-    gap: 10px;
+    grid-column: 1 / -1;
+    grid-row: 2;
   }
 
-  .nav-link,
-  .nav-account,
-  .locale-switcher {
+  .nav-actions {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .nav-actions .nav-account,
+  .nav-actions .locale-switcher {
+    min-width: 0;
+  }
+
+  .product-collection {
+    flex-direction: column;
+    gap: 16px;
+    padding: 24px;
+  }
+
+  .collection-icon {
+    flex-basis: auto;
+    width: 48px;
+  }
+
+  .collection-action {
+    align-self: flex-start;
+  }
+
+  .site-shell .footer-inner {
+    flex-direction: column;
+  }
+
+  .site-shell .footer-inner > div:first-child {
     flex: 1 1 auto;
   }
 
@@ -28,16 +56,37 @@
 
   .bento-grid,
   .tools-grid,
+  .product-hero,
+  .product-information-grid,
+  .product-readiness-grid,
   .two-column,
   .account-layout,
   .account-products-grid,
   .hero-card,
   .footer-inner {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .account-layout {
+    min-height: 0;
   }
 
   .account-summary-panel {
-    min-height: 0;
+    padding: 20px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .account-summary-panel .email-verification-pending {
+    max-width: 520px;
+  }
+
+  .account-summary-actions {
+    width: auto;
+  }
+
+  .account-workspace {
+    padding: 28px 20px;
   }
 
   .page-section {
@@ -45,8 +94,27 @@
     padding-bottom: 48px;
   }
 
+  .page-section.public-home-hero {
+    padding-top: 60px;
+    padding-bottom: 40px;
+  }
+
   .hero-card {
     padding: 26px 22px;
+  }
+
+  .product-hero {
+    gap: 28px;
+    margin-bottom: 40px;
+  }
+
+  .product-preview {
+    max-width: 560px;
+    width: 100%;
+  }
+
+  .product-readiness-grid {
+    gap: 16px;
   }
 
   #checkout-form {
@@ -54,8 +122,8 @@
   }
 
   .auth-modal-panel {
-    top: 82px;
-    max-height: calc(100vh - 104px);
+    top: 16px;
+    max-height: calc(100dvh - 32px);
   }
 
   .footer-links {
@@ -72,13 +140,13 @@
     justify-content: start;
   }
 
-  .hero-h1 {
+  .hero-h1,
+  .public-hero .hero-h1 {
     font-size: 40px;
   }
 
-  .legal-title,
-  .result-title {
-    font-size: 34px;
+  .public-hero .hero-copy {
+    font-size: 15px;
   }
 }
 
@@ -87,21 +155,104 @@
     font-size: 13px;
   }
 
-  .hero-h1 {
-    font-size: 34px;
+  .hero-h1,
+  .public-hero .hero-h1 {
+    font-size: 32px;
   }
 
-  .section-title {
-    font-size: 28px;
-  }
-
+  .section-title,
   .legal-title,
-  .result-title {
-    font-size: 30px;
+  .result-title,
+  .catalog-heading .catalog-title {
+    font-size: 28px;
   }
 
   .stats-grid {
     grid-template-columns: 1fr;
+  }
+
+  .nav-inner {
+    gap: 6px 12px;
+  }
+
+  .logo {
+    font-size: 16px;
+  }
+
+  .nav-links {
+    grid-column: 2;
+    grid-row: 1;
+    justify-content: flex-end;
+  }
+
+  .nav-links .nav-link {
+    padding: 8px;
+    text-align: center;
+  }
+
+  .nav-actions {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    gap: 8px;
+  }
+
+  .nav-actions .nav-account,
+  .nav-actions .locale-switcher {
+    flex: 1 1 0;
+  }
+
+  .nav-actions .nav-account {
+    width: auto;
+    flex-wrap: wrap;
+  }
+
+  .nav-account-email {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .public-hero .hero-actions {
+    max-width: 340px;
+    margin-right: auto;
+    margin-left: auto;
+  }
+
+  .product-collection,
+  .tool-card,
+  .product-info-card {
+    padding: 20px;
+  }
+
+  .account-workspace {
+    padding: 20px;
+  }
+
+  .account-product-card {
+    padding: 18px 20px;
+  }
+
+  .product-hero .product-detail-title {
+    font-size: 28px;
+  }
+
+  .product-preview {
+    padding: 20px 16px;
+  }
+
+  .product-illustration {
+    gap: 8px;
+    min-height: 200px;
+    padding: 12px;
+  }
+
+  .product-illustration-source,
+  .product-illustration-focus {
+    min-height: 150px;
+    padding: 12px;
+  }
+
+  .site-shell .footer-links {
+    gap: 4px 16px;
   }
 
   .btn-primary,
@@ -114,6 +265,10 @@
   .button-row,
   .cookie-actions {
     flex-direction: column;
+  }
+
+  .account-product-actions .btn-secondary {
+    justify-self: stretch;
   }
 
   .account-card,
@@ -129,5 +284,15 @@
 
   .mobile-only-break {
     display: block;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
   }
 }

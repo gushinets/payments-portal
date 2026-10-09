@@ -1,16 +1,23 @@
-# Payment Portal Architecture
+# AnyToolAI Portal Architecture
 
 Status: authoritative current-state map
-Last verified: 2026-10-02
+Last updated: 2026-10-08
 
 ## System boundary
 
 This repository currently owns the `ru` contour's identity, authenticated
 sessions, email verification, password recovery,
-legal-document/version/acceptance records, the Payment Portal UI, and a
+legal-document/version/acceptance records, the AnyToolAI Portal UI, and a
 provider-neutral external-billing persistence baseline. It does not own
 workflow execution, artifacts, usage consumption, or quota enforcement; those
 belong to the separate Platform Kernel repository.
+
+The current Portal combines product-first public discovery, substantial
+per-product pages, presentation-only pricing navigation, direct account/auth
+entry and a product-centric cabinet. It remains pre-production and
+provider-independent on the current ANY-636 4F surface; External
+Billing/provider runtime is not implemented. Final 4F verification and human
+screenshot/intent acceptance remain pending.
 
 Each production deployment serves exactly one contour. Region Resolver is a
 separate planned service for contour selection; it is not implemented here.
@@ -21,8 +28,8 @@ See [contours](docs/architecture/contours.md) and the
 flowchart LR
   Browser -. "planned contour lookup" .-> Resolver["Planned Region Resolver"]
   Resolver -. "deployed contour URLs" .-> Browser
-  Browser --> Web["Next.js web"]
-  Web --> API["FastAPI API"]
+  Browser --> Web["AnyToolAI Portal · Next.js web"]
+  Web --> API["Portal backend · FastAPI"]
   API --> DB[("PostgreSQL")]
   API -. "future AccessSnapshot contract" .-> Kernel["Platform Kernel"]
   API -. "future external-billing integration" .-> Billing["External Billing"]
@@ -48,12 +55,16 @@ The canonical target is defined, in precedence order, by
 accepted [External Billing Boundary Design](docs/superpowers/specs/2026-09-15-external-billing-boundary-design.md),
 and the accepted
 [Portal <-> Kernel Access Contract Design](docs/superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md).
-External Billing owns commercial billing truth and lifecycle. Payment Portal
-owns AnyToolAI identity and legal acceptance, the external-billing
-anti-corruption/projection/reconciliation/recovery boundary, and
-provider-neutral paid-access projection and delivery. Platform Kernel owns
+External Billing owns commercial billing truth and lifecycle. The AnyToolAI
+Portal owns the implemented identity and legal acceptance flows and the later
+external-billing anti-corruption/projection/reconciliation/recovery boundary
+and provider-neutral paid-access projection and delivery. Platform Kernel owns
 technical product and metric vocabulary, durable actual usage, and quota
 enforcement.
+
+The component historically named “Payments Portal” in those accepted records
+maps to the Portal backend boundary implemented here. ADR 0005 and the accepted
+2026-09-15 designs remain normative records with their original names.
 
 External Billing is not a direct payment provider and must never be modeled as
 or registered through an adapter registry. The removed architecture is
@@ -73,10 +84,60 @@ launch remain gated by Phase 0 and their owning `ANY-504` steps.
 - **Billing persistence** — the approved projections, immutable commercial
   mapping/purchase evidence, reconciliation/operation records, paid-access
   state, and invalidation outbox. There is no billing runtime yet.
-- **Presentation** — locale-prefixed landing, product snapshot, auth/account
-  shells, unavailable checkout/payment-result surfaces, and canonical RU legal
-  pages. Ordinary Portal-owned UI and metadata are localized across the seven
-  supported route locales; canonical legal authority remains Russian.
+- **Presentation** — locale-prefixed product-first home, catalog, substantial
+  product detail pages, pricing placeholder, direct account/auth entry,
+  product-centric cabinet, recovery, verification, and
+  canonical RU legal pages. Ordinary Portal-owned UI and metadata are localized
+  across the seven supported route locales; canonical legal authority remains
+  Russian. Compact identity context supports one card per current product, each
+  with commercial/access/usage/action slots. Missing sources show not-ready,
+  unavailable or unknown states, which do not establish no subscription, no
+  access, or zero usage/quota. These slots are local view composition, not new
+  HTTP contracts or domain models.
+
+### As-built 4F routes
+
+```text
+/[locale]
+/[locale]/products
+/[locale]/products/document-summary
+/[locale]/products/prompt-optimizer
+/[locale]/pricing
+/[locale]/account
+/[locale]/forgot-password
+/[locale]/reset-password
+/[locale]/verify-email
+```
+
+Legal routes remain `/ru/privacy`, `/ru/consent-personal-data`, `/ru/offer`,
+`/ru/cancellation`, `/ru/cookies`, and `/ru/security`. `/account` owns direct
+sign-in/registration and the product-centric authenticated cabinet; the header
+sign-in modal is retained. Product cards open local detail pages, and account
+CTAs enter `/account`; no purchase or fabricated product-execution target is exposed.
+`document-summary` and `prompt-optimizer` are presentation/route slugs only,
+not claimed Platform Kernel `product_id` or External Billing IDs.
+
+`/pricing` and public Pricing navigation are presentation-only: localized
+metadata, an honest unavailable/not-ready state and home/products links. The
+pricing feature makes no API calls and owns no commercial facts or purchase
+controls. Evolved Bundle 3 encodes the approved RU mockup's navy/amber,
+flat/compact visual direction across these surfaces; the mockup's demo facts
+are excluded from runtime authority.
+
+Parent ANY-504 Step 6 supplies authoritative commercial projections and
+technical identity mapping to existing commercial/pricing slots; Step 7
+supplies purchase/Widget actions; Step 8 supplies reconciled state and recovery
+feedback; Step 9 supplies provider-neutral confirmed paid access; Step 10
+supplies actual Kernel usage/quota. These deferred steps populate the existing
+product/cabinet surfaces without redesigning the main cabinet. Their ownership,
+Phase 0 gates and authoritative-fact rules remain unchanged.
+
+The transitional pre-production `/{locale}/auth-checkout` and
+`/{locale}/payment-result` routes were removed without redirects or compatibility
+routes because they have no production compatibility obligation. This does not
+set a permanent rule for future production route changes. The durable
+[RU Portal 4F handoff](docs/product/ru-mvp.md) records the data ownership and
+deferred ANY-504 Steps 6–10.
 
 ## Locale runtime and public routing
 
@@ -203,7 +264,7 @@ Pydantic/OpenAPI-generated contract. A shared backend/frontend value that does
 not cross HTTP may retain a separate authority path, while a value used only
 by frontend UI or view state remains frontend-owned.
 
-ANY-541 migrated the current production API surface for registration, login,
+ANY-541 migrated the current identity API surface for registration, login,
 session, logout, password reset, email verification, and the
 `email_verified` session/user fact. Account uses the generated auth session and
 logout contracts. No current legal endpoint DTO required migration because the
@@ -242,7 +303,12 @@ For every future Portal-owned, web-consumed API, the implementation rule is:
 5. Use the shared API transport trust boundary.
 6. Keep form, UI, and view state local instead of putting it into API DTOs.
 
-Generated contracts do not change domain-data ownership. Future 4F work must
+ANY-636 4F required no new Portal HTTP API. Existing generated auth contracts
+and canonical legal assets supply the facts needed by the current UI; product
+discovery is frontend presentation metadata. Future Portal-owned web APIs still
+follow the ANY-541 rule above.
+
+Generated contracts do not change domain-data ownership. Future web work must
 not mirror or re-author External Billing commercial catalog, pricing, or
 sellability truth; paid-access authority owned by later `ANY-504` steps; or
 Platform Kernel actual usage and remaining-quota truth.
@@ -406,7 +472,7 @@ exist as evidence.
 
 ## Runtime execution model
 
-Payment Portal remains sync-first. Domain, Application, Persistence, and
+AnyToolAI Portal remains sync-first. Domain, Application, Persistence, and
 synchronous SQLAlchemy code use ordinary synchronous functions. Async is
 limited to unavoidable FastAPI/ASGI framework boundaries or genuinely
 awaitable outer I/O.
@@ -465,7 +531,7 @@ idempotency, reconciliation, or access authority.
 - [Portal <-> Kernel Access Contract Design](docs/superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md)
 - [Current as-built data model](docs/architecture/payment-portal-data-model.md)
 - [Deployment and reset contract](docs/architecture/deployment.md)
-- [Implemented `ru` journey](docs/product/ru-mvp.md)
+- [As-built RU Portal 4F handoff](docs/product/ru-mvp.md)
 - [Reliability requirements](docs/RELIABILITY.md)
 - [Security requirements](docs/SECURITY.md)
 - [Superseded billing authority](docs/architecture/billing-authority.md) —
