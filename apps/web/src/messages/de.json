@@ -240,7 +240,7 @@
     "hero": {
       "heading": "KI-Werkzeuge für <em>den Arbeitsalltag</em>",
       "description": "Fassen Sie Dokumente zusammen und verbessern Sie Prompts. Wählen Sie ein Werkzeug für Ihre Aufgabe und erfahren Sie, wie es funktioniert.",
-      "primaryAction": "Anmelden oder registrieren",
+      "primaryAction": "Konto öffnen",
       "secondaryAction": "Werkzeuge entdecken"
     },
     "products": {
@@ -256,7 +256,7 @@
       "title": "KI-Werkzeuge",
       "description": "Entdecken Sie Document Summary und Prompt Optimizer für Dokumentzusammenfassungen und bessere Prompts."
     },
-    "signInAction": "Anmelden oder registrieren",
+    "signInAction": "Konto öffnen",
     "backToCatalog": "Zurück zu den Produkten",
     "detail": {
       "accountNote": "Die Anmeldung öffnet Ihren AnytoolAI-Kontobereich.",

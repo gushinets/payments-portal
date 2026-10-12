@@ -240,7 +240,7 @@
     "hero": {
       "heading": "Ferramentas de IA para <em>o dia a dia</em>",
       "description": "Resuma documentos e melhore prompts. Escolha uma ferramenta para sua tarefa e saiba como ela funciona.",
-      "primaryAction": "Entrar ou criar uma conta",
+      "primaryAction": "Abrir conta",
       "secondaryAction": "Explorar ferramentas"
     },
     "products": {
@@ -256,7 +256,7 @@
       "title": "Ferramentas de IA",
       "description": "Conheça Document Summary e Prompt Optimizer para resumir documentos e melhorar prompts."
     },
-    "signInAction": "Entrar ou criar uma conta",
+    "signInAction": "Abrir conta",
     "backToCatalog": "Voltar aos produtos",
     "detail": {
       "accountNote": "Ao entrar, você abre sua área de conta do AnytoolAI.",

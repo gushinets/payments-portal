@@ -240,7 +240,7 @@
     "hero": {
       "heading": "AI tools for <em>everyday work</em>",
       "description": "Summarize documents and improve prompts. Choose a tool for your task and learn how it works.",
-      "primaryAction": "Sign in or register",
+      "primaryAction": "Open account",
       "secondaryAction": "Explore tools"
     },
     "products": {
@@ -256,7 +256,7 @@
       "title": "AI utilities",
       "description": "Explore Document Summary and Prompt Optimizer for document summaries and better prompts."
     },
-    "signInAction": "Sign in or register",
+    "signInAction": "Open account",
     "backToCatalog": "Back to products",
     "detail": {
       "accountNote": "Signing in opens your AnytoolAI account area.",

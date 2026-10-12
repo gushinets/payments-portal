@@ -240,7 +240,7 @@
     "hero": {
       "heading": "Des outils d’IA pour <em>le travail quotidien</em>",
       "description": "Résumez des documents et améliorez vos prompts. Choisissez un outil adapté à votre tâche et découvrez son fonctionnement.",
-      "primaryAction": "Se connecter ou s’inscrire",
+      "primaryAction": "Ouvrir le compte",
       "secondaryAction": "Découvrir les outils"
     },
     "products": {
@@ -256,7 +256,7 @@
       "title": "Outils d’IA",
       "description": "Découvrez Document Summary et Prompt Optimizer pour résumer vos documents et améliorer vos prompts."
     },
-    "signInAction": "Se connecter ou s’inscrire",
+    "signInAction": "Ouvrir le compte",
     "backToCatalog": "Retour aux produits",
     "detail": {
       "accountNote": "La connexion ouvre votre espace de compte AnytoolAI.",

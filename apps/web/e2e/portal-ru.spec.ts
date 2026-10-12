@@ -271,6 +271,53 @@ test("home leads with product value, account entry and discovery of the two curr
   await expectPortalBoundary(page, traffic, testInfo);
 });
 
+for (const authenticated of [false, true]) {
+  test(`public account CTAs keep neutral copy and open the account entry (authenticated: ${authenticated})`, async ({
+    page
+  }) => {
+    const email = "cta-portal@example.com";
+    if (authenticated) {
+      await page.addInitScript(() => {
+        window.localStorage.setItem("anytoolai_session_token_v1", "cta-session");
+      });
+      await page.route("**/api/auth/session", async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            authenticated: true,
+            user: {
+              tenant_id: "anytoolai",
+              region: "ru",
+              user_id: "11111111-1111-4111-8111-111111111111",
+              email,
+              email_verified: true
+            }
+          })
+        });
+      });
+    }
+
+    for (const pathname of ["/ru", ...products.map((product) => `/ru/products/${product.slug}`)]) {
+      await page.goto(pathname, { waitUntil: "networkidle" });
+      if (pathname === "/ru") {
+        await page.getByRole("button", { name: ruMessages.CookieBanner.acceptAction, exact: true }).click();
+      }
+      const main = page.getByRole("main");
+      const accountAction = main.getByRole("link", { name: "Открыть аккаунт", exact: true });
+      await expect(accountAction).toHaveAttribute("href", "/ru/account");
+      await accountAction.click();
+      await expect(page).toHaveURL(/\/ru\/account$/);
+      if (authenticated) {
+        await expect(main.getByText(email, { exact: true })).toBeVisible();
+        await expect(main.getByRole("heading", { name: ruMessages.Account.title, exact: true })).toBeVisible();
+      } else {
+        await expect(main.getByRole("heading", { name: "Вход или регистрация", exact: true })).toBeVisible();
+      }
+    }
+  });
+}
+
 for (const product of products) {
   test(`catalog card opens a substantial localized ${product.slug} detail page`, async ({ page }, testInfo) => {
     const traffic = observePortalTraffic(page);
@@ -293,7 +340,7 @@ for (const product of products) {
     await expect(main.getByText(product.title, { exact: true })).toBeVisible();
     await expect(main.getByText(product.description, { exact: true })).toBeVisible();
     await expect(
-      main.getByRole("link", { name: "Войти или зарегистрироваться" })
+      main.getByRole("link", { name: ruMessages.Catalog.signInAction })
     ).toHaveAttribute("href", "/ru/account");
     const backLinks = main.getByRole("link", { name: "К списку продуктов" });
     await expect(backLinks).toHaveCount(2);
@@ -511,7 +558,7 @@ test("RU Portal navigation, product discovery and account forms remain usable at
   await expect(main.getByRole("heading", { level: 1, name: products[1].name })).toBeVisible();
   await expectMobileLayout(page, testInfo, "prompt-optimizer");
 
-  await expectKeyboardFocus(page, main.getByRole("link", { name: "Войти или зарегистрироваться" }));
+  await expectKeyboardFocus(page, main.getByRole("link", { name: ruMessages.Catalog.signInAction }));
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/\/ru\/account$/);
   await expect(main.getByRole("heading", { name: "Вход или регистрация" })).toBeVisible();
