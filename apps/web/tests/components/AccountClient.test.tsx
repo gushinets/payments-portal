@@ -704,10 +704,10 @@ describe("direct account authentication and session", () => {
     }
   });
 
-  it.each(["success", "401"])("ignores a stale session %s when storage changed without an event", async (result) => {
+  it.each(["success", "401"])("recovers the current session after stale %s when storage changed without an event", async (result) => {
     const oldSession = deferredResponse();
     window.localStorage.setItem(sessionStorageKey, "old-token");
-    fetchMock.mockReturnValueOnce(oldSession.promise);
+    fetchMock.mockReturnValueOnce(oldSession.promise).mockResolvedValueOnce(sessionResponse("new@example.com"));
     renderAccountClient();
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     window.localStorage.setItem(sessionStorageKey, "new-token");
@@ -721,7 +721,8 @@ describe("direct account authentication and session", () => {
     expect(window.localStorage.getItem(sessionStorageKey)).toBe("new-token");
     expect(screen.queryByText("old@example.com")).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: ruMessages.Auth.dialogTitle })).not.toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent(ruMessages.Account.loading);
+    expect(await screen.findByText("new@example.com")).toBeVisible();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("ignores an older session 401 after a newer read of the same bearer succeeds", async () => {
@@ -758,11 +759,11 @@ describe("direct account authentication and session", () => {
     expect(window.localStorage.getItem(sessionStorageKey)).toBe("session-token");
   });
 
-  it.each(["server failure", "network failure"])("clears the matching local bearer when logout encounters a %s", async (failure) => {
+  it.each(["500", "503", "network failure"])("clears the matching local bearer when logout encounters a %s", async (failure) => {
     window.localStorage.setItem(sessionStorageKey, "session-token");
     fetchMock.mockResolvedValueOnce(sessionResponse());
-    if (failure === "server failure") {
-      fetchMock.mockResolvedValueOnce(jsonResponse({ detail: "unavailable" }, 503));
+    if (failure !== "network failure") {
+      fetchMock.mockResolvedValueOnce(jsonResponse({ detail: "unavailable" }, Number(failure)));
     } else {
       fetchMock.mockRejectedValueOnce(new TypeError("network unavailable"));
     }
@@ -785,27 +786,45 @@ describe("direct account authentication and session", () => {
     }
   });
 
-  it("preserves a newer login when an older logout finishes", async () => {
+  it.each(["success", "failure"])("preserves a newer login when an older logout finishes with %s", async (result) => {
     const oldLogout = deferredResponse();
     window.localStorage.setItem(sessionStorageKey, "old-token");
     fetchMock
       .mockResolvedValueOnce(sessionResponse("old@example.com"))
       .mockReturnValueOnce(oldLogout.promise)
-      .mockResolvedValueOnce(sessionResponse("new@example.com"));
-    const user = userEvent.setup();
-    renderAccountClient();
-    await user.click(await screen.findByRole("button", { name: "Выйти" }));
-    window.localStorage.setItem(sessionStorageKey, "new-token");
-    act(() => window.dispatchEvent(new Event(sessionChangedEvent)));
-    expect(await screen.findByText("new@example.com")).toBeVisible();
+      .mockResolvedValueOnce(jsonResponse({
+        status: "authenticated", token: "new-token",
+        user: { ...accountUser, email: "new@example.com" }
+      }));
+    const sessionChangedListener = vi.fn();
+    window.addEventListener(sessionChangedEvent, sessionChangedListener);
+    try {
+      renderAccountClient();
+      fireEvent.click(await screen.findByRole("button", { name: "Выйти" }));
+      expect(window.localStorage.getItem(sessionStorageKey)).toBeNull();
+      expect(sessionChangedListener).toHaveBeenCalledTimes(1);
+      const email = screen.getByLabelText("Email");
+      fireEvent.change(email, { target: { value: "new@example.com" } });
+      fireEvent.change(screen.getByLabelText("Пароль", { exact: true }), { target: { value: "Synthetic-password-123!" } });
+      fireEvent.submit(email.closest("form")!);
+      expect(await screen.findByText("new@example.com")).toBeVisible();
+      expect(sessionChangedListener).toHaveBeenCalledTimes(2);
 
-    await act(async () => {
-      oldLogout.resolveResponse(jsonResponse({ status: "logged_out" }));
-    });
+      await act(async () => {
+        oldLogout.resolveResponse(result === "success"
+          ? jsonResponse({ status: "logged_out" })
+          : jsonResponse({ detail: "unavailable" }, 503));
+      });
 
-    expect(window.localStorage.getItem(sessionStorageKey)).toBe("new-token");
-    expect(screen.getByText("new@example.com")).toBeVisible();
-    expect(screen.queryByRole("heading", { name: ruMessages.Auth.dialogTitle })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Выйти" })).toBeEnabled();
+      expect(window.localStorage.getItem(sessionStorageKey)).toBe("new-token");
+      expect(screen.getByText("new@example.com")).toBeVisible();
+      expect(screen.queryByRole("heading", { name: ruMessages.Auth.dialogTitle })).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Выйти" })).toBeEnabled();
+      expect(sessionChangedListener).toHaveBeenCalledTimes(2);
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(fetchMock.mock.calls[1]?.[1]?.headers).toMatchObject({ Authorization: "Bearer old-token" });
+    } finally {
+      window.removeEventListener(sessionChangedEvent, sessionChangedListener);
+    }
   });
 });

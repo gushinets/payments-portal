@@ -114,8 +114,8 @@ documents remain drafts.
 1. The user opens the product-first home or catalog. Product cards open a local
    product detail page; home and product account CTAs open `/[locale]/account`.
    Public Pricing navigation opens only the presentation placeholder.
-2. A signed-out user signs in or registers directly on `/account` through the
-   existing `AuthForm`. The header sign-in modal remains available.
+2. A signed-out user signs in or registers directly on `/[locale]/account`
+   through the existing `AuthForm`. The header sign-in modal remains available.
 3. Registration requires explicit, initially unchecked personal-data and offer
    confirmations using generated canonical RU acceptance text and legal links.
 4. The authenticated cabinet leads with both current product cards and their

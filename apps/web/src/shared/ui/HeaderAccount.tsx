@@ -12,6 +12,10 @@ import {
   sessionStorageKey,
   submitAuth
 } from "@/shared/api/auth";
+import {
+  subscribeToSessionChanges,
+  useSessionOperation
+} from "@/shared/session/use-session-operation";
 import { AuthForm, AuthFormSubmitValues, AuthMode } from "./AuthForm";
 import { EmailVerificationPending } from "./EmailVerificationPending";
 import { authErrorMessageKey } from "./auth-errors";
@@ -19,6 +23,7 @@ import { authErrorMessageKey } from "./auth-errors";
 const telegramLoginUrl = process.env.NEXT_PUBLIC_TELEGRAM_LOGIN_URL ?? "";
 
 export function HeaderAccount({ languageTag }: { languageTag: string }) {
+  const { begin: beginOperation, cancel: cancelOperation } = useSessionOperation();
   const t = useTranslations("Auth");
   const [sessionUser, setSessionUser] =
     useState<SessionUserResponse | null>(null);
@@ -35,9 +40,28 @@ export function HeaderAccount({ languageTag }: { languageTag: string }) {
 
   useEffect(() => {
     let cancelled = false;
+    let refreshId = 0;
+    let loadedToken = window.localStorage.getItem(sessionStorageKey);
+
+    function acceptResult(id: number, token: string): boolean {
+      if (cancelled || id !== refreshId) return false;
+      if (window.localStorage.getItem(sessionStorageKey) !== token) {
+        void loadHeaderSession();
+        return false;
+      }
+      return true;
+    }
 
     async function loadHeaderSession() {
+      const currentRefreshId = ++refreshId;
       const token = window.localStorage.getItem(sessionStorageKey);
+      if (token !== loadedToken) {
+        loadedToken = token;
+        sessionUserRef.current = null;
+        setSessionUser(null);
+        setSessionLoadError(false);
+        setLoaded(false);
+      }
       if (!token) {
         sessionUserRef.current = null;
         setSessionUser(null);
@@ -48,33 +72,18 @@ export function HeaderAccount({ languageTag }: { languageTag: string }) {
 
       try {
         const payload = await getSession(token);
-        if (
-          !cancelled &&
-          window.localStorage.getItem(sessionStorageKey) === token &&
-          payload.authenticated
-        ) {
+        if (acceptResult(currentRefreshId, token) && payload.authenticated) {
           sessionUserRef.current = payload.user;
           setSessionUser(payload.user);
           setSessionLoadError(false);
           setLoaded(true);
         }
       } catch (requestError) {
-        if (
-          requestError instanceof ApiError &&
-          requestError.status === 401 &&
-          window.localStorage.getItem(sessionStorageKey) === token
-        ) {
+        if (!acceptResult(currentRefreshId, token)) return;
+        if (requestError instanceof ApiError && requestError.status === 401) {
           window.localStorage.removeItem(sessionStorageKey);
           window.dispatchEvent(new Event(sessionChangedEvent));
-          sessionUserRef.current = null;
-          setSessionUser(null);
-          setSessionLoadError(false);
-          setLoaded(true);
-        } else if (
-          !cancelled &&
-          window.localStorage.getItem(sessionStorageKey) === token &&
-          sessionUserRef.current === null
-        ) {
+        } else if (sessionUserRef.current === null) {
           setSessionLoadError(true);
         }
         // Keep the existing token during transient network failures.
@@ -84,12 +93,17 @@ export function HeaderAccount({ languageTag }: { languageTag: string }) {
     const timerId = window.setTimeout(() => {
       void loadHeaderSession();
     }, 0);
-    window.addEventListener(sessionChangedEvent, loadHeaderSession);
+    const unsubscribe = subscribeToSessionChanges(() => {
+      setError("");
+      setNotice("");
+      setLoading(false);
+      void loadHeaderSession();
+    });
 
     return () => {
       cancelled = true;
       window.clearTimeout(timerId);
-      window.removeEventListener(sessionChangedEvent, loadHeaderSession);
+      unsubscribe();
     };
   }, [sessionLoadAttempt]);
 
@@ -99,7 +113,15 @@ export function HeaderAccount({ languageTag }: { languageTag: string }) {
     setSessionLoadAttempt((attempt) => attempt + 1);
   }
 
+  function closeAuthModal() {
+    cancelOperation();
+    setLoading(false);
+    setModalOpen(false);
+  }
+
   function openAuthModal(nextMode: AuthMode = "login") {
+    cancelOperation();
+    setLoading(false);
     setInitialAuthMode(nextMode);
     setNotice("");
     setError("");
@@ -108,25 +130,31 @@ export function HeaderAccount({ languageTag }: { languageTag: string }) {
   }
 
   async function authenticate(values: AuthFormSubmitValues) {
+    const operation = beginOperation();
     setError("");
     setNotice("");
 
     setLoading(true);
     try {
       const payload = await submitAuth(values, { languageTag });
+      if (!operation.isCurrent()) return;
       window.localStorage.setItem(sessionStorageKey, payload.token);
       window.dispatchEvent(new Event(sessionChangedEvent));
       sessionUserRef.current = payload.user;
       setSessionUser(payload.user);
+      setSessionLoadError(false);
+      setLoaded(true);
       if (payload.user.email_verified) {
         setModalOpen(false);
       } else {
         setVerificationPending(true);
       }
     } catch (requestError) {
-      setError(t(authErrorMessageKey(requestError)));
+      if (operation.isCurrent()) {
+        setError(t(authErrorMessageKey(requestError)));
+      }
     } finally {
-      setLoading(false);
+      if (operation.isLatest()) setLoading(false);
     }
   }
 
@@ -169,7 +197,7 @@ export function HeaderAccount({ languageTag }: { languageTag: string }) {
             className="auth-modal-overlay"
             type="button"
             aria-label={t("header.closeDialogAriaLabel")}
-            onClick={() => setModalOpen(false)}
+            onClick={closeAuthModal}
           />
           <div
             className="form-panel auth-modal-panel auth-header-modal"
@@ -193,7 +221,7 @@ export function HeaderAccount({ languageTag }: { languageTag: string }) {
                   setNotice("");
                   setError("");
                 }}
-                onPasswordResetClick={() => setModalOpen(false)}
+                onPasswordResetClick={closeAuthModal}
                 onBeforeSubmit={() => {
                   setError("");
                   setNotice("");

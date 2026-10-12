@@ -19,6 +19,10 @@ import {
   EmailVerificationPending,
   type AuthFormSubmitValues
 } from "@/shared/ui";
+import {
+  subscribeToSessionChanges,
+  useSessionOperation
+} from "@/shared/session/use-session-operation";
 import { AccountProductCard } from "./AccountProductCard";
 
 const telegramLoginUrl = process.env.NEXT_PUBLIC_TELEGRAM_LOGIN_URL ?? "";
@@ -32,11 +36,11 @@ type AccountState =
 export function AccountClient({ languageTag }: { languageTag: string }) {
   const t = useTranslations("Account");
   const authT = useTranslations("Auth");
+  const { begin: beginOperation } = useSessionOperation();
   const skipSessionRefreshRef = useRef(false);
   const [accountState, setAccountState] = useState<AccountState>({
     status: "loading"
   });
-  const [loggingOut, setLoggingOut] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
@@ -45,6 +49,15 @@ export function AccountClient({ languageTag }: { languageTag: string }) {
   useEffect(() => {
     let cancelled = false;
     let refreshId = 0;
+
+    function acceptResult(id: number, token: string): boolean {
+      if (cancelled || id !== refreshId) return false;
+      if (window.localStorage.getItem(sessionStorageKey) !== token) {
+        void loadAccount();
+        return false;
+      }
+      return true;
+    }
 
     async function loadAccount() {
       const currentRefreshId = ++refreshId;
@@ -60,19 +73,13 @@ export function AccountClient({ languageTag }: { languageTag: string }) {
       try {
         const session = await getSession(token);
         if (
-          !cancelled &&
-          currentRefreshId === refreshId &&
-          window.localStorage.getItem(sessionStorageKey) === token &&
+          acceptResult(currentRefreshId, token) &&
           session.authenticated
         ) {
           setAccountState({ status: "authenticated", user: session.user });
         }
       } catch (requestError) {
-        if (
-          cancelled ||
-          currentRefreshId !== refreshId ||
-          window.localStorage.getItem(sessionStorageKey) !== token
-        ) {
+        if (!acceptResult(currentRefreshId, token)) {
           return;
         }
 
@@ -94,14 +101,15 @@ export function AccountClient({ languageTag }: { languageTag: string }) {
       }
       setNotice("");
       setError("");
+      setAuthLoading(false);
       void loadAccount();
     }
 
-    window.addEventListener(sessionChangedEvent, handleSessionChanged);
+    const unsubscribe = subscribeToSessionChanges(handleSessionChanged);
     void loadAccount();
     return () => {
       cancelled = true;
-      window.removeEventListener(sessionChangedEvent, handleSessionChanged);
+      unsubscribe();
     };
   }, [sessionLoadAttempt]);
 
@@ -136,11 +144,13 @@ export function AccountClient({ languageTag }: { languageTag: string }) {
   }
 
   async function authenticate(values: AuthFormSubmitValues) {
+    const operation = beginOperation();
     setNotice("");
     setError("");
     setAuthLoading(true);
     try {
       const response = await submitAuth(values, { languageTag });
+      if (!operation.isCurrent()) return;
       window.localStorage.setItem(sessionStorageKey, response.token);
       notifySessionChanged();
       setAccountState({ status: "authenticated", user: response.user });
@@ -150,30 +160,33 @@ export function AccountClient({ languageTag }: { languageTag: string }) {
           : authT("notices.signedIn")
       );
     } catch (requestError) {
-      setError(authT(authErrorMessageKey(requestError)));
+      if (operation.isCurrent()) {
+        setError(authT(authErrorMessageKey(requestError)));
+      }
     } finally {
-      setAuthLoading(false);
+      if (operation.isLatest()) setAuthLoading(false);
     }
   }
 
   async function logout() {
-    const token = window.localStorage.getItem(sessionStorageKey);
-    setLoggingOut(true);
+    const operation = beginOperation();
+    const token = operation.token;
+    if (token && window.localStorage.getItem(sessionStorageKey) === token) {
+      window.localStorage.removeItem(sessionStorageKey);
+      notifySessionChanged();
+    }
+    if (operation.isLatest()) {
+      setAccountState({ status: "signed_out" });
+      setNotice(authT("notices.signedOut"));
+      setError("");
+      setAuthLoading(false);
+    }
     try {
       if (token) {
         await logoutSession(token);
       }
     } catch {
-      // Local session removal still leaves this browser signed out.
-    } finally {
-      if (window.localStorage.getItem(sessionStorageKey) === token) {
-        window.localStorage.removeItem(sessionStorageKey);
-        notifySessionChanged();
-        setAccountState({ status: "signed_out" });
-        setNotice(authT("notices.signedOut"));
-        setError("");
-      }
-      setLoggingOut(false);
+      // Local logout is already complete; backend revocation is best-effort.
     }
   }
 
@@ -285,7 +298,6 @@ export function AccountClient({ languageTag }: { languageTag: string }) {
             <button
               className="btn-secondary"
               type="button"
-              disabled={loggingOut}
               onClick={() => void logout()}
             >
               <LogOut size={15} aria-hidden="true" />

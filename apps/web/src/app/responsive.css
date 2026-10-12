@@ -7,7 +7,7 @@
   }
 
   .nav-inner {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: max-content minmax(0, 1fr);
     min-height: 54px;
     gap: 8px 16px;
   }

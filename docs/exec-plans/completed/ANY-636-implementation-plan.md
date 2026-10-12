@@ -3301,3 +3301,205 @@ These remain intentionally **outside** this ticket even after corrective complet
 - An authoritative product execution destination if/when a later product/Kernel integration defines it.
 
 Do not pre-build future wire DTOs, persistence, provider abstractions or backend domain models inside ANY-636. Frontend-local composition required to render today's product-centric Portal is allowed; future service/domain authority is not.
+
+## Remaining review correction pass — 2026-10-09
+
+The user authorized local corrections on branch `ANY-636` at `c309def4`, with
+no branch creation, rebase, commit, push, merge or external comments. The six
+open threads represent four findings: concurrent login response ownership,
+cross-tab session reads, authenticated header collision at intermediate widths,
+and localized public account-route documentation. This pass does not reopen
+completed Steps 1–13 or change final acceptance status.
+
+Correction sequence:
+
+1. Reproduce pending auth/session races in Account, Header and verification
+   entry; preserve existing keyboard, retry and local sign-out tests.
+2. Add a component-local mount/attempt/session-generation guard and shared
+   native-storage filter; recover current-bearer reads without polling.
+3. Guard the confirmed password-reset removal race and audit resend,
+   verification confirm and logout for the same operation-lifetime defects.
+4. Reserve intrinsic logo width with minimal responsive grid changes; verify
+   bounds at 390/520/521/540/560/640/768/860/861 across RU/DE/FR/PT.
+5. Correct current public-route prose; run component, browser/runtime,
+   generation, lint/type/build and the broadest supported canonical checks.
+
+No backend/API/generated wire contract, transport trust boundary, billing,
+Kernel, locale configuration, legal acceptance, catalog, font or token changes
+are authorized. Fresh results and limitations will be recorded below.
+
+### Correction results and focused audit
+
+All four unique findings are fixed locally. P1 threads `4226392913` and
+`4226491532` share one root cause; P2 threads `4226392915` and `4226491531`
+share another. Thread `4226446417` concerns header bounds; `4226491536`
+concerns public account URLs. No review thread or external record was changed.
+
+- Account, Header and verification login all use the same component-local
+  operation guard: original bearer, mount epoch, attempt identity and observed
+  session generation. Success/error commits require current ownership; cleanup
+  may finish only its own mounted attempt. Modal close invalidates that attempt.
+  A `null → B → null` event sequence therefore cannot revive an older login.
+- All three session readers subscribe to native localStorage events, including
+  `key === null`, and retain same-tab notifications. Request IDs invalidate
+  older reads even with the same bearer. A current read detecting a different
+  stored token starts a read of the current token. Only mismatch/event/retry
+  triggers another read; an obsolete result returns immediately, and the
+  signed-out transition issues no request. No polling or refresh loop exists.
+- Header clears an old identity when the bearer changes, while retaining trusted
+  same-bearer presentation on transient failures. A successful header auth
+  response also marks that trusted identity loaded immediately, so a later
+  transient session read cannot leave its account control disabled. Verified
+  and verification-pending regressions cover this related loading-state gap.
+  Verification refresh keeps
+  the URL-fragment capability in memory; stale confirmation cannot consume it.
+- Password reset removes and notifies only for its original, still-current
+  non-null bearer. Reset success/error UI remains independent of a later login;
+  backend reset/session-revocation behavior is unchanged.
+- Resend and verification confirm already had matching-token guards. Their
+  confirmed gap was operation lifetime: a response after unmount could still
+  remove that bearer, and a session change returning to the same token could
+  revive the operation. They now use mount/attempt/generation protection.
+  The initial correction also applied delayed-response ownership to explicit
+  Account logout and verification switch-account; that introduced the P1
+  regression corrected in the follow-up below. Local sign-out is synchronous
+  and retains its matching-token guard; password-reset request changes no
+  session storage or session
+  identity and requires no such change. AuthForm retains native submission and
+  its existing double-POST protection. No other production auth mutation sites
+  were found.
+- Responsive CSS reserves the logo's intrinsic grid width and lets controls
+  wrap within the remaining column. Typography/tokens, locale configuration,
+  ordinary next-intl internal pathnames and product composition are unchanged.
+- Current README/architecture/RU journey public-account prose now consistently
+  uses `/[locale]/account`; `docs/PRODUCT.md` already used that notation.
+
+### Fresh verification — 2026-10-09
+
+Commands ran with the repository `.venv/bin` on PATH where Python tooling was
+required. Browser/Docker/subprocess checks used the approved host execution
+because the restricted sandbox rejected local Docker inspection. The existing
+worktree stack was reused via `npm run repo:up -- --reuse`; no shared stack or
+production environment was reset.
+
+- Before implementation: the four existing focused component files passed
+  **67 tests**. The initial cross-component reproduction suite failed **30 of
+  33 tests**, exposing stale auth commits, missing cross-tab synchronization,
+  missing current-token recovery and older same-bearer session errors.
+- `npm --workspace @anytoolai/web run test:components -- tests/components/AccountClient.test.tsx tests/components/HeaderAccount.test.tsx tests/components/AuthForm.test.tsx tests/components/EmailVerificationClient.test.tsx tests/components/PasswordResetConfirmClient.test.tsx tests/components/SessionRaces.test.tsx`
+  — **PASS, 128 tests**, including 53 session-race, 6 reset ownership and
+  2 additional successful-header-auth/transient-read tests.
+- `npm run generate:check`, `npm run lint:web`, `npm run typecheck:web`
+  — **PASS**. No generated artifact or transport/API source was modified.
+- `npm run check:fast` — **PASS**: 38 web boundary tests, **188 component
+  tests**, 611 API tests, docs/generation/architecture and Python/web lint.
+  The later complete check includes the two additional header-auth tests.
+- Final `npm run check` — **PASS**: the complete fast surface with **190
+  component tests**, production web build and **57 PostgreSQL tests**. Its
+  embedded browser step was skipped with `RUN_E2E` unset; the complete browser
+  suite ran separately below.
+- `npm run test:e2e -- apps/web/e2e/session-races.spec.ts apps/web/e2e/header-responsive.spec.ts --workers=2`
+  — **PASS, 20 tests**, after correcting fixture timing and keyboard focus
+  modality. Initial fixture failures are retained in local work history, not
+  reported as final product failures.
+- `npm run test:e2e -- --workers=2` — **PASS, 162 tests**, zero unexpected,
+  skipped, flaky or global errors. Real concurrent account/header POSTs and
+  two Pages sharing localStorage are covered. The cross-tab fixtures use native
+  browser events, with success/401/503/timeout, logout, clear and unrelated-key
+  paths. Existing auth keyboard, registration, verification, retry/local logout,
+  password recovery, Manrope and route-retirement regressions pass.
+- `npm run test:e2e:react-runtime` — **PASS, 4 desktop/mobile tests**, zero
+  unexpected, skipped, flaky or global errors and no application runtime warnings.
+- Authenticated/signed-out header bounds pass all **144 combinations** of
+  390/520/521/540/560/640/768/860/861 px, RU/DE/FR/PT and the two browser
+  projects. Assertions compare logo/actions/navigation and actual control
+  rectangles as well as overflow and navigation rows. Keyboard focus and header
+  Axe checks pass with no serious/critical violations.
+- **76 focused screenshots** are preserved under
+  `.harness/any636-session-review/screenshots`, including all four locales at
+  520/521/540/861 px, concurrent login and cross-tab states. Fresh full JSON/HTML
+  reports remain in the normal Playwright report directories; current runtime
+  screenshots include `landing.png` and `account.png` for both projects.
+- `bash --noprofile --norc -e -o pipefail .harness/any636-session-review/browser-evidence.sh`
+  — **PASS**. This script is extracted directly from the current CI workflow.
+- Local readiness is `ready`; Loki/Prometheus/Tempo queries succeed. One health
+  log entry and five sampled traces with zero error spans were observed. This
+  bounded inspection does not establish complete journey telemetry correlation.
+  Sanitized aggregate evidence and test logs are preserved in the same ignored
+  review directory.
+- `git diff --check` — **PASS**. The 1446 fast API warnings are existing SQLite
+  foreign-key/default-datetime-adapter warnings, with no failed API tests.
+
+Backend contracts/semantics, OpenAPI/generated schemas, shared API transport,
+External Billing/provider/paid-access ownership, Kernel usage/quota, legal
+acceptance, locale configuration, catalog behavior, Manrope and Bundle 3 tokens
+remain unchanged. Local checks do not create a new remote CI result or grant
+human visual/merge approval. Windows and Trivy jobs were not rerun for this
+frontend-only correction pass. Branch/HEAD remain `ANY-636` / `c309def4`; no
+branch creation, rebase, commit, push or merge occurred.
+
+## Explicit logout regression follow-up — 2026-10-09
+
+This narrow follow-up supersedes the initial correction's logout-after-unmount
+expectation. `operation.isCurrent()` becomes false after unmount, so delaying
+local bearer removal until the revoke settles could retain session A after an
+explicit user logout. Login, resend and verification response ownership still
+requires the existing stale-response guards.
+
+Account logout and verification switch-account now capture A and synchronously
+remove the matching bearer before awaiting the API. Only an actual removal emits
+`sessionChangedEvent`. Signed-out UI and loading cleanup happen in that same
+synchronous turn, using `isLatest()` to avoid the generation invalidation caused
+by the operation's own event. The captured A is passed to best-effort backend
+revocation. No storage or React state mutation follows the await, on success or
+failure, so completion after unmount or login B cannot affect the new session.
+Switch-account retains the in-memory verification capability. The account's
+pending-revoke loading flag is removed because the signed-out form is available
+immediately. Absent bearer means no revoke and no removal/change event.
+
+Regression coverage explicitly replaces the erroneous logout member of
+`resend/verify/logout cannot clear a bearer after unmount`; resend and verify
+retain their original expectations. Both explicit logout entry points cover
+pending revoke before unmount with success, 500, 503, network failure and timeout,
+one removal/event, the original Authorization bearer, and an absent bearer.
+Their feature tests cover API failures and actual login B before late success
+or failure A. Verification additionally confirms with B and the retained
+capability. Browser cases exercise client-side unmount and login B separately
+for both entry points, with late success/503, header synchronization and no
+application runtime errors. Prior local sign-out and transient session-read
+regressions remain in the requested targeted files.
+
+Verification results and the incremental diff are recorded under the ignored
+`.harness/any636-logout-followup/` directory. The initial reproduction failed all
+16 selected logout regressions; the first focused run after the fix passed
+115 component tests. The first fast-check attempt exposed an invalid Testing
+Library option in a new assertion; it was corrected before the final rerun.
+Final validation results follow below.
+
+- Focused `AccountClient`, `EmailVerificationClient` and `SessionRaces` tests:
+  **PASS, 115 tests** (37 / 14 / 64 respectively).
+- Final `npm run check:fast`: **PASS**, including 206 component tests,
+  38 boundary tests, 611 fast API tests, docs/generation/architecture checks,
+  TypeScript and Python/web lint. The 1446 existing fast API warnings remain.
+- `npm run repo:up -- --reuse`: **PASS**; rebuilt the existing isolated stack
+  and its production web image without resetting data.
+- `npm run test:e2e -- apps/web/e2e/session-races.spec.ts apps/web/e2e/account-logout.spec.ts --workers=2`:
+  **PASS, 42 tests**, including 16 new explicit logout cases across desktop and
+  mobile; zero skipped, unexpected, flaky or global errors. All new logout
+  cases assert no application page/console errors, allowing only the expected
+  browser HTTP 503 diagnostic in deliberate revoke-failure cases.
+- Preserved 16 new logout screenshots; inspected desktop replacement-session
+  and mobile verification-success states. Correctness and UI/security review
+  checklists were applied to this incremental diff. No new styling, copy,
+  generated contracts, API/transport code, billing or legal changes were made.
+- Bounded readiness/logs/metrics/traces inspection succeeds. Five sampled traces
+  contain zero error spans; this is not complete journey telemetry correlation.
+- `npm run docs:check` and `git diff --check`: **PASS** after the final record.
+  The full check/PostgreSQL suite, full 162-case E2E suite, React runtime suite,
+  Windows and Trivy jobs were not rerun for this requested narrow follow-up.
+
+Incremental scope is the two logout components, their two feature test files,
+`SessionRaces.test.tsx`, `session-races.spec.ts`, and this execution record.
+Every other pre-existing changed file is preserved byte-for-byte. Branch/HEAD
+remain `ANY-636` / `c309def4`; no commit, push, rebase, merge, branch creation or
+GitHub review reply was performed.

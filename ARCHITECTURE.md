@@ -110,10 +110,11 @@ launch remain gated by Phase 0 and their owning `ANY-504` steps.
 ```
 
 Legal routes remain `/ru/privacy`, `/ru/consent-personal-data`, `/ru/offer`,
-`/ru/cancellation`, `/ru/cookies`, and `/ru/security`. `/account` owns direct
-sign-in/registration and the product-centric authenticated cabinet; the header
-sign-in modal is retained. Product cards open local detail pages, and account
-CTAs enter `/account`; no purchase or fabricated product-execution target is exposed.
+`/ru/cancellation`, `/ru/cookies`, and `/ru/security`. `/[locale]/account` owns
+direct sign-in/registration and the product-centric authenticated cabinet; the
+header sign-in modal is retained. Product cards open local detail pages, and
+account CTAs enter `/[locale]/account`; no purchase or fabricated
+product-execution target is exposed.
 `document-summary` and `prompt-optimizer` are presentation/route slugs only,
 not claimed Platform Kernel `product_id` or External Billing IDs.
 

@@ -192,7 +192,7 @@ same `ru` contour, with `ru` as the default locale:
 `/pricing` is localized presentation/navigation only: an honest not-ready state,
 localized metadata and safe home/products links, without offers, prices or
 purchase controls. Authoritative commercial facts remain parent ANY-504 Step 6;
-purchase/provider Widget behavior remains Step 7. `/account` is the direct
+purchase/provider Widget behavior remains Step 7. `/[locale]/account` is the direct
 sign-in/registration entry and product-centric authenticated cabinet; the
 header also retains its sign-in modal. Legal routes remain canonical:
 `/ru/privacy`, `/ru/consent-personal-data`, `/ru/offer`, `/ru/cancellation`,
