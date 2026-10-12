@@ -69,6 +69,13 @@
 
   .account-layout {
     min-height: 0;
+    grid-template-areas: "heading" "summary" "workspace";
+    grid-template-rows: auto auto auto;
+  }
+
+  .account-heading {
+    margin-bottom: 0;
+    padding: 28px 20px;
   }
 
   .account-summary-panel {
@@ -223,6 +230,7 @@
     padding: 20px;
   }
 
+  .account-heading,
   .account-workspace {
     padding: 20px;
   }

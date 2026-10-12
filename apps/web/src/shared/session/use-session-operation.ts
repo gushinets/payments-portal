@@ -3,6 +3,9 @@
 import { useCallback, useEffect, useRef } from "react";
 import { sessionChangedEvent, sessionStorageKey } from "@/shared/api/auth";
 
+// Shared only by login/register attempts in this tab; never restored on failure.
+let currentAuthAttempt: symbol | undefined;
+
 /** Same-tab notifications and native cross-tab changes share one filter. */
 export function subscribeToSessionChanges(onChange: () => void): () => void {
   function onStorage(event: StorageEvent) {
@@ -21,7 +24,7 @@ export function subscribeToSessionChanges(onChange: () => void): () => void {
   };
 }
 
-/** Component-local attempt ownership; no session state or wire semantics. */
+/** Local lifetime guards with opt-in, same-tab login/register ownership. */
 export function useSessionOperation() {
   const scope = useRef({ mounted: false, epoch: 0, version: 0, attempt: 0 });
   useEffect(() => {
@@ -59,5 +62,14 @@ export function useSessionOperation() {
         window.localStorage.getItem(sessionStorageKey) === token
     };
   }, []);
-  return { begin, cancel };
+  const beginAuth = useCallback(() => {
+    const operation = begin();
+    const owner = Symbol();
+    currentAuthAttempt = owner;
+    return {
+      ...operation,
+      isCurrent: () => currentAuthAttempt === owner && operation.isCurrent()
+    };
+  }, [begin]);
+  return { begin, beginAuth, cancel };
 }

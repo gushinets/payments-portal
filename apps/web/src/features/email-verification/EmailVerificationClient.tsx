@@ -41,7 +41,7 @@ export function EmailVerificationClient({
 }: {
   languageTag: string;
 }) {
-  const { begin: beginOperation } = useSessionOperation();
+  const { begin: beginOperation, beginAuth } = useSessionOperation();
   const t = useTranslations("EmailVerification");
   const authT = useTranslations("Auth");
   const verificationTokenRef = useRef("");
@@ -155,7 +155,7 @@ export function EmailVerificationClient({
   }
 
   async function authenticate(values: AuthFormSubmitValues) {
-    const operation = beginOperation();
+    const operation = beginAuth();
     setAuthError("");
     setLoading(true);
     try {

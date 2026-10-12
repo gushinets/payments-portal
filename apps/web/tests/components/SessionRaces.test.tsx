@@ -1,11 +1,12 @@
 import "@testing-library/jest-dom/vitest";
-import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, renderHook, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AccountClient } from "@/features/account";
 import { EmailVerificationClient } from "@/features/email-verification";
 import { EmailVerificationPending } from "@/shared/ui/EmailVerificationPending";
 import { HeaderAccount } from "@/shared/ui/HeaderAccount";
 import { sessionChangedEvent, sessionStorageKey } from "@/shared/api/auth";
+import { useSessionOperation } from "@/shared/session/use-session-operation";
 import ruMessages from "@/messages/ru.json";
 import { renderWithIntl } from "../setup/render-with-intl";
 
@@ -24,13 +25,19 @@ function renderEntry(entry: string) {
     locale: "ru", messages: { Auth: ruMessages.Auth, Account: ruMessages.Account, Catalog: ruMessages.Catalog, EmailVerification: ruMessages.EmailVerification }
   });
 }
-async function login(entry: string) {
-  if (entry === "header") fireEvent.click(await screen.findByRole("button", { name: "Войти" }));
-  const email = await screen.findByLabelText("Email");
-  fireEvent.change(email, { target: { value: "old@example.com" } });
-  fireEvent.change(screen.getByLabelText("Пароль", { exact: true }), { target: { value: "Synthetic-password-123!" } });
+async function login(entry: string, root = document.body, emailAddress = "old@example.com", mode: "login" | "register" = "login") {
+  const form = within(root);
+  if (entry === "header") fireEvent.click(await form.findByRole("button", { name: "Войти" }));
+  if (mode === "register") fireEvent.click(await form.findByRole("button", { name: ruMessages.Auth.modes.register }));
+  const email = await form.findByLabelText("Email");
+  fireEvent.change(email, { target: { value: emailAddress } });
+  fireEvent.change(form.getByLabelText("Пароль", { exact: true }), { target: { value: "Synthetic-password-123!" } });
+  if (mode === "register") {
+    fireEvent.change(form.getByLabelText("Повторите пароль"), { target: { value: "Synthetic-password-123!" } });
+    form.getAllByRole("checkbox").forEach((checkbox) => fireEvent.click(checkbox));
+  }
   fireEvent.submit(email.closest("form")!);
-  await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/api/auth/login"))).toBe(true));
+  await waitFor(() => expect(fetchMock.mock.calls.some(([url, options]) => String(url).endsWith(`/api/auth/${mode}`) && String(options?.body).includes(emailAddress))).toBe(true));
 }
 function changeSession(token: string | null, event: "same-tab" | "storage" = "same-tab", key: string | null = sessionStorageKey) {
   if (token) window.localStorage.setItem(sessionStorageKey, token);
@@ -141,9 +148,103 @@ describe.each(["account", "header", "verification"])("%s session races", (entry)
   });
 });
 
+describe.each(["account", "verification"])("%s and header auth ownership", (entry) => {
+  beforeEach(() => { window.localStorage.clear(); fetchMock.mockReset(); vi.stubGlobal("fetch", fetchMock); });
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+  const cases = (["page", "header"] as const).flatMap((first) =>
+    (["older", "newer"] as const).flatMap((finishesFirst) =>
+      (["success", "failure", "registration"] as const)
+        .filter((newerResult) => entry === "account" || first === "page" || newerResult !== "registration")
+        .flatMap((newerResult) => (newerResult === "success" ? ["success", "failure"] as const : ["success"] as const)
+          .map((olderResult) => ({ first, finishesFirst, olderResult, newerResult })))
+    )
+  );
+  it.each(cases)("$first starts first, $finishesFirst finishes first, older $olderResult and newer $newerResult", async ({ first, finishesFirst, olderResult, newerResult }) => {
+    window.history.replaceState(null, "", entry === "verification" ? "/ru/verify-email#token=capability" : "/ru/account");
+    const older = deferred();
+    const newer = deferred();
+    fetchMock.mockImplementation(async (url, options) => {
+      if (String(url).endsWith("/login") || String(url).endsWith("/register")) {
+        return String(options?.body).includes("old@example.com") ? older.promise : newer.promise;
+      }
+      return json({ authenticated: true, user });
+    });
+    renderWithIntl(<>
+      <header><HeaderAccount languageTag="ru" /></header>
+      <main>{entry === "account" ? <AccountClient languageTag="ru" /> : <EmailVerificationClient languageTag="ru" />}</main>
+    </>, { locale: "ru", messages: { Auth: ruMessages.Auth, Account: ruMessages.Account, Catalog: ruMessages.Catalog, EmailVerification: ruMessages.EmailVerification } });
+    const page = screen.getByRole("main");
+    const header = screen.getByRole("banner");
+    const firstRoot = first === "page" ? page : header;
+    const secondRoot = first === "page" ? header : page;
+    await login(first === "page" ? entry : "header", firstRoot);
+    await login(first === "page" ? "header" : entry, secondRoot, user.email, newerResult === "registration" ? "register" : "login");
+    const listener = vi.fn();
+    window.addEventListener(sessionChangedEvent, listener);
+    const finishOlder = () => act(async () => older.resolve(olderResult === "failure"
+      ? json({ detail: { code: "invalid_credentials" } }, 401)
+      : json({ status: "authenticated", token: "old-token", user: { ...user, email: "old@example.com" } })));
+    const finishNewer = () => act(async () => newer.resolve(newerResult === "failure"
+      ? json({ detail: { code: "invalid_credentials" } }, 401)
+      : json({ status: "authenticated", token: "new-token", user })));
+    try {
+      if (finishesFirst === "older") {
+        await finishOlder();
+        expect(window.localStorage.getItem(sessionStorageKey)).toBeNull();
+        expect(listener).not.toHaveBeenCalled();
+        expect(document.querySelector(".notice")).toBeNull();
+        expect(secondRoot.querySelector('button[type="submit"]')).toBeDisabled();
+        await finishNewer();
+      } else {
+        await finishNewer();
+        await finishOlder();
+      }
+      expect(window.localStorage.getItem(sessionStorageKey)).toBe(newerResult === "failure" ? null : "new-token");
+      expect(listener).toHaveBeenCalledTimes(newerResult === "failure" ? 0 : 1);
+      if (newerResult === "failure") {
+        expect(secondRoot.querySelector(".notice.error")).toHaveTextContent(ruMessages.Auth.errors.invalidCredentials);
+        expect(firstRoot.querySelector(".notice")).toBeNull();
+      } else {
+        await waitFor(() => expect(within(page).getByText(user.email)).toBeVisible());
+        expect(within(header).getByText(user.email)).toBeVisible();
+        expect(document.querySelector(".notice.error")).toBeNull();
+      }
+      expect(screen.queryByText("old@example.com")).not.toBeInTheDocument();
+    } finally { window.removeEventListener(sessionChangedEvent, listener); }
+  });
+});
+
 describe("adjacent mutation lifetime guards", () => {
   beforeEach(() => { window.localStorage.clear(); fetchMock.mockReset(); vi.stubGlobal("fetch", fetchMock); });
   afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+  it("only auth attempts participate in shared ownership", () => {
+    const first = renderHook(useSessionOperation);
+    const independent = renderHook(useSessionOperation);
+    const second = renderHook(useSessionOperation);
+    const olderAuth = first.result.current.beginAuth();
+    const ordinary = independent.result.current.begin();
+    expect(olderAuth.isCurrent()).toBe(true);
+    const newerAuth = second.result.current.beginAuth();
+    expect(olderAuth.isCurrent()).toBe(false);
+    expect(ordinary.isCurrent()).toBe(true);
+    independent.result.current.begin();
+    expect(newerAuth.isCurrent()).toBe(true);
+    // A superseded auth response can still end its own local spinner.
+    expect(olderAuth.isLatest()).toBe(true);
+  });
+
+  it.each(["cancel", "unmount"])("does not restore older ownership after the newest auth %s", (action) => {
+    const first = renderHook(useSessionOperation);
+    const second = renderHook(useSessionOperation);
+    const olderAuth = first.result.current.beginAuth();
+    const newerAuth = second.result.current.beginAuth();
+    if (action === "cancel") second.result.current.cancel();
+    else second.unmount();
+    expect(newerAuth.isCurrent()).toBe(false);
+    expect(olderAuth.isCurrent()).toBe(false);
+  });
 
   it("closing and reopening the modal invalidates the old login and its finally", async () => {
     const first = deferred(); const second = deferred();

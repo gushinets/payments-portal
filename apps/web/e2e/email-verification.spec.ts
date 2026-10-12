@@ -208,6 +208,9 @@ test("account registration and resend use the canonical pt-BR language tag", asy
   await scope.getByRole("button", { name: "Criar conta" }).last().click();
   await expect(scope.getByText("Verifique seu e-mail")).toBeVisible();
   await scope.getByRole("button", { name: "Enviar o e-mail de verificação novamente" }).click();
+  await expect(
+    scope.getByText(/Se outra mensagem puder ser enviada/)
+  ).toBeVisible();
 
   expect(registrationHeaders).toEqual(["pt-BR"]);
   expect(resendRequests).toEqual([
@@ -217,9 +220,6 @@ test("account registration and resend use the canonical pt-BR language tag", asy
       body: {}
     }
   ]);
-  await expect(
-    scope.getByText(/Se outra mensagem puder ser enviada/)
-  ).toBeVisible();
 });
 
 test("header registration sends its canonical language tag and stays authenticated", async ({

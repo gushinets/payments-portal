@@ -442,7 +442,12 @@ for (const emailVerified of [true, false]) {
     await page.getByRole("button", { name: ruMessages.CookieBanner.acceptAction, exact: true }).click();
     const main = page.getByRole("main");
     await expect(main.getByRole("heading", { level: 1, name: ruMessages.Account.title })).toBeVisible();
+    await expect(main.locator("h1")).toHaveCount(1);
+    const headingTags = await main.locator("h1, h2, h3, h4, h5, h6").evaluateAll((headings) => headings.map((heading) => heading.tagName));
+    expect(headingTags[0]).toBe("H1");
+    expect(headingTags.slice(1)).toEqual(emailVerified ? ["H2", "H2", "H3", "H3"] : ["H2", "H2", "H2", "H3", "H3"]);
     const identity = main.getByRole("complementary", { name: ruMessages.Account.authenticated.summaryTitle });
+    await expect(identity.getByRole("heading", { level: 2, name: ruMessages.Account.authenticated.summaryTitle })).toBeVisible();
     await expect(identity.getByRole("term")).toHaveText([ruMessages.Account.authenticated.emailLabel]);
     await expect(identity.getByRole("definition")).toHaveText([email]);
     await expect(identity.getByRole("article")).toHaveCount(0);
@@ -451,7 +456,7 @@ for (const emailVerified of [true, false]) {
       emailVerified ? "Email подтверждён" : "Email не подтверждён",
       { exact: true }
     )).toBeVisible();
-    const verificationHeading = main.getByRole("heading", { name: "Подтвердите email", exact: true });
+    const verificationHeading = identity.getByRole("heading", { level: 2, name: "Подтвердите email", exact: true });
     if (emailVerified) {
       await expect(verificationHeading).toHaveCount(0);
     } else {
@@ -460,6 +465,20 @@ for (const emailVerified of [true, false]) {
     }
 
     const productRegion = main.getByRole("region", { name: "Продукты" });
+    const headingBox = await main.getByRole("heading", { level: 1 }).boundingBox();
+    const identityBox = await identity.boundingBox();
+    const productBox = await productRegion.boundingBox();
+    expect(headingBox).not.toBeNull();
+    expect(identityBox).not.toBeNull();
+    expect(productBox).not.toBeNull();
+    if (testInfo.project.use.isMobile) {
+      expect(headingBox!.y + headingBox!.height).toBeLessThanOrEqual(identityBox!.y);
+      expect(identityBox!.y + identityBox!.height).toBeLessThanOrEqual(productBox!.y);
+    } else {
+      expect(identityBox!.x + identityBox!.width).toBeLessThanOrEqual(headingBox!.x);
+      expect(identityBox!.x + identityBox!.width).toBeLessThanOrEqual(productBox!.x);
+      expect(headingBox!.y + headingBox!.height).toBeLessThanOrEqual(productBox!.y);
+    }
     await expect(main.getByRole("article")).toHaveCount(2);
     await expect(productRegion.getByRole("link")).toHaveCount(2);
     await expect(productRegion.getByRole("article")).toHaveCount(2);
@@ -508,6 +527,10 @@ for (const emailVerified of [true, false]) {
     const viewport = testInfo.project.use.isMobile ? "mobile" : "desktop";
     const verificationState = emailVerified ? "verified" : "pending-verification";
     await capturePortalScreenshot(page, testInfo, `${viewport}-account-${verificationState}`);
+    if (!emailVerified) {
+      await expectKeyboardFocus(page, identity.getByRole("button", { name: ruMessages.EmailVerification.pending.resend }));
+    }
+    await expectKeyboardFocus(page, identity.getByRole("button", { name: ruMessages.Account.authenticated.signOutAction }));
     for (const product of products) {
       await expectKeyboardFocus(page, productRegion.getByRole("link", {
         name: `${ruMessages.Account.products.detailAction} ${product.name}`,

@@ -23,7 +23,7 @@ import { authErrorMessageKey } from "./auth-errors";
 const telegramLoginUrl = process.env.NEXT_PUBLIC_TELEGRAM_LOGIN_URL ?? "";
 
 export function HeaderAccount({ languageTag }: { languageTag: string }) {
-  const { begin: beginOperation, cancel: cancelOperation } = useSessionOperation();
+  const { beginAuth, cancel: cancelOperation } = useSessionOperation();
   const t = useTranslations("Auth");
   const [sessionUser, setSessionUser] =
     useState<SessionUserResponse | null>(null);
@@ -130,7 +130,7 @@ export function HeaderAccount({ languageTag }: { languageTag: string }) {
   }
 
   async function authenticate(values: AuthFormSubmitValues) {
-    const operation = beginOperation();
+    const operation = beginAuth();
     setError("");
     setNotice("");
 

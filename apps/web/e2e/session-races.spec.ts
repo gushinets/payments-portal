@@ -5,50 +5,97 @@ const key = "anytoolai_session_token_v1";
 const user = (email: string) => ({ tenant_id: "anytoolai", region: "ru", user_id: "11111111-1111-4111-8111-111111111111", email, email_verified: true });
 
 for (const first of ["account", "header"] as const) {
-  test(`slow ${first} login cannot replace a newer login from the other entry`, async ({ page }, testInfo) => {
-    let finish: () => void = () => undefined;
-    const pending = new Promise<void>((resolve) => { finish = resolve; });
-    let started = false;
-    let finished = false;
-    await page.route("**/api/auth/login", async (route) => {
-      const { email } = route.request().postDataJSON() as { email: string };
-      if (email === "old@example.com") { started = true; await pending; }
-      await route.fulfill({ json: { status: "authenticated", token: email, user: user(email) } });
-      if (email === "old@example.com") finished = true;
-    });
-    await page.route("**/api/auth/session", async (route) => {
-      const email = route.request().headers().authorization.slice("Bearer ".length);
-      await route.fulfill({ json: { authenticated: true, user: user(email) } });
-    });
-    await page.goto("/ru/account");
-    await page.getByRole("button", { name: ruMessages.CookieBanner.acceptAction, exact: true }).click();
-    if (first === "header") await page.getByRole("banner").getByRole("button", { name: "Войти", exact: true }).click();
-    const account = page.getByRole("main");
-    const dialog = page.getByRole("dialog");
-    const firstForm = first === "account" ? account : dialog;
-    const secondForm = first === "account" ? dialog : account;
-    try {
-      // For header-first competition, the overlay blocks direct-form pointer
-      // input; submit that still-mounted form through native requestSubmit.
-      await firstForm.getByLabel("Email").fill("old@example.com", { force: true });
-      await firstForm.getByLabel("Пароль", { exact: true }).fill("Synthetic-password-123!", { force: true });
-      await firstForm.locator("form").evaluate((form) => { (form as HTMLFormElement).requestSubmit(); });
-      await expect.poll(() => started).toBe(true);
-      if (first === "account") await page.getByRole("banner").getByRole("button", { name: "Войти", exact: true }).click();
-      await secondForm.getByLabel("Email").fill("new@example.com", { force: true });
-      await secondForm.getByLabel("Пароль", { exact: true }).fill("Synthetic-password-123!", { force: true });
-      await secondForm.locator("form").evaluate((form) => { (form as HTMLFormElement).requestSubmit(); });
-      await expect(account.getByText("new@example.com", { exact: true })).toBeVisible();
-      await expect(page.getByRole("banner").getByText("new@example.com", { exact: true })).toBeVisible();
-      finish(); await expect.poll(() => finished).toBe(true);
-      // Wait for the released response body and the subsequent UI turn.
-      await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
-      expect(await page.evaluate((storageKey) => localStorage.getItem(storageKey), key)).toBe("new@example.com");
-      await expect(account.getByText("new@example.com", { exact: true })).toBeVisible();
-      await expect(page.getByText("old@example.com", { exact: true })).toHaveCount(0);
-      await page.screenshot({ path: testInfo.outputPath(`${first}-concurrent-login.png`), fullPage: true });
-    } finally { finish(); }
-  });
+  for (const finishesFirst of ["older", "newer"] as const) {
+    for (const newerResult of ["success", "failure", "registration"] as const) {
+      test(`${first} auth starts first, ${finishesFirst} finishes first, newer ${newerResult} owns the session`, async ({ page }, testInfo) => {
+        const deferredResponse = () => {
+          let finish: () => void = () => undefined;
+          const pending = new Promise<void>((resolve) => { finish = resolve; });
+          return { pending, finish };
+        };
+        const older = deferredResponse();
+        const newer = deferredResponse();
+        const started: string[] = [];
+        await page.addInitScript(() => {
+          sessionStorage.setItem("auth-race-events", "0");
+          window.addEventListener("anytoolai_session_changed", () => {
+            sessionStorage.setItem("auth-race-events", String(Number(sessionStorage.getItem("auth-race-events")) + 1));
+          });
+        });
+        await page.route(/\/api\/auth\/(?:login|register)$/, async (route) => {
+          const { email } = route.request().postDataJSON() as { email: string };
+          started.push(email);
+          await (email === "old@example.com" ? older : newer).pending;
+          await route.fulfill(email === "new@example.com" && newerResult === "failure"
+            ? { status: 401, json: { detail: { code: "invalid_credentials" } } }
+            : { json: { status: "authenticated", token: email, user: user(email) } });
+        });
+        await page.route("**/api/auth/session", async (route) => {
+          const email = route.request().headers().authorization.slice("Bearer ".length);
+          await route.fulfill({ json: { authenticated: true, user: user(email) } });
+        });
+        await page.goto("/ru/account");
+        await page.getByRole("button", { name: ruMessages.CookieBanner.acceptAction, exact: true }).click();
+        if (first === "header") await page.getByRole("banner").getByRole("button", { name: "Войти", exact: true }).click();
+        const account = page.getByRole("main");
+        const dialog = page.getByRole("dialog");
+        const firstForm = first === "account" ? account : dialog;
+        const secondForm = first === "account" ? dialog : account;
+        try {
+          // For header-first competition, the overlay blocks direct-form pointer
+          // input; submit that still-mounted form through native requestSubmit.
+          await firstForm.getByLabel("Email").fill("old@example.com", { force: true });
+          await firstForm.getByLabel("Пароль", { exact: true }).fill("Synthetic-password-123!", { force: true });
+          await firstForm.locator("form").evaluate((form) => { (form as HTMLFormElement).requestSubmit(); });
+          await expect.poll(() => started).toEqual(["old@example.com"]);
+          if (first === "account") await page.getByRole("banner").getByRole("button", { name: "Войти", exact: true }).click();
+          if (newerResult === "registration") {
+            await secondForm.getByRole("button", { name: ruMessages.Auth.modes.register, exact: true }).evaluate((button) => (button as HTMLButtonElement).click());
+          }
+          await secondForm.getByLabel("Email").fill("new@example.com", { force: true });
+          await secondForm.getByLabel("Пароль", { exact: true }).fill("Synthetic-password-123!", { force: true });
+          if (newerResult === "registration") {
+            await secondForm.getByLabel(ruMessages.Auth.fields.passwordConfirmLabel).fill("Synthetic-password-123!", { force: true });
+            for (const checkbox of await secondForm.getByRole("checkbox").all()) await checkbox.evaluate((input) => (input as HTMLInputElement).click());
+          }
+          await secondForm.locator("form").evaluate((form) => { (form as HTMLFormElement).requestSubmit(); });
+          await expect.poll(() => started).toEqual(["old@example.com", "new@example.com"]);
+          const finishResponse = async (email: string) => {
+            const received = page.waitForResponse((response) =>
+              /\/api\/auth\/(?:login|register)$/.test(new URL(response.url()).pathname) &&
+              (response.request().postDataJSON() as { email: string }).email === email
+            );
+            (email === "old@example.com" ? older : newer).finish();
+            await (await received).finished();
+            await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+          };
+          if (finishesFirst === "older") {
+            await finishResponse("old@example.com");
+            expect(await page.evaluate((storageKey) => localStorage.getItem(storageKey), key)).toBeNull();
+            expect(await page.evaluate(() => sessionStorage.getItem("auth-race-events"))).toBe("0");
+            await expect(page.locator(".notice")).toHaveCount(0);
+            await expect(secondForm.locator('button[type="submit"]')).toBeDisabled();
+            await finishResponse("new@example.com");
+          } else {
+            await finishResponse("new@example.com");
+            await finishResponse("old@example.com");
+          }
+          expect(await page.evaluate((storageKey) => localStorage.getItem(storageKey), key)).toBe(newerResult === "failure" ? null : "new@example.com");
+          expect(await page.evaluate(() => sessionStorage.getItem("auth-race-events"))).toBe(newerResult === "failure" ? "0" : "1");
+          if (newerResult === "failure") {
+            await expect(secondForm.locator(".notice.error")).toHaveText(ruMessages.Auth.errors.invalidCredentials);
+            await expect(firstForm.locator(".notice")).toHaveCount(0);
+          } else {
+            await expect(account.getByText("new@example.com", { exact: true })).toBeVisible();
+            await expect(page.getByRole("banner").getByText("new@example.com", { exact: true })).toBeVisible();
+            await expect(page.locator(".notice.error")).toHaveCount(0);
+          }
+          await expect(page.getByText("old@example.com", { exact: true })).toHaveCount(0);
+          await page.screenshot({ path: testInfo.outputPath(`${first}-${finishesFirst}-${newerResult}-concurrent-auth.png`), fullPage: true });
+        } finally { older.finish(); newer.finish(); }
+      });
+    }
+  }
 }
 
 for (const oldResult of ["success", "401", "503", "timeout"] as const) {
@@ -131,6 +178,7 @@ for (const entry of ["account", "verification"] as const) {
   for (const result of ["success", "503"] as const) {
     for (const nextAction of ["unmount", "login B"] as const) {
       test(`${entry} explicit logout clears A before revoke ${result} and survives ${nextAction}`, async ({ page }, testInfo) => {
+        await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
         let finish: () => void = () => undefined;
         const pending = new Promise<void>((resolve) => { finish = resolve; });
         let started = false;
@@ -176,6 +224,9 @@ for (const entry of ["account", "verification"] as const) {
         await expect(main.getByText("old@example.com", { exact: true })).toBeVisible();
         await expect(header.getByText("old@example.com", { exact: true })).toBeVisible();
         await page.getByRole("button", { name: ruMessages.CookieBanner.acceptAction, exact: true }).click();
+        // Hold application timers while the test controls the pending revoke.
+        // Navigation/login on a slow worker must not consume its request timeout.
+        await page.clock.pauseAt(new Date("2026-01-01T01:00:00Z"));
         try {
           await main.getByRole("button", { name: entry === "account"
             ? ruMessages.Account.authenticated.signOutAction
@@ -200,6 +251,7 @@ for (const entry of ["account", "verification"] as const) {
           const completed = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/auth/logout");
           finish();
           await (await completed).finished();
+          await page.clock.resume();
           await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
           expect(revokes).toEqual(["Bearer token-a"]);
           expect(await page.evaluate((storageKey) => localStorage.getItem(storageKey), key)).toBe(nextAction === "unmount" ? null : "token-b");

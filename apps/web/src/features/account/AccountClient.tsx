@@ -36,7 +36,7 @@ type AccountState =
 export function AccountClient({ languageTag }: { languageTag: string }) {
   const t = useTranslations("Account");
   const authT = useTranslations("Auth");
-  const { begin: beginOperation } = useSessionOperation();
+  const { begin: beginOperation, beginAuth } = useSessionOperation();
   const skipSessionRefreshRef = useRef(false);
   const [accountState, setAccountState] = useState<AccountState>({
     status: "loading"
@@ -144,7 +144,7 @@ export function AccountClient({ languageTag }: { languageTag: string }) {
   }
 
   async function authenticate(values: AuthFormSubmitValues) {
-    const operation = beginOperation();
+    const operation = beginAuth();
     setNotice("");
     setError("");
     setAuthLoading(true);
@@ -263,6 +263,16 @@ export function AccountClient({ languageTag }: { languageTag: string }) {
   return (
     <section className="account-dashboard">
       <div className="account-layout">
+        <header className="account-heading">
+          <div>
+            <div className="eyebrow">
+              <span className="eyebrow-dot" />
+              {t("eyebrow")}
+            </div>
+            <h1 className="legal-title">{t("title")}</h1>
+            <p className="hero-copy">{t("authenticated.description")}</p>
+          </div>
+        </header>
         <aside
           className="account-summary-panel"
           aria-labelledby="account-summary-title"
@@ -307,15 +317,6 @@ export function AccountClient({ languageTag }: { languageTag: string }) {
         </aside>
 
         <div className="account-workspace">
-          <header className="account-heading">
-            <div className="eyebrow">
-              <span className="eyebrow-dot" />
-              {t("eyebrow")}
-            </div>
-            <h1 className="legal-title">{t("title")}</h1>
-            <p className="hero-copy">{t("authenticated.description")}</p>
-          </header>
-
           <section
             className="account-products-panel"
             aria-labelledby="account-products-title"
