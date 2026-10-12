@@ -3,6 +3,7 @@ import {
   DISPLAY_NAME_BY_ROUTE_LOCALE,
   SUPPORTED_ROUTE_LOCALES
 } from "../src/generated/locales";
+import deMessages from "../src/messages/de.json";
 
 const localeLanguages = [
   ["en", "en"],
@@ -176,7 +177,7 @@ test("ordinary navigation keeps the active locale", async ({ page }) => {
   );
   await expect(
     page.getByRole("main").getByRole("link", {
-      name: "Anmelden oder registrieren"
+      name: deMessages.Home.hero.primaryAction
     }).first()
   ).toHaveAttribute("href", "/de/account");
 
