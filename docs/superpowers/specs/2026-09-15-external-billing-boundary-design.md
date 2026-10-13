@@ -212,51 +212,36 @@ Prove:
 
 Client-side Widget flags are presentation only; security proof is Phase 0 E.
 
-### Phase 0 B: complete material-term re-verification
+### Phase 0 B: LBX service-price and accepted-term verification contract
 
-Every material field in the accepted commercial fingerprint must have a proven
-authoritative re-verification source for the concrete subscription.
+**Phase 0 B8 research outcome (stand 043, 2026-10-13): DONE for the supported integration algorithm, not a certification that production implementation or any specific offer is launch-ready.** The original mandatory live *source-tariff price mutation* probe has been retired by explicit product/architecture decision: it tested catalog repricing propagation already described by LBX, whereas the safety-critical observable mutation of a concrete subscription was tested on stand 043 (B8.3). The attempt to add a service to synthetic tariff 29 did not persist and proves neither a provider defect nor an incompatibility of this integration algorithm; no source-price live propagation was tested. Do not require that redundant experiment again to mark B8 research DONE. Re-open only for contradicting provider facts or a newly discovered mandatory field with no safe source.
 
-The authoritative read set may contain more than one provider read, for example a
-subscription read plus an exact immutable/revision-bound tariff read, but Phase 0
-must prove that every source unambiguously applies to that concrete subscription.
+LBX commercial model used by Steps 6–9:
 
-Required material fields include, where applicable:
+- Tariff is a set of commercial rules, billing periods and tariff services. **It has no independently charged single tariff price.** Price rows (recurring price, connection price and effective date) belong to an individual tariff service for the applicable period. The amount of a prepared subscription derives from its actual selected service composition, quantities and applicable effective prices, not from a fictitious `tariff.base_price`.
+- A catalog service price change with an effective date defines the price for **new subscription preparations** according to LBX's published rules. Recalculation of previous charges is a separate provider operation. A subscription can also have its own operator-adjusted **effective service price**. Do not infer that all old subscriptions' effective terms change whenever the current catalog price row changes, or that documentation alone proves future renewal behavior for every policy.
+- An already prepared subscription's authoritative effective service prices, composition, quantities and aggregate `total_price` are read from that concrete subscription, alongside applicable period, owner/agreement, currency and lifecycle. Current catalog tariff/service price (`tariff_price`) is reference context, **not authority replacing an older accepted price**. B8.3 on stand 043 demonstrated effective service price 10→15→10 using subscription-specific PUT, visible via authoritative point GET despite unchanged subscription instance ID.
+- The Portal's immutable independently accepted snapshot pins component/period identities and effective unit prices, quantities, connection/discount terms where applicable, total, account-scoped ISO currency/money units, recurring/customer-obligation terms, technical metric mapping with fixed quantity, and accepted legal/policy revisions. `multiplicator=1` denotes one LBX service unit, not 1,000 Kernel operations. Kernel exclusively records runtime usage and remaining.
+- A *new catalog price row* that leaves historically accepted subscription effective terms untouched is **not a commercial mismatch by itself**. A material change to the concrete subscription effective terms conflicts with the pinned snapshot even if `subscription_instance_id` stays unchanged. Missing, unprovable or non-historically-applicable mandatory source facts yield `INCOMPLETE`, never a guessed match. Provider payments, balances, charges, Widget callbacks, instance IDs and mutable history are not substitutes for the accepted terms.
 
-```text
-price
-currency
-billing cadence/recurrence
-customer payment obligation
-product/component composition
-metric set
-fixed allowance quantities/policies
-material renewal/cancellation semantics
-```
+#### Implementation admission and mandatory decision table
 
-Observed verification has exactly three outcomes:
+This research closure does **not** waive the per-offer Step 6 sellability gate. Before a real RU offer is published, Step 6 must validate a fresh complete LBX tariff→service→period/price projection, its exact normalized account currency (for stand 043 UI/API evidence maps the configured ruble choice to numeric currency 1; confirm and enforce the chosen account's ISO RUB / monetary units, without treating numeric 1 as a universal currency code), and a supported prepaid fixed-period profile. Step 6 must pin provider component/price provenance, published immutable mapping and a controlled historical policy/change-management contract; cannot silently rely on mutable current tariff-only policies as a historical record. Step 7 must obtain explicit versioned product/legal acceptance for renewal/autopay/cancellation when applicable. Unapproved terms and absent provenance make the **specific offer** `NOT_SELLABLE`, not B8 research `NOT DONE`. Future EU currency requires independent account evidence, not EUR testing on RU stand.
+
+The authoritative implementation verifier must classify exactly:
 
 ```text
-COMPLETE_MATCH
-COMPLETE_MISMATCH
-INCOMPLETE
+COMPLETE_MATCH     all material independent accepted fields reconstructed
+                   from proven sources and equal effective subscription terms
+COMPLETE_MISMATCH  full material reconstruction proves a changed effective
+                   subscription obligation/composition/term
+INCOMPLETE         missing/uncertain source, currency/units, policy applicability
+                   or provenance; may additionally flag a known material difference
 ```
 
-Rules:
+`COMPLETE_MISMATCH` blocks affected access, increments `access_revision`, and enters manual review; `INCOMPLETE` never extends trust. Tests in Steps 6–9 must explicitly cover: (1) catalog service price 10→20 without old subscription effective-price change (no false conflict); (2) new subscription at the currently applicable offer price; (3) subscription-specific effective price 10→15 with unchanged instance (conflict once complete); (4) extra/missing service, quantity, period or total change; (5) missing historical tariff-policy provenance / currency / required field (fail closed); (6) existing Kernel allowance/usage not reset by catalog price change. Application tests may use mocks/fixtures; B8 research did not run these unwritten production tests.
 
-- `COMPLETE_MATCH` may extend provider-fact trust;
-- `COMPLETE_MISMATCH` creates `commercial_terms_conflict`, blocks paid access,
-  increments `access_revision`, and enters manual review;
-- `INCOMPLETE` is normalization/integration failure, never an implicit match, and
-  does not extend trust.
-
-If a material field cannot be re-read/reconstructed reliably by design, the offer
-is `NOT_SELLABLE`.
-
-Mandatory mutation probes include changing the source tariff and, where allowed,
-operator-side material subscription terms after preparation. A customer
-obligation/access change that remains invisible to the approved authoritative
-read set is a launch blocker.
+**Evidence labels:** `DOCUMENTED` for LBX tariff-service price/effective-date/new-subscription and operator price rules (https://docs.lbxbilling.ru/tariffs/change_price/ ; https://docs.lbxbilling.ru/subscriptions/subscribe_client/); `CONFIRMED_ON_TEST` for stand-043 subscription-specific 10→15→10 visibility and ruble UI/stand account-linked price display; `NOT_TESTED` for catalog-price mutation propagation (tariff 29 setup was `BLOCKED_SETUP`). These levels must never be presented as a live PASS for an experiment that did not run.
 
 ### Phase 0 C: fixed allowance quantity and authoritative cycle semantics
 
