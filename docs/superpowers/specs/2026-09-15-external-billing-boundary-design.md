@@ -258,42 +258,61 @@ operator-side material subscription terms after preparation. A customer
 obligation/access change that remains invisible to the approved authoritative
 read set is a launch blocker.
 
+
 ### Phase 0 C: fixed allowance quantity and authoritative cycle semantics
 
-For every metered sellable offer prove:
+For every metered sellable offer, determine and retain:
 
 ```text
-fixed quantity per metric from provider-owned offer/tariff
-period_start
-period_end
-cycle_identity
+fixed integer quantity per metric from verified accepted commercial terms/mapping
+provider calendar period start/end (date-only, not instants)
+stable or safely derived provider_cycle_key
 component/source identity
 metric/source binding
 ```
 
-Allowance quantity is captured before acceptance from provider-owned commercial
-configuration and pinned in the accepted snapshot. For MVP it is a non-negative
-integer end to end; floating/decimal quota quantities are unsupported. Live
-charges, agreement balance, payment amount/status, and other mutable funding
-artifacts never define or resize quota.
+The LBX monthly tariff documentation defines recurring calendar periods (for
+example, 15 June through 14 July inclusive, followed by 15 July onward),
+prepayment at the start of a period, and optional re-anchoring after subscription
+changes. The `new_charge_period` webhook is only a scheduling hint. Official
+documentation is sufficient authority for **normal recurring calendar cadence**;
+the RU MVP does **not** require an additional live natural-month wait merely to
+prove that documented cadence. Stand-043 B10 independently confirmed stable
+same-cycle subscription reads and consecutive charge-calendar ranges; it did
+**not** prove whether the 2026-10-09 charge was caused by natural renewal or
+retrospective recalculation. Never label that unobserved cause
+`CONFIRMED_ON_TEST`.
 
-Prefer a native stable provider cycle ID. If none exists, derived identity is
-allowed only when test evidence proves its fields remain stable across rereads
-and financial block/unblock and change only for a real new billing cycle.
+LBX `last_tariffication_period_start/end` are provider calendar dates. No
+effective billing timezone or exact UTC boundary is documented for account 043.
+Do not guess a timezone or fabricate UTC instants. These dates are used only
+inside Portal to identify/validate a billing cycle, not as Kernel authorization
+timestamps. The normative authorization contract is in the companion design.
 
-The probe must prove, including with multiple metrics when the tariff model can
-represent them, that:
+Allowance quantity is pinned from fully verified accepted fixed commercial
+terms, independent of monetary charge/balance/payment records or runtime usage.
+LBX `multiplicator=1.0` identifies commercial service units; it is not by
+itself 1,000 AnyToolAI operations. Missing quantitative provenance/mapping
+keeps the offer `NOT_SELLABLE`.
 
-- same-cycle reread preserves each metric/source/cycle `allowance_id`;
-- financial block/unblock preserves IDs, pinned quantities, and already-used
-  Kernel amounts;
-- mutable charge recalculation does not change quantity, cycle identity,
-  commercial fingerprint, or runtime bucket identity;
-- a confirmed new provider cycle creates new metric-specific IDs with fresh
-  Kernel usage counters.
+Prefer a native provider cycle ID if one is truly available. Otherwise derive a
+stable key from the canonical subscription, component and the exact provider
+calendar period pair under a pinned cadence/anchor. The authoritative complete
+reread must establish that a changed pair is the expected **successive**
+calendar period for the same subscription/agreement, with unchanged accepted
+commercial meaning and eligible prepaid state. Repeated reads, block/unblock,
+charges, mutable instance/history/charge IDs and webhook notifications alone
+must never create a new quota bucket. Unexpected re-anchor, retrospective
+recalculation, overlap/gap, contradictory dates or incomplete evidence is a
+cycle conflict: omit affected paid allowance and reconcile/manual-review, never
+silently reset the existing Kernel usage.
 
-The stand-043 same-charge/same-period mutation after funding is an explicit
-negative test: charge state is not quota authority.
+Required Step 8–10 application proofs cover same-cycle identity/usage
+preservation, eligible successive-cycle renewal, concurrent duplicate reads,
+and safe rejection of edited/re-anchored/recalculated/conflicting dates. The
+documented LBX cadence plus actual same-cycle/consecutive-date evidence close
+the **B10 architectural research gate**; a separate live scheduled-renewal
+experiment and a billing-timezone query are not B10 prerequisites.
 
 ### Phase 0 D: customer-list completeness for first-primary selection
 
@@ -880,19 +899,20 @@ states. Last-known-good facts may survive only inside their existing finite trus
 lease; no prior good state means no access; a previously blocked state remains
 blocked.
 
+
 ## Allowances and quota identity
 
 `purchased_allowances` combines two authorities:
 
 ```text
-quantity              <- immutable accepted fixed offer snapshot
-cycle identity/bounds <- authoritative provider cycle facts
+quantity              <- immutable verified accepted fixed-offer/mapping snapshot
+provider_cycle_key    <- normalized authoritative provider calendar period facts
 ```
 
-There is no operator-supplied allowance quantity path. Quantity is a non-negative
-integer in Portal storage, AccessSnapshot, and Kernel quota state. Live charges,
-balance, payment state, or manual operator input never create or resize a quota
-bucket.
+There is no operator-supplied allowance quantity path. Quantity is a
+non-negative integer in Portal storage, AccessSnapshot and Kernel quota state.
+Live charges, balance, payment state and manual operator input never create or
+resize a quota bucket.
 
 Logical allowance identity is:
 
@@ -914,24 +934,45 @@ UNIQUE(billing_subscription_component_id, metric_key, provider_cycle_key)
 ```
 
 Repeated same-cycle reads and financial block/unblock preserve each metric's
-`allowance_id`, fixed quantity, and Kernel usage. Only a confirmed new provider
-cycle creates new metric-specific IDs.
+`allowance_id`, fixed quantity and durable Kernel usage. A genuinely
+confirmed successive eligible provider cycle creates new metric-specific IDs.
+Changes to a charge, price, subscription version/instance or calendar anchor
+are **not** independent proof of renewal.
 
-For a given `allowance_id`, product, metric, integer quantity, and effective wire
-period boundaries are immutable. The effective `period_start`/`period_end` are
-frozen when that allowance ID is first committed; a later deployment change to
-`clock_skew_budget` applies only to future allowance IDs and must not rewrite an
-existing tuple. A later read claiming different boundaries or other tuple fields
-for the same allowance creates a conflict rather than silently rewriting the
-bucket. Kernel independently freezes and verifies the same tuple according to the
-companion access contract.
+Portal preserves the provider's date-only calendar bounds and immutable cycle
+identity as its own source/evidence facts. They are **not** UTC instants or
+authorization deadlines and are not published as `period_start/period_end` in
+the Kernel AccessSnapshot. For a given `allowance_id`, the immutable Kernel
+tuple is `(tenant_id, region, user_id, allowance_id, product_id, metric_key,
+quantity)`. A changed identity, product, metric or quantity for that ID is a
+contract conflict. A changed provider calendar date pair for an already-pinned
+Portal cycle is likewise an internal cycle conflict, never an in-place bucket
+reset. No inferred currency, monetary value or date re-anchor can mint quantity.
 
-MVP does not stack multiple effective allowances for one `(product_id,
-metric_key)`. If conflicting duplicate effective allowances are observed, Portal
-fails closed only that metric by omitting the conflicting metric allowance(s)
-from the committed effective access set; unrelated product grants and metrics
-remain independently eligible. Kernel applies the same metric-local blast radius
-as defense in depth.
+Paid authorization instead depends on the currently confirmed Portal effective
+access set, its finite provider projection trust lease and the conservative
+AccessSnapshot lease/grant deadlines. Kernel never calls External Billing.
+A provider outage may leave the previous known cycle temporarily usable within
+the **already approved 6h trust window** and the snapshot's remaining TTL,
+including near an actual billing rollover. That bounded staleness is an explicit
+availability tradeoff; it is **not** a guarantee of stopping at the exact LBX
+local midnight. Once trust expires, the affected paid allowance fails closed;
+a new cycle/allowance is never guessed during an outage.
+
+The clean pre-production persistence baseline still contains timestamp-based
+`purchased_allowances.provider_cycle_start/end` and
+`period_start/period_end` fields. Step 9 must adapt those **target** columns
+and their constraints to date-only provider cycle facts without synthetic
+UTC timestamps before producer runtime; Step 10 must use the revised versioned
+AccessSnapshot fixture/typed contracts on both sides. Do not describe this
+design decision as an already implemented migration.
+
+MVP does not stack multiple effective allowances for one
+`(product_id, metric_key)`. If conflicting duplicate effective allowances
+are observed, Portal fails closed only that metric by omitting the conflicting
+metric allowance(s) from the committed effective access set; unrelated product
+grants and metrics remain independently eligible. Kernel applies the same
+metric-local blast radius as defense in depth.
 
 Portal does not store authoritative runtime `remaining`.
 
@@ -1040,11 +1081,13 @@ A scope/subscription is urgent when any of these holds:
 open or unresolved PurchaseIntent
 linked subscription has never yet become eligible
 projection_valid_until - now <= 30m
-allowance.period_end - now <= 30m
+provider end-calendar date is today or tomorrow in UTC (urgent read hint only)
 ```
 
 A valid webhook may enqueue immediate work but does not create a third cadence
 class. When no urgent condition remains, cadence returns to normal 15m.
+UTC calendar-day matching is **only** an early-refresh scheduling heuristic,
+not a conversion of LBX's date-only period to an expiry instant.
 
 Stable customer-wide inventory discovery may remain slower (MVP default 6h)
 because it searches for unknown provider subscriptions rather than refreshing
@@ -1070,7 +1113,10 @@ activity, failed/partial provider reads, `INCOMPLETE` commercial verification,
 normalization errors, or manual-review activity do not extend trust.
 
 At expiry, only paid facts derived from the stale source fail closed; independent
-products/sources may continue.
+products/sources may continue. The approved 6h maximum is unchanged: an
+undetected provider renewal/stop during this lease can leave the previously
+confirmed allowance usable temporarily. No new allowance may be inferred from
+time elapsed or a webhook; the next authoritative read must confirm it.
 
 ### Deterministic time-boundary commits
 
@@ -1084,7 +1130,6 @@ for that affected access scope. Conceptually:
 ```text
 next_attempt_at = min(
   effective projection_valid_until,
-  finite effective allowance.period_end,
   finite effective grant.valid_until
 )
 ```
@@ -1119,11 +1164,13 @@ causing an overdue B deadline to keep a new snapshot for independent Product A
 expired. No separate expiry service and no fleet-wide user snapshot poller are
 introduced.
 
-The effective time bounds used for authorization include the clock-skew safety
-haircut defined by the companion Portal<->Kernel contract. A finite raw deadline
-is therefore scheduled using its conservative effective deadline; a null
-`grant.valid_until` remains null and contributes no grant-terminal deadline, while
-provider/source trust still contributes its own finite effective deadline.
+The finite source-trust and grant deadlines use the clock-skew safety haircut
+defined by the companion Portal<->Kernel contract. A null
+`grant.valid_until` contributes no grant-terminal deadline, while provider/source
+trust still contributes its own finite effective deadline. LBX date-only cycle
+ends do **not** schedule local time-based expiry; their approach triggers urgent
+provider rereads as above, and actual cycle transition is committed only after
+authoritative confirmation.
 
 ### Fenced reconciliation lease
 
@@ -1136,14 +1183,10 @@ Per-subscription authoritative reads use a PostgreSQL fenced lease:
 
 Superseded workers cannot commit stale provider reads.
 
+
 ## Subscription lifetime and allowance periods
 
-Subscription lifetime and allowance period are separate:
-
-```text
-subscription terminal boundary != allowance.period_end
-```
-
+Subscription lifetime and an allowance's **calendar cycle identity** are separate.
 For open-ended recurring subscriptions:
 
 ```text
@@ -1151,17 +1194,20 @@ grant.valid_until = null
 ```
 
 `null` stays `null` in the wire contract and does not mean infinite provider
-trust.
+trust. LBX owns and calculates the calendar periods. Its date-only
+`last_tariffication_period_start/end` and the documented inclusive tariff
+calendar end are preserved as Portal cycle facts without assuming their UTC
+midnight or local timezone. They do not become Kernel `period_start/period_end`
+authorization instants.
 
-Raw provider intervals are UTC half-open `[start, end)`. Portal retains those raw
-bounds for provider/cycle evidence and publishes conservative effective
-authorization bounds to Kernel using the configured clock-skew budget defined in
-the companion contract.
-
-If an allowance expires before the next provider cycle is authoritatively
-confirmed, the product grant may remain but no future metric bucket is invented;
-metered paid usage fails closed at the effective old `period_end`. A later
-confirmed cycle creates new metric-specific IDs using the pinned fixed quantities.
+A new cycle is recognized only by a complete verified authoritative LBX read
+satisfying the pinned next-period/cadence/ownership/commercial/financial rules.
+Until then no new allowance, counter reset or future cycle is invented. The old
+confirmed allowance can authorize paid usage only while its Portal source trust
+lease and the Kernel snapshot/grant bounds are still valid. When those expire it
+fails closed, even if the provider is unreachable. This deliberately permits
+at most the approved bounded provider-state staleness, **not** a claim of
+exact-to-the-second commercial calendar expiry.
 
 ## Access boundary with Platform Kernel
 
@@ -1352,9 +1398,9 @@ Order:
    invalidation, and Kernel revision-floor consumer according to the companion
    contract.
 10. Integrate allowances into Kernel durable quota consumption, including metered
-    action `metric_key` requirements, immutable existing allowance bounds across
-    clock-skew-config changes, clock-safe effective bounds, request-driven snapshot
-    refresh, and usage lifetime independent from snapshot/cache presence.
+    action `metric_key` requirements, immutable allowance identity/quantity,
+    clock-safe snapshot/source/grant leases, request-driven snapshot refresh,
+    and usage lifetime independent from snapshot/cache presence.
 11. Run cross-repo contract/integration proofs with producer-owned fixtures,
     canonical Portal UUID identity, integer quantity, invalidation in-flight ack
     races, and exact HTTP semantics.
@@ -1384,20 +1430,21 @@ these areas rather than duplicating a large test matrix here:
 - first-primary persists target-product observations before acquiring the product
   decision lock and includes every observed candidate;
 - fresh manifest + fresh catalog mapping publication and immutable historical pin;
-- unified urgent scheduling and provider trust expiry;
+- unified urgent scheduling (including date-only provider-cycle watch) and provider trust expiry;
 - every committed paid fact schedules the existing durable worker for its nearest
   effective access-reducing deadline; due omission occurs without provider HTTP,
   preserves independent products, and increments revision;
-- fixed quantity/cycle identity, non-negative integer quantity, immutable allowance
-  tuple across clock-skew-config changes, metric-local duplicate conflict, and
-  multi-metric bucket isolation;
+- fixed quantity/date-only cycle identity, non-negative integer quantity, immutable
+  allowance identity/quantity, recalculation/re-anchor conflicts, metric-local
+  duplicate conflict, and multi-metric bucket isolation;
 - implicit revision `0`, immutable semantic revisions, and independent fact
   omission;
 - AccessInvalidation outbox/retry plus revision-floor and in-flight `204` races;
 - same-cycle allowance omission/reappearance preserves durable Kernel usage;
 - paid metered action requires its exact metric allowance; no allowance stacking;
-- `null grant.valid_until` stays null, clock-skew-safe effective trust/period/grant
-  bounds are conservative, and `refresh_after <= expires_at`;
+- `null grant.valid_until` stays null, clock-skew-safe effective source trust,
+  snapshot and finite grant deadlines are conservative, `refresh_after <= expires_at`,
+  and no LBX date-only value is fabricated into a UTC cutoff;
 - canonical AccessSnapshot/Invalidation `user_id` is the Portal identity UUID;
 - request-driven snapshot refresh with no fleet-wide user poller;
 - concurrent durable Kernel quota consumption;
