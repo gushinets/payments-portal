@@ -13,6 +13,10 @@ test("password reset request submits email and shows generic success", async ({ 
   });
 
   await page.goto("/ru/forgot-password");
+  await expect(page.getByRole("link", { name: "Вернуться ко входу" })).toHaveAttribute(
+    "href",
+    "/ru/account"
+  );
   await page.getByLabel("Email").fill("reset-user@example.com");
   await page.getByLabel("Email").press("Enter");
 
@@ -43,6 +47,9 @@ for (const { routeLocale, languageTag } of [
     });
 
     await page.goto(`/${routeLocale}/forgot-password`);
+    await expect(
+      page.getByRole("main").locator("a.btn-secondary")
+    ).toHaveAttribute("href", `/${routeLocale}/account`);
     await page.locator('input[type="email"]').fill("reset-user@example.com");
     await page.locator('input[type="email"]').press("Enter");
 
@@ -84,6 +91,9 @@ test("password reset confirmation submits token and new password", async ({ page
   await page.getByLabel("Повторите пароль").press("Enter");
 
   await expect(page.getByText("Пароль изменён. Теперь можно войти с новым паролем.")).toBeVisible();
+  await expect(
+    page.getByRole("main").getByRole("link", { name: "Перейти ко входу", exact: true })
+  ).toHaveAttribute("href", "/ru/account");
   expect(requests).toEqual([
     { token: "test-only-reset-token", password: "New-password-123!" }
   ]);

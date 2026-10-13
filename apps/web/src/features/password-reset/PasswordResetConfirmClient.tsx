@@ -4,13 +4,16 @@ import { type FormEvent, useEffect, useRef, useState } from "react";
 import { ArrowRight, KeyRound } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
-import { confirmPasswordReset } from "@/shared/api/auth";
+import {
+  confirmPasswordReset,
+  sessionStorageKey,
+  sessionChangedEvent
+} from "@/shared/api/auth";
+import { useSessionOperation } from "@/shared/session/use-session-operation";
 import { passwordResetErrorMessageKey } from "./errors";
 
-const sessionStorageKey = "anytoolai_session_token_v1";
-const sessionChangedEvent = "anytoolai_session_changed";
-
 export function PasswordResetConfirmClient() {
+  const { begin: beginOperation } = useSessionOperation();
   const t = useTranslations("PasswordReset");
   const tokenRef = useRef("");
   const [password, setPassword] = useState("");
@@ -49,19 +52,25 @@ export function PasswordResetConfirmClient() {
       return;
     }
 
+    const operation = beginOperation();
     setLoading(true);
     try {
       await confirmPasswordReset({ token, password });
+      if (!operation.isLatest()) return;
       tokenRef.current = "";
-      window.localStorage.removeItem(sessionStorageKey);
-      window.dispatchEvent(new Event(sessionChangedEvent));
+      if (operation.token && operation.isCurrent()) {
+        window.localStorage.removeItem(sessionStorageKey);
+        window.dispatchEvent(new Event(sessionChangedEvent));
+      }
       setPassword("");
       setPasswordConfirm("");
       setNotice(t("confirm.notices.success"));
     } catch (requestError) {
-      setError(t(passwordResetErrorMessageKey(requestError)));
+      if (operation.isLatest()) {
+        setError(t(passwordResetErrorMessageKey(requestError)));
+      }
     } finally {
-      setLoading(false);
+      if (operation.isLatest()) setLoading(false);
     }
   }
 
@@ -133,7 +142,7 @@ export function PasswordResetConfirmClient() {
             <ArrowRight size={15} aria-hidden="true" />
           </button>
 
-          <Link className="btn-secondary" href="/auth-checkout">
+          <Link className="btn-secondary" href="/account">
             {t("confirm.actions.signIn")}
           </Link>
         </form>

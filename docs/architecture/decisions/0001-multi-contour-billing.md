@@ -7,16 +7,31 @@ Amendment history: [ADR 0004](0004-billing-authority-and-consistency.md)
 superseded only the assumption that every contour registers a payment-provider
 adapter. [ADR 0005](0005-external-billing-boundary.md) is the current authority
 for new external-billing development and supersedes conflicting target billing
-semantics in ADR 0004. The contour-isolation and Region Resolver decisions in
-this ADR remain in force.
+semantics in ADR 0004. The contour-isolation and Region Resolver ownership
+decisions in this ADR remain in force.
 
 Current-state amendment (ANY-522): CloudPayments and the Portal-managed direct-
 provider runtime are physically removed. The former shared `ru`/`eu` seed and
 provider-adapter descriptions below are historical context, not the current
 schema or executable direction. The implemented clean bootstrap supports only
 `anytoolai` / `ru` and rejects a different configured scope. Contour isolation
-and the Region Resolver decisions remain active; target billing ownership and
+and the Region Resolver ownership decisions remain active; target billing ownership and
 integration boundaries follow ADR 0005.
+
+Topology amendment (ANY-636): This ADR remains an accepted historical decision.
+The separate Application Portal, Payment Portal as a second user-facing
+frontend, and mandatory contract of three public base URLs per contour in the
+original decision below are **superseded**. The current target is one unified
+AnyToolAI Portal per contour, with Platform Kernel remaining an independently
+owned technical API/service boundary. Billing ownership and ADR 0005 are
+unchanged.
+
+Contour isolation, the separate Region Resolver, and its ownership of the
+deployed-contour registry and public ISO country-to-contour mapping remain in
+force. The current [Region Resolver contract](../region-resolver-contract.md)
+defines the conceptual Portal/Kernel topology and planned consumer constraints.
+The Resolver API schema, URL set, DTOs, and deployment configuration are to be
+defined during Resolver implementation in its own repository, not by this ADR.
 
 ## Context
 
@@ -41,10 +56,12 @@ a global URL map.
   not know that other contours exist in data, configuration, or server-side
   calls.
 - Region Resolver is a separate UI-less service. It owns the registry of
-  deployed contours, the public ISO country-to-contour map, and three public
-  base URLs for each contour: Payment Portal, Application Portal, and Platform
-  Kernel API. This repository does not implement it.
-- Payment Portal and Application Portal frontends may query the resolver and
+  deployed contours and the public ISO country-to-contour map. This repository
+  does not implement it. **Historical URL contract (superseded by ANY-636):**
+  the original decision also required three public base URLs for each contour:
+  Payment Portal, Application Portal, and Platform Kernel API.
+- **Historical frontend split (superseded by ANY-636):** Payment Portal and
+  Application Portal frontends may query the resolver and
   render the deployed-contour list at login and registration. Switching contour
   leaves this instance through the resolver. Provider webhooks never go through
   the resolver.

@@ -1,0 +1,253 @@
+.two-column {
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(340px, 1.05fr);
+  gap: 10px;
+  align-items: stretch;
+}
+
+.checkout-grid > *,
+.checkout-equal-panel {
+  min-height: 100%;
+}
+
+.form-panel,
+.legal-panel {
+  border-radius: var(--radius-panel);
+  padding: 24px;
+}
+
+#checkout-form {
+  scroll-margin-top: 96px;
+}
+
+.auth-modal-panel {
+  position: fixed;
+  top: 78px;
+  left: 50%;
+  z-index: 40;
+  width: min(520px, calc(100vw - 32px));
+  max-height: calc(100dvh - 100px);
+  overflow-y: auto;
+  background: var(--surf1);
+  border-color: var(--border2);
+  border-radius: var(--radius-hero);
+  transform: translateX(-50%);
+}
+
+.form-panel.auth-modal-panel {
+  border-color: var(--border2);
+}
+
+.auth-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 39;
+  padding: 0;
+  background: color-mix(in srgb, var(--bg) 85%, transparent);
+  border: 0;
+  cursor: default;
+}
+
+.form-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.auth-page-section {
+  display: flex;
+  justify-content: center;
+}
+
+.auth-page-panel {
+  width: min(100%, 520px);
+}
+
+.account-auth-panel {
+  display: grid;
+  gap: 20px;
+}
+
+.account-auth-panel > .legal-title,
+.account-auth-panel > .card-copy {
+  margin: 0;
+}
+
+.auth-form-secondary-link {
+  width: fit-content;
+  font-weight: 700;
+}
+
+.checkout-form-grid {
+  gap: 14px;
+}
+
+.checkout-step-title {
+  margin: 0;
+}
+
+.field-label {
+  display: grid;
+  gap: 8px;
+  color: var(--txt);
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.password-requirements {
+  color: var(--txt2);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.password-requirements p {
+  margin: 0 0 6px;
+  color: var(--txt);
+  font-weight: 700;
+}
+
+.password-requirements ul {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding-left: 20px;
+}
+
+.password-requirement-met {
+  color: var(--green);
+}
+
+.input {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  color: var(--txt);
+  background: var(--surf2);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-input);
+}
+
+.input::placeholder {
+  color: var(--txt2);
+  opacity: 1;
+}
+
+.input:focus {
+  border-color: var(--acc);
+  outline: 2px solid var(--acc);
+  outline-offset: 3px;
+}
+
+.checkbox-label {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  gap: 10px;
+  align-items: start;
+  color: var(--txt2);
+  line-height: 1.5;
+}
+
+.checkbox-label input {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  accent-color: var(--acc);
+}
+
+.inline-link {
+  color: var(--acc);
+  overflow-wrap: anywhere;
+  text-decoration: none;
+}
+
+.inline-link:hover {
+  text-decoration: underline;
+}
+
+.notice {
+  padding: 12px 14px;
+  color: var(--txt2);
+  background: var(--surf2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-input);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.notice.error {
+  color: var(--red);
+  background: var(--red-bg);
+  border-color: var(--red);
+}
+
+.legal-consent-box {
+  display: grid;
+  gap: 12px;
+}
+
+.legal-consent-list {
+  display: grid;
+  gap: 10px;
+}
+
+.legal-consent-item {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  gap: 10px;
+  align-items: start;
+  padding: 10px 12px;
+  background: var(--surf2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-input);
+}
+
+.legal-consent-item input {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  accent-color: var(--acc);
+}
+
+.legal-consent-item p {
+  margin: 6px 0 0;
+}
+
+.account-card,
+.telegram-placeholder,
+.auth-mode-row {
+  display: flex;
+  gap: 12px;
+}
+
+.account-card,
+.telegram-placeholder {
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  border-radius: var(--radius-panel);
+  background: var(--surf2);
+  border: 1px solid var(--border);
+}
+
+.checkout-account-card {
+  gap: 18px;
+  padding: 18px 20px;
+}
+
+.checkout-account-card .card-copy {
+  margin: 6px 0 0;
+}
+
+.telegram-placeholder {
+  align-items: center;
+}
+
+.telegram-button {
+  flex: 0 0 auto;
+  min-width: 220px;
+}
+
+.auth-mode-row {
+  flex-wrap: wrap;
+}
+

@@ -21,6 +21,10 @@ import {
   type AuthFormSubmitValues
 } from "@/shared/ui";
 import {
+  subscribeToSessionChanges,
+  useSessionOperation
+} from "@/shared/session/use-session-operation";
+import {
   emailVerificationErrorMessageKey,
   type EmailVerificationErrorMessageKey
 } from "./errors";
@@ -37,6 +41,7 @@ export function EmailVerificationClient({
 }: {
   languageTag: string;
 }) {
+  const { begin: beginOperation, beginAuth } = useSessionOperation();
   const t = useTranslations("EmailVerification");
   const authT = useTranslations("Auth");
   const verificationTokenRef = useRef("");
@@ -52,6 +57,7 @@ export function EmailVerificationClient({
 
   useEffect(() => {
     let cancelled = false;
+    let refreshId = 0;
     if (!fragmentReadRef.current) {
       fragmentReadRef.current = true;
       const fragment = new URLSearchParams(window.location.hash.slice(1));
@@ -68,7 +74,17 @@ export function EmailVerificationClient({
       }
     }
 
+    function acceptResult(id: number, token: string): boolean {
+      if (cancelled || id !== refreshId) return false;
+      if (window.localStorage.getItem(sessionStorageKey) !== token) {
+        void loadSession();
+        return false;
+      }
+      return true;
+    }
+
     async function loadSession() {
+      const currentRefreshId = ++refreshId;
       const sessionToken = window.localStorage.getItem(sessionStorageKey);
       if (!sessionToken) {
         if (!cancelled) {
@@ -79,21 +95,15 @@ export function EmailVerificationClient({
 
       try {
         const session = await getSession(sessionToken);
-        if (
-          !cancelled &&
-          window.localStorage.getItem(sessionStorageKey) === sessionToken
-        ) {
+        if (acceptResult(currentRefreshId, sessionToken)) {
           setVerificationState({
             status: "authenticated",
             user: session.user
           });
         }
       } catch (requestError) {
-        const isCurrentSession =
-          window.localStorage.getItem(sessionStorageKey) === sessionToken;
+        if (!acceptResult(currentRefreshId, sessionToken)) return;
         if (
-          !cancelled &&
-          isCurrentSession &&
           requestError instanceof ApiError &&
           requestError.status === 401
         ) {
@@ -104,31 +114,33 @@ export function EmailVerificationClient({
           }
           return;
         }
-        if (!cancelled && isCurrentSession) {
-          setVerificationState({
-            status: "session_error",
-            messageKey: emailVerificationErrorMessageKey(requestError)
-          });
-        }
+        setVerificationState({
+          status: "session_error",
+          messageKey: emailVerificationErrorMessageKey(requestError)
+        });
       }
     }
 
     function handleSessionChanged() {
       if (skipSessionRefreshRef.current) {
         skipSessionRefreshRef.current = false;
+        refreshId += 1;
         return;
       }
       if (!cancelled) {
+        setAuthError("");
+        setVerificationError("");
+        setLoading(false);
         setVerificationState({ status: "loading" });
         void loadSession();
       }
     }
 
     void loadSession();
-    window.addEventListener(sessionChangedEvent, handleSessionChanged);
+    const unsubscribe = subscribeToSessionChanges(handleSessionChanged);
     return () => {
       cancelled = true;
-      window.removeEventListener(sessionChangedEvent, handleSessionChanged);
+      unsubscribe();
     };
   }, [sessionLoadAttempt]);
 
@@ -143,43 +155,52 @@ export function EmailVerificationClient({
   }
 
   async function authenticate(values: AuthFormSubmitValues) {
+    const operation = beginAuth();
     setAuthError("");
     setLoading(true);
     try {
       const response = await submitAuth(values, { languageTag });
+      if (!operation.isCurrent()) return;
       window.localStorage.setItem(sessionStorageKey, response.token);
       notifySessionChanged();
       setVerificationState({ status: "authenticated", user: response.user });
     } catch (requestError) {
-      setAuthError(authT(authErrorMessageKey(requestError)));
+      if (operation.isCurrent()) {
+        setAuthError(authT(authErrorMessageKey(requestError)));
+      }
     } finally {
-      setLoading(false);
+      if (operation.isLatest()) setLoading(false);
     }
   }
 
   async function switchAccount() {
-    const sessionToken = window.localStorage.getItem(sessionStorageKey);
-    setLoading(true);
+    const operation = beginOperation();
+    const sessionToken = operation.token;
+    if (
+      sessionToken &&
+      window.localStorage.getItem(sessionStorageKey) === sessionToken
+    ) {
+      window.localStorage.removeItem(sessionStorageKey);
+      notifySessionChanged();
+    }
+    if (operation.isLatest()) {
+      setVerificationState({ status: "signed_out" });
+      setAuthError("");
+      setVerificationError("");
+      setLoading(false);
+    }
     try {
       if (sessionToken) {
         await logoutSession(sessionToken);
       }
     } catch {
-      // Removing the local bearer still leaves this browser signed out.
-    } finally {
-      if (window.localStorage.getItem(sessionStorageKey) === sessionToken) {
-        window.localStorage.removeItem(sessionStorageKey);
-        notifySessionChanged();
-        setVerificationState({ status: "signed_out" });
-        setAuthError("");
-        setVerificationError("");
-      }
-      setLoading(false);
+      // Local logout is already complete; backend revocation is best-effort.
     }
   }
 
   async function verify() {
-    const sessionToken = window.localStorage.getItem(sessionStorageKey);
+    const operation = beginOperation();
+    const sessionToken = operation.token;
     const verificationToken = verificationTokenRef.current;
     setVerificationError("");
 
@@ -197,7 +218,7 @@ export function EmailVerificationClient({
     setLoading(true);
     try {
       await confirmEmailVerification(sessionToken, verificationToken);
-      if (window.localStorage.getItem(sessionStorageKey) !== sessionToken) {
+      if (!operation.isCurrent()) {
         return;
       }
       verificationTokenRef.current = "";
@@ -205,7 +226,7 @@ export function EmailVerificationClient({
       setVerificationState({ status: "verified" });
       notifySessionChanged();
     } catch (requestError) {
-      if (window.localStorage.getItem(sessionStorageKey) !== sessionToken) {
+      if (!operation.isCurrent()) {
         return;
       }
       if (requestError instanceof ApiError && requestError.status === 401) {
@@ -215,7 +236,7 @@ export function EmailVerificationClient({
       }
       setVerificationError(t(emailVerificationErrorMessageKey(requestError)));
     } finally {
-      setLoading(false);
+      if (operation.isLatest()) setLoading(false);
     }
   }
 
@@ -285,7 +306,7 @@ export function EmailVerificationClient({
               </span>
               <h1>{t("verify.title")}</h1>
               <div className="notice">{t("verify.signedOutWithoutToken")}</div>
-              <Link className="btn-primary" href="/auth-checkout">
+              <Link className="btn-primary" href="/account">
                 {t("verify.signInAction")}
               </Link>
             </div>

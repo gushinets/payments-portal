@@ -26,14 +26,14 @@ Start with the smallest document that matches the task.
 
 ## Product and design
 
-- [Product scope](PRODUCT.md)
-- [Verified `ru` MVP journey](product/ru-mvp.md)
+- [AnyToolAI Portal product scope](PRODUCT.md)
+- [As-built RU Portal 4F handoff and ANY-504 Steps 6–10 ownership](product/ru-mvp.md)
 - [Design entry point](DESIGN.md)
 - [Bundle 3 reference](design-system/bundle3/README.md)
 
 ## Architecture
 
-- [Repository architecture](../ARCHITECTURE.md)
+- [AnyToolAI Portal repository architecture](../ARCHITECTURE.md)
 
 ### Target billing architecture (follow in order)
 

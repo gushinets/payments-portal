@@ -71,7 +71,10 @@ describe("email verification session loading", () => {
 
     window.addEventListener(sessionChangedEvent, sessionChangedListener);
     window.localStorage.setItem(sessionStorageKey, "token-a");
-    fetchMock.mockReturnValueOnce(sessionRequest);
+    fetchMock.mockReturnValueOnce(sessionRequest).mockResolvedValueOnce(jsonResponse({
+      authenticated: true,
+      user: { tenant_id: "anytoolai", region: "ru", user_id: "11111111-1111-4111-8111-111111111111", email: "new@example.com", email_verified: true }
+    }));
 
     try {
       renderEmailVerificationClient();
@@ -272,99 +275,92 @@ describe("email verification session loading", () => {
     }
   });
 
-  it("ignores a stale switch-account logout after the bearer changes", async () => {
+  it.each(["success", "failure"])("preserves login B and the capability after switch-account revoke A %s", async (result) => {
     const sessionChangedListener = vi.fn();
     let resolveLogout: (response: Response) => void = () => undefined;
     const logoutRequest = new Promise<Response>((resolve) => {
       resolveLogout = resolve;
     });
-
+    const user = {
+      tenant_id: "anytoolai", region: "ru",
+      user_id: "11111111-1111-4111-8111-111111111111",
+      email: "signed-in@example.com", email_verified: false
+    };
     window.addEventListener(sessionChangedEvent, sessionChangedListener);
-    window.history.replaceState(
-      window.history.state,
-      "",
-      "/ru/verify-email#token=verification-token"
-    );
+    window.history.replaceState(null, "", "/ru/verify-email#token=verification-token");
     window.localStorage.setItem(sessionStorageKey, "token-a");
     fetchMock
-      .mockResolvedValueOnce(
-        jsonResponse({
-          authenticated: true,
-          user: {
-            tenant_id: "anytoolai",
-            region: "ru",
-            user_id: "11111111-1111-4111-8111-111111111111",
-            email: "signed-in@example.com",
-            email_verified: false
-          }
-        })
-      )
-      .mockReturnValueOnce(logoutRequest);
+      .mockResolvedValueOnce(jsonResponse({ authenticated: true, user }))
+      .mockReturnValueOnce(logoutRequest)
+      .mockResolvedValueOnce(jsonResponse({
+        status: "authenticated", token: "token-b",
+        user: { ...user, email: "new@example.com" }
+      }))
+      .mockResolvedValueOnce(jsonResponse({ status: "verified" }));
 
     try {
       renderEmailVerificationClient();
-      fireEvent.click(
-        await screen.findByRole("button", {
-          name: "Выйти и сменить аккаунт"
-        })
-      );
-      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-      window.localStorage.setItem(sessionStorageKey, "token-b");
+      fireEvent.click(await screen.findByRole("button", { name: "Выйти и сменить аккаунт" }));
+      expect(window.localStorage.getItem(sessionStorageKey)).toBeNull();
+      expect(sessionChangedListener).toHaveBeenCalledTimes(1);
+      const email = screen.getByLabelText("Email");
+      fireEvent.change(email, { target: { value: "new@example.com" } });
+      fireEvent.change(screen.getByLabelText("Пароль", { exact: true }), { target: { value: "Synthetic-password-123!" } });
+      fireEvent.submit(email.closest("form")!);
+      expect(await screen.findByText("new@example.com")).toBeVisible();
+      expect(sessionChangedListener).toHaveBeenCalledTimes(2);
 
       await act(async () => {
-        resolveLogout(jsonResponse({ status: "logged_out" }));
+        resolveLogout(result === "success"
+          ? jsonResponse({ status: "logged_out" })
+          : jsonResponse({ detail: "unavailable" }, 503));
       });
 
       expect(window.localStorage.getItem(sessionStorageKey)).toBe("token-b");
-      expect(sessionChangedListener).not.toHaveBeenCalled();
-      expect(
-        await screen.findByRole("heading", { name: "Подтвердите email" })
-      ).toBeVisible();
-      expect(
-        screen.queryByRole("button", { name: "Войти" })
-      ).not.toBeInTheDocument();
+      expect(screen.getByText("new@example.com")).toBeVisible();
+      expect(screen.queryByRole("button", { name: "Войти" })).not.toBeInTheDocument();
+      expect(sessionChangedListener).toHaveBeenCalledTimes(2);
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(fetchMock.mock.calls[1]?.[1]?.headers).toMatchObject({ Authorization: "Bearer token-a" });
+      expect(window.location.hash).toBe("");
+      fireEvent.click(screen.getByRole("button", { name: "Подтвердить email" }));
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+      expect(fetchMock.mock.calls[3]?.[1]?.headers).toMatchObject({ Authorization: "Bearer token-b" });
+      expect(fetchMock.mock.calls[3]?.[1]?.body).toBe(JSON.stringify({ token: "verification-token" }));
+      expect(await screen.findByRole("heading", { name: ruMessages.EmailVerification.verify.successTitle })).toBeVisible();
     } finally {
       window.removeEventListener(sessionChangedEvent, sessionChangedListener);
     }
   });
 
-  it("signs out locally when the current switch-account logout fails", async () => {
+  it.each(["500", "503", "network failure"])("signs out locally when switch-account revoke encounters %s", async (failure) => {
     const sessionChangedListener = vi.fn();
     window.addEventListener(sessionChangedEvent, sessionChangedListener);
-    window.history.replaceState(
-      window.history.state,
-      "",
-      "/ru/verify-email#token=verification-token"
-    );
+    window.history.replaceState(null, "", "/ru/verify-email#token=verification-token");
     window.localStorage.setItem(sessionStorageKey, "session-token");
-    fetchMock
-      .mockResolvedValueOnce(
-        jsonResponse({
-          authenticated: true,
-          user: {
-            tenant_id: "anytoolai",
-            region: "ru",
-            user_id: "11111111-1111-4111-8111-111111111111",
-            email: "signed-in@example.com",
-            email_verified: false
-          }
-        })
-      )
-      .mockResolvedValueOnce(jsonResponse({ detail: "unavailable" }, 500));
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      authenticated: true,
+      user: {
+        tenant_id: "anytoolai", region: "ru",
+        user_id: "11111111-1111-4111-8111-111111111111",
+        email: "signed-in@example.com", email_verified: false
+      }
+    }));
+    if (failure === "network failure") {
+      fetchMock.mockRejectedValueOnce(new TypeError("network unavailable"));
+    } else {
+      fetchMock.mockResolvedValueOnce(jsonResponse({ detail: "unavailable" }, Number(failure)));
+    }
 
     try {
       renderEmailVerificationClient();
-      fireEvent.click(
-        await screen.findByRole("button", {
-          name: "Выйти и сменить аккаунт"
-        })
-      );
-
-      await waitFor(() => {
-        expect(window.localStorage.getItem(sessionStorageKey)).toBeNull();
-      });
+      fireEvent.click(await screen.findByRole("button", { name: "Выйти и сменить аккаунт" }));
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+      expect(window.localStorage.getItem(sessionStorageKey)).toBeNull();
       expect(sessionChangedListener).toHaveBeenCalledTimes(1);
-      expect(await screen.findByRole("button", { name: "Войти" })).toBeVisible();
+      expect(screen.getByRole("button", { name: "Войти" })).toBeEnabled();
+      expect(screen.queryByText("signed-in@example.com")).not.toBeInTheDocument();
+      expect(fetchMock.mock.calls[1]?.[1]?.headers).toMatchObject({ Authorization: "Bearer session-token" });
     } finally {
       window.removeEventListener(sessionChangedEvent, sessionChangedListener);
     }

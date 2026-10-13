@@ -10,6 +10,7 @@ import {
   sessionChangedEvent,
   sessionStorageKey
 } from "@/shared/api/auth";
+import { useSessionOperation } from "@/shared/session/use-session-operation";
 import { transportErrorMessageKey } from "./transport-error";
 
 export function EmailVerificationPending({
@@ -17,13 +18,15 @@ export function EmailVerificationPending({
 }: {
   languageTag: string;
 }) {
+  const { begin: beginOperation } = useSessionOperation();
   const t = useTranslations("EmailVerification");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   async function resend() {
-    const sessionToken = window.localStorage.getItem(sessionStorageKey);
+    const operation = beginOperation();
+    const sessionToken = operation.token;
     setNotice("");
     setError("");
 
@@ -35,12 +38,12 @@ export function EmailVerificationPending({
     setLoading(true);
     try {
       await requestEmailVerification(sessionToken, languageTag);
-      if (window.localStorage.getItem(sessionStorageKey) !== sessionToken) {
+      if (!operation.isCurrent()) {
         return;
       }
       setNotice(t("pending.accepted"));
     } catch (requestError) {
-      if (window.localStorage.getItem(sessionStorageKey) !== sessionToken) {
+      if (!operation.isCurrent()) {
         return;
       }
       if (requestError instanceof ApiError && requestError.status === 401) {
@@ -57,7 +60,7 @@ export function EmailVerificationPending({
         setError(t(transportErrorMessageKey(requestError)));
       }
     } finally {
-      setLoading(false);
+      if (operation.isLatest()) setLoading(false);
     }
   }
 

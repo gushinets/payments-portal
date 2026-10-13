@@ -1,9 +1,13 @@
 import {
   FileText,
+  Globe,
   Languages,
+  List,
   MessageSquareQuote,
+  MousePointer2,
   ShieldCheck,
   Sparkles,
+  SquarePen,
   WandSparkles
 } from "lucide-react";
 
@@ -24,27 +28,45 @@ export type PaymentMethod = {
 
 export const paymentMethods: PaymentMethod[] = [];
 
+export type ProductSlug = "document-summary" | "prompt-optimizer";
+
 export type ProductPresentation = {
-  code: "document-summary" | "prompt-optimizer";
+  slug: ProductSlug;
   messageKey: "documentSummary" | "promptOptimizer";
   Icon: typeof FileText;
+  PreviewIcon: typeof FileText;
+  highlights: readonly {
+    messageKey: "focus" | "context" | "approach";
+    Icon: typeof FileText;
+  }[];
 };
 
 export const productPresentation: readonly ProductPresentation[] = [
   {
-    code: "document-summary",
+    slug: "document-summary",
     messageKey: "documentSummary",
-    Icon: FileText
+    Icon: FileText,
+    PreviewIcon: List,
+    highlights: [
+      { messageKey: "focus", Icon: FileText },
+      { messageKey: "context", Icon: Globe },
+      { messageKey: "approach", Icon: MousePointer2 }
+    ]
   },
   {
-    code: "prompt-optimizer",
+    slug: "prompt-optimizer",
     messageKey: "promptOptimizer",
-    Icon: WandSparkles
+    Icon: WandSparkles,
+    PreviewIcon: MessageSquareQuote,
+    highlights: [
+      { messageKey: "focus", Icon: SquarePen },
+      { messageKey: "context", Icon: MousePointer2 },
+      { messageKey: "approach", Icon: Sparkles }
+    ]
   }
 ];
 
 export const catalogRegion = "RU";
-export const accountCount = 1;
 export const legalDocumentLanguage = "RU";
 
 export const platformFacts = [

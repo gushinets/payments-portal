@@ -2,7 +2,7 @@
 
 import CanonicalLink from "next/link";
 import { useTranslations } from "next-intl";
-import { type ReactNode, type Ref, useId, useState } from "react";
+import { type ReactNode, type Ref, useId, useRef, useState } from "react";
 import { ArrowRight } from "lucide-react";
 import {
   REGISTRATION_OFFER_CONSENT_TEXT,
@@ -103,6 +103,7 @@ export function AuthForm({
   const [passwordConfirm, setPasswordConfirm] = useState("");
   const [personalConsent, setPersonalConsent] = useState(false);
   const [offerConsent, setOfferConsent] = useState(false);
+  const submittingRef = useRef(false);
   const passwordRequirementsId = useId();
 
   function selectMode(nextMode: AuthMode) {
@@ -111,6 +112,9 @@ export function AuthForm({
   }
 
   async function submit() {
+    if (loading || submittingRef.current) {
+      return;
+    }
     onBeforeSubmit();
 
     if (!email.includes("@")) {
@@ -140,19 +144,31 @@ export function AuthForm({
       }
     }
 
-    await onSubmit({
-      mode,
-      email,
-      password,
-      personalConsent,
-      offerConsent
-    });
-    setPassword("");
-    setPasswordConfirm("");
+    submittingRef.current = true;
+    try {
+      await onSubmit({
+        mode,
+        email,
+        password,
+        personalConsent,
+        offerConsent
+      });
+      setPassword("");
+      setPasswordConfirm("");
+    } finally {
+      submittingRef.current = false;
+    }
   }
 
   return (
-    <div className="form-grid">
+    <form
+      className="form-grid"
+      noValidate
+      onSubmit={(event) => {
+        event.preventDefault();
+        void submit();
+      }}
+    >
       <span className="badge badge-running">
         {badgeIcon}
         {t("form.badge")}
@@ -287,10 +303,7 @@ export function AuthForm({
 
       <button
         className="btn-primary"
-        type="button"
-        onClick={() => {
-          void submit();
-        }}
+        type="submit"
         disabled={loading}
       >
         {mode === "register"
@@ -305,6 +318,6 @@ export function AuthForm({
           {t("actions.telegramSignIn")}
         </a>
       ) : null}
-    </div>
+    </form>
   );
 }

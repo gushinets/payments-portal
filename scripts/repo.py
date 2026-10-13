@@ -973,7 +973,9 @@ def render_tokens() -> str:
     values = json.loads((ROOT / "docs/design-system/bundle3/tokens.json").read_text(encoding="utf-8"))
     colors = values["colors"]
     gradients = values["gradients"]
+    typography = values["typography"]
     layout = values["layout"]
+    radius = values["radius"]
     return "\n".join(
         [
             "/* Generated from docs/design-system/bundle3/tokens.json. Do not edit. */",
@@ -981,6 +983,7 @@ def render_tokens() -> str:
             f"  --bg: {colors['background'].lower()};",
             f"  --bg2: {colors['backgroundSecondary'].lower()};",
             f"  --bg3: {colors['backgroundTertiary'].lower()};",
+            f"  --surface-nav: {colors['surfaceNav']};",
             f"  --surf1: {colors['surfaceCard']};",
             f"  --surf2: {colors['surfaceHover']};",
             f"  --surf3: {colors['surfaceActive']};",
@@ -991,7 +994,10 @@ def render_tokens() -> str:
             f"  --txt3: {colors['textDisabled']};",
             f"  --acc: {colors['accent'].lower()};",
             f"  --acc2: {colors['accentDeep'].lower()};",
+            f"  --accent-foreground: {colors['accentForeground'].lower()};",
             f"  --acc-glow: {colors['accentGlow']};",
+            f"  --accent-secondary: {colors['accentSecondary']};",
+            f"  --accent-secondary-text: {colors['accentSecondaryText']};",
             f"  --teal: {colors['teal'].lower()};",
             f"  --teal-glow: {colors['tealGlow']};",
             f"  --green: {colors['success'].lower()};",
@@ -1002,7 +1008,18 @@ def render_tokens() -> str:
             f"  --amber: {colors['warning'].lower()};",
             f"  --acc-grad: {gradients['accent']};",
             f"  --headline-grad: {gradients['headline']};",
+            f"  --font-headline: {json.dumps(typography['headline'])}, sans-serif;",
+            f"  --font-body: {json.dumps(typography['body'])}, sans-serif;",
+            f"  --font-mono: {json.dumps(typography['mono'])}, monospace;",
             f"  --max: {layout['maxWidth']};",
+            f"  --grid-gap: {layout['gridGap']};",
+            f"  --dashboard-rail-width: {layout['dashboardRailWidth']};",
+            f"  --radius-input: {radius['input']};",
+            f"  --radius-button: {radius['button']};",
+            f"  --radius-card: {radius['card']};",
+            f"  --radius-panel: {radius['panel']};",
+            f"  --radius-hero: {radius['hero']};",
+            f"  --radius-pill: {radius['pill']};",
             "}",
             "",
         ]
