@@ -170,7 +170,7 @@ Every sellable offer must:
 
 Anything violating those rules is `NOT_SELLABLE`.
 
-## Phase 0: LBX feasibility gate before destructive implementation
+## Phase 0: LBX architecture gate and provider-contract evidence
 
 Phase 0 is an architecture gate, not end-of-project QA. Before implementing
 provider-dependent production semantics, Widget/LBX production behavior, or
@@ -184,33 +184,50 @@ VENDOR_CONFIRMED  = vendor confirmed for our deployment
 CONFIRMED_ON_TEST = reproduced on the real test stand
 ```
 
-Launch-critical properties require `CONFIRMED_ON_TEST`.
 
-Existing stand-043 evidence is input, not something to rediscover from scratch.
-Known facts already include `users.outer_id`, `agreement_number`, non-unique
-`subscriptions.outer_id`, `state`, `current_blocking`, and
-`last_tariffication_period_*`. Phase 0 proves the semantics we depend on.
+Evidence acceptance is **risk-based**, as approved in ANY-504 on 2026-10-14.
+`DOCUMENTED` is sufficient for a standard, unambiguous LBX API capability;
+`CONFIRMED_ON_TEST` is required when a specific unresolved stand-dependent
+assumption would change identity, security, paid-access correctness, or the
+integration architecture and no documented contract plus fail-closed fallback is
+sufficient. `VENDOR_CONFIRMED` and `LOCAL_POLICY_CHECK` retain their distinct
+meanings. A research/probe marked DONE does not retroactively turn UNKNOWN or
+an observed provider FAIL into a live PASS.
 
-As of the current review, authenticated Widget operation has not yet been proven
-on stand 043. That remains a launch gate, not an assumption.
+The reviewed [ANY-634 Phase 0 evidence and deferred-gates matrix](../phase0/2026-10-14-any-634-lbx-evidence-handoff.md)
+records each B1-B15 result, accepted decisions, owners and pre-enable tests.
+In particular: B8 service pricing is handled by separate PR #135 (not yet
+merged); B11 natural unpaid renewal was **not** observed cleanly because S22 was
+manually blocked; B14 received **zero real LBX webhook events**; B15 is
+POLICY_REVIEWED, not a provider fault-injection test. These findings do not make
+the whole Step 5 PASS.
+
+Historical stand-043 facts, Widget type-7 evidence and sanitized reports are
+inputs to the next steps, not reasons to re-run completed probes or invent test
+results. The initial provider-independent cleanup was deliberately performed
+before Phase 0 under ANY-504's approved execution order.
+
 
 ### Phase 0 A: Widget and agreement isolation
 
-Prove:
+B1/B2/B6 already establish on stand 043: server auth and required non-payment
+reads/creates work; a real authenticated Widget resolves the target customer
+with `ident_type=7`; a subscription can be prepared with its own dedicated
+agreement; funding the intended agreement changes that subscription's financial
+state without unlocking a separately controlled agreement. For the supported
+integration scope B6 is **PASS / CONFIRMED_ON_TEST**.
 
-- authenticated Widget rendering with real signing/configuration;
-- Portal-like non-payment preparation of customer -> dedicated agreement ->
-  subscription;
-- the concrete provider agreement identifier for a subscription can be read
-  authoritatively and remains stable for that subscription/renewal;
-- funding Agreement A cannot make Agreement B commercially/access eligible;
-- autopay/payment-method behavior is isolated to the intended agreement;
-- cancellation/stop of A cannot mutate B;
-- prepared unpaid and underpaid subscriptions remain access-ineligible;
-- sufficient Widget funding changes only the intended subscription to the
-  financially allowed state without Portal payment API calls.
+Maintain one dedicated agreement per Portal subscription for its entire history
+and authoritative customer/agreement/subscription binding. A new subscription
+uses a new agreement; renewal of the *same* subscription is modeled against the
+same agreement. Incomplete reads or changed ownership fail closed.
 
-Client-side Widget flags are presentation only; security proof is Phase 0 E.
+This acceptance does **not** claim live proof for every provider-owned
+autopay/payment-method/cancellation operation or every historical revival.
+An unverified provider-owned capability is never silently promoted to an access
+guarantee. Step 7 configures only the supported Widget/prepared-subscription
+flow; Step 8 reconciles conflicts; required full E2E and launched billing
+configuration checks remain explicit pre-enable/launch gates.
 
 ### Phase 0 B: complete material-term re-verification
 
@@ -258,201 +275,206 @@ operator-side material subscription terms after preparation. A customer
 obligation/access change that remains invisible to the approved authoritative
 read set is a launch blocker.
 
+
 ### Phase 0 C: fixed allowance quantity and authoritative cycle semantics
 
-For every metered sellable offer prove:
+**B9 (research DONE / provider partially confirmed).** LBX
+`subscriptions.services[].tariff_service_id` identifies the concrete
+commercial service and `multiplicator` is its number of **LBX service
+units**. For the observed periodic fixed-price, non-bulk service, outbound
+actual-usage reporting to LBX is not needed. The observed `1.0` is one
+service unit: neither one Kernel operation nor automatically 1,000 operations.
+Step 6 admits a sellable offer only with independently approved, published
+and immutable commercial component-to-`product_id`/`metric_key`/fixed-quantity
+mapping, tied to the exact provider tariff/service/period/price provenance.
+No mapping or historical policy proof means `NOT_SELLABLE`. Normalize
+integral-looking provider quantity values losslessly; fractional or invalid
+values must not enter the integer Portal-to-Kernel allowance contract.
+Only Kernel records actual usage and remaining quantity.
 
-```text
-fixed quantity per metric from provider-owned offer/tariff
-period_start
-period_end
-cycle_identity
-component/source identity
-metric/source binding
-```
+**B10 (research DONE / documented calendar-cycle model accepted).** LBX
+`last_tariffication_period_start/end` are calendar-date provider evidence;
+do **not** invent account timezone or convert them into exact UTC instants.
+A native cycle-instance identifier was not proven. Portal may derive an
+immutable provider-cycle key only from a complete, stable, authoritative
+subscription/agreement/period/commercial/financial reconstruction and a
+genuine next expected cycle. A `period_id` configuration value, charge row,
+in-place edit, recalculation, payment, block/unblock or version change is not
+proof of a new usage bucket. Overlapping, re-anchored, inconsistent or
+incomplete cycles fail closed without refilling quota. Preserve the same
+metric/source/`allowance_id`, frozen quantity and Kernel usage on reread and
+same-cycle block/unblock; only a proven subsequent cycle creates new IDs.
 
-Allowance quantity is captured before acceptance from provider-owned commercial
-configuration and pinned in the accepted snapshot. For MVP it is a non-negative
-integer end to end; floating/decimal quota quantities are unsupported. Live
-charges, agreement balance, payment amount/status, and other mutable funding
-artifacts never define or resize quota.
+Stand evidence proves repeated same-cycle reads and adjacent historic charges;
+it does **not** independently prove the observed historical charge was produced
+by natural renewal. Extra independent B10 renewal tests and a provider
+timezone lookup are no longer standalone Phase 0 gates. Steps 8-9 must
+implement and test authoritative classification, re-anchor protection,
+idempotent allowance identity and paid eligibility before enabling quotas.
 
-Prefer a native stable provider cycle ID. If none exists, derived identity is
-allowed only when test evidence proves its fields remain stable across rereads
-and financial block/unblock and change only for a real new billing cycle.
+**Contract handoff, NOT a wire-format change in this PR:** the older
+Portal-to-Kernel AccessSnapshot spec and `purchased_allowances` persistence
+use immutable UTC `period_start/period_end`. Their reconciliation with
+LBX date-only cycle identity and finite UTC trust/snapshot/grant deadlines
+is explicitly assigned to Steps 9-10 in ANY-504. The existing 6h provider
+trust lease, up-to-5m snapshot TTL, fail-closed expiry and durable Kernel
+usage are retained. Do not ship production quota/reset logic using guessed
+LBX-local-midnight UTC bounds or delete UTC wire fields without the coupled
+contract/schema/client/fixture review. An unobserved rollover can be resolved
+only by bounded reconciliation and the accepted finite trust policy.
 
-The probe must prove, including with multiple metrics when the tariff model can
-represent them, that:
-
-- same-cycle reread preserves each metric/source/cycle `allowance_id`;
-- financial block/unblock preserves IDs, pinned quantities, and already-used
-  Kernel amounts;
-- mutable charge recalculation does not change quantity, cycle identity,
-  commercial fingerprint, or runtime bucket identity;
-- a confirmed new provider cycle creates new metric-specific IDs with fresh
-  Kernel usage counters.
-
-The stand-043 same-charge/same-period mutation after funding is an explicit
-negative test: charge state is not quota authority.
 
 ### Phase 0 D: customer-list completeness for first-primary selection
 
-Determine the actual deployed LBX customer subscription discovery/list semantics
-and whether they give a sufficiently complete candidate set before Portal
-selects the linked purchase subscription. Do not assume pagination or a page-size
-control exists.
+**B12 PASS / CONFIRMED_ON_TEST.** The deployed customer-scoped subscription
+list and point GET were sufficient to discover multiple candidates, including
+a newly created subscription, without assuming pagination, sorting or a
+first-row selection rule. Before choosing a target product's primary
+subscription, Portal must persist a sufficiently complete customer inventory
+observation, point-read potentially relevant candidates, prove
+customer/agreement/terms, and combine the observed set with locally linked
+non-terminal scopes under the `(user_id, product_id)` lock. Zero proven
+eligible candidates, exactly one matching known purchase, and conflicting
+or multiple eligible candidates lead respectively to no primary, the proven
+primary, or hold/manual review. Incomplete visibility cannot authorize a
+fresh create or grant.
 
-Probe:
+Do not introduce a speculative pagination/stabilization subsystem. Exact
+provider visibility SLA, races, list cardinality extremes and
+webhook-before-read timing were **not** confirmed by B12; Step 8 must test
+the application-side concurrency, held scopes and bounded discovery/retry
+behavior. B13 independently confirmed read-only discover-first recovery from
+a simulated lost CREATE response without a second POST.
 
-- the deployed list/discovery contract and its completeness guarantees;
-- sort stability and, only if the deployed contract exposes pagination,
-  pagination behavior;
-- insert/delete while reading;
-- visibility delay after successful create/read;
-- webhook-before-listing visibility;
-- expected MVP customer cardinality;
-- concurrent/second-subscription scenarios that might hide a competing row.
-
-If one complete list operation is proven sufficient, implement only that path.
-If a real competing row can be hidden, add only the minimal bounded stabilization
-proved necessary. Do not build a generic consistency subsystem for hypothetical
-providers.
 
 ### Phase 0 E: Widget identity/security and prepaid eligibility
 
-#### One opaque customer key
+#### Opaque customer key versus verified Widget identity (B2/B3/B5)
 
-Portal creates one immutable opaque non-PII `billing_customer_key` for the unique
-`(external_billing_account_id, user_id)` customer slot before external customer
-creation.
+Portal allocates a unique, immutable, non-reusable opaque
+`billing_customer_key` and sets it as LBX `users.outer_id` solely for
+customer creation, correlation, discover-first recovery and drift detection.
+The authoritative LBX-assigned `users.user_id` is retained as the bound
+`provider_customer_id`. These identifiers are **not interchangeable**.
 
-For RU the intended mapping is:
+**Production Widget target, CONFIRMED_ON_TEST on real stand 043:**
+`ident_type=7`, `ident=string(provider_customer_id)`. A type-7 Widget
+loaded the expected `users.user_id` through authenticated Client GET.
+The historical type-6 Widget lookup also passed as a lookup test, but B3
+showed that remapping `users.outer_id` could cause an old type-6 JWT
+to resolve a different customer. B3's original provider FAIL remains
+recorded; **do not mint type 6** as a production fallback.
 
-```text
-Portal billing_customer_key
-  = LBX users.outer_id
-```
+Before every Widget mint, Portal independently verifies its session and
+legal/purchase/security gates and performs an authoritative Server GET
+establishing both `users.user_id == provider_customer_id` **and**
+`users.outer_id == billing_customer_key` for the intended customer.
+The browser chooses none of these identifiers or claims. Email, phone,
+login, name or type 6 are never fallback identity. Any mismatch becomes
+`identity_conflict`: no new Widget mint/create and no new paid eligibility
+derived from that external slot; restore the **original** `outer_id`
+provider-side and reread before releasing the conflict. The Client API
+can mutate its own `outer_id`; type 7 eliminates type-6 reassignment
+of Widget principal, **not** this write permission.
 
-The currently identified Widget identity-type candidate is `ident_type=6`, but
-it is not confirmed for the real Widget configuration. Phase 0 E must determine
-the exact identity type and prove that it safely authenticates the mapped
-customer using `billing_customer_key` as Widget `ident`. Exact identity type is
-a deterministic PASS/FAIL gate. If no identity type passes, the design is
-revisited; MVP does not silently add a second identity key.
+#### JWT lifetime and residual replay risk (B4)
 
-Email, phone, and name are never Widget identity authority.
+**B4 research DONE, initial 900-second acceptance criterion FAIL.**
+On a real type-7 Widget, `exp` did not enforce expiry and remint did not
+revoke an earlier JWT. LBX confirmed via the operator that Client JWT
+acceptance is bounded by **72 hours from JWT `iat`**, even if `iat`
+was backdated; observed backdated token expiration agrees with that rule
+but did not measure the exact boundary. For RU MVP, Portal signs a *fresh*
+JWT with `iat=now` at each permitted Widget open after all checks; do
+not persist/reuse it, backdate `iat`, add auto-remint/revocation storage,
+or present `exp` as a short provider-enforced lifetime.
 
-The Portal-owned key is immutable even though stand-043 has demonstrated that LBX
-can mutate `users.outer_id`. Portal must never PATCH `outer_id` as normal
-application behavior. Phase 0 E must explicitly probe drift:
+A previously copied JWT may remain usable for up to 72 hours after its
+own `iat`, including after remint/logout. **Fresh mint is not revocation.**
+This residual browser-credential exposure requires an explicit security
+decision before production Widget enablement. B4 DONE is not security PASS.
 
-```text
-1. create/bind customer with Portal key K1
-2. prove lookup and Widget identity through K1
-3. mutate LBX users.outer_id externally to K2
-4. prove authoritative reread detects K2 != K1
-5. prove old-K1 lookup behavior and whether LBX permits K1 reuse elsewhere
-6. prove Portal never reuses K1 regardless of provider behavior
-7. restore K1 through controlled provider-side resolution
-8. reread and prove identity is restored
-```
+#### Server-side Client API permissions (B5)
 
-Any authoritative mismatch becomes `identity_conflict`; it is never solved by
-adopting K2 locally or silently creating a second key. While the conflict exists,
-all paid grants/allowances derived from that external customer slot fail closed.
-Stable provider IDs remain usable only for read-only diagnosis/reconciliation,
-not to preserve paid access. Normal MVP resolution restores the original K1 on
-the provider side and then proves it by authoritative reread.
+Widget flags (`disableCreateSubscription`, `disableEditSubscription`)
+and LBX tariff/service manage settings restrict presentation or the intended
+offer configuration; **they are not demonstrated server-side ACLs**.
+B5 confirmed a Client JWT can modify its own `users.outer_id`
+(Provider FAIL), while tested cross-customer subscription GET returned 404.
+Direct Client API service/quantity/payment-method/top-up/autopay
+mutation authorization remains **UNKNOWN**: no safe test fixture established
+a denial or a general server-side restriction.
 
-#### Server-generated bounded Widget credential
+Step 6 publishes only verified fixed prepaid offers with client
+service/quantity management OFF and a controlled immutable mapping.
+Step 7 prepares subscriptions using Server API, rereads complete accepted
+effective service terms, and only then mints the verified type-7 Widget JWT.
+Step 8 detects owner, service, quantity, price and period drift even
+without a new instance ID. Step 9 grants nothing on conflicting or
+incomplete terms. **These checks cannot prevent LBX-side financial
+effects of a direct Client API write.** An explicit security/provider
+decision on the remaining dangerous mutation paths is still required
+before enabling the affected Widget/payment flow; do not declare this
+a server-ACL PASS.
 
-Widget JWT is minted only by Portal backend after authenticated Portal-user ->
-verified LBX-customer resolution. Browser input never authoritatively chooses
-`ident`, `ident_type`, customer, agreement, or permissions.
+#### Prepaid eligibility (B6/B11)
 
-Before running the credential probe, approve an explicit acceptable maximum
-provider-enforced Widget credential lifetime and a remint-overlap policy. This
-baseline intentionally does not assert numerical limits for either value.
+RU MVP supports only approved fixed-price prepaid blocking offers:
+`balance_blocks=1`, activation after sufficient funding,
+no unsupported trial/demo/credit/promised-payment/postpaid/manual-activation
+products. Verify these exact rules for each offer at Step 6 publication;
+they are product admission constraints, **not** proof administrators
+cannot override LBX state.
 
-Phase 0 must prove a provider-enforced bounded lifetime using supported `exp`, an
-`iat` maximum age, a revocable short-lived session, or equivalent. An ignored
-claim or effectively unbounded replayable token blocks launch.
+Stand evidence proves a waiting, unpaid subscription may have
+`state=-2/current_blocking=0` and must be **denied**. One funded
+daily subscription became `state=2/current_blocking=0` after
+15 RUB funding and 10 RUB charge, leaving 5 RUB. Therefore
+`current_blocking=0` on its own, and even `state=2` with an apparent
+balance, are **not sufficient paid-access proof**. Require normalized
+**ACTIVE** lifecycle, complete owner/agreement/material terms,
+verified supported prepaid configuration and authoritative financial
+eligibility for the confirmed current cycle; financial or administrative
+blocking, missing facts and conflicts deny a new grant/allowance.
 
-Repeated mint must also have bounded overlap. Phase 0 E must prove one of:
+**B11 research DONE / automatic unpaid renewal NOT TEST-CONFIRMED.**
+The operator manually blocked S22 on 2026-10-13; its next-day state
+cannot establish that LBX automatically blocked unpaid renewal.
+The official prepaid/blocking contract is DOCUMENTED and accepted as
+sufficient to design Steps 6-8, not as a simulated renewal live PASS.
+Step 8/9 and Step 11 must validate a *new untouched* prepaid subscription
+through naturally processed funded -> underfunded renewal and record
+authoritative subscription/agreement/charges/financial block history.
+Do not grant a fresh quota when a new cycle is financially ambiguous,
+and do not infer the precise LBX midnight/block-job time. Preserve
+same-cycle Kernel usage through block/unblock.
 
-1. the provider supports one live/revocable Widget session for the linked
-   subscription/customer and a new mint invalidates/revokes the prior live
-   session; or
-2. provider-enforced short `exp`/maximum-age semantics bound concurrent old-token
-   survival tightly enough that remint cannot accumulate effectively long-lived
-   credentials.
 
-If neither property is `CONFIRMED_ON_TEST`, launch fails rather than adding an
-unproven client-side assumption. Portal-side request rate limiting may be abuse
-control but is not a substitute for provider-enforced credential lifetime.
+### Phase 0 failure and closeout policy
 
-#### Server-side operation scope
+An unresolved provider property that changes a **required architecture
+or identity/security choice before implementation** keeps Step 5 gated.
+For a documented standard behavior with safe fail-closed design, an
+explicitly deferred integration/E2E check may instead be owned by the
+appropriate later Step and checked before enablement. Neither route
+turns UNKNOWN/FAIL into `CONFIRMED_ON_TEST`.
 
-JavaScript flags such as `disableCreateSubscription` and
-`disableEditSubscription` control Widget presentation only; they are not
-provider-enforced server authorization or ACLs. Phase 0 must prove either:
+Any unresolved launch-critical failure means: no affected production
+Widget/paid access, no `/eps_payments` fallback, no Portal-owned
+payment orchestration; escalate the precise provider/design gap.
+B14 real delivery/header/retry/visibility stays UNKNOWN until Step 8
+pre-enable verification, or an explicit tested polling-only decision.
+B15 retry/recovery policy is reviewed, but no native LBX CREATE
+idempotency or forced-500/429 guarantee is assumed.
 
-1. agreement-scoped server authorization; or
-2. customer-scoped identity plus server-side authorization that blocks unsafe
-   commercial mutation independently of client flags.
-
-The hostile-client probe deliberately enables create/edit controls and attempts
-arbitrary subscription creation, tariff/service modification, unintended
-agreement/top-up/autopay operation, cross-customer use, principal tampering, and
-expired-token replay. PASS depends on server behavior, not hidden buttons.
-
-While `identity_conflict` is active, Phase 0 must also prove that Portal issues no
-Widget JWT, starts no new customer/agreement/subscription creation, and derives no
-paid access from that external customer slot.
-
-#### Prepaid eligibility
-
-RU customer-funded MVP supports only tariff configurations classified:
-
-```text
-PREPAID_BLOCKING_CONFIRMED
-```
-
-For every sellable tariff prove:
-
-```text
-prepared unpaid       -> financially blocked
-underpaid             -> financially blocked
-sufficiently funded   -> financially unblocked
-next unfunded renewal -> financially blocked again
-```
-
-Paid access requires a complete authoritative subscription read satisfying:
-
-```text
-non-terminal lifecycle
-billing_mode == PREPAID_BLOCKING_CONFIRMED
-current_blocking == 0
-complete material terms == accepted fingerprint
-no access/subscription conflict
-```
-
-`state=2 + current_blocking=0` alone never means payment. Postpaid/debt semantics
-are unsupported and therefore `NOT_SELLABLE`.
-
-### Phase 0 failure policy
-
-Any launch-critical failure means:
-
-```text
-STOP external-billing rewrite
-NO /eps_payments fallback
-NO Portal-owned payment orchestration
-escalate provider capability gap
-```
-
-Critical probes are repeated against the deployed RU configuration before
-launch.
+**Step 5 sign-off is separate from probe research DONE.** Before admitting
+Step 6, review the linked evidence/deferral matrix, obtain explicit
+decisions on the remaining architectural/security risks, align the
+external-billing design and GitHub issue #112, and record the final
+Phase 0 architecture-gate verdict in ANY-634. The separate B8 PR #135
+must be reconciled/merged for the pricing contract. The provider-neutral
+Kernel wire redesign for B10 belongs to Steps 9-10 and must not be
+prematurely shipped as an unreviewed change to this docs-only PR.
 
 ## LBX Widget as RU billing cabinet
 
@@ -469,8 +491,8 @@ uniqueness, non-payment customer/agreement/subscription preparation, discovery,
 reconciliation, mappings, entitlements, allowances, and Kernel access delivery.
 
 There is no persistent checkout/session abstraction around Widget. Widget mint is
-a separate fail-closed authorization decision. A fresh short-lived Widget JWT may
-be minted only when all of these hold:
+a separate fail-closed authorization decision. A fresh LBX Client JWT (whose provider-enforced replay window may be
+72 hours) may be minted only when all of these hold:
 
 ```text
 authenticated Portal session
@@ -495,15 +517,16 @@ When mint is allowed:
 authenticated Portal request
  -> reload current Portal state
  -> verify current customer/subscription/commercial predicates
- -> mint fresh short-lived Widget JWT
+ -> mint fresh type-7 LBX Widget JWT with iat=now
  -> return Widget bootstrap data
 ```
 
 If the cabinet cannot be opened, Portal returns a derived `billing_not_ready` or
 review-required result without exposing provider internals. Closing the browser
-creates no billing state. A later authenticated open reevaluates the predicate
-and, if still allowed, mints a new token subject to the Phase-0-proven overlap
-rule above.
+creates no billing state and does **not** revoke an earlier LBX JWT. A later
+authenticated open reevaluates the predicate and, if permitted, mints a fresh
+type-7 JWT; any older token may remain usable for up to 72 hours from its `iat`
+and its residual risk remains a separate pre-enable security decision.
 
 JWT issuance is never evidence of paid access, and existing paid access never by
 itself proves that Widget mint is currently safe.
@@ -869,8 +892,13 @@ commercial_access_status:  eligible | ineligible
 ```
 
 For customer-funded RU access, `financial_access_status=allowed` requires a
-`PREPAID_BLOCKING_CONFIRMED` tariff, complete authoritative subscription read,
-non-terminal lifecycle, and `current_blocking == 0`.
+verified supported prepaid-blocking profile, **ACTIVE** lifecycle (not merely
+non-terminal), `current_blocking == 0`, complete authoritative owner/agreement,
+current-cycle and material-term reads, and independently supportable paid
+eligibility. A pending `state=-2/current_blocking=0` subscription is denied;
+`state=2/current_blocking=0` alone does not prove a paid period. When an
+underfunded renewal or financial block is ambiguous, deny the new allowance
+rather than infer access from a balance or payment status.
 
 `commercial_access_status=eligible` additionally requires complete material-term
 match, valid pinned mapping/legal/origin rules, and no access conflict.
@@ -1004,6 +1032,7 @@ auto-promoted. If primary becomes terminal and is cleared under the scope lock,
 an old candidate is not automatically promoted; a new purchase or audited
 operator resolution is required.
 
+
 ## Webhooks
 
 Webhook request handling is intentionally short:
@@ -1017,11 +1046,22 @@ authenticate
  -> return 2xx
 ```
 
-No provider REST call occurs inside the webhook request. Payload content does not
-directly mutate entitlement. Duplicate/out-of-order deliveries are safe.
+No provider REST call occurs inside the webhook request. Payload content does
+not directly mutate entitlement. Duplicate/out-of-order deliveries are safe.
+Webhook is an optional acceleration **hint only**. Authoritative REST reread
+and independent scheduled reconciliation are the correctness backstop.
 
-Webhook is a priority hint only. Authoritative reads remain access authority.
-Scheduled reconciliation/discovery is the correctness backstop.
+**B14 is Phase 0 research DONE / DOCUMENTED, not delivery PASS.**
+The official LBX event/payload/configuration contract and ordinary Server REST
+reads suffice for the architecture; **zero actual provider webhooks** were
+received in the B14 probe. Actual transport/header/shared-secret verification,
+delivery/correlation, receipt-before-2xx and webhook-to-REST visibility
+remain UNKNOWN. Step 8 must prove them against its deployed endpoint
+*before enablement* and test duplicate/order/loss/crash/recovery behavior.
+If authenticity cannot be proven, leave the webhook endpoint disabled
+and approve a tested polling-only path; never accept anonymous events or
+derive a paid grant from webhook body. Provider 500->retry is not a
+correctness dependency unless separately proven.
 
 ## Reconciliation, discovery, and freshness
 
@@ -1153,10 +1193,19 @@ grant.valid_until = null
 `null` stays `null` in the wire contract and does not mean infinite provider
 trust.
 
-Raw provider intervals are UTC half-open `[start, end)`. Portal retains those raw
-bounds for provider/cycle evidence and publishes conservative effective
-authorization bounds to Kernel using the configured clock-skew budget defined in
-the companion contract.
+**B10 contract review pending Steps 9-10:** LBX returned calendar-date
+`last_tariffication_period_start/end`, **not** verified UTC instants. The
+pre-existing provider-UTC/source-period and immutable Kernel UTC allowance
+wire rules in this document and its companion are not yet reconciled with
+that evidence. Do not project a guessed LBX timezone or midnight cutoff.
+Until the coupled producer/consumer redesign is reviewed, the legacy contract
+below is not proof that LBX supplies those instants; actual date-only provider
+cycle identity stays Portal-internal.
+
+The existing Portal/Kernel baseline retains UTC half-open `[start, end)`
+authorization bounds for independently supported finite facts, with the
+configured clock-skew budget in the companion contract. This does **not**
+assert that LBX period date fields can be used directly as those UTC bounds.
 
 If an allowance expires before the next provider cycle is authoritatively
 confirmed, the product grant may remain but no future metric bucket is invented;
@@ -1262,11 +1311,16 @@ credentials live only in runtime secret configuration.
 are not cross-system or Widget identity authority. Portal never changes its key
 to follow provider-side `outer_id` drift and never reuses an allocated key.
 
-Widget JWT is signed only by Portal backend after verified user/customer mapping;
-client flags are not ACLs; launch requires server-side operation scope, bounded
-credential lifetime, and bounded remint overlap proven by Phase 0 E. Active
-`identity_conflict`, unresolved external-create uncertainty, or
-incomplete/mismatching commercial verification prevents mint.
+Widget JWT is signed only by Portal backend after verified user/customer mapping
+with `ident_type=7`, `ident=string(provider_customer_id)`, fresh `iat=now`, and
+an authoritative paired `users.user_id`/`users.outer_id` check. UI flags are
+not provider-side ACLs. B4 measured the absence of effective `exp`/remint
+revocation and accepted the vendor's 72h-`iat` model as the integration fact,
+**not** as automatically safe for launch; B5 found a real Client API identity
+write and left other mutation ACLs UNKNOWN. Explicit security resolution is
+required before affected Widget/payments enablement. Active `identity_conflict`,
+unresolved external-create uncertainty, or incomplete/mismatching commercial
+verification prevents mint.
 
 Portal<->Kernel internal APIs require TLS, trusted-service authentication, and
 tenant/region scope. A regional contour never reads/writes another contour's
