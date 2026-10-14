@@ -356,9 +356,11 @@ The browser chooses none of these identifiers or claims. Email, phone,
 login, name or type 6 are never fallback identity. Any mismatch becomes
 `identity_conflict`: no new Widget mint/create and no new paid eligibility
 derived from that external slot; restore the **original** `outer_id`
-provider-side and reread before releasing the conflict. The Client API
-can mutate its own `outer_id`; type 7 eliminates type-6 reassignment
-of Widget principal, **not** this write permission.
+provider-side and reread before releasing the conflict. A **type-6**
+Client API JWT was able to modify its own `outer_id`. Type 7 eliminates
+the type-6 mutable-key customer-selection failure, but a type-7
+`PATCH /client/user` was **not** tested: neither its denial nor its
+permission is established. Treat the write risk as unresolved.
 
 #### JWT lifetime and residual replay risk (B4)
 
@@ -1306,10 +1308,12 @@ to follow provider-side `outer_id` drift and never reuses an allocated key.
 Widget JWT is signed only by Portal backend after verified user/customer mapping
 with `ident_type=7`, `ident=string(provider_customer_id)`, fresh `iat=now`, and
 an authoritative paired `users.user_id`/`users.outer_id` check. UI flags are
-not provider-side ACLs. B4 measured the absence of effective `exp`/remint
-revocation and accepted the vendor's 72h-`iat` model as the integration fact,
-**not** as automatically safe for launch; B5 found a real Client API identity
-write and left other mutation ACLs UNKNOWN. Explicit security resolution is
+not provider-side ACLs. B4 proved `exp` non-enforcement on a real type-7
+Widget; old-token survival after remint was tested with type-6 Client API
+JWTs, not independently with type 7. The vendor-confirmed 72h-`iat`
+window is treated conservatively as a potential exposure, **not** as
+automatically safe for launch. B5 proved an identity write with type 6;
+production type-7 identity writes and other mutation ACLs remain UNKNOWN. Explicit security resolution is
 required before affected Widget/payments enablement. Active `identity_conflict`,
 unresolved external-create uncertainty, or incomplete/mismatching commercial
 verification prevents mint.
