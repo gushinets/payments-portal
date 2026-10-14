@@ -380,8 +380,7 @@ or present `exp` as a short provider-enforced lifetime.
 
 A previously copied JWT may remain usable for up to 72 hours after its
 own `iat`, including after remint/logout. **Fresh mint is not revocation.**
-This residual browser-credential exposure requires an explicit security
-decision before production Widget enablement. B4 DONE is not security PASS.
+**RU MVP decision (2026-10-14):** Accept the provider's 72-hour `iat`-based JWT window, ignored `exp` and non-revocation on remint as LBX behavior. Fresh type-7 `iat=now` mint on each allowed Widget open is the chosen integration. This is an explicit acceptance, not a Provider PASS for the original 900s criterion. No further B4 test, security approval, custom short-TTL mechanism, token revocation or provider proxy is required.
 
 #### Server-side Client API permissions (B5)
 
@@ -405,10 +404,7 @@ effective service terms, and only then mints the verified type-7 Widget JWT.
 Step 8 detects owner, service, quantity, price and period drift even
 without a new instance ID. Step 9 grants nothing on conflicting or
 incomplete terms. **These checks cannot prevent LBX-side financial
-effects of a direct Client API write.** An explicit security/provider
-decision on the remaining dangerous mutation paths is still required
-before enabling the affected Widget/payment flow; do not declare this
-a server-ACL PASS.
+effects of a direct Client API write.** **RU MVP decision (2026-10-14):** Accept the actual LBX Client API permission model as provider-owned, including its observed capabilities and untested boundaries. No further hostile-client testing, ACL certification or custom Portal-side Client API restriction is required for this integration. The Provider FAIL under type 6 and UNKNOWN type-7/other mutation ACLs remain historical evidence, **not** assumed denial guarantees. Portal still verifies identity, pinned terms and authoritative commercial/financial state before granting access; this does not purport to prevent provider-side operations.
 
 #### Prepaid eligibility (B6/B11)
 
@@ -461,9 +457,8 @@ B15 retry/recovery policy is reviewed, but no native LBX CREATE
 idempotency or forced-500/429 guarantee is assumed.
 
 **Step 5 sign-off is separate from probe research DONE.** Before admitting
-Step 6, review the linked evidence/deferral matrix, obtain explicit
-decisions on the remaining architectural/security risks, align the
-external-billing design and GitHub issue #112, and record the final
+Step 6, review the linked evidence/deferral matrix, apply the accepted B4/B5 provider-model decision recorded in ANY-634,
+align the external-billing design and GitHub issue #112, and record the final
 Phase 0 architecture-gate verdict in ANY-634. The B8 service-price contract and the other B-probe conclusions are reviewed
 together in this single consolidated documentation change. The provider-neutral
 Kernel wire redesign for B10 belongs to Steps 9-10 and must not be
@@ -519,7 +514,7 @@ review-required result without exposing provider internals. Closing the browser
 creates no billing state and does **not** revoke an earlier LBX JWT. A later
 authenticated open reevaluates the predicate and, if permitted, mints a fresh
 type-7 JWT; any older token may remain usable for up to 72 hours from its `iat`
-and its residual risk remains a separate pre-enable security decision.
+and its 72-hour behavior is explicitly accepted for RU MVP, not a new security gate.
 
 JWT issuance is never evidence of paid access, and existing paid access never by
 itself proves that Widget mint is currently safe.
@@ -1310,11 +1305,8 @@ with `ident_type=7`, `ident=string(provider_customer_id)`, fresh `iat=now`, and
 an authoritative paired `users.user_id`/`users.outer_id` check. UI flags are
 not provider-side ACLs. B4 proved `exp` non-enforcement on a real type-7
 Widget; old-token survival after remint was tested with type-6 Client API
-JWTs, not independently with type 7. The vendor-confirmed 72h-`iat`
-window is treated conservatively as a potential exposure, **not** as
-automatically safe for launch. B5 proved an identity write with type 6;
-production type-7 identity writes and other mutation ACLs remain UNKNOWN. Explicit security resolution is
-required before affected Widget/payments enablement. Active `identity_conflict`,
+JWTs, not independently with type 7. The vendor-confirmed 72h-`iat` window is explicitly accepted for RU MVP (2026-10-14), not described as a short-lived or revocable credential. B5 proved an identity write with type 6;
+production type-7 identity writes and other mutation ACLs remain UNKNOWN. The observed/UNKNOWN LBX Client API permissions are accepted as provider-owned for RU MVP; no additional Portal-owned ACL subsystem, Provider ACL PASS or separate B4/B5 security approval is required. Active `identity_conflict`,
 unresolved external-create uncertainty, or incomplete/mismatching commercial
 verification prevents mint.
 
