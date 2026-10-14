@@ -363,11 +363,15 @@ of Widget principal, **not** this write permission.
 #### JWT lifetime and residual replay risk (B4)
 
 **B4 research DONE, initial 900-second acceptance criterion FAIL.**
-On a real type-7 Widget, `exp` did not enforce expiry and remint did not
-revoke an earlier JWT. LBX confirmed via the operator that Client JWT
-acceptance is bounded by **72 hours from JWT `iat`**, even if `iat`
-was backdated; observed backdated token expiration agrees with that rule
-but did not measure the exact boundary. For RU MVP, Portal signs a *fresh*
+A real type-7 Widget continued to accept a token after `exp` and rejected
+an unchanged backdated-`iat` token when its age exceeded 72 hours in the
+observed run. **Old-token survival after remint was directly tested with
+type-6 Client API JWTs, not independently reenacted with type 7.** LBX
+confirmed via the operator that Client JWT acceptance is bounded by
+**72 hours from JWT `iat`**, including backdating; the exact cutoff was
+not measured. For the selected type-7 production flow, treat earlier
+issued JWTs as potentially usable for this entire window unless actual
+provider revocation is independently established. For RU MVP, Portal signs a *fresh*
 JWT with `iat=now` at each permitted Widget open after all checks; do
 not persist/reuse it, backdate `iat`, add auto-remint/revocation storage,
 or present `exp` as a short provider-enforced lifetime.
@@ -382,11 +386,15 @@ decision before production Widget enablement. B4 DONE is not security PASS.
 Widget flags (`disableCreateSubscription`, `disableEditSubscription`)
 and LBX tariff/service manage settings restrict presentation or the intended
 offer configuration; **they are not demonstrated server-side ACLs**.
-B5 confirmed a Client JWT can modify its own `users.outer_id`
-(Provider FAIL), while tested cross-customer subscription GET returned 404.
-Direct Client API service/quantity/payment-method/top-up/autopay
-mutation authorization remains **UNKNOWN**: no safe test fixture established
-a denial or a general server-side restriction.
+B5 confirmed that a **type-6** Client JWT could modify its own
+`users.outer_id` (Provider FAIL). Cross-customer subscription GET was
+denied with both type-6 and type-7 JWTs in separate read-only probes.
+An equivalent `PATCH /client/user` with the selected production type-7
+JWT was **not** performed; do not assert either server-side denial or
+permission for that untested mode. Direct Client API
+service/quantity/payment-method/top-up/autopay mutation authorization
+also remains **UNKNOWN**: no safe test fixture established a denial or
+a general server-side restriction.
 
 Step 6 publishes only verified fixed prepaid offers with client
 service/quantity management OFF and a controlled immutable mapping.
