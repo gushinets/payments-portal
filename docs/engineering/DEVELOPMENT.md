@@ -107,17 +107,17 @@ The complete backend flow uses `npm run test:api` in the middle. The
 
 ## Local Kernel Manifest Mock (ANY-664, development only)
 
-**Status: approved requirements for the Step 6 implementation plan; not yet an implemented service or passing contract check.** The real source of product identity is Platform Kernel (\`gushinets/anytoolai-platform\`), not Portal mock fixtures or UI placeholders.
+**Status: approved requirements for the Step 6 implementation plan; not yet an implemented service or passing contract check.** The real source of product identity is Platform Kernel (`gushinets/anytoolai-platform`), not Portal mock fixtures or UI placeholders.
 
 For local visual development without a running Kernel, Step 6 should provide an **opt-in, separate HTTP mock container** attached to the development Compose network (profile or development-only override). Keep the real Portal backend, PostgreSQL and web frontend running. The mock exposes only the needed versioned, complete internal Capability Manifest API, not a substitute for a whole Kernel or a shared SDK.
 
 - Portal uses **one** production-shaped typed Kernel client for both real and mocked servers. Switch between them **only** via internal service base URL and appropriate credentials/config; there must be **no application-code changes**, mock-specific imports, production fallback to fixtures, or browser calls to mock internals.
-- Local mock is **disabled by default**; it can be stopped and removed without preventing Portal builds, database migrations, or normal startup. Missing Kernel must follow the real fail-closed/stale-projection behavior. Mock fixtures are development/test evidence only and cannot establish real-account \`SELLABLE\` admission.
+- Local mock is **disabled by default**; it can be stopped and removed without preventing Portal builds, database migrations, or normal startup. Missing Kernel must follow the real fail-closed/stale-projection behavior. Mock fixtures are development/test evidence only and cannot establish real-account `SELLABLE` admission.
 - No mock process/config/image/test data/auth bypass may be enabled or bundled in production Compose, production API/web image, or production deployment. Add verification that attempts to enable mock mode in production fail explicitly rather than quietly returning fake products.
 
 ### Keep the mock aligned with real Kernel
 
-The **implemented, versioned, service-authorized** manifest contract in \`gushinets/anytoolai-platform\` becomes the source of truth when it exists. Before then, the two approved architectural specs and jointly reviewed fixtures define a **provisional** contract; mock fixtures must **not** be mistaken for a real Kernel API.
+The **implemented, versioned, service-authorized** manifest contract in `gushinets/anytoolai-platform` becomes the source of truth when it exists. Before then, the two approved architectural specs and jointly reviewed fixtures define a **provisional** contract; mock fixtures must **not** be mistaken for a real Kernel API.
 
 Step 6 must deliver a reproducible, small cross-repository conformance check: verify the mock and Portal typed client against the Kernel-owned authoritative OpenAPI/fixtures and their exact pinned Kernel commit. Check schema/required fields, tenant and region, product/metric relationship, enabled semantics, manifest digest/version, auth/HTTP errors and representative current product IDs. When Kernel's actual endpoint lands, run conformance against that implementation, not solely against static mock JSON.
 
