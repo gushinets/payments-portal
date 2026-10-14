@@ -1031,8 +1031,9 @@ authenticate
 
 No provider REST call occurs inside the webhook request. Payload content does
 not directly mutate entitlement. Duplicate/out-of-order deliveries are safe.
-Webhook is an optional acceleration **hint only**. Authoritative REST reread
-and independent scheduled reconciliation are the correctness backstop.
+Webhook is a priority hint only: an optional acceleration signal.
+Authoritative REST reread establishes current provider facts. Scheduled
+reconciliation/discovery is the correctness backstop.
 
 **B14 is Phase 0 research DONE / DOCUMENTED, not delivery PASS.**
 The official LBX event/payload/configuration contract and ordinary Server REST
