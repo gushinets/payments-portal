@@ -1,6 +1,6 @@
 # ANY-634 — LBX Phase 0 evidence and implementation handoff
 
-Status: **research consolidated; final Step 5 architecture-gate PASS NOT YET RECORDED**  
+Status: **Step 5 architecture-gate PASS — owner verdict recorded 2026-10-14 08:06 UTC** ([PR #137 owner review](https://github.com/gushinets/payments-portal/pull/137#pullrequestreview-5514869687)); **PR human approval/merge and ANY-634 Done are separate**  
 Decision date: 2026-10-14  
 Sources: [ANY-634](https://linear.app/paveldik/issue/ANY-634/5-run-lbx-phase-0-validate-widget-and-provider-contract), [ANY-504](https://linear.app/paveldik/issue/ANY-504/realizovat-ru-external-billing-i-paid-access-arhitekturu-lbx-payments), [GitHub #112](https://github.com/gushinets/payments-portal/issues/112).
 
@@ -37,16 +37,18 @@ Sources: [ANY-634](https://linear.app/paveldik/issue/ANY-634/5-run-lbx-phase-0-v
 - An authenticated webhook is optional acceleration. Every commercial/financial decision rereads authoritative LBX API. Scheduled reconciliation with finite trust and fail-closed expiry remains mandatory.
 - Ambiguous POST CREATE outcome holds the scope, recovers by read/discovery and never blindly repeats the mutation.
 
-## Review gates — do not silently close Step 5
+## Step 5 architecture gate — PASS; PR approval/merge separate
 
-**Before recording Phase 0 architecture-gate PASS / beginning Step 6:**
+The owner recorded **Step 5 architecture-gate PASS** on 2026-10-14 08:06 UTC in [PR #137 review](https://github.com/gushinets/payments-portal/pull/137#pullrequestreview-5514869687); the corresponding ANY-634 DoD item is checked. This confirms that the documented B1–B15 findings and chosen LBX integration algorithm are sufficient to implement ANY-504 Steps 6–11. It does **not** make every original provider probe PASS, complete later Step 8/11 integration or launch tests, approve/merge the PR, or mark ANY-634 Done.
 
-1. Review this matrix against the sanitized reports and ANY-634; explicitly classify each original FAIL/UNKNOWN as architecture-resolved, accepted risk, or deferred runtime gate. No contradictory provider assumptions necessary for Steps 6-11 may remain unresolved.
-2. **B4/B5 decision recorded 2026-10-14 in ANY-634:** accept LBX's documented/observed 72h JWT and provider-owned Client API permissions as the RU MVP contract. Do not require new security approval, repeated hostile-client probes, Portal-owned revocation, provider proxy or Client API ACL. Preserve historical FAIL/UNKNOWN evidence and existing Portal identity/accepted-terms/paid-access checks.
-3. Review the single consolidated Phase 0 B8 service-price contract and the B1-B15 closeout together. Confirm customer identity, discovery and JWT content is aligned with [GitHub #112](https://github.com/gushinets/payments-portal/issues/112) and update its checklist/decision with remaining security gaps; do not close the whole issue as a fictional PASS.
-4. Record the final explicit reviewed **Step 5 architecture gate verdict** in ANY-634, including owners and mandatory pre-enable tests. A research-DONE label or an In Review status is not that verdict.
+Reviewed architecture-gate decisions:
 
-**After Step 5, before corresponding feature enablement / launch:**
+1. B1–B15 results and original FAIL/UNKNOWN outcomes were classified as resolved by the chosen architecture, explicitly accepted provider risks, or deferred runtime/launch checks with owners. No unresolved *pre-implementation architecture* blocker remains.
+2. **B4/B5 owner decision (2026-10-14, ANY-634):** the standard LBX 72h JWT and provider-owned Client API permissions are accepted for RU MVP. No further security approval, hostile-client probes, Portal-owned JWT revocation, provider proxy, or custom Client API ACL is required. Historical FAIL/UNKNOWN classifications and independent Portal checks remain.
+3. The consolidated Phase 0 B8 service-price contract and the B1–B15 handoff were reviewed together; GitHub [#112](https://github.com/gushinets/payments-portal/issues/112) reflects the accepted identity/JWT/security decision without falsely declaring remaining provider UNKNOWN a live PASS.
+4. The formal architecture-gate PASS and remaining pre-enable/launch checks are recorded in the linked owner verdict, ANY-634 DoD, and the handoff below. Research DONE alone was not treated as approval.
+
+**After architecture-gate PASS, before corresponding feature enablement / launch:**
 
 - **Step 6:** full fresh catalog+Kernel manifest, account-specific RUB/scale/provenance; controlled immutable commercial mapping and approved legal/renewal policy; unresolved missing source => `NOT_SELLABLE`.
 - **Step 7:** type-7 identity pairing, fresh `iat=now` JWT on each Widget opening, accepted LBX Client API permissions, configured offer and independent accepted commercial snapshot. B4/B5 require no separate approval/test gate.
@@ -57,7 +59,7 @@ Sources: [ANY-634](https://linear.app/paveldik/issue/ANY-634/5-run-lbx-phase-0-v
 
 ## Canonical document sequencing
 
-This consolidated Phase 0 PR updates `2026-09-15-external-billing-boundary-design.md` including the entire B8 pricing contract, and stores the B1-B15 evidence/deferral handoff. The provider-neutral `2026-09-15-portal-kernel-access-contract-design.md` **must not** receive LBX-specific IDs/statuses/JWT; its allowance time representation and the related billing-boundary sections are a reviewed **Step 9/10 design + implementation dependency**, as explicitly chosen after closing unmerged PR #136. Step 5 completion wording in ANY-504 that says “both design specs updated” must be interpreted/reconciled to mean that provider facts and deferred cross-service redesign are explicitly documented, not that a speculative wire-contract change is merged now. If program owners require literal prior updates to both specs, the Step 5 gate cannot be declared complete without a separately approved change to that acceptance criterion.
+This consolidated Phase 0 PR updates `2026-09-15-external-billing-boundary-design.md` including the entire B8 pricing contract, and stores the B1-B15 evidence/deferral handoff. The provider-neutral `2026-09-15-portal-kernel-access-contract-design.md` **must not** receive LBX-specific IDs/statuses/JWT; its allowance time representation and the related billing-boundary sections are a reviewed **Step 9/10 design + implementation dependency**, as explicitly chosen after closing unmerged PR #136. The recorded Step 5 architecture-gate PASS accepts the explicitly documented Steps 9–10 cross-service redesign deferral: provider facts are documented now, while the companion Portal↔Kernel wire/spec update remains a future joint implementation dependency. This does not claim that the Kernel contract or runtime wire was changed by this PR.
 
 ## Evidence pointers
 
