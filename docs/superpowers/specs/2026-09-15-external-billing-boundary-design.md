@@ -490,8 +490,13 @@ exact target subscription is proven and linked
 no unresolved external-create UNKNOWN/AMBIGUOUS state
 latest required material verification == COMPLETE_MATCH
 no prepared-commercial mismatch or commercial_terms_conflict
-Phase 0 E server-side Widget security contract is satisfied
 ```
+
+The Phase 0 E B4/B5 provider-security model is explicitly accepted for RU MVP
+in ANY-634: no separate LBX Client API ACL PASS, further security approval,
+or Portal-owned JWT revocation/proxy is a Widget-mint prerequisite. This
+acceptance does not waive the independent Portal-side predicates above or
+establish that untested LBX Client API mutations are denied.
 
 `COMPLETE_MISMATCH`, `INCOMPLETE`, `commercial_terms_conflict`,
 prepared-commercial mismatch, unresolved create uncertainty, ambiguous
