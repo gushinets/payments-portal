@@ -127,7 +127,6 @@ A standalone “periodic catalog refresh” is **not** an alternative to these l
 **API/DB invariants (Step 7 owner):** unique active scope plus idempotency identity, durable accepted snapshot and per-create operation record; bounded response states; provider-neutral/public-safe errors; no extra Portal payment/Order model. These are elaborations of ANY-504's existing PurchaseIntent/UNKNOWN mechanism, **not a new orchestration subsystem**.
 
 ### 5.4 Existing user and provider outage (Steps 8–10 unchanged)
-### 5.4 Existing user and provider outage (Steps 8–10 unchanged)
 
 - **LBX unavailable:** no new purchase or provider mutation, payment, automatic renewal, speculative unblock/new period, or new Widget mint relying only on cached facts. Continue read-only display of last known user status clearly marked with its observation time where appropriate.
 - **Already verified access:** subscription/grant state can survive only inside the existing finite `last_authoritative_read_at + 6h` trust lease **and** only until earlier approved payment/cycle/grant/allowance deadlines; known blocked or expired status stays blocked. Failed/partial LBX reads never extend the lease. At expiry, omit the affected paid facts and fail closed; unrelated users/products remain independent.
