@@ -125,8 +125,7 @@ controls. Evolved Bundle 3 encodes the approved RU mockup's navy/amber,
 flat/compact visual direction across these surfaces; the mockup's demo facts
 are excluded from runtime authority.
 
-Parent ANY-504 Step 6 supplies authoritative commercial projections and
-technical identity mapping to existing commercial/pricing slots; Step 7
+Under the [proposed 2026-10-15 live-source amendment](docs/superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md), ANY-504 Step 6 will supply live-verified, approved immutable commercial mappings, not a continuously refreshed current LBX/Kernel catalog; Step 7
 supplies purchase/Widget actions; Step 8 supplies reconciled state and recovery
 feedback; Step 9 supplies provider-neutral confirmed paid access; Step 10
 supplies actual Kernel usage/quota. These deferred steps populate the existing
