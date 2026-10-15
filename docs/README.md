@@ -41,7 +41,6 @@ Start with the smallest document that matches the task.
 2. [External Billing Boundary Design](superpowers/specs/2026-09-15-external-billing-boundary-design.md)
 3. [Portal ↔ Kernel Access Contract Design](superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md)
 4. [Proposed live-source commercial admission amendment](superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md) — PR #138; narrow supersession upon approval, paid trust unchanged.
-5. [ANY-664 revised implementation plan](superpowers/plans/2026-10-15-any-664-live-source-implementation-plan.md) — implementation scope, not canonical architecture authority.
 
 ### Implementation handoffs and references
 
