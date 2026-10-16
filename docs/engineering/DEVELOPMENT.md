@@ -107,27 +107,80 @@ The complete backend flow uses `npm run test:api` in the middle. The
 
 ## Local Kernel Manifest Mock (ANY-664, development only)
 
-**Status: approved requirements for the Step 6 implementation plan; not yet an implemented service or passing contract check.** The real source of product identity is Platform Kernel (`gushinets/anytoolai-platform`), not Portal mock fixtures or UI placeholders.
+**Status: ANY-664 implementation Step 1 adds the standalone mock and provisional contract/test source; human verification is pending.** The real source of product identity is Platform Kernel (`gushinets/anytoolai-platform`), not Portal mock fixtures or UI placeholders. All ANY-664 implementation belongs to this Portal repository. Real Kernel producer delivery and actual-producer conformance are later enablement gates, not prerequisites for completing the Portal ticket.
 
-For local visual development without a running Kernel, Step 6 should provide an **opt-in, separate HTTP mock container** attached to the development Compose network (profile or development-only override). Keep the real Portal backend, PostgreSQL and web frontend running. The mock exposes only the needed versioned, complete internal Capability Manifest API, not a substitute for a whole Kernel or a shared SDK.
+The [provisional manifest contract](../contracts/kernel-capability-manifest/v1/README.md) records the source pins, complete six-product test deployment, TEST-ONLY metric, provisional bearer/digest conventions, startup scenarios and exact manual commands. Start the standalone server from the Portal root:
 
-- Portal uses **one** production-shaped typed Kernel client for both real and mocked servers. Switch between them **only** via internal service base URL and appropriate credentials/config; there must be **no application-code changes**, mock-specific imports, production fallback to fixtures, or browser calls to mock internals.
-- Local mock is **disabled by default**; it can be stopped and removed without preventing Portal builds, database migrations, or normal startup. Missing Kernel must fail closed for **new publication and new purchase admission**, with no source-manifest cache fallback; previously confirmed paid subscriptions are handled by their separate finite trust rules. Mock fixtures are development/test evidence only and cannot establish real-account `SELLABLE` admission.
-- No mock process/config/image/test data/auth bypass may be enabled or bundled in production Compose, production API/web image, or production deployment. Add verification that attempts to enable mock mode in production fail explicitly rather than quietly returning fake products.
+```bash
+APP_ENV=development KERNEL_MOCK_TOKEN=local-kernel-test-only \
+  ./.venv/bin/python -m tools.kernel_manifest_mock --port 8091 --scenario valid
+```
+
+The same standalone server serves read-only [Swagger UI](http://127.0.0.1:8091/docs) at `/docs` and OpenAPI 3.1 at `/openapi.json`, without credentials in either document. Its manifest response schema comes directly from the versioned JSON Schema; bearer auth and scope are documented, and the existing manifest restrictions remain unchanged. Swagger UI uses pinned `swagger-ui-dist@5.32.15` CSS/JS from jsDelivr, so rendering the UI requires browser access to that CDN. The local OpenAPI JSON has no CDN dependency.
+
+The mock uses the standard-library `ThreadingHTTPServer`; an actively delayed manifest request does not block `/docs` or `/openapi.json`. Existing service-auth, exact-scope, browser-origin and explicit development/test startup restrictions remain in place.
+
+For local visual development, later ANY-664 implementation adds an **opt-in, separate HTTP mock container** on the development Compose network and the real Portal backend/PostgreSQL/localized frontend walkthrough. Step 1 does not wire a Portal client, Compose or the Portal browser. The mock exposes the manifest and local documentation routes, not a whole Kernel or a shared SDK.
+
+- Portal will use **one** production-shaped typed Kernel client for both real and mocked servers, selected by internal service URL and configured service authentication. Portal runtime must not import mock code/fixtures or fall back to them. Only dev/test configuration may select the mock; no browser calls to mock internals. A compatible real endpoint can replace it via URL/credentials; unknown wire/hash/auth differences must be reconciled before real enablement.
+- Local mock is **disabled by default**; it can be stopped and removed without preventing Portal builds, database migrations, or normal startup. Missing Kernel must fail closed for **new publication and new purchase admission**, with no source-manifest cache fallback; previously confirmed paid subscriptions retain their separate finite trust rules. Mock-derived mapping evidence must be **SIMULATED**, rejected by real admission and excluded from production catalog queries even after changing URLs. No configuration switch upgrades an old simulated revision.
+- No mock process/config/image/test data/auth bypass may be enabled or bundled in production Compose, production API/web image, or production deployment. Step 1 excludes mock files from root Docker build inputs and rejects standalone startup outside explicit development/test environments. Production integration/config rejection and Compose removal checks remain part of the later optional wiring.
 
 ### Keep the mock aligned with real Kernel
 
-The **implemented, versioned, service-authorized** manifest contract in `gushinets/anytoolai-platform` becomes the source of truth when it exists. Before then, the two approved architectural specs and jointly reviewed fixtures define a **provisional** contract; mock fixtures must **not** be mistaken for a real Kernel API.
+The **implemented, versioned, service-authorized** manifest contract in `gushinets/anytoolai-platform` becomes the source of truth when it exists. Until then, the accepted specs and explicitly provisional local conventions/independent fixtures define the mock boundary. Product identity provenance is pinned to Kernel commit `079eb03e28d7a50b980795c63c3e4533b785d11f`; that pin does not prove a manifest endpoint, paid registry or approved release.
 
-Step 6 must deliver a reproducible, small cross-repository conformance check: verify the mock and Portal typed client against the Kernel-owned authoritative OpenAPI/fixtures and their exact pinned Kernel commit. Check schema/required fields, tenant and region, product/metric relationship, enabled semantics, manifest digest/version, auth/HTTP errors and representative current product IDs. When Kernel's actual endpoint lands, run conformance against that implementation, not solely against static mock JSON.
+ANY-664 must deliver small Portal-local schema/client/mock conformance and focused source-reference drift checks. Check shape/required fields, tenant/region, product/metric relationships, enabled semantics, independent literal digest, auth/HTTP errors and pinned product identities. This work must not import a Kernel runtime package, edit Kernel or require a matching checkout.
 
-- Run the check for **every relevant Portal PR** and fail on incompatible or invalid fixtures.
-- Also detect **upstream changes in Kernel** independently of Portal PRs: use an upstream push/webhook trigger where available, or a bounded scheduled cross-repo drift check that fetches the current Kernel default-branch contract. A pinned fixture checked only in Portal CI cannot detect later Kernel changes.
-- Emit an actionable failing status/alert for actual contract incompatibility or unavailable authoritative verification; do not silently classify an old fixture as current or fail for unrelated Kernel commits/new products outside the selected test fixture.
-- Keep the mechanism small and use existing repository test/CI practices rather than inventing a general mock framework. Document the chosen trigger, source revision, update procedure and supported compatibility policy in the Step 6 implementation plan.
+- Run focused checks on relevant Portal PRs and detect upstream changes independently with a bounded reference watch. A pinned local fixture alone cannot detect future upstream drift.
+- Distinguish local fixture conformance from external-reference unavailability, a missing real producer and actual future incompatibility. Never report a local PASS as actual-producer verification or fail for unrelated Kernel commits/new products outside the selected fixture.
+- When Kernel delivers its actual contract, reconcile endpoint/schema/hash/auth/scope and run conformance against that implementation before real enablement. Its delivery date, production credentials and paid metric approvals do not block fixture-based Portal implementation or ticket completion.
+- Keep the mechanism small and use existing repository test/CI practices. The reference watch and future-producer handoff are later ANY-664 work; Step 1 does not claim they exist or pass.
 
 ### Required local verification
 
-Demonstrate the real Portal UI and backend with the optional container for: complete valid manifest, disabled/missing product or metric, malformed/partial/version-incompatible response, unavailable/unauthorized mock, immediate failure of a **new** publication and later recovery on a fresh live read (no retired manifest-LKG freshness rule). Prove the drift check detects an intentionally incompatible Kernel contract change. Demonstrate mock removal and base-URL-only transition to a compatible Kernel test instance, and assert production build/Compose excludes all mock artifacts.
+For Step 1, run the focused source and structural checks from the Portal root:
 
-The above is a **delivery requirement of ANY-664**, not evidence that a mock or automatic drift detector currently exists.
+```bash
+./.venv/bin/python -m pytest -q apps/api/tests/test_kernel_manifest_mock.py
+npm run architecture:check
+npm run docs:check
+```
+
+With the standalone mock running, check Swagger/OpenAPI availability in a second terminal:
+
+```bash
+curl --fail-with-body -i http://127.0.0.1:8091/docs
+curl --fail-with-body -i http://127.0.0.1:8091/openapi.json
+```
+
+Open `/docs` in a browser and compare its documented endpoint/auth/scope/schemas with the contract. The focused tests verify OpenAPI/schema reference correspondence and retained manifest restrictions. The contract README includes the remaining HTTP auth/scope/unavailable/timeout commands. These commands have not been run by the implementation agent.
+
+For the concurrent timeout check, restart the mock in the first terminal:
+
+```bash
+APP_ENV=development KERNEL_MOCK_TOKEN=local-kernel-test-only \
+  ./.venv/bin/python -m tools.kernel_manifest_mock --port 8091 \
+  --scenario timeout --delay-seconds 10
+```
+
+Start a slow request in a second terminal:
+
+```bash
+curl --fail-with-body --max-time 15 \
+  -H 'Authorization: Bearer local-kernel-test-only' \
+  'http://127.0.0.1:8091/internal/v1/capability-manifest?tenant_id=anytoolai&region=ru'
+```
+
+While it is still pending, run the following in a third terminal. Both routes must return `200` before the manifest request finishes:
+
+```bash
+curl --fail-with-body --max-time 2 -i http://127.0.0.1:8091/docs
+curl --fail-with-body --max-time 2 -i http://127.0.0.1:8091/openapi.json
+```
+
+The focused test suite includes an event-synchronized check of this overlap using an actual HTTP manifest request; it holds the request at its delay boundary until both metadata responses have completed.
+
+The later Portal walkthrough must demonstrate the real UI/backend with the optional mock for complete, disabled/missing, malformed/partial/version-incompatible and unavailable/unauthorized cases, refusing a **new** publication and recovering on a fresh read. No retired manifest-LKG rule applies. Demonstrate mock removal and production exclusion, plus a deliberately incompatible local contract/reference case. Actual-producer transition/conformance remains explicitly unverified until a compatible Kernel endpoint exists.
+
+These are **Portal delivery requirements of ANY-664**, with real producer and production enablement tracked separately. No local demonstration authorizes real sales, payments or paid execution.
