@@ -1,0 +1,1 @@
+{"code":200,"response":[{"tariff_id":701,"archive":0,"assigned":1,"currency_id":77,"balance_blocks":1,"block_to_close_days":30,"dynamic_rent":0,"dynamic_rent_unblock_type":0,"name":"SIMULATED fixed offer","link":"","outer_id":"simulated-offer","payment_type":0,"float_period":1,"assign_unavailable":0,"client_unavailable":0,"proportional_rent":0,"demo_period_length":0}]}

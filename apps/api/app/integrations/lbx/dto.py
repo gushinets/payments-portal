@@ -1,0 +1,157 @@
+"""Selected GET schemas from LBX Swagger 1.0.11, not Portal HTTP contracts.
+
+Only identities/envelopes must be present at this transport boundary. Optional
+commercial fields preserve absence as None; the Step 4 normalizer must refuse
+incomplete evidence rather than interpreting None as zero/false/approval.
+"""
+
+from __future__ import annotations
+
+import re
+from datetime import date
+from decimal import Decimal
+from typing import Annotated, Any, Generic, TypeVar
+
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, SecretStr, field_validator
+
+
+Identity = Annotated[int, Field(gt=0)]
+NonnegativeInteger = Annotated[int, Field(ge=0)]
+
+
+def _exact_number(value: Any) -> Decimal:
+    # json.loads(parse_float=Decimal) is the ONLY numeric entry point. Strings,
+    # bools and binary floats are not repaired into seemingly exact amounts.
+    if type(value) is int:
+        return Decimal(value)
+    if isinstance(value, Decimal) and value.is_finite():
+        return value
+    raise ValueError("expected a finite JSON number")
+
+
+def _calendar_date(value: Any) -> date:
+    if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        raise ValueError("expected an ISO calendar date")
+    return date.fromisoformat(value)
+
+
+ExactNumber = Annotated[Decimal, BeforeValidator(_exact_number)]
+CalendarDate = Annotated[date, BeforeValidator(_calendar_date)]
+
+
+class LbxDto(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid", frozen=True, hide_input_in_errors=True)
+
+
+T = TypeVar("T")
+
+
+class LbxEnvelope(LbxDto, Generic[T]):
+    code: Annotated[int, Field(ge=200, le=200)]
+    response: T
+
+
+class LbxSession(LbxDto):
+    token: SecretStr
+    expires_in: Annotated[int, Field(gt=0)]
+
+    @field_validator("token", mode="before")
+    @classmethod
+    def require_bearer_token(cls, value: Any) -> str:
+        if not isinstance(value, str) or not value or any(not 33 <= ord(char) <= 126 for char in value):
+            raise ValueError("expected a nonempty printable session token without whitespace")
+        return value
+
+
+class LbxAdditionalField(LbxDto):
+    description: str | None = None
+    name: str | None = None
+    element_value: str | None = None
+    list_element_id: Identity | None = None
+
+
+class LbxTariff(LbxDto):
+    tariff_id: Identity
+    archive: int | None = None
+    assigned: int | None = None
+    currency_id: Identity | None = None
+    balance_blocks: int | None = None
+    block_to_close_days: NonnegativeInteger | None = None
+    dynamic_rent: int | None = None
+    dynamic_rent_unblock_type: int | None = None
+    name: str | None = None
+    link: str | None = None
+    outer_id: str | None = None
+    payment_type: int | None = None
+    float_period: int | None = None
+    assign_unavailable: int | None = None
+    client_unavailable: int | None = None
+    proportional_rent: int | None = None
+    demo_period_length: NonnegativeInteger | None = None
+    additional_fields: list[LbxAdditionalField] | None = None
+
+
+class LbxTariffPeriod(LbxDto):
+    tariff_period_id: Identity
+    period_id: Identity
+    hidden: bool | None = None
+    period_type: int | None = None
+    period_length: Annotated[int, Field(gt=0)] | None = None
+
+
+class LbxInlinePrice(LbxDto):
+    period_id: Identity
+    price: ExactNumber | None = None
+    bulk_price: ExactNumber | None = None
+    connection_price: ExactNumber | None = None
+    price_start_date: CalendarDate | None = None
+    bulk_include_amount: NonnegativeInteger | None = None
+
+
+class LbxDiscount(LbxDto):
+    discount_id: Identity
+    count: NonnegativeInteger | None = None
+    new_price: ExactNumber | None = None
+    new_bulk_price: ExactNumber | None = None
+    rate: ExactNumber | None = None
+
+
+class LbxPeriodDiscount(LbxDto):
+    period_id: Identity
+    discounts: list[LbxDiscount] | None = None
+
+
+class LbxTariffService(LbxDto):
+    tariff_id: Identity
+    tariff_service_id: Identity
+    bulk_service: bool | None = None
+    catalog_id: Identity | None = None
+    catalog_service_id: Identity | None = None
+    enabled_by_default: int | None = None
+    # Swagger declares INTEGER commercial service bounds, not paid allowances.
+    min_multiplicator: NonnegativeInteger | None = None
+    max_multiplicator: NonnegativeInteger | None = None
+    description: str | None = None
+    full_description: str | None = None
+    payment_object: int | None = None
+    outer_id: str | None = None
+    periodic_service: int | None = None
+    hidden_for_user: int | None = None
+    user_can_set_mul: int | None = None
+    user_available: int | None = None
+    archive: int | None = None
+    prices: list[LbxInlinePrice] | None = None
+    discounts: list[LbxPeriodDiscount] | None = None
+
+
+class LbxServicePrice(LbxDto):
+    price_id: Identity
+    period_id: Identity
+    start_date: CalendarDate | None = None
+    connection_price: ExactNumber | None = None
+    bulk_price: ExactNumber | None = None
+    price: ExactNumber | None = None
+    bulk_include_amount: NonnegativeInteger | None = None
+    period_type: int | None = None
+    period_length: Annotated[int, Field(gt=0)] | None = None
+    next_change_date: CalendarDate | None = None
