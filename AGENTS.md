@@ -21,6 +21,7 @@ document that applies to the current task.
      — the accepted commercial boundary and implementation baseline;
   3. [Portal ↔ Kernel Access Contract Design](docs/superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md)
      — the accepted paid-access and quota wire-contract baseline.
+  4. [Live-source commercial admission amendment](docs/superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md) — **proposed** narrow replacement for source-catalog mirroring/new-sale TTL after approval; existing subscription trust and AccessSnapshot unchanged.
 - [docs/PRODUCT.md](docs/PRODUCT.md) — current product scope.
 - [docs/architecture/contours.md](docs/architecture/contours.md) — contour
   isolation and country membership.

@@ -40,9 +40,14 @@ Start with the smallest document that matches the task.
 1. [ADR 0005: External billing boundary](architecture/decisions/0005-external-billing-boundary.md)
 2. [External Billing Boundary Design](superpowers/specs/2026-09-15-external-billing-boundary-design.md)
 3. [Portal ↔ Kernel Access Contract Design](superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md)
+4. [Proposed live-source commercial admission amendment](superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md) — PR #138; narrow supersession upon approval, paid trust unchanged.
 
 ### Implementation handoffs and references
 
+- [Provisional Kernel Capability Manifest v1](contracts/kernel-capability-manifest/v1/README.md)
+  — ANY-664 specification-derived schema, independent SIMULATED fixtures,
+  standalone development HTTP mock and human verification commands; actual
+  Kernel producer conformance remains a future enablement gate
 - [Portal identity, session, and legal baseline](architecture/portal-identity-session-legal-baseline.md)
   — as-built `ANY-504` Step 3 retained-schema contract and exact Step 4 handoff
 - [External Billing Persistence Reset](architecture/external-billing-persistence-reset.md)
