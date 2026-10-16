@@ -3,10 +3,10 @@ from __future__ import annotations
 from enum import StrEnum
 from pathlib import Path
 from typing import Annotated, Any
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 from dotenv import load_dotenv
-from pydantic import StringConstraints, ValidationInfo, field_validator, model_validator
+from pydantic import Field, SecretStr, StringConstraints, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from app.core.url_validation import (
@@ -70,6 +70,18 @@ class Settings(BaseSettings):
     smtp_use_tls: bool = True
     sentry_dsn: Annotated[str, StringConstraints(strip_whitespace=True)] = ""
     sentry_release: Annotated[str, StringConstraints(strip_whitespace=True)] = ""
+    kernel_base_url: str = ""
+    kernel_service_token: SecretStr = SecretStr("")
+    # Application policy, in seconds/bytes/operations; not a source-provider SLA.
+    preflight_total_timeout_seconds: float = Field(default=10.0, gt=0, le=120, allow_inf_nan=False)
+    preflight_cleanup_timeout_seconds: float = Field(default=0.25, gt=0, le=5, allow_inf_nan=False)
+    preflight_max_active: int = Field(default=8, ge=1, le=128)
+    preflight_max_waiting: int = Field(default=8, ge=0, le=128)
+    kernel_connect_timeout_seconds: float = Field(default=1.0, gt=0, le=30, allow_inf_nan=False)
+    kernel_read_timeout_seconds: float = Field(default=2.0, gt=0, le=30, allow_inf_nan=False)
+    kernel_max_response_bytes: int = Field(default=262144, ge=1024, le=1048576)
+    kernel_max_retries: int = Field(default=1, ge=0, le=2)
+    kernel_retry_delay_seconds: float = Field(default=0.1, ge=0, le=5, allow_inf_nan=False)
 
     @field_validator("smtp_use_tls", mode="before")
     @classmethod
@@ -152,6 +164,41 @@ class Settings(BaseSettings):
     def require_sentry_release_when_enabled(self) -> Settings:
         if self.sentry_dsn and not self.sentry_release:
             raise ValueError("SENTRY_RELEASE is required when SENTRY_DSN is configured")
+        return self
+
+    @model_validator(mode="after")
+    def require_safe_kernel_configuration(self) -> Settings:
+        if self.preflight_cleanup_timeout_seconds >= self.preflight_total_timeout_seconds:
+            raise ValueError("preflight cleanup reserve must be shorter than the total timeout")
+        token = self.kernel_service_token.get_secret_value()
+        if not self.kernel_base_url and not token:
+            return self
+        if not self.kernel_base_url or not token:
+            raise ValueError("KERNEL_BASE_URL and KERNEL_SERVICE_TOKEN must be configured together")
+        try:
+            parsed = urlsplit(self.kernel_base_url)
+            port = parsed.port
+        except ValueError:
+            raise ValueError("KERNEL_BASE_URL must be an HTTP(S) origin") from None
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.path not in {"", "/"}
+            or parsed.query
+            or parsed.fragment
+            or any(char.isspace() or ord(char) < 33 for char in self.kernel_base_url)
+            or port == 0
+        ):
+            raise ValueError("KERNEL_BASE_URL must be an HTTP(S) origin without credentials or query")
+        if not token.isascii() or any(not 33 <= ord(char) <= 126 for char in token):
+            raise ValueError("KERNEL_SERVICE_TOKEN must be a nonempty printable service token without whitespace")
+        if self.app_env == AppEnv.PRODUCTION:
+            validate_production_public_url(self.kernel_base_url, "KERNEL_BASE_URL")
+            raise ValueError(
+                "provisional Kernel sources require development/test; real producer conformance is deferred"
+            )
         return self
 
 

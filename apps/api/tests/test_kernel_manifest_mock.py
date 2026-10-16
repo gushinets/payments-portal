@@ -352,7 +352,9 @@ def test_swagger_is_read_only_metadata_and_does_not_relax_manifest_restrictions(
     assert "swagger-ui-dist@5.32.15/swagger-ui.css" in response.text
 
 
-@pytest.mark.parametrize("scenario", [Scenario.UNAUTHORIZED, Scenario.UNAVAILABLE, Scenario.TIMEOUT, Scenario.MALFORMED_JSON])
+@pytest.mark.parametrize(
+    "scenario", [Scenario.UNAUTHORIZED, Scenario.UNAVAILABLE, Scenario.TIMEOUT, Scenario.MALFORMED_JSON]
+)
 def test_documentation_stays_available_during_manifest_faults(scenario: Scenario) -> None:
     with _running_mock(scenario) as client:
         client.headers.pop("Authorization")
@@ -390,7 +392,10 @@ def test_documentation_responds_while_manifest_request_is_still_delayed(monkeypa
             try:
                 assert manifest_waiting.wait(timeout=2), "Manifest handler did not enter its delay"
                 assert not pending_manifest.done()
-                for path, content_type in (("/docs", "text/html; charset=utf-8"), ("/openapi.json", "application/json")):
+                for path, content_type in (
+                    ("/docs", "text/html; charset=utf-8"),
+                    ("/openapi.json", "application/json"),
+                ):
                     response = client.get(path, timeout=1)
                     assert response.status_code == 200
                     assert response.headers["content-type"] == content_type
