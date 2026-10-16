@@ -82,6 +82,17 @@ class Settings(BaseSettings):
     kernel_max_response_bytes: int = Field(default=262144, ge=1024, le=1048576)
     kernel_max_retries: int = Field(default=1, ge=0, le=2)
     kernel_retry_delay_seconds: float = Field(default=0.1, ge=0, le=5, allow_inf_nan=False)
+    lbx_base_url: str = ""
+    lbx_external_billing_account_id: str = ""
+    lbx_server_username: SecretStr = SecretStr("")
+    lbx_server_password: SecretStr = SecretStr("")
+    lbx_connect_timeout_seconds: float = Field(default=1.0, gt=0, le=30, allow_inf_nan=False)
+    lbx_read_timeout_seconds: float = Field(default=2.0, gt=0, le=30, allow_inf_nan=False)
+    lbx_max_response_bytes: int = Field(default=524288, ge=1024, le=1048576)
+    # Total HTTP exchanges per logical read, INCLUDING auth and one reauth.
+    lbx_max_get_attempts: int = Field(default=5, ge=1, le=8)
+    lbx_retry_delay_seconds: float = Field(default=0.1, ge=0, le=5, allow_inf_nan=False)
+    lbx_max_retry_delay_seconds: float = Field(default=2.0, ge=0, le=5, allow_inf_nan=False)
 
     @field_validator("smtp_use_tls", mode="before")
     @classmethod
@@ -199,6 +210,44 @@ class Settings(BaseSettings):
             raise ValueError(
                 "provisional Kernel sources require development/test; real producer conformance is deferred"
             )
+        return self
+
+    @model_validator(mode="after")
+    def require_safe_lbx_configuration(self) -> Settings:
+        username = self.lbx_server_username.get_secret_value()
+        password = self.lbx_server_password.get_secret_value()
+        configured = (self.lbx_base_url, self.lbx_external_billing_account_id, username, password)
+        if not any(configured):
+            return self
+        if not all(configured):
+            raise ValueError("LBX origin, billing account and server credentials must be configured together")
+        try:
+            parsed = urlsplit(self.lbx_base_url)
+            port = parsed.port
+        except ValueError:
+            raise ValueError("LBX_BASE_URL must be an HTTP(S) origin") from None
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.path not in {"", "/"}
+            or parsed.query
+            or parsed.fragment
+            or any(char.isspace() or ord(char) < 33 for char in self.lbx_base_url)
+            or port == 0
+        ):
+            raise ValueError("LBX_BASE_URL must be an HTTP(S) origin without credentials or query")
+        if (
+            not self.lbx_external_billing_account_id.strip()
+            or self.lbx_external_billing_account_id != self.lbx_external_billing_account_id.strip()
+            or any(ord(char) < 33 or ord(char) == 127 for char in self.lbx_external_billing_account_id)
+            or ":" in username
+            or any(ord(char) < 32 or ord(char) == 127 for char in username + password)
+        ):
+            raise ValueError("LBX account and server credentials have invalid syntax")
+        if self.app_env == AppEnv.PRODUCTION:
+            validate_production_public_url(self.lbx_base_url, "LBX_BASE_URL")
         return self
 
 
