@@ -44,6 +44,10 @@ Start with the smallest document that matches the task.
 
 ### Implementation handoffs and references
 
+- [Provisional Kernel Capability Manifest v1](contracts/kernel-capability-manifest/v1/README.md)
+  — ANY-664 specification-derived schema, independent SIMULATED fixtures,
+  standalone development HTTP mock and human verification commands; actual
+  Kernel producer conformance remains a future enablement gate
 - [Portal identity, session, and legal baseline](architecture/portal-identity-session-legal-baseline.md)
   — as-built `ANY-504` Step 3 retained-schema contract and exact Step 4 handoff
 - [External Billing Persistence Reset](architecture/external-billing-persistence-reset.md)

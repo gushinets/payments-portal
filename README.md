@@ -298,7 +298,9 @@ repository. No direct-provider runtime exists in this repository.
   pre-production.
 - Contour confirmation via Region Resolver is planned and not implemented.
 - The accepted Portal-Kernel capability, access-snapshot, and invalidation
-  contracts are target architecture and are not implemented yet.
+  contracts remain target architecture. ANY-664 adds a
+  [provisional manifest contract and standalone development mock](docs/contracts/kernel-capability-manifest/v1/README.md);
+  real Kernel producer delivery and conformance remain future enablement gates.
 - Purchase/Widget, billing state, paid-access state, and usage/quota remain
   unavailable until their owning external-billing/Kernel integration steps;
   provider-dependent work remains subject to Phase 0 gates.
