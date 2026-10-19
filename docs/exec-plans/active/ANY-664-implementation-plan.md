@@ -1,6 +1,6 @@
 # ANY-664 - Portal integration, specification-based Kernel mock and approved offer catalog
 
-**Status:** PORTAL-ONLY CORRECTED EXPANDED IMPLEMENTATION PLAN, 2026-10-16. Step 1 is **DONE by owner acceptance** in the implementation style already supplied and reviewed; do not reimplement it. Steps 2-8 are `todo`. This plan revision records no new test runs, runtime verification, commits or real Kernel conformance.
+**Status:** PORTAL-ONLY CORRECTED EXPANDED IMPLEMENTATION PLAN, 2026-10-16. Step 1 is **DONE by owner acceptance** in the implementation style already supplied and reviewed; do not reimplement it. Step 5 is implemented in `9cb7e340`, with its final selected-offer identity correction pending owner commit/push; other step statuses are not reassessed by this correction. This plan revision records no new test runs, runtime verification, commits or real Kernel conformance.
 **Program:** ANY-504, program Step 6. **Ticket:** ANY-664.
 **Execution repository:** `gushinets/payments-portal` for **all eight implementation steps**. `gushinets/anytoolai-platform` is a **read-only source**, never an implementation target of this ticket.
 **Owner decision:** implement the Portal side against the documented Kernel API using a separate local HTTP mock. The real Kernel API delivery date is unknown. Its implementation, deployment, paid metric registry, regional configuration and server-side authorization are **not prerequisites for implementing or completing this Portal ticket**.
@@ -338,7 +338,7 @@ Implement only complete selected-offer reads and normalization using the real St
 
 ### Step 5 - Privileged publication, immutable mappings and explicit evidence mode
 
-**Status:** `todo`. Implement restricted audited operator CLI/command with dry-run/publish/query, not a new public RBAC/admin portal. Every publication makes fresh configured Kernel HTTP and LBX selected-offer reads through Steps 2 and 4 under one budget. Check selected enabled product/metric ownership, supported fixed prepaid profile, independently specified positive integer allowance, exact source money/period/policy and approved versioned commercial/legal terms.
+**Status:** `implemented` in `9cb7e340`; final PR #139 review correction (selected-offer identity) is implemented locally, pending owner commit/push. This correction runs only affected-Python formatting/lint; its tests remain unrun. The restricted audited operator CLI/command supports dry-run/publish/query, not a new public RBAC/admin portal. Every publication makes fresh configured Kernel HTTP and LBX selected-offer reads through Steps 2 and 4 under one budget. Check selected enabled product/metric ownership, supported fixed prepaid profile, independently specified positive integer allowance, exact source money/period/policy and approved versioned commercial/legal terms.
 
 Use the same evaluator/transaction path locally and later with real sources. **While Kernel is mocked, a positive result is only local simulated publication**. Permit that only in development/test and label all evidence accordingly, even when LBX itself is real. Missing real metric/release/auth/approval inputs do not prevent this explicitly simulated exercise; they prevent real approval. Do not introduce a second fake business algorithm.
 
@@ -378,6 +378,8 @@ An explicitly privileged operator can inspect saved revisions without source ava
 | `publish` | Same validated input plus expected previous revision | Fresh Kernel + selected LBX again, even after successful dry-run | One short immutable insert, repeat-safe existing row, or deterministic refusal/conflict |
 
 **Step 5 positive handoff:** configure an authorized local OS principal and explicitly simulated source/approval inputs; use the real clients, Step 4 normalizer, same evaluator and real PostgreSQL transaction to produce one queryable SIMULATED revision. No real Kernel delivery is required for this local path. An always-deny operator gate or a hand-inserted fixture row is not the required positive result.
+
+**Final review correction — selected-offer identity:** Step 5 derives `billing_offer_id` as `selected-offer:v1:<tariff_id>:<tariff_service_id>:<period_id>`, escaping each source reference independently. The existing Step 4 `references.offer/component/period` remain the original tariff/service/period IDs; normalized terms and evidence semantics do not change. Publication, account/offer advisory lock, revision lookup, stored-document validation and CLI query use the full identifier. Separate services/periods start independent revision-1 histories; exact retries do not add revisions. The key is derived outside serialized approved material, preserving existing approval hashes. No schema migration, historical rewrite, tariff-only lookup fallback, seller/tax validation or later-step scope is introduced. A focused PostgreSQL regression covers two services of one tariff, independent initial publication/query and repeat safety; the owner runs it after this correction.
 
 #### Boundaries and reviewer observation
 
@@ -569,7 +571,9 @@ Live-source production design canonicalization: <state/evidence>
 Implementation Step 1: DONE (owner accepted 2026-10-16; implementation preserved)
 Step 1 static review: PASS recorded in this conversation
 Step 1 human/runtime verification evidence: NOT_REPORTED_IN_THIS_PLAN (no new run claimed)
-Implementation Steps 2..8: todo (separate review and human verification per step)
+Implementation Step 5: IMPLEMENTED at 9cb7e340; composite offer identity correction pending owner commit/push
+Step 5 identity correction test/runtime evidence: NOT_RUN; formatting/lint only
+Other implementation steps: statuses remain owned by their separate handoffs
 Kernel code changes/builds/tests by this ticket: NONE
 Read-only Kernel source pin: 079eb03e28d7a50b980795c63c3e4533b785d11f
 Spec/schema/fixture pins and provisional auth/digest: <...>
@@ -590,7 +594,7 @@ Open real-enablement/launch gates G1-G5 and owners: <...>
 Program Step 7 handoff approval: <...>
 ```
 
-**Plan status:** PORTAL-ONLY / STEP 1 DONE BY OWNER ACCEPTANCE / STEPS 2-8 TODO. This corrected planning artifact changes neither the accepted Step 1 code nor the real-enablement gates, and claims no new runtime tests, migrations, generation, commits or real Kernel conformance.
+**Plan status:** PORTAL-ONLY / STEP 1 DONE BY OWNER ACCEPTANCE / STEP 5 IMPLEMENTED (final identity correction pending owner commit/push). Other step statuses are outside this correction. This corrected planning artifact changes neither the accepted Step 1 code nor the real-enablement gates, and claims no new runtime tests, migrations, generation, commits or real Kernel conformance.
 
 ## Source links
 
