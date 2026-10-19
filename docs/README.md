@@ -48,6 +48,9 @@ Start with the smallest document that matches the task.
   — ANY-664 specification-derived schema, independent SIMULATED fixtures,
   standalone development HTTP mock and human verification commands; actual
   Kernel producer conformance remains a future enablement gate
+- [ANY-664 Step 8 conformance and reference handoff](contracts/kernel-capability-manifest/v1/step-8-handoff.md)
+  — local checker, independent daily source-reference watch, separate evidence
+  statuses and real producer delivery acceptance; verification pending
 - [Portal identity, session, and legal baseline](architecture/portal-identity-session-legal-baseline.md)
   — as-built `ANY-504` Step 3 retained-schema contract and exact Step 4 handoff
 - [External Billing Persistence Reset](architecture/external-billing-persistence-reset.md)

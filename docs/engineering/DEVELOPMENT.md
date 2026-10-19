@@ -193,6 +193,17 @@ The later Portal walkthrough must demonstrate the real UI/backend with the optio
 
 These are **Portal delivery requirements of ANY-664**, with real producer and production enablement tracked separately. No local demonstration authorizes real sales, payments or paid execution.
 
+## Step 8 conformance and independent reference watch
+
+The [Step 8 handoff](../contracts/kernel-capability-manifest/v1/step-8-handoff.md)
+records the local HTTP/spec/client checker, exact positive/negative manual
+commands, separate upstream documentation/identity watch and future real
+producer acceptance. Source implementation is present; verification is pending.
+The daily default-branch schedule remains **NOT_YET_OPERATIONAL** until an
+actual scheduled run is recorded. Local and source checks remain **NOT_RUN**;
+real Kernel conformance remains **DEFERRED_NOT_IMPLEMENTED**. The existing mock,
+client and Compose walkthrough are retained unchanged.
+
 ## Step 6 stored catalog acceptance
 
 The public catalog reads only immutable published revisions from the configured

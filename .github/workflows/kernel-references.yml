@@ -1,0 +1,85 @@
+name: Kernel source references
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/ci.yml
+      - .github/workflows/kernel-references.yml
+      - scripts/check_kernel_manifest_contract.py
+      - scripts/check_kernel_references.py
+      - tools/kernel_manifest_mock/**
+      - docs/contracts/kernel-capability-manifest/**
+      - docs/superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md
+      - docs/engineering/DEVELOPMENT.md
+      - apps/api/app/integrations/kernel/**
+      - apps/api/app/domains/catalog/admission.py
+      - apps/api/app/domains/catalog/contracts.py
+      - apps/api/app/composition/sources.py
+      - apps/api/app/core/settings.py
+      - apps/api/app/infrastructure/preflight.py
+      - apps/api/tests/test_kernel*.py
+      - apps/api/tests/support/kernel*.py
+      - apps/api/pyproject.toml
+      - apps/api/uv.lock
+      - docker-compose.kernel-mock.dev.yml
+  schedule:
+    - cron: "43 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kernel-references-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  references:
+    name: Documentation and identity references (not producer conformance)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      UV_PROJECT_ENVIRONMENT: ${{ github.workspace }}/.venv
+      UV_PYTHON_DOWNLOADS: "never"
+    steps:
+      - name: Check out Portal
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.7"
+          enable-cache: true
+          cache-dependency-glob: apps/api/uv.lock
+      - name: Install locked API runtime dependencies
+        run: uv sync --directory apps/api --locked --no-dev --python 3.12
+      - name: Compare pinned spec and selected identity sources
+        shell: bash
+        env:
+          KERNEL_REFERENCE_GITHUB_TOKEN: ${{ secrets.KERNEL_REFERENCE_GITHUB_TOKEN }}
+        run: |
+          set -o pipefail
+          ./.venv/bin/python scripts/check_kernel_references.py | tee kernel-reference-report.json
+      - name: Publish separate reference result
+        if: always()
+        shell: bash
+        run: |
+          if [ -f kernel-reference-report.json ]; then
+            echo 'Documentation/identity reference check only. Schedule operation requires separate default-branch run evidence.' >> "$GITHUB_STEP_SUMMARY"
+            echo '```json' >> "$GITHUB_STEP_SUMMARY"
+            cat kernel-reference-report.json >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Retain reference report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: kernel-reference-${{ github.run_id }}-${{ github.run_attempt }}
+          path: kernel-reference-report.json
+          if-no-files-found: warn
+          retention-days: 7
