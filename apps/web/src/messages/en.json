@@ -145,7 +145,7 @@
     },
     "products": {
       "title": "Products",
-      "description": "Explore each product’s details and status.",
+      "description": "Published products and their saved terms. Subscription, access and usage information will be available later.",
       "detailAction": "View product details",
       "state": {
         "commercial": {
@@ -236,17 +236,17 @@
     "settingsAction": "Settings"
   },
   "Home": {
-    "eyebrow": "Chrome extensions",
+    "eyebrow": "AI tools",
     "hero": {
       "heading": "AI tools for <em>everyday work</em>",
-      "description": "Summarize documents and improve prompts. Choose a tool for your task and learn how it works.",
+      "description": "Explore published AI tools and their saved terms. Choose a tool for your task.",
       "primaryAction": "Open account",
       "secondaryAction": "Explore tools"
     },
     "products": {
       "eyebrow": "Collection",
       "title": "AI utilities",
-      "description": "Tools for working with documents and prompts, collected in one place.",
+      "description": "Published AI tools and their terms in one place.",
       "action": "View all tools"
     }
   },

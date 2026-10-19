@@ -24,7 +24,9 @@ def test_opt_in_uses_same_worktree_project_and_adds_only_its_own_port(monkeypatc
     monkeypatch.setenv("APP_ENV", "development")
     monkeypatch.setenv("KERNEL_MOCK_ENABLED", "1")
     assert repo.compose_command(configuration) == [
-        *ordinary, "-f", str(repo.ROOT / "docker-compose.kernel-mock.dev.yml")
+        *ordinary,
+        "-f",
+        str(repo.ROOT / "docker-compose.kernel-mock.dev.yml"),
     ]
     assert tuple(repo.runtime_ports(configuration)) == (*ports, configuration.kernel_mock_port)
     assert configuration.kernel_mock_port not in ports
@@ -75,9 +77,7 @@ def test_opt_in_injects_container_source_settings_without_printing_secrets(
 )
 def test_production_deployment_refuses_mock_inputs(selection: dict[str, str]) -> None:
     with pytest.raises(repo.HarnessError, match="Kernel mock"):
-        repo.validate_production_deployment_environment(
-            environ={"CADDY_DOMAIN": "portal.example.com", **selection}
-        )
+        repo.validate_production_deployment_environment(environ={"CADDY_DOMAIN": "portal.example.com", **selection})
 
 
 @pytest.mark.parametrize("url", ["http://kernel-mock:8091", "https://kernel-mock.example.com"])
@@ -105,11 +105,13 @@ def test_walkthrough_guard_precedes_any_source_or_db(
     monkeypatch: pytest.MonkeyPatch, changes: dict[str, object], code: str
 ) -> None:
     monkeypatch.setattr(os, "geteuid", lambda: SIMULATED_UID, raising=False)
-    configuration = operator_settings(**{
-        "app_env": AppEnv.DEVELOPMENT,
-        "postgres_db": "payments_12345678",
-        "database_url": "postgresql+psycopg://unused@localhost/payments_12345678",
-        **changes,
-    })
+    configuration = operator_settings(
+        **{
+            "app_env": AppEnv.DEVELOPMENT,
+            "postgres_db": "payments_12345678",
+            "database_url": "postgresql+psycopg://unused@localhost/payments_12345678",
+            **changes,
+        }
+    )
     with pytest.raises(AppError, match=code):
         require_development_operator(configuration)

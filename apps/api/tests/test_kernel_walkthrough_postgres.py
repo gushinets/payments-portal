@@ -88,9 +88,7 @@ def test_fresh_http_publication_faults_outage_restart_and_recovery(
     app.dependency_overrides[get_db] = db
     proposal = tmp_path / "proposal.json"
     dry = cli.parser().parse_args(["dry-run", "--proposal", str(proposal)])
-    publish = cli.parser().parse_args([
-        "publish", "--proposal", str(proposal), "--expected-previous-revision", "0"
-    ])
+    publish = cli.parser().parse_args(["publish", "--proposal", str(proposal), "--expected-previous-revision", "0"])
     query = cli.parser().parse_args(["query", "--offer-id", SIMULATED_OFFER_ID])
     server = ManifestMockServer(("127.0.0.1", 0), MockConfig(app_env="test", token=TOKEN))
     with serve(server) as origin:
@@ -124,9 +122,9 @@ def test_fresh_http_publication_faults_outage_restart_and_recovery(
             server.config = MockConfig(app_env="test", token=TOKEN, scenario=Scenario.TIMEOUT, delay_seconds=0.2)
 
             async def slow_saturation() -> None:
-                bounded = Settings(**{
-                    **configuration.model_dump(), "preflight_max_active": 1, "preflight_max_waiting": 0
-                })
+                bounded = Settings(
+                    **{**configuration.model_dump(), "preflight_max_active": 1, "preflight_max_waiting": 0}
+                )
                 async with source_resources(bounded) as sources:
                     async with sources.preflight.operation() as budget:
                         pending = asyncio.create_task(sources.require_kernel().fetch_manifest(budget=budget))
@@ -186,16 +184,16 @@ def test_independent_http_target_switch_changes_only_url_and_credentials(
             pass
 
     monkeypatch.setattr(database, "SessionLocal", postgres_session_factory)
-    args = cli.parser().parse_args([
-        "publish", "--proposal", str(tmp_path / "proposal.json"), "--expected-previous-revision", "0"
-    ])
+    args = cli.parser().parse_args(
+        ["publish", "--proposal", str(tmp_path / "proposal.json"), "--expected-previous-revision", "0"]
+    )
     with serve(ManifestMockServer(("127.0.0.1", 0), MockConfig(app_env="test", token=TOKEN))) as origin:
         original = Settings(**{**operator.model_dump(), "kernel_base_url": origin})
         first = json.loads(walkthrough.execute(args, original))
     with serve(ThreadingHTTPServer(("127.0.0.1", 0), LiteralTarget)) as target:
-        switched = Settings(**{
-            **original.model_dump(), "kernel_base_url": target, "kernel_service_token": target_token
-        })
+        switched = Settings(
+            **{**original.model_dump(), "kernel_base_url": target, "kernel_service_token": target_token}
+        )
         second = json.loads(walkthrough.execute(args, switched))
     assert second["mapping_revision_id"] == first["mapping_revision_id"]
     assert second["stored_document"]["evidence_mode"] == second["evaluation"]["evidence_mode"] == "SIMULATED"
@@ -220,9 +218,12 @@ def test_independent_http_target_switch_changes_only_url_and_credentials(
         app_env=AppEnv.PRODUCTION,
         app_public_base_url="https://portal.example.com",
         cors_allow_origins=("https://portal.example.com",),
-        kernel_base_url="", kernel_service_token="",
-        lbx_base_url="", lbx_external_billing_account_id="",
-        lbx_server_username="", lbx_server_password="",
+        kernel_base_url="",
+        kernel_service_token="",
+        lbx_base_url="",
+        lbx_external_billing_account_id="",
+        lbx_server_username="",
+        lbx_server_password="",
     )
     monkeypatch.setattr(catalog_http, "settings", production)
     with TestClient(app) as client:

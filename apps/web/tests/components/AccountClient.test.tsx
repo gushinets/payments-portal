@@ -11,9 +11,11 @@ import {
   sessionStorageKey
 } from "@/shared/api/auth";
 import { HeaderAccount } from "@/shared/ui/HeaderAccount";
+import { simulatedProduct } from "../fixtures/catalog";
 import { renderWithIntl } from "../setup/render-with-intl";
 
 const fetchMock = vi.fn<typeof fetch>();
+const catalogFetchMock = vi.fn<typeof fetch>();
 
 function jsonResponse(payload: unknown, status = 200): Response {
   return new Response(JSON.stringify(payload), {
@@ -54,7 +56,7 @@ function renderAccountClient(locale: "ru" | "pt" = "ru", withHeader = false) {
       messages: {
         Auth: messages.Auth,
         Account: messages.Account,
-        Catalog: messages.Catalog,
+        CatalogPreview: messages.CatalogPreview,
         EmailVerification: messages.EmailVerification
       }
     }
@@ -65,7 +67,9 @@ describe("direct account authentication and session", () => {
   beforeEach(() => {
     window.localStorage.clear();
     fetchMock.mockReset();
-    vi.stubGlobal("fetch", fetchMock);
+    catalogFetchMock.mockReset().mockImplementation(async () => jsonResponse({ products: [simulatedProduct] }));
+    vi.stubGlobal("fetch", ((input, init) => String(input).endsWith("/api/catalog/products")
+      ? catalogFetchMock(input, init) : fetchMock(input, init)) satisfies typeof fetch);
   });
 
   afterEach(() => {
@@ -97,6 +101,7 @@ describe("direct account authentication and session", () => {
       screen.queryByRole("region", { name: ruMessages.Account.products.title })
     ).not.toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
+    expect(catalogFetchMock).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -105,7 +110,7 @@ describe("direct account authentication and session", () => {
     ["pt", true],
     ["pt", false]
   ] as const)(
-    "shows compact identity and honest per-product states in %s (email verified: %s)",
+    "shows compact identity and published products without account product statuses in %s (email verified: %s)",
     async (locale, emailVerified) => {
       const messages = locale === "pt" ? ptMessages : ruMessages;
       window.localStorage.setItem(sessionStorageKey, "session-token");
@@ -143,37 +148,18 @@ describe("direct account authentication and session", () => {
       const products = screen.getByRole("region", {
         name: messages.Account.products.title
       });
-      expect(screen.getAllByRole("article")).toHaveLength(2);
-      expect(within(products).getAllByRole("link")).toHaveLength(2);
-
-      for (const [slug, messageKey] of [
-        ["document-summary", "documentSummary"],
-        ["prompt-optimizer", "promptOptimizer"]
-      ] as const) {
-        const product = messages.Catalog.products[messageKey];
-        const panel = within(products).getByRole("article", {
-          name: product.name
-        });
-        expect(within(panel).getByText(product.type)).toBeVisible();
-        expect(within(panel).getByText(product.tagline)).toBeVisible();
-        for (const slot of ["commercial", "access", "usage"] as const) {
-          const state = messages.Account.products.state[slot];
-          expect(within(panel).getByText(state.label)).toBeVisible();
-          expect(within(panel).getByText(state.description)).toBeVisible();
-        }
-        expect(
-          within(panel).getByText(messages.Account.products.action.description)
-        ).toBeVisible();
-        expect(within(panel).getAllByRole("link")).toHaveLength(1);
-        expect(
-          within(panel).getByRole("link", {
-            name: `${messages.Account.products.detailAction} ${product.name}`
-          })
-        ).toHaveAttribute("href", `/${locale}/products/${slug}`);
-        expect(within(panel).queryByRole("button")).not.toBeInTheDocument();
-        expect(within(panel).queryByRole("progressbar")).not.toBeInTheDocument();
-        expect(panel).not.toHaveTextContent(/\d|₽|€|\$/);
+      expect(await within(products).findByText("proposal_ai")).toBeVisible();
+      expect(within(products).getAllByRole("article")).toHaveLength(1);
+      expect(within(products).getByText(messages.CatalogPreview.simulated)).toBeVisible();
+      expect(within(products).getByRole("heading", { level: 3 })).toBeVisible();
+      expect(within(products).getByRole("link", { name: messages.CatalogPreview.details }))
+        .toHaveAttribute("href", `/${locale}/products/proposal_ai`);
+      for (const slot of ["commercial", "access", "usage"] as const) {
+        expect(within(products).queryByText(messages.Account.products.state[slot].label)).not.toBeInTheDocument();
       }
+      expect(within(products).queryByRole("progressbar")).not.toBeInTheDocument();
+      expect(catalogFetchMock).toHaveBeenCalledTimes(1);
+      expect(catalogFetchMock.mock.calls[0]?.[1]?.headers).not.toHaveProperty("Authorization");
       expect(screen.queryByText(accountUser.user_id)).not.toBeInTheDocument();
       expect(
         screen.getByRole("button", {

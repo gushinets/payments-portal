@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CatalogPreviewClient } from "@/features/catalog/CatalogPreviewClient";
 import { formatCatalogMoney } from "@/features/catalog/format-money";
-import { productMarketing } from "@/features/catalog/catalog";
 import en from "@/messages/en.json";
 import ru from "@/messages/ru.json";
 import fr from "@/messages/fr.json";
@@ -85,7 +84,7 @@ describe("stored catalog preview", () => {
     expect(await screen.findByText(en.CatalogPreview.simulated)).toBeVisible();
   });
 
-  it("ignores a response after unmount and never treats editorial slugs as Kernel aliases", async () => {
+  it("ignores a response after unmount", async () => {
     let complete: (response: Response) => void = () => undefined;
     fetchMock.mockReturnValueOnce(new Promise((resolve) => { complete = resolve; }));
     const view = renderWithIntl(<CatalogPreviewClient productId="proposal_ai" />, {
@@ -94,8 +93,6 @@ describe("stored catalog preview", () => {
     view.unmount();
     await act(async () => complete(Response.json(simulatedProduct)));
     expect(screen.queryByText("proposal_ai")).not.toBeInTheDocument();
-    expect(productMarketing("proposal_ai")).toBeUndefined();
-    expect(productMarketing("document-summary")).toBeUndefined();
   });
 });
 

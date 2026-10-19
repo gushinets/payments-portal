@@ -1,14 +1,9 @@
 import {
   FileText,
-  Globe,
   Languages,
-  List,
   MessageSquareQuote,
-  MousePointer2,
   ShieldCheck,
-  Sparkles,
-  SquarePen,
-  WandSparkles
+  Sparkles
 } from "lucide-react";
 
 export const supportEmail = "support@any-tool-ai.ru";
@@ -27,50 +22,6 @@ export type PaymentMethod = {
 };
 
 export const paymentMethods: PaymentMethod[] = [];
-
-export type ProductSlug = "document-summary" | "prompt-optimizer";
-
-export type ProductPresentation = {
-  // Optional, explicitly approved association. An editorial slug is not a Kernel ID.
-  kernelProductId?: string;
-  slug: ProductSlug;
-  messageKey: "documentSummary" | "promptOptimizer";
-  Icon: typeof FileText;
-  PreviewIcon: typeof FileText;
-  highlights: readonly {
-    messageKey: "focus" | "context" | "approach";
-    Icon: typeof FileText;
-  }[];
-};
-
-export const productPresentation: readonly ProductPresentation[] = [
-  {
-    slug: "document-summary",
-    messageKey: "documentSummary",
-    Icon: FileText,
-    PreviewIcon: List,
-    highlights: [
-      { messageKey: "focus", Icon: FileText },
-      { messageKey: "context", Icon: Globe },
-      { messageKey: "approach", Icon: MousePointer2 }
-    ]
-  },
-  {
-    slug: "prompt-optimizer",
-    messageKey: "promptOptimizer",
-    Icon: WandSparkles,
-    PreviewIcon: MessageSquareQuote,
-    highlights: [
-      { messageKey: "focus", Icon: SquarePen },
-      { messageKey: "context", Icon: MousePointer2 },
-      { messageKey: "approach", Icon: Sparkles }
-    ]
-  }
-];
-
-export function productMarketing(productId: string): ProductPresentation | undefined {
-  return productPresentation.find((product) => product.kernelProductId === productId);
-}
 
 export const catalogRegion = "RU";
 export const legalDocumentLanguage = "RU";

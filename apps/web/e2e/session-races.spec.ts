@@ -1,6 +1,10 @@
 import { expect, test } from "@playwright/test";
 import ruMessages from "../src/messages/ru.json";
 
+test.beforeEach(async ({ context }) => {
+  await context.route("**/api/catalog/products", (route) => route.fulfill({ json: { products: [] } }));
+});
+
 const key = "anytoolai_session_token_v1";
 const user = (email: string) => ({ tenant_id: "anytoolai", region: "ru", user_id: "11111111-1111-4111-8111-111111111111", email, email_verified: true });
 

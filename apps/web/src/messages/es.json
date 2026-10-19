@@ -145,7 +145,7 @@
     },
     "products": {
       "title": "Productos",
-      "description": "Consulta los detalles y el estado de cada producto.",
+      "description": "Productos publicados y sus condiciones guardadas. La información sobre suscripciones, acceso y uso estará disponible más adelante.",
       "detailAction": "Ver detalles del producto",
       "state": {
         "commercial": {
@@ -236,17 +236,17 @@
     "settingsAction": "Configuración"
   },
   "Home": {
-    "eyebrow": "Extensiones de Chrome",
+    "eyebrow": "Herramientas de IA",
     "hero": {
       "heading": "Herramientas de IA para <em>el trabajo diario</em>",
-      "description": "Resume documentos y mejora prompts. Elige una herramienta para tu tarea y conoce cómo funciona.",
+      "description": "Explora las herramientas de IA publicadas y sus condiciones guardadas. Elige una herramienta para tu tarea.",
       "primaryAction": "Abrir la cuenta",
       "secondaryAction": "Explorar herramientas"
     },
     "products": {
       "eyebrow": "Colección",
       "title": "Herramientas de IA",
-      "description": "Herramientas para trabajar con documentos y prompts, reunidas en un solo lugar.",
+      "description": "Herramientas de IA publicadas y sus condiciones en un solo lugar.",
       "action": "Todas las herramientas"
     }
   },

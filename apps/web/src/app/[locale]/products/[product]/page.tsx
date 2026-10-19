@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-import { ProductDetail, productMarketing } from "@/features/catalog";
+import { ProductDetail } from "@/features/catalog";
 import { getCurrentRouteLocale } from "@/i18n/current-locale";
 import { createLocalizedMetadata } from "@/i18n/metadata";
 
@@ -25,5 +25,5 @@ export default async function ProductDetailPage({
   params
 }: ProductPageProps) {
   const { product: productSlug } = await params;
-  return <ProductDetail productId={productSlug} product={productMarketing(productSlug)} />;
+  return <ProductDetail productId={productSlug} />;
 }
