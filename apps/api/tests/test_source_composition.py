@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import json
+from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
@@ -9,6 +11,7 @@ from pydantic import ValidationError
 
 from app.composition.sources import source_resources
 from app.domains.catalog.contracts import SourceProvenance
+from app.infrastructure.preflight import PreflightCleanupPending, PreflightClosed
 from app.integrations.kernel.client import KernelNotConfigured
 from apps.api.tests.support.kernel import TOKEN, kernel_settings, manifest_fixture
 
@@ -55,6 +58,81 @@ async def test_startup_never_requests_manifest_and_shutdown_closes_owned_transpo
         assert result.provenance is SourceProvenance.SIMULATED
         assert transport.requests == 1
     assert owner.closed
+    assert transport.closed
+
+
+async def test_shutdown_retains_client_and_slot_until_pending_http_cleanup_finishes() -> None:
+    cleanup_started = asyncio.Event()
+    allow_cleanup = asyncio.Event()
+    cleanup_finished = asyncio.Event()
+    cleanup_cancelled = asyncio.Event()
+
+    class DelayedCleanupStream(httpx.AsyncByteStream):
+        async def __aiter__(self) -> AsyncIterator[bytes]:
+            yield json.dumps(manifest_fixture()).encode("utf-8")
+
+        async def aclose(self) -> None:
+            cleanup_started.set()
+            try:
+                await allow_cleanup.wait()
+            except asyncio.CancelledError:
+                cleanup_cancelled.set()
+                raise
+            cleanup_finished.set()
+
+    class TrackingTransport(httpx.AsyncBaseTransport):
+        closed = False
+
+        async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, stream=DelayedCleanupStream(), headers={"Content-Type": "application/json"})
+
+        async def aclose(self) -> None:
+            self.closed = True
+
+    transport = TrackingTransport()
+    context = source_resources(
+        kernel_settings(
+            preflight_total_timeout_seconds=5,
+            preflight_cleanup_timeout_seconds=0.02,
+            preflight_max_active=1,
+            preflight_max_waiting=0,
+        ),
+        kernel_transport=transport,
+    )
+    sources = await context.__aenter__()
+
+    async def operation() -> None:
+        async with sources.preflight.operation() as budget:
+            await sources.require_kernel().fetch_manifest(budget=budget)
+
+    caller = asyncio.create_task(operation())
+    try:
+        await asyncio.wait_for(cleanup_started.wait(), timeout=0.5)
+        with pytest.raises(PreflightCleanupPending):
+            await asyncio.wait_for(context.__aexit__(None, None, None), timeout=0.5)
+        assert sources.preflight.closed
+        assert sources.preflight.active_count == 1
+        assert sources.preflight.waiting_count == 0
+        assert not caller.done()
+        assert not cleanup_finished.is_set() and not cleanup_cancelled.is_set()
+        assert not transport.closed
+
+        allow_cleanup.set()
+        with pytest.raises(PreflightClosed):
+            await asyncio.wait_for(caller, timeout=0.5)
+        assert cleanup_finished.is_set() and not cleanup_cancelled.is_set()
+        assert sources.preflight.active_count == sources.preflight.waiting_count == 0
+        assert not transport.closed
+    finally:
+        allow_cleanup.set()
+        if not caller.done():
+            caller.cancel()
+        await asyncio.wait({caller}, timeout=0.5)
+        if caller.done() and not caller.cancelled():
+            caller.exception()
+        # The owner can close the retained client once counted cleanup drains.
+        await sources.preflight.aclose()
+        await sources.require_kernel().aclose()
     assert transport.closed
 
 

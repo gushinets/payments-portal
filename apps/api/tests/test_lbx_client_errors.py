@@ -245,10 +245,13 @@ async def test_transport_errors_are_redacted_and_retries_are_bounded(
 
 async def test_vendor_debug_headers_urls_and_errors_do_not_enter_logs(caplog: pytest.LogCaptureFixture) -> None:
     caplog.set_level(logging.DEBUG)
+    # Use diagnostic canaries, not credentials, to exercise log suppression.
+    header_canary = "SIMULATED-vendor-header-canary"
+    error_canary = "SIMULATED-vendor-error-canary"
 
     def respond(request: httpx.Request) -> httpx.Response:
-        logging.getLogger("httpcore.http11").debug("response_headers=%r", {"Set-Cookie": PASSWORD})
-        logging.getLogger("httpcore.connection").debug("connection_error=%s", TOKEN)
+        logging.getLogger("httpcore.http11").debug("response_headers=%r", {"Set-Cookie": header_canary})
+        logging.getLogger("httpcore.connection").debug("connection_error=%s", error_canary)
         return respond_with_fixture(request)
 
     async with lbx_source(httpx.MockTransport(respond)) as (client, owner):
@@ -257,6 +260,7 @@ async def test_vendor_debug_headers_urls_and_errors_do_not_enter_logs(caplog: py
         logging.getLogger("httpx").info("outside_lbx_http_context")
     assert "outside_lbx_http_context" in caplog.text
     assert PASSWORD not in caplog.text and TOKEN not in caplog.text
+    assert header_canary not in caplog.text and error_canary not in caplog.text
     assert "lbx-client.test" not in caplog.text
 
 

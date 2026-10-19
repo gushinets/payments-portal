@@ -53,12 +53,12 @@ async def source_resources(
     try:
         yield SourceResources(admission, kernel)
     finally:
-        try:
-            await admission.aclose()
-        finally:
-            if kernel is not None:
-                try:
-                    async with asyncio.timeout(configuration.preflight_cleanup_timeout_seconds):
-                        await kernel.aclose()
-                except TimeoutError:
-                    raise PreflightCleanupPending() from None
+        # Pending source cleanup still owns this client's HTTP resources.
+        # Propagate the bounded drain failure without closing underneath it.
+        await admission.aclose()
+        if kernel is not None:
+            try:
+                async with asyncio.timeout(configuration.preflight_cleanup_timeout_seconds):
+                    await kernel.aclose()
+            except TimeoutError:
+                raise PreflightCleanupPending() from None

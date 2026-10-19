@@ -1,0 +1,11 @@
+{
+  "tenant_id": "anytoolai",
+  "region": "ru",
+  "external_billing_account_id": "simulated-ru-lbx-account",
+  "tariff_id": 701,
+  "tariff_service_id": 1001,
+  "period_id": 901,
+  "effective_on": "2026-10-16",
+  "commercial_quantity": "2",
+  "quantity_evidence": {"reference": "SIMULATED:configured-commercial-service-count", "revision": "test-1", "basis": "SIMULATED"}
+}
