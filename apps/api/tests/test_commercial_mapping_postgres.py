@@ -7,6 +7,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 import httpx
 import pytest
@@ -18,8 +19,8 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.cli import commercial_mappings as cli
 from app.composition import mapping_operator
 from app.composition.mapping_operator import FreshMappingEvaluation, fresh_mapping_evaluation
-from app.core.settings import AppEnv
-from app.domains.catalog.mapping_evidence import MappingRefused
+from app.core.settings import AppEnv, Settings
+from app.domains.catalog.mapping_evidence import MappingDocument, MappingRefused
 from app.domains.catalog.publication import (
     MappingCommitUncertain,
     MappingRevisionConflict,
@@ -45,6 +46,8 @@ from apps.api.tests.support.commercial_mappings import (
     reviewed_fixture,
 )
 from apps.api.tests.support.kernel import manifest_fixture, resign
+from apps.api.tests.support.lbx import PASSWORD, USERNAME
+from apps.api.tests.support.lbx import TOKEN as LBX_TOKEN
 from apps.api.tests.support.lbx_selected_offer import SelectedOfferRecording, simulated_inputs, simulated_selection
 
 
@@ -501,6 +504,7 @@ def test_cli_dry_run_publish_and_query_use_same_real_path(
     postgres_session_factory: sessionmaker[Session],
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     # This synchronous test owns its fixture loop separately from the CLI's
     # process event loop. No sync SQLAlchemy call is delegated by production I/O.
@@ -512,14 +516,27 @@ def test_cli_dry_run_publish_and_query_use_same_real_path(
     proposal_path.write_text(reviewed.proposal.model_dump_json(), encoding="utf-8")
     approval_path.write_text(reviewed.approval.model_dump_json(), encoding="utf-8")
     inputs_path.write_text(simulated_inputs().model_dump_json(), encoding="utf-8")
-    config = operator_settings(mapping_approval_file=approval_path, mapping_source_inputs_file=inputs_path)
+    config = operator_settings(
+        mapping_approval_file=approval_path,
+        mapping_source_inputs_file=inputs_path,
+        postgres_password="SIMULATED-db-output-canary",
+        smtp_password="SIMULATED-mail-output-canary",
+        database_url="postgresql+psycopg://SIMULATED-user:SIMULATED-url-output-canary@localhost/unused",
+    )
     original = mapping_operator.fresh_mapping_evaluation
     recording = SelectedOfferRecording()
+    # Valid but unselected provider text can contain PII. It must not become
+    # part of the normalized mapping or the operator's stdout/stderr.
+    recording.replace(
+        "tariff",
+        '"additional_fields":[]',
+        '"additional_fields":[{"name":"contact","element_value":"unselected-person@example.invalid"}]',
+    )
     kernel_requests: list[httpx.Request] = []
 
     def kernel_response(request: httpx.Request) -> httpx.Response:
         kernel_requests.append(request)
-        return httpx.Response(200, json=manifest_fixture())
+        return httpx.Response(200, json=manifest_fixture(), headers={"X-Private": "SIMULATED-header-output-canary"})
 
     async def configured_sources(*args: object, **kwargs: object) -> FreshMappingEvaluation:
         return await original(
@@ -531,36 +548,56 @@ def test_cli_dry_run_publish_and_query_use_same_real_path(
 
     monkeypatch.setattr(mapping_operator, "fresh_mapping_evaluation", configured_sources)
     monkeypatch.setattr(mapping_operator.os, "geteuid", lambda: SIMULATED_UID)
+
+    def configuration() -> Settings:
+        return config
+
+    monkeypatch.setattr(cli, "Settings", configuration)
+
+    def run_operator(argv: list[str]) -> dict[str, Any]:
+        assert cli.main(argv) == 0
+        captured = capsys.readouterr()
+        assert captured.err == ""
+        assert all(
+            marker not in captured.out
+            for marker in (
+                PASSWORD,
+                LBX_TOKEN,
+                USERNAME,
+                "simulated-kernel-client-test-token",
+                "SIMULATED-db-output-canary",
+                "SIMULATED-mail-output-canary",
+                "SIMULATED-url-output-canary",
+                "SIMULATED-header-output-canary",
+                "unselected-person@example.invalid",
+            )
+        )
+        return json.loads(captured.out)
+
     from app.core import database
 
     def forbidden_database() -> Session:
         raise AssertionError("dry-run opened a DB session")
 
     monkeypatch.setattr(database, "SessionLocal", forbidden_database)
-    dry_run = json.loads(cli.execute(cli.parser().parse_args(["dry-run", "--proposal", str(proposal_path)]), config))
+    dry_run = run_operator(["dry-run", "--proposal", str(proposal_path)])
     assert not dry_run["persisted"]
     monkeypatch.setattr(database, "SessionLocal", postgres_session_factory)
-    result = json.loads(
-        cli.execute(
-            cli.parser().parse_args(
-                [
-                    "publish",
-                    "--proposal",
-                    str(proposal_path),
-                    "--expected-previous-revision",
-                    "0",
-                ]
-            ),
-            config,
-        )
-    )
+    result = run_operator(["publish", "--proposal", str(proposal_path), "--expected-previous-revision", "0"])
     assert result["inserted"] and result["revision_number"] == 1
     assert result["stored_document"]["material_fingerprint"] == dry_run["evaluation"]["material_fingerprint"]
     assert result["operator_audit"]["execution_principal"] == f"os-euid:{SIMULATED_UID}"
     assert len(kernel_requests) == 2
     assert recording.counts == {"tariff": 4, "periods": 4, "services": 4, "prices": 4}
     assert result["billing_offer_id"] == dry_run["billing_offer_id"] == SIMULATED_OFFER_ID
-    queried = json.loads(cli.execute(cli.parser().parse_args(["query", "--offer-id", SIMULATED_OFFER_ID]), config))
+    queried = run_operator(["query", "--offer-id", SIMULATED_OFFER_ID])
     assert queried["billing_offer_id"] == SIMULATED_OFFER_ID
     assert queried["mapping_revision_id"] == result["mapping_revision_id"]
+    # No redaction/reconstruction of immutable audit evidence to appease a
+    # scanner: exact terms, scope, references, reason and principal survive.
+    assert queried["document"] == result["stored_document"]
+    document = MappingDocument.model_validate_json(json.dumps(queried["document"]))
+    assert document.reason == reviewed.proposal.reason
+    assert document.material == reviewed.approval.material
+    assert document.approvals == reviewed.approval.revisions
     assert len(kernel_requests) == 2

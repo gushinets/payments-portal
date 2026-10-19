@@ -129,6 +129,9 @@ def main(argv: list[str] | None = None) -> int:
         # A database failure remains a database failure, never a provider status.
         print('{"detail":{"code":"mapping_database_error"}}', file=sys.stderr)
         return 1
+    # Restricted operator audit JSON: billing_offer_id is a tariff/component/
+    # period key, not a credential. Protect stdout; audit text is preserved
+    # verbatim. Settings and HTTP credentials are not part of MappingDocument.
     print(output)
     return 0
 

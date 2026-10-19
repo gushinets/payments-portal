@@ -14,6 +14,7 @@ from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from threading import Thread
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -33,6 +34,9 @@ from app.infrastructure.preflight import PreflightSaturated
 from app.main import create_app
 from apps.api.tests.support import kernel_walkthrough as walkthrough
 from apps.api.tests.support.commercial_mappings import SIMULATED_OFFER_ID, SIMULATED_UID, operator_settings
+from apps.api.tests.support.lbx import PASSWORD, USERNAME
+from apps.api.tests.support.lbx import TOKEN as LBX_TOKEN
+from apps.api.tests.support.lbx_selected_offer import SelectedOfferRecording
 from tools.kernel_manifest_mock.server import ManifestMockServer, MockConfig, Scenario
 
 
@@ -77,6 +81,7 @@ def test_fresh_http_publication_faults_outage_restart_and_recovery(
     operator: Settings,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setattr(database, "SessionLocal", postgres_session_factory)
     app = create_app()
@@ -87,19 +92,66 @@ def test_fresh_http_publication_faults_outage_restart_and_recovery(
 
     app.dependency_overrides[get_db] = db
     proposal = tmp_path / "proposal.json"
-    dry = cli.parser().parse_args(["dry-run", "--proposal", str(proposal)])
     publish = cli.parser().parse_args(["publish", "--proposal", str(proposal), "--expected-previous-revision", "0"])
     query = cli.parser().parse_args(["query", "--offer-id", SIMULATED_OFFER_ID])
     server = ManifestMockServer(("127.0.0.1", 0), MockConfig(app_env="test", token=TOKEN))
+    recording = SelectedOfferRecording()
+    recording.replace(
+        "tariff",
+        '"additional_fields":[]',
+        '"additional_fields":[{"name":"contact","element_value":"walkthrough-person@example.invalid"}]',
+    )
+    monkeypatch.setattr(walkthrough, "SelectedOfferRecording", lambda: recording)
     with serve(server) as origin:
-        configuration = Settings(**{**operator.model_dump(), "kernel_base_url": origin})
+        configuration = Settings(
+            **{
+                **operator.model_dump(),
+                "kernel_base_url": origin,
+                "database_url": "postgresql+psycopg://SIMULATED-user:SIMULATED-url-canary@localhost/payments_12345678",
+                "postgres_password": "SIMULATED-db-canary",
+                "smtp_password": "SIMULATED-mail-canary",
+                "lbx_server_password": "SIMULATED-configured-lbx-canary",
+            }
+        )
+
+        def configured_settings(**values: object) -> Settings:
+            # The helper also constructs source Settings with explicit overrides.
+            return Settings(**values) if values else configuration
+
+        monkeypatch.setattr(walkthrough, "Settings", configured_settings)
+
+        def run_operator(argv: list[str]) -> dict[str, Any]:
+            assert walkthrough.main(argv) == 0
+            captured = capsys.readouterr()
+            assert captured.err == ""
+            assert all(
+                marker not in captured.out
+                for marker in (
+                    TOKEN,
+                    PASSWORD,
+                    LBX_TOKEN,
+                    USERNAME,
+                    "SIMULATED-url-canary",
+                    "SIMULATED-db-canary",
+                    "SIMULATED-mail-canary",
+                    "SIMULATED-configured-lbx-canary",
+                    "walkthrough-person@example.invalid",
+                )
+            )
+            return json.loads(captured.out)
+
         monkeypatch.setattr(catalog_http, "settings", configuration)
-        preview = json.loads(walkthrough.execute(dry, configuration))
-        first = json.loads(walkthrough.execute(publish, configuration))
+        preview = run_operator(["dry-run", "--proposal", str(proposal)])
+        first = run_operator(["publish", "--proposal", str(proposal), "--expected-previous-revision", "0"])
         assert not preview["persisted"] and first["persisted"] and first["inserted"]
         assert preview["evaluation"]["evaluated_at"] != first["evaluation"]["evaluated_at"]
         assert first["stored_document"]["evidence_mode"] == "SIMULATED"
-        saved = json.loads(walkthrough.execute(query, configuration))
+        saved = run_operator(["query", "--offer-id", SIMULATED_OFFER_ID])
+        assert saved["document"] == first["stored_document"]
+        document = MappingDocument.model_validate_json(json.dumps(saved["document"]))
+        assert document.reason == preview["evaluation"]["reason"]
+        assert saved["billing_offer_id"] == first["billing_offer_id"] == SIMULATED_OFFER_ID
+        assert saved["operator_audit"]["execution_principal"] == f"os-euid:{SIMULATED_UID}"
         with TestClient(app, raise_server_exceptions=False) as client:
             # Lifespan's source owner uses no startup HTTP; catalog uses DB only.
             assert client.get("/api/catalog/products/proposal_ai").json()["availability"] == "SIMULATED_PREVIEW"
