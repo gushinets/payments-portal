@@ -128,7 +128,7 @@ The same standalone server serves read-only [Swagger UI](http://127.0.0.1:8091/d
 
 The mock uses the standard-library `ThreadingHTTPServer`; an actively delayed manifest request does not block `/docs` or `/openapi.json`. Existing service-auth, exact-scope, browser-origin and explicit development/test startup restrictions remain in place.
 
-For local visual development, later ANY-664 implementation adds an **opt-in, separate HTTP mock container** on the development Compose network and the real Portal backend/PostgreSQL/localized frontend walkthrough. Step 1 does not wire a Portal client, Compose or the Portal browser. The mock exposes the manifest and local documentation routes, not a whole Kernel or a shared SDK.
+For local visual development, [Step 7 wiring](#step-7-optional-http-mock-walkthrough) adds an opt-in HTTP mock container on the worktree backend network and a real Portal backend/PostgreSQL/localized frontend walkthrough. Runtime verification remains pending. The mock exposes the manifest and local documentation routes, not a whole Kernel or a shared SDK.
 
 - Portal will use **one** production-shaped typed Kernel client for both real and mocked servers, selected by internal service URL and configured service authentication. Portal runtime must not import mock code/fixtures or fall back to them. Only dev/test configuration may select the mock; no browser calls to mock internals. A compatible real endpoint can replace it via URL/credentials; unknown wire/hash/auth differences must be reconciled before real enablement.
 - Local mock is **disabled by default**; it can be stopped and removed without preventing Portal builds, database migrations, or normal startup. Missing Kernel must fail closed for **new publication and new purchase admission**, with no source-manifest cache fallback; previously confirmed paid subscriptions retain their separate finite trust rules. Mock-derived mapping evidence must be **SIMULATED**, rejected by real admission and excluded from production catalog queries even after changing URLs. No configuration switch upgrades an old simulated revision.
@@ -271,8 +271,8 @@ recordings through the real clients, normalizer, evaluator and PostgreSQL
 publisher. It records the actual authorized OS principal and SIMULATED evidence,
 then closes its database engine. It never imports fixtures into the API/browser
 runtime, sends a live provider request, inserts a hand-built mapping row, or
-starts another mock service. Standalone HTTP-mock Compose wiring/removal and
-real-source conformance remain separate handoffs.
+starts another mock service. Standalone HTTP-mock wiring/removal uses the Step 7
+procedure below; real-source conformance remains a separate handoff.
 
 The helper refuses a production/test environment, another account, another
 database naming scope, a mismatched runtime scope, or an unauthorized OS
@@ -300,3 +300,238 @@ admission saturation and production exclusion of persisted simulated evidence.
 The implementation agent has not executed these setup/acceptance commands or
 claimed the corresponding real API/DB/browser outcome. Human execution and
 review are required before recording Step 6 acceptance.
+
+## Step 7 optional HTTP mock walkthrough
+
+**Status: source implementation only; Compose, image, test and browser outcomes
+have not been executed or verified by the implementation agent.** All commands
+below run manually from the Portal repository root on Unix/WSL. No command in
+this procedure contacts live LBX. Real provider reads need separate explicit
+authorization; real publication, sales and paid access remain gated on G1–G5.
+
+`KERNEL_MOCK_ENABLED=1` makes `scripts/repo.py` append
+`docker-compose.kernel-mock.dev.yml` to the existing base/agent Compose files,
+using the same project and backend network. It adds one port at
+`runtime.api_port + 9000`, respecting `repo:up --port-offset`. With the opt-in
+absent (or `0`), the override and its source settings are omitted. Keep the flag
+in the same shell for `repo:up`/`repo:down`, or set it explicitly in local `.env`.
+
+The service reuses the API **development** Docker stage. Its only source inputs
+are read-only mounts of `tools/kernel_manifest_mock/` and the versioned
+`docs/contracts/kernel-capability-manifest/v1/` directory at their original
+`/app/` paths. It runs the unchanged `python -m tools.kernel_manifest_mock
+--host 0.0.0.0 --port 8091` entrypoint. The host port binds only `127.0.0.1`;
+the service joins only `backend`, without Caddy ingress, CORS or an API
+`depends_on` relationship. Existing production Docker exclusions/copy rules and
+production Compose remain unchanged.
+
+The API container receives `KERNEL_BASE_URL`, `KERNEL_SERVICE_TOKEN`, its existing
+instance scope and the explicit execution-UID allowlist. The existing source
+composition assigns SIMULATED provenance independently of URL/credentials.
+The opt-in API also mounts `.harness/kernel-walkthrough/` for independent
+simulated proposal/approval/input files. Only the explicitly invoked
+`apps.api.tests.support.kernel_walkthrough` helper imports recordings; normal
+`app/` runtime never imports it. The helper calls the existing
+`fresh_mapping_evaluation`, real `LbxServerClient` with isolated selected-read
+transport, normalizer and `publish_mapping`; Kernel always uses real HTTP.
+There is no fallback on source failure. `prepare` writes the named test approval
+separately; neither `dry-run` nor `publish` creates or refreshes approval.
+
+### Opt in, inspect and publish
+
+Generate the Step 6 wire artifacts before building its consumer. These commands
+are manual prerequisites, not evidence already obtained:
+
+```bash
+npm run repo:setup
+npm run generate
+npm run generate:check
+export APP_ENV=development
+export KERNEL_MOCK_ENABLED=1
+export MAPPING_ACCOUNT_ID=simulated-ru-lbx-account
+export KERNEL_MOCK_TOKEN="$(./.venv/bin/python -c 'import secrets; print(secrets.token_hex(24))')"
+export KERNEL_SERVICE_TOKEN="$KERNEL_MOCK_TOKEN"
+export MAPPING_OPERATOR_UIDS='[]'
+export KERNEL_MOCK_SCENARIO=valid
+mkdir -p .harness/kernel-walkthrough
+npm run repo:up -- --reuse
+
+dc() {
+  docker compose \
+    --project-name "$(./.venv/bin/python -c 'import json; print(json.load(open(".harness/runtime.json"))["compose_project"])')" \
+    --env-file .harness/runtime.env \
+    -f docker-compose.yml -f docker-compose.agent.yml \
+    -f docker-compose.kernel-mock.dev.yml "$@"
+}
+dc config --quiet
+dc config --format json | ./.venv/bin/python -c 'import json,sys; d=json.load(sys.stdin); print(json.dumps({n:{k:s.get(k) for k in ("build","networks","volumes","ports","depends_on")} for n,s in d["services"].items()},indent=2))'
+operator_uid="$(dc exec -T api id -u)"
+export MAPPING_OPERATOR_UIDS="[$operator_uid]"
+dc up -d --no-deps --force-recreate api
+
+operator() {
+  dc exec -T -e PYTHONPATH=.:apps/api api python \
+    -m apps.api.tests.support.kernel_walkthrough "$@"
+}
+operator prepare --output-dir /app/.kernel-walkthrough
+operator dry-run --proposal /app/.kernel-walkthrough/proposal.json \
+  > .harness/kernel-walkthrough/dry-run.json
+operator publish --proposal /app/.kernel-walkthrough/proposal.json \
+  --expected-previous-revision 0 > .harness/kernel-walkthrough/publish.json
+offer_id="$(./.venv/bin/python -c 'import json; print(json.load(open(".harness/kernel-walkthrough/publish.json"))["billing_offer_id"])')"
+operator query --offer-id "$offer_id" > .harness/kernel-walkthrough/query.json
+./.venv/bin/python -c 'import json; a=json.load(open(".harness/kernel-walkthrough/dry-run.json")); b=json.load(open(".harness/kernel-walkthrough/publish.json")); assert a["evaluation"]["evaluated_at"] != b["evaluation"]["evaluated_at"]; assert b["stored_document"]["evidence_mode"] == "SIMULATED"; print(b["mapping_revision_id"], b["revision_number"], b["inserted"])'
+```
+
+Inspect the rendered mounts/networks/ports, including the absence of mock
+dependencies on API/migrate. The whitelist above omits environment values so
+credentials are not printed. Keep full `dc config` output private. The initial
+empty allowlist cannot run the operator; `id -u` selects the actual container
+process UID, which currently is root in the development stage. This authorizes
+local CLI execution only. Repeated identical publication returns the existing
+immutable row; if different prior material conflicts, query its history and
+choose the reviewed expected revision explicitly. Never reset history to make
+the walkthrough pass.
+
+Print the actual worktree URLs, then open the list and canonical product URL,
+follow the detail link and hard reload. Confirm exact `200.02 RUB` recurring,
+`14.06 RUB` connection, allowance `25`, visible simulation and no purchase CTA.
+Browser network traffic must contain only Portal catalog calls, with no
+manifest calls or service credential. `/docs` is the developer-only exception:
+
+```bash
+./.venv/bin/python -c 'import json; r=json.load(open(".harness/runtime.json")); p=r["otlp_http_port"]+1000; print("http://localhost:{}/ru/products\nhttp://localhost:{}/ru/products/proposal_ai\nhttp://127.0.0.1:{}/docs".format(p,p,r["api_port"]+9000))'
+mock_port="$(./.venv/bin/python -c 'import json; print(json.load(open(".harness/runtime.json"))["api_port"]+9000)')"
+api_origin="$(./.venv/bin/python -c 'import json; print("http://127.0.0.1:"+str(json.load(open(".harness/runtime.json"))["api_port"]))')"
+curl --fail-with-body "http://127.0.0.1:$mock_port/openapi.json"
+curl --fail-with-body "$api_origin/api/catalog/products/proposal_ai"
+CATALOG_PREVIEW_ACCEPTANCE=1 npm run test:e2e -- apps/web/e2e/catalog-stored-preview.spec.ts
+```
+
+The existing browser acceptance test uses real Portal HTTP/DB without route
+interception. Run it again during the outage below. The existing Step 1 test
+`test_documentation_responds_while_manifest_request_is_still_delayed` covers
+concurrent Swagger/OpenAPI reads; this wiring does not reimplement that behavior.
+
+### Fail after success, recover and remove
+
+Each failed publication below must return a nonzero status and a safe
+`detail.code`; query and preview must retain the previously stored revision.
+Disabled/missing cases report `selected_product_*`/`selected_metric_*`, malformed
+or wrong-schema responses `kernel_manifest_invalid`, authentication
+`kernel_authentication_failed`, forbidden scope `kernel_scope_forbidden`, timeout `kernel_timeout` or the outer
+`preflight_deadline_exceeded`, and unavailable/down `kernel_unavailable`.
+
+```bash
+for fault in disabled-product missing-product disabled-metric missing-metric malformed-json partial wrong-schema unauthorized forbidden timeout unavailable; do
+  export KERNEL_MOCK_SCENARIO="$fault"
+  dc up -d --no-deps --force-recreate kernel-mock
+  if operator publish --proposal /app/.kernel-walkthrough/proposal.json --expected-previous-revision 0; then
+    echo "Unexpected publication success for $fault"
+    break
+  fi
+  operator query --offer-id "$offer_id"
+  curl --fail-with-body "$api_origin/api/catalog/products/proposal_ai"
+done
+export KERNEL_MOCK_SCENARIO=valid
+dc up -d --no-deps --force-recreate kernel-mock
+operator publish --proposal /app/.kernel-walkthrough/proposal.json --expected-previous-revision 0
+dc stop kernel-mock
+dc rm -f kernel-mock
+dc up -d --no-deps --force-recreate api
+dc run --rm migrate
+curl --fail-with-body "$api_origin/api/health/live"
+curl --fail-with-body "$api_origin/api/health/ready"
+operator query --offer-id "$offer_id"
+operator publish --proposal /app/.kernel-walkthrough/proposal.json --expected-previous-revision 0
+CATALOG_PREVIEW_ACCEPTANCE=1 npm run test:e2e -- apps/web/e2e/catalog-stored-preview.spec.ts
+```
+
+The final publication must fail after removal; migrations, API lifespan,
+readiness, query and old preview must still work. The helper is never called
+at startup. To observe concurrent slow work manually, select `timeout`, start
+`operator publish` in one terminal, and execute query/reload in another before
+the bounded refusal. The source regression below additionally occupies the
+same process-local admission owner with slow HTTP, rejects a second operation
+with `preflight_saturated`, and queries/previews the saved row. Separate CLI
+processes have separate admission owners; this is not distributed saturation
+or later paid-access/reconciliation load evidence.
+
+### Compatible target switch and production exclusion
+
+`test_independent_http_target_switch_changes_only_url_and_credentials` in
+`test_kernel_walkthrough_postgres.py` starts an independent, credential-checking
+literal HTTP test target, with no mock imports in that handler. It publishes
+through the existing mock first, closes it, changes only URL/credential on the
+same configured client path, then freshly republishes through the independent
+target. It checks retained SIMULATED evidence, genuine-publication refusal and
+production catalog exclusion over the same real DB. This proves configuration
+replaceability only; it does not establish compatibility with an unbuilt real
+producer. It is included in the exact PostgreSQL command below.
+
+For a separately supplied compatible local target reachable on this worktree's
+backend network, the manual API-container switch is:
+
+```bash
+read -r -p 'Independent local Kernel origin: ' KERNEL_BASE_URL
+read -r -s -p 'Independent local service credential: ' KERNEL_SERVICE_TOKEN
+export KERNEL_BASE_URL KERNEL_SERVICE_TOKEN
+dc up -d --no-deps --force-recreate api
+operator dry-run --proposal /app/.kernel-walkthrough/proposal.json
+operator publish --proposal /app/.kernel-walkthrough/proposal.json --expected-previous-revision 0
+operator query --offer-id "$offer_id"
+```
+
+Keep scope, proposal, approval, fixtures and provenance unchanged. Do not point
+this procedure at a real producer or reclassify old rows. To restore the accepted
+mock use `unset KERNEL_BASE_URL`, set `KERNEL_SERVICE_TOKEN="$KERNEL_MOCK_TOKEN"`,
+select `valid` and recreate mock/API. To return to the default harness, remove
+the mock as above and run `KERNEL_MOCK_ENABLED=0 npm run repo:up -- --reuse`.
+That recreates the API without the dev source settings/mount. Saved simulation
+remains saved simulation; genuine historic rows remain subject to ordinary
+DB-only selection.
+
+Run the source regressions and canonical checks manually. PostgreSQL tests own
+the disposable `_tests` DB lifecycle and never use the walkthrough DB:
+
+```bash
+npm run test:api:fast
+./.venv/bin/python scripts/repo.py test-db up
+npm run test:api:postgres
+npm run check:fast
+npm run check
+```
+
+The new focused files are `test_kernel_mock_dev.py` (opt-in/UID/config guards)
+and `test_kernel_walkthrough_postgres.py` (HTTP/DB/API faults, slow saturation,
+restart/removal, retry and independent-target switch). Existing browser,
+production-simulation and concurrent-documentation regression sources are reused.
+
+Production Settings already refuse every provisional Kernel URL/token, including
+HTTPS test URLs. The production deployment validator now also rejects mock
+flags/token/scenario, mock profiles and the dev override in `COMPOSE_FILE`.
+For example, this manual command must fail before any deployment:
+
+```bash
+KERNEL_MOCK_ENABLED=1 CADDY_DOMAIN=portal.example.com \
+  ./.venv/bin/python scripts/repo.py validate-production-env
+```
+
+In a separate deployment shell without the dev variables and with its required
+production configuration supplied, inspect/build the real production inputs:
+
+```bash
+docker compose -f docker-compose.prod.yml config --quiet
+docker compose -f docker-compose.prod.yml config --services
+docker build --target production -f apps/api/Dockerfile -t portal-step7-api .
+docker run --rm --entrypoint sh portal-step7-api -c 'test ! -e /app/tools/kernel_manifest_mock && test ! -e /app/docs/contracts && test ! -e /app/apps/api/tests'
+docker build -f apps/web/Dockerfile --build-arg APP_PUBLIC_BASE_URL=https://portal.example.com --build-arg NEXT_PUBLIC_API_BASE_URL=https://portal.example.com -t portal-step7-web .
+docker run --rm --entrypoint sh portal-step7-web -c 'test ! -e /app/tools/kernel_manifest_mock && test ! -e /app/docs/contracts && test ! -e /app/apps/api/tests'
+```
+
+The production service list must have no `kernel-mock`; inspect images for the
+absence of mock code/contracts/recordings and review the unchanged copy rules.
+Never combine the dev override with production Compose. Record actual command
+statuses, revision IDs, safe failure codes, browser artifacts, mount/port/image
+inspection and remaining failures separately. No runtime PASS, real source
+conformance, paid access or launch approval is claimed by this source handoff.

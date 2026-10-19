@@ -126,6 +126,10 @@ class RuntimeConfig:
     otlp_http_port: int
     database_name: str
 
+    @property
+    def kernel_mock_port(self) -> int:
+        return self.api_port + 9000
+
 
 @dataclass(frozen=True)
 class TrivyGateSummary:
@@ -299,6 +303,17 @@ def validate_production_caddy_domain(value: str) -> str:
 
 def validate_production_deployment_environment(*, environ: dict[str, str] | None = None) -> None:
     environment = os.environ if environ is None else environ
+    if (
+        environment.get("KERNEL_MOCK_ENABLED", "0") != "0"
+        or any(
+            value
+            for name, value in environment.items()
+            if name.startswith("KERNEL_MOCK_") and name != "KERNEL_MOCK_ENABLED"
+        )
+        or "kernel-mock" in environment.get("COMPOSE_PROFILES", "")
+        or "docker-compose.kernel-mock.dev.yml" in environment.get("COMPOSE_FILE", "")
+    ):
+        raise HarnessError("Production deployment must not select Kernel mock inputs or profiles")
     validate_production_caddy_domain(environment.get("CADDY_DOMAIN", ""))
 
 
@@ -421,6 +436,7 @@ def write_runtime(config: RuntimeConfig) -> None:
         "WEB_PORT": str(config.web_port),
         "API_PORT": str(config.api_port),
         "CADDY_PORT": str(runtime_caddy_port(config)),
+        "KERNEL_MOCK_PORT": str(config.kernel_mock_port),
         "NEXT_PUBLIC_API_BASE_URL": caddy_origin,
         "CORS_ALLOW_ORIGINS": cors_allow_origins,
         "APP_PUBLIC_BASE_URL": app_public_base_url,
@@ -439,14 +455,40 @@ def write_runtime(config: RuntimeConfig) -> None:
         "OTEL_EXPORTER_OTLP_ENDPOINT": "http://observability:4318",
         "OTEL_SERVICE_NAME": "payment-portal-api",
     }
+    if kernel_mock_enabled():
+        # Only the explicitly selected development override consumes these.
+        # Preserve the protected runtime.env writer; never print credentials.
+        for name in (
+            "KERNEL_MOCK_TOKEN",
+            "KERNEL_SERVICE_TOKEN",
+            "KERNEL_BASE_URL",
+            "KERNEL_MOCK_SCENARIO",
+            "KERNEL_MOCK_DELAY_SECONDS",
+            "MAPPING_OPERATOR_UIDS",
+        ):
+            value = os.environ.get(name, local_env.get(name, ""))
+            if "\n" in value or "\r" in value:
+                raise HarnessError(f"{name} must be a single-line development value")
+            if value:
+                values[name] = value
     write_protected_runtime_env_file(
         RUNTIME_ENV,
         "".join(f"{key}={value}\n" for key, value in values.items()),
     )
 
 
+def kernel_mock_enabled() -> bool:
+    local_env = read_dotenv()
+    enabled = os.environ.get("KERNEL_MOCK_ENABLED", local_env.get("KERNEL_MOCK_ENABLED", "0"))
+    if enabled not in {"0", "1"}:
+        raise HarnessError("KERNEL_MOCK_ENABLED must be 0 or 1")
+    if enabled == "1" and os.environ.get("APP_ENV", local_env.get("APP_ENV", "development")) != "development":
+        raise HarnessError("The optional Kernel mock requires APP_ENV=development")
+    return enabled == "1"
+
+
 def compose_command(config: RuntimeConfig) -> list[str]:
-    return [
+    command = [
         tool("docker"),
         "compose",
         "--project-name",
@@ -458,6 +500,9 @@ def compose_command(config: RuntimeConfig) -> list[str]:
         "-f",
         str(ROOT / "docker-compose.agent.yml"),
     ]
+    if kernel_mock_enabled():
+        command.extend(["-f", str(ROOT / "docker-compose.kernel-mock.dev.yml")])
+    return command
 
 
 def cmd_doctor(_: argparse.Namespace) -> None:
@@ -529,7 +574,7 @@ def cmd_doctor(_: argparse.Namespace) -> None:
 
 
 def runtime_ports(config: RuntimeConfig) -> Iterable[int]:
-    return (
+    ports = (
         config.web_port,
         config.api_port,
         runtime_caddy_port(config),
@@ -541,6 +586,7 @@ def runtime_ports(config: RuntimeConfig) -> Iterable[int]:
         config.otlp_grpc_port,
         config.otlp_http_port,
     )
+    return (*ports, config.kernel_mock_port) if kernel_mock_enabled() else ports
 
 
 def cmd_setup(_: argparse.Namespace) -> None:
