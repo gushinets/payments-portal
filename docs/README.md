@@ -44,13 +44,16 @@ Start with the smallest document that matches the task.
 
 ### Implementation handoffs and references
 
+- [ANY-664 completed implementation plan](exec-plans/completed/ANY-664-implementation-plan.md)
+  — all eight Portal steps DONE; implementation-commit CI evidence, retained
+  real-enablement gates and handoff to ANY-504 program Step 7
 - [Provisional Kernel Capability Manifest v1](contracts/kernel-capability-manifest/v1/README.md)
   — ANY-664 specification-derived schema, independent SIMULATED fixtures,
   standalone development HTTP mock and human verification commands; actual
   Kernel producer conformance remains a future enablement gate
 - [ANY-664 Step 8 local conformance handoff](contracts/kernel-capability-manifest/v1/step-8-handoff.md)
   — local checker, deferred real Kernel API verification, separate evidence
-  statuses and real producer delivery acceptance; verification pending
+  statuses and real producer delivery acceptance; local CI PASS, real API deferred
 - [Portal identity, session, and legal baseline](architecture/portal-identity-session-legal-baseline.md)
   — as-built `ANY-504` Step 3 retained-schema contract and exact Step 4 handoff
 - [External Billing Persistence Reset](architecture/external-billing-persistence-reset.md)

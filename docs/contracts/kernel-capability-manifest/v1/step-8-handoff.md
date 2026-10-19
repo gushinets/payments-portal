@@ -1,10 +1,14 @@
 # ANY-664 Step 8: local conformance and deferred real Kernel API
 
-Status: source implementation; human verification pending. This handoff adds
-no actual producer evidence and does not reopen Steps 1, 2 or 7.
+Status: **DONE**, 2026-10-19. Local conformance passed in the Code quality job of
+[CI run 39260471356](https://github.com/gushinets/payments-portal/actions/runs/39260471356/job/118086480056)
+at `15736d6b69c57deb8681e4a951959d78031fb992`. See the
+[completed plan](../../../exec-plans/completed/ANY-664-implementation-plan.md#8-completion-record---separate-implementation-status-from-verification-evidence)
+for the full implementation evidence and ANY-504 Step 7 handoff. This records
+CI results, not additional human verification or actual producer evidence.
 
 ```text
-LOCAL_SPEC_CONFORMANCE=NOT_RUN
+LOCAL_SPEC_CONFORMANCE=PASS
 REAL_KERNEL_CONFORMANCE=DEFERRED_NOT_IMPLEMENTED
 ```
 
@@ -60,7 +64,11 @@ remain intact. **The local provisional contract is checked; the real Kernel API
 is unverified (DEFERRED_NOT_IMPLEMENTED).** Real API verification is a separate
 mandatory task before real publication or sales, as specified below.
 
-## Exact manual verification order
+## Exact manual verification order - retained for reproduction
+
+The local CI PASS above does not claim a separate manual run of every command
+or explicit negative scenario below. No tests, builds, migrations, generators
+or workflows were run for the documentation closure.
 
 From `/home/wstanley/www/work_unirec/payments-portal`, with the existing locked
 root `.venv` and web dependencies installed (Unix/WSL):
@@ -183,7 +191,10 @@ On 2026-10-19 GitHub confirmed both alerts
 [#4](https://github.com/gushinets/payments-portal/security/code-scanning/4) as
 **Dismissed / false positive**. Both PR review threads contain the rationale and
 are confirmed resolved. ANY-664 Linear requirements and PR #139 description are
-aligned; the source correction remains local, with no commit/push or new CI run.
+aligned at that review checkpoint. The source correction was subsequently
+pushed in `15736d6b69c57deb8681e4a951959d78031fb992`; its CI and Security scans
+passed as recorded in the completed plan. The earlier correction-agent report
+of formatting/lint only remains historical, not the current CI status.
 
 Formatting/lint passed for the affected Python code. To recheck the existing
 operator/privacy regressions manually, use the PostgreSQL harness (which derives

@@ -1,6 +1,6 @@
 # ANY-664 - Portal integration, specification-based Kernel mock and approved offer catalog
 
-**Status:** PORTAL-ONLY CORRECTED EXPANDED IMPLEMENTATION PLAN, 2026-10-16. Step 1 is **DONE by owner acceptance** in the implementation style already supplied and reviewed; do not reimplement it. Step 5 is implemented in `9cb7e340`, with its final selected-offer identity correction pending owner commit/push; other step statuses are not reassessed by this correction. This plan revision records no new test runs, runtime verification, commits or real Kernel conformance.
+**Status:** **DONE**, 2026-10-19. All eight Portal implementation steps are complete in [PR #139](https://github.com/gushinets/payments-portal/pull/139) at `15736d6b69c57deb8681e4a951959d78031fb992`, including the Step 5 selected-offer identity correction and removal of external Kernel monitoring. GitHub CI and Security scans passed at that commit; see the completion record for evidence and limits. PR merge and Linear closure remain owner actions. `REAL_KERNEL_CONFORMANCE=DEFERRED_NOT_IMPLEMENTED`; G1–G5 remain open real-enablement gates. This documentation closure runs no tests, builds or migrations and makes no commit/push.
 **Program:** ANY-504, program Step 6. **Ticket:** ANY-664.
 **Execution repository:** `gushinets/payments-portal` for **all eight implementation steps**. `gushinets/anytoolai-platform` is a **read-only source**, never an implementation target of this ticket.
 **Owner decision:** implement the Portal side against the documented Kernel API using a separate local HTTP mock. The real Kernel API delivery date is unknown. Its implementation, deployment, paid metric registry, regional configuration and server-side authorization are **not prerequisites for implementing or completing this Portal ticket**.
@@ -12,32 +12,32 @@
 | Field | Implementation baseline |
 | --- | --- |
 | Program / ticket | `ANY-504` program Step 6 / `ANY-664` |
-| Execution | **Portal-only**, eight sequential implementation steps, one human-reviewed commit each |
+| Execution | **Portal-only**, all eight implementation steps and subsequent review corrections completed in PR #139 |
 | Write repository | `gushinets/payments-portal` only |
 | Read-only reference | `gushinets/anytoolai-platform` at pinned SHA; no checkout or Kernel API delivery prerequisite |
 | Source integration | One real Portal Kernel HTTP client against an **explicitly provisional** v1 contract; separate opt-in dev-only HTTP mock; real LBX **read-only** integration |
 | Persistence | Existing `commercial_mapping_revisions` with immutable terms/evidence; do not rebuild full current catalog mirrors |
 | Sale readiness | Real offer publication/purchase remains gated on **real Kernel conformance, LBX proof and approved commercial/legal/metric inputs** |
-| Human workflow | Selected step -> Codex source edits only -> independent review + human checks -> human commit -> next step |
+| Human workflow | Implementation complete; owner reviews and commits/pushes documentation closure, verifies resulting CI and approves merge |
 | Step 1 note | **DONE - preserve the accepted standard-library `ThreadingHTTPServer` mock, JSON-Schema-derived Swagger/OpenAPI, fixtures and tests.** Later steps consume it; they do not replace its framework or reopen it because verification evidence is recorded separately. |
 
-### Correction record - 2026-10-16
+### Historical correction record - 2026-10-16
 
 This revision supersedes the preceding expanded plan only for execution wording and concrete local implementation choices. Ownership, the Portal-only result, all shared paid-access/purchase safeguards, **F1-F7** and **G1-G5** remain unchanged. Step 1 is marked DONE by the owner's instruction and preserved as supplied; there is no instruction to rewrite it.
 
 The remaining-step instructions now explicitly distinguish source-dependent evaluation from DB-only reads, metric-key uniqueness from product ownership, a whole-operation deadline from per-read waits, trusted CLI execution identity from commercial approval, and anonymous client-side catalog transport from server-only page composition. The restricted OS-principal CLI, bounded publication lock/CAS policy and client-side anonymous catalog loading are implementation choices for this plan, not claims about an existing Kernel/LBX API. They add no billing, purchase, paid-access or real Kernel producer scope.
 
-### How to use this plan
+### How to use this completed plan
 
-1. Use this corrected file as the single active plan, replacing the prior expanded copy. Intended local worktree path: `docs/exec-plans/active/ANY-664-implementation-plan.md`. The owner places it there; this handoff does not write to GitHub/Linear, add the plan to PR #138, or authorize committing the plan. Do not maintain a competing older copy.
-2. Continue with Step 2. For each remaining step, send Codex **only its number** using the reusable launch prompt. Codex reads this overview, the shared coding prompt, shared invariants, the selected step and its immediate dependency handoffs; not every other implementation prompt or a new Linear/GitHub-wide investigation. Selecting completed Step 1 is a read-only status request unless the owner explicitly reopens it.
+1. This is the single completed record at `docs/exec-plans/completed/ANY-664-implementation-plan.md`. Preserve the decisions, technical requirements and handoff below; do not maintain an active duplicate.
+2. All eight implementation steps are DONE. Their prompts, command lists and sequencing below are retained implementation history and acceptance guidance, not unfinished work. Use section 8 for actual verification evidence and section 7 for the handoff to ANY-504 program Step 7. Reopening implementation requires an explicit owner request.
 3. The step's **Goal**, **Existing code**, **Implementation decisions / order**, **AI prompt**, **step-specific execution constraints**, **Human checks** and **DoD** together define what to implement. The detailed steps override generic advice but never override the shared architecture and safety gates.
 4. Codex edits source and focused test source; **does not execute** tests, linters, typechecks, builds, formatters, generators, DB migrations, Playwright, `git add`, `git commit`, `git push`, pull, reset or checkout. Read-only inspection is allowed. New Git/Linear changes are separate authorized human actions.
 5. Independent reviewer checks the **observable result**, not merely class/endpoint/test presence. Human runs the reported relevant checks and generation, examines the diff and behavior, then creates the suggested commit when separately authorized. Record implementation status, static-review result and actual verification evidence separately; a DONE label never fabricates test or browser evidence. Preserve the owner-accepted Step 1 status.
 6. Later implementation steps are not prerequisites for judging the selected step's narrow DoD. Conversely, a mocked positive flow is **never** a production source or completed real Kernel conformance claim.
 7. If a file moved or an earlier step implemented an equivalent owner, use the real local structure and report the precise substitution; **do not clone logic** merely to match a suggested filename. Stop only if an essential approved contract truly conflicts with the observed code.
 
-### Shared implementation prompt for Codex — mandatory for every selected step
+### Shared implementation prompt for Codex — retained implementation template
 
 > You are implementing **one selected ANY-664 step** inside `payments-portal`. Build production-quality, maintainable software in the smallest coherent change, consistent with root/subtree `AGENTS.md`, `ARCHITECTURE.md`, `docs/engineering/CODING_CONVENTIONS.md`, applicable canonical ADR/design, and the approved Portal-only scope of this plan.
 >
@@ -64,7 +64,7 @@ The remaining-step instructions now explicitly distinguish source-dependent eval
 
 **Numbering:** implementation Steps 1-8 below subdivide ANY-664 / program Step 6. **Program Steps 7-11** below mean the later purchase, reconciliation and paid-access stages, not subdivisions of this plan.
 
-Implement one selected remaining step, then hand it to human verification/review before proceeding. **Step 1 is already `done`; Steps 2-8 start `todo`.** Read the selected step, applicable shared rules and AGENTS.md; inspect only directly relevant code/dependencies. Read-only file/Git inspection and source/test edits are allowed. Do not run tests, linters, typechecks, builds, migrations, generators, Playwright or verification. Do not stage, commit or push. No formatter execution is authorized. Human generates artifacts; do not hand-edit generated outputs. Report changed files, concise observable result, commands actually executed and exact manual commands with their working directory.
+**All implementation Steps 1–8 are DONE.** The following execution rules and per-step prompts record the implementation process; they are not instructions to restart it. During implementation, one selected step was handed to human verification/review before proceeding. The retained rules require reading only that step, applicable shared rules and AGENTS.md, and inspecting directly relevant dependencies. Read-only file/Git inspection and source/test edits were allowed; test, lint, typecheck, build, migration, generation, Playwright, formatter, staging, commit and push execution required separate authorization. Generated artifacts were never to be hand-edited. Actual evidence is recorded in section 8, separately from these command instructions.
 
 Do not edit, build, test, reset, pull or change branches in Kernel. Read its pinned code through available read-only sources; a matching adjacent checkout is unnecessary. Missing real manifest, paid metrics, production auth or `ru` deployment is **not a coding blocker**. Do not fabricate production inputs, but use the explicitly simulated values below for local development. Stop only for an actual unresolved contradiction/input essential to the selected implementation, not because a future service has not been built.
 
@@ -130,7 +130,7 @@ Unknown real input => real offer unavailable. Explicit test fixture => local sim
 
 ## 3.5 Resolved implementation map — source-backed, not an invitation to research again
 
-This section retains the researched Portal baseline and selected pinned references, with the owner-accepted Step 1 supplied in this conversation now treated as an implemented dependency. Inspect only the actual local owners needed by the selected step. Suggested new paths are not proof that later-step code already exists.
+This section retains the pre-implementation Portal baseline and selected pinned references as historical placement guidance, not a current inventory of unfinished code. All eight steps are now complete. Preserve the ownership decisions; use the completion record and linked handoffs for the implemented result.
 
 | Responsibility | Verified existing owner / path | Implementation consequence |
 | --- | --- | --- |
@@ -167,19 +167,19 @@ This section retains the researched Portal baseline and selected pinned referenc
 | Implementation step | Required implemented input | Deliverable used next (not future work to implement now) |
 | --- | --- | --- |
 | 1 - DONE | Accepted spec and explicit local fixtures | Existing HTTP mock, JSON Schema, literal digest, read-only Swagger, provenance and concurrency regression for Steps 2/7/8 |
-| 2 | Step 1 contract as read-only input | One typed Kernel client, selected-capability predicate, absolute budget/admission lifecycle and typed source provenance for Steps 3/5 |
-| 3 | Step 2 budget and config/lifecycle conventions | One real typed LBX GET transport, exact numeric decoding and documented DTO/response fixtures for Step 4 |
-| 4 | Step 3 selected reads; Step 2 budget | Complete-or-refused normalized selected offer, deterministic material/digest contracts and isolated read fixtures for Steps 5/7 |
-| 5 | Steps 2/4; existing mapping DB guards | Privileged fresh `dry-run`/`publish`, DB-only scoped `query`, immutable versioned evidence and simulation filtering for Step 6 and later purchase work |
-| 6 | Step 5 stored evidence/query contract | Generated-wire-source catalog API and anonymous localized browser list/detail over those rows, for the Step 7 walkthrough |
-| 7 | Existing Steps 1-6 | Optional same-harness wiring, exact manual positive/failure/removal/switch walkthrough, no second client/mock |
-| 8 | Steps 1/2/7 contracts and actual Portal CI | Local spec conformance and explicit deferred real-producer integration gate |
+| 2 - DONE | Step 1 contract as read-only input | One typed Kernel client, selected-capability predicate, absolute budget/admission lifecycle and typed source provenance for Steps 3/5 |
+| 3 - DONE | Step 2 budget and config/lifecycle conventions | One real typed LBX GET transport, exact numeric decoding and documented DTO/response fixtures for Step 4 |
+| 4 - DONE | Step 3 selected reads; Step 2 budget | Complete-or-refused normalized selected offer, deterministic material/digest contracts and isolated read fixtures for Steps 5/7 |
+| 5 - DONE | Steps 2/4; existing mapping DB guards | Privileged fresh `dry-run`/`publish`, DB-only scoped `query`, immutable versioned evidence and simulation filtering for Step 6 and later purchase work |
+| 6 - DONE | Step 5 stored evidence/query contract | Generated-wire-source catalog API and anonymous localized browser list/detail over those rows, for the Step 7 walkthrough |
+| 7 - DONE | Existing Steps 1-6 | Optional same-harness wiring, exact manual positive/failure/removal/switch walkthrough, no second client/mock |
+| 8 - DONE | Steps 1/2/7 contracts and actual Portal CI | Local spec conformance and explicit deferred real-producer integration gate |
 
 The handoff must name actual files, callable inputs/outputs, error meanings, resource ownership and unverified evidence. A positive test fixture is an implementation proof input, not real product/legal/provider approval. Current step acceptance must not require runtime purchase, reconciliation, AccessSnapshot or usage work assigned to later program steps.
 
 ### Step 1 - Documented contract and standalone Kernel HTTP mock
 
-**Status:** `done` - owner accepted the supplied implementation on 2026-10-16. **No reimplementation or framework change.** This is the standard-library implementation submitted with `.diff(20261016-002744).txt` and the separately supplied new files, not the earlier proposed FastAPI variant. The previous static review in this conversation was PASS. No new runtime/browser/test result or commit SHA is asserted by this plan; record those separately when supplied.
+**Status:** **DONE** - owner accepted the supplied implementation on 2026-10-16. **No reimplementation or framework change.** This is the standard-library implementation submitted with `.diff(20261016-002744).txt` and the separately supplied new files, not the earlier proposed FastAPI variant. The previous static review was recorded as PASS. Subsequent CI evidence at the final implementation commit is recorded separately in section 8; no additional manual run is asserted.
 
 #### Goal - completed implementation boundary
 
@@ -206,7 +206,7 @@ Step 1 is DONE. Do not implement, reformat, replace the server/framework or rewr
 
 ### Step 2 - One typed Portal Kernel client, on-demand without a DB import
 
-**Status:** `todo`. Implement one production-shaped `PlatformKernelClient` using the Step 1 provisional contract, independent fixtures and configured endpoint/auth. Validate v1 shape/types, correct tenant/region, IDs/references, complete response and semantic digest; expose safe typed results/errors. The current counterpart is the mock. No mock imports, in-process fallback or second client. A compatible future endpoint is a URL/credential change; actual compatibility remains unverified.
+**Status:** **DONE**. One production-shaped `PlatformKernelClient` implements the Step 1 provisional contract with independent fixtures and configured endpoint/auth. It validates v1 shape/types, correct tenant/region, IDs/references, complete response and semantic digest, and exposes safe typed results/errors. The current counterpart is the mock. No mock imports, in-process fallback or second client. A compatible future endpoint is a URL/credential change; actual compatibility remains unverified.
 
 Provide the reusable configurable overall deadline and bounded admission foundation: shared outer budget passed to source reads, finite concurrency/waiting, safe cancellation/overload response. It will cover both Kernel and LBX in the publisher; do not reset it per source or create independent full budgets. Use bounded HTTP/connect/read/retry sublimits and explicit bounded defaults, documented as application settings, not provider SLA. Keep HTTP outside SQL transactions and avoid retaining DB connections while waiting on sources. Preserve independent local request/DB capacity and future reserved reconciliation capacity.
 
@@ -252,7 +252,7 @@ Implement only one typed `PlatformKernelClient`, the selected-capability predica
 
 ### Step 3 - Typed LBX Server API transport and selected-read foundation
 
-**Status:** `todo`. Configure one RU account and scoped server credentials. Implement verified documented tariff/period/service/effective-dated price/policy reads needed by the selected-offer flow. Keep vendor DTOs/parsing/redaction in Integration; normalize safe results before Application. Reuse the overall admission budget and bounded concurrency foundation from Step 2, with HTTP sublimits, bounded safe GET retry and one controlled GET reauth. No blind retry of uncertain CREATE, invented pagination/atomic snapshot/native POST idempotency or payment REST.
+**Status:** **DONE**. The typed read transport supports one configured RU account, scoped server credentials and documented tariff/period/service/effective-dated price/policy reads needed by the selected-offer flow. Vendor DTOs/parsing/redaction stay in Integration; safe results are normalized before Application. It reuses the overall admission budget and bounded concurrency foundation from Step 2, with HTTP sublimits, bounded safe GET retry and one controlled GET reauth. No blind retry of uncertain CREATE, invented pagination/atomic snapshot/native POST idempotency or payment REST.
 
 Retain only narrowly typed future customer/agreement/subscription operation foundations required by the plan's handoff; no actual purchase workflow or external mutations. Reuse one integration transport, not a generic billing SDK. Secrets/raw authorization/provider bodies do not reach browser or logs.
 
@@ -294,7 +294,7 @@ Implement only one scoped typed LBX Server API GET client and server-auth lifecy
 
 ### Step 4 - Complete selected-offer normalization and evidence
 
-**Status:** `todo`. For selected account/tariff/service/period, obtain the entire relevant dependency read set, not every unrelated tariff. Validate membership, all applicable service/period/effective-dated recurring and connection prices, exact currency/units/scale, tax/discount/demo/proration/prepaid/blocking/policy, configured commercial quantities and historical applicability. Use only documented list/filter/point-read semantics; bounded relevant reread may detect observed drift, not prove an LBX atomic snapshot. Missing or ambiguous authoritative applicability remains INCOMPLETE, never guessed.
+**Status:** **DONE**. Selected-offer normalization implements the relevant account/tariff/service/period dependency read set and complete-or-refused validation. The retained requirements cover membership, all applicable service/period/effective-dated recurring and connection prices, exact currency/units/scale, tax/discount/demo/proration/prepaid/blocking/policy, configured commercial quantities and historical applicability. Only documented list/filter/point-read semantics apply; bounded relevant reread may detect observed drift, not prove an LBX atomic snapshot. Missing or ambiguous authoritative applicability remains INCOMPLETE, never guessed.
 
 Return typed request-local normalized evidence, selected-offer material digest and source provenance. Distinguish unsupported complete offer (`NOT_SELLABLE`) from incomplete facts (`INCOMPLETE`). Unknown scale/policy/currency, missing price, partial read, selected-source mutation or wrong account cannot pass. Unrelated tariffs changing do not alone invalidate selected semantics. Never persist a current catalog mirror or derive technical allowance from multiplicator, money or guest quota.
 
@@ -338,7 +338,7 @@ Implement only complete selected-offer reads and normalization using the real St
 
 ### Step 5 - Privileged publication, immutable mappings and explicit evidence mode
 
-**Status:** `implemented` in `9cb7e340`; final PR #139 review correction (selected-offer identity) is implemented locally, pending owner commit/push. This correction runs only affected-Python formatting/lint; its tests remain unrun. The restricted audited operator CLI/command supports dry-run/publish/query, not a new public RBAC/admin portal. Every publication makes fresh configured Kernel HTTP and LBX selected-offer reads through Steps 2 and 4 under one budget. Check selected enabled product/metric ownership, supported fixed prepaid profile, independently specified positive integer allowance, exact source money/period/policy and approved versioned commercial/legal terms.
+**Status:** **DONE**, including the selected-offer identity review correction in PR #139 at `15736d6b69c57deb8681e4a951959d78031fb992`. The restricted audited operator CLI/command supports dry-run/publish/query, not a new public RBAC/admin portal. Every publication makes fresh configured Kernel HTTP and LBX selected-offer reads through Steps 2 and 4 under one budget. It checks selected enabled product/metric ownership, supported fixed prepaid profile, independently specified positive integer allowance, exact source money/period/policy and approved versioned commercial/legal terms. Subsequent CI evidence supersedes the earlier correction-only formatting/lint report; separate manual scenario PASS is not asserted.
 
 Use the same evaluator/transaction path locally and later with real sources. **While Kernel is mocked, a positive result is only local simulated publication**. Permit that only in development/test and label all evidence accordingly, even when LBX itself is real. Missing real metric/release/auth/approval inputs do not prevent this explicitly simulated exercise; they prevent real approval. Do not introduce a second fake business algorithm.
 
@@ -379,7 +379,7 @@ An explicitly privileged operator can inspect saved revisions without source ava
 
 **Step 5 positive handoff:** configure an authorized local OS principal and explicitly simulated source/approval inputs; use the real clients, Step 4 normalizer, same evaluator and real PostgreSQL transaction to produce one queryable SIMULATED revision. No real Kernel delivery is required for this local path. An always-deny operator gate or a hand-inserted fixture row is not the required positive result.
 
-**Final review correction — selected-offer identity:** Step 5 derives `billing_offer_id` as `selected-offer:v1:<tariff_id>:<tariff_service_id>:<period_id>`, escaping each source reference independently. The existing Step 4 `references.offer/component/period` remain the original tariff/service/period IDs; normalized terms and evidence semantics do not change. Publication, account/offer advisory lock, revision lookup, stored-document validation and CLI query use the full identifier. Separate services/periods start independent revision-1 histories; exact retries do not add revisions. The key is derived outside serialized approved material, preserving existing approval hashes. No schema migration, historical rewrite, tariff-only lookup fallback, seller/tax validation or later-step scope is introduced. A focused PostgreSQL regression covers two services of one tariff, independent initial publication/query and repeat safety; the owner runs it after this correction.
+**Final review correction — selected-offer identity:** Step 5 derives `billing_offer_id` as `selected-offer:v1:<tariff_id>:<tariff_service_id>:<period_id>`, escaping each source reference independently. The existing Step 4 `references.offer/component/period` remain the original tariff/service/period IDs; normalized terms and evidence semantics do not change. Publication, account/offer advisory lock, revision lookup, stored-document validation and CLI query use the full identifier. Separate services/periods start independent revision-1 histories; exact retries do not add revisions. The key is derived outside serialized approved material, preserving existing approval hashes. No schema migration, historical rewrite, tariff-only lookup fallback, seller/tax validation or later-step scope is introduced. A focused PostgreSQL regression covers two services of one tariff, independent initial publication/query and repeat safety. Final CI is recorded in section 8; the earlier instruction to run it after an unpushed correction is superseded, without asserting a separate manual run.
 
 #### Boundaries and reviewer observation
 
@@ -396,7 +396,7 @@ Implement only the restricted operator CLI and immutable mapping use case. Follo
 
 ### Step 6 - Portal catalog API and localized browser preview
 
-**Status:** `todo`. Add safe product list/detail endpoints over stored approved mapping terms, with presentation explicitly keyed to source-backed Kernel product ID. Reuse backend Pydantic/OpenAPI and generated TypeScript boundary; no handwritten competing frontend wire contract. Display exact stored price/currency/period/fixed allowance and approved-but-unverified-now or unavailable state. Local simulated mappings have visible simulation labeling; production excludes them. Never expose provider secrets/raw DTOs, fictional production products, hardcoded pricing or a false SELLABLE flag.
+**Status:** **DONE**. Safe product list/detail endpoints and the unified localized Portal catalog display stored approved mapping terms keyed to source-backed Kernel product ID. They reuse backend Pydantic/OpenAPI and the generated TypeScript boundary, with exact stored price/currency/period/fixed allowance and approved-but-unverified-now or unavailable state. Local simulated mappings have visible simulation labeling; production excludes them. No provider secrets/raw DTOs, fictional production products, hardcoded pricing or false SELLABLE flag are exposed.
 
 Reuse current product pages, i18n, responsiveness/accessibility. Fix the limited static `dynamicParams = false`/editorial parameter handling so a known source-backed product ID works on direct URL and hard reload. No live source call on every browse. Source outage leaves prior preview readable but new publication still fails. No purchase CTA until **program Step 7**, no redesign of catalog UX.
 
@@ -438,7 +438,7 @@ Implement only the DB-backed public catalog API and localized browser preview ov
 
 ### Step 7 - Dev Compose wiring, mock removal and real-Portal local walkthrough
 
-**Status:** `todo`. Wire the **existing Step 1 mock**, not a second server, with an opt-in `docker-compose.kernel-mock.dev.yml` override/profile in the same worktree harness Compose project/backend network. It is disabled by default, without public ingress or Portal-browser manifest requests, and excluded/rejected from production build/Compose/config. Developer-local read-only `/docs` and `/openapi.json` are the explicit documentation exception. Inject endpoint and local credentials into the Portal API container, not merely the host shell. Stopping/deleting the mock must not break Portal build/migrations/startup; fresh source-dependent admission alone becomes unavailable.
+**Status:** **DONE**. The **existing Step 1 mock** is wired through opt-in `docker-compose.kernel-mock.dev.yml` in the same worktree harness Compose project/backend network, with a local publication/browser walkthrough and removal/configuration-switch guidance. It is disabled by default, without public ingress or Portal-browser manifest requests, and excluded/rejected from production build/Compose/config. Developer-local read-only `/docs` and `/openapi.json` are the explicit documentation exception. Endpoint and local credentials are injected into the Portal API container. The retained removal requirement is that basic Portal startup/DB reads remain available while fresh source-dependent admission fails closed; individual manual walkthrough results are not inferred from implementation status.
 
 Use real authorized test LBX or an explicitly isolated selected-read fixture, not a complete billing emulator. Mock/fixture-derived previews always remain SIMULATED. Add exact opt-in/start/stop/remove/fault/configuration commands and the browser walkthrough to `docs/engineering/DEVELOPMENT.md`. Demonstrate valid publication/preview, disabled/missing capability, malformed/version-invalid/auth/timeout/down source, failed new publication after a prior success, and later successful fresh retry.
 
@@ -481,19 +481,19 @@ Wire the existing DONE Step 1 mock into the existing worktree-aware dev harness 
 
 ### Step 8 - Portal local conformance and deferred real producer handoff
 
-**Status:** local checker/CI implemented; final owner correction recorded 2026-10-19. The owner removed external Kernel source monitoring from ANY-664 because the real Capability Manifest API is not implemented. The dedicated workflow, source-reference script and exclusive tests are removed without replacement. Historical SHA/source links remain contract provenance. Steps 1–7, F1–F7 and real-enablement gates G1–G5 remain unchanged.
+**Status:** **DONE**, including the final owner correction at `15736d6b69c57deb8681e4a951959d78031fb992` on 2026-10-19. The owner removed external Kernel source monitoring from ANY-664 because the real Capability Manifest API is not implemented. The dedicated workflow, source-reference script and exclusive tests are removed without replacement. Historical SHA/source links remain contract provenance. Steps 1–7, F1–F7 and real-enablement gates G1–G5 remain unchanged.
 
 **Goal:** independently validate mock HTTP responses and typed client against the pinned spec-derived schema, literal fixtures/expected hashes and documented HTTP/auth/scope/error behavior. Client/mock self-agreement is insufficient. Deliberate required-field, metric-owner and digest corruption must fail. No Kernel runtime package, checkout, build or producer-test dependency.
 
 **Retained implementation:** `scripts/check_kernel_manifest_contract.py`, its focused tests and the existing `.github/workflows/ci.yml` local-checker/fast-suite steps. Preserve the accepted Step 1 mock, schema-derived read-only Swagger, fixtures and Step 2 client, including multiple metrics sharing a valid product owner. Never rewrite good fixtures to agree with a defective consumer.
 
-**Evidence:** record `LOCAL_SPEC_CONFORMANCE=PASS/FAIL/NOT_RUN` separately from `REAL_KERNEL_CONFORMANCE=DEFERRED_NOT_IMPLEMENTED`. Local conformance checks the provisional contract only. No source-monitor deployment or daily-run evidence is required for ANY-664 completion. This correction runs formatting/lint only; human test verification remains pending.
+**Evidence:** `LOCAL_SPEC_CONFORMANCE=PASS` in the final commit's Code quality CI job, separately from `REAL_KERNEL_CONFORMANCE=DEFERRED_NOT_IMPLEMENTED`. Local conformance checks the provisional contract only. No source-monitor deployment or daily-run evidence is required for ANY-664 completion. This CI evidence supersedes the earlier formatting/lint-only correction report; no additional manual verification is claimed.
 
 **Mandatory separate task before real sales:** the Kernel API owner must deliver the authoritative endpoint OpenAPI/fixtures, producer commit and deployed service-auth/tenant-region configuration. The Portal integration owner must compare schema/strictness, complete-response behavior, digest/auth/scope/errors and the selected real product/paid metric/unit/enablement, then record actual consumer-versus-producer conformance. Compatible wire/auth permits configuration switching; incompatibility requires reviewed narrow Integration/contract reconciliation. Do not weaken validation or promote SIMULATED history. Actual producer wire-drift assurance belongs to that future task, with no monitoring mechanism added here. G1–G5 and all other ANY-504 requirements remain in force.
 
 **Human checks:** run the local checker and the exact positive/negative commands in the [Step 8 handoff](../../contracts/kernel-capability-manifest/v1/step-8-handoff.md), then repository verification. Negative scenarios must exit 1 with local FAIL. **DoD:** checked provisional Portal/mock/client contract and a precise deferred real-integration gate; no claim of actual producer compatibility.
 
-**Execution constraints:** no tests, builds, integration checks, generators, migrations, workflows, commit or push in this correction. Only formatting/lint of affected code is authorized by the current owner request. No Kernel edits, mock/client redesign, shared SDK, Step 10 wire or replacement monitoring workflow.
+**Retained correction scope:** external monitoring was removed without Kernel edits, mock/client redesign, shared SDK, Step 10 wire changes or replacement monitoring. The earlier correction agent reported formatting/lint only; later pushed-commit CI is recorded in section 8. This documentation closure runs no tests, builds, migrations, generators or workflows and makes no commit/push.
 
 ## 5. Functional Definition of Done - Portal ticket only
 
@@ -511,7 +511,9 @@ Local schema/mock/client PASS and a simulated browser demonstration can complete
 
 **Failure distinctions:** configured mock/real-source outage rejects the attempted new publication without fallback; selected disabled/missing/misbound capability rejects it; changed selected material terms require new approval/revision; unrelated source changes do not automatically invalidate valid selected semantics. DB conflicts/rollback preserve prior history. A working mock permits only simulated local success; a missing real producer prevents genuine publication, not completing this ticket. Local contract conformance does not prove real API conformance.
 
-## 6. Human acceptance and sequencing
+## 6. Human acceptance and sequencing - retained procedure
+
+The procedure and manual commands below are retained for review/reproduction. All eight implementation steps are complete; only section 8 records confirmed results. A listed command or scenario does not imply a separate human-run PASS.
 
 1. Use the explicit Portal-only owner decision. **Step 1 is DONE and preserved in its supplied standard-library/JSON-Schema-derived Swagger style**; later steps consume it, not reopen its implementation. Separate Linear/PR-description edits, rebase/merge and formal production design canonicalization retain their own authorization/evidence. This file alone performs none of those actions.
 2. Implement/review one step at a time. Human executes verification and generation before the next dependent step. No tests/builds/edits in Kernel. File names in proposed test commands may follow the actual implementation; the agent reports exact existing commands rather than inventing evidence.
@@ -534,37 +536,46 @@ Local schema/mock/client PASS and a simulated browser demonstration can complete
 
 ## 8. Completion record - separate implementation status from verification evidence
 
-```text
-Owner Portal-only scope decision: recorded 2026-10-15
-Active Portal scope/docs aligned: <paths/review>
-Separate Linear/PR synchronization: <DONE/PENDING>
-Live-source production design canonicalization: <state/evidence>
-Implementation Step 1: DONE (owner accepted 2026-10-16; implementation preserved)
-Step 1 static review: PASS recorded in this conversation
-Step 1 human/runtime verification evidence: NOT_REPORTED_IN_THIS_PLAN (no new run claimed)
-Implementation Step 5: IMPLEMENTED at 9cb7e340; composite offer identity correction pending owner commit/push
-Step 5 identity correction test/runtime evidence: NOT_RUN; formatting/lint only
-Other implementation steps: statuses remain owned by their separate handoffs
-Kernel code changes/builds/tests by this ticket: NONE
-Read-only Kernel source pin: 079eb03e28d7a50b980795c63c3e4533b785d11f
-Spec/schema/fixture pins and provisional auth/digest: <...>
-LOCAL_SPEC_CONFORMANCE: <PASS/FAIL/NOT_RUN>
-REAL_KERNEL_CONFORMANCE: <DEFERRED_NOT_IMPLEMENTED/NOT_RUN/PASS/FAIL>
-Portal implementation SHA: <after separate authorized commit>
-Current-source mirrors/writers: NONE <evidence>
-Real LBX boundary/selected-account precision evidence: <.../UNKNOWN>
-Simulated mapping mode + production exclusion after config switch: <...>
-Publisher fresh reads + immutable history/concurrency: <...>
-Real Portal API/browser/direct routes/local simulation labels: <...>
-Mock removal + compatible-local-target configuration switch: <...>
-Overall deadline/concurrency/isolation proof: <...>
-Portal local contract CI: <run URL/commit/result>
-Real Kernel API compatibility: DEFERRED_NOT_IMPLEMENTED; separate mandatory task before real sales
-Open real-enablement/launch gates G1-G5 and owners: <...>
-Program Step 7 handoff approval: <...>
-```
+**Completed:** 2026-10-19, Portal-only ANY-664 / ANY-504 program Step 6. All eight implementation steps and their review corrections are included in [PR #139](https://github.com/gushinets/payments-portal/pull/139) at [commit `15736d6b69c57deb8681e4a951959d78031fb992`](https://github.com/gushinets/payments-portal/commit/15736d6b69c57deb8681e4a951959d78031fb992). The PR is open and unmerged at closure; plan DONE records implementation completion, not merge, Linear Done or production readiness. The owner Portal-only scope decision of 2026-10-15 and Step 1 acceptance of 2026-10-16 are preserved.
 
-**Plan status:** PORTAL-ONLY / STEP 1 DONE BY OWNER ACCEPTANCE / STEP 5 IMPLEMENTED (final identity correction pending owner commit/push). Other step statuses are outside this correction. This corrected planning artifact changes neither the accepted Step 1 code nor the real-enablement gates, and claims no new runtime tests, migrations, generation, commits or real Kernel conformance.
+### Implemented result
+
+1. **Step 1 — DONE:** versioned provisional manifest v1 schema, independent literal fixture/digest and provenance; standalone standard-library authenticated development HTTP mock with schema-derived read-only Swagger/OpenAPI and fault cases.
+2. **Step 2 — DONE:** one typed Portal Kernel HTTP client, strict manifest/scope/ownership/digest validation and selected-capability predicate, with shared absolute preflight deadline, bounded admission/queue/concurrency and cleanup.
+3. **Step 3 — DONE:** scoped authenticated read-only LBX Server API transport, bounded auth/retry/response handling, exact decimal decoding and safe typed errors; no provider mutation.
+4. **Step 4 — DONE:** complete-or-refused selected-offer normalization, exact recurring/connection money and commercial quantity, account-specific currency/scale/policy evidence, effective-date and repeated-read drift checks, and deterministic material fingerprints.
+5. **Step 5 — DONE:** restricted audited operator `dry-run`/`publish`/DB-only `query`, independent approvals, fresh Kernel+LBX checks and immutable PostgreSQL mapping revisions with bounded locking/CAS, repeat safety and uncertain-commit reread. The reviewed identity `selected-offer:v1:<tariff_id>:<tariff_service_id>:<period_id>` distinguishes service/period selections; it is included in the pushed implementation, not a pending local correction.
+6. **Step 6 — DONE:** safe DB-only public catalog list/detail API, generated browser contracts and unified localized landing/tools/product/account presentation of stored exact terms and source-backed product IDs. Simulation is visible locally and excluded from production reads; no checkout or paid-entitlement claim.
+7. **Step 7 — DONE:** opt-in removable development Compose wiring of the existing mock, isolated recorded LBX reads through the real client/normalizer, PostgreSQL publication and browser/fault/recovery/removal/configuration-switch walkthrough. A compatible local target demonstrates configuration replacement, not real Kernel conformance.
+8. **Step 8 — DONE:** independent local schema/fixture/mock/client checker and corruption tests retained in existing CI. External Kernel monitoring (`.github/workflows/kernel-references.yml`, `scripts/check_kernel_references.py` and exclusive tests) is removed without replacement. Historical source pins remain provenance; actual producer verification is deferred.
+
+No current-source background mirror or 24-hour new-sale fallback was introduced. Immutable evidence, simulation containment, F1–F7, purchase/recovery safeguards and existing paid-access trust/cache rules remain unchanged. [Contract provenance](../../contracts/kernel-capability-manifest/v1/README.md) retains the independent schema/fixture/digest, provisional Bearer/hash conventions, Portal spec pin `05d3fcb6a965fcd053d713f49669d1dd25c22978` and read-only Kernel identity pin `079eb03e28d7a50b980795c63c3e4533b785d11f`. No Kernel code, build or test changes belong to this ticket.
+
+### Confirmed verification at the implementation commit
+
+- [CI run 39260471356](https://github.com/gushinets/payments-portal/actions/runs/39260471356) — **PASS** at `15736d6b69c57deb8681e4a951959d78031fb992`.
+- [Code quality](https://github.com/gushinets/payments-portal/actions/runs/39260471356/job/118086480056) — **PASS**, including the local provisional Kernel spec/mock/client checker, fast checks, API/frontend coverage jobs, web typecheck and build. `LOCAL_SPEC_CONFORMANCE=PASS` is CI evidence for the provisional local contract only.
+- [Browser E2E (`browser`)](https://github.com/gushinets/payments-portal/actions/runs/39260471356/job/118086479544) — **PASS**, including React runtime checks, isolated-stack E2E and browser evidence validation/upload. This is automated browser evidence, not separate human visual acceptance.
+- [Production gate](https://github.com/gushinets/payments-portal/actions/runs/39260471356/job/118086479742) — **PASS**, including the PostgreSQL migration cycle, Compose validation, production image builds and API image smoke. This job name does not authorize real sales.
+- Harness smoke — **PASS** on [Ubuntu](https://github.com/gushinets/payments-portal/actions/runs/39260471356/job/118086479904) and [Windows](https://github.com/gushinets/payments-portal/actions/runs/39260471356/job/118086479767).
+- [Security scans run 39260471244](https://github.com/gushinets/payments-portal/actions/runs/39260471244) — **PASS** under its configured reporting policy; [Linear PR metadata run 39260471626](https://github.com/gushinets/payments-portal/actions/runs/39260471626) — **PASS**.
+- CodeQL [#3](https://github.com/gushinets/payments-portal/security/code-scanning/3) and [#4](https://github.com/gushinets/payments-portal/security/code-scanning/4) — **Dismissed / false positive**; both PR review discussions resolved. The flagged value is the tariff/service/period lookup identity returned by the authorized operator JSON boundary. Private audit fields remain restricted; no output-contract change or scanner suppression was added. Rationale is retained in the [Step 8 handoff](../../contracts/kernel-capability-manifest/v1/step-8-handoff.md#codeql-operator-output-disposition-3-and-4).
+
+These results supersede earlier local-only, unpushed and formatting/lint-only status reports for the implementation corrections. They do not establish a separate manual run of every per-step command, every explicit negative-checker invocation, physical mock-removal/configuration-switch walkthrough or human browser review. No unreported manual scenario is assigned PASS. No tests, builds, migrations, generators, workflow dispatch, commit or push were run for this documentation closure; broad `npm run check:fast` and `npm run check` were not rerun because they include tests/builds prohibited by the current request. The evidence above belongs to the implementation commit and does not cover subsequent documentation edits.
+
+**Documentation closure validation:** `./.venv/bin/python scripts/repo.py docs check` — **PASS** for the updated documentation and moved-plan links. The `npm run docs:check` alias could not start because `python` is absent from this shell's PATH; the same checker succeeded with the repository-root virtualenv interpreter. Diff whitespace review also passed. These are documentation checks, not new application test or real-integration evidence.
+
+### Remaining limitations and owner handoff
+
+`REAL_KERNEL_CONFORMANCE=DEFERRED_NOT_IMPLEMENTED`. The real Kernel Capability Manifest API and paid registry are not implemented; local mock/client PASS cannot certify them. The Kernel API owner must supply the actual endpoint, schema/fixtures, producer commit, deployed auth and tenant/region scope. The Portal integration owner must verify actual schema/digest/auth/scope/error behavior and selected real product/paid-metric semantics before genuine publication or real sales, reconciling incompatibilities at the existing Integration boundary.
+
+All **G1–G5** remain in force: G1 real product/release/metric/unit/quantity approval (Kernel/product owners); G2 account-specific LBX membership, price, currency/scale/policy evidence (billing integration owner); G3 commercial/legal/renewal/cancellation/history approvals (commercial/legal owners); G4 real Kernel conformance and trusted deployment configuration (Kernel API and Portal integration owners); G5 later purchase/recovery/paid-cycle/usage/E2E gates (ANY-504 program owners). Simulated revisions remain SIMULATED after endpoint/configuration changes. Formal live-source design canonicalization remains a separate owner action; closing this plan does not change ADR/spec precedence or claim PR #138 was merged.
+
+**Handoff to ANY-504 program Step 7:** consume the completed clients, bounded admission foundation, normalized selected offer and immutable mapping/query contracts described in section 7. Implement separate genuinely new purchase, same-key replay/status and UNKNOWN recovery paths; pin one immutable accepted intent and held scope before non-payment provider preparation, avoid duplicate CREATE, and verify actual resulting subscription terms before Widget eligibility. Program Steps 8–10 still own real paid-access, expiry, reconciliation, revision/invalidation and load proofs; program Step 11 still owns real E2E/launch acceptance. This handoff records dependencies and safeguards, not acceptance of those future flows.
+
+The owner reviews and separately commits/pushes this documentation closure, confirms resulting CI and merges PR #139 after human approval. The owner then changes [Linear ANY-664](https://linear.app/paveldik/issue/ANY-664/6-establish-capability-manifest-external-catalog-and-immutable-mapping) to Done after merge and carries the retained gates into ANY-504 Step 7. This closure does not change Linear status.
+
+**Plan status:** **DONE** for all eight Portal implementation steps. Real sales remain gated on actual Kernel verification and G1–G5.
 
 ## Source links
 
