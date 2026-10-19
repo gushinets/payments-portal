@@ -208,3 +208,30 @@
   color: var(--txt2);
 }
 
+.approved-offer-detail,
+.approved-offer {
+  min-width: 0;
+}
+
+.approved-offer-terms {
+  display: grid;
+  gap: 14px;
+  margin: 20px 0 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.approved-offer-terms dt {
+  color: var(--txt2);
+}
+
+.approved-offer-terms dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.catalog-product-id {
+  overflow-wrap: anywhere;
+  color: var(--txt2);
+}
+

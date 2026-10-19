@@ -35,10 +35,11 @@ test("localized root layout has no Russian-only metadata fallback", async () => 
   assert.match(metadataSource, /description:\s*t\("description"\)/);
 });
 
-test("localized routes retain a generated static locale boundary", async () => {
+test("localized routes validate locale membership while allowing dynamic products", async () => {
   const source = await readFile(layoutPath, "utf8");
 
-  assert.match(source, /export const dynamicParams = false/);
+  assert.match(source, /export const dynamicParams = true/);
+  assert.match(source, /if \(!isRouteLocale\(locale\)\) \{\s*notFound\(\)/);
   assert.match(
     source,
     /SUPPORTED_ROUTE_LOCALES\.map\(\(locale\) => \(\{ locale \}\)\)/
@@ -89,7 +90,6 @@ test("frontend source does not reach provider scripts or browser SDK", async () 
 test("frontend source does not call removed billing contracts", async () => {
   const files = await sourceFiles(srcRootPath);
   const removedContracts = [
-    "/api/catalog/products",
     "/api/auth/checkout-intent",
     "/api/account/subscriptions",
     "/api/auth/payment-status"

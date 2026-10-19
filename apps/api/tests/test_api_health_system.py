@@ -35,7 +35,6 @@ def test_liveness_readiness_metrics_and_request_id() -> None:
 
 def test_legacy_billing_contracts_are_not_mounted_or_documented() -> None:
     removed_contracts = (
-        ("get", "/api/catalog/products"),
         ("post", "/api/auth/checkout-intent"),
         ("get", "/api/account/subscriptions"),
         ("get", "/api/account/subscriptions/00000000-0000-0000-0000-000000000001"),
@@ -47,7 +46,7 @@ def test_legacy_billing_contracts_are_not_mounted_or_documented() -> None:
         assert response.status_code == 404
 
     openapi_paths = app.openapi()["paths"]
-    assert "/api/catalog/products" not in openapi_paths
+    assert "/api/catalog/products" in openapi_paths
     assert "/api/auth/checkout-intent" not in openapi_paths
     assert "/api/account/subscriptions" not in openapi_paths
     assert "/api/account/subscriptions/{subscription_id}" not in openapi_paths

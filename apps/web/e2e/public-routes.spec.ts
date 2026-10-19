@@ -2,13 +2,21 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
 import ruMessages from "../src/messages/ru.json";
+import { simulatedProduct } from "../tests/fixtures/catalog";
+import { isAbortedNextPrefetch } from "../tests/helpers/request-failures";
+
+test.beforeEach(async ({ page }) => {
+  await page.route("**/api/catalog/products{,/*}", (route) => route.fulfill({
+    json: new URL(route.request().url()).pathname === "/api/catalog/products"
+      ? { products: [simulatedProduct] } : simulatedProduct
+  }));
+});
 
 const routes = [
   "/ru",
   "/ru/products",
   "/ru/pricing",
-  "/ru/products/document-summary",
-  "/ru/products/prompt-optimizer",
+  "/ru/products/proposal_ai",
   "/ru/account",
   "/ru/forgot-password",
   "/ru/reset-password",
@@ -29,6 +37,7 @@ for (const route of routes) {
     }
     const consoleErrors: string[] = [];
     const failedRequests: string[] = [];
+    const abortedPrefetchRequests: string[] = [];
     const pageErrors: string[] = [];
     page.on("console", (message) => {
       if (message.type() === "error") {
@@ -39,7 +48,12 @@ for (const route of routes) {
       pageErrors.push(error.message);
     });
     page.on("requestfailed", (request) => {
-      failedRequests.push(`${request.method()} ${request.url()}: ${request.failure()?.errorText}`);
+      const failure = `${request.method()} ${request.url()}: ${request.failure()?.errorText}`;
+      if (isAbortedNextPrefetch(request, page.url())) {
+        abortedPrefetchRequests.push(failure);
+      } else {
+        failedRequests.push(failure);
+      }
     });
 
     const response = await page.goto(route, { waitUntil: "networkidle" });
@@ -109,7 +123,7 @@ for (const route of routes) {
     );
     await testInfo.attach("runtime-evidence", {
       body: JSON.stringify(
-        { route: route.split("?")[0], consoleErrors, pageErrors, failedRequests, accessibility: critical },
+        { route: route.split("?")[0], consoleErrors, pageErrors, failedRequests, abortedPrefetchRequests, accessibility: critical },
         null,
         2
       ),

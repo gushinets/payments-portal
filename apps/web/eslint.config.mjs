@@ -9,6 +9,8 @@ const sharedApiMachineLiteralAllowlist = new Set([
   "Accept-Language",
   "ApiContractError",
   "Authorization",
+  "CatalogProductResponse",
+  "CatalogProductsResponse",
   "Content-Type",
   "EmailVerificationConfirmResponse",
   "EmailVerificationRequestResponse",
@@ -32,6 +34,7 @@ const sharedApiMachineLiteralAllowlist = new Set([
   "string",
   "undefined",
   "verified",
+  "/api/catalog/products/${encodeURIComponent(productId)}",
   "${resolveApiBase()}${path}",
   "Bearer ${token}"
 ]);

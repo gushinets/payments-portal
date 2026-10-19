@@ -250,11 +250,42 @@
       "action": "Alle Werkzeuge"
     }
   },
+  "CatalogPreview": {
+    "loading": "Genehmigte Angebotsvorschauen werden geladen…",
+    "empty": "Es sind keine genehmigten Angebotsvorschauen verfügbar.",
+    "failed": "Angebotsvorschauen sind nicht verfügbar. Versuchen Sie es erneut.",
+    "retry": "Erneut versuchen",
+    "notFound": "Für dieses Produkt wurde kein genehmigtes Angebot gefunden.",
+    "ambiguous": "Nicht verfügbar: Für dieses Produkt gibt es mehrere genehmigte Angebote.",
+    "simulated": "SIMULATION — nur Testvorschau",
+    "unverified": "Genehmigte Konditionen — aktuelle Verfügbarkeit ungeprüft",
+    "previewNote": "Gespeicherte Konditionen dienen zur Information. Ein Kauf ist nicht verfügbar; diese Vorschau gewährt keinen Produktzugang.",
+    "productTitle": "Produkt",
+    "fallback": "Dieses Produkt wird durch seine kanonische ID identifiziert. Weitere Produktinformationen sind noch nicht verfügbar.",
+    "details": "Konditionen ansehen",
+    "recurring": "Wiederkehrender Betrag",
+    "connection": "Separate Anschlussgebühr",
+    "period": "Abrechnungszeitraum",
+    "allowance": "Festes technisches Kontingent pro Zeitraum",
+    "allowanceValue": "{quantity} {unit}",
+    "metric": "Technische Metrik",
+    "terms": "Zahlungsbedingungen",
+    "prepaid": "Vorauszahlung",
+    "paymentUnspecified": "Siehe genehmigte Konditionen",
+    "tax": "Steuerbehandlung",
+    "taxValues": { "included": "Im Betrag enthalten", "not_applicable": "Nicht anwendbar" },
+    "periodUnits": {
+      "day": "{count, plural, one {# Tag} other {# Tage}}",
+      "week": "{count, plural, one {# Woche} other {# Wochen}}",
+      "month": "{count, plural, one {# Monat} other {# Monate}}",
+      "year": "{count, plural, one {# Jahr} other {# Jahre}}"
+    }
+  },
   "Catalog": {
     "page": {
       "eyebrow": "Katalog",
       "title": "KI-Werkzeuge",
-      "description": "Entdecken Sie Document Summary und Prompt Optimizer für Dokumentzusammenfassungen und bessere Prompts."
+      "description": "Sehen Sie gespeicherte genehmigte Angebotskonditionen ein. Die aktuelle Verfügbarkeit ist ungeprüft."
     },
     "signInAction": "Konto öffnen",
     "backToCatalog": "Zurück zu den Produkten",

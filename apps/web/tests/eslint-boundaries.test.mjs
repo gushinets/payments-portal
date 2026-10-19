@@ -644,6 +644,8 @@ test("shared API transport cannot own localized auth presentation", async () => 
 
   const neutralTransportSource = [
     'const loginPath = "/api/auth/login";',
+    'const catalogListPath = "/api/catalog/products";',
+    'const catalogDetailPath = `/api/catalog/products/${encodeURIComponent(productId)}`;',
     'const contentType = "application/json";',
     'const code = "invalid_api_response";',
     'const verificationStatus = "verified";',
@@ -652,6 +654,8 @@ test("shared API transport cannot own localized auth presentation", async () => 
     'const registerContract = "RegisterResponse";',
     'const loginContract = "LoginResponse";',
     'const sessionContract = "SessionResponse";',
+    'const catalogListContract = "CatalogProductsResponse";',
+    'const catalogDetailContract = "CatalogProductResponse";',
     'const logoutContract = "LogoutResponse";',
     'const verificationRequestContract = "EmailVerificationRequestResponse";',
     'const verificationConfirmContract = "EmailVerificationConfirmResponse";',
@@ -687,6 +691,18 @@ test("shared API transport cannot own localized auth presentation", async () => 
   );
   assert.equal(presentationMessages.length, 1);
   assert.match(presentationMessages[0].message, /try-again/);
+
+  for (const source of [
+    'const fallback = "CatalogProductsResponse unavailable";',
+    'const fallback = `/api/catalog/products/${encodeURIComponent(productId)} unavailable`;'
+  ]) {
+    const catalogPresentationMessages = await sharedApiBoundaryMessages(
+      source,
+      "src/shared/api/BoundaryFixture.ts"
+    );
+    assert.equal(catalogPresentationMessages.length, 1);
+    assert.match(catalogPresentationMessages[0].message, /presentation-like text/);
+  }
 
   const localizedImportMessages = await sharedApiBoundaryMessages(
     'import {useTranslations} from "next-intl";',

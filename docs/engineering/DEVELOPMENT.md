@@ -67,20 +67,28 @@ root aliases `dev:api`, `migrate:api`, `test:api:fast`, `test:api:postgres`,
 
 ## Minimal Makefile
 
-The Makefile is not a second command surface. It contains only Unix/WSL
-convenience shortcuts for the local PostgreSQL test server:
+The Makefile contains Unix/WSL convenience shortcuts that delegate to the
+existing repository harness and explicit SIMULATED catalog setup:
 
 ```bash
 make test_db_up
 make test_db_stop
+make catalog_preview
+make catalog_preview_publish
 ```
 
-The cross-platform equivalents are:
+The cross-platform equivalents of the test database shortcuts are:
 
 ```bash
 python scripts/repo.py test-db up
 python scripts/repo.py test-db stop
 ```
+
+`catalog_preview` starts or updates the current worktree's Portal stack and
+publishes its declared SIMULATED offer. `catalog_preview_publish` only publishes
+into an already running, configured worktree. See the
+[Step 6 acceptance procedure](#step-6-stored-catalog-acceptance) for scope,
+authorization, repeat execution and evidence requirements.
 
 Compose owns the PostgreSQL server/container and `repo.py` owns its
 worktree-specific orchestration. pytest owns creation, migration, schema reset,
@@ -184,3 +192,111 @@ The focused test suite includes an event-synchronized check of this overlap usin
 The later Portal walkthrough must demonstrate the real UI/backend with the optional mock for complete, disabled/missing, malformed/partial/version-incompatible and unavailable/unauthorized cases, refusing a **new** publication and recovering on a fresh read. No retired manifest-LKG rule applies. Demonstrate mock removal and production exclusion, plus a deliberately incompatible local contract/reference case. Actual-producer transition/conformance remains explicitly unverified until a compatible Kernel endpoint exists.
 
 These are **Portal delivery requirements of ANY-664**, with real producer and production enablement tracked separately. No local demonstration authorizes real sales, payments or paid execution.
+
+## Step 6 stored catalog acceptance
+
+The public catalog reads only immutable published revisions from the configured
+`MAPPING_ACCOUNT_ID`. Set it explicitly through the shell or `.env`; `repo:up`
+preserves it in the worktree runtime environment and passes it to the API. An
+explicit shell value takes precedence, including an empty value. Empty means
+`503 catalog_unavailable`; a configured account with no eligible revisions
+returns an empty list. There is no automatic account selection or fixture fallback.
+
+The ordinary catalog E2E tests intercept the Portal response. Their success does
+not prove that a normal browser can read an offer from the working database.
+Use the following separate acceptance path from the repository root on Unix/WSL.
+These commands are for the **declared SIMULATED fixture account only**, not real
+commercial approval. The existing worktree database must already be initialized;
+the setup helper neither creates, resets nor migrates it.
+
+First generate the contracts and run the focused checks manually. Starting the
+test database below uses the separate disposable test database, not the working
+catalog database.
+
+```bash
+source .venv/bin/activate
+npm run generate
+npm run generate:check
+npm run test:api:fast
+./.venv/bin/python scripts/repo.py test-db up
+npm run test:api:postgres
+npm --workspace @anytoolai/web run test:components -- tests/components/CatalogTransport.test.ts tests/components/CatalogPreview.test.tsx tests/components/RequestFailures.test.ts
+npm run test:boundaries:web
+npm run typecheck:web
+```
+
+Then start or update the working harness and publish the fixture through the
+existing publisher with one command. This shortcut selects the repository-root
+virtual environment directly and does not require shell activation.
+
+```bash
+make catalog_preview
+CATALOG_PREVIEW_ACCEPTANCE=1 npm run test:e2e -- apps/web/e2e/catalog-stored-preview.spec.ts
+```
+
+`make catalog_preview` delegates to `scripts/repo.py up --reuse`, then runs
+`make catalog_preview_publish` only if startup succeeded. Repeating it updates
+the existing stack and republishes through the same guarded use case. It does
+not start the standalone Kernel HTTP mock. Both shortcuts explicitly select
+`MAPPING_ACCOUNT_ID=simulated-ru-lbx-account` and the publication shortcut passes
+the invoking Unix UID via `MAPPING_OPERATOR_UIDS="[$(id -u)]"`.
+
+For an already running harness with that account configured, publication alone is:
+
+```bash
+make catalog_preview_publish
+```
+
+An identical publication returns the existing revision without appending a
+duplicate. The shortcuts default `CATALOG_PREVIEW_PREVIOUS_REVISION` to `0`;
+changed material retains the publisher's revision conflict and approval guards.
+Only after inspecting existing history may the operator pass an explicit
+`CATALOG_PREVIEW_PREVIOUS_REVISION` Make variable. No automatic conflict retry,
+history rewrite or database reset is performed.
+
+The shortcuts do not edit `.env`. Use `make catalog_preview` again on subsequent
+starts, or set the same `MAPPING_ACCOUNT_ID` in local `.env` when using ordinary
+`npm run repo:up -- --reuse` instead.
+The helper loads the existing host-API environment before importing application
+settings, so `INSTANCE_TENANT_ID` and `INSTANCE_REGION` can come from the harness
+even when an older `.env` lacks them. Explicit shell and `.env` values retain
+their existing precedence; mismatched scope or a non-development environment
+still causes refusal. The helper itself never invents a UID allowlist; the
+explicit Make shortcuts supply it only for this declared simulation.
+
+The explicit UID allowlist grants only permission to run the local publisher;
+it does not approve a real product or legal/commercial terms. The helper uses
+the existing Step 5 independently declared approval and isolated Kernel/LBX HTTP
+recordings through the real clients, normalizer, evaluator and PostgreSQL
+publisher. It records the actual authorized OS principal and SIMULATED evidence,
+then closes its database engine. It never imports fixtures into the API/browser
+runtime, sends a live provider request, inserts a hand-built mapping row, or
+starts another mock service. Standalone HTTP-mock Compose wiring/removal and
+real-source conformance remain separate handoffs.
+
+The helper refuses a production/test environment, another account, another
+database naming scope, a mismatched runtime scope, or an unauthorized OS
+principal. Publication retains existing revision/CAS, idempotency and append-only
+guards. If an existing different revision causes `mapping_revision_conflict`,
+inspect it with the existing Step 5 scoped query before choosing an expected
+revision; do not delete or rewrite history.
+
+The explicit acceptance test does **not** intercept API responses. It requires
+`proposal_ai` to be present in the real Portal API with the fixture's `200.02 RUB`
+recurring charge, separate `14.06 RUB` connection charge and fixed allowance `25`.
+It opens the list, follows the canonical product-ID route, reloads it, compares
+the served revision, checks simulation disclosure, anonymous requests,
+accessibility and overflow, and captures desktop/mobile evidence. Without
+`CATALOG_PREVIEW_ACCEPTANCE=1` this manual acceptance test is skipped, which is
+**not a PASS** for Step 6.
+
+Also open `/ru/products` and `/ru/products/proposal_ai` in the ordinary browser
+at the harness origin printed by `repo:up`. The account's older editorial cards
+remain presentation placeholders and are not the source of this catalog.
+The API must continue to serve the stored preview after the setup process has
+exited; browsing performs no Kernel/LBX calls. Existing API tests cover source
+admission saturation and production exclusion of persisted simulated evidence.
+
+The implementation agent has not executed these setup/acceptance commands or
+claimed the corresponding real API/DB/browser outcome. Human execution and
+review are required before recording Step 6 acceptance.

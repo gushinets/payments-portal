@@ -408,6 +408,7 @@ def write_runtime(config: RuntimeConfig) -> None:
         "APP_ENV": "development",
         "INSTANCE_TENANT_ID": LOCAL_INSTANCE_TENANT_ID,
         "INSTANCE_REGION": LOCAL_INSTANCE_REGION,
+        "MAPPING_ACCOUNT_ID": os.environ.get("MAPPING_ACCOUNT_ID", local_env.get("MAPPING_ACCOUNT_ID", "")),
         "POSTGRES_DB": config.database_name,
         "POSTGRES_USER": "anytoolai",
         "POSTGRES_PASSWORD": "anytoolai-local-only",

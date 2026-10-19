@@ -49,6 +49,148 @@ export type AcceptDocumentResponse = {
 };
 
 /**
+ * CatalogAllowance
+ */
+export type CatalogAllowance = {
+    /**
+     * Metric Key
+     */
+    metric_key: string;
+    /**
+     * Quantity
+     */
+    quantity: string;
+    /**
+     * Unit
+     */
+    unit: string;
+};
+
+/**
+ * CatalogMoney
+ */
+export type CatalogMoney = {
+    /**
+     * Connection Amount
+     */
+    connection_amount: string;
+    /**
+     * Currency
+     */
+    currency: string;
+    /**
+     * Decimal Places
+     */
+    decimal_places: number;
+    /**
+     * Recurring Amount
+     */
+    recurring_amount: string;
+    /**
+     * Units
+     */
+    units?: 'major';
+};
+
+/**
+ * CatalogOffer
+ */
+export type CatalogOffer = {
+    allowance: CatalogAllowance;
+    evidence_mode: MappingEvidenceMode;
+    money: CatalogMoney;
+    /**
+     * Offer Id
+     */
+    offer_id: string;
+    period: CatalogPeriod;
+    publication_state: PublicationState;
+    /**
+     * Revision Id
+     */
+    revision_id: string;
+    /**
+     * Revision Number
+     */
+    revision_number: number;
+    terms: CatalogTermSummary;
+};
+
+/**
+ * CatalogPeriod
+ */
+export type CatalogPeriod = {
+    /**
+     * Anchor
+     */
+    anchor: 'calendar_month' | 'instance_start' | 'first_instance_start';
+    /**
+     * Length
+     */
+    length: number;
+    /**
+     * Unit
+     */
+    unit: 'day' | 'week' | 'month' | 'year';
+};
+
+/**
+ * CatalogProductResponse
+ */
+export type CatalogProductResponse = {
+    /**
+     * Availability
+     */
+    availability: 'APPROVED_UNVERIFIED_NOW' | 'SIMULATED_PREVIEW' | 'UNAVAILABLE_AMBIGUOUS_OFFERS';
+    evidence_mode: MappingEvidenceMode;
+    offer: CatalogOffer | null;
+    /**
+     * Product Id
+     */
+    product_id: string;
+};
+
+/**
+ * CatalogProductsResponse
+ */
+export type CatalogProductsResponse = {
+    /**
+     * Products
+     */
+    products: Array<CatalogProductResponse>;
+};
+
+/**
+ * CatalogTermSummary
+ */
+export type CatalogTermSummary = {
+    /**
+     * Connection Charge Basis
+     */
+    connection_charge_basis: 'per_service_unit' | 'once';
+    /**
+     * Discounts
+     */
+    discounts: 'none';
+    /**
+     * Full Funding Required
+     */
+    full_funding_required: boolean;
+    /**
+     * Prepaid
+     */
+    prepaid: boolean;
+    /**
+     * Proration
+     */
+    proration: 'none';
+    /**
+     * Tax Treatment
+     */
+    tax_treatment: 'included' | 'not_applicable';
+};
+
+/**
  * EmailVerificationConfirmRequest
  */
 export type EmailVerificationConfirmRequest = {
@@ -145,6 +287,11 @@ export type LogoutResponse = {
 };
 
 /**
+ * MappingEvidenceMode
+ */
+export type MappingEvidenceMode = 'SIMULATED' | 'GENUINE';
+
+/**
  * PasswordResetConfirmRequest
  */
 export type PasswordResetConfirmRequest = {
@@ -187,6 +334,11 @@ export type PasswordResetRequestResponse = {
      */
     status: 'accepted';
 };
+
+/**
+ * PublicationState
+ */
+export type PublicationState = 'SIMULATED' | 'PUBLISHED_APPROVED_UNVERIFIED_NOW';
 
 /**
  * ReadinessSuccessResponse
@@ -605,6 +757,52 @@ export type GetSessionApiAuthSessionGetResponses = {
 };
 
 export type GetSessionApiAuthSessionGetResponse = GetSessionApiAuthSessionGetResponses[keyof GetSessionApiAuthSessionGetResponses];
+
+export type ListProductsApiCatalogProductsGetData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/catalog/products';
+};
+
+export type ListProductsApiCatalogProductsGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: CatalogProductsResponse;
+};
+
+export type ListProductsApiCatalogProductsGetResponse = ListProductsApiCatalogProductsGetResponses[keyof ListProductsApiCatalogProductsGetResponses];
+
+export type ProductDetailApiCatalogProductsProductIdGetData = {
+    body?: never;
+    path: {
+        /**
+         * Product Id
+         */
+        product_id: string;
+    };
+    query?: never;
+    url: '/api/catalog/products/{product_id}';
+};
+
+export type ProductDetailApiCatalogProductsProductIdGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HTTPValidationError;
+};
+
+export type ProductDetailApiCatalogProductsProductIdGetError = ProductDetailApiCatalogProductsProductIdGetErrors[keyof ProductDetailApiCatalogProductsProductIdGetErrors];
+
+export type ProductDetailApiCatalogProductsProductIdGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: CatalogProductResponse;
+};
+
+export type ProductDetailApiCatalogProductsProductIdGetResponse = ProductDetailApiCatalogProductsProductIdGetResponses[keyof ProductDetailApiCatalogProductsProductIdGetResponses];
 
 export type LivenessApiHealthLiveGetData = {
     body?: never;

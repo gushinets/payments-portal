@@ -250,11 +250,42 @@
       "action": "Tutti gli strumenti"
     }
   },
+  "CatalogPreview": {
+    "loading": "Caricamento delle offerte approvate…",
+    "empty": "Non sono disponibili anteprime di offerte approvate.",
+    "failed": "Le anteprime delle offerte non sono disponibili. Riprova.",
+    "retry": "Riprova",
+    "notFound": "Non è stata trovata un’offerta approvata per questo prodotto.",
+    "ambiguous": "Non disponibile: esistono più offerte approvate per questo prodotto.",
+    "simulated": "SIMULAZIONE — solo anteprima di prova",
+    "unverified": "Condizioni approvate — disponibilità attuale non verificata",
+    "previewNote": "Le condizioni salvate sono mostrate a scopo informativo. L’acquisto non è disponibile; questa anteprima non concede accesso al prodotto.",
+    "productTitle": "Prodotto",
+    "fallback": "Questo prodotto è identificato dal suo ID canonico. Ulteriori informazioni non sono ancora disponibili.",
+    "details": "Visualizza le condizioni",
+    "recurring": "Importo ricorrente",
+    "connection": "Costo di attivazione separato",
+    "period": "Periodo di fatturazione",
+    "allowance": "Quota tecnica fissa per periodo",
+    "allowanceValue": "{quantity} {unit}",
+    "metric": "Metrica tecnica",
+    "terms": "Condizioni di pagamento",
+    "prepaid": "Pagamento anticipato",
+    "paymentUnspecified": "Vedi le condizioni approvate",
+    "tax": "Trattamento fiscale",
+    "taxValues": { "included": "Incluso nell’importo", "not_applicable": "Non applicabile" },
+    "periodUnits": {
+      "day": "{count, plural, one {# giorno} other {# giorni}}",
+      "week": "{count, plural, one {# settimana} other {# settimane}}",
+      "month": "{count, plural, one {# mese} other {# mesi}}",
+      "year": "{count, plural, one {# anno} other {# anni}}"
+    }
+  },
   "Catalog": {
     "page": {
       "eyebrow": "Catalogo",
       "title": "Strumenti di IA",
-      "description": "Scopri Document Summary e Prompt Optimizer per riassumere documenti e migliorare i prompt."
+      "description": "Consulta le condizioni approvate salvate. La disponibilità attuale non è verificata."
     },
     "signInAction": "Apri l’account",
     "backToCatalog": "Torna ai prodotti",

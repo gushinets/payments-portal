@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 
-import { ProductOverview } from "@/features/catalog";
+import { CatalogPreview } from "@/features/catalog";
 import { getCurrentRouteLocale } from "@/i18n/current-locale";
 import { createLocalizedMetadata } from "@/i18n/metadata";
 
@@ -19,7 +19,7 @@ export default async function ProductsPage() {
         <h1 className="section-title catalog-title">{t("page.title")}</h1>
         <p className="hero-copy">{t("page.description")}</p>
       </div>
-      <ProductOverview headingLevel={2} />
+      <CatalogPreview />
     </section>
   );
 }

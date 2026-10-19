@@ -134,7 +134,7 @@ export async function postJson<T>(
 
 export async function getJson<T>(
   path: string,
-  token: string,
+  token: string | undefined,
   contract: string
 ): Promise<T> {
   const controller = new AbortController();
@@ -143,7 +143,7 @@ export async function getJson<T>(
   try {
     const response = await fetch(`${resolveApiBase()}${path}`, {
       headers: {
-        Authorization: `Bearer ${token}`
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
       },
       signal: controller.signal
     });

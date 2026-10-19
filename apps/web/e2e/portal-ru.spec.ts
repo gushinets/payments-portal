@@ -4,11 +4,19 @@ import { expect, test, type Locator, type Page, type TestInfo } from "@playwrigh
 import ruMessages from "../src/messages/ru.json";
 
 const removedContracts = [
-  "/api/catalog/products",
   "/api/auth/checkout-intent",
   "/api/account/subscriptions",
   "/api/auth/payment-status"
 ];
+
+test.beforeEach(async ({ page }) => {
+  // These legacy layout journeys cover the empty/unavailable catalog case.
+  // Positive source-ID and exact-money coverage lives in catalog-preview.spec.
+  await page.route("**/api/catalog/products", (route) => route.fulfill({ json: { products: [] } }));
+  await page.route("**/api/catalog/products/*", (route) => route.fulfill({
+    status: 404, json: { detail: { code: "catalog_product_not_found" } }
+  }));
+});
 const portalRoutes = [
   "/ru",
   "/ru/products",
@@ -98,8 +106,9 @@ async function expectPortalBoundary(
   expect(providerScriptSources).toEqual([]);
   expect(hasCloudPaymentsSdk).toBe(false);
 
-  // These journeys may read identity only; no commercial/access/usage source exists yet.
-  expect(traffic.apiRequests.filter((request) => request !== "GET /api/auth/session"))
+  // Catalog browse reads only the Portal API, alongside existing identity reads.
+  expect(traffic.apiRequests.filter((request) => request !== "GET /api/auth/session" &&
+    !request.startsWith("GET /api/catalog/products")))
     .toEqual([]);
   const main = page.getByRole("main");
   const footer = page.getByRole("contentinfo");
@@ -201,7 +210,7 @@ for (const route of portalRoutes) {
         page.getByRole("main").getByRole("heading", { name: "Вход или регистрация" })
       ).toBeVisible();
     }
-    if (route === "/ru" || route === "/ru/products") {
+    if (route === "/ru") {
       await expect(page.getByRole("main").getByRole("status")).toHaveCount(0);
       for (const product of products) {
         await expect(
@@ -209,7 +218,10 @@ for (const route of portalRoutes) {
         ).toHaveAttribute("href", `/ru/products/${product.slug}`);
       }
     }
-    expect(traffic.apiRequests).toEqual([]);
+    if (route === "/ru/products") {
+      await expect(page.getByRole("main").getByRole("status")).toHaveText(ruMessages.CatalogPreview.empty);
+    }
+    expect(traffic.apiRequests.filter((request) => !request.startsWith("GET /api/catalog/products"))).toEqual([]);
 
     await expectPortalBoundary(page, traffic, testInfo);
   });
@@ -318,82 +330,9 @@ for (const authenticated of [false, true]) {
   });
 }
 
-for (const product of products) {
-  test(`catalog card opens a substantial localized ${product.slug} detail page`, async ({ page }, testInfo) => {
-    const traffic = observePortalTraffic(page);
-    await page.goto("/ru/products");
-    await page.getByRole("button", { name: ruMessages.CookieBanner.acceptAction, exact: true }).click();
-    await expect(page.getByRole("main").getByRole("link")).toHaveCount(2);
-    const card = page.getByRole("main").getByRole("link", {
-      name: new RegExp(product.title)
-    });
-    await expect(card).toContainText("Подробнее");
-    await expect(card).toContainText(product.description);
-    await expect(card).toContainText(product.type);
-    await expect(card.getByRole("heading", { level: 2, name: product.name, exact: true })).toBeVisible();
-    await expect(card).toHaveAttribute("href", `/ru/products/${product.slug}`);
-    await card.click();
-
-    await expect(page).toHaveURL(new RegExp(`/ru/products/${product.slug}$`));
-    const main = page.getByRole("main");
-    await expect(main.getByRole("heading", { level: 1, name: product.name })).toBeVisible();
-    await expect(main.getByText(product.title, { exact: true })).toBeVisible();
-    await expect(main.getByText(product.description, { exact: true })).toBeVisible();
-    await expect(
-      main.getByRole("link", { name: ruMessages.Catalog.signInAction })
-    ).toHaveAttribute("href", "/ru/account");
-    const backLinks = main.getByRole("link", { name: "К списку продуктов" });
-    await expect(backLinks).toHaveCount(2);
-    for (const backLink of await backLinks.all()) {
-      await expect(backLink).toHaveAttribute("href", "/ru/products");
-    }
-
-    const preview = main.getByRole("figure");
-    await expect(preview).toHaveCount(1);
-    await expect(preview.getByText(ruMessages.Catalog.detail.previewLabel, { exact: true })).toBeVisible();
-    await expect(preview.getByText(product.detail.previewCaption, { exact: true })).toBeVisible();
-    await expect(preview.getByText(ruMessages.Catalog.detail.previewNote, { exact: true })).toBeVisible();
-
-    const information = main.getByRole("region", { name: ruMessages.Catalog.detail.informationTitle });
-    const highlights = [product.detail.focus, product.detail.context, product.detail.approach];
-    await expect(information.getByRole("heading", { level: 3 }))
-      .toHaveText(highlights.map((highlight) => highlight.title));
-    for (const highlight of highlights) {
-      await expect(information.getByText(highlight.description, { exact: true })).toBeVisible();
-      expect(highlight.description).not.toBe(product.description);
-    }
-    const otherProduct = products[product.slug === "document-summary" ? 1 : 0];
-    await expect(information).not.toContainText(otherProduct.detail.focus.description);
-
-    const readiness = main.getByRole("region", { name: ruMessages.Catalog.detail.readiness.title });
-    const detailSlots = [
-      ruMessages.Catalog.detail.readiness.commercial,
-      ruMessages.Catalog.detail.readiness.access,
-      ruMessages.Catalog.detail.readiness.usage
-    ];
-    await expect(readiness.getByRole("term")).toHaveText(detailSlots.map((slot) => slot.label));
-    await expect(readiness.getByRole("definition"))
-      .toHaveText(detailSlots.map((slot) => slot.description));
-    await expect(readiness.getByRole("definition").nth(0)).toContainText(/не готов|недоступ/i);
-    await expect(readiness.getByRole("definition").nth(1)).toContainText(/неизвест|недоступ/i);
-    await expect(readiness.getByRole("definition").nth(2)).toContainText(/недоступ/i);
-    for (const definition of await readiness.getByRole("definition").all()) {
-      await expect(definition).not.toContainText(/\d|₽|€|\$/);
-    }
-    await expect(main.getByRole("progressbar")).toHaveCount(0);
-    await expect(main.getByRole("button")).toHaveCount(0);
-    await expect(main.getByRole("link")).toHaveCount(3);
-    await expect(main.getByText(ruMessages.Catalog.detail.accountNote, { exact: true })).toBeVisible();
-    await expectKeyboardFocus(page, main.getByRole("link", { name: ruMessages.Catalog.signInAction }));
-    await expectNoHorizontalOverflow(page);
-    await expectPortalBoundary(page, traffic, testInfo);
-  });
-}
-
 for (const route of [
   "/ru/auth-checkout",
-  "/ru/payment-result",
-  "/ru/products/unknown-product"
+  "/ru/payment-result"
 ]) {
   test(`${route} is not found without a compatibility redirect`, async ({ page, request }) => {
     const directResponse = await request.get(route, { maxRedirects: 0 });
@@ -558,28 +497,12 @@ test("RU Portal navigation, product discovery and account forms remain usable at
 
   const main = page.getByRole("main");
   await expect(main.getByRole("heading", { level: 1, name: "AI-утилиты" })).toBeVisible();
-  for (const product of products) {
-    const card = main.getByRole("link", { name: new RegExp(product.title) });
-    await card.scrollIntoViewIfNeeded();
-    await expect(card).toBeInViewport();
-    await expect(card.getByRole("heading", { name: product.name })).toBeVisible();
-  }
-  await expectMobileLayout(page, testInfo, "catalog");
-  await main.getByRole("link", { name: new RegExp(products[0].title) }).click();
-  await expect(page).toHaveURL(/\/ru\/products\/document-summary$/);
-  const productTitle = main.getByRole("heading", { level: 1, name: products[0].name });
-  await productTitle.scrollIntoViewIfNeeded();
-  await expect(productTitle).toBeInViewport();
-  await expect(main.getByText(products[0].title, { exact: true })).toBeVisible();
-  await expect(main.getByText(products[0].description, { exact: true })).toBeVisible();
-  await expectMobileLayout(page, testInfo, "document-summary");
-
-  await main.getByRole("link", { name: "К списку продуктов" }).last().click();
-  await expect(page).toHaveURL(/\/ru\/products$/);
-  await main.getByRole("link", { name: new RegExp(products[1].title) }).click();
-  await expect(page).toHaveURL(/\/ru\/products\/prompt-optimizer$/);
-  await expect(main.getByRole("heading", { level: 1, name: products[1].name })).toBeVisible();
-  await expectMobileLayout(page, testInfo, "prompt-optimizer");
+  await expect(main.getByRole("status")).toHaveText(ruMessages.CatalogPreview.empty);
+  await expectMobileLayout(page, testInfo, "catalog-empty");
+  await page.goto("/ru/products/proposal_ai", { waitUntil: "networkidle" });
+  await expect(main.getByRole("heading", { level: 1, name: ruMessages.CatalogPreview.productTitle })).toBeVisible();
+  await expect(main.getByRole("status")).toHaveText(ruMessages.CatalogPreview.notFound);
+  await expectMobileLayout(page, testInfo, "product-unavailable");
 
   await expectKeyboardFocus(page, main.getByRole("link", { name: ruMessages.Catalog.signInAction }));
   await page.keyboard.press("Enter");

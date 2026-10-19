@@ -31,6 +31,8 @@ export const paymentMethods: PaymentMethod[] = [];
 export type ProductSlug = "document-summary" | "prompt-optimizer";
 
 export type ProductPresentation = {
+  // Optional, explicitly approved association. An editorial slug is not a Kernel ID.
+  kernelProductId?: string;
   slug: ProductSlug;
   messageKey: "documentSummary" | "promptOptimizer";
   Icon: typeof FileText;
@@ -65,6 +67,10 @@ export const productPresentation: readonly ProductPresentation[] = [
     ]
   }
 ];
+
+export function productMarketing(productId: string): ProductPresentation | undefined {
+  return productPresentation.find((product) => product.kernelProductId === productId);
+}
 
 export const catalogRegion = "RU";
 export const legalDocumentLanguage = "RU";
