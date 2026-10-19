@@ -148,8 +148,9 @@ def main(argv: list[str] | None = None) -> int:
     except SQLAlchemyError:
         print('{"detail":{"code":"mapping_database_error"}}', file=sys.stderr)
         return 1
-    # Same intentional operator JSON boundary as the ordinary CLI. The
-    # configured/recorded HTTP credentials are not serialized into the audit.
+    # Development-only, UID-authorized result with the ordinary CLI's private
+    # audit boundary, including reason/references; protect stdout accordingly.
+    # Configured/recorded HTTP credentials are not serialized into the audit.
     print(output)
     return 0
 

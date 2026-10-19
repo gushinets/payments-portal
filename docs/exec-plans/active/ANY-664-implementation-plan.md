@@ -173,7 +173,7 @@ This section retains the researched Portal baseline and selected pinned referenc
 | 5 | Steps 2/4; existing mapping DB guards | Privileged fresh `dry-run`/`publish`, DB-only scoped `query`, immutable versioned evidence and simulation filtering for Step 6 and later purchase work |
 | 6 | Step 5 stored evidence/query contract | Generated-wire-source catalog API and anonymous localized browser list/detail over those rows, for the Step 7 walkthrough |
 | 7 | Existing Steps 1-6 | Optional same-harness wiring, exact manual positive/failure/removal/switch walkthrough, no second client/mock |
-| 8 | Steps 1/2/7 contracts and actual Portal CI | Local spec conformance, separate bounded reference watch and explicit future real-producer integration gate |
+| 8 | Steps 1/2/7 contracts and actual Portal CI | Local spec conformance and explicit deferred real-producer integration gate |
 
 The handoff must name actual files, callable inputs/outputs, error meanings, resource ownership and unverified evidence. A positive test fixture is an implementation proof input, not real product/legal/provider approval. Current step acceptance must not require runtime purchase, reconciliation, AccessSnapshot or usage work assigned to later program steps.
 
@@ -196,7 +196,7 @@ A separate dev/test-only HTTP mock serves the documented provisional manifest v1
 
 #### Handoff to the remaining steps
 
-Step 2 independently implements Portal's typed HTTP consumer, without importing mock code/fixtures at runtime. Step 7 wires **this existing server** into the dev harness and keeps its documentation reachable on developer localhost. Step 8 checks the same contract and reference provenance independently; it does not regenerate fixtures to hide a consumer defect. Preserve schema, errors, auth/scope, hash conventions, Swagger behavior and simulated provenance while integrating.
+Step 2 independently implements Portal's typed HTTP consumer, without importing mock code/fixtures at runtime. Step 7 wires **this existing server** into the dev harness and keeps its documentation reachable on developer localhost. Step 8 checks the same local contract independently; it does not regenerate fixtures to hide a consumer defect. Preserve schema, errors, auth/scope, hash conventions, Swagger behavior and simulated provenance while integrating.
 
 #### Prompt for Codex - selected Step 1 (read-only)
 
@@ -479,50 +479,21 @@ Wire the existing DONE Step 1 mock into the existing worktree-aware dev harness 
 
 **Human checks:** from Portal root, `npm run repo:setup`, human inspection of effective harness Compose/mounts, opt-in mock plus `npm run repo:up`, focused tests and `npm run test:e2e`. Use the configured allowed CLI process UID for a fresh simulated publication. Verify existing Swagger, query/preview with sources down and slots occupied, failed new publication, fresh retry, stop/removal and basic startup, independent compatible-target switch, clean production image/config and unchanged simulated-row exclusion. Use `.harness/runtime.json` only if the actual harness supplies it. **DoD:** real Portal backend/DB/browser works through the existing optional removable mock and same read/evaluation path, with repeatable human commands and no false real authority.
 
-### Step 8 - Portal conformance checks, upstream references and future producer handoff
+### Step 8 - Portal local conformance and deferred real producer handoff
 
-**Status:** `todo`. Add one small Portal-side contract checker and integrate with existing Portal PR/CI practices. Independently validate mock HTTP responses and client interpretation against the pinned **spec-derived** schema, literal fixtures/expected hashes and documented HTTP/auth/scope/error behavior. Client/mock self-agreement is not sufficient. Deliberately remove a required field or corrupt a metric owner and require a failing local test. No Kernel runtime package, checkout, build or producer-test dependency.
+**Status:** local checker/CI implemented; final owner correction recorded 2026-10-19. The owner removed external Kernel source monitoring from ANY-664 because the real Capability Manifest API is not implemented. The dedicated workflow, source-reference script and exclusive tests are removed without replacement. Historical SHA/source links remain contract provenance. Steps 1–7, F1–F7 and real-enablement gates G1–G5 remain unchanged.
 
-Retain a small **Portal-owned read-only upstream reference check** independent of Portal PRs on a bounded daily CI schedule. Compare the known relevant manifest-spec sections and selected product identity sources against their recorded pins. Surface meaningful source changes for review; unrelated commits/additional products must not fail by themselves. Source access failure is `UNKNOWN_SOURCE_CHECK`, not a silent current-source PASS. This watches **documentation/identity provenance**, not a nonexistent API wire. It has separate status from reproducible local checks and is not a prerequisite for writing Portal code or a reason to demand Kernel delivery. Do not invent future producer artifact paths, a delivery date or an API-discovery framework. Claim the independent schedule operational only after default-branch deployment/run has been verified; otherwise record NOT_YET_OPERATIONAL.
+**Goal:** independently validate mock HTTP responses and typed client against the pinned spec-derived schema, literal fixtures/expected hashes and documented HTTP/auth/scope/error behavior. Client/mock self-agreement is insufficient. Deliberate required-field, metric-owner and digest corruption must fail. No Kernel runtime package, checkout, build or producer-test dependency.
 
-Record distinct results: `LOCAL_SPEC_CONFORMANCE=PASS/FAIL/NOT_RUN` and `REAL_KERNEL_CONFORMANCE=DEFERRED_NOT_IMPLEMENTED/NOT_RUN/PASS/FAIL`. Missing real API is the expected deferred state, not a failure of otherwise valid ANY-664 local conformance and never a live PASS.
+**Retained implementation:** `scripts/check_kernel_manifest_contract.py`, its focused tests and the existing `.github/workflows/ci.yml` local-checker/fast-suite steps. Preserve the accepted Step 1 mock, schema-derived read-only Swagger, fixtures and Step 2 client, including multiple metrics sharing a valid product owner. Never rewrite good fixtures to agree with a defective consumer.
 
-When the Kernel team delivers the actual authoritative endpoint/contract, a **separate integration activity** must compare schema/fixtures/digest/auth/scope and selected real product/metric, pin the producer and enable actual producer compatibility/upstream wire-drift checks before genuine publication/checkout. Compatible wire/auth permits configuration switching. Material mismatch requires an explicit narrow Integration/contract reconciliation, not weakened validation or silent acceptance. No changes to Kernel are assigned by this step.
+**Evidence:** record `LOCAL_SPEC_CONFORMANCE=PASS/FAIL/NOT_RUN` separately from `REAL_KERNEL_CONFORMANCE=DEFERRED_NOT_IMPLEMENTED`. Local conformance checks the provisional contract only. No source-monitor deployment or daily-run evidence is required for ANY-664 completion. This correction runs formatting/lint only; human test verification remains pending.
 
-**Suggested human commit:** `test(contracts): check provisional kernel manifest and upstream references`
+**Mandatory separate task before real sales:** the Kernel API owner must deliver the authoritative endpoint OpenAPI/fixtures, producer commit and deployed service-auth/tenant-region configuration. The Portal integration owner must compare schema/strictness, complete-response behavior, digest/auth/scope/errors and the selected real product/paid metric/unit/enablement, then record actual consumer-versus-producer conformance. Compatible wire/auth permits configuration switching; incompatibility requires reviewed narrow Integration/contract reconciliation. Do not weaken validation or promote SIMULATED history. Actual producer wire-drift assurance belongs to that future task, with no monitoring mechanism added here. G1–G5 and all other ANY-504 requirements remain in force.
 
-#### Goal — functional result
+**Human checks:** run the local checker and the exact positive/negative commands in the [Step 8 handoff](../../contracts/kernel-capability-manifest/v1/step-8-handoff.md), then repository verification. Negative scenarios must exit 1 with local FAIL. **DoD:** checked provisional Portal/mock/client contract and a precise deferred real-integration gate; no claim of actual producer compatibility.
 
-Portal has a small reproducible **local** v1 contract verification (mock HTTP + typed consumer against independently pinned specification/expected fixtures) and a separate upstream **reference** change signal that identifies when selected Kernel source/spec provenance may need human review. It **never** claims the as-yet-unimplemented real Kernel endpoint was tested.
-
-#### Relevant existing code — inspect in this order
-
-1. Step 1 `docs/contracts/kernel-capability-manifest/v1/` pinned schema/provenance/literal expected hash + mock `/openapi.json` and Step 2 client contract tests; inspect actual owners instead of writing another schema package.
-2. `docs/superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md` manifest and authentication sections; pinned Kernel `bootstrap.py`, `ConfigRegistry`, `FreelancerSuiteBundle` **read-only** identity evidence. Do not treat unrelated Kernel commits or guest quota files as paid contract drift.
-3. Current Portal test/architecture script conventions: `apps/api/tests/test_architecture.py`, `scripts/repo.py`, actual `.github/workflows` files discovered by inspecting **that directory only**, `docs/engineering/DEVELOPMENT.md`. Use existing CI rather than invent a new CI runtime.
-4. §3.4 real enablement gate G4; the submitted owner Portal-only scope decision. No new real Kernel source import/build.
-
-#### Implementation decisions — exact order
-
-1. Add one small Portal-owned local checker (suggest `scripts/check_kernel_manifest_contract.py`) using the pinned schema/independent literal fixtures. Exercise Step 1 over real local HTTP and Step 2 interpretation independently: strict fields/types, semantic hash, enabled selection, unique product/metric keys, multiple metrics sharing a valid owner, scope/auth and deliberate failures. Verify served OpenAPI is the retained versioned JSON Schema projection with resolvable local references and unchanged read-only documentation. Do not import a shared runtime validator into client/mock or rewrite accepted Step 1 artifacts to make self-agreement pass. A local check does not prove actual producer compatibility.
-2. Deliberately remove a required field / corrupt metric's owner or `manifest_version` in a fixture/test to prove checker/test fails. Tests should not compare only two pieces of code generated from the **same** mutable fixture. Startup scenario fault injection can satisfy the negative regression without a second mocking framework.
-3. Add a **minimal read-only reference watch** for targeted approved spec segments and selected Kernel identity sources pinned by SHA. On relevant source change, report changed fingerprint/reference and require review; unrelated Kernel commits or added off-fixture products do not fail merely because the repository SHA advanced. Missing upstream/network/permissions => explicit `UNKNOWN_SOURCE_CHECK`, not local PASS or automatic production enablement.
-4. Use existing Portal PR-time checks plus one independently scheduled **bounded daily** default-branch workflow or existing accepted independent trigger. It must not rely on a feature-branch schedule firing before merge. Guard credentials, avoid private-source URL fallback, and document actionable status and manual commands. Report scheduled check as `NOT_YET_OPERATIONAL` until a real default-branch workflow run after merge is observed.
-5. Track separate outcomes: `LOCAL_SPEC_CONFORMANCE=PASS/FAIL/NOT_RUN`, `REFERENCE_SOURCE_CHECK=PASS/CHANGE_REVIEW_REQUIRED/UNKNOWN_SOURCE_CHECK/NOT_RUN`, `REFERENCE_WATCH_OPERATIONAL=VERIFIED/NOT_YET_OPERATIONAL`, and `REAL_KERNEL_CONFORMANCE=DEFERRED_NOT_IMPLEMENTED/NOT_RUN/PASS/FAIL`. Source-access failure cannot be reported as current-source PASS, but it is not a local schema-test failure. Missing real producer remains deferred, never a reason to fabricate a live PASS or redo Step 1. A deployed daily schedule is operational only with actual default-branch run evidence.
-6. In handoff docs, prescribe real producer delivery acceptance: pin actual endpoint OpenAPI/fixtures and producer commit, verify deployed/auth/tenant-region/digest/paid metric enablement, run real consumer-vs-producer conformance and renew source-drift alerts **before real publication/purchase**. If the real endpoint differs, perform a narrow reviewed Integration reconciliation; do not weaken schema validation or claim URL-only switching through incompatibility.
-7. Keep absent producers, dummy paid metrics and mock test credentials separated from real-offer G1–G5. Do not build/test Kernel, add shared runtime SDK, general contract-broker tooling or unrelated broad CI workflow.
-
-#### Boundaries and reviewer observation
-
-- Reviewer should be able to run a **negative local contract test that fails**, identify exact source-reference vs actual wire conformance and see the unimplemented real endpoint still marked deferred. No scheduling PASS claim without evidence of default-branch deployment/run.
-
-#### Prompt for Codex — selected Step 8
-
-Implement only the Portal-local spec/mock/client conformance checker and bounded independent source-reference watch in the existing CI style. Reuse the accepted Step 1 JSON Schema, literal hashes, HTTP mock and schema-derived read-only Swagger; compare Step 2 independently and keep the multiple-metrics-per-product positive case. Prove deliberate required-field/owner/digest corruption fails without changing good fixtures to agree with buggy code. Record local conformance, source-reference status, schedule operation and real-producer conformance separately. Run reference checks on relevant Portal PRs plus the documented bounded daily default-branch schedule; unrelated commits/products do not cause false drift, unavailable sources yield UNKNOWN, unverified schedule stays NOT_YET_OPERATIONAL. Preserve F1-F7 and hand off real schema/auth/hash/product/metric conformance as a separate enablement activity. No Kernel edits/checkout/API prerequisite, shared SDK, mock rewrite or new CI framework. Write code/tests/docs and manual proof commands only; run no checks, formatters, workflows or Git writes.
-
-**Step-specific execution constraints:** implement only Portal-local schema/client/mock conformance, focused CI/reference watch, mismatch regression and docs/handoff. No Kernel edits/tests, mandatory live producer, shared SDK, Step 10 wire or general CI framework. Follow section 1 restrictions; report separate local/external/deferred outcomes and exact manual commands.
-
-**Human checks:** proposed `./.venv/bin/python scripts/check_kernel_manifest_contract.py --local`, focused Portal contract tests, `npm run generate:check`, `npm run architecture:check`, and the separate reference workflow when deployed on the default branch. Confirm broken local contract fails, source unavailability is visible and missing real producer remains explicitly DEFERRED. **DoD:** checked provisional Portal/mock contract, observable source-reference drift and a precise real-integration gate, not a real producer implementation.
+**Execution constraints:** no tests, builds, integration checks, generators, migrations, workflows, commit or push in this correction. Only formatting/lint of affected code is authorized by the current owner request. No Kernel edits, mock/client redesign, shared SDK, Step 10 wire or replacement monitoring workflow.
 
 ## 5. Functional Definition of Done - Portal ticket only
 
@@ -538,7 +509,7 @@ Implement only the Portal-local spec/mock/client conformance checker and bounded
 
 Local schema/mock/client PASS and a simulated browser demonstration can complete this Portal scope. They do not assert a real Kernel API, real product release/paid metric, production approval, checkout, paid usage or producer compatibility. Actual deployed Kernel/LBX/offer evidence must be labeled separately; absent real input stays a real enablement gate. Do not promote UNKNOWN provider claims or simulated approvals.
 
-**Failure distinctions:** configured mock/real-source outage rejects the attempted new publication without fallback; selected disabled/missing/misbound capability rejects it; changed selected material terms require new approval/revision; unrelated source changes do not automatically invalidate valid selected semantics. DB conflicts/rollback preserve prior history. A working mock permits only simulated local success; a missing real producer prevents genuine publication, not completing this ticket. A source-reference watch does not prove real API conformance.
+**Failure distinctions:** configured mock/real-source outage rejects the attempted new publication without fallback; selected disabled/missing/misbound capability rejects it; changed selected material terms require new approval/revision; unrelated source changes do not automatically invalidate valid selected semantics. DB conflicts/rollback preserve prior history. A working mock permits only simulated local success; a missing real producer prevents genuine publication, not completing this ticket. Local contract conformance does not prove real API conformance.
 
 ## 6. Human acceptance and sequencing
 
@@ -546,12 +517,12 @@ Local schema/mock/client PASS and a simulated browser demonstration can complete
 2. Implement/review one step at a time. Human executes verification and generation before the next dependent step. No tests/builds/edits in Kernel. File names in proposed test commands may follow the actual implementation; the agent reports exact existing commands rather than inventing evidence.
 3. Verify actual mock HTTP, independent fixtures/client, LBX reads/normalization, PostgreSQL history/concurrency, generation, API/browser direct reload, simulation labels, removal and production exclusion. Fixture tests are not live provider certification.
 4. Prove simulated evidence stays simulated after endpoint/environment changes. No stored mapping/digest replaces a fresh configured-source read. Real release/auth/offer inputs are not replaced by the chosen fixture values.
-5. Run applicable manual checks from Portal root using current repository procedures: `npm run generate`, `npm run generate:check`, `npm run test:api:fast`, disposable-DB `npm run test:api:postgres`, `npm run test:boundaries:web`, `npm run typecheck:web`, `npm run architecture:check`, `npm run check`; plus focused new contract/mock/browser tests and the independent reference check's deployment proof. Run only the relevant suite at each stage, not repeated broad provider testing.
+5. Run applicable manual checks from Portal root using current repository procedures: `npm run generate`, `npm run generate:check`, `npm run test:api:fast`, disposable-DB `npm run test:api:postgres`, `npm run test:boundaries:web`, `npm run typecheck:web`, `npm run architecture:check`, `npm run check`; plus focused new contract/mock/browser tests. Real Kernel API verification is a separate mandatory pre-sales task. Run only the relevant suite at each stage, not repeated broad provider testing.
 6. Final review covers F1-F7, all three retained purchase/capacity/paid-trust safeguards and truthful evidence. Record real integration/offer/launch gates G1-G5 with owners. No claim that program Steps 7-11 have been implemented.
 
 ## 7. Durable handoff to program Steps 7-10
 
-**Kernel boundary:** Portal has one production-shaped client and a checked provisional v1 contract/mock, not a delivered real producer. The real API owner is outside this ticket; no delivery date is assumed. Later program development may use the same isolated mock, but genuine publication/purchase must first satisfy real producer conformance and G1-G4. Compatible API replaces the mock by URL/credentials. Incompatible actual wire/digest/auth requires reviewed narrow boundary changes. Never promote simulated mapping history or count reference monitoring as live compatibility.
+**Kernel boundary:** Portal has one production-shaped client and a checked provisional v1 contract/mock, not a delivered real producer. The real API owner is outside this ticket; no delivery date is assumed. Later program development may use the same isolated mock, but genuine publication/purchase must first satisfy real producer conformance and G1-G4. Compatible API replaces the mock by URL/credentials. Incompatible actual wire/digest/auth requires reviewed narrow boundary changes. Never promote simulated mapping history or count local conformance as live compatibility.
 
 **New operation:** authenticate and first check recorded idempotency/scope/linked non-terminal subscription. Only a genuinely new purchase selects exact approved mapping and obtains bounded complete current real Kernel + selected-offer LBX evidence before an atomic immutable PurchaseIntent/acceptance/scope reservation. Commit durable per-create operation identity before non-payment customer/agreement/subscription preparation. No HTTP within SQL transactions. Read actual resulting subscription-specific owner/account/agreement/services/effective prices/total/currency/period/policies against the accepted snapshot before Widget eligibility or later paid grants.
 
@@ -587,9 +558,8 @@ Publisher fresh reads + immutable history/concurrency: <...>
 Real Portal API/browser/direct routes/local simulation labels: <...>
 Mock removal + compatible-local-target configuration switch: <...>
 Overall deadline/concurrency/isolation proof: <...>
-PR checks + independent upstream REFERENCE watch: <.../NOT_YET_OPERATIONAL>
-REFERENCE_SOURCE_CHECK: <PASS/CHANGE_REVIEW_REQUIRED/UNKNOWN_SOURCE_CHECK/NOT_RUN>
-REFERENCE_WATCH_OPERATIONAL: <VERIFIED/NOT_YET_OPERATIONAL>
+Portal local contract CI: <run URL/commit/result>
+Real Kernel API compatibility: DEFERRED_NOT_IMPLEMENTED; separate mandatory task before real sales
 Open real-enablement/launch gates G1-G5 and owners: <...>
 Program Step 7 handoff approval: <...>
 ```

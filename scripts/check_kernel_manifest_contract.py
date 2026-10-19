@@ -341,8 +341,6 @@ def main() -> int:
     else:
         print("LOCAL_SPEC_CONFORMANCE=PASS")
         result = 0
-    print("REFERENCE_SOURCE_CHECK=NOT_RUN")
-    print("REFERENCE_WATCH_OPERATIONAL=NOT_YET_OPERATIONAL")
     print("REAL_KERNEL_CONFORMANCE=DEFERRED_NOT_IMPLEMENTED")
     return result
 

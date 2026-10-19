@@ -138,12 +138,12 @@ For local visual development, [Step 7 wiring](#step-7-optional-http-mock-walkthr
 
 The **implemented, versioned, service-authorized** manifest contract in `gushinets/anytoolai-platform` becomes the source of truth when it exists. Until then, the accepted specs and explicitly provisional local conventions/independent fixtures define the mock boundary. Product identity provenance is pinned to Kernel commit `079eb03e28d7a50b980795c63c3e4533b785d11f`; that pin does not prove a manifest endpoint, paid registry or approved release.
 
-ANY-664 must deliver small Portal-local schema/client/mock conformance and focused source-reference drift checks. Check shape/required fields, tenant/region, product/metric relationships, enabled semantics, independent literal digest, auth/HTTP errors and pinned product identities. This work must not import a Kernel runtime package, edit Kernel or require a matching checkout.
+ANY-664 delivers Portal-local schema/client/mock conformance. Check shape/required fields, tenant/region, product/metric relationships, enabled semantics, independent literal digest and auth/HTTP errors. Historical product identity pins remain provenance only. This work must not import a Kernel runtime package, edit Kernel or require a matching checkout.
 
-- Run focused checks on relevant Portal PRs and detect upstream changes independently with a bounded reference watch. A pinned local fixture alone cannot detect future upstream drift.
-- Distinguish local fixture conformance from external-reference unavailability, a missing real producer and actual future incompatibility. Never report a local PASS as actual-producer verification or fail for unrelated Kernel commits/new products outside the selected fixture.
+- Run focused local conformance checks in the existing Portal PR CI. The owner removed external source monitoring on 2026-10-19 because the real manifest API is not implemented; no replacement monitor is required here.
+- Distinguish local fixture conformance from the missing real producer and actual future incompatibility. Never report a local PASS as actual-producer verification.
 - When Kernel delivers its actual contract, reconcile endpoint/schema/hash/auth/scope and run conformance against that implementation before real enablement. Its delivery date, production credentials and paid metric approvals do not block fixture-based Portal implementation or ticket completion.
-- Keep the mechanism small and use existing repository test/CI practices. The reference watch and future-producer handoff are later ANY-664 work; Step 1 does not claim they exist or pass.
+- Keep the mechanism small and use existing repository test/CI practices. Real API verification is a separate mandatory task before real publication or sales.
 
 ### Required local verification
 
@@ -189,20 +189,29 @@ curl --fail-with-body --max-time 2 -i http://127.0.0.1:8091/openapi.json
 
 The focused test suite includes an event-synchronized check of this overlap using an actual HTTP manifest request; it holds the request at its delay boundary until both metadata responses have completed.
 
-The later Portal walkthrough must demonstrate the real UI/backend with the optional mock for complete, disabled/missing, malformed/partial/version-incompatible and unavailable/unauthorized cases, refusing a **new** publication and recovering on a fresh read. No retired manifest-LKG rule applies. Demonstrate mock removal and production exclusion, plus a deliberately incompatible local contract/reference case. Actual-producer transition/conformance remains explicitly unverified until a compatible Kernel endpoint exists.
+The later Portal walkthrough must demonstrate the real UI/backend with the optional mock for complete, disabled/missing, malformed/partial/version-incompatible and unavailable/unauthorized cases, refusing a **new** publication and recovering on a fresh read. No retired manifest-LKG rule applies. Demonstrate mock removal and production exclusion, plus a deliberately incompatible local contract case. Actual-producer transition/conformance remains explicitly unverified until a compatible Kernel endpoint exists.
 
 These are **Portal delivery requirements of ANY-664**, with real producer and production enablement tracked separately. No local demonstration authorizes real sales, payments or paid execution.
 
-## Step 8 conformance and independent reference watch
+## Step 8 local conformance and deferred real Kernel API
 
 The [Step 8 handoff](../contracts/kernel-capability-manifest/v1/step-8-handoff.md)
 records the local HTTP/spec/client checker, exact positive/negative manual
-commands, separate upstream documentation/identity watch and future real
-producer acceptance. Source implementation is present; verification is pending.
-The daily default-branch schedule remains **NOT_YET_OPERATIONAL** until an
-actual scheduled run is recorded. Local and source checks remain **NOT_RUN**;
-real Kernel conformance remains **DEFERRED_NOT_IMPLEMENTED**. The existing mock,
+commands and mandatory future real producer acceptance. Existing CI retains
+local conformance and negative cases; the external source monitor is removed.
+The final correction runs formatting/lint only, with no new local test PASS
+claimed. Real Kernel conformance remains **DEFERRED_NOT_IMPLEMENTED**; checking
+the provisional local contract does not verify the real API. The existing mock,
 client and Compose walkthrough are retained unchanged.
+
+The handoff also records the CodeQL review of the two operator JSON sinks.
+Their output is restricted evidence, including verbatim `reason`, approval
+references, account identifiers and OS principal. Run only within the trusted
+OS/configuration/DB boundary and protect stdout/redirected files accordingly.
+Use credential-free approval/evidence references; never place secrets, signed
+access URLs, card data or unnecessary personal data in operator input. Do not
+forward full operator results to shared logs, telemetry or public CI artifacts.
+This preserves the existing JSON and immutable audit contract.
 
 ## Step 6 stored catalog acceptance
 

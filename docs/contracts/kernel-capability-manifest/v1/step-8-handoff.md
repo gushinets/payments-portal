@@ -1,12 +1,10 @@
-# ANY-664 Step 8: local conformance and source references
+# ANY-664 Step 8: local conformance and deferred real Kernel API
 
 Status: source implementation; human verification pending. This handoff adds
 no actual producer evidence and does not reopen Steps 1, 2 or 7.
 
 ```text
 LOCAL_SPEC_CONFORMANCE=NOT_RUN
-REFERENCE_SOURCE_CHECK=NOT_RUN
-REFERENCE_WATCH_OPERATIONAL=NOT_YET_OPERATIONAL
 REAL_KERNEL_CONFORMANCE=DEFERRED_NOT_IMPLEMENTED
 ```
 
@@ -44,70 +42,33 @@ producer. It writes no mappings and grants no paid access. Existing simulation
 containment and F1–F7 are retained; later purchase/recovery/paid-access capacity
 and runtime proofs remain outside this step.
 
-## Independent reference watch
+## Owner decision and retained CI
 
-[The reference script](../../../../scripts/check_kernel_references.py)
-compares the default-branch source at one resolved commit per repository with
-immutable pins. It reads only `api.github.com`, without redirects, retries,
-public/private URL fallback, source execution or checkout. Limits are one
-60-second operation, 5-second HTTP waits, 256 KiB per response and at most
-14 GETs. No local conformance command contacts those sources.
+On 2026-10-19 the owner removed external Kernel source monitoring from ANY-664:
+the real Capability Manifest API does not exist yet. The dedicated workflow,
+reference script and exclusive tests are removed without replacement. No daily
+schedule, source-access credential or external-monitor status is required.
+Historical source SHA and links in the [contract provenance](README.md#authority-and-provenance)
+remain unchanged; they document origin, not actual API compatibility.
+The retained Portal spec pin is `05d3fcb6a965fcd053d713f49669d1dd25c22978`;
+the Kernel identity/composition pin is `079eb03e28d7a50b980795c63c3e4533b785d11f`.
 
-The Portal spec pin is `05d3fcb6a965fcd053d713f49669d1dd25c22978`.
-Only service authentication and the manifest request/response/enabled/HTTP
-sections are compared; historical import/freshness and AccessSnapshot are
-outside the watch. The Kernel pin is
-`079eb03e28d7a50b980795c63c3e4533b785d11f`. References are the actual pinned
-bootstrap, ConfigRegistry, FreelancerSuiteBundle and ProposalAI `product.yaml`
-paths recorded in the [contract provenance](README.md#authority-and-provenance).
-Python AST and two product identity fields yield narrow identity fingerprints;
-the five fixture product roots are compared without flagging additional
-off-fixture products, guest quota changes, comments or unrelated repository
-commits. These fingerprints are provenance signals, not API compatibility or
-paid release proofs.
-
-Reports include each source path, pin, observed commit and both fingerprints.
-Exit `0` means `REFERENCE_SOURCE_CHECK=PASS`; `1` means
-`CHANGE_REVIEW_REQUIRED`; `2` means `UNKNOWN_SOURCE_CHECK`. Inaccessible
-sources, permission failures, rate limits, invalid responses and timeouts are
-UNKNOWN. An accessible source with removed/changed reviewed structure requires
-review. Known drift remains actionable if another read is unavailable;
-`source_access_complete=false` records the incomplete evidence. Review the
-specific source change before updating a pin/projection. Never refresh pins
-automatically to silence drift.
-
-[CI](../../../../.github/workflows/ci.yml) runs local conformance and the
-existing fast test suite. The focused
-[reference workflow](../../../../.github/workflows/kernel-references.yml)
-runs on relevant Portal PR paths, manual dispatch and daily at **03:43 UTC
-(11:43 Asia/Ulaanbaatar)**. GitHub schedules execute the default-branch workflow;
-feature-branch presence does not activate a schedule. Each run has a five-minute
-job limit and retains a separate JSON report for seven days. No provider writes,
-issue/comment posting or Kernel CI are involved.
-
-Configure `KERNEL_REFERENCE_GITHUB_TOKEN` as a fine-grained, read-only contents
-credential with access to both named repositories; the normal Portal-only
-`GITHUB_TOKEN` does not establish private Kernel access. Supply it through the
-repository secret or local environment, never a CLI argument or checked-in
-file. Missing credentials may work for public sources, but inaccessible private
-sources (including fork PRs without secrets) yield UNKNOWN and a nonzero job.
-Do not reinterpret this as a local schema failure or bypass it with a public URL.
-
-`REFERENCE_WATCH_OPERATIONAL` stays `NOT_YET_OPERATIONAL` until the owner records
-a successful **scheduled** default-branch run after merge: run URL, workflow
-commit, event `schedule`, time, report artifact and source-access result. Manual
-dispatch can establish connectivity but cannot prove the daily schedule fired.
-The script conservatively emits NOT_YET_OPERATIONAL; retain deployment/run
-evidence separately before recording VERIFIED in acceptance evidence.
+[CI](../../../../.github/workflows/ci.yml) still runs the independent local
+manifest checker and the existing fast test suite, including local negative
+conformance tests. Mock, typed client, schema, fixtures and Step 7 walkthrough
+remain intact. **The local provisional contract is checked; the real Kernel API
+is unverified (DEFERRED_NOT_IMPLEMENTED).** Real API verification is a separate
+mandatory task before real publication or sales, as specified below.
 
 ## Exact manual verification order
 
 From `/home/wstanley/www/work_unirec/payments-portal`, with the existing locked
-root `.venv` and web dependencies installed:
+root `.venv` and web dependencies installed (Unix/WSL):
 
 ```bash
+source .venv/bin/activate
 ./.venv/bin/python scripts/check_kernel_manifest_contract.py --local
-./.venv/bin/python -m pytest -q apps/api/tests/test_kernel_contract_checker.py apps/api/tests/test_kernel_reference_watch.py apps/api/tests/test_kernel_manifest_mock.py apps/api/tests/test_kernel_manifest_client.py
+./.venv/bin/python -m pytest -q apps/api/tests/test_kernel_contract_checker.py apps/api/tests/test_kernel_manifest_mock.py apps/api/tests/test_kernel_manifest_client.py
 ```
 
 Run each command below separately. **Each must print
@@ -131,18 +92,6 @@ npm run check
 ./.venv/bin/python scripts/repo.py test-db stop
 ```
 
-Separately, with the read-only credential already supplied in the environment:
-
-```bash
-./.venv/bin/python scripts/check_kernel_references.py
-```
-
-Record the exit code and JSON as source-reference evidence only. A missing real
-producer remains DEFERRED even if both local and reference checks pass. After
-the owner merges/deploys the workflow, inspect the first scheduled run on the
-default branch in GitHub Actions and record the evidence described above.
-Nothing in this handoff claims that a workflow has been dispatched or deployed.
-
 ## Real producer delivery gate (separate integration activity)
 
 The Kernel API owner supplies the actual authoritative endpoint OpenAPI,
@@ -159,7 +108,7 @@ or a delivery date. The Portal integration owner must pin those artifacts and:
 3. Run real consumer-versus-producer conformance, including malformed/partial,
    duplicate/owner/scope/digest/auth failures and multiple metrics per product;
    record the deployed producer commit and actual PASS/FAIL. Local mock PASS and
-   source-reference PASS cannot substitute for that result.
+   historical source pins cannot substitute for that result.
 4. Establish/renew actual producer wire-drift alerts before real publication or
    purchase. Reuse the existing Integration/configuration seam for a compatible
    endpoint; an incompatible endpoint requires a narrow reviewed reconciliation.
@@ -169,13 +118,79 @@ or a delivery date. The Portal integration owner must pin those artifacts and:
    history stays simulated after any URL/environment change. Real production
    configuration remains refused until its separate enablement work is approved.
 
-Implementation edits, independent review, human command results, schedule
-operation and real-producer conformance must be recorded separately. No tests,
+Implementation edits, static review, human command results and real-producer
+conformance must be recorded separately. No tests,
 checks, generators, migrations, workflows or live provider requests were run
 by the Step 8 implementation agent; no Git writes were performed.
 
-Executed commands were limited to read-only `pwd`, `rg`/`rg --files`, `cat`,
-`sed`, `git status --short`, `git diff --stat` and `git diff -- <changed files>`,
-plus read-only GitHub file fetches at the recorded Kernel pin. Source changes
-used `apply_patch`. The checker, reference watch, workflows and all verification
-commands above have not been executed.
+The final owner correction used read-only source/PR inspection, source edits and
+formatting/lint only. No tests, build, integration checks, generator, migration,
+workflow dispatch, commit or push was performed for the correction.
+
+## CodeQL operator-output disposition (#3 and #4)
+
+Both alerts use `py/clear-text-logging-sensitive-data`. At PR head
+`a7e0b372a2d69102502dd576fd93052e05fc88d9`, the flagged sources are
+`billing_offer_id`: CLI query/dry-run/publish (lines 59/87/108), plus the
+walkthrough evaluation (line 104) and delegated query paths. The value is
+`selected-offer:v1:<tariff_id>:<tariff_service_id>:<period_id>`, derived from
+selected numeric source identities, not a password/token. JSON serialization
+and `print(output)` are the intended machine-readable operator result.
+
+The review also follows the whole document, not just that derived key:
+
+- `authorize_operator` checks the effective OS UID against the explicit,
+  default-empty `MAPPING_OPERATOR_UIDS` before proposal/approval/source-input
+  reads, source calls or DB queries. Caller flags cannot choose the principal.
+  The trusted boundary includes OS execution, environment/configuration,
+  separately controlled input files and DB credentials; this is not an HTTP
+  administrator authentication mechanism. An account allowed to replace that
+  configuration is already inside this boundary.
+- `reason`, approval/evidence references and revisions, policy text, scope,
+  account IDs and publisher UID are deliberately preserved, including when
+  querying immutable historical evidence. These values can be private. Type
+  validation/hashes do not sanitize free text or prove a URL has no secret.
+  Inputs must use credential-free document references (no signed/access-token
+  URLs) and contain no credentials, card data or unnecessary personal data.
+  Stdout and any redirected evidence must stay within the same restricted
+  operator access boundary; do not send full results to shared application
+  logs, telemetry, public CI artifacts or the browser.
+- Fresh evaluation constructs a typed `MappingDocument` from normalized selected
+  terms, explicit approvals and provenance. The selected dependency JSON is
+  assembled field by field; raw provider payloads, unselected additional fields,
+  Settings, DB URLs, HTTP headers, LBX username/password/auth token and Kernel
+  service token are not serialized. Query validates stored scope/digests and
+  returns the same immutable document. The public catalog uses its own DTO
+  projection, not this CLI output.
+- The walkthrough first requires development mode, authorized UID, worktree
+  PostgreSQL database and the named simulated account; it uses recorded LBX
+  transport and the ordinary Kernel client. Its prepare response is only a
+  SIMULATED marker; dry-run/publish retain the same private result boundary,
+  and query delegates to the authorized DB-only CLI.
+
+Disposition: false positives for confidential data **logging** at these two
+sinks: intentional private data is returned to its authorized local operator,
+without a less-trusted log destination in these entrypoints. This is not a
+claim that every string is public or generically redacted. No CLI field,
+immutable audit value, permission, command behavior, scanner rule or suppression
+is changed. Existing credential/unselected-PII canary coverage is in
+`test_cli_dry_run_publish_and_query_use_same_real_path` and
+`test_fresh_http_publication_faults_outage_restart_and_recovery`; those tests were
+not run in this correction.
+
+On 2026-10-19 GitHub confirmed both alerts
+[#3](https://github.com/gushinets/payments-portal/security/code-scanning/3) and
+[#4](https://github.com/gushinets/payments-portal/security/code-scanning/4) as
+**Dismissed / false positive**. Both PR review threads contain the rationale and
+are confirmed resolved. ANY-664 Linear requirements and PR #139 description are
+aligned; the source correction remains local, with no commit/push or new CI run.
+
+Formatting/lint passed for the affected Python code. To recheck the existing
+operator/privacy regressions manually, use the PostgreSQL harness (which derives
+the disposable test DB configuration) from the repository root:
+
+```bash
+./.venv/bin/python scripts/repo.py test-db up
+npm run test:api:postgres
+./.venv/bin/python scripts/repo.py test-db stop
+```

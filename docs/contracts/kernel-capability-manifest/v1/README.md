@@ -271,9 +271,12 @@ URL/credentials; incompatible wire/hash/auth requires explicit Integration
 boundary alignment first. No production sale or paid execution is authorized
 by a local mock demonstration.
 
-Separate owner synchronization is still needed for ANY-504 and ANY-664 Linear
-wording that requires a real Kernel producer or actual-producer PASS before
-Portal ticket completion. PR #138's remote description may need the same
-ownership/DoD correction. This implementation changes only repository content;
-it does not write to Linear/GitHub, add the implementation plan to PR #138,
-or claim an upstream contract/drift check has passed.
+The [Step 8 handoff](step-8-handoff.md) retains local conformance CI and records
+the 2026-10-19 owner decision to remove external Kernel source monitoring.
+`REAL_KERNEL_CONFORMANCE=DEFERRED_NOT_IMPLEMENTED`; actual Kernel API verification
+is a separate mandatory task before real publication or sales. Historical source
+pins above remain provenance, not actual-producer evidence.
+
+The final correction aligns ANY-664's external-monitoring requirements in
+Linear and PR #139's description with that decision. It leaves other ANY-504
+requirements and PR #138 unchanged and claims no real Kernel API PASS.

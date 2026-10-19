@@ -110,6 +110,8 @@ def test_deliberately_broken_http_producer_makes_command_fail(
     output = capsys.readouterr().out
     assert "LOCAL_SPEC_CONFORMANCE=FAIL" in output
     assert "REAL_KERNEL_CONFORMANCE=DEFERRED_NOT_IMPLEMENTED" in output
+    assert "REFERENCE_SOURCE_CHECK" not in output
+    assert "REFERENCE_WATCH_OPERATIONAL" not in output
     assert checker.TEST_TOKEN not in output
 
 
