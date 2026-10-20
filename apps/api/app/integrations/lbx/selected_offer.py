@@ -290,6 +290,20 @@ def normalize_selected_offer(
     if len(services) != 1 or services[0].tariff_id != selection.tariff_id:
         _incomplete("component_membership_missing_or_ambiguous")
     period, service = periods[0], services[0]
+    # The selected service is not the whole subscription composition. Every
+    # row in the complete tariff list must prove whether LBX assigns it.
+    component_ids: set[int] = set()
+    default_components: list[str] = []
+    for component in reads.services.value:
+        budget.check()
+        if component.tariff_id != selection.tariff_id or component.tariff_service_id in component_ids:
+            _incomplete("component_membership_missing_or_ambiguous")
+        component_ids.add(component.tariff_service_id)
+        flag = _required(component.enabled_by_default, "component_enabled_by_default_unknown")
+        if flag not in (0, 1):
+            _incomplete("component_enabled_by_default_unknown")
+        if flag == 1:
+            default_components.append(str(component.tariff_service_id))
     for owner, fields, prefix in ((tariff, _TARIFF_FLAGS, "offer_"), (service, _SERVICE_FLAGS, "component_")):
         for field in fields:
             _required(getattr(owner, field), prefix + field + "_unknown")
@@ -367,6 +381,8 @@ def normalize_selected_offer(
         _incomplete("commercial_bounds_invalid")
     # All mandatory facts are now known. No catch-all pricing engine.
     unsupported = (
+        (service.enabled_by_default != 1, "selected_component_not_default"),
+        (len(default_components) > 1, "additional_default_components_unsupported"),
         (tariff.archive != 0 or tariff.assign_unavailable != 0, "offer_unavailable"),
         (service.archive != 0 or period.hidden, "component_or_period_unavailable"),
         (service.periodic_service != 1 or service.bulk_service, "fixed_periodic_profile_required"),
@@ -443,6 +459,7 @@ def normalize_selected_offer(
             "terms": asdict(terms),
             "evidence_mode": mode,
             "dependencies": {
+                "default_components": sorted(default_components),
                 "currency_definition": {
                     "source_reference": str(currency.currency_id),
                     "currency": iso,

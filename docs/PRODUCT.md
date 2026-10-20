@@ -18,15 +18,17 @@ commercial/access/usage/action slots. Account/session/email-verification,
 password-recovery and legal-acceptance flows remain implemented; commercial
 facts, paid access and actual usage/quota remain not ready, unknown or
 unavailable. The repository remains pre-production and provider-independent
-on the current ANY-636 4F surface. External Billing/provider runtime is
-not implemented, and there are no production direct-provider subscribers or
-subscriptions to migrate.
+on the current ANY-636 4F surface. ANY-664 adds read-only source clients,
+controlled immutable offer publication and DB-only catalog browsing; genuine
+Kernel conformance and sales remain gated. There are no production direct-
+provider subscribers or subscriptions to migrate.
 
 The former CloudPayments/direct-provider implementation and Portal-owned
 catalog/order/payment/subscription/entitlement runtime have been physically
-removed. The clean database contains provider-neutral target persistence but
-no application behavior currently populates it. The sole long-term production
-target is external-billing-managed.
+removed. The clean database contains provider-neutral target persistence;
+ANY-664 can append immutable mapping revisions. Purchase orchestration,
+reconciliation and paid-access producers remain later work. The sole long-term
+production target is external-billing-managed.
 
 Contour architecture is defined in [contours](architecture/contours.md).
 Target billing ownership and authoritative facts follow, in precedence order,
@@ -34,6 +36,11 @@ Target billing ownership and authoritative facts follow, in precedence order,
 accepted [External Billing Boundary Design](superpowers/specs/2026-09-15-external-billing-boundary-design.md),
 and the accepted
 [Portal <-> Kernel Access Contract Design](superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md).
+The [accepted live-source admission amendment](superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md)
+narrowly supersedes source-catalog mirroring/new-sale TTL: publication and each
+genuinely new purchase require current Kernel/LBX reads; approved immutable
+terms and catalog browsing use PostgreSQL without source requests. Paid-access,
+subscription trust/reconciliation and AccessSnapshot remain unchanged.
 The [Billing Authority and Consistency](architecture/billing-authority.md)
 document is historical/superseded only; it is neither current-state nor target
 authority. Implemented `ru` screens are defined in the
@@ -45,7 +52,8 @@ current identity/legal and the later anti-corruption, projection,
 reconciliation, recovery, and paid-access delivery boundary. Platform Kernel
 owns technical product/metric identity, actual usage, and quota enforcement.
 The historically named “Payments Portal” component in the accepted ADR/design
-records maps to this Portal backend boundary; those records remain unchanged.
+records maps to this Portal backend boundary; the accepted amendment changes
+only their source-read/admission strategy.
 
 ## Implemented
 
@@ -72,8 +80,9 @@ records maps to this Portal backend boundary; those records remain unchanged.
 - Versioned `ru` legal-document metadata and append-only acceptance evidence.
 - One clean PostgreSQL first-install schema with configured-contour and legal
   bootstrap.
-- Ten retained identity/session/legal tables and fifteen empty,
-  provider-neutral target external-billing persistence tables.
+- Ten retained identity/session/legal tables and fifteen provider-neutral target
+  external-billing persistence tables, empty after bootstrap. Restricted
+  publication appends mapping revisions; source-catalog projection slots are inert.
 - Static guards preventing restoration of the deleted direct-provider runtime,
   legacy Portal commercial/access schema, and `external_billing_accounts`.
 
@@ -94,9 +103,10 @@ trust boundary under ANY-541.
 - Login/registration contour confirmation through Region Resolver.
 - Isolated `eu` and `us` deployments, legal trees, operators, and selected
   external-billing integrations. Those are not implemented product surfaces.
-- Portal projection and mapping of the Platform Kernel capability manifest and
-  External Billing commercial catalog/pricing/sellability in ANY-504 Step 6;
-  purchase/Widget in Step 7;
+- Genuine enablement of ANY-504 Step 6's live-source clients and immutable
+  approved offer mappings, subject to real Kernel/LBX and approval gates.
+  ANY-664 implements the Portal path with simulated local evidence and DB-only
+  catalog browsing; there is no periodic source-catalog mirror. Purchase/Widget in Step 7;
   reconciliation/recovery in Step 8; confirmed paid-access projection and
   delivery in Step 9; actual usage/quota integration in Step 10. These are
   deferred ownership boundaries, not implemented runtime. They populate the

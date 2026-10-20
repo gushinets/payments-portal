@@ -1,11 +1,11 @@
 # ANY-504 / ANY-664 — Live-source commercial admission and minimal durable state
 
-**Status:** Architecture direction **accepted in principle by the reviewer for the RU MVP**, with two mandatory clarifications incorporated below: idempotent new/retry/recovery semantics and resource isolation/total live-read deadline. This is still a **proposed, unmerged** design amendment in PR #138; approval of its merged canonical precedence and implementation remain separate. No runtime PASS is claimed.
+**Status:** Accepted by the architecture/product owner on **2026-10-20** for the RU MVP. This amendment is the canonical narrow supersession of source-catalog mirroring and new-sale catalog TTL in the 2026-09-15 baselines, as recognized by ADR 0005. The owner confirmed this decision during final review of PR #139 / ANY-664; this does not claim PR #138 or PR #139 was merged, runtime PASS or production readiness.
 **Date:** 2026-10-15
 **Scope:** RU MVP, one configured LBX billing account per regional Portal deployment, ANY-504 Steps 6–11; immediate implementation planning in ANY-664 (Step 6).
-**Decision owner:** ANY-504 architecture/product owner; decision becomes authoritative only after explicit approval and merge.
+**Decision owner:** ANY-504 architecture/product owner; explicit architecture approval recorded above. Code delivery and human merge approval remain separate.
 
-**Portal execution scope correction, 2026-10-15:** the separately approved ANY-664 owner decision makes all ticket implementation Portal-only: one typed HTTP client, specification-derived provisional contract/independent fixtures and a separate optional development mock now. Real Kernel producer delivery, paid registry/release approvals, deployment auth/scope and actual-producer conformance are future real-enablement gates, not prerequisites for completing this Portal ticket. This corrects Step 6 ownership/DoD below without approving production sales, canonicalizing this still-proposed live-source policy, or changing any subscription/access safeguard. Remote Linear/PR wording needs separate owner synchronization; this repository edit does not claim those updates.
+**Portal execution scope correction, 2026-10-15:** the separately approved ANY-664 owner decision makes all ticket implementation Portal-only: one typed HTTP client, specification-derived provisional contract/independent fixtures and a separate optional development mock now. Real Kernel producer delivery, paid registry/release approvals, deployment auth/scope and actual-producer conformance are future real-enablement gates, not prerequisites for completing this Portal ticket. The 2026-10-20 architecture approval does not approve production sales or change any subscription/access safeguard. Remote Linear/PR wording is not updated by this repository edit.
 
 ## 1. Decision in one paragraph
 
@@ -20,7 +20,7 @@ Previous accepted baseline:
 - `docs/superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md`, especially **Capability Manifest — Portal import and freshness**.
 - ANY-504 and child ANY-664; the independently reviewed ANY-634/PR #137 provider evidence remains applicable.
 
-**Once approved**, this amendment takes precedence **only** over the following previously prescribed behavior:
+Under [ADR 0005](../../architecture/decisions/0005-external-billing-boundary.md), this accepted amendment takes precedence **only** over the following previously prescribed behavior:
 
 | Previous requirement | Replacement |
 | --- | --- |
@@ -43,11 +43,11 @@ Everything else remains binding unless separately amended:
 - Phase 0 B4/B5 JWT/provider permission acceptance, B8 money/history limitations, B9 quantity distinction, B10 date-only/cycle deferral, B11/B14 limitations and the existing Step 7–11 boundaries remain intact.
 - No Portal payment REST APIs, fallback payment orchestration, new billing-account routing, shared Portal/Kernel runtime SDK or generalized provider framework.
 
-If this amendment is not approved, the prior accepted specs remain authoritative. An AI executor must not silently mix the two designs.
+The prior accepted specs remain authoritative outside this narrow supersession. Do not mix the retired mirror/TTL strategy with live-source admission.
 
 ## 3. Why change: real benefit versus cost
 
-**Current design's benefit:** Portal can serve a recently checked product/offer catalog without querying upstream on every request, and new commercial admission can continue during a bounded upstream outage.
+**Superseded design's benefit:** Portal could serve a recently checked product/offer catalog without querying upstream on every request, and new commercial admission could continue during a bounded upstream outage. The accepted strategy retains DB-only browsing of approved terms, without outage admission.
 
 **Why this is a poor default for this MVP:**
 1. **Offline purchase is not a usable product guarantee.** Creating the LBX customer/agreement/subscription, checking accepted terms and opening the LBX Widget still require LBX. A locally “sellable” catalog does not make checkout possible when billing is down.
@@ -73,7 +73,7 @@ If this amendment is not approved, the prior accepted specs remain authoritative
 | Kernel actual used/remaining quota | **No Portal copy** | Kernel alone owns durable usage and runtime enforcement |
 | Portal effective **paid grants/allowances and revisions** | **Yes**, as specified by Steps 9–10 | Answer `AccessSnapshot`; deliver bounded, revisioned paid access to Kernel |
 
-The two existing projection SQLAlchemy models/tables are **pre-implementation schema slots, not evidence that any live sync already works**. On implementing this amendment, remove the unused source-projection paths; retire the two unused tables/models with a narrow, verified schema migration if no real references require them. Do not silently keep background writers or new-sale consumers for those tables “for compatibility.” Do not drop customer, subscription, mapping, grant or recovery data. Because these are pre-production slots, no speculative production-data migration/backfill is required.
+The two existing projection SQLAlchemy models/tables are **inert schema slots, not current catalog authority**. ANY-664 leaves them unused; no migration is required for this correction. Any later retirement requires a separate narrow verified migration. Do not add background writers or new-sale consumers for those tables. Do not drop customer, subscription, mapping, grant or recovery data.
 
 The existing `CommercialMappingRevision` shape may be reused. Its currently named `catalog_digest` must have an **explicit documented scope**: the complete, normalized, relevant selected-offer read set (with account/source provenance), **not** a claim of an atomically complete LBX account snapshot. Store a separate `offer_material_digest` and `digest_scope=selected_offer` in versioned mapping evidence, or rename/restructure fields through a narrow migration if that makes the distinction clearer. Never silently reinterpret an account-wide digest as a selected-offer digest. `manifest_version` is producer version evidence, not approval to skip checking current `enabled`. Unrelated products/tariffs changing must not alone reprice or invalidate the selected offer.
 
@@ -99,6 +99,10 @@ The existing `CommercialMappingRevision` shape may be reused. Its currently name
 6. Repeating a publication with exactly the same verified source evidence and approved terms is idempotent. A changed material offer, price/policy, metric, allowance or terms requires a separately approved **new revision**. Old revisions remain queryable and unchanged.
 
 A standalone “periodic catalog refresh” is **not** an alternative to these live publish checks.
+
+**Complete LBX default composition:** both `dry-run` and `publish` inspect the already fetched complete service list of the selected tariff. Each row must have unique, correct tariff membership and an explicit `enabled_by_default` of `0` or `1`. The selected mandatory service must have `1`; another default-assigned service refuses Portal publication with `selected_offer_additional_default_components_unsupported`. Missing/unknown flags or ambiguous membership fail closed. Services with `0` are optional and do not join the automatic composition. The sorted default-component identities and their source provenance are part of immutable selected evidence and its digest; each bounded reread must satisfy this rule. This changes no LBX tariff or customer action in the LBX cabinet.
+
+**Approval versions:** the existing independently controlled approval files pin technical, commercial and legal references/revisions/content hashes. A change in normalized commercial terms (price, billing period, payment obligations, renewal or cancellation rules) requires a new **legal approval version**, in addition to the existing commercial/technical checks. Reusing the old legal approval refuses publication with `mapping_legal_reapproval_required`, even when commercial approval has advanced. A technical-only or source-evidence-only change that leaves those terms unchanged does not require new legal approval. The existing prohibition on rewriting the same approval reference/revision remains. No approval UI, legal-team integration or change to customer legal documents is introduced.
 
 ### 5.3 New purchase, retry and recovery are three **different** operations (ANY-504 Steps 7–8)
 
@@ -177,7 +181,7 @@ Reason names are conceptual and may map to existing safe API conventions. Never 
 - Controlled append-only audited publication and read API for selected verified mappings. Source GETs live on each publication; publication is refused if either source is unavailable or unprovable.
 - Portal-owned safe product list/detail DTO and real localized frontend showing last **approved** product/offer/price/period/allowance, with explicit **unverified-now** semantics rather than `SELLABLE` merely because a DB row exists. Preserve genuine Kernel IDs; editorial placeholder slugs cannot silently impersonate paid products.
 - The **optional, removable, development-only HTTP Kernel mock** already required by PR #138, sharing the same Portal client and wired only by URL/configuration for a compatible endpoint; Portal-local fixture and Kernel Mock ↔ Portal Client conformance checks remain in CI. External Kernel reference monitoring is removed without replacement because the real Kernel API is not implemented. Keep simulation metadata outside the Kernel schema and mark the entire mapping evidence **SIMULATED** when any source/metric/approval is simulated; real publication/admission and production catalog reads reject/exclude those revisions even after configuration changes. `REAL_KERNEL_CONFORMANCE=DEFERRED_NOT_IMPLEMENTED`; actual Kernel API verification is a separate mandatory task before genuine publication or real sales, including explicit alignment if wire/hash/auth differs. Negative mock tests demonstrate **live admission failure**, not an obsolete 24h Portal manifest LKG.
-- Safe retirement of the unused `capability_manifest_projections` and `external_billing_catalog_projections` runtime paths and (where safe) schema slots. Do not add Redis or a new catalog/mirror DB to replace them.
+- No runtime readers/writers for `capability_manifest_projections` or `external_billing_catalog_projections`; ANY-664 leaves these schema slots inert. Later physical retirement is separate work. Do not add Redis or a new catalog/mirror DB to replace them.
 
 **ANY-504 later steps must deliver (not Step 6 coding):**
 - Step 7 separate **new purchase / same-key retry / recovery** paths: live purchase-time checks only for genuine new admission; one scope-held idempotent `PurchaseIntent` with immutable accepted terms; no duplicate provider CREATE; durable UNKNOWN discovery; Widget only after actual accepted subscription-term verification. Preserve bounded preflight and paid-access resource isolation.
@@ -185,11 +189,11 @@ Reason names are conceptual and may map to existing safe API conventions. Never 
 - Step 9 grants/allowances and immutable access revisions/invalidation; Step 10 Kernel snapshot consumption/paid quota enforcement; Step 11 true E2E and launch gates.
 - No Step 6 CLI/UI/mock may pretend that future Steps 7–11 already authorize payments or paid execution.
 
-**Coordination required after approval:** update ANY-504, ANY-664, the reviewed ANY-664 implementation plan and any affected developer/contract checklist, explicitly citing this amendment as the narrow superseding source. Preserve old designs as versioned historical records; do not silently patch unrelated Phase 0 decisions.
+**Coordination:** canonical repository docs and the ANY-664 implementation plan cite this accepted narrow supersession. Remote ANY-504/ANY-664 coordination remains with the owner; this edit does not claim ticket updates. Preserve unrelated Phase 0 decisions.
 
 ## 8. Acceptance tests and unambiguous Definition of Done
 
-A documentation-only PR is **complete as a proposal** when this decision, superseded sections, rationale, runtime semantics, ownership and measurable DoD are reviewed and linked. **It is not a claim that the implementation tests below have passed.**
+The owner has approved the design and its narrow precedence. The implementation acceptance scenarios below remain step-owned evidence requirements; approval does not claim that those tests have passed.
 
 ### Functional DoD for ANY-664 Step 6
 
@@ -217,10 +221,9 @@ A documentation-only PR is **complete as a proposal** when this decision, supers
 
 **Overall PASS** requires functional DoD appropriate to each step plus the retained ANY-634 evidence/approval gates. Documentation acceptance alone is **DESIGN APPROVED**, not **IMPLEMENTED** or **PRODUCTION SELLABLE**.
 
-## 9. Reviewer decision checklist
+## 9. Decision and retained enablement checklist
 
-The owner should explicitly decide:
-1. **Accepted in principle for MVP by the architecture reviewer:** reduced availability of **genuinely new** sales due to mandatory live Kernel+LBX checks, in return for simpler source truth. Confirm details at PR merge; **this does not mean old operation retries require a new preflight**.
+1. **Owner accepted on 2026-10-20:** reduced availability of **genuinely new** sales due to mandatory live Kernel+LBX checks, in return for simpler source truth. **Old operation retries do not require a new preflight**.
 2. Is the selected-offer relevant read set provably complete under the actual LBX Swagger/Phase 0 evidence? If not, leave a **specific** publication/purchase gate unresolved rather than restore an unproven full-account cache.
 3. Are distinct new/retry/recovery branches, immutable single PurchaseIntent, unchanged accepted fingerprint, authoritative subscription readback, bounded **total** preflight deadline, parallelism limits, independent paid serving/reconciliation capacity, finite six-hour paid trust and Kernel `AccessSnapshot` <=5m cache all explicitly implemented and measured?
 4. Are ALL changed requirements traced into ANY-504, ANY-664 and its implementation plan **before implementation**?

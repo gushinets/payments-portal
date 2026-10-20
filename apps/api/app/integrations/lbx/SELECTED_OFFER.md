@@ -60,6 +60,14 @@ documented GETs, with bounded existing auth/retry semantics:
 There is no `/tariffs` whole-account scan, invented pagination, extra point
 endpoint, cache or DB writer. The selected tariff's documented list operations
 can include unrelated services/periods; only selected material is normalized.
+The complete service list is nevertheless a composition dependency: every row
+must have correct tariff membership, a unique service identity and an explicit
+`enabled_by_default` of `0` or `1`. The selected service must have `1`.
+Another service with `1` refuses Portal publication with
+`selected_offer_additional_default_components_unsupported`; unknown flags or
+ambiguous membership are `INCOMPLETE`. Services with `0` are optional and do
+not enter automatic composition. Both bounded reads apply this rule. Portal
+does not change LBX tariffs or restrict customer actions in the LBX cabinet.
 The documented shapes and numeric flags were read from
 [Swagger 1.0.11](https://demo.lbxbilling.ru/swagger/swagger.json) and the
 [API quick start](https://docs.lbxbilling.ru/api/api_start/). B8/B9/B10 evidence
@@ -115,6 +123,7 @@ negative zero. Dates remain ISO calendar dates.
 `digest_scope=selected_offer`, tenant/region/account, opaque selected
 offer/component/period/membership/price references, selected catalog/fiscal
 context, proven account currency units/scale, policy validity/dependencies,
+the sorted `dependencies.default_components` identities and their source provenance,
 evidence mode and field-to-source references/revisions/bases. It contains no
 raw DTOs, volatile observations, evaluation date, editorial text, unrelated
 list records or inactive historical/future price amounts. The effective

@@ -22,6 +22,7 @@ from app.composition.mapping_operator import (
 )
 from app.core.settings import AppEnv
 from app.domains.catalog.admission import SelectedCapabilityUnavailable
+from app.domains.catalog.commercial_offer import SelectedOfferRefused
 from app.domains.catalog.mapping_evidence import (
     ApprovedMapping,
     MappingDocument,
@@ -30,6 +31,7 @@ from app.domains.catalog.mapping_evidence import (
     MappingRefused,
     PublicationState,
     TechnicalBinding,
+    require_replacement_approval,
 )
 from app.domains.catalog.publication import query_mapping
 from app.infrastructure.preflight import PreflightDeadlineExceeded
@@ -37,6 +39,7 @@ from app.integrations.kernel.client import KernelUnavailable
 from apps.api.tests.support.commercial_mappings import (
     SIMULATED_OFFER_ID,
     SIMULATED_UID,
+    approval_reference,
     fresh_fixture,
     operator_settings,
     reviewed_fixture,
@@ -115,6 +118,101 @@ async def test_fresh_dry_run_and_publish_evaluations_use_real_clients_and_same_m
     assert first.document.material.terms.money.recurring_amount == Decimal("200.02")
     # Decimal remains exact in the serialized operator/storage boundary.
     assert json.loads(first.document.model_dump_json())["material"]["terms"]["money"]["recurring_amount"] == "200.02"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("reread_only", [False, True])
+async def test_fresh_operator_evaluation_refuses_an_additional_default_service(reread_only: bool) -> None:
+    reviewed = await reviewed_fixture()
+    recording = SelectedOfferRecording()
+    recording.append_row(
+        "services", '{"tariff_id":701,"tariff_service_id":1002,"enabled_by_default":1}', reread_only=reread_only
+    )
+    with pytest.raises(SelectedOfferRefused, match="selected_offer_additional_default_components_unsupported"):
+        await fresh_fixture(reviewed, recording=recording)
+    assert all(request.method == "GET" for request in recording.requests)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "change", ["price", "connection_price", "billing_period", "payment_obligations", "renewal", "cancellation"]
+)
+async def test_changed_legal_terms_require_a_new_legal_version_after_commercial_approval(change: str) -> None:
+    original = await reviewed_fixture()
+    previous = (await fresh_fixture(original)).document
+    recording = SelectedOfferRecording()
+    inputs = simulated_inputs()
+    assert inputs.policy is not None
+    if change in {"price", "connection_price"}:
+        old, new = (
+            ('"price":100.01', '"price":120.01')
+            if change == "price"
+            else ('"connection_price":7.03', '"connection_price":8.03')
+        )
+        for name in ("services", "prices"):
+            recording.replace(name, old, new)
+    elif change == "billing_period":
+        for name in ("periods", "prices"):
+            recording.replace(name, '"period_length":1', '"period_length":2')
+    elif change == "payment_obligations":
+        recording.replace("tariff", '"block_to_close_days":30', '"block_to_close_days":20')
+    else:
+        field = "renewal_terms" if change == "renewal" else "cancellation_terms"
+        inputs = inputs.model_copy(
+            update={"policy": inputs.policy.model_copy(update={field: "SIMULATED revised terms"})}
+        )
+    replacement = await reviewed_fixture(recording=recording, source_inputs=inputs, revision="fixture-v2")
+    old_legal = replacement.approval.model_copy(
+        update={
+            "revisions": replacement.approval.revisions.model_copy(update={"legal": original.approval.revisions.legal})
+        }
+    )
+    candidate = await fresh_fixture(replace(replacement, approval=old_legal), recording=recording, source_inputs=inputs)
+    assert candidate.document.approvals.commercial != previous.approvals.commercial
+    with pytest.raises(MappingRefused, match="mapping_legal_reapproval_required"):
+        require_replacement_approval(previous, candidate.document)
+    approved = await fresh_fixture(replacement, recording=recording, source_inputs=inputs)
+    require_replacement_approval(previous, approved.document)
+
+
+@pytest.mark.anyio
+async def test_technical_only_change_keeps_legal_approval_and_technical_guard() -> None:
+    original = await reviewed_fixture()
+    previous = (await fresh_fixture(original)).document
+    replacement = await reviewed_fixture(allowance=26)
+    candidate = (await fresh_fixture(replacement)).document
+    with pytest.raises(MappingRefused, match="mapping_technical_reapproval_required"):
+        require_replacement_approval(previous, candidate)
+    revisions = replacement.approval.revisions.model_copy(
+        update={"technical": approval_reference("technical", "fixture-v2")}
+    )
+    replacement = replace(replacement, approval=replacement.approval.model_copy(update={"revisions": revisions}))
+    candidate = (await fresh_fixture(replacement)).document
+    assert candidate.approvals.legal == previous.approvals.legal
+    require_replacement_approval(previous, candidate)
+
+
+@pytest.mark.anyio
+async def test_evidence_only_change_requires_commercial_but_keeps_legal_version() -> None:
+    original = await reviewed_fixture()
+    previous = (await fresh_fixture(original)).document
+    inputs = simulated_inputs()
+    assert inputs.policy is not None and inputs.policy.list_completeness is not None
+    proof = inputs.policy.list_completeness.model_copy(update={"revision": "test-2"})
+    inputs = inputs.model_copy(update={"policy": inputs.policy.model_copy(update={"list_completeness": proof})})
+    replacement = await reviewed_fixture(source_inputs=inputs)
+    candidate = (await fresh_fixture(replacement, source_inputs=inputs)).document
+    assert candidate.material.terms == previous.material.terms
+    assert candidate.material.selected_evidence_digest != previous.material.selected_evidence_digest
+    with pytest.raises(MappingRefused, match="mapping_commercial_reapproval_required"):
+        require_replacement_approval(previous, candidate)
+    revisions = replacement.approval.revisions.model_copy(
+        update={"commercial": approval_reference("commercial", "fixture-v2")}
+    )
+    replacement = replace(replacement, approval=replacement.approval.model_copy(update={"revisions": revisions}))
+    candidate = (await fresh_fixture(replacement, source_inputs=inputs)).document
+    assert candidate.approvals.legal == previous.approvals.legal
+    require_replacement_approval(previous, candidate)
 
 
 @pytest.mark.anyio

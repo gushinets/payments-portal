@@ -3,6 +3,11 @@
 Status: accepted implementation baseline  
 Date: 2026-09-15
 
+Amended 2026-10-20: the owner-approved
+[live-source commercial admission amendment](2026-10-15-live-source-commercial-admission-design-amendment.md)
+supersedes Portal manifest mirroring and catalog-age admission only. Manifest
+wire semantics, AccessSnapshot, AccessInvalidation and paid-access trust remain unchanged.
+
 ## Purpose
 
 This companion design contains the cross-repository wire contracts between
@@ -156,36 +161,29 @@ Kernel-owned policy outside this manifest flag.
 5xx -> Kernel cannot produce a complete valid manifest
 ```
 
-### Portal import and freshness
+### Portal live admission
 
-Portal targets refresh at startup and approximately every five minutes. It keeps
-a last-known-good projection.
-
-`capability_manifest_last_complete_sync_at` advances only after all of these
-succeed:
+Portal fetches the complete authenticated manifest for each publication and
+genuinely new purchase. Admission requires:
 
 ```text
 HTTP 200
 supported schema_version
 full payload validation
 all product/metric references valid
-atomic local projection commit
+valid scope and deterministic manifest_version
+selected product and metric enabled and correctly bound
 ```
 
-Timeouts, `5xx`, malformed/partial responses, unsupported schema, broken
-metric-to-product references, or local projection transaction failure do not
-advance freshness and do not partially replace the prior projection.
-
-The billing-boundary design applies:
-
-```text
-new_sales_projection_max_age = 24h
-```
-
-A manifest older than that blocks new sales and new mapping publication, but
-does not silently rewrite or revoke already-pinned historical mappings or paid
-access. The billing-boundary design additionally requires a fresh external
-billing catalog before a mapping revision can be published.
+Timeouts, `5xx`, malformed/partial responses, unsupported schema or broken
+references refuse the new operation without a stored-manifest fallback. There
+is no periodic/startup registry synchronization or 24h catalog-age permission.
+Portal stores approved immutable bindings/terms and evidence in PostgreSQL;
+catalog browsing reads only that stored state, with no source calls or current
+sellability promise. Existing purchase retries/recovery follow the amendment.
+Previously pinned mappings and paid-access facts are not rewritten or revoked
+by a manifest admission failure. Subscription trust and AccessSnapshot caching
+retain their existing separate deadlines.
 
 ## AccessSnapshot
 
@@ -779,8 +777,8 @@ The implementation plan must cover at least:
 - concurrent Kernel quota consumption cannot exceed allowance quantity;
 - capability `enabled=false` blocks new mapping/purchase pins without revoking
   already-pinned historical access;
-- capability-manifest partial/invalid sync keeps prior LKG and does not move
-  `last_complete_sync_at`;
+- capability-manifest partial/invalid live reads refuse new admission without
+  a stored-manifest fallback; published browsing remains DB-only;
 - manifest canonical fixture ownership remains in Kernel while snapshot/
   invalidation canonical fixtures remain in Portal, with hash-checked consumer
   copies and no shared runtime package.
@@ -798,7 +796,7 @@ Platform Kernel
   durable actual usage and quota enforcement
 
 Payments Portal
-  Capability Manifest consumer/LKG projection
+  live Capability Manifest consumer + immutable approved bindings
   complete AccessSnapshot producer
   monotonic access_revision owner
   durable coalesced AccessInvalidation sender

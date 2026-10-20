@@ -156,8 +156,8 @@ This section retains the pre-implementation Portal baseline and selected pinned 
 ### Architecture precedence and worktree caveats
 
 - The owner's Portal-only decision is explicit: **no Kernel code changes** and no real Kernel producer prerequisite. ANY-664 and an earlier version of PR #138 may still contain inconsistent *historical/proposed* wording. Mark such mismatches for owner documentation sync; do not convert them into requirements to ship a Kernel producer.
-- PR #138 was inspected as a **closed, unmerged** proposed live-source amendment at the research checkpoint. Its HTTP read strategy is the approved implementation intent of this Portal-only plan, but formal canonical precedence/PR reconciliation remains a separate owner action before calling it merged, canonical or enabling real sales. This gate **does not stop** safe local mock/client work.
-- Existing untouched canonical spec text still describes startup/5-minute product-catalog import and a 24-hour new-sales projection window. For the **explicit approved live-source implementation scope here**, do **not** implement that retired branch of the design alongside the new one. Record the narrow supersession accurately and escalate only a material contract dispute; never silently mix both source strategies.
+- PR #138 was inspected as a **closed, unmerged** proposal at the research checkpoint. On 2026-10-20 the owner explicitly confirmed the [live-source amendment](../../superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md) during PR #139 final review. ADR 0005 and canonical specs now record its narrow precedence; this does not claim either PR was merged or real sales enabled.
+- Startup/5-minute source-catalog import and 24h new-sale catalog permission are retired in the canonical specs. Publication/new purchase use live reads; PostgreSQL serves immutable approved terms for browsing. Subscription trust/reconciliation and AccessSnapshot remain unchanged.
 - Proposed filenames under `apps/api/app/integrations/lbx/`, `apps/api/app/integrations/kernel/`, `apps/api/app/domains/catalog/`, and `tools/kernel_manifest_mock/` are **placement guidance**, not proof those directories exist. Reuse the actual local layer owner and avoid duplicate modules if Step 1 or predecessors already created equivalents.
 
 ## 4. Implementation sequence - one step at a time, Portal repository only
@@ -569,7 +569,26 @@ These results supersede earlier local-only, unpushed and formatting/lint-only st
 
 `REAL_KERNEL_CONFORMANCE=DEFERRED_NOT_IMPLEMENTED`. The real Kernel Capability Manifest API and paid registry are not implemented; local mock/client PASS cannot certify them. The Kernel API owner must supply the actual endpoint, schema/fixtures, producer commit, deployed auth and tenant/region scope. The Portal integration owner must verify actual schema/digest/auth/scope/error behavior and selected real product/paid-metric semantics before genuine publication or real sales, reconciling incompatibilities at the existing Integration boundary.
 
-All **G1–G5** remain in force: G1 real product/release/metric/unit/quantity approval (Kernel/product owners); G2 account-specific LBX membership, price, currency/scale/policy evidence (billing integration owner); G3 commercial/legal/renewal/cancellation/history approvals (commercial/legal owners); G4 real Kernel conformance and trusted deployment configuration (Kernel API and Portal integration owners); G5 later purchase/recovery/paid-cycle/usage/E2E gates (ANY-504 program owners). Simulated revisions remain SIMULATED after endpoint/configuration changes. Formal live-source design canonicalization remains a separate owner action; closing this plan does not change ADR/spec precedence or claim PR #138 was merged.
+All **G1–G5** remain in force: G1 real product/release/metric/unit/quantity approval (Kernel/product owners); G2 account-specific LBX membership, price, currency/scale/policy evidence (billing integration owner); G3 commercial/legal/renewal/cancellation/history approvals (commercial/legal owners); G4 real Kernel conformance and trusted deployment configuration (Kernel API and Portal integration owners); G5 later purchase/recovery/paid-cycle/usage/E2E gates (ANY-504 program owners). Simulated revisions remain SIMULATED after endpoint/configuration changes. The 2026-10-20 owner confirmation canonicalizes only the live-source amendment's narrow supersession; it does not claim PR #138 was merged.
+
+### Final review corrections — 2026-10-20
+
+Both fresh operator paths validate the complete tariff service list: explicit
+`enabled_by_default` in `{0,1}`, unique correct membership, selected service as
+the sole default. Additional defaults refuse Portal publication; optional `0`
+services do not enter automatic composition. Default identities and provenance
+are included in selected evidence/digest. No LBX mutations or cabinet restrictions.
+
+Changed normalized commercial terms require a new legal approval version using
+the existing files and revision mechanism, including price, billing period,
+payment obligations and renewal/cancellation. Technical-only changes with
+unchanged terms keep legal approval; technical/commercial guards remain.
+
+Focused regression scenarios were added for completeness/default composition,
+reread changes, legal reapproval, technical/evidence-only changes and PostgreSQL
+refusal/history. Per owner instruction, no tests, builds, migrations, Docker or
+provider calls are run for this correction; validation is formatting/lint only.
+Earlier CI evidence applies to the prior implementation, not these changes.
 
 **Handoff to ANY-504 program Step 7:** consume the completed clients, bounded admission foundation, normalized selected offer and immutable mapping/query contracts described in section 7. Implement separate genuinely new purchase, same-key replay/status and UNKNOWN recovery paths; pin one immutable accepted intent and held scope before non-payment provider preparation, avoid duplicate CREATE, and verify actual resulting subscription terms before Widget eligibility. Program Steps 8–10 still own real paid-access, expiry, reconciliation, revision/invalidation and load proofs; program Step 11 still owns real E2E/launch acceptance. This handoff records dependencies and safeguards, not acceptance of those future flows.
 
@@ -580,6 +599,6 @@ The owner reviews and separately commits/pushes this documentation closure, conf
 ## Source links
 
 - Canonical manifest wire/auth properties: [Portal-Kernel spec](https://github.com/gushinets/payments-portal/blob/05d3fcb6a965fcd053d713f49669d1dd25c22978/docs/superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md).
-- Live admission, immutable terms and safeguards: [PR #138 amendment reference](https://github.com/gushinets/payments-portal/blob/d48d8f49bb8fcd9194dd59970d59103757ceee61/docs/superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md). Its former requirement to ship the real producer in Step 6 is replaced by the current user scope decision.
+- Live admission, immutable terms and safeguards: [accepted live-source amendment](../../superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md), owner confirmation on 2026-10-20. The original PR #138 blob remains historical provenance; its former Step 6 real-producer requirement was replaced by the Portal-only scope decision.
 - Read-only Kernel identity/composition: [bootstrap](https://github.com/gushinets/anytoolai-platform/blob/079eb03e28d7a50b980795c63c3e4533b785d11f/apps/platform-api/src/anytoolai_platform_api/bootstrap.py), [registry](https://github.com/gushinets/anytoolai-platform/blob/079eb03e28d7a50b980795c63c3e4533b785d11f/packages/backend/platform-core/src/anytoolai_platform_core/config/registry.py), [FreelancerSuiteBundle](https://github.com/gushinets/anytoolai-platform/blob/079eb03e28d7a50b980795c63c3e4533b785d11f/packages/backend/product-platforms/freelancer-suite/src/anytoolai_freelancer_suite/bundle.py).
 - Retained LBX facts/limitations and later gates: [ANY-634 handoff](https://github.com/gushinets/payments-portal/blob/05d3fcb6a965fcd053d713f49669d1dd25c22978/docs/superpowers/phase0/2026-10-14-any-634-lbx-evidence-handoff.md).

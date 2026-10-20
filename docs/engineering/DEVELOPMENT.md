@@ -213,6 +213,21 @@ access URLs, card data or unnecessary personal data in operator input. Do not
 forward full operator results to shared logs, telemetry or public CI artifacts.
 This preserves the existing JSON and immutable audit contract.
 
+Operator `dry-run` and `publish` validate the complete selected tariff service
+list, including each explicit `enabled_by_default` flag. The selected service
+must be the only default-assigned service; optional services (`0`) are excluded.
+Missing/ambiguous composition refuses the operation, and the default composition
+is pinned in selected evidence/digest. No LBX tariff is mutated.
+
+Existing approval files carry independent technical/commercial/legal version
+references. Changed normalized commercial terms (price, billing period, payment
+obligations, renewal/cancellation) require a new legal approval version as well
+as existing commercial/technical checks. A replacement retaining the old legal
+version fails with `mapping_legal_reapproval_required`. Technical-only or
+evidence-only changes with unchanged terms do not require new legal approval.
+Rewriting the same reference/revision hash remains forbidden. Neither operator
+command creates approval or supplies a legal-review interface.
+
 ## Step 6 stored catalog acceptance
 
 The public catalog reads only immutable published revisions from the configured

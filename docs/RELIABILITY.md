@@ -98,8 +98,12 @@ correctness, idempotency, reconciliation, or replay store.
 
 ## Durable target storage semantics
 
-- Complete capability/catalog projection replacement preserves the previous
-  last-known-good row on partial or failed sync.
+- Under the [accepted live-source amendment](superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md),
+  complete live Kernel/LBX reads are required for publication and genuinely new
+  purchases. Failed/partial reads refuse that operation without catalog-age or
+  stored-source fallback. Approved immutable terms remain available for DB-only
+  browsing; the two source-catalog projection tables are inert. Subscription
+  reconciliation/trust and AccessSnapshot deadlines are unchanged.
 - Mapping revisions, accepted purchase evidence and purchased allowances are
   immutable where the clean migration installs PostgreSQL protections.
   Observation core fields are immutable, while

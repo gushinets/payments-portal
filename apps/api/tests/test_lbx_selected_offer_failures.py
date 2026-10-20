@@ -44,6 +44,9 @@ def anyio_backend() -> str:
             "component_membership_missing_or_ambiguous",
         ),
         ("services", '"discounts":[]', '"discounts":null', "discounts_unknown"),
+        ("services", '"enabled_by_default":1,', "", "component_enabled_by_default_unknown"),
+        ("services", '"enabled_by_default":1', '"enabled_by_default":null', "component_enabled_by_default_unknown"),
+        ("services", '"enabled_by_default":1', '"enabled_by_default":2', "component_enabled_by_default_unknown"),
         ("services", '"min_multiplicator":1', '"min_multiplicator":10', "commercial_bounds_invalid"),
         ("services", '"price":100.01', '"price":101.01', "inline_effective_price_conflict"),
         ("prices", '"connection_price":7.03,', "", "effective_connection_price_unknown"),
@@ -159,6 +162,7 @@ async def test_documentation_is_not_account_specific_currency_proof() -> None:
         ("services", '"bulk_service":false', '"bulk_service":true', "fixed_periodic_profile_required"),
         ("services", '"user_available":0', '"user_available":1', "customer_management_unsupported"),
         ("services", '"user_can_set_mul":0', '"user_can_set_mul":1', "customer_management_unsupported"),
+        ("services", '"enabled_by_default":1', '"enabled_by_default":0', "selected_component_not_default"),
         (
             "services",
             '"discounts":[]',
@@ -206,6 +210,78 @@ async def test_changed_selected_material_on_bounded_reread_is_incomplete() -> No
     assert caught.value.kind == OfferRefusalKind.INCOMPLETE
     assert caught.value.reason == "selected_source_changed"
     assert recording.counts["prices"] == 2
+
+
+@pytest.mark.parametrize(
+    ("row", "kind", "reason"),
+    [
+        (
+            '{"tariff_id":701,"tariff_service_id":1002,"enabled_by_default":1}',
+            OfferRefusalKind.NOT_SELLABLE,
+            "additional_default_components_unsupported",
+        ),
+        (
+            '{"tariff_id":701,"tariff_service_id":1002}',
+            OfferRefusalKind.INCOMPLETE,
+            "component_enabled_by_default_unknown",
+        ),
+        (
+            '{"tariff_id":701,"tariff_service_id":1002,"enabled_by_default":null}',
+            OfferRefusalKind.INCOMPLETE,
+            "component_enabled_by_default_unknown",
+        ),
+        (
+            '{"tariff_id":701,"tariff_service_id":1002,"enabled_by_default":2}',
+            OfferRefusalKind.INCOMPLETE,
+            "component_enabled_by_default_unknown",
+        ),
+        (
+            '{"tariff_id":702,"tariff_service_id":1002,"enabled_by_default":0}',
+            OfferRefusalKind.INCOMPLETE,
+            "lbx_scope_mismatch",
+        ),
+        (
+            '{"tariff_id":701,"tariff_service_id":1001,"enabled_by_default":0}',
+            OfferRefusalKind.INCOMPLETE,
+            "lbx_response_invalid",
+        ),
+    ],
+)
+@pytest.mark.parametrize("reread_only", [False, True])
+async def test_complete_tariff_default_composition_is_required_on_both_reads(
+    row: str, kind: OfferRefusalKind, reason: str, reread_only: bool
+) -> None:
+    recording = SelectedOfferRecording()
+    recording.append_row("services", row, reread_only=reread_only)
+    async with lbx_source(httpx.MockTransport(recording.respond)) as (client, owner):
+        async with owner.operation() as budget:
+            with pytest.raises(SelectedOfferRefused) as caught:
+                await read_selected_offer(
+                    client, selection=simulated_selection(), inputs=simulated_inputs(), budget=budget
+                )
+    assert caught.value.kind == kind
+    # The real client rejects foreign tariff membership and duplicate service
+    # identities before normalization; read_selected_offer retains its codes.
+    assert caught.value.reason == reason
+    assert recording.counts["services"] == (2 if reread_only else 1)
+
+
+async def test_optional_component_becoming_default_on_reread_refuses_the_operation() -> None:
+    recording = SelectedOfferRecording()
+    recording.append_row("services", '{"tariff_id":701,"tariff_service_id":1002,"enabled_by_default":0}')
+    recording.replace(
+        "services",
+        '"tariff_service_id":1002,"enabled_by_default":0',
+        '"tariff_service_id":1002,"enabled_by_default":1',
+        reread_only=True,
+    )
+    async with lbx_source(httpx.MockTransport(recording.respond)) as (client, owner):
+        async with owner.operation() as budget:
+            with pytest.raises(SelectedOfferRefused, match="selected_offer_additional_default_components_unsupported"):
+                await read_selected_offer(
+                    client, selection=simulated_selection(), inputs=simulated_inputs(), budget=budget
+                )
+    assert recording.counts["services"] == 2
 
 
 async def test_partial_lists_and_wrong_account_do_not_pass() -> None:

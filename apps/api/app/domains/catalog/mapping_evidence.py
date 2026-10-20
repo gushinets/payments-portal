@@ -363,3 +363,8 @@ def require_replacement_approval(previous: MappingDocument, candidate: MappingDo
     )
     if commercial_changed and previous.approvals.commercial == candidate.approvals.commercial:
         raise MappingRefused("mapping_commercial_reapproval_required")
+    # Normalized terms pin price, billing period, payment obligations and
+    # renewal/cancellation rules. Technical bindings and source evidence alone
+    # do not change those terms or require a new legal approval version.
+    if old.terms != new.terms and previous.approvals.legal == candidate.approvals.legal:
+        raise MappingRefused("mapping_legal_reapproval_required")

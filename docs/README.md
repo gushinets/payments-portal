@@ -10,6 +10,8 @@ Start with the smallest document that matches the task.
 - Architecture decision records capture durable architectural decisions.
 - New billing development follows ADR 0005, then the accepted external-billing
   boundary design, then the accepted Portal-Kernel access-contract design.
+  The accepted live-source amendment narrowly supersedes their source-catalog
+  mirroring/new-sale TTL requirements; paid-access rules are unchanged.
   Retained billing documents cannot override that target authority chain.
 - `ARCHITECTURE.md` is the factual current-state map and records clearly
   labelled target or transitional constraints where needed.
@@ -40,7 +42,7 @@ Start with the smallest document that matches the task.
 1. [ADR 0005: External billing boundary](architecture/decisions/0005-external-billing-boundary.md)
 2. [External Billing Boundary Design](superpowers/specs/2026-09-15-external-billing-boundary-design.md)
 3. [Portal ↔ Kernel Access Contract Design](superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md)
-4. [Proposed live-source commercial admission amendment](superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md) — PR #138; narrow supersession upon approval, paid trust unchanged.
+4. [Accepted live-source commercial admission amendment](superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md) — owner confirmation on 2026-10-20 in ANY-664 / PR #139; narrow source-read/admission supersession, paid trust unchanged.
 
 ### Implementation handoffs and references
 

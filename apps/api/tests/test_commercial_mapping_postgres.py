@@ -156,7 +156,7 @@ async def test_two_services_in_one_tariff_have_independent_revision_histories(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     class TwoServicesRecording(SelectedOfferRecording):
-        def __init__(self) -> None:
+        def __init__(self, default_component: int) -> None:
             super().__init__()
             # Extend the isolated recording without float-decoding fixture money
             # or changing Step 4's reader/normalizer or existing fixture owners.
@@ -164,7 +164,17 @@ async def test_two_services_in_one_tariff_have_independent_revision_histories(
             prefix = b'{"code":200,"response":['
             assert body.startswith(prefix) and body.endswith(b"]}")
             service = body[len(prefix) : -2].decode("utf-8")
-            self.append_row("services", service.replace('"tariff_service_id":1001', '"tariff_service_id":1002'))
+            self.append_row(
+                "services",
+                service.replace('"tariff_service_id":1001', '"tariff_service_id":1002').replace(
+                    '"enabled_by_default":1', f'"enabled_by_default":{int(default_component == 1002)}'
+                ),
+            )
+            if default_component == 1002:
+                # Change only the first row; the second default stays explicit.
+                self.bodies["services"] = self.bodies["services"].replace(
+                    b'"enabled_by_default":1', b'"enabled_by_default":0', 1
+                )
 
         def respond(self, request: httpx.Request) -> httpx.Response:
             if request.url.path.endswith("/services/1002/prices"):
@@ -179,7 +189,8 @@ async def test_two_services_in_one_tariff_have_independent_revision_histories(
                 )
             return super().respond(request)
 
-    recording = TwoServicesRecording()
+    first_recording = TwoServicesRecording(1001)
+    second_recording = TwoServicesRecording(1002)
     second_selection = simulated_selection().model_copy(update={"tariff_service_id": 1002})
     second_inputs = simulated_inputs()
     assert second_inputs.policy is not None
@@ -188,12 +199,17 @@ async def test_two_services_in_one_tariff_have_independent_revision_histories(
             "policy": second_inputs.policy.model_copy(update={"tariff_service_id": 1002}),
         }
     )
-    first = await reviewed_fixture(recording=recording)
-    second = await reviewed_fixture(recording=recording, selection=second_selection, source_inputs=second_inputs)
+    first = await reviewed_fixture(recording=first_recording)
+    second = await reviewed_fixture(recording=second_recording, selection=second_selection, source_inputs=second_inputs)
     second_id = "selected-offer:v1:701:1002:901"
-    cases = ((first, simulated_inputs(), SIMULATED_OFFER_ID), (second, second_inputs, second_id))
+    # The provider can change its default between independent publications;
+    # each publication still admits exactly its one selected default service.
+    cases = (
+        (first, first_recording, simulated_inputs(), SIMULATED_OFFER_ID),
+        (second, second_recording, second_inputs, second_id),
+    )
     saved: dict[str, StoredMapping] = {}
-    for reviewed, source_inputs, offer_id in cases:
+    for reviewed, recording, source_inputs, offer_id in cases:
         fresh = await fresh_fixture(reviewed, recording=recording, source_inputs=source_inputs)
         assert fresh.document.material.billing_offer_id == offer_id
         assert fresh.document.material.references.offer == "701"
@@ -207,7 +223,7 @@ async def test_two_services_in_one_tariff_have_independent_revision_histories(
     monkeypatch.setattr(database, "SessionLocal", postgres_session_factory)
     monkeypatch.setattr(mapping_operator.os, "geteuid", lambda: SIMULATED_UID)
     scope = first.approval.material.scope
-    for reviewed, source_inputs, offer_id in cases:
+    for reviewed, recording, source_inputs, offer_id in cases:
         assert (
             query_mapping(postgres_session_factory, scope=scope, offer_id=offer_id, allow_simulated=True)
             == saved[offer_id]
@@ -278,6 +294,34 @@ async def test_changed_material_cannot_reuse_original_approval_revision(
     repackaged = await reviewed_fixture(allowance=26)
     with pytest.raises(MappingRefused, match="mapping_technical_reapproval_required"):
         publish(postgres_session_factory, await fresh_fixture(repackaged), previous=1)
+
+
+async def test_changed_price_needs_legal_reapproval_before_append(
+    migrated_database: Engine,
+    postgres_session_factory: sessionmaker[Session],
+) -> None:
+    original = await reviewed_fixture()
+    first = publish(postgres_session_factory, await fresh_fixture(original))
+    recording = SelectedOfferRecording()
+    for name in ("services", "prices"):
+        recording.replace(name, '"price":100.01', '"price":120.01')
+    replacement = await reviewed_fixture(recording=recording, revision="fixture-v2")
+    revisions = replacement.approval.revisions.model_copy(update={"legal": original.approval.revisions.legal})
+    repackaged = replace(replacement, approval=replacement.approval.model_copy(update={"revisions": revisions}))
+    with pytest.raises(MappingRefused, match="mapping_legal_reapproval_required"):
+        publish(postgres_session_factory, await fresh_fixture(repackaged, recording=recording), previous=1)
+    assert (
+        query_mapping(
+            postgres_session_factory,
+            scope=first.stored.document.material.scope,
+            offer_id=SIMULATED_OFFER_ID,
+            allow_simulated=True,
+        )
+        == first.stored
+    )
+    second = publish(postgres_session_factory, await fresh_fixture(replacement, recording=recording), previous=1)
+    assert second.inserted and second.stored.revision_number == 2
+    assert second.stored.document.approvals.legal != first.stored.document.approvals.legal
 
 
 @pytest.mark.parametrize("identical", [True, False])

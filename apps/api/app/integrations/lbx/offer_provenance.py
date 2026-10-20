@@ -68,6 +68,7 @@ def selected_offer_provenance(
         ("period.anchor", paths[0] + "#/float_period"),
         ("period.membership/unit/length", paths[1] + "#period=" + references.period),
         ("component.membership/quantity.bounds", paths[2] + "#component=" + references.component),
+        ("dependencies.default_components", paths[2] + "#/enabled_by_default"),
         ("policy.discounts.service", paths[2] + "#/discounts"),
         ("policy.customer_service_management", paths[2] + "#/user_available"),
         ("policy.customer_quantity_management", paths[2] + "#/user_can_set_mul"),

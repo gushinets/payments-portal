@@ -30,8 +30,15 @@ target or turn External Billing into a direct payment-provider integration.
   [external-billing boundary design](../../superpowers/specs/2026-09-15-external-billing-boundary-design.md)
   and
   [Portal-Kernel access-contract design](../../superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md)
-  are the normative implementation baselines. New target development follows
-  this ADR and those specifications.
+  are the normative implementation baselines, with the accepted
+  [live-source commercial admission amendment](../../superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md)
+  taking precedence only for source-catalog reads and new-operation admission
+  (owner confirmation, 2026-10-20). Publication and each new purchase require
+  live Kernel/LBX evidence; approved immutable terms are stored and browsed in
+  PostgreSQL. There is no periodic source-catalog mirror or catalog-age sale
+  permission. Subscription reconciliation/trust, paid-access derivation and
+  AccessSnapshot are unchanged. New target development follows this ADR and
+  those specifications with that narrow supersession.
 - Conflicting target semantics in ADR 0002, ADR 0004, and related legacy
   documentation are superseded. Retained legacy implementation and its
   current-state documentation remain available until later controlled,
@@ -44,7 +51,8 @@ target or turn External Billing into a direct payment-provider integration.
 ## Consequences
 
 - Target billing work has one authority chain: this ADR and the two accepted
-  implementation baselines.
+  implementation baselines, narrowly superseded by the accepted live-source
+  amendment for source reads/admission only.
 - Current direct-provider behavior remains characterizable without becoming a
   target architecture option.
 - Unverified provider-dependent assumptions remain explicit Phase 0 gates and

@@ -301,6 +301,11 @@ repository. No direct-provider runtime exists in this repository.
   contracts remain target architecture. ANY-664 adds a
   [provisional manifest contract and standalone development mock](docs/contracts/kernel-capability-manifest/v1/README.md);
   real Kernel producer delivery and conformance remain future enablement gates.
+- The owner-approved [live-source admission amendment](docs/superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md)
+  requires live Kernel/LBX checks for offer publication and each new purchase,
+  without periodic source-catalog mirrors. Approved immutable offer terms are
+  stored and browsed from PostgreSQL without source requests. Paid-access,
+  subscription trust/reconciliation and AccessSnapshot rules are unchanged.
 - Purchase/Widget, billing state, paid-access state, and usage/quota remain
   unavailable until their owning external-billing/Kernel integration steps;
   provider-dependent work remains subject to Phase 0 gates.

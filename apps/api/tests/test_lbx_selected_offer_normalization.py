@@ -44,6 +44,8 @@ async def test_complete_simulated_offer_uses_real_auth_and_selected_reads() -> N
     assert result.references.effective_price == "1301"
     assert result.references.period_membership == "801"
     assert result.digest_scope == "selected_offer"
+    assert json.loads(result.selected_evidence_json)["dependencies"]["default_components"] == ["1001"]
+    assert any(item.field == "dependencies.default_components" for item in result.field_sources)
     assert result.terms.money.currency == "RUB"
     assert result.terms.money.decimal_places == 2
     assert result.terms.money.recurring_unit_amount == Decimal("100.01")
@@ -77,7 +79,9 @@ async def test_unrelated_records_editorial_text_and_observation_time_do_not_chan
     recording = SelectedOfferRecording()
     recording.replace("tariff", "SIMULATED selected fixed offer", "Unrelated editorial revision", reread_only=True)
     recording.append_row("periods", '{"tariff_period_id":802,"period_id":902}', reread_only=True)
-    recording.append_row("services", '{"tariff_id":701,"tariff_service_id":1002}', reread_only=True)
+    recording.append_row(
+        "services", '{"tariff_id":701,"tariff_service_id":1002,"enabled_by_default":0}', reread_only=True
+    )
     recording.append_row("prices", '{"price_id":1399,"period_id":902}', reread_only=True)
     result = await _read(recording)
     assert result.terms == baseline.terms
