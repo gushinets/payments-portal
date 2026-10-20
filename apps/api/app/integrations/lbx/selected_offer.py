@@ -290,8 +290,7 @@ def normalize_selected_offer(
     if len(services) != 1 or services[0].tariff_id != selection.tariff_id:
         _incomplete("component_membership_missing_or_ambiguous")
     period, service = periods[0], services[0]
-    # The selected service is not the whole subscription composition. Every
-    # row in the complete tariff list must prove whether LBX assigns it.
+    # Validate default assignment for every service in the complete tariff, not just the selected one.
     component_ids: set[int] = set()
     default_components: list[str] = []
     for component in reads.services.value:
