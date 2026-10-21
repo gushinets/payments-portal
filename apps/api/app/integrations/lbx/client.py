@@ -12,9 +12,10 @@ from email.utils import parsedate_to_datetime
 from typing import Any, Generic, TypeVar
 
 import httpx
-from pydantic import SecretStr
+from pydantic import SecretStr, TypeAdapter
 
-from app.core.settings import Settings
+from app.core.settings import AppEnv, Settings
+from app.domains.catalog.commercial_offer import SelectedCommercialOffer
 from app.infrastructure.preflight import PreflightBudget
 from app.integrations.lbx.dto import (
     LbxEnvelope,
@@ -28,8 +29,10 @@ from app.integrations.lbx.errors import (
     LbxAttemptsExhausted,
     LbxAuthenticationFailed,
     LbxClosed,
+    LbxCreateUncertain,
     LbxError,
     LbxNotConfigured,
+    LbxPreparationBlocked,
     LbxRateLimited,
     LbxResponseInvalid,
     LbxScopeForbidden,
@@ -38,6 +41,20 @@ from app.integrations.lbx.errors import (
     LbxUnavailable,
 )
 from app.integrations.lbx.privacy import private_http_diagnostics
+from app.integrations.lbx.preparation_dto import (
+    AgreementInfo,
+    CreateEnvelope,
+    CreatedAgreement,
+    CreatedSubscription,
+    CreatedUser,
+    PostAgreement,
+    PostSubscription,
+    PostUser,
+    OpaqueKey,
+    SubscriptionInfo,
+    UserInfo,
+)
+from app.integrations.lbx.preparation_profile import PreparationProfile
 
 
 API_PATH = "/api/rest/v1"
@@ -114,7 +131,7 @@ def _reject_constant(value: str) -> None:
     raise ValueError("non-JSON number")
 
 
-def _decode_envelope(body: bytes, model: type[LbxEnvelope[T]]) -> T:
+def _decode_envelope(body: bytes, model: type[LbxEnvelope[T]] | type[CreateEnvelope[T]]) -> T:
     try:
         raw = json.loads(
             body.decode("utf-8"),
@@ -133,7 +150,7 @@ def _require_identity(value: int) -> None:
 
 
 class LbxServerClient:
-    """One scoped async Server API pool; only documented selected GETs.
+    """One scoped async Server API pool; selected reads and non-payment CREATE.
 
     Construct explicitly for source work, never from a DB-only query/startup
     dependency. There is no construction-time HTTP, external catalog cache or
@@ -154,6 +171,8 @@ class LbxServerClient:
         self._session: _Session | None = None
         self._session_lock = asyncio.Lock()
         self._closed = False
+        # A real origin/credential can never be used for CREATE in this slice.
+        self._recorded_transport = isinstance(transport, httpx.MockTransport)
         self._http = httpx.AsyncClient(
             base_url=configuration.lbx_base_url,
             headers={
@@ -226,13 +245,185 @@ class LbxServerClient:
             value=value,
         )
 
+    def require_preparation_profile(self, profile: PreparationProfile) -> None:
+        config = self._configuration
+        if config.app_env == AppEnv.PRODUCTION or not self._recorded_transport:
+            raise LbxPreparationBlocked()
+        profile.require_account(
+            account_id=config.lbx_external_billing_account_id,
+            origin=config.lbx_base_url,
+            username=config.lbx_server_username,
+        )
+        if (
+            config.lbx_seller_organization_id is not None
+            and config.lbx_seller_organization_id != profile.organization_id
+        ):
+            raise LbxPreparationBlocked()
+
+    async def get_user(self, *, user_id: int, budget: PreflightBudget) -> UserInfo:
+        _require_identity(user_id)
+        result = await self._read(f"/users/{user_id}", LbxEnvelope[UserInfo], budget=budget)
+        if result.user_id != user_id:
+            raise LbxScopeMismatch()
+        if result.password:
+            raise LbxResponseInvalid()
+        return result
+
+    async def get_agreement(self, *, agreement_id: int, budget: PreflightBudget) -> AgreementInfo:
+        _require_identity(agreement_id)
+        result = await self._read(f"/agreements/{agreement_id}", LbxEnvelope[AgreementInfo], budget=budget)
+        if result.agreement_id != agreement_id:
+            raise LbxScopeMismatch()
+        return result
+
+    async def get_subscription(self, *, subscription_id: int, budget: PreflightBudget) -> SubscriptionInfo:
+        _require_identity(subscription_id)
+        result = await self._read(f"/subscriptions/{subscription_id}", LbxEnvelope[SubscriptionInfo], budget=budget)
+        if result.subscription_id != subscription_id:
+            raise LbxScopeMismatch()
+        return result
+
+    def _bounded_candidates(self, identities: list[int]) -> None:
+        # No provider pagination/visibility SLA is invented. At the local cap,
+        # completeness is unknown even if this page happens to end there.
+        if len(identities) >= self._configuration.lbx_discovery_max_items:
+            raise LbxResponseInvalid()
+        if len(set(identities)) != len(identities):
+            raise LbxScopeMismatch()
+
+    async def discover_users(self, *, outer_id: str, budget: PreflightBudget) -> tuple[int, ...]:
+        # Validate opaque-key syntax before any source I/O; no PII search.
+        try:
+            key = TypeAdapter(OpaqueKey).validate_python(outer_id, strict=True)
+        except ValueError:
+            raise LbxScopeMismatch() from None
+        rows = await self._read(
+            "/users", LbxEnvelope[list[UserInfo]], budget=budget, body={"outer_id": key, "show_passwords": False}
+        )
+        self._bounded_candidates([row.user_id for row in rows])
+        if any(row.outer_id != key or row.password for row in rows):
+            raise LbxScopeMismatch()
+        return tuple(row.user_id for row in rows)
+
+    async def discover_agreements(self, *, user_id: int, budget: PreflightBudget) -> tuple[int, ...]:
+        _require_identity(user_id)
+        rows = await self._read(
+            "/agreements", LbxEnvelope[list[AgreementInfo]], budget=budget, body={"user_id": user_id}
+        )
+        self._bounded_candidates([row.agreement_id for row in rows])
+        if any(row.user_id != user_id for row in rows):
+            raise LbxScopeMismatch()
+        return tuple(row.agreement_id for row in rows)
+
+    async def discover_subscriptions(self, *, user_id: int, budget: PreflightBudget) -> tuple[int, ...]:
+        _require_identity(user_id)
+        rows = await self._read(
+            "/subscriptions", LbxEnvelope[list[SubscriptionInfo]], budget=budget, body={"user_id": user_id}
+        )
+        self._bounded_candidates([row.subscription_id for row in rows])
+        # The list has no user_id field. A filter alone is not owner proof.
+        for agreement_id in {row.agreement_id for row in rows}:
+            if agreement_id is None:
+                raise LbxResponseInvalid()
+            agreement = await self.get_agreement(agreement_id=agreement_id, budget=budget)
+            if agreement.user_id != user_id:
+                raise LbxScopeMismatch()
+        return tuple(row.subscription_id for row in rows)
+
+    async def create_user(
+        self, command: PostUser, *, profile: PreparationProfile, budget: PreflightBudget
+    ) -> CreatedUser:
+        self.require_preparation_profile(profile)
+        profile.require_customer(command)
+        return await self._create("/users", CreateEnvelope[CreatedUser], command.model_dump(exclude_none=True), budget)
+
+    async def create_agreement(
+        self, command: PostAgreement, *, profile: PreparationProfile, budget: PreflightBudget
+    ) -> CreatedAgreement:
+        self.require_preparation_profile(profile)
+        profile.require_agreement(command)
+        body = command.model_dump(mode="json", exclude_none=True)
+        # Only zero debt is authorized. Emit an actual JSON number, never a
+        # Pydantic Decimal string or a binary float.
+        body["debt_threshold"] = 0
+        return await self._create("/agreements", CreateEnvelope[CreatedAgreement], body, budget)
+
+    async def create_subscription(
+        self,
+        command: PostSubscription,
+        *,
+        profile: PreparationProfile,
+        offer: SelectedCommercialOffer,
+        budget: PreflightBudget,
+    ) -> CreatedSubscription:
+        self.require_preparation_profile(profile)
+        profile.require_subscription(command, offer)
+        return await self._create(
+            "/subscriptions",
+            CreateEnvelope[CreatedSubscription],
+            command.model_dump(exclude_none=True),
+            budget,
+            success_statuses=frozenset({200, 201}),
+        )
+
+    async def _create(
+        self,
+        path: str,
+        model: type[CreateEnvelope[T]],
+        body: dict[str, Any],
+        budget: PreflightBudget,
+        *,
+        success_statuses: frozenset[int] = frozenset({201}),
+    ) -> T:
+        if self._closed:
+            raise LbxClosed()
+        # Serialization is safe-before-send. No deferred JSON encoding failure
+        # can be confused with a provider-side effect.
+        content = json.dumps(body, allow_nan=False, separators=(",", ":")).encode("utf-8")
+        possible_send = False
+
+        async def create() -> T:
+            nonlocal possible_send
+            with private_http_diagnostics():
+                attempts = _Attempts(self._configuration.lbx_max_get_attempts)
+                session = await self._ensure_session(attempts, budget, allow_refresh=True)
+                budget.check()
+                possible_send = True
+                # One exchange. No GET reauth/retry loop, even for 401/429/5xx.
+                return await self._request_once(
+                    path,
+                    model,
+                    _Attempts(1),
+                    budget,
+                    headers={
+                        "Authorization": f"Bearer {session.token.get_secret_value()}",
+                        "Content-Type": "application/json",
+                    },
+                    method="POST",
+                    content=content,
+                    success_statuses=success_statuses,
+                )
+
+        try:
+            return await budget.run(create)
+        except _Retryable as retry:
+            if possible_send:
+                raise LbxCreateUncertain() from None
+            raise retry.failure from None
+        except BaseException:
+            # Includes cancellation/deadline/body/cleanup failure after send.
+            # Step 4 must retain its committed durable possible-send fence.
+            if possible_send:
+                raise LbxCreateUncertain() from None
+            raise
+
     async def _read(
         self,
         path: str,
         model: type[LbxEnvelope[T]],
         *,
         budget: PreflightBudget,
-        body: dict[str, int] | None = None,
+        body: dict[str, Any] | None = None,
     ) -> T:
         if self._closed:
             raise LbxClosed()
@@ -248,7 +439,7 @@ class LbxServerClient:
         path: str,
         model: type[LbxEnvelope[T]],
         budget: PreflightBudget,
-        body: dict[str, int] | None,
+        body: dict[str, Any] | None,
     ) -> T:
         attempts = _Attempts(self._configuration.lbx_max_get_attempts)
         reauthenticated = False
@@ -341,13 +532,16 @@ class LbxServerClient:
     async def _request_once(
         self,
         path: str,
-        model: type[LbxEnvelope[T]],
+        model: type[LbxEnvelope[T]] | type[CreateEnvelope[T]],
         attempts: _Attempts,
         budget: PreflightBudget,
         *,
         headers: dict[str, str] | None = None,
-        body: dict[str, int] | None = None,
+        body: dict[str, Any] | None = None,
         auth: httpx.Auth | None = None,
+        method: str = "GET",
+        content: bytes | None = None,
+        success_statuses: frozenset[int] = frozenset({200}),
     ) -> T:
         budget.check()
         attempts.take()
@@ -361,7 +555,7 @@ class LbxServerClient:
         )
         try:
             async with self._http.stream(
-                "GET", API_PATH + path, headers=headers, json=body, auth=auth, timeout=timeout
+                method, API_PATH + path, headers=headers, json=body, content=content, auth=auth, timeout=timeout
             ) as response:
                 assert isinstance(response.stream, httpx.AsyncByteStream)
                 response.stream = _CleanupProtectedStream(response.stream, budget)
@@ -376,7 +570,7 @@ class LbxServerClient:
                     raise _Retryable(failure, self._retry_after(response.headers.get("retry-after")))
                 if 500 <= status <= 599:
                     raise LbxUnavailable()
-                if status != 200:
+                if status not in success_statuses:
                     raise LbxResponseInvalid()
                 if response.headers.get("content-type", "").split(";", 1)[0].strip().lower() != "application/json":
                     raise LbxResponseInvalid()

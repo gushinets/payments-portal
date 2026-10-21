@@ -53,3 +53,21 @@ class LbxAttemptsExhausted(LbxError):
 class LbxClosed(LbxError):
     def __init__(self) -> None:
         super().__init__("lbx_closed")
+
+
+class LbxPreparationBlocked(LbxError):
+    def __init__(self) -> None:
+        super().__init__("lbx_preparation_blocked")
+
+
+class LbxCreateUncertain(LbxError):
+    """The POST may have taken effect. Only read-only recovery is safe.
+
+    No remote exception/body/credential is retained. Step 4 owns durable fences;
+    this outcome cannot authorize another POST, including after zero matches.
+    """
+
+    possible_send = True
+
+    def __init__(self) -> None:
+        super().__init__("lbx_create_uncertain")

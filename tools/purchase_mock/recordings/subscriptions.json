@@ -1,0 +1,41 @@
+{
+  "code": 200,
+  "response": [
+    {
+      "subscription_id": 1701,
+      "agreement_id": 1601,
+      "tariff_id": 701,
+      "period_id": 901,
+      "subscription_instance_id": 1801,
+      "subscription_start_date": "2026-10-16 00:00:00",
+      "subscription_end_date": "",
+      "subscription_instance_start_date": "2026-10-16 00:00:00",
+      "subscription_instance_end_date": "2026-11-15 23:59:59",
+      "last_tariffication_period_start": "2026-10-16 00:00:00",
+      "last_tariffication_period_end": "2026-11-15 23:59:59",
+      "state": -2,
+      "current_blocking": 1,
+      "period_type": 3,
+      "period_length": 1,
+      "is_demo": false,
+      "is_offer_agrm": true,
+      "total_price": 200.02,
+      "balance": 0,
+      "currency_symbol": "rub",
+      "outer_id": "SIMULATED-subscription-hint",
+      "services": [
+        {
+          "service_id": 1901,
+          "tariff_service_id": 1001,
+          "multiplicator": 2,
+          "price": 100.01,
+          "tariff_price": 100.01,
+          "bulk_service": false,
+          "bulk_price": 0,
+          "periodic_service": 1
+        }
+      ],
+      "next_change_date": ""
+    }
+  ]
+}

@@ -93,6 +93,10 @@ class Settings(BaseSettings):
     lbx_max_get_attempts: int = Field(default=5, ge=1, le=8)
     lbx_retry_delay_seconds: float = Field(default=0.1, ge=0, le=5, allow_inf_nan=False)
     lbx_max_retry_delay_seconds: float = Field(default=2.0, ge=0, le=5, allow_inf_nan=False)
+    # Optional seller binding; checked lazily at preparation, never org #21 by default.
+    lbx_seller_organization_id: int | None = Field(default=None, gt=0)
+    lbx_discovery_max_items: int = Field(default=50, ge=1, le=100)
+
     # CLI execution identity; no default principal, wildcard or human attribution.
     mapping_operator_uids: tuple[Annotated[int, Field(strict=True, ge=0)], ...] = ()
     # Independent of source credentials so saved evidence remains queryable offline.
@@ -105,6 +109,11 @@ class Settings(BaseSettings):
     # Opt-in local recorded purchase profile. Never enables production sales.
     purchase_simulated_profile_file: Path | None = None
     mapping_lock_timeout_seconds: float = Field(default=2.0, gt=0, le=10, allow_inf_nan=False)
+
+    @field_validator("lbx_seller_organization_id", mode="before")
+    @classmethod
+    def empty_lbx_seller_is_unconfigured(cls, value: Any) -> Any:
+        return None if value == "" else value
 
     @field_validator("smtp_use_tls", mode="before")
     @classmethod
