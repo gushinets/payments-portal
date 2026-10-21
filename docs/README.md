@@ -84,6 +84,7 @@ Start with the smallest document that matches the task.
 
 - [Development](engineering/DEVELOPMENT.md)
 - [Testing](engineering/TESTING.md)
+- [ANY-709 SIMULATED preparation and UNKNOWN recovery](engineering/ANY-709-unknown-recovery.md)
 - [Agent workflow](engineering/AGENT_WORKFLOW.md)
 - [Coding conventions](engineering/CODING_CONVENTIONS.md)
 - [Reliability](RELIABILITY.md)

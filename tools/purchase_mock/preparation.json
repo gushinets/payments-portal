@@ -118,6 +118,12 @@
     "basis": "SIMULATED"
   },
   "currency_symbol": "rub",
+  "subscription_list_complete": true,
+  "subscription_list_evidence": {
+    "reference": "SIMULATED:complete-customer-subscription-recording-below-client-cap-no-pagination-claim",
+    "revision": "fixture-v1",
+    "basis": "SIMULATED"
+  },
   "customer_type": 2,
   "lawful_customer_fields": [
     "type",

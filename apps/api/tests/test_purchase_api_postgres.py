@@ -56,8 +56,8 @@ def test_new_purchase_commits_one_exact_commercial_event_and_hold(harness: Purch
     assert response.status_code == 202, response.text
     assert response.headers["cache-control"] == "no-store"
     body = response.json()
-    assert body["state"] == "created" and body["next_action"] == "wait"
-    assert body["continue_available"] is False
+    assert body["state"] == "created" and body["next_action"] == "continue"
+    assert body["continue_available"] is True
     assert body["accepted_terms"] == review
     assert harness.source_calls == ["kernel"]  # genuine loopback HTTP to the existing mock
     with harness.factory() as db:

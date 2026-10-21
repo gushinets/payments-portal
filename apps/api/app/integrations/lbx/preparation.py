@@ -8,40 +8,19 @@ recorded profile / immutable selected terms, not invented LBX GET fields.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
-from enum import StrEnum
-from typing import Generic, TypeVar
 
 from pydantic import TypeAdapter
 
 from app.domains.catalog.commercial_offer import SelectedCommercialOffer
+from app.domains.purchases.preparation_contracts import PreparationProof, ProofState
 from app.infrastructure.preflight import PreflightBudget
 from app.integrations.lbx.client import LbxServerClient
 from app.integrations.lbx.errors import LbxError, LbxPreparationBlocked, LbxResponseInvalid, LbxScopeMismatch
 from app.integrations.lbx.preparation_dto import OpaqueKey, PostAgreement, PostSubscription
 from app.integrations.lbx.preparation_profile import PreparationProfile
-
-
-class ProofState(StrEnum):
-    COMPLETE_MATCH = "complete_match"
-    INCOMPLETE = "incomplete"
-    MISMATCH = "mismatch"
-    IDENTITY_CONFLICT = "identity_conflict"
-    OWNER_CONFLICT = "owner_conflict"
-    UNRESOLVED = "unresolved"
-
-
-T = TypeVar("T")
-
-
-@dataclass(frozen=True)
-class PreparationProof(Generic[T]):
-    state: ProofState
-    reason: str
-    value: T | None = field(default=None, repr=False)
-    evidence_mode: str = "SIMULATED"
 
 
 @dataclass(frozen=True, repr=False)
@@ -280,6 +259,7 @@ class LbxPreparation:
             return PreparationProof(ProofState.OWNER_CONFLICT, "subscription_agreement_conflict")
         if (
             subscription.tariff_id != expected.tariff_id
+            or subscription.outer_id != expected.outer_id
             or subscription.period_id != expected.period_id
             or subscription.subscription_start_date != expected.subscription_start_date
             or subscription.currency_symbol != self._profile.currency_symbol

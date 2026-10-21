@@ -593,6 +593,40 @@
         "title": "PinnedDocument",
         "type": "object"
       },
+      "ProductPurchaseStatusResponse": {
+        "properties": {
+          "purchase_intent_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purchase Intent Id"
+          },
+          "state": {
+            "enum": [
+              "not_ready",
+              "preparing",
+              "recovery_pending",
+              "occupied",
+              "manual_review",
+              "manage"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "purchase_intent_id"
+        ],
+        "title": "ProductPurchaseStatusResponse",
+        "type": "object"
+      },
       "PublicationState": {
         "enum": [
           "SIMULATED",
@@ -679,6 +713,8 @@
           "next_action": {
             "enum": [
               "wait",
+              "continue",
+              "manage",
               "manual_review"
             ],
             "title": "Next Action",
@@ -1423,6 +1459,64 @@
         ]
       }
     },
+    "/api/billing/products/{product_id}/status": {
+      "get": {
+        "operationId": "product_purchase_status_api_billing_products__product_id__status_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "product_id",
+            "required": true,
+            "schema": {
+              "title": "Product Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductPurchaseStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Product Purchase Status",
+        "tags": [
+          "purchases"
+        ]
+      }
+    },
     "/api/catalog/products": {
       "get": {
         "operationId": "list_products_api_catalog_products_get",
@@ -1801,6 +1895,65 @@
           }
         },
         "summary": "Get Purchase",
+        "tags": [
+          "purchases"
+        ]
+      }
+    },
+    "/api/purchases/{purchase_intent_id}/continue": {
+      "post": {
+        "operationId": "continue_purchase_api_purchases__purchase_intent_id__continue_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "purchase_intent_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Purchase Intent Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Continue Purchase",
         "tags": [
           "purchases"
         ]

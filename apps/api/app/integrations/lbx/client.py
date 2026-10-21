@@ -6,7 +6,7 @@ import math
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any, Generic, TypeVar
+from typing import Any, TypeVar
 
 import httpx
 from pydantic import SecretStr, TypeAdapter
@@ -46,27 +46,12 @@ from app.integrations.lbx.preparation_dto import (
     UserInfo,
 )
 from app.integrations.lbx.preparation_profile import PreparationProfile
+from app.integrations.lbx.read_result import LbxRead as LbxRead
 from app.integrations.lbx.transport import _Attempts, _Retryable, request_once, retry_after
 
 
 API_PATH = "/api/rest/v1"
 T = TypeVar("T")
-
-
-@dataclass(frozen=True)
-class LbxRead(Generic[T]):
-    """Integration-only source DTO and configured/requested identity context.
-
-    Account identity is the deployment's credential binding, not a provider
-    attestation: these GET responses contain no billing-account identity.
-    Step 4 must normalize this before Application. No atomic snapshot implied.
-    """
-
-    external_billing_account_id: str
-    tariff_id: int
-    tariff_service_id: int | None
-    observed_at: datetime
-    value: T
 
 
 @dataclass(frozen=True)
@@ -267,6 +252,17 @@ class LbxServerClient:
         self.require_preparation_profile(profile)
         profile.require_customer(command)
         return await self._create("/users", CreateEnvelope[CreatedUser], command.model_dump(exclude_none=True), budget)
+
+    async def prepare_create(self, *, budget: PreflightBudget) -> None:
+        """Acquire Server authentication before Application commits a send claim."""
+
+        async def authenticate() -> None:
+            with private_http_diagnostics():
+                await self._ensure_session(
+                    _Attempts(self._configuration.lbx_max_get_attempts), budget, allow_refresh=True
+                )
+
+        await budget.run(authenticate)
 
     async def create_agreement(
         self, command: PostAgreement, *, profile: PreparationProfile, budget: PreflightBudget

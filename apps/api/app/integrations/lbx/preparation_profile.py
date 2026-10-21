@@ -39,6 +39,8 @@ class PreparationProfile(PrivateDto):
     customer_evidence: EvidenceReference
     create_evidence: EvidenceReference
     dedicated_agreement_evidence: EvidenceReference
+    subscription_list_evidence: EvidenceReference
+    subscription_list_complete: Literal[True]
     currency_symbol: str
     customer_type: Literal[1, 2]
     lawful_customer_fields: tuple[str, ...]
@@ -82,6 +84,7 @@ class PreparationProfile(PrivateDto):
             self.customer_evidence,
             self.create_evidence,
             self.dedicated_agreement_evidence,
+            self.subscription_list_evidence,
             currency.evidence,
             calendar.evidence,
             selection.quantity_evidence,

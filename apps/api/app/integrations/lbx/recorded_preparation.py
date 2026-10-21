@@ -6,6 +6,7 @@ Receipts and GETs are recordings, not claims about current provider behavior.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import httpx
@@ -19,7 +20,9 @@ from app.integrations.lbx.recorded_offer import recorded_offer_transport
 class RecordedPreparationTransport(httpx.MockTransport):
     source_mode = "SIMULATED"
 
-    def __init__(self, directory: Path, profile: PreparationProfile) -> None:
+    def __init__(
+        self, directory: Path, profile: PreparationProfile, *, substitutions: dict[str, str] | None = None
+    ) -> None:
         selected = recorded_offer_transport(directory, profile.selection)
         names = {
             ("POST", "/users"): "created_user",
@@ -39,6 +42,14 @@ class RecordedPreparationTransport(httpx.MockTransport):
                     body = stream.read(524289)
                 if len(body) > 524288:
                     raise LbxResponseInvalid()
+                # Explicit SIMULATED template variables bind recordings to
+                # durable opaque correlations, never to a POST response or its
+                # material fields. Prices, states and owners stay fixture-owned.
+                if substitutions:
+                    rendered = body.decode("utf-8")
+                    for old, new in substitutions.items():
+                        rendered = rendered.replace(json.dumps(old)[1:-1], json.dumps(new)[1:-1])
+                    body = rendered.encode("utf-8")
                 bodies[key] = body
         except OSError:
             raise LbxResponseInvalid() from None

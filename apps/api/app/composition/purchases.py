@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
+import json
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
 from datetime import datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Literal
 
@@ -14,7 +17,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.composition.mapping_operator import account_billing_date, utc_now
 from app.composition.sources import SourceResources
 from app.core.settings import AppEnv, Settings
-from app.domains.catalog.commercial_offer import CommercialEvidenceMode, CommercialScope
+from app.domains.catalog.commercial_offer import CommercialEvidenceMode, CommercialScope, SelectedCommercialOffer
 from app.domains.catalog.mapping_evidence import ApprovedMapping, MappingEvidenceMode, evaluate_mapping
 from app.domains.purchases.contracts import (
     PurchaseAdmissionProof,
@@ -22,13 +25,21 @@ from app.domains.purchases.contracts import (
     PurchaseRefused,
     PurchaseReview,
     SellerEvidence,
+    AcceptedPurchase,
 )
+from app.domains.purchases.preparation import PreparationContext, PurchasePreparation
+from app.domains.purchases.preparation_contracts import PreparationEvidence, PreparationGateway
 from app.domains.purchases.service import PurchaseApplication
-from app.infrastructure.preflight import PreflightCleanupPending
+from app.infrastructure.preflight import PreflightBudget, PreflightCleanupPending
 from app.integrations.lbx.client import LbxServerClient
 from app.integrations.lbx.offer_inputs import SelectedOfferInputs, SelectedOfferRequest
 from app.integrations.lbx.recorded_offer import recorded_offer_transport
 from app.integrations.lbx.selected_offer import read_selected_offer
+from app.integrations.lbx.preparation_profile import PreparationProfile
+from app.integrations.lbx.preparation_dto import NewServiceInfo, PostAgreement, PostSubscription, PostUser
+from app.integrations.lbx.purchase_preparation import LbxPurchasePreparation, PreparationRecord
+from app.integrations.lbx.recorded_preparation import RecordedPreparationTransport
+from app.models import ExternalCreateOperationKind
 
 
 class SimulatedPurchaseProfile(PurchaseInput):
@@ -185,14 +196,154 @@ def purchase_application(
         value, directory = profile()
         return await compare_original_terms(configuration, sources, review, value, directory, clock=clock)
 
+    def make_record(
+        context: PreparationContext, kind: ExternalCreateOperationKind, correlation: str
+    ) -> PreparationRecord:
+        value, directory = profile()
+        try:
+            with (directory.parent / "preparation.json").open("rb") as stream:
+                body = stream.read(1048577)
+            if len(body) > 1048576:
+                raise ValueError("profile too large")
+            preparation = PreparationProfile.model_validate_json(body)
+        except (OSError, ValueError):
+            raise PurchaseRefused("purchase_preparation_profile_unavailable", 503) from None
+        if (
+            preparation.selection != value.selection
+            or preparation.inputs != value.inputs
+            or preparation.organization_id != context.accepted.review.seller.organization_id
+            or preparation.server_origin != "https://purchase-recording.invalid"
+            or preparation.server_username != SecretStr("SIMULATED-purchase-recording")
+        ):
+            raise PurchaseRefused("purchase_preparation_profile_conflict", 409)
+        preparation = preparation.model_copy(
+            update={
+                "selection": preparation.selection.model_copy(
+                    update={"effective_on": context.accepted.admission.effective_on}
+                )
+            }
+        )
+        customer = PostUser(type=preparation.customer_type, outer_id=context.customer_key, email=context.email)
+        preparation.require_customer(customer)
+        agreement = None
+        subscription = None
+        if kind != ExternalCreateOperationKind.CUSTOMER:
+            if context.provider_customer_id is None:
+                raise PurchaseRefused("purchase_customer_identity_unproven", 409)
+            if kind == ExternalCreateOperationKind.AGREEMENT:
+                offer_doc = next((doc for doc in context.accepted.review.documents if doc.doc_type == "offer"), None)
+                if offer_doc is None:
+                    raise PurchaseRefused("purchase_legal_unavailable", 503)
+                agreement = PostAgreement(
+                    user_id=int(context.provider_customer_id),
+                    organization_id=preparation.organization_id,
+                    agreement_number=correlation,
+                    agreement_link=offer_doc.url_path,
+                    create_date=context.accepted.admission.effective_on,
+                    is_offer=preparation.is_offer,
+                    debt_threshold=Decimal(0),
+                )
+            else:
+                if context.agreement_record is None or context.agreement_id is None:
+                    raise PurchaseRefused("purchase_agreement_unproven", 409)
+                agreement = PreparationRecord.model_validate_json(
+                    json.dumps(context.agreement_record.storage_document())
+                ).agreement
+                subscription = PostSubscription(
+                    agreement_id=int(context.agreement_id),
+                    tariff_id=preparation.selection.tariff_id,
+                    period_id=preparation.selection.period_id,
+                    subscription_start_date=f"{context.accepted.admission.effective_on} {preparation.start_time}",
+                    activate_by_balance=preparation.activate_by_balance,
+                    activate_manually=preparation.activate_manually,
+                    demo_period_length=preparation.demo_period_length,
+                    outer_id=correlation,
+                    services=[
+                        NewServiceInfo(
+                            tariff_service_id=preparation.selection.tariff_service_id,
+                            multiplicator=int(preparation.selection.commercial_quantity),
+                        )
+                    ]
+                    if preparation.service_composition == "explicit_single"
+                    else None,
+                )
+        return PreparationRecord(profile=preparation, customer=customer, agreement=agreement, subscription=subscription)
+
+    @asynccontextmanager
+    async def gateway(
+        evidence: PreparationEvidence, accepted: AcceptedPurchase
+    ) -> AsyncIterator[tuple[PreparationGateway, PreflightBudget]]:
+        record = PreparationRecord.model_validate_json(json.dumps(evidence.storage_document()))
+        if sources is None or configuration.app_env == AppEnv.PRODUCTION:
+            raise PurchaseRefused("purchase_not_enabled", 503)
+        # Recovery uses persisted original commands/profile. It neither reads
+        # Kernel nor reloads the current admission profile or policy file.
+        path = configuration.purchase_simulated_profile_file
+        if path is None:
+            raise PurchaseRefused("purchase_not_enabled", 503)
+        substitutions = {
+            "SIMULATED-persisted-customer-key": record.customer.outer_id,
+            "2026-10-16": record.profile.selection.effective_on.isoformat(),
+        }
+        if record.agreement is not None:
+            substitutions["SIMULATED-held-purchase-reference"] = record.agreement.agreement_number
+            substitutions["https://portal.example.invalid/terms/simulated"] = record.agreement.agreement_link
+        if record.subscription is not None:
+            substitutions["SIMULATED-subscription-hint"] = record.subscription.outer_id
+        local = configuration.model_copy(
+            update={
+                "lbx_base_url": record.profile.server_origin,
+                "lbx_external_billing_account_id": accepted.external_billing_account_id,
+                "lbx_server_username": SecretStr("SIMULATED-purchase-recording"),
+                "lbx_server_password": SecretStr("SIMULATED-purchase-recording"),
+            }
+        )
+        document = accepted.review.mapping
+        material = document.material
+        offer = SelectedCommercialOffer(
+            material.scope,
+            material.references,
+            material.terms,
+            document.lbx_evidence_mode,
+            material.digest_scope,
+            material.selected_evidence_digest,
+            document.selected_evidence_json,
+            document.field_sources,
+            document.observations,
+        )
+        client = LbxServerClient(
+            local,
+            transport=RecordedPreparationTransport(
+                path.parent / "recordings", record.profile, substitutions=substitutions
+            ),
+        )
+        try:
+            async with sources.purchase_io.operation() as budget:
+                yield LbxPurchasePreparation(client, record, offer), budget
+        finally:
+            async with asyncio.timeout(configuration.preflight_cleanup_timeout_seconds):
+                await client.aclose()
+
+    scope = CommercialScope(
+        configuration.instance_tenant_id, configuration.instance_region, configuration.mapping_account_id
+    )
+    preparation = PurchasePreparation(
+        factory,
+        scope=scope,
+        fresh_compare=compare,
+        make_record=make_record,
+        decode_record=PreparationRecord.model_validate_json,
+        gateway=gateway,
+        clock=clock,
+    )
+
     return PurchaseApplication(
         factory,
-        scope=CommercialScope(
-            configuration.instance_tenant_id, configuration.instance_region, configuration.mapping_account_id
-        ),
+        scope=scope,
         allow_simulated=configuration.app_env != AppEnv.PRODUCTION,
         profile_terms=terms,
         fresh_compare=compare,
         clock=clock,
         lock_timeout_seconds=configuration.mapping_lock_timeout_seconds,
+        preparation=preparation,
     )

@@ -27,6 +27,8 @@ from app.domains.purchases.contracts import (
 )
 from app.domains.purchases.review import purchase_review, require_exact_consent
 from app.domains.purchases.transactions import reserve_purchase_scope
+from app.domains.purchases.preparation import PurchasePreparation
+from app.infrastructure.queries import purchase_preparation as preparation_queries
 from app.infrastructure.persistence.commercial_mappings import bound_publication_transaction, lock_mapping_scope
 from app.infrastructure.persistence.purchase_scopes import PurchaseScopeConflict, PurchaseScopeIdentity
 from app.models import (
@@ -37,6 +39,7 @@ from app.models import (
     PurchaseIntent,
     User,
     UserStatus,
+    PurchaseIntentState,
 )
 
 
@@ -55,6 +58,7 @@ class PurchaseApplication:
         fresh_compare: Callable[[PurchaseReview], Awaitable[PurchaseAdmissionProof]],
         clock: Callable[[], datetime],
         lock_timeout_seconds: float,
+        preparation: PurchasePreparation | None = None,
     ) -> None:
         self.factory = factory
         self.scope = scope
@@ -63,6 +67,7 @@ class PurchaseApplication:
         self.fresh_compare = fresh_compare
         self.clock = clock
         self.lock_timeout_seconds = lock_timeout_seconds
+        self.preparation = preparation
 
     def _review(self, db: Session, product_id: str) -> PurchaseReview:
         seller, recurring = self.profile_terms()
@@ -97,10 +102,41 @@ class PurchaseApplication:
                 raise PurchaseRefused("purchase_not_found", 404)
             return PersistedPurchase(
                 purchase_intent_id=intent.purchase_intent_id,
-                state=intent.state.value,
+                state=preparation_queries.local_state(db, intent).value,
                 accepted=AcceptedPurchase.model_validate_json(json.dumps(intent.accepted_snapshot)),
                 state_updated_at=intent.state_updated_at,
             )
+
+    async def continue_purchase(self, user_id: UUID, intent_id: UUID) -> PersistedPurchase:
+        if self.preparation is None:
+            raise PurchaseRefused("purchase_not_enabled", 503)
+        await self.preparation.advance(user_id, intent_id)
+        return await asyncio.to_thread(self.status, user_id, intent_id)
+
+    def product_status(self, user_id: UUID, product_id: str) -> tuple[str, UUID | None]:
+        with self.factory() as db:
+            intent, linked = preparation_queries.product_owner(
+                db,
+                user_id,
+                product_id,
+                tenant_id=self.scope.tenant_id,
+                region=self.scope.region,
+                account_id=self.scope.external_billing_account_id,
+            )
+            if intent is None:
+                return ("manage" if linked else "not_ready"), None
+            state = preparation_queries.local_state(db, intent)
+            if state == PurchaseIntentState.MANUAL_REVIEW:
+                status = "manual_review"
+            elif state == PurchaseIntentState.LINKED or linked:
+                status = "manage"
+            elif state == PurchaseIntentState.AWAITING_EXTERNAL_RESULT:
+                status = "recovery_pending"
+            elif state in (PurchaseIntentState.CREATED, PurchaseIntentState.PREPARING):
+                status = "preparing"
+            else:
+                status = "occupied"
+            return status, intent.purchase_intent_id
 
     @staticmethod
     def _matches(intent: PurchaseIntent, payload: PurchaseRequest) -> bool:

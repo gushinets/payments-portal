@@ -392,6 +392,20 @@ export type PinnedDocument = {
 };
 
 /**
+ * ProductPurchaseStatusResponse
+ */
+export type ProductPurchaseStatusResponse = {
+    /**
+     * Purchase Intent Id
+     */
+    purchase_intent_id: string | null;
+    /**
+     * State
+     */
+    state: 'not_ready' | 'preparing' | 'recovery_pending' | 'occupied' | 'manual_review' | 'manage';
+};
+
+/**
  * PublicationState
  */
 export type PublicationState = 'SIMULATED' | 'PUBLISHED_APPROVED_UNVERIFIED_NOW';
@@ -447,7 +461,7 @@ export type PurchaseResponse = {
     /**
      * Next Action
      */
-    next_action: 'wait' | 'manual_review';
+    next_action: 'wait' | 'continue' | 'manage' | 'manual_review';
     /**
      * Purchase Intent Id
      */
@@ -916,6 +930,42 @@ export type GetSessionApiAuthSessionGetResponses = {
 
 export type GetSessionApiAuthSessionGetResponse = GetSessionApiAuthSessionGetResponses[keyof GetSessionApiAuthSessionGetResponses];
 
+export type ProductPurchaseStatusApiBillingProductsProductIdStatusGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+    };
+    path: {
+        /**
+         * Product Id
+         */
+        product_id: string;
+    };
+    query?: never;
+    url: '/api/billing/products/{product_id}/status';
+};
+
+export type ProductPurchaseStatusApiBillingProductsProductIdStatusGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HTTPValidationError;
+};
+
+export type ProductPurchaseStatusApiBillingProductsProductIdStatusGetError = ProductPurchaseStatusApiBillingProductsProductIdStatusGetErrors[keyof ProductPurchaseStatusApiBillingProductsProductIdStatusGetErrors];
+
+export type ProductPurchaseStatusApiBillingProductsProductIdStatusGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: ProductPurchaseStatusResponse;
+};
+
+export type ProductPurchaseStatusApiBillingProductsProductIdStatusGetResponse = ProductPurchaseStatusApiBillingProductsProductIdStatusGetResponses[keyof ProductPurchaseStatusApiBillingProductsProductIdStatusGetResponses];
+
 export type ListProductsApiCatalogProductsGetData = {
     body?: never;
     path?: never;
@@ -1156,3 +1206,39 @@ export type GetPurchaseApiPurchasesPurchaseIntentIdGetResponses = {
 };
 
 export type GetPurchaseApiPurchasesPurchaseIntentIdGetResponse = GetPurchaseApiPurchasesPurchaseIntentIdGetResponses[keyof GetPurchaseApiPurchasesPurchaseIntentIdGetResponses];
+
+export type ContinuePurchaseApiPurchasesPurchaseIntentIdContinuePostData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+    };
+    path: {
+        /**
+         * Purchase Intent Id
+         */
+        purchase_intent_id: string;
+    };
+    query?: never;
+    url: '/api/purchases/{purchase_intent_id}/continue';
+};
+
+export type ContinuePurchaseApiPurchasesPurchaseIntentIdContinuePostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HTTPValidationError;
+};
+
+export type ContinuePurchaseApiPurchasesPurchaseIntentIdContinuePostError = ContinuePurchaseApiPurchasesPurchaseIntentIdContinuePostErrors[keyof ContinuePurchaseApiPurchasesPurchaseIntentIdContinuePostErrors];
+
+export type ContinuePurchaseApiPurchasesPurchaseIntentIdContinuePostResponses = {
+    /**
+     * Successful Response
+     */
+    202: PurchaseResponse;
+};
+
+export type ContinuePurchaseApiPurchasesPurchaseIntentIdContinuePostResponse = ContinuePurchaseApiPurchasesPurchaseIntentIdContinuePostResponses[keyof ContinuePurchaseApiPurchasesPurchaseIntentIdContinuePostResponses];

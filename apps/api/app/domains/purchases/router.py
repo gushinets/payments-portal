@@ -29,6 +29,7 @@ from app.models import PurchaseIntentState
 
 
 router = APIRouter(prefix="/api/purchases", tags=["purchases"])
+billing_router = APIRouter(prefix="/api/billing", tags=["purchases"])
 
 
 class PurchaseReviewResponse(BaseModel):
@@ -47,10 +48,15 @@ class PurchaseReviewResponse(BaseModel):
 class PurchaseResponse(BaseModel):
     purchase_intent_id: UUID
     state: PurchaseIntentState
-    next_action: Literal["wait", "manual_review"]
+    next_action: Literal["wait", "continue", "manage", "manual_review"]
     continue_available: bool
     accepted_at: str
     accepted_terms: PurchaseReviewResponse
+
+
+class ProductPurchaseStatusResponse(BaseModel):
+    state: Literal["not_ready", "preparing", "recovery_pending", "occupied", "manual_review", "manage"]
+    purchase_intent_id: UUID | None
 
 
 def present_review(review: PurchaseReview) -> PurchaseReviewResponse:
@@ -70,11 +76,24 @@ def present_review(review: PurchaseReview) -> PurchaseReviewResponse:
 
 
 def present_purchase(value: PersistedPurchase) -> PurchaseResponse:
+    resumable = value.state in (
+        PurchaseIntentState.CREATED,
+        PurchaseIntentState.PREPARING,
+        PurchaseIntentState.AWAITING_EXTERNAL_RESULT,
+    )
     return PurchaseResponse(
         purchase_intent_id=value.purchase_intent_id,
         state=PurchaseIntentState(value.state),
-        next_action="manual_review" if value.state == PurchaseIntentState.MANUAL_REVIEW else "wait",
-        continue_available=False,
+        next_action=(
+            "manual_review"
+            if value.state == PurchaseIntentState.MANUAL_REVIEW
+            else "manage"
+            if value.state == PurchaseIntentState.LINKED
+            else "continue"
+            if resumable
+            else "wait"
+        ),
+        continue_available=resumable,
         accepted_at=value.accepted.accepted_at.isoformat(),
         accepted_terms=present_review(value.accepted.review),
     )
@@ -144,3 +163,25 @@ def get_purchase(
         return present_purchase(use_case.status(user_id, purchase_intent_id))
     except AppError as error:
         raise safe_error(error) from None
+
+
+@router.post("/{purchase_intent_id}/continue", response_model=PurchaseResponse, status_code=202)
+async def continue_purchase(
+    purchase_intent_id: UUID,
+    user_id: Annotated[UUID, Depends(purchase_user)],
+    use_case: Annotated[PurchaseApplication, Depends(application)],
+) -> PurchaseResponse:
+    try:
+        return present_purchase(await use_case.continue_purchase(user_id, purchase_intent_id))
+    except AppError as error:
+        raise safe_error(error) from None
+
+
+@billing_router.get("/products/{product_id}/status", response_model=ProductPurchaseStatusResponse)
+def product_purchase_status(
+    product_id: str,
+    user_id: Annotated[UUID, Depends(purchase_user)],
+    use_case: Annotated[PurchaseApplication, Depends(application)],
+) -> ProductPurchaseStatusResponse:
+    state, intent_id = use_case.product_status(user_id, product_id)
+    return ProductPurchaseStatusResponse(state=state, purchase_intent_id=intent_id)

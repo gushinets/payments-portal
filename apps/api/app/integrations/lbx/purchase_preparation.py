@@ -1,0 +1,241 @@
+"""Private commands and bounded read-only recovery for the recorded account.
+
+The persisted document contains simulated policy and exact commands, never a
+credential. Discovery filters are hints; every binding requires a point proof.
+"""
+
+from __future__ import annotations
+
+import json
+from datetime import datetime
+from typing import Literal
+
+from pydantic import JsonValue, field_serializer, field_validator
+
+from app.domains.catalog.commercial_offer import SelectedCommercialOffer
+from app.domains.purchases.preparation_contracts import CreateUncertain
+from app.infrastructure.preflight import PreflightBudget
+from app.integrations.lbx.client import LbxServerClient
+from app.integrations.lbx.errors import (
+    LbxCreateUncertain,
+    LbxError,
+    LbxPreparationBlocked,
+    LbxResponseInvalid,
+    LbxScopeMismatch,
+)
+from app.integrations.lbx.preparation import LbxPreparation, PreparationProof, ProofState
+from app.integrations.lbx.preparation_dto import PostAgreement, PostSubscription, PostUser, PrivateDto
+from app.integrations.lbx.preparation_profile import PreparationProfile
+from app.models import ExternalCreateOperationKind
+
+
+class PreparationRecord(PrivateDto):
+    schema_version: Literal["SIMULATED-purchase-preparation-v1"] = "SIMULATED-purchase-preparation-v1"
+    profile: PreparationProfile
+    customer: PostUser
+    agreement: PostAgreement | None = None
+    subscription: PostSubscription | None = None
+    point_proven_at: datetime | None = None
+
+    @property
+    def external_agreement_id(self) -> str | None:
+        return str(self.subscription.agreement_id) if self.subscription is not None else None
+
+    def storage_document(self) -> dict[str, JsonValue]:
+        return self.model_dump(mode="json")
+
+    def point_proven_document(self, observed_at: datetime) -> dict[str, JsonValue]:
+        return {**self.storage_document(), "point_proven_at": observed_at.isoformat()}
+
+    @field_serializer("agreement", when_used="json")
+    def exact_zero_debt(self, value: PostAgreement | None) -> object:
+        if value is None:
+            return None
+        return {**value.model_dump(mode="json"), "debt_threshold": 0}
+
+    @field_serializer("profile", when_used="json")
+    def without_credential(self, value: PreparationProfile) -> object:
+        return value.model_dump(mode="json", exclude={"server_username"})
+
+    @field_validator("profile", mode="before")
+    @classmethod
+    def recorded_identity(cls, value: object) -> object:
+        if isinstance(value, dict):
+            # This schema can represent only the isolated recorded account.
+            # Credential material is supplied by local composition, not storage.
+            return PreparationProfile.model_validate_json(
+                json.dumps({**value, "server_username": "SIMULATED-purchase-recording"})
+            )
+        return value
+
+
+class LbxPurchasePreparation:
+    def __init__(self, client: LbxServerClient, record: PreparationRecord, offer: SelectedCommercialOffer) -> None:
+        self.client = client
+        self.record = record
+        self.offer = offer
+        self.proofs = LbxPreparation(client, record.profile)
+
+    async def before_send(self, kind: ExternalCreateOperationKind, budget: PreflightBudget) -> None:
+        record, profile = self.record, self.record.profile
+        if kind == ExternalCreateOperationKind.CUSTOMER:
+            profile.require_customer(record.customer)
+        elif kind == ExternalCreateOperationKind.AGREEMENT:
+            if record.agreement is None:
+                raise LbxPreparationBlocked()
+            profile.require_agreement(record.agreement)
+            proof = await self.proofs.prove_customer(
+                user_id=record.agreement.user_id, billing_customer_key=record.customer.outer_id, budget=budget
+            )
+            if proof.state != ProofState.COMPLETE_MATCH:
+                raise LbxPreparationBlocked()
+        else:
+            if record.subscription is None or record.agreement is None:
+                raise LbxPreparationBlocked()
+            profile.require_subscription(record.subscription, self.offer)
+            proof = await self.proofs.prove_agreement(
+                agreement_id=record.subscription.agreement_id,
+                expected=record.agreement,
+                billing_customer_key=record.customer.outer_id,
+                budget=budget,
+            )
+            if proof.state != ProofState.COMPLETE_MATCH:
+                raise LbxPreparationBlocked()
+        await self.client.prepare_create(budget=budget)
+
+    async def create(self, kind: ExternalCreateOperationKind, budget: PreflightBudget) -> int:
+        try:
+            return await self._create(kind, budget)
+        except LbxCreateUncertain:
+            raise CreateUncertain() from None
+
+    async def _create(self, kind: ExternalCreateOperationKind, budget: PreflightBudget) -> int:
+        record = self.record
+        if kind == ExternalCreateOperationKind.CUSTOMER:
+            return (await self.client.create_user(record.customer, profile=record.profile, budget=budget)).user_id
+        if kind == ExternalCreateOperationKind.AGREEMENT and record.agreement is not None:
+            return (
+                await self.client.create_agreement(record.agreement, profile=record.profile, budget=budget)
+            ).agreement_id
+        if kind == ExternalCreateOperationKind.SUBSCRIPTION and record.subscription is not None:
+            return (
+                await self.client.create_subscription(
+                    record.subscription, profile=record.profile, offer=self.offer, budget=budget
+                )
+            ).subscription_id
+        raise LbxPreparationBlocked()
+
+    async def prove(
+        self, kind: ExternalCreateOperationKind, object_id: int, budget: PreflightBudget
+    ) -> PreparationProof[int]:
+        try:
+            return await self._prove(kind, object_id, budget)
+        except LbxError as error:
+            return self._read_failure(error)
+
+    @staticmethod
+    def _read_failure(error: LbxError) -> PreparationProof[int]:
+        state = (
+            ProofState.IDENTITY_CONFLICT
+            if isinstance(error, LbxScopeMismatch)
+            else ProofState.INCOMPLETE
+            if isinstance(error, (LbxResponseInvalid, LbxPreparationBlocked))
+            else ProofState.UNRESOLVED
+        )
+        return PreparationProof(state, error.code)
+
+    async def _prove(
+        self, kind: ExternalCreateOperationKind, object_id: int, budget: PreflightBudget
+    ) -> PreparationProof[int]:
+        record = self.record
+        if kind == ExternalCreateOperationKind.CUSTOMER:
+            proof = await self.proofs.prove_customer(
+                user_id=object_id, billing_customer_key=record.customer.outer_id, budget=budget
+            )
+        elif kind == ExternalCreateOperationKind.AGREEMENT and record.agreement is not None:
+            proof = await self.proofs.prove_agreement(
+                agreement_id=object_id,
+                expected=record.agreement,
+                billing_customer_key=record.customer.outer_id,
+                budget=budget,
+            )
+        elif record.subscription is not None and record.agreement is not None:
+            proof = await self.proofs.prove_subscription(
+                subscription_id=object_id,
+                expected=record.subscription,
+                agreement=record.agreement,
+                billing_customer_key=record.customer.outer_id,
+                offer=self.offer,
+                budget=budget,
+            )
+        else:
+            return PreparationProof(ProofState.INCOMPLETE, "command_missing")
+        return PreparationProof(
+            proof.state, proof.reason, object_id if proof.state == ProofState.COMPLETE_MATCH else None
+        )
+
+    async def recover(self, kind: ExternalCreateOperationKind, budget: PreflightBudget) -> PreparationProof[int]:
+        try:
+            return await self._recover(kind, budget)
+        except LbxError as error:
+            return self._read_failure(error)
+
+    async def _recover(self, kind: ExternalCreateOperationKind, budget: PreflightBudget) -> PreparationProof[int]:
+        record = self.record
+        if kind == ExternalCreateOperationKind.CUSTOMER:
+            hints = await self.proofs.customer_hints(billing_customer_key=record.customer.outer_id, budget=budget)
+        elif record.agreement is None:
+            return PreparationProof(ProofState.INCOMPLETE, "command_missing")
+        elif kind == ExternalCreateOperationKind.AGREEMENT:
+            hints = await self.proofs.agreement_hints(
+                user_id=record.agreement.user_id, billing_customer_key=record.customer.outer_id, budget=budget
+            )
+        else:
+            hints = await self.proofs.discover(
+                user_id=record.agreement.user_id, billing_customer_key=record.customer.outer_id, budget=budget
+            )
+        if hints.value is None:
+            return PreparationProof(hints.state, hints.reason)
+        candidates: list[int] = []
+        for object_id in hints.value.candidate_ids:
+            if kind == ExternalCreateOperationKind.AGREEMENT:
+                point = await self.client.get_agreement(agreement_id=object_id, budget=budget)
+                if point.agreement_number is None:
+                    return PreparationProof(ProofState.INCOMPLETE, "agreement_correlation_missing")
+                if point.agreement_number != record.agreement.agreement_number:
+                    continue
+            elif kind == ExternalCreateOperationKind.SUBSCRIPTION:
+                point = await self.client.get_subscription(subscription_id=object_id, budget=budget)
+                if point.agreement_id is None or record.subscription is None:
+                    return PreparationProof(ProofState.INCOMPLETE, "subscription_owner_missing")
+                if point.agreement_id != record.subscription.agreement_id:
+                    continue
+                # Any other object on the dedicated agreement is a conflict,
+                # including an object whose outer_id differs or is missing.
+            candidates.append(object_id)
+        if len(candidates) > 1:
+            return PreparationProof(ProofState.IDENTITY_CONFLICT, "multiple_create_candidates")
+        if not candidates:
+            return PreparationProof(ProofState.UNRESOLVED, "no_create_candidate")
+        return await self.prove(kind, candidates[0], budget)
+
+    async def prior_subscription_conflict(self, budget: PreflightBudget) -> bool:
+        record = self.record
+        if record.agreement is None or not record.profile.subscription_list_complete:
+            raise LbxPreparationBlocked()
+        hints = await self.proofs.discover(
+            user_id=record.agreement.user_id, billing_customer_key=record.customer.outer_id, budget=budget
+        )
+        if hints.value is None:
+            raise LbxPreparationBlocked()
+        for object_id in hints.value.candidate_ids:
+            point = await self.client.get_subscription(subscription_id=object_id, budget=budget)
+            if point.tariff_id is None or point.services is None or point.agreement_id is None:
+                raise LbxPreparationBlocked()
+            if not point.services or any(service.tariff_service_id is None for service in point.services):
+                raise LbxPreparationBlocked()
+            if point.tariff_id == self.record.profile.selection.tariff_id:
+                # No terminal-state mapping is invented by this preparation
+                # slice. A plausible prior selected tariff retains the hold.
+                return True
+        return False

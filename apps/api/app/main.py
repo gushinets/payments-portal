@@ -21,6 +21,7 @@ from app.domains.identity.password_reset import router as password_reset_router
 from app.domains.identity.router import router as auth_router
 from app.domains.legal.router import router as legal_router
 from app.domains.purchases.router import router as purchases_router
+from app.domains.purchases.router import billing_router
 from app.http.errors import app_error_handler, unexpected_failure_middleware
 from app.http.health import health_router
 from app.http.metrics import metrics_router
@@ -77,7 +78,11 @@ def create_app() -> FastAPI:
     @app.middleware("http")
     async def purchase_no_store(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
         response = await call_next(request)
-        if request.url.path == "/api/purchases" or request.url.path.startswith("/api/purchases/"):
+        if (
+            request.url.path == "/api/purchases"
+            or request.url.path.startswith("/api/purchases/")
+            or request.url.path.startswith("/api/billing/")
+        ):
             response.headers["Cache-Control"] = "no-store"
         return response
 
@@ -96,6 +101,7 @@ def create_app() -> FastAPI:
     app.include_router(password_reset_router)
     app.include_router(legal_router)
     app.include_router(purchases_router)
+    app.include_router(billing_router)
     app.include_router(health_router)
     app.include_router(metrics_router)
     return app
