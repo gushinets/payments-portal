@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from app.models._shared import (
     Base,
+    BigInteger,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -22,6 +23,7 @@ from app.models._shared import (
 from app.models.enums import (
     ExternalBillingCustomerBindingState,
     ExternalCreateOperationKind,
+    ExternalCreateOperationState,
     PurchaseIntentState,
 )
 
@@ -29,6 +31,15 @@ from app.models.enums import (
 class ExternalBillingCustomer(Base):
     __tablename__ = "external_billing_customers"
     __table_args__ = (
+        UniqueConstraint("customer_id", "external_billing_account_id", name="uq_billing_customers_id_account"),
+        Index(
+            "uq_billing_customers_account_provider",
+            "external_billing_account_id",
+            "provider_customer_id",
+            unique=True,
+            postgresql_where=text("provider_customer_id IS NOT NULL"),
+            sqlite_where=text("provider_customer_id IS NOT NULL"),
+        ),
         UniqueConstraint(
             "customer_id",
             "external_billing_account_id",
@@ -216,6 +227,44 @@ class ExternalCreateOperation(Base):
     __tablename__ = "external_create_operations"
     __table_args__ = (
         ForeignKeyConstraint(
+            ["customer_id", "external_billing_account_id"],
+            ["external_billing_customers.customer_id", "external_billing_customers.external_billing_account_id"],
+            name="fk_create_operations_customer_account",
+            ondelete="RESTRICT",
+        ),
+        UniqueConstraint("request_correlation_key", name="uq_create_operations_correlation"),
+        UniqueConstraint("purchase_intent_id", "operation_kind", name="uq_create_operations_purchase_kind"),
+        Index(
+            "uq_create_operations_customer",
+            "customer_id",
+            unique=True,
+            postgresql_where=text("operation_kind = 'customer'"),
+            sqlite_where=text("operation_kind = 'customer'"),
+        ),
+        Index(
+            "uq_create_operations_account_kind_bound",
+            "external_billing_account_id",
+            "operation_kind",
+            "bound_external_object_id",
+            unique=True,
+            postgresql_where=text("bound_external_object_id IS NOT NULL"),
+            sqlite_where=text("bound_external_object_id IS NOT NULL"),
+        ),
+        CheckConstraint("send_fencing_token >= 0", name="ck_create_operations_fence"),
+        CheckConstraint(
+            "operation_state IN ('unsent', 'possible_send', 'unknown', 'bound', 'failed_before_send', 'manual_review')",
+            name="ck_create_operations_state",
+        ),
+        CheckConstraint(
+            "operation_state NOT IN ('possible_send', 'unknown') OR "
+            "(unknown_since IS NOT NULL AND unknown_recovery_deadline_at IS NOT NULL AND send_fencing_token > 0)",
+            name="ck_create_operations_send_clock",
+        ),
+        CheckConstraint(
+            "operation_state <> 'bound' OR (bound_external_object_id IS NOT NULL AND resolved_at IS NOT NULL)",
+            name="ck_create_operations_bound",
+        ),
+        ForeignKeyConstraint(
             ["purchase_intent_id", "customer_id"],
             ["purchase_intents.purchase_intent_id", "purchase_intents.customer_id"],
             name="fk_external_create_operations_purchase_customer",
@@ -282,6 +331,9 @@ class ExternalCreateOperation(Base):
     )
 
     create_operation_id: Mapped[uuid.UUID] = mapped_column(uuid_type, primary_key=True, default=uuid.uuid4)
+    external_billing_account_id: Mapped[str] = mapped_column(Text, nullable=False)
+    send_fencing_token: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default=text("0"))
+    scope_ownership_epoch: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     operation_kind: Mapped[ExternalCreateOperationKind] = mapped_column(
         PersistedEnumType(ExternalCreateOperationKind),
         nullable=False,
@@ -292,7 +344,10 @@ class ExternalCreateOperation(Base):
     )
     purchase_intent_id: Mapped[uuid.UUID | None] = mapped_column(uuid_type, nullable=True)
     request_correlation_key: Mapped[str] = mapped_column(Text, nullable=False)
-    operation_state: Mapped[str] = mapped_column(Text, nullable=False)
+    operation_state: Mapped[ExternalCreateOperationState] = mapped_column(
+        PersistedEnumType(ExternalCreateOperationState),
+        nullable=False,
+    )
     unknown_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     unknown_recovery_deadline_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),

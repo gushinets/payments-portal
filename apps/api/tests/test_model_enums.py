@@ -15,6 +15,7 @@ from app.models import (
     BillingStateObservationKind,
     ExternalBillingCustomerBindingState,
     ExternalCreateOperationKind,
+    ExternalCreateOperationState,
     ExternalSubscriptionCommercialAccessStatus,
     ExternalSubscriptionFinancialAccessStatus,
     ExternalSubscriptionLifecycleStatus,
@@ -22,6 +23,8 @@ from app.models import (
     LegalEntityType,
     MagicLinkPurpose,
     PurchaseIntentState,
+    PurchaseScopeHoldState,
+    PurchaseScopeReleaseKind,
     Region,
     RegionStatus,
     UserStatus,
@@ -68,6 +71,20 @@ def test_canonical_enum_layer_contains_approved_vocabularies() -> None:
         "agreement",
         "subscription",
     }
+    assert _values(ExternalCreateOperationState) == {
+        "unsent",
+        "possible_send",
+        "unknown",
+        "bound",
+        "failed_before_send",
+        "manual_review",
+    }
+    assert _values(PurchaseScopeHoldState) == {"held", "released"}
+    assert _values(PurchaseScopeReleaseKind) == {
+        "authoritative_no_effect",
+        "verified_terminal",
+        "audited_support",
+    }
     assert _values(ExternalSubscriptionLifecycleStatus) == {
         "active",
         "inactive",
@@ -92,6 +109,7 @@ def test_canonical_enum_layer_contains_approved_vocabularies() -> None:
         "BillingStateObservationKind",
         "ExternalBillingCustomerBindingState",
         "ExternalCreateOperationKind",
+        "ExternalCreateOperationState",
         "ExternalSubscriptionCommercialAccessStatus",
         "ExternalSubscriptionFinancialAccessStatus",
         "ExternalSubscriptionLifecycleStatus",
@@ -99,6 +117,8 @@ def test_canonical_enum_layer_contains_approved_vocabularies() -> None:
         "LegalEntityType",
         "MagicLinkPurpose",
         "PurchaseIntentState",
+        "PurchaseScopeHoldState",
+        "PurchaseScopeReleaseKind",
         "RegionStatus",
         "UserStatus",
     }

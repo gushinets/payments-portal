@@ -9,6 +9,7 @@ from app.models.billing_projections import (
     CommercialMappingRevision,
     ExternalBillingCatalogProjection,
 )
+from app.models.billing_purchase_scopes import BillingPurchaseScopeHold
 from app.models.billing_purchase import (
     ExternalBillingCustomer,
     ExternalCreateOperation,
@@ -25,6 +26,7 @@ from app.models.enums import (
     BillingStateObservationKind,
     ExternalBillingCustomerBindingState,
     ExternalCreateOperationKind,
+    ExternalCreateOperationState,
     ExternalSubscriptionCommercialAccessStatus,
     ExternalSubscriptionFinancialAccessStatus,
     ExternalSubscriptionLifecycleStatus,
@@ -32,6 +34,8 @@ from app.models.enums import (
     LegalEntityType,
     MagicLinkPurpose,
     PurchaseIntentState,
+    PurchaseScopeHoldState,
+    PurchaseScopeReleaseKind,
     RegionStatus,
     UserStatus,
 )
@@ -55,6 +59,7 @@ __all__ = [
     "AccessInvalidationOutbox",
     "AuthSession",
     "BillingProductAccessScope",
+    "BillingPurchaseScopeHold",
     "BillingStateObservation",
     "BillingStateObservationKind",
     "BillingWorkItem",
@@ -68,6 +73,7 @@ __all__ = [
     "ExternalBillingCustomerBindingState",
     "ExternalCreateOperation",
     "ExternalCreateOperationKind",
+    "ExternalCreateOperationState",
     "ExternalBillingWebhookDelivery",
     "ExternalSubscription",
     "ExternalSubscriptionCommercialAccessStatus",
@@ -84,6 +90,8 @@ __all__ = [
     "PaidAccessState",
     "PurchaseIntent",
     "PurchaseIntentState",
+    "PurchaseScopeHoldState",
+    "PurchaseScopeReleaseKind",
     "PurchasedAllowance",
     "Region",
     "RegionStatus",

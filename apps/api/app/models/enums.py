@@ -55,6 +55,26 @@ class ExternalCreateOperationKind(StrEnum):
     SUBSCRIPTION = "subscription"
 
 
+class ExternalCreateOperationState(StrEnum):
+    UNSENT = "unsent"
+    POSSIBLE_SEND = "possible_send"
+    UNKNOWN = "unknown"
+    BOUND = "bound"
+    FAILED_BEFORE_SEND = "failed_before_send"
+    MANUAL_REVIEW = "manual_review"
+
+
+class PurchaseScopeHoldState(StrEnum):
+    HELD = "held"
+    RELEASED = "released"
+
+
+class PurchaseScopeReleaseKind(StrEnum):
+    AUTHORITATIVE_NO_EFFECT = "authoritative_no_effect"
+    VERIFIED_TERMINAL = "verified_terminal"
+    AUDITED_SUPPORT = "audited_support"
+
+
 class ExternalSubscriptionLifecycleStatus(StrEnum):
     ACTIVE = "active"
     INACTIVE = "inactive"
@@ -83,6 +103,7 @@ __all__ = [
     "BillingStateObservationKind",
     "ExternalBillingCustomerBindingState",
     "ExternalCreateOperationKind",
+    "ExternalCreateOperationState",
     "ExternalSubscriptionCommercialAccessStatus",
     "ExternalSubscriptionFinancialAccessStatus",
     "ExternalSubscriptionLifecycleStatus",
@@ -90,6 +111,8 @@ __all__ = [
     "LegalEntityType",
     "MagicLinkPurpose",
     "PurchaseIntentState",
+    "PurchaseScopeHoldState",
+    "PurchaseScopeReleaseKind",
     "RegionStatus",
     "UserStatus",
 ]

@@ -410,6 +410,8 @@ def test_lookup_indexes_cover_the_fixed_contract() -> None:
         "ix_billing_product_access_scopes_primary_subscription": ("primary_subscription_id",),
     }
     assert _indexes(ExternalSubscription) == {
+        "uq_subscriptions_account_external": ("external_billing_account_id", "external_subscription_id"),
+        "uq_subscriptions_account_agreement": ("external_billing_account_id", "external_agreement_id"),
         "uq_external_subscriptions_purchase_intent": ("purchase_intent_id",),
         "ix_external_subscriptions_account_customer": ("external_billing_account_id", "customer_id"),
         "ix_external_subscriptions_user_product_status": ("user_id", "product_id", "lifecycle_status"),
@@ -448,6 +450,13 @@ def test_lookup_indexes_cover_the_fixed_contract() -> None:
     )
     assert purchase_index.unique
     assert purchase_index.dialect_options["postgresql"]["where"] is not None
+    for name, predicate in (
+        ("uq_subscriptions_account_external", "external_subscription_id IS NOT NULL"),
+        ("uq_subscriptions_account_agreement", "external_agreement_id IS NOT NULL"),
+    ):
+        index = next(index for index in ExternalSubscription.__table__.indexes if index.name == name)
+        assert index.unique
+        assert str(index.dialect_options["postgresql"]["where"]) == predicate
 
     assert _indexes(BillingStateObservation) == {
         "ix_billing_state_observations_kind_time": ("observation_kind", "observed_at"),
@@ -494,6 +503,7 @@ def test_lookup_indexes_cover_the_fixed_contract() -> None:
         "ix_external_billing_webhook_deliveries_payload_hash": ("payload_hash",),
     }
     assert _indexes(BillingWorkItem) == {
+        "uq_work_items_create_recovery": ("coalescing_key",),
         "ix_billing_work_items_kind_state_due": ("work_kind", "work_state", "next_attempt_at"),
         "ix_billing_work_items_scope": ("scope_kind", "scope_reference"),
         "ix_billing_work_items_coalescing_key": ("coalescing_key",),
@@ -507,6 +517,13 @@ def test_lookup_indexes_cover_the_fixed_contract() -> None:
         ),
         "ix_billing_work_items_kind_state": ("work_kind", "work_state"),
     }
+    recovery_index = next(
+        index for index in BillingWorkItem.__table__.indexes if index.name == "uq_work_items_create_recovery"
+    )
+    assert recovery_index.unique
+    assert str(recovery_index.dialect_options["postgresql"]["where"]) == (
+        "work_kind = 'external_create_recovery' AND coalescing_key IS NOT NULL"
+    )
     assert _indexes(ManualReviewCase) == {
         "ix_manual_review_cases_reason_state": ("reason_code", "case_state"),
         "ix_manual_review_cases_scope": ("scope_kind", "scope_reference"),

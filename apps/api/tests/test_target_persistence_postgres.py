@@ -353,10 +353,10 @@ def test_external_create_operation_structural_constraints(
 
     _assert_integrity_error(
         migrated_database,
-        "INSERT INTO external_create_operations (create_operation_id, operation_kind, customer_id, "
+        "INSERT INTO external_create_operations (create_operation_id, operation_kind, customer_id, external_billing_account_id, "
         "purchase_intent_id, request_correlation_key, operation_state, unknown_since, "
         "unknown_recovery_deadline_at, recovery_hint_schema_version, recovery_hint_document) VALUES ("
-        "gen_random_uuid(), :kind, :customer_id, :purchase_id, 'correlation-a', 'pending', "
+        "gen_random_uuid(), :kind, :customer_id, 'account-a', :purchase_id, 'correlation-a', 'unsent', "
         ":unknown_since, :deadline, :hint_version, CAST(:hint_document AS jsonb))",
         {**values, "customer_id": CUSTOMER_ID},
     )
@@ -879,8 +879,8 @@ def test_step4_unique_identities_hold_under_concurrent_inserts(migrated_database
 
     outcomes = _concurrent_insert_outcomes(
         migrated_database,
-        "INSERT INTO external_create_operations (create_operation_id, operation_kind, customer_id, "
-        "request_correlation_key, operation_state) VALUES (:id, 'customer', :customer_id, :key, 'pending')",
+        "INSERT INTO external_create_operations (create_operation_id, operation_kind, customer_id, external_billing_account_id, "
+        "request_correlation_key, operation_state) VALUES (:id, 'customer', :customer_id, 'account-a', :key, 'unsent')",
         (
             {"id": uuid.uuid4(), "customer_id": CUSTOMER_ID, "key": "correlation-1"},
             {"id": uuid.uuid4(), "customer_id": CUSTOMER_ID, "key": "correlation-2"},

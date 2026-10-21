@@ -74,6 +74,22 @@ class BillingProductAccessScope(Base):
 class ExternalSubscription(Base):
     __tablename__ = "external_subscriptions"
     __table_args__ = (
+        Index(
+            "uq_subscriptions_account_external",
+            "external_billing_account_id",
+            "external_subscription_id",
+            unique=True,
+            postgresql_where=text("external_subscription_id IS NOT NULL"),
+            sqlite_where=text("external_subscription_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_subscriptions_account_agreement",
+            "external_billing_account_id",
+            "external_agreement_id",
+            unique=True,
+            postgresql_where=text("external_agreement_id IS NOT NULL"),
+            sqlite_where=text("external_agreement_id IS NOT NULL"),
+        ),
         UniqueConstraint(
             "subscription_id",
             "product_id",

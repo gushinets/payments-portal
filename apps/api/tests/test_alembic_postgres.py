@@ -16,7 +16,8 @@ from apps.api.tests.support.postgres import alembic_test_config, reset_public_sc
 
 
 BASELINE_REVISION = "20260924_0001"
-HEAD_REVISION = "20261001_0002"
+PREVIOUS_REVISION = "20261001_0002"
+HEAD_REVISION = "20261021_0003"
 
 SURVIVOR_TABLES = {
     "regions",
@@ -39,6 +40,7 @@ TARGET_TABLES = {
     "purchase_intents",
     "external_create_operations",
     "billing_product_access_scopes",
+    "billing_purchase_scope_holds",
     "external_subscriptions",
     "billing_state_observations",
     "purchased_allowances",
@@ -238,6 +240,9 @@ EXPECTED_COLUMNS = {
         "resolved_at",
     },
     "external_create_operations": {
+        "external_billing_account_id",
+        "send_fencing_token",
+        "scope_ownership_epoch",
         "create_operation_id",
         "operation_kind",
         "customer_id",
@@ -252,6 +257,23 @@ EXPECTED_COLUMNS = {
         "created_at",
         "updated_at",
         "resolved_at",
+    },
+    "billing_purchase_scope_holds": {
+        "hold_id",
+        "user_id",
+        "product_id",
+        "tenant_id",
+        "region",
+        "external_billing_account_id",
+        "purchase_intent_id",
+        "subscription_id",
+        "hold_state",
+        "ownership_epoch",
+        "created_at",
+        "updated_at",
+        "released_at",
+        "release_evidence_schema_version",
+        "release_evidence_document",
     },
     "billing_product_access_scopes": {
         "access_scope_id",
@@ -407,12 +429,23 @@ EXPECTED_CHECKS = {
         "ck_purchase_intents_state",
     },
     "external_create_operations": {
+        "ck_create_operations_fence",
+        "ck_create_operations_state",
+        "ck_create_operations_send_clock",
+        "ck_create_operations_bound",
         "ck_external_create_operations_purchase_requirement",
         "ck_external_create_operations_kind",
         "ck_external_create_operations_correlation_nonempty",
         "ck_external_create_operations_unknown_pair",
         "ck_external_create_operations_unknown_deadline",
         "ck_external_create_operations_recovery_hint_pair",
+    },
+    "billing_purchase_scope_holds": {
+        "ck_purchase_scope_state",
+        "ck_purchase_scope_epoch",
+        "ck_purchase_scope_owner",
+        "ck_purchase_scope_evidence_pair",
+        "ck_purchase_scope_release",
     },
     "billing_product_access_scopes": set(),
     "external_subscriptions": {
@@ -472,10 +505,13 @@ EXPECTED_UNIQUE_CONSTRAINTS = {
         "uq_commercial_mapping_revisions_account_offer_revision",
     },
     "external_billing_customers": {
+        "uq_billing_customers_id_account",
         "uq_external_billing_customers_id_account_user",
         "uq_external_billing_customers_account_user",
         "uq_external_billing_customers_billing_customer_key",
     },
+    "external_create_operations": {"uq_create_operations_correlation", "uq_create_operations_purchase_kind"},
+    "billing_purchase_scope_holds": {"uq_purchase_scope_user_product"},
     "purchase_intents": {
         "uq_purchase_intents_client_idempotency",
         "uq_purchase_intents_id_customer",
@@ -561,6 +597,7 @@ EXPECTED_INDEXES = {
     "external_billing_customers": {
         "ix_external_billing_customers_provider_customer_id",
         "ix_external_billing_customers_binding_state",
+        "uq_billing_customers_account_provider",
     },
     "purchase_intents": {
         "ix_purchase_intents_user_product",
@@ -573,6 +610,8 @@ EXPECTED_INDEXES = {
     },
     "external_create_operations": {
         "uq_external_create_operations_unresolved_customer",
+        "uq_create_operations_customer",
+        "uq_create_operations_account_kind_bound",
         "ix_external_create_operations_customer_state",
         "ix_external_create_operations_purchase",
         "ix_external_create_operations_correlation",
@@ -583,6 +622,8 @@ EXPECTED_INDEXES = {
     "billing_product_access_scopes": {"ix_billing_product_access_scopes_primary_subscription"},
     "external_subscriptions": {
         "uq_external_subscriptions_purchase_intent",
+        "uq_subscriptions_account_external",
+        "uq_subscriptions_account_agreement",
         "ix_external_subscriptions_account_customer",
         "ix_external_subscriptions_user_product_status",
         "ix_external_subscriptions_customer_product_status",
@@ -627,6 +668,7 @@ EXPECTED_INDEXES = {
         "ix_external_billing_webhook_deliveries_payload_hash",
     },
     "billing_work_items": {
+        "uq_work_items_create_recovery",
         "ix_billing_work_items_kind_state_due",
         "ix_billing_work_items_scope",
         "ix_billing_work_items_coalescing_key",
@@ -702,11 +744,15 @@ def test_clean_first_install_has_expected_revisions_and_exact_application_schema
         script = ScriptDirectory.from_config(config)
         assert script.get_heads() == [HEAD_REVISION]
         assert script.get_bases() == [BASELINE_REVISION]
-        assert [item.revision for item in script.walk_revisions()] == [HEAD_REVISION, BASELINE_REVISION]
+        assert [item.revision for item in script.walk_revisions()] == [
+            HEAD_REVISION,
+            PREVIOUS_REVISION,
+            BASELINE_REVISION,
+        ]
         command.upgrade(config, "head")
 
     assert tuple(logging.getLogger().handlers) == handlers
-    assert len(APPLICATION_TABLES) == 25
+    assert len(APPLICATION_TABLES) == 26
     assert _public_table_names(postgres_engine) == APPLICATION_TABLES | {"alembic_version"}
     assert LEGACY_TABLES.isdisjoint(_public_table_names(postgres_engine))
     with postgres_engine.connect() as connection:
@@ -769,6 +815,10 @@ def test_clean_first_install_has_expected_revisions_and_exact_application_schema
         "fk_purchase_intents_mapping_scope",
         "fk_purchase_intents_legal_evidence",
         "fk_external_create_operations_purchase_customer",
+        "fk_create_operations_customer_account",
+        "fk_purchase_scope_user",
+        "fk_purchase_scope_intent",
+        "fk_purchase_scope_subscription",
         "fk_billing_product_access_scopes_primary_subscription",
         "fk_external_subscriptions_customer_scope",
         "fk_external_subscriptions_purchase_provenance",
@@ -808,6 +858,7 @@ def test_clean_first_install_has_expected_revisions_and_exact_application_schema
         ("external_billing_catalog_projections", "catalog_document"),
         ("commercial_mapping_revisions", "mapping_document"),
         ("purchase_intents", "accepted_snapshot"),
+        ("billing_purchase_scope_holds", "release_evidence_document"),
         ("external_create_operations", "recovery_hint_document"),
         ("billing_state_observations", "evidence_document"),
         ("external_billing_webhook_deliveries", "correlation_document"),
@@ -940,7 +991,7 @@ def test_email_verification_migration_clears_false_timestamp_without_revoking_se
                 {"session_id": session_id, "user_id": user_id},
             )
 
-        command.upgrade(config, HEAD_REVISION)
+        command.upgrade(config, PREVIOUS_REVISION)
 
         with postgres_engine.connect() as connection:
             assert (
@@ -969,13 +1020,13 @@ def test_email_verification_migration_clears_false_timestamp_without_revoking_se
             )
 
 
-def test_clean_first_install_downgrades_to_empty_public_schema(
+def test_frozen_baseline_downgrades_to_empty_public_schema(
     postgres_engine: Engine,
     database_test_url: URL,
 ) -> None:
     reset_public_schema(postgres_engine)
     with alembic_test_config(database_test_url) as config:
-        command.upgrade(config, "head")
+        command.upgrade(config, PREVIOUS_REVISION)
         command.downgrade(config, "base")
 
     assert _public_table_names(postgres_engine) == {"alembic_version"}
