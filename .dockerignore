@@ -13,3 +13,4 @@ docs
 !docs/legal/
 !docs/legal/**
 tools/kernel_manifest_mock
+tools/purchase_mock

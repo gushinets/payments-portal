@@ -102,6 +102,8 @@ class Settings(BaseSettings):
     # Shared trusted local path for ALL operator processes in this deployment.
     # Required by dry-run/publish only; query and the HTTP API do not use it.
     mapping_operator_lock_file: Path | None = None
+    # Opt-in local recorded purchase profile. Never enables production sales.
+    purchase_simulated_profile_file: Path | None = None
     mapping_lock_timeout_seconds: float = Field(default=2.0, gt=0, le=10, allow_inf_nan=False)
 
     @field_validator("smtp_use_tls", mode="before")
