@@ -51,7 +51,7 @@ from apps.api.tests.support.lbx import TOKEN as LBX_TOKEN
 from apps.api.tests.support.lbx_selected_offer import SelectedOfferRecording, simulated_inputs, simulated_selection
 
 
-pytestmark = [pytest.mark.postgres, pytest.mark.anyio]
+pytestmark = [pytest.mark.postgres, pytest.mark.anyio, pytest.mark.usefixtures("mapping_clock")]
 
 
 @pytest.fixture
@@ -645,3 +645,84 @@ def test_cli_dry_run_publish_and_query_use_same_real_path(
     assert document.material == reviewed.approval.material
     assert document.approvals == reviewed.approval.revisions
     assert len(kernel_requests) == 2
+
+
+@pytest.mark.parametrize("kind", ["technical", "commercial", "legal"])
+@pytest.mark.parametrize("corruption", ["material", "hash"])
+async def test_historical_approval_pin_cannot_be_reassigned_after_intervening_revision(
+    migrated_database: Engine,
+    postgres_session_factory: sessionmaker[Session],
+    kind: str,
+    corruption: str,
+) -> None:
+    original = await reviewed_fixture()
+    publish(postgres_session_factory, await fresh_fixture(original))
+    second = await reviewed_fixture(allowance=26, revision="fixture-v2")
+    publish(postgres_session_factory, await fresh_fixture(second), previous=1)
+    recording = SelectedOfferRecording()
+    if kind != "technical":
+        for name in ("services", "prices"):
+            recording.replace(name, '"price":100.01', '"price":120.01')
+    third = await reviewed_fixture(allowance=27, recording=recording, revision="fixture-v3")
+    old_pin = getattr(original.approval.revisions, kind)
+    if corruption == "hash":
+        old_pin = old_pin.model_copy(update={"content_hash": getattr(third.approval.revisions, kind).content_hash})
+    revisions = third.approval.revisions.model_copy(update={kind: old_pin})
+    third = replace(third, approval=third.approval.model_copy(update={"revisions": revisions}))
+    reason = "mapping_approval_reference_rewritten" if corruption == "hash" else f"mapping_{kind}_reapproval_required"
+    with pytest.raises(MappingRefused, match=reason):
+        publish(postgres_session_factory, await fresh_fixture(third, recording=recording), previous=2)
+    with postgres_session_factory() as db:
+        assert db.scalar(select(func.count()).select_from(CommercialMappingRevision)) == 2
+
+
+async def test_unchanged_historical_approval_can_be_reused_and_retried(
+    migrated_database: Engine,
+    postgres_session_factory: sessionmaker[Session],
+) -> None:
+    original = await reviewed_fixture()
+    first = publish(postgres_session_factory, await fresh_fixture(original))
+    second = await reviewed_fixture(allowance=26, revision="fixture-v2")
+    publish(postgres_session_factory, await fresh_fixture(second), previous=1)
+    restored = publish(postgres_session_factory, await fresh_fixture(original), previous=2)
+    assert restored.inserted and restored.stored.revision_number == 3
+    assert restored.stored.document.material == first.stored.document.material
+    assert restored.stored.document.approvals == first.stored.document.approvals
+    retried = publish(postgres_session_factory, await fresh_fixture(original), previous=2)
+    assert not retried.inserted and retried.stored == restored.stored
+
+
+async def test_competing_publications_cannot_reassign_a_historical_pin(
+    migrated_database: Engine,
+    postgres_session_factory: sessionmaker[Session],
+) -> None:
+    publish(postgres_session_factory, await fresh_fixture(await reviewed_fixture()))
+    publish(
+        postgres_session_factory,
+        await fresh_fixture(await reviewed_fixture(allowance=26, revision="fixture-v2")),
+        previous=1,
+    )
+    invalid = await fresh_fixture(await reviewed_fixture(allowance=27))
+    valid = await fresh_fixture(await reviewed_fixture(allowance=28, revision="fixture-v3"))
+    barrier = threading.Barrier(2)
+
+    def contender(fresh: FreshMappingEvaluation) -> PublicationResult | MappingRefused:
+        barrier.wait(timeout=2)
+        try:
+            return publish(postgres_session_factory, fresh, previous=2)
+        except MappingRefused as refusal:
+            return refusal
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        rejected = pool.submit(contender, invalid)
+        accepted = pool.submit(contender, valid)
+        failure, success = rejected.result(timeout=5), accepted.result(timeout=5)
+    assert isinstance(failure, MappingRefused)
+    assert failure.code in {"mapping_technical_reapproval_required", "mapping_revision_conflict"}
+    assert isinstance(success, PublicationResult) and success.inserted
+    saved = query_mapping(
+        postgres_session_factory, scope=valid.document.material.scope, offer_id=SIMULATED_OFFER_ID, allow_simulated=True
+    )
+    assert saved.revision_number == 3 and saved.document.material.technical.allowance == 28
+    with postgres_session_factory() as db:
+        assert db.scalar(select(func.count()).select_from(CommercialMappingRevision)) == 3

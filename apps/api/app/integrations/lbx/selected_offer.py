@@ -32,6 +32,7 @@ from app.integrations.lbx.client import LbxRead, LbxServerClient
 from app.integrations.lbx.dto import LbxServicePrice, LbxTariff, LbxTariffPeriod, LbxTariffService
 from app.integrations.lbx.errors import LbxError
 from app.integrations.lbx.offer_inputs import (
+    REQUIRED_POLICY_FIELDS,
     EvidenceReference,
     SelectedOfferInputs,
     SelectedOfferRequest,
@@ -45,21 +46,6 @@ MAX_EXACT_DIGITS = 256
 MAX_MONEY_SCALE = 36
 PERIOD_UNITS = {1: "day", 2: "week", 3: "month", 4: "year"}
 PERIOD_ANCHORS = {0: "calendar_month", 1: "instance_start", 2: "first_instance_start"}
-_POLICY_VALUES = (
-    "complete_selected_lists",
-    "independent_service_selection",
-    "effective_price_rule",
-    "tax_treatment",
-    "account_discounts",
-    "proration",
-    "credit_disabled",
-    "promised_payment_disabled",
-    "manual_activation_disabled",
-    "connection_charge_basis",
-    "renewal_terms",
-    "cancellation_terms",
-    "historical_applicability",
-)
 _TARIFF_FLAGS = (
     "archive",
     "balance_blocks",
@@ -188,6 +174,11 @@ def _validate_configuration(
     policy = _required(inputs.policy, "policy_evidence_missing")
     if currency.external_billing_account_id != selection.external_billing_account_id:
         _incomplete("currency_account_mismatch")
+    if (
+        inputs.calendar is not None
+        and inputs.calendar.external_billing_account_id != selection.external_billing_account_id
+    ):
+        _incomplete("calendar_account_mismatch")
     for field in ("tenant_id", "region", "external_billing_account_id", "tariff_id", "tariff_service_id", "period_id"):
         if getattr(policy, field) != getattr(selection, field):
             _incomplete("policy_scope_mismatch")
@@ -197,7 +188,7 @@ def _validate_configuration(
         policy.valid_until is not None and selection.effective_on >= policy.valid_until
     ):
         _incomplete("policy_not_applicable")
-    for field in _POLICY_VALUES:
+    for field in REQUIRED_POLICY_FIELDS:
         _required(getattr(policy, field), "policy_" + field + "_unknown")
     for field, known_values in (
         ("tax_treatment", {"included", "not_applicable", "additional"}),
@@ -361,6 +352,10 @@ def normalize_selected_offer(
     if type(scale) is not int or not 0 <= scale <= MAX_MONEY_SCALE:
         _incomplete("money_scale_invalid")
     quantity = _exact(selection.commercial_quantity, "commercial_quantity_invalid")
+    # Swagger NewServiceInfo/ExistingServiceInfo require an integer multiplier.
+    # This is independent of whether its money product is exact.
+    if quantity != quantity.to_integral_value():
+        raise SelectedOfferRefused(OfferRefusalKind.NOT_SELLABLE, "commercial_quantity_not_integer")
     recurring = _exact(price.price, "recurring_price_invalid")
     connection = _exact(price.connection_price, "connection_price_invalid")
     _exact(price.bulk_price, "bulk_price_invalid")
@@ -458,6 +453,7 @@ def normalize_selected_offer(
             "terms": asdict(terms),
             "evidence_mode": mode,
             "dependencies": {
+                "billing_calendar": None if inputs.calendar is None else inputs.calendar.model_dump(mode="json"),
                 "default_components": sorted(default_components),
                 "currency_definition": {
                     "source_reference": str(currency.currency_id),

@@ -128,7 +128,7 @@ The same standalone server serves read-only [Swagger UI](http://127.0.0.1:8091/d
 
 The mock uses the standard-library `ThreadingHTTPServer`; an actively delayed manifest request does not block `/docs` or `/openapi.json`. Existing service-auth, exact-scope, browser-origin and explicit development/test startup restrictions remain in place.
 
-For local visual development, [Step 7 wiring](#step-7-optional-http-mock-walkthrough) adds an opt-in HTTP mock container on the worktree backend network and a real Portal backend/PostgreSQL/localized frontend walkthrough. Runtime verification remains pending. The mock exposes the manifest and local documentation routes, not a whole Kernel or a shared SDK.
+For local visual development, [Step 7 wiring](#step-7-optional-http-mock-walkthrough) adds an opt-in HTTP mock container on the worktree backend network and a real Portal backend/PostgreSQL/localized frontend walkthrough. The joined positive browser acceptance passed on 2026-10-21; see the execution record below. The mock exposes the manifest and local documentation routes, not a whole Kernel or a shared SDK.
 
 - Portal will use **one** production-shaped typed Kernel client for both real and mocked servers, selected by internal service URL and configured service authentication. Portal runtime must not import mock code/fixtures or fall back to them. Only dev/test configuration may select the mock; no browser calls to mock internals. A compatible real endpoint can replace it via URL/credentials; unknown wire/hash/auth differences must be reconciled before real enablement.
 - Local mock is **disabled by default**; it can be stopped and removed without preventing Portal builds, database migrations, or normal startup. Missing Kernel must fail closed for **new publication and new purchase admission**, with no source-manifest cache fallback; previously confirmed paid subscriptions retain their separate finite trust rules. Mock-derived mapping evidence must be **SIMULATED**, rejected by real admission and excluded from production catalog queries even after changing URLs. No configuration switch upgrades an old simulated revision.
@@ -266,7 +266,7 @@ virtual environment directly and does not require shell activation.
 
 ```bash
 make catalog_preview
-CATALOG_PREVIEW_ACCEPTANCE=1 npm run test:e2e -- apps/web/e2e/catalog-stored-preview.spec.ts
+# For browser acceptance, use the standalone HTTP publication procedure below.
 ```
 
 `make catalog_preview` delegates to `scripts/repo.py up --reuse`, then runs
@@ -332,14 +332,16 @@ The API must continue to serve the stored preview after the setup process has
 exited; browsing performs no Kernel/LBX calls. Existing API tests cover source
 admission saturation and production exclusion of persisted simulated evidence.
 
-The implementation agent has not executed these setup/acceptance commands or
-claimed the corresponding real API/DB/browser outcome. Human execution and
-review are required before recording Step 6 acceptance.
+The joined Step 7 procedure below passed on 2026-10-21 after explicit owner
+authorization, including the real API/DB/browser checks. Its exact revision and
+saved artifacts are recorded in the completed ANY-664 plan.
 
 ## Step 7 optional HTTP mock walkthrough
 
-**Status: source implementation only; Compose, image, test and browser outcomes
-have not been executed or verified by the implementation agent.** All commands
+**Status: the positive joined P1 acceptance passed on 2026-10-21, with 2 Chromium
+projects passed and zero skips.** See the [execution record](../exec-plans/completed/ANY-664-implementation-plan.md#p1-joined-browser-acceptance--pass-2026-10-21)
+for the exact revision, artifacts and verification limits. Fault/removal and
+production-image checks below were not rerun in that session. All commands
 below run manually from the Portal repository root on Unix/WSL. No command in
 this procedure contacts live LBX. Real provider reads need separate explicit
 authorization; real publication, sales and paid access remain gated on G1–G5.
@@ -378,6 +380,7 @@ Generate the Step 6 wire artifacts before building its consumer. These commands
 are manual prerequisites, not evidence already obtained:
 
 ```bash
+export PATH="$PWD/.venv/bin:$PATH"
 npm run repo:setup
 npm run generate
 npm run generate:check
@@ -408,6 +411,8 @@ operator() {
   dc exec -T -e PYTHONPATH=.:apps/api api python \
     -m apps.api.tests.support.kernel_walkthrough "$@"
 }
+# prepare is an explicit independent SIMULATED review, using the configured
+# account calendar's current date. dry-run/publish never rewrite that date.
 operator prepare --output-dir /app/.kernel-walkthrough
 operator dry-run --proposal /app/.kernel-walkthrough/proposal.json \
   > .harness/kernel-walkthrough/dry-run.json
@@ -415,7 +420,7 @@ operator publish --proposal /app/.kernel-walkthrough/proposal.json \
   --expected-previous-revision 0 > .harness/kernel-walkthrough/publish.json
 offer_id="$(./.venv/bin/python -c 'import json; print(json.load(open(".harness/kernel-walkthrough/publish.json"))["billing_offer_id"])')"
 operator query --offer-id "$offer_id" > .harness/kernel-walkthrough/query.json
-./.venv/bin/python -c 'import json; a=json.load(open(".harness/kernel-walkthrough/dry-run.json")); b=json.load(open(".harness/kernel-walkthrough/publish.json")); assert a["evaluation"]["evaluated_at"] != b["evaluation"]["evaluated_at"]; assert b["stored_document"]["evidence_mode"] == "SIMULATED"; print(b["mapping_revision_id"], b["revision_number"], b["inserted"])'
+./.venv/bin/python -c 'import json; a=json.load(open(".harness/kernel-walkthrough/dry-run.json")); b=json.load(open(".harness/kernel-walkthrough/publish.json")); assert a["evaluation"]["evaluated_at"] != b["evaluation"]["evaluated_at"]; q=json.load(open(".harness/kernel-walkthrough/query.json")); assert b["stored_document"]["evidence_mode"] == "SIMULATED"; assert q["mapping_revision_id"] == b["mapping_revision_id"]; assert q["document"] == b["stored_document"]; print(b["mapping_revision_id"], b["revision_number"], b["inserted"])'
 ```
 
 Inspect the rendered mounts/networks/ports, including the absence of mock
@@ -440,11 +445,38 @@ mock_port="$(./.venv/bin/python -c 'import json; print(json.load(open(".harness/
 api_origin="$(./.venv/bin/python -c 'import json; print("http://127.0.0.1:"+str(json.load(open(".harness/runtime.json"))["api_port"]))')"
 curl --fail-with-body "http://127.0.0.1:$mock_port/openapi.json"
 curl --fail-with-body "$api_origin/api/catalog/products/proposal_ai"
-CATALOG_PREVIEW_ACCEPTANCE=1 npm run test:e2e -- apps/web/e2e/catalog-stored-preview.spec.ts
+export CATALOG_PREVIEW_PUBLICATION_FILE="$PWD/.harness/kernel-walkthrough/publish.json"
+CATALOG_PREVIEW_ACCEPTANCE=1 npm run test:e2e -- \
+  apps/web/e2e/catalog-stored-preview.spec.ts --trace on
+# Preserve both projects' success screenshots, JSON assertions and traces
+# before another Playwright run overwrites the standard result directories.
+evidence_dir=".harness/kernel-walkthrough/evidence-$(date -u +%Y%m%dT%H%M%SZ)"
+mkdir -p "$evidence_dir"
+cp .harness/kernel-walkthrough/{dry-run,publish,query}.json "$evidence_dir/"
+cp -a .harness/playwright-results "$evidence_dir/"
+cp -a .harness/playwright-report "$evidence_dir/"
+dc ps --format json kernel-mock > "$evidence_dir/kernel-mock-service.json"
+dc logs --no-color kernel-mock > "$evidence_dir/kernel-mock.log"
 ```
 
-The existing browser acceptance test uses real Portal HTTP/DB without route
-interception. Run it again during the outage below. The existing Step 1 test
+The browser test requires the exact `publish.json` above. It compares its
+PostgreSQL revision ID/number, SIMULATED evidence, 200.02/14.06 RUB and allowance
+25 with the initial API list, browser list request, linked detail request and
+reload. Each project attaches list/detail/reload screenshots and safe API facts;
+`--trace on` retains a trace on success too. Both desktop and mobile Chromium
+must pass with zero skips. The report is `.harness/playwright-report/html`, with
+machine results in `.harness/playwright-report/results.json` and attachments in
+`.harness/playwright-results`. Keep these artifacts private: operator JSON is
+privileged audit evidence. A skipped default CI test is not acceptance evidence.
+The local QA of 2026-10-20 already proved PostgreSQL → Portal API → Chromium
+without interception and the separate source checks; this remaining run joins
+those checks through the standalone HTTP mock and the same stored revision.
+This exact run passed on 2026-10-21 with revision 2
+(`232a5492-1bab-471b-84ee-2a01ed8ac911`); screenshots and machine evidence were
+reviewed. Artifacts are preserved locally under
+`.harness/kernel-walkthrough/evidence-P1-20261021T023715Z/`.
+Run the same acceptance command during the outage below,
+preserving that run's artifacts in a separate evidence directory. The existing Step 1 test
 `test_documentation_responds_while_manifest_request_is_still_delayed` covers
 concurrent Swagger/OpenAPI reads; this wiring does not reimplement that behavior.
 
@@ -568,5 +600,102 @@ The production service list must have no `kernel-mock`; inspect images for the
 absence of mock code/contracts/recordings and review the unchanged copy rules.
 Never combine the dev override with production Compose. Record actual command
 statuses, revision IDs, safe failure codes, browser artifacts, mount/port/image
-inspection and remaining failures separately. No runtime PASS, real source
-conformance, paid access or launch approval is claimed by this source handoff.
+inspection and remaining failures separately. The recorded positive P1 PASS does
+not establish real source conformance, paid access or launch approval.
+
+## ANY-664 PR #139 review correction checks (2026-10-21)
+
+Source corrections and lint are distinct from runtime PASS. Run these commands
+manually from the repository root. The agent subsequently executed the authorized
+P1 Compose/publication/browser scenario above, including its normal development
+build and migration startup; the focused pytest/PostgreSQL suites below were not
+rerun in that session. Keep the existing 2026-10-20 QA evidence; it does not need
+to be repeated separately.
+
+After that session, the owner reported a successful
+`RUN_E2E=true npm run check` on the final changes (2026-10-21). See the completed
+plan's [final verification record](../exec-plans/completed/ANY-664-implementation-plan.md#final-owner-verification--pass-2026-10-21).
+
+1. Run the targeted quantity/calendar/approval regressions without PostgreSQL:
+
+   ```bash
+   export PATH="$PWD/.venv/bin:$PATH"
+   mkdir -p .harness/any-664-review
+   PYTHONPATH=.:apps/api .venv/bin/python - <<'PYTEST_FAST'
+   import subprocess
+   import sys
+   from scripts import repo
+   subprocess.run([
+       sys.executable, "-m", "pytest", "-p", "no:cacheprovider", "-m", "not postgres",
+       "apps/api/tests/test_lbx_selected_offer_normalization.py",
+       "apps/api/tests/test_lbx_selected_offer_failures.py",
+       "apps/api/tests/test_mapping_billing_calendar.py",
+       "apps/api/tests/test_commercial_sellability.py",
+       "--junitxml=.harness/any-664-review/targeted.xml",
+   ], env=repo.canonical_check_environment(), check=True)
+   PYTEST_FAST
+   ```
+
+   PASS: integral bounds accepted; 1.5 refused even at 100.00; old/future dates,
+   expired/not-yet-valid policy and missing/foreign/unproven calendar refused;
+   account date at UTC midnight offset accepted; crossing account midnight
+   refused; both dry-run and publish protected. No real source requests.
+
+2. Start the existing test PostgreSQL server and run persistence/HTTP regressions:
+
+   ```bash
+   .venv/bin/python scripts/repo.py test-db up
+   PYTHONPATH=.:apps/api .venv/bin/python - <<'PYTEST_POSTGRES'
+   import subprocess
+   import sys
+   from scripts import repo
+   environment = repo.api_test_environment("api-postgres", repo.canonical_check_environment())
+   subprocess.run([
+       sys.executable, "-m", "pytest", "-p", "no:cacheprovider", "-m", "postgres",
+       "apps/api/tests/test_commercial_mapping_postgres.py",
+       "apps/api/tests/test_kernel_walkthrough_postgres.py",
+       "apps/api/tests/test_catalog_api.py",
+       "--junitxml=.harness/any-664-review/postgres.xml",
+   ], env=environment, check=True)
+   PYTEST_POSTGRES
+   ```
+
+   PASS: v1 → v2 → reused v1 rejects changed material/hash independently for
+   technical/commercial/legal pins; unchanged historical approval is reusable;
+   concurrent publishers retain one valid append; CAS/idempotency, rollback and
+   append-only guards remain green. These tests use the disposable `_tests` DB;
+   pytest owns its creation/migration/removal, never the working catalog DB.
+
+3. Use the existing **Step 7 optional HTTP mock walkthrough → Opt in, inspect
+   and publish** procedure above, followed by the existing `npm run test:e2e`
+   command with its acceptance flag and publication artifact. No additional npm
+   command or orchestration layer is required. Keep the mock enabled in the same
+   shell used for startup and teardown.
+
+   On an existing different head, inspect `operator query` for
+   `selected-offer:v1:701:1001:901` and pass its reviewed revision number instead
+   of 0. Never reset history. The recorded price remains valid only through
+   2026-12-31; beyond that it must fail until separately reviewed fixture
+   maintenance.
+
+   PASS: both Chromium projects succeed without skips, every HTTP representation
+   equals the exact published revision and material, and screenshots/results/traces
+   are retained as described above. Any failed assertion, nonzero command or skip
+   is not PASS.
+
+4. After focused checks and browser evidence, run the remaining repository gates:
+
+   ```bash
+   npm run lint:web
+   npm run typecheck:web
+   npm run docs:check
+   npm run architecture:check
+   npm run generate:check
+   npm run check:fast
+   npm run check
+   .venv/bin/python scripts/repo.py test-db stop
+   ```
+
+   PASS requires successful exits and retained results; record any unsupported
+   environment check as skipped, not passed. Stop the test server after checks;
+   the working stack and its immutable publications remain intact.

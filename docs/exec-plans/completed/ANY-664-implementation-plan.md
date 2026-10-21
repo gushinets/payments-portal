@@ -7,6 +7,94 @@
 **Scope supersession:** this decision replaces the previous plan's requirement to implement a real Kernel producer in implementation Step 1 and prove real-producer conformance before ANY-664 completion. The production architecture, provider evidence, immutable commercial terms and paid-access safeguards remain unchanged. Old real-producer wording in tickets/PR #138 must be aligned, not treated as a reason to stop this explicitly approved Portal-only work. This standalone file does not itself update GitHub or Linear.
 **References:** canonical 2026-09-15 external-billing and Portal-Kernel specs; ANY-634 evidence; the live-source amendment in PR #138. Kernel code reference SHA: `079eb03e28d7a50b980795c63c3e4533b785d11f`, checked read-only on GitHub on 2026-10-15. Portal predecessor research baseline: `05d3fcb6a965fcd053d713f49669d1dd25c22978`. Pins identify sources, not a deployed API or sale approval.
 
+## PR #139 review corrections — 2026-10-21
+
+Owner explicitly reopened four findings on the existing ANY-664 branch. Source
+fixes cover integer LBX commercial quantities, current account-calendar policy
+admission, and retained approval-pin history under the existing PostgreSQL lock.
+Focused regression source covers exact-money fractional quantities, bounds,
+controlled calendar clocks and both operator commands, independent historical
+approval pins/hashes, valid reuse and concurrent publications. The existing
+standalone HTTP walkthrough and browser test now bind their evidence to the exact
+published revision, money/currency, technical allowance and SIMULATED status.
+
+The initial correction handoff included only implementation and authorized static
+checks: Ruff format/check and affected E2E ESLint. The owner subsequently authorized
+the agent to execute the P1 scenario; its actual PASS is recorded below. Existing
+2026-10-20 local QA remains valid partial evidence. No review thread is resolved.
+See [review correction commands and PASS criteria](../../engineering/DEVELOPMENT.md#any-664-pr-139-review-correction-checks-2026-10-21).
+No Step 7 purchases, provider mutations, paid usage or reconciliation is added.
+
+Owner's subsequent full check found `selected_offer.py` at 510 lines against
+the 500-line architecture limit. The required policy-field list now lives beside
+its input model in `offer_inputs.py`; normalization behavior is unchanged.
+The normalizer is 496 lines, with no limit exception. Ruff format/check,
+format verification and `npm run architecture:check` passed after this correction.
+No tests or full check were run by the agent.
+
+### Browser timeout follow-up
+
+The owner's full run reported 211 passed, 2 skipped and one desktop catalog
+timeout. The retained trace shows a 30-second total-budget expiry during retry
+recovery, not a failed catalog assertion: initial navigation took 8.35 seconds,
+font transfers about 5.8 seconds, and the same test also ran accessibility,
+multiple detail navigations/reloads and failure/empty-state checks. The matching
+mobile case passed in 9.02 seconds. This evidence does not establish a product
+logic regression or runtime PASS for the correction.
+
+The parameterized catalog test is split into two isolated cases using the same
+mock setup: published-list/localized-term/accessibility checks, and product
+navigation/reload/failure/retry/empty-state checks. All original assertions and
+locale/surface coverage remain; the 30-second timeout is unchanged. No browser,
+pytest, build or migration is run by the agent. The owner reruns the existing
+`npm run test:e2e -- apps/web/e2e/catalog-preview.spec.ts` command.
+
+### P1 joined browser acceptance — PASS, 2026-10-21
+
+After explicit owner authorization, the agent ran the existing optional Compose
+walkthrough and `kernel_walkthrough` helper, then the existing stored-preview
+browser test. The standalone Kernel HTTP mock served the real typed Kernel client;
+the real LBX selected-offer reader used isolated recorded GET responses. Operator
+approval and publication appended immutable PostgreSQL revision **2**, UUID
+`232a5492-1bab-471b-84ee-2a01ed8ac911`, retaining revision 1.
+
+The real Portal API and Chromium list, linked product detail and reload all served
+that exact revision: recurring **200.02 RUB**, connection **14.06 RUB**, allowance
+**25**, evidence **SIMULATED**. No browser API response interception was used.
+Both `desktop-chromium` and `mobile-chromium` passed: **2 passed, 0 skipped,
+0 retries/flaky**, 7.0 seconds total. The successful command was:
+
+```bash
+CATALOG_PREVIEW_ACCEPTANCE=1 \
+CATALOG_PREVIEW_PUBLICATION_FILE="$PWD/.harness/kernel-walkthrough/publish.json" \
+npm run test:e2e -- apps/web/e2e/catalog-stored-preview.spec.ts --trace on
+```
+
+Private local evidence is preserved under
+`.harness/kernel-walkthrough/evidence-P1-20261021T023715Z/`: operator dry-run,
+publication and query JSON, real API responses, service/source identity checks,
+console output, HTML/machine Playwright reports, six screenshots, two traces and
+`summary.json`. Earlier Playwright artifacts were preserved separately. The
+reloaded screenshots were visually reviewed. The normal `repo:up -- --reuse`
+startup also completed the development web build and normal migration service.
+
+This establishes the requested positive P1 chain. Fault/removal/configuration
+switch checks and focused P2 regression suites were not rerun in this acceptance
+session; no full-check PASS is inferred. No new wrapper, harness or CI job was
+added. `REAL_KERNEL_CONFORMANCE=DEFERRED_NOT_IMPLEMENTED`; no real LBX requests,
+sales or paid access were exercised. The local simulated stack remains running.
+
+### Final owner verification — PASS, 2026-10-21
+
+After the P1 acceptance and catalog timeout correction, the owner reported that
+`RUN_E2E=true npm run check` passed on the current changes and authorized commit
+and push to the existing PR #139 branch. This is owner-reported full-check
+evidence; no detailed console log or individual test counts were supplied for
+that final run. The agent's separate P1 evidence remains recorded above.
+All four requested review corrections are implemented with regression coverage
+and the requested joined browser acceptance. Merge approval remains with the
+owner; review threads and Linear status are unchanged.
+
 ## Plan Overview
 
 | Field | Implementation baseline |

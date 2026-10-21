@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
+from itertools import count
 
 import pytest
 from dotenv import load_dotenv
@@ -152,3 +154,16 @@ def db_session(
             yield session
         finally:
             session.rollback()
+
+
+@pytest.fixture
+def mapping_clock(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep recorded-offer publications independent of the machine's date."""
+    from app.composition import mapping_operator
+
+    ticks = count()
+
+    def now() -> datetime:
+        return datetime(2026, 10, 16, 12, tzinfo=UTC) + timedelta(microseconds=next(ticks))
+
+    monkeypatch.setattr(mapping_operator, "utc_now", now)

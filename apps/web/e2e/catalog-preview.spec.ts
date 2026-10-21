@@ -1,44 +1,49 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
 
 import ru from "../src/messages/ru.json";
 import pt from "../src/messages/pt.json";
 import { simulatedProduct } from "../tests/fixtures/catalog";
 
+async function mockCatalog(page: Page, path: "" | "/products" | "/account") {
+  const state = { products: [simulatedProduct], unavailable: false };
+  await page.route("**/api/catalog/products{,/*}", async (route) => {
+    expect(route.request().headers().authorization).toBeUndefined();
+    const productId = new URL(route.request().url()).pathname.split("/")[4];
+    await route.fulfill(state.unavailable
+      ? { status: 503, json: { detail: { code: "catalog_unavailable" } } }
+      : { json: productId ? state.products.find((product) => product.product_id === productId) : { products: state.products } });
+  });
+  if (path === "/account") {
+    await page.addInitScript(() => localStorage.setItem("anytoolai_session_token_v1", "catalog-session"));
+    await page.route("**/api/auth/session", (route) => route.fulfill({ json: {
+      authenticated: true,
+      user: {
+        tenant_id: "anytoolai", region: "ru",
+        user_id: "11111111-1111-4111-8111-111111111111",
+        email: "catalog@example.com", email_verified: false
+      }
+    } }));
+  }
+  return state;
+}
+
 for (const locale of ["ru", "pt"] as const) {
   for (const path of ["", "/products", "/account"] as const) {
-    test(`${locale}${path || "/"} displays all published products and recovers from a catalog failure`, async ({ page }, testInfo) => {
+    test(`${locale}${path || "/"} displays all published products with exact localized terms`, async ({ page }, testInfo) => {
       const messages = locale === "pt" ? pt : ru;
-      let products = [simulatedProduct];
-      let unavailable = false;
-      await page.route("**/api/catalog/products{,/*}", async (route) => {
-        expect(route.request().headers().authorization).toBeUndefined();
-        const productId = new URL(route.request().url()).pathname.split("/")[4];
-        await route.fulfill(unavailable
-          ? { status: 503, json: { detail: { code: "catalog_unavailable" } } }
-          : { json: productId ? products.find((product) => product.product_id === productId) : { products } });
-      });
-      if (path === "/account") {
-        await page.addInitScript(() => localStorage.setItem("anytoolai_session_token_v1", "catalog-session"));
-        await page.route("**/api/auth/session", (route) => route.fulfill({ json: {
-          authenticated: true,
-          user: {
-            tenant_id: "anytoolai", region: "ru",
-            user_id: "11111111-1111-4111-8111-111111111111",
-            email: "catalog@example.com", email_verified: false
-          }
-        } }));
-      }
+      const state = await mockCatalog(page, path);
       const main = page.getByRole("main");
       await page.goto(`/${locale}${path}`);
       await expect(main.getByText("proposal_ai", { exact: true })).toBeVisible();
       await expect(main).not.toContainText(/Document Summary|Prompt Optimizer/);
 
       // Simulate a subsequent CLI publication becoming visible in the same API.
-      products = [...products, { ...simulatedProduct, product_id: "new_published_tool" }];
+      state.products = [...state.products, { ...simulatedProduct, product_id: "new_published_tool" }];
       await page.reload();
       await expect(main.getByRole("article")).toHaveCount(2);
-      for (const product of products) {
+      for (const product of state.products) {
         const card = main.getByRole("article").filter({ has: page.getByText(product.product_id, { exact: true }) });
         await expect(card.getByText(messages.CatalogPreview.simulated)).toBeVisible();
         await expect(card.getByText(locale === "ru" ? "9 007 199 254 740 993,01 RUB" : "9.007.199.254.740.993,01 RUB")).toBeVisible();
@@ -59,7 +64,16 @@ for (const locale of ["ru", "pt"] as const) {
       expect(accessibility.violations.filter(({ impact }) => impact === "critical" || impact === "serious")).toEqual([]);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
       await testInfo.attach("published-catalog", { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
+    });
 
+    test(`${locale}${path || "/"} supports product navigation and recovers from a catalog failure`, async ({ page }) => {
+      const messages = locale === "pt" ? pt : ru;
+      const state = await mockCatalog(page, path);
+      state.products = [...state.products, { ...simulatedProduct, product_id: "new_published_tool" }];
+      const main = page.getByRole("main");
+      await page.goto(`/${locale}${path}`);
+      await expect(main.getByRole("article")).toHaveCount(2);
+      await page.getByRole("button", { name: messages.CookieBanner.acceptAction, exact: true }).click();
       const link = main.getByRole("article").last().getByRole("link", { name: messages.CatalogPreview.details });
       await link.click();
       await expect(page).toHaveURL(new RegExp(`/${locale}/products/new_published_tool$`));
@@ -70,14 +84,14 @@ for (const locale of ["ru", "pt"] as const) {
       await page.goto(`/${locale}/products/new_published_tool`);
       await expect(main.getByText(messages.CatalogPreview.simulated)).toBeVisible();
 
-      unavailable = true;
+      state.unavailable = true;
       await page.goto(`/${locale}${path}`);
       await expect(main.getByText(messages.CatalogPreview.failed)).toBeVisible();
       await expect(main.getByRole("article")).toHaveCount(0);
-      unavailable = false;
+      state.unavailable = false;
       await main.getByRole("button", { name: messages.CatalogPreview.retry }).click();
       await expect(main.getByRole("article")).toHaveCount(2);
-      products = [];
+      state.products = [];
       await page.reload();
       await expect(main.getByText(messages.CatalogPreview.empty)).toBeVisible();
       await expect(main.getByRole("article")).toHaveCount(0);

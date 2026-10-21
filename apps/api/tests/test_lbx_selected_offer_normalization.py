@@ -153,7 +153,9 @@ async def test_same_numeric_currency_id_is_account_scoped_with_synthetic_eu_scal
             "evidence": inputs.policy.evidence.model_copy(update={"reference": "SIMULATED:synthetic-eu-policy"}),
         }
     )
-    inputs = inputs.model_copy(update={"currency": currency, "policy": policy})
+    assert inputs.calendar is not None
+    calendar = inputs.calendar.model_copy(update={"external_billing_account_id": selection.external_billing_account_id})
+    inputs = inputs.model_copy(update={"currency": currency, "policy": policy, "calendar": calendar})
     # Application-level isolated composition only. No EU deployment or URL.
     async with lbx_source(
         httpx.MockTransport(recording.respond), lbx_external_billing_account_id=selection.external_billing_account_id
@@ -201,3 +203,14 @@ async def test_once_only_connection_fee_is_separate_and_changes_material_terms()
     assert result.terms.money.connection_amount == Decimal("7.03")
     assert result.terms.money.recurring_amount == Decimal("200.02")
     assert result.terms != (await _read(SelectedOfferRecording())).terms
+
+
+@pytest.mark.parametrize("quantity", [Decimal("1"), Decimal("9"), Decimal("9.00")])
+async def test_integral_commercial_quantity_accepts_inclusive_provider_boundaries(quantity: Decimal) -> None:
+    recording = SelectedOfferRecording()
+    selection = simulated_selection().model_copy(update={"commercial_quantity": quantity})
+    async with lbx_source(httpx.MockTransport(recording.respond)) as (client, owner):
+        async with owner.operation() as budget:
+            result = await read_selected_offer(client, selection=selection, inputs=simulated_inputs(), budget=budget)
+    assert result.terms.quantity.selected == quantity
+    assert result.terms.money.recurring_amount == Decimal("100.01") * quantity

@@ -31,7 +31,7 @@ from apps.api.tests.support.kernel import manifest_fixture, resign
 from apps.api.tests.support.lbx_selected_offer import SelectedOfferRecording, simulated_inputs, simulated_selection
 
 
-pytestmark = [pytest.mark.postgres, pytest.mark.anyio]
+pytestmark = [pytest.mark.postgres, pytest.mark.anyio, pytest.mark.usefixtures("mapping_clock")]
 
 
 @pytest.fixture

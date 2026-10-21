@@ -1,6 +1,11 @@
 {
   "schema_version": 1,
   "source_mode": "SIMULATED",
+  "calendar": {
+    "external_billing_account_id": "simulated-ru-lbx-account",
+    "timezone": "Europe/Moscow",
+    "evidence": {"reference": "SIMULATED:account-calendar-not-provider-confirmed", "revision": "test-1", "basis": "SIMULATED"}
+  },
   "currency": {
     "external_billing_account_id": "simulated-ru-lbx-account",
     "currency_id": 77,

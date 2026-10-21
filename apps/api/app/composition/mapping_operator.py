@@ -6,16 +6,17 @@ import asyncio
 import os
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Literal, TypeVar
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import httpx
 from pydantic import BaseModel, ValidationError
 
 from app.composition.sources import source_resources
 from app.core.settings import AppEnv, Settings
-from app.domains.catalog.commercial_offer import CommercialScope
+from app.domains.catalog.commercial_offer import CommercialEvidenceBasis, CommercialScope
 from app.domains.catalog.mapping_evidence import (
     ApprovedMapping,
     ImmutableInput,
@@ -85,6 +86,26 @@ def load_operator_input(path: Path | None, model: type[ModelT]) -> ModelT:
         raise MappingRefused("mapping_input_invalid") from None
 
 
+def utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
+def account_billing_date(inputs: SelectedOfferInputs, *, account_id: str, now: datetime) -> date:
+    calendar = inputs.calendar
+    if calendar is None:
+        raise MappingRefused("mapping_account_calendar_not_configured")
+    if calendar.external_billing_account_id != account_id:
+        raise MappingRefused("mapping_account_calendar_scope_mismatch")
+    if calendar.evidence.basis not in {CommercialEvidenceBasis.ACCOUNT_EVIDENCE, CommercialEvidenceBasis.SIMULATED}:
+        raise MappingRefused("mapping_account_calendar_unproven")
+    if now.utcoffset() is None:
+        raise MappingRefused("mapping_clock_invalid")
+    try:
+        return now.astimezone(ZoneInfo(calendar.timezone)).date()
+    except (ZoneInfoNotFoundError, ValueError):
+        raise MappingRefused("mapping_account_calendar_invalid") from None
+
+
 async def fresh_mapping_evaluation(
     configuration: Settings,
     *,
@@ -94,6 +115,7 @@ async def fresh_mapping_evaluation(
     principal: str,
     kernel_transport: httpx.AsyncBaseTransport | None = None,
     lbx_transport: httpx.AsyncBaseTransport | None = None,
+    clock: Callable[[], datetime] | None = None,
 ) -> FreshMappingEvaluation:
     """Outer I/O only; one fresh deadline precedes admission and both sources.
 
@@ -112,12 +134,26 @@ async def fresh_mapping_evaluation(
     if configuration.app_env == AppEnv.PRODUCTION:
         # No trusted genuine producer/release composition exists yet (G1-G4).
         raise MappingRefused("mapping_real_enablement_unverified")
+    now = clock if clock is not None else utc_now
+
+    def require_current_date() -> datetime:
+        instant = now()
+        if selection.effective_on != account_billing_date(
+            source_inputs, account_id=scope.external_billing_account_id, now=instant
+        ):
+            raise MappingRefused("mapping_effective_date_not_current")
+        return instant
+
+    require_current_date()
     async with source_resources(configuration, kernel_transport=kernel_transport) as sources:
         lbx = LbxServerClient(configuration, transport=lbx_transport)
         try:
             async with sources.preflight.operation() as budget:
                 manifest = await sources.require_kernel().fetch_manifest(budget=budget)
                 offer = await read_selected_offer(lbx, selection=selection, inputs=source_inputs, budget=budget)
+                # Reads can cross account midnight: refuse, never rewrite the
+                # operator's independently approved date.
+                evaluated_at = require_current_date()
                 budget.check()
                 document = evaluate_mapping(
                     manifest=manifest,
@@ -127,7 +163,7 @@ async def fresh_mapping_evaluation(
                     scope=scope,
                     principal=principal,
                     reason=proposal.reason,
-                    evaluated_at=datetime.now(UTC),
+                    evaluated_at=evaluated_at,
                     allow_simulated=configuration.app_env in {AppEnv.DEVELOPMENT, AppEnv.TEST},
                 )
                 budget.check()

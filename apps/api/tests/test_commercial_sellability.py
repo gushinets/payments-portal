@@ -49,6 +49,9 @@ from apps.api.tests.support.kernel import manifest_fixture, resign
 from apps.api.tests.support.lbx_selected_offer import SelectedOfferRecording, simulated_inputs
 
 
+pytestmark = pytest.mark.usefixtures("mapping_clock")
+
+
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"

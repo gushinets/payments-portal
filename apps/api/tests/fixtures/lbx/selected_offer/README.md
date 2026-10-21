@@ -31,3 +31,11 @@ deployment or live EUR claim.
 
 See `app/integrations/lbx/SELECTED_OFFER.md` for callable contracts, exact digest
 inputs, failure meanings, resource ownership and unexecuted human commands.
+
+The optional source-input `calendar` is now mandatory in publication composition.
+This fixture explicitly names Europe/Moscow for the simulated account, with a
+SIMULATED evidence reference. It is not provider-confirmed timezone evidence.
+Regression tests use controlled 2026-10-16 clocks. Manual preparation selects
+the current configured account date before independent test review; publication
+never backdates or rewrites it. Calendar configuration is included in the exact
+selected digest, while the operation date and clock remain outside equality.

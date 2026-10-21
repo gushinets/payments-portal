@@ -52,6 +52,13 @@ def selected_offer_provenance(
             "policy.independent_service_selection",
         )
     )
+    if inputs.calendar is not None:
+        proof = inputs.calendar.evidence
+        if proof.basis == CommercialEvidenceBasis.SIMULATED:
+            mode = CommercialEvidenceMode.SIMULATED
+        configuration_sources += (
+            CommercialFieldSource("scope.billing_calendar", proof.reference, proof.revision, proof.basis),
+        )
     wire_basis = (
         CommercialEvidenceBasis.SIMULATED
         if inputs.source_mode == CommercialEvidenceMode.SIMULATED

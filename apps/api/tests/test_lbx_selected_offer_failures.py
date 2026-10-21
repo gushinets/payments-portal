@@ -357,15 +357,19 @@ async def test_commercial_quantity_must_be_positive_and_within_provider_bounds(q
     assert caught.value.reason == "commercial_quantity_out_of_bounds"
 
 
-async def test_fractional_commercial_quantity_never_rounds_money_or_creates_a_technical_allowance() -> None:
+@pytest.mark.parametrize("price", ["100.01", "100.00"])
+async def test_fractional_commercial_quantity_never_rounds_money_or_creates_a_technical_allowance(price: str) -> None:
     selection = simulated_selection().model_copy(update={"commercial_quantity": Decimal("1.5")})
     recording = SelectedOfferRecording()
+    for name in ("services", "prices"):
+        recording.replace(name, '"price":100.01', '"price":' + price)
+        recording.replace(name, '"connection_price":7.03', '"connection_price":10.00')
     async with lbx_source(httpx.MockTransport(recording.respond)) as (client, owner):
         async with owner.operation() as budget:
             with pytest.raises(SelectedOfferRefused) as caught:
                 await read_selected_offer(client, selection=selection, inputs=simulated_inputs(), budget=budget)
-    assert caught.value.kind == OfferRefusalKind.INCOMPLETE
-    assert caught.value.reason == "money_scale_mismatch"
+    assert caught.value.kind == OfferRefusalKind.NOT_SELLABLE
+    assert caught.value.reason == "commercial_quantity_not_integer"
 
 
 async def test_reread_failure_has_no_first_read_fallback_and_exposes_no_payload() -> None:

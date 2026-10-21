@@ -67,6 +67,33 @@ class AccountCurrencyEvidence(OfferInput):
     evidence: EvidenceReference
 
 
+class AccountCalendarEvidence(OfferInput):
+    """Explicit account configuration, never inferred from locale or host time."""
+
+    external_billing_account_id: Nonempty
+    timezone: Nonempty
+    evidence: EvidenceReference
+
+
+# Mandatory policy facts for selected-offer normalization; absent values stay
+# representable at the input boundary so they receive precise refusal reasons.
+REQUIRED_POLICY_FIELDS = (
+    "complete_selected_lists",
+    "independent_service_selection",
+    "effective_price_rule",
+    "tax_treatment",
+    "account_discounts",
+    "proration",
+    "credit_disabled",
+    "promised_payment_disabled",
+    "manual_activation_disabled",
+    "connection_charge_basis",
+    "renewal_terms",
+    "cancellation_terms",
+    "historical_applicability",
+)
+
+
 class SelectedPolicyEvidence(OfferInput):
     """All values are explicit; absent facts remain incomplete, not disabled.
 
@@ -107,5 +134,6 @@ class SelectedOfferInputs(OfferInput):
     schema_version: Literal[1]
     # This labels the HTTP source, independent of configuration proof labels.
     source_mode: CommercialEvidenceMode
+    calendar: AccountCalendarEvidence | None = None
     currency: AccountCurrencyEvidence | None = None
     policy: SelectedPolicyEvidence | None = None

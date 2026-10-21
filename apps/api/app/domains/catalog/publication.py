@@ -27,7 +27,7 @@ from app.infrastructure.persistence.commercial_mappings import (
     lock_mapping_scope,
     require_publication_isolation,
 )
-from app.infrastructure.queries.commercial_mappings import find_mapping_revision
+from app.infrastructure.queries.commercial_mappings import find_mapping_revision, mapping_revision_history
 from app.models import CommercialMappingRevision
 
 
@@ -157,8 +157,12 @@ def publish_mapping(
             latest_number = 0 if latest is None else latest.revision_number
             if latest_number != expected_previous_revision:
                 raise MappingRevisionConflict()
-            if latest is not None:
-                require_replacement_approval(latest.document, evaluation)
+            for historic_row in mapping_revision_history(
+                db, account_id=scope.external_billing_account_id, offer_id=offer_id
+            ):
+                _check_deadline(deadline)
+                historic = validate_stored_mapping(historic_row, scope=scope, offer_id=offer_id, allow_simulated=True)
+                require_replacement_approval(historic.document, evaluation)
             attempted_revision = latest_number + 1
             published = evaluation.model_copy(update={"published_at": datetime.now(UTC)})
             row = CommercialMappingRevision(

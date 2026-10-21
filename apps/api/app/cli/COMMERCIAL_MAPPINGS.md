@@ -86,6 +86,26 @@ audit `reason`. `TechnicalBinding` contains `product_id`, `metric_key`, `unit`,
 strict positive integer `allowance` and `metric_basis` (`SIMULATED` or
 `VERIFIED`). No quantity is inferred from price or LBX commercial units.
 
+`SelectedOfferInputs.calendar` is required for each fresh dry-run/publication.
+It contains `external_billing_account_id`, an explicit IANA `timezone`, and an
+`evidence` reference/revision/basis covering that account's calendar. Missing,
+wrong-account, unknown-zone or DOCUMENTED-only configuration refuses publication.
+ACCOUNT_EVIDENCE must refer to independently confirmed account configuration;
+SIMULATED is allowed only as simulated evidence in development/test. The example
+Europe/Moscow zone is invented test configuration, not a confirmed LBX fact.
+ANY-634 B10 did not establish a provider timezone. Never infer one from locale,
+region, UTC or the host. The host must have the configured IANA zone available.
+
+Composition compares the proposed `effective_on` with the configured account's
+current date before and after source reads, using an injectable aware clock.
+Both past and future dates refuse without substitution, including source reads
+that cross account midnight. The existing policy interval `[valid_from,
+valid_until)` and effective-price selection use that same validated date.
+Calendar evidence is pinned in the selected digest and simulation provenance;
+a calendar change therefore requires independent commercial reapproval. DB-only
+query and browsing still accept valid immutable historical documents without a
+calendar configuration. No subscription cycle/renewal interpretation is added.
+
 `domains.catalog.mapping_evidence.ApprovedMapping` is schema version 1:
 
 - `material`: exact `MappingMaterial`, containing scope, opaque selected
@@ -162,7 +182,13 @@ version, so an unrelated product change does not manufacture material drift.
 Changed material must exactly match a separate replacement approval.
 Changed technical or commercial material also requires a changed corresponding
 approval pin; the same reference/revision cannot be rewritten with new content
-or provenance. Editing an artifact hash does not reuse an old approval.
+or provenance. Editing an artifact hash does not reuse an old approval. After CAS and under
+the existing account/offer advisory lock, the publisher checks all retained
+revisions in that history, not only its head. Each technical/commercial/legal
+pin keeps its original hash, provenance and corresponding material meaning;
+an intervening revision cannot free an old pin. Truly unchanged content can
+reuse a historical pin. History reads are streamed and share the remaining
+publication deadline; no new table, registry or transaction owner is introduced.
 
 After HTTP and cleanup, synchronous Application opens a short PostgreSQL
 READ COMMITTED transaction, sets bounded local statement/lock timeouts, takes

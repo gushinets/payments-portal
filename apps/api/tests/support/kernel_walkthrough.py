@@ -11,6 +11,7 @@ import asyncio
 import json
 import re
 import sys
+from datetime import date
 from pathlib import Path
 
 import httpx
@@ -22,10 +23,12 @@ from app.cli import commercial_mappings as cli
 from app.composition.mapping_operator import (
     FreshMappingEvaluation,
     MappingProposal,
+    account_billing_date,
     authorize_operator,
     fresh_mapping_evaluation,
     load_operator_input,
 )
+from app.composition import mapping_operator
 from app.core.errors import AppError
 from app.core.settings import AppEnv, Settings
 from app.domains.catalog.mapping_evidence import ApprovedMapping
@@ -33,7 +36,7 @@ from app.domains.catalog.publication import publish_mapping
 from app.integrations.lbx.offer_inputs import SelectedOfferInputs
 from apps.api.tests.support.commercial_mappings import reviewed_fixture
 from apps.api.tests.support.lbx import ACCOUNT, PASSWORD, USERNAME
-from apps.api.tests.support.lbx_selected_offer import SelectedOfferRecording, simulated_inputs
+from apps.api.tests.support.lbx_selected_offer import SelectedOfferRecording, simulated_inputs, simulated_selection
 
 
 def require_development_operator(configuration: Settings) -> str:
@@ -52,11 +55,14 @@ def require_development_operator(configuration: Settings) -> str:
     return principal
 
 
-def prepare_inputs(directory: Path) -> None:
+def prepare_inputs(directory: Path, *, effective_on: date | None = None) -> None:
     # This independent test approval uses only the named LBX recording, never
     # the current Kernel response or the attempted publication's evidence.
     with asyncio.Runner() as runner:
-        reviewed = runner.run(reviewed_fixture())
+        selection = simulated_selection()
+        if effective_on is not None:
+            selection = selection.model_copy(update={"effective_on": effective_on})
+        reviewed = runner.run(reviewed_fixture(selection=selection, revision="calendar-review-v2"))
     directory.mkdir(parents=True, exist_ok=True)
     for name, value in (
         ("proposal", reviewed.proposal),
@@ -91,7 +97,10 @@ async def evaluate_recorded_lbx(configuration: Settings, proposal_path: Path, pr
 def execute(arguments: argparse.Namespace, configuration: Settings) -> str:
     principal = require_development_operator(configuration)
     if arguments.command == "prepare":
-        prepare_inputs(arguments.output_dir)
+        prepare_inputs(
+            arguments.output_dir,
+            effective_on=account_billing_date(simulated_inputs(), account_id=ACCOUNT, now=mapping_operator.utc_now()),
+        )
         return json.dumps({"evidence_mode": "SIMULATED", "prepared": True})
     if arguments.command == "query":
         # Existing DB-only CLI never creates a source/admission owner.

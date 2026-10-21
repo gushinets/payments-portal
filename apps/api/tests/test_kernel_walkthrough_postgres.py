@@ -40,6 +40,9 @@ from apps.api.tests.support.lbx_selected_offer import SelectedOfferRecording
 from tools.kernel_manifest_mock.server import ManifestMockServer, MockConfig, Scenario
 
 
+pytestmark = pytest.mark.usefixtures("mapping_clock")
+
+
 ROOT = Path(__file__).resolve().parents[3]
 TOKEN = "explicit-step7-test-token"
 

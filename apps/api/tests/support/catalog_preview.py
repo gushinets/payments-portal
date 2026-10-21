@@ -33,7 +33,8 @@ if TYPE_CHECKING:
 def publish_simulated_preview(
     runtime: Mapping[str, str], *, operator: Settings, expected_previous_revision: int
 ) -> PublicationResult:
-    from app.composition.mapping_operator import authorize_operator, fresh_mapping_evaluation
+    from app.composition import mapping_operator
+    from app.composition.mapping_operator import account_billing_date, authorize_operator, fresh_mapping_evaluation
     from app.core.settings import AppEnv
     from app.domains.catalog.publication import publish_mapping
 
@@ -61,6 +62,13 @@ def publish_simulated_preview(
     selection = simulated_selection()
     if operator.mapping_account_id != selection.external_billing_account_id:
         raise AppError("catalog_preview_simulated_account_required")
+    selection = selection.model_copy(
+        update={
+            "effective_on": account_billing_date(
+                simulated_inputs(), account_id=operator.mapping_account_id, now=mapping_operator.utc_now()
+            )
+        }
+    )
     source_configuration = operator_settings(
         app_env=AppEnv.DEVELOPMENT,
         mapping_account_id=operator.mapping_account_id,
@@ -69,7 +77,7 @@ def publish_simulated_preview(
         instance_region=operator.instance_region,
     )
     with asyncio.Runner() as runner:
-        reviewed = runner.run(reviewed_fixture())
+        reviewed = runner.run(reviewed_fixture(selection=selection, revision="calendar-review-v2"))
         evaluation = runner.run(
             fresh_mapping_evaluation(
                 source_configuration,

@@ -197,3 +197,14 @@ reads and source/test/document edits were performed. Runtime outcomes, checks,
 actual account credential/currency/scale and historical-policy evidence remain
 unverified. G1–G5 and the separate real enablement/approval gates remain open;
 no Kernel, publication, checkout, paid grant or paid-cycle claim is made.
+
+
+### PR #139 publication corrections (2026-10-21)
+
+Commercial quantity must be a positive integer within the selected service's
+inclusive LBX min/max, independently of monetary scale. Thus 1.5 × 100.00 is
+refused even though 150.00 is exact. Decimal money and the separately approved
+Kernel allowance remain unchanged. Publication composition additionally requires
+account-scoped calendar evidence and checks today's account date; the standalone
+normalizer can still evaluate explicitly historical terms for independent review.
+See [operator input contracts](../../cli/COMMERCIAL_MAPPINGS.md#explicit-input-contracts).
