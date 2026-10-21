@@ -155,11 +155,20 @@ def traffic(harness: PurchaseHarness, monkeypatch: pytest.MonkeyPatch) -> Traffi
 
 
 @pytest.mark.parametrize("subscription_status", [200, 201])
+@pytest.mark.parametrize("outer_id_case", ["matching", "changed", "null", "absent"])
 def test_complete_proof_links_only_an_expired_denying_projection(
-    harness: PurchaseHarness, traffic: Traffic, subscription_status: int
+    harness: PurchaseHarness, traffic: Traffic, subscription_status: int, outer_id_case: str
 ) -> None:
     traffic.subscription_status = subscription_status
     intent_id = admitted(harness)
+
+    def change_hint(row: dict) -> None:
+        if outer_id_case == "absent":
+            row.pop("outer_id")
+        elif outer_id_case != "matching":
+            row["outer_id"] = None if outer_id_case == "null" else "provider-updated-label"
+
+    edit_recording(harness, "subscription", change_hint)
     with harness.factory() as db:
         original = db.get(PurchaseIntent, UUID(intent_id)).accepted_snapshot
         original_epoch = db.scalars(select(BillingPurchaseScopeHold)).one().ownership_epoch
@@ -176,6 +185,7 @@ def test_complete_proof_links_only_an_expired_denying_projection(
         assert all(op.recovery_hint_document["point_proven_at"] for op in operations)
         assert all("server_username" not in json.dumps(op.recovery_hint_document) for op in operations)
         subscription = db.scalars(select(ExternalSubscription)).one()
+        assert subscription.external_subscription_id == "1701"
         assert subscription.financial_access_status == ExternalSubscriptionFinancialAccessStatus.BLOCKED
         assert subscription.commercial_access_status == ExternalSubscriptionCommercialAccessStatus.INELIGIBLE
         assert subscription.projection_valid_until <= harness.now
@@ -203,6 +213,8 @@ def test_ambiguous_post_recovers_by_get_after_restart_without_reposting(
     assert first.status_code == 202, first.text
     assert first.json()["state"] == "awaiting_external_result"
     before = traffic.posts.copy()
+    if path == "/subscriptions":
+        edit_recording(harness, "subscription", lambda row: row.pop("outer_id"))
     # Every HTTP request composes a fresh application/client. Persisted original
     # commands suffice even with Kernel offline and the current profile removed.
     harness.server.config = MockConfig(app_env="test", token="offline", scenario=Scenario.UNAVAILABLE)
@@ -352,7 +364,6 @@ def test_unsent_drift_date_or_ineligibility_cannot_send(
         ("agreement", "organization_id", 999),
         ("subscription", "total_price", 999),
         ("subscription", "currency_symbol", "usd"),
-        ("subscription", "outer_id", "wrong-correlation"),
     ],
 )
 def test_receipt_without_complete_matching_point_proof_blocks_link(

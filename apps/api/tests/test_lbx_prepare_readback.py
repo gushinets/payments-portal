@@ -257,6 +257,33 @@ async def test_extra_default_service_is_refused_and_tariff_price_is_comparison_o
     assert proof.state == ProofState.COMPLETE_MATCH
 
 
+@pytest.mark.parametrize("outer_id_case", ["changed", "null", "absent"])
+async def test_subscription_point_identity_does_not_require_outer_id(outer_id_case: str) -> None:
+    recording = PreparationRecording()
+
+    def change_hint(body: dict[str, Any]) -> None:
+        if outer_id_case == "absent":
+            body.pop("outer_id")
+        else:
+            body["outer_id"] = None if outer_id_case == "null" else "provider-updated-label"
+
+    recording.change("subscription", change_hint)
+    async with preparation_source(recording) as (client, owner):
+        offer = await selected_offer(client, owner, recording.profile)
+        async with owner.operation() as budget:
+            proof = await LbxPreparation(client, recording.profile).prove_subscription(
+                subscription_id=SUBSCRIPTION_ID,
+                expected=subscription_command(),
+                agreement=agreement_command(),
+                billing_customer_key=CUSTOMER_KEY,
+                offer=offer,
+                budget=budget,
+            )
+    assert proof.state == ProofState.COMPLETE_MATCH and proof.value is not None
+    assert proof.value.subscription_id == SUBSCRIPTION_ID
+    assert proof.value.agreement_id == AGREEMENT_ID
+
+
 @pytest.mark.parametrize(
     "name, changes, state",
     [

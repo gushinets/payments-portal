@@ -259,7 +259,6 @@ class LbxPreparation:
             return PreparationProof(ProofState.OWNER_CONFLICT, "subscription_agreement_conflict")
         if (
             subscription.tariff_id != expected.tariff_id
-            or subscription.outer_id != expected.outer_id
             or subscription.period_id != expected.period_id
             or subscription.subscription_start_date != expected.subscription_start_date
             or subscription.currency_symbol != self._profile.currency_symbol
