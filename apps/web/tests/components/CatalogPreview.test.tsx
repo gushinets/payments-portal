@@ -1,4 +1,4 @@
-import { act, fireEvent, screen } from "@testing-library/react";
+import { act, fireEvent, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CatalogPreviewClient } from "@/features/catalog/CatalogPreviewClient";
@@ -35,6 +35,35 @@ describe("stored catalog preview", () => {
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 
+  it.each([
+    ["en", en, "1 month"], ["ru", ru, "1 месяц"], ["fr", fr, "1 mois"], ["de", de, "1 Monat"],
+    ["it", itMessages, "1 mese"], ["es", es, "1 mes"], ["pt", pt, "1 mês"]
+  ] as const)("distinguishes all period anchors for the same duration in %s", async (locale, messages, duration) => {
+    const offer = simulatedProduct.offer;
+    if (!offer) throw new Error("simulated fixture requires offer");
+    const anchors = ["calendar_month", "instance_start", "first_instance_start"] as const;
+    const products = anchors.map((anchor) => ({
+      ...simulatedProduct,
+      product_id: `proposal_ai_${anchor}`,
+      offer: { ...offer, period: { ...offer.period, anchor } }
+    }));
+    fetchMock.mockResolvedValueOnce(Response.json({ products }));
+    renderWithIntl(<CatalogPreviewClient />, { locale, messages: { CatalogPreview: messages.CatalogPreview } });
+
+    const cards = await screen.findAllByRole("article");
+    expect(cards).toHaveLength(anchors.length);
+    expect(new Set(Object.values(messages.CatalogPreview.periodAnchors)).size).toBe(anchors.length);
+    for (const [index, anchor] of anchors.entries()) {
+      const card = within(cards[index]);
+      expect(card.getByText(messages.CatalogPreview.periodAnchors[anchor])).toBeVisible();
+      expect(card.getByText(messages.CatalogPreview.periodAnchors[anchor]).closest("dd"))
+        .toHaveTextContent(duration);
+      for (const other of anchors.filter((value) => value !== anchor)) {
+        expect(card.queryByText(messages.CatalogPreview.periodAnchors[other])).not.toBeInTheDocument();
+      }
+    }
+  });
+
   it("keeps exact money beyond Number precision in Brazilian Portuguese", async () => {
     fetchMock.mockResolvedValueOnce(Response.json(simulatedProduct));
     renderWithIntl(<CatalogPreviewClient productId="proposal_ai" />, {
@@ -42,7 +71,9 @@ describe("stored catalog preview", () => {
     });
     expect(await screen.findByText("9.007.199.254.740.993,01 RUB")).toBeVisible();
     expect(screen.getByText("7,03 RUB")).toBeVisible();
-    expect(screen.getByText("1 mês")).toBeVisible();
+    const period = screen.getByText("1 mês").closest("dd");
+    expect(period).toHaveTextContent("1 mês");
+    expect(period).toHaveTextContent(pt.CatalogPreview.periodAnchors.instance_start);
     expect(screen.getByText("25 generation")).toBeVisible();
   });
 

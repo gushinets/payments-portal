@@ -274,6 +274,11 @@
     "paymentUnspecified": "See the approved terms",
     "tax": "Tax treatment",
     "taxValues": { "included": "Included in the amount", "not_applicable": "Not applicable" },
+    "periodAnchors": {
+      "calendar_month": "By calendar month",
+      "instance_start": "From the instance start",
+      "first_instance_start": "From the first instance start"
+    },
     "periodUnits": {
       "day": "{count, plural, one {# day} other {# days}}",
       "week": "{count, plural, one {# week} other {# weeks}}",

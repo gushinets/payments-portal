@@ -48,15 +48,24 @@ for (const locale of ["ru", "pt"] as const) {
         await expect(card.getByText(messages.CatalogPreview.simulated)).toBeVisible();
         await expect(card.getByText(locale === "ru" ? "9 007 199 254 740 993,01 RUB" : "9.007.199.254.740.993,01 RUB")).toBeVisible();
         await expect(card.getByText(locale === "ru" ? "1 месяц" : "1 mês", { exact: true })).toBeVisible();
+        await expect(card.getByText(messages.CatalogPreview.periodAnchors.instance_start, { exact: true })).toBeVisible();
         await expect(card.getByText("25 generation", { exact: true })).toBeVisible();
         await expect(card.getByRole("link", { name: messages.CatalogPreview.details }))
           .toHaveAttribute("href", `/${locale}/products/${product.product_id}`);
+        for (const slot of ["access", "usage"] as const) {
+          const status = messages.Account.products.state[slot];
+          if (path === "/account") {
+            await expect(card.getByText(status.label, { exact: true })).toBeVisible();
+            await expect(card.getByText(status.description, { exact: true })).toBeVisible();
+          } else {
+            await expect(card.getByText(status.label, { exact: true })).toHaveCount(0);
+            await expect(card.getByText(status.description, { exact: true })).toHaveCount(0);
+          }
+        }
+        await expect(card.getByText(messages.Account.products.state.commercial.description, { exact: true })).toHaveCount(0);
       }
       if (path === "/account") {
         await expect(main.getByRole("heading", { name: messages.EmailVerification.pending.title })).toBeVisible();
-        for (const slot of ["commercial", "access", "usage"] as const) {
-          await expect(main.getByText(messages.Account.products.state[slot].label, { exact: true })).toHaveCount(0);
-        }
         await expect(main.getByRole("progressbar")).toHaveCount(0);
       }
       await page.getByRole("button", { name: messages.CookieBanner.acceptAction, exact: true }).click();
@@ -83,6 +92,13 @@ for (const locale of ["ru", "pt"] as const) {
       // A separately published ID also works on a fresh, direct navigation.
       await page.goto(`/${locale}/products/new_published_tool`);
       await expect(main.getByText(messages.CatalogPreview.simulated)).toBeVisible();
+      await expect(main.locator(".account-product-statuses")).toHaveCount(0);
+      const offerCard = main.locator(".tool-card");
+      await expect(offerCard).toHaveCount(1);
+      for (const slot of ["access", "usage"] as const) {
+        await expect(offerCard.getByText(messages.Account.products.state[slot].label, { exact: true })).toHaveCount(0);
+        await expect(offerCard.getByText(messages.Account.products.state[slot].description, { exact: true })).toHaveCount(0);
+      }
 
       state.unavailable = true;
       await page.goto(`/${locale}${path}`);

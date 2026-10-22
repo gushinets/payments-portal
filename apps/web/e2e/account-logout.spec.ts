@@ -140,6 +140,11 @@ test("account logout revokes the session and returns to the signed-out account s
     await expect(products.getByText(ruMessages.CatalogPreview.simulated)).toBeVisible();
     await expect(products.getByRole("link", { name: ruMessages.CatalogPreview.details }))
       .toHaveAttribute("href", "/ru/products/proposal_ai");
+    const card = products.getByRole("article");
+    for (const slot of ["access", "usage"] as const) {
+      await expect(card.getByText(ruMessages.Account.products.state[slot].label, { exact: true })).toBeVisible();
+      await expect(card.getByText(ruMessages.Account.products.state[slot].description, { exact: true })).toBeVisible();
+    }
 
     await accountMain.getByRole("button", { name: /Выйти/ }).click();
     await expect(
@@ -148,6 +153,10 @@ test("account logout revokes the session and returns to the signed-out account s
     await expect(accountMain.getByLabel("Email")).toBeVisible();
     await expect(products).toHaveCount(0);
     await expect(accountMain.getByRole("article")).toHaveCount(0);
+    for (const slot of ["access", "usage"] as const) {
+      await expect(accountMain.getByText(ruMessages.Account.products.state[slot].label, { exact: true })).toHaveCount(0);
+      await expect(accountMain.getByText(ruMessages.Account.products.state[slot].description, { exact: true })).toHaveCount(0);
+    }
     await expect(
       accountMain.getByRole("button", { name: "Регистрация", exact: true })
     ).toBeVisible();

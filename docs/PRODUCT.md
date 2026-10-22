@@ -1,7 +1,7 @@
 # Product Scope
 
 Status: authoritative
-Last updated: 2026-10-08
+Last updated: 2026-10-22
 
 AnyToolAI Portal combines public product discovery, direct account entry, and
 identity/legal-consent flows for AnyToolAI products, deployed as one contour
@@ -11,15 +11,16 @@ per production instance. The target contour set is `ru`, `eu`, and `us`; only
 selects deployment or contour.
 
 The current `ru` surface is product-centric: product-first home and discovery,
-substantial Document Summary and Prompt Optimizer screens, presentation-only
-pricing navigation, direct auth entry, and an authenticated cabinet led by
-both products. Identity/verification/logout context supports the per-product
+detail pages keyed by Kernel `product_id`, presentation-only pricing
+navigation, direct auth entry, and an authenticated cabinet led by published
+products. Identity/verification/logout context supports the per-product
 commercial/access/usage/action slots. Account/session/email-verification,
-password-recovery and legal-acceptance flows remain implemented; commercial
-facts, paid access and actual usage/quota remain not ready, unknown or
-unavailable. The repository remains pre-production and provider-independent
-on the current ANY-636 4F surface. ANY-664 adds read-only source clients,
-controlled immutable offer publication and DB-only catalog browsing; genuine
+password-recovery and legal-acceptance flows remain implemented. Published
+immutable commercial terms are displayed; paid access remains unknown and
+actual usage/quota unavailable. The repository remains pre-production and
+provider-independent on the surface established by ANY-636 4F. ANY-664 adds
+read-only source clients, controlled immutable offer publication and DB-only
+catalog browsing; genuine
 Kernel conformance and sales remain gated. There are no production direct-
 provider subscribers or subscriptions to migrate.
 
@@ -57,17 +58,18 @@ only their source-read/admission strategy.
 
 ## Implemented
 
-- Locale-prefixed product-first home, public product catalog, and substantial
-  detail pages at
-  `/[locale]/products/document-summary` and
-  `/[locale]/products/prompt-optimizer`, with labeled schematic illustrations,
-  product-specific supporting content and honest readiness slots.
+- Locale-prefixed product-first home, public catalog and detail pages at
+  `/[locale]/products/[product_id]`, using Kernel identity and stored approved
+  immutable offer mappings through the Portal catalog API. Browsing makes no
+  live Kernel/LBX calls and does not promise current sellability.
 - `/[locale]/pricing` and localized public Pricing navigation as presentation
   only: a not-ready state, localized metadata and safe home/products links,
   without commercial facts, purchase controls or API calls.
 - `/[locale]/account` as the direct sign-in/registration entry and authenticated
   product-centric cabinet, with compact identity context and one card per
-  current product; the header retains its sign-in modal.
+  published product, showing commercial terms and independent unknown-access
+  and unavailable-usage states; the header retains its sign-in modal. These
+  account-only states are absent from public catalog/detail pages and home.
 - The approved RU mockup's product/visual direction encoded by evolved Bundle 3
   and applied across the active Portal: navy/amber, flat dark panels, thin
   borders, compact radii/spacing and Manrope (the ANY-636 basic Cyrillic coverage
@@ -91,9 +93,10 @@ surfaces under each locale were removed without redirects or compatibility
 routes because they have no production compatibility obligation. Future
 production changes require their own compatibility decision.
 
-ANY-636 required no new Portal HTTP API: existing generated auth contracts and
-canonical legal assets supply the current server facts, and product discovery
-uses frontend presentation metadata. Any future Portal-owned web-consumed API
+ANY-636 required no new Portal HTTP API and used frontend product presentation
+metadata. ANY-664 supplies current catalog facts through the Portal API and
+generated contracts over approved immutable mappings; auth and legal sources
+retain their ownership. Any future Portal-owned web-consumed API
 must start with backend Pydantic models, named OpenAPI components, repository
 generation, generated TypeScript wire contracts, and the shared API transport
 trust boundary under ANY-541.
@@ -133,12 +136,14 @@ trust boundary under ANY-541.
 - This service never collects or stores card data. The responsible external
   payment boundary handles it.
 - Legal drafts are not represented as counsel-approved documents.
-- `document-summary` and `prompt-optimizer` are frontend presentation/route
-  slugs only, not claimed Platform Kernel `product_id` or External Billing IDs.
-  Target technical product/metric identity comes from Platform Kernel;
+- `document-summary` and `prompt-optimizer` were frontend presentation/route
+  slugs in historical 4F, not authoritative technical IDs. Current catalog
+  routes use Kernel `product_id` through the Portal API and immutable mapping.
+  Technical product/metric identity comes from Platform Kernel;
   commercial offers come from External Billing.
 - Discovery CTAs open product detail or account surfaces. No purchase/checkout
   CTA or fabricated product-execution URL is exposed in 4F.
 - Pricing navigation and its unavailable placeholder establish presentation
-  topology only. Offers/prices/sellability remain parent ANY-504 Step 6;
+  topology only. Published offer terms use the ANY-504 Step 6 Portal path;
+  current sellability and genuine enablement retain the source/approval gates;
   purchase/provider Widget behavior remains Step 7.

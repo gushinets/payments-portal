@@ -47,7 +47,11 @@ function OfferPreview({ product }: { product: CatalogProductResponse }) {
         </div>
         <div>
           <dt>{t("period")}</dt>
-          <dd>{t(`periodUnits.${offer.period.unit}`, { count: offer.period.length })}</dd>
+          <dd>
+            <span>{t(`periodUnits.${offer.period.unit}`, { count: offer.period.length })}</span>
+            <br />
+            <span>{t(`periodAnchors.${offer.period.anchor}`)}</span>
+          </dd>
         </div>
         <div>
           <dt>{t("allowance")}</dt>
@@ -66,10 +70,14 @@ function OfferPreview({ product }: { product: CatalogProductResponse }) {
 
 export function CatalogPreviewClient({
   productId,
-  headingLevel = 2
+  headingLevel = 2,
+  accountStatuses
 }: {
   productId?: string;
   headingLevel?: 2 | 3;
+  accountStatuses?: {
+    [slot in "access" | "usage"]: { label: string; description: string };
+  };
 }) {
   const t = useTranslations("CatalogPreview");
   const [state, setState] = useState<PreviewState>({ kind: "loading" });
@@ -127,6 +135,16 @@ export function CatalogPreviewClient({
               <ProductHeading>{t("productTitle")}</ProductHeading>
               <p className="catalog-product-id">{product.product_id}</p>
               <OfferPreview product={product} />
+              {accountStatuses && (
+                <dl className="account-product-statuses">
+                  {(["access", "usage"] as const).map((slot) => (
+                    <div className="account-product-status" key={slot}>
+                      <dt>{accountStatuses[slot].label}</dt>
+                      <dd>{accountStatuses[slot].description}</dd>
+                    </div>
+                  ))}
+                </dl>
+              )}
               {productId === undefined && (
                 <div className="tool-card-bottom">
                   <Link className="tool-detail-action" href={`/products/${encodeURIComponent(product.product_id)}`}>

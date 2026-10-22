@@ -274,6 +274,11 @@
     "paymentUnspecified": "Siehe genehmigte Konditionen",
     "tax": "Steuerbehandlung",
     "taxValues": { "included": "Im Betrag enthalten", "not_applicable": "Nicht anwendbar" },
+    "periodAnchors": {
+      "calendar_month": "Nach Kalendermonaten",
+      "instance_start": "Ab Beginn der Instanz",
+      "first_instance_start": "Ab dem ersten Beginn der Instanz"
+    },
     "periodUnits": {
       "day": "{count, plural, one {# Tag} other {# Tage}}",
       "week": "{count, plural, one {# Woche} other {# Wochen}}",

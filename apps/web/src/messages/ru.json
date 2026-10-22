@@ -274,6 +274,11 @@
     "paymentUnspecified": "См. одобренные условия",
     "tax": "Налоги",
     "taxValues": { "included": "Включены в сумму", "not_applicable": "Не применяются" },
+    "periodAnchors": {
+      "calendar_month": "По календарным месяцам",
+      "instance_start": "От начала экземпляра",
+      "first_instance_start": "От первого начала экземпляра"
+    },
     "periodUnits": {
       "day": "{count, plural, one {# день} few {# дня} many {# дней} other {# дня}}",
       "week": "{count, plural, one {# неделя} few {# недели} many {# недель} other {# недели}}",

@@ -1,7 +1,7 @@
 # AnyToolAI Portal Architecture
 
 Status: authoritative current-state map
-Last updated: 2026-10-20
+Last updated: 2026-10-22
 
 ## System boundary
 
@@ -12,7 +12,7 @@ provider-neutral external-billing persistence baseline. It does not own
 workflow execution, artifacts, usage consumption, or quota enforcement; those
 belong to the separate Platform Kernel repository.
 
-The current Portal combines product-first public discovery, substantial
+The current Portal combines product-first public discovery,
 per-product pages, presentation-only pricing navigation, direct account/auth
 entry and a product-centric cabinet. It remains pre-production and
 provider-independent on the current ANY-636 4F surface. ANY-664 adds read-only
@@ -97,7 +97,7 @@ launch remain gated by Phase 0 and their owning `ANY-504` steps.
   restricted immutable mapping publication and DB-only catalog reads;
   purchase evidence, reconciliation/operation records, paid-access state and
   invalidation outbox remain storage for later stages.
-- **Presentation** — locale-prefixed product-first home, catalog, substantial
+- **Presentation** — locale-prefixed product-first home, catalog,
   product detail pages, pricing placeholder, direct account/auth entry,
   product-centric cabinet, recovery, verification, and
   canonical RU legal pages. Ordinary Portal-owned UI and metadata are localized
@@ -108,13 +108,12 @@ launch remain gated by Phase 0 and their owning `ANY-504` steps.
   access, or zero usage/quota. These slots are local view composition, not new
   HTTP contracts or domain models.
 
-### As-built 4F routes
+### Current routes after ANY-664 Step 6
 
 ```text
 /[locale]
 /[locale]/products
-/[locale]/products/document-summary
-/[locale]/products/prompt-optimizer
+/[locale]/products/[product_id]
 /[locale]/pricing
 /[locale]/account
 /[locale]/forgot-password
@@ -128,8 +127,14 @@ direct sign-in/registration and the product-centric authenticated cabinet; the
 header sign-in modal is retained. Product cards open local detail pages, and
 account CTAs enter `/[locale]/account`; no purchase or fabricated
 product-execution target is exposed.
-`document-summary` and `prompt-optimizer` are presentation/route slugs only,
-not claimed Platform Kernel `product_id` or External Billing IDs.
+Home, catalog, product detail and the authenticated cabinet read published
+products through the Portal catalog API. Detail routes use the Kernel
+`product_id` preserved in the approved immutable mapping; browsing reads stored
+terms from PostgreSQL without live source calls. The former static
+`document-summary` and `prompt-optimizer` slugs belong to the historical 4F
+presentation and are not the current catalog identity source. Account cards
+retain independent unknown-access and unavailable-usage slots for Steps 9–10;
+public pages show commercial terms without these account-only statuses.
 
 `/pricing` and public Pricing navigation are presentation-only: localized
 metadata, an honest unavailable/not-ready state and home/products links. The
@@ -141,9 +146,10 @@ are excluded from runtime authority.
 Under the [accepted live-source amendment](docs/superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md), ANY-504 Step 6 supplies live-verified, approved immutable commercial mappings; Step 7
 supplies purchase/Widget actions; Step 8 supplies reconciled state and recovery
 feedback; Step 9 supplies provider-neutral confirmed paid access; Step 10
-supplies actual Kernel usage/quota. These deferred steps populate the existing
-product/cabinet surfaces without redesigning the main cabinet. Their ownership,
-Phase 0 gates and authoritative-fact rules remain unchanged.
+supplies actual Kernel usage/quota. ANY-664 implements the Step 6 Portal path;
+genuine source conformance and enablement remain gated. Steps 7–10 populate the
+existing product/cabinet surfaces without redesigning the main cabinet. Their
+ownership, Phase 0 gates and authoritative-fact rules remain unchanged.
 
 The transitional pre-production `/{locale}/auth-checkout` and
 `/{locale}/payment-result` routes were removed without redirects or compatibility
@@ -316,10 +322,11 @@ For every future Portal-owned, web-consumed API, the implementation rule is:
 5. Use the shared API transport trust boundary.
 6. Keep form, UI, and view state local instead of putting it into API DTOs.
 
-ANY-636 4F required no new Portal HTTP API. Existing generated auth contracts
-and canonical legal assets supply the facts needed by the current UI; product
-discovery is frontend presentation metadata. Future Portal-owned web APIs still
-follow the ANY-541 rule above.
+ANY-636 4F required no new Portal HTTP API and used frontend product presentation
+metadata. ANY-664 now supplies catalog discovery/detail through the Portal API
+and generated contracts over approved immutable mappings. Auth contracts and
+canonical legal assets retain their ownership. Future Portal-owned web APIs
+still follow the ANY-541 rule above.
 
 Generated contracts do not change domain-data ownership. Future web work must
 not mirror or re-author External Billing commercial catalog, pricing, or

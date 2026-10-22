@@ -110,7 +110,7 @@ describe("direct account authentication and session", () => {
     ["pt", true],
     ["pt", false]
   ] as const)(
-    "shows compact identity and published products without account product statuses in %s (email verified: %s)",
+    "shows compact identity, published terms and independent account product statuses in %s (email verified: %s)",
     async (locale, emailVerified) => {
       const messages = locale === "pt" ? ptMessages : ruMessages;
       window.localStorage.setItem(sessionStorageKey, "session-token");
@@ -120,6 +120,8 @@ describe("direct account authentication and session", () => {
           user: { ...accountUser, email_verified: emailVerified }
         })
       );
+      const publishedProducts = [simulatedProduct, { ...simulatedProduct, product_id: "new_published_tool" }];
+      catalogFetchMock.mockResolvedValueOnce(jsonResponse({ products: publishedProducts }));
 
       renderAccountClient(locale);
 
@@ -149,13 +151,22 @@ describe("direct account authentication and session", () => {
         name: messages.Account.products.title
       });
       expect(await within(products).findByText("proposal_ai")).toBeVisible();
-      expect(within(products).getAllByRole("article")).toHaveLength(1);
-      expect(within(products).getByText(messages.CatalogPreview.simulated)).toBeVisible();
-      expect(within(products).getByRole("heading", { level: 3 })).toBeVisible();
-      expect(within(products).getByRole("link", { name: messages.CatalogPreview.details }))
-        .toHaveAttribute("href", `/${locale}/products/proposal_ai`);
-      for (const slot of ["commercial", "access", "usage"] as const) {
-        expect(within(products).queryByText(messages.Account.products.state[slot].label)).not.toBeInTheDocument();
+      const cards = within(products).getAllByRole("article");
+      expect(cards).toHaveLength(publishedProducts.length);
+      for (const [index, product] of publishedProducts.entries()) {
+        const card = within(cards[index]);
+        expect(card.getByText(product.product_id)).toBeVisible();
+        expect(card.getByText(messages.CatalogPreview.simulated)).toBeVisible();
+        expect(card.getByRole("heading", { level: 3 })).toBeVisible();
+        expect(card.getByRole("link", { name: messages.CatalogPreview.details }))
+          .toHaveAttribute("href", `/${locale}/products/${product.product_id}`);
+        expect(card.getByText(locale === "ru" ? "9 007 199 254 740 993,01 RUB" : "9.007.199.254.740.993,01 RUB"))
+          .toBeVisible();
+        for (const slot of ["access", "usage"] as const) {
+          expect(card.getByText(messages.Account.products.state[slot].label)).toBeVisible();
+          expect(card.getByText(messages.Account.products.state[slot].description)).toBeVisible();
+        }
+        expect(card.queryByText(messages.Account.products.state.commercial.description)).not.toBeInTheDocument();
       }
       expect(within(products).queryByRole("progressbar")).not.toBeInTheDocument();
       expect(catalogFetchMock).toHaveBeenCalledTimes(1);

@@ -324,7 +324,19 @@ export function AccountClient({ languageTag }: { languageTag: string }) {
               <h2 id="account-products-title">{t("products.title")}</h2>
               <p className="card-copy">{t("products.description")}</p>
             </div>
-            <CatalogPreviewClient headingLevel={3} />
+            <CatalogPreviewClient
+              headingLevel={3}
+              accountStatuses={{
+                access: {
+                  label: t("products.state.access.label"),
+                  description: t("products.state.access.description")
+                },
+                usage: {
+                  label: t("products.state.usage.label"),
+                  description: t("products.state.usage.description")
+                }
+              }}
+            />
           </section>
         </div>
       </div>

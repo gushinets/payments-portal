@@ -274,6 +274,11 @@
     "paymentUnspecified": "Voir les conditions approuvées",
     "tax": "Traitement fiscal",
     "taxValues": { "included": "Inclus dans le montant", "not_applicable": "Sans objet" },
+    "periodAnchors": {
+      "calendar_month": "Par mois civil",
+      "instance_start": "À partir du début de l’instance",
+      "first_instance_start": "À partir du premier début de l’instance"
+    },
     "periodUnits": {
       "day": "{count, plural, one {# jour} other {# jours}}",
       "week": "{count, plural, one {# semaine} other {# semaines}}",
