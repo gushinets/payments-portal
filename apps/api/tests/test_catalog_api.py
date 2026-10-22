@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from dataclasses import replace
 from decimal import Decimal
+from pathlib import Path
 from typing import NoReturn
 
 import pytest
@@ -416,6 +417,7 @@ def test_manual_preview_setup_publishes_through_existing_publisher_and_serves_re
     client: TestClient,
     migrated_database: Engine,
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     import os
 
@@ -429,7 +431,11 @@ def test_manual_preview_setup_publishes_through_existing_publisher_and_serves_re
         "INSTANCE_REGION": "ru",
         "MAPPING_ACCOUNT_ID": ACCOUNT,
     }
-    configuration = operator_settings(app_env=AppEnv.DEVELOPMENT, mapping_operator_uids=(SIMULATED_UID,))
+    configuration = operator_settings(
+        app_env=AppEnv.DEVELOPMENT,
+        mapping_operator_uids=(SIMULATED_UID,),
+        mapping_operator_lock_file=tmp_path / "operator.lock",
+    )
     monkeypatch.setattr(os, "geteuid", lambda: SIMULATED_UID, raising=False)
     # Only redirect the outer dev-tool DB capability to this test's real PG DB.
     # Both clients, normalization, approval evaluation and publication stay real.
