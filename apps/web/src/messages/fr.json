@@ -273,7 +273,10 @@
     "prepaid": "Prépaiement",
     "paymentUnspecified": "Voir les conditions approuvées",
     "tax": "Traitement fiscal",
-    "taxValues": { "included": "Inclus dans le montant", "not_applicable": "Sans objet" },
+    "taxValues": {
+      "included": "Inclus dans le montant",
+      "not_applicable": "Sans objet"
+    },
     "periodAnchors": {
       "calendar_month": "Par mois civil",
       "instance_start": "À partir du début de l’instance",
@@ -379,5 +382,40 @@
     "versioningHelp": "Le document est publié dans un fichier versionné distinct.",
     "revision": "Révision : {version}",
     "tableAccessibilityLabel": "Tableau de document juridique avec défilement"
+  },
+  "Purchase": {
+    "title": "Achat et facturation",
+    "noAccess": "La préparation et les actions du Widget ne donnent pas accès au service payant.",
+    "loading": "Chargement de votre achat…",
+    "signIn": "Se connecter pour consulter",
+    "ineligible": "Vérifiez votre adresse e-mail dans votre compte pour continuer.",
+    "failed": "La demande a échoué. Actualisez le statut existant avant de réessayer.",
+    "conflict": "Conflit d’identité ou de conditions acceptées. Contactez l’assistance.",
+    "notReady": "La facturation n’est pas prête. Aucun accès au Widget n’a été émis.",
+    "reviewNeeded": "Cet achat nécessite une vérification de l’assistance. Ne créez pas un nouvel achat.",
+    "refresh": "Actualiser le statut",
+    "reference": "Référence de l’achat : {id}",
+    "seller": "Vendeur",
+    "service": "Service sélectionné",
+    "initial": "Total initial, raccordement inclus",
+    "renewal": "Conditions de renouvellement",
+    "cancellation": "Conditions de résiliation",
+    "draftLegal": "Exercice de consentement de développement. Ces documents juridiques sont des projets non approuvés.",
+    "commercialConsent": "Je confirme cette offre exacte, le total initial et les conditions de renouvellement et de résiliation.",
+    "recurringConsent": "Je consens explicitement aux prélèvements récurrents selon les versions sélectionnées.",
+    "purchase": "Préparer un achat simulé",
+    "continue": "Continuer l’achat existant",
+    "manage": "Ouvrir la gestion de facturation",
+    "close": "Fermer le Widget",
+    "stub": "SIMULATED : SDK Widget simulé. Aucun paiement, identifiant réel ou accès payant.",
+    "states": {
+      "not_ready": "Aucune préparation n’est prête. Consultez l’offre ci-dessous.",
+      "preparing": "Préparation en attente. Continuez l’achat existant.",
+      "recovery_pending": "Résultat externe incertain. Continuer lance une récupération sûre.",
+      "occupied": "Un achat réserve déjà ce produit.",
+      "manual_review": "Vérification de l’assistance requise. L’achat reste réservé.",
+      "manage": "Un abonnement est lié. Une nouvelle vérification est nécessaire pour ouvrir la facturation.",
+      "uncertain": "Réponse perdue ou refusée. Actualisez le statut pour retrouver la tentative existante."
+    }
   }
 }

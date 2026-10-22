@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import secrets
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -30,6 +31,7 @@ from app.domains.purchases.contracts import (
 from app.domains.purchases.preparation import PreparationContext, PurchasePreparation
 from app.domains.purchases.preparation_contracts import PreparationEvidence, PreparationGateway
 from app.domains.purchases.service import PurchaseApplication
+from app.domains.purchases.widget import WidgetApplication, WidgetBootstrap, WidgetProofInput
 from app.infrastructure.preflight import PreflightBudget, PreflightCleanupPending
 from app.integrations.lbx.client import LbxServerClient
 from app.integrations.lbx.offer_inputs import SelectedOfferInputs, SelectedOfferRequest
@@ -337,6 +339,17 @@ def purchase_application(
         clock=clock,
     )
 
+    def issue_widget(proof: WidgetProofInput) -> WidgetBootstrap:
+        if (
+            configuration.app_env == AppEnv.PRODUCTION
+            or configuration.purchase_simulated_profile_file is None
+            or proof.accepted.review.mapping.evidence_mode != MappingEvidenceMode.SIMULATED
+        ):
+            raise PurchaseRefused("billing_not_ready", 503)
+        # Deliberately not a JWT. A real signing key in runtime settings has no
+        # effect on this isolated stub path. Real account/SDK enablement remains blocked.
+        return WidgetBootstrap("SIMULATED:" + secrets.token_urlsafe(32))
+
     return PurchaseApplication(
         factory,
         scope=scope,
@@ -346,4 +359,12 @@ def purchase_application(
         clock=clock,
         lock_timeout_seconds=configuration.mapping_lock_timeout_seconds,
         preparation=preparation,
+        widget=WidgetApplication(
+            factory,
+            scope=scope,
+            decode_record=PreparationRecord.model_validate_json,
+            gateway=gateway,
+            clock=clock,
+            issue=issue_widget,
+        ),
     )

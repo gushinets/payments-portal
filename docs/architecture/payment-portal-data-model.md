@@ -164,6 +164,17 @@ closed states are `created`, `preparing`, `awaiting_external_result`, `linked`,
 `manual_review`. PostgreSQL triggers keep the accepted evidence/provenance
 fields immutable.
 
+ANY-709 persists `accepted_snapshot_schema_version=v1`. The JSON document
+contains `schema_version`, tenant/region/account/user scope, canonical request
+(selected revision, public fingerprint, explicit confirmations and exact
+document IDs/text hashes), the original review (mapping material/technical
+allowance, seller reference/revision, exact initial money and legal pins),
+source admission mapping/account-calendar date/timezone, and `accepted_at`.
+Decimal amounts serialize as strings; a monotonic admission deadline is never
+persisted. Widget Manage uses this original evidence and its purchase-specific
+acceptance event, not current catalog pricing or newly invented consent.
+Links without provable original acceptance remain not ready for Widget.
+
 `billing_purchase_scope_holds` serializes purchase ownership independently of
 access-primary selection. Its UUID primary key is `hold_id`;
 `(user_id, product_id)` is unique across both `held` and `released` rows, regardless of
@@ -208,8 +219,14 @@ create work. Customer creation has no purchase intent; agreement and
 subscription creation require one. Unknown timestamps are paired, the
 PostgreSQL deadline is exactly two hours after `unknown_since`, and recovery
 hint schema/document values are paired. One unresolved customer-create
-operation is allowed per customer. Operation-state vocabulary and recovery
-behavior remain owned by later runtime steps.
+operation is allowed per customer. ANY-709 owns the implemented
+`unsent` → `possible_send` → `unknown`/`bound`/`manual_review` path and
+`failed_before_send` outcomes. The committed send fence is the one CREATE
+permission; unresolved outcomes permit only discovery/point reads, with one
+coalesced work item and explicit two-hour escalation. No worker runs yet.
+The [Step 8 handoff](../engineering/ANY-709-unknown-recovery.md#step-8-handoff)
+records the reusable calls and retained ownership. Widget authorization writes
+no credential or paid projection to these tables.
 
 ## Reconciliation and access tables
 

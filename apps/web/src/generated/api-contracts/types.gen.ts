@@ -706,6 +706,50 @@ export type ValidationError = {
     type: string;
 };
 
+/**
+ * WidgetBootstrapRequest
+ */
+export type WidgetBootstrapRequest = {
+    /**
+     * Product Id
+     */
+    product_id: string;
+    /**
+     * Purchase Intent Id
+     */
+    purchase_intent_id?: string | null;
+};
+
+/**
+ * WidgetBootstrapResponse
+ */
+export type WidgetBootstrapResponse = {
+    /**
+     * Credential
+     */
+    credential: string;
+    /**
+     * Disablecreatesubscription
+     */
+    disableCreateSubscription?: true;
+    /**
+     * Disableeditsubscription
+     */
+    disableEditSubscription?: true;
+    /**
+     * Mode
+     */
+    mode: 'SIMULATED';
+    /**
+     * Sdk
+     */
+    sdk?: 'isolated_stub';
+    /**
+     * Widget Origin
+     */
+    widget_origin?: 'self';
+};
+
 export type ConfirmVerificationApiAuthEmailVerificationConfirmPostData = {
     body: EmailVerificationConfirmRequest;
     headers?: {
@@ -965,6 +1009,37 @@ export type ProductPurchaseStatusApiBillingProductsProductIdStatusGetResponses =
 };
 
 export type ProductPurchaseStatusApiBillingProductsProductIdStatusGetResponse = ProductPurchaseStatusApiBillingProductsProductIdStatusGetResponses[keyof ProductPurchaseStatusApiBillingProductsProductIdStatusGetResponses];
+
+export type WidgetBootstrapApiBillingWidgetBootstrapPostData = {
+    body: WidgetBootstrapRequest;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/billing/widget-bootstrap';
+};
+
+export type WidgetBootstrapApiBillingWidgetBootstrapPostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HTTPValidationError;
+};
+
+export type WidgetBootstrapApiBillingWidgetBootstrapPostError = WidgetBootstrapApiBillingWidgetBootstrapPostErrors[keyof WidgetBootstrapApiBillingWidgetBootstrapPostErrors];
+
+export type WidgetBootstrapApiBillingWidgetBootstrapPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: WidgetBootstrapResponse;
+};
+
+export type WidgetBootstrapApiBillingWidgetBootstrapPostResponse = WidgetBootstrapApiBillingWidgetBootstrapPostResponses[keyof WidgetBootstrapApiBillingWidgetBootstrapPostResponses];
 
 export type ListProductsApiCatalogProductsGetData = {
     body?: never;

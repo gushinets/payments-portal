@@ -6,7 +6,7 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.composition.purchases import purchase_application
@@ -24,6 +24,7 @@ from app.domains.purchases.contracts import (
     PurchaseReview,
 )
 from app.domains.purchases.service import PurchaseApplication
+from app.domains.purchases.widget import WidgetPrincipal
 from app.http.dependencies import get_current_session
 from app.models import PurchaseIntentState
 
@@ -57,6 +58,35 @@ class PurchaseResponse(BaseModel):
 class ProductPurchaseStatusResponse(BaseModel):
     state: Literal["not_ready", "preparing", "recovery_pending", "occupied", "manual_review", "manage"]
     purchase_intent_id: UUID | None
+
+
+class WidgetBootstrapRequest(BaseModel):
+    model_config = {"extra": "forbid", "hide_input_in_errors": True}
+
+    product_id: Annotated[str, Field(min_length=1, max_length=256, pattern=r"\S")]
+    purchase_intent_id: UUID | None = None
+
+
+class WidgetBootstrapResponse(BaseModel):
+    mode: Literal["SIMULATED"]
+    credential: str = Field(repr=False)
+    sdk: Literal["isolated_stub"] = "isolated_stub"
+    widget_origin: Literal["self"] = "self"
+    disableCreateSubscription: Literal[True] = True
+    disableEditSubscription: Literal[True] = True
+
+
+def widget_principal(
+    db: Annotated[Session, Depends(get_db)],
+    authorization: Annotated[str | None, Header()] = None,
+) -> WidgetPrincipal:
+    try:
+        user, session = get_current_session(db, authorization)
+        return WidgetPrincipal(user.id, session.id)
+    except HTTPException as error:
+        raise HTTPException(status_code=error.status_code, detail={"code": str(error.detail)}) from None
+    finally:
+        db.close()
 
 
 def present_review(review: PurchaseReview) -> PurchaseReviewResponse:
@@ -185,3 +215,20 @@ def product_purchase_status(
 ) -> ProductPurchaseStatusResponse:
     state, intent_id = use_case.product_status(user_id, product_id)
     return ProductPurchaseStatusResponse(state=state, purchase_intent_id=intent_id)
+
+
+@billing_router.post("/widget-bootstrap", response_model=WidgetBootstrapResponse)
+async def widget_bootstrap(
+    payload: WidgetBootstrapRequest,
+    principal: Annotated[WidgetPrincipal, Depends(widget_principal)],
+    use_case: Annotated[PurchaseApplication, Depends(application)],
+) -> WidgetBootstrapResponse:
+    try:
+        if use_case.widget is None:
+            raise PurchaseRefused("billing_not_ready", 503)
+        result = await use_case.widget.bootstrap(principal, payload.product_id, payload.purchase_intent_id)
+        return WidgetBootstrapResponse(mode=result.mode, credential=result.credential)
+    except AppError as error:
+        if isinstance(error, PurchaseRefused):
+            raise safe_error(error) from None
+        raise HTTPException(status_code=503, detail={"code": "billing_not_ready"}) from None

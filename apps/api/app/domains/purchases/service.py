@@ -28,6 +28,7 @@ from app.domains.purchases.contracts import (
 from app.domains.purchases.review import purchase_review, require_exact_consent
 from app.domains.purchases.transactions import reserve_purchase_scope
 from app.domains.purchases.preparation import PurchasePreparation
+from app.domains.purchases.widget import WidgetApplication
 from app.infrastructure.queries import purchase_preparation as preparation_queries
 from app.infrastructure.persistence.commercial_mappings import bound_publication_transaction, lock_mapping_scope
 from app.infrastructure.persistence.purchase_scopes import PurchaseScopeConflict, PurchaseScopeIdentity
@@ -59,6 +60,7 @@ class PurchaseApplication:
         clock: Callable[[], datetime],
         lock_timeout_seconds: float,
         preparation: PurchasePreparation | None = None,
+        widget: WidgetApplication | None = None,
     ) -> None:
         self.factory = factory
         self.scope = scope
@@ -68,6 +70,7 @@ class PurchaseApplication:
         self.clock = clock
         self.lock_timeout_seconds = lock_timeout_seconds
         self.preparation = preparation
+        self.widget = widget
 
     def _review(self, db: Session, product_id: str) -> PurchaseReview:
         seller, recurring = self.profile_terms()

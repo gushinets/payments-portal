@@ -108,7 +108,24 @@ class Settings(BaseSettings):
     mapping_operator_lock_file: Path | None = None
     # Opt-in local recorded purchase profile. Never enables production sales.
     purchase_simulated_profile_file: Path | None = None
+    # Dedicated Client JWT secret; the recorded composition cannot issue live credentials.
+    lbx_widget_signing_secret: SecretStr = SecretStr("")
     mapping_lock_timeout_seconds: float = Field(default=2.0, gt=0, le=10, allow_inf_nan=False)
+
+    @model_validator(mode="after")
+    def require_dedicated_widget_secret(self) -> Settings:
+        value = self.lbx_widget_signing_secret.get_secret_value()
+        if value and (
+            len(value.encode()) < 32
+            or value
+            in {
+                self.lbx_server_username.get_secret_value(),
+                self.lbx_server_password.get_secret_value(),
+                self.kernel_service_token.get_secret_value(),
+            }
+        ):
+            raise ValueError("LBX_WIDGET_SIGNING_SECRET must be dedicated and at least 32 bytes")
+        return self
 
     @field_validator("lbx_seller_organization_id", mode="before")
     @classmethod

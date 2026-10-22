@@ -1070,6 +1070,78 @@
         ],
         "title": "ValidationError",
         "type": "object"
+      },
+      "WidgetBootstrapRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "product_id": {
+            "maxLength": 256,
+            "minLength": 1,
+            "pattern": "\\S",
+            "title": "Product Id",
+            "type": "string"
+          },
+          "purchase_intent_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purchase Intent Id"
+          }
+        },
+        "required": [
+          "product_id"
+        ],
+        "title": "WidgetBootstrapRequest",
+        "type": "object"
+      },
+      "WidgetBootstrapResponse": {
+        "properties": {
+          "credential": {
+            "title": "Credential",
+            "type": "string"
+          },
+          "disableCreateSubscription": {
+            "const": true,
+            "default": true,
+            "title": "Disablecreatesubscription",
+            "type": "boolean"
+          },
+          "disableEditSubscription": {
+            "const": true,
+            "default": true,
+            "title": "Disableeditsubscription",
+            "type": "boolean"
+          },
+          "mode": {
+            "const": "SIMULATED",
+            "title": "Mode",
+            "type": "string"
+          },
+          "sdk": {
+            "const": "isolated_stub",
+            "default": "isolated_stub",
+            "title": "Sdk",
+            "type": "string"
+          },
+          "widget_origin": {
+            "const": "self",
+            "default": "self",
+            "title": "Widget Origin",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode",
+          "credential"
+        ],
+        "title": "WidgetBootstrapResponse",
+        "type": "object"
       }
     }
   },
@@ -1512,6 +1584,65 @@
           }
         },
         "summary": "Product Purchase Status",
+        "tags": [
+          "purchases"
+        ]
+      }
+    },
+    "/api/billing/widget-bootstrap": {
+      "post": {
+        "operationId": "widget_bootstrap_api_billing_widget_bootstrap_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WidgetBootstrapRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WidgetBootstrapResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Widget Bootstrap",
         "tags": [
           "purchases"
         ]

@@ -46,6 +46,9 @@ Start with the smallest document that matches the task.
 
 ### Implementation handoffs and references
 
+- [ANY-709 purchase recovery and Step 8 handoff](engineering/ANY-709-unknown-recovery.md)
+  — original accepted snapshot, durable preparation/fencing/UNKNOWN operations,
+  guarded Widget eligibility, isolated development journey and human evidence
 - [ANY-664 completed implementation plan](exec-plans/completed/ANY-664-implementation-plan.md)
   — all eight Portal steps DONE; implementation-commit CI evidence, retained
   real-enablement gates and handoff to ANY-504 program Step 7

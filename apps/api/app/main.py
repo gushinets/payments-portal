@@ -84,6 +84,7 @@ def create_app() -> FastAPI:
             or request.url.path.startswith("/api/billing/")
         ):
             response.headers["Cache-Control"] = "no-store"
+            response.headers["Referrer-Policy"] = "no-referrer"
         return response
 
     app.add_exception_handler(AppError, app_error_handler)

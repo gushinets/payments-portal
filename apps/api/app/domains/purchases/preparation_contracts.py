@@ -57,6 +57,16 @@ class PreparationEvidence(Protocol):
 
     def point_proven_document(self, observed_at: datetime) -> dict[str, JsonValue]: ...
 
+    def require_widget_binding(
+        self,
+        accepted: AcceptedPurchase,
+        customer_key: str,
+        customer_id: str,
+        agreement_id: str,
+        agreement_correlation: str,
+        subscription_correlation: str,
+    ) -> None: ...
+
 
 class PreparationGateway(Protocol):
     async def before_send(self, kind: ExternalCreateOperationKind, budget: PreflightBudget) -> None: ...

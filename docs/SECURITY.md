@@ -106,6 +106,34 @@ need, security treatment, and retention.
 
 ## High-risk review paths
 
+### ANY-709 Widget credentials
+
+The current purchase composition is development/test recorded-only. It never
+calls live LBX mutations or issues a real Widget credential. Its same-origin
+isolated SDK stub receives a random `SIMULATED:` handoff, never a JWT. Every
+open still repeats current owner/session/email, original purchase consent,
+dedicated agreement and effective subscription-price proof. Original legal
+versions may be retired, but their stored hashes and mapping applicability
+must still match. Missing historical provenance denies Manage authorization.
+
+The private LBX Client signer uses a dedicated runtime
+`LBX_WIDGET_SIGNING_SECRET` (at least 32 bytes), HS256, `ident_type=7`, string
+proven customer ID and current Unix `iat`. It rejects simulated evidence and
+does not add `exp`, backdate `iat`, persist JWTs or pretend to revoke them at
+Portal logout. Accepted ANY-634 B4/B5 policy retains provider replay for up to
+72 hours from `iat` and the separate Client API ACL risk. Live SDK/account
+enablement and real smoke remain blocked pending the required source evidence.
+
+Bootstrap uses authenticated Bearer POST and always returns `no-store` and
+`no-referrer`, including errors. No cookie credential selects the owner.
+Browser handoffs remain only in the active operation's memory, are discarded
+after SDK handoff, and never reach DOM attributes, URLs, persistent storage,
+analytics or logging. The local nonsecret purchase-attempt UUID may use
+sessionStorage for uncertain-reply retry; it is never a Widget credential.
+Close/unmount/navigation and session changes remove the mount; late responses
+are discarded by the shared session epoch guard. There is no remote SDK loader
+or guessed provider dispose method in the current browser composition.
+
 Authentication, payments, legal sources and seeds, migrations, telemetry
 redaction, production Compose, deployment configuration, and secret handling
 require human review. Agents may prepare changes and evidence but may not merge

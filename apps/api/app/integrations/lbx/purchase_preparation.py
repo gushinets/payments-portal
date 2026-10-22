@@ -13,6 +13,7 @@ from typing import Literal
 from pydantic import JsonValue, field_serializer, field_validator
 
 from app.domains.catalog.commercial_offer import SelectedCommercialOffer
+from app.domains.purchases.contracts import AcceptedPurchase
 from app.domains.purchases.preparation_contracts import CreateUncertain
 from app.infrastructure.preflight import PreflightBudget
 from app.integrations.lbx.client import LbxServerClient
@@ -46,6 +47,39 @@ class PreparationRecord(PrivateDto):
 
     def point_proven_document(self, observed_at: datetime) -> dict[str, JsonValue]:
         return {**self.storage_document(), "point_proven_at": observed_at.isoformat()}
+
+    def require_widget_binding(
+        self,
+        accepted: AcceptedPurchase,
+        customer_key: str,
+        customer_id: str,
+        agreement_id: str,
+        agreement_correlation: str,
+        subscription_correlation: str,
+    ) -> None:
+        offer_document = next((pin for pin in accepted.review.documents if pin.doc_type == "offer"), None)
+        policy = self.profile.inputs.policy
+        if (
+            self.customer.outer_id != customer_key
+            or self.agreement is None
+            or self.subscription is None
+            or offer_document is None
+            or str(self.agreement.user_id) != customer_id
+            or str(self.subscription.agreement_id) != agreement_id
+            or self.agreement.agreement_number != agreement_correlation
+            or self.subscription.outer_id != subscription_correlation
+            or self.agreement.organization_id != accepted.review.seller.organization_id
+            or self.profile.organization_id != accepted.review.seller.organization_id
+            or self.profile.seller_evidence.reference != accepted.review.seller.reference
+            or self.profile.seller_evidence.revision != accepted.review.seller.revision
+            or self.agreement.agreement_link != offer_document.url_path
+            or self.profile.selection.external_billing_account_id != accepted.external_billing_account_id
+            or (self.profile.selection.tenant_id, self.profile.selection.region)
+            != (accepted.tenant_id, accepted.region)
+            or policy is None
+            or policy.historical_applicability != "pinned_effective_terms"
+        ):
+            raise LbxPreparationBlocked()
 
     @field_serializer("agreement", when_used="json")
     def exact_zero_debt(self, value: PostAgreement | None) -> object:
