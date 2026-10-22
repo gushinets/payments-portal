@@ -166,6 +166,7 @@ def test_a_new_approved_revision_between_preflight_and_commit_requires_new_accep
                 evaluation=evaluation.document,
                 expected_previous_revision=1,
                 deadline=evaluation.deadline,
+                evidence_valid_until=evaluation.evidence_valid_until,
                 lock_timeout_seconds=0.2,
                 allow_simulated=True,
             )

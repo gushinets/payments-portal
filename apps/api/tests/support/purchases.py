@@ -135,6 +135,7 @@ def purchase_harness(
             evaluation=evaluated.document,
             expected_previous_revision=0,
             deadline=evaluated.deadline,
+            evidence_valid_until=evaluated.evidence_valid_until,
             lock_timeout_seconds=0.2,
             allow_simulated=True,
         ).stored
