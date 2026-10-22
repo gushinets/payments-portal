@@ -18,7 +18,13 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.composition.mapping_operator import account_billing_date, utc_now
 from app.composition.sources import SourceResources
 from app.core.settings import AppEnv, Settings
-from app.domains.catalog.commercial_offer import CommercialEvidenceMode, CommercialScope, SelectedCommercialOffer
+from app.domains.catalog.commercial_offer import (
+    CommercialEvidenceMode,
+    CommercialScope,
+    SelectedCommercialOffer,
+    canonical_document,
+    commercial_digest,
+)
 from app.domains.catalog.mapping_evidence import ApprovedMapping, MappingEvidenceMode, evaluate_mapping
 from app.domains.purchases.contracts import (
     PurchaseAdmissionProof,
@@ -172,6 +178,21 @@ async def compare_original_terms(
             raise PreflightCleanupPending() from None
 
 
+def preparation_fingerprint(profile: PreparationProfile) -> str:
+    # The account-local start date is determined at admission. Every stable
+    # preparation parameter, including activation and service selection, is pinned.
+    return commercial_digest(
+        canonical_document(
+            {
+                "schema": "purchase-preparation-terms-v1",
+                "profile": profile.model_dump(
+                    mode="json", exclude={"server_username": True, "selection": {"effective_on"}}
+                ),
+            }
+        )
+    )
+
+
 def purchase_application(
     configuration: Settings,
     factory: sessionmaker[Session],
@@ -188,19 +209,7 @@ def purchase_application(
             loaded = load_profile(configuration)
         return loaded
 
-    def terms() -> tuple[SellerEvidence, bool]:
-        value, _ = profile()
-        return value.seller, value.recurring_required
-
-    async def compare(review: PurchaseReview) -> PurchaseAdmissionProof:
-        if sources is None:
-            raise PurchaseRefused("purchase_sources_unavailable", 503)
-        value, directory = profile()
-        return await compare_original_terms(configuration, sources, review, value, directory, clock=clock)
-
-    def make_record(
-        context: PreparationContext, kind: ExternalCreateOperationKind, correlation: str
-    ) -> PreparationRecord:
+    def preparation_profile() -> PreparationProfile:
         value, directory = profile()
         try:
             with (directory.parent / "preparation.json").open("rb") as stream:
@@ -213,11 +222,31 @@ def purchase_application(
         if (
             preparation.selection != value.selection
             or preparation.inputs != value.inputs
-            or preparation.organization_id != context.accepted.review.seller.organization_id
+            or preparation.organization_id != value.seller.organization_id
             or preparation.server_origin != "https://purchase-recording.invalid"
             or preparation.server_username != SecretStr("SIMULATED-purchase-recording")
         ):
             raise PurchaseRefused("purchase_preparation_profile_conflict", 409)
+        return preparation
+
+    def terms() -> tuple[SellerEvidence, bool, str]:
+        value, _ = profile()
+        return value.seller, value.recurring_required, preparation_fingerprint(preparation_profile())
+
+    async def compare(review: PurchaseReview) -> PurchaseAdmissionProof:
+        if preparation_fingerprint(preparation_profile()) != review.preparation_fingerprint:
+            raise PurchaseRefused("commercial_terms_conflict", 409)
+        if sources is None:
+            raise PurchaseRefused("purchase_sources_unavailable", 503)
+        value, directory = profile()
+        return await compare_original_terms(configuration, sources, review, value, directory, clock=clock)
+
+    def make_record(
+        context: PreparationContext, kind: ExternalCreateOperationKind, correlation: str
+    ) -> PreparationRecord:
+        preparation = preparation_profile()
+        if preparation_fingerprint(preparation) != context.accepted.review.preparation_fingerprint:
+            raise PurchaseRefused("commercial_terms_conflict", 409)
         preparation = preparation.model_copy(
             update={
                 "selection": preparation.selection.model_copy(

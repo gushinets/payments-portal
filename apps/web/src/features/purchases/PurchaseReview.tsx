@@ -74,6 +74,8 @@ export function PurchaseReview({
             {catalog(`periodUnits.${review.offer.period.unit}`, {
               count: review.offer.period.length
             })}
+            {" · "}
+            <span>{catalog(`periodAnchors.${review.offer.period.anchor}`)}</span>
           </dd>
         </div>
         <div>

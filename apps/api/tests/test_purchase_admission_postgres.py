@@ -16,12 +16,67 @@ from app.domains.purchases.contracts import PurchaseAdmissionProof, PurchaseRequ
 from app.domains.purchases.service import PurchaseApplication
 from app.infrastructure.preflight import PreflightBudget
 from app.models import LegalAcceptanceEvent, PurchaseIntent
-from apps.api.tests.support.purchases import PurchaseHarness, assert_no_purchase, edit_profile
+from apps.api.tests.support.purchases import PurchaseHarness, assert_no_purchase, edit_profile, edit_preparation_profile
 from apps.api.tests.support.purchases import harness as harness
 from tools.kernel_manifest_mock.server import MockConfig, Scenario
 
 
 pytestmark = [pytest.mark.postgres, pytest.mark.usefixtures("mapping_clock")]
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("is_offer", False),
+        ("service_composition", "account_default_single"),
+        ("activate_by_balance", False),
+        ("activate_manually", True),
+        ("demo_period_length", 1),
+    ],
+)
+@pytest.mark.parametrize("before_commit", [False, True])
+def test_preparation_drift_requires_new_consent(
+    harness: PurchaseHarness, monkeypatch: pytest.MonkeyPatch, field: str, value: object, before_commit: bool
+) -> None:
+    payload = harness.payload()
+
+    def change(profile: dict) -> None:
+        profile.update({field: value})
+
+    if before_commit:
+        original = PurchaseApplication._commit
+
+        def commit(
+            self: PurchaseApplication,
+            user_id: UUID,
+            key: str,
+            request: PurchaseRequest,
+            review: PurchaseReview,
+            proof: PurchaseAdmissionProof,
+        ) -> UUID:
+            edit_preparation_profile(harness, change)
+            return original(self, user_id, key, request, review, proof)
+
+        monkeypatch.setattr(PurchaseApplication, "_commit", commit)
+    else:
+        edit_preparation_profile(harness, change)
+        assert harness.review()["fingerprint"] != payload["expected_fingerprint"]
+    response = harness.post(payload)
+    assert response.status_code == 409, response.text
+    assert response.json()["detail"]["code"] == "commercial_terms_conflict"
+    assert_no_purchase(harness)
+
+
+def test_review_does_not_pin_a_calendar_start_date(harness: PurchaseHarness) -> None:
+    payload = harness.payload()
+    harness.now = datetime(2026, 10, 17, 12, tzinfo=UTC)
+    assert harness.review()["fingerprint"] == payload["expected_fingerprint"]
+    response = harness.post(payload)
+    assert response.status_code == 202, response.text
+    with harness.factory() as db:
+        intent = db.get(PurchaseIntent, UUID(response.json()["purchase_intent_id"]))
+        assert intent.accepted_snapshot["admission"]["effective_on"] == "2026-10-17"
+        assert intent.accepted_snapshot["review"]["preparation_fingerprint"].startswith("sha256:")
 
 
 @pytest.mark.parametrize("fault", ["outage", "price", "extra_default", "currency", "quantity", "metric"])

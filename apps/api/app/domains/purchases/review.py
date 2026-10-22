@@ -34,6 +34,7 @@ def purchase_review(
     allow_simulated: bool,
     seller: SellerEvidence,
     recurring_required: bool,
+    preparation_fingerprint: str,
     now: datetime,
 ) -> PurchaseReview:
     product = get_product_preview(db, scope=scope, allow_simulated=allow_simulated, product_id=product_id)
@@ -79,6 +80,7 @@ def purchase_review(
                 "seller": seller.model_dump(mode="json"),
                 "seller_name": entity.name,
                 "recurring_required": recurring_required,
+                "preparation_fingerprint": preparation_fingerprint,
                 "documents": [doc.model_dump(mode="json") for doc in pinned],
             }
         )
@@ -88,6 +90,7 @@ def purchase_review(
         revision_number=stored.revision_number,
         mapping=stored.document,
         fingerprint=fingerprint,
+        preparation_fingerprint=preparation_fingerprint,
         seller=seller,
         seller_name=entity.name,
         initial_amount=initial_amount(

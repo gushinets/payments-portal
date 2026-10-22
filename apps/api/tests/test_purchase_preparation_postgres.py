@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections import Counter
 from collections.abc import Callable
@@ -25,6 +26,8 @@ from app.domains.purchases.contracts import PurchaseAdmissionProof
 from app.infrastructure.persistence.external_creates import ExternalCreateClaim
 from app.infrastructure.preflight import PreflightBudget
 from app.domains.purchases.service import PurchaseApplication
+from app.domains.purchases.transactions import release_purchase_scope
+from app.infrastructure.persistence.purchase_scopes import PurchaseScopeIdentity, PurchaseScopeReleaseEvidence
 from app.integrations.lbx.client import API_PATH
 from app.integrations.lbx.preparation import ProofState
 from app.integrations.lbx.preparation_profile import PreparationProfile
@@ -43,13 +46,15 @@ from app.models import (
     ExternalSubscription,
     ExternalSubscriptionCommercialAccessStatus,
     ExternalSubscriptionFinancialAccessStatus,
+    ExternalSubscriptionLifecycleStatus,
     ManualReviewCase,
     PurchaseIntent,
     PurchaseIntentState,
     PurchaseScopeHoldState,
+    PurchaseScopeReleaseKind,
     User,
 )
-from apps.api.tests.support.purchases import PurchaseHarness, edit_profile
+from apps.api.tests.support.purchases import PurchaseHarness, edit_profile, edit_preparation_profile
 from apps.api.tests.support.purchases import harness as harness
 from tools.kernel_manifest_mock.server import MockConfig, Scenario
 
@@ -75,6 +80,23 @@ def admitted(harness: PurchaseHarness) -> str:
 
 def resume(harness: PurchaseHarness, intent_id: str) -> httpx.Response:
     return harness.client.post(f"/api/purchases/{intent_id}/continue", headers=harness.headers)
+
+
+def audited_release(harness: PurchaseHarness) -> None:
+    with harness.factory() as db:
+        hold = db.scalars(select(BillingPurchaseScopeHold)).one()
+        scope = PurchaseScopeIdentity(
+            hold.user_id, hold.product_id, hold.tenant_id, hold.region, hold.external_billing_account_id
+        )
+        epoch = hold.ownership_epoch
+    release_purchase_scope(
+        harness.factory,
+        scope=scope,
+        expected_epoch=epoch,
+        evidence=PurchaseScopeReleaseEvidence(
+            PurchaseScopeReleaseKind.AUDITED_SUPPORT, "SIMULATED:reviewed-release", "operator:test", harness.now
+        ),
+    )
 
 
 def edit_recording(harness: PurchaseHarness, name: str, change: Callable[[object], None]) -> None:
@@ -171,6 +193,7 @@ def test_complete_proof_links_only_an_expired_denying_projection(
     edit_recording(harness, "subscription", change_hint)
     with harness.factory() as db:
         original = db.get(PurchaseIntent, UUID(intent_id)).accepted_snapshot
+        assert original["review"]["preparation_fingerprint"].startswith("sha256:")
         original_epoch = db.scalars(select(BillingPurchaseScopeHold)).one().ownership_epoch
     response = resume(harness, intent_id)
     assert response.status_code == 202, response.text
@@ -218,6 +241,9 @@ def test_ambiguous_post_recovers_by_get_after_restart_without_reposting(
     # Every HTTP request composes a fresh application/client. Persisted original
     # commands suffice even with Kernel offline and the current profile removed.
     harness.server.config = MockConfig(app_env="test", token="offline", scenario=Scenario.UNAVAILABLE)
+    edit_preparation_profile(
+        harness, lambda profile: profile.update(is_offer=False, service_composition="account_default_single")
+    )
     harness.profile_path.unlink()
     use_case = preparation(harness)
     calls = len(harness.source_calls)
@@ -233,6 +259,8 @@ def test_ambiguous_post_recovers_by_get_after_restart_without_reposting(
         ).one()
         assert operation.operation_state == ExternalCreateOperationState.BOUND
         assert operation.send_fencing_token == 1
+        assert operation.recovery_hint_document["profile"]["is_offer"] is True
+        assert operation.recovery_hint_document["profile"]["service_composition"] == "explicit_single"
 
 
 @pytest.mark.parametrize("count", [0, 2])
@@ -292,6 +320,10 @@ def test_crash_after_claim_before_packet_has_durable_deadline_and_requires_reads
         assert db.scalars(select(BillingWorkItem)).one().work_state == "completed"
         assert db.scalars(select(ManualReviewCase)).one().evidence_document["principal"] == "operator:test"
         assert db.scalars(select(BillingPurchaseScopeHold)).one().hold_state == PurchaseScopeHoldState.HELD
+        assert (
+            db.scalars(select(ExternalBillingCustomer)).one().binding_state
+            == ExternalBillingCustomerBindingState.UNBOUND
+        )
 
 
 def test_concurrent_continuations_claim_each_create_once(harness: PurchaseHarness, traffic: Traffic) -> None:
@@ -303,6 +335,109 @@ def test_concurrent_continuations_claim_each_create_once(harness: PurchaseHarnes
     assert all(count == 1 for count in traffic.posts.values())
     with harness.factory() as db:
         assert db.scalar(select(func.count()).select_from(ExternalSubscription)) == 1
+
+
+@pytest.mark.parametrize(
+    "kind,name,missing",
+    [
+        (ExternalCreateOperationKind.CUSTOMER, "user", "outer_id"),
+        (ExternalCreateOperationKind.AGREEMENT, "agreement", "is_offer"),
+        (ExternalCreateOperationKind.SUBSCRIPTION, "subscription", "total_price"),
+    ],
+)
+def test_incomplete_competing_recovery_does_not_fence_successful_create(
+    harness: PurchaseHarness,
+    traffic: Traffic,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: ExternalCreateOperationKind,
+    name: str,
+    missing: str,
+) -> None:
+    intent_id = UUID(admitted(harness))
+    use_case = preparation(harness)
+    original_create = LbxPurchasePreparation.create
+    path = harness.profile_path.parent / "recordings" / f"{name}.json"
+    original_recording = path.read_bytes()
+
+    async def race() -> None:
+        started, finish = asyncio.Event(), asyncio.Event()
+
+        async def delayed_create(
+            self: LbxPurchasePreparation, selected: ExternalCreateOperationKind, budget: PreflightBudget
+        ) -> int:
+            result = await original_create(self, selected, budget)
+            if selected == kind:
+                started.set()
+                await finish.wait()
+            return result
+
+        monkeypatch.setattr(LbxPurchasePreparation, "create", delayed_create)
+        first = asyncio.create_task(use_case.advance(harness.user_id, intent_id))
+        try:
+            async with asyncio.timeout(10):
+                await started.wait()
+                with harness.factory() as db:
+                    operation = db.scalars(
+                        select(ExternalCreateOperation).where(ExternalCreateOperation.operation_kind == kind)
+                    ).one()
+                    original_fence = (operation.send_fencing_token, operation.scope_ownership_epoch)
+                edit_recording(harness, name, lambda row: row.pop(missing))
+                # Several continuations observe incomplete GETs while the
+                # original POST is still waiting for its acknowledgement.
+                for _ in range(2):
+                    await use_case.advance(harness.user_id, intent_id, read_only=True)
+                with harness.factory() as db:
+                    operation = db.scalars(
+                        select(ExternalCreateOperation).where(ExternalCreateOperation.operation_kind == kind)
+                    ).one()
+                    assert operation.operation_state == ExternalCreateOperationState.UNKNOWN
+                    assert (operation.send_fencing_token, operation.scope_ownership_epoch) == original_fence
+                    assert db.get(PurchaseIntent, intent_id).state == PurchaseIntentState.AWAITING_EXTERNAL_RESULT
+                    assert db.scalars(select(BillingPurchaseScopeHold)).one().hold_state == PurchaseScopeHoldState.HELD
+                    assert db.scalar(select(func.count()).select_from(ManualReviewCase)) == 0
+        finally:
+            path.write_bytes(original_recording)
+            finish.set()
+            await first
+
+    harness.client.portal.call(race)
+    assert application(harness).status(harness.user_id, intent_id).state == "linked"
+    assert traffic.posts == {"/users": 1, "/agreements": 1, "/subscriptions": 1}
+    with harness.factory() as db:
+        assert db.scalar(select(func.count()).select_from(ExternalSubscription)) == 1
+        assert db.scalar(select(func.count()).select_from(ManualReviewCase)) == 0
+
+
+@pytest.mark.parametrize("missing", [True, False])
+def test_incomplete_customer_point_read_remains_recoverable_without_identity_conflict(
+    harness: PurchaseHarness, traffic: Traffic, missing: bool
+) -> None:
+    intent_id = admitted(harness)
+    path = harness.profile_path.parent / "recordings/user.json"
+    original = path.read_bytes()
+    edit_recording(harness, "user", lambda row: row.pop("outer_id") if missing else row.update(outer_id=None))
+    for _ in range(2):
+        response = resume(harness, intent_id)
+        assert response.status_code == 202, response.text
+        assert response.json()["state"] == "awaiting_external_result"
+    assert traffic.posts == {"/users": 1}
+    with harness.factory() as db:
+        assert (
+            db.scalars(select(ExternalBillingCustomer)).one().binding_state
+            == ExternalBillingCustomerBindingState.UNBOUND
+        )
+        assert db.scalars(select(ExternalCreateOperation)).one().operation_state == ExternalCreateOperationState.UNKNOWN
+        assert db.scalar(select(func.count()).select_from(ManualReviewCase)) == 0
+    widget = harness.client.post(
+        "/api/billing/widget-bootstrap",
+        headers=harness.headers,
+        json={"product_id": "proposal_ai", "purchase_intent_id": intent_id},
+    )
+    assert widget.status_code == 409, widget.text
+    assert traffic.posts == {"/users": 1}
+    path.write_bytes(original)
+    assert resume(harness, intent_id).json()["state"] == "linked"
+    assert traffic.posts == {"/users": 1, "/agreements": 1, "/subscriptions": 1}
 
 
 def test_same_bound_result_after_link_epoch_advance_is_harmless(
@@ -357,6 +492,55 @@ def test_unsent_drift_date_or_ineligibility_cannot_send(
         assert db.scalar(select(func.count()).select_from(BillingWorkItem)) == 0
 
 
+@pytest.mark.parametrize("kind", list(ExternalCreateOperationKind))
+@pytest.mark.parametrize("saved_unsent", [False, True])
+@pytest.mark.parametrize("field,value", [("is_offer", False), ("service_composition", "account_default_single")])
+def test_preparation_pin_blocks_changed_config_before_each_unsent_create(
+    harness: PurchaseHarness,
+    traffic: Traffic,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: ExternalCreateOperationKind,
+    saved_unsent: bool,
+    field: str,
+    value: object,
+) -> None:
+    intent_id = UUID(admitted(harness))
+    use_case = preparation(harness)
+    original_bind = PurchasePreparation._bind
+    previous = {
+        ExternalCreateOperationKind.AGREEMENT: ExternalCreateOperationKind.CUSTOMER,
+        ExternalCreateOperationKind.SUBSCRIPTION: ExternalCreateOperationKind.AGREEMENT,
+    }.get(kind)
+    if previous is not None:
+
+        def stop_after_previous(
+            self: PurchasePreparation, user_id: UUID, purchase_id: UUID, step: PreparationStep, object_id: int
+        ) -> bool:
+            bound = original_bind(self, user_id, purchase_id, step, object_id)
+            return bound and step.kind != previous
+
+        with monkeypatch.context() as patch:
+            patch.setattr(PurchasePreparation, "_bind", stop_after_previous)
+            assert resume(harness, str(intent_id)).status_code == 202
+    if saved_unsent:
+        step = use_case._next(harness.user_id, intent_id, read_only=False)
+        assert step is not None and step.kind == kind and step.state == ExternalCreateOperationState.UNSENT
+    before = traffic.posts.copy()
+    with harness.factory() as db:
+        accepted = db.get(PurchaseIntent, intent_id).accepted_snapshot
+    edit_preparation_profile(harness, lambda profile: profile.update({field: value}))
+    response = resume(harness, str(intent_id))
+    assert response.status_code == 409, response.text
+    assert response.json()["detail"]["code"] == "commercial_terms_conflict"
+    assert traffic.posts == before
+    with harness.factory() as db:
+        assert db.get(PurchaseIntent, intent_id).accepted_snapshot == accepted
+        for operation in db.scalars(select(ExternalCreateOperation)):
+            if operation.operation_kind == kind:
+                assert operation.operation_state == ExternalCreateOperationState.UNSENT
+                assert operation.send_fencing_token == 0
+
+
 @pytest.mark.parametrize(
     "name,field,value",
     [
@@ -378,7 +562,16 @@ def test_receipt_without_complete_matching_point_proof_blocks_link(
         assert db.scalar(select(func.count()).select_from(ExternalSubscription)) == 0
         assert db.scalar(select(func.count()).select_from(ManualReviewCase)) == 1
         assert db.scalars(select(BillingPurchaseScopeHold)).one().hold_state == PurchaseScopeHoldState.HELD
+        customer = db.scalars(select(ExternalBillingCustomer)).one()
+        assert customer.binding_state == (
+            ExternalBillingCustomerBindingState.IDENTITY_CONFLICT
+            if name == "user"
+            else ExternalBillingCustomerBindingState.BOUND
+        )
     assert traffic.posts["/subscriptions"] == (1 if name == "subscription" else 0)
+    before = traffic.posts.copy()
+    assert resume(harness, intent_id).json()["state"] == "manual_review"
+    assert traffic.posts == before
 
 
 def test_existing_customer_prior_selected_subscription_blocks_new_subscription(
@@ -433,6 +626,47 @@ def test_owned_status_and_product_resume_are_db_only_during_outage(harness: Purc
     assert harness.client.post(f"/api/purchases/{intent_id}/continue", headers=other).status_code == 404
     assert harness.client.get(f"/api/purchases/{intent_id}", headers=other).status_code == 404
     assert traffic.requests == calls
+
+
+def test_released_attempt_is_history_and_new_hold_is_current(harness: PurchaseHarness, traffic: Traffic) -> None:
+    old_id = admitted(harness)
+    old = application(harness).status(harness.user_id, UUID(old_id))
+    audited_release(harness)
+    response = harness.client.get("/api/billing/products/proposal_ai/status", headers=harness.headers)
+    assert response.status_code == 200, response.text
+    assert response.json() == {"state": "not_ready", "purchase_intent_id": None}
+    assert application(harness).status(harness.user_id, UUID(old_id)) == old
+    assert (
+        harness.client.get(
+            f"/api/purchases/{old_id}", headers={"Authorization": "Bearer " + harness.other_token}
+        ).status_code
+        == 404
+    )
+    new = harness.post(harness.payload(), key="after-release")
+    assert new.status_code == 202, new.text
+    new_id = new.json()["purchase_intent_id"]
+    assert new_id != old_id
+    response = harness.client.get("/api/billing/products/proposal_ai/status", headers=harness.headers)
+    assert response.json() == {"state": "preparing", "purchase_intent_id": new_id}
+    assert application(harness).status(harness.user_id, UUID(old_id)) == old
+    assert traffic.posts == {}
+
+
+@pytest.mark.parametrize("ended", [False, True])
+def test_without_hold_only_nonterminal_subscription_offers_manage(
+    harness: PurchaseHarness, traffic: Traffic, ended: bool
+) -> None:
+    intent_id = admitted(harness)
+    assert resume(harness, intent_id).json()["state"] == "linked"
+    if ended:
+        with harness.factory.begin() as db:
+            db.scalars(select(ExternalSubscription)).one().lifecycle_status = ExternalSubscriptionLifecycleStatus.ENDED
+    audited_release(harness)
+    before = list(traffic.requests)
+    response = harness.client.get("/api/billing/products/proposal_ai/status", headers=harness.headers)
+    assert response.status_code == 200, response.text
+    assert response.json() == {"state": "not_ready" if ended else "manage", "purchase_intent_id": None}
+    assert traffic.requests == before
 
 
 def test_lost_bind_commit_acknowledgement_never_sends_again(
@@ -507,7 +741,7 @@ def test_lost_claim_commit_acknowledgement_does_not_authorize_post(
         assert db.scalars(select(BillingWorkItem)).one().work_state == "pending"
 
 
-def test_late_proof_cannot_bind_after_ownership_epoch_changes(harness: PurchaseHarness, traffic: Traffic) -> None:
+def test_late_proof_cannot_bind_after_audited_release_and_new_owner(harness: PurchaseHarness, traffic: Traffic) -> None:
     intent_id = admitted(harness)
     use_case = preparation(harness)
     step = use_case._next(harness.user_id, UUID(intent_id), read_only=False)
@@ -515,12 +749,18 @@ def test_late_proof_cannot_bind_after_ownership_epoch_changes(harness: PurchaseH
     proof = harness.client.portal.call(use_case.fresh_compare, step.accepted.review)
     claim = use_case._claim(harness.user_id, UUID(intent_id), step, proof)
     assert claim is not None
-    with harness.factory.begin() as db:
-        db.scalars(select(BillingPurchaseScopeHold)).one().ownership_epoch += 1
+    audited_release(harness)
+    response = harness.post(harness.payload(), key="replacement-owner")
+    assert response.status_code == 202, response.text
+    new_id = UUID(response.json()["purchase_intent_id"])
     assert not use_case._bind(harness.user_id, UUID(intent_id), replace(step, claim=claim), 1501)
     with harness.factory() as db:
-        assert db.scalars(select(ExternalBillingCustomer)).one().provider_customer_id is None
+        customer = db.scalars(select(ExternalBillingCustomer)).one()
+        assert customer.provider_customer_id is None
+        assert customer.binding_state == ExternalBillingCustomerBindingState.UNBOUND
         assert db.scalars(select(ManualReviewCase)).one().reason_code == "late_create_fence_conflict"
+        assert db.scalars(select(BillingPurchaseScopeHold)).one().purchase_intent_id == new_id
+        assert db.get(PurchaseIntent, new_id).state == PurchaseIntentState.CREATED
     assert traffic.posts == {}
 
 

@@ -73,6 +73,9 @@ class PurchaseReview(PurchaseInput):
     revision_number: int
     mapping: MappingDocument
     fingerprint: str
+    # Older snapshots remain readable/recoverable; a missing pin cannot admit
+    # another unsent CREATE because it cannot match the current fingerprint.
+    preparation_fingerprint: Annotated[str | None, Field(pattern=r"^sha256:[0-9a-f]{64}$")] = None
     seller: SellerEvidence
     seller_name: str
     initial_amount: str

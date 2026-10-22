@@ -158,18 +158,7 @@ def product_owner(
         )
         .limit(1)
     )
-    intent = db.scalar(
-        select(PurchaseIntent)
-        .where(
-            PurchaseIntent.user_id == user_id,
-            PurchaseIntent.product_id == product_id,
-            PurchaseIntent.external_billing_account_id == account_id,
-            PurchaseIntent.resolved_at.is_(None),
-        )
-        .order_by(PurchaseIntent.created_at)
-        .limit(1)
-    )
-    return intent, subscription is not None
+    return None, subscription is not None
 
 
 def other_customer_operations(db: Session, intent: PurchaseIntent) -> bool:

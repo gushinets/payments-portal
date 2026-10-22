@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import Awaitable, Callable
+from dataclasses import replace
 from datetime import datetime
 from uuid import UUID, uuid4
 
@@ -222,7 +223,14 @@ class PurchasePreparation:
             return claim
 
     def _review_operation(
-        self, db: Session, operation: ExternalCreateOperation, intent: PurchaseIntent, *, reason: str, principal: str
+        self,
+        db: Session,
+        operation: ExternalCreateOperation,
+        intent: PurchaseIntent,
+        *,
+        reason: str,
+        principal: str = "purchase-preparation",
+        identity_conflict: bool = False,
     ) -> None:
         if queries.open_review(db, operation.create_operation_id) is None:
             db.add(
@@ -243,7 +251,7 @@ class PurchasePreparation:
         operation.operation_state = ExternalCreateOperationState.MANUAL_REVIEW
         operation.updated_at = self.clock()
         queries.complete_recovery_item(db, operation.create_operation_id)
-        if operation.operation_kind == ExternalCreateOperationKind.CUSTOMER:
+        if identity_conflict and operation.operation_kind == ExternalCreateOperationKind.CUSTOMER:
             customer = db.get(ExternalBillingCustomer, operation.customer_id)
             customer.binding_state = ExternalBillingCustomerBindingState.IDENTITY_CONFLICT
             customer.binding_updated_at = self.clock()
@@ -259,18 +267,20 @@ class PurchasePreparation:
         reason: str,
         manual: bool = False,
         before_send: bool = False,
+        identity_conflict: bool = False,
     ) -> None:
         with self.factory.begin() as db:
             intent = self._owned(db, user_id, intent_id)
             # The old hold remains the first lock even following audited release.
             queries.lock_original_scope(db, intent)
             operation = queries.lock_operation(db, step.operation_id)
-            if operation.operation_state == ExternalCreateOperationState.BOUND:
-                return
-            if operation.send_fencing_token != step.claim.send_fencing_token:
+            if (
+                operation.operation_state == ExternalCreateOperationState.BOUND
+                or operation.send_fencing_token != step.claim.send_fencing_token
+            ):
                 return
             if manual:
-                self._review_operation(db, operation, intent, reason=reason, principal="purchase-preparation")
+                self._review_operation(db, operation, intent, reason=reason, identity_conflict=identity_conflict)
             elif operation.operation_state != ExternalCreateOperationState.MANUAL_REVIEW:
                 operation.operation_state = (
                     ExternalCreateOperationState.FAILED_BEFORE_SEND
@@ -281,7 +291,7 @@ class PurchasePreparation:
                 if before_send:
                     operation.resolved_at = self.clock()
                     queries.complete_recovery_item(db, operation.create_operation_id)
-                    self._review_operation(db, operation, intent, reason=reason, principal="purchase-preparation")
+                    self._review_operation(db, operation, intent, reason=reason)
                     operation.operation_state = ExternalCreateOperationState.FAILED_BEFORE_SEND
                 else:
                     intent.state = PurchaseIntentState.AWAITING_EXTERNAL_RESULT
@@ -295,9 +305,7 @@ class PurchasePreparation:
                 hold, _ = queries.locked_owner(db, intent)
             except ValueError:
                 operation = queries.lock_operation(db, step.operation_id)
-                self._review_operation(
-                    db, operation, intent, reason="late_create_fence_conflict", principal="purchase-preparation"
-                )
+                self._review_operation(db, operation, intent, reason="late_create_fence_conflict")
                 return False
             operation = queries.lock_operation(db, step.operation_id)
             if (
@@ -311,17 +319,13 @@ class PurchasePreparation:
                 # result for that exact bound operation remains harmless.
                 return False
             if hold.ownership_epoch != step.hold_epoch:
-                self._review_operation(
-                    db, operation, intent, reason="late_create_fence_conflict", principal="purchase-preparation"
-                )
+                self._review_operation(db, operation, intent, reason="late_create_fence_conflict")
                 return False
             if step.kind == ExternalCreateOperationKind.AGREEMENT and queries.agreement_already_linked(
                 db, intent.external_billing_account_id, str(object_id)
             ):
                 operation = queries.lock_operation(db, step.operation_id)
-                self._review_operation(
-                    db, operation, intent, reason="agreement_already_linked", principal="purchase-preparation"
-                )
+                self._review_operation(db, operation, intent, reason="agreement_already_linked")
                 return False
             if not bind_external_create(db, step.claim, verified_external_object_id=str(object_id), now=self.clock()):
                 operation = queries.lock_operation(db, step.operation_id)
@@ -329,9 +333,7 @@ class PurchasePreparation:
                     operation.operation_state != ExternalCreateOperationState.BOUND
                     or operation.bound_external_object_id != str(object_id)
                 ):
-                    self._review_operation(
-                        db, operation, intent, reason="late_create_fence_conflict", principal="purchase-preparation"
-                    )
+                    self._review_operation(db, operation, intent, reason="late_create_fence_conflict")
                 return False
             operation = db.get(ExternalCreateOperation, step.operation_id)
             operation.recovery_hint_document = step.record.point_proven_document(self.clock())
@@ -418,16 +420,7 @@ class PurchasePreparation:
                         claim = await asyncio.to_thread(self._claim, user_id, intent_id, step, proof)
                         if claim is None:
                             return
-                        step = PreparationStep(
-                            step.operation_id,
-                            step.kind,
-                            ExternalCreateOperationState.POSSIBLE_SEND,
-                            claim,
-                            step.record,
-                            step.accepted,
-                            step.customer_created_here,
-                            step.hold_epoch,
-                        )
+                        step = replace(step, state=ExternalCreateOperationState.POSSIBLE_SEND, claim=claim)
                         claimed = True
                         try:
                             object_id = await gateway.create(step.kind, budget)
@@ -443,18 +436,25 @@ class PurchasePreparation:
                     else:
                         result = await gateway.recover(step.kind, budget)
                     if result.state != ProofState.COMPLETE_MATCH or result.value is None:
+                        # A competing continuation can read an incomplete object
+                        # before the original CREATE finishes. Keep its claim
+                        # recoverable; only proven conflicts require review.
                         await asyncio.to_thread(
                             self._outcome,
                             user_id,
                             intent_id,
                             step,
                             reason=result.reason,
-                            manual=result.state != ProofState.UNRESOLVED,
+                            manual=result.state
+                            in (ProofState.MISMATCH, ProofState.IDENTITY_CONFLICT, ProofState.OWNER_CONFLICT),
+                            identity_conflict=result.state == ProofState.IDENTITY_CONFLICT,
                         )
                         return
                     if not await asyncio.to_thread(self._bind, user_id, intent_id, step, result.value):
                         return
             except IntegrityError:
+                # A storage constraint failure needs review; it is not by
+                # itself authoritative evidence of a foreign customer.
                 await asyncio.to_thread(
                     self._outcome, user_id, intent_id, step, reason="binding_identity_conflict", manual=True
                 )

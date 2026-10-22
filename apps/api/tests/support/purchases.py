@@ -205,6 +205,13 @@ def edit_profile(harness: PurchaseHarness, edit: Callable[[dict], None]) -> None
     harness.profile_path.write_text(json.dumps(profile))
 
 
+def edit_preparation_profile(harness: PurchaseHarness, edit: Callable[[dict], None]) -> None:
+    path = harness.profile_path.parent / "preparation.json"
+    profile = json.loads(path.read_text())
+    edit(profile)
+    path.write_text(json.dumps(profile))
+
+
 @pytest.fixture
 def harness(
     migrated_database: Engine,

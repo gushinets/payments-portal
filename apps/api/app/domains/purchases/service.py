@@ -55,7 +55,7 @@ class PurchaseApplication:
         *,
         scope: CommercialScope,
         allow_simulated: bool,
-        profile_terms: Callable[[], tuple[SellerEvidence, bool]],
+        profile_terms: Callable[[], tuple[SellerEvidence, bool, str]],
         fresh_compare: Callable[[PurchaseReview], Awaitable[PurchaseAdmissionProof]],
         clock: Callable[[], datetime],
         lock_timeout_seconds: float,
@@ -73,7 +73,7 @@ class PurchaseApplication:
         self.widget = widget
 
     def _review(self, db: Session, product_id: str) -> PurchaseReview:
-        seller, recurring = self.profile_terms()
+        seller, recurring, preparation_fingerprint = self.profile_terms()
         return purchase_review(
             db,
             scope=self.scope,
@@ -81,6 +81,7 @@ class PurchaseApplication:
             allow_simulated=self.allow_simulated,
             seller=seller,
             recurring_required=recurring,
+            preparation_fingerprint=preparation_fingerprint,
             now=self.clock(),
         )
 
