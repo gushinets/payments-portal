@@ -17,7 +17,10 @@ ownership, persistence, or paid-access derivation.
 
 The direct-provider/CloudPayments runtime and Portal-owned commercial/access
 lifecycle have been physically removed. The target persistence graph exists,
-starts empty, and has no current producer runtime.
+starts empty, and ANY-664's restricted publication path commits immutable
+commercial mapping revisions. Purchase orchestration, subscription
+reconciliation, paid-access derivation and invalidation delivery remain
+unimplemented. The two source-catalog projection tables remain inert.
 
 ## Cross-cutting critical paths
 
@@ -54,7 +57,7 @@ starts empty, and has no current producer runtime.
 - Webhook receipt, Widget callback, outbound command success, payment state, or
   manual operator input alone never grants paid access.
 
-These are target constraints. Provider integration, webhook processing,
+These are target constraints. Provider command flows, webhook processing,
 reconciliation workers, paid-access derivation, and invalidation delivery are
 not current runtime behavior.
 
@@ -67,9 +70,11 @@ targeted nested savepoints. A SQLAlchemy `Session` autobegin does not make the
 first helper the logical owner, and helpers do not finalize the outer
 transaction.
 
-Current identity/legal transaction boundaries are documented in
-[ARCHITECTURE.md](../ARCHITECTURE.md#current-transaction-map). No current
-runtime transaction populates the fifteen target billing tables.
+Current transaction boundaries are documented in
+[ARCHITECTURE.md](../ARCHITECTURE.md#current-transaction-map). In addition to
+identity/legal writes, the restricted ANY-664 publication path commits
+`commercial_mapping_revisions`; the remaining target billing producers are
+future work.
 
 Future database retry decisions use these semantics:
 

@@ -25,6 +25,10 @@ Each production deployment serves exactly one contour. Region Resolver is a
 separate planned service for contour selection; it is not implemented here.
 See [contours](docs/architecture/contours.md) and the
 [Region Resolver contract](docs/architecture/region-resolver-contract.md).
+The [Platform Kernel integration map](docs/integrations/platform-kernel.md)
+records actual peer implementation and the remaining enablement gates. Dashed
+Kernel arrows below are future requests to real endpoints; the current Manifest
+client is verified only against the separate development mock.
 
 ```mermaid
 flowchart LR
@@ -33,7 +37,10 @@ flowchart LR
   Browser --> Web["AnyToolAI Portal · Next.js web"]
   Web --> API["Portal backend · FastAPI"]
   API --> DB[("PostgreSQL")]
-  API -. "future AccessSnapshot contract" .-> Kernel["Platform Kernel"]
+  API -. "future GET capability-manifest" .-> Kernel["Platform Kernel"]
+  Kernel -. "future GET access-snapshots/{user_id}" .-> API
+  API -. "future POST access-invalidations" .-> Kernel
+  API -->|"current Manifest HTTP client · dev/test only"| Mock["Optional Kernel Manifest mock"]
   API -. "future external-billing integration" .-> Billing["External Billing"]
 ```
 

@@ -48,12 +48,21 @@ target or turn External Billing into a direct payment-provider integration.
   for provider-dependent production semantics, Widget/LBX production behavior,
   and launch.
 
+## Implementation status, 2026-10-23
+
+The retained implementation described in the original context and decision
+has since been physically removed. ANY-664 now supplies restricted immutable
+mapping publication and DB-only catalog browsing; purchases and paid access
+remain future work. See the current [architecture](../../../ARCHITECTURE.md).
+The retained wording records the decision's transition history and does not
+assert that executable direct-provider code still exists.
+
 ## Consequences
 
 - Target billing work has one authority chain: this ADR and the two accepted
   implementation baselines, narrowly superseded by the accepted live-source
   amendment for source reads/admission only.
-- Current direct-provider behavior remains characterizable without becoming a
+- Historical direct-provider behavior remains characterizable without becoming a
   target architecture option.
 - Unverified provider-dependent assumptions remain explicit Phase 0 gates and
   cannot grant production authority.

@@ -119,7 +119,9 @@ database lifecycle.
 - Target paid access changes only from the authoritative sources
   permitted by ADR 0005 and the accepted designs; a browser return, Widget
   callback, webhook, outbound request success, or payment state alone is not
-  access authority. No billing producer/callback runtime is currently present.
+  access authority. Restricted immutable mapping publication is implemented;
+  purchase, reconciliation, paid-access and billing-callback runtime remain
+  future work.
 - Never log authentication tokens, authorization headers, secrets, card fields,
   or unredacted webhook bodies.
 - Legal acceptance records are append-only.

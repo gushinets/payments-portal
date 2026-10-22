@@ -2,12 +2,14 @@
 
 Status: specification-derived development contract; SIMULATED fixtures.
 Implementation: ANY-664 implementation Step 1 (part of ANY-504 program Step 6).
-Verification: not run by the implementation agent; human verification pending.
+Verification: local conformance CI PASS is recorded in the [Step 8 handoff](step-8-handoff.md);
+real producer conformance is DEFERRED_NOT_IMPLEMENTED. This does not certify
+every manual procedure below or a new verification run.
 
 This directory describes the documented manifest boundary and explicit local
 conventions. It is not a Kernel-owned OpenAPI export, a delivered producer, a
 paid metric registry or evidence of production approval. Portal runtime must
-not import this directory or the mock. The eventual Portal HTTP client owns
+not import this directory or the mock. The implemented Portal HTTP client owns
 its Integration-boundary validation independently; there is no shared runtime
 schema package.
 
@@ -18,9 +20,10 @@ defines the request, response fields, enabled semantics and service-auth/HTTP
 requirements. Its researched source blob is
 `c42e8b48a34506f9a68f174556dc01bd94eb9554`. The
 [live-source amendment](../../../superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md)
-changes source admission strategy, not manifest field names. It remains a
-proposed production-policy amendment; the separately approved Portal-only
-execution scope permits this provisional mock now.
+was accepted by the owner on 2026-10-20. It narrowly supersedes source-catalog
+mirroring/new-sale TTL, without changing manifest field names or paid-access
+rules. Portal-only execution permits this provisional mock; acceptance does
+not approve production enablement.
 
 Kernel identity evidence is pinned to commit
 `079eb03e28d7a50b980795c63c3e4533b785d11f`, inspected read-only on
@@ -260,15 +263,18 @@ Restart with `--scenario unavailable` and repeat the authenticated request
 using `curl -i` to observe `503`. Restart with `--scenario timeout` and add
 `--max-time 0.1` to the authenticated curl command to observe a read timeout.
 The focused tests cover schema, references, literal digest, disabled/missing
-capabilities and the other injected failures over HTTP. No PASS is claimed
-until the human runs them.
+capabilities and the other injected failures over HTTP. The recorded local CI
+PASS is separate from manual execution of these commands; record any manual
+results independently rather than inferring them from CI.
 
 ANY-664 completion concerns Portal outputs against this provisional contract.
 Real Kernel producer delivery, production paid registry/release/quantity,
 service-auth/scope deployment and actual producer conformance remain future
 enablement gates. A compatible endpoint can later replace the mock through
 URL/credentials; incompatible wire/hash/auth requires explicit Integration
-boundary alignment first. No production sale or paid execution is authorized
+boundary alignment first. Portal currently refuses configured provisional
+Kernel sources in production; separate reviewed enablement is also required.
+No production sale or paid execution is authorized
 by a local mock demonstration.
 
 The [Step 8 handoff](step-8-handoff.md) retains local conformance CI and records

@@ -384,6 +384,69 @@ def test_external_billing_authority_graph_is_guarded_and_consistent(
     assert repo.check_required_markdown_links(source, [target]) == []
 
 
+@pytest.mark.parametrize(
+    ("source_relative", "target_relative"),
+    [
+        (source, "docs/superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md")
+        for source in (
+            "AGENTS.md",
+            "README.md",
+            "apps/api/AGENTS.md",
+            "ARCHITECTURE.md",
+            "docs/README.md",
+            "docs/PRODUCT.md",
+            "docs/RELIABILITY.md",
+            "docs/architecture/contours.md",
+            "docs/engineering/CODING_CONVENTIONS.md",
+        )
+    ]
+    + [
+        (source, "docs/integrations/platform-kernel.md")
+        for source in ("AGENTS.md", "ARCHITECTURE.md", "docs/README.md")
+    ]
+    + [
+        ("docs/integrations/platform-kernel.md", target)
+        for target in (
+            "docs/architecture/decisions/0005-external-billing-boundary.md",
+            "docs/superpowers/specs/2026-09-15-external-billing-boundary-design.md",
+            "docs/superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md",
+            "docs/superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md",
+        )
+    ],
+)
+def test_integration_authority_links_are_guarded_and_consistent(source_relative: str, target_relative: str) -> None:
+    source = repo.ROOT / source_relative
+    target = repo.ROOT / target_relative
+
+    assert target in repo.CORE_AUTHORITY_LINKS.get(source, ())
+    assert repo.check_required_markdown_links(source, [target]) == []
+
+
+@pytest.mark.parametrize(
+    ("source_relative", "target_relative"),
+    [
+        ("AGENTS.md", "docs/integrations/platform-kernel.md"),
+        (
+            "docs/integrations/platform-kernel.md",
+            "docs/superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md",
+        ),
+    ],
+)
+def test_removed_integration_authority_link_is_actionable(source_relative: str, target_relative: str) -> None:
+    source = repo.ROOT / source_relative
+    target = repo.ROOT / target_relative
+    required = repo.CORE_AUTHORITY_LINKS.get(source, ())
+    content = "\n".join(
+        f"[Authority]({Path(os.path.relpath(other, source.parent)).as_posix()})"
+        for other in required
+        if other != target
+    )
+
+    assert check_required_markdown_link_content(source, content, required, root=repo.ROOT) == [
+        f"Missing core authority link in {source.relative_to(repo.ROOT)}: {target.relative_to(repo.ROOT)}"
+    ]
+
+
 def _write_external_billing_documentation_fixture(root: Path) -> None:
     documents = {
         "AGENTS.md": ("For all new billing work, follow this target authority chain in order:\n"),
@@ -1474,7 +1537,7 @@ def test_runtime_env_windows_acl_removes_inheritance_for_current_user() -> None:
     assert invocations == [
         [
             "icacls",
-            "C:/repo/.harness/runtime.env",
+            str(Path("C:/repo/.harness/runtime.env")),
             "/inheritance:r",
             "/grant:r",
             "agent:RW",
@@ -1500,7 +1563,7 @@ def test_harness_directory_windows_acl_removes_inheritance_for_current_user() ->
     assert invocations == [
         [
             "icacls",
-            "C:/repo/.harness",
+            str(Path("C:/repo/.harness")),
             "/inheritance:r",
             "/grant:r",
             "agent:(OI)(CI)F",

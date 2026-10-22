@@ -1211,6 +1211,18 @@ EXTERNAL_BILLING_AUTHORITY_CHAIN = (
     EXTERNAL_BILLING_DESIGN,
     PORTAL_KERNEL_ACCESS_DESIGN,
 )
+LIVE_SOURCE_AMENDMENT = (
+    ROOT
+    / "docs"
+    / "superpowers"
+    / "specs"
+    / "2026-10-15-live-source-commercial-admission-design-amendment.md"
+)
+CURRENT_EXTERNAL_BILLING_AUTHORITY_CHAIN = (
+    *EXTERNAL_BILLING_AUTHORITY_CHAIN,
+    LIVE_SOURCE_AMENDMENT,
+)
+KERNEL_INTEGRATION_MAP = ROOT / "docs" / "integrations" / "platform-kernel.md"
 CORE_AUTHORITY_LINKS = {
     ROOT / "AGENTS.md": (
         ROOT / "README.md",
@@ -1220,7 +1232,8 @@ CORE_AUTHORITY_LINKS = {
         ROOT / "docs" / "architecture" / "region-resolver-contract.md",
         ROOT / "docs" / "architecture" / "payment-providers.md",
         ROOT / "docs" / "architecture" / "payment-portal-data-model.md",
-        *EXTERNAL_BILLING_AUTHORITY_CHAIN,
+        *CURRENT_EXTERNAL_BILLING_AUTHORITY_CHAIN,
+        KERNEL_INTEGRATION_MAP,
         ROOT / "docs" / "product" / "ru-mvp.md",
         ROOT / "docs" / "DESIGN.md",
         ROOT / "docs" / "SECURITY.md",
@@ -1238,7 +1251,8 @@ CORE_AUTHORITY_LINKS = {
         ROOT / "docs" / "architecture" / "region-resolver-contract.md",
         ROOT / "docs" / "architecture" / "payment-providers.md",
         ROOT / "docs" / "architecture" / "payment-portal-data-model.md",
-        *EXTERNAL_BILLING_AUTHORITY_CHAIN,
+        *CURRENT_EXTERNAL_BILLING_AUTHORITY_CHAIN,
+        KERNEL_INTEGRATION_MAP,
         ROOT / "docs" / "engineering" / "AGENT_WORKFLOW.md",
         ROOT / "docs" / "engineering" / "CODING_CONVENTIONS.md",
         ROOT / "docs" / "RELIABILITY.md",
@@ -1246,13 +1260,16 @@ CORE_AUTHORITY_LINKS = {
         ROOT / "docs" / "legal" / "README.md",
         ROOT / "docs" / "exec-plans" / "README.md",
     ),
-    ROOT / "README.md": EXTERNAL_BILLING_AUTHORITY_CHAIN,
-    ROOT / "apps" / "api" / "AGENTS.md": EXTERNAL_BILLING_AUTHORITY_CHAIN,
-    ROOT / "ARCHITECTURE.md": EXTERNAL_BILLING_AUTHORITY_CHAIN,
-    ROOT / "docs" / "PRODUCT.md": EXTERNAL_BILLING_AUTHORITY_CHAIN,
-    ROOT / "docs" / "RELIABILITY.md": EXTERNAL_BILLING_AUTHORITY_CHAIN,
+    ROOT / "README.md": CURRENT_EXTERNAL_BILLING_AUTHORITY_CHAIN,
+    ROOT / "apps" / "api" / "AGENTS.md": CURRENT_EXTERNAL_BILLING_AUTHORITY_CHAIN,
+    ROOT / "ARCHITECTURE.md": (
+        *CURRENT_EXTERNAL_BILLING_AUTHORITY_CHAIN,
+        KERNEL_INTEGRATION_MAP,
+    ),
+    ROOT / "docs" / "PRODUCT.md": CURRENT_EXTERNAL_BILLING_AUTHORITY_CHAIN,
+    ROOT / "docs" / "RELIABILITY.md": CURRENT_EXTERNAL_BILLING_AUTHORITY_CHAIN,
     ROOT / "docs" / "architecture" / "contours.md": (
-        *EXTERNAL_BILLING_AUTHORITY_CHAIN,
+        *CURRENT_EXTERNAL_BILLING_AUTHORITY_CHAIN,
     ),
     ROOT / "docs" / "architecture" / "payment-providers.md": (
         EXTERNAL_BILLING_ADR,
@@ -1290,8 +1307,9 @@ CORE_AUTHORITY_LINKS = {
         PORTAL_KERNEL_ACCESS_DESIGN,
     ),
     ROOT / "docs" / "engineering" / "CODING_CONVENTIONS.md": (
-        *EXTERNAL_BILLING_AUTHORITY_CHAIN,
+        *CURRENT_EXTERNAL_BILLING_AUTHORITY_CHAIN,
     ),
+    KERNEL_INTEGRATION_MAP: CURRENT_EXTERNAL_BILLING_AUTHORITY_CHAIN,
 }
 
 SUPERSEDED_BILLING_PLANS = (

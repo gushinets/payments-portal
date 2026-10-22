@@ -13,6 +13,8 @@ Related documents:
   the accepted [External Billing Boundary Design](../superpowers/specs/2026-09-15-external-billing-boundary-design.md)
   and [Portal-Kernel Access Contract Design](../superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md)
   — target billing ownership, authoritative facts, and implementation baselines
+- [Accepted live-source admission amendment](../superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md)
+  — narrow source-read/new-operation supersession; paid-access rules unchanged
 - [Billing authority](../architecture/billing-authority.md) —
   historical/superseded only; neither current-state nor target authority
 - [Data model](../architecture/payment-portal-data-model.md) — authoritative
