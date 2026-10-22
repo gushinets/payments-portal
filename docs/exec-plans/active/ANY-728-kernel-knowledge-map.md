@@ -31,7 +31,7 @@ Region Resolver or deployment changes.
 - [x] Write the map, repair current guidance and add the precise active-source graph edges.
 - [ ] Run focused documentation tests and supported canonical checks; record results and limitations.
 - [ ] Commit and obtain sequential fresh Astra xhigh, then fresh Sol max review on identical base/head SHAs; restart after fixes.
-- [ ] Open a PR linked to ANY-727 and its companion PR; human merge approval remains required.
+- [x] Open [PR 146](https://github.com/gushinets/payments-portal/pull/146), linked to ANY-727 and [Platform PR 204](https://github.com/gushinets/anytoolai-platform/pull/204); human merge approval remains required.
 
 ## Review focus
 
@@ -57,6 +57,13 @@ Region Resolver or deployment changes.
   tests; it is not a passing full check.
 - Canonical generation normalized CRLF/LF in local generated TypeScript;
   `git diff --exit-code` confirms no generated artifact change.
-- PostgreSQL tests and web build are running separately. Final results, Linux
-  CI and sequential reviews will be recorded on the linked PR against its
-  immutable commit SHA, without changing the reviewed commit for evidence.
+- PostgreSQL reported 110 passed, 5 skipped and 4 failed on Windows. Three
+  failures require `os.geteuid`; one requires a POSIX operator lock. The
+  production web build passed with the example public URL. The interrupted
+  Windows backend check remains a limitation.
+- Linux [CI run 39836638193](https://github.com/gushinets/payments-portal/actions/runs/39836638193)
+  passed for `81b18c0cdff17f9384f28a1cf05f2eabfe9f2418`, including Code quality,
+  Production gate, browser and both harness smoke jobs. This is recorded
+  evidence for that SHA, not a claim for later commits. Final-SHA CI and
+  sequential Astra/Sol results are tracked in
+  [PR 146](https://github.com/gushinets/payments-portal/pull/146).
