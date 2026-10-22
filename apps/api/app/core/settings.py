@@ -99,6 +99,9 @@ class Settings(BaseSettings):
     mapping_account_id: Annotated[str, StringConstraints(strip_whitespace=True)] = ""
     mapping_approval_file: Path | None = None
     mapping_source_inputs_file: Path | None = None
+    # Shared trusted local path for ALL operator processes in this deployment.
+    # Required by dry-run/publish only; query and the HTTP API do not use it.
+    mapping_operator_lock_file: Path | None = None
     mapping_lock_timeout_seconds: float = Field(default=2.0, gt=0, le=10, allow_inf_nan=False)
 
     @field_validator("smtp_use_tls", mode="before")

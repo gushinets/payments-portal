@@ -115,26 +115,44 @@ def _check_deadline(deadline: float) -> None:
         raise MappingStorageDeadline()
 
 
+def utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
 def publish_mapping(
     session_factory: SessionFactory,
     *,
     evaluation: MappingDocument,
     expected_previous_revision: int,
     deadline: float,
+    evidence_valid_until: datetime,
     lock_timeout_seconds: float,
     allow_simulated: bool = False,
+    clock: Callable[[], datetime] | None = None,
 ) -> PublicationResult:
     """Lock -> re-read -> equality/CAS -> append, in one short PG transaction.
 
     deadline is the same operation's absolute monotonic work deadline, never a
     renewed DB timeout. No session or connection survives back into source I/O.
+    evidence_valid_until is an independent, exclusive account-calendar lease.
     """
     if type(expected_previous_revision) is not int or expected_previous_revision < 0:
         raise MappingRefused("mapping_expected_revision_invalid")
     scope, offer_id = evaluation.material.scope, evaluation.material.billing_offer_id
     if evaluation.evidence_mode == MappingEvidenceMode.SIMULATED and not allow_simulated:
         raise MappingRefused("mapping_simulation_forbidden")
-    _check_deadline(deadline)
+    now = clock if clock is not None else utc_now
+
+    def check_publication_window() -> None:
+        _check_deadline(deadline)
+        instant = now()
+        if evidence_valid_until.utcoffset() is None or instant.utcoffset() is None:
+            raise MappingRefused("mapping_clock_invalid")
+        if instant >= evidence_valid_until:
+            raise MappingRefused("mapping_publication_evidence_expired")
+
+    # Source cleanup is complete. Refuse before constructing a DB capability.
+    check_publication_window()
     attempted_revision: int | None = None
     commit_uncertain = False
     with session_factory() as db:
@@ -149,10 +167,11 @@ def publish_mapping(
                 if row is None
                 else validate_stored_mapping(row, scope=scope, offer_id=offer_id, allow_simulated=True)
             )
+            check_publication_window()
             # Equality precedes CAS: identical retries with the previous expected
             # number return immutable history and a separate current evaluation.
             if latest is not None and latest.document.material_fingerprint == evaluation.material_fingerprint:
-                _check_deadline(deadline)
+                check_publication_window()
                 return PublicationResult(latest, evaluation, inserted=False)
             latest_number = 0 if latest is None else latest.revision_number
             if latest_number != expected_previous_revision:
@@ -160,11 +179,12 @@ def publish_mapping(
             for historic_row in mapping_revision_history(
                 db, account_id=scope.external_billing_account_id, offer_id=offer_id
             ):
-                _check_deadline(deadline)
+                check_publication_window()
                 historic = validate_stored_mapping(historic_row, scope=scope, offer_id=offer_id, allow_simulated=True)
                 require_replacement_approval(historic.document, evaluation)
+            check_publication_window()
             attempted_revision = latest_number + 1
-            published = evaluation.model_copy(update={"published_at": datetime.now(UTC)})
+            published = evaluation.model_copy(update={"published_at": now()})
             row = CommercialMappingRevision(
                 external_billing_account_id=scope.external_billing_account_id,
                 billing_offer_id=offer_id,
@@ -181,7 +201,7 @@ def publish_mapping(
             bound_publication_transaction(db, deadline=deadline, lock_timeout_seconds=lock_timeout_seconds)
             db.flush()
             saved = validate_stored_mapping(row, scope=scope, offer_id=offer_id, allow_simulated=allow_simulated)
-            _check_deadline(deadline)
+            check_publication_window()
             try:
                 db.commit()
             except DBAPIError as error:

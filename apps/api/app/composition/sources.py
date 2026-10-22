@@ -36,6 +36,8 @@ async def source_resources(
     Provenance is assigned here, never derived from its URL or wire response.
     Real conformance/enablement is deferred; even a different URL stays SIMULATED.
     No client/pool is initialized at all for an unconfigured source.
+    Admission limits are process-local. The operator CLI acquires its shared
+    local file lock before entering this resource scope and holds it through DB.
     """
     admission = PreflightAdmission(
         PreflightPolicy(

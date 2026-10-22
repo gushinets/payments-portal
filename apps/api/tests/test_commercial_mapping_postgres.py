@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -65,6 +66,7 @@ def publish(factory: sessionmaker[Session], fresh: FreshMappingEvaluation, *, pr
         evaluation=fresh.document,
         expected_previous_revision=previous,
         deadline=fresh.deadline,
+        evidence_valid_until=fresh.evidence_valid_until,
         lock_timeout_seconds=0.2,
         allow_simulated=True,
     )
@@ -543,6 +545,7 @@ async def test_uncertain_commit_reads_authoritative_revision_without_replaying(
         assert db.scalar(select(func.count()).select_from(CommercialMappingRevision)) == int(commit_reached_server)
 
 
+@pytest.mark.skipif(os.name != "posix", reason="Operator flock requires Unix")
 def test_cli_dry_run_publish_and_query_use_same_real_path(
     migrated_database: Engine,
     postgres_session_factory: sessionmaker[Session],
@@ -563,6 +566,7 @@ def test_cli_dry_run_publish_and_query_use_same_real_path(
     config = operator_settings(
         mapping_approval_file=approval_path,
         mapping_source_inputs_file=inputs_path,
+        mapping_operator_lock_file=tmp_path / "operator.lock",
         postgres_password="SIMULATED-db-output-canary",
         smtp_password="SIMULATED-mail-output-canary",
         database_url="postgresql+psycopg://SIMULATED-user:SIMULATED-url-output-canary@localhost/unused",

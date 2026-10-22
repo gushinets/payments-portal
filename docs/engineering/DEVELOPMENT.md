@@ -228,6 +228,35 @@ evidence-only changes with unchanged terms do not require new legal approval.
 Rewriting the same reference/revision hash remains forbidden. Neither operator
 command creates approval or supplies a legal-review interface.
 
+### Operator publication bounds
+
+Every operator `dry-run`/`publish` requires `MAPPING_OPERATOR_LOCK_FILE`: one
+absolute path in a pre-provisioned trusted local directory for the deployment.
+The directory must not be writable by group/others. Run all commands under an
+OS identity that can open the same file; it is created with mode `0600`, must
+remain private and regular, and is never deleted on release. Do not change the
+path per proposal, current directory or process. Symlinks, unsafe permissions,
+missing configuration, open/lock errors and unsupported platforms fail closed
+with `mapping_operator_lock_unavailable` before creating source clients.
+
+Unix `flock(LOCK_EX | LOCK_NB)` permits **one active operator command**. A
+contender immediately receives `preflight_saturated` before Kernel/LBX HTTP.
+The file lock spans source reads, cleanup and publication/commit; process exit
+also releases it. `query` remains DB-only and requires neither this file nor
+source settings. Existing `preflight_max_active`/`preflight_max_waiting` control
+the process-local `PreflightAdmission`, not cross-process concurrency. There is
+no PostgreSQL connection held for this file lock and no distributed protection:
+multiple operator hosts without the same local lock require a separate design.
+
+Fresh evaluation also carries a transient UTC applicability boundary: the
+earliest of the next account day, policy `valid_until`, and the current price's
+exclusive successor date, interpreted in the evidenced account IANA timezone.
+It is independent of the unchanged monotonic operation deadline and is not an
+immutable document field. Publication checks both limits after source cleanup,
+after PostgreSQL lock/history reads and immediately before commit. Expiry
+refuses with `mapping_publication_evidence_expired` and rolls back new rows;
+existing immutable history and uncertain-commit recovery remain authoritative.
+
 ## Step 6 stored catalog acceptance
 
 The public catalog reads only immutable published revisions from the configured
@@ -265,6 +294,9 @@ existing publisher with one command. This shortcut selects the repository-root
 virtual environment directly and does not require shell activation.
 
 ```bash
+mkdir -p .harness/kernel-walkthrough
+chmod 700 .harness/kernel-walkthrough
+export MAPPING_OPERATOR_LOCK_FILE="$PWD/.harness/kernel-walkthrough/operator.lock"
 make catalog_preview
 # For browser acceptance, use the standalone HTTP publication procedure below.
 ```
@@ -392,6 +424,7 @@ export KERNEL_SERVICE_TOKEN="$KERNEL_MOCK_TOKEN"
 export MAPPING_OPERATOR_UIDS='[]'
 export KERNEL_MOCK_SCENARIO=valid
 mkdir -p .harness/kernel-walkthrough
+chmod 700 .harness/kernel-walkthrough
 npm run repo:up -- --reuse
 
 dc() {
@@ -408,7 +441,8 @@ export MAPPING_OPERATOR_UIDS="[$operator_uid]"
 dc up -d --no-deps --force-recreate api
 
 operator() {
-  dc exec -T -e PYTHONPATH=.:apps/api api python \
+  dc exec -T -e PYTHONPATH=.:apps/api \
+    -e MAPPING_OPERATOR_LOCK_FILE=/app/.kernel-walkthrough/operator.lock api python \
     -m apps.api.tests.support.kernel_walkthrough "$@"
 }
 # prepare is an explicit independent SIMULATED review, using the configured
@@ -520,9 +554,12 @@ at startup. To observe concurrent slow work manually, select `timeout`, start
 `operator publish` in one terminal, and execute query/reload in another before
 the bounded refusal. The source regression below additionally occupies the
 same process-local admission owner with slow HTTP, rejects a second operation
-with `preflight_saturated`, and queries/previews the saved row. Separate CLI
-processes have separate admission owners; this is not distributed saturation
-or later paid-access/reconciliation load evidence.
+with `preflight_saturated`, and queries/previews the saved row. Operator CLI
+processes additionally share the configured local file lock, including the
+walkthrough helper above. Its container path maps to the same file under the
+host's `.harness/kernel-walkthrough` bind mount; filesystem permissions must
+allow the chosen execution identities to open that private file. This is not
+distributed saturation or later paid-access/reconciliation load evidence.
 
 ### Compatible target switch and production exclusion
 
@@ -699,3 +736,43 @@ plan's [final verification record](../exec-plans/completed/ANY-664-implementatio
    PASS requires successful exits and retained results; record any unsupported
    environment check as skipped, not passed. Stop the test server after checks;
    the working stack and its immutable publications remain intact.
+
+## ANY-664 three P2 corrections (2026-10-22)
+
+This correction delivery runs Ruff formatting/lint and static documentation /
+architecture checks only. Runtime PASS still requires the manual commands below;
+no pytest, Playwright, build or migration was run during this correction.
+
+From the repository root on Unix/WSL:
+
+```bash
+export PATH="$PWD/.venv/bin:$PATH"
+npm run test:api:fast
+
+# Isolate the independent CLI-process regressions (real local HTTP, no live LBX).
+PYTHONPATH=.:apps/api .venv/bin/python - <<'PYTEST_PROCESSES'
+import subprocess
+import sys
+from scripts import repo
+subprocess.run([
+    sys.executable, "-m", "pytest", "-p", "no:cacheprovider", "-m", "not postgres",
+    "apps/api/tests/test_operator_preflight_processes.py",
+], env=repo.canonical_check_environment(), check=True)
+PYTEST_PROCESSES
+
+.venv/bin/python scripts/repo.py test-db up
+npm run test:api:postgres
+.venv/bin/python scripts/repo.py test-db stop
+
+RUN_E2E=true npm run check
+```
+
+The fast suite includes account-calendar/DST bounds, expiry during Kernel/LBX
+cleanup, fail-closed lock paths and independent-process saturation/release/crash
+recovery. PostgreSQL coverage includes catalog `no-store` on success/404/503,
+expiry during actual advisory-lock wait, history reads and after flush, unchanged
+row count/latest revision on refusal, commit before expiry, idempotency and
+lost-ack recovery. It also runs two independent `publish` processes against real
+PostgreSQL, then retries without a duplicate, and executes an independent
+DB-only `query` while the operator file lock is held. No source mutation or real
+billing operation is part of these regressions.

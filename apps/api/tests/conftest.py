@@ -160,6 +160,7 @@ def db_session(
 def mapping_clock(monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep recorded-offer publications independent of the machine's date."""
     from app.composition import mapping_operator
+    from app.domains.catalog import publication
 
     ticks = count()
 
@@ -167,3 +168,4 @@ def mapping_clock(monkeypatch: pytest.MonkeyPatch) -> None:
         return datetime(2026, 10, 16, 12, tzinfo=UTC) + timedelta(microseconds=next(ticks))
 
     monkeypatch.setattr(mapping_operator, "utc_now", now)
+    monkeypatch.setattr(publication, "utc_now", now)

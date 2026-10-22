@@ -30,6 +30,7 @@ from app.composition.mapping_operator import (
 )
 from app.composition import mapping_operator
 from app.core.errors import AppError
+from app.infrastructure.operator_preflight import operator_preflight_lock
 from app.core.settings import AppEnv, Settings
 from app.domains.catalog.mapping_evidence import ApprovedMapping
 from app.domains.catalog.publication import publish_mapping
@@ -107,32 +108,34 @@ def execute(arguments: argparse.Namespace, configuration: Settings) -> str:
         return cli.execute(arguments, configuration)
     if arguments.command == "publish" and arguments.expected_previous_revision < 0:
         raise AppError("mapping_expected_revision_invalid")
-    with asyncio.Runner() as runner:
-        fresh = runner.run(evaluate_recorded_lbx(configuration, arguments.proposal, principal))
-    output = {
-        "billing_offer_id": fresh.document.material.billing_offer_id,
-        "evaluation": fresh.document.model_dump(mode="json"),
-        "persisted": False,
-    }
-    if arguments.command == "publish":
-        from app.core.database import SessionLocal
+    with operator_preflight_lock(configuration.mapping_operator_lock_file):
+        with asyncio.Runner() as runner:
+            fresh = runner.run(evaluate_recorded_lbx(configuration, arguments.proposal, principal))
+        output = {
+            "billing_offer_id": fresh.document.material.billing_offer_id,
+            "evaluation": fresh.document.model_dump(mode="json"),
+            "persisted": False,
+        }
+        if arguments.command == "publish":
+            from app.core.database import SessionLocal
 
-        result = publish_mapping(
-            SessionLocal,
-            evaluation=fresh.document,
-            expected_previous_revision=arguments.expected_previous_revision,
-            deadline=fresh.deadline,
-            lock_timeout_seconds=configuration.mapping_lock_timeout_seconds,
-            allow_simulated=True,
-        )
-        output.update(
-            persisted=True,
-            mapping_revision_id=str(result.stored.mapping_revision_id),
-            revision_number=result.stored.revision_number,
-            inserted=result.inserted,
-            stored_document=result.stored.document.model_dump(mode="json"),
-        )
-    return json.dumps(output)
+            result = publish_mapping(
+                SessionLocal,
+                evaluation=fresh.document,
+                expected_previous_revision=arguments.expected_previous_revision,
+                deadline=fresh.deadline,
+                evidence_valid_until=fresh.evidence_valid_until,
+                lock_timeout_seconds=configuration.mapping_lock_timeout_seconds,
+                allow_simulated=True,
+            )
+            output.update(
+                persisted=True,
+                mapping_revision_id=str(result.stored.mapping_revision_id),
+                revision_number=result.stored.revision_number,
+                inserted=result.inserted,
+                stored_document=result.stored.document.model_dump(mode="json"),
+            )
+        return json.dumps(output)
 
 
 def main(argv: list[str] | None = None) -> int:

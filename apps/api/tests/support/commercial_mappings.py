@@ -7,7 +7,9 @@ this original approved fixture unless explicitly simulating a second review.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 import httpx
@@ -124,6 +126,7 @@ async def fresh_fixture(
     manifest: dict[str, Any] | None = None,
     configuration: Settings | None = None,
     source_inputs: SelectedOfferInputs | None = None,
+    clock: Callable[[], datetime] | None = None,
 ) -> FreshMappingEvaluation:
     recorded = recording if recording is not None else SelectedOfferRecording()
     payload = manifest if manifest is not None else manifest_fixture()
@@ -133,6 +136,7 @@ async def fresh_fixture(
         approval=reviewed.approval,
         source_inputs=source_inputs if source_inputs is not None else simulated_inputs(),
         principal=f"os-euid:{SIMULATED_UID}",
+        clock=clock,
         kernel_transport=httpx.MockTransport(lambda request: httpx.Response(200, json=payload)),
         lbx_transport=httpx.MockTransport(recorded.respond),
     )

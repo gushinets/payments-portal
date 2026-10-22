@@ -16,6 +16,7 @@ from app.composition.mapping_operator import authorize_operator, configured_mapp
 from app.core.errors import AppError
 from app.core.settings import AppEnv, Settings
 from app.domains.catalog.publication import publish_mapping, query_mapping
+from app.infrastructure.operator_preflight import operator_preflight_lock
 
 
 def parser() -> argparse.ArgumentParser:
@@ -71,48 +72,50 @@ def execute(arguments: argparse.Namespace, configuration: Settings) -> str:
     proposal = load_operator_input(arguments.proposal, MappingProposal)
     approval = load_operator_input(configuration.mapping_approval_file, ApprovedMapping)
     inputs = load_operator_input(configuration.mapping_source_inputs_file, SelectedOfferInputs)
-    # Top-level process event-loop owner for genuine async source I/O only.
-    # No Application/Domain/Persistence layer starts or bridges an event loop.
-    with asyncio.Runner() as runner:
-        evaluation = runner.run(
-            fresh_mapping_evaluation(
-                configuration, proposal=proposal, approval=approval, source_inputs=inputs, principal=principal
+    with operator_preflight_lock(configuration.mapping_operator_lock_file):
+        # Top-level process event-loop owner for genuine async source I/O only.
+        # No Application/Domain/Persistence layer starts or bridges an event loop.
+        with asyncio.Runner() as runner:
+            evaluation = runner.run(
+                fresh_mapping_evaluation(
+                    configuration, proposal=proposal, approval=approval, source_inputs=inputs, principal=principal
+                )
             )
+        if arguments.command == "dry-run":
+            return json.dumps(
+                {
+                    "operator_audit": audit,
+                    "persisted": False,
+                    "billing_offer_id": evaluation.document.material.billing_offer_id,
+                    "evaluation": evaluation.document.model_dump(mode="json"),
+                }
+            )
+        if arguments.command != "publish":
+            raise AppError("mapping_command_invalid")
+        # Construct the DB capability only after all HTTP and source cleanup finished.
+        from app.core.database import SessionLocal
+
+        result = publish_mapping(
+            SessionLocal,
+            evaluation=evaluation.document,
+            expected_previous_revision=arguments.expected_previous_revision,
+            deadline=evaluation.deadline,
+            evidence_valid_until=evaluation.evidence_valid_until,
+            lock_timeout_seconds=configuration.mapping_lock_timeout_seconds,
+            allow_simulated=allow_simulated,
         )
-    if arguments.command == "dry-run":
         return json.dumps(
             {
                 "operator_audit": audit,
-                "persisted": False,
-                "billing_offer_id": evaluation.document.material.billing_offer_id,
-                "evaluation": evaluation.document.model_dump(mode="json"),
+                "mapping_revision_id": str(result.stored.mapping_revision_id),
+                "billing_offer_id": result.stored.document.material.billing_offer_id,
+                "revision_number": result.stored.revision_number,
+                "inserted": result.inserted,
+                "recovered_commit": result.recovered_commit,
+                "stored_document": result.stored.document.model_dump(mode="json"),
+                "current_evaluation": result.evaluation.model_dump(mode="json"),
             }
         )
-    if arguments.command != "publish":
-        raise AppError("mapping_command_invalid")
-    # Construct the DB capability only after all HTTP and source cleanup finished.
-    from app.core.database import SessionLocal
-
-    result = publish_mapping(
-        SessionLocal,
-        evaluation=evaluation.document,
-        expected_previous_revision=arguments.expected_previous_revision,
-        deadline=evaluation.deadline,
-        lock_timeout_seconds=configuration.mapping_lock_timeout_seconds,
-        allow_simulated=allow_simulated,
-    )
-    return json.dumps(
-        {
-            "operator_audit": audit,
-            "mapping_revision_id": str(result.stored.mapping_revision_id),
-            "billing_offer_id": result.stored.document.material.billing_offer_id,
-            "revision_number": result.stored.revision_number,
-            "inserted": result.inserted,
-            "recovered_commit": result.recovered_commit,
-            "stored_document": result.stored.document.model_dump(mode="json"),
-            "current_evaluation": result.evaluation.model_dump(mode="json"),
-        }
-    )
 
 
 def main(argv: list[str] | None = None) -> int:

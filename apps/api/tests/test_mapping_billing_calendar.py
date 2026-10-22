@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from datetime import UTC, date, datetime
 from pathlib import Path
 
@@ -148,6 +149,7 @@ async def test_account_midnight_during_source_reads_refuses_instead_of_rewriting
     assert reviewed.proposal.selection.effective_on == date(2026, 10, 16)
 
 
+@pytest.mark.skipif(os.name != "posix", reason="Operator flock requires Unix")
 @pytest.mark.parametrize("command", ["dry-run", "publish"])
 @pytest.mark.parametrize("expired_policy", [False, True])
 def test_operator_commands_refuse_stale_date_or_expired_policy_before_database(
@@ -173,7 +175,9 @@ def test_operator_commands_refuse_stale_date_or_expired_policy_before_database(
     for name, value in (("proposal", reviewed.proposal), ("approval", reviewed.approval), ("inputs", inputs)):
         (tmp_path / f"{name}.json").write_text(value.model_dump_json(), encoding="utf-8")
     configuration = operator_settings(
-        mapping_approval_file=tmp_path / "approval.json", mapping_source_inputs_file=tmp_path / "inputs.json"
+        mapping_approval_file=tmp_path / "approval.json",
+        mapping_source_inputs_file=tmp_path / "inputs.json",
+        mapping_operator_lock_file=tmp_path / "operator.lock",
     )
     monkeypatch.setattr(mapping_operator.os, "geteuid", lambda: SIMULATED_UID)
     original = fresh_mapping_evaluation
@@ -193,3 +197,100 @@ def test_operator_commands_refuse_stale_date_or_expired_policy_before_database(
         argv += ["--expected-previous-revision", "0"]
     with pytest.raises((MappingRefused, SelectedOfferRefused), match=reason):
         cli.execute(cli.parser().parse_args(argv), configuration)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("expiring", ["account_day", "policy", "price"])
+async def test_evaluation_carries_exclusive_account_calendar_boundary(expiring: str) -> None:
+    recording = SelectedOfferRecording()
+    inputs = simulated_inputs()
+    assert inputs.policy is not None
+    if expiring == "policy":
+        inputs = inputs.model_copy(
+            update={"policy": inputs.policy.model_copy(update={"valid_until": date(2026, 10, 17)})}
+        )
+    elif expiring == "price":
+        recording.replace("prices", "2027-01-01", "2026-10-17")
+    reviewed = await reviewed_fixture(recording=recording, source_inputs=inputs)
+    instant = datetime(2026, 10, 16, 20, 59, 59, tzinfo=UTC)  # Moscow 23:59:59
+    from apps.api.tests.support.commercial_mappings import fresh_fixture
+
+    fresh = await fresh_fixture(reviewed, recording=recording, source_inputs=inputs, clock=lambda: instant)
+    assert fresh.evidence_valid_until == datetime(2026, 10, 16, 21, tzinfo=UTC)
+    assert fresh.evidence_valid_until.tzinfo is UTC
+    assert fresh.document.evaluated_at == instant
+    assert "evidence_valid_until" not in fresh.document.model_dump()
+    if expiring == "price":
+        assert fresh.document.material.terms.period.price_effective_until == date(2026, 10, 17)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("timezone", "expected_utc"),
+    [
+        ("Europe/Berlin", "2026-10-25T23:00:00+00:00"),  # DST ends during this day.
+        ("Asia/Tokyo", "2026-10-25T15:00:00+00:00"),
+        ("America/New_York", "2026-10-26T04:00:00+00:00"),
+    ],
+)
+async def test_boundary_uses_account_iana_zone_including_dst(timezone: str, expected_utc: str) -> None:
+    from apps.api.tests.support.commercial_mappings import fresh_fixture
+
+    inputs = simulated_inputs()
+    assert inputs.calendar is not None
+    inputs = inputs.model_copy(update={"calendar": inputs.calendar.model_copy(update={"timezone": timezone})})
+    selection = simulated_selection().model_copy(update={"effective_on": date(2026, 10, 25)})
+    reviewed = await reviewed_fixture(selection=selection, source_inputs=inputs)
+    fresh = await fresh_fixture(reviewed, source_inputs=inputs, clock=lambda: datetime(2026, 10, 25, 12, tzinfo=UTC))
+    assert fresh.evidence_valid_until == datetime.fromisoformat(expected_utc)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("cleanup_source", ["kernel", "lbx"])
+async def test_cleanup_crossing_account_midnight_refuses_before_database(cleanup_source: str) -> None:
+    from typing import NoReturn
+
+    from app.domains.catalog.publication import publish_mapping
+
+    reviewed = await reviewed_fixture()
+    instant = datetime(2026, 10, 16, 20, 59, 59, tzinfo=UTC)
+    boundary = datetime(2026, 10, 16, 21, tzinfo=UTC)
+
+    class MidnightCleanup(httpx.MockTransport):
+        async def aclose(self) -> None:
+            nonlocal instant
+            instant = boundary
+            await super().aclose()
+
+    def kernel_handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=manifest_fixture())
+
+    kernel = MidnightCleanup(kernel_handler) if cleanup_source == "kernel" else httpx.MockTransport(kernel_handler)
+    lbx_handler = SelectedOfferRecording().respond
+    lbx = MidnightCleanup(lbx_handler) if cleanup_source == "lbx" else httpx.MockTransport(lbx_handler)
+    fresh = await fresh_mapping_evaluation(
+        operator_settings(),
+        proposal=reviewed.proposal,
+        approval=reviewed.approval,
+        source_inputs=simulated_inputs(),
+        principal=f"os-euid:{SIMULATED_UID}",
+        clock=lambda: instant,
+        kernel_transport=kernel,
+        lbx_transport=lbx,
+    )
+    assert fresh.document.evaluated_at < boundary == instant == fresh.evidence_valid_until
+
+    def forbidden_database() -> NoReturn:
+        raise AssertionError("expired cleanup must refuse before a DB session exists")
+
+    with pytest.raises(MappingRefused, match="mapping_publication_evidence_expired"):
+        publish_mapping(
+            forbidden_database,
+            evaluation=fresh.document,
+            expected_previous_revision=0,
+            deadline=fresh.deadline,
+            evidence_valid_until=fresh.evidence_valid_until,
+            lock_timeout_seconds=0.2,
+            allow_simulated=True,
+            clock=lambda: instant,
+        )

@@ -175,7 +175,9 @@ def list_products(response: Response, db: Annotated[Session, Depends(get_db)]) -
         )
         return CatalogProductsResponse(products=[present_product(product) for product in products])
     except CatalogUnavailable:
-        raise HTTPException(status_code=503, detail={"code": "catalog_unavailable"}) from None
+        raise HTTPException(
+            status_code=503, detail={"code": "catalog_unavailable"}, headers={"Cache-Control": "no-store"}
+        ) from None
 
 
 @router.get("/products/{product_id:path}", response_model=CatalogProductResponse)
@@ -190,6 +192,10 @@ def product_detail(
             )
         )
     except CatalogProductNotFound:
-        raise HTTPException(status_code=404, detail={"code": "catalog_product_not_found"}) from None
+        raise HTTPException(
+            status_code=404, detail={"code": "catalog_product_not_found"}, headers={"Cache-Control": "no-store"}
+        ) from None
     except CatalogUnavailable:
-        raise HTTPException(status_code=503, detail={"code": "catalog_unavailable"}) from None
+        raise HTTPException(
+            status_code=503, detail={"code": "catalog_unavailable"}, headers={"Cache-Control": "no-store"}
+        ) from None

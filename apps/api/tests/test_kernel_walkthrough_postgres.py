@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+from datetime import UTC, datetime
 from collections.abc import Iterator
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -62,6 +63,8 @@ def serve(server: ThreadingHTTPServer) -> Iterator[str]:
 
 @pytest.fixture
 def operator(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Settings:
+    if os.name != "posix":
+        pytest.skip("Operator flock requires Unix")
     monkeypatch.setattr(os, "geteuid", lambda: SIMULATED_UID, raising=False)
     walkthrough.prepare_inputs(tmp_path)
     return operator_settings(
@@ -71,6 +74,7 @@ def operator(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Settings:
         kernel_service_token=TOKEN,
         mapping_approval_file=tmp_path / "approval.json",
         mapping_source_inputs_file=tmp_path / "inputs.json",
+        mapping_operator_lock_file=tmp_path / "operator.lock",
         preflight_total_timeout_seconds=3,
         preflight_cleanup_timeout_seconds=0.1,
         kernel_read_timeout_seconds=0.1,
@@ -259,6 +263,7 @@ def test_independent_http_target_switch_changes_only_url_and_credentials(
             evaluation=MappingDocument.model_validate_json(json.dumps(second["evaluation"])),
             expected_previous_revision=0,
             deadline=0,
+            evidence_valid_until=datetime(2026, 10, 16, 21, tzinfo=UTC),
             lock_timeout_seconds=0.2,
             allow_simulated=False,
         )

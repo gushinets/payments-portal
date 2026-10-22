@@ -23,6 +23,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import sessionmaker
 
 from app.core.errors import AppError
+from app.infrastructure.operator_preflight import operator_preflight_lock
 from scripts import repo
 
 if TYPE_CHECKING:
@@ -76,32 +77,34 @@ def publish_simulated_preview(
         instance_tenant_id=operator.instance_tenant_id,
         instance_region=operator.instance_region,
     )
-    with asyncio.Runner() as runner:
-        reviewed = runner.run(reviewed_fixture(selection=selection, revision="calendar-review-v2"))
-        evaluation = runner.run(
-            fresh_mapping_evaluation(
-                source_configuration,
-                proposal=reviewed.proposal,
-                approval=reviewed.approval,
-                source_inputs=simulated_inputs(),
-                principal=principal,
-                kernel_transport=httpx.MockTransport(lambda request: httpx.Response(200, json=manifest_fixture())),
-                lbx_transport=httpx.MockTransport(SelectedOfferRecording().respond),
+    with operator_preflight_lock(operator.mapping_operator_lock_file):
+        with asyncio.Runner() as runner:
+            reviewed = runner.run(reviewed_fixture(selection=selection, revision="calendar-review-v2"))
+            evaluation = runner.run(
+                fresh_mapping_evaluation(
+                    source_configuration,
+                    proposal=reviewed.proposal,
+                    approval=reviewed.approval,
+                    source_inputs=simulated_inputs(),
+                    principal=principal,
+                    kernel_transport=httpx.MockTransport(lambda request: httpx.Response(200, json=manifest_fixture())),
+                    lbx_transport=httpx.MockTransport(SelectedOfferRecording().respond),
+                )
             )
-        )
-    # All source work has finished and closed before opening the working DB.
-    engine = create_engine(repo.host_database_url_from_runtime(dict(runtime)), connect_args={"connect_timeout": 5})
-    try:
-        return publish_mapping(
-            sessionmaker(bind=engine, autoflush=False),
-            evaluation=evaluation.document,
-            expected_previous_revision=expected_previous_revision,
-            deadline=evaluation.deadline,
-            lock_timeout_seconds=operator.mapping_lock_timeout_seconds,
-            allow_simulated=True,
-        )
-    finally:
-        engine.dispose()
+        # All source work has finished and closed before opening the working DB.
+        engine = create_engine(repo.host_database_url_from_runtime(dict(runtime)), connect_args={"connect_timeout": 5})
+        try:
+            return publish_mapping(
+                sessionmaker(bind=engine, autoflush=False),
+                evaluation=evaluation.document,
+                expected_previous_revision=expected_previous_revision,
+                deadline=evaluation.deadline,
+                evidence_valid_until=evaluation.evidence_valid_until,
+                lock_timeout_seconds=operator.mapping_lock_timeout_seconds,
+                allow_simulated=True,
+            )
+        finally:
+            engine.dispose()
 
 
 def main(argv: list[str] | None = None) -> int:

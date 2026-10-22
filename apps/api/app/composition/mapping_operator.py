@@ -6,7 +6,7 @@ import asyncio
 import os
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 from typing import Literal, TypeVar
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -47,6 +47,7 @@ class MappingProposal(ImmutableInput):
 class FreshMappingEvaluation:
     document: MappingDocument
     deadline: float
+    evidence_valid_until: datetime
 
 
 def authorize_operator(configuration: Settings, *, resolve_uid: Callable[[], int] | None = None) -> str:
@@ -167,7 +168,20 @@ async def fresh_mapping_evaluation(
                     allow_simulated=configuration.app_env in {AppEnv.DEVELOPMENT, AppEnv.TEST},
                 )
                 budget.check()
-                result = FreshMappingEvaluation(document, budget.work_deadline)
+                # These exclusive calendar bounds have already been validated
+                # by the account-date guard and selected-offer normalizer.
+                # Carry a transient UTC lease across cleanup/DB work, without
+                # changing the approved immutable document or its fingerprint.
+                assert source_inputs.calendar is not None and source_inputs.policy is not None
+                dates = [selection.effective_on + timedelta(days=1)]
+                if source_inputs.policy.valid_until is not None:
+                    dates.append(source_inputs.policy.valid_until)
+                if offer.terms.period.price_effective_until is not None:
+                    dates.append(offer.terms.period.price_effective_until)
+                evidence_valid_until = datetime.combine(
+                    min(dates), time.min, tzinfo=ZoneInfo(source_inputs.calendar.timezone)
+                ).astimezone(UTC)
+                result = FreshMappingEvaluation(document, budget.work_deadline, evidence_valid_until)
             return result
         finally:
             # Drain the same owner before closing either pool. If cleanup remains

@@ -45,6 +45,7 @@ def publish(factory: sessionmaker[Session], fresh: FreshMappingEvaluation, *, pr
         evaluation=fresh.document,
         expected_previous_revision=previous,
         deadline=fresh.deadline,
+        evidence_valid_until=fresh.evidence_valid_until,
         lock_timeout_seconds=0.2,
         allow_simulated=True,
     ).stored
@@ -95,7 +96,10 @@ async def test_anonymous_list_detail_exact_terms_and_safe_schema(client: TestCli
     assert offer["period"]["unit"] == "month"
     assert offer["revision_id"] == str(stored.mapping_revision_id)
     assert offer["publication_state"] == offer["evidence_mode"] == "SIMULATED"
-    assert client.get("/api/catalog/products/proposal_ai").json() == product
+    detail = client.get("/api/catalog/products/proposal_ai")
+    assert detail.status_code == 200
+    assert detail.headers["cache-control"] == "no-store"
+    assert detail.json() == product
     assert set(offer) == {
         "offer_id",
         "revision_id",
@@ -117,6 +121,7 @@ async def test_empty_unknown_product_and_unconfigured_catalog_are_distinct(
     assert client.get("/api/catalog/products").json() == {"products": []}
     response = client.get("/api/catalog/products/not-a-product")
     assert response.status_code == 404
+    assert response.headers["cache-control"] == "no-store"
     assert response.json() == {"detail": {"code": "catalog_product_not_found"}}
     assert client.get("/api/catalog/products/opaque%2Fid%20%3F%23").json() == {
         "detail": {"code": "catalog_product_not_found"}
@@ -126,9 +131,11 @@ async def test_empty_unknown_product_and_unconfigured_catalog_are_distinct(
         "settings",
         operator_settings(kernel_base_url="", kernel_service_token="", mapping_account_id=""),
     )
-    response = client.get("/api/catalog/products")
-    assert response.status_code == 503
-    assert response.json() == {"detail": {"code": "catalog_unavailable"}}
+    for path in ("/api/catalog/products", "/api/catalog/products/proposal_ai"):
+        response = client.get(path)
+        assert response.status_code == 503
+        assert response.headers["cache-control"] == "no-store"
+        assert response.json() == {"detail": {"code": "catalog_unavailable"}}
 
 
 async def test_latest_revision_is_selected_with_stable_public_offer_identity(
@@ -211,6 +218,7 @@ async def test_invalid_latest_is_unavailable_without_old_revision_fallback(
     for path in ("/api/catalog/products", "/api/catalog/products/proposal_ai"):
         response = client.get(path)
         assert response.status_code == 503
+        assert response.headers["cache-control"] == "no-store"
         assert response.json() == {"detail": {"code": "catalog_unavailable"}}
 
 

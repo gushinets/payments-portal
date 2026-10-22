@@ -1,8 +1,9 @@
 """Bounded, process-local outer I/O, independent of FastAPI's sync/DB workers.
 
 One owner per application lifespan and event loop. With W worker processes the
-limits multiply by W (the current launches default to one worker). Operators
-must divide deployment capacity across processes; there is no distributed cap.
+limits multiply by W (the current launches default to one worker). The operator
+CLI additionally holds operator_preflight_lock for one active dry-run/publish
+across processes sharing its trusted local file; this is not a distributed cap.
 Only fresh source evaluation uses these slots, never DB-only reads or future
 reserved reconciliation/recovery. No SQLAlchemy resource belongs in this scope.
 """
