@@ -130,7 +130,7 @@ The mock uses the standard-library `ThreadingHTTPServer`; an actively delayed ma
 
 For local visual development, [Step 7 wiring](#step-7-optional-http-mock-walkthrough) adds an opt-in HTTP mock container on the worktree backend network and a real Portal backend/PostgreSQL/localized frontend walkthrough. The joined positive browser acceptance passed on 2026-10-21; see the execution record below. The mock exposes the manifest and local documentation routes, not a whole Kernel or a shared SDK.
 
-- Portal will use **one** production-shaped typed Kernel client for both real and mocked servers, selected by internal service URL and configured service authentication. Portal runtime must not import mock code/fixtures or fall back to them. Only dev/test configuration may select the mock; no browser calls to mock internals. A compatible real endpoint can replace it via URL/credentials; unknown wire/hash/auth differences must be reconciled before real enablement.
+- Portal implements **one** production-shaped typed Kernel HTTP client, currently verified against the mock and selected by internal service URL and configured service authentication. Portal runtime must not import mock code/fixtures or fall back to them. Only dev/test configuration may select the mock; no browser calls to mock internals. A compatible real endpoint can later use this client after real conformance and separate production enablement; unknown wire/hash/auth/scope differences must first be reconciled.
 - Local mock is **disabled by default**; it can be stopped and removed without preventing Portal builds, database migrations, or normal startup. Missing Kernel must fail closed for **new publication and new purchase admission**, with no source-manifest cache fallback; previously confirmed paid subscriptions retain their separate finite trust rules. Mock-derived mapping evidence must be **SIMULATED**, rejected by real admission and excluded from production catalog queries even after changing URLs. No configuration switch upgrades an old simulated revision.
 - No mock process/config/image/test data/auth bypass may be enabled or bundled in production Compose, production API/web image, or production deployment. Step 1 excludes mock files from root Docker build inputs and rejects standalone startup outside explicit development/test environments. Production integration/config rejection and Compose removal checks remain part of the later optional wiring.
 
@@ -199,8 +199,12 @@ The [Step 8 handoff](../contracts/kernel-capability-manifest/v1/step-8-handoff.m
 records the local HTTP/spec/client checker, exact positive/negative manual
 commands and mandatory future real producer acceptance. Existing CI retains
 local conformance and negative cases; the external source monitor is removed.
-The final correction runs formatting/lint only, with no new local test PASS
-claimed. Real Kernel conformance remains **DEFERRED_NOT_IMPLEMENTED**; checking
+The handoff records local conformance PASS in
+[CI run 39260471356](https://github.com/gushinets/payments-portal/actions/runs/39260471356)
+at `15736d6b69c57deb8681e4a951959d78031fb992`, separately from the historical
+implementation-agent formatting/lint-only report. This is not a fresh run or
+blanket manual acceptance. Real Kernel conformance remains
+**DEFERRED_NOT_IMPLEMENTED**; checking
 the provisional local contract does not verify the real API. The existing mock,
 client and Compose walkthrough are retained unchanged.
 

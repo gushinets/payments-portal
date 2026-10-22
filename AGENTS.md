@@ -47,6 +47,13 @@ document that applies to the current task.
   — coding conventions for new and changed code.
 - [docs/exec-plans](docs/exec-plans/) — active plans, completed plans, and debt.
 
+## Neighboring project
+
+Read the [Platform Kernel integration map](docs/integrations/platform-kernel.md)
+for identity, scope, product/metric identity, paid-access or cross-app journey
+changes. It records actual peer implementation, target contracts and the
+cross-repository change workflow under the sources of truth above.
+
 ## Repository map
 
 - `apps/web` — Next.js Payment Portal UI. Current routes are the `ru` contour.

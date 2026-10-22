@@ -36,6 +36,7 @@ Start with the smallest document that matches the task.
 ## Architecture
 
 - [AnyToolAI Portal repository architecture](../ARCHITECTURE.md)
+- [Platform Kernel integration map](integrations/platform-kernel.md) — current/target interfaces, peer evidence and change workflow
 
 ### Target billing architecture (follow in order)
 

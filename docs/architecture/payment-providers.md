@@ -13,13 +13,12 @@ models, direct-payment webhook handling, or provider lifecycle commands.
 This document preserves the boundary distinction needed to prevent that
 architecture from being mistaken for the target.
 
-## Current implementation
+## Current implementation reference
 
 There is no active or retained executable direct-provider implementation.
-Current API composition exposes identity, password-reset, legal, health and
-metrics routes only. The web product snapshot remains presentational and
-checkout remains unavailable; it does not invoke a provider or create local
-commercial state.
+Current API composition and the restricted ANY-664 immutable mapping producer
+are documented in [ARCHITECTURE.md](../../ARCHITECTURE.md). The Portal also
+serves DB-only catalog reads; checkout and paid access remain unavailable.
 
 The clean schema contains provider-neutral persistence slots for the approved
 external-billing boundary. It contains no Portal-owned `products`, `plans`,

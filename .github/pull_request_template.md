@@ -40,6 +40,11 @@ Commands and results
 - Documentation updated or not applicable:
 - Migration impact or not applicable:
 
+## Peer impact
+
+<!-- For integration changes, record the peer SHA inspected, affected contract/map,
+and linked peer issue/PR. Otherwise write None with a reason. -->
+
 ## Remaining debt
 
 <!-- Link follow-up Linear tickets; write "None" when there is no known debt. -->

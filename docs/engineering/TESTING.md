@@ -89,8 +89,8 @@ module-local fixture near the tests that use it.
 
 Use `app.dependency_overrides` when a route already exposes an explicit FastAPI
 resource or context dependency, including `get_db`,
-authenticated-current-session context, and the app-scoped payment-provider
-registry accessor. Restore the previous override mapping in teardown or a
+authenticated-current-session context (`get_current_session`). Restore the
+previous override mapping in teardown or a
 `finally` block so overrides cannot leak between tests. Prefer this supported
 substitution point to monkeypatching a module global; do not mass-migrate
 unrelated historical tests whose dependencies are not part of the changed
