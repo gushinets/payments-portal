@@ -223,7 +223,7 @@ test("home preserves account entry and discovery with an empty published catalog
   const accountAction = hero.getByRole("link", { name: ruMessages.Home.hero.primaryAction });
   const discoveryAction = hero.getByRole("link", { name: ruMessages.Home.hero.secondaryAction });
   await expect(accountAction).toHaveAttribute("href", "/ru/account");
-  await expect(discoveryAction).toHaveAttribute("href", "#products");
+  await expect(discoveryAction).toHaveAttribute("href", "/ru/products");
 
   const discovery = main.locator("#products");
   await expect(discovery.getByRole("heading", {
@@ -242,8 +242,8 @@ test("home preserves account entry and discovery with an empty published catalog
   await expectKeyboardFocus(page, accountAction);
   await expectKeyboardFocus(page, discoveryAction);
   await page.keyboard.press("Enter");
-  await expect(page).toHaveURL(/\/ru#products$/);
-  await expect(discovery.getByRole("heading", { level: 2 })).toBeInViewport();
+  await expect(page).toHaveURL(/\/ru\/products$/);
+  await expect(main.getByRole("heading", { level: 1 })).toBeVisible();
   await expectNoHorizontalOverflow(page);
   expect(traffic.apiRequests).toContain("GET /api/catalog/products");
   await expectPortalBoundary(page, traffic, testInfo);
