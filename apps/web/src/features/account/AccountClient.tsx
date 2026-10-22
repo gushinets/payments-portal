@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Clock3, LogOut, ShieldCheck, UserRound } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { productPresentation } from "@/features/catalog";
+import { CatalogPreviewClient } from "@/features/catalog";
 import type { SessionUserResponse } from "@/generated/api-contracts/types.gen";
 import {
   ApiError,
@@ -23,7 +23,6 @@ import {
   subscribeToSessionChanges,
   useSessionOperation
 } from "@/shared/session/use-session-operation";
-import { AccountProductCard } from "./AccountProductCard";
 
 const telegramLoginUrl = process.env.NEXT_PUBLIC_TELEGRAM_LOGIN_URL ?? "";
 
@@ -325,11 +324,19 @@ export function AccountClient({ languageTag }: { languageTag: string }) {
               <h2 id="account-products-title">{t("products.title")}</h2>
               <p className="card-copy">{t("products.description")}</p>
             </div>
-            <div className="account-products-grid">
-              {productPresentation.map((product) => (
-                <AccountProductCard product={product} key={product.slug} />
-              ))}
-            </div>
+            <CatalogPreviewClient
+              headingLevel={3}
+              accountStatuses={{
+                access: {
+                  label: t("products.state.access.label"),
+                  description: t("products.state.access.description")
+                },
+                usage: {
+                  label: t("products.state.usage.label"),
+                  description: t("products.state.usage.description")
+                }
+              }}
+            />
           </section>
         </div>
       </div>

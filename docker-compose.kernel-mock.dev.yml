@@ -1,0 +1,53 @@
+# Explicitly opt in through KERNEL_MOCK_ENABLED=1 and scripts/repo.py.
+# Never combine this override with docker-compose.prod.yml.
+services:
+  kernel-mock:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: development
+    restart: "no"
+    working_dir: /app
+    environment:
+      APP_ENV: ${APP_ENV:?development environment required}
+      KERNEL_MOCK_TOKEN: ${KERNEL_MOCK_TOKEN:?explicit development token required}
+    command:
+      - python
+      - -m
+      - tools.kernel_manifest_mock
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8091"
+      - --scenario
+      - ${KERNEL_MOCK_SCENARIO:-valid}
+      - --delay-seconds
+      - ${KERNEL_MOCK_DELAY_SECONDS:-30}
+    volumes:
+      - ./tools/kernel_manifest_mock:/app/tools/kernel_manifest_mock:ro
+      - ./docs/contracts/kernel-capability-manifest/v1:/app/docs/contracts/kernel-capability-manifest/v1:ro
+    ports:
+      - "127.0.0.1:${KERNEL_MOCK_PORT:?worktree port required}:8091"
+    networks:
+      - backend
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  api:
+    environment:
+      KERNEL_BASE_URL: ${KERNEL_BASE_URL:-http://kernel-mock:8091}
+      KERNEL_SERVICE_TOKEN: ${KERNEL_SERVICE_TOKEN:?explicit development service token required}
+      MAPPING_OPERATOR_UIDS: ${MAPPING_OPERATOR_UIDS:?explicit CLI execution UID allowlist required}
+      MAPPING_APPROVAL_FILE: /app/.kernel-walkthrough/approval.json
+      MAPPING_SOURCE_INPUTS_FILE: /app/.kernel-walkthrough/inputs.json
+    volumes:
+      - ./.harness/kernel-walkthrough:/app/.kernel-walkthrough
+    # Deliberately no depends_on: missing sources never gate Portal startup.

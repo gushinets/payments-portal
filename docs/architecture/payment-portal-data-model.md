@@ -25,6 +25,10 @@ Target commercial ownership and runtime behavior follow, in precedence order:
 2. [External Billing Boundary Design](../superpowers/specs/2026-09-15-external-billing-boundary-design.md);
 3. [Portal <-> Kernel Access Contract Design](../superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md).
 
+The [accepted live-source admission amendment](../superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md)
+narrowly supersedes source-catalog mirroring/new-sale TTL; it requires no schema
+change. Subscription trust, reconciliation and AccessSnapshot are unchanged.
+
 The schema is a provider-independent storage baseline. Its presence does not
 mean provider integration, purchase orchestration, reconciliation workers,
 paid-access derivation, or Kernel invalidation delivery is implemented.
@@ -53,8 +57,8 @@ to a Portal-managed routing catalog.
 | `document_versions` | Legal | Versioned legal material and active-version selection. |
 | `legal_acceptance_events` | Legal | User acceptance actions with immutable core evidence and clear-only IP/user-agent audit metadata. |
 | `document_acceptances` | Legal | Append-only links from an acceptance event to exact legal document versions and text hashes. |
-| `capability_manifest_projections` | Projection | Last-known-good complete Platform Kernel capability manifest per tenant/contour. |
-| `external_billing_catalog_projections` | Projection | Last-known-good normalized External Billing catalog per configured billing account. |
+| `capability_manifest_projections` | Inert schema slot | Former complete Kernel manifest projection; no runtime reader/writer under live-source admission. |
+| `external_billing_catalog_projections` | Inert schema slot | Former External Billing catalog projection; no runtime reader/writer under live-source admission. |
 | `commercial_mapping_revisions` | Mapping | Immutable published mapping revisions that pin manifest and catalog evidence. |
 | `external_billing_customers` | Purchase | Portal-owned binding from a user to an opaque External Billing customer identity. |
 | `purchase_intents` | Purchase | Durable purchase orchestration state with immutable accepted commercial/legal evidence. |
@@ -122,17 +126,25 @@ document-version material.
 
 ## Projection and mapping tables
 
-`capability_manifest_projections` has one complete last-known-good row per
-`(tenant_id, region)`. `external_billing_catalog_projections` has one complete
-last-known-good row per `external_billing_account_id`. Both store a schema
-version, freshness/version evidence, and a JSON document; later runtime work
-owns validation and atomic replacement.
+`capability_manifest_projections` permits one row per `(tenant_id, region)`;
+`external_billing_catalog_projections` permits one per configured billing
+account. Their schema/version/timestamp/JSON columns remain physical storage
+only. Both tables are inert: no startup/periodic synchronization or admission
+reader is planned under the accepted amendment. Publication/new purchase read
+sources live. Catalog browsing uses immutable approved mappings in PostgreSQL.
 
 `commercial_mapping_revisions` is append-only publication evidence. A revision
 is unique within `(external_billing_account_id, billing_offer_id)`, has a
 positive `revision_number`, and pins manifest/catalog versions and digest plus
 the typed mapping document and publishing principal. PostgreSQL triggers
 prevent updates and deletes.
+
+ANY-664 uses `catalog_version=NULL` and `catalog_digest` as the explicitly
+scoped `selected_offer` evidence digest in `mapping_document`, not an account
+catalog snapshot. That evidence includes the complete default-assigned service
+composition and source provenance. Technical/commercial/legal approval versions
+are pinned; changed commercial terms require new legal approval, while a purely
+technical change does not. No existing revisions are rewritten.
 
 ## Purchase and external-create tables
 

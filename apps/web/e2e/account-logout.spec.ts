@@ -1,6 +1,11 @@
 import { expect, request as playwrightRequest, test } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import ruMessages from "../src/messages/ru.json";
+import { simulatedProduct } from "../tests/fixtures/catalog";
+
+test.beforeEach(async ({ page }) => {
+  await page.route("**/api/catalog/products", (route) => route.fulfill({ json: { products: [simulatedProduct] } }));
+});
 
 const apiBaseURL = process.env.PLAYWRIGHT_API_BASE_URL ?? "http://127.0.0.1:8000";
 const sessionBootstrapKey = "anytoolai_test_session_bootstrapped";
@@ -130,23 +135,15 @@ test("account logout revokes the session and returns to the signed-out account s
       accountMain.getByRole("heading", { name: "Подтвердите email", exact: true })
     ).toBeVisible();
     const products = accountMain.getByRole("region", { name: "Продукты" });
-    await expect(products.getByRole("link")).toHaveCount(2);
-    await expect(products.getByRole("article")).toHaveCount(2);
-    for (const product of [
-      { name: "Document Summary", slug: "document-summary" },
-      { name: "Prompt Optimizer", slug: "prompt-optimizer" }
-    ]) {
-      const card = products.getByRole("article", { name: product.name, exact: true });
-      await expect(card).toBeVisible();
-      await expect(card.getByRole("definition")).toHaveText([
-        "Коммерческая информация по этому продукту пока не готова.",
-        "Достоверный статус доступа к этому продукту пока неизвестен.",
-        "Данные об использовании и квоте для этого продукта пока недоступны."
-      ]);
-      await expect(card.getByRole("link", {
-        name: `Подробнее о продукте ${product.name}`,
-        exact: true
-      })).toHaveAttribute("href", `/ru/products/${product.slug}`);
+    await expect(products.getByText("proposal_ai", { exact: true })).toBeVisible();
+    await expect(products.getByRole("article")).toHaveCount(1);
+    await expect(products.getByText(ruMessages.CatalogPreview.simulated)).toBeVisible();
+    await expect(products.getByRole("link", { name: ruMessages.CatalogPreview.details }))
+      .toHaveAttribute("href", "/ru/products/proposal_ai");
+    const card = products.getByRole("article");
+    for (const slot of ["access", "usage"] as const) {
+      await expect(card.getByText(ruMessages.Account.products.state[slot].label, { exact: true })).toBeVisible();
+      await expect(card.getByText(ruMessages.Account.products.state[slot].description, { exact: true })).toBeVisible();
     }
 
     await accountMain.getByRole("button", { name: /Выйти/ }).click();
@@ -156,6 +153,10 @@ test("account logout revokes the session and returns to the signed-out account s
     await expect(accountMain.getByLabel("Email")).toBeVisible();
     await expect(products).toHaveCount(0);
     await expect(accountMain.getByRole("article")).toHaveCount(0);
+    for (const slot of ["access", "usage"] as const) {
+      await expect(accountMain.getByText(ruMessages.Account.products.state[slot].label, { exact: true })).toHaveCount(0);
+      await expect(accountMain.getByText(ruMessages.Account.products.state[slot].description, { exact: true })).toHaveCount(0);
+    }
     await expect(
       accountMain.getByRole("button", { name: "Регистрация", exact: true })
     ).toBeVisible();

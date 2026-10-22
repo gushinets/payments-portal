@@ -3,6 +3,12 @@
 Status: accepted implementation baseline  
 Date: 2026-09-15
 
+Amended 2026-10-20: the owner-approved
+[live-source commercial admission amendment](2026-10-15-live-source-commercial-admission-design-amendment.md)
+supersedes source-catalog mirroring and the 24h new-sale catalog TTL only.
+The relevant sections below reflect that decision. Paid-access derivation,
+AccessSnapshot, subscription reconciliation and trust deadlines are unchanged.
+
 ## Goal
 
 Redesign Payments Portal around a strict bounded-context split:
@@ -73,7 +79,8 @@ Payments Portal owns:
 
 - canonical AnyToolAI user identity, auth/session, and AnyToolAI legal acceptance;
 - verified Portal-user <-> external-customer mapping;
-- read-only external catalog/subscription projections;
+- live external selected-offer reads, immutable approved terms, and read-only
+  subscription projections;
 - immutable/versioned external-component -> Platform-capability mappings;
 - `PurchaseIntent` and fixed-offer purchase orchestration;
 - durable external-operation recovery, discovery, reconciliation, webhook inbox,
@@ -557,34 +564,22 @@ belong to that product. A later `enabled=false` does not rewrite or revoke an
 already-pinned purchase/subscription/grant/allowance; runtime emergency disable,
 if required, is a separate Kernel policy.
 
-Portal imports the manifest into a local read-only projection atomically. A
-manifest sync updates `capability_manifest_last_complete_sync_at` only after a
-complete `200`, supported schema, full reference validation, and successful
-local projection commit. Timeout, `5xx`, partial/malformed payload, unsupported
-schema, broken references, or local transaction failure retain the previous LKG
-projection and do not advance freshness.
+For each publication and genuinely new purchase, Portal reads a complete
+authenticated Kernel manifest and the complete relevant LBX selected-offer
+dependencies live, under one bounded operation budget. A complete `200`,
+supported schema, valid digest/scope and full reference validation are required.
+Timeout, `5xx`, partial/malformed data, unsupported schema or broken references
+refuse that new operation. Stored terms or a previous successful read are not
+a fallback. Source HTTP completes outside the short PostgreSQL transaction.
 
-Use one freshness constant for all projections required to begin a new sale or
-publish a new mapping:
-
-```text
-new_sales_projection_max_age = 24h
-refresh target ~= every 5m + startup
-```
-
-A new `PurchaseIntent` is allowed only when both:
-
-```text
-capability_manifest_last_complete_sync_at age <= 24h
-billing_catalog_last_complete_sync_at age <= 24h
-```
-
-A new mapping revision is also allowed only when both projections satisfy that
-same freshness bound. Only a complete successful catalog sync refreshes the
-catalog timestamp. Failed/partial sync does not.
-
-Staleness blocks new sales and new mapping publication. It does not revoke
-existing pinned mappings, subscriptions, grants, or allowances.
+Portal does not maintain periodically refreshed Kernel/LBX catalog copies.
+The former startup/five-minute sync and `new_sales_projection_max_age = 24h`
+permission are retired, without a replacement TTL. PostgreSQL stores approved
+immutable mapping terms/evidence for DB-only catalog browsing; viewing those
+terms makes no new LBX/Kernel request and does not prove current sellability.
+Existing-operation retry/recovery follows the amendment's separate rules.
+Admission failure does not revoke existing pins, grants or allowances or alter
+subscription trust, reconciliation or AccessSnapshot caching.
 
 The detailed manifest wire contract and contract-fixture rules live in
 `docs/superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md`.
@@ -614,20 +609,35 @@ implemented.
 
 Published mapping revisions are immutable, privileged Product/Engineering state.
 A new revision may be published only against a fresh complete capability manifest
-and fresh complete external billing catalog. Each revision records both the
-Platform manifest version and the normalized billing-catalog version/digest used
-for validation. Later changes create a new revision; existing pins never rebind.
+and complete live selected-offer billing evidence. Each revision records the
+Platform manifest version and a scoped selected-offer evidence digest, not an
+account-wide catalog version. Later changes create a new revision; existing pins never rebind.
 Historical mapping revisions remain queryable while any purchase/subscription
 references them.
 
 Publication validates that every referenced external offer/component still
-exists in the current catalog projection, every target product/metric exists and
+exists in the current live selected-offer reads, every target product/metric exists and
 is enabled in the current manifest, and each metric belongs to the mapped product.
+
+For the one-service LBX MVP, validate every row of the complete selected tariff
+service list: explicit `enabled_by_default` in `{0,1}`, correct tariff membership
+and unique service identity. The selected service must have `1`, and any other
+service with `1` refuses publication. Optional services with `0` are excluded
+from automatic composition. Missing or ambiguous evidence refuses publication;
+default composition and provenance participate in the stored evidence digest.
+This is a Portal admission rule, not a change to LBX tariffs or cabinet actions.
+
+Changed normalized commercial terms, including price, billing period, payment
+obligations and renewal/cancellation rules, require a new legal approval version
+through the existing approval files. Existing technical/commercial reapproval
+checks and immutable reference/revision hashes still apply. Technical or
+evidence changes alone with unchanged commercial terms do not require new legal
+approval. No approval UI or legal integration is implied.
 
 ### Purchase-time snapshot
 
 When `PurchaseIntent` is created, Portal first revalidates the exact current offer
-against the fresh current catalog and the pinned mapping against the fresh current
+against complete live selected-offer reads and the pinned mapping against the fresh current
 manifest, including `enabled` flags and current component structure. The same
 local transaction then pins:
 
@@ -1326,7 +1336,7 @@ unnecessary billing PII.
 
 Monitor at minimum:
 
-- manifest/catalog age and sync failures;
+- live manifest/selected-offer read failures, completeness and bounded admission latency;
 - not-sellable reasons and invalid/unclassified mappings;
 - customer/recovery UNKNOWN, ambiguous states, and `identity_conflict`;
 - oldest `external_create_outcome_unknown` and pending fixed 2h escalation by
@@ -1371,11 +1381,12 @@ Order:
 1. Supersede contradictory canonical ADR/docs in Portal and Kernel.
 2. Remove obsolete Portal Product/Bundle/Plan/PlanLimit/Order and direct-payment
    semantics; replace the disposable Alembic baseline and recreate dev/test DBs.
-3. Implement the Kernel-hosted capability/metric manifest contract and Portal
-   atomic LKG manifest/catalog freshness projections, including `enabled`
-   admission semantics.
-4. Implement controlled mapping publication against fresh manifest + fresh
-   billing catalog, immutable historical revisions, and purchase-time
+3. Implement Portal's typed live capability/selected-offer clients and `enabled`
+   admission semantics without catalog mirrors. ANY-664 uses the provisional
+   contract/development mock; actual Kernel producer delivery and conformance
+   remain separate real-enablement gates under the accepted amendment.
+4. Implement controlled mapping publication against live manifest + complete
+   selected-offer billing reads, immutable historical revisions, and purchase-time
    mapping/fingerprint/fixed-quantity snapshot.
 5. Implement one configured billing account per contour, durable external-customer
    slot using one `billing_customer_key`, canonical provider subscription identity,
@@ -1430,7 +1441,7 @@ these areas rather than duplicating a large test matrix here:
   prevents a new subscription from reusing a historical ended agreement;
 - first-primary persists target-product observations before acquiring the product
   decision lock and includes every observed candidate;
-- fresh manifest + fresh catalog mapping publication and immutable historical pin;
+- live manifest + complete selected-offer mapping publication and immutable historical pin;
 - unified urgent scheduling and provider trust expiry;
 - every committed paid fact schedules the existing durable worker for its nearest
   effective access-reducing deadline; due omission occurs without provider HTTP,
@@ -1448,7 +1459,7 @@ these areas rather than duplicating a large test matrix here:
 - canonical AccessSnapshot/Invalidation `user_id` is the Portal identity UUID;
 - request-driven snapshot refresh with no fleet-wide user poller;
 - concurrent durable Kernel quota consumption;
-- capability `enabled` admission semantics, manifest LKG/freshness, and
+- capability `enabled` admission semantics, fail-closed live manifest validation, and
   producer-owned/hash-checked cross-repo contract fixtures;
 - architecture checks preventing provider concepts from leaking into Kernel.
 
@@ -1502,7 +1513,7 @@ Payments Portal
   external-billing anti-corruption layer
   one configured billing account per contour
   one immutable opaque external-customer key + fail-closed drift detection
-  catalog/subscription projections + freshness gates
+  live source admission + immutable approved terms + subscription trust
   immutable mappings + accepted commercial/quantity snapshot
   unified durable outbound-create recovery and manual review
   LBX discovery/reconciliation proven by Phase 0

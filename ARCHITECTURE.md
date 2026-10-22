@@ -1,7 +1,7 @@
 # AnyToolAI Portal Architecture
 
 Status: authoritative current-state map
-Last updated: 2026-10-08
+Last updated: 2026-10-22
 
 ## System boundary
 
@@ -12,12 +12,14 @@ provider-neutral external-billing persistence baseline. It does not own
 workflow execution, artifacts, usage consumption, or quota enforcement; those
 belong to the separate Platform Kernel repository.
 
-The current Portal combines product-first public discovery, substantial
+The current Portal combines product-first public discovery,
 per-product pages, presentation-only pricing navigation, direct account/auth
 entry and a product-centric cabinet. It remains pre-production and
-provider-independent on the current ANY-636 4F surface; External
-Billing/provider runtime is not implemented. Final 4F verification and human
-screenshot/intent acceptance remain pending.
+provider-independent on the current ANY-636 4F surface. ANY-664 adds read-only
+source clients, controlled immutable offer publication and DB-only catalog
+reads; genuine Kernel conformance and production enablement remain gated.
+Purchase, billing lifecycle and paid access remain later work. Final 4F
+verification and human screenshot/intent acceptance remain pending.
 
 Each production deployment serves exactly one contour. Region Resolver is a
 separate planned service for contour selection; it is not implemented here.
@@ -41,20 +43,30 @@ The direct-provider architecture has been physically removed. There is no
 CloudPayments runtime, `PaymentProviderAdapter`, `PaymentProviderRegistry`,
 provider-account routing model, direct-payment webhook path, or Portal-owned
 catalog/order/payment/subscription/entitlement lifecycle. Checkout is
-deliberately unavailable and the current web catalog is presentational.
+deliberately unavailable; the offer catalog reads stored approved terms and
+does not promise current sellability.
 
 The clean first-install schema contains ten retained identity/session/legal
 tables and fifteen provider-neutral target persistence tables. Those fifteen
-tables are empty after bootstrap and no current application behavior populates
-them. They establish physical storage only; provider integration, purchase
-orchestration, workers, paid-access derivation, invalidation delivery, and
-Platform Kernel transport remain later work.
+tables are empty after bootstrap. ANY-664 can append approved mapping revisions
+through its restricted operator path; simulated evidence remains simulated.
+Purchase orchestration, workers, paid-access derivation and invalidation delivery
+remain later work. The two source-catalog projection tables are inert schema
+slots with no runtime readers/writers.
 
 The canonical target is defined, in precedence order, by
 [ADR 0005](docs/architecture/decisions/0005-external-billing-boundary.md), the
 accepted [External Billing Boundary Design](docs/superpowers/specs/2026-09-15-external-billing-boundary-design.md),
 and the accepted
 [Portal <-> Kernel Access Contract Design](docs/superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md).
+The owner-approved [live-source admission amendment](docs/superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md)
+narrowly supersedes those baselines' source-catalog mirroring/new-sale TTL.
+Each publication and genuinely new purchase requires live Kernel and complete
+selected-offer LBX reads. PostgreSQL stores approved immutable bindings/terms;
+catalog browsing reads that state without LBX/Kernel requests or a current
+sellability promise. There are no periodic source-catalog synchronization jobs.
+Paid-access derivation, subscription reconciliation/trust and AccessSnapshot
+deadlines are unchanged.
 External Billing owns commercial billing truth and lifecycle. The AnyToolAI
 Portal owns the implemented identity and legal acceptance flows and the later
 external-billing anti-corruption/projection/reconciliation/recovery boundary
@@ -81,10 +93,11 @@ launch remain gated by Phase 0 and their owning `ANY-504` steps.
   logout, authenticated email verification, and password reset.
 - **Legal** — legal entities, versioned documents, required-document discovery,
   and append-only acceptance evidence.
-- **Billing persistence** — the approved projections, immutable commercial
-  mapping/purchase evidence, reconciliation/operation records, paid-access
-  state, and invalidation outbox. There is no billing runtime yet.
-- **Presentation** — locale-prefixed product-first home, catalog, substantial
+- **Catalog admission and billing persistence** — live source validation,
+  restricted immutable mapping publication and DB-only catalog reads;
+  purchase evidence, reconciliation/operation records, paid-access state and
+  invalidation outbox remain storage for later stages.
+- **Presentation** — locale-prefixed product-first home, catalog,
   product detail pages, pricing placeholder, direct account/auth entry,
   product-centric cabinet, recovery, verification, and
   canonical RU legal pages. Ordinary Portal-owned UI and metadata are localized
@@ -95,13 +108,12 @@ launch remain gated by Phase 0 and their owning `ANY-504` steps.
   access, or zero usage/quota. These slots are local view composition, not new
   HTTP contracts or domain models.
 
-### As-built 4F routes
+### Current routes after ANY-664 Step 6
 
 ```text
 /[locale]
 /[locale]/products
-/[locale]/products/document-summary
-/[locale]/products/prompt-optimizer
+/[locale]/products/[product_id]
 /[locale]/pricing
 /[locale]/account
 /[locale]/forgot-password
@@ -115,8 +127,14 @@ direct sign-in/registration and the product-centric authenticated cabinet; the
 header sign-in modal is retained. Product cards open local detail pages, and
 account CTAs enter `/[locale]/account`; no purchase or fabricated
 product-execution target is exposed.
-`document-summary` and `prompt-optimizer` are presentation/route slugs only,
-not claimed Platform Kernel `product_id` or External Billing IDs.
+Home, catalog, product detail and the authenticated cabinet read published
+products through the Portal catalog API. Detail routes use the Kernel
+`product_id` preserved in the approved immutable mapping; browsing reads stored
+terms from PostgreSQL without live source calls. The former static
+`document-summary` and `prompt-optimizer` slugs belong to the historical 4F
+presentation and are not the current catalog identity source. Account cards
+retain independent unknown-access and unavailable-usage slots for Steps 9–10;
+public pages show commercial terms without these account-only statuses.
 
 `/pricing` and public Pricing navigation are presentation-only: localized
 metadata, an honest unavailable/not-ready state and home/products links. The
@@ -125,13 +143,13 @@ controls. Evolved Bundle 3 encodes the approved RU mockup's navy/amber,
 flat/compact visual direction across these surfaces; the mockup's demo facts
 are excluded from runtime authority.
 
-Parent ANY-504 Step 6 supplies authoritative commercial projections and
-technical identity mapping to existing commercial/pricing slots; Step 7
+Under the [accepted live-source amendment](docs/superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md), ANY-504 Step 6 supplies live-verified, approved immutable commercial mappings; Step 7
 supplies purchase/Widget actions; Step 8 supplies reconciled state and recovery
 feedback; Step 9 supplies provider-neutral confirmed paid access; Step 10
-supplies actual Kernel usage/quota. These deferred steps populate the existing
-product/cabinet surfaces without redesigning the main cabinet. Their ownership,
-Phase 0 gates and authoritative-fact rules remain unchanged.
+supplies actual Kernel usage/quota. ANY-664 implements the Step 6 Portal path;
+genuine source conformance and enablement remain gated. Steps 7–10 populate the
+existing product/cabinet surfaces without redesigning the main cabinet. Their
+ownership, Phase 0 gates and authoritative-fact rules remain unchanged.
 
 The transitional pre-production `/{locale}/auth-checkout` and
 `/{locale}/payment-result` routes were removed without redirects or compatibility
@@ -304,10 +322,11 @@ For every future Portal-owned, web-consumed API, the implementation rule is:
 5. Use the shared API transport trust boundary.
 6. Keep form, UI, and view state local instead of putting it into API DTOs.
 
-ANY-636 4F required no new Portal HTTP API. Existing generated auth contracts
-and canonical legal assets supply the facts needed by the current UI; product
-discovery is frontend presentation metadata. Future Portal-owned web APIs still
-follow the ANY-541 rule above.
+ANY-636 4F required no new Portal HTTP API and used frontend product presentation
+metadata. ANY-664 now supplies catalog discovery/detail through the Portal API
+and generated contracts over approved immutable mappings. Auth contracts and
+canonical legal assets retain their ownership. Future Portal-owned web APIs
+still follow the ANY-541 rule above.
 
 Generated contracts do not change domain-data ownership. Future web work must
 not mirror or re-author External Billing commercial catalog, pricing, or
@@ -376,7 +395,8 @@ must not begin, commit, or roll back the outer transaction. SQLAlchemy
 The external-billing tables are provider-neutral persistence, not executable
 commercial behavior:
 
-- projection rows hold complete last-known-good capability/catalog documents;
+- the capability/catalog projection tables remain inert schema slots; current
+  source catalogs are not mirrored or used as offline admission authority;
 - immutable mapping revisions and purchase snapshots preserve accepted
   commercial/legal provenance;
 - external create operations preserve uncertain outcomes for safe recovery;
@@ -418,7 +438,8 @@ payment state, or manual operator input alone never grant paid access.
 | Password-reset confirmation | `confirm_password_reset()` atomically commits token claim, password change, outstanding-token invalidation, and active-session revocation. |
 | Email-verification confirmation | `confirm_email_verification()` atomically commits the mailbox-verification fact, token claim, and invalidation of other outstanding verification capabilities. |
 | Email-verification resend/rotation | `prepare_email_verification_resend()` atomically commits invalidation of the previous outstanding capability and creation of its replacement after the cooldown/lock checks. |
-| Target billing tables | No current runtime transaction populates them. Their behavior belongs to later `ANY-504` steps. |
+| Commercial mapping publication | `publish_mapping()` appends one immutable revision after live source checks, under bounded scope lock/CAS; catalog reads use PostgreSQL only. |
+| Other target billing tables | Source-catalog slots are inert; purchase, reconciliation and paid-access behavior belongs to later `ANY-504` steps. |
 
 ## Enforced architecture guards
 
@@ -530,6 +551,7 @@ idempotency, reconciliation, or access authority.
 - [ADR 0005](docs/architecture/decisions/0005-external-billing-boundary.md)
 - [External Billing Boundary Design](docs/superpowers/specs/2026-09-15-external-billing-boundary-design.md)
 - [Portal <-> Kernel Access Contract Design](docs/superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md)
+- [Accepted live-source admission amendment](docs/superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md)
 - [Current as-built data model](docs/architecture/payment-portal-data-model.md)
 - [Deployment and reset contract](docs/architecture/deployment.md)
 - [As-built RU Portal 4F handoff](docs/product/ru-mvp.md)

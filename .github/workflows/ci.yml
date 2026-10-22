@@ -45,6 +45,8 @@ jobs:
         run: uv sync --directory apps/api --locked --dev --python 3.12
       - name: Install web dependencies
         run: npm ci
+      - name: Check provisional Kernel spec, HTTP mock and Portal consumer
+        run: ./.venv/bin/python scripts/check_kernel_manifest_contract.py --local
       - name: Run fast checks
         run: npm run check:fast
       - name: Generate API coverage

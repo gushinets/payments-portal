@@ -62,6 +62,256 @@
         "title": "AcceptDocumentResponse",
         "type": "object"
       },
+      "CatalogAllowance": {
+        "properties": {
+          "metric_key": {
+            "title": "Metric Key",
+            "type": "string"
+          },
+          "quantity": {
+            "pattern": "^[1-9][0-9]*$",
+            "title": "Quantity",
+            "type": "string"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "metric_key",
+          "unit",
+          "quantity"
+        ],
+        "title": "CatalogAllowance",
+        "type": "object"
+      },
+      "CatalogMoney": {
+        "properties": {
+          "connection_amount": {
+            "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+            "title": "Connection Amount",
+            "type": "string"
+          },
+          "currency": {
+            "pattern": "^[A-Z]{3}$",
+            "title": "Currency",
+            "type": "string"
+          },
+          "decimal_places": {
+            "maximum": 36.0,
+            "minimum": 0.0,
+            "title": "Decimal Places",
+            "type": "integer"
+          },
+          "recurring_amount": {
+            "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+            "title": "Recurring Amount",
+            "type": "string"
+          },
+          "units": {
+            "const": "major",
+            "default": "major",
+            "title": "Units",
+            "type": "string"
+          }
+        },
+        "required": [
+          "recurring_amount",
+          "connection_amount",
+          "currency",
+          "decimal_places"
+        ],
+        "title": "CatalogMoney",
+        "type": "object"
+      },
+      "CatalogOffer": {
+        "properties": {
+          "allowance": {
+            "$ref": "#/components/schemas/CatalogAllowance"
+          },
+          "evidence_mode": {
+            "$ref": "#/components/schemas/MappingEvidenceMode"
+          },
+          "money": {
+            "$ref": "#/components/schemas/CatalogMoney"
+          },
+          "offer_id": {
+            "format": "uuid",
+            "title": "Offer Id",
+            "type": "string"
+          },
+          "period": {
+            "$ref": "#/components/schemas/CatalogPeriod"
+          },
+          "publication_state": {
+            "$ref": "#/components/schemas/PublicationState"
+          },
+          "revision_id": {
+            "format": "uuid",
+            "title": "Revision Id",
+            "type": "string"
+          },
+          "revision_number": {
+            "exclusiveMinimum": 0.0,
+            "title": "Revision Number",
+            "type": "integer"
+          },
+          "terms": {
+            "$ref": "#/components/schemas/CatalogTermSummary"
+          }
+        },
+        "required": [
+          "offer_id",
+          "revision_id",
+          "revision_number",
+          "evidence_mode",
+          "publication_state",
+          "money",
+          "period",
+          "allowance",
+          "terms"
+        ],
+        "title": "CatalogOffer",
+        "type": "object"
+      },
+      "CatalogPeriod": {
+        "properties": {
+          "anchor": {
+            "enum": [
+              "calendar_month",
+              "instance_start",
+              "first_instance_start"
+            ],
+            "title": "Anchor",
+            "type": "string"
+          },
+          "length": {
+            "exclusiveMinimum": 0.0,
+            "title": "Length",
+            "type": "integer"
+          },
+          "unit": {
+            "enum": [
+              "day",
+              "week",
+              "month",
+              "year"
+            ],
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "unit",
+          "length",
+          "anchor"
+        ],
+        "title": "CatalogPeriod",
+        "type": "object"
+      },
+      "CatalogProductResponse": {
+        "properties": {
+          "availability": {
+            "enum": [
+              "APPROVED_UNVERIFIED_NOW",
+              "SIMULATED_PREVIEW",
+              "UNAVAILABLE_AMBIGUOUS_OFFERS"
+            ],
+            "title": "Availability",
+            "type": "string"
+          },
+          "evidence_mode": {
+            "$ref": "#/components/schemas/MappingEvidenceMode"
+          },
+          "offer": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CatalogOffer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "product_id": {
+            "title": "Product Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "product_id",
+          "evidence_mode",
+          "availability",
+          "offer"
+        ],
+        "title": "CatalogProductResponse",
+        "type": "object"
+      },
+      "CatalogProductsResponse": {
+        "properties": {
+          "products": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogProductResponse"
+            },
+            "title": "Products",
+            "type": "array"
+          }
+        },
+        "required": [
+          "products"
+        ],
+        "title": "CatalogProductsResponse",
+        "type": "object"
+      },
+      "CatalogTermSummary": {
+        "properties": {
+          "connection_charge_basis": {
+            "enum": [
+              "per_service_unit",
+              "once"
+            ],
+            "title": "Connection Charge Basis",
+            "type": "string"
+          },
+          "discounts": {
+            "const": "none",
+            "title": "Discounts",
+            "type": "string"
+          },
+          "full_funding_required": {
+            "title": "Full Funding Required",
+            "type": "boolean"
+          },
+          "prepaid": {
+            "title": "Prepaid",
+            "type": "boolean"
+          },
+          "proration": {
+            "const": "none",
+            "title": "Proration",
+            "type": "string"
+          },
+          "tax_treatment": {
+            "enum": [
+              "included",
+              "not_applicable"
+            ],
+            "title": "Tax Treatment",
+            "type": "string"
+          }
+        },
+        "required": [
+          "prepaid",
+          "full_funding_required",
+          "tax_treatment",
+          "discounts",
+          "proration",
+          "connection_charge_basis"
+        ],
+        "title": "CatalogTermSummary",
+        "type": "object"
+      },
       "EmailVerificationConfirmRequest": {
         "properties": {
           "token": {
@@ -196,6 +446,14 @@
         "title": "LogoutResponse",
         "type": "object"
       },
+      "MappingEvidenceMode": {
+        "enum": [
+          "SIMULATED",
+          "GENUINE"
+        ],
+        "title": "MappingEvidenceMode",
+        "type": "string"
+      },
       "PasswordResetConfirmRequest": {
         "properties": {
           "password": {
@@ -257,6 +515,14 @@
         ],
         "title": "PasswordResetRequestResponse",
         "type": "object"
+      },
+      "PublicationState": {
+        "enum": [
+          "SIMULATED",
+          "PUBLISHED_APPROVED_UNVERIFIED_NOW"
+        ],
+        "title": "PublicationState",
+        "type": "string"
       },
       "ReadinessSuccessResponse": {
         "properties": {
@@ -910,6 +1176,69 @@
         "summary": "Get Session",
         "tags": [
           "auth"
+        ]
+      }
+    },
+    "/api/catalog/products": {
+      "get": {
+        "operationId": "list_products_api_catalog_products_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogProductsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Products",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/catalog/products/{product_id}": {
+      "get": {
+        "operationId": "product_detail_api_catalog_products__product_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "product_id",
+            "required": true,
+            "schema": {
+              "title": "Product Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogProductResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Product Detail",
+        "tags": [
+          "catalog"
         ]
       }
     },

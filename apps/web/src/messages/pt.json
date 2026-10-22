@@ -145,7 +145,7 @@
     },
     "products": {
       "title": "Produtos",
-      "description": "Confira os detalhes e o status de cada produto.",
+      "description": "Produtos publicados e suas condições salvas. As informações sobre assinaturas, acesso e uso estarão disponíveis mais adiante.",
       "detailAction": "Ver detalhes do produto",
       "state": {
         "commercial": {
@@ -236,25 +236,61 @@
     "settingsAction": "Configurações"
   },
   "Home": {
-    "eyebrow": "Extensões do Chrome",
+    "eyebrow": "Ferramentas de IA",
     "hero": {
       "heading": "Ferramentas de IA para <em>o dia a dia</em>",
-      "description": "Resuma documentos e melhore prompts. Escolha uma ferramenta para sua tarefa e saiba como ela funciona.",
+      "description": "Explore as ferramentas de IA publicadas e suas condições salvas. Escolha uma ferramenta para sua tarefa.",
       "primaryAction": "Abrir conta",
       "secondaryAction": "Explorar ferramentas"
     },
     "products": {
       "eyebrow": "Coleção",
       "title": "Ferramentas de IA",
-      "description": "Ferramentas para trabalhar com documentos e prompts, reunidas em um só lugar.",
+      "description": "Ferramentas de IA publicadas e suas condições em um só lugar.",
       "action": "Todas as ferramentas"
+    }
+  },
+  "CatalogPreview": {
+    "loading": "Carregando as ofertas aprovadas…",
+    "empty": "Não há prévias de ofertas aprovadas disponíveis.",
+    "failed": "As prévias das ofertas estão indisponíveis. Tente novamente.",
+    "retry": "Tentar novamente",
+    "notFound": "Nenhuma oferta aprovada foi encontrada para este produto.",
+    "ambiguous": "Indisponível: existe mais de uma oferta aprovada para este produto.",
+    "simulated": "SIMULAÇÃO — apenas prévia de teste",
+    "unverified": "Condições aprovadas — disponibilidade atual não verificada",
+    "previewNote": "As condições salvas são exibidas para consulta. A compra está indisponível; esta prévia não concede acesso ao produto.",
+    "productTitle": "Produto",
+    "fallback": "Este produto é identificado pelo seu ID canônico. Informações adicionais ainda não estão disponíveis.",
+    "details": "Ver condições",
+    "recurring": "Cobrança recorrente",
+    "connection": "Cobrança de conexão separada",
+    "period": "Período de cobrança",
+    "allowance": "Cota técnica fixa por período",
+    "allowanceValue": "{quantity} {unit}",
+    "metric": "Métrica técnica",
+    "terms": "Condições de pagamento",
+    "prepaid": "Pagamento antecipado",
+    "paymentUnspecified": "Consulte as condições aprovadas",
+    "tax": "Tratamento tributário",
+    "taxValues": { "included": "Incluído no valor", "not_applicable": "Não se aplica" },
+    "periodAnchors": {
+      "calendar_month": "Por mês civil",
+      "instance_start": "A partir do início da instância",
+      "first_instance_start": "A partir do primeiro início da instância"
+    },
+    "periodUnits": {
+      "day": "{count, plural, one {# dia} other {# dias}}",
+      "week": "{count, plural, one {# semana} other {# semanas}}",
+      "month": "{count, plural, one {# mês} other {# meses}}",
+      "year": "{count, plural, one {# ano} other {# anos}}"
     }
   },
   "Catalog": {
     "page": {
       "eyebrow": "Catálogo",
       "title": "Ferramentas de IA",
-      "description": "Conheça Document Summary e Prompt Optimizer para resumir documentos e melhorar prompts."
+      "description": "Consulte as condições aprovadas salvas. A disponibilidade atual não foi verificada."
     },
     "signInAction": "Abrir conta",
     "backToCatalog": "Voltar aos produtos",

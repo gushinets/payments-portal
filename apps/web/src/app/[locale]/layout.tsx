@@ -39,7 +39,9 @@ export const metadata: Metadata = {
   metadataBase: APP_METADATA_BASE
 };
 
-export const dynamicParams = false;
+// Permit source-backed product IDs that are unknown at build time. Locale
+// membership remains enforced by isRouteLocale below.
+export const dynamicParams = true;
 
 export function generateStaticParams() {
   return SUPPORTED_ROUTE_LOCALES.map((locale) => ({ locale }));

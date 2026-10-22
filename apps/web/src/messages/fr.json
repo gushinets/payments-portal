@@ -145,7 +145,7 @@
     },
     "products": {
       "title": "Produits",
-      "description": "Consultez les détails et le statut de chaque produit.",
+      "description": "Produits publiés et conditions enregistrées. Les informations sur les abonnements, l’accès et l’utilisation seront disponibles ultérieurement.",
       "detailAction": "Voir les détails du produit",
       "state": {
         "commercial": {
@@ -236,25 +236,61 @@
     "settingsAction": "Paramètres"
   },
   "Home": {
-    "eyebrow": "Extensions Chrome",
+    "eyebrow": "Outils IA",
     "hero": {
       "heading": "Des outils d’IA pour <em>le travail quotidien</em>",
-      "description": "Résumez des documents et améliorez vos prompts. Choisissez un outil adapté à votre tâche et découvrez son fonctionnement.",
+      "description": "Découvrez les outils IA publiés et leurs conditions enregistrées. Choisissez un outil adapté à votre tâche.",
       "primaryAction": "Ouvrir le compte",
       "secondaryAction": "Découvrir les outils"
     },
     "products": {
       "eyebrow": "Collection",
       "title": "Outils d’IA",
-      "description": "Des outils pour les documents et les prompts, réunis au même endroit.",
+      "description": "Les outils IA publiés et leurs conditions au même endroit.",
       "action": "Voir tous les outils"
+    }
+  },
+  "CatalogPreview": {
+    "loading": "Chargement des offres approuvées…",
+    "empty": "Aucun aperçu d’offre approuvée n’est disponible.",
+    "failed": "Les aperçus des offres sont indisponibles. Réessayez.",
+    "retry": "Réessayer",
+    "notFound": "Aucune offre approuvée n’a été trouvée pour ce produit.",
+    "ambiguous": "Indisponible : plusieurs offres approuvées existent pour ce produit.",
+    "simulated": "SIMULATION — aperçu de test uniquement",
+    "unverified": "Conditions approuvées — disponibilité actuelle non vérifiée",
+    "previewNote": "Les conditions enregistrées sont présentées à titre indicatif. L’achat est indisponible ; cet aperçu ne donne pas accès au produit.",
+    "productTitle": "Produit",
+    "fallback": "Ce produit est identifié par son identifiant canonique. Aucune description complémentaire n’est encore disponible.",
+    "details": "Voir les conditions",
+    "recurring": "Montant récurrent",
+    "connection": "Frais de raccordement distincts",
+    "period": "Période de facturation",
+    "allowance": "Quota technique fixe par période",
+    "allowanceValue": "{quantity} {unit}",
+    "metric": "Métrique technique",
+    "terms": "Conditions de paiement",
+    "prepaid": "Prépaiement",
+    "paymentUnspecified": "Voir les conditions approuvées",
+    "tax": "Traitement fiscal",
+    "taxValues": { "included": "Inclus dans le montant", "not_applicable": "Sans objet" },
+    "periodAnchors": {
+      "calendar_month": "Par mois civil",
+      "instance_start": "À partir du début de l’instance",
+      "first_instance_start": "À partir du premier début de l’instance"
+    },
+    "periodUnits": {
+      "day": "{count, plural, one {# jour} other {# jours}}",
+      "week": "{count, plural, one {# semaine} other {# semaines}}",
+      "month": "{count, plural, one {# mois} other {# mois}}",
+      "year": "{count, plural, one {# an} other {# ans}}"
     }
   },
   "Catalog": {
     "page": {
       "eyebrow": "Catalogue",
       "title": "Outils d’IA",
-      "description": "Découvrez Document Summary et Prompt Optimizer pour résumer vos documents et améliorer vos prompts."
+      "description": "Consultez les conditions approuvées enregistrées. La disponibilité actuelle n’est pas vérifiée."
     },
     "signInAction": "Ouvrir le compte",
     "backToCatalog": "Retour aux produits",

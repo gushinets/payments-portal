@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Provisional Kernel Capability Manifest v1",
+  "description": "Specification-derived local contract; not a delivered Kernel producer contract. Uniqueness, references, scope and semantic digest require additional validation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "tenant_id",
+    "region",
+    "manifest_version",
+    "generated_at",
+    "products",
+    "usage_metrics"
+  ],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "tenant_id": { "type": "string", "minLength": 1 },
+    "region": { "type": "string", "minLength": 1 },
+    "manifest_version": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "products": { "type": "array", "items": { "$ref": "#/$defs/product" } },
+    "usage_metrics": { "type": "array", "items": { "$ref": "#/$defs/usage_metric" } }
+  },
+  "$defs": {
+    "product": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["product_id", "enabled"],
+      "properties": {
+        "product_id": { "type": "string", "minLength": 1 },
+        "enabled": { "type": "boolean" }
+      }
+    },
+    "usage_metric": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["metric_key", "product_id", "unit", "enabled"],
+      "properties": {
+        "metric_key": { "type": "string", "minLength": 1 },
+        "product_id": { "type": "string", "minLength": 1 },
+        "unit": { "type": "string", "minLength": 1 },
+        "enabled": { "type": "boolean" }
+      }
+    }
+  }
+}

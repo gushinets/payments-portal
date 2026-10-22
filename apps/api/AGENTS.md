@@ -11,6 +11,10 @@ retained billing document:
 1. [ADR 0005](../../docs/architecture/decisions/0005-external-billing-boundary.md)
 2. [External Billing Boundary Design](../../docs/superpowers/specs/2026-09-15-external-billing-boundary-design.md)
 3. [Portal ↔ Kernel Access Contract Design](../../docs/superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md)
+4. [Accepted live-source admission amendment](../../docs/superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md)
+   narrowly supersedes source-catalog mirroring/new-sale TTL: live Kernel/LBX
+   reads for publication/new purchase, PostgreSQL for immutable approved terms
+   and catalog browsing. No change to subscription trust or AccessSnapshot.
 
 The [payment-provider document](../../docs/architecture/payment-providers.md)
 is historical characterization of the physically removed direct-provider

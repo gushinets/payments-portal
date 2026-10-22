@@ -145,7 +145,7 @@
     },
     "products": {
       "title": "Products",
-      "description": "Explore each product’s details and status.",
+      "description": "Published products and their saved terms. Subscription, access and usage information will be available later.",
       "detailAction": "View product details",
       "state": {
         "commercial": {
@@ -236,25 +236,61 @@
     "settingsAction": "Settings"
   },
   "Home": {
-    "eyebrow": "Chrome extensions",
+    "eyebrow": "AI tools",
     "hero": {
       "heading": "AI tools for <em>everyday work</em>",
-      "description": "Summarize documents and improve prompts. Choose a tool for your task and learn how it works.",
+      "description": "Explore published AI tools and their saved terms. Choose a tool for your task.",
       "primaryAction": "Open account",
       "secondaryAction": "Explore tools"
     },
     "products": {
       "eyebrow": "Collection",
       "title": "AI utilities",
-      "description": "Tools for working with documents and prompts, collected in one place.",
+      "description": "Published AI tools and their terms in one place.",
       "action": "View all tools"
+    }
+  },
+  "CatalogPreview": {
+    "loading": "Loading approved offer previews…",
+    "empty": "No approved offer previews are available.",
+    "failed": "Offer previews are unavailable. Try again.",
+    "retry": "Try again",
+    "notFound": "No approved offer preview was found for this product.",
+    "ambiguous": "Unavailable: more than one approved offer exists for this product.",
+    "simulated": "SIMULATED — test preview only",
+    "unverified": "Approved terms — current availability unverified",
+    "previewNote": "Stored terms are shown for reference. Purchasing is unavailable; this preview does not grant access.",
+    "productTitle": "Product",
+    "fallback": "This product is identified by its canonical ID. Additional product information is not available yet.",
+    "details": "View offer preview",
+    "recurring": "Recurring charge",
+    "connection": "Separate connection charge",
+    "period": "Billing period",
+    "allowance": "Fixed technical allowance per period",
+    "allowanceValue": "{quantity} {unit}",
+    "metric": "Technical metric",
+    "terms": "Payment terms",
+    "prepaid": "Prepaid",
+    "paymentUnspecified": "See the approved terms",
+    "tax": "Tax treatment",
+    "taxValues": { "included": "Included in the amount", "not_applicable": "Not applicable" },
+    "periodAnchors": {
+      "calendar_month": "By calendar month",
+      "instance_start": "From the instance start",
+      "first_instance_start": "From the first instance start"
+    },
+    "periodUnits": {
+      "day": "{count, plural, one {# day} other {# days}}",
+      "week": "{count, plural, one {# week} other {# weeks}}",
+      "month": "{count, plural, one {# month} other {# months}}",
+      "year": "{count, plural, one {# year} other {# years}}"
     }
   },
   "Catalog": {
     "page": {
       "eyebrow": "Catalog",
       "title": "AI utilities",
-      "description": "Explore Document Summary and Prompt Optimizer for document summaries and better prompts."
+      "description": "Browse stored approved offer terms. Current availability is unverified."
     },
     "signInAction": "Open account",
     "backToCatalog": "Back to products",

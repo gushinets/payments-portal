@@ -1,18 +1,28 @@
 # RU AnyToolAI Portal — As-Built 4F Handoff
 
 Status: authoritative implemented-product specification and deferred-step handoff
-Last updated: 2026-10-08
+Last updated: 2026-10-22
 
-The current ANY-636 4F surface is a product-centric AnyToolAI Portal: public
-product-first home, catalog/discovery, substantial per-product pages,
+The surface established by ANY-636 4F is a product-centric AnyToolAI Portal:
+public product-first home, catalog/discovery, per-product pages,
 presentation-only pricing navigation, direct account/auth entry, and an
 authenticated cabinet whose primary content is one card per current product.
 Identity facts are compact supporting content. The repository remains
-pre-production and provider-independent. External Billing/provider runtime,
-commercial catalog, purchase/Widget, confirmed paid-access projection, and
-actual usage/quota integration are not implemented.
+pre-production and provider-independent. Purchase/Widget, billing lifecycle,
+confirmed paid-access projection and actual usage/quota are not implemented.
+ANY-664 Step 6 now supplies published products and approved immutable commercial
+terms through the Portal catalog API. Home, catalog, product detail and the
+cabinet use Kernel `product_id` from the immutable mapping; browsing reads
+PostgreSQL without live Kernel/LBX calls. Genuine conformance and production
+enablement remain gated. Each published account product retains independent
+unknown-access and unavailable-usage states for Steps 9–10; public pages omit
+these account-only statuses. Published terms do not grant access or promise
+current sellability.
 
-This handoff describes the completed ANY-636 implementation through Step 13.
+This handoff preserves the completed ANY-636 implementation through Step 13,
+with current catalog routes and Step 6 sources updated below. The former static
+`document-summary` and `prompt-optimizer` presentation is historical 4F context,
+not the current catalog identity or product source.
 All thirteen steps are marked `done`, and the plan was moved to `completed` on
 2026-10-08 at the user's explicit instruction. The completion record preserves
 the historical verification evidence and the scope of the archival checks.
@@ -32,9 +42,8 @@ confirmation through the separate Region Resolver remains planned.
 | Route | Implemented purpose |
 | --- | --- |
 | `/[locale]` | Product-first home with account entry, collection and current-product discovery |
-| `/[locale]/products` | Presentation catalog with two product cards and detail navigation |
-| `/[locale]/products/document-summary` | Substantial Document Summary presentation screen |
-| `/[locale]/products/prompt-optimizer` | Substantial Prompt Optimizer presentation screen |
+| `/[locale]/products` | Published products and stored approved terms from the Portal catalog API |
+| `/[locale]/products/[product_id]` | Kernel product identity and immutable approved offer terms through the Portal API |
 | `/[locale]/pricing` | Localized presentation-only not-ready state and home/products navigation |
 | `/[locale]/account` | Direct sign-in/registration entry and product-centric authenticated cabinet |
 | `/[locale]/forgot-password` | Password-reset email request |
@@ -56,7 +65,11 @@ The transitional pre-production `/{locale}/auth-checkout` and
 compatibility routes because there is no production compatibility obligation
 for them. This is not a permanent rule for future production route changes.
 
-## Product composition and visual authority
+## Historical 4F composition and visual authority
+
+The two-product presentation below records the ANY-636 handoff. ANY-664 replaces
+its static catalog/detail content with published products and immutable terms
+from the Portal API; the Bundle 3 visual authority and cabinet slots remain.
 
 The approved ANY-539 RU Portal mockup was supplied and directly inspected as a
 local input-only product/visual reference for the corrected 4F surface and its
@@ -118,14 +131,15 @@ documents remain drafts.
    through the existing `AuthForm`. The header sign-in modal remains available.
 3. Registration requires explicit, initially unchecked personal-data and offer
    confirmations using generated canonical RU acceptance text and legal links.
-4. The authenticated cabinet leads with both current product cards and their
+4. The authenticated cabinet leads with published product cards and their
    per-product state/action slots. Supporting account context renders the
    returned email and `email_verified` fact, offers verification/resend when
    needed, and provides logout.
 5. A user can request a password-reset email, replace the password through the
    existing reset flow, and complete authenticated email verification.
-6. Each product's commercial information is not ready, access is unknown or
-   unavailable, and usage/quota data is unavailable. No purchase/checkout CTA,
+6. Each published product shows its stored approved commercial terms, including
+   duration and period anchor. Account access is unknown and usage/quota data
+   is unavailable. No purchase/checkout CTA,
    product-execution URL, plan badge or usage progress is invented.
 
 Account state is frontend component state: loading, signed out, session error
@@ -154,8 +168,8 @@ names and ownership decisions.
 | Email and authenticated identity | Portal; generated `SessionUserResponse` from `/api/auth/session` and auth responses | Render the returned facts now |
 | Registration, sign-in, logout, verification, recovery | Portal; existing generated auth contracts and shared auth transport/forms | Reuse now; no billing/access inference |
 | Legal pages, links, registration acceptance | Portal identity/legal boundary and canonical RU legal source; existing legal runtime and generated legal assets | Preserve now; legal documents remain drafts |
-| Product discovery and detail content | Frontend presentation metadata and locale catalogs | Static presentation now; no commercial or technical identity authority |
-| Technical capability manifest and commercial catalog, tariffs, prices, periods, sellability | Platform Kernel owns technical `product_id`, `metric_key`, and capability manifest; External Billing owns commercial catalog/offers/tariffs/prices/periods/sellability; no current runtime source | Unavailable; Portal projection and mapping of these authoritative sources deferred to ANY-504 Step 6 |
+| Product discovery and detail content | Portal catalog API and generated contracts over approved immutable mappings; Kernel owns `product_id` | ANY-664 replaces historical static 4F discovery; locale catalogs own surrounding UI copy |
+| Technical capability manifest and commercial catalog, tariffs, prices, periods, sellability | Kernel owns technical identity/capabilities; External Billing owns commercial truth; Portal stores immutable approved bindings/terms | ANY-664 implements Step 6 source reads, restricted mapping publication and DB-only browsing; genuine enablement remains gated and current sellability is not promised |
 | Purchase/checkout/Widget entry | External Billing with Portal orchestration; no current runtime source | No purchase CTA or runtime; deferred to ANY-504 Step 7 |
 | Subscription/billing state | External Billing; no current authoritative source | Unknown/unavailable; deferred to ANY-504 Steps 6–8 |
 | Provider reconciliation/recovery | Portal boundary over authoritative External Billing facts; no current runtime source | Deferred to ANY-504 Step 8 |
@@ -171,8 +185,9 @@ execution and artifacts also remain outside this repository.
 Provider-dependent LBX semantics, Widget behavior, paid-access derivation, and
 launch remain gated on Phase 0 PASS under ANY-504, with evidence owned by
 ANY-634. This handoff adds no provider semantics or later-step implementation.
-The existing target persistence baseline remains empty without producer
-runtime; 4F changes no backend behavior, persistence, migrations, or contracts.
+Historical 4F changed no backend behavior, persistence, migrations, or
+contracts. ANY-664 adds the Step 6 producer for immutable mapping revisions;
+purchase, reconciliation, access and usage remain later-step work.
 
 ### Stable integration surfaces for parent ANY-504 Steps 6–10
 
@@ -181,11 +196,11 @@ than redesign the main shell, catalog, product pages or cabinet. The slots are
 frontend-local view composition, not new wire DTOs, domain entities or stored
 business facts. Their owning steps must supply authoritative data/actions:
 
-1. **Step 6 — commercial facts:** project/map the Kernel capability manifest and
-   External Billing catalog/offers/prices/periods/sellability into the existing
-   pricing presentation surface and per-product commercial slots. Introduce
-   authoritative technical identity mapping here; the current route slugs are
-   not that mapping. Commercial truth remains owned by External Billing.
+1. **Step 6 — commercial facts:** ANY-664 implements live source validation,
+   restricted immutable mapping publication and DB-only catalog browsing.
+   Current routes use mapped Kernel `product_id`; commercial terms include
+   duration and anchor. Genuine conformance/enablement remain gated. Pricing
+   remains a placeholder; commercial truth stays with External Billing.
 2. **Step 7 — purchase/Widget:** populate the existing per-product action areas
    and relevant offer presentation with approved purchase entry and Widget
    orchestration. Account/detail navigation currently remains the safe action;
@@ -203,23 +218,25 @@ business facts. Their owning steps must supply authoritative data/actions:
    durable usage and quota enforcement; no guessed zero, allowance or progress
    value may fill a missing source.
 
-All five are deferred parent-program work. Provider-dependent semantics and
-launch retain the Phase 0 gates. No step may treat an unavailable source as
-“no subscription”, “no access”, a default/free plan or `0/N` usage.
+Steps 7–10 and genuine Step 6 enablement remain deferred parent-program work.
+Provider-dependent semantics and launch retain the Phase 0 gates. No step may
+treat an unavailable source as “no subscription”, “no access”, a default/free
+plan or `0/N` usage.
 
 ## Product presentation and API boundary
 
-The two slugs `document-summary` and `prompt-optimizer` in frontend
-`productPresentation` are presentation/route identifiers only. They are not
-claimed Platform Kernel `product_id` values or External Billing IDs. Technical
-identity comes from Kernel; commercial offers come from External Billing.
+The former `document-summary` and `prompt-optimizer` slugs and
+`productPresentation` belong to historical 4F, where they were presentation
+identifiers only. Current product routes use Kernel `product_id` through the
+Portal catalog API and approved immutable mapping. Technical identity comes
+from Kernel; commercial offers come from External Billing.
 No authoritative product-execution target exists in the current Portal, so
 navigation stays on the local product/account surfaces.
 
-ANY-636 required no new Portal HTTP API. The facts it may authoritatively render
-are available through existing generated auth contracts and canonical legal
-flows/assets, or are frontend presentation metadata. There is no new
-handwritten frontend server-fact contract.
+ANY-636 required no new Portal HTTP API. Its authoritative server facts
+were available through existing generated auth contracts and canonical legal
+flows/assets, or frontend presentation metadata. ANY-664 adds generated Portal
+catalog contracts; there is no handwritten frontend server-fact contract.
 
 Every future Portal-owned web-consumed API follows ANY-541:
 

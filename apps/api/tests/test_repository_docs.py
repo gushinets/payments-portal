@@ -1218,7 +1218,7 @@ def test_api_fast_test_environment_does_not_require_postgres(monkeypatch) -> Non
     assert api_test_environment("api-fast", {}) == {}
 
 
-def test_makefile_contains_only_test_database_shortcuts() -> None:
+def test_makefile_contains_only_documented_local_shortcuts() -> None:
     makefile = Path("Makefile").read_text(encoding="utf-8")
     targets = [
         line[:-1]
@@ -1226,7 +1226,7 @@ def test_makefile_contains_only_test_database_shortcuts() -> None:
         if line and not line.startswith((" ", "\t", "#")) and line.endswith(":")
     ]
 
-    assert targets == ["test_db_up", "test_db_stop"]
+    assert targets == ["test_db_up", "test_db_stop", "catalog_preview", "catalog_preview_publish"]
 
 
 def test_generated_registration_acceptance_contract_matches_backend_authority() -> None:
@@ -1383,6 +1383,35 @@ def test_api_coverage_writes_xml_to_stable_harness_path(
             check_environment,
         )
     ]
+
+
+@pytest.mark.parametrize(
+    ("process_account", "dotenv_account", "expected"),
+    [
+        (None, "SIMULATED:dotenv-account", "SIMULATED:dotenv-account"),
+        ("SIMULATED:process-account", "SIMULATED:dotenv-account", "SIMULATED:process-account"),
+        ("", "SIMULATED:dotenv-account", ""),
+        (None, "", ""),
+    ],
+)
+def test_runtime_forwards_explicit_catalog_account_without_inventing_one(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    process_account: str | None,
+    dotenv_account: str,
+    expected: str,
+) -> None:
+    harness = tmp_path / ".harness"
+    monkeypatch.setattr(repo, "HARNESS_DIR", harness)
+    monkeypatch.setattr(repo, "RUNTIME_JSON", harness / "runtime.json")
+    monkeypatch.setattr(repo, "RUNTIME_ENV", harness / "runtime.env")
+    monkeypatch.setattr(repo, "read_dotenv", lambda: {"MAPPING_ACCOUNT_ID": dotenv_account})
+    if process_account is None:
+        monkeypatch.delenv("MAPPING_ACCOUNT_ID", raising=False)
+    else:
+        monkeypatch.setenv("MAPPING_ACCOUNT_ID", process_account)
+    repo.write_runtime(repo.runtime_config(root=tmp_path))
+    assert repo.read_runtime_env()["MAPPING_ACCOUNT_ID"] == expected
 
 
 def test_write_runtime_does_not_leave_secret_when_protection_fails(

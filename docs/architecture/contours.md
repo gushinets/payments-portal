@@ -26,6 +26,8 @@ Target billing ownership authority: [ADR 0005](decisions/0005-external-billing-b
 the accepted [External Billing Boundary Design](../superpowers/specs/2026-09-15-external-billing-boundary-design.md),
 and the accepted [Portal ↔ Kernel Access Contract Design](../superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md),
 in that order.
+The [accepted live-source admission amendment](../superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md)
+narrowly supersedes source-catalog mirroring/new-sale TTL only.
 
 ## Planned contours
 
@@ -83,8 +85,9 @@ Implemented today: the `ru` data plane, AnyToolAI Portal public product
 discovery/detail and account/auth surfaces, `docs/legal/ru`, identity/legal
 runtime, and the clean provider-neutral persistence baseline. The repository
 remains pre-production and provider-independent. Direct-provider runtime has
-been removed, External Billing/provider runtime is not implemented, and target
-billing tables have no producer behavior. See the
+been removed. ANY-664 provides source reads, restricted immutable mapping
+publication and DB-only catalog browsing; genuine Kernel conformance and sales
+remain gated. Purchase, reconciliation and paid-access producers are later work. See the
 [as-built RU Portal 4F handoff](../product/ru-mvp.md).
 
 Planned, not implemented:
@@ -120,8 +123,10 @@ Enabling a contour requires a dedicated ticket. Minimum set:
    implementation ticket must define the integration; contour enablement does
    not invent it here. Direct-provider runtime is removed; reintroduction would
    require a separate explicit architecture decision.
-6. External catalog projection and Platform capability mapping configured under
-   the accepted billing designs; the Portal owns no catalog/plan authority.
+6. Live selected-offer and Platform capability validation with immutable approved
+   mappings under the accepted billing designs/amendment. PostgreSQL serves
+   approved catalog browsing; no periodic source-catalog mirror or catalog/plan
+   authority belongs to Portal.
 7. Contour locale and routes in the web application.
 8. Isolated data plane and billing-notification URLs on that plane.
 9. Region Resolver registry entry with the public ISO country mapping and the
@@ -135,8 +140,9 @@ Enabling a contour requires a dedicated ticket. Minimum set:
 
 The current `ru` implementation has no direct-provider runtime and no
 Portal-owned checkout/order/payment/subscription/entitlement authority. The
-clean target persistence baseline is contour-local but has no producer runtime.
-AnyToolAI Portal is not yet a production billing service.
+clean target persistence baseline is contour-local. Only immutable offer
+publication has a current producer; purchases and paid-access lifecycle remain
+later work. AnyToolAI Portal is not yet a production billing service.
 
 The long-term production target requires contour enablement/deployment
 configuration to select one concrete external-billing integration. Target

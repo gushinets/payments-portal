@@ -21,6 +21,7 @@ document that applies to the current task.
      — the accepted commercial boundary and implementation baseline;
   3. [Portal ↔ Kernel Access Contract Design](docs/superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md)
      — the accepted paid-access and quota wire-contract baseline.
+  4. [Live-source commercial admission amendment](docs/superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md) — **accepted** by the owner on 2026-10-20; narrowly supersedes the baselines' source-catalog mirroring/new-sale TTL. Publication/new purchase use live Kernel/LBX reads; approved immutable terms and catalog browsing use PostgreSQL. Subscription trust and AccessSnapshot unchanged.
 - [docs/PRODUCT.md](docs/PRODUCT.md) — current product scope.
 - [docs/architecture/contours.md](docs/architecture/contours.md) — contour
   isolation and country membership.
@@ -79,8 +80,9 @@ document that applies to the current task.
 - Do not restore CloudPayments/direct-provider runtime or the removed Portal-
   owned `Product`, `Plan`, `Order`, `Payment`, `Subscription`, `Entitlement`,
   or trial authority.
-- Legacy documents cannot override ADR 0005 or either accepted design baseline
-  for target behavior.
+- Legacy documents cannot override ADR 0005, the accepted design baselines or
+  the live-source amendment's narrow supersession. Do not add periodic source-
+  catalog mirrors or catalog-age admission; browsing uses stored approved terms.
 - Provider-independent clean pre-production cleanup may precede Phase 0.
   Provider-dependent LBX production semantics, paid-access derivation, Widget
   behavior, and launch remain gated on Phase 0 PASS under `ANY-504`.
