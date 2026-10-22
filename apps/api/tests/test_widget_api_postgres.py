@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 import asyncio
+from datetime import timedelta
 from threading import Event, Lock
 from uuid import UUID, uuid4
 
@@ -14,15 +15,23 @@ from sqlalchemy.orm import Session
 
 from app.models import (
     AuthSession,
+    BillingPurchaseScopeHold,
+    BillingWorkItem,
     DocumentAcceptance,
     ExternalBillingCustomer,
     ExternalCreateOperation,
     ExternalCreateOperationKind,
     ExternalCreateOperationState,
+    ExternalSubscription,
+    ExternalSubscriptionCommercialAccessStatus,
+    ExternalSubscriptionFinancialAccessStatus,
+    ExternalSubscriptionLifecycleStatus,
     PurchaseIntent,
+    PurchaseIntentState,
     User,
 )
 from app.domains.purchases.preparation_contracts import PreparationProof
+from app.infrastructure.persistence.external_creates import claim_external_create
 from app.infrastructure.preflight import PreflightBudget
 from app.infrastructure.queries import widget as widget_queries
 from app.integrations.lbx.purchase_preparation import LbxPurchasePreparation
@@ -77,6 +86,154 @@ def test_each_explicit_open_repeats_point_proof_but_no_sale_or_create(
         assert traffic.requests.count(("GET", suffix)) == 2
     assert traffic.posts == {} and posts == {"/users": 1, "/agreements": 1, "/subscriptions": 1}
     assert harness.source_calls == kernel
+
+
+@pytest.mark.parametrize(
+    "history_state",
+    [ExternalSubscriptionLifecycleStatus.ENDED, ExternalSubscriptionLifecycleStatus.INACTIVE],
+)
+def test_widget_selects_current_hold_link_and_rejects_a_nonterminal_competitor(
+    harness: PurchaseHarness, traffic: Traffic, history_state: ExternalSubscriptionLifecycleStatus
+) -> None:
+    intent_id = linked(harness)
+    with harness.factory.begin() as db:
+        current = db.scalars(
+            select(ExternalSubscription).where(ExternalSubscription.purchase_intent_id == UUID(intent_id))
+        ).one()
+        current_id = current.subscription_id
+        db.add(
+            ExternalSubscription(
+                customer_id=current.customer_id,
+                user_id=current.user_id,
+                product_id=current.product_id,
+                external_billing_account_id=current.external_billing_account_id,
+                external_subscription_id="historical-subscription",
+                external_agreement_id="historical-agreement",
+                lifecycle_status=history_state,
+                financial_access_status=ExternalSubscriptionFinancialAccessStatus.BLOCKED,
+                commercial_access_status=ExternalSubscriptionCommercialAccessStatus.INELIGIBLE,
+                last_authoritative_read_at=harness.now - timedelta(days=30),
+                projection_valid_until=harness.now - timedelta(days=30),
+                # Imported history may have a newer local row timestamp than A2.
+                created_at=current.created_at + timedelta(days=1),
+            )
+        )
+    traffic.requests.clear()
+    response = bootstrap(harness)
+    if history_state == ExternalSubscriptionLifecycleStatus.ENDED:
+        assert response.status_code == 200, response.text
+        assert {path for method, path in traffic.requests if method == "GET" and path != "/auth"} == {
+            "/users/1501",
+            "/agreements/1601",
+            "/subscriptions/1701",
+        }
+        assert bootstrap(harness, intent_id).status_code == 200
+    else:
+        assert response.status_code == 409, response.text
+        assert response.json() == {"detail": {"code": "manual_review_required"}}
+        assert "credential" not in response.text
+        assert traffic.requests == []
+    assert traffic.posts == {}
+    with harness.factory() as db:
+        hold = db.scalars(select(BillingPurchaseScopeHold)).one()
+        assert hold.purchase_intent_id == UUID(intent_id)
+        assert hold.subscription_id == current_id
+
+
+@pytest.mark.parametrize("kind", [ExternalCreateOperationKind.AGREEMENT, ExternalCreateOperationKind.SUBSCRIPTION])
+def test_unknown_create_for_other_product_does_not_block_proven_widget(
+    harness: PurchaseHarness, traffic: Traffic, kind: ExternalCreateOperationKind
+) -> None:
+    intent_id = linked(harness)
+    other_id = uuid4()
+    with harness.factory.begin() as db:
+        current = db.get(PurchaseIntent, UUID(intent_id))
+        assert current is not None
+        other = PurchaseIntent(
+            purchase_intent_id=other_id,
+            user_id=current.user_id,
+            customer_id=current.customer_id,
+            external_billing_account_id=current.external_billing_account_id,
+            product_id="other-product",
+            billing_offer_id=current.billing_offer_id,
+            mapping_revision_id=current.mapping_revision_id,
+            accepted_commercial_fingerprint=current.accepted_commercial_fingerprint,
+            client_idempotency_key=uuid4().hex,
+            accepted_snapshot_schema_version="v1",
+            # Only the other product's persisted operation scope is needed;
+            # this fixture is never admitted, advanced or used as Widget proof.
+            accepted_snapshot={},
+            legal_acceptance_event_id=current.legal_acceptance_event_id,
+            state=PurchaseIntentState.AWAITING_EXTERNAL_RESULT,
+        )
+        db.add(other)
+        db.flush()
+        db.add(
+            BillingPurchaseScopeHold(
+                user_id=current.user_id,
+                product_id=other.product_id,
+                tenant_id="anytoolai",
+                region="ru",
+                external_billing_account_id=current.external_billing_account_id,
+                purchase_intent_id=other.purchase_intent_id,
+            )
+        )
+        operation = ExternalCreateOperation(
+            create_operation_id=uuid4(),
+            external_billing_account_id=current.external_billing_account_id,
+            customer_id=current.customer_id,
+            purchase_intent_id=other.purchase_intent_id,
+            operation_kind=kind,
+            operation_state=ExternalCreateOperationState.UNSENT,
+            request_correlation_key=uuid4().hex,
+        )
+        db.add(operation)
+        db.flush()
+        # Use the existing local claim mechanics so UNKNOWN retains its
+        # mandatory fence, fixed deadline and durable recovery work item.
+        # No provider request is made by this fixture.
+        claim = claim_external_create(db, operation.create_operation_id, now=harness.now)
+        assert claim is not None
+        operation.operation_state = ExternalCreateOperationState.UNKNOWN
+    posts = traffic.posts.copy()
+    response = bootstrap(harness, intent_id)
+    assert response.status_code == 200, response.text
+    assert traffic.posts == posts
+    with harness.factory() as db:
+        unresolved = db.scalars(
+            select(ExternalCreateOperation).where(
+                ExternalCreateOperation.operation_state == ExternalCreateOperationState.UNKNOWN,
+            )
+        ).one()
+        assert unresolved.purchase_intent_id == other_id
+        assert unresolved.bound_external_object_id is None
+        work_item = db.scalars(
+            select(BillingWorkItem).where(
+                BillingWorkItem.coalescing_key == f"external-create:{unresolved.create_operation_id}",
+            )
+        ).one()
+        assert work_item.work_state == "pending"
+        assert work_item.next_attempt_at == unresolved.unknown_recovery_deadline_at
+
+
+@pytest.mark.parametrize("binding", ["external_agreement_id", "external_subscription_id"])
+def test_conflicting_current_subscription_binding_denies_widget(
+    harness: PurchaseHarness, traffic: Traffic, binding: str
+) -> None:
+    intent_id = linked(harness)
+    with harness.factory.begin() as db:
+        current = db.scalars(
+            select(ExternalSubscription).where(
+                ExternalSubscription.purchase_intent_id == UUID(intent_id),
+            )
+        ).one()
+        setattr(current, binding, "9999")
+    traffic.requests.clear()
+    response = bootstrap(harness, intent_id)
+    assert response.status_code == 409, response.text
+    assert response.json() == {"detail": {"code": "billing_not_ready"}}
+    assert "credential" not in response.text
+    assert traffic.requests == []
 
 
 @pytest.mark.parametrize(
@@ -196,15 +353,17 @@ def test_incomplete_or_conflicting_consent_read_denies_widget_without_rewriting_
     assert traffic.posts == {"/users": 1, "/agreements": 1, "/subscriptions": 1}
 
 
+@pytest.mark.parametrize("kind", list(ExternalCreateOperationKind))
 def test_unknown_create_blocks_widget_even_for_a_previously_linked_subscription(
     harness: PurchaseHarness,
     traffic: Traffic,
+    kind: ExternalCreateOperationKind,
 ) -> None:
     intent_id = linked(harness)
     with harness.factory.begin() as db:
         operation = db.scalars(
             select(ExternalCreateOperation).where(
-                ExternalCreateOperation.operation_kind == ExternalCreateOperationKind.SUBSCRIPTION,
+                ExternalCreateOperation.operation_kind == kind,
             )
         ).one()
         operation.operation_state = ExternalCreateOperationState.UNKNOWN

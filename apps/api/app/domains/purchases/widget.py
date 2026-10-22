@@ -29,6 +29,7 @@ from app.models import (
     DocumentVersion,
     ExternalBillingCustomerBindingState,
     ExternalCreateOperationKind,
+    ExternalCreateOperationState,
     LegalAcceptanceEvent,
     LegalEntity,
     LegalEntityStatus,
@@ -98,10 +99,18 @@ class WidgetApplication:
                 or (session.tenant_id, session.region) != (self.scope.tenant_id, self.scope.region)
             ):
                 raise PurchaseRefused("billing_not_ready", 403)
-            links = queries.linked_subscriptions(db, user.id, product_id, self.scope.external_billing_account_id)
-            if len(links) != 1:
+            link = queries.held_subscription(
+                db,
+                user.id,
+                product_id,
+                self.scope.external_billing_account_id,
+                tenant_id=self.scope.tenant_id,
+                region=self.scope.region,
+            )
+            if link is None:
                 raise PurchaseRefused("billing_not_ready", 409)
-            link = links[0]
+            if queries.conflicting_subscription(db, link):
+                raise PurchaseRefused("manual_review_required", 409)
             if intent_id is not None and link.purchase_intent_id != intent_id:
                 raise PurchaseRefused("purchase_not_found", 404)
             # An imported link is not permission to invent original consent.
@@ -177,7 +186,11 @@ class WidgetApplication:
             ):
                 raise PurchaseRefused("identity_conflict", 409)
             operations = queries.create_operations(db, customer.customer_id, intent.purchase_intent_id)
-            if queries.uncertain_customer_create(db, customer.customer_id):
+            if queries.uncertain_customer_create(db, customer.customer_id) or any(
+                row.operation_kind != ExternalCreateOperationKind.CUSTOMER
+                and row.operation_state != ExternalCreateOperationState.BOUND
+                for row in operations
+            ):
                 raise PurchaseRefused("manual_review_required", 409)
             if any(purchase_preparation.open_review(db, row.create_operation_id) is not None for row in operations):
                 raise PurchaseRefused("manual_review_required", 409)
