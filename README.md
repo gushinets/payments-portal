@@ -226,9 +226,10 @@ npm run migrate:api
 ## SonarQube Cloud analysis
 
 The public [SonarQube Cloud project](https://sonarcloud.io/project/overview?id=gushinets_payments-portal)
-belongs to the `gushinets` organization on the Free plan. Automatic analysis
-runs on `main` and pull requests targeting `main`, without a scanner workflow
-or a `SONAR_TOKEN` repository secret. The `SonarCloud Code Analysis` check is
+belongs to the `gushinets` organization on the Free plan. The SonarQubeCloud
+GitHub App has selected-repository access to `payments-portal`. Automatic
+analysis runs on `main` and pull requests targeting `main`, without a scanner
+workflow or a `SONAR_TOKEN` repository secret. The `SonarCloud Code Analysis` check is
 advisory and is not required by the `protect main` ruleset.
 
 Automatic analysis does not import test coverage or external analyzer reports.
