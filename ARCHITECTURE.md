@@ -132,8 +132,11 @@ Legal routes remain `/ru/privacy`, `/ru/consent-personal-data`, `/ru/offer`,
 `/ru/cancellation`, `/ru/cookies`, and `/ru/security`. `/[locale]/account` owns
 direct sign-in/registration and the product-centric authenticated cabinet; the
 header sign-in modal is retained. Product cards open local detail pages, and
-account CTAs enter `/[locale]/account`; no purchase or fabricated
-product-execution target is exposed.
+account CTAs enter `/[locale]/account`. Product detail now composes the
+authenticated purchase journey through generated purchase/status/Widget DTOs.
+The development-only `SIMULATED_PREVIEW` exercises persisted consent,
+preparation, recovery and an isolated local Widget SDK stub. Real checkout and
+real Widget issuance remain blocked; no product-execution target is fabricated.
 Home, catalog, product detail and the authenticated cabinet read published
 products through the Portal catalog API. Detail routes use the Kernel
 `product_id` preserved in the approved immutable mapping; browsing reads stored
@@ -157,6 +160,18 @@ supplies actual Kernel usage/quota. ANY-664 implements the Step 6 Portal path;
 genuine source conformance and enablement remain gated. Steps 7–10 populate the
 existing product/cabinet surfaces without redesigning the main cabinet. Their
 ownership, Phase 0 gates and authoritative-fact rules remain unchanged.
+
+ANY-709's guarded Widget Application service repeats current session/email,
+original consent, held scope/customer/operation binding and current LBX point
+proof on every open. It reuses the preparation gateway's customer → dedicated
+agreement → canonical subscription proof, without new-sale catalog reads or
+CREATE. It rechecks local ownership/session after I/O. Current composition is
+recorded-only and issues an ephemeral non-JWT stub handoff, even if a live
+signing secret is configured. The private HS256 signer rejects simulated
+evidence. Client cleanup uses the shared session-operation guard and removes
+the mount on close, unmount, navigation and same-/cross-tab session changes.
+Neither Widget nor linked status grants access. See the
+[Step 8 handoff and runbook](docs/engineering/ANY-709-unknown-recovery.md#step-8-handoff).
 
 The transitional pre-production `/{locale}/auth-checkout` and
 `/{locale}/payment-result` routes were removed without redirects or compatibility

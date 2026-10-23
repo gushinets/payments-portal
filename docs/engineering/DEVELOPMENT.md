@@ -473,7 +473,10 @@ the walkthrough pass.
 
 Print the actual worktree URLs, then open the list and canonical product URL,
 follow the detail link and hard reload. Confirm exact `200.02 RUB` recurring,
-`14.06 RUB` connection, allowance `25`, visible simulation and no purchase CTA.
+`14.06 RUB` connection, allowance `25`, and visible simulation. Without an
+explicit purchase profile there is no purchase CTA. The opt-in ANY-709
+[purchase/Widget walkthrough](ANY-709-unknown-recovery.md#step-8-handoff)
+uses this published revision and actual Kernel HTTP with isolated recorded LBX.
 Browser network traffic must contain only Portal catalog calls, with no
 manifest calls or service credential. `/docs` is the developer-only exception:
 

@@ -191,6 +191,20 @@ export type CatalogTermSummary = {
 };
 
 /**
+ * DocumentSelection
+ */
+export type DocumentSelection = {
+    /**
+     * Acceptance Text Hash
+     */
+    acceptance_text_hash: string;
+    /**
+     * Document Version Id
+     */
+    document_version_id: string;
+};
+
+/**
  * EmailVerificationConfirmRequest
  */
 export type EmailVerificationConfirmRequest = {
@@ -336,9 +350,167 @@ export type PasswordResetRequestResponse = {
 };
 
 /**
+ * PinnedDocument
+ */
+export type PinnedDocument = {
+    /**
+     * Acceptance Text
+     */
+    acceptance_text: string;
+    /**
+     * Acceptance Text Hash
+     */
+    acceptance_text_hash: string;
+    /**
+     * Content Hash
+     */
+    content_hash: string;
+    /**
+     * Doc Type
+     */
+    doc_type: string;
+    /**
+     * Document Version Id
+     */
+    document_version_id: string;
+    /**
+     * Legal Entity Id
+     */
+    legal_entity_id: string;
+    /**
+     * Title
+     */
+    title: string;
+    /**
+     * Url Path
+     */
+    url_path: string;
+    /**
+     * Version
+     */
+    version: string;
+};
+
+/**
+ * ProductPurchaseStatusResponse
+ */
+export type ProductPurchaseStatusResponse = {
+    /**
+     * Purchase Intent Id
+     */
+    purchase_intent_id: string | null;
+    /**
+     * State
+     */
+    state: 'not_ready' | 'preparing' | 'recovery_pending' | 'occupied' | 'manual_review' | 'manage';
+};
+
+/**
  * PublicationState
  */
 export type PublicationState = 'SIMULATED' | 'PUBLISHED_APPROVED_UNVERIFIED_NOW';
+
+/**
+ * PurchaseIntentState
+ */
+export type PurchaseIntentState = 'created' | 'preparing' | 'awaiting_external_result' | 'linked' | 'resolved_no_external_effect' | 'failed_before_external_effect' | 'manual_review';
+
+/**
+ * PurchaseRequest
+ */
+export type PurchaseRequest = {
+    /**
+     * Commercial Confirmation
+     */
+    commercial_confirmation: boolean;
+    /**
+     * Documents
+     */
+    documents: Array<DocumentSelection>;
+    /**
+     * Expected Fingerprint
+     */
+    expected_fingerprint: string;
+    /**
+     * Product Id
+     */
+    product_id: string;
+    /**
+     * Recurring Confirmation
+     */
+    recurring_confirmation: boolean;
+    /**
+     * Revision Id
+     */
+    revision_id: string;
+};
+
+/**
+ * PurchaseResponse
+ */
+export type PurchaseResponse = {
+    /**
+     * Accepted At
+     */
+    accepted_at: string;
+    accepted_terms: PurchaseReviewResponse;
+    /**
+     * Continue Available
+     */
+    continue_available: boolean;
+    /**
+     * Next Action
+     */
+    next_action: 'wait' | 'continue' | 'manage' | 'manual_review';
+    /**
+     * Purchase Intent Id
+     */
+    purchase_intent_id: string;
+    state: PurchaseIntentState;
+};
+
+/**
+ * PurchaseReviewResponse
+ */
+export type PurchaseReviewResponse = {
+    /**
+     * Availability
+     */
+    availability: 'APPROVED_UNVERIFIED_NOW' | 'SIMULATED_PREVIEW';
+    /**
+     * Cancellation Terms
+     */
+    cancellation_terms: string;
+    /**
+     * Documents
+     */
+    documents: Array<PinnedDocument>;
+    /**
+     * Fingerprint
+     */
+    fingerprint: string;
+    /**
+     * Initial Amount
+     */
+    initial_amount: string;
+    offer: CatalogOffer;
+    /**
+     * Product Id
+     */
+    product_id: string;
+    /**
+     * Recurring Required
+     */
+    recurring_required: boolean;
+    /**
+     * Renewal Terms
+     */
+    renewal_terms: string;
+    /**
+     * Seller Name
+     */
+    seller_name: string;
+};
 
 /**
  * ReadinessSuccessResponse
@@ -532,6 +704,50 @@ export type ValidationError = {
      * Error Type
      */
     type: string;
+};
+
+/**
+ * WidgetBootstrapRequest
+ */
+export type WidgetBootstrapRequest = {
+    /**
+     * Product Id
+     */
+    product_id: string;
+    /**
+     * Purchase Intent Id
+     */
+    purchase_intent_id?: string | null;
+};
+
+/**
+ * WidgetBootstrapResponse
+ */
+export type WidgetBootstrapResponse = {
+    /**
+     * Credential
+     */
+    credential: string;
+    /**
+     * Disablecreatesubscription
+     */
+    disableCreateSubscription?: true;
+    /**
+     * Disableeditsubscription
+     */
+    disableEditSubscription?: true;
+    /**
+     * Mode
+     */
+    mode: 'SIMULATED';
+    /**
+     * Sdk
+     */
+    sdk?: 'isolated_stub';
+    /**
+     * Widget Origin
+     */
+    widget_origin?: 'self';
 };
 
 export type ConfirmVerificationApiAuthEmailVerificationConfirmPostData = {
@@ -758,6 +974,73 @@ export type GetSessionApiAuthSessionGetResponses = {
 
 export type GetSessionApiAuthSessionGetResponse = GetSessionApiAuthSessionGetResponses[keyof GetSessionApiAuthSessionGetResponses];
 
+export type ProductPurchaseStatusApiBillingProductsProductIdStatusGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+    };
+    path: {
+        /**
+         * Product Id
+         */
+        product_id: string;
+    };
+    query?: never;
+    url: '/api/billing/products/{product_id}/status';
+};
+
+export type ProductPurchaseStatusApiBillingProductsProductIdStatusGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HTTPValidationError;
+};
+
+export type ProductPurchaseStatusApiBillingProductsProductIdStatusGetError = ProductPurchaseStatusApiBillingProductsProductIdStatusGetErrors[keyof ProductPurchaseStatusApiBillingProductsProductIdStatusGetErrors];
+
+export type ProductPurchaseStatusApiBillingProductsProductIdStatusGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: ProductPurchaseStatusResponse;
+};
+
+export type ProductPurchaseStatusApiBillingProductsProductIdStatusGetResponse = ProductPurchaseStatusApiBillingProductsProductIdStatusGetResponses[keyof ProductPurchaseStatusApiBillingProductsProductIdStatusGetResponses];
+
+export type WidgetBootstrapApiBillingWidgetBootstrapPostData = {
+    body: WidgetBootstrapRequest;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/billing/widget-bootstrap';
+};
+
+export type WidgetBootstrapApiBillingWidgetBootstrapPostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HTTPValidationError;
+};
+
+export type WidgetBootstrapApiBillingWidgetBootstrapPostError = WidgetBootstrapApiBillingWidgetBootstrapPostErrors[keyof WidgetBootstrapApiBillingWidgetBootstrapPostErrors];
+
+export type WidgetBootstrapApiBillingWidgetBootstrapPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: WidgetBootstrapResponse;
+};
+
+export type WidgetBootstrapApiBillingWidgetBootstrapPostResponse = WidgetBootstrapApiBillingWidgetBootstrapPostResponses[keyof WidgetBootstrapApiBillingWidgetBootstrapPostResponses];
+
 export type ListProductsApiCatalogProductsGetData = {
     body?: never;
     path?: never;
@@ -891,3 +1174,146 @@ export type ListRequiredDocumentsApiLegalRequiredDocumentsGetResponses = {
 };
 
 export type ListRequiredDocumentsApiLegalRequiredDocumentsGetResponse = ListRequiredDocumentsApiLegalRequiredDocumentsGetResponses[keyof ListRequiredDocumentsApiLegalRequiredDocumentsGetResponses];
+
+export type CreatePurchaseApiPurchasesPostData = {
+    body: PurchaseRequest;
+    headers: {
+        /**
+         * Idempotency-Key
+         */
+        'idempotency-key': string;
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/purchases';
+};
+
+export type CreatePurchaseApiPurchasesPostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HTTPValidationError;
+};
+
+export type CreatePurchaseApiPurchasesPostError = CreatePurchaseApiPurchasesPostErrors[keyof CreatePurchaseApiPurchasesPostErrors];
+
+export type CreatePurchaseApiPurchasesPostResponses = {
+    /**
+     * Successful Response
+     */
+    202: PurchaseResponse;
+};
+
+export type CreatePurchaseApiPurchasesPostResponse = CreatePurchaseApiPurchasesPostResponses[keyof CreatePurchaseApiPurchasesPostResponses];
+
+export type ReviewPurchaseApiPurchasesReviewProductIdGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+    };
+    path: {
+        /**
+         * Product Id
+         */
+        product_id: string;
+    };
+    query?: never;
+    url: '/api/purchases/review/{product_id}';
+};
+
+export type ReviewPurchaseApiPurchasesReviewProductIdGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HTTPValidationError;
+};
+
+export type ReviewPurchaseApiPurchasesReviewProductIdGetError = ReviewPurchaseApiPurchasesReviewProductIdGetErrors[keyof ReviewPurchaseApiPurchasesReviewProductIdGetErrors];
+
+export type ReviewPurchaseApiPurchasesReviewProductIdGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: PurchaseReviewResponse;
+};
+
+export type ReviewPurchaseApiPurchasesReviewProductIdGetResponse = ReviewPurchaseApiPurchasesReviewProductIdGetResponses[keyof ReviewPurchaseApiPurchasesReviewProductIdGetResponses];
+
+export type GetPurchaseApiPurchasesPurchaseIntentIdGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+    };
+    path: {
+        /**
+         * Purchase Intent Id
+         */
+        purchase_intent_id: string;
+    };
+    query?: never;
+    url: '/api/purchases/{purchase_intent_id}';
+};
+
+export type GetPurchaseApiPurchasesPurchaseIntentIdGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HTTPValidationError;
+};
+
+export type GetPurchaseApiPurchasesPurchaseIntentIdGetError = GetPurchaseApiPurchasesPurchaseIntentIdGetErrors[keyof GetPurchaseApiPurchasesPurchaseIntentIdGetErrors];
+
+export type GetPurchaseApiPurchasesPurchaseIntentIdGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: PurchaseResponse;
+};
+
+export type GetPurchaseApiPurchasesPurchaseIntentIdGetResponse = GetPurchaseApiPurchasesPurchaseIntentIdGetResponses[keyof GetPurchaseApiPurchasesPurchaseIntentIdGetResponses];
+
+export type ContinuePurchaseApiPurchasesPurchaseIntentIdContinuePostData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+    };
+    path: {
+        /**
+         * Purchase Intent Id
+         */
+        purchase_intent_id: string;
+    };
+    query?: never;
+    url: '/api/purchases/{purchase_intent_id}/continue';
+};
+
+export type ContinuePurchaseApiPurchasesPurchaseIntentIdContinuePostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HTTPValidationError;
+};
+
+export type ContinuePurchaseApiPurchasesPurchaseIntentIdContinuePostError = ContinuePurchaseApiPurchasesPurchaseIntentIdContinuePostErrors[keyof ContinuePurchaseApiPurchasesPurchaseIntentIdContinuePostErrors];
+
+export type ContinuePurchaseApiPurchasesPurchaseIntentIdContinuePostResponses = {
+    /**
+     * Successful Response
+     */
+    202: PurchaseResponse;
+};
+
+export type ContinuePurchaseApiPurchasesPurchaseIntentIdContinuePostResponse = ContinuePurchaseApiPurchasesPurchaseIntentIdContinuePostResponses[keyof ContinuePurchaseApiPurchasesPurchaseIntentIdContinuePostResponses];

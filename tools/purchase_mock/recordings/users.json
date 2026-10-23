@@ -1,0 +1,11 @@
+{
+  "code": 200,
+  "response": [
+    {
+      "user_id": 1501,
+      "outer_id": "SIMULATED-persisted-customer-key",
+      "type": 2,
+      "email": "customer@example.invalid"
+    }
+  ]
+}

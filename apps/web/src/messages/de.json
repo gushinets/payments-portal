@@ -273,7 +273,10 @@
     "prepaid": "Vorauszahlung",
     "paymentUnspecified": "Siehe genehmigte Konditionen",
     "tax": "Steuerbehandlung",
-    "taxValues": { "included": "Im Betrag enthalten", "not_applicable": "Nicht anwendbar" },
+    "taxValues": {
+      "included": "Im Betrag enthalten",
+      "not_applicable": "Nicht anwendbar"
+    },
     "periodAnchors": {
       "calendar_month": "Nach Kalendermonaten",
       "instance_start": "Ab Beginn der Instanz",
@@ -379,5 +382,40 @@
     "versioningHelp": "Das Dokument wird in einer separaten versionierten Datei veröffentlicht.",
     "revision": "Fassung: {version}",
     "tableAccessibilityLabel": "Scrollbare Tabelle des Rechtsdokuments"
+  },
+  "Purchase": {
+    "title": "Kauf und Abrechnung",
+    "noAccess": "Vorbereitung und Widget-Aktionen gewähren keinen kostenpflichtigen Zugang.",
+    "loading": "Kauf wird geladen…",
+    "signIn": "Zur Prüfung anmelden",
+    "ineligible": "Bestätigen Sie Ihre E-Mail-Adresse im Konto, um fortzufahren.",
+    "failed": "Die Anfrage konnte nicht abgeschlossen werden. Aktualisieren Sie vor einem erneuten Versuch den Kaufstatus.",
+    "conflict": "Identität oder akzeptierte Bedingungen stimmen nicht überein. Kontaktieren Sie den Support.",
+    "notReady": "Die Abrechnung ist nicht bereit. Es wurden keine Widget-Zugangsdaten ausgegeben.",
+    "reviewNeeded": "Dieser Kauf muss vom Support geprüft werden. Beginnen Sie keinen weiteren Kauf.",
+    "refresh": "Status aktualisieren",
+    "reference": "Kaufreferenz: {id}",
+    "seller": "Verkäufer",
+    "service": "Ausgewählter Dienst",
+    "initial": "Anfangsbetrag einschließlich Einrichtung",
+    "renewal": "Verlängerungsbedingungen",
+    "cancellation": "Kündigungsbedingungen",
+    "draftLegal": "Zustimmungsübung für die Entwicklung. Diese Rechtsdokumente sind nicht genehmigte Entwürfe.",
+    "commercialConsent": "Ich bestätige dieses genaue Angebot, den Anfangsbetrag sowie die Verlängerungs- und Kündigungsbedingungen.",
+    "recurringConsent": "Ich stimme wiederkehrenden Abbuchungen gemäß den ausgewählten Dokumentversionen ausdrücklich zu.",
+    "purchase": "Simulierten Kauf vorbereiten",
+    "continue": "Bestehenden Kauf fortsetzen",
+    "manage": "Abrechnungsverwaltung öffnen",
+    "close": "Widget schließen",
+    "stub": "SIMULATED Widget-SDK-Stub. Keine Zahlung, echten Zugangsdaten oder kostenpflichtigen Zugänge.",
+    "states": {
+      "not_ready": "Keine Vorbereitung ist bereit. Prüfen Sie das Angebot unten.",
+      "preparing": "Vorbereitung ausstehend. Setzen Sie den bestehenden Kauf fort.",
+      "recovery_pending": "Externes Ergebnis ungewiss. Fortsetzen startet eine sichere Wiederherstellung.",
+      "occupied": "Für dieses Produkt ist bereits ein Kauf reserviert.",
+      "manual_review": "Supportprüfung erforderlich. Der Kauf bleibt reserviert.",
+      "manage": "Ein Abonnement ist verknüpft. Zum Öffnen ist eine erneute Prüfung erforderlich.",
+      "uncertain": "Antwort verloren oder abgelehnt. Aktualisieren Sie den Status des bestehenden Versuchs."
+    }
   }
 }

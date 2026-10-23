@@ -11,6 +11,12 @@ const sharedApiMachineLiteralAllowlist = new Set([
   "Authorization",
   "CatalogProductResponse",
   "CatalogProductsResponse",
+  "ProductPurchaseStatusResponse",
+  "PurchaseResponse",
+  "PurchaseReviewResponse",
+  "WidgetBootstrapResponse",
+  "Idempotency-Key",
+  "no-store",
   "Content-Type",
   "EmailVerificationConfirmResponse",
   "EmailVerificationRequestResponse",
@@ -35,6 +41,10 @@ const sharedApiMachineLiteralAllowlist = new Set([
   "undefined",
   "verified",
   "/api/catalog/products/${encodeURIComponent(productId)}",
+  "/api/purchases/review/${encodeURIComponent(productId)}",
+  "/api/billing/products/${encodeURIComponent(productId)}/status",
+  "/api/purchases/${encodeURIComponent(intentId)}",
+  "/api/purchases/${encodeURIComponent(intentId)}/continue",
   "${resolveApiBase()}${path}",
   "Bearer ${token}"
 ]);

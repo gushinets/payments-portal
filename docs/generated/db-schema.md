@@ -67,6 +67,38 @@ Indexes and constraints:
 - `uq_billing_product_access_scopes_user_product`
 - `ix_billing_product_access_scopes_primary_subscription`
 
+## `billing_purchase_scope_holds`
+
+| Column | Type | Nullable | Key |
+|---|---|---:|---|
+| `hold_id` | `CHAR(32)` | no | PK |
+| `user_id` | `CHAR(32)` | no | FK |
+| `product_id` | `TEXT` | no | FK |
+| `tenant_id` | `TEXT` | no | FK |
+| `region` | `TEXT` | no | FK |
+| `external_billing_account_id` | `TEXT` | no | FK |
+| `purchase_intent_id` | `CHAR(32)` | yes | FK |
+| `subscription_id` | `CHAR(32)` | yes | FK |
+| `hold_state` | `TEXT` | no |  |
+| `ownership_epoch` | `BIGINT` | no |  |
+| `created_at` | `DATETIME` | no |  |
+| `updated_at` | `DATETIME` | no |  |
+| `released_at` | `DATETIME` | yes |  |
+| `release_evidence_schema_version` | `TEXT` | yes |  |
+| `release_evidence_document` | `JSON` | yes |  |
+
+Indexes and constraints:
+
+- `ck_purchase_scope_epoch`
+- `ck_purchase_scope_evidence_pair`
+- `ck_purchase_scope_owner`
+- `ck_purchase_scope_release`
+- `ck_purchase_scope_state`
+- `fk_purchase_scope_intent`
+- `fk_purchase_scope_subscription`
+- `fk_purchase_scope_user`
+- `uq_purchase_scope_user_product`
+
 ## `billing_state_observations`
 
 | Column | Type | Nullable | Key |
@@ -148,6 +180,7 @@ Indexes and constraints:
 - `ix_billing_work_items_lease_expiry`
 - `ix_billing_work_items_priority_retry`
 - `ix_billing_work_items_scope`
+- `uq_work_items_create_recovery`
 
 ## `capability_manifest_projections`
 
@@ -305,11 +338,13 @@ Indexes and constraints:
 
 - `ck_external_billing_customers_binding_state`
 - `ck_external_billing_customers_key_nonempty`
+- `uq_billing_customers_id_account`
 - `uq_external_billing_customers_account_user`
 - `uq_external_billing_customers_billing_customer_key`
 - `uq_external_billing_customers_id_account_user`
 - `ix_external_billing_customers_binding_state`
 - `ix_external_billing_customers_provider_customer_id`
+- `uq_billing_customers_account_provider`
 
 ## `external_billing_webhook_deliveries`
 
@@ -345,6 +380,9 @@ Indexes and constraints:
 | Column | Type | Nullable | Key |
 |---|---|---:|---|
 | `create_operation_id` | `CHAR(32)` | no | PK |
+| `external_billing_account_id` | `TEXT` | no | FK |
+| `send_fencing_token` | `BIGINT` | no |  |
+| `scope_ownership_epoch` | `BIGINT` | yes |  |
 | `operation_kind` | `TEXT` | no |  |
 | `customer_id` | `CHAR(32)` | no | FK |
 | `purchase_intent_id` | `CHAR(32)` | yes | FK |
@@ -361,19 +399,28 @@ Indexes and constraints:
 
 Indexes and constraints:
 
+- `ck_create_operations_bound`
+- `ck_create_operations_fence`
+- `ck_create_operations_send_clock`
+- `ck_create_operations_state`
 - `ck_external_create_operations_correlation_nonempty`
 - `ck_external_create_operations_kind`
 - `ck_external_create_operations_purchase_requirement`
 - `ck_external_create_operations_recovery_hint_pair`
 - `ck_external_create_operations_unknown_deadline`
 - `ck_external_create_operations_unknown_pair`
+- `fk_create_operations_customer_account`
 - `fk_external_create_operations_purchase_customer`
+- `uq_create_operations_correlation`
+- `uq_create_operations_purchase_kind`
 - `ix_external_create_operations_bound_object`
 - `ix_external_create_operations_correlation`
 - `ix_external_create_operations_customer_state`
 - `ix_external_create_operations_purchase`
 - `ix_external_create_operations_recovery_scan`
 - `ix_external_create_operations_unknown_deadline`
+- `uq_create_operations_account_kind_bound`
+- `uq_create_operations_customer`
 - `uq_external_create_operations_unresolved_customer`
 
 ## `external_subscriptions`
@@ -432,6 +479,8 @@ Indexes and constraints:
 - `ix_external_subscriptions_user_product_status`
 - `ix_external_subscriptions_valid_until`
 - `uq_external_subscriptions_purchase_intent`
+- `uq_subscriptions_account_agreement`
+- `uq_subscriptions_account_external`
 
 ## `legal_acceptance_events`
 

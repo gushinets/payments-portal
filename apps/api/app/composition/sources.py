@@ -17,6 +17,7 @@ from app.integrations.kernel.client import KernelNotConfigured, PlatformKernelCl
 class SourceResources:
     preflight: PreflightAdmission
     kernel: PlatformKernelClient | None
+    purchase_io: PreflightAdmission
 
     def require_kernel(self) -> PlatformKernelClient:
         if self.kernel is None:
@@ -52,12 +53,16 @@ async def source_resources(
         if configuration.kernel_base_url
         else None
     )
+    purchase_io = PreflightAdmission(admission.policy)
     try:
-        yield SourceResources(admission, kernel)
+        yield SourceResources(admission, kernel, purchase_io)
     finally:
         # Pending source cleanup still owns this client's HTTP resources.
         # Propagate the bounded drain failure without closing underneath it.
-        await admission.aclose()
+        try:
+            await admission.aclose()
+        finally:
+            await purchase_io.aclose()
         if kernel is not None:
             try:
                 async with asyncio.timeout(configuration.preflight_cleanup_timeout_seconds):

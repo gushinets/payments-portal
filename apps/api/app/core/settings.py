@@ -93,6 +93,10 @@ class Settings(BaseSettings):
     lbx_max_get_attempts: int = Field(default=5, ge=1, le=8)
     lbx_retry_delay_seconds: float = Field(default=0.1, ge=0, le=5, allow_inf_nan=False)
     lbx_max_retry_delay_seconds: float = Field(default=2.0, ge=0, le=5, allow_inf_nan=False)
+    # Optional seller binding; checked lazily at preparation, never org #21 by default.
+    lbx_seller_organization_id: int | None = Field(default=None, gt=0)
+    lbx_discovery_max_items: int = Field(default=50, ge=1, le=100)
+
     # CLI execution identity; no default principal, wildcard or human attribution.
     mapping_operator_uids: tuple[Annotated[int, Field(strict=True, ge=0)], ...] = ()
     # Independent of source credentials so saved evidence remains queryable offline.
@@ -102,7 +106,31 @@ class Settings(BaseSettings):
     # Shared trusted local path for ALL operator processes in this deployment.
     # Required by dry-run/publish only; query and the HTTP API do not use it.
     mapping_operator_lock_file: Path | None = None
+    # Opt-in local recorded purchase profile. Never enables production sales.
+    purchase_simulated_profile_file: Path | None = None
+    # Dedicated Client JWT secret; the recorded composition cannot issue live credentials.
+    lbx_widget_signing_secret: SecretStr = SecretStr("")
     mapping_lock_timeout_seconds: float = Field(default=2.0, gt=0, le=10, allow_inf_nan=False)
+
+    @model_validator(mode="after")
+    def require_dedicated_widget_secret(self) -> Settings:
+        value = self.lbx_widget_signing_secret.get_secret_value()
+        if value and (
+            len(value.encode()) < 32
+            or value
+            in {
+                self.lbx_server_username.get_secret_value(),
+                self.lbx_server_password.get_secret_value(),
+                self.kernel_service_token.get_secret_value(),
+            }
+        ):
+            raise ValueError("LBX_WIDGET_SIGNING_SECRET must be dedicated and at least 32 bytes")
+        return self
+
+    @field_validator("lbx_seller_organization_id", mode="before")
+    @classmethod
+    def empty_lbx_seller_is_unconfigured(cls, value: Any) -> Any:
+        return None if value == "" else value
 
     @field_validator("smtp_use_tls", mode="before")
     @classmethod

@@ -272,6 +272,16 @@ with development values supplied by `.env.example`, local `.env`, or the
 worktree harness. Set `APP_ENV=development` for local Compose and keep
 `DATABASE_URL`, `APP_PUBLIC_BASE_URL`, and `CORS_ALLOW_ORIGINS` explicit.
 
+Catalog reads also require `MAPPING_ACCOUNT_ID` in local `.env`: use the exact
+external-billing account of the approved mapping revisions already published
+in that database. Restart the harness with `npm run repo:up -- --reuse` after
+changing it. An empty account returns `503 catalog_unavailable`; startup does
+not publish offers or select an account automatically. For the existing local
+SIMULATED fixtures, the account is `simulated-ru-lbx-account`. Their catalog
+preview does not enable a real LBX Widget. The separate opt-in purchase
+walkthrough and remaining real-enablement gates are documented in the
+[ANY-709 runbook](docs/engineering/ANY-709-unknown-recovery.md).
+
 ## Production Compose workflow
 
 Copy `.env.production.example` to `.env.production`, supply production secrets,

@@ -29,7 +29,7 @@ export default async function HomePage() {
               {t("hero.primaryAction")}
               <ArrowRight size={16} aria-hidden="true" />
             </Link>
-            <Link className="btn-secondary" href="#products">
+            <Link className="btn-secondary" href="/products">
               {t("hero.secondaryAction")}
             </Link>
           </div>

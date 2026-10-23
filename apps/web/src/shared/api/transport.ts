@@ -113,9 +113,13 @@ export async function postJson<T>(
   extraHeaders?: Readonly<Record<string, string>>
 ): Promise<T> {
   const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), requestTimeoutMs);
+  const timeoutId = window.setTimeout(
+    () => controller.abort(),
+    requestTimeoutMs
+  );
   const response = await fetch(`${resolveApiBase()}${path}`, {
     method: "POST",
+    cache: "no-store",
     headers: {
       ...extraHeaders,
       "Content-Type": "application/json",
@@ -138,10 +142,14 @@ export async function getJson<T>(
   contract: string
 ): Promise<T> {
   const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), requestTimeoutMs);
+  const timeoutId = window.setTimeout(
+    () => controller.abort(),
+    requestTimeoutMs
+  );
 
   try {
     const response = await fetch(`${resolveApiBase()}${path}`, {
+      cache: "no-store",
       headers: {
         ...(token ? { Authorization: `Bearer ${token}` } : {})
       },
@@ -169,4 +177,3 @@ export function decodeApiErrorEnvelope(payload: unknown): ApiErrorEnvelope {
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-

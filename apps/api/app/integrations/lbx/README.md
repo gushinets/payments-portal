@@ -137,3 +137,85 @@ These commands are a human handoff, not recorded PASS evidence. No live provider
 probe is required or authorized by this implementation. The PATH prefix supplies
 the `python` executable expected by the repository npm aliases without creating
 another environment.
+
+## ANY-709 Step 3 — private preparation and point proof
+
+The earlier inventory above describes the selected-catalog foundation.
+`preparation_dto.py`, `preparation_profile.py` and `preparation.py` now extend
+the same Server client with strict private non-payment CREATE, identity/material
+point GET and bounded scoped discovery. They add no public API, persistence,
+recovery loop, Widget authorization, payment or access grant.
+
+The implementation follows the named [Swagger 1.0.11 schemas](https://demo.lbxbilling.ru/swagger/swagger.json)
+and reuses [ANY-634's recorded conclusions](../../../../../docs/superpowers/phase0/2026-10-14-any-634-lbx-evidence-handoff.md).
+Customer/agreement POST accepts the documented HTTP 201. Subscription POST
+accepts HTTP 200 or 201 (ANY-634 B1). The strict ID envelope is only a receipt;
+`LbxPreparation.prove_*` must obtain authoritative point GETs before returning
+`complete_match`. Other outcomes are `incomplete`, `mismatch`,
+`identity_conflict`, `owner_conflict` and `unresolved`. All are private.
+
+Server auth is acquired before send. A mutating POST has exactly one exchange;
+there is no automatic refresh/replay for 401, 429, 5xx, timeout or disconnect.
+Any post-send response/parsing/cleanup/deadline/cancellation failure raises
+`LbxCreateUncertain(possible_send=True)`. Pre-send profile/auth failures remain
+separate. Callers must commit their durable fence before invoking CREATE and
+retain it on ambiguity; this Integration does not own that transaction. A
+successful receipt is not a binding or permission to repeat CREATE.
+
+The SIMULATED profile in `tools/purchase_mock/preparation.json` explicitly
+selects the same account, seller, currency, calendar, service quantity and
+commercial policy as Step 2's `profile.json`. Its lawful-field set authorizes
+only the test customer type and simulated email; no name/passport/company is
+synthesized. It explicitly selects one supplied service (or a separately
+selected default-only rule), no demo/manual activation, zero debt and balance
+activation. Potential balance activation/debit remains part of the stated
+create evidence. All added HTTP recordings are visibly test-only and use the
+same selected tariff/service/period as the catalog recordings.
+
+`RecordedPreparationTransport` never opens a socket. CREATE also refuses
+production or a client without an injected `httpx.MockTransport`, independently
+of settings. The optional `LBX_SELLER_ORGANIZATION_ID` has no default organization
+and is checked against the explicit fixture seller when supplied.
+`LBX_DISCOVERY_MAX_ITEMS` bounds candidate lists (default 50); reaching the cap,
+duplicate IDs, invalid rows, extra envelope fields or unverifiable ownership
+fails closed. Discovery sends only documented JSON GET filters: customer
+`outer_id` plus `show_passwords=false`, or exact owner `user_id`. Subscription
+lists have no owner field, so their agreement owners are point-checked. Results
+remain hints, including zero/one matches; they never clear an earlier possible
+send or authorize a new POST. There is no invented pagination or visibility SLA.
+
+Customer proof pairs the canonical user ID and original immutable key.
+Agreement proof checks the canonical agreement, owner, configured seller,
+dedicated immutable reference/date/offer and no-credit fields. Local exclusive
+ownership of that dedicated reference remains the caller's persisted hold
+invariant. Credential origin/account binding is explicit SIMULATED account
+evidence, not a fictional GET field. Subscription proof rereads that ownership
+chain and checks exact selected tariff/period/start, one service, integer
+quantity inside service bounds, effective `services[].price`, `total_price`,
+supported status/calendar fields and absence of a scheduled material change.
+`tariff_price` is comparison-only. Currency symbol is matched against explicit
+account currency/unit/scale evidence, never converted blindly to ISO. Exact
+minor-unit conversion does not depend on Decimal context precision.
+
+Connection charges and renewal/cancellation/historical policy have no invented
+subscription GET fields: their immutable selected-catalog digest and matching
+account policy evidence are retained with the normalized proof. The normalized
+connection amount is the accepted catalog implication, not evidence of an
+actual provider debit. No proof here establishes paid access.
+
+Real CREATE remains disabled. The remaining G2 real-account gate is the lawful
+minimum customer/agreement field set, seller/legal/no-credit binding, verified
+money units/ISO scale, evidenced billing calendar, one-default-service request
+rule and exact activation/debit semantics. Missing real facts do not prevent
+unrelated startup. These recordings do not upgrade any real-account UNKNOWN.
+
+Formatting only was performed for this step. Tests, linters, typechecks, builds,
+migrations, generation and broad checks were not run. No public contract changed.
+Run manually from the repository root:
+
+```bash
+export PATH="$PWD/.venv/bin:$PATH"
+./.venv/bin/python -m pytest -q apps/api/tests/test_lbx_prepare_readback.py apps/api/tests/test_lbx_client.py apps/api/tests/test_lbx_client_errors.py
+./.venv/bin/python scripts/repo.py lint api
+npm run test:api:fast
+```

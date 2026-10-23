@@ -21,6 +21,13 @@ from app.models._shared import (
 class BillingWorkItem(Base):
     __tablename__ = "billing_work_items"
     __table_args__ = (
+        Index(
+            "uq_work_items_create_recovery",
+            "coalescing_key",
+            unique=True,
+            postgresql_where=text("work_kind = 'external_create_recovery' AND coalescing_key IS NOT NULL"),
+            sqlite_where=text("work_kind = 'external_create_recovery' AND coalescing_key IS NOT NULL"),
+        ),
         CheckConstraint(
             "trim(payload_schema_version) <> ''",
             name="ck_billing_work_items_payload_schema_nonempty",

@@ -1,0 +1,57 @@
+.purchase-journey {
+  padding: 24px;
+  margin-bottom: 32px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surf1);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.purchase-journey h2 {
+  font-size: 20px;
+  margin-top: 0;
+}
+.purchase-journey .approved-offer-terms {
+  margin: 20px 0;
+}
+.purchase-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 20px;
+}
+.purchase-consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  font-size: 14px;
+}
+.purchase-consent input {
+  flex: 0 0 auto;
+  margin-top: 5px;
+  accent-color: var(--acc);
+}
+.purchase-consent a {
+  color: var(--acc);
+  text-decoration: underline;
+}
+.purchase-widget {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+.purchase-reference {
+  color: var(--txt2);
+  font-size: 13px;
+}
+
+@media (max-width: 640px) {
+  .purchase-journey {
+    padding: 16px;
+  }
+  .purchase-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

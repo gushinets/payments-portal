@@ -10,6 +10,8 @@ from app.models import (
     ExternalBillingCustomerBindingState,
     ExternalCreateOperation,
     ExternalCreateOperationKind,
+    ExternalCreateOperationState,
+    BillingPurchaseScopeHold,
     PurchaseIntent,
     PurchaseIntentState,
 )
@@ -129,6 +131,7 @@ def test_nullable_storage_is_limited_to_approved_gated_and_lifecycle_slots() -> 
     assert _nullable_columns(ExternalBillingCustomer) == {"provider_customer_id"}
     assert _nullable_columns(PurchaseIntent) == {"resolved_at"}
     assert _nullable_columns(ExternalCreateOperation) == {
+        "scope_ownership_epoch",
         "purchase_intent_id",
         "unknown_since",
         "unknown_recovery_deadline_at",
@@ -138,6 +141,9 @@ def test_nullable_storage_is_limited_to_approved_gated_and_lifecycle_slots() -> 
         "resolved_at",
     }
     assert _column_names(ExternalCreateOperation) == {
+        "external_billing_account_id",
+        "send_fencing_token",
+        "scope_ownership_epoch",
         "create_operation_id",
         "operation_kind",
         "customer_id",
@@ -164,6 +170,7 @@ def test_projection_mapping_and_customer_keys_are_exact() -> None:
         ("external_billing_account_id", "billing_offer_id", "revision_number"),
     }
     assert _unique_keys(ExternalBillingCustomer) == {
+        ("customer_id", "external_billing_account_id"),
         ("customer_id", "external_billing_account_id", "user_id"),
         ("external_billing_account_id", "user_id"),
         ("billing_customer_key",),
@@ -223,6 +230,11 @@ def test_purchase_relational_targets_and_foreign_keys_are_exact() -> None:
         ),
     }
     assert _foreign_keys(ExternalCreateOperation) == {
+        (
+            ("customer_id", "external_billing_account_id"),
+            ("external_billing_customers.customer_id", "external_billing_customers.external_billing_account_id"),
+            "RESTRICT",
+        ),
         (("customer_id",), ("external_billing_customers.customer_id",), "RESTRICT"),
         (
             ("purchase_intent_id", "customer_id"),
@@ -240,13 +252,13 @@ def test_closed_vocabularies_use_canonical_text_backed_enums() -> None:
         ExternalBillingCustomer.__table__.c.binding_state: ExternalBillingCustomerBindingState,
         PurchaseIntent.__table__.c.state: PurchaseIntentState,
         ExternalCreateOperation.__table__.c.operation_kind: ExternalCreateOperationKind,
+        ExternalCreateOperation.__table__.c.operation_state: ExternalCreateOperationState,
     }
 
     for column, enum_cls in enum_columns.items():
         assert isinstance(column.type, PersistedEnumType)
         assert column.type.enum_cls is enum_cls
 
-    assert not isinstance(ExternalCreateOperation.__table__.c.operation_state.type, PersistedEnumType)
     assert ExternalBillingCustomer.__table__.c.binding_state.default.arg is ExternalBillingCustomerBindingState.UNBOUND
     assert PurchaseIntent.__table__.c.state.default.arg is PurchaseIntentState.CREATED
 
@@ -267,6 +279,10 @@ def test_step_4_checks_and_indexes_cover_the_fixed_contract() -> None:
         "ck_purchase_intents_state",
     }
     assert _check_names(ExternalCreateOperation) == {
+        "ck_create_operations_fence",
+        "ck_create_operations_state",
+        "ck_create_operations_send_clock",
+        "ck_create_operations_bound",
         "ck_external_create_operations_purchase_requirement",
         "ck_external_create_operations_kind",
         "ck_external_create_operations_correlation_nonempty",
@@ -298,6 +314,7 @@ def test_step_4_checks_and_indexes_cover_the_fixed_contract() -> None:
         "ix_commercial_mapping_revisions_principal": ("published_by_principal",),
     }
     assert _indexes(ExternalBillingCustomer) == {
+        "uq_billing_customers_account_provider": ("external_billing_account_id", "provider_customer_id"),
         "ix_external_billing_customers_provider_customer_id": ("provider_customer_id",),
         "ix_external_billing_customers_binding_state": ("binding_state",),
     }
@@ -314,6 +331,12 @@ def test_step_4_checks_and_indexes_cover_the_fixed_contract() -> None:
         "ix_purchase_intents_state_updated_at": ("state", "state_updated_at"),
     }
     assert _indexes(ExternalCreateOperation) == {
+        "uq_create_operations_customer": ("customer_id",),
+        "uq_create_operations_account_kind_bound": (
+            "external_billing_account_id",
+            "operation_kind",
+            "bound_external_object_id",
+        ),
         "uq_external_create_operations_unresolved_customer": ("customer_id",),
         "ix_external_create_operations_customer_state": ("customer_id", "operation_state"),
         "ix_external_create_operations_purchase": ("purchase_intent_id",),
@@ -333,7 +356,7 @@ def test_step_4_checks_and_indexes_cover_the_fixed_contract() -> None:
     )
 
 
-def test_gated_external_identifiers_remain_nullable_and_non_unique() -> None:
+def test_gated_external_identifiers_are_nullable_with_scoped_not_global_uniqueness() -> None:
     gated_columns = (
         ExternalBillingCatalogProjection.__table__.c.catalog_version,
         CommercialMappingRevision.__table__.c.catalog_version,
@@ -363,3 +386,20 @@ def test_external_account_and_kernel_product_identities_are_not_foreign_keys() -
         for foreign_key in model.__table__.foreign_keys
     }
     assert targets.isdisjoint(forbidden_target_tables)
+
+
+def test_purchase_scope_is_separate_and_has_scoped_owner_foreign_keys() -> None:
+    assert _unique_keys(BillingPurchaseScopeHold) == {("user_id", "product_id")}
+    assert {key[0] for key in _foreign_keys(BillingPurchaseScopeHold)} == {
+        ("user_id", "tenant_id", "region"),
+        ("purchase_intent_id", "external_billing_account_id", "user_id", "product_id"),
+        ("subscription_id", "external_billing_account_id", "user_id", "product_id"),
+    }
+    assert _unique_keys(ExternalCreateOperation) == {
+        ("request_correlation_key",),
+        ("purchase_intent_id", "operation_kind"),
+    }
+    assert any(
+        index.name == "uq_create_operations_account_kind_bound" and index.unique
+        for index in ExternalCreateOperation.__table__.indexes
+    )

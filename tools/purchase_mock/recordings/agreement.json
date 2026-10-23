@@ -1,0 +1,17 @@
+{
+  "code": 200,
+  "response": {
+    "agreement_id": 1601,
+    "user_id": 1501,
+    "organization_id": 21,
+    "agreement_number": "SIMULATED-held-purchase-reference",
+    "agreement_link": "https://portal.example.invalid/terms/simulated",
+    "create_date": "2026-10-16",
+    "is_offer": true,
+    "debt_threshold": 0,
+    "balance": 0,
+    "credit": 0,
+    "currency_symbol": "rub",
+    "close_date": ""
+  }
+}

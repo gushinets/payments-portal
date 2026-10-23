@@ -273,7 +273,10 @@
     "prepaid": "Pagamento anticipato",
     "paymentUnspecified": "Vedi le condizioni approvate",
     "tax": "Trattamento fiscale",
-    "taxValues": { "included": "Incluso nell’importo", "not_applicable": "Non applicabile" },
+    "taxValues": {
+      "included": "Incluso nell’importo",
+      "not_applicable": "Non applicabile"
+    },
     "periodAnchors": {
       "calendar_month": "Per mese di calendario",
       "instance_start": "Dall’inizio dell’istanza",
@@ -379,5 +382,40 @@
     "versioningHelp": "Il documento è pubblicato in un file separato e soggetto a controllo di versione.",
     "revision": "Revisione: {version}",
     "tableAccessibilityLabel": "Tabella scorrevole del documento legale"
+  },
+  "Purchase": {
+    "title": "Acquisto e fatturazione",
+    "noAccess": "La preparazione e le azioni del Widget non concedono accesso a pagamento.",
+    "loading": "Caricamento dell’acquisto…",
+    "signIn": "Accedi per verificare",
+    "ineligible": "Verifica il tuo indirizzo e-mail nel tuo account per continuare.",
+    "failed": "Impossibile completare la richiesta. Aggiorna lo stato esistente prima di riprovare.",
+    "conflict": "Conflitto di identità o delle condizioni accettate. Contatta l’assistenza.",
+    "notReady": "La fatturazione non è pronta. Non sono state emesse credenziali Widget.",
+    "reviewNeeded": "Questo acquisto richiede una verifica dell’assistenza. Non iniziare un altro acquisto.",
+    "refresh": "Aggiorna stato",
+    "reference": "Riferimento acquisto: {id}",
+    "seller": "Venditore",
+    "service": "Servizio selezionato",
+    "initial": "Totale iniziale, attivazione inclusa",
+    "renewal": "Condizioni di rinnovo",
+    "cancellation": "Condizioni di cancellazione",
+    "draftLegal": "Esercizio di consenso per lo sviluppo. Questi documenti legali sono bozze non approvate.",
+    "commercialConsent": "Confermo questa offerta esatta, il totale iniziale e le condizioni di rinnovo e cancellazione.",
+    "recurringConsent": "Acconsento esplicitamente agli addebiti ricorrenti secondo le versioni selezionate dei documenti.",
+    "purchase": "Prepara un acquisto simulato",
+    "continue": "Continua l’acquisto esistente",
+    "manage": "Apri gestione fatturazione",
+    "close": "Chiudi Widget",
+    "stub": "SIMULATED: SDK Widget simulato. Nessun pagamento, credenziale reale o accesso a pagamento.",
+    "states": {
+      "not_ready": "Nessuna preparazione pronta. Verifica l’offerta qui sotto.",
+      "preparing": "Preparazione in attesa. Continua l’acquisto esistente.",
+      "recovery_pending": "Esito esterno incerto. Continua avvia il recupero sicuro.",
+      "occupied": "Un acquisto riserva già questo prodotto.",
+      "manual_review": "È necessaria una verifica dell’assistenza. L’acquisto resta riservato.",
+      "manage": "Un abbonamento è collegato. L’apertura richiede una nuova verifica.",
+      "uncertain": "Risposta persa o rifiutata. Aggiorna lo stato per recuperare il tentativo esistente."
+    }
   }
 }

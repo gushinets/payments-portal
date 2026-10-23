@@ -1,23 +1,26 @@
 # Payment Portal Data Model and Backend Invariants
 
 Status: authoritative current-state schema reference
-Last verified: 2026-10-02
+Last verified: 2026-10-21
 
 > **CURRENT AS-BUILT SCHEMA REFERENCE**
 
 This document describes the schema produced by the current Alembic chain:
 
 ```text
-20260924_0001 -> 20261001_0002 (head)
+20260924_0001 -> 20261001_0002 -> 20261021_0003 (head)
 ```
 
 `20260924_0001_clean_first_install` creates the 25-table first-install schema.
 `20261001_0002_clear_false_email_verification` is a data-only forward migration
 that clears predecessor registration-time `users.email_verified_at` values,
-because those timestamps did not prove mailbox ownership. The chain has one
-current head. This document is authoritative for the implemented SQLAlchemy
-table inventory and physical persistence rules; the generated column-level
-artifact remains `docs/generated/db-schema.md`.
+because those timestamps did not prove mailbox ownership.
+`20261021_0003_purchase_scope_fencing` adds durable purchase-scope holds and
+external-create fencing/recovery constraints. It backfills existing ownership
+and fails on conflicting historical purchase scopes rather than choosing an
+owner. The chain has one current head. This document is authoritative for the
+implemented SQLAlchemy table inventory and physical persistence rules; the
+generated column-level artifact remains `docs/generated/db-schema.md`.
 
 Target commercial ownership and runtime behavior follow, in precedence order:
 
@@ -35,9 +38,9 @@ paid-access derivation, or Kernel invalidation delivery is implemented.
 
 ## Physical baseline
 
-A fresh database has exactly 25 application tables: ten retained
-identity/session/legal tables and fifteen target external-billing persistence
-tables. Alembic has two revisions in one linear chain and one current head.
+A fresh database has exactly 26 application tables: ten retained
+identity/session/legal tables and sixteen external-billing persistence
+tables. Alembic has three revisions in one linear chain and one current head.
 
 There is no Portal-owned product, plan, order, payment, refund, subscription,
 entitlement, trial, provider-account, or direct-payment webhook table. There is
@@ -62,6 +65,7 @@ to a Portal-managed routing catalog.
 | `commercial_mapping_revisions` | Mapping | Immutable published mapping revisions that pin manifest and catalog evidence. |
 | `external_billing_customers` | Purchase | Portal-owned binding from a user to an opaque External Billing customer identity. |
 | `purchase_intents` | Purchase | Durable purchase orchestration state with immutable accepted commercial/legal evidence. |
+| `billing_purchase_scope_holds` | Purchase | Durable user/product ownership reservation with fencing epochs and append-only release evidence. |
 | `external_create_operations` | Recovery | Durable external-create attempt and unknown-outcome recovery state. |
 | `billing_product_access_scopes` | Reconciliation | One user/product access scope and its selected primary external subscription. |
 | `external_subscriptions` | Reconciliation | Normalized external-subscription projection with lifecycle and access statuses. |
@@ -160,13 +164,69 @@ closed states are `created`, `preparing`, `awaiting_external_result`, `linked`,
 `manual_review`. PostgreSQL triggers keep the accepted evidence/provenance
 fields immutable.
 
+ANY-709 persists `accepted_snapshot_schema_version=v1`. The JSON document
+contains `schema_version`, tenant/region/account/user scope, canonical request
+(selected revision, public fingerprint, explicit confirmations and exact
+document IDs/text hashes), the original review (mapping material/technical
+allowance, seller reference/revision, exact initial money and legal pins),
+source admission mapping/account-calendar date/timezone, and `accepted_at`.
+Decimal amounts serialize as strings; a monotonic admission deadline is never
+persisted. Widget Manage uses this original evidence and its purchase-specific
+acceptance event, not current catalog pricing or newly invented consent.
+Links without provable original acceptance remain not ready for Widget.
+
+`billing_purchase_scope_holds` serializes purchase ownership independently of
+access-primary selection. Its UUID primary key is `hold_id`;
+`(user_id, product_id)` is unique across both `held` and `released` rows, regardless of
+billing account. The row retains `tenant_id`, `region`, and
+`external_billing_account_id`, nullable `purchase_intent_id` and
+`subscription_id` owner links, `hold_state`, positive `ownership_epoch`
+(initially `1`), and `created_at`, `updated_at`, and nullable `released_at`.
+At least one owner link is required.
+
+Composite restrictive foreign keys bind the user to its tenant/region and each
+owner to the same billing account, user, and product. When both owner links are
+present, a PostgreSQL trigger requires the subscription's purchase provenance
+to match the linked intent. The account and product identifiers remain opaque;
+the hold does not select a primary access subscription or grant paid access.
+
+New rows start `held`. Scope identity is immutable and DELETE is forbidden.
+Ownership epochs cannot decrease; changing an owner, billing account, or hold
+state requires a greater epoch. A held row must be released before reassignment;
+linking its subscription is allowed when that link was previously null and
+matches the purchase provenance. Release retains the original owner links.
+Reusing a released row advances the epoch and preserves its release audit.
+
+Ownership survives unresolved external creates and nonterminal subscriptions;
+elapsed time, source availability, payment state, and browser state do not prove
+release. `release_evidence_schema_version` and JSONB
+`release_evidence_document` are paired, with schema version `v1`. Release
+requires `released_at` and an append-only `releases` audit containing typed
+proof (`authoritative_no_effect`, `verified_terminal`, or `audited_support`),
+a non-empty `proof_reference`, an audited `principal`, and the held ownership
+epoch. The release helper also records the observation time and owner links.
+
+For release without `audited_support`, PostgreSQL rejects any non-`ended`
+subscription for the user/product or unresolved external create for that
+user/product, including customer creates with no purchase intent.
+`verified_terminal` additionally requires the linked subscription to be `ended`.
+`audited_support` permits release despite those blockers but still requires the
+typed proof and audit. A released row has a non-null `released_at`; a held row
+has none.
+
 `external_create_operations` records customer, agreement, or subscription
 create work. Customer creation has no purchase intent; agreement and
 subscription creation require one. Unknown timestamps are paired, the
 PostgreSQL deadline is exactly two hours after `unknown_since`, and recovery
 hint schema/document values are paired. One unresolved customer-create
-operation is allowed per customer. Operation-state vocabulary and recovery
-behavior remain owned by later runtime steps.
+operation is allowed per customer. ANY-709 owns the implemented
+`unsent` → `possible_send` → `unknown`/`bound`/`manual_review` path and
+`failed_before_send` outcomes. The committed send fence is the one CREATE
+permission; unresolved outcomes permit only discovery/point reads, with one
+coalesced work item and explicit two-hour escalation. No worker runs yet.
+The [Step 8 handoff](../engineering/ANY-709-unknown-recovery.md#step-8-handoff)
+records the reusable calls and retained ownership. Widget authorization writes
+no credential or paid projection to these tables.
 
 ## Reconciliation and access tables
 
@@ -232,7 +292,8 @@ Closed text-backed enums are defined only in `app.models.enums`:
 - identity/legal: `RegionStatus`, `UserStatus`, `MagicLinkPurpose`,
   `LegalEntityStatus`, `LegalEntityType`, `AcceptanceKind`;
 - purchase: `ExternalBillingCustomerBindingState`, `PurchaseIntentState`,
-  `ExternalCreateOperationKind`;
+  `ExternalCreateOperationKind`, `PurchaseScopeHoldState`,
+  `PurchaseScopeReleaseKind`;
 - reconciliation: `ExternalSubscriptionLifecycleStatus`,
   `ExternalSubscriptionFinancialAccessStatus`,
   `ExternalSubscriptionCommercialAccessStatus`,
@@ -254,7 +315,7 @@ is an idempotent, fail-closed runtime validation of the same canonical legal
 material and rejects any other configured scope; it is not a second schema or
 migration authority.
 
-All fifteen target billing tables are empty after bootstrap. Step-4 application
+All sixteen billing tables are empty after fresh bootstrap. Step-4 application
 runtime does not populate them. Browser returns, callbacks, webhook receipt,
 outbound command success, or payment state alone never grant paid access.
 

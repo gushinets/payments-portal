@@ -1,0 +1,146 @@
+{
+  "schema_version": "SIMULATED-lbx-preparation-v1",
+  "source_mode": "SIMULATED",
+  "server_origin": "https://purchase-recording.invalid",
+  "server_username": "SIMULATED-purchase-recording",
+  "selection": {
+    "tenant_id": "anytoolai",
+    "region": "ru",
+    "external_billing_account_id": "simulated-ru-lbx-account",
+    "tariff_id": 701,
+    "tariff_service_id": 1001,
+    "period_id": 901,
+    "effective_on": "2026-10-16",
+    "commercial_quantity": "2",
+    "quantity_evidence": {
+      "reference": "SIMULATED:configured-commercial-service-count",
+      "revision": "test-1",
+      "basis": "SIMULATED"
+    }
+  },
+  "inputs": {
+    "schema_version": 1,
+    "source_mode": "SIMULATED",
+    "calendar": {
+      "external_billing_account_id": "simulated-ru-lbx-account",
+      "timezone": "Europe/Moscow",
+      "evidence": {
+        "reference": "SIMULATED:account-calendar-not-provider-confirmed",
+        "revision": "test-1",
+        "basis": "SIMULATED"
+      }
+    },
+    "currency": {
+      "external_billing_account_id": "simulated-ru-lbx-account",
+      "currency_id": 77,
+      "iso_currency": "RUB",
+      "source_units": "major",
+      "decimal_places": 2,
+      "evidence": {
+        "reference": "SIMULATED:ru-account-currency-units",
+        "revision": "test-1",
+        "basis": "SIMULATED"
+      }
+    },
+    "policy": {
+      "tenant_id": "anytoolai",
+      "region": "ru",
+      "external_billing_account_id": "simulated-ru-lbx-account",
+      "tariff_id": 701,
+      "tariff_service_id": 1001,
+      "period_id": 901,
+      "valid_from": "2026-09-01",
+      "valid_until": "2028-01-01",
+      "evidence": {
+        "reference": "SIMULATED:exact-selection-commercial-policy",
+        "revision": "test-1",
+        "basis": "SIMULATED"
+      },
+      "account_binding": {
+        "reference": "SIMULATED:credential-account-binding",
+        "revision": "test-1",
+        "basis": "SIMULATED"
+      },
+      "list_completeness": {
+        "reference": "SIMULATED:complete-selected-http-recording",
+        "revision": "test-1",
+        "basis": "SIMULATED"
+      },
+      "price_applicability": {
+        "reference": "SIMULATED:inclusive-start-exclusive-successor-calendar-rule",
+        "revision": "test-1",
+        "basis": "SIMULATED"
+      },
+      "historical_policy": {
+        "reference": "SIMULATED:versioned-policy-change-and-subscription-readback-contract",
+        "revision": "test-1",
+        "basis": "SIMULATED"
+      },
+      "complete_selected_lists": true,
+      "independent_service_selection": true,
+      "effective_price_rule": "latest_start_inclusive_next_exclusive",
+      "tax_treatment": "included",
+      "account_discounts": "none",
+      "proration": "none",
+      "credit_disabled": true,
+      "promised_payment_disabled": true,
+      "manual_activation_disabled": true,
+      "connection_charge_basis": "per_service_unit",
+      "renewal_terms": "SIMULATED fixed prepaid renewal; authoritative subscription readback required",
+      "cancellation_terms": "SIMULATED end-of-period cancellation; no invented refund",
+      "historical_applicability": "pinned_effective_terms"
+    }
+  },
+  "organization_id": 21,
+  "account_evidence": {
+    "reference": "SIMULATED:credential-account-binding",
+    "revision": "fixture-v1",
+    "basis": "SIMULATED"
+  },
+  "seller_evidence": {
+    "reference": "SIMULATED:selected-test-seller-not-live-approval",
+    "revision": "fixture-v1",
+    "basis": "SIMULATED"
+  },
+  "customer_evidence": {
+    "reference": "SIMULATED:customer-type-and-email-test-only-not-lawful-live-profile",
+    "revision": "fixture-v1",
+    "basis": "SIMULATED"
+  },
+  "create_evidence": {
+    "reference": "SIMULATED:single-service-explicit-no-demo-balance-activation-potential-debit",
+    "revision": "fixture-v1",
+    "basis": "SIMULATED"
+  },
+  "dedicated_agreement_evidence": {
+    "reference": "SIMULATED:unique-held-agreement-reference-no-sharing",
+    "revision": "fixture-v1",
+    "basis": "SIMULATED"
+  },
+  "currency_symbol": "rub",
+  "subscription_list_complete": true,
+  "subscription_list_evidence": {
+    "reference": "SIMULATED:complete-customer-subscription-recording-below-client-cap-no-pagination-claim",
+    "revision": "fixture-v1",
+    "basis": "SIMULATED"
+  },
+  "customer_type": 2,
+  "lawful_customer_fields": [
+    "type",
+    "email"
+  ],
+  "service_composition": "explicit_single",
+  "activate_by_balance": true,
+  "activate_manually": false,
+  "demo_period_length": 0,
+  "is_offer": true,
+  "start_time": "00:00:00",
+  "allowed_states": [
+    -2,
+    2
+  ],
+  "allowed_blocking": [
+    0,
+    1
+  ]
+}

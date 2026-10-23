@@ -273,7 +273,10 @@
     "prepaid": "Prepaid",
     "paymentUnspecified": "See the approved terms",
     "tax": "Tax treatment",
-    "taxValues": { "included": "Included in the amount", "not_applicable": "Not applicable" },
+    "taxValues": {
+      "included": "Included in the amount",
+      "not_applicable": "Not applicable"
+    },
     "periodAnchors": {
       "calendar_month": "By calendar month",
       "instance_start": "From the instance start",
@@ -379,5 +382,40 @@
     "versioningHelp": "The document is published in a separate versioned file.",
     "revision": "Revision: {version}",
     "tableAccessibilityLabel": "Scrollable legal document table"
+  },
+  "Purchase": {
+    "title": "Purchase and billing",
+    "noAccess": "Preparation and Widget activity do not grant paid access.",
+    "loading": "Loading your purchase…",
+    "signIn": "Sign in to review",
+    "ineligible": "Verify your email in your account before continuing.",
+    "failed": "The request could not be completed. Refresh the existing purchase status before retrying.",
+    "conflict": "Identity or accepted terms conflict. Stop and contact support.",
+    "notReady": "Billing is not ready. No Widget credential was issued.",
+    "reviewNeeded": "This purchase needs support review. Do not start another purchase.",
+    "refresh": "Refresh status",
+    "reference": "Purchase reference: {id}",
+    "seller": "Seller",
+    "service": "Selected service",
+    "initial": "Initial total, including connection",
+    "renewal": "Renewal terms",
+    "cancellation": "Cancellation terms",
+    "draftLegal": "Development consent exercise. These legal documents are drafts, not legally approved.",
+    "commercialConsent": "I confirm this exact offer, initial total and renewal/cancellation terms.",
+    "recurringConsent": "I explicitly consent to recurring charges under the selected document versions.",
+    "purchase": "Prepare simulated purchase",
+    "continue": "Continue existing purchase",
+    "manage": "Open billing management",
+    "close": "Close Widget",
+    "stub": "SIMULATED Widget SDK stub. No payment, live credential or paid access is provided.",
+    "states": {
+      "not_ready": "No preparation is ready. Review the offer below.",
+      "preparing": "Preparation is pending. Continue the existing purchase.",
+      "recovery_pending": "The external result is uncertain. Continue performs safe recovery.",
+      "occupied": "This product purchase scope is occupied.",
+      "manual_review": "Support review is required; the purchase remains reserved.",
+      "manage": "A subscription is linked. Opening billing requires fresh proof.",
+      "uncertain": "The reply was lost or refused. Refresh status to recover the existing attempt."
+    }
   }
 }

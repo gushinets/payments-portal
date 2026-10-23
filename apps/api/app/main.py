@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import os
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.concurrency import run_in_threadpool
 
@@ -20,6 +20,8 @@ from app.domains.catalog.router import router as catalog_router
 from app.domains.identity.password_reset import router as password_reset_router
 from app.domains.identity.router import router as auth_router
 from app.domains.legal.router import router as legal_router
+from app.domains.purchases.router import router as purchases_router
+from app.domains.purchases.router import billing_router
 from app.http.errors import app_error_handler, unexpected_failure_middleware
 from app.http.health import health_router
 from app.http.metrics import metrics_router
@@ -72,6 +74,19 @@ def create_app() -> FastAPI:
     # the converted response and record request completion.
     app.middleware("http")(unexpected_failure_middleware)
     app.middleware("http")(request_context_middleware)
+
+    @app.middleware("http")
+    async def purchase_no_store(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
+        response = await call_next(request)
+        if (
+            request.url.path == "/api/purchases"
+            or request.url.path.startswith("/api/purchases/")
+            or request.url.path.startswith("/api/billing/")
+        ):
+            response.headers["Cache-Control"] = "no-store"
+            response.headers["Referrer-Policy"] = "no-referrer"
+        return response
+
     app.add_exception_handler(AppError, app_error_handler)
 
     app.add_middleware(
@@ -86,6 +101,8 @@ def create_app() -> FastAPI:
     app.include_router(auth_router)
     app.include_router(password_reset_router)
     app.include_router(legal_router)
+    app.include_router(purchases_router)
+    app.include_router(billing_router)
     app.include_router(health_router)
     app.include_router(metrics_router)
     return app
