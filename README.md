@@ -223,6 +223,20 @@ npm run test:api
 npm run migrate:api
 ```
 
+## SonarQube Cloud analysis
+
+The public [SonarQube Cloud project](https://sonarcloud.io/project/overview?id=gushinets_payments-portal)
+belongs to the `gushinets` organization on the Free plan. Automatic analysis
+runs on `main` and pull requests targeting `main`, without a scanner workflow
+or a `SONAR_TOKEN` repository secret. The `SonarCloud Code Analysis` check is
+advisory and is not required by the `protect main` ruleset.
+
+Automatic analysis does not import test coverage or external analyzer reports.
+The existing CI publishes API and frontend component coverage separately as
+artifacts. SonarQube findings require review; connecting the project does not
+resolve or validate them. See [ANY-739](https://linear.app/paveldik/issue/ANY-739)
+for setup evidence and verification limits.
+
 ## Local Compose workflow
 
 Local Compose runs PostgreSQL, a one-shot Alembic migration service, the FastAPI
