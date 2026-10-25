@@ -7,9 +7,11 @@ Absent GET fields remain absent evidence. No names or legal data are invented.
 from __future__ import annotations
 
 from datetime import date
+import secrets
+import string
 from typing import Annotated, Any, Generic, Literal, TypeVar
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 
 from app.integrations.lbx.dto import (
     CalendarDate,
@@ -49,6 +51,36 @@ class PostUser(PrivateDto):
     user_name: str | None = None
     user_patronymic: str | None = None
     email: str | None = None
+    # Request-only secrets are excluded even from model_dump(mode="python").
+    login: SecretStr | None = Field(default=None, exclude=True, repr=False)
+    password: SecretStr | None = Field(default=None, exclude=True, repr=False)
+
+    def with_technical_credentials(self) -> PostUser:
+        alphabet = string.ascii_letters + string.digits
+        while True:
+            password = "".join(secrets.choice(alphabet) for _ in range(24))
+            if (
+                any(c.isupper() for c in password)
+                and any(c.islower() for c in password)
+                and any(c.isdigit() for c in password)
+            ):
+                break
+        return self.model_copy(
+            update={
+                "login": SecretStr("any709_" + secrets.token_hex(12)),
+                "password": SecretStr(password),
+            }
+        )
+
+    def request_document(self) -> dict[str, Any]:
+        # This is the single explicit network serialization boundary. Never use
+        # it as operation evidence or in an exception/log/trace.
+        body = self.model_dump(exclude_none=True)
+        for name in ("login", "password"):
+            value = getattr(self, name)
+            if value is not None:
+                body[name] = value.get_secret_value()
+        return body
 
     @field_validator("type", mode="before")
     @classmethod
@@ -113,15 +145,15 @@ class UserInfo(PrivateDto):
 class PostAgreement(PrivateDto):
     user_id: Identity
     organization_id: Identity
-    agreement_link: Annotated[str, Field(min_length=1)]
+    agreement_link: Annotated[str, Field(min_length=1)] | None = None
     agreement_number: OpaqueKey
     create_date: date
     is_offer: bool
-    debt_threshold: ExactNumber
+    debt_threshold: ExactNumber | None = None
 
     @model_validator(mode="after")
     def prohibit_debt(self) -> PostAgreement:
-        if self.debt_threshold != 0:
+        if self.debt_threshold not in {None, 0}:
             raise ValueError("credit is not authorized")
         return self
 
@@ -153,7 +185,7 @@ class PostSubscription(PrivateDto):
     agreement_id: Identity
     tariff_id: Identity
     period_id: Identity
-    subscription_start_date: Annotated[str, Field(pattern=r"^\d{4}-\d{2}-\d{2} 00:00:00$")]
+    subscription_start_date: Annotated[str, Field(pattern=r"^\d{4}-\d{2}-\d{2} 00:00:00$")] | None = None
     activate_by_balance: bool
     demo_period_length: NonnegativeInteger
     activate_manually: bool

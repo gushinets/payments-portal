@@ -7,6 +7,7 @@ import {
 export type AuthErrorMessageKey =
   | "errors.emailAlreadyRegistered"
   | "errors.invalidCredentials"
+  | "errors.invalidPersonalName"
   | "errors.missingPersonalConsent"
   | "errors.missingOfferConsent"
   | "errors.passwordPolicyNotMet"
@@ -28,6 +29,9 @@ export function authErrorMessageKey(error: unknown): AuthErrorMessageKey {
     }
     if (error.status === 400 && code === "missing_offer_consent") {
       return "errors.missingOfferConsent";
+    }
+    if (error.status === 400 && code === "invalid_personal_name") {
+      return "errors.invalidPersonalName";
     }
     if (error.status === 400 && code === "password_policy_not_met") {
       return "errors.passwordPolicyNotMet";

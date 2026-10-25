@@ -111,6 +111,7 @@ class Traffic:
     harness: PurchaseHarness
     requests: list[tuple[str, str]] = field(default_factory=list)
     faults: dict[str, str] = field(default_factory=dict)
+    point_aliases: dict[str, tuple[str, str]] = field(default_factory=dict)
     subscription_status: int = 201
 
     @property
@@ -125,6 +126,14 @@ class Traffic:
         async def respond(request: httpx.Request) -> httpx.Response:
             suffix = request.url.path.removeprefix(API_PATH)
             self.requests.append((request.method, suffix))
+            if request.method == "GET" and suffix in self.point_aliases:
+                original_path, identity_field = self.point_aliases[suffix]
+                response = await base.handle_async_request(
+                    httpx.Request("GET", request.url.copy_with(path=API_PATH + original_path))
+                )
+                body = response.json()
+                body["response"][identity_field] = int(suffix.rsplit("/", 1)[1])
+                return httpx.Response(response.status_code, json=body)
             if request.method == "POST" and suffix in ("/users", "/agreements", "/subscriptions"):
                 # A separate session can see the already committed fence and
                 # due item while transport runs. No transaction/lock spans I/O.
@@ -278,7 +287,11 @@ def test_zero_or_many_discovery_never_reposts_and_retains_scope(
             rows.clear()
         else:
             field = {"users": "user_id", "agreements": "agreement_id", "subscriptions": "subscription_id"}[name]
-            rows.append({**rows[0], field: rows[0][field] + 1})
+            original_id = rows[0][field]
+            rows.append({**rows[0], field: original_id + 1})
+            # Both list candidates need readable point evidence with matching
+            # original correlation/ownership to establish actual ambiguity.
+            traffic.point_aliases[f"{path}/{original_id + 1}"] = (f"{path}/{original_id}", field)
 
     edit_recording(harness, name, candidates)
     before = traffic.posts.copy()

@@ -21,7 +21,7 @@ from sqlalchemy import select
 
 from app.composition.purchases import load_profile
 from app.core.database import SessionLocal
-from app.core.settings import settings
+from app.core.settings import AppEnv, settings
 from app.domains.legal.service import (
     create_registration_legal_evidence,
     get_registration_required_documents,
@@ -109,7 +109,16 @@ def serve(port: int, traffic_file: Path) -> None:
             return await super().handle_async_request(request)
 
     composition.RecordedPreparationTransport = AuditedRecording
-    uvicorn.run(create_app(), host="127.0.0.1", port=port, access_log=False)
+    # Only this explicitly invoked regression harness may compose recordings.
+    # The normal development app rejects them; no real provider is mixed in.
+    from app.domains.purchases.router import application
+
+    app = create_app()
+    regression = settings.model_copy(update={"app_env": AppEnv.TEST})
+    app.dependency_overrides[application] = lambda: composition.purchase_application(
+        regression, SessionLocal, getattr(app.state, "sources", None)
+    )
+    uvicorn.run(app, host="127.0.0.1", port=port, access_log=False)
 
 
 def main() -> None:
@@ -127,7 +136,7 @@ def main() -> None:
     # Existing UID/scope/development and worktree DB guard. No migration/reset
     # or implicit publication, user seed or startup from the production app.
     require_development_operator(settings)
-    load_profile(settings)
+    load_profile(settings.model_copy(update={"app_env": AppEnv.TEST}))
     if arguments.command == "seed-user":
         seed_user()
         print(

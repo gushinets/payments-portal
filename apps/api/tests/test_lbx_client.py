@@ -133,7 +133,7 @@ async def test_shared_token_refresh_is_serialized_but_gets_are_not() -> None:
 
 
 async def test_expiry_uses_returned_lifetime_not_an_assumed_ttl(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.integrations.lbx import client as module
+    from app.integrations.lbx import server_session as module
 
     now = [1000.0]
     monkeypatch.setattr(module, "time", SimpleNamespace(monotonic=lambda: now[0]))
@@ -155,7 +155,7 @@ async def test_expiry_uses_returned_lifetime_not_an_assumed_ttl(monkeypatch: pyt
 
 
 async def test_expiry_between_transient_gets_does_not_allow_repeated_reauth(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.integrations.lbx import client as module
+    from app.integrations.lbx import server_session as module
 
     now = [1000.0]
     monkeypatch.setattr(module, "time", SimpleNamespace(monotonic=lambda: now[0]))

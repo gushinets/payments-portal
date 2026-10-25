@@ -36,6 +36,10 @@
       "register": "Register"
     },
     "fields": {
+      "user_surname": "Surname (optional)",
+      "user_name": "Given name (optional)",
+      "user_patronymic": "Patronymic (optional)",
+      "optionalNamesHint": "Names are optional. Enter only your own names, if you wish.",
       "emailLabel": "Email",
       "passwordLabel": "Password",
       "passwordPlaceholder": "Enter your password",
@@ -71,6 +75,7 @@
       "signedOut": "You have signed out."
     },
     "errors": {
+      "invalidPersonalName": "Names may contain up to 256 characters and must not contain control characters.",
       "emailAlreadyRegistered": "An account with this email already exists. Try signing in.",
       "invalidCredentials": "The email or password is incorrect.",
       "missingPersonalConsent": "You must consent to personal data processing.",

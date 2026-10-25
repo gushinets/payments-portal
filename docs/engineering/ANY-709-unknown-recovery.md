@@ -302,3 +302,330 @@ Changed-file inventory for this slice (paths relative to the repository root):
 - Configuration/docs: `.env.example`, `ARCHITECTURE.md`, `docs/README.md`,
   `docs/SECURITY.md`, `docs/architecture/payment-portal-data-model.md`,
   `docs/engineering/DEVELOPMENT.md`, this handoff/runbook.
+
+## Step 6: explicit local 043 stand (supersedes the recorded-runtime instructions above)
+
+Status: **IMPLEMENTED_NOT_TESTED**. **PUBLIC_SALE_NOT_ENABLED**. No live provider
+request, DB migration, test, lint, typecheck, build or browser walkthrough was
+performed during implementation. Real Kernel conformance, payments, paid grants,
+allowances, access projection and launch remain outside ANY-709. The Kernel
+continues to be the separate `tools/kernel_manifest_mock` HTTP service. There
+is no running LBX mock in this mode. The original recorded transports and Widget
+stub are regression fixtures only (`APP_ENV=test` or the explicitly invoked
+`tools.purchase_mock` regression runner); ordinary development rejects them.
+
+Configure the local Portal API with all of the following, after inspecting the
+selected **disposable local** DB and test account. These are configuration names,
+not secret values:
+
+- `APP_ENV=development`, `LBX043_ENABLED=true`, exact
+  `LBX_BASE_URL=https://043.lbxbilling.ru`, `LBX_SELLER_ORGANIZATION_ID=21`.
+- `MAPPING_ACCOUNT_ID` and `LBX_EXTERNAL_BILLING_ACCOUNT_ID`: the same explicitly
+  reviewed account identifier; `LBX_SERVER_USERNAME`, `LBX_SERVER_PASSWORD` and
+  dedicated `LBX_WIDGET_SIGNING_SECRET` supplied privately. No `NEXT_PUBLIC_*`
+  signing/server credentials. Never paste credentials into configuration JSON.
+- `LBX043_TEST_USER_IDS`: JSON array of verified **Portal** test-user UUIDs, set
+  after ordinary registration/login/email confirmation. Registration alone
+  never creates an LBX user. `PURCHASE_SIMULATED_PROFILE_FILE` must be unset.
+- `PURCHASE_STAND_PROFILE_FILE`: absolute private path to `profile.json`, with
+  its sibling `preparation.json`. Copy the nonsecret, intentionally incomplete
+  examples in `tools/lbx043/` into private operator files. Replace the account,
+  dates, evidenced account timezone, evidence references/revisions and reviewed
+  test terms. The example timezone/date placeholders deliberately cannot admit
+  a purchase. Keep `profile.selection/inputs` identical to those in preparation;
+  the mapping operator's `inputs.json` must contain that same `inputs` object.
+- `KERNEL_BASE_URL`, `KERNEL_SERVICE_TOKEN`, and matching private
+  `KERNEL_MOCK_TOKEN` for the separate mock. Start it with
+  `PYTHONPATH=.:apps/api .venv/bin/python -m tools.kernel_manifest_mock --host 127.0.0.1 --port 8091`.
+  Configure the API's Kernel origin to that service. Use `npm run dev:api` and
+  `npm run dev:web` for the Portal, with the existing local PostgreSQL server and
+  correct host API/CORS origins. Do not start the recorded LBX runner here.
+  The existing bounded `PREFLIGHT_TOTAL_TIMEOUT_SECONDS` can be configured for
+  the stand's multi-read latency (for example 30 seconds); it is not a provider SLA.
+
+The approved selection is seller **21**, product `proposal_ai`, tariff **32**,
+tariff service **1**, period **1**, quantity **1**, `currency_id=1 → RUB`, major
+units, scale **2**, recurring **100 RUB/month**, connection **0**. Price record
+**288** and period association **82** are evidence references, not POST period
+IDs. `LbxCurrencyMapping` pins the currency to this account; the symbol `rub`
+alone never proves currency. All LBX/account input evidence must have its actual
+`ACCOUNT_EVIDENCE`/`DOCUMENTED` basis. Its commercial source mode remains
+`CONFIGURED_SOURCE`; the mock Kernel and test approvals keep the aggregate
+mapping **SIMULATED**, never `GENUINE` or public sellability. Do not relabel
+recorded inputs as live evidence. No legal text is changed or legally approved.
+
+Use the known evidence in the plan's §8.2; do not repeat provider certification.
+Account credit/policy is independently reviewed configuration, not inferred from
+`credit=0` or absent `debt_threshold`. Before SUBSCRIPTION POST, the human must
+review and document the intended agreement/credit/possible debit effect, set
+`LBX043_FINANCIAL_APPROVAL_REFERENCE` to that review, and populate the pinned
+`preparation.financial_policy_evidence` with its account-scoped
+`ACCOUNT_EVIDENCE` reference/revision. The initial examples leave it null and
+leave the switch empty. Complete the financial policy review before the initial
+purchase consent: that profile is part of the immutable preparation pin.
+Changing it after consent requires manual review of the existing hold, never
+an edited snapshot or a second purchase to bypass it. Missing evidence/approval
+refuses SUBSCRIPTION POST and JWT; do not enable it speculatively or edit the billing account to make it
+pass. Missing/wrong scope/allowlist/production/default configuration refuses
+provider POST and JWT. Keep the six SDK disable flags true for this smoke.
+
+### Manual immutable mapping publication (no automatic mapping creation)
+
+Inspect the target DB/environment first. Use the existing OS UID authorization,
+`MAPPING_OPERATOR_UIDS`, `MAPPING_OPERATOR_LOCK_FILE` (trusted shared absolute
+path), `MAPPING_APPROVAL_FILE` and `MAPPING_SOURCE_INPUTS_FILE`. Prepare the
+independently reviewed nonsecret proposal and approval using the existing
+`MappingProposal` and `ApprovedMapping` schemas. The technical binding names
+`proposal_ai.test_generations` with its independently approved test allowance;
+LBX qty 1 does not define that allowance. Preserve SIMULATED test technical/legal
+approvals, exact approved material hash and reviewed document references. A
+source read cannot create its own approval. No sample approval is auto-generated.
+
+These commands are read from `app.cli.commercial_mappings`' actual parser;
+implementation did not execute them. From repository root:
+
+```bash
+export PATH="$PWD/.venv/bin:$PATH"
+export PYTHONPATH=.:apps/api
+python -m app.cli.commercial_mappings --help
+python -m app.cli.commercial_mappings query --offer-id selected-offer:v1:32:1:1
+python -m app.cli.commercial_mappings dry-run --proposal .harness/lbx043/proposal.json > .harness/lbx043/dry-run.json
+```
+
+Before publication compare the private reviewed material to the dry-run material:
+
+```bash
+jq -S '.material' "$MAPPING_APPROVAL_FILE" > .harness/lbx043/approved-material.json
+jq -S '.evaluation.material' .harness/lbx043/dry-run.json > .harness/lbx043/current-material.json
+diff -u .harness/lbx043/approved-material.json .harness/lbx043/current-material.json
+jq '.evaluation | {evidence_mode,kernel_provenance,lbx_evidence_mode,material_fingerprint,selection:.material.references,money:.material.terms.money,period:.material.terms.period,quantity:.material.terms.quantity,field_sources}' .harness/lbx043/dry-run.json
+```
+
+The diff must be empty, and the displayed evidence must show 32/1/1, price 288,
+association 82, 100 RUB/month, 0 connection and qty 1. Inspect the currency input
+alongside it for `currency_id=1`, major/2. Kernel and aggregate mapping must be
+SIMULATED, LBX `CONFIGURED_SOURCE`. If an identical approved current revision
+already exists, reuse it; do not publish again. Otherwise **the human** invokes
+publication with the reviewed current CAS revision (0 only for a genuinely empty
+scope), then queries the resulting revision:
+
+```bash
+python -m app.cli.commercial_mappings publish --proposal .harness/lbx043/proposal.json --expected-previous-revision "$REVIEWED_PREVIOUS_REVISION"
+python -m app.cli.commercial_mappings query --offer-id selected-offer:v1:32:1:1
+```
+
+Query must show one correct latest revision for `proposal_ai`. Do not alter
+Portal price rows. Inspect actual PostgreSQL `commercial_mapping_revisions`:
+`mapping_revision_id`, `external_billing_account_id`, `billing_offer_id`,
+`revision_number`, `catalog_digest`, `manifest_version`, `published_at`,
+`published_by_principal`, and `mapping_document` (material, material fingerprint,
+approval pins, Kernel/LBX source labels and field evidence). Retained history
+is immutable; the highest scoped revision is current. Query/publish never run
+implicitly from registration, purchase, continue or Widget.
+
+### Human registration and real stand walkthrough
+
+On the selected local DB, apply the additive nullable-name migration only after
+confirming the DB target. Check no-name, partial-name and full-name registration;
+omitted/null/blank fields become NULL, outer whitespace is trimmed, Cyrillic,
+Unicode, internal spaces and hyphens survive, and control characters/overlong
+values fail. Inspect only the intended `users` row's three nullable fields.
+Email confirmation, both existing legal consents and authentication remain
+required. No new name fields are returned by session/profile APIs, and no FIO
+is required to purchase. Existing users retain NULL without a backfill.
+
+Perform one deliberately authorized Portal-originated real purchase with a
+confirmed allowlisted user and reviewed test legal/mapping pins. After review
+and consent, continue the held intent once. Expected results:
+
+1. One `purchase_intents` accepted snapshot and scope hold, then a committed
+   customer operation/key before HTTP. Customer discovery uses original
+   `outer_id`; a new `/users` request has five base fields plus only the actual
+   persisted names (5–8 fields). Login/password are CSPRNG request-only values;
+   neither credential, nor names, enter recovery JSON or purchase/legal evidence.
+2. Customer point GET proves the original user ID/outer pair. Names never bind
+   identity; LBX normalization of names does not invalidate that pair. Inspect
+   optional name fields in authorized point readback and separately record
+   whether the LBX Admin `Client` column displays them. Blank Admin names are
+   permitted; the Email column remains usable. No email-to-name substitution,
+   user23 adoption, credential repair PATCH or repeated customer CREATE.
+3. Owner-wide GET `/agreements` sends `{"user_id":id}` as JSON. The documented
+   automatic org9 agreement is ignored. Only an exact original dedicated
+   correlation may be reused after owner/seller/unused proof; another org21
+   candidate requires review. Otherwise one explicit org21 non-offer agreement
+   is created, without `debt_threshold` or invented offer link. Point GET
+   tolerates legitimate empty non-offer link; verifies balance/credit/closure.
+   Bound/reserved agreement uniqueness remains enforced by PostgreSQL.
+4. One explicit 32/1/1 subscription, qty1, balance activation, no manual/demo,
+   no `subscription_start_date`. GET proves canonical IDs, owner→agreement→seller,
+   actual `services[].price`, exact total100 RUB and no extra service/subscription
+   on the dedicated agreement. Waiting/null/sentinel dates are stored under the
+   subscription operation's `provider_observation`, verbatim as LBX calendar
+   facts; no paid period or UTC/month expiry is synthesized. Financial/access
+   projections remain denied/expired. Read back any actual test-account charges
+   and compare with the human's preapproved effect.
+5. Click Manage deliberately. Each open checks session, original consents,
+   current immutable mapping revision, original customer pair, dedicated seller
+   agreement, subscription and no UNKNOWN, then signs a fresh HS256/type7 JWT.
+   The official script loads from the exact 043 HTTPS origin, with its Client
+   API base and all six disable flags true. The data-URL host has an opaque
+   origin, CSP and a memory-only MessageChannel; its nested vendor iframe keeps
+   the vendor origin. Close/logout/session change removes that entire context;
+   no vendor teardown API is invented. Reopen/reload/new idempotency keys must
+   not cause any provider POST. Widget display/waiting/balance never grants access.
+
+Before readiness, the UI offers review/continue/status; ambiguous sends keep
+`awaiting_external_result`, conflicts require manual review, and a proved linked
+waiting subscription offers Manage. Script/auth errors, unproved customer login,
+stale mapping, changed effective price, extra services, wrong seller or missing
+financial policy must remain not-ready/refused; do not claim Widget PASS from
+an empty shell or a failed Client API. Record actual official rendering and
+customer/subscription identity in the human evidence ledger. The opaque-host
+SDK/CSP behavior and optional-FIO provider normalization still need that browser
+acceptance; no provider compatibility is claimed from component fixtures.
+
+Inspect `purchase_intents`, `billing_purchase_scope_holds`,
+`external_billing_customers`, `external_create_operations`, and
+`external_subscriptions` for exactly the expected owner/account/key, accepted
+revision/fingerprint, original correlations, IDs, send fencing/ownership epoch,
+state, fixed UNKNOWN deadline and safe recovery document. Never dump secrets,
+raw HTTP bodies or whole credentials into evidence. On UNKNOWN, stop outbound
+creates and use the existing read-only recovery/inspection with the **same**
+operation. An empty discovery or timeout is not resend authority. Matching
+identity with missing/unusable Widget credentials requires not-ready/manual
+review, never a blind PATCH/CREATE. Do not attempt another purchase to repair it.
+
+### Manual verification commands — all NOT_RUN
+
+From repository root, after normal local dependency setup:
+
+```bash
+export PATH="$PWD/.venv/bin:$PATH"
+export PYTHONPATH=.:apps/api
+npm run generate:check
+# Disposable runtime DB only, after inspecting its target:
+npm run migrate:api
+# Fast registration / wire / private protocol tests:
+python -m pytest -p no:cacheprovider apps/api/tests/test_registration_names.py apps/api/tests/test_api_email_verification.py apps/api/tests/test_lbx043_stand.py apps/api/tests/test_lbx_prepare_readback.py apps/api/tests/test_purchase_preparation_contracts.py apps/api/tests/test_widget_jwt.py
+make test_db_up
+npm run test:api:postgres
+make test_db_stop
+npm --workspace @anytoolai/web run test:components -- tests/components/AuthForm.test.tsx tests/components/AuthContractValidation.test.ts tests/components/OfficialWidget.test.ts tests/components/PurchaseJourney.test.tsx tests/components/PresentationErrors.test.tsx
+npm run lint:web
+npm run typecheck:web
+npm run build:web
+npm run check
+```
+
+PostgreSQL coverage includes the new additive migration and the complete local
+stand-shaped flow, competing continuations, restart/UNKNOWN recovery, secret
+non-persistence and guarded authenticated bootstrap, alongside existing durable
+scope/fence regressions. Protocol fixtures use in-process transports only;
+there is no fake LBX service or vendor network access in those tests.
+
+After the human purchase above reaches a proved linked test subscription, a
+separate **read-only** opt-in browser smoke can open/reopen/close/logout without
+purchasing or continuing. Supply the short-lived Portal test session privately
+as `LBX043_PORTAL_SESSION_TOKEN`, set the actual local
+`PLAYWRIGHT_BASE_URL`/`PLAYWRIGHT_API_BASE_URL`, then run sequentially:
+
+```bash
+LBX043_WIDGET_SMOKE=1 npm exec playwright test -- --config playwright.config.ts apps/web/e2e/lbx043-widget.spec.ts --project desktop-chromium
+LBX043_WIDGET_SMOKE=1 npm exec playwright test -- --config playwright.config.ts apps/web/e2e/lbx043-widget.spec.ts --project mobile-chromium
+```
+
+This spec disables traces/video/screenshots to avoid credential capture; the
+operator records sanitized desktop/mobile and accessibility evidence separately.
+The spec's rendered-body check is a smoke signal; the human must still confirm
+the displayed customer/subscription and absence of Client API auth failure.
+Report **STAND_WIDGET_PASS** only with actual authorized Portal-originated 043
+proof, org21/32/1/1/100 RUB, correct official rendering, no duplicates, and FIO
+readback when supplied. Admin clickable-name visibility is a separate observed
+fact. Failed or incomplete evidence is **BLOCKED_WITH_SPECIFIC_REASON**.
+
+Step 8 consumes these same holds, immutable snapshots, operations, observed LBX
+facts and read-only recovery for its later webhook/worker/reconciliation work.
+Steps 9–10 own paid access/Kernel grants/usage and Step 11 owns launch. This smoke
+never substitutes for those gates or grants a 6h LKG extension.
+
+### Step 6 changed-file inventory
+
+The approved implementation plan was already modified when work started and
+was left unchanged. The following paths belong to this implementation:
+
+- [`.env.example`](../../.env.example)
+- [`apps/api/alembic/versions/20261025_0004_optional_user_names.py`](../../apps/api/alembic/versions/20261025_0004_optional_user_names.py)
+- [`apps/api/app/composition/purchases.py`](../../apps/api/app/composition/purchases.py)
+- [`apps/api/app/composition/purchase_profiles.py`](../../apps/api/app/composition/purchase_profiles.py)
+- [`apps/api/app/core/settings.py`](../../apps/api/app/core/settings.py)
+- [`apps/api/app/domains/identity/names.py`](../../apps/api/app/domains/identity/names.py)
+- [`apps/api/app/domains/identity/router.py`](../../apps/api/app/domains/identity/router.py)
+- [`apps/api/app/domains/identity/services/auth.py`](../../apps/api/app/domains/identity/services/auth.py)
+- [`apps/api/app/domains/purchases/contracts.py`](../../apps/api/app/domains/purchases/contracts.py)
+- [`apps/api/app/domains/purchases/preparation.py`](../../apps/api/app/domains/purchases/preparation.py)
+- [`apps/api/app/domains/purchases/preparation_review.py`](../../apps/api/app/domains/purchases/preparation_review.py)
+- [`apps/api/app/domains/purchases/preparation_contracts.py`](../../apps/api/app/domains/purchases/preparation_contracts.py)
+- [`apps/api/app/domains/purchases/router.py`](../../apps/api/app/domains/purchases/router.py)
+- [`apps/api/app/domains/purchases/service.py`](../../apps/api/app/domains/purchases/service.py)
+- [`apps/api/app/domains/purchases/widget.py`](../../apps/api/app/domains/purchases/widget.py)
+- [`apps/api/app/http/errors.py`](../../apps/api/app/http/errors.py)
+- [`apps/api/app/integrations/lbx/client.py`](../../apps/api/app/integrations/lbx/client.py)
+- [`apps/api/app/integrations/lbx/server_session.py`](../../apps/api/app/integrations/lbx/server_session.py)
+- [`apps/api/app/integrations/lbx/currency.py`](../../apps/api/app/integrations/lbx/currency.py)
+- [`apps/api/app/integrations/lbx/preparation.py`](../../apps/api/app/integrations/lbx/preparation.py)
+- [`apps/api/app/integrations/lbx/preparation_dto.py`](../../apps/api/app/integrations/lbx/preparation_dto.py)
+- [`apps/api/app/integrations/lbx/preparation_profile.py`](../../apps/api/app/integrations/lbx/preparation_profile.py)
+- [`apps/api/app/integrations/lbx/purchase_preparation.py`](../../apps/api/app/integrations/lbx/purchase_preparation.py)
+- [`apps/api/app/integrations/lbx/stand.py`](../../apps/api/app/integrations/lbx/stand.py)
+- [`apps/api/app/integrations/lbx/widget.py`](../../apps/api/app/integrations/lbx/widget.py)
+- [`apps/api/app/models/identity.py`](../../apps/api/app/models/identity.py)
+- [`apps/api/tests/support/lbx043.py`](../../apps/api/tests/support/lbx043.py)
+- [`apps/api/tests/test_alembic_postgres.py`](../../apps/api/tests/test_alembic_postgres.py)
+- [`apps/api/tests/test_api_email_verification.py`](../../apps/api/tests/test_api_email_verification.py)
+- [`apps/api/tests/test_lbx043_purchase_postgres.py`](../../apps/api/tests/test_lbx043_purchase_postgres.py)
+- [`apps/api/tests/test_lbx043_stand.py`](../../apps/api/tests/test_lbx043_stand.py)
+- [`apps/api/tests/test_registration_names.py`](../../apps/api/tests/test_registration_names.py)
+- [`apps/api/tests/test_registration_names_postgres.py`](../../apps/api/tests/test_registration_names_postgres.py)
+- [`apps/web/e2e/lbx043-widget.spec.ts`](../../apps/web/e2e/lbx043-widget.spec.ts)
+- [`apps/web/src/features/purchases/PurchaseJourneyClient.tsx`](../../apps/web/src/features/purchases/PurchaseJourneyClient.tsx)
+- [`apps/web/src/features/purchases/official-widget-sdk.ts`](../../apps/web/src/features/purchases/official-widget-sdk.ts)
+- [`apps/web/src/generated/api-contracts/types.gen.ts`](../../apps/web/src/generated/api-contracts/types.gen.ts)
+- [`apps/web/src/messages/de.json`](../../apps/web/src/messages/de.json)
+- [`apps/web/src/messages/en.json`](../../apps/web/src/messages/en.json)
+- [`apps/web/src/messages/es.json`](../../apps/web/src/messages/es.json)
+- [`apps/web/src/messages/fr.json`](../../apps/web/src/messages/fr.json)
+- [`apps/web/src/messages/it.json`](../../apps/web/src/messages/it.json)
+- [`apps/web/src/messages/pt.json`](../../apps/web/src/messages/pt.json)
+- [`apps/web/src/messages/ru.json`](../../apps/web/src/messages/ru.json)
+- [`apps/web/src/shared/api/auth.ts`](../../apps/web/src/shared/api/auth.ts)
+- [`apps/web/src/shared/ui/AuthForm.tsx`](../../apps/web/src/shared/ui/AuthForm.tsx)
+- [`apps/web/src/shared/ui/auth-errors.ts`](../../apps/web/src/shared/ui/auth-errors.ts)
+- [`apps/web/tests/components/AuthContractValidation.test.ts`](../../apps/web/tests/components/AuthContractValidation.test.ts)
+- [`apps/web/tests/components/AuthForm.test.tsx`](../../apps/web/tests/components/AuthForm.test.tsx)
+- [`apps/web/tests/components/OfficialWidget.test.ts`](../../apps/web/tests/components/OfficialWidget.test.ts)
+- [`apps/web/tests/components/PresentationErrors.test.tsx`](../../apps/web/tests/components/PresentationErrors.test.tsx)
+- [`docs/architecture/payment-portal-data-model.md`](../../docs/architecture/payment-portal-data-model.md)
+- [`docs/engineering/ANY-709-unknown-recovery.md`](../../docs/engineering/ANY-709-unknown-recovery.md)
+- [`docs/generated/db-schema.md`](../../docs/generated/db-schema.md)
+- [`docs/generated/openapi.json`](../../docs/generated/openapi.json)
+- [`tools/lbx043/inputs.example.json`](../../tools/lbx043/inputs.example.json)
+- [`tools/lbx043/preparation.example.json`](../../tools/lbx043/preparation.example.json)
+- [`tools/lbx043/profile.example.json`](../../tools/lbx043/profile.example.json)
+- [`tools/purchase_mock/__main__.py`](../../tools/purchase_mock/__main__.py)
+
+Formatting: `.venv/bin/ruff format` on the 30 changed Python files completed
+(16 reformatted, 14 unchanged); subsequent focused formatting after final edits
+completed. Existing web style was applied during editing.
+`PATH="$PWD/.venv/bin:$PATH" npm run generate` completed and regenerated the
+OpenAPI, TypeScript wire and DB schema artifacts. The initial generation attempt
+without the repository Python on PATH could not start; it made no generated
+changes. No linters or verification commands were run. No files were staged,
+committed or pushed.
+
+Architecture-size follow-up: extracted lazy profile loading/fingerprinting to
+`composition/purchase_profiles.py`, Server authentication to
+`integrations/lbx/server_session.py`, and manual-review/escalation helpers to
+`domains/purchases/preparation_review.py`. Existing entry points, transaction
+boundaries, session locks, source budgets and send fencing are retained. Ruff
+formatting completed for the six affected Python files. Architecture checks,
+linters and tests were not run; manually rerun `npm run check`.

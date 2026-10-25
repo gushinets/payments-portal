@@ -4,11 +4,12 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.settings import settings
+from app.domains.identity.names import normalize_optional_name
 from app.domains.identity.services.auth import (
     AuthenticationResult,
     login_user,
@@ -32,6 +33,14 @@ class RegisterRequest(BaseModel):
     password: str
     personal_consent: bool
     offer_consent: bool
+    user_surname: str | None = Field(default=None, max_length=256)
+    user_name: str | None = Field(default=None, max_length=256)
+    user_patronymic: str | None = Field(default=None, max_length=256)
+
+    @field_validator("user_surname", "user_name", "user_patronymic", mode="before")
+    @classmethod
+    def optional_personal_name(cls, value: object) -> str | None:
+        return normalize_optional_name(value)
 
 
 class LoginRequest(BaseModel):
@@ -110,6 +119,9 @@ def register(
         password=payload.password,
         personal_consent=payload.personal_consent,
         offer_consent=payload.offer_consent,
+        user_surname=payload.user_surname,
+        user_name=payload.user_name,
+        user_patronymic=payload.user_patronymic,
         client_ip=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
         route_locale=route_locale,

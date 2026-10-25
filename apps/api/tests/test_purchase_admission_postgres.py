@@ -79,6 +79,21 @@ def test_review_does_not_pin_a_calendar_start_date(harness: PurchaseHarness) -> 
         assert intent.accepted_snapshot["review"]["preparation_fingerprint"].startswith("sha256:")
 
 
+@pytest.mark.parametrize(
+    "field,value",
+    [("activate_by_balance", False), ("activate_manually", True), ("demo_period_length", 1)],
+)
+def test_new_consent_cannot_admit_unsafe_preparation_policy(
+    harness: PurchaseHarness, field: str, value: object
+) -> None:
+    edit_preparation_profile(harness, lambda profile: profile.update({field: value}))
+    response = harness.post(harness.payload())
+    assert response.status_code == 503, response.text
+    assert response.json()["detail"]["code"] == "purchase_sources_unavailable"
+    assert harness.source_calls == []
+    assert_no_purchase(harness)
+
+
 @pytest.mark.parametrize("fault", ["outage", "price", "extra_default", "currency", "quantity", "metric"])
 def test_fresh_source_refusals_allocate_no_key_customer_or_hold(harness: PurchaseHarness, fault: str) -> None:
     payload = harness.payload()

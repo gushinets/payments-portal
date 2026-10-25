@@ -17,6 +17,7 @@ from app.domains.identity.errors import (
     MissingPersonalConsentError,
     PasswordPolicyError,
 )
+from app.domains.identity.names import normalize_optional_name
 from app.domains.identity.passwords import hash_password, password_meets_policy, verify_password
 from app.domains.identity.services.email_verification import (
     EmailVerificationDelivery,
@@ -133,6 +134,9 @@ def register_user(
     client_ip: str | None,
     user_agent: str | None,
     route_locale: RouteLocale,
+    user_surname: str | None = None,
+    user_name: str | None = None,
+    user_patronymic: str | None = None,
 ) -> RegistrationResult:
     if not personal_consent:
         raise MissingPersonalConsentError()
@@ -166,6 +170,9 @@ def register_user(
             region=normalized_region,
             email=email,
             email_normalized=normalized_email,
+            user_surname=normalize_optional_name(user_surname),
+            user_name=normalize_optional_name(user_name),
+            user_patronymic=normalize_optional_name(user_patronymic),
             password_hash=hash_password(password),
             email_verified_at=None,
             status=UserStatus.ACTIVE,

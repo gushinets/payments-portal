@@ -68,12 +68,17 @@ class WidgetBootstrapRequest(BaseModel):
 
 
 class WidgetBootstrapResponse(BaseModel):
-    mode: Literal["SIMULATED"]
+    mode: Literal["SIMULATED", "LOCAL_043"]
     credential: str = Field(repr=False)
-    sdk: Literal["isolated_stub"] = "isolated_stub"
-    widget_origin: Literal["self"] = "self"
+    sdk: Literal["isolated_stub", "lbxwidget"] = "isolated_stub"
+    widget_origin: Literal["self", "https://043.lbxbilling.ru"] = "self"
+    serviceBaseUrl: Literal["https://043.lbxbilling.ru/api/rest/v1/client"] | None = None
     disableCreateSubscription: Literal[True] = True
     disableEditSubscription: Literal[True] = True
+    disableStopSubscription: Literal[True] = True
+    disableAutopayments: Literal[True] = True
+    disablePayments: Literal[True] = True
+    disableInvoiceGeneration: Literal[True] = True
 
 
 def widget_principal(
@@ -227,7 +232,13 @@ async def widget_bootstrap(
         if use_case.widget is None:
             raise PurchaseRefused("billing_not_ready", 503)
         result = await use_case.widget.bootstrap(principal, payload.product_id, payload.purchase_intent_id)
-        return WidgetBootstrapResponse(mode=result.mode, credential=result.credential)
+        return WidgetBootstrapResponse(
+            mode=result.mode,
+            credential=result.credential,
+            sdk="lbxwidget" if result.mode == "LOCAL_043" else "isolated_stub",
+            widget_origin="https://043.lbxbilling.ru" if result.mode == "LOCAL_043" else "self",
+            serviceBaseUrl="https://043.lbxbilling.ru/api/rest/v1/client" if result.mode == "LOCAL_043" else None,
+        )
     except AppError as error:
         if isinstance(error, PurchaseRefused):
             raise safe_error(error) from None

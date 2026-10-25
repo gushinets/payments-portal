@@ -36,6 +36,10 @@
       "register": "Registrazione"
     },
     "fields": {
+      "user_surname": "Cognome (facoltativo)",
+      "user_name": "Nome (facoltativo)",
+      "user_patronymic": "Patronimico (facoltativo)",
+      "optionalNamesHint": "Questi campi sono facoltativi. Se lo desideri, inserisci solo i tuoi nomi reali.",
       "emailLabel": "Email",
       "passwordLabel": "Password",
       "passwordPlaceholder": "Inserisci la password",
@@ -71,6 +75,7 @@
       "signedOut": "Hai effettuato la disconnessione."
     },
     "errors": {
+      "invalidPersonalName": "Ogni nome può contenere fino a 256 caratteri, senza caratteri di controllo.",
       "emailAlreadyRegistered": "Esiste già un account con questa email. Prova ad accedere.",
       "invalidCredentials": "L’email o la password non sono corrette.",
       "missingPersonalConsent": "Devi acconsentire al trattamento dei dati personali.",

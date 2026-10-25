@@ -8,7 +8,7 @@ Last verified: 2026-10-21
 This document describes the schema produced by the current Alembic chain:
 
 ```text
-20260924_0001 -> 20261001_0002 -> 20261021_0003 (head)
+20260924_0001 -> 20261001_0002 -> 20261021_0003 -> 20261025_0004 (head)
 ```
 
 `20260924_0001_clean_first_install` creates the 25-table first-install schema.
@@ -18,7 +18,9 @@ because those timestamps did not prove mailbox ownership.
 `20261021_0003_purchase_scope_fencing` adds durable purchase-scope holds and
 external-create fencing/recovery constraints. It backfills existing ownership
 and fails on conflicting historical purchase scopes rather than choosing an
-owner. The chain has one current head. This document is authoritative for the
+owner. `20261025_0004_optional_user_names` adds three nullable, bounded
+registration-name columns without defaults/backfill; migration verification is
+pending the human Step 6 run. The chain has one current head. This document is authoritative for the
 implemented SQLAlchemy table inventory and physical persistence rules; the
 generated column-level artifact remains `docs/generated/db-schema.md`.
 
@@ -112,7 +114,11 @@ stored only as hashes. `magic_link_tokens.purpose` distinguishes
 configured tenant/region and the canonical user when `user_id` is present.
 Password-reset requests for unknown email addresses alone may use the nullable
 user binding and one-way decoy email key. `users.email_verified_at IS NOT NULL`
-is the single authoritative mailbox-verification fact.
+is the single authoritative mailbox-verification fact. Nullable bounded
+`users.user_surname`, `users.user_name`, and `users.user_patronymic` retain only
+optional supplied registration names (migration `20261025_0004`, no backfill or
+default). They are unverified profile data, excluded from session responses and
+purchase/legal snapshots; registration does not create an LBX customer.
 
 `legal_acceptance_events` is the acceptance-action parent. Its
 `external_billing_account_id`, `billing_offer_id`, and

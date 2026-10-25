@@ -39,6 +39,7 @@ class PreparationProof(Generic[T]):
     reason: str
     value: T | None = field(default=None, repr=False)
     evidence_mode: str = "SIMULATED"
+    observed_facts: dict[str, JsonValue] | None = None
 
 
 class CreateUncertain(AppError):
@@ -49,6 +50,9 @@ class CreateUncertain(AppError):
 class PreparationEvidence(Protocol):
     @property
     def schema_version(self) -> str: ...
+
+    @property
+    def billing_evidence_mode(self) -> str: ...
 
     @property
     def external_agreement_id(self) -> str | None: ...
@@ -78,6 +82,10 @@ class PreparationGateway(Protocol):
     ) -> PreparationProof[int]: ...
 
     async def recover(self, kind: ExternalCreateOperationKind, budget: PreflightBudget) -> PreparationProof[int]: ...
+
+    async def discover_before_send(
+        self, kind: ExternalCreateOperationKind, budget: PreflightBudget
+    ) -> PreparationProof[int] | None: ...
 
     async def prior_subscription_conflict(self, budget: PreflightBudget) -> bool: ...
 

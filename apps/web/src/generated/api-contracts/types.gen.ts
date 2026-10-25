@@ -552,6 +552,18 @@ export type RegisterRequest = {
      * Personal Consent
      */
     personal_consent: boolean;
+    /**
+     * User Name
+     */
+    user_name?: string | null;
+    /**
+     * User Patronymic
+     */
+    user_patronymic?: string | null;
+    /**
+     * User Surname
+     */
+    user_surname?: string | null;
 };
 
 /**
@@ -729,6 +741,10 @@ export type WidgetBootstrapResponse = {
      */
     credential: string;
     /**
+     * Disableautopayments
+     */
+    disableAutopayments?: true;
+    /**
      * Disablecreatesubscription
      */
     disableCreateSubscription?: true;
@@ -737,17 +753,33 @@ export type WidgetBootstrapResponse = {
      */
     disableEditSubscription?: true;
     /**
+     * Disableinvoicegeneration
+     */
+    disableInvoiceGeneration?: true;
+    /**
+     * Disablepayments
+     */
+    disablePayments?: true;
+    /**
+     * Disablestopsubscription
+     */
+    disableStopSubscription?: true;
+    /**
      * Mode
      */
-    mode: 'SIMULATED';
+    mode: 'SIMULATED' | 'LOCAL_043';
     /**
      * Sdk
      */
-    sdk?: 'isolated_stub';
+    sdk?: 'isolated_stub' | 'lbxwidget';
+    /**
+     * Servicebaseurl
+     */
+    serviceBaseUrl?: 'https://043.lbxbilling.ru/api/rest/v1/client' | null;
     /**
      * Widget Origin
      */
-    widget_origin?: 'self';
+    widget_origin?: 'self' | 'https://043.lbxbilling.ru';
 };
 
 export type ConfirmVerificationApiAuthEmailVerificationConfirmPostData = {

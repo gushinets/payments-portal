@@ -712,6 +712,9 @@ Indexes and constraints:
 | `region` | `TEXT` | no | FK |
 | `email` | `VARCHAR(320)` | no |  |
 | `email_normalized` | `VARCHAR(320)` | no |  |
+| `user_surname` | `VARCHAR(256)` | yes |  |
+| `user_name` | `VARCHAR(256)` | yes |  |
+| `user_patronymic` | `VARCHAR(256)` | yes |  |
 | `email_verified_at` | `DATETIME` | yes |  |
 | `status` | `TEXT` | no |  |
 | `last_login_at` | `DATETIME` | yes |  |

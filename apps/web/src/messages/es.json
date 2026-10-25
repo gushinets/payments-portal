@@ -36,6 +36,10 @@
       "register": "Registro"
     },
     "fields": {
+      "user_surname": "Apellido (opcional)",
+      "user_name": "Nombre (opcional)",
+      "user_patronymic": "Patronímico (opcional)",
+      "optionalNamesHint": "Estos campos son opcionales. Si lo deseas, introduce solo tus nombres reales.",
       "emailLabel": "Correo electrónico",
       "passwordLabel": "Contraseña",
       "passwordPlaceholder": "Introduce tu contraseña",
@@ -71,6 +75,7 @@
       "signedOut": "Has cerrado sesión."
     },
     "errors": {
+      "invalidPersonalName": "Cada nombre puede tener hasta 256 caracteres, sin caracteres de control.",
       "emailAlreadyRegistered": "Ya existe una cuenta con este correo. Prueba a iniciar sesión.",
       "invalidCredentials": "El correo electrónico o la contraseña son incorrectos.",
       "missingPersonalConsent": "Debes consentir el tratamiento de datos personales.",

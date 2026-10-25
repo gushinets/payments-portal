@@ -19,6 +19,9 @@ export type AuthFormSubmitValues = {
   password: string;
   personalConsent: boolean;
   offerConsent: boolean;
+  user_surname?: string;
+  user_name?: string;
+  user_patronymic?: string;
 };
 
 type AuthFormProps = {
@@ -101,6 +104,7 @@ export function AuthForm({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
+  const [names, setNames] = useState({ user_surname: "", user_name: "", user_patronymic: "" });
   const [personalConsent, setPersonalConsent] = useState(false);
   const [offerConsent, setOfferConsent] = useState(false);
   const submittingRef = useRef(false);
@@ -151,7 +155,10 @@ export function AuthForm({
         email,
         password,
         personalConsent,
-        offerConsent
+        offerConsent,
+        ...(mode === "register" ? Object.fromEntries(
+          Object.entries(names).filter(([, value]) => value.trim()).map(([key, value]) => [key, value.trim()])
+        ) : {})
       });
       setPassword("");
       setPasswordConfirm("");
@@ -205,6 +212,25 @@ export function AuthForm({
           onChange={(event) => setEmail(event.target.value)}
         />
       </label>
+
+      {mode === "register" && (
+        <>
+          <p className="card-copy">{t("fields.optionalNamesHint")}</p>
+          {(["user_surname", "user_name", "user_patronymic"] as const).map((field) => (
+            <label className="field-label" key={field}>
+              {t(`fields.${field}`)}
+              <input
+                className="input"
+                type="text"
+                autoComplete={field === "user_surname" ? "family-name" : field === "user_name" ? "given-name" : "additional-name"}
+                maxLength={256}
+                value={names[field]}
+                onChange={(event) => setNames((previous) => ({ ...previous, [field]: event.target.value }))}
+              />
+            </label>
+          ))}
+        </>
+      )}
 
       <label className="field-label">
         {t("fields.passwordLabel")}

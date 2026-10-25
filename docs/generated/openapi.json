@@ -850,6 +850,42 @@
           "personal_consent": {
             "title": "Personal Consent",
             "type": "boolean"
+          },
+          "user_name": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Name"
+          },
+          "user_patronymic": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Patronymic"
+          },
+          "user_surname": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Surname"
           }
         },
         "required": [
@@ -1106,6 +1142,12 @@
             "title": "Credential",
             "type": "string"
           },
+          "disableAutopayments": {
+            "const": true,
+            "default": true,
+            "title": "Disableautopayments",
+            "type": "boolean"
+          },
           "disableCreateSubscription": {
             "const": true,
             "default": true,
@@ -1118,20 +1160,59 @@
             "title": "Disableeditsubscription",
             "type": "boolean"
           },
+          "disableInvoiceGeneration": {
+            "const": true,
+            "default": true,
+            "title": "Disableinvoicegeneration",
+            "type": "boolean"
+          },
+          "disablePayments": {
+            "const": true,
+            "default": true,
+            "title": "Disablepayments",
+            "type": "boolean"
+          },
+          "disableStopSubscription": {
+            "const": true,
+            "default": true,
+            "title": "Disablestopsubscription",
+            "type": "boolean"
+          },
           "mode": {
-            "const": "SIMULATED",
+            "enum": [
+              "SIMULATED",
+              "LOCAL_043"
+            ],
             "title": "Mode",
             "type": "string"
           },
           "sdk": {
-            "const": "isolated_stub",
             "default": "isolated_stub",
+            "enum": [
+              "isolated_stub",
+              "lbxwidget"
+            ],
             "title": "Sdk",
             "type": "string"
           },
+          "serviceBaseUrl": {
+            "anyOf": [
+              {
+                "const": "https://043.lbxbilling.ru/api/rest/v1/client",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Servicebaseurl"
+          },
           "widget_origin": {
-            "const": "self",
             "default": "self",
+            "enum": [
+              "self",
+              "https://043.lbxbilling.ru"
+            ],
             "title": "Widget Origin",
             "type": "string"
           }

@@ -36,6 +36,10 @@
       "register": "Регистрация"
     },
     "fields": {
+      "user_surname": "Фамилия (необязательно)",
+      "user_name": "Имя (необязательно)",
+      "user_patronymic": "Отчество (необязательно)",
+      "optionalNamesHint": "Эти поля необязательны. При желании укажите свои настоящие имя, фамилию и отчество.",
       "emailLabel": "Email",
       "passwordLabel": "Пароль",
       "passwordPlaceholder": "Введите пароль",
@@ -71,6 +75,7 @@
       "signedOut": "Вы вышли из аккаунта."
     },
     "errors": {
+      "invalidPersonalName": "В каждом поле допускается до 256 символов без управляющих символов.",
       "emailAlreadyRegistered": "Аккаунт с таким email уже существует. Попробуйте войти.",
       "invalidCredentials": "Неверный email или пароль.",
       "missingPersonalConsent": "Нужно дать согласие на обработку персональных данных.",

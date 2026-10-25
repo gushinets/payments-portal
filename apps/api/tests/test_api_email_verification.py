@@ -34,7 +34,7 @@ def _install_token(monkeypatch: pytest.MonkeyPatch, raw_token: str) -> None:
     )
 
 
-def _register(email: str, *, accept_language: str = "ru") -> Response:
+def _register(email: str, *, accept_language: str = "ru", names: dict[str, str] | None = None) -> Response:
     return client.post(
         "/api/auth/register",
         headers={"accept-language": accept_language},
@@ -43,6 +43,7 @@ def _register(email: str, *, accept_language: str = "ru") -> Response:
             "password": PASSWORD,
             "personal_consent": True,
             "offer_consent": True,
+            **(names or {}),
         },
     )
 
@@ -112,13 +113,17 @@ def test_duplicate_registration_schedules_no_second_verification_email(monkeypat
     assert len(deliveries) == 1
 
 
+@pytest.mark.parametrize(
+    "names", [{}, {"user_surname": "Иванова", "user_name": "Анна", "user_patronymic": "Ильинична"}]
+)
 def test_authenticated_confirmation_preserves_session_and_last_login(
     monkeypatch: pytest.MonkeyPatch,
+    names: dict[str, str],
 ) -> None:
     raw_token = "confirm-verification-token-with-enough-entropy"
     _install_token(monkeypatch, raw_token)
     monkeypatch.setattr(email_verification_service, "send_email_verification_email", lambda *args: True)
-    registration = _register("confirm-verification@example.com")
+    registration = _register("confirm-verification@example.com", names=names)
     auth_token = registration.json()["token"]
     with SessionLocal() as db:
         user = db.query(User).filter_by(email_normalized="confirm-verification@example.com").one()
@@ -140,6 +145,9 @@ def test_authenticated_confirmation_preserves_session_and_last_login(
         user = db.query(User).filter_by(email_normalized="confirm-verification@example.com").one()
         assert user.email_verified_at is not None
         assert user.last_login_at == original_last_login_at
+        assert all(
+            getattr(user, field) == names.get(field) for field in ("user_surname", "user_name", "user_patronymic")
+        )
         assert {
             session.id: (session.token_hash, session.expires_at, session.revoked_at)
             for session in db.query(AuthSession).filter_by(user_id=user.id).all()

@@ -11,6 +11,9 @@ export default defineConfig({
   },
   test: {
     environment: "jsdom",
+    // Bound concurrent jsdom instances to avoid CPU and memory contention.
+    minWorkers: 1,
+    maxWorkers: 2,
     globals: true,
     setupFiles: ["./tests/setup/vitest.setup.tsx"],
     include: ["tests/components/**/*.test.{ts,tsx}"],

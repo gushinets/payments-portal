@@ -65,6 +65,9 @@ class User(Base):
     region: Mapped[str] = mapped_column(ForeignKey("regions.code"), nullable=False, index=True)
     email: Mapped[str] = mapped_column(String(320), nullable=False)
     email_normalized: Mapped[str] = mapped_column(String(320), nullable=False, index=True)
+    user_surname: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    user_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    user_patronymic: Mapped[str | None] = mapped_column(String(256), nullable=True)
     email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     status: Mapped[UserStatus] = mapped_column(
         PersistedEnumType(UserStatus), nullable=False, default=UserStatus.ACTIVE, index=True

@@ -18,6 +18,8 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.errors import AppError
 from app.domains.catalog.commercial_offer import CommercialScope
+from app.domains.catalog.publication import validate_stored_mapping
+from app.infrastructure.queries.commercial_mappings import find_mapping_revision
 from app.domains.purchases.contracts import AcceptedPurchase, PurchaseRefused
 from app.domains.purchases.preparation_contracts import Gateway, PreparationEvidence, ProofState
 from app.domains.purchases.review import require_exact_consent
@@ -59,7 +61,7 @@ class WidgetProofInput:
 @dataclass(frozen=True, repr=False)
 class WidgetBootstrap:
     credential: str
-    mode: Literal["SIMULATED"] = "SIMULATED"
+    mode: Literal["SIMULATED", "LOCAL_043"] = "SIMULATED"
 
 
 class WidgetApplication:
@@ -72,6 +74,7 @@ class WidgetApplication:
         gateway: Gateway,
         clock: Callable[[], datetime],
         issue: Callable[[WidgetProofInput], WidgetBootstrap],
+        require_current_mapping: bool = False,
     ) -> None:
         self.factory = factory
         self.scope = scope
@@ -79,6 +82,7 @@ class WidgetApplication:
         self.gateway = gateway
         self.clock = clock
         self.issue = issue
+        self.require_current_mapping = require_current_mapping
 
     async def bootstrap(self, principal: WidgetPrincipal, product_id: str, intent_id: UUID | None) -> WidgetBootstrap:
         return self.issue(await self.authorize(principal, product_id, intent_id))
@@ -119,6 +123,19 @@ class WidgetApplication:
                 raise PurchaseRefused("billing_not_ready", 409)
             accepted = AcceptedPurchase.model_validate_json(json.dumps(intent.accepted_snapshot))
             require_exact_consent(accepted.request, accepted.review)
+            if self.require_current_mapping:
+                offer_id = accepted.review.mapping.material.billing_offer_id
+                current = find_mapping_revision(
+                    db, account_id=self.scope.external_billing_account_id, offer_id=offer_id
+                )
+                if current is None:
+                    raise PurchaseRefused("commercial_terms_conflict", 409)
+                stored = validate_stored_mapping(current, scope=self.scope, offer_id=offer_id, allow_simulated=True)
+                if (
+                    stored.mapping_revision_id != accepted.review.revision_id
+                    or stored.document != accepted.review.mapping
+                ):
+                    raise PurchaseRefused("commercial_terms_conflict", 409)
             if (
                 accepted.user_id != user.id
                 or accepted.request.product_id != product_id

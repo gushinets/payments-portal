@@ -50,8 +50,8 @@ class PreparedSubscription:
     connection_amount_minor: int
     selected_evidence_digest: str
     state: int
-    period_start: date
-    period_end: date
+    period_start: date | None
+    period_end: date | None
 
 
 @dataclass(frozen=True, repr=False)
@@ -86,9 +86,11 @@ def _minor(value: Decimal, scale: int) -> int:
 
 def _calendar_value(value: str) -> date:
     # LBX's naive calendar value is never labelled UTC or a natural cycle ID.
-    if not re.fullmatch(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", value):
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        return date.fromisoformat(value)
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}", value):
         raise ValueError("invalid provider calendar value")
-    return datetime.strptime(value, "%Y-%m-%d %H:%M:%S").date()
+    return datetime.fromisoformat(value).date()
 
 
 class LbxPreparation:
@@ -135,6 +137,8 @@ class LbxPreparation:
             return PreparationProof(ProofState.INCOMPLETE, "customer_outer_id_missing")
         if user.outer_id != billing_customer_key:
             return PreparationProof(ProofState.IDENTITY_CONFLICT, "customer_outer_id_conflict")
+        if self._profile.is_stand and not user.login:
+            return PreparationProof(ProofState.INCOMPLETE, "customer_widget_credentials_unproven")
         return PreparationProof(
             ProofState.COMPLETE_MATCH, "customer_point_match", PreparedCustomer(user_id, billing_customer_key)
         )
@@ -157,21 +161,19 @@ class LbxPreparation:
             agreement = await self._client.get_agreement(agreement_id=agreement_id, budget=budget)
         except LbxError as error:
             return _failure(error)
-        if any(
-            getattr(agreement, name) is None
-            for name in (
-                "user_id",
-                "organization_id",
-                "agreement_number",
-                "agreement_link",
-                "create_date",
-                "is_offer",
-                "debt_threshold",
-                "credit",
-                "currency_symbol",
-                "balance",
-            )
-        ):
+        required = [
+            "user_id",
+            "organization_id",
+            "agreement_number",
+            "create_date",
+            "is_offer",
+            "credit",
+            "currency_symbol",
+            "balance",
+        ]
+        if not self._profile.is_stand:
+            required += ["agreement_link", "debt_threshold"]
+        if any(getattr(agreement, name) is None for name in required):
             return PreparationProof(ProofState.INCOMPLETE, "agreement_fields_missing")
         if "close_date" not in agreement.model_fields_set:
             return PreparationProof(ProofState.INCOMPLETE, "agreement_closure_unknown")
@@ -184,12 +186,19 @@ class LbxPreparation:
                 getattr(agreement, name) != getattr(expected, name)
                 for name in (
                     "agreement_number",
-                    "agreement_link",
                     "create_date",
                     "is_offer",
-                    "debt_threshold",
                 )
             )
+            or (
+                (agreement.agreement_link not in {None, ""} or agreement.is_offer)
+                if self._profile.is_stand
+                else (
+                    agreement.agreement_link != expected.agreement_link
+                    or agreement.debt_threshold != expected.debt_threshold
+                )
+            )
+            or (self._profile.is_stand and (agreement.balance < 0 or agreement.debt_threshold not in {None, 0}))
             or agreement.credit != 0
             or agreement.close_date not in {None, ""}
             or agreement.currency_symbol != self._profile.currency_symbol
@@ -247,20 +256,27 @@ class LbxPreparation:
                 "period_length",
                 "is_demo",
                 "is_offer_agrm",
-                "subscription_start_date",
-                "last_tariffication_period_start",
-                "last_tariffication_period_end",
-                "subscription_end_date",
-                "next_change_date",
             )
         ):
+            return PreparationProof(ProofState.INCOMPLETE, "subscription_fields_missing")
+        date_fields = (
+            "subscription_start_date",
+            "subscription_end_date",
+            "last_tariffication_period_start",
+            "last_tariffication_period_end",
+            "next_change_date",
+        )
+        if self._profile.is_stand:
+            if any(name not in subscription.model_fields_set for name in date_fields):
+                return PreparationProof(ProofState.INCOMPLETE, "subscription_dates_unobserved")
+        elif any(getattr(subscription, name) is None for name in date_fields):
             return PreparationProof(ProofState.INCOMPLETE, "subscription_fields_missing")
         if subscription.agreement_id != expected.agreement_id:
             return PreparationProof(ProofState.OWNER_CONFLICT, "subscription_agreement_conflict")
         if (
             subscription.tariff_id != expected.tariff_id
             or subscription.period_id != expected.period_id
-            or subscription.subscription_start_date != expected.subscription_start_date
+            or (not self._profile.is_stand and subscription.subscription_start_date != expected.subscription_start_date)
             or subscription.currency_symbol != self._profile.currency_symbol
             or subscription.is_demo is not False
             or subscription.is_offer_agrm != agreement.is_offer
@@ -268,8 +284,8 @@ class LbxPreparation:
             or subscription.current_blocking not in self._profile.allowed_blocking
             or subscription.period_type != {"day": 1, "week": 2, "month": 3, "year": 4}.get(offer.terms.period.unit)
             or subscription.period_length != offer.terms.period.length
-            or subscription.subscription_end_date != ""
-            or subscription.next_change_date != ""
+            or (not self._profile.is_stand and subscription.subscription_end_date != "")
+            or (not self._profile.is_stand and subscription.next_change_date != "")
         ):
             return PreparationProof(ProofState.MISMATCH, "subscription_material_conflict")
         services = subscription.services
@@ -309,17 +325,24 @@ class LbxPreparation:
             unit_minor = _minor(money.recurring_unit_amount, money.decimal_places)
             expected_minor = _minor(money.recurring_amount, money.decimal_places)
             connection_minor = _minor(money.connection_amount, money.decimal_places)
-            assert subscription.last_tariffication_period_start is not None
-            assert subscription.last_tariffication_period_end is not None
-            period_start = _calendar_value(subscription.last_tariffication_period_start)
-            period_end = _calendar_value(subscription.last_tariffication_period_end)
+            period_start = period_end = None
+            if self._profile.is_stand:
+                for name in date_fields:
+                    value = getattr(subscription, name)
+                    if value not in {None, ""}:
+                        _calendar_value(value)  # validate, preserve raw facts; no paid-period inference
+            else:
+                assert subscription.last_tariffication_period_start is not None
+                assert subscription.last_tariffication_period_end is not None
+                period_start = _calendar_value(subscription.last_tariffication_period_start)
+                period_end = _calendar_value(subscription.last_tariffication_period_end)
         except ValueError:
             return PreparationProof(ProofState.INCOMPLETE, "subscription_money_or_calendar_invalid")
         if (
             price_minor != unit_minor
             or total_minor != expected_minor
-            or period_end < period_start
-            or period_start < self._profile.selection.effective_on
+            or (period_start is not None and period_end is not None and period_end < period_start)
+            or (period_start is not None and period_start < self._profile.selection.effective_on)
         ):
             return PreparationProof(ProofState.MISMATCH, "subscription_effective_price_or_period_conflict")
         assert subscription.state is not None
@@ -340,6 +363,13 @@ class LbxPreparation:
                 period_start,
                 period_end,
             ),
+            evidence_mode=self._profile.source_mode,
+            observed_facts={
+                "source": self._profile.source_mode,
+                "state": subscription.state,
+                "current_blocking": subscription.current_blocking,
+                **{name: getattr(subscription, name) for name in date_fields},
+            },
         )
 
     async def discover(

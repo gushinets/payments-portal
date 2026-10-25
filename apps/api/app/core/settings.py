@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 from pathlib import Path
+from uuid import UUID
 from typing import Annotated, Any
 from urllib.parse import quote, urlsplit
 
@@ -108,9 +109,19 @@ class Settings(BaseSettings):
     mapping_operator_lock_file: Path | None = None
     # Opt-in local recorded purchase profile. Never enables production sales.
     purchase_simulated_profile_file: Path | None = None
+    # Local 043 test stand only. All remain inert unless the whole binding is explicit.
+    lbx043_enabled: bool = False
+    lbx043_test_user_ids: tuple[UUID, ...] = ()
+    lbx043_financial_approval_reference: str = ""
+    purchase_stand_profile_file: Path | None = None
     # Dedicated Client JWT secret; the recorded composition cannot issue live credentials.
     lbx_widget_signing_secret: SecretStr = SecretStr("")
     mapping_lock_timeout_seconds: float = Field(default=2.0, gt=0, le=10, allow_inf_nan=False)
+
+    @field_validator("purchase_simulated_profile_file", "purchase_stand_profile_file", mode="before")
+    @classmethod
+    def empty_purchase_profile_is_unconfigured(cls, value: Any) -> Any:
+        return None if value == "" else value
 
     @model_validator(mode="after")
     def require_dedicated_widget_secret(self) -> Settings:

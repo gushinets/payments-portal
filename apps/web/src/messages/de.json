@@ -36,6 +36,10 @@
       "register": "Registrierung"
     },
     "fields": {
+      "user_surname": "Nachname (optional)",
+      "user_name": "Vorname (optional)",
+      "user_patronymic": "Vatersname (optional)",
+      "optionalNamesHint": "Diese Felder sind optional. Geben Sie auf Wunsch nur Ihre eigenen Namen ein.",
       "emailLabel": "E-Mail",
       "passwordLabel": "Passwort",
       "passwordPlaceholder": "Passwort eingeben",
@@ -71,6 +75,7 @@
       "signedOut": "Sie wurden abgemeldet."
     },
     "errors": {
+      "invalidPersonalName": "Jedes Namensfeld darf bis zu 256 Zeichen und keine Steuerzeichen enthalten.",
       "emailAlreadyRegistered": "Ein Konto mit dieser E-Mail-Adresse besteht bereits. Versuchen Sie, sich anzumelden.",
       "invalidCredentials": "E-Mail-Adresse oder Passwort ist falsch.",
       "missingPersonalConsent": "Sie müssen der Verarbeitung personenbezogener Daten zustimmen.",

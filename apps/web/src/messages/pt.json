@@ -36,6 +36,10 @@
       "register": "Criar conta"
     },
     "fields": {
+      "user_surname": "Sobrenome (opcional)",
+      "user_name": "Nome (opcional)",
+      "user_patronymic": "Patronímico (opcional)",
+      "optionalNamesHint": "Estes campos são opcionais. Se quiser, informe apenas seus próprios nomes.",
       "emailLabel": "E-mail",
       "passwordLabel": "Senha",
       "passwordPlaceholder": "Digite sua senha",
@@ -71,6 +75,7 @@
       "signedOut": "Você saiu da conta."
     },
     "errors": {
+      "invalidPersonalName": "Cada nome pode ter até 256 caracteres, sem caracteres de controle.",
       "emailAlreadyRegistered": "Já existe uma conta com este e-mail. Tente entrar.",
       "invalidCredentials": "O e-mail ou a senha está incorreto.",
       "missingPersonalConsent": "Você deve consentir com o tratamento de dados pessoais.",

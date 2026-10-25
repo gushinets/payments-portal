@@ -1,0 +1,158 @@
+{
+  "schema_version": "LOCAL-043-lbx-preparation-v1",
+  "source_mode": "CONFIGURED_SOURCE",
+  "server_origin": "https://043.lbxbilling.ru",
+  "selection": {
+    "tenant_id": "anytoolai",
+    "region": "ru",
+    "external_billing_account_id": "REPLACE_WITH_SELECTED_ACCOUNT_ID",
+    "tariff_id": 32,
+    "tariff_service_id": 1,
+    "period_id": 1,
+    "effective_on": "REPLACE_WITH_CURRENT_ACCOUNT_DATE",
+    "commercial_quantity": "1",
+    "quantity_evidence": {
+      "reference": "REPLACE_WITH_REVIEWED_EVIDENCE_REFERENCE",
+      "revision": "REPLACE_WITH_REVIEWED_REVISION",
+      "basis": "ACCOUNT_EVIDENCE"
+    }
+  },
+  "inputs": {
+    "schema_version": 1,
+    "source_mode": "CONFIGURED_SOURCE",
+    "calendar": {
+      "external_billing_account_id": "REPLACE_WITH_SELECTED_ACCOUNT_ID",
+      "timezone": "REPLACE_WITH_EVIDENCED_ACCOUNT_TIMEZONE",
+      "evidence": {
+        "reference": "REPLACE_WITH_REVIEWED_EVIDENCE_REFERENCE",
+        "revision": "REPLACE_WITH_REVIEWED_REVISION",
+        "basis": "ACCOUNT_EVIDENCE"
+      }
+    },
+    "currency": {
+      "external_billing_account_id": "REPLACE_WITH_SELECTED_ACCOUNT_ID",
+      "currency_id": 1,
+      "iso_currency": "RUB",
+      "source_units": "major",
+      "decimal_places": 2,
+      "evidence": {
+        "reference": "REPLACE_WITH_REVIEWED_EVIDENCE_REFERENCE",
+        "revision": "REPLACE_WITH_REVIEWED_REVISION",
+        "basis": "ACCOUNT_EVIDENCE"
+      }
+    },
+    "policy": {
+      "tenant_id": "anytoolai",
+      "region": "ru",
+      "external_billing_account_id": "REPLACE_WITH_SELECTED_ACCOUNT_ID",
+      "tariff_id": 32,
+      "tariff_service_id": 1,
+      "period_id": 1,
+      "valid_from": "REPLACE_WITH_REVIEWED_POLICY_START_DATE",
+      "valid_until": null,
+      "evidence": {
+        "reference": "REPLACE_WITH_REVIEWED_EVIDENCE_REFERENCE",
+        "revision": "REPLACE_WITH_REVIEWED_REVISION",
+        "basis": "ACCOUNT_EVIDENCE"
+      },
+      "account_binding": {
+        "reference": "REPLACE_WITH_REVIEWED_EVIDENCE_REFERENCE",
+        "revision": "REPLACE_WITH_REVIEWED_REVISION",
+        "basis": "ACCOUNT_EVIDENCE"
+      },
+      "list_completeness": {
+        "reference": "REPLACE_WITH_REVIEWED_EVIDENCE_REFERENCE",
+        "revision": "REPLACE_WITH_REVIEWED_REVISION",
+        "basis": "ACCOUNT_EVIDENCE"
+      },
+      "price_applicability": {
+        "reference": "REPLACE_WITH_REVIEWED_EVIDENCE_REFERENCE",
+        "revision": "REPLACE_WITH_REVIEWED_REVISION",
+        "basis": "ACCOUNT_EVIDENCE"
+      },
+      "historical_policy": {
+        "reference": "REPLACE_WITH_REVIEWED_EVIDENCE_REFERENCE",
+        "revision": "REPLACE_WITH_REVIEWED_REVISION",
+        "basis": "ACCOUNT_EVIDENCE"
+      },
+      "complete_selected_lists": true,
+      "independent_service_selection": true,
+      "effective_price_rule": "latest_start_inclusive_next_exclusive",
+      "tax_treatment": "included",
+      "account_discounts": "none",
+      "proration": "none",
+      "credit_disabled": true,
+      "promised_payment_disabled": true,
+      "manual_activation_disabled": true,
+      "connection_charge_basis": "per_service_unit",
+      "renewal_terms": "REPLACE_WITH_REVIEWED_TEST_RENEWAL_TERMS",
+      "cancellation_terms": "REPLACE_WITH_REVIEWED_TEST_CANCELLATION_TERMS",
+      "historical_applicability": "pinned_effective_terms"
+    }
+  },
+  "organization_id": 21,
+  "account_evidence": {
+    "reference": "REPLACE_WITH_REVIEWED_EVIDENCE_REFERENCE",
+    "revision": "REPLACE_WITH_REVIEWED_REVISION",
+    "basis": "ACCOUNT_EVIDENCE"
+  },
+  "seller_evidence": {
+    "reference": "REPLACE_WITH_REVIEWED_EVIDENCE_REFERENCE",
+    "revision": "REPLACE_WITH_REVIEWED_REVISION",
+    "basis": "ACCOUNT_EVIDENCE"
+  },
+  "customer_evidence": {
+    "reference": "REPLACE_WITH_REVIEWED_EVIDENCE_REFERENCE",
+    "revision": "REPLACE_WITH_REVIEWED_REVISION",
+    "basis": "ACCOUNT_EVIDENCE"
+  },
+  "create_evidence": {
+    "reference": "REPLACE_WITH_REVIEWED_EVIDENCE_REFERENCE",
+    "revision": "REPLACE_WITH_REVIEWED_REVISION",
+    "basis": "ACCOUNT_EVIDENCE"
+  },
+  "dedicated_agreement_evidence": {
+    "reference": "REPLACE_WITH_REVIEWED_EVIDENCE_REFERENCE",
+    "revision": "REPLACE_WITH_REVIEWED_REVISION",
+    "basis": "ACCOUNT_EVIDENCE"
+  },
+  "currency_symbol": "rub",
+  "subscription_list_complete": true,
+  "subscription_list_evidence": {
+    "reference": "REPLACE_WITH_REVIEWED_EVIDENCE_REFERENCE",
+    "revision": "REPLACE_WITH_REVIEWED_REVISION",
+    "basis": "ACCOUNT_EVIDENCE"
+  },
+  "customer_type": 2,
+  "lawful_customer_fields": [
+    "type",
+    "email",
+    "login",
+    "password",
+    "user_surname",
+    "user_name",
+    "user_patronymic"
+  ],
+  "service_composition": "explicit_single",
+  "activate_by_balance": true,
+  "activate_manually": false,
+  "demo_period_length": 0,
+  "is_offer": false,
+  "start_time": "00:00:00",
+  "allowed_states": [
+    -2,
+    2
+  ],
+  "allowed_blocking": [
+    0,
+    1
+  ],
+  "financial_policy_evidence": null,
+  "currency_mapping": {
+    "external_billing_account_id": "REPLACE_WITH_SELECTED_ACCOUNT_ID",
+    "currency_id": 1,
+    "iso_currency": "RUB",
+    "source_units": "major",
+    "decimal_places": 2
+  }
+}

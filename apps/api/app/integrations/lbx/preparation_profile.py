@@ -1,7 +1,7 @@
-"""Explicit SIMULATED account delta, separate from real-sale enablement.
+"""Pinned account policy for regression fixtures or the explicit local 043 stand.
 
-Loading is caller-owned and lazy. Missing real G2 facts never prevent startup.
-There is intentionally no production CREATE enable switch in this slice.
+Loading is caller-owned and lazy. No profile enables production/public sales.
+Financial policy is independent evidence, never absence-as-zero inference.
 """
 
 from __future__ import annotations
@@ -13,9 +13,9 @@ from pydantic import SecretStr
 
 from app.domains.catalog.commercial_offer import (
     CommercialEvidenceBasis,
-    CommercialEvidenceMode,
     SelectedCommercialOffer,
 )
+from app.integrations.lbx.currency import CurrencyCode, LbxCurrencyMapping
 from app.integrations.lbx.errors import LbxPreparationBlocked
 from app.integrations.lbx.offer_inputs import (
     REQUIRED_POLICY_FIELDS,
@@ -27,10 +27,10 @@ from app.integrations.lbx.preparation_dto import Identity, PostAgreement, PostSu
 
 
 class PreparationProfile(PrivateDto):
-    schema_version: Literal["SIMULATED-lbx-preparation-v1"]
-    source_mode: Literal["SIMULATED"]
+    schema_version: Literal["SIMULATED-lbx-preparation-v1", "LOCAL-043-lbx-preparation-v1"]
+    source_mode: Literal["SIMULATED", "CONFIGURED_SOURCE"]
     server_origin: str
-    server_username: SecretStr
+    server_username: SecretStr = SecretStr("COMPOSITION-ONLY")
     selection: SelectedOfferRequest
     inputs: SelectedOfferInputs
     organization_id: Identity
@@ -51,8 +51,16 @@ class PreparationProfile(PrivateDto):
     is_offer: bool
     # Caller pins the account-calendar date in consent, not host wall time.
     start_time: Literal["00:00:00"]
+    # Independently reviewed local account credit/activation risk; not inferred
+    # from a missing provider debt_threshold or from credit=0.
+    financial_policy_evidence: EvidenceReference | None = None
+    currency_mapping: LbxCurrencyMapping | None = None
     allowed_states: tuple[int, ...]
     allowed_blocking: tuple[int, ...]
+
+    @property
+    def is_stand(self) -> bool:
+        return self.schema_version == "LOCAL-043-lbx-preparation-v1"
 
     def require_account(self, *, account_id: str, origin: str, username: SecretStr) -> None:
         selection, inputs = self.selection, self.inputs
@@ -61,7 +69,7 @@ class PreparationProfile(PrivateDto):
             selection.external_billing_account_id != account_id
             or self.server_origin != origin
             or self.server_username != username
-            or inputs.source_mode != CommercialEvidenceMode.SIMULATED
+            or inputs.source_mode != self.source_mode
             or currency is None
             or calendar is None
             or policy is None
@@ -94,7 +102,33 @@ class PreparationProfile(PrivateDto):
             policy.historical_policy,
             policy.price_applicability,
         )
-        if any(reference.basis != CommercialEvidenceBasis.SIMULATED for reference in references):
+        if self.is_stand:
+            from app.integrations.lbx.stand import STAND_ORIGIN
+
+            mapping = self.currency_mapping
+            if (
+                self.source_mode != "CONFIGURED_SOURCE"
+                or self.server_origin != STAND_ORIGIN
+                or self.organization_id != 21
+                or (selection.tariff_id, selection.tariff_service_id, selection.period_id) != (32, 1, 1)
+                or selection.commercial_quantity != 1
+                or self.customer_type != 2
+                or set(self.lawful_customer_fields)
+                != {"type", "email", "login", "password", "user_surname", "user_name", "user_patronymic"}
+                or self.service_composition != "explicit_single"
+                or self.is_offer
+                or mapping is None
+                or mapping.external_billing_account_id != account_id
+                or (mapping.currency_id, mapping.iso_currency, mapping.source_units, mapping.decimal_places)
+                != (1, CurrencyCode.RUB, "major", 2)
+                or (currency.currency_id, currency.iso_currency, currency.source_units, currency.decimal_places)
+                != (1, "RUB", "major", 2)
+                or any(reference.basis == CommercialEvidenceBasis.SIMULATED for reference in references)
+            ):
+                raise LbxPreparationBlocked()
+        elif self.source_mode != "SIMULATED" or any(
+            reference.basis != CommercialEvidenceBasis.SIMULATED for reference in references
+        ):
             raise LbxPreparationBlocked()
         if (
             any(
@@ -123,7 +157,15 @@ class PreparationProfile(PrivateDto):
             raise LbxPreparationBlocked() from None
 
     def require_customer(self, command: PostUser) -> None:
-        supplied = set(command.model_dump(exclude_none=True)) - {"outer_id"}
+        supplied = set(command.model_dump(exclude_none=True)) - {"outer_id", "login", "password"}
+        if self.is_stand:
+            if (
+                command.type != 2
+                or not command.email
+                or not supplied <= {"type", "email", "user_surname", "user_name", "user_patronymic"}
+            ):
+                raise LbxPreparationBlocked()
+            return
         allowed = set(self.lawful_customer_fields)
         if (
             command.type != self.customer_type
@@ -137,6 +179,8 @@ class PreparationProfile(PrivateDto):
             command.organization_id != self.organization_id
             or command.is_offer != self.is_offer
             or command.create_date != self.selection.effective_on
+            or (not self.is_stand and (command.debt_threshold != 0 or not command.agreement_link))
+            or (self.is_stand and (command.debt_threshold is not None or command.agreement_link is not None))
         ):
             raise LbxPreparationBlocked()
 
@@ -145,8 +189,16 @@ class PreparationProfile(PrivateDto):
         if currency is None or policy is None:
             raise LbxPreparationBlocked()
         terms = offer.terms
+        if self.is_stand and (
+            (offer.references.effective_price, offer.references.period_membership) != ("288", "82")
+            or terms.money.recurring_amount != 100
+            or terms.money.connection_amount != 0
+            or terms.period.unit != "month"
+            or terms.period.length != 1
+        ):
+            raise LbxPreparationBlocked()
         if (
-            offer.evidence_mode != CommercialEvidenceMode.SIMULATED
+            offer.evidence_mode != self.source_mode
             or (offer.scope.tenant_id, offer.scope.region, offer.scope.external_billing_account_id)
             != (selection.tenant_id, selection.region, selection.external_billing_account_id)
             or (offer.references.offer, offer.references.component, offer.references.period)
@@ -182,7 +234,8 @@ class PreparationProfile(PrivateDto):
         if (
             command.tariff_id != selected.tariff_id
             or command.period_id != selected.period_id
-            or command.subscription_start_date != f"{selected.effective_on.isoformat()} {self.start_time}"
+            or command.subscription_start_date
+            != (None if self.is_stand else f"{selected.effective_on.isoformat()} {self.start_time}")
             or command.activate_by_balance != self.activate_by_balance
             or command.activate_manually != self.activate_manually
             or command.demo_period_length != self.demo_period_length
@@ -196,5 +249,12 @@ class PreparationProfile(PrivateDto):
             or len(command.services) != 1
             or command.services[0].tariff_service_id != selected.tariff_service_id
             or command.services[0].multiplicator != selected.commercial_quantity
+        ):
+            raise LbxPreparationBlocked()
+
+    def require_financial_policy(self) -> None:
+        if self.is_stand and (
+            self.financial_policy_evidence is None
+            or self.financial_policy_evidence.basis != CommercialEvidenceBasis.ACCOUNT_EVIDENCE
         ):
             raise LbxPreparationBlocked()

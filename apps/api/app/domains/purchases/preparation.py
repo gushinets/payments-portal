@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.core.errors import AppError
 from app.domains.catalog.commercial_offer import CommercialScope
 from app.domains.purchases.contracts import AcceptedPurchase, PurchaseAdmissionProof, PurchaseRefused, PurchaseReview
+from app.domains.purchases.preparation_review import escalate_overdue, review_operation
 from app.domains.purchases.preparation_contracts import (
     CreateUncertain,
     Gateway,
@@ -45,7 +46,6 @@ from app.models import (
     ExternalSubscriptionCommercialAccessStatus,
     ExternalSubscriptionFinancialAccessStatus,
     ExternalSubscriptionLifecycleStatus,
-    ManualReviewCase,
     PurchaseIntent,
     PurchaseIntentState,
     User,
@@ -232,31 +232,16 @@ class PurchasePreparation:
         principal: str = "purchase-preparation",
         identity_conflict: bool = False,
     ) -> None:
-        if queries.open_review(db, operation.create_operation_id) is None:
-            db.add(
-                ManualReviewCase(
-                    reason_code=reason,
-                    scope_kind="external_create_operation",
-                    scope_reference=str(operation.create_operation_id),
-                    evidence_schema_version="v1",
-                    evidence_document={
-                        "evidence_mode": "SIMULATED",
-                        "principal": principal,
-                        "send_fencing_token": operation.send_fencing_token,
-                        "scope_ownership_epoch": operation.scope_ownership_epoch,
-                    },
-                    case_state="open",
-                )
-            )
-        operation.operation_state = ExternalCreateOperationState.MANUAL_REVIEW
-        operation.updated_at = self.clock()
-        queries.complete_recovery_item(db, operation.create_operation_id)
-        if identity_conflict and operation.operation_kind == ExternalCreateOperationKind.CUSTOMER:
-            customer = db.get(ExternalBillingCustomer, operation.customer_id)
-            customer.binding_state = ExternalBillingCustomerBindingState.IDENTITY_CONFLICT
-            customer.binding_updated_at = self.clock()
-        intent.state = PurchaseIntentState.MANUAL_REVIEW
-        intent.state_updated_at = self.clock()
+        review_operation(
+            db,
+            operation,
+            intent,
+            reason=reason,
+            principal=principal,
+            identity_conflict=identity_conflict,
+            clock=self.clock,
+            decode_record=self.decode_record,
+        )
 
     def _outcome(
         self,
@@ -415,6 +400,20 @@ class PurchasePreparation:
                                     manual=True,
                                 )
                                 return
+                        discovered = await gateway.discover_before_send(step.kind, budget)
+                        if discovered is not None and (
+                            discovered.state != ProofState.COMPLETE_MATCH or discovered.value is None
+                        ):
+                            await asyncio.to_thread(
+                                self._outcome,
+                                user_id,
+                                intent_id,
+                                step,
+                                reason=discovered.reason,
+                                manual=True,
+                                identity_conflict=discovered.state == ProofState.IDENTITY_CONFLICT,
+                            )
+                            return
                         budget.check()
                         assert proof is not None
                         claim = await asyncio.to_thread(self._claim, user_id, intent_id, step, proof)
@@ -423,7 +422,9 @@ class PurchasePreparation:
                         step = replace(step, state=ExternalCreateOperationState.POSSIBLE_SEND, claim=claim)
                         claimed = True
                         try:
-                            object_id = await gateway.create(step.kind, budget)
+                            object_id = (
+                                discovered.value if discovered is not None else await gateway.create(step.kind, budget)
+                            )
                         except CreateUncertain:
                             await asyncio.to_thread(self._outcome, user_id, intent_id, step, reason="create_uncertain")
                             return
@@ -450,6 +451,18 @@ class PurchasePreparation:
                             identity_conflict=result.state == ProofState.IDENTITY_CONFLICT,
                         )
                         return
+                    if result.observed_facts is not None:
+                        step = replace(
+                            step,
+                            record=self.decode_record(
+                                json.dumps(
+                                    {
+                                        **step.record.storage_document(),
+                                        "provider_observation": result.observed_facts,
+                                    }
+                                )
+                            ),
+                        )
                     if not await asyncio.to_thread(self._bind, user_id, intent_id, step, result.value):
                         return
             except IntegrityError:
@@ -471,24 +484,14 @@ class PurchasePreparation:
 
     def escalate_overdue(self, user_id: UUID, intent_id: UUID, *, principal: str) -> int:
         """Explicit operator invocation only; no timer executes this method."""
-        if not principal.strip():
-            raise ValueError("audited operator principal required")
-        changed = 0
-        with self.factory.begin() as db:
-            intent = self._owned(db, user_id, intent_id)
-            queries.lock_original_scope(db, intent)
-            for kind in ExternalCreateOperationKind:
-                operation = queries.operation_for(db, intent, kind)
-                if (
-                    operation is not None
-                    and operation.operation_state
-                    in (ExternalCreateOperationState.POSSIBLE_SEND, ExternalCreateOperationState.UNKNOWN)
-                    and operation.unknown_recovery_deadline_at is not None
-                    and operation.unknown_recovery_deadline_at <= self.clock()
-                ):
-                    self._review_operation(
-                        db, operation, intent, reason="external_create_unknown_overdue", principal=principal
-                    )
-                    queries.complete_recovery_item(db, operation.create_operation_id)
-                    changed += 1
-        return changed
+        return escalate_overdue(
+            self.factory,
+            user_id,
+            intent_id,
+            principal=principal,
+            owned=self._owned,
+            clock=self.clock,
+            review=lambda db, operation, intent: self._review_operation(
+                db, operation, intent, reason="external_create_unknown_overdue", principal=principal
+            ),
+        )

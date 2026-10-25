@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "source_mode": "CONFIGURED_SOURCE",
+  "calendar": {
+    "external_billing_account_id": "REPLACE_WITH_SELECTED_ACCOUNT_ID",
+    "timezone": "REPLACE_WITH_EVIDENCED_ACCOUNT_TIMEZONE",
+    "evidence": {
+      "reference": "REPLACE_WITH_REVIEWED_EVIDENCE_REFERENCE",
+      "revision": "REPLACE_WITH_REVIEWED_REVISION",
+      "basis": "ACCOUNT_EVIDENCE"
+    }
+  },
+  "currency": {
+    "external_billing_account_id": "REPLACE_WITH_SELECTED_ACCOUNT_ID",
+    "currency_id": 1,
+    "iso_currency": "RUB",
+    "source_units": "major",
+    "decimal_places": 2,
+    "evidence": {
+      "reference": "REPLACE_WITH_REVIEWED_EVIDENCE_REFERENCE",
+      "revision": "REPLACE_WITH_REVIEWED_REVISION",
+      "basis": "ACCOUNT_EVIDENCE"
+    }
+  },
+  "policy": {
+    "tenant_id": "anytoolai",
+    "region": "ru",
+    "external_billing_account_id": "REPLACE_WITH_SELECTED_ACCOUNT_ID",
+    "tariff_id": 32,
+    "tariff_service_id": 1,
+    "period_id": 1,
+    "valid_from": "REPLACE_WITH_REVIEWED_POLICY_START_DATE",
+    "valid_until": null,
+    "evidence": {
+      "reference": "REPLACE_WITH_REVIEWED_EVIDENCE_REFERENCE",
+      "revision": "REPLACE_WITH_REVIEWED_REVISION",
+      "basis": "ACCOUNT_EVIDENCE"
+    },
+    "account_binding": {
+      "reference": "REPLACE_WITH_REVIEWED_EVIDENCE_REFERENCE",
+      "revision": "REPLACE_WITH_REVIEWED_REVISION",
+      "basis": "ACCOUNT_EVIDENCE"
+    },
+    "list_completeness": {
+      "reference": "REPLACE_WITH_REVIEWED_EVIDENCE_REFERENCE",
+      "revision": "REPLACE_WITH_REVIEWED_REVISION",
+      "basis": "ACCOUNT_EVIDENCE"
+    },
+    "price_applicability": {
+      "reference": "REPLACE_WITH_REVIEWED_EVIDENCE_REFERENCE",
+      "revision": "REPLACE_WITH_REVIEWED_REVISION",
+      "basis": "ACCOUNT_EVIDENCE"
+    },
+    "historical_policy": {
+      "reference": "REPLACE_WITH_REVIEWED_EVIDENCE_REFERENCE",
+      "revision": "REPLACE_WITH_REVIEWED_REVISION",
+      "basis": "ACCOUNT_EVIDENCE"
+    },
+    "complete_selected_lists": true,
+    "independent_service_selection": true,
+    "effective_price_rule": "latest_start_inclusive_next_exclusive",
+    "tax_treatment": "included",
+    "account_discounts": "none",
+    "proration": "none",
+    "credit_disabled": true,
+    "promised_payment_disabled": true,
+    "manual_activation_disabled": true,
+    "connection_charge_basis": "per_service_unit",
+    "renewal_terms": "REPLACE_WITH_REVIEWED_TEST_RENEWAL_TERMS",
+    "cancellation_terms": "REPLACE_WITH_REVIEWED_TEST_CANCELLATION_TERMS",
+    "historical_applicability": "pinned_effective_terms"
+  }
+}

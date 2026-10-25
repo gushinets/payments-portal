@@ -61,6 +61,7 @@ class PurchaseApplication:
         lock_timeout_seconds: float,
         preparation: PurchasePreparation | None = None,
         widget: WidgetApplication | None = None,
+        authorize_user: Callable[[UUID], None] | None = None,
     ) -> None:
         self.factory = factory
         self.scope = scope
@@ -71,6 +72,7 @@ class PurchaseApplication:
         self.lock_timeout_seconds = lock_timeout_seconds
         self.preparation = preparation
         self.widget = widget
+        self.authorize_user = authorize_user
 
     def _review(self, db: Session, product_id: str) -> PurchaseReview:
         seller, recurring, preparation_fingerprint = self.profile_terms()
@@ -112,6 +114,8 @@ class PurchaseApplication:
             )
 
     async def continue_purchase(self, user_id: UUID, intent_id: UUID) -> PersistedPurchase:
+        if self.authorize_user is not None:
+            self.authorize_user(user_id)
         if self.preparation is None:
             raise PurchaseRefused("purchase_not_enabled", 503)
         await self.preparation.advance(user_id, intent_id)
@@ -181,6 +185,8 @@ class PurchaseApplication:
         return self._reserve(user_id, key, payload, new_admission)
 
     async def purchase(self, user_id: UUID, key: str, payload: PurchaseRequest) -> PersistedPurchase:
+        if self.authorize_user is not None:
+            self.authorize_user(user_id)
         try:
             intent_id = await asyncio.to_thread(self._fast, user_id, key, payload)
             return await asyncio.to_thread(self.status, user_id, intent_id)

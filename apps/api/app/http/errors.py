@@ -19,6 +19,7 @@ from app.domains.identity.errors import (
     PasswordPolicyError,
     PasswordResetRateLimitedError,
 )
+from app.domains.identity.names import InvalidPersonalNameError
 from app.infrastructure.sentry import Operation, report_exception
 
 
@@ -28,6 +29,7 @@ HTTP_ERRORS_MODULE = Path(__file__).resolve()
 APPLICATION_ROOT = HTTP_ERRORS_MODULE.parents[1]
 REPOSITORY_ROOT = APPLICATION_ROOT.parents[2]
 HTTP_ERROR_RESPONSES: dict[type[AppError], tuple[int, str]] = {
+    InvalidPersonalNameError: (400, "invalid_personal_name"),
     MissingPersonalConsentError: (400, "missing_personal_consent"),
     MissingOfferConsentError: (400, "missing_offer_consent"),
     EmailAlreadyRegisteredError: (409, "email_already_registered"),

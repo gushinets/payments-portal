@@ -50,9 +50,9 @@ class PurchaseRequest(PurchaseInput):
 
 class SellerEvidence(PurchaseInput):
     # Explicit local fixture, never an inferred live seller or customer profile.
-    evidence_mode: Literal["SIMULATED"]
+    evidence_mode: Literal["SIMULATED", "CONFIGURED_SOURCE"]
     organization_id: Annotated[int, Field(strict=True, gt=0)]
-    reference: Annotated[str, Field(pattern=r"^SIMULATED:.+")]
+    reference: Annotated[str, Field(min_length=1)]
     revision: Annotated[str, Field(min_length=1)]
 
 

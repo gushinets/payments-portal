@@ -42,6 +42,7 @@ describe("auth Presentation error classification", () => {
     [400, "missing_personal_consent", "errors.missingPersonalConsent"],
     [400, "missing_offer_consent", "errors.missingOfferConsent"],
     [400, "password_policy_not_met", "errors.passwordPolicyNotMet"],
+    [400, "invalid_personal_name", "errors.invalidPersonalName"],
     [500, "internal_server_error", "errors.internalServer"]
   ] as const)("maps status %s and code %s", (status, code, expectedKey) => {
     expect(authErrorMessageKey(apiError(status, { code }))).toBe(expectedKey);
@@ -81,6 +82,7 @@ describe("password-reset Presentation error classification", () => {
     [400, "invalid_or_expired_reset_token", "errors.invalidOrExpiredToken"],
     [429, "password_reset_rate_limited", "errors.rateLimited"],
     [400, "password_policy_not_met", "errors.passwordPolicyNotMet"],
+    [400, "invalid_personal_name", "errors.generic"],
     [422, "validation_error", "errors.invalidInput"],
     [500, "internal_server_error", "errors.internalServer"]
   ] as const)("maps status %s and code %s", (status, code, expectedKey) => {

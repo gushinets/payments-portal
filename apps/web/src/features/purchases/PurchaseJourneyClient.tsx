@@ -196,9 +196,8 @@ export function PurchaseJourneyClient({ productId }: { productId: string }) {
     }
     try {
       if (action === "widget") {
-        // Import only our allowlisted local stub after an intentional click.
-        // There is no remote script loader or undocumented live SDK contract.
-        const sdk = await import("./simulated-widget-sdk");
+        // Load the allowlisted SDK host only after an intentional click.
+        const sdk = await import("./official-widget-sdk");
         if (!operation.isCurrent()) return;
         const bootstrap = await bootstrapWidget(
           {
@@ -213,15 +212,21 @@ export function PurchaseJourneyClient({ productId }: { productId: string }) {
         }
         widgetDispose.current?.();
         try {
-          widgetDispose.current = sdk.mountSimulatedWidget(
-            widgetNode.current,
-            bootstrap,
-            t("stub")
-          );
+          if (bootstrap.mode === "SIMULATED" && process.env.NODE_ENV !== "production") {
+            // Regression harness only; runtime stand bootstrap always uses LOCAL_043.
+            const recorded = await import("./simulated-widget-sdk");
+            if (!operation.isCurrent() || !widgetNode.current) return;
+            widgetDispose.current = recorded.mountSimulatedWidget(widgetNode.current, bootstrap, t("stub"));
+          } else {
+            widgetDispose.current = sdk.mountOfficialWidget(
+              widgetNode.current, bootstrap, t("title"), operation.isCurrent,
+              () => { clearWidget(); setError("notReady"); }
+            );
+          }
         } finally {
           bootstrap.credential = "";
         }
-        setWidgetOpen(true);
+        if (operation.isCurrent()) setWidgetOpen(true);
         return;
       }
       let purchase: PurchaseResponse | null = null;

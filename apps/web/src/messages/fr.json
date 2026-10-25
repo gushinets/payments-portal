@@ -36,6 +36,10 @@
       "register": "Inscription"
     },
     "fields": {
+      "user_surname": "Nom (facultatif)",
+      "user_name": "Prénom (facultatif)",
+      "user_patronymic": "Patronyme (facultatif)",
+      "optionalNamesHint": "Ces champs sont facultatifs. Indiquez uniquement vos propres noms si vous le souhaitez.",
       "emailLabel": "E-mail",
       "passwordLabel": "Mot de passe",
       "passwordPlaceholder": "Saisissez votre mot de passe",
@@ -71,6 +75,7 @@
       "signedOut": "Vous êtes déconnecté."
     },
     "errors": {
+      "invalidPersonalName": "Chaque nom peut comporter jusqu’à 256 caractères, sans caractères de contrôle.",
       "emailAlreadyRegistered": "Un compte associé à cet e-mail existe déjà. Essayez de vous connecter.",
       "invalidCredentials": "L’e-mail ou le mot de passe est incorrect.",
       "missingPersonalConsent": "Vous devez consentir au traitement des données personnelles.",

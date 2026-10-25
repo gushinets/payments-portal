@@ -2,14 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import json
-import math
-import time
-from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, TypeVar
 
 import httpx
-from pydantic import SecretStr, TypeAdapter
+from pydantic import TypeAdapter
 
 from app.core.settings import AppEnv, Settings
 from app.domains.catalog.commercial_offer import SelectedCommercialOffer
@@ -17,7 +14,6 @@ from app.infrastructure.preflight import PreflightBudget
 from app.integrations.lbx.dto import (
     LbxEnvelope,
     LbxServicePrice,
-    LbxSession,
     LbxTariff,
     LbxTariffPeriod,
     LbxTariffService,
@@ -46,18 +42,14 @@ from app.integrations.lbx.preparation_dto import (
     UserInfo,
 )
 from app.integrations.lbx.preparation_profile import PreparationProfile
+from app.integrations.lbx.stand import Stand043Permission
 from app.integrations.lbx.read_result import LbxRead as LbxRead
+from app.integrations.lbx.server_session import _Session, ensure_session
 from app.integrations.lbx.transport import _Attempts, _Retryable, request_once, retry_after
 
 
 API_PATH = "/api/rest/v1"
 T = TypeVar("T")
-
-
-@dataclass(frozen=True)
-class _Session:
-    token: SecretStr = field(repr=False)
-    expires_at: float
 
 
 def _require_identity(value: int) -> None:
@@ -80,14 +72,17 @@ class LbxServerClient:
         configuration: Settings,
         *,
         transport: httpx.AsyncBaseTransport | None = None,
+        stand_permission: Stand043Permission | None = None,
     ) -> None:
         if not configuration.lbx_base_url:
             raise LbxNotConfigured()
         self._configuration = configuration
+        self._stand_permission = stand_permission
         self._session: _Session | None = None
         self._session_lock = asyncio.Lock()
         self._closed = False
-        # A real origin/credential can never be used for CREATE in this slice.
+        # Recording transports authorize only explicit regression-test profiles.
+        # Real CREATE additionally requires the narrow configured stand capability.
         self._recorded_transport = isinstance(transport, httpx.MockTransport)
         self._http = httpx.AsyncClient(
             base_url=configuration.lbx_base_url,
@@ -163,7 +158,10 @@ class LbxServerClient:
 
     def require_preparation_profile(self, profile: PreparationProfile) -> None:
         config = self._configuration
-        if config.app_env == AppEnv.PRODUCTION or not self._recorded_transport:
+        if profile.is_stand:
+            if self._stand_permission is None or self._stand_permission != Stand043Permission.configured(config):
+                raise LbxPreparationBlocked()
+        elif config.app_env != AppEnv.TEST or not self._recorded_transport:
             raise LbxPreparationBlocked()
         profile.require_account(
             account_id=config.lbx_external_billing_account_id,
@@ -175,6 +173,10 @@ class LbxServerClient:
             and config.lbx_seller_organization_id != profile.organization_id
         ):
             raise LbxPreparationBlocked()
+
+    def require_financial_approval(self) -> None:
+        if self._stand_permission is not None:
+            self._stand_permission.require_financial_approval()
 
     async def get_user(self, *, user_id: int, budget: PreflightBudget) -> UserInfo:
         _require_identity(user_id)
@@ -251,7 +253,15 @@ class LbxServerClient:
     ) -> CreatedUser:
         self.require_preparation_profile(profile)
         profile.require_customer(command)
-        return await self._create("/users", CreateEnvelope[CreatedUser], command.model_dump(exclude_none=True), budget)
+        if profile.is_stand:
+            command = command.with_technical_credentials()
+        return await self._create(
+            "/users",
+            CreateEnvelope[CreatedUser],
+            command.request_document(),
+            budget,
+            success_statuses=frozenset({200, 201}) if profile.is_stand else frozenset({201}),
+        )
 
     async def prepare_create(self, *, budget: PreflightBudget) -> None:
         """Acquire Server authentication before Application commits a send claim."""
@@ -270,10 +280,19 @@ class LbxServerClient:
         self.require_preparation_profile(profile)
         profile.require_agreement(command)
         body = command.model_dump(mode="json", exclude_none=True)
-        # Only zero debt is authorized. Emit an actual JSON number, never a
-        # Pydantic Decimal string or a binary float.
-        body["debt_threshold"] = 0
-        return await self._create("/agreements", CreateEnvelope[CreatedAgreement], body, budget)
+        # 043 does not document debt_threshold. Financial policy is independent
+        # evidence. Preserve the explicit numeric zero only for old recordings.
+        if profile.is_stand:
+            body.pop("debt_threshold", None)
+        else:
+            body["debt_threshold"] = 0
+        return await self._create(
+            "/agreements",
+            CreateEnvelope[CreatedAgreement],
+            body,
+            budget,
+            success_statuses=frozenset({200, 201}) if profile.is_stand else frozenset({201}),
+        )
 
     async def create_subscription(
         self,
@@ -285,6 +304,10 @@ class LbxServerClient:
     ) -> CreatedSubscription:
         self.require_preparation_profile(profile)
         profile.require_subscription(command, offer)
+        if profile.is_stand:
+            assert self._stand_permission is not None
+            self._stand_permission.require_financial_approval()
+            profile.require_financial_policy()
         return await self._create(
             "/subscriptions",
             CreateEnvelope[CreatedSubscription],
@@ -407,39 +430,7 @@ class LbxServerClient:
                 budget.check()
 
     async def _ensure_session(self, attempts: _Attempts, budget: PreflightBudget, *, allow_refresh: bool) -> _Session:
-        current = self._session
-        if current is not None and time.monotonic() < current.expires_at:
-            return current
-        # Lock waiting, auth HTTP and auth body/cleanup are in the SAME source
-        # task and absolute deadline as the selected GET. No refresh worker.
-        async with self._session_lock:
-            budget.check()
-            current = self._session
-            if current is not None and time.monotonic() < current.expires_at:
-                return current
-            if not allow_refresh:
-                raise LbxAuthenticationFailed()
-            self._session = None
-            started = time.monotonic()
-            config = self._configuration
-            credentials = httpx.BasicAuth(
-                config.lbx_server_username.get_secret_value(), config.lbx_server_password.get_secret_value()
-            )
-            wire = await self._request_once("/auth", LbxEnvelope[LbxSession], attempts, budget, auth=credentials)
-            # Start BEFORE the auth round trip; never assume another 600s after
-            # receiving a delayed response or invent a fixed provider lifetime.
-            try:
-                expires_at = started + wire.expires_in
-            except OverflowError:
-                raise LbxResponseInvalid() from None
-            if not math.isfinite(expires_at):
-                raise LbxResponseInvalid()
-            session = _Session(wire.token, expires_at)
-            budget.check()
-            if time.monotonic() >= session.expires_at:
-                raise LbxAuthenticationFailed()
-            self._session = session
-            return session
+        return await ensure_session(self, attempts, budget, allow_refresh=allow_refresh)
 
     def _retry_after(self, value: str | None) -> float | None:
         return retry_after(value, maximum=self._configuration.lbx_max_retry_delay_seconds)

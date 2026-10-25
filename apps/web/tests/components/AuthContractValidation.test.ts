@@ -268,3 +268,21 @@ describe("generated auth transport", () => {
     expect(reportApiContractError).not.toHaveBeenCalled();
   });
 });
+
+describe("optional registration profile transport", () => {
+  beforeEach(() => { fetchMock.mockReset(); vi.stubGlobal("fetch", fetchMock); });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("sends only supplied names for registration and never adds them to login", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ status: "registered", token: "test-token", user: validUser }));
+    const values = { mode: "register" as const, email: "user@example.com", password: "Original-pass1!", personalConsent: true, offerConsent: true,
+      user_name: " Анна-Мария ", user_surname: " ", user_patronymic: undefined };
+    await submitAuth(values, { languageTag: "ru" });
+    const registrationBody: unknown = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+    expect(registrationBody).toEqual({ email: values.email, password: values.password, personal_consent: true, offer_consent: true, user_name: "Анна-Мария" });
+    fetchMock.mockResolvedValue(jsonResponse({ status: "authenticated", token: "test-token", user: validUser }));
+    await submitAuth({ ...values, mode: "login" }, { languageTag: "ru" });
+    const loginBody: unknown = JSON.parse(String(fetchMock.mock.calls[1][1]?.body));
+    expect(loginBody).toEqual({ email: values.email, password: values.password });
+  });
+});

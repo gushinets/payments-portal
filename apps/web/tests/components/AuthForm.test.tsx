@@ -267,3 +267,28 @@ describe("AuthForm characterization", () => {
     }
   });
 });
+
+describe("optional registration names", () => {
+  it("renders names only in registration and never requires a complete set", async () => {
+    const user = userEvent.setup();
+    const props = renderAuthForm();
+    expect(screen.queryByLabelText(ruMessages.Auth.fields.user_name)).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: ruMessages.Auth.modes.register }));
+    for (const field of ["user_surname", "user_name", "user_patronymic"] as const) {
+      expect(screen.getByLabelText(ruMessages.Auth.fields[field])).not.toBeRequired();
+      expect(screen.getByLabelText(ruMessages.Auth.fields[field])).toHaveAttribute("maxlength", "256");
+    }
+    await user.type(screen.getByLabelText(ruMessages.Auth.fields.user_name), "  Анна-Мария  ");
+    await user.type(screen.getByLabelText(ruMessages.Auth.fields.emailLabel), "partial@example.com");
+    await user.type(screen.getByLabelText(ruMessages.Auth.fields.passwordLabel), "Original-pass1!");
+    await user.type(screen.getByLabelText(ruMessages.Auth.fields.passwordConfirmLabel), "Original-pass1!");
+    await user.click(screen.getByLabelText(REGISTRATION_PERSONAL_CONSENT_TEXT));
+    await user.click(screen.getByLabelText(REGISTRATION_OFFER_CONSENT_TEXT));
+    await user.click(screen.getByRole("button", { name: ruMessages.Auth.actions.createAccount }));
+    expect(props.onSubmit).toHaveBeenCalledWith(expect.objectContaining({ user_name: "Анна-Мария" }));
+    expect(vi.mocked(props.onSubmit).mock.calls[0][0]).not.toHaveProperty("user_surname");
+    expect(vi.mocked(props.onSubmit).mock.calls[0][0]).not.toHaveProperty("user_patronymic");
+    await user.click(screen.getByRole("button", { name: ruMessages.Auth.modes.login }));
+    expect(screen.queryByLabelText(ruMessages.Auth.fields.user_name)).not.toBeInTheDocument();
+  });
+});
