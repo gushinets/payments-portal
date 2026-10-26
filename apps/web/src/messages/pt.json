@@ -41,7 +41,10 @@
       "passwordPlaceholder": "Digite sua senha",
       "newPasswordPlaceholder": "De 12 a 128 caracteres",
       "passwordConfirmLabel": "Repita a senha",
-      "passwordConfirmPlaceholder": "Digite a senha novamente"
+      "passwordConfirmPlaceholder": "Digite a senha novamente",
+      "firstNameLabel": "Nome (opcional)",
+      "surnameLabel": "Sobrenome (opcional)",
+      "patronymicLabel": "Patronímico (opcional)"
     },
     "passwordRequirements": {
       "label": "Requisitos da senha",
@@ -384,5 +387,27 @@
     "versioningHelp": "O documento é publicado em um arquivo separado e versionado.",
     "revision": "Revisão: {version}",
     "tableAccessibilityLabel": "Tabela rolável do documento jurídico"
+  },
+  "Billing": {
+    "title": "Dados de cobrança",
+    "description": "Abra sua conta de cobrança para consultar os dados. O acesso pago ainda não foi determinado.",
+    "open": "Abrir cobrança",
+    "close": "Fechar cobrança",
+    "loading": "Abrindo cobrança…",
+    "frameTitle": "Conta de cobrança",
+    "verificationRequired": "Verifique seu email antes de abrir a cobrança.",
+    "requestId": "ID da solicitação: {id}",
+    "errors": {
+      "session": "Entre novamente para abrir a cobrança.",
+      "verification": "Verifique seu email primeiro.",
+      "identity": "A identidade de cobrança precisa de revisão. Fale com o suporte.",
+      "pending": "A criação da conta pode estar em andamento. Abra a cobrança novamente para verificar com segurança.",
+      "review": "A conta precisa de revisão. Sua identidade continua reservada.",
+      "serverAuth": "O serviço recusou as credenciais do servidor. Entre em contato com o suporte.",
+      "client": "Sua conta de cobrança ainda não está pronta. Fale com o suporte; a reabertura usará a mesma conta.",
+      "configuration": "A configuração de cobrança está incompleta. Fale com o suporte.",
+      "unavailable": "A cobrança está temporariamente indisponível. Tente novamente.",
+      "sdk": "Não foi possível carregar o widget. Abra a cobrança novamente."
+    }
   }
 }

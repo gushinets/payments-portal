@@ -367,8 +367,12 @@ showed that remapping `users.outer_id` could cause an old type-6 JWT
 to resolve a different customer. B3's original provider FAIL remains
 recorded; **do not mint type 6** as a production fallback.
 
-Before every Widget mint, Portal independently verifies its session and
-legal/purchase/security gates and performs an authoritative Server GET
+ANY-709 account-view authorization amendment: before every Widget mint, Portal
+independently verifies its current session, confirmed email and customer identity.
+Customer/account viewing does not require a product link, current offer, purchase
+intent or subscription; it uses the non-purchasing presentation. Payment
+presentation additionally requires the specific owned purchase/subscription
+acceptance and current readback gates below. Both presentations perform an authoritative Server GET
 establishing both `users.user_id == provider_customer_id` **and**
 `users.outer_id == billing_customer_key` for the intended customer.
 The browser chooses none of these identifiers or claims. Email, phone,
@@ -498,15 +502,26 @@ uniqueness, non-payment customer/agreement/subscription preparation, discovery,
 reconciliation, mappings, entitlements, allowances, and Kernel access delivery.
 
 There is no persistent checkout/session abstraction around Widget. Widget mint is
-a separate fail-closed authorization decision. A fresh LBX Client JWT (whose provider-enforced replay window may be
-72 hours) may be minted only when all of these hold:
+a separate fail-closed authorization decision. Under the approved ANY-709
+account-view amendment, a fresh type-7 Client JWT with `iat=now` may be minted
+for non-purchasing account viewing only when all of these hold:
 
 ```text
-authenticated Portal session
-verified Portal <-> LBX customer mapping
-billing_customer_key has no identity_conflict
-exact target subscription is proven and linked
-no unresolved external-create UNKNOWN/AMBIGUOUS state
+authenticated Portal session, rechecked after asynchronous I/O
+verified Portal email
+proven Portal <-> LBX customer mapping, including original outer key
+no customer identity_conflict or unresolved customer-create uncertainty
+bounded Client API readiness check
+```
+
+No product link, current price, PurchaseIntent, agreement or subscription is a
+prerequisite for that account presentation. Purchase conflicts do not block
+independently proven customer viewing. Payment-capable presentation additionally
+requires all of the original purchase predicates:
+
+```text
+exact owned target subscription is proven and linked
+no unresolved purchase-create UNKNOWN/AMBIGUOUS state
 latest required material verification == COMPLETE_MATCH
 no prepared-commercial mismatch or commercial_terms_conflict
 ```
@@ -515,22 +530,25 @@ The Phase 0 E B4/B5 provider-security model is explicitly accepted for RU MVP
 in ANY-634: no separate LBX Client API ACL PASS, further security approval,
 or Portal-owned JWT revocation/proxy is a Widget-mint prerequisite. This
 acceptance does not waive the independent Portal-side predicates above or
-establish that untested LBX Client API mutations are denied.
+establish that untested LBX Client API mutations are denied. Both presentations
+use the same customer-wide provider credential. Account presentation disables
+purchases/payments in the UI; these flags are not provider-side ACLs.
 
 `COMPLETE_MISMATCH`, `INCOMPLETE`, `commercial_terms_conflict`,
-prepared-commercial mismatch, unresolved create uncertainty, ambiguous
-correlation, or `identity_conflict` therefore forbid mint. Existing paid access
-may still survive a transient `INCOMPLETE` only inside the ordinary prior LKG
-trust lease, but that does not authorize a new Widget credential.
+prepared-commercial mismatch or purchase-create uncertainty forbid payment
+presentation. Customer-create uncertainty/ambiguous customer correlation or
+`identity_conflict` forbid both presentations. Existing paid access may survive
+a transient `INCOMPLETE` only inside its ordinary prior LKG trust lease; that
+does not authorize a new payment credential.
 
 When mint is allowed:
 
 ```text
 authenticated Portal request
  -> reload current Portal state
- -> verify current customer/subscription/commercial predicates
- -> mint fresh type-7 LBX Widget JWT with iat=now
- -> return Widget bootstrap data
+ -> verify customer identity/readiness and applicable presentation predicates
+ -> recheck Portal session
+ -> return fresh type-7 JWT and server-owned presentation flags with no-store
 ```
 
 If the cabinet cannot be opened, Portal returns a derived `billing_not_ready` or
@@ -674,7 +692,7 @@ part of the user-facing commercial fingerprint.
 The accepted fingerprint is reconstructed from the approved authoritative read
 set during:
 
-- prepared-state verification before Widget can open;
+- prepared-state verification before payment-capable Widget can open;
 - first read that would produce paid access;
 - every later access-relevant/renewal read.
 
@@ -806,8 +824,9 @@ unknown_recovery_deadline_at = unknown_since + 2h   # fixed MVP constant
 ```
 
 The affected scope is the external-customer slot for customer create and the
-purchase/product flow for agreement or subscription create. Widget mint and any
-independent create that would duplicate the unresolved object remain blocked.
+purchase/product flow for agreement or subscription create. Customer uncertainty
+blocks both Widget presentations; purchase uncertainty blocks payment presentation.
+Any independent create that would duplicate the unresolved object remains blocked.
 
 When UNKNOWN is first created, Portal durably schedules one escalation work item
 for the fixed two-hour deadline. Before the deadline, safe read-only recovery runs
@@ -1334,8 +1353,12 @@ not provider-side ACLs. B4 proved `exp` non-enforcement on a real type-7
 Widget; old-token survival after remint was tested with type-6 Client API
 JWTs, not independently with type 7. The vendor-confirmed 72h-`iat` window is explicitly accepted for RU MVP (2026-10-14), not described as a short-lived or revocable credential. B5 proved an identity write with type 6;
 production type-7 identity writes and other mutation ACLs remain UNKNOWN. The observed/UNKNOWN LBX Client API permissions are accepted as provider-owned for RU MVP; no additional Portal-owned ACL subsystem, Provider ACL PASS or separate B4/B5 security approval is required. Active `identity_conflict`,
-unresolved external-create uncertainty, or incomplete/mismatching commercial
-verification prevents mint.
+customer-create uncertainty prevents all minting. Incomplete/mismatching
+commercial verification or purchase-create uncertainty prevents payment
+presentation; customer-only viewing may remain available when its own identity
+is proven. ANY-709 Step 2 implements only that account presentation, with Client
+API readiness and a fresh post-I/O session check. The provider JWT remains
+customer-wide; UI restrictions do not prevent direct Client API writes.
 
 Portal<->Kernel internal APIs require TLS, trusted-service authentication, and
 tenant/region scope. A regional contour never reads/writes another contour's

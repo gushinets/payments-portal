@@ -41,7 +41,10 @@
       "passwordPlaceholder": "Inserisci la password",
       "newPasswordPlaceholder": "Da 12 a 128 caratteri",
       "passwordConfirmLabel": "Ripeti la password",
-      "passwordConfirmPlaceholder": "Inserisci di nuovo la password"
+      "passwordConfirmPlaceholder": "Inserisci di nuovo la password",
+      "firstNameLabel": "Nome (facoltativo)",
+      "surnameLabel": "Cognome (facoltativo)",
+      "patronymicLabel": "Patronimico (facoltativo)"
     },
     "passwordRequirements": {
       "label": "Requisiti della password",
@@ -384,5 +387,27 @@
     "versioningHelp": "Il documento è pubblicato in un file separato e soggetto a controllo di versione.",
     "revision": "Revisione: {version}",
     "tableAccessibilityLabel": "Tabella scorrevole del documento legale"
+  },
+  "Billing": {
+    "title": "Dati di fatturazione",
+    "description": "Apri il tuo account di fatturazione per visualizzarne i dati. L’accesso a pagamento non è ancora determinato.",
+    "open": "Apri fatturazione",
+    "close": "Chiudi fatturazione",
+    "loading": "Apertura…",
+    "frameTitle": "Account di fatturazione",
+    "verificationRequired": "Verifica l’email prima di aprire la fatturazione.",
+    "requestId": "ID richiesta: {id}",
+    "errors": {
+      "session": "Accedi di nuovo per aprire la fatturazione.",
+      "verification": "Verifica prima l’email.",
+      "identity": "L’identità di fatturazione richiede una verifica dell’operatore. Contatta l’assistenza.",
+      "pending": "La creazione dell’account potrebbe essere ancora in corso. Riapri la fatturazione per una verifica sicura.",
+      "review": "L’account richiede una verifica dell’operatore. La sua identità resta riservata.",
+      "serverAuth": "Il servizio ha rifiutato le credenziali del server. Contatta l’assistenza.",
+      "client": "L’account di fatturazione non è ancora pronto. Contatta l’assistenza; la riapertura userà lo stesso account.",
+      "configuration": "La configurazione è incompleta. Contatta l’assistenza.",
+      "unavailable": "La fatturazione è temporaneamente non disponibile. Riprova.",
+      "sdk": "Impossibile caricare il widget. Riapri la fatturazione."
+    }
   }
 }

@@ -49,6 +49,14 @@ class PurchaseIntentState(StrEnum):
     MANUAL_REVIEW = "manual_review"
 
 
+class ExternalCreateOperationState(StrEnum):
+    PENDING = "pending"
+    POSSIBLE_SEND = "possible_send"
+    UNKNOWN = "unknown"
+    BOUND = "bound"
+    MANUAL_REVIEW = "manual_review"
+
+
 class ExternalCreateOperationKind(StrEnum):
     CUSTOMER = "customer"
     AGREEMENT = "agreement"
@@ -83,6 +91,7 @@ __all__ = [
     "BillingStateObservationKind",
     "ExternalBillingCustomerBindingState",
     "ExternalCreateOperationKind",
+    "ExternalCreateOperationState",
     "ExternalSubscriptionCommercialAccessStatus",
     "ExternalSubscriptionFinancialAccessStatus",
     "ExternalSubscriptionLifecycleStatus",

@@ -1,17 +1,18 @@
-# LBX connection and product links (ANY-709 Step 1)
+# LBX connection, product links and account Widget (ANY-709 Steps 1-2)
 
 Status: IMPLEMENTED_AWAITING_HUMAN_VALIDATION. No runtime/test/migration PASS is
-claimed. Customer creation, Widget and purchases remain later ANY-709 steps.
+claimed. Step 2 adds explicit account-only customer/Widget bootstrap. Purchases
+and payment presentation remain later ANY-709 steps.
 
 ## Connection and deployment
 
 Server API reads and product linking require only `LBX_BASE_URL` (HTTP(S)
 origin only), `LBX_SERVER_USERNAME` and `LBX_SERVER_PASSWORD` in the configured
 environment or untracked `.env`. Use production HTTPS. `LBX_WIDGET_SIGNING_SECRET`
-is a separate later account-Widget requirement; `LBX_SELLER_ORGANIZATION_ID` is
+is a separate account-Widget requirement; `LBX_SELLER_ORGANIZATION_ID` is
 a later purchase requirement. Missing signing/seller values do not gate GETs or
 linking. Server API requests append
-`/api/rest/v1` exactly once; future Client API/SDK paths are
+`/api/rest/v1` exactly once; Client API/SDK paths are
 `/api/rest/v1/client` and `/lbxwidget.js` on the same validated origin. Never put
 these secrets in browser configuration, CLI arguments or checked-in files.
 
@@ -35,7 +36,7 @@ are unsupported offer errors. These settings do not attest credit, tax,
 renewal/cancellation or historical-subscription policy; no unknown fact is filled
 with false/zero. Later purchase validation must obtain its own applicable facts.
 Neither calendar nor currency readiness blocks a raw Server API GET or the
-future account-Widget readiness check. Widget/purchase runtime is not added here.
+account-Widget readiness check. Purchase runtime remains deferred.
 
 The transport accepts the retained E04/E05 representations: exact JSON numeric
 `1.0` quantity bounds, a provider-local midnight `price_start_date`, and history
@@ -64,7 +65,7 @@ outside runtime.json, doctor output and public web settings. Do not print
 ## Human setup and privileged CLI
 
 Run only against the intended local environment, never a production URL for
-development migrations. Apply the current head `20261026_0004` through `npm run migrate:api`
+development migrations. Apply the current head `20261026_0005` through `npm run migrate:api`
 with the intended host database configuration, then `npm run repo:up -- --reuse`.
 The harness's normal migrate service also applies the chain during startup.
 On hosts without `python` on PATH, prefix npm commands with
@@ -203,3 +204,107 @@ The human owns all execution, migrations, application startup and live 043 reads
 Focused tests must select actual tests (zero selected/skipped is not PASS).
 Use the fake-provider repricing regression; no live tariff mutation is needed.
 Inspect desktop/mobile layout and accessibility during human browser validation.
+
+
+## Human account-Widget checkpoint (Step 2)
+
+Configure the existing Server connection plus `LBX_WIDGET_SIGNING_SECRET` in the
+protected environment. There is no browser configuration secret, profile file,
+account ID, user allowlist, seller/calendar, Kernel or product-link prerequisite
+for this checkpoint. In the intended local working environment only:
+
+```bash
+export PATH="$PWD/.venv/bin:$PATH"
+npm run migrate:api
+npm run repo:up -- --reuse
+# Ordinary Compose alternative (use the same intended environment as Step 1):
+docker compose run --rm migrate
+docker compose up -d --build api
+```
+
+Use one environment path, not both. These are HUMAN commands; Codex authored the
+forward migration but did not execute migrations, startup or any live request.
+Normal harness startup uses its migrate service; no manual `alembic stamp` or DB
+reset is needed. Existing users retain nullable independent FIO fields; new
+registration optionally saves trimmed first name, surname and patronymic. No
+LBX request is made on registration, login, catalog browsing or ordinary GET.
+
+1. Sign in as the existing verified user. Open account, then explicitly click
+   **Open billing** (localized). The POST has an empty body; it accepts no LBX
+   identity, seller, price or browser permission flags. Inspect no-store and the
+   request ID without copying the response credential into evidence.
+2. Confirm the actual configured `/lbxwidget.js` and official provider iframe,
+   and the real empty-account state when applicable. Closing/reopening, reloading,
+   two tabs and another product's account link must reuse the same customer.
+   A missing mapping, failed quote or pending catalog request cannot block this entry.
+3. Repeat with new users with absent/partial/full FIO. Inspect LBX Admin display
+   when FIO exists; no exact display-name formula is promised. Portal sends no
+   agreement/subscription CREATE. A provider-created default agreement is not
+   adopted as a purchase agreement. This checkpoint proves customer viewing only.
+4. Verify logout/cross-tab user change/close removes the SDK host. No JWT may
+   appear in localStorage/sessionStorage/URLs/journal. SDK/configuration/server-auth/
+   Client-readiness/identity/UNKNOWN failures show localized safe text and request ID.
+   Never fix old malformed customers by automatic PATCH or issuing another POST.
+
+For the current harness, this helper uses its exact project/files/protected env
+without printing secrets and forces a read-only PostgreSQL session:
+
+```bash
+portal_sql() {
+  .venv/bin/python - "$1" <<'PYSQL'
+import os
+import sys
+from scripts import repo
+command = [*repo.compose_command(repo.load_runtime()), "exec", "-T", "postgres",
+           "sh", "-c", 'exec env PGOPTIONS="-c default_transaction_read_only=on" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -c "$1"',
+           "portal-sql", sys.argv[1]]
+os.execvpe(command[0], command, os.environ)
+PYSQL
+}
+portal_sql 'SELECT customer_id, user_id, provider_customer_id, binding_state FROM external_billing_customers ORDER BY created_at'
+```
+
+Pass each read-only query below to `portal_sql`, or use the intended deployment's
+SQL console (never a different contour's database):
+
+```sql
+SELECT customer_id, external_billing_account_id, user_id, provider_origin,
+       provider_customer_id, binding_state
+FROM external_billing_customers ORDER BY created_at;
+SELECT create_operation_id, customer_id, purchase_intent_id, operation_kind,
+       operation_state, send_fence, unknown_since, unknown_recovery_deadline_at,
+       bound_external_object_id, resolved_at
+FROM external_create_operations ORDER BY created_at;
+SELECT work_item_id, scope_reference, work_state, next_attempt_at
+FROM billing_work_items WHERE work_kind = 'external_create_recovery';
+SELECT review_case_id, reason_code, scope_reference, case_state
+FROM manual_review_cases WHERE scope_kind = 'create_operation';
+SELECT count(*) FROM purchase_intents;
+SELECT count(*) FROM external_subscriptions;
+```
+
+After first open: one scoped customer, one permanent customer operation with
+NULL purchase ID, one recovery item committed before any POST, no Portal-created
+purchase/subscription. Proven binding completes its recovery item; uncertainty
+keeps the original deadline and slot. Only a transport-proven before-dispatch
+failure can reset the same operation for another send; a possible send never
+can. Reopen does Server/Client GETs plus a fresh
+JWT, never another customer POST. Migration retains historical records and refuses
+conflicting unique data rather than deleting/relabeling it. Legacy customer rows
+without proven origin/operation require operator review; synthetic rows are never
+promoted to live identity. Credential rotation preserves the proven origin scope.
+
+`app.composition.billing.recover_customer` is callable read-only recovery;
+`app.domains.billing.customers.escalate_overdue_customers` is callable bounded
+escalation. The latter moves overdue operations to manual review and retains
+all keys/holds. No scheduler is installed in Step 2; the next explicit open can
+recover/escalate, and later program Step 8 owns background execution. Never wait
+then blindly POST, even when discovery returns zero objects.
+
+The SDK host loads once per disposable browsing context and is created only by
+the explicit button, including under React development remounts. Its opaque
+sandbox CSP contains only the validated configured origin. Browser timeout or
+closure does not cancel a possibly sent CREATE. LBX credentials remain potentially
+usable for its accepted 72h window after local logout; flags are presentation,
+not Client API ACLs. Human validation of real rendering, CSP compatibility,
+desktop/mobile accessibility and actual Client readiness is still required.

@@ -8,7 +8,7 @@ Last updated: 2026-10-26 (migration authored; human execution pending)
 This document describes the schema produced by the current Alembic chain:
 
 ```text
-20260924_0001 -> 20261001_0002 -> 20261026_0003 -> 20261026_0004 (head)
+20260924_0001 -> 20261001_0002 -> 20261026_0003 -> 20261026_0004 -> 20261026_0005 (head)
 ```
 
 `20260924_0001_clean_first_install` creates the 25-table first-install schema.
@@ -19,7 +19,10 @@ table without backfilling or rewriting any legacy evidence.
 `20261026_0004_product_head_origin` adds nullable provider-origin provenance and
 unique `(provider_origin, product_id)` to that same pointer table. It guesses no
 legacy origin and rewrites no immutable scope. This correction migration is
-authored, not executed by Codex. The chain has one current head.
+authored, not executed by Codex. `20261026_0005_customer_widget` adds optional
+FIO, proven customer origin, provider-ID uniqueness, permanent customer-operation
+identity, send fencing and coalesced recovery-work uniqueness. It neither
+backfills identity nor creates provider objects. The chain has one current head.
 This document is authoritative for the implemented SQLAlchemy
 table inventory and physical persistence rules; the generated column-level
 artifact remains `docs/generated/db-schema.md`.
@@ -42,7 +45,7 @@ paid-access derivation, or Kernel invalidation delivery is implemented.
 
 A fresh database has exactly 26 application tables: ten retained
 identity/session/legal tables, fifteen original external-billing persistence
-tables, and one current product-link pointer. Alembic has three revisions in one linear chain and one current head.
+tables, and one current product-link pointer. Alembic has five revisions in one linear chain and one current head.
 
 There is no Portal-owned product, plan, order, payment, refund, subscription,
 entitlement, trial, provider-account, or direct-payment webhook table. There is
@@ -178,7 +181,11 @@ rows and dependent purchase/legal keys remain unchanged.
 
 `external_billing_customers` permits exactly one binding per billing account
 and Portal user and a globally unique non-empty `billing_customer_key`. Its
-closed binding states are `unbound`, `bound`, and `identity_conflict`.
+closed binding states are `unbound`, `bound`, and `identity_conflict`. ANY-709
+Step 2 adds nullable proven `provider_origin` and a unique account/provider ID
+pair (NULL remains allowed). No legacy origin is guessed. `users.first_name`,
+`surname` and `patronymic` are independent nullable strings bounded to 100
+characters; existing users receive no fabricated names.
 
 `purchase_intents` ties one user/customer/account/product/offer to a published
 mapping revision, exact legal acceptance event, accepted commercial
@@ -192,9 +199,14 @@ fields immutable.
 create work. Customer creation has no purchase intent; agreement and
 subscription creation require one. Unknown timestamps are paired, the
 PostgreSQL deadline is exactly two hours after `unknown_since`, and recovery
-hint schema/document values are paired. One unresolved customer-create
-operation is allowed per customer. Operation-state vocabulary and recovery
-behavior remain owned by later runtime steps.
+hint schema/document values are paired. ANY-709 Step 2 permanently limits
+customer create to one operation per customer, including after resolution.
+Nullable `send_fence` records the current owner; `pending`, `possible_send`,
+`unknown`, `bound` and `manual_review` use the canonical Python vocabulary over
+TEXT storage. The send claim atomically records its fence, fixed original
+two-hour deadline and one coalesced `external_create_recovery` work item.
+Point proof binds only against that fence; uncertainty never permits POST replay
+or slot release. No background worker or purchase runtime is enabled here.
 
 ## Reconciliation and access tables
 
@@ -260,7 +272,7 @@ Closed text-backed enums are defined only in `app.models.enums`:
 - identity/legal: `RegionStatus`, `UserStatus`, `MagicLinkPurpose`,
   `LegalEntityStatus`, `LegalEntityType`, `AcceptanceKind`;
 - purchase: `ExternalBillingCustomerBindingState`, `PurchaseIntentState`,
-  `ExternalCreateOperationKind`;
+  `ExternalCreateOperationKind`, `ExternalCreateOperationState`;
 - reconciliation: `ExternalSubscriptionLifecycleStatus`,
   `ExternalSubscriptionFinancialAccessStatus`,
   `ExternalSubscriptionCommercialAccessStatus`,

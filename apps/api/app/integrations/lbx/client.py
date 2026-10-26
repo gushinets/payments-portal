@@ -3,8 +3,9 @@ from __future__ import annotations
 import asyncio
 import json
 import math
+import logging
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal, DecimalException
@@ -14,8 +15,10 @@ from typing import Any, Generic, TypeVar
 import httpx
 from pydantic import SecretStr
 
+from app.core.errors import AppError
 from app.core.settings import Settings
 from app.infrastructure.preflight import PreflightBudget
+from app.integrations.lbx.customer import CreatedUserEnvelope, LbxUser, NewCustomer
 from app.integrations.lbx.dto import (
     LbxEnvelope,
     LbxServicePrice,
@@ -28,6 +31,7 @@ from app.integrations.lbx.errors import (
     LbxAttemptsExhausted,
     LbxAuthenticationFailed,
     LbxClosed,
+    LbxCreateNotSent,
     LbxError,
     LbxNotConfigured,
     LbxRateLimited,
@@ -39,6 +43,8 @@ from app.integrations.lbx.errors import (
 )
 from app.integrations.lbx.privacy import private_http_diagnostics
 
+
+logger = logging.getLogger("payment_portal.lbx")
 
 API_PATH = "/api/rest/v1"
 _TRANSIENT_STATUS = frozenset({429, 500, 502, 503, 504})
@@ -133,7 +139,7 @@ def _require_identity(value: int) -> None:
 
 
 class LbxServerClient:
-    """One scoped async Server API pool; only documented selected GETs.
+    """One scoped async Server API client; selected GETs and fenced customer POST.
 
     Construct explicitly for source work, never from a DB-only query/startup
     dependency. There is no construction-time HTTP, external catalog cache or
@@ -168,6 +174,20 @@ class LbxServerClient:
                 max_connections=configuration.preflight_max_active,
                 max_keepalive_connections=configuration.preflight_max_active,
             ),
+            transport=transport,
+        )
+        # Status/customer work keeps pool capacity when offer reads saturate.
+        self._account_http = httpx.AsyncClient(
+            base_url=configuration.lbx_base_url,
+            headers={
+                "Accept": "application/json",
+                "Accept-Encoding": "identity",
+                "Cache-Control": "no-cache, no-store",
+            },
+            follow_redirects=False,
+            trust_env=False,
+            verify=True,
+            limits=httpx.Limits(max_connections=4, max_keepalive_connections=4),
             transport=transport,
         )
 
@@ -217,6 +237,94 @@ class LbxServerClient:
             raise LbxResponseInvalid()
         return self._scoped(result, tariff_id=tariff_id, tariff_service_id=tariff_service_id)
 
+    async def get_user(self, *, user_id: int, budget: PreflightBudget) -> LbxUser:
+        _require_identity(user_id)
+        result = await self._read(f"/users/{user_id}", LbxEnvelope[LbxUser], budget=budget)
+        if result.user_id != user_id:
+            raise LbxScopeMismatch()
+        if result.password is not None and result.password.get_secret_value():
+            raise LbxResponseInvalid()
+        return result
+
+    async def discover_users(self, *, outer_id: str, budget: PreflightBudget) -> tuple[int, ...]:
+        if not outer_id or len(outer_id) > 256 or any(not 33 <= ord(c) <= 126 for c in outer_id):
+            raise LbxScopeMismatch()
+        rows = await self._read(
+            "/users", LbxEnvelope[list[LbxUser]], budget=budget, body={"outer_id": outer_id, "show_passwords": False}
+        )
+        # A capped/truncated inventory is not evidence of absence or uniqueness.
+        if len(rows) >= 100 or len({row.user_id for row in rows}) != len(rows):
+            raise LbxResponseInvalid()
+        if any(row.outer_id != outer_id for row in rows):
+            raise LbxScopeMismatch()
+        if any(row.password is not None and row.password.get_secret_value() for row in rows):
+            raise LbxResponseInvalid()
+        return tuple(row.user_id for row in rows)
+
+    async def prepare_customer_create(self, *, budget: PreflightBudget) -> None:
+        async def authenticate() -> None:
+            with private_http_diagnostics():
+                await self._ensure_session(
+                    _Attempts(self._configuration.lbx_max_get_attempts), budget, allow_refresh=True
+                )
+
+        await budget.run(authenticate)
+
+    async def create_user(self, command: NewCustomer, *, budget: PreflightBudget) -> int:
+        # Application has durably claimed possible_send. No POST retry or POST
+        # reauthentication is allowed, even for 401/5xx/malformed success.
+        async def send() -> int:
+            dispatched = False
+
+            def mark_dispatch() -> None:
+                nonlocal dispatched
+                dispatched = True
+
+            with private_http_diagnostics():
+                session = self._session
+                if session is None or time.monotonic() >= session.expires_at:
+                    raise LbxCreateNotSent()
+                try:
+                    receipt = await self._request_once(
+                        "/users",
+                        CreatedUserEnvelope,
+                        _Attempts(1),
+                        budget,
+                        headers={"Authorization": f"Bearer {session.token.get_secret_value()}"},
+                        body=command.request_document(),
+                        method="POST",
+                        success_statuses=frozenset({200, 201}),
+                        on_dispatch=mark_dispatch,
+                    )
+                    return receipt.user_id
+                except _Retryable as error:
+                    raise error.failure from None
+                except AppError:
+                    if not dispatched:
+                        raise LbxCreateNotSent() from None
+                    raise
+
+        return await budget.run(send)
+
+    async def client_user(self, *, token: SecretStr, budget: PreflightBudget) -> LbxUser:
+        async def read() -> LbxUser:
+            with private_http_diagnostics():
+                try:
+                    result = await self._request_once(
+                        "/client/user",
+                        LbxEnvelope[LbxUser],
+                        _Attempts(1),
+                        budget,
+                        headers={"Authorization": f"Bearer {token.get_secret_value()}"},
+                    )
+                except _Retryable as error:
+                    raise error.failure from None
+                if result.password is not None and result.password.get_secret_value():
+                    raise LbxResponseInvalid()
+                return result
+
+        return await budget.run(read)
+
     def _scoped(self, value: T, *, tariff_id: int, tariff_service_id: int | None = None) -> LbxRead[T]:
         return LbxRead(
             external_billing_account_id=self._configuration.lbx_external_billing_account_id,
@@ -232,7 +340,7 @@ class LbxServerClient:
         model: type[LbxEnvelope[T]],
         *,
         budget: PreflightBudget,
-        body: dict[str, int] | None = None,
+        body: dict[str, Any] | None = None,
     ) -> T:
         if self._closed:
             raise LbxClosed()
@@ -248,7 +356,7 @@ class LbxServerClient:
         path: str,
         model: type[LbxEnvelope[T]],
         budget: PreflightBudget,
-        body: dict[str, int] | None,
+        body: dict[str, Any] | None,
     ) -> T:
         attempts = _Attempts(self._configuration.lbx_max_get_attempts)
         reauthenticated = False
@@ -346,8 +454,11 @@ class LbxServerClient:
         budget: PreflightBudget,
         *,
         headers: dict[str, str] | None = None,
-        body: dict[str, int] | None = None,
+        body: dict[str, Any] | None = None,
         auth: httpx.Auth | None = None,
+        method: str = "GET",
+        success_statuses: frozenset[int] = frozenset({200}),
+        on_dispatch: Callable[[], None] | None = None,
     ) -> T:
         budget.check()
         attempts.take()
@@ -360,13 +471,31 @@ class LbxServerClient:
             pool=min(remaining, config.lbx_connect_timeout_seconds),
         )
         try:
-            async with self._http.stream(
-                "GET", API_PATH + path, headers=headers, json=body, auth=auth, timeout=timeout
+            pool = self._account_http if path.startswith(("/users", "/client")) or path == "/auth" else self._http
+            if on_dispatch is not None:
+                on_dispatch()
+            async with pool.stream(
+                method, API_PATH + path, headers=headers, json=body, auth=auth, timeout=timeout
             ) as response:
                 assert isinstance(response.stream, httpx.AsyncByteStream)
                 response.stream = _CleanupProtectedStream(response.stream, budget)
                 budget.check()
                 status = response.status_code
+                logger.info(
+                    "lbx_http",
+                    extra={
+                        "structured": {
+                            "stage": "customer" if path.startswith(("/users", "/client")) else "source",
+                            "method": method,
+                            "endpoint": "/users/{id}"
+                            if path.startswith("/users/")
+                            else path
+                            if path in {"/users", "/client/user", "/auth"}
+                            else "selected_offer",
+                            "status": status,
+                        }
+                    },
+                )
                 if status == 401:
                     raise LbxAuthenticationFailed()
                 if status == 403:
@@ -376,7 +505,7 @@ class LbxServerClient:
                     raise _Retryable(failure, self._retry_after(response.headers.get("retry-after")))
                 if 500 <= status <= 599:
                     raise LbxUnavailable()
-                if status != 200:
+                if status not in success_statuses:
                     raise LbxResponseInvalid()
                 if response.headers.get("content-type", "").split(";", 1)[0].strip().lower() != "application/json":
                     raise LbxResponseInvalid()
@@ -419,4 +548,5 @@ class LbxServerClient:
         self._closed = True
         self._session = None
         with private_http_diagnostics():
+            await self._account_http.aclose()
             await self._http.aclose()

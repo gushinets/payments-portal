@@ -10,6 +10,7 @@ from app.models import (
     ExternalBillingCustomerBindingState,
     ExternalCreateOperation,
     ExternalCreateOperationKind,
+    ExternalCreateOperationState,
     PurchaseIntent,
     PurchaseIntentState,
 )
@@ -98,6 +99,7 @@ def test_customer_purchase_and_create_operation_columns_are_exact() -> None:
         "user_id",
         "billing_customer_key",
         "provider_customer_id",
+        "provider_origin",
         "binding_state",
         "binding_updated_at",
         "created_at",
@@ -126,10 +128,11 @@ def test_nullable_storage_is_limited_to_approved_gated_and_lifecycle_slots() -> 
     assert _nullable_columns(CapabilityManifestProjection) == set()
     assert _nullable_columns(ExternalBillingCatalogProjection) == {"catalog_version"}
     assert _nullable_columns(CommercialMappingRevision) == {"catalog_version"}
-    assert _nullable_columns(ExternalBillingCustomer) == {"provider_customer_id"}
+    assert _nullable_columns(ExternalBillingCustomer) == {"provider_customer_id", "provider_origin"}
     assert _nullable_columns(PurchaseIntent) == {"resolved_at"}
     assert _nullable_columns(ExternalCreateOperation) == {
         "purchase_intent_id",
+        "send_fence",
         "unknown_since",
         "unknown_recovery_deadline_at",
         "recovery_hint_schema_version",
@@ -144,6 +147,7 @@ def test_nullable_storage_is_limited_to_approved_gated_and_lifecycle_slots() -> 
         "purchase_intent_id",
         "request_correlation_key",
         "operation_state",
+        "send_fence",
         "unknown_since",
         "unknown_recovery_deadline_at",
         "recovery_hint_schema_version",
@@ -167,6 +171,7 @@ def test_projection_mapping_and_customer_keys_are_exact() -> None:
         ("customer_id", "external_billing_account_id", "user_id"),
         ("external_billing_account_id", "user_id"),
         ("billing_customer_key",),
+        ("external_billing_account_id", "provider_customer_id"),
     }
 
 
@@ -240,13 +245,13 @@ def test_closed_vocabularies_use_canonical_text_backed_enums() -> None:
         ExternalBillingCustomer.__table__.c.binding_state: ExternalBillingCustomerBindingState,
         PurchaseIntent.__table__.c.state: PurchaseIntentState,
         ExternalCreateOperation.__table__.c.operation_kind: ExternalCreateOperationKind,
+        ExternalCreateOperation.__table__.c.operation_state: ExternalCreateOperationState,
     }
 
     for column, enum_cls in enum_columns.items():
         assert isinstance(column.type, PersistedEnumType)
         assert column.type.enum_cls is enum_cls
 
-    assert not isinstance(ExternalCreateOperation.__table__.c.operation_state.type, PersistedEnumType)
     assert ExternalBillingCustomer.__table__.c.binding_state.default.arg is ExternalBillingCustomerBindingState.UNBOUND
     assert PurchaseIntent.__table__.c.state.default.arg is PurchaseIntentState.CREATED
 
@@ -315,6 +320,7 @@ def test_step_4_checks_and_indexes_cover_the_fixed_contract() -> None:
     }
     assert _indexes(ExternalCreateOperation) == {
         "uq_external_create_operations_unresolved_customer": ("customer_id",),
+        "uq_external_create_operations_customer_identity": ("customer_id",),
         "ix_external_create_operations_customer_state": ("customer_id", "operation_state"),
         "ix_external_create_operations_purchase": ("purchase_intent_id",),
         "ix_external_create_operations_correlation": ("request_correlation_key",),

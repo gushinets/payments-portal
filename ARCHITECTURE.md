@@ -97,10 +97,22 @@ Provider-independent cleanup and persistence may precede Phase 0.
 Provider-dependent LBX semantics, Widget behavior, paid-access derivation, and
 launch remain gated by Phase 0 and their owning `ANY-504` steps.
 
+ANY-709 Step 2 adds explicit verified-email account-only customer/Widget
+bootstrap, pending human validation. It reuses the durable customer/create/work
+models and resolves the same proven provider-origin scope without a catalog/price
+prerequisite. A possible customer POST is never replayed; read-only recovery and
+fixed-deadline escalation keep the slot held. No purchase/subscription or paid
+access is created for viewing. The official SDK runs only on explicit open in a
+disposable opaque-origin host; server-side paired identity, Client readiness and
+post-I/O session checks precede each no-store JWT response. See the runbook and
+[Widget security rules](docs/SECURITY.md#account-widget-credentials-any-709-step-2).
+
 ## Current domains and API
 
 - **Identity** — contour-local users, hashed sessions, registration, login,
   logout, authenticated email verification, and password reset.
+- **Billing account** — explicit `POST /api/billing/widget-bootstrap`; verified
+  identity and read-only Widget presentation, no commercial admission.
 - **Legal** — legal entities, versioned documents, required-document discovery,
   and append-only acceptance evidence.
 - **Catalog admission and billing persistence** — live source validation,

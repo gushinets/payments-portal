@@ -122,8 +122,9 @@ database lifecycle.
   permitted by ADR 0005 and the accepted designs; a browser return, Widget
   callback, webhook, outbound request success, or payment state alone is not
   access authority. Direct versioned product linking and source-backed catalog reads are implemented;
-  purchase, reconciliation, paid-access and billing-callback runtime remain
-  future work.
+  account-only customer/Widget bootstrap is implemented by ANY-709 Step 2,
+  pending human validation. Purchase, reconciliation, paid-access and
+  billing-callback runtime remain future work.
 - Never log authentication tokens, authorization headers, secrets, card fields,
   or unredacted webhook bodies.
 - Legal acceptance records are append-only.

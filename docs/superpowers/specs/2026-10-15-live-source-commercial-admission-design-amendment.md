@@ -134,7 +134,9 @@ are not admission gates for current links or a reason to republish on price chan
 2. Only for a genuine new operation: perform a **fresh, bounded** authenticated complete Kernel manifest read and complete relevant LBX selected-offer read set; validate enabled identities, exact amount/currency/scale, material tariff/period/policy, approved mapping revision and accepted terms. A failure, material change or unavailable source means **no new PurchaseIntent and no external CREATE**. A previous successful preflight on a different purchase is not reusable.
 3. Commit **one** PurchaseIntent, its *unchanging* accepted snapshot, idempotency identity and the unique `(user_id, product_id)` reservation in a short transaction with a concurrency/expected-revision guard. If another request reserved the scope first, use B or return a stable scope-occupied result; never create a second intent.
 4. Before each actual non-money external customer/agreement/subscription CREATE, persist its outbound-create operation identity/correlation and safe attempt state. No provider HTTP happens inside a DB transaction. Unknown CREATE semantics are preserved; provider-side `POST` idempotency is **not assumed**.
-5. After a proven create/link, **point-read and validate the actual subscription-specific** owner/agreement, services, `multiplicator`, effective prices, total, currency, period and material policies against the *pinned accepted snapshot* before Widget mint or any paid grant. Provider catalog price changes alone do not reprice an existing accepted subscription.
+5. After a proven create/link, **point-read and validate the actual subscription-specific** owner/agreement, services, `multiplicator`, effective prices, total, currency, period and material policies against the *pinned accepted snapshot* before payment-capable Widget mint or any paid grant. Customer-only viewing
+   follows the ANY-709 account authorization amendment and requires no accepted
+   subscription. Provider catalog price changes alone do not reprice an existing accepted subscription.
 
 **B. Repeated public request (same idempotency key or occupied business scope):**
 
@@ -146,7 +148,9 @@ are not admission gates for current links or a reason to republish on price chan
 **C. Recovery after a provider request may have succeeded (including timeout, dropped response or restart):**
 
 1. Durable outbound-create evidence drives recovery for customer/agreement/subscription. If the request may have been sent, persist `UNKNOWN`/`awaiting_external_result`, **keep the PurchaseIntent, accepted terms and business scope held**. Never interpret a timeout as proof no external object was created; never blindly re-send the provider CREATE.
-2. Use the documented **read-only point-read/discovery/correlation + authoritative owner/account/agreement/material-terms verification** to link the one proven external object. `outer_id` is only a nonunique discovery hint; canonical subscription identity is the proven provider subscription ID. Multiple candidates/missing proof remain `UNKNOWN`, with no Widget or grant.
+2. Use the documented **read-only point-read/discovery/correlation + authoritative owner/account/agreement/material-terms verification** to link the one proven external object. `outer_id` is only a nonunique discovery hint; canonical subscription identity is the proven provider subscription ID. Multiple candidates/missing proof remain `UNKNOWN`, with no payment Widget or grant.
+   Customer identity uncertainty also blocks account-only Widget mint; purchase-only
+   uncertainty does not block independently proven customer viewing.
 3. If LBX is down, return `preparing/not_ready/recovery_pending` (use existing normalized statuses) and keep the operation durable; continue bounded background recovery when possible without using **new-sale admission capacity**. The existing ~2h unresolved-create **manual-review escalation** is not a license to release the scope or try another CREATE. Only authoritative evidence of *no external effect* or audited safe resolution can release/finish the scope; after terminal/safe release, a **separate** newly accepted purchase may use current prices.
 4. Recovery never re-pins the fingerprint, mutates the accepted snapshot, starts a second PurchaseIntent, grants paid access from an outbound-success flag or treats today's unrelated catalog repricing as the old subscription's accepted price. Preserve exact accepted terms across outage and restart.
 
@@ -204,7 +208,8 @@ Reason names are conceptual and may map to existing safe API conventions. Never 
 - No runtime readers/writers for `capability_manifest_projections` or `external_billing_catalog_projections`; ANY-664 leaves these schema slots inert. Later physical retirement is separate work. Do not add Redis or a new catalog/mirror DB to replace them.
 
 **ANY-504 later steps must deliver (not Step 6 coding):**
-- Step 7 separate **new purchase / same-key retry / recovery** paths: live purchase-time checks only for genuine new admission; one scope-held idempotent `PurchaseIntent` with immutable accepted terms; no duplicate provider CREATE; durable UNKNOWN discovery; Widget only after actual accepted subscription-term verification. Preserve bounded preflight and paid-access resource isolation.
+- Step 7 separate **new purchase / same-key retry / recovery** paths: live purchase-time checks only for genuine new admission; one scope-held idempotent `PurchaseIntent` with immutable accepted terms; no duplicate provider CREATE; durable UNKNOWN discovery; payment Widget only after actual accepted subscription-term verification;
+  customer-only viewing uses verified identity/readiness without a subscription. Preserve bounded preflight and paid-access resource isolation.
 - Step 8 proven customer/subscription state, discovery/webhook/normal+urgent reconciliation, UNKNOWN create recovery and finite **6h** subscription trust, with protected reconciliation capacity under new-sale overload.
 - Step 9 grants/allowances and immutable access revisions/invalidation; Step 10 Kernel snapshot consumption/paid quota enforcement; Step 11 true E2E and launch gates.
 - No Step 6 CLI/UI/mock may pretend that future Steps 7–11 already authorize payments or paid execution.

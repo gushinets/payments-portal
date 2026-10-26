@@ -8,7 +8,9 @@ public product-first home, catalog/discovery, per-product pages,
 presentation-only pricing navigation, direct account/auth entry, and an
 authenticated cabinet whose primary content is one card per current product.
 Identity facts are compact supporting content. The repository remains
-pre-production and provider-independent. Purchase/Widget, billing lifecycle,
+pre-production. ANY-709 Step 2 adds optional FIO and explicit verified-email
+account-only Widget viewing with one durable customer, pending human validation.
+No offer/subscription is needed to view that account. Purchase/payment Widget, billing lifecycle,
 confirmed paid-access projection and actual usage/quota are not implemented.
 ANY-664 Step 6 now supplies published products and approved immutable commercial
 terms through the Portal catalog API. Home, catalog, product detail and the
@@ -170,7 +172,7 @@ names and ownership decisions.
 | Legal pages, links, registration acceptance | Portal identity/legal boundary and canonical RU legal source; existing legal runtime and generated legal assets | Preserve now; legal documents remain drafts |
 | Product discovery and detail content | Portal catalog API and generated contracts over approved immutable mappings; Kernel owns `product_id` | ANY-664 replaces historical static 4F discovery; locale catalogs own surrounding UI copy |
 | Technical capability manifest and commercial catalog, tariffs, prices, periods, sellability | Kernel owns technical identity/capabilities; External Billing owns commercial truth; Portal stores immutable approved bindings/terms | ANY-664 delivered historical v1 source reads/publication. ANY-709 Step 1 adds direct links, enabled-product discovery and live selected offers; genuine Kernel enablement remains gated and purchases remain unavailable |
-| Purchase/checkout/Widget entry | External Billing with Portal orchestration; no current runtime source | No purchase CTA or runtime; deferred to ANY-504 Step 7 |
+| Purchase/checkout/payment Widget entry | External Billing with Portal orchestration; no current runtime source | No purchase CTA or runtime; deferred to ANY-504 Step 7 |
 | Subscription/billing state | External Billing; no current authoritative source | Unknown/unavailable; deferred to ANY-504 Steps 6–8 |
 | Provider reconciliation/recovery | Portal boundary over authoritative External Billing facts; no current runtime source | Deferred to ANY-504 Step 8 |
 | Confirmed paid-access state and delivery | Portal provider-neutral projection from authoritative facts; no current runtime source | Unknown/not ready; deferred to ANY-504 Step 9 |

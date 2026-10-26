@@ -4,11 +4,12 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, BeforeValidator, ConfigDict, EmailStr, Field
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.settings import settings
+from app.domains.identity.names import MAX_NAME_LENGTH, normalize_name
 from app.domains.identity.services.auth import (
     AuthenticationResult,
     login_user,
@@ -27,11 +28,17 @@ from app.models import AuthSession, User
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
+OptionalName = Annotated[str | None, BeforeValidator(normalize_name), Field(max_length=MAX_NAME_LENGTH)]
+
+
 class RegisterRequest(BaseModel):
     email: EmailStr
     password: str
     personal_consent: bool
     offer_consent: bool
+    first_name: OptionalName = None
+    surname: OptionalName = None
+    patronymic: OptionalName = None
 
 
 class LoginRequest(BaseModel):
@@ -45,6 +52,9 @@ class SessionUserResponse(BaseModel):
     user_id: UUID
     email: EmailStr
     email_verified: bool
+    first_name: str | None = None
+    surname: str | None = None
+    patronymic: str | None = None
 
 
 class RegisterResponse(BaseModel):
@@ -91,6 +101,9 @@ def present_user(result: AuthenticationResult) -> SessionUserResponse:
         user_id=str(result.user_id),
         email=result.email,
         email_verified=result.email_verified,
+        first_name=result.first_name,
+        surname=result.surname,
+        patronymic=result.patronymic,
     )
 
 
@@ -113,6 +126,9 @@ def register(
         client_ip=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
         route_locale=route_locale,
+        first_name=payload.first_name,
+        surname=payload.surname,
+        patronymic=payload.patronymic,
     )
     authentication = result.authentication
     delivery = result.verification_delivery
@@ -166,6 +182,9 @@ def get_session(
             user_id=user.id,
             email=user.email,
             email_verified=user.email_verified_at is not None,
+            first_name=user.first_name,
+            surname=user.surname,
+            patronymic=user.patronymic,
         ),
     )
 

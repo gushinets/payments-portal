@@ -325,6 +325,10 @@ export type RegisterRequest = {
      */
     email: string;
     /**
+     * First Name
+     */
+    first_name?: string | null;
+    /**
      * Offer Consent
      */
     offer_consent: boolean;
@@ -333,9 +337,17 @@ export type RegisterRequest = {
      */
     password: string;
     /**
+     * Patronymic
+     */
+    patronymic?: string | null;
+    /**
      * Personal Consent
      */
     personal_consent: boolean;
+    /**
+     * Surname
+     */
+    surname?: string | null;
 };
 
 /**
@@ -449,9 +461,21 @@ export type SessionUserResponse = {
      */
     email_verified: boolean;
     /**
+     * First Name
+     */
+    first_name?: string | null;
+    /**
+     * Patronymic
+     */
+    patronymic?: string | null;
+    /**
      * Region
      */
     region: string;
+    /**
+     * Surname
+     */
+    surname?: string | null;
     /**
      * Tenant Id
      */
@@ -493,6 +517,67 @@ export type ValidationError = {
      * Error Type
      */
     type: string;
+};
+
+/**
+ * WidgetBootstrapRequest
+ */
+export type WidgetBootstrapRequest = {
+    [key: string]: never;
+};
+
+/**
+ * WidgetBootstrapResponse
+ */
+export type WidgetBootstrapResponse = {
+    /**
+     * Credential
+     */
+    credential: string;
+    /**
+     * Disableautopayments
+     */
+    disableAutopayments: boolean;
+    /**
+     * Disablecreatesubscription
+     */
+    disableCreateSubscription: boolean;
+    /**
+     * Disableeditsubscription
+     */
+    disableEditSubscription: boolean;
+    /**
+     * Disableinvoicegeneration
+     */
+    disableInvoiceGeneration: boolean;
+    /**
+     * Disablepayments
+     */
+    disablePayments: boolean;
+    /**
+     * Disablestopsubscription
+     */
+    disableStopSubscription: boolean;
+    /**
+     * Presentation
+     */
+    presentation: 'account';
+    /**
+     * Request Id
+     */
+    request_id: string;
+    /**
+     * Sdk Url
+     */
+    sdk_url: string;
+    /**
+     * Servicebaseurl
+     */
+    serviceBaseUrl: string;
+    /**
+     * Widget Origin
+     */
+    widget_origin: string;
 };
 
 export type ConfirmVerificationApiAuthEmailVerificationConfirmPostData = {
@@ -718,6 +803,37 @@ export type GetSessionApiAuthSessionGetResponses = {
 };
 
 export type GetSessionApiAuthSessionGetResponse = GetSessionApiAuthSessionGetResponses[keyof GetSessionApiAuthSessionGetResponses];
+
+export type WidgetBootstrapApiBillingWidgetBootstrapPostData = {
+    body: WidgetBootstrapRequest;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/billing/widget-bootstrap';
+};
+
+export type WidgetBootstrapApiBillingWidgetBootstrapPostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HTTPValidationError;
+};
+
+export type WidgetBootstrapApiBillingWidgetBootstrapPostError = WidgetBootstrapApiBillingWidgetBootstrapPostErrors[keyof WidgetBootstrapApiBillingWidgetBootstrapPostErrors];
+
+export type WidgetBootstrapApiBillingWidgetBootstrapPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: WidgetBootstrapResponse;
+};
+
+export type WidgetBootstrapApiBillingWidgetBootstrapPostResponse = WidgetBootstrapApiBillingWidgetBootstrapPostResponses[keyof WidgetBootstrapApiBillingWidgetBootstrapPostResponses];
 
 export type ListProductsApiCatalogProductsGetData = {
     body?: never;

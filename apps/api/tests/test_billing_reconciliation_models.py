@@ -497,6 +497,7 @@ def test_lookup_indexes_cover_the_fixed_contract() -> None:
         "ix_billing_work_items_kind_state_due": ("work_kind", "work_state", "next_attempt_at"),
         "ix_billing_work_items_scope": ("scope_kind", "scope_reference"),
         "ix_billing_work_items_coalescing_key": ("coalescing_key",),
+        "uq_billing_work_items_create_recovery": ("coalescing_key",),
         "ix_billing_work_items_priority_retry": ("work_state", "priority", "next_attempt_at"),
         "ix_billing_work_items_lease_expiry": ("lease_expires_at",),
         "ix_billing_work_items_claim_scan": (

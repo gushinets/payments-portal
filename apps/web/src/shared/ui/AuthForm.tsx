@@ -19,6 +19,9 @@ export type AuthFormSubmitValues = {
   password: string;
   personalConsent: boolean;
   offerConsent: boolean;
+  firstName?: string;
+  surname?: string;
+  patronymic?: string;
 };
 
 type AuthFormProps = {
@@ -41,6 +44,7 @@ type AuthFormProps = {
   onSubmit: (values: AuthFormSubmitValues) => Promise<void>;
 };
 
+const maxNameLength = 100;
 const defaultModeOrder: AuthMode[] = ["login", "register"];
 type ConsentTextLink = {
   href: string;
@@ -98,6 +102,9 @@ export function AuthForm({
 }: AuthFormProps) {
   const t = useTranslations("Auth");
   const [mode, setMode] = useState<AuthMode>(initialMode);
+  const [firstName, setFirstName] = useState("");
+  const [surname, setSurname] = useState("");
+  const [patronymic, setPatronymic] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
@@ -151,7 +158,10 @@ export function AuthForm({
         email,
         password,
         personalConsent,
-        offerConsent
+        offerConsent,
+        ...(mode === "register" && firstName.trim() ? { firstName: firstName.trim() } : {}),
+        ...(mode === "register" && surname.trim() ? { surname: surname.trim() } : {}),
+        ...(mode === "register" && patronymic.trim() ? { patronymic: patronymic.trim() } : {})
       });
       setPassword("");
       setPasswordConfirm("");
@@ -193,6 +203,18 @@ export function AuthForm({
           </button>
         ))}
       </div>
+
+      {mode === "register" ? <>
+        <label className="field-label">{t("fields.surnameLabel")}
+          <input className="input" autoComplete="family-name" maxLength={maxNameLength} value={surname} onChange={(event) => setSurname(event.target.value)} />
+        </label>
+        <label className="field-label">{t("fields.firstNameLabel")}
+          <input className="input" autoComplete="given-name" maxLength={maxNameLength} value={firstName} onChange={(event) => setFirstName(event.target.value)} />
+        </label>
+        <label className="field-label">{t("fields.patronymicLabel")}
+          <input className="input" autoComplete="additional-name" maxLength={maxNameLength} value={patronymic} onChange={(event) => setPatronymic(event.target.value)} />
+        </label>
+      </> : null}
 
       <label className="field-label">
         {t("fields.emailLabel")}

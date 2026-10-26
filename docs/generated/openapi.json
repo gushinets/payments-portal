@@ -491,6 +491,18 @@
             "title": "Email",
             "type": "string"
           },
+          "first_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "maxLength": 100,
+            "title": "First Name"
+          },
           "offer_consent": {
             "title": "Offer Consent",
             "type": "boolean"
@@ -499,9 +511,33 @@
             "title": "Password",
             "type": "string"
           },
+          "patronymic": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "maxLength": 100,
+            "title": "Patronymic"
+          },
           "personal_consent": {
             "title": "Personal Consent",
             "type": "boolean"
+          },
+          "surname": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "maxLength": 100,
+            "title": "Surname"
           }
         },
         "required": [
@@ -659,9 +695,42 @@
             "title": "Email Verified",
             "type": "boolean"
           },
+          "first_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Name"
+          },
+          "patronymic": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Patronymic"
+          },
           "region": {
             "title": "Region",
             "type": "string"
+          },
+          "surname": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Surname"
           },
           "tenant_id": {
             "title": "Tenant Id",
@@ -729,6 +798,81 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "WidgetBootstrapRequest": {
+        "additionalProperties": false,
+        "properties": {},
+        "title": "WidgetBootstrapRequest",
+        "type": "object"
+      },
+      "WidgetBootstrapResponse": {
+        "properties": {
+          "credential": {
+            "title": "Credential",
+            "type": "string"
+          },
+          "disableAutopayments": {
+            "title": "Disableautopayments",
+            "type": "boolean"
+          },
+          "disableCreateSubscription": {
+            "title": "Disablecreatesubscription",
+            "type": "boolean"
+          },
+          "disableEditSubscription": {
+            "title": "Disableeditsubscription",
+            "type": "boolean"
+          },
+          "disableInvoiceGeneration": {
+            "title": "Disableinvoicegeneration",
+            "type": "boolean"
+          },
+          "disablePayments": {
+            "title": "Disablepayments",
+            "type": "boolean"
+          },
+          "disableStopSubscription": {
+            "title": "Disablestopsubscription",
+            "type": "boolean"
+          },
+          "presentation": {
+            "const": "account",
+            "title": "Presentation",
+            "type": "string"
+          },
+          "request_id": {
+            "title": "Request Id",
+            "type": "string"
+          },
+          "sdk_url": {
+            "title": "Sdk Url",
+            "type": "string"
+          },
+          "serviceBaseUrl": {
+            "title": "Servicebaseurl",
+            "type": "string"
+          },
+          "widget_origin": {
+            "title": "Widget Origin",
+            "type": "string"
+          }
+        },
+        "required": [
+          "presentation",
+          "credential",
+          "widget_origin",
+          "sdk_url",
+          "serviceBaseUrl",
+          "disableCreateSubscription",
+          "disableEditSubscription",
+          "disableStopSubscription",
+          "disableAutopayments",
+          "disablePayments",
+          "disableInvoiceGeneration",
+          "request_id"
+        ],
+        "title": "WidgetBootstrapResponse",
         "type": "object"
       }
     }
@@ -1116,6 +1260,65 @@
         "summary": "Get Session",
         "tags": [
           "auth"
+        ]
+      }
+    },
+    "/api/billing/widget-bootstrap": {
+      "post": {
+        "operationId": "widget_bootstrap_api_billing_widget_bootstrap_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WidgetBootstrapRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WidgetBootstrapResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Widget Bootstrap",
+        "tags": [
+          "billing"
         ]
       }
     },
