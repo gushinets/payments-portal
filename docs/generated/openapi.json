@@ -494,13 +494,13 @@
           "first_name": {
             "anyOf": [
               {
+                "maxLength": 100,
                 "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "maxLength": 100,
             "title": "First Name"
           },
           "offer_consent": {
@@ -514,13 +514,13 @@
           "patronymic": {
             "anyOf": [
               {
+                "maxLength": 100,
                 "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "maxLength": 100,
             "title": "Patronymic"
           },
           "personal_consent": {
@@ -530,13 +530,13 @@
           "surname": {
             "anyOf": [
               {
+                "maxLength": 100,
                 "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "maxLength": 100,
             "title": "Surname"
           }
         },

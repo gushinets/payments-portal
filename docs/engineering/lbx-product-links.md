@@ -71,16 +71,20 @@ The harness's normal migrate service also applies the chain during startup.
 On hosts without `python` on PATH, prefix npm commands with
 `PATH="$PWD/.venv/bin:$PATH"`.
 
-Set `MAPPING_OPERATOR_UIDS` to the explicit numeric execution UID allowlist.
+The CLI records the actual OS effective UID as `os-euid:<uid>` in command audit
+and immutable publication history. There is no separate UID allowlist or actor
+override. Local access relies on existing environment, secret, file and DB
+permissions; unavailable or invalid OS identity refuses the command.
 All operator processes must use the same local lock inode under one trusted
 directory, with the same execution UID and private permissions. Harness
 containers bind `.harness/operator` at `/run/payments-portal`; the default lock
 is `/run/payments-portal/operator.lock`. A host CLI must use the corresponding
 absolute host path and the same UID. Do not alternate root-created lock files
 and an unprivileged host user. Production mounts one lock volume, initialized
-from the image's app-owned private directory. Configure the app UID in its
-allowlist or deliberately provision the lock for the chosen operator identity.
-Query needs authorization but no lock, source requests or source credentials.
+from the image's app-owned private directory. Use the app UID or deliberately
+provision the lock for the chosen operator identity. The lock protects concurrent
+execution; PostgreSQL locking and expected-revision/CAS protect publication.
+Query records the OS principal but needs no lock, source requests or source credentials.
 
 In an already configured host environment, use the single normal CLI:
 

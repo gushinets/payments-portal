@@ -24,6 +24,70 @@ def setup_function() -> None:
     reset_api_database()
 
 
+@pytest.mark.parametrize(
+    "fields,expected",
+    [
+        ({}, {"first_name": None, "surname": None, "patronymic": None}),
+        (
+            {"first_name": "", "surname": "   ", "patronymic": None},
+            {"first_name": None, "surname": None, "patronymic": None},
+        ),
+        ({"surname": " Иванова "}, {"first_name": None, "surname": "Иванова", "patronymic": None}),
+        (
+            {"first_name": " Анна ", "surname": None, "patronymic": " "},
+            {"first_name": "Анна", "surname": None, "patronymic": None},
+        ),
+    ],
+)
+def test_registration_normalizes_optional_names(fields: dict[str, str | None], expected: dict[str, str | None]) -> None:
+    response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "optional-names@example.com",
+            "password": "Very-secret-pass1!",
+            "personal_consent": True,
+            "offer_consent": True,
+            **fields,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "registered"
+    assert {field: payload["user"][field] for field in expected} == expected
+    session_response = client.get("/api/auth/session", headers={"Authorization": f"Bearer {payload['token']}"})
+    assert session_response.status_code == 200
+    assert session_response.json()["user"] == payload["user"]
+
+
+@pytest.mark.parametrize("field", ["first_name", "surname", "patronymic"])
+@pytest.mark.parametrize("value", ["  " + "x" * 101 + "  ", "bad\x00name", 123])
+def test_registration_rejects_invalid_optional_name(field: str, value: object) -> None:
+    response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "invalid-name@example.com",
+            "password": "Very-secret-pass1!",
+            "personal_consent": True,
+            "offer_consent": True,
+            field: value,
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"][0]["loc"] == ["body", field]
+
+
+def test_registration_schema_keeps_names_optional_nullable_and_bounded() -> None:
+    schema = app.openapi()["components"]["schemas"]["RegisterRequest"]
+    names = {"first_name", "surname", "patronymic"}
+    assert names.isdisjoint(schema.get("required", []))
+    for field in names:
+        property_schema = schema["properties"][field]
+        assert property_schema["anyOf"] == [{"type": "string", "maxLength": 100}, {"type": "null"}]
+        assert "maxLength" not in property_schema
+
+
 def test_register_and_login_results_are_presentable_after_session_close() -> None:
     email = "auth-result-snapshot@example.com"
     with SessionLocal() as db:

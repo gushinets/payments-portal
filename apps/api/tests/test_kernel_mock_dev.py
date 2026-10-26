@@ -57,7 +57,7 @@ def test_opt_in_injects_container_source_settings_without_printing_secrets(
     repo.write_runtime(repo.runtime_config())
     written = repo.read_runtime_env()
     assert written["KERNEL_SERVICE_TOKEN"] == written["KERNEL_MOCK_TOKEN"] == "explicit-simulated-service-token"
-    assert written["MAPPING_OPERATOR_UIDS"] == "[0]"
+    assert "MAPPING_OPERATOR_UIDS" not in written
     assert written["KERNEL_MOCK_PORT"] == str(repo.runtime_config().kernel_mock_port)
     output = capsys.readouterr()
     assert not output.out and not output.err

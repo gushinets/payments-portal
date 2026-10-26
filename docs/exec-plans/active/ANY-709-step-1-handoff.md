@@ -4,6 +4,103 @@ Status: **IMPLEMENTED_AWAITING_HUMAN_VALIDATION**
 Date: 2026-10-26
 Selected scope: Step 1 only. The supplied untracked implementation plan was preserved unchanged.
 
+## PR #150 Steps 1-2 confirmed fixes (base 536e37a, 2026-10-26)
+
+Status: **IMPLEMENTED_AWAITING_HUMAN_VALIDATION**. The checkout was clean at
+`536e37a156db53626aaf299fd12295f2e4f0e70e`; no reset, stage, commit, push,
+PR/ticket mutation or dependency installation was performed. Earlier validation
+results below remain historical and do not validate these corrections.
+
+- Fixed nullable FIO in `apps/api/app/domains/identity/router.py`: normalization
+  precedes the nullable union and `max_length=100` applies only to strings.
+  `names.py`, auth service, factories, models and migrations are unchanged.
+- Updated the exact enum values/export set in `test_model_enums.py` for the
+  existing `ExternalCreateOperationState`; the runtime enum is unchanged.
+- Replaced runtime `authorize_operator(configuration)` with
+  `resolve_operator_principal()`. Every valid actual nonnegative integer OS UID
+  supplies `os-euid:<uid>`; invalid/missing identity or `OSError` still gives
+  `mapping_operator_identity_unavailable`. Removed the UID allowlist from runtime
+  Settings, both example env files, normal/agent/production Compose and
+  `scripts/repo.py::write_runtime()`. No replacement flag/actor/endpoint exists.
+  Updated `docs/engineering/lbx-product-links.md` and only the active plan's
+  mandatory-allowlist paragraph; specs and historical instructions are unchanged.
+- Retained command `operator_audit.execution_principal`, immutable publication
+  authors/history, private shared host/container lock paths and permissions,
+  lock timeout, `operator_preflight_lock`, PostgreSQL locks and revision/CAS.
+  `HistoricalOperatorSettings` in test support now owns the former strict UID
+  tuple; v1 authorization/CLI, walkthrough allowlist cases and process regressions
+  remain intact. The Step 1 fixture no longer supplies a UID list.
+
+Tests written/updated, all **NOT_RUN**: `test_any709_step2_customer.py` covers each
+name's null/empty/whitespace/partial input, 100/101 characters after trim,
+non-string/control-character rejection; `test_api_identity_session.py` covers
+HTTP 200/normalized session, HTTP 422 and optional nullable string branches with
+`maxLength=100`. `test_any709_step1_sources.py` covers actual UID variants,
+unavailable/invalid OS identity, absence of `--actor` and runtime UID fields,
+ignored stale env values and private runtime config/lock preservation.
+`test_any709_step1_postgres.py` checks command authors versus immutable history
+across different UIDs. `test_kernel_mock_dev.py` now requires omission of the
+old env key while retaining mock/secrecy and historical walkthrough checks.
+The compatibility/factory tests retain their meaning unchanged.
+
+Formatting/lint used the existing API Ruff with this explicit file set:
+
+```bash
+API_FILES=(
+  apps/api/app/domains/identity/router.py
+  apps/api/app/composition/mapping_operator.py
+  apps/api/app/cli/commercial_mappings.py
+  apps/api/app/core/settings.py
+  apps/api/tests/support/any709_step1.py
+  apps/api/tests/support/commercial_mappings.py
+  apps/api/tests/test_model_enums.py
+  apps/api/tests/test_kernel_mock_dev.py
+  apps/api/tests/test_any709_step2_customer.py
+  apps/api/tests/test_api_identity_session.py
+  apps/api/tests/test_any709_step1_sources.py
+  apps/api/tests/test_any709_step1_postgres.py
+)
+.venv/bin/python -m ruff format --config apps/api/pyproject.toml "${API_FILES[@]}"
+.venv/bin/python -m ruff check --config apps/api/pyproject.toml "${API_FILES[@]}"
+git diff --check
+```
+
+Initial format: 3 reformatted, 9 unchanged; final format: 12 unchanged. Ruff check
+and whitespace lint: **exit 0**. `scripts/repo.py` received only the pass-through
+deletion and was not API-formatted. `npm run generate` initially exited 127
+because `python` was absent from PATH; retry
+`PATH="$PWD/.venv/bin:$PATH" npm run generate` completed **exit 0** using existing
+dependencies. Only `docs/generated/openapi.json` changed: the three length limits
+moved into string branches. Regenerated TypeScript remained byte-identical with
+`first_name?`, `surname?`, `patronymic?: string | null`. No migration was needed
+or run. Final `rg` inspection found no UID allowlist in new executable runtime or
+current configuration; remaining occurrences are negative tests, test-only v1
+or historical documentation (including `app/cli/COMMERCIAL_MAPPINGS.md`).
+
+Exact human QA commands from repository root, **NOT_RUN** here:
+
+```bash
+export PATH="$PWD/.venv/bin:$PATH"
+PYTEST_ADDOPTS='-k "test_python_dependency_contracts or test_model_enums or test_api_identity_session or test_any709_step1_sources or test_any709_step2_customer or test_kernel_mock_dev or test_commercial_sellability or test_catalog_preview_setup or test_operator_preflight_processes"' npm run test:api:fast
+# Stage-wide source/customer regressions:
+PYTEST_ADDOPTS='-k "any709_step1 or any709_step2 or test_presentation_di or test_billing_foundation_models or test_billing_reconciliation_models or test_lbx_client or test_lbx_selected_offer or test_source_composition or test_preflight or test_mapping_billing_calendar"' npm run test:api:fast
+python scripts/repo.py test-db up
+PYTEST_ADDOPTS='-k "any709_step1 or any709_step2 or test_commercial_mapping_postgres or test_mapping_publication_expiry_postgres or test_kernel_walkthrough_postgres or test_catalog_api or test_alembic_postgres or test_target_persistence_postgres or test_identity_legal_persistence_postgres"' npm run test:api:postgres
+# Stop only if this test server was started solely for these checks:
+python scripts/repo.py test-db stop
+```
+
+Expected: selected tests pass without skips/zero selection; registration returns
+200 for empty/partial FIO and 422 for invalid names; exact enums match; normal CLI
+records each actual UID while stored authors stay immutable; historical v1
+allowlist/lock/CAS regressions retain their behavior. Wrappers own isolated test
+DB configuration; pytest owns the disposable database lifecycle.
+Tests/collection, typechecks, builds, scanners, docs/architecture/check suites,
+containers, browser and live LBX: **NOT_RUN** under the execution contract.
+No current CI/full-QA success is claimed. Steps 3-4, customer recovery, Widget,
+agreements, subscriptions and paid access are unchanged. `LBX_BILLING_TIMEZONE`
+and price selection are unchanged; the actual timezone still awaits LBX support.
+
 ## PR #150 remaining review fixes (base f6746ba, 2026-10-26)
 
 Status: **IMPLEMENTED_AWAITING_HUMAN_VALIDATION**. This is a narrow correction

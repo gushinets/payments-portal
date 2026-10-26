@@ -18,7 +18,7 @@ from app.domains.catalog.product_link import LINK_SCHEMA, CurrentOffer, ProductL
 from app.integrations.lbx.current_offer import read_current_offer
 
 
-def authorize_operator(configuration: Settings, *, resolve_uid: Callable[[], int] | None = None) -> str:
+def resolve_operator_principal(*, resolve_uid: Callable[[], int] | None = None) -> str:
     resolver = resolve_uid if resolve_uid is not None else getattr(os, "geteuid", None)
     if resolver is None:
         raise MappingRefused("mapping_operator_identity_unavailable")
@@ -28,8 +28,6 @@ def authorize_operator(configuration: Settings, *, resolve_uid: Callable[[], int
         raise MappingRefused("mapping_operator_identity_unavailable") from None
     if type(uid) is not int or uid < 0:
         raise MappingRefused("mapping_operator_identity_unavailable")
-    if uid not in configuration.mapping_operator_uids:
-        raise MappingRefused("mapping_operator_forbidden")
     return f"os-euid:{uid}"
 
 

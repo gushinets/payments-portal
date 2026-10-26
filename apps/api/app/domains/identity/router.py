@@ -28,7 +28,10 @@ from app.models import AuthSession, User
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
-OptionalName = Annotated[str | None, BeforeValidator(normalize_name), Field(max_length=MAX_NAME_LENGTH)]
+OptionalName = Annotated[
+    Annotated[str, Field(max_length=MAX_NAME_LENGTH)] | None,
+    BeforeValidator(normalize_name),
+]
 
 
 class RegisterRequest(BaseModel):

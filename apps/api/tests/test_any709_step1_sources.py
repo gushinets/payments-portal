@@ -323,7 +323,16 @@ def test_any709_step1_removed_manual_configuration_cannot_override_connection_sc
         "lbx_external_billing_account_id",
         "mapping_approval_file",
         "mapping_source_inputs_file",
+        "mapping_operator_uids",
     }.intersection(type(original).model_fields)
+
+
+@pytest.mark.parametrize("legacy_value", ["[]", "[42]", "not-json"])
+def test_any709_step1_legacy_operator_env_is_ignored(monkeypatch: pytest.MonkeyPatch, legacy_value: str) -> None:
+    monkeypatch.setenv("MAPPING_OPERATOR_UIDS", legacy_value)
+    configuration = step1_settings()
+    assert "mapping_operator_uids" not in configuration.model_dump()
+    assert configuration.mapping_lock_timeout_seconds == 2.0
 
 
 def test_any709_step1_production_connection_and_partial_configuration_do_not_gate_identity() -> None:
@@ -384,25 +393,62 @@ def test_any709_step1_cli_accepts_only_ids_and_quantity() -> None:
     assert args.period_id == 1 and args.quantity == 1
     for forbidden in ("--price", "--allowance", "--proposal", "--approved", "--actor"):
         with pytest.raises(SystemExit):
-            parser().parse_args(["dry-run", forbidden, "1"])
+            parser().parse_args(
+                [
+                    "dry-run",
+                    "--product-id",
+                    "proposal_ai",
+                    "--tariff-id",
+                    "32",
+                    "--tariff-service-id",
+                    "1",
+                    "--period-id",
+                    "1",
+                    forbidden,
+                    "1",
+                ]
+            )
     with pytest.raises(ValidationError):
         ProductLinkRequest(product_id="proposal_ai", tariff_id=True, tariff_service_id=1, period_id=1)
     with pytest.raises(ValidationError):
         CatalogMoney(recurring_amount="1.001", connection_amount="0.00", currency="RUB", decimal_places=2)
 
 
-def test_any709_step1_operator_authorization_keeps_numeric_execution_identity() -> None:
-    assert mapping_operator.authorize_operator(step1_settings(), resolve_uid=lambda: 29001) == "os-euid:29001"
-    with pytest.raises(MappingRefused, match="mapping_operator_forbidden"):
-        mapping_operator.authorize_operator(step1_settings(), resolve_uid=lambda: 42)
+@pytest.mark.parametrize("uid", [0, 42, 29001])
+def test_any709_step1_operator_principal_uses_actual_numeric_identity(
+    monkeypatch: pytest.MonkeyPatch, uid: int
+) -> None:
+    monkeypatch.setattr(mapping_operator.os, "geteuid", lambda: uid, raising=False)
+    monkeypatch.setenv("USER", "forged-user")
+    monkeypatch.setenv("LOGNAME", "forged-user")
+    assert mapping_operator.resolve_operator_principal() == f"os-euid:{uid}"
+
+
+@pytest.mark.parametrize("uid", [True, False, -1, "42", 42.0, None])
+def test_any709_step1_operator_principal_rejects_invalid_identity(monkeypatch: pytest.MonkeyPatch, uid: object) -> None:
+    monkeypatch.setattr(mapping_operator.os, "geteuid", lambda: uid, raising=False)
     with pytest.raises(MappingRefused, match="mapping_operator_identity_unavailable"):
-        mapping_operator.authorize_operator(step1_settings(), resolve_uid=lambda: True)
+        mapping_operator.resolve_operator_principal()
 
 
+def test_any709_step1_operator_principal_requires_available_os_identity(monkeypatch: pytest.MonkeyPatch) -> None:
+    def unavailable() -> int:
+        raise OSError("SIMULATED unavailable OS identity")
+
+    monkeypatch.setattr(mapping_operator.os, "geteuid", unavailable, raising=False)
+    with pytest.raises(MappingRefused, match="mapping_operator_identity_unavailable"):
+        mapping_operator.resolve_operator_principal()
+    monkeypatch.delattr(mapping_operator.os, "geteuid")
+    with pytest.raises(MappingRefused, match="mapping_operator_identity_unavailable"):
+        mapping_operator.resolve_operator_principal()
+
+
+@pytest.mark.parametrize("lock_file", [None, "/run/private/operator.lock"])
 def test_any709_step1_harness_connection_pass_through_is_private_and_mock_independent(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
+    lock_file: str | None,
 ) -> None:
     harness = tmp_path / ".harness"
     monkeypatch.setattr(repo, "HARNESS_DIR", harness)
@@ -410,17 +456,32 @@ def test_any709_step1_harness_connection_pass_through_is_private_and_mock_indepe
     monkeypatch.setattr(repo, "RUNTIME_JSON", harness / "runtime.json")
     monkeypatch.setattr(repo, "kernel_mock_enabled", lambda: False)
     secret = "private-$value #with'quote"
-    monkeypatch.setattr(
-        repo, "read_dotenv", lambda: {"LBX_SERVER_PASSWORD": secret, "LBX_BASE_URL": "https://billing.test"}
-    )
+    local_env = {
+        "LBX_SERVER_PASSWORD": secret,
+        "LBX_BASE_URL": "https://billing.test",
+        "MAPPING_OPERATOR_UIDS": "not-json",
+    }
+    if lock_file is not None:
+        local_env["MAPPING_OPERATOR_LOCK_FILE"] = lock_file
+    monkeypatch.setattr(repo, "read_dotenv", lambda: local_env)
     monkeypatch.delenv("LBX_SERVER_PASSWORD", raising=False)
+    monkeypatch.delenv("LBX_BASE_URL", raising=False)
+    monkeypatch.delenv("MAPPING_OPERATOR_LOCK_FILE", raising=False)
+    monkeypatch.setenv("MAPPING_OPERATOR_UIDS", "[42]")
     repo.write_runtime(repo.runtime_config(root=tmp_path))
-    assert repo.read_runtime_env()["LBX_SERVER_PASSWORD"] == secret
+    written = repo.read_runtime_env()
+    assert written["LBX_SERVER_PASSWORD"] == secret
+    assert written["LBX_BASE_URL"] == "https://billing.test"
+    assert "MAPPING_OPERATOR_UIDS" not in written
+    assert written["MAPPING_OPERATOR_LOCK_FILE"] == (lock_file or "/run/payments-portal/operator.lock")
     assert "LBX_SERVER_PASSWORD" not in json.loads(repo.RUNTIME_JSON.read_text())
     assert repo.RUNTIME_ENV.stat().st_mode & 0o077 == 0
+    assert (harness / "operator").is_dir()
+    assert (harness / "operator").stat().st_mode & 0o077 == 0
     assert secret not in capsys.readouterr().out
     for filename in ("docker-compose.yml", "docker-compose.agent.yml", "docker-compose.prod.yml"):
         text = (repo.ROOT / filename).read_text()
+        assert "MAPPING_OPERATOR_UIDS" not in text
         for setting in (
             "LBX_BASE_URL",
             "LBX_SERVER_USERNAME",
@@ -430,5 +491,9 @@ def test_any709_step1_harness_connection_pass_through_is_private_and_mock_indepe
             "MAPPING_OPERATOR_LOCK_FILE",
         ):
             assert setting + ":" in text
+    for filename in (".env.example", ".env.production.example"):
+        text = (repo.ROOT / filename).read_text()
+        assert "MAPPING_OPERATOR_UIDS" not in text
+        assert "MAPPING_OPERATOR_LOCK_FILE=" in text
     mock = (repo.ROOT / "docker-compose.kernel-mock.dev.yml").read_text()
     assert "MAPPING_" not in mock and "LBX_" not in mock and "kernel-walkthrough" not in mock

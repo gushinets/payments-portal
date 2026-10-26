@@ -11,9 +11,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
 import httpx
+from pydantic import Field
 
 from apps.api.tests.support.v1_mapping_operator import FreshMappingEvaluation, MappingProposal, fresh_mapping_evaluation
 from app.core.settings import Settings
@@ -40,6 +41,7 @@ SIMULATED_OFFER_ID = "selected-offer:v1:701:1001:901"
 class HistoricalOperatorSettings(Settings):
     """v1 fixture-file harness only. These inputs are absent from runtime Settings."""
 
+    mapping_operator_uids: tuple[Annotated[int, Field(strict=True, ge=0)], ...] = ()
     mapping_account_id: str = ACCOUNT
     mapping_approval_file: Path | None = None
     mapping_source_inputs_file: Path | None = None

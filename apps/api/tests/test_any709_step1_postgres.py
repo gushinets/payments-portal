@@ -520,18 +520,25 @@ def test_any709_step1_direct_cli_dry_run_publish_query_and_secret_redaction(
     monkeypatch.setattr(database, "SessionLocal", no_database)
     dry = json.loads(cli.execute(cli.parser().parse_args(["dry-run", *args]), configuration))
     assert dry["persisted"] is False and dry["current_offer"]["money"]["recurring_amount"] == "100.01"
+    assert dry["operator_audit"]["execution_principal"] == "os-euid:29001"
+    assert dry["evaluation"]["publisher_principal"] == "os-euid:29001"
     monkeypatch.setattr(database, "SessionLocal", postgres_session_factory)
     result = cli.execute(
         cli.parser().parse_args(["publish", *args, "--expected-previous-revision", "0"]), configuration
     )
     assert json.loads(result)["inserted"]
+    assert json.loads(result)["operator_audit"]["execution_principal"] == "os-euid:29001"
+    assert json.loads(result)["document"]["publisher_principal"] == "os-euid:29001"
     assert all(secret not in result for secret in (PASSWORD, USERNAME, "isolated-test-widget-secret"))
+    monkeypatch.setattr(mapping_operator.os, "geteuid", lambda: 42)
     offline = step1_settings(
         lbx_server_username="", lbx_server_password="", kernel_base_url="", kernel_service_token=""
     )
     queried = json.loads(cli.execute(cli.parser().parse_args(["query", "--product-id", "proposal_ai"]), offline))
     assert queried["mapping_revision_id"] == json.loads(result)["mapping_revision_id"]
     assert queried["revision_number"] == 1 and queried["document"]["schema_version"] == "product-link-v2"
+    assert queried["operator_audit"]["execution_principal"] == "os-euid:42"
+    assert queried["document"]["publisher_principal"] == "os-euid:29001"
     rotated = step1_settings(
         lbx_server_username="rotated-user",
         lbx_server_password="rotated-password",
@@ -547,3 +554,6 @@ def test_any709_step1_direct_cli_dry_run_publish_query_and_secret_redaction(
         )
     )
     assert history["mapping_revision_id"] == queried["mapping_revision_id"]
+    assert repeated["operator_audit"]["execution_principal"] == "os-euid:42"
+    assert history["operator_audit"]["execution_principal"] == "os-euid:42"
+    assert history["document"] == queried["document"]

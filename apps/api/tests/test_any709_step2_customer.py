@@ -24,27 +24,60 @@ from apps.api.tests.support.any709_step1 import step1_settings
     "fields,expected",
     [
         ({}, (None, None, None)),
+        ({"first_name": None, "surname": None, "patronymic": None}, (None, None, None)),
+        ({"first_name": "", "surname": "", "patronymic": ""}, (None, None, None)),
+        ({"first_name": "   ", "surname": "   ", "patronymic": "   "}, (None, None, None)),
         ({"first_name": "  Anna "}, ("Anna", None, None)),
         ({"surname": " Smith ", "patronymic": "  "}, (None, "Smith", None)),
+        ({"patronymic": " Ивановна "}, (None, None, "Ивановна")),
         ({"first_name": " Анна ", "surname": " Иванова ", "patronymic": " Ивановна "}, ("Анна", "Иванова", "Ивановна")),
     ],
 )
-def test_any709_step2_optional_independent_names(fields: dict[str, str], expected: tuple[str | None, ...]) -> None:
+def test_any709_step2_optional_independent_names(
+    fields: dict[str, str | None], expected: tuple[str | None, ...]
+) -> None:
     request = RegisterRequest(
         email="synthetic@example.com", password="Strong-password1!", personal_consent=True, offer_consent=True, **fields
     )
     assert (request.first_name, request.surname, request.patronymic) == expected
 
 
-@pytest.mark.parametrize("value", ["x" * 101, "bad\x00name", 123, ["name"]])
-def test_any709_step2_invalid_name(value: object) -> None:
+@pytest.mark.parametrize("field", ["first_name", "surname", "patronymic"])
+def test_any709_step2_name_length_limit_applies_after_trim(field: str) -> None:
+    request = RegisterRequest(
+        email="synthetic@example.com",
+        password="Strong-password1!",
+        personal_consent=True,
+        offer_consent=True,
+        **{field: "  " + "я" * 100 + "  "},
+    )
+    assert getattr(request, field) == "я" * 100
+
+
+@pytest.mark.parametrize("field", ["first_name", "surname", "patronymic"])
+@pytest.mark.parametrize(
+    "value",
+    [
+        "x" * 101,
+        "  " + "я" * 101 + "  ",
+        "bad\x00name",
+        "bad\tname",
+        "bad\nname",
+        "bad\x7fname",
+        123,
+        True,
+        ["name"],
+        {},
+    ],
+)
+def test_any709_step2_invalid_name(field: str, value: object) -> None:
     with pytest.raises(ValidationError):
         RegisterRequest(
             email="synthetic@example.com",
             password="Strong-password1!",
             personal_consent=True,
             offer_consent=True,
-            first_name=value,
+            **{field: value},
         )
 
 

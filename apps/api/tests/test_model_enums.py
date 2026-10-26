@@ -15,6 +15,7 @@ from app.models import (
     BillingStateObservationKind,
     ExternalBillingCustomerBindingState,
     ExternalCreateOperationKind,
+    ExternalCreateOperationState,
     ExternalSubscriptionCommercialAccessStatus,
     ExternalSubscriptionFinancialAccessStatus,
     ExternalSubscriptionLifecycleStatus,
@@ -68,6 +69,13 @@ def test_canonical_enum_layer_contains_approved_vocabularies() -> None:
         "agreement",
         "subscription",
     }
+    assert _values(ExternalCreateOperationState) == {
+        "pending",
+        "possible_send",
+        "unknown",
+        "bound",
+        "manual_review",
+    }
     assert _values(ExternalSubscriptionLifecycleStatus) == {
         "active",
         "inactive",
@@ -92,6 +100,7 @@ def test_canonical_enum_layer_contains_approved_vocabularies() -> None:
         "BillingStateObservationKind",
         "ExternalBillingCustomerBindingState",
         "ExternalCreateOperationKind",
+        "ExternalCreateOperationState",
         "ExternalSubscriptionCommercialAccessStatus",
         "ExternalSubscriptionFinancialAccessStatus",
         "ExternalSubscriptionLifecycleStatus",
