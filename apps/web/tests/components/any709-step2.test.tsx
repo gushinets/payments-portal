@@ -120,11 +120,17 @@ describe("ANY-709 Step 2 account Widget", () => {
     await waitFor(() => expect(mount).toHaveBeenCalledTimes(2));
   });
 
-  it("shows safe identity/UNKNOWN/auth/readiness errors, without raw payloads", async () => {
-    bootstrap.mockRejectedValue(new ApiError(409, { code: "billing_customer_pending", request_id: "safe-request", raw: "private-jwt synthetic@example.com" }));
+  it.each([
+    ["billing_customer_pending", "pending"],
+    ["billing_server_auth_failed", "serverAuth"],
+    ["billing_source_invalid_response", "response"],
+    ["billing_source_unavailable", "unavailable"],
+    ["billing_client_not_ready", "client"]
+  ] as const)("shows a distinct safe %s error without raw payloads", async (code, key) => {
+    bootstrap.mockRejectedValue(new ApiError(503, { code, request_id: "safe-request", raw: "private-jwt synthetic@example.com" }));
     renderBilling();
     fireEvent.click(screen.getByRole("button", { name: ruMessages.Billing.open }));
-    expect(await screen.findByRole("alert")).toHaveTextContent(ruMessages.Billing.errors.pending);
+    expect(await screen.findByRole("alert")).toHaveTextContent(ruMessages.Billing.errors[key]);
     expect(screen.getByRole("alert")).toHaveTextContent("safe-request");
     expect(document.body).not.toHaveTextContent("private-jwt");
     expect(document.body).not.toHaveTextContent("synthetic@example.com");

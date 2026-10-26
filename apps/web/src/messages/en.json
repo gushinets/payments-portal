@@ -404,6 +404,7 @@
       "pending": "Account creation may still be completing. Reopen billing to check safely.",
       "review": "The account needs operator review. Its identity remains reserved.",
       "serverAuth": "The billing service rejected the server credentials. Contact support.",
+      "response": "The billing service returned an invalid response. Contact support.",
       "client": "Your billing account is not ready to open yet. Contact support; reopening will reuse this account.",
       "configuration": "Billing configuration is incomplete. Contact support.",
       "unavailable": "Billing is temporarily unavailable. Try opening it again.",

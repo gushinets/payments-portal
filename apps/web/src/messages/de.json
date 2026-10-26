@@ -404,6 +404,7 @@
       "pending": "Die Kontoerstellung läuft möglicherweise noch. Öffnen Sie die Abrechnung erneut für eine sichere Prüfung.",
       "review": "Das Konto muss geprüft werden. Seine Identität bleibt reserviert.",
       "serverAuth": "Der Abrechnungsdienst hat die Server-Zugangsdaten abgelehnt. Wenden Sie sich an den Support.",
+      "response": "Der Abrechnungsdienst hat eine ungültige Antwort zurückgegeben. Wenden Sie sich an den Support.",
       "client": "Ihr Abrechnungskonto ist noch nicht bereit. Kontaktieren Sie den Support; beim erneuten Öffnen wird dasselbe Konto verwendet.",
       "configuration": "Die Abrechnungskonfiguration ist unvollständig. Kontaktieren Sie den Support.",
       "unavailable": "Die Abrechnung ist vorübergehend nicht verfügbar. Versuchen Sie es erneut.",

@@ -404,6 +404,7 @@
       "pending": "A criação da conta pode estar em andamento. Abra a cobrança novamente para verificar com segurança.",
       "review": "A conta precisa de revisão. Sua identidade continua reservada.",
       "serverAuth": "O serviço recusou as credenciais do servidor. Entre em contato com o suporte.",
+      "response": "O serviço de cobrança retornou uma resposta inválida. Entre em contato com o suporte.",
       "client": "Sua conta de cobrança ainda não está pronta. Fale com o suporte; a reabertura usará a mesma conta.",
       "configuration": "A configuração de cobrança está incompleta. Fale com o suporte.",
       "unavailable": "A cobrança está temporariamente indisponível. Tente novamente.",

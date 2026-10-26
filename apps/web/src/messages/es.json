@@ -404,6 +404,7 @@
       "pending": "La creación de la cuenta puede seguir en curso. Abre la facturación de nuevo para comprobarlo de forma segura.",
       "review": "La cuenta requiere revisión. Su identidad sigue reservada.",
       "serverAuth": "El servicio ha rechazado las credenciales del servidor. Contacta con soporte.",
+      "response": "El servicio de facturación devolvió una respuesta no válida. Contacta con soporte.",
       "client": "Tu cuenta de facturación aún no está lista. Contacta con soporte; al volver a abrir se usará la misma cuenta.",
       "configuration": "La configuración de facturación está incompleta. Contacta con soporte.",
       "unavailable": "La facturación no está disponible temporalmente. Vuelve a intentarlo.",

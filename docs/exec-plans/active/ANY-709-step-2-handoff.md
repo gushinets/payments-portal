@@ -212,3 +212,103 @@ Changed files (including generated output and this handoff):
 - `docs/product/ru-mvp.md`
 - `docs/superpowers/specs/2026-09-15-external-billing-boundary-design.md`
 - `docs/superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md`
+
+## PR #150 Step 2 review amendment (2026-10-26)
+
+Status: **IMPLEMENTED_AWAITING_HUMAN_VALIDATION**. Based on current checkout
+`8be6eca`; existing owner changes, including specs, are retained.
+
+- Proven unsent failures after a committed claim, before task admission, or
+  after scheduling a task that stopped before dispatch release only the owning
+  operation/fence. The next explicit open reuses its operation and outer key.
+  Preflight exposes the same counted task; a deadline alone never proves it
+  stopped. Possible dispatch, lost replies, running tasks and uncertain commits
+  retain the existing read-only recovery/no-replay rule.
+- Preauth GET uses the existing finite attempt/backoff limits and same budget;
+  internal retry wrappers no longer escape as generic 500 errors. Server auth,
+  source outage, invalid response and Client readiness remain distinct. Invalid
+  source responses have a separate localized message in all seven catalogs.
+- Error envelopes use the existing size/encoding/deadline limits. Diagnostics
+  contain HTTP status, bounded numeric LBX code, allowlisted reason, stage,
+  endpoint template and Portal request ID. Known invalid-login errors become
+  `credentials_denied`; unknown text stays `unknown`. Remote text and credentials
+  are never logged. Client denial preserves the bound customer.
+- Extracted cohesive wire/stream/decoder helpers into `_transport.py`, retaining
+  the single client and existing pools. `client.py` is below 500 lines; no size
+  exception or limit change. Existing direct consumers keep their imports.
+- The existing empty-catalog E2E now includes Billing's H2/named region, verified
+  button state and no bootstrap/SDK/iframe before explicit action, retaining the
+  H1, keyboard, layout and Axe assertions in all four viewport/email variants.
+
+Removed/replaced/retained: replaced deadline-only unsent handling, leaked preauth
+retry wrappers and outdated heading counts; retained account-only admission,
+permanent customer identity, fences, protected cleanup and no POST retry. No
+Steps 3-4, normative specs, migrations or SDK sandbox/CSP changes were added.
+
+Changed files in this amendment:
+
+- `apps/api/app/composition/billing.py`
+- `apps/api/app/domains/billing/customers.py`
+- `apps/api/app/infrastructure/preflight.py`
+- `apps/api/app/integrations/lbx/{client,_transport}.py`
+- `apps/api/tests/test_any709_step2_failures.py`
+- `apps/api/tests/test_any709_step2_failures_postgres.py`
+- `apps/web/e2e/portal-ru.spec.ts`
+- `apps/web/src/features/billing/BillingAccount.tsx`
+- `apps/web/src/messages/{de,en,es,fr,it,pt,ru}.json`
+- `apps/web/tests/components/any709-step2.test.tsx`
+- This existing handoff.
+
+Actual formatting/lint commands, repository root; all **exit 0**:
+
+```bash
+API_REVIEW_FILES=(
+  apps/api/app/composition/billing.py
+  apps/api/app/domains/billing/customers.py
+  apps/api/app/infrastructure/preflight.py
+  apps/api/app/integrations/lbx/client.py
+  apps/api/app/integrations/lbx/_transport.py
+  apps/api/tests/test_any709_step2_failures.py
+  apps/api/tests/test_any709_step2_failures_postgres.py
+)
+.venv/bin/python -m ruff format --config apps/api/pyproject.toml "${API_REVIEW_FILES[@]}"
+.venv/bin/python -m ruff check --config apps/api/pyproject.toml "${API_REVIEW_FILES[@]}"
+(cd apps/web && npm exec --no -- eslint e2e/portal-ru.spec.ts src/features/billing/BillingAccount.tsx tests/components/any709-step2.test.tsx --fix --max-warnings=0)
+git diff --check
+```
+
+Generation: **NOT_NEEDED / NOT_RUN**; no schema, OpenAPI, generated wire or other
+generated source changed. Tests, collection, typechecks, builds, migrations,
+architecture/broad checks, containers, browser and live requests: **NOT_RUN**.
+New tests cover claim/task admission deadlines, same-identity reopen, stale and
+nonowner release, bounded preauth failures, lost replies with empty discovery,
+still-running POST, safe diagnostics/size caps and bound Client denial; existing
+component and E2E regressions are updated. No staging, commit, push or external
+provider/configuration changes.
+
+Exact targeted HUMAN commands, repository root (not executed by Codex):
+
+```bash
+export PATH="$PWD/.venv/bin:$PATH"
+PYTEST_ADDOPTS='-k "any709_step2 or test_lbx_client or test_preflight or test_source_composition"' npm run test:api:fast
+python scripts/repo.py test-db up
+PYTEST_ADDOPTS='-k any709_step2' npm run test:api:postgres
+# Stop only if this isolated test server was started for these checks:
+python scripts/repo.py test-db stop
+npm --workspace @anytoolai/web run test:components -- any709-step2
+npm run architecture:check
+# With the intended browser harness already running:
+npm run test:e2e -- apps/web/e2e/portal-ru.spec.ts --grep 'account preserves identity and email verification with an empty catalog'
+```
+
+Expected: selected tests pass without skips; preauth/proven-unsent failures leave
+the same operation pending; explicit recovery creates at most one customer;
+possible-send failures never authorize another POST; the four E2E variants pass.
+Architecture must be checked by the human; line count alone is not its PASS.
+
+Separate real-provider acceptance remains required: open the **actual Widget
+through Portal**, reopen using the **same LBX customer**, then verify that close
+and logout remove it. Isolated protocol/component tests do not establish real
+SDK compatibility with the opaque sandbox wrapper. No CI, runtime or live Widget
+PASS is claimed; real credentials, Client readiness and human SDK acceptance
+remain external prerequisites.
