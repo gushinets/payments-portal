@@ -166,12 +166,18 @@ def claim_customer_send(
 
 
 def release_unsent_claim(factory: SessionFactory, expected: CustomerOpen) -> None:
-    """Only Integration's proven before-dispatch result authorizes this reset."""
+    """Only this owner's proven unsent result authorizes resetting its claim."""
     with factory() as db:
-        lock_customer(db, expected.customer_id)
+        customer = lock_customer(db, expected.customer_id)
         operation = customer_operation(db, expected.customer_id)
         if (
             operation is None
+            or not expected.may_create
+            or expected.fence is None
+            or operation.create_operation_id != expected.operation_id
+            or customer.billing_customer_key != expected.outer_key
+            or operation.request_correlation_key != expected.outer_key
+            or customer.provider_customer_id is not None
             or operation.send_fence != expected.fence
             or operation.operation_state != State.POSSIBLE_SEND
         ):

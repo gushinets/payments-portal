@@ -1,15 +1,11 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import math
-import logging
 import time
-from collections.abc import AsyncIterator, Callable
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from decimal import Decimal, DecimalException
-from email.utils import parsedate_to_datetime
 from typing import Any, Generic, TypeVar
 
 import httpx
@@ -18,6 +14,7 @@ from pydantic import SecretStr
 from app.core.errors import AppError
 from app.core.settings import Settings
 from app.infrastructure.preflight import PreflightBudget
+from app.integrations.lbx._transport import _Attempts, _CleanupProtectedStream, _Retryable, decode_response
 from app.integrations.lbx.customer import CreatedUserEnvelope, LbxUser, NewCustomer
 from app.integrations.lbx.dto import (
     LbxEnvelope,
@@ -28,15 +25,11 @@ from app.integrations.lbx.dto import (
     LbxTariffService,
 )
 from app.integrations.lbx.errors import (
-    LbxAttemptsExhausted,
     LbxAuthenticationFailed,
     LbxClosed,
     LbxCreateNotSent,
-    LbxError,
     LbxNotConfigured,
-    LbxRateLimited,
     LbxResponseInvalid,
-    LbxScopeForbidden,
     LbxScopeMismatch,
     LbxTimeout,
     LbxUnavailable,
@@ -44,10 +37,7 @@ from app.integrations.lbx.errors import (
 from app.integrations.lbx.privacy import private_http_diagnostics
 
 
-logger = logging.getLogger("payment_portal.lbx")
-
 API_PATH = "/api/rest/v1"
-_TRANSIENT_STATUS = frozenset({429, 500, 502, 503, 504})
 T = TypeVar("T")
 
 
@@ -71,66 +61,6 @@ class LbxRead(Generic[T]):
 class _Session:
     token: SecretStr = field(repr=False)
     expires_at: float
-
-
-@dataclass
-class _Attempts:
-    limit: int
-    used: int = 0
-
-    def take(self) -> None:
-        if self.used >= self.limit:
-            raise LbxAttemptsExhausted()
-        self.used += 1
-
-
-class _Retryable(Exception):
-    def __init__(self, failure: LbxError, retry_after_seconds: float | None = None) -> None:
-        super().__init__(failure.code)
-        self.failure = failure
-        self.retry_after_seconds = retry_after_seconds
-
-
-class _CleanupProtectedStream(httpx.AsyncByteStream):
-    """Use Step 2 accounting even when HTTPX automatically closes at EOF."""
-
-    def __init__(self, stream: httpx.AsyncByteStream, budget: PreflightBudget) -> None:
-        self._stream = stream
-        self._budget = budget
-
-    async def __aiter__(self) -> AsyncIterator[bytes]:
-        async for fragment in self._stream:
-            yield fragment
-
-    async def aclose(self) -> None:
-        with self._budget.protect_source_cleanup():
-            await self._stream.aclose()
-
-
-def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    result: dict[str, Any] = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError("duplicate JSON field")
-        result[key] = value
-    return result
-
-
-def _reject_constant(value: str) -> None:
-    raise ValueError("non-JSON number")
-
-
-def _decode_envelope(body: bytes, model: type[LbxEnvelope[T]]) -> T:
-    try:
-        raw = json.loads(
-            body.decode("utf-8"),
-            parse_float=Decimal,
-            object_pairs_hook=_unique_object,
-            parse_constant=_reject_constant,
-        )
-        return model.model_validate(raw).response
-    except (ValueError, DecimalException, RecursionError):
-        raise LbxResponseInvalid() from None
 
 
 def _require_identity(value: int) -> None:
@@ -264,22 +194,31 @@ class LbxServerClient:
     async def prepare_customer_create(self, *, budget: PreflightBudget) -> None:
         async def authenticate() -> None:
             with private_http_diagnostics():
-                await self._ensure_session(
-                    _Attempts(self._configuration.lbx_max_get_attempts), budget, allow_refresh=True
-                )
+                attempts = _Attempts(self._configuration.lbx_max_get_attempts)
+                while True:
+                    try:
+                        await self._ensure_session(attempts, budget, allow_refresh=True)
+                        return
+                    except _Retryable as retry:
+                        await self._wait_retry(retry, attempts, budget)
 
         await budget.run(authenticate)
 
     async def create_user(self, command: NewCustomer, *, budget: PreflightBudget) -> int:
         # Application has durably claimed possible_send. No POST retry or POST
         # reauthentication is allowed, even for 401/5xx/malformed success.
+        source_task: asyncio.Task[int] | None = None
+        dispatched = False
+
+        def mark_scheduled(task: asyncio.Task[int]) -> None:
+            nonlocal source_task
+            source_task = task
+
+        def mark_dispatch() -> None:
+            nonlocal dispatched
+            dispatched = True
+
         async def send() -> int:
-            dispatched = False
-
-            def mark_dispatch() -> None:
-                nonlocal dispatched
-                dispatched = True
-
             with private_http_diagnostics():
                 session = self._session
                 if session is None or time.monotonic() >= session.expires_at:
@@ -304,7 +243,12 @@ class LbxServerClient:
                         raise LbxCreateNotSent() from None
                     raise
 
-        return await budget.run(send)
+        try:
+            return await budget.run(send, on_schedule=mark_scheduled)
+        except AppError:
+            if not dispatched and (source_task is None or source_task.done()):
+                raise LbxCreateNotSent() from None
+            raise
 
     async def client_user(self, *, token: SecretStr, budget: PreflightBudget) -> LbxUser:
         async def read() -> LbxUser:
@@ -387,14 +331,17 @@ class LbxServerClient:
                     if reauthenticated:
                         raise
             except _Retryable as retry:
-                if attempts.used >= attempts.limit:
-                    raise retry.failure from None
-                config = self._configuration
-                delay = retry.retry_after_seconds
-                if delay is None:
-                    delay = config.lbx_retry_delay_seconds * (2 ** (attempts.used - 1))
-                await asyncio.sleep(min(delay, config.lbx_max_retry_delay_seconds))
-                budget.check()
+                await self._wait_retry(retry, attempts, budget)
+
+    async def _wait_retry(self, retry: _Retryable, attempts: _Attempts, budget: PreflightBudget) -> None:
+        if attempts.used >= attempts.limit:
+            raise retry.failure from None
+        config = self._configuration
+        delay = retry.retry_after_seconds
+        if delay is None:
+            delay = config.lbx_retry_delay_seconds * (2 ** (attempts.used - 1))
+        await asyncio.sleep(min(delay, config.lbx_max_retry_delay_seconds))
+        budget.check()
 
     async def _ensure_session(self, attempts: _Attempts, budget: PreflightBudget, *, allow_refresh: bool) -> _Session:
         current = self._session
@@ -431,21 +378,6 @@ class LbxServerClient:
             self._session = session
             return session
 
-    def _retry_after(self, value: str | None) -> float | None:
-        if value is None:
-            return None
-        maximum = self._configuration.lbx_max_retry_delay_seconds
-        value = value.strip()
-        if value.isascii() and value.isdigit():
-            return maximum if len(value) > 10 else min(float(value), maximum)
-        try:
-            hint = parsedate_to_datetime(value)
-            if hint.tzinfo is not None:
-                return min(max(0.0, (hint - datetime.now(UTC)).total_seconds()), maximum)
-        except (ValueError, OverflowError):
-            pass
-        return None
-
     async def _request_once(
         self,
         path: str,
@@ -480,55 +412,16 @@ class LbxServerClient:
                 assert isinstance(response.stream, httpx.AsyncByteStream)
                 response.stream = _CleanupProtectedStream(response.stream, budget)
                 budget.check()
-                status = response.status_code
-                logger.info(
-                    "lbx_http",
-                    extra={
-                        "structured": {
-                            "stage": "customer" if path.startswith(("/users", "/client")) else "source",
-                            "method": method,
-                            "endpoint": "/users/{id}"
-                            if path.startswith("/users/")
-                            else path
-                            if path in {"/users", "/client/user", "/auth"}
-                            else "selected_offer",
-                            "status": status,
-                        }
-                    },
+                result = await decode_response(
+                    response,
+                    model,
+                    budget=budget,
+                    maximum_bytes=config.lbx_max_response_bytes,
+                    maximum_retry_delay=config.lbx_max_retry_delay_seconds,
+                    method=method,
+                    path=path,
+                    success_statuses=success_statuses,
                 )
-                if status == 401:
-                    raise LbxAuthenticationFailed()
-                if status == 403:
-                    raise LbxScopeForbidden()
-                if status in _TRANSIENT_STATUS:
-                    failure = LbxRateLimited() if status == 429 else LbxUnavailable()
-                    raise _Retryable(failure, self._retry_after(response.headers.get("retry-after")))
-                if 500 <= status <= 599:
-                    raise LbxUnavailable()
-                if status not in success_statuses:
-                    raise LbxResponseInvalid()
-                if response.headers.get("content-type", "").split(";", 1)[0].strip().lower() != "application/json":
-                    raise LbxResponseInvalid()
-                if response.headers.get("content-encoding", "identity").lower() != "identity":
-                    raise LbxResponseInvalid()
-                length = response.headers.get("content-length")
-                if length is not None:
-                    try:
-                        declared_size = int(length)
-                    except ValueError:
-                        raise LbxResponseInvalid() from None
-                    if not 0 <= declared_size <= config.lbx_max_response_bytes:
-                        raise LbxResponseInvalid()
-                payload = bytearray()
-                async for fragment in response.aiter_bytes():
-                    budget.check()
-                    if len(payload) + len(fragment) > config.lbx_max_response_bytes:
-                        raise LbxResponseInvalid()
-                    payload.extend(fragment)
-                budget.check()
-                if length is not None and len(payload) != declared_size:
-                    raise LbxResponseInvalid()
-                result = _decode_envelope(bytes(payload), model)
                 budget.check()
             budget.check()
             return result

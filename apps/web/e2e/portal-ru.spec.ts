@@ -359,7 +359,7 @@ for (const emailVerified of [true, false]) {
     await expect(main.locator("h1")).toHaveCount(1);
     const headingTags = await main.locator("h1, h2, h3, h4, h5, h6").evaluateAll((headings) => headings.map((heading) => heading.tagName));
     expect(headingTags[0]).toBe("H1");
-    expect(headingTags.slice(1)).toEqual(emailVerified ? ["H2", "H2"] : ["H2", "H2", "H2"]);
+    expect(headingTags.slice(1)).toEqual(emailVerified ? ["H2", "H2", "H2"] : ["H2", "H2", "H2", "H2"]);
     const identity = main.getByRole("complementary", { name: ruMessages.Account.authenticated.summaryTitle });
     await expect(identity.getByRole("heading", { level: 2, name: ruMessages.Account.authenticated.summaryTitle })).toBeVisible();
     await expect(identity.getByRole("term")).toHaveText([ruMessages.Account.authenticated.emailLabel]);
@@ -379,6 +379,15 @@ for (const emailVerified of [true, false]) {
     }
 
     const productRegion = main.getByRole("region", { name: "Продукты" });
+    await expect(productRegion.getByRole("heading", { level: 2, name: "Продукты", exact: true })).toBeVisible();
+    const billingRegion = main.getByRole("region", { name: ruMessages.Billing.title, exact: true });
+    await expect(billingRegion.getByRole("heading", { level: 2, name: ruMessages.Billing.title, exact: true })).toBeVisible();
+    const openBilling = billingRegion.getByRole("button", { name: ruMessages.Billing.open, exact: true });
+    if (emailVerified) {
+      await expect(openBilling).toBeEnabled();
+    } else {
+      await expect(openBilling).toBeDisabled();
+    }
     const headingBox = await main.getByRole("heading", { level: 1 }).boundingBox();
     const identityBox = await identity.boundingBox();
     const productBox = await productRegion.boundingBox();
@@ -419,6 +428,9 @@ for (const emailVerified of [true, false]) {
       await expectKeyboardFocus(page, identity.getByRole("button", { name: ruMessages.EmailVerification.pending.resend }));
     }
     await expectKeyboardFocus(page, identity.getByRole("button", { name: ruMessages.Account.authenticated.signOutAction }));
+    expect(traffic.apiRequests.filter((request) => request.includes("/api/billing/widget-bootstrap"))).toEqual([]);
+    expect(traffic.scriptRequests.filter((url) => new URL(url).pathname === "/lbxwidget.js")).toEqual([]);
+    await expect(billingRegion.locator("iframe")).toHaveCount(0);
   });
 }
 

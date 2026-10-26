@@ -24,7 +24,7 @@ from app.domains.catalog.publication import SessionFactory
 from app.infrastructure.preflight import PreflightBudget
 from app.integrations.lbx.client import LbxServerClient
 from app.integrations.lbx.customer import NewCustomer, sign_widget_jwt
-from app.integrations.lbx.errors import LbxAuthenticationFailed, LbxCreateNotSent, LbxScopeMismatch
+from app.integrations.lbx.errors import LbxAuthenticationFailed, LbxCreateNotSent, LbxResponseInvalid, LbxScopeMismatch
 
 logger = logging.getLogger("payment_portal.billing")
 
@@ -82,8 +82,13 @@ async def bootstrap_account(
             if current.may_create:
                 await client.prepare_customer_create(budget=budget)
                 current = await run_in_threadpool(claim_customer_send, factory, configuration, token, current)
-                budget.check()
                 if current.may_create:
+                    try:
+                        budget.check()
+                    except AppError:
+                        # Claim commit returned to this owner, and create_user
+                        # has not been called: no source task can send later.
+                        raise LbxCreateNotSent() from None
                     command = NewCustomer(
                         outer_id=current.outer_key,
                         email=current.email,
@@ -167,5 +172,7 @@ async def bootstrap_account(
             raise BillingRefused(
                 "billing_server_auth_failed"
                 if isinstance(error, LbxAuthenticationFailed)
+                else "billing_source_invalid_response"
+                if isinstance(error, LbxResponseInvalid)
                 else "billing_source_unavailable"
             ) from None
