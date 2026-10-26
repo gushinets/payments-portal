@@ -4,6 +4,21 @@ Status: **IMPLEMENTED_AWAITING_HUMAN_VALIDATION**
 Date: 2026-10-26
 Selected scope: Step 1 only. The supplied untracked implementation plan was preserved unchanged.
 
+## Owner follow-up: environment example inventory (2026-10-26)
+
+Expanded `.env.example` to list all 47 runtime Settings fields and the remaining
+supported keys found in the local `.env`, including mock token/options, test DB
+host/DSN and observability. Values are public defaults or empty placeholders;
+local secrets were inspected only for presence and were not copied or changed.
+Obsolete direct-provider/account-ID keys were not restored. Host-only policy
+tuning is marked explicitly because Compose currently uses its code defaults.
+The billing timezone remains empty by default; an explicit `Etc/UTC` example is
+labeled an unconfirmed isolated-test assumption, pending the actual LBX answer.
+Read-only key inspection found no missing Settings/supported local keys or
+duplicate example assignments; `git diff --check` passed. No runtime wiring,
+tests/collection, generation, migrations, containers or live requests were run
+for this example-only follow-up.
+
 ## PR #150 Steps 1-2 confirmed fixes (base 536e37a, 2026-10-26)
 
 Status: **IMPLEMENTED_AWAITING_HUMAN_VALIDATION**. The checkout was clean at
