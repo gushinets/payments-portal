@@ -464,7 +464,7 @@ def write_runtime(config: RuntimeConfig) -> None:
         "LBX_CONNECT_TIMEOUT_SECONDS", "LBX_READ_TIMEOUT_SECONDS",
         "LBX_MAX_RESPONSE_BYTES", "LBX_MAX_GET_ATTEMPTS",
         "LBX_RETRY_DELAY_SECONDS", "LBX_MAX_RETRY_DELAY_SECONDS",
-        "MAPPING_OPERATOR_UIDS", "MAPPING_OPERATOR_LOCK_FILE",
+        "MAPPING_OPERATOR_LOCK_FILE",
     ):
         value = os.environ.get(name, local_env.get(name, ""))
         if "\n" in value or "\r" in value:

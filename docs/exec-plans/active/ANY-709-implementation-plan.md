@@ -477,10 +477,13 @@ tests; it must not remain a prerequisite of the new runtime/linking path.
 | Root Compose files, `scripts/repo.py`, `.env.example` | Remove approval/source-policy mounts from `docker-compose.kernel-mock.dev.yml`. Trace all used connection values through env input -> harness runtime env -> normal/agent/prod containers and CLI. Keep secrets server-only; merely editing Settings or the example env is not completed wiring. |
 | Related active docs and tests/guards | Replace assertions that enforce retired approvals, frozen publication price or all-source simulation gates with the new behavioral contract. Preserve completed Step 6 history, real ownership/consent/money/concurrency tests and test fixtures. No broad disablement of guards or search-and-delete across historical documents. |
 
-`MAPPING_OPERATOR_UIDS` is operating-system authorization for the privileged CLI,
-NOT a Portal-user allowlist. Its local lock file is concurrency machinery, NOT a
-profile containing commercial truth. Keep that existing operational boundary,
-make it unnecessary for ordinary app/mock startup, and document it once.
+Owner-approved correction: the privileged local CLI has no separate UID
+allowlist. Existing environment, secret, file and DB permissions control access;
+the actual OS effective UID supplies `os-euid:<uid>` for command audit and
+immutable publication history. Unavailable or invalid OS identity still refuses
+the command. Keep the shared private local lock for concurrent execution and
+the PostgreSQL locks/expected-revision CAS; ordinary app/mock startup does not
+require an operator lock. Document this operational boundary in the runbook.
 
 The rejected PR's `stand.py`, `purchase_profiles.py`, `preparation_profile.py`,
 `LBX043_*`, `PURCHASE_*PROFILE_FILE` and `tools/lbx043/*.example.json` are NOT all

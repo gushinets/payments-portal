@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from pydantic import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.composition.mapping_operator import authorize_operator, configured_mapping_scope, fresh_link_evaluation
+from app.composition.mapping_operator import configured_mapping_scope, fresh_link_evaluation, resolve_operator_principal
 from app.core.errors import AppError
 from app.core.settings import Settings
 from app.domains.catalog.commercial_offer import CommercialScope, canonical_document
@@ -70,7 +70,7 @@ def present_stored(stored: StoredProductLink | StoredMapping) -> dict[str, objec
 
 
 def execute(arguments: argparse.Namespace, configuration: Settings) -> str:
-    principal = authorize_operator(configuration)
+    principal = resolve_operator_principal()
     audit = {
         "command": arguments.command,
         "execution_principal": principal,

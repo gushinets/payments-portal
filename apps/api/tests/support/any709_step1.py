@@ -33,7 +33,6 @@ def step1_settings(**overrides: Any) -> Settings:
             "lbx_billing_timezone": "Etc/UTC",
             "lbx_currency_id": "1",
             "lbx_currency": "RUB",
-            "mapping_operator_uids": (29001,),
             **overrides,
         }
     )

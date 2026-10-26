@@ -112,8 +112,6 @@ class Settings(BaseSettings):
     lbx_max_get_attempts: int = Field(default=5, ge=1, le=8)
     lbx_retry_delay_seconds: float = Field(default=0.1, ge=0, le=5, allow_inf_nan=False)
     lbx_max_retry_delay_seconds: float = Field(default=2.0, ge=0, le=5, allow_inf_nan=False)
-    # CLI execution identity; no default principal, wildcard or human attribution.
-    mapping_operator_uids: tuple[Annotated[int, Field(strict=True, ge=0)], ...] = ()
     # Shared trusted local path for ALL operator processes in this deployment.
     # Required by dry-run/publish only; query and the HTTP API do not use it.
     mapping_operator_lock_file: Path | None = None

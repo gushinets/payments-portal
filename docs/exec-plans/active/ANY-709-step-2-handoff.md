@@ -3,6 +3,35 @@
 Status: **IMPLEMENTED_AWAITING_HUMAN_VALIDATION**. No runtime PASS claimed.
 Scope: approved [Step 2](ANY-709-implementation-plan.md#5-step-2---optional-fio-one-customer-and-a-real-account-widget) only; Steps 3-4 remain deferred.
 
+## PR #150 nullable-name and enum correction (base 536e37a, 2026-10-26)
+
+Status: **IMPLEMENTED_AWAITING_HUMAN_VALIDATION**. Corrected `OptionalName` so
+normalization runs before the nullable union and only its string branch has
+`max_length=100`. Each FIO field remains independently optional: omitted, null,
+empty and whitespace values normalize to None, populated values trim, 100
+characters are accepted after trim, and 101/non-string/internal controls reject.
+The existing normalizer, auth service, factories, models and migration chain
+were retained. The exact enum test now includes the existing
+`ExternalCreateOperationState` values/export without changing runtime enums.
+
+Expanded `test_any709_step2_customer.py` and `test_api_identity_session.py`
+with normalization/boundary, HTTP 200/422, persisted-session and API-schema
+regressions; tests are **NOT_RUN**. Compatibility tests remain unchanged.
+Authorized generation moved the three `maxLength=100` constraints into OpenAPI
+string branches; generated TypeScript remains `?: string | null` and unchanged.
+Ruff and `git diff --check` passed; generation passed after adding the existing
+`.venv/bin` to PATH (`python` was initially unavailable). No new migration.
+
+The companion removal of the runtime UID allowlist retains OS-principal audit,
+private locks/CAS/history and historical v1 checks. Full changed-file details,
+actual format/generation results and exact human QA commands for both steps and
+affected regressions are in the
+[joint correction handoff](ANY-709-step-1-handoff.md#pr-150-steps-1-2-confirmed-fixes-base-536e37a-2026-10-26).
+Earlier PASS evidence does not validate this correction. No tests, collection,
+typechecks, builds, scanners, check suites, containers, browser or live LBX ran;
+customer recovery/Widget/agreements/subscriptions/paid access and Steps 3-4 are
+unchanged. Billing timezone and price selection are unchanged, pending LBX support.
+
 The account now has an explicit localized billing button independent of catalog
 loading, mappings, prices, seller/calendar and subscriptions. Verified existing
 and new users use the actual configured SDK and customer-only presentation.
