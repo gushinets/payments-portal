@@ -33,6 +33,7 @@ from app.domains.catalog import router as catalog_http
 from app.domains.catalog.mapping_evidence import MappingDocument, MappingRefused
 from app.domains.catalog.publication import publish_mapping
 from app.infrastructure.preflight import PreflightSaturated
+from app.http.dependencies import get_session_factory
 from app.main import create_app
 from apps.api.tests.support import kernel_walkthrough as walkthrough
 from apps.api.tests.support.commercial_mappings import SIMULATED_OFFER_ID, SIMULATED_UID, operator_settings
@@ -98,7 +99,8 @@ def test_fresh_http_publication_faults_outage_restart_and_recovery(
         with postgres_session_factory() as session:
             yield session
 
-    app.dependency_overrides[get_db] = db
+    monkeypatch.setitem(app.dependency_overrides, get_db, db)
+    monkeypatch.setitem(app.dependency_overrides, get_session_factory, lambda: postgres_session_factory)
     proposal = tmp_path / "proposal.json"
     publish = cli.parser().parse_args(["publish", "--proposal", str(proposal), "--expected-previous-revision", "0"])
     query = cli.parser().parse_args(["query", "--offer-id", SIMULATED_OFFER_ID])
@@ -150,7 +152,6 @@ def test_fresh_http_publication_faults_outage_restart_and_recovery(
 
         monkeypatch.setattr(catalog_http, "settings", configuration)
         monkeypatch.setattr("app.main.settings", configuration)
-        monkeypatch.setattr("app.composition.catalog.SessionLocal", postgres_session_factory)
         preview = run_operator(["dry-run", "--proposal", str(proposal)])
         first = run_operator(["publish", "--proposal", str(proposal), "--expected-previous-revision", "0"])
         assert not preview["persisted"] and first["persisted"] and first["inserted"]
@@ -282,7 +283,8 @@ def test_independent_http_target_switch_changes_only_url_and_credentials(
         with postgres_session_factory() as session:
             yield session
 
-    app.dependency_overrides[get_db] = db
+    monkeypatch.setitem(app.dependency_overrides, get_db, db)
+    monkeypatch.setitem(app.dependency_overrides, get_session_factory, lambda: postgres_session_factory)
     production = operator_settings(
         app_env=AppEnv.PRODUCTION,
         app_public_base_url="https://portal.example.com",
