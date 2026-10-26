@@ -121,6 +121,17 @@ def _multiply(left: Decimal, right: Decimal) -> Decimal:
     return _exact(result, "money_invalid")
 
 
+def _quantity_bounds(service: LbxTariffService) -> tuple[int, int]:
+    minimum = _exact(service.min_multiplicator, "commercial_minimum_unknown")
+    maximum = _exact(service.max_multiplicator, "commercial_maximum_unknown")
+    if minimum < 0 or minimum > maximum:
+        _incomplete("commercial_bounds_invalid")
+    if any(value != value.to_integral_value() for value in (minimum, maximum)):
+        raise SelectedOfferRefused(OfferRefusalKind.NOT_SELLABLE, "commercial_quantity_not_integer")
+    # Conversion follows the exact integral check; no rounding/truncation.
+    return int(minimum), int(maximum)
+
+
 @dataclass(frozen=True)
 class SelectedReadSet:
     """Integration-only; never pass these DTOs into Application or Domain."""
@@ -372,8 +383,7 @@ def normalize_selected_offer(
     )
     for amount in (recurring, connection, total_recurring, total_connection):
         _minor_units(amount, scale)
-    if service.min_multiplicator > service.max_multiplicator:
-        _incomplete("commercial_bounds_invalid")
+    minimum, maximum = _quantity_bounds(service)
     # All mandatory facts are now known. No catch-all pricing engine.
     unsupported = (
         (service.enabled_by_default != 1, "selected_component_not_default"),
@@ -397,7 +407,7 @@ def normalize_selected_offer(
         (policy.historical_applicability != "pinned_effective_terms", "historical_profile_unsupported"),
         (policy.connection_charge_basis not in {"per_service_unit", "once"}, "connection_profile_unsupported"),
         (
-            quantity <= 0 or not service.min_multiplicator <= quantity <= service.max_multiplicator,
+            quantity <= 0 or not minimum <= quantity <= maximum,
             "commercial_quantity_out_of_bounds",
         ),
         (recurring <= 0 or connection < 0, "price_profile_unsupported"),
@@ -414,9 +424,7 @@ def normalize_selected_offer(
             price.start_date,
             effective_until,
         ),
-        quantity=CommercialQuantity(
-            "commercial_service", quantity, service.min_multiplicator, service.max_multiplicator
-        ),
+        quantity=CommercialQuantity("commercial_service", quantity, minimum, maximum),
         policy=CommercialPolicy(
             policy.tax_treatment,
             "none",

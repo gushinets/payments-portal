@@ -1,7 +1,8 @@
 # ANY-709 - Normal LBX billing, product mapping and real Widget flow
 
-Status: implementation-ready proposal for owner approval; NOT IMPLEMENTED
+Status: reviewed execution plan based on owner-approved ANY-709 decisions; NOT IMPLEMENTED
 Date: 2026-10-26
+Review revision: 2 - inherited-code closure and execution clarifications; no new stages
 Program: ANY-504, program Step 7
 Delivery: four sequential implementation stages in this file, numbered Step 1-4
 Repository destination: `docs/exec-plans/active/ANY-709-implementation-plan.md`
@@ -22,6 +23,9 @@ full, applicable AGENTS instructions and its direct current dependencies. Read
 preceding-step interfaces/handoffs when required, not all other step prompts.
 The owner-approved ticket decisions below supersede the specifically identified
 old requirements; this is not permission to redesign unrelated architecture.
+The inherited gates named in Step 1 are EXPECTED remediation work, not a new
+contradiction that requires stopping for permission. Concrete implementation
+layout stays with the executor; another architecture/evidence framework does not.
 
 ### Codex may execute
 
@@ -87,6 +91,10 @@ format/lint commands with actual outcomes; tests written but NOT_RUN; exact
 human commands and expected result; remaining scope/real external prerequisites.
 Do not narrate intermediate investigation. Keep delivery notes short and tied to
 the selected step. Do not hide an incomplete result behind a green linter.
+Include a short removed/replaced/retained summary for the inherited paths touched by this step;
+this belongs in the handoff, not a new approval file. Report focused commands for
+changed EXISTING regression tests too, not only new any709_stepN tests. Do not
+rename unrelated tests or run the entire repository after every edit.
 
 ## 1. Evidence, baseline and scope
 
@@ -231,6 +239,11 @@ Never derive it from a password, locale or browser value. Preserve an existing
 proven scope; do not relabel incompatible historical objects as the new account.
 Actual conflicting old real bindings are a migration conflict, not a reason to
 ask all users to register again. Synthetic v1 data is never promoted to live.
+The chosen internal resolution must be deterministic for a fresh deployment, identical in host/container CLI
+and runtime, stable on restart and credential rotation, and unable to read old
+external IDs against another configured provider origin. Preserve original
+historical scope values rather than rewriting immutable rows. Ambiguous real
+legacy bindings are diagnosed locally; they do not authorize a destructive reset.
 
 Currency interpretation is a small provider-side typed mapping. If selecting an
 effective-dated price with the existing algorithm genuinely needs the billing
@@ -331,7 +344,7 @@ are this plan's proposed implementation contract, NOT claims they exist today:
 | Route/use case | Meaning |
 |---|---|
 | `POST /api/billing/widget-bootstrap` | Explicit ensure-customer + safe JWT; optional Portal purchase reference enables verified payment presentation. |
-| `POST /api/purchases/review` | Current selected offer + legal versions for authenticated review; no provider mutation and no extra durable checkout session. |
+| `POST /api/purchases/review` | Current selected offer + opaque link revision + expected terms fingerprint + legal versions for authenticated review; no provider mutation and no extra durable checkout session. |
 | `POST /api/purchase-intents` | Server-recomputed current terms matched to submitted expected fingerprint/legal selection; one accepted intent under idempotency/business scope. |
 | `GET /api/purchase-intents/current?product_id=...` | Authorized existing local purchase/scope state; no source-catalog dependency or hidden CREATE. |
 | `GET /api/purchase-intents/{id}` | Owned durable status; no business mutation. |
@@ -339,8 +352,13 @@ are this plan's proposed implementation contract, NOT claims they exist today:
 
 Use server-owned Pydantic schemas and generated TS; public outputs are normalized
 states and opaque Portal references. Browser input never supplies LBX IDs/price
-as authority. The submitted expected fingerprint is compared with newly computed
-server facts, not trusted as proof by itself. Reuse legal acceptance storage.
+as authority. The submitted expected fingerprint and opaque link revision are
+compared with server facts, not trusted as proof by themselves. Do not accept an operator
+retarget between review and confirmation just because two offers cost the same.
+In the short purchase-pin transaction recheck the exact reviewed current link,
+required legal versions, idempotency and product hold after source I/O; a
+concurrent local change refuses the new pin with a fresh-review result. Never
+perform source I/O while holding those locks. Reuse legal acceptance storage.
 Before new admission, inspect existing idempotency/scope first. Same key + changed
 meaning conflicts; same key + same meaning returns the same record even when
 sources are unavailable. Recheck auth/session after asynchronous work before
@@ -441,6 +459,70 @@ has moved; this is a bounded surface map, not permission for unrelated refactors
    behavior not yet changed must still be labelled as-built, not already fixed.
    Add the normal deployment/link instructions in one runbook; no new proof file.
 
+### Inherited ANY-664 closure register - mandatory in this step
+
+This is a review checklist for the SAME Step 1, not new subtasks or an operator
+configuration artifact. Paths below are under `apps/api/app/` unless stated.
+An obsolete name may remain in immutable history, a narrow v1 reader or negative
+tests; it must not remain a prerequisite of the new runtime/linking path.
+
+| Verified inherited path | Concrete replacement / closure condition |
+|---|---|
+| `core/settings.py`: `require_safe_kernel_configuration`, `require_safe_lbx_configuration`; `composition/mapping_operator.py` | Remove BOTH the unconditional production Kernel refusal and the separate publication refusal. Remove mandatory equality/input of two account IDs. Preserve URL/auth/TLS/scope validation; a compatible configured remote Kernel and LBX must be constructible in production-shaped tests without claiming actual producer conformance. |
+| `composition/sources.py` and downstream evidence-mode checks | Remove unconditional Kernel `SIMULATED` assignment for every configured source. Preserve explicit dev-mock provenance and real-LBX provenance separately. Dev mock + real billing works; no automatic legacy SIMULATED-to-GENUINE rewrite or mock in production. No new approval flag/certificate replaces the old gate. |
+| `cli/commercial_mappings.py`, `composition/mapping_operator.py` | Eliminate required `--proposal`, approval/source input loaders and file path settings from dry-run/publish. Preserve authorized operator, audit, bounded local locking and product-head CAS. `query`/history remain usable without contacting LBX. |
+| `integrations/lbx/offer_inputs.py`, `selected_offer.py`, `offer_provenance.py`, `domains/catalog/commercial_offer.py` | Replace `SelectedPolicyEvidence` / `REQUIRED_POLICY_FIELDS` and `_validate_configuration` proof prerequisites in the new path, including required `reference/revision/basis` and historical-policy certificates. Remove their required constructors/serializers as well as loaders. Use the fact-source rules below; do not leave `policy_evidence_missing` as the inevitable result after deleting JSON. |
+| `domains/catalog/mapping_evidence.py`, `publication.py` and mapping queries/storage | A version-aware v2 link path must not call old `ApprovedMapping` / `require_replacement_approval` or compare publication-price fingerprints to authorize a new price. Keep independent link identity, product head, immutable v1 readability and commit-uncertainty/CAS safety. Do not edit old JSON/digests in place. |
+| `domains/catalog/preview.py`, `router.py`, presenters, generated types and current web consumers | Remove the old assumption that every product exists only as a stored approved offer with mandatory `CatalogAllowance`. An access product without a configured metered package has no allowance, not an invented zero/one quota. A known product without a link/current quote remains a product with a precise unavailable Buy state. Preserve exact money and localized display. |
+| Root Compose files, `scripts/repo.py`, `.env.example` | Remove approval/source-policy mounts from `docker-compose.kernel-mock.dev.yml`. Trace all used connection values through env input -> harness runtime env -> normal/agent/prod containers and CLI. Keep secrets server-only; merely editing Settings or the example env is not completed wiring. |
+| Related active docs and tests/guards | Replace assertions that enforce retired approvals, frozen publication price or all-source simulation gates with the new behavioral contract. Preserve completed Step 6 history, real ownership/consent/money/concurrency tests and test fixtures. No broad disablement of guards or search-and-delete across historical documents. |
+
+`MAPPING_OPERATOR_UIDS` is operating-system authorization for the privileged CLI,
+NOT a Portal-user allowlist. Its local lock file is concurrency machinery, NOT a
+profile containing commercial truth. Keep that existing operational boundary,
+make it unnecessary for ordinary app/mock startup, and document it once.
+
+The rejected PR's `stand.py`, `purchase_profiles.py`, `preparation_profile.py`,
+`LBX043_*`, `PURCHASE_*PROFILE_FILE` and `tools/lbx043/*.example.json` are NOT all
+in main. Do not spend time reconstructing them to delete them. If a useful
+fragment from PR #143 is copied in a later step, remove those dependencies in
+THAT step; no hidden recorded transport, fixed IDs/price or subscription-only
+account-entry rule may be carried forward.
+
+### Fact sources and capability-specific readiness
+
+Deleting a proof file does not mean inventing its old fields. Refactor the
+consumers to require facts needed by the particular operation:
+
+| Concern | Source and boundary |
+|---|---|
+| Product and selected service/period/quantity | Authenticated Kernel manifest plus documented LBX tariff/services/periods and fixed quantity rules. A list is validated according to its documented contract; no operator-written completeness certificate. |
+| Current monetary quote | Actual service-price fields and documented applicability, configured currency units/scale, and an ordinary billing-calendar setting only where necessary. Keep the specific missing/ambiguous price error; never infer an unproven timezone. |
+| Supported preparation flags | Actual tariff/service flags and the explicit supported CREATE choices. Do not infer absent `debt_threshold`, global credit policy or financial eligibility. Future paid-access proof is not a prerequisite of a simple product link or customer Widget. |
+| Renewal/cancellation acceptance | Existing required versioned Portal documents and applicable documented provider facts for THIS purchase. Do not fabricate legal/policy text or require a separate operator proof-file version on every price change. |
+| Historical obligations | The immutable accepted purchase plus that concrete subscription's effective readback. A fake `historical_policy` certificate or today's catalogue equality cannot replace either. A truly missing material fact yields a precise affected-operation error. |
+
+A new-path positive test must succeed with normal configuration + realistic
+source responses, without constructing the retired policy/approval objects in
+its fixture. Merely bypassing them in a mock or adding a new `approved=true`
+default does not satisfy this step. No unsupported discount/tax/credit promise
+may be introduced to make the test succeed.
+
+Keep existing auth/core-deployment validation. Billing readiness is local to the
+operation, not an import-time reason to crash otherwise valid Portal auth:
+
+| Operation | Relevant dependencies only |
+|---|---|
+| Technical product listing | Kernel connection and valid manifest; no required LBX Widget secret or published offer. |
+| Direct link/current offer | Server API connection, technical product and supported selected offer/currency/applicability. No customer, subscription, Widget secret or proof file. |
+| Customer account bootstrap (Step 2) | Auth/verified email, Server API and Widget signing configuration, proven customer. No offer/calendar/allowance/seller agreement prerequisite. |
+| Product-bound purchase/payment (Step 3) | Valid link/live terms/consent, configured seller and billing/Widget connection, then actual prepared-subscription proof. |
+
+Missing/invalid billing values must produce a safe capability-specific error and
+no outbound request using an invalid URL or secret. This is not permission to
+ignore invalid configuration or weaken production TLS. Do not add a capability
+registry/framework; use the existing composition and feature error boundaries.
+
 ### CLI target and manual setup contract
 
 These are TARGET commands to implement, not commands to run during authoring:
@@ -471,13 +553,18 @@ configuration, without printing secrets or assuming an unrelated Compose project
 complete selected composition, correct period vs period-association ID, exact
 money, current price change, invalid/unknown currency/calendar, unavailable
 sources, separate mock provenance, removed-config independence, configuration
-pass-through and redaction. No live network.
+pass-through and redaction. Add positive normal-config tests with NO retired
+proof objects; production-shaped compatible remote-source configuration; dev
+Kernel mock + real-client LBX; missing signing secret not breaking catalog/auth;
+known unmapped product and absent metered allowance without fabricated values.
+Use test transports, not real credentials or a live network.
 
 `test_any709_step1_postgres.py`: migration on populated baseline; legacy history
 readability; link publish/query; identical repeat; concurrent first publication;
 retarget/CAS across offers; no duplicate active product heads; unchanged old pins;
-no synthetic promotion. Update relevant existing catalog/publication tests for
-changed semantics rather than weakening ownership/no-store/concurrency tests.
+no synthetic promotion. Include restart/credential rotation with unchanged
+internal scope and rejection of incompatible existing real connection bindings.
+Update relevant existing catalog/publication tests for changed semantics rather than weakening ownership/no-store/concurrency tests.
 
 ### Human verification and review checkpoint
 
@@ -497,6 +584,10 @@ run development migrations with a production URL.
 
 PASS: application wiring is complete; link works without old files/IDs; listing
 is honest and the selected offer is live; tests establish history/CAS safety.
+Close each inherited register row in the handoff with the changed consumer and
+its focused test/manual observation. Old names retained solely for v1 history or
+negative tests are documented, not mistaken for a runtime dependency. A result
+that still asks the owner to supply approval/policy JSON is NOT Step 1 completion.
 No need to mutate a real tariff to test repricing: use the focused fake-provider
 test; human live repricing is optional only when explicitly authorized.
 
@@ -506,6 +597,8 @@ test; human live repricing is optional only when explicitly authorized.
 > 0-3, this full step, applicable AGENTS and the direct source/catalog/CLI/config
 > dependencies. Deliver ordinary real LBX wiring, one direct product-link CLI,
 > versioned history/current-head safety and source-backed catalog/current offers.
+> Close the inherited ANY-664 register through Settings, normalizers, stored
+> readers, API/generated web contracts and Compose, not only CLI loaders.
 > Remove mandatory proposal/approval/profile workflow and manual duplicate
 > account IDs without deleting accepted history, weakening validation, inventing
 > policy/quantity facts or reclassifying synthetic IDs. Keep the Kernel mock
@@ -593,7 +686,10 @@ outer key; stale session after await; no secret persistence/PII leakage.
 
 `any709-step2.test.tsx`: real SDK loader boundary substituted only inside tests;
 explicit open, empty state, no-token-storage, reload/logout/user-switch races,
-SDK failure and safe error display. Test fixtures must never contact real LBX.
+SDK failure and safe error display. With customer identity/readiness healthy,
+a missing mapping or failed quote must not remove/block the billing entry or
+await a failing catalog request before bootstrap. Keep guest/verification guards.
+Test fixtures must never contact real LBX.
 
 ### Human verification and review checkpoint
 
@@ -662,7 +758,11 @@ parallel provider state machine or scheduler.
    held purchases. New admission revalidates actual source terms and compares
    the expected fingerprint/legal versions. Client price/flags are never authority.
 3. In ONE short transaction pin accepted snapshot, required append-only consent,
-   current link revision and purchase hold. Do not resurrect an old catalog-
+   current link revision and purchase hold. Create/reuse the LOCAL customer slot
+   if needed for the existing FK; this transaction sends no customer POST.
+   Recheck the exact reviewed link and current required legal versions under
+   the local publication/hold concurrency boundary per 2.7. A retarget must not
+   slip through on identical money. Do not resurrect an old catalog-
    approval file as legal acceptance. Keep source/config artifacts out of runtime
    authorization. Existing legal text remains unchanged; test legal versions
    remain clearly non-production legal approval.
@@ -751,6 +851,10 @@ zero/one/multiple discovery; restart/+2h/hold behavior; real-format 200/201 and
 malformed successes; org9 rejected for seller21; waiting dates; period ID vs
 association ID; changed subscription outer hint; effective vs catalog price;
 legacy link/Manage history; no grants/trust writes; redaction and bounded capacity.
+Include link retarget and legal-version changes while source I/O is in flight,
+equal-price different-offer selection, and unchanged terms with only irrelevant
+observation timestamps/read-set provenance changing. Those must not silently
+rebind a purchase or manufacture a new monetary-consent conflict.
 Test that payment flags are not permanently fixed true in the generated DTO.
 
 ### Human verification and review checkpoint
@@ -833,6 +937,9 @@ backend/configuration from previous steps into an undocumented cleanup list.
 6. Widget close/callback can prompt a bounded status refresh, but never mark paid,
    grant access or mutate quota. Show observed billing state and separately that
    paid-access delivery belongs to later stages. No fake instant activation.
+   A local status GET is not a new LBX observation. Until the Step 8 loop exists,
+   show the last observed state/time or awaiting-verification truthfully; do not
+   claim the status refreshed at LBX merely because a local GET returned 200.
 7. Finish accessible desktop/mobile Bundle 3 presentation, localization and
    diagnostic correlation. Keep frontend wire DTOs generated and transport-
    owned; no second handwritten runtime schema or broad auth/error redesign.
@@ -840,6 +947,8 @@ backend/configuration from previous steps into an undocumented cleanup list.
    history and explicitly list Step 8-10 deferrals. Remove abandoned runtime
    loaders/config/sample profiles/test-stub paths if any were selectively copied.
    Do not remove reusable test doubles/fixtures or broaden into unrelated cleanup.
+   Confirm no copied PR #143 loader/gate leaked through Steps 2-3; do not defer
+   the mandatory Step 1 inherited-code closure until this final stage.
 9. Finish ONE runbook at `docs/engineering/ANY-709-billing-runbook.md` with the
    actual commands, safe read-only SQL, normal config, test DB vs application DB,
    mapping IDs/revisions, common failures, migration/rollback cautions, human
@@ -984,7 +1093,7 @@ ready. Production migrations/payment actions are never automatic QA commands.
 | Result | Evidence needed | Initial state |
 |---|---|---|
 | FORMAT_LINT | Actual per-step commands/outcomes, not a code-review guess | NOT_RUN |
-| STEP_1_LINK_PASS | Tests, normal configuration, direct live link/query and honest catalog | NOT_RUN |
+| STEP_1_LINK_PASS | Tests, normal configuration, direct live link/query, honest catalog and all inherited ANY-664 closure rows | NOT_RUN |
 | CUSTOMER_WIDGET_PASS | Normal Portal, existing/new user, actual SDK/Client identity, no duplicate customer | NOT_RUN |
 | PURCHASE_PREPARATION_PASS | Correct consent, one intent/dedicated agreement/subscription, actual readback and retry safety | NOT_RUN |
 | MAPPED_PURCHASE_WIDGET_PASS | Actual prepared intended subscription and usable correct-agreement payment UI | NOT_RUN |
@@ -1022,6 +1131,7 @@ Sources used for decisions, not a request that Codex repeat all reading:
 - [S7 - LBX client](https://github.com/gushinets/payments-portal/blob/dfdc67a9617df1afb5213b0fb831b770e6d816be/apps/api/app/integrations/lbx/client.py), dto.py and SELECTED_OFFER.md: selected GETs, numeric/date handling and source-input limitations, not new live proof.
 - [S8 - external billing design](https://github.com/gushinets/payments-portal/blob/dfdc67a9617df1afb5213b0fb831b770e6d816be/docs/superpowers/specs/2026-09-15-external-billing-boundary-design.md), [Kernel access design](https://github.com/gushinets/payments-portal/blob/dfdc67a9617df1afb5213b0fb831b770e6d816be/docs/superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md), live-source amendment: retained invariants; narrow owner-approved supersession described in 2.8, not blanket rejection of those designs.
 - [S9 - root commands](https://github.com/gushinets/payments-portal/blob/dfdc67a9617df1afb5213b0fb831b770e6d816be/package.json), apps/web/package.json, apps/api/pyproject.toml, tests/conftest.py, playwright.config.ts and Compose agent: actual tooling aliases and test isolation.
+- Review recheck (2026-10-26): main and the ANY-709 revision in 1.1 are unchanged; PR #143 remains closed/unmerged. Direct rereads additionally covered Settings validators, source provenance, selected-offer proof requirements, stored mapping validation, catalog response fields and Kernel-mock Compose. This is code/document review, not runtime proof.
 - Supplied user-create-full-widget-e2e/agreement-23-readonly reports and prior plan: proven provider observations and FORMAT reference only. Earlier stopped-probe gates, recorded-only runtime and old prompts are not inherited requirements.
 
 The authoritative requirements above come from the updated owner/ticket record.

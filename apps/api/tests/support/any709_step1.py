@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from app.core.settings import Settings
@@ -47,6 +48,26 @@ def link_selection(**overrides: Any) -> ProductLinkRequest:
 def recording() -> SelectedOfferRecording:
     result = SelectedOfferRecording()
     result.replace("tariff", '"currency_id":77', '"currency_id":1')
+    return result
+
+
+def readiness_recording() -> SelectedOfferRecording:
+    """Retained E04/E05 wire bodies, with explicitly synthetic tariff/period support.
+
+    Source: ANY709-LBX043-readonly-readiness.md, 2026-10-25. The two bodies
+    were extracted from its sanitized logs without re-encoding JSON numbers.
+    This combined test recording is not a captured complete stand snapshot.
+    """
+    result = SelectedOfferRecording(tariff_id=32, tariff_service_id=1)
+    result.bodies["tariff"] = recording().bodies["tariff"].replace(b'"tariff_id":701', b'"tariff_id":32')
+    result.bodies["periods"] = (
+        result.bodies["periods"]
+        .replace(b'"period_id":901', b'"period_id":1')
+        .replace(b'"tariff_period_id":801', b'"tariff_period_id":82')
+    )
+    fixture_root = Path(__file__).resolve().parents[1] / "fixtures/lbx/readiness"
+    result.bodies["services"] = (fixture_root / "e04-services.json").read_bytes()
+    result.bodies["prices"] = (fixture_root / "e05-prices.json").read_bytes()
     return result
 
 

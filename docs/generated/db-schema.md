@@ -201,6 +201,7 @@ Indexes and constraints:
 |---|---|---:|---|
 | `external_billing_account_id` | `TEXT` | no | PK |
 | `product_id` | `TEXT` | no | PK |
+| `provider_origin` | `TEXT` | yes |  |
 | `mapping_revision_id` | `CHAR(32)` | no | FK |
 | `revision_number` | `BIGINT` | no |  |
 
@@ -209,6 +210,7 @@ Indexes and constraints:
 - `ck_commercial_product_heads_product_nonempty`
 - `ck_commercial_product_heads_revision_positive`
 - `fk_commercial_product_heads_mapping_scope`
+- `uq_commercial_product_heads_origin_product`
 
 ## `country_region_rules`
 

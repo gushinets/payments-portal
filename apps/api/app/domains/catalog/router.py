@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field, model_validator
 
 from app.composition.catalog import catalog_preview
@@ -14,6 +14,8 @@ from app.core.settings import settings
 from app.domains.catalog.commercial_offer import CommercialEvidenceMode
 from app.domains.catalog.contracts import SourceProvenance
 from app.domains.catalog.preview import Availability, CatalogProductNotFound, CatalogUnavailable, ProductPreview
+from app.domains.catalog.publication import SessionFactory
+from app.http.dependencies import get_session_factory
 
 
 router = APIRouter(prefix="/api/catalog", tags=["catalog"])
@@ -96,9 +98,13 @@ def present_product(product: ProductPreview) -> CatalogProductResponse:
     )
 
 
-async def read_preview(request: Request, product_id: str | None = None) -> tuple[ProductPreview, ...]:
+async def read_preview(
+    request: Request, session_factory: SessionFactory, product_id: str | None = None
+) -> tuple[ProductPreview, ...]:
     try:
-        return await catalog_preview(request.app.state.sources, settings, product_id=product_id)
+        return await catalog_preview(
+            request.app.state.sources, settings, session_factory=session_factory, product_id=product_id
+        )
     except CatalogProductNotFound:
         raise HTTPException(
             status_code=404, detail={"code": "catalog_product_not_found"}, headers={"Cache-Control": "no-store"}
@@ -112,12 +118,21 @@ async def read_preview(request: Request, product_id: str | None = None) -> tuple
 
 
 @router.get("/products", response_model=CatalogProductsResponse)
-async def list_products(request: Request, response: Response) -> CatalogProductsResponse:
+async def list_products(
+    request: Request, response: Response, session_factory: Annotated[SessionFactory, Depends(get_session_factory)]
+) -> CatalogProductsResponse:
     response.headers["Cache-Control"] = "no-store"
-    return CatalogProductsResponse(products=[present_product(item) for item in await read_preview(request)])
+    return CatalogProductsResponse(
+        products=[present_product(item) for item in await read_preview(request, session_factory)]
+    )
 
 
 @router.get("/products/{product_id:path}", response_model=CatalogProductResponse)
-async def product_detail(product_id: str, request: Request, response: Response) -> CatalogProductResponse:
+async def product_detail(
+    product_id: str,
+    request: Request,
+    response: Response,
+    session_factory: Annotated[SessionFactory, Depends(get_session_factory)],
+) -> CatalogProductResponse:
     response.headers["Cache-Control"] = "no-store"
-    return present_product((await read_preview(request, product_id))[0])
+    return present_product((await read_preview(request, session_factory, product_id))[0])

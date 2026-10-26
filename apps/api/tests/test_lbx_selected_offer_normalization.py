@@ -74,6 +74,18 @@ async def test_complete_simulated_offer_uses_real_auth_and_selected_reads() -> N
     assert all(request.url.host == "lbx-client.test" and not request.url.query for request in recording.requests)
 
 
+async def test_equivalent_wire_quantity_and_calendar_forms_preserve_legacy_normalization() -> None:
+    baseline = await _read(SelectedOfferRecording())
+    recording = SelectedOfferRecording()
+    recording.replace("services", '"min_multiplicator":1', '"min_multiplicator":1.0')
+    recording.replace("services", '"max_multiplicator":9', '"max_multiplicator":9.0')
+    recording.replace("services", '"price_start_date":"2026-10-01"', '"price_start_date":"2026-10-01 00:00:00"')
+    recording.replace("prices", '"start_date":"2026-10-01"', '"start_date_year":2026,"start_date_month":10')
+    result = await _read(recording)
+    assert result.terms == baseline.terms
+    assert result.selected_evidence_digest == baseline.selected_evidence_digest
+
+
 async def test_unrelated_records_editorial_text_and_observation_time_do_not_change_equality() -> None:
     baseline = await _read(SelectedOfferRecording())
     recording = SelectedOfferRecording()

@@ -4,6 +4,95 @@ Status: **IMPLEMENTED_AWAITING_HUMAN_VALIDATION**
 Date: 2026-10-26
 Selected scope: Step 1 only. The supplied untracked implementation plan was preserved unchanged.
 
+## PR #150 Step 1 correction (2026-10-26)
+
+Status: **IMPLEMENTED_AWAITING_HUMAN_VALIDATION**. The owner's revised local plan
+was preserved byte-for-byte (SHA-256 `77d09024a2f223b4a68ba7bfcc6970ce551d96c75615799d6547e7736416850b`).
+All earlier test/migration/readiness results below are historical and do not
+validate this correction. No tests or collection, typechecks, builds, migrations,
+container/browser/application/provider probes, staging, commits or pushes ran.
+
+1. DTOs accept retained sanitized E04/E05 wire bodies: exact numeric `1.0`,
+   provider-local midnight and history year/month. Decimal decoding remains
+   strict; fractional quantities are parsed then classified as unsupported,
+   invalid/nonfinite/bool values are refused, and calendar dates never become
+   paid UTC intervals. The fixture README distinguishes retained bodies from
+   synthetic tariff/period/Kernel/auth support.
+2. Server API readiness requires only origin/username/password. Widget and
+   seller requirements are separate future-operation checks. Currency/calendar
+   remain offer errors; partial billing leaves Portal identity available.
+3. New connection IDs depend on canonical origin and deployment, independently
+   of credentials. Proven old scopes keep their immutable IDs/FKs; an authorized
+   identical publish records origin on the mutable head for subsequent login
+   rotation. Unknown/ambiguous real bindings conflict; synthetic history is inert.
+   **New forward migration `20261026_0004_product_head_origin`: AUTHORED_NOT_RUN.**
+   It adds only nullable head provenance plus origin/product uniqueness. Existing
+   migration files and the working database were not changed. Before rotating an
+   unbound old login, perform the runbook's one-time identical publish; a lost old
+   identity without retained origin requires separate provenance reconciliation.
+4. A typed provider-ID → RUB/major/scale-2 mapping replaces algorithm constants;
+   another configured external RUB ID works without float conversion.
+5. Catalog composition receives its session factory through DI. Each worker
+   owns/closes its DB resources before HTTP. A typed source-failure exception
+   preserves 503/no-store independently of diagnostic prefixes; incomplete and
+   unsupported offers remain distinct.
+6. Existing mock/token, production-source, exact Alembic schema/constraints and
+   Portal E2E assertions were updated. Empty catalog, missing product and source
+   failure have separate regressions; the false-subscription guard remains.
+
+Changed Python paths (also the exact format/lint coverage):
+
+```bash
+API_FILES=(
+  apps/api/alembic/versions/20261026_0004_product_head_origin.py
+  apps/api/app/{cli/commercial_mappings,composition/catalog,core/settings,domains/catalog/{commercial_offer,link_publication,router},http/dependencies,infrastructure/queries/commercial_mappings,integrations/lbx/{client,current_offer,dto,selected_offer},models/billing_projections}.py
+  apps/api/tests/{support/{any709_step1,kernel,lbx,lbx_selected_offer},test_alembic_postgres,test_any709_step1_postgres,test_any709_step1_sources,test_catalog_api,test_kernel_mock_dev,test_lbx_client,test_lbx_selected_offer_normalization,test_source_composition}.py
+)
+.venv/bin/python -m ruff format --config apps/api/pyproject.toml "${API_FILES[@]}"
+.venv/bin/python -m ruff check --config apps/api/pyproject.toml "${API_FILES[@]}"
+(cd apps/web && npm exec --no -- eslint e2e/portal-ru.spec.ts --fix --max-warnings=0)
+PATH="$PWD/.venv/bin:$PATH" npm run generate
+git diff --check
+```
+
+Results: Ruff format/check **exit 0** on all 26 paths; the later PostgreSQL test
+and source-fixture edits were formatted/linted again, **exit 0**. ESLint **exit 0**. Generation
+**exit 0**, updating only `docs/generated/db-schema.md`; OpenAPI/TS unchanged.
+Whitespace lint **exit 0**. Other changed files: `.env.example`,
+`.env.production.example`, `ARCHITECTURE.md`, the data-model reference, the
+[existing runbook](../../engineering/lbx-product-links.md), this handoff,
+`apps/api/tests/fixtures/lbx/README.md`, two retained `readiness/*.json` bodies under API
+tests, and `apps/web/e2e/portal-ru.spec.ts`. No approval/profile/account-ID input
+or fabricated quota was reintroduced. CLI authorization/audit, product CAS,
+immutable history/pins and link/current-offer/consent separation remain.
+
+**All new/updated tests: NOT_RUN.** Exact human commands (from repository root):
+
+```bash
+export PATH="$PWD/.venv/bin:$PATH"
+PYTEST_ADDOPTS='-k "test_any709_step1_sources or test_lbx_client or test_lbx_selected_offer or test_source_composition or test_kernel_mock_dev"' npm run test:api:fast
+python scripts/repo.py test-db up
+PYTEST_ADDOPTS='-k "test_any709_step1_postgres or test_alembic_postgres or test_catalog_api or test_commercial_mapping_postgres"' npm run test:api:postgres
+# Stop the test server only if it was started solely for this verification:
+python scripts/repo.py test-db stop
+# Intended local working DB only, separately from the isolated test DB:
+npm run migrate:api
+# With the human-configured browser harness:
+npm run test:e2e -- apps/web/e2e/portal-ru.spec.ts apps/web/e2e/catalog-preview.spec.ts
+```
+
+Expect selected tests with zero failures (zero selected/all skipped is not
+PASS), the full four-revision chain ending at `20261026_0004`, exactly 26
+application tables, exact head PK/FK/check/unique constraints and unchanged
+historical mapping documents. On the human-configured browser harness use its
+configured harness defaults (or its actual `PLAYWRIGHT_BASE_URL` and
+`PLAYWRIGHT_API_BASE_URL`). Then follow the runbook's exact host/container
+dry-run/publish/query and read-only SQL commands: real source reads, no required
+Widget secret/seller for linking, one current head, unchanged pin on identical
+publish/repricing and credential rotation, separate unavailable states, no new
+customer/purchase/subscription. Pending: human migration/test/live acceptance
+and the actual provider billing timezone. Steps 2–4 remain untouched.
+
 ## Implemented result
 
 Normal local/agent/production configuration now carries one server-only LBX

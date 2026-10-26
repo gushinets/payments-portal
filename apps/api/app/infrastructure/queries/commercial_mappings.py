@@ -49,6 +49,20 @@ def product_head_revision(db: Session, head: CommercialProductHead) -> Commercia
     return db.get(CommercialMappingRevision, head.mapping_revision_id)
 
 
+def connection_heads(
+    db: Session, *, account_id: str, provider_origin: str, legacy_account_id: str | None
+) -> list[CommercialProductHead]:
+    statement = select(CommercialProductHead).where(
+        (CommercialProductHead.external_billing_account_id == account_id)
+        | (CommercialProductHead.provider_origin == provider_origin)
+        | (
+            CommercialProductHead.provider_origin.is_(None)
+            & (CommercialProductHead.external_billing_account_id == legacy_account_id)
+        )
+    )
+    return list(db.scalars(statement))
+
+
 def has_foreign_customer_binding(db: Session, *, account_id: str) -> bool:
     customer = (
         db.scalar(

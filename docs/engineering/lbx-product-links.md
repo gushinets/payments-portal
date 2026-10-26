@@ -5,10 +5,12 @@ claimed. Customer creation, Widget and purchases remain later ANY-709 steps.
 
 ## Connection and deployment
 
-Set private values in the configured environment or the untracked `.env`:
-`LBX_BASE_URL` (HTTP(S) origin only), `LBX_SERVER_USERNAME`,
-`LBX_SERVER_PASSWORD`, `LBX_WIDGET_SIGNING_SECRET`, and
-`LBX_SELLER_ORGANIZATION_ID`. Use production HTTPS. Server API requests append
+Server API reads and product linking require only `LBX_BASE_URL` (HTTP(S)
+origin only), `LBX_SERVER_USERNAME` and `LBX_SERVER_PASSWORD` in the configured
+environment or untracked `.env`. Use production HTTPS. `LBX_WIDGET_SIGNING_SECRET`
+is a separate later account-Widget requirement; `LBX_SELLER_ORGANIZATION_ID` is
+a later purchase requirement. Missing signing/seller values do not gate GETs or
+linking. Server API requests append
 `/api/rest/v1` exactly once; future Client API/SDK paths are
 `/api/rest/v1/client` and `/lbxwidget.js` on the same validated origin. Never put
 these secrets in browser configuration, CLI arguments or checked-in files.
@@ -24,11 +26,23 @@ operator-supplied IANA billing calendar. The supplied stand-043 evidence does
 not establish its timezone: obtain it before the human offer checkpoint. Do
 not infer UTC/Moscow from locale or host settings. Missing/invalid calendar is
 `selected_offer_billing_timezone_required` / `selected_offer_billing_timezone_invalid`,
-an offer error. RU currency interpretation is explicitly `LBX_CURRENCY_ID=1`,
-`LBX_CURRENCY=RUB`, major units with two decimal places. Other interpretations
+an offer error. Currency interpretation is a typed mapping from the configured
+`LBX_CURRENCY_ID` to `LBX_CURRENCY=RUB`, major units with scale 2. ID 1 is the
+supplied test setup, not an algorithm constant; configure another proven external
+ID for the same supported RUB contract when needed. Mismatching IDs/unsupported
+interpretations
 are unsupported offer errors. These settings do not attest credit, tax,
 renewal/cancellation or historical-subscription policy; no unknown fact is filled
 with false/zero. Later purchase validation must obtain its own applicable facts.
+Neither calendar nor currency readiness blocks a raw Server API GET or the
+future account-Widget readiness check. Widget/purchase runtime is not added here.
+
+The transport accepts the retained E04/E05 representations: exact JSON numeric
+`1.0` quantity bounds, a provider-local midnight `price_start_date`, and history
+`start_date_year`/`start_date_month`. A schedule month means its first calendar
+day, with no assumed timezone/paid UTC interval. Fractional quantities parse
+exactly but are unsupported by the integer-service profile; missing facts remain
+incomplete. Invalid/nonfinite numbers and invalid/conflicting dates fail safely.
 
 Configure the existing Kernel URL/token. Optional `KERNEL_MOCK_ENABLED=1` with
 explicit `KERNEL_MOCK_TOKEN` and matching `KERNEL_SERVICE_TOKEN` starts only the
@@ -50,7 +64,7 @@ outside runtime.json, doctor output and public web settings. Do not print
 ## Human setup and privileged CLI
 
 Run only against the intended local environment, never a production URL for
-development migrations. Apply `20261026_0003` through `npm run migrate:api`
+development migrations. Apply the current head `20261026_0004` through `npm run migrate:api`
 with the intended host database configuration, then `npm run repo:up -- --reuse`.
 The harness's normal migrate service also applies the chain during startup.
 On hosts without `python` on PATH, prefix npm commands with
@@ -117,6 +131,19 @@ scope is refused. A conflicting proven old connection yields
 `mapping_existing_connection_scope_conflict`: inspect/migrate that binding
 explicitly; never relabel it or ask customers to register again.
 
+The fresh connection ID derives from canonical provider origin plus deployment
+tenant/region, never login or password. For an existing credential-derived v1
+scope, keep the previous username configured for one authorized identical
+`publish` after applying `20261026_0004`. The prior hash must match this exact
+origin/username. The command records the proven origin on the mutable head,
+returns the same immutable link (`inserted=false`), and preserves its scope/FKs.
+Subsequent username/password rotation and new links use that proven storage
+scope. Query is read-only; it does not create this compatibility proof. If the
+old username was already lost/rotated and no origin was retained, the old hash
+alone cannot prove provider membership: expect an explicit connection conflict
+and reconcile its provenance separately. Never reset the DB or guess an alias.
+Changing the provider origin cannot adopt the former provider's external IDs.
+
 ## Observable result and read-only inspection
 
 `GET /api/catalog/products` lists enabled technical products with one bounded
@@ -131,6 +158,7 @@ Human read-only SQL (use the configured environment's SQL console):
 
 ```sql
 SELECT h.product_id, h.revision_number AS product_revision,
+       h.provider_origin,
        r.mapping_revision_id, r.billing_offer_id, r.revision_number AS offer_revision,
        r.mapping_schema_version, r.mapping_document->'selection' AS selected_ids,
        r.mapping_document->>'kernel_provenance' AS kernel_provenance,
@@ -160,13 +188,15 @@ catalog browsing leave customer/purchase/subscription counts unchanged.
 ## Human verification (NOT_RUN by Codex)
 
 ```bash
-PYTEST_ADDOPTS='-k any709_step1' npm run test:api:fast
+export PATH="$PWD/.venv/bin:$PATH"
+PYTEST_ADDOPTS='-k "test_any709_step1_sources or test_lbx_client or test_lbx_selected_offer or test_source_composition or test_kernel_mock_dev"' npm run test:api:fast
 python scripts/repo.py test-db up
-PYTEST_ADDOPTS='-k any709_step1' npm run test:api:postgres
+PYTEST_ADDOPTS='-k "test_any709_step1_postgres or test_alembic_postgres or test_catalog_api or test_commercial_mapping_postgres"' npm run test:api:postgres
+# Stop only if the server was started solely for these tests:
 python scripts/repo.py test-db stop
 # With the human-configured isolated browser harness:
 npm --workspace @anytoolai/web run test:components -- CatalogPreview
-npm run test:e2e -- apps/web/e2e/catalog-preview.spec.ts
+npm run test:e2e -- apps/web/e2e/portal-ru.spec.ts apps/web/e2e/catalog-preview.spec.ts
 ```
 
 The human owns all execution, migrations, application startup and live 043 reads.

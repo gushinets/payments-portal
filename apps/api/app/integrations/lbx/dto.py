@@ -12,7 +12,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Annotated, Any, Generic, TypeVar
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, SecretStr, field_validator
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, SecretStr, field_validator, model_validator
 
 
 Identity = Annotated[int, Field(gt=0)]
@@ -30,9 +30,11 @@ def _exact_number(value: Any) -> Decimal:
 
 
 def _calendar_date(value: Any) -> date:
-    if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
-        raise ValueError("expected an ISO calendar date")
-    return date.fromisoformat(value)
+    # E04 uses a provider-local midnight, not a UTC timestamp. Accept only
+    # that documented representation and ISO dates; never truncate a time.
+    if not isinstance(value, str) or not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}(?: 00:00:00)?", value):
+        raise ValueError("expected a calendar date or provider-local midnight")
+    return date.fromisoformat(value[:10])
 
 
 ExactNumber = Annotated[Decimal, BeforeValidator(_exact_number)]
@@ -128,9 +130,10 @@ class LbxTariffService(LbxDto):
     catalog_id: Identity | None = None
     catalog_service_id: Identity | None = None
     enabled_by_default: int | None = None
-    # Swagger declares INTEGER commercial service bounds, not paid allowances.
-    min_multiplicator: NonnegativeInteger | None = None
-    max_multiplicator: NonnegativeInteger | None = None
+    # E04 returns JSON 1.0. Parse exact numbers here; supported integer
+    # quantities are a commercial-profile decision in the normalizer.
+    min_multiplicator: ExactNumber | None = None
+    max_multiplicator: ExactNumber | None = None
     description: str | None = None
     full_description: str | None = None
     payment_object: int | None = None
@@ -148,6 +151,8 @@ class LbxServicePrice(LbxDto):
     price_id: Identity
     period_id: Identity
     start_date: CalendarDate | None = None
+    start_date_year: Annotated[int, Field(ge=1, le=9999)] | None = None
+    start_date_month: Annotated[int, Field(ge=1, le=12)] | None = None
     connection_price: ExactNumber | None = None
     bulk_price: ExactNumber | None = None
     price: ExactNumber | None = None
@@ -155,3 +160,17 @@ class LbxServicePrice(LbxDto):
     period_type: int | None = None
     period_length: Annotated[int, Field(gt=0)] | None = None
     next_change_date: CalendarDate | None = None
+
+    @model_validator(mode="after")
+    def normalize_calendar_start(self) -> LbxServicePrice:
+        # E05 identifies the start calendar month. This is schedule evidence,
+        # never the beginning of a paid subscription or an assumed UTC instant.
+        if self.start_date_year is not None and self.start_date_month is not None:
+            start = date(self.start_date_year, self.start_date_month, 1)
+            if self.start_date is not None and self.start_date != start:
+                raise ValueError("conflicting price calendar starts")
+            object.__setattr__(self, "start_date", start)
+        elif self.start_date_year is not None or self.start_date_month is not None:
+            if self.start_date is not None:
+                raise ValueError("incomplete alternate price calendar start")
+        return self

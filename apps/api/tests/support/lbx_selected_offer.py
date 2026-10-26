@@ -31,7 +31,9 @@ def simulated_inputs() -> SelectedOfferInputs:
 
 
 class SelectedOfferRecording:
-    def __init__(self) -> None:
+    def __init__(self, *, tariff_id: int = TARIFF, tariff_service_id: int = SERVICE) -> None:
+        self.tariff_id = tariff_id
+        self.tariff_service_id = tariff_service_id
         self.bodies = {
             name: (FIXTURES / f"{name}.json").read_bytes() for name in ("tariff", "periods", "services", "prices")
         }
@@ -58,10 +60,10 @@ class SelectedOfferRecording:
         if suffix == "/auth":
             return fixture_response("auth")
         name = {
-            f"/tariffs/{TARIFF}": "tariff",
-            f"/tariffs/{TARIFF}/periods": "periods",
-            f"/tariffs/{TARIFF}/services": "services",
-            f"/tariffs/{TARIFF}/services/{SERVICE}/prices": "prices",
+            f"/tariffs/{self.tariff_id}": "tariff",
+            f"/tariffs/{self.tariff_id}/periods": "periods",
+            f"/tariffs/{self.tariff_id}/services": "services",
+            f"/tariffs/{self.tariff_id}/services/{self.tariff_service_id}/prices": "prices",
         }[suffix]
         self.counts[name] = self.counts.get(name, 0) + 1
         body = self.reread_bodies.get(name, self.bodies[name]) if self.counts[name] > 1 else self.bodies[name]
