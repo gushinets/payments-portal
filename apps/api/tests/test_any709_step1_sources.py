@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -17,14 +17,14 @@ from app.cli.commercial_mappings import parser
 from app.composition import mapping_operator
 from app.composition.mapping_operator import fresh_link_evaluation
 from app.composition.sources import source_resources
-from app.domains.catalog.commercial_offer import OfferRefusalKind, SelectedOfferRefused
+from app.domains.catalog.commercial_offer import OfferRefusalKind, SelectedOfferRefused, SelectedOfferSourceFailed
 from app.domains.catalog.preview import CatalogProductNotFound
 from app.domains.catalog.mapping_evidence import MappingRefused
 from app.domains.catalog.product_link import ProductLinkRequest
 from app.domains.catalog.router import CatalogMoney
 from app.integrations.lbx.current_offer import read_current_offer
 from app.infrastructure.preflight import PreflightCleanupPending
-from apps.api.tests.support.any709_step1 import link_selection, recording, step1_settings
+from apps.api.tests.support.any709_step1 import link_selection, readiness_recording, recording, step1_settings
 from apps.api.tests.support.kernel import manifest_fixture, resign
 from scripts import repo
 
@@ -93,6 +93,98 @@ async def test_any709_step1_current_price_keeps_digits_beyond_binary_float_preci
         source.replace(name, '"price":100.01', '"price":9007199254740993.01')
     fresh = await evaluate(source=source)
     assert fresh.offer.money.recurring_amount == Decimal("9007199254740993.01")
+
+
+async def test_any709_step1_retained_e04_e05_decode_through_real_client_and_normalize() -> None:
+    source = readiness_recording()
+    configuration = step1_settings(lbx_widget_signing_secret="", lbx_seller_organization_id="")
+    selection = link_selection(tariff_id=32, tariff_service_id=1, period_id=1)
+    async with source_resources(configuration, lbx_transport=httpx.MockTransport(source.respond)) as sources:
+        async with sources.preflight.operation() as budget:
+            services = await sources.require_lbx().list_tariff_services(tariff_id=32, budget=budget)
+            prices = await sources.require_lbx().list_service_prices(tariff_id=32, tariff_service_id=1, budget=budget)
+        assert services.value[0].min_multiplicator == Decimal("1.0")
+        assert isinstance(services.value[0].max_multiplicator, Decimal)
+        assert services.value[0].prices[0].price_start_date == prices.value[0].start_date == date(2026, 10, 1)
+        assert prices.value[0].start_date_year == 2026 and prices.value[0].start_date_month == 10
+    fresh = await evaluate(source=source, selection=selection, configuration=configuration)
+    assert fresh.offer.money.recurring_amount == Decimal("100.0")
+    assert fresh.offer.money.connection_amount == Decimal("0.0")
+    assert fresh.offer.money.currency == "RUB" and fresh.offer.money.decimal_places == 2
+    assert fresh.offer.quantity.minimum == fresh.offer.quantity.maximum == Decimal("1.0")
+    assert type(fresh.offer.period.price_effective_from) is date
+    assert fresh.offer.period.price_effective_until is None
+    assert fresh.offer.period_id == 1 and fresh.offer.period_membership_id == 82
+
+
+@pytest.mark.parametrize("wire_number", ["true", "false", '"1.0"', "NaN", "Infinity", "-Infinity"])
+async def test_any709_step1_quantity_rejects_non_json_numbers_without_coercion(wire_number: str) -> None:
+    source = readiness_recording()
+    source.replace("services", '"min_multiplicator": 1.0', '"min_multiplicator": ' + wire_number)
+    with pytest.raises(SelectedOfferSourceFailed, match="lbx_response_invalid"):
+        await evaluate(source=source, selection=link_selection(tariff_id=32, tariff_service_id=1, period_id=1))
+
+
+async def test_any709_step1_fractional_source_bounds_are_parsed_but_unsupported() -> None:
+    source = readiness_recording()
+    source.replace("services", '"min_multiplicator": 1.0', '"min_multiplicator": 0.5')
+    with pytest.raises(SelectedOfferRefused) as error:
+        await evaluate(source=source, selection=link_selection(tariff_id=32, tariff_service_id=1, period_id=1))
+    assert not isinstance(error.value, SelectedOfferSourceFailed)
+    assert error.value.kind == OfferRefusalKind.NOT_SELLABLE
+    assert error.value.reason == "commercial_quantity_not_integer"
+
+
+@pytest.mark.parametrize(
+    "name,old,new",
+    [
+        ("services", '"2026-10-01 00:00:00"', '"2026-02-30 00:00:00"'),
+        ("services", '"2026-10-01 00:00:00"', '"2026-10-01 01:00:00"'),
+        ("services", '"2026-10-01 00:00:00"', '"2026-10-01T00:00:00Z"'),
+        ("services", '"2026-10-01 00:00:00"', "true"),
+        ("prices", '"start_date_month": 10', '"start_date_month": 13'),
+        ("prices", '"start_date_year": 2026', '"start_date_year": 0'),
+        ("prices", '"start_date_year": 2026', '"start_date_year": true'),
+        ("prices", '"start_date_year": 2026', '"start_date_year": 2026.0'),
+        ("prices", '"start_date_year": 2026', '"start_date_year": 2026, "start_date": "2026-11-01"'),
+    ],
+)
+async def test_any709_step1_calendar_wire_values_are_validated_strictly(name: str, old: str, new: str) -> None:
+    source = readiness_recording()
+    source.replace(name, old, new)
+    with pytest.raises(SelectedOfferSourceFailed, match="lbx_response_invalid"):
+        await evaluate(source=source, selection=link_selection(tariff_id=32, tariff_service_id=1, period_id=1))
+
+
+@pytest.mark.parametrize(
+    "name,old,new,reason",
+    [
+        ("services", '"min_multiplicator": 1.0,', "", "min_multiplicator_unknown"),
+        ("prices", '"start_date_month": 10,', "", "price_start_unknown"),
+        ("services", "2026-10-01 00:00:00", "2026-11-01 00:00:00", "inline_effective_date_conflict"),
+    ],
+)
+async def test_any709_step1_missing_or_conflicting_calendar_and_quantity_stay_offer_errors(
+    name: str, old: str, new: str, reason: str
+) -> None:
+    source = readiness_recording()
+    source.replace(name, old, new)
+    with pytest.raises(SelectedOfferRefused) as error:
+        await evaluate(source=source, selection=link_selection(tariff_id=32, tariff_service_id=1, period_id=1))
+    assert not isinstance(error.value, SelectedOfferSourceFailed)
+    assert error.value.kind == OfferRefusalKind.INCOMPLETE and error.value.reason == reason
+
+
+async def test_any709_step1_rub_mapping_uses_configured_provider_id_and_exact_amounts() -> None:
+    source = recording()
+    source.replace("tariff", '"currency_id":1', '"currency_id":77')
+    for name in ("services", "prices"):
+        source.replace(name, '"price":100.01', '"price":9007199254740993.01')
+    fresh = await evaluate(source=source, configuration=step1_settings(lbx_currency_id="77"))
+    assert fresh.offer.money.currency == "RUB" and fresh.offer.money.decimal_places == 2
+    assert fresh.offer.money.recurring_amount == Decimal("9007199254740993.01")
+    with pytest.raises(SelectedOfferRefused, match="currency_interpretation_unsupported"):
+        await evaluate(source=source, configuration=step1_settings(lbx_currency_id="78"))
 
 
 async def test_any709_step1_quantity_is_explicit_commercial_bounds_without_invented_connection_policy() -> None:
@@ -213,7 +305,17 @@ def test_any709_step1_removed_manual_configuration_cannot_override_connection_sc
     )
     assert (
         original.lbx_external_billing_account_id
+        == step1_settings(lbx_server_username="rotated", lbx_server_password="rotated").lbx_external_billing_account_id
+        == step1_settings(lbx_base_url="https://LBX-CLIENT.TEST:443/").lbx_external_billing_account_id
+        == step1_settings(lbx_server_username="", lbx_server_password="").lbx_external_billing_account_id
+    )
+    assert (
+        original.lbx_external_billing_account_id
         != step1_settings(lbx_base_url="https://other.test").lbx_external_billing_account_id
+    )
+    assert (
+        original.lbx_external_billing_account_id
+        != step1_settings(lbx_base_url="https://lbx-client.test:8443").lbx_external_billing_account_id
     )
     assert "isolated-test-widget-secret" not in repr(original)
     assert not {

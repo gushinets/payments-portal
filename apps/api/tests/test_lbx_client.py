@@ -322,6 +322,38 @@ def test_production_accepts_explicit_scoped_lbx_configuration_without_enabling_s
     assert configuration.lbx_configuration_error is None and configuration.kernel_base_url == ""
 
 
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"lbx_widget_signing_secret": "", "lbx_seller_organization_id": ""},
+        {"lbx_seller_organization_id": "not-an-id"},
+        {"lbx_currency_id": "unknown", "lbx_currency": "EUR", "lbx_billing_timezone": "Unknown/Invalid"},
+    ],
+)
+async def test_server_get_depends_only_on_server_connection_settings(overrides: dict[str, str]) -> None:
+    configuration = lbx_settings(**overrides)
+    assert configuration.lbx_configuration_error is None
+    async with lbx_source(httpx.MockTransport(respond_with_fixture), **overrides) as (client, owner):
+        async with owner.operation() as budget:
+            tariff = await client.get_tariff(tariff_id=TARIFF, budget=budget)
+    assert tariff.value.tariff_id == TARIFF
+
+
+def test_widget_and_purchase_readiness_are_independent_of_catalog_applicability() -> None:
+    no_widget = lbx_settings(lbx_widget_signing_secret="", lbx_seller_organization_id="")
+    assert no_widget.lbx_configuration_error is None
+    assert no_widget.lbx_widget_configuration_error == "lbx_widget_signing_secret_required"
+    account_only = lbx_settings(lbx_seller_organization_id="", lbx_billing_timezone="", lbx_currency="unsupported")
+    assert account_only.lbx_widget_configuration_error is None
+    assert account_only.lbx_purchase_configuration_error == "lbx_seller_organization_id_required"
+    invalid_seller = lbx_settings(lbx_seller_organization_id="-1")
+    assert invalid_seller.lbx_widget_configuration_error is None
+    assert invalid_seller.lbx_purchase_configuration_error == "lbx_seller_organization_id_invalid"
+    no_password = lbx_settings(lbx_server_password="")
+    assert no_password.lbx_widget_configuration_error == "lbx_connection_fields_required"
+    assert no_password.lbx_purchase_configuration_error == "lbx_connection_fields_required"
+
+
 async def test_close_owns_transport_and_closed_client_refuses_new_work() -> None:
     class Transport(httpx.MockTransport):
         closed = False

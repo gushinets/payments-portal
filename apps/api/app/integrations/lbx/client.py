@@ -49,7 +49,7 @@ T = TypeVar("T")
 class LbxRead(Generic[T]):
     """Integration-only source DTO and configured/requested identity context.
 
-    Account identity is the deployment's credential binding, not a provider
+    Account identity is the deployment's provider-origin binding, not a provider
     attestation: these GET responses contain no billing-account identity.
     Step 4 must normalize this before Application. No atomic snapshot implied.
     """

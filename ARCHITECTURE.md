@@ -418,9 +418,12 @@ commercial behavior:
   access delivery.
 
 `external_billing_account_id` is an opaque server-resolved connection scope,
-bound to normalized LBX origin and server username, independent of password
-rotation. It is no longer a manual operator input. Conflicting historical real
-scopes require explicit migration rather than relabelling. No
+derived from normalized LBX origin within the existing tenant/region deployment,
+independent of login/password rotation. It is not a manual operator input.
+Proven legacy storage scopes stay unchanged: the publisher can retain origin
+provenance on the existing mutable product head after verifying the previous
+credential-based derivation. Unproven/conflicting real bindings are diagnosed
+instead of relabelled; synthetic history is never promoted. No
 `external_billing_accounts` entity or table exists. Platform Kernel product
 and metric identifiers and External Billing object identifiers remain opaque
 at this boundary.

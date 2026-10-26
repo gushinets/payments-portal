@@ -141,6 +141,7 @@ class CommercialProductHead(Base):
 
     __tablename__ = "commercial_product_heads"
     __table_args__ = (
+        UniqueConstraint("provider_origin", "product_id", name="uq_commercial_product_heads_origin_product"),
         ForeignKeyConstraint(
             ["mapping_revision_id", "external_billing_account_id"],
             [
@@ -156,6 +157,9 @@ class CommercialProductHead(Base):
 
     external_billing_account_id: Mapped[str] = mapped_column(Text, primary_key=True)
     product_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    # Mutable connection provenance, not a manual account registry or catalog.
+    # NULL on old heads until the authorized publisher proves their origin.
+    provider_origin: Mapped[str | None] = mapped_column(Text, nullable=True)
     mapping_revision_id: Mapped[uuid.UUID] = mapped_column(uuid_type, nullable=False)
     # CAS sequence belongs to the PRODUCT, including retargets across offers.
     revision_number: Mapped[int] = mapped_column(BigInteger, nullable=False)

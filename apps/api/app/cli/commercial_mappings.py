@@ -83,7 +83,13 @@ def execute(arguments: argparse.Namespace, configuration: Settings) -> str:
             if arguments.revision is not None:
                 raise AppError("mapping_query_invalid")
             scope = configured_mapping_scope(configuration)
-            stored = query_product_link(SessionLocal, scope=scope, product_id=arguments.product_id)
+            stored = query_product_link(
+                SessionLocal,
+                scope=scope,
+                product_id=arguments.product_id,
+                provider_origin=configuration.lbx_provider_origin,
+                legacy_account_id=configuration.lbx_legacy_credential_scope,
+            )
             if stored is None:
                 return json.dumps(
                     {
@@ -134,6 +140,8 @@ def execute(arguments: argparse.Namespace, configuration: Settings) -> str:
             expected_previous_revision=arguments.expected_previous_revision,
             deadline=evaluation.deadline,
             lock_timeout_seconds=configuration.mapping_lock_timeout_seconds,
+            provider_origin=configuration.lbx_provider_origin,
+            legacy_account_id=configuration.lbx_legacy_credential_scope,
         )
         return json.dumps(
             {

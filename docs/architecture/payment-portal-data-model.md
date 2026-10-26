@@ -8,15 +8,19 @@ Last updated: 2026-10-26 (migration authored; human execution pending)
 This document describes the schema produced by the current Alembic chain:
 
 ```text
-20260924_0001 -> 20261001_0002 -> 20261026_0003 (head)
+20260924_0001 -> 20261001_0002 -> 20261026_0003 -> 20261026_0004 (head)
 ```
 
 `20260924_0001_clean_first_install` creates the 25-table first-install schema.
 `20261001_0002_clear_false_email_verification` is a data-only forward migration
 that clears predecessor registration-time `users.email_verified_at` values,
 because those timestamps did not prove mailbox ownership. `20261026_0003_commercial_product_heads` adds one small current-link pointer
-table without backfilling or rewriting any legacy evidence. The chain has one
-current head. This document is authoritative for the implemented SQLAlchemy
+table without backfilling or rewriting any legacy evidence.
+`20261026_0004_product_head_origin` adds nullable provider-origin provenance and
+unique `(provider_origin, product_id)` to that same pointer table. It guesses no
+legacy origin and rewrites no immutable scope. This correction migration is
+authored, not executed by Codex. The chain has one current head.
+This document is authoritative for the implemented SQLAlchemy
 table inventory and physical persistence rules; the generated column-level
 artifact remains `docs/generated/db-schema.md`.
 
@@ -157,6 +161,14 @@ and operator audit. It contains no price, approval certificates or invented
 technical allowance. `commercial_product_heads` has primary key
 `(external_billing_account_id, product_id)`, a restrictive composite FK to the
 immutable revision in the same account, and a positive product revision counter.
+Nullable `provider_origin` records only a proven canonical origin. Its unique
+pair with product ID prevents two current heads for the same provider/product
+under different historical storage scopes. It is not an account registry.
+New scope IDs depend on origin and deployment, not credentials. A recognized
+old credential-derived scope is retained, with its origin recorded only by an
+authorized publish; immutable documents/FKs are untouched. Rotation after this
+one-time binding preserves query/publication. Unknown or ambiguous old real
+scopes fail explicitly rather than adopting external IDs for another provider.
 Offer history numbering remains independent. Product lock/CAS protects first
 publication and cross-offer retargeting; v1 rows are not auto-selected. Equal
 link identity does not append on ordinary price changes. Accepted historical

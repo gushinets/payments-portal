@@ -8,9 +8,20 @@ const removedContracts = [
   "/api/account/subscriptions",
   "/api/auth/payment-status"
 ];
+// Match complete subscription/access nouns, never the adjective in
+// "Нет доступных продуктов" (a valid empty technical catalog).
+const inventedSubscriptionState = /нет\s+(?:активн[а-яё]+\s+)?(?:подписки|подписок|подписка|подписку|доступа?)(?![а-яё])|(?:подписк[аи]|доступа?)\s+(?:нет|отсутству(?:ет|ют))(?![а-яё])|no\s+(?:active\s+)?(?:subscriptions?|access)\b/iu;
+
+test("subscription-state guard permits an empty catalog but rejects invented access facts", () => {
+  expect(ruMessages.CatalogPreview.empty).not.toMatch(inventedSubscriptionState);
+  for (const unsupported of ["Нет подписки", "Нет активных подписок", "Нет доступа", "Подписка отсутствует", "Доступа нет", "No subscription", "No access"]) {
+    expect(unsupported).toMatch(inventedSubscriptionState);
+  }
+});
 
 test.beforeEach(async ({ page }) => {
-  // These legacy layout journeys cover the empty/unavailable catalog case.
+  // These layout journeys cover a genuinely empty technical catalog. Unknown
+  // product IDs are 404; source outages are covered separately in catalog-preview.
   // Positive source-ID and exact-money coverage lives in catalog-preview.spec.
   await page.route("**/api/catalog/products", (route) => route.fulfill({ json: { products: [] } }));
   await page.route("**/api/catalog/products/*", (route) => route.fulfill({
@@ -99,9 +110,7 @@ async function expectPortalBoundary(
   await expect(navigation).not.toContainText(/CloudPayments/i);
   await expect(main).not.toContainText(/(?:490|990)\s*₽|200\s*k\s*\+|320\s*\/\s*500|3\s*\/\s*10/i);
   await expect(footer).not.toContainText(/(?:490|990)\s*₽|200\s*k\s*\+|320\s*\/\s*500|3\s*\/\s*10/i);
-  await expect(main).not.toContainText(
-    /нет\s+(?:активн[а-яё]+\s+)?(?:подписк|доступ)|(?:подписк[аи]|доступ)\s+(?:нет|отсутствует)|no\s+(?:subscription|access)/i
-  );
+  await expect(main).not.toContainText(inventedSubscriptionState);
   await expect(main).not.toContainText(
     /\d[\d\s.,]*\s*(?:₽|руб|RUB|€|\$)|[€$₽]\s*\d/i
   );
@@ -201,7 +210,7 @@ for (const route of portalRoutes) {
   });
 }
 
-test("home preserves account entry and discovery with an empty published catalog", async ({
+test("home preserves account entry and discovery with an empty technical catalog", async ({
   page
 }, testInfo) => {
   const traffic = observePortalTraffic(page);
@@ -387,9 +396,7 @@ for (const emailVerified of [true, false]) {
     await expect(productRegion.getByRole("status")).toHaveText(ruMessages.CatalogPreview.empty);
     await expect(productRegion.getByRole("article")).toHaveCount(0);
     await expect(productRegion.getByRole("link")).toHaveCount(0);
-    await expect(main).not.toContainText(
-      /нет\s+(?:активн[а-яё]+\s+)?(?:подписк|доступ)|(?:подписк[аи]|доступ)\s+(?:нет|отсутствует)|no\s+(?:subscription|access)/i
-    );
+    await expect(main).not.toContainText(inventedSubscriptionState);
     await expect(main).not.toContainText(
       /\d[\d\s.,]*\s*(?:₽|руб|RUB|€|\$)|[€$₽]\s*\d/i
     );
@@ -438,7 +445,7 @@ test("RU Portal navigation, product discovery and account forms remain usable at
   await page.goto("/ru/products/proposal_ai", { waitUntil: "networkidle" });
   await expect(main.getByRole("heading", { level: 1, name: ruMessages.CatalogPreview.productTitle })).toBeVisible();
   await expect(main.getByRole("status")).toHaveText(ruMessages.CatalogPreview.notFound);
-  await expectMobileLayout(page, testInfo, "product-unavailable");
+  await expectMobileLayout(page, testInfo, "product-not-found");
 
   await expectKeyboardFocus(page, main.getByRole("link", { name: ruMessages.Catalog.signInAction }));
   await page.keyboard.press("Enter");

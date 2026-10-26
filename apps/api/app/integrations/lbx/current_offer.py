@@ -15,6 +15,7 @@ from app.domains.catalog.commercial_offer import (
     CommercialQuantity,
     OfferRefusalKind,
     SelectedOfferRefused,
+    SelectedOfferSourceFailed,
     canonical_document,
     commercial_digest,
 )
@@ -31,6 +32,7 @@ from app.integrations.lbx.selected_offer import (
     _incomplete,
     _minor_units,
     _multiply,
+    _quantity_bounds,
     _read_selected,
     _required,
 )
@@ -140,7 +142,8 @@ def normalize_current_offer(
         _incomplete("pricing_algorithm_unknown")
     if period.period_type not in PERIOD_UNITS or tariff.float_period not in PERIOD_ANCHORS:
         _incomplete("period_meaning_unknown")
-    if configuration.lbx_currency != "RUB" or configuration.lbx_currency_id != "1" or tariff.currency_id != 1:
+    currency = configuration.lbx_currency_mapping
+    if currency is None or tariff.currency_id != currency.provider_currency_id:
         _incomplete("currency_interpretation_unsupported")
     price, until = _applicable_price(reads.prices.value, period, effective_on, budget)
     inline = [row for row in _required(service.prices, "inline_prices_missing") if row.period_id == selection.period_id]
@@ -163,8 +166,7 @@ def normalize_current_offer(
     quantity = Decimal(selection.quantity)
     if quantity != 1 and connection != 0:
         _incomplete("connection_quantity_basis_unproven")
-    if service.min_multiplicator > service.max_multiplicator:
-        _incomplete("commercial_bounds_invalid")
+    minimum, maximum = _quantity_bounds(service)
     unsupported = (
         (defaults != [selection.tariff_service_id], "additional_or_missing_default_components_unsupported"),
         (
@@ -179,7 +181,7 @@ def normalize_current_offer(
         (service.user_can_set_mul != 0 or service.user_available != 0, "customer_management_unsupported"),
         (price.bulk_price != 0 or price.bulk_include_amount != 0, "bulk_modifiers_unsupported"),
         (bool(discount_rows), "discounts_unsupported"),
-        (not service.min_multiplicator <= quantity <= service.max_multiplicator, "commercial_quantity_out_of_bounds"),
+        (not minimum <= quantity <= maximum, "commercial_quantity_out_of_bounds"),
         (recurring <= 0 or connection < 0, "price_profile_unsupported"),
     )
     for condition, reason in unsupported:
@@ -187,8 +189,8 @@ def normalize_current_offer(
             raise SelectedOfferRefused(OfferRefusalKind.NOT_SELLABLE, reason)
     total = _multiply(recurring, quantity)
     for amount in (recurring, connection, total):
-        _minor_units(amount, 2)
-    money = CommercialMoney("RUB", 2, recurring, connection, total, connection)
+        _minor_units(amount, currency.scale)
+    money = CommercialMoney(currency.iso_currency, currency.scale, recurring, connection, total, connection)
     normalized_period = CommercialPeriod(
         PERIOD_UNITS[period.period_type],
         period.period_length,
@@ -196,9 +198,7 @@ def normalize_current_offer(
         price.start_date,
         until,
     )
-    normalized_quantity = CommercialQuantity(
-        "commercial_service", quantity, service.min_multiplicator, service.max_multiplicator
-    )
+    normalized_quantity = CommercialQuantity("commercial_service", quantity, minimum, maximum)
     fingerprint = commercial_digest(
         canonical_document(
             {
@@ -249,8 +249,8 @@ async def read_current_offer(
             await _read_selected(client, selection, budget), selection, configuration, budget, now=utc_now()
         )
     except LbxError as error:
-        raise SelectedOfferRefused(OfferRefusalKind.INCOMPLETE, error.code) from None
+        raise SelectedOfferSourceFailed(error.code) from None
     budget.check()
     if first.fingerprint != second.fingerprint:
-        _incomplete("selected_source_changed")
+        raise SelectedOfferSourceFailed("selected_source_changed")
     return second

@@ -22,8 +22,10 @@ USERNAME = "simulated-lbx-server-user"
 PASSWORD = "simulated-lbx-server-password"
 TOKEN = "simulated-lbx-session-token"
 ACCOUNT = (
-    "lbx-connection:v1:"
-    + hashlib.sha256(json.dumps(["https://lbx-client.test", USERNAME], separators=(",", ":")).encode()).hexdigest()
+    "lbx-connection:v2:"
+    + hashlib.sha256(
+        json.dumps(["anytoolai", "ru", "https://lbx-client.test"], separators=(",", ":")).encode()
+    ).hexdigest()
 )
 TARIFF = 701
 SERVICE = 1001
@@ -34,6 +36,7 @@ def lbx_settings(**overrides: Any) -> Settings:
     values.update(
         kernel_base_url="",
         kernel_service_token="",
+        kernel_mock_enabled=False,
         lbx_base_url="https://lbx-client.test",
         lbx_server_username=USERNAME,
         lbx_server_password=PASSWORD,

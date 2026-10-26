@@ -63,7 +63,12 @@ def test_opt_in_injects_container_source_settings_without_printing_secrets(
     assert not output.out and not output.err
     monkeypatch.setenv("KERNEL_MOCK_ENABLED", "0")
     repo.write_runtime(repo.runtime_config())
-    assert "KERNEL_SERVICE_TOKEN" not in repo.read_runtime_env()
+    written = repo.read_runtime_env()
+    assert written["KERNEL_SERVICE_TOKEN"] == "explicit-simulated-service-token"
+    assert "KERNEL_MOCK_ENABLED" not in written
+    assert "KERNEL_MOCK_TOKEN" not in written
+    assert "KERNEL_MOCK_SCENARIO" not in written
+    assert "KERNEL_MOCK_DELAY_SECONDS" not in written
 
 
 @pytest.mark.parametrize(

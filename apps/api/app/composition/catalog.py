@@ -6,15 +6,15 @@ from starlette.concurrency import run_in_threadpool
 
 from app.composition.mapping_operator import configured_mapping_scope
 from app.composition.sources import SourceResources
-from app.core.database import SessionLocal
 from app.core.settings import Settings
-from app.domains.catalog.commercial_offer import OfferRefusalKind, SelectedOfferRefused
+from app.domains.catalog.commercial_offer import OfferRefusalKind, SelectedOfferRefused, SelectedOfferSourceFailed
 from app.domains.catalog.link_publication import query_product_link
 from app.domains.catalog.preview import (
     ProductPreview,
     list_product_previews,
     require_enabled_product,
 )
+from app.domains.catalog.publication import SessionFactory
 from app.integrations.lbx.current_offer import read_current_offer
 
 
@@ -22,6 +22,7 @@ async def catalog_preview(
     sources: SourceResources,
     configuration: Settings,
     *,
+    session_factory: SessionFactory,
     product_id: str | None = None,
 ) -> tuple[ProductPreview, ...]:
     async with sources.preflight.operation() as budget:
@@ -38,11 +39,13 @@ async def catalog_preview(
             )
         link = await run_in_threadpool(
             query_product_link,
-            SessionLocal,
+            session_factory,
             scope=configured_mapping_scope(configuration),
             product_id=product_id,
             deadline=budget.work_deadline,
             lock_timeout_seconds=configuration.mapping_lock_timeout_seconds,
+            provider_origin=configuration.lbx_provider_origin,
+            legacy_account_id=configuration.lbx_legacy_credential_scope,
         )
         budget.check()
         if link is None:
@@ -51,10 +54,9 @@ async def catalog_preview(
             offer = await read_current_offer(
                 sources.require_lbx(), selection=link.document.selection, configuration=configuration, budget=budget
             )
+        except SelectedOfferSourceFailed:
+            raise
         except SelectedOfferRefused as error:
-            # Protocol/outage errors retain HTTP failure treatment at Presentation.
-            if error.reason.startswith("lbx_") or error.reason == "selected_source_changed":
-                raise
             availability = "OFFER_UNSUPPORTED" if error.kind == OfferRefusalKind.NOT_SELLABLE else "OFFER_INCOMPLETE"
             return (ProductPreview(product_id, manifest.provenance, availability, link, reason=error.code),)
         return (ProductPreview(product_id, manifest.provenance, "CURRENT_OFFER", link, offer),)

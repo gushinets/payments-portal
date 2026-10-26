@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from urllib.parse import quote, urlsplit
 
 from dotenv import load_dotenv
@@ -37,6 +38,16 @@ class AppEnv(StrEnum):
     DEVELOPMENT = "development"
     TEST = "test"
     PRODUCTION = "production"
+
+
+@dataclass(frozen=True)
+class LbxCurrencyMapping:
+    """The supported provider money contract; no exchange or implicit ID meaning."""
+
+    provider_currency_id: int
+    iso_currency: Literal["RUB"] = "RUB"
+    units: Literal["major"] = "major"
+    scale: Literal[2] = 2
 
 
 class Settings(BaseSettings):
@@ -229,7 +240,7 @@ class Settings(BaseSettings):
 
     @property
     def lbx_configuration_error(self) -> str | None:
-        """Billing validation is local to billing; a partial config cannot break auth.
+        """Server API readiness only; partial billing config cannot break auth.
 
         Return field names/codes only. Do not attach input values or credentials.
         """
@@ -239,38 +250,15 @@ class Settings(BaseSettings):
             self.lbx_base_url,
             username,
             password,
-            self.lbx_widget_signing_secret.get_secret_value(),
-            self.lbx_seller_organization_id,
         )
         if not any(configured):
             return "lbx_not_configured"
         if not all(configured):
             return "lbx_connection_fields_required"
-        try:
-            parsed = urlsplit(self.lbx_base_url)
-            port = parsed.port
-        except ValueError:
-            return "lbx_base_url_invalid"
-        if (
-            parsed.scheme not in {"http", "https"}
-            or not parsed.hostname
-            or parsed.username is not None
-            or parsed.password is not None
-            or parsed.path not in {"", "/"}
-            or parsed.query
-            or parsed.fragment
-            or any(char.isspace() or ord(char) < 33 for char in self.lbx_base_url)
-            or port == 0
-        ):
+        if not self.lbx_provider_origin:
             return "lbx_base_url_invalid"
         if ":" in username or any(ord(char) < 32 or ord(char) == 127 for char in username + password):
             return "lbx_server_credentials_invalid"
-        if (
-            not self.lbx_seller_organization_id.isascii()
-            or not self.lbx_seller_organization_id.isdecimal()
-            or not self.lbx_seller_organization_id.lstrip("0")
-        ):
-            return "lbx_seller_organization_id_invalid"
         if self.app_env == AppEnv.PRODUCTION:
             try:
                 validate_production_public_url(self.lbx_base_url, "LBX_BASE_URL")
@@ -279,25 +267,93 @@ class Settings(BaseSettings):
         return None
 
     @property
-    def lbx_external_billing_account_id(self) -> str:
-        """Storage-compatible connection scope. Password rotation preserves identity.
+    def lbx_widget_configuration_error(self) -> str | None:
+        """Reserved for account bootstrap; no offer/calendar/seller dependency."""
+        if self.lbx_configuration_error is not None:
+            return self.lbx_configuration_error
+        if not self.lbx_widget_signing_secret.get_secret_value():
+            return "lbx_widget_signing_secret_required"
+        return None
 
-        This is provenance of a trusted connection, not provider account proof.
-        No manual scope input, locale, browser value or secret is included.
-        """
-        if not self.lbx_base_url or not self.lbx_server_username.get_secret_value():
-            return ""
+    @property
+    def lbx_purchase_configuration_error(self) -> str | None:
+        """Reserved for product-bound payment; does not enable a purchase flow."""
+        if self.lbx_widget_configuration_error is not None:
+            return self.lbx_widget_configuration_error
+        seller = self.lbx_seller_organization_id
+        if not seller:
+            return "lbx_seller_organization_id_required"
+        if not seller.isascii() or not seller.isdecimal() or not seller.lstrip("0"):
+            return "lbx_seller_organization_id_invalid"
+        return None
+
+    @property
+    def lbx_currency_mapping(self) -> LbxCurrencyMapping | None:
+        currency_id = self.lbx_currency_id
+        if (
+            self.lbx_currency != "RUB"
+            or not currency_id.isascii()
+            or not currency_id.isdecimal()
+            or not currency_id.lstrip("0")
+        ):
+            return None
+        try:
+            return LbxCurrencyMapping(provider_currency_id=int(currency_id))
+        except ValueError:
+            return None
+
+    @property
+    def lbx_provider_origin(self) -> str:
+        """Canonical trusted origin without credentials, path or default port."""
         try:
             parsed = urlsplit(self.lbx_base_url)
             port = parsed.port
-        except ValueError:
+            hostname = (parsed.hostname or "").encode("idna").decode("ascii").lower()
+        except (ValueError, UnicodeError):
             return ""
-        hostname = parsed.hostname or ""
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.path not in {"", "/"}
+            or parsed.query
+            or parsed.fragment
+            or any(char.isspace() or ord(char) < 33 for char in self.lbx_base_url)
+            or port == 0
+        ):
+            return ""
         if ":" in hostname:
             hostname = f"[{hostname}]"
         suffix = "" if port is None or (parsed.scheme, port) in {("http", 80), ("https", 443)} else f":{port}"
-        origin = f"{parsed.scheme.lower()}://{hostname.lower()}{suffix}"
-        identity = json.dumps([origin, self.lbx_server_username.get_secret_value()], separators=(",", ":"))
+        return f"{parsed.scheme}://{hostname}{suffix}"
+
+    @property
+    def lbx_external_billing_account_id(self) -> str:
+        """One provider origin in the existing deployment scope, independent of credentials.
+
+        Proven historical storage scopes can be retained by the product-head
+        resolver. No immutable row is relabelled to this fresh-deployment ID.
+        """
+        if not self.lbx_provider_origin:
+            return ""
+        identity = json.dumps(
+            [self.instance_tenant_id, self.instance_region, self.lbx_provider_origin], separators=(",", ":")
+        )
+        return "lbx-connection:v2:" + hashlib.sha256(identity.encode()).hexdigest()
+
+    @property
+    def lbx_legacy_credential_scope(self) -> str | None:
+        """Recognize the previous derivation only for these exact credentials/origin.
+
+        This is compatibility evidence, never the identity of a new connection.
+        Publication retains the proven origin on its mutable head so subsequent
+        username rotation no longer depends on this legacy derivation.
+        """
+        username = self.lbx_server_username.get_secret_value()
+        if not self.lbx_provider_origin or not username:
+            return None
+        identity = json.dumps([self.lbx_provider_origin, username], separators=(",", ":"))
         return "lbx-connection:v1:" + hashlib.sha256(identity.encode()).hexdigest()
 
 

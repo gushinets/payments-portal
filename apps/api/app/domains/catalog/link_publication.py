@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from pydantic import ValidationError
 from sqlalchemy.exc import DBAPIError
+from sqlalchemy.orm import Session
 
-from app.domains.catalog.commercial_offer import CommercialEvidenceMode, CommercialScope
+from app.domains.catalog.commercial_offer import CommercialEvidenceMode, CommercialScope, commercial_digest
 from app.domains.catalog.mapping_evidence import MappingEvidenceMode, MappingRefused
 from app.domains.catalog.product_link import LINK_SCHEMA, ProductLinkDocument
 from app.domains.catalog.publication import (
@@ -28,6 +29,7 @@ from app.infrastructure.persistence.commercial_mappings import (
 )
 from app.infrastructure.queries.commercial_mappings import (
     find_mapping_revision,
+    connection_heads,
     find_offer_history,
     find_product_head,
     has_foreign_customer_binding,
@@ -82,10 +84,16 @@ def query_product_link(
     product_id: str,
     deadline: float | None = None,
     lock_timeout_seconds: float = 2.0,
+    provider_origin: str | None = None,
+    legacy_account_id: str | None = None,
 ) -> StoredProductLink | None:
     with session_factory() as db:
         if deadline is not None:
             bound_publication_transaction(db, deadline=deadline, lock_timeout_seconds=lock_timeout_seconds)
+        scope = resolve_connection_scope(
+            db, scope=scope, provider_origin=provider_origin, legacy_account_id=legacy_account_id, deadline=deadline
+        )
+        require_compatible_connection(db, scope=scope, product_id=product_id, deadline=deadline)
         head = find_product_head(db, account_id=scope.external_billing_account_id, product_id=product_id)
         if head is None:
             return None
@@ -95,9 +103,85 @@ def query_product_link(
         if row is None:
             raise MappingRefused("mapping_current_head_invalid")
         stored = validate_product_link(row, scope=scope)
+        if stored.document.lbx_evidence_mode != CommercialEvidenceMode.CONFIGURED_SOURCE:
+            raise MappingRefused("mapping_live_lbx_required")
         if stored.document.selection.product_id != product_id or stored.revision_number != head.revision_number:
             raise MappingRefused("mapping_current_head_invalid")
         return stored
+
+
+def resolve_connection_scope(
+    db: Session,
+    *,
+    scope: CommercialScope,
+    provider_origin: str | None,
+    legacy_account_id: str | None,
+    deadline: float | None,
+) -> CommercialScope:
+    """Retain a proven existing storage scope, without an account registry.
+
+    An old credential hash is recognized only by the previous exact derivation.
+    After authorized publication records its origin, credentials are irrelevant.
+    Multiple proven scopes are a conflict; synthetic/invalid heads prove nothing.
+    """
+    if provider_origin is None:
+        return scope
+    accounts: set[str] = set()
+    for head in connection_heads(
+        db,
+        account_id=scope.external_billing_account_id,
+        provider_origin=provider_origin,
+        legacy_account_id=legacy_account_id,
+    ):
+        if deadline is not None:
+            _check_deadline(deadline)
+        if head.provider_origin not in (None, provider_origin):
+            raise MappingRefused("mapping_existing_connection_scope_conflict")
+        row = product_head_revision(db, head)
+        if row is None:
+            raise MappingRefused("mapping_current_head_invalid")
+        existing_scope = replace(scope, external_billing_account_id=head.external_billing_account_id)
+        stored = validate_product_link(row, scope=existing_scope)
+        if (
+            stored.document.lbx_evidence_mode != CommercialEvidenceMode.CONFIGURED_SOURCE
+            or stored.document.selection.product_id != head.product_id
+            or stored.revision_number != head.revision_number
+        ):
+            raise MappingRefused("mapping_current_head_invalid")
+        accounts.add(head.external_billing_account_id)
+    if len(accounts) > 1:
+        raise MappingRefused("mapping_existing_connection_scope_conflict")
+    return replace(scope, external_billing_account_id=next(iter(accounts))) if accounts else scope
+
+
+def require_compatible_connection(
+    db: Session, *, scope: CommercialScope, product_id: str, deadline: float | None = None
+) -> None:
+    """Do not hide a real conflicting binding behind an apparently unmapped product.
+
+    Unknown credential-hashed history has no recoverable provider origin.
+    Only the resolver's proven scope can authorize current use; local history
+    stays readable and synthetic v1 history remains inert.
+    """
+    if has_foreign_customer_binding(db, account_id=scope.external_billing_account_id):
+        raise MappingRefused("mapping_existing_connection_scope_conflict")
+    for historic in retained_product_mappings(db, product_id=product_id):
+        if deadline is not None:
+            _check_deadline(deadline)
+        other_scope = CommercialScope(scope.tenant_id, scope.region, historic.external_billing_account_id)
+        if historic.mapping_schema_version == LINK_SCHEMA:
+            validate_product_link(historic, scope=other_scope)
+            real_binding = True
+        else:
+            try:
+                previous = validate_stored_mapping(
+                    historic, scope=other_scope, offer_id=historic.billing_offer_id, allow_simulated=True
+                )
+            except MappingRefused:
+                continue
+            real_binding = previous.document.evidence_mode != MappingEvidenceMode.SIMULATED
+        if real_binding and historic.external_billing_account_id != scope.external_billing_account_id:
+            raise MappingRefused("mapping_existing_connection_scope_conflict")
 
 
 def query_link_history(
@@ -140,6 +224,8 @@ def publish_product_link(
     expected_previous_revision: int,
     deadline: float,
     lock_timeout_seconds: float,
+    provider_origin: str | None = None,
+    legacy_account_id: str | None = None,
 ) -> LinkPublicationResult:
     if type(expected_previous_revision) is not int or expected_previous_revision < 0:
         raise MappingRefused("mapping_expected_revision_invalid")
@@ -157,30 +243,17 @@ def publish_product_link(
             db, account_id=scope.external_billing_account_id, offer_id="product-head:v2:" + selection.product_id
         )
         _check_deadline(deadline)
-        if has_foreign_customer_binding(db, account_id=scope.external_billing_account_id):
-            raise MappingRefused("mapping_existing_connection_scope_conflict")
-        for historic in retained_product_mappings(db, product_id=selection.product_id):
-            _check_deadline(deadline)
-            if historic.mapping_schema_version == LINK_SCHEMA:
-                other_scope = CommercialScope(scope.tenant_id, scope.region, historic.external_billing_account_id)
-                validate_product_link(historic, scope=other_scope)
-                if historic.external_billing_account_id != scope.external_billing_account_id:
-                    raise MappingRefused("mapping_existing_connection_scope_conflict")
-            else:
-                other_scope = CommercialScope(scope.tenant_id, scope.region, historic.external_billing_account_id)
-                try:
-                    previous = validate_stored_mapping(
-                        historic, scope=other_scope, offer_id=historic.billing_offer_id, allow_simulated=True
-                    )
-                except MappingRefused:
-                    # Unverifiable v1 rows stay inert history, never heads. Real
-                    # customer/subscription/operation bindings are fenced above.
-                    continue
-                if (
-                    previous.document.evidence_mode != MappingEvidenceMode.SIMULATED
-                    and historic.external_billing_account_id != scope.external_billing_account_id
-                ):
-                    raise MappingRefused("mapping_existing_connection_scope_conflict")
+        scope = resolve_connection_scope(
+            db, scope=scope, provider_origin=provider_origin, legacy_account_id=legacy_account_id, deadline=deadline
+        )
+        if scope != evaluation.scope:
+            # Preserve original account FKs and association identity. Only the
+            # fresh evaluation changes; no immutable stored document is edited.
+            evaluation = evaluation.model_copy(update={"scope": scope})
+            evaluation = evaluation.model_copy(
+                update={"identity_digest": commercial_digest(evaluation.identity_json())}
+            )
+        require_compatible_connection(db, scope=scope, product_id=selection.product_id, deadline=deadline)
         head = find_product_head(db, account_id=scope.external_billing_account_id, product_id=selection.product_id)
         latest = None
         if head is not None:
@@ -195,6 +268,15 @@ def publish_product_link(
                 raise MappingRefused("mapping_current_head_invalid")
         if latest is not None and latest.document.identity_digest == evaluation.identity_digest:
             _check_deadline(deadline)
+            if provider_origin is not None and head.provider_origin is None:
+                head.provider_origin = provider_origin
+                bound_publication_transaction(db, deadline=deadline, lock_timeout_seconds=lock_timeout_seconds)
+                try:
+                    db.commit()
+                except DBAPIError:
+                    # No association is replayed. Query can inspect whether the
+                    # origin proof committed before another credential rotation.
+                    raise MappingCommitUncertain() from None
             return LinkPublicationResult(latest, False)
         previous_number = 0 if latest is None else latest.revision_number
         if expected_previous_revision != previous_number:
@@ -227,11 +309,14 @@ def publish_product_link(
             head = CommercialProductHead(
                 external_billing_account_id=scope.external_billing_account_id,
                 product_id=selection.product_id,
+                provider_origin=provider_origin,
                 mapping_revision_id=attempted_id,
                 revision_number=previous_number + 1,
             )
             db.add(head)
         else:
+            if provider_origin is not None:
+                head.provider_origin = provider_origin
             head.mapping_revision_id = attempted_id
             head.revision_number = previous_number + 1
         bound_publication_transaction(db, deadline=deadline, lock_timeout_seconds=lock_timeout_seconds)
