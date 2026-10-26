@@ -56,6 +56,7 @@ function renderAccountClient(locale: "ru" | "pt" = "ru", withHeader = false) {
       messages: {
         Auth: messages.Auth,
         Account: messages.Account,
+        Billing: messages.Billing,
         CatalogPreview: messages.CatalogPreview,
         EmailVerification: messages.EmailVerification
       }

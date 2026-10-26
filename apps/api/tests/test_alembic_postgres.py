@@ -18,7 +18,8 @@ from apps.api.tests.support.postgres import alembic_test_config, reset_public_sc
 BASELINE_REVISION = "20260924_0001"
 EMAIL_VERIFICATION_REVISION = "20261001_0002"
 PRODUCT_HEAD_REVISION = "20261026_0003"
-HEAD_REVISION = "20261026_0004"
+ORIGIN_REVISION = "20261026_0004"
+HEAD_REVISION = "20261026_0005"
 
 SURVIVOR_TABLES = {
     "regions",
@@ -89,6 +90,9 @@ EXPECTED_COLUMNS = {
         "region",
         "email",
         "email_normalized",
+        "first_name",
+        "surname",
+        "patronymic",
         "email_verified_at",
         "status",
         "last_login_at",
@@ -225,6 +229,7 @@ EXPECTED_COLUMNS = {
         "user_id",
         "billing_customer_key",
         "provider_customer_id",
+        "provider_origin",
         "binding_state",
         "binding_updated_at",
         "created_at",
@@ -254,6 +259,7 @@ EXPECTED_COLUMNS = {
         "purchase_intent_id",
         "request_correlation_key",
         "operation_state",
+        "send_fence",
         "unknown_since",
         "unknown_recovery_deadline_at",
         "recovery_hint_schema_version",
@@ -490,6 +496,7 @@ EXPECTED_UNIQUE_CONSTRAINTS = {
         "uq_external_billing_customers_id_account_user",
         "uq_external_billing_customers_account_user",
         "uq_external_billing_customers_billing_customer_key",
+        "uq_billing_customers_provider",
     },
     "purchase_intents": {
         "uq_purchase_intents_client_idempotency",
@@ -588,6 +595,7 @@ EXPECTED_INDEXES = {
     },
     "external_create_operations": {
         "uq_external_create_operations_unresolved_customer",
+        "uq_external_create_operations_customer_identity",
         "ix_external_create_operations_customer_state",
         "ix_external_create_operations_purchase",
         "ix_external_create_operations_correlation",
@@ -645,6 +653,7 @@ EXPECTED_INDEXES = {
         "ix_billing_work_items_kind_state_due",
         "ix_billing_work_items_scope",
         "ix_billing_work_items_coalescing_key",
+        "uq_billing_work_items_create_recovery",
         "ix_billing_work_items_priority_retry",
         "ix_billing_work_items_lease_expiry",
         "ix_billing_work_items_claim_scan",
@@ -719,6 +728,7 @@ def test_clean_first_install_has_expected_revisions_and_exact_application_schema
         assert script.get_bases() == [BASELINE_REVISION]
         assert [item.revision for item in script.walk_revisions()] == [
             HEAD_REVISION,
+            ORIGIN_REVISION,
             PRODUCT_HEAD_REVISION,
             EMAIL_VERIFICATION_REVISION,
             BASELINE_REVISION,

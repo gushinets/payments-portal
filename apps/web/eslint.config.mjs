@@ -21,6 +21,8 @@ const sharedApiMachineLiteralAllowlist = new Set([
   "PasswordResetRequestResponse",
   "RegisterResponse",
   "SessionResponse",
+  "WidgetBootstrapResponse",
+  "X-Request-ID",
   "accepted",
   "authenticated",
   "boolean",

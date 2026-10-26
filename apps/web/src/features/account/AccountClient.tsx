@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Clock3, LogOut, ShieldCheck, UserRound } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { BillingAccount } from "@/features/billing";
 import { CatalogPreviewClient } from "@/features/catalog";
 import type { SessionUserResponse } from "@/generated/api-contracts/types.gen";
 import {
@@ -316,6 +317,7 @@ export function AccountClient({ languageTag }: { languageTag: string }) {
         </aside>
 
         <div className="account-workspace">
+          <BillingAccount key={accountState.user.user_id} userId={accountState.user.user_id} emailVerified={accountState.user.email_verified} />
           <section
             className="account-products-panel"
             aria-labelledby="account-products-title"

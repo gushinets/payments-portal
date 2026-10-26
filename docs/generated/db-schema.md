@@ -148,6 +148,7 @@ Indexes and constraints:
 - `ix_billing_work_items_lease_expiry`
 - `ix_billing_work_items_priority_retry`
 - `ix_billing_work_items_scope`
+- `uq_billing_work_items_create_recovery`
 
 ## `capability_manifest_projections`
 
@@ -313,6 +314,7 @@ Indexes and constraints:
 | `external_billing_account_id` | `TEXT` | no |  |
 | `user_id` | `CHAR(32)` | no | FK |
 | `billing_customer_key` | `TEXT` | no |  |
+| `provider_origin` | `TEXT` | yes |  |
 | `provider_customer_id` | `TEXT` | yes |  |
 | `binding_state` | `TEXT` | no |  |
 | `binding_updated_at` | `DATETIME` | no |  |
@@ -322,6 +324,7 @@ Indexes and constraints:
 
 - `ck_external_billing_customers_binding_state`
 - `ck_external_billing_customers_key_nonempty`
+- `uq_billing_customers_provider`
 - `uq_external_billing_customers_account_user`
 - `uq_external_billing_customers_billing_customer_key`
 - `uq_external_billing_customers_id_account_user`
@@ -366,6 +369,7 @@ Indexes and constraints:
 | `customer_id` | `CHAR(32)` | no | FK |
 | `purchase_intent_id` | `CHAR(32)` | yes | FK |
 | `request_correlation_key` | `TEXT` | no |  |
+| `send_fence` | `CHAR(32)` | yes |  |
 | `operation_state` | `TEXT` | no |  |
 | `unknown_since` | `DATETIME` | yes |  |
 | `unknown_recovery_deadline_at` | `DATETIME` | yes |  |
@@ -391,6 +395,7 @@ Indexes and constraints:
 - `ix_external_create_operations_purchase`
 - `ix_external_create_operations_recovery_scan`
 - `ix_external_create_operations_unknown_deadline`
+- `uq_external_create_operations_customer_identity`
 - `uq_external_create_operations_unresolved_customer`
 
 ## `external_subscriptions`
@@ -679,6 +684,9 @@ Indexes and constraints:
 | `tenant_id` | `TEXT` | no |  |
 | `region` | `TEXT` | no | FK |
 | `email` | `VARCHAR(320)` | no |  |
+| `first_name` | `VARCHAR(100)` | yes |  |
+| `surname` | `VARCHAR(100)` | yes |  |
+| `patronymic` | `VARCHAR(100)` | yes |  |
 | `email_normalized` | `VARCHAR(320)` | no |  |
 | `email_verified_at` | `DATETIME` | yes |  |
 | `status` | `TEXT` | no |  |

@@ -41,7 +41,10 @@
       "passwordPlaceholder": "Passwort eingeben",
       "newPasswordPlaceholder": "12–128 Zeichen",
       "passwordConfirmLabel": "Passwort wiederholen",
-      "passwordConfirmPlaceholder": "Passwort erneut eingeben"
+      "passwordConfirmPlaceholder": "Passwort erneut eingeben",
+      "firstNameLabel": "Vorname (optional)",
+      "surnameLabel": "Nachname (optional)",
+      "patronymicLabel": "Vatersname (optional)"
     },
     "passwordRequirements": {
       "label": "Passwortanforderungen",
@@ -384,5 +387,27 @@
     "versioningHelp": "Das Dokument wird in einer separaten versionierten Datei veröffentlicht.",
     "revision": "Fassung: {version}",
     "tableAccessibilityLabel": "Scrollbare Tabelle des Rechtsdokuments"
+  },
+  "Billing": {
+    "title": "Abrechnungsdetails",
+    "description": "Öffnen Sie Ihr Abrechnungskonto, um Details anzusehen. Der bezahlte Zugriff wurde noch nicht ermittelt.",
+    "open": "Abrechnung öffnen",
+    "close": "Abrechnung schließen",
+    "loading": "Wird geöffnet…",
+    "frameTitle": "Abrechnungskonto",
+    "verificationRequired": "Bestätigen Sie vor dem Öffnen Ihre E-Mail-Adresse.",
+    "requestId": "Anfrage-ID: {id}",
+    "errors": {
+      "session": "Melden Sie sich erneut an.",
+      "verification": "Bestätigen Sie zuerst Ihre E-Mail-Adresse.",
+      "identity": "Die Abrechnungsidentität muss geprüft werden. Kontaktieren Sie den Support.",
+      "pending": "Die Kontoerstellung läuft möglicherweise noch. Öffnen Sie die Abrechnung erneut für eine sichere Prüfung.",
+      "review": "Das Konto muss geprüft werden. Seine Identität bleibt reserviert.",
+      "serverAuth": "Der Abrechnungsdienst hat die Server-Zugangsdaten abgelehnt. Wenden Sie sich an den Support.",
+      "client": "Ihr Abrechnungskonto ist noch nicht bereit. Kontaktieren Sie den Support; beim erneuten Öffnen wird dasselbe Konto verwendet.",
+      "configuration": "Die Abrechnungskonfiguration ist unvollständig. Kontaktieren Sie den Support.",
+      "unavailable": "Die Abrechnung ist vorübergehend nicht verfügbar. Versuchen Sie es erneut.",
+      "sdk": "Das Widget konnte nicht geladen werden. Öffnen Sie die Abrechnung erneut."
+    }
   }
 }

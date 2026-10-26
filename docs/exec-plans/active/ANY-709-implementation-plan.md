@@ -612,7 +612,8 @@ test; human live repricing is optional only when explicitly authorized.
 
 ## 5. Step 2 - Optional FIO, one customer and a real account Widget
 
-Status: TODO
+Status: IMPLEMENTED_AWAITING_HUMAN_VALIDATION
+Handoff: [Step 2 delivery](ANY-709-step-2-handoff.md). Tests and runtime acceptance NOT_RUN.
 Depends on: human-accepted Step 1 interfaces and ordinary connection wiring.
 
 ### Result and changed surfaces

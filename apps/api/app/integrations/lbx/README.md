@@ -111,7 +111,16 @@ subscription operation identities in `app.models`; no speculative parallel
 operation vocabulary/response DTO or callable mutation is needed by this read
 consumer. Future program Steps 7/8 must persist the operation before CREATE;
 an uncertain result stays UNKNOWN and is discovered read-only, never blindly
-retried. No CREATE transport is supplied here.
+retried. That was the original read-consumer boundary. ANY-709 Step 2 now adds
+only fenced customer CREATE, users discovery/point reads and Client user
+readiness on this same real client. No agreement/subscription/payment mutation
+is supplied in this step. `LbxCreateNotSent` proves a before-dispatch failure;
+every dispatched failure remains uncertain. Customer responses accept the
+operation-specific 200/201 envelope and must be point-verified before binding.
+Technical login/password are generated only for one POST; JWT signing uses
+type 7, the proven canonical ID and fresh `iat`. Account traffic has separate
+bounded admission/pool capacity from offer reads. See the
+[normal account runbook](../../../../../docs/engineering/lbx-product-links.md#human-account-widget-checkpoint-step-2).
 
 Selected-account currency/scale, historically applicable policy, rollback
 guarantees and actual account/credential deployment remain unverified. B1 and

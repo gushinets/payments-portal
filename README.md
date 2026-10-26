@@ -16,14 +16,15 @@ paid-access boundary, but its runtime implementation remains future program
 work. Platform Kernel code is maintained in the separate
 [anytoolai-platform](https://github.com/gushinets/anytoolai-platform) repository.
 
-The repository remains pre-production and provider-independent on the current
-ANY-636 4F surface. All thirteen ANY-636 steps are marked `done` in the
+The repository remains pre-production on the surface established by ANY-636 4F. All thirteen ANY-636 steps are marked `done` in the
 [completed plan](docs/exec-plans/completed/ANY-636-implementation-plan.md).
-External Billing/provider runtime, commercial
-catalog, purchase/Widget, confirmed paid access, and actual usage/quota
-integration are not implemented. There are no production direct-provider
+ANY-709 Step 1 adds real source reads, direct links and current offers; Step 2
+adds explicit verified-email customer-only Widget viewing, pending human
+validation. Purchase/payment presentation, confirmed paid access, and actual
+usage/quota integration remain deferred. There are no production direct-provider
 subscribers or subscriptions to migrate. The fifteen target billing tables
-start empty and no current application behavior populates them.
+start empty; the link and explicit customer paths now populate their owned
+records without creating subscriptions or paid access.
 For target billing work, follow [ADR 0005](docs/architecture/decisions/0005-external-billing-boundary.md),
 the accepted [External Billing Boundary Design](docs/superpowers/specs/2026-09-15-external-billing-boundary-design.md),
 and the accepted
@@ -323,7 +324,10 @@ repository. No direct-provider runtime exists in this repository.
   PostgreSQL; ordinary repricing needs no link republication. See the
   [normal LBX runbook](docs/engineering/lbx-product-links.md). Paid-access,
   subscription trust/reconciliation and AccessSnapshot rules are unchanged.
-- Purchase/Widget, billing state, paid-access state, and usage/quota remain
+- Account-only Widget viewing uses the real configured SDK after explicit open,
+  verified email, paired customer identity and Client readiness. It requires no
+  product price or subscription; see the runbook for human acceptance.
+- Purchase/payment Widget, subscription billing state, paid-access state, and usage/quota remain
   unavailable until their owning external-billing/Kernel integration steps;
   provider-dependent work remains subject to Phase 0 gates.
 - Legal documents are drafts until reviewed and approved by counsel.

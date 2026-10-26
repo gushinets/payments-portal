@@ -91,8 +91,8 @@ need, security treatment, and retention.
 
 - Validate HTTP, environment, webhook, and database-boundary data.
 - Verify authenticity at every external billing or payment Integration before
-  trusting external state. No billing integration is currently active; every
-  future integration must preserve this invariant.
+  trusting external state. ANY-709 implements real source reads and an explicit
+  account-only Widget bootstrap; purchase and paid-access derivation remain deferred.
 - Treat request IDs and external billing or payment metadata as untrusted input
   with length and character limits.
 - Store session tokens only as hashes.
@@ -103,6 +103,30 @@ need, security treatment, and retention.
 - Paid access changes only from authenticated, validated authoritative billing
   facts normalized through the local transition path. Browser returns are
   informational and never authoritative.
+
+## Account Widget credentials (ANY-709 Step 2)
+
+Only explicit authenticated POST after verified email may allocate the single
+customer slot. Before users POST, the permanent operation, opaque outer key,
+send fence, original two-hour deadline and coalesced recovery work are committed.
+A possible send is never replayed, including malformed success and crash. All
+recovery is bounded read-only; overdue escalation retains the slot. No fake
+PurchaseIntent, subscription, name, password repair or agreement is created for
+account viewing. Proven provider IDs are unique within the connection scope.
+
+Every open point-checks Server `user_id`/original `outer_id`, checks Client API
+readiness and rechecks the Portal session after I/O. Only then is the fresh
+HS256 type-7 credential returned with no-store. Technical login/password exist
+only in the one outbound request; JWTs and credentials never enter durable
+recovery evidence, browser storage, logs or URLs. The SDK runs in a disposable
+opaque-origin frame with a CSP restricted to the validated configured provider
+origin. Logout/unmount removes Portal-held SDK/token memory.
+
+These local lifecycle controls do not revoke a copied provider JWT. LBX's accepted
+72h `iat` behavior and provider-owned Client API permissions remain unchanged;
+presentation flags are not ACLs. Account-view flags disable purchasing/payment.
+Later payment presentation still requires owned accepted-subscription readback.
+Account viewing has no catalog, price, seller-agreement or subscription prerequisite.
 
 ## High-risk review paths
 

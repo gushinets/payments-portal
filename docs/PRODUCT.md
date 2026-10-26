@@ -17,13 +17,17 @@ products. Identity/verification/logout context supports the per-product
 commercial/access/usage/action slots. Account/session/email-verification,
 password-recovery and legal-acceptance flows remain implemented. Published
 immutable commercial terms are displayed; paid access remains unknown and
-actual usage/quota unavailable. The repository remains pre-production and
-provider-independent on the surface established by ANY-636 4F. ANY-664 adds
+actual usage/quota unavailable. The repository remains pre-production on the
+surface established by ANY-636 4F. ANY-664 adds
 historical read-only source clients and controlled immutable offer publication.
 ANY-709 Step 1 adds direct versioned links and source-backed catalog/current
 offers; genuine
 Kernel conformance and sales remain gated. There are no production direct-
 provider subscribers or subscriptions to migrate.
+ANY-709 Step 2 adds independently optional FIO and explicit verified-email
+account-only Widget viewing, pending human validation. One durable customer is
+shared across products. This action needs no offer or subscription and does not
+authorize purchases or paid access; payment presentation remains later work.
 
 The former CloudPayments/direct-provider implementation and Portal-owned
 catalog/order/payment/subscription/entitlement runtime have been physically
@@ -112,7 +116,7 @@ trust boundary under ANY-541.
 - Genuine enablement of ANY-504 Step 6's live-source clients and immutable
   approved offer mappings, subject to real Kernel/LBX and approval gates.
   ANY-664 implements the Portal path with simulated local evidence and DB-only
-  catalog browsing; there is no periodic source-catalog mirror. Purchase/Widget in Step 7;
+  catalog browsing; there is no periodic source-catalog mirror. Purchase/payment Widget in Step 7 (customer-only viewing is ANY-709 Step 2);
   reconciliation/recovery in Step 8; confirmed paid-access projection and
   delivery in Step 9; actual usage/quota integration in Step 10. These are
   deferred ownership boundaries, not implemented runtime. They populate the

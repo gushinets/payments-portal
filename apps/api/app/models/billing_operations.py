@@ -43,6 +43,13 @@ class BillingWorkItem(Base):
         ),
         Index("ix_billing_work_items_coalescing_key", "coalescing_key"),
         Index(
+            "uq_billing_work_items_create_recovery",
+            "coalescing_key",
+            unique=True,
+            postgresql_where=text("work_kind = 'external_create_recovery'"),
+            sqlite_where=text("work_kind = 'external_create_recovery'"),
+        ),
+        Index(
             "ix_billing_work_items_priority_retry",
             "work_state",
             "priority",

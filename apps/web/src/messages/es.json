@@ -41,7 +41,10 @@
       "passwordPlaceholder": "Introduce tu contraseña",
       "newPasswordPlaceholder": "Entre 12 y 128 caracteres",
       "passwordConfirmLabel": "Repetir contraseña",
-      "passwordConfirmPlaceholder": "Introduce de nuevo la contraseña"
+      "passwordConfirmPlaceholder": "Introduce de nuevo la contraseña",
+      "firstNameLabel": "Nombre (opcional)",
+      "surnameLabel": "Apellido (opcional)",
+      "patronymicLabel": "Patronímico (opcional)"
     },
     "passwordRequirements": {
       "label": "Requisitos de la contraseña",
@@ -384,5 +387,27 @@
     "versioningHelp": "El documento se publica en un archivo versionado independiente.",
     "revision": "Revisión: {version}",
     "tableAccessibilityLabel": "Tabla desplazable del documento legal"
+  },
+  "Billing": {
+    "title": "Datos de facturación",
+    "description": "Abre tu cuenta de facturación para consultar los datos. El acceso de pago aún no se ha determinado.",
+    "open": "Abrir facturación",
+    "close": "Cerrar facturación",
+    "loading": "Abriendo…",
+    "frameTitle": "Cuenta de facturación",
+    "verificationRequired": "Verifica tu email antes de abrir la facturación.",
+    "requestId": "ID de solicitud: {id}",
+    "errors": {
+      "session": "Inicia sesión de nuevo para abrir la facturación.",
+      "verification": "Verifica primero tu email.",
+      "identity": "La identidad de facturación requiere revisión. Contacta con soporte.",
+      "pending": "La creación de la cuenta puede seguir en curso. Abre la facturación de nuevo para comprobarlo de forma segura.",
+      "review": "La cuenta requiere revisión. Su identidad sigue reservada.",
+      "serverAuth": "El servicio ha rechazado las credenciales del servidor. Contacta con soporte.",
+      "client": "Tu cuenta de facturación aún no está lista. Contacta con soporte; al volver a abrir se usará la misma cuenta.",
+      "configuration": "La configuración de facturación está incompleta. Contacta con soporte.",
+      "unavailable": "La facturación no está disponible temporalmente. Vuelve a intentarlo.",
+      "sdk": "No se ha podido cargar el widget. Abre la facturación de nuevo."
+    }
   }
 }

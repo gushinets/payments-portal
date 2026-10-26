@@ -53,3 +53,10 @@ class LbxAttemptsExhausted(LbxError):
 class LbxClosed(LbxError):
     def __init__(self) -> None:
         super().__init__("lbx_closed")
+
+
+class LbxCreateNotSent(LbxError):
+    """Proven failure before dispatch, distinct from every possible-send error."""
+
+    def __init__(self) -> None:
+        super().__init__("lbx_create_not_sent")

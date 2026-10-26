@@ -268,7 +268,7 @@ class Settings(BaseSettings):
 
     @property
     def lbx_widget_configuration_error(self) -> str | None:
-        """Reserved for account bootstrap; no offer/calendar/seller dependency."""
+        """Account bootstrap readiness; no offer/calendar/seller dependency."""
         if self.lbx_configuration_error is not None:
             return self.lbx_configuration_error
         if not self.lbx_widget_signing_secret.get_secret_value():

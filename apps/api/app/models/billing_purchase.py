@@ -22,6 +22,7 @@ from app.models._shared import (
 from app.models.enums import (
     ExternalBillingCustomerBindingState,
     ExternalCreateOperationKind,
+    ExternalCreateOperationState,
     PurchaseIntentState,
 )
 
@@ -44,6 +45,7 @@ class ExternalBillingCustomer(Base):
             "billing_customer_key",
             name="uq_external_billing_customers_billing_customer_key",
         ),
+        UniqueConstraint("external_billing_account_id", "provider_customer_id", name="uq_billing_customers_provider"),
         CheckConstraint(
             "trim(billing_customer_key) <> ''",
             name="ck_external_billing_customers_key_nonempty",
@@ -66,6 +68,7 @@ class ExternalBillingCustomer(Base):
         nullable=False,
     )
     billing_customer_key: Mapped[str] = mapped_column(Text, nullable=False)
+    provider_origin: Mapped[str | None] = mapped_column(Text, nullable=True)
     provider_customer_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     binding_state: Mapped[ExternalBillingCustomerBindingState] = mapped_column(
         PersistedEnumType(ExternalBillingCustomerBindingState),
@@ -249,6 +252,13 @@ class ExternalCreateOperation(Base):
             name="ck_external_create_operations_recovery_hint_pair",
         ),
         Index(
+            "uq_external_create_operations_customer_identity",
+            "customer_id",
+            unique=True,
+            postgresql_where=text("operation_kind = 'customer'"),
+            sqlite_where=text("operation_kind = 'customer'"),
+        ),
+        Index(
             "uq_external_create_operations_unresolved_customer",
             "customer_id",
             unique=True,
@@ -292,7 +302,10 @@ class ExternalCreateOperation(Base):
     )
     purchase_intent_id: Mapped[uuid.UUID | None] = mapped_column(uuid_type, nullable=True)
     request_correlation_key: Mapped[str] = mapped_column(Text, nullable=False)
-    operation_state: Mapped[str] = mapped_column(Text, nullable=False)
+    send_fence: Mapped[uuid.UUID | None] = mapped_column(uuid_type, nullable=True)
+    operation_state: Mapped[ExternalCreateOperationState] = mapped_column(
+        PersistedEnumType(ExternalCreateOperationState), nullable=False
+    )
     unknown_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     unknown_recovery_deadline_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),

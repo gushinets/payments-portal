@@ -21,6 +21,7 @@ class SourceResources:
     kernel: PlatformKernelClient | None
     lbx: LbxServerClient | None = None
     lbx_error: str | None = None
+    billing: PreflightAdmission | None = None
 
     def require_kernel(self) -> PlatformKernelClient:
         if self.kernel is None:
@@ -58,6 +59,14 @@ async def source_resources(
             max_waiting=configuration.preflight_max_waiting,
         )
     )
+    billing = PreflightAdmission(
+        PreflightPolicy(
+            total_timeout_seconds=configuration.preflight_total_timeout_seconds,
+            cleanup_timeout_seconds=configuration.preflight_cleanup_timeout_seconds,
+            max_active=2,
+            max_waiting=4,
+        )
+    )
     kernel = (
         PlatformKernelClient(
             configuration,
@@ -72,10 +81,11 @@ async def source_resources(
     lbx_error = configuration.lbx_configuration_error
     lbx = LbxServerClient(configuration, transport=lbx_transport) if lbx_error is None else None
     try:
-        yield SourceResources(admission, kernel, lbx, lbx_error)
+        yield SourceResources(admission, kernel, lbx, lbx_error, billing)
     finally:
         # Pending source cleanup still owns this client's HTTP resources.
         # Propagate the bounded drain failure without closing underneath it.
+        await billing.aclose()
         await admission.aclose()
         try:
             async with asyncio.timeout(configuration.preflight_cleanup_timeout_seconds):

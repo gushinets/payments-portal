@@ -41,7 +41,10 @@
       "passwordPlaceholder": "Enter your password",
       "newPasswordPlaceholder": "12–128 characters",
       "passwordConfirmLabel": "Repeat password",
-      "passwordConfirmPlaceholder": "Enter the password again"
+      "passwordConfirmPlaceholder": "Enter the password again",
+      "firstNameLabel": "First name (optional)",
+      "surnameLabel": "Surname (optional)",
+      "patronymicLabel": "Patronymic (optional)"
     },
     "passwordRequirements": {
       "label": "Password requirements",
@@ -384,5 +387,27 @@
     "versioningHelp": "The document is published in a separate versioned file.",
     "revision": "Revision: {version}",
     "tableAccessibilityLabel": "Scrollable legal document table"
+  },
+  "Billing": {
+    "title": "Billing details",
+    "description": "Open your billing account to view its details. Paid access has not yet been derived.",
+    "open": "Open billing",
+    "close": "Close billing",
+    "loading": "Opening billing…",
+    "frameTitle": "Billing account",
+    "verificationRequired": "Verify your email before opening billing.",
+    "requestId": "Request ID: {id}",
+    "errors": {
+      "session": "Sign in again to open billing.",
+      "verification": "Verify your email first.",
+      "identity": "The billing identity needs operator review. Contact support.",
+      "pending": "Account creation may still be completing. Reopen billing to check safely.",
+      "review": "The account needs operator review. Its identity remains reserved.",
+      "serverAuth": "The billing service rejected the server credentials. Contact support.",
+      "client": "Your billing account is not ready to open yet. Contact support; reopening will reuse this account.",
+      "configuration": "Billing configuration is incomplete. Contact support.",
+      "unavailable": "Billing is temporarily unavailable. Try opening it again.",
+      "sdk": "The billing widget could not load. Reopen billing to try again."
+    }
   }
 }

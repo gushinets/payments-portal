@@ -41,7 +41,10 @@
       "passwordPlaceholder": "Saisissez votre mot de passe",
       "newPasswordPlaceholder": "De 12 à 128 caractères",
       "passwordConfirmLabel": "Répéter le mot de passe",
-      "passwordConfirmPlaceholder": "Saisissez à nouveau le mot de passe"
+      "passwordConfirmPlaceholder": "Saisissez à nouveau le mot de passe",
+      "firstNameLabel": "Prénom (facultatif)",
+      "surnameLabel": "Nom (facultatif)",
+      "patronymicLabel": "Patronyme (facultatif)"
     },
     "passwordRequirements": {
       "label": "Exigences du mot de passe",
@@ -384,5 +387,27 @@
     "versioningHelp": "Le document est publié dans un fichier versionné distinct.",
     "revision": "Révision : {version}",
     "tableAccessibilityLabel": "Tableau de document juridique avec défilement"
+  },
+  "Billing": {
+    "title": "Détails de facturation",
+    "description": "Ouvrez votre espace de facturation pour consulter ses données. L’accès payant n’est pas encore déterminé.",
+    "open": "Ouvrir la facturation",
+    "close": "Fermer la facturation",
+    "loading": "Ouverture…",
+    "frameTitle": "Espace de facturation",
+    "verificationRequired": "Vérifiez votre email avant d’ouvrir la facturation.",
+    "requestId": "Identifiant de requête : {id}",
+    "errors": {
+      "session": "Reconnectez-vous pour ouvrir la facturation.",
+      "verification": "Vérifiez d’abord votre email.",
+      "identity": "L’identité de facturation doit être vérifiée par un opérateur. Contactez l’assistance.",
+      "pending": "La création du compte est peut-être en cours. Rouvrez la facturation pour vérifier sans risque.",
+      "review": "Le compte nécessite une vérification par un opérateur. Son identité reste réservée.",
+      "serverAuth": "Le service de facturation a refusé les identifiants serveur. Contactez l’assistance.",
+      "client": "Votre compte de facturation n’est pas encore prêt. Contactez l’assistance ; la réouverture réutilisera ce compte.",
+      "configuration": "La configuration de facturation est incomplète. Contactez l’assistance.",
+      "unavailable": "La facturation est temporairement indisponible. Réessayez.",
+      "sdk": "Le widget n’a pas pu se charger. Rouvrez la facturation."
+    }
   }
 }

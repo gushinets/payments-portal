@@ -62,6 +62,9 @@ def test_register_and_login_results_are_presentable_after_session_close() -> Non
         "user_id": str(registration.authentication.user_id),
         "email": email,
         "email_verified": False,
+        "first_name": None,
+        "surname": None,
+        "patronymic": None,
     }
 
 
@@ -82,6 +85,9 @@ def test_session_contract_returns_only_canonical_identity() -> None:
             "user_id": response.json()["user"]["user_id"],
             "email": "identity-session-only@example.com",
             "email_verified": False,
+            "first_name": None,
+            "surname": None,
+            "patronymic": None,
         },
     }
     assert "product_state" not in response.json()
@@ -100,6 +106,9 @@ def test_session_contract_returns_only_canonical_identity() -> None:
         "user_id",
         "email",
         "email_verified",
+        "first_name",
+        "surname",
+        "patronymic",
     }
 
 
@@ -332,6 +341,9 @@ def test_login_and_logout_flow() -> None:
             "user_id": register_payload["user"]["user_id"],
             "email": "user@example.com",
             "email_verified": False,
+            "first_name": None,
+            "surname": None,
+            "patronymic": None,
         },
     }
 
