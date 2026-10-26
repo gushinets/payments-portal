@@ -5,6 +5,7 @@ from app.models._shared import (
     BigInteger,
     CheckConstraint,
     DateTime,
+    ForeignKeyConstraint,
     Index,
     Integer,
     Mapped,
@@ -133,3 +134,28 @@ class CommercialMappingRevision(Base):
     mapping_document: Mapped[dict] = mapped_column(json_type, nullable=False)
     published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     published_by_principal: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class CommercialProductHead(Base):
+    """One selected revision per product; contains no price or product catalog."""
+
+    __tablename__ = "commercial_product_heads"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["mapping_revision_id", "external_billing_account_id"],
+            [
+                "commercial_mapping_revisions.mapping_revision_id",
+                "commercial_mapping_revisions.external_billing_account_id",
+            ],
+            name="fk_commercial_product_heads_mapping_scope",
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint("revision_number > 0", name="ck_commercial_product_heads_revision_positive"),
+        CheckConstraint("trim(product_id) <> ''", name="ck_commercial_product_heads_product_nonempty"),
+    )
+
+    external_billing_account_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    product_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    mapping_revision_id: Mapped[uuid.UUID] = mapped_column(uuid_type, nullable=False)
+    # CAS sequence belongs to the PRODUCT, including retargets across offers.
+    revision_number: Mapped[int] = mapped_column(BigInteger, nullable=False)

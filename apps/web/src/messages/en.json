@@ -145,7 +145,7 @@
     },
     "products": {
       "title": "Products",
-      "description": "Published products and their saved terms. Subscription, access and usage information will be available later.",
+      "description": "Explore enabled products. Open product details for current billing terms; subscription, access and usage information will be available later.",
       "detailAction": "View product details",
       "state": {
         "commercial": {
@@ -239,7 +239,7 @@
     "eyebrow": "AI tools",
     "hero": {
       "heading": "AI tools for <em>everyday work</em>",
-      "description": "Explore published AI tools and their saved terms. Choose a tool for your task.",
+      "description": "Explore enabled AI tools and open details for current terms. Choose a tool for your task.",
       "primaryAction": "Open account",
       "secondaryAction": "Explore tools"
     },
@@ -251,18 +251,23 @@
     }
   },
   "CatalogPreview": {
-    "loading": "Loading approved offer previews…",
-    "empty": "No approved offer previews are available.",
-    "failed": "Offer previews are unavailable. Try again.",
+    "loading": "Loading products…",
+    "empty": "No enabled products are available.",
+    "failed": "Products or current offers are unavailable. Try again.",
     "retry": "Try again",
-    "notFound": "No approved offer preview was found for this product.",
+    "notFound": "This product is unavailable.",
     "ambiguous": "Unavailable: more than one approved offer exists for this product.",
-    "simulated": "SIMULATED — test preview only",
-    "unverified": "Approved terms — current availability unverified",
-    "previewNote": "Stored terms are shown for reference. Purchasing is unavailable; this preview does not grant access.",
+    "simulated": "Technical product source: development mock",
+    "unverified": "Current LBX offer — subject to confirmation",
+    "previewNote": "Current billing values are shown. Purchasing is not available yet; viewing an offer does not grant access.",
+    "detailsRequired": "Open details to check the current offer.",
+    "unmapped": "Purchasing is unavailable: no billing offer is linked.",
+    "unsupported": "Purchasing is unavailable: these offer conditions are not supported.",
+    "incomplete": "Purchasing is unavailable: the current offer could not be fully verified.",
+    "quantity": "Commercial service quantity",
     "productTitle": "Product",
     "fallback": "This product is identified by its canonical ID. Additional product information is not available yet.",
-    "details": "View offer preview",
+    "details": "View details",
     "recurring": "Recurring charge",
     "connection": "Separate connection charge",
     "period": "Billing period",
@@ -290,7 +295,7 @@
     "page": {
       "eyebrow": "Catalog",
       "title": "AI utilities",
-      "description": "Browse stored approved offer terms. Current availability is unverified."
+      "description": "Explore enabled products and open details for current billing values."
     },
     "signInAction": "Open account",
     "backToCatalog": "Back to products",

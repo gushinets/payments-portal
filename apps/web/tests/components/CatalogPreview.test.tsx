@@ -15,7 +15,7 @@ import { renderWithIntl } from "../setup/render-with-intl";
 
 const fetchMock = vi.fn<typeof fetch>();
 
-describe("stored catalog preview", () => {
+describe("current source catalog", () => {
   beforeEach(() => {
     fetchMock.mockReset();
     vi.stubGlobal("fetch", fetchMock);
@@ -74,15 +74,14 @@ describe("stored catalog preview", () => {
     const period = screen.getByText("1 mês").closest("dd");
     expect(period).toHaveTextContent("1 mês");
     expect(period).toHaveTextContent(pt.CatalogPreview.periodAnchors.instance_start);
-    expect(screen.getByText("25 generation")).toBeVisible();
+    expect(screen.getByText(pt.CatalogPreview.quantity).closest("div")).toHaveTextContent("1");
   });
 
-  it("shows honest approved-but-unverified state without a purchase action", async () => {
+  it("shows current LBX values separately from technical mock provenance without a purchase action", async () => {
     const offer = simulatedProduct.offer;
     if (!offer) throw new Error("simulated fixture requires offer");
     fetchMock.mockResolvedValueOnce(Response.json({
-      ...simulatedProduct, availability: "APPROVED_UNVERIFIED_NOW", evidence_mode: "GENUINE",
-      offer: { ...offer, evidence_mode: "GENUINE", publication_state: "PUBLISHED_APPROVED_UNVERIFIED_NOW" }
+      ...simulatedProduct, kernel_provenance: "CONFIGURED_SOURCE", offer
     }));
     renderWithIntl(<CatalogPreviewClient productId="proposal_ai" />, {
       locale: "en", messages: { CatalogPreview: en.CatalogPreview }
@@ -96,8 +95,11 @@ describe("stored catalog preview", () => {
     [{ detail: { code: "catalog_product_not_found" } }, 404, en.CatalogPreview.notFound],
     [{ detail: { code: "catalog_unavailable" } }, 503, en.CatalogPreview.failed],
     [{ detail: { code: "internal_server_error" } }, 500, en.CatalogPreview.failed],
-    [{ product_id: "proposal_ai", evidence_mode: "SIMULATED", availability: "UNAVAILABLE_AMBIGUOUS_OFFERS", offer: null }, 200, en.CatalogPreview.ambiguous]
-  ] as const)("distinguishes empty, absent, ambiguous and failure states", async (payload, status, text) => {
+    [{ ...simulatedProduct, availability: "UNMAPPED", offer: null }, 200, en.CatalogPreview.unmapped],
+    [{ ...simulatedProduct, availability: "DETAILS_REQUIRED", offer: null }, 200, en.CatalogPreview.detailsRequired],
+    [{ ...simulatedProduct, availability: "OFFER_UNSUPPORTED", offer: null }, 200, en.CatalogPreview.unsupported],
+    [{ ...simulatedProduct, availability: "OFFER_INCOMPLETE", offer: null }, 200, en.CatalogPreview.incomplete]
+  ] as const)("distinguishes empty, absent, unmapped and source failure states", async (payload, status, text) => {
     fetchMock.mockResolvedValueOnce(Response.json(payload, { status }));
     renderWithIntl(<CatalogPreviewClient productId={"products" in payload ? undefined : "proposal_ai"} />, {
       locale: "en", messages: { CatalogPreview: en.CatalogPreview }

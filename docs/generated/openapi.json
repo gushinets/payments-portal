@@ -62,30 +62,6 @@
         "title": "AcceptDocumentResponse",
         "type": "object"
       },
-      "CatalogAllowance": {
-        "properties": {
-          "metric_key": {
-            "title": "Metric Key",
-            "type": "string"
-          },
-          "quantity": {
-            "pattern": "^[1-9][0-9]*$",
-            "title": "Quantity",
-            "type": "string"
-          },
-          "unit": {
-            "title": "Unit",
-            "type": "string"
-          }
-        },
-        "required": [
-          "metric_key",
-          "unit",
-          "quantity"
-        ],
-        "title": "CatalogAllowance",
-        "type": "object"
-      },
       "CatalogMoney": {
         "properties": {
           "connection_amount": {
@@ -127,25 +103,27 @@
       },
       "CatalogOffer": {
         "properties": {
-          "allowance": {
-            "$ref": "#/components/schemas/CatalogAllowance"
+          "billing_provenance": {
+            "$ref": "#/components/schemas/CommercialEvidenceMode"
           },
-          "evidence_mode": {
-            "$ref": "#/components/schemas/MappingEvidenceMode"
+          "commercial_quantity": {
+            "pattern": "^[1-9][0-9]*$",
+            "title": "Commercial Quantity",
+            "type": "string"
+          },
+          "full_funding_required": {
+            "title": "Full Funding Required",
+            "type": "boolean"
           },
           "money": {
             "$ref": "#/components/schemas/CatalogMoney"
           },
-          "offer_id": {
-            "format": "uuid",
-            "title": "Offer Id",
-            "type": "string"
-          },
           "period": {
             "$ref": "#/components/schemas/CatalogPeriod"
           },
-          "publication_state": {
-            "$ref": "#/components/schemas/PublicationState"
+          "prepaid": {
+            "title": "Prepaid",
+            "type": "boolean"
           },
           "revision_id": {
             "format": "uuid",
@@ -156,21 +134,17 @@
             "exclusiveMinimum": 0.0,
             "title": "Revision Number",
             "type": "integer"
-          },
-          "terms": {
-            "$ref": "#/components/schemas/CatalogTermSummary"
           }
         },
         "required": [
-          "offer_id",
           "revision_id",
           "revision_number",
-          "evidence_mode",
-          "publication_state",
+          "billing_provenance",
           "money",
           "period",
-          "allowance",
-          "terms"
+          "commercial_quantity",
+          "prepaid",
+          "full_funding_required"
         ],
         "title": "CatalogOffer",
         "type": "object"
@@ -214,15 +188,28 @@
         "properties": {
           "availability": {
             "enum": [
-              "APPROVED_UNVERIFIED_NOW",
-              "SIMULATED_PREVIEW",
-              "UNAVAILABLE_AMBIGUOUS_OFFERS"
+              "DETAILS_REQUIRED",
+              "UNMAPPED",
+              "CURRENT_OFFER",
+              "OFFER_UNSUPPORTED",
+              "OFFER_INCOMPLETE"
             ],
             "title": "Availability",
             "type": "string"
           },
-          "evidence_mode": {
-            "$ref": "#/components/schemas/MappingEvidenceMode"
+          "availability_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Availability Reason"
+          },
+          "kernel_provenance": {
+            "$ref": "#/components/schemas/SourceProvenance"
           },
           "offer": {
             "anyOf": [
@@ -241,8 +228,9 @@
         },
         "required": [
           "product_id",
-          "evidence_mode",
+          "kernel_provenance",
           "availability",
+          "availability_reason",
           "offer"
         ],
         "title": "CatalogProductResponse",
@@ -264,53 +252,13 @@
         "title": "CatalogProductsResponse",
         "type": "object"
       },
-      "CatalogTermSummary": {
-        "properties": {
-          "connection_charge_basis": {
-            "enum": [
-              "per_service_unit",
-              "once"
-            ],
-            "title": "Connection Charge Basis",
-            "type": "string"
-          },
-          "discounts": {
-            "const": "none",
-            "title": "Discounts",
-            "type": "string"
-          },
-          "full_funding_required": {
-            "title": "Full Funding Required",
-            "type": "boolean"
-          },
-          "prepaid": {
-            "title": "Prepaid",
-            "type": "boolean"
-          },
-          "proration": {
-            "const": "none",
-            "title": "Proration",
-            "type": "string"
-          },
-          "tax_treatment": {
-            "enum": [
-              "included",
-              "not_applicable"
-            ],
-            "title": "Tax Treatment",
-            "type": "string"
-          }
-        },
-        "required": [
-          "prepaid",
-          "full_funding_required",
-          "tax_treatment",
-          "discounts",
-          "proration",
-          "connection_charge_basis"
+      "CommercialEvidenceMode": {
+        "enum": [
+          "CONFIGURED_SOURCE",
+          "SIMULATED"
         ],
-        "title": "CatalogTermSummary",
-        "type": "object"
+        "title": "CommercialEvidenceMode",
+        "type": "string"
       },
       "EmailVerificationConfirmRequest": {
         "properties": {
@@ -446,14 +394,6 @@
         "title": "LogoutResponse",
         "type": "object"
       },
-      "MappingEvidenceMode": {
-        "enum": [
-          "SIMULATED",
-          "GENUINE"
-        ],
-        "title": "MappingEvidenceMode",
-        "type": "string"
-      },
       "PasswordResetConfirmRequest": {
         "properties": {
           "password": {
@@ -515,14 +455,6 @@
         ],
         "title": "PasswordResetRequestResponse",
         "type": "object"
-      },
-      "PublicationState": {
-        "enum": [
-          "SIMULATED",
-          "PUBLISHED_APPROVED_UNVERIFIED_NOW"
-        ],
-        "title": "PublicationState",
-        "type": "string"
       },
       "ReadinessSuccessResponse": {
         "properties": {
@@ -750,6 +682,14 @@
         ],
         "title": "SessionUserResponse",
         "type": "object"
+      },
+      "SourceProvenance": {
+        "enum": [
+          "CONFIGURED_SOURCE",
+          "SIMULATED"
+        ],
+        "title": "SourceProvenance",
+        "type": "string"
       },
       "ValidationError": {
         "properties": {

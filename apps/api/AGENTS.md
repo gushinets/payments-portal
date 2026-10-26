@@ -13,8 +13,10 @@ retained billing document:
 3. [Portal ↔ Kernel Access Contract Design](../../docs/superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md)
 4. [Accepted live-source admission amendment](../../docs/superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md)
    narrowly supersedes source-catalog mirroring/new-sale TTL: live Kernel/LBX
-   reads for publication/new purchase, PostgreSQL for immutable approved terms
-   and catalog browsing. No change to subscription trust or AccessSnapshot.
+   reads for publication/new purchase, PostgreSQL for immutable history/accepted purchase terms. ANY-709 Step 1
+   uses direct versioned product links and source-backed catalog/current offers
+   without file approvals or price-republication; see the
+   [runbook](../../docs/engineering/lbx-product-links.md). No change to subscription trust or AccessSnapshot.
 
 The [payment-provider document](../../docs/architecture/payment-providers.md)
 is historical characterization of the physically removed direct-provider
@@ -119,7 +121,7 @@ database lifecycle.
 - Target paid access changes only from the authoritative sources
   permitted by ADR 0005 and the accepted designs; a browser return, Widget
   callback, webhook, outbound request success, or payment state alone is not
-  access authority. Restricted immutable mapping publication is implemented;
+  access authority. Direct versioned product linking and source-backed catalog reads are implemented;
   purchase, reconciliation, paid-access and billing-callback runtime remain
   future work.
 - Never log authentication tokens, authorization headers, secrets, card fields,

@@ -145,7 +145,7 @@
     },
     "products": {
       "title": "Produtos",
-      "description": "Produtos publicados e suas condições salvas. As informações sobre assinaturas, acesso e uso estarão disponíveis mais adiante.",
+      "description": "Explore os produtos ativos e suas condições atuais nos detalhes. Informações de assinatura, acesso e uso estarão disponíveis mais tarde.",
       "detailAction": "Ver detalhes do produto",
       "state": {
         "commercial": {
@@ -239,7 +239,7 @@
     "eyebrow": "Ferramentas de IA",
     "hero": {
       "heading": "Ferramentas de IA para <em>o dia a dia</em>",
-      "description": "Explore as ferramentas de IA publicadas e suas condições salvas. Escolha uma ferramenta para sua tarefa.",
+      "description": "Explore as ferramentas de IA ativas e suas condições atuais nos detalhes. Escolha uma ferramenta para sua tarefa.",
       "primaryAction": "Abrir conta",
       "secondaryAction": "Explorar ferramentas"
     },
@@ -251,18 +251,23 @@
     }
   },
   "CatalogPreview": {
-    "loading": "Carregando as ofertas aprovadas…",
-    "empty": "Não há prévias de ofertas aprovadas disponíveis.",
-    "failed": "As prévias das ofertas estão indisponíveis. Tente novamente.",
+    "loading": "Carregando produtos…",
+    "empty": "Nenhum produto ativo disponível.",
+    "failed": "Produtos ou ofertas atuais indisponíveis. Tente novamente.",
     "retry": "Tentar novamente",
-    "notFound": "Nenhuma oferta aprovada foi encontrada para este produto.",
+    "notFound": "Este produto está indisponível.",
     "ambiguous": "Indisponível: existe mais de uma oferta aprovada para este produto.",
-    "simulated": "SIMULAÇÃO — apenas prévia de teste",
-    "unverified": "Condições aprovadas — disponibilidade atual não verificada",
-    "previewNote": "As condições salvas são exibidas para consulta. A compra está indisponível; esta prévia não concede acesso ao produto.",
+    "simulated": "Fonte dos produtos: serviço de teste",
+    "unverified": "Oferta LBX atual — sujeita a confirmação",
+    "previewNote": "São exibidos os valores atuais de cobrança. A compra ainda não está disponível; visualizar uma oferta não concede acesso.",
+    "detailsRequired": "Abra os detalhes para verificar a oferta atual.",
+    "unmapped": "Compra indisponível: nenhuma oferta de cobrança vinculada.",
+    "unsupported": "Compra indisponível: estas condições não são compatíveis.",
+    "incomplete": "Compra indisponível: não foi possível verificar totalmente a oferta atual.",
+    "quantity": "Quantidade de unidades do serviço",
     "productTitle": "Produto",
     "fallback": "Este produto é identificado pelo seu ID canônico. Informações adicionais ainda não estão disponíveis.",
-    "details": "Ver condições",
+    "details": "Ver detalhes",
     "recurring": "Cobrança recorrente",
     "connection": "Cobrança de conexão separada",
     "period": "Período de cobrança",
@@ -290,7 +295,7 @@
     "page": {
       "eyebrow": "Catálogo",
       "title": "Ferramentas de IA",
-      "description": "Consulte as condições aprovadas salvas. A disponibilidade atual não foi verificada."
+      "description": "Explore os produtos ativos e suas condições atuais de cobrança."
     },
     "signInAction": "Abrir conta",
     "backToCatalog": "Voltar aos produtos",

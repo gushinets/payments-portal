@@ -148,7 +148,7 @@ class LbxServerClient:
         *,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
-        if not configuration.lbx_base_url:
+        if configuration.lbx_configuration_error is not None:
             raise LbxNotConfigured()
         self._configuration = configuration
         self._session: _Session | None = None

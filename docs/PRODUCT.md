@@ -19,8 +19,9 @@ password-recovery and legal-acceptance flows remain implemented. Published
 immutable commercial terms are displayed; paid access remains unknown and
 actual usage/quota unavailable. The repository remains pre-production and
 provider-independent on the surface established by ANY-636 4F. ANY-664 adds
-read-only source clients, controlled immutable offer publication and DB-only
-catalog browsing; genuine
+historical read-only source clients and controlled immutable offer publication.
+ANY-709 Step 1 adds direct versioned links and source-backed catalog/current
+offers; genuine
 Kernel conformance and sales remain gated. There are no production direct-
 provider subscribers or subscriptions to migrate.
 
@@ -40,7 +41,9 @@ and the accepted
 The [accepted live-source admission amendment](superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md)
 narrowly supersedes source-catalog mirroring/new-sale TTL: publication and each
 genuinely new purchase require current Kernel/LBX reads; approved immutable
-terms and catalog browsing use PostgreSQL without source requests. Paid-access,
+history stays in PostgreSQL. ANY-709 Step 1 supersedes file approval and
+DB-only public browsing with enabled-product discovery and current selected
+offers; customer purchase consent remains immutable and is implemented later. Paid-access,
 subscription trust/reconciliation and AccessSnapshot remain unchanged.
 The [Billing Authority and Consistency](architecture/billing-authority.md)
 document is historical/superseded only; it is neither current-state nor target

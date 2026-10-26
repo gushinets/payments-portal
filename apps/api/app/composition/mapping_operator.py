@@ -1,57 +1,24 @@
-"""Restricted operator composition; fixtures/transports are injected only here."""
+"""Privileged direct link composition; all source I/O precedes DB resources."""
 
 from __future__ import annotations
 
-import asyncio
 import os
 from collections.abc import Callable
-from dataclasses import dataclass
-from datetime import UTC, date, datetime, time, timedelta
-from pathlib import Path
-from typing import Literal, TypeVar
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 
 import httpx
-from pydantic import BaseModel, ValidationError
 
 from app.composition.sources import source_resources
-from app.core.settings import AppEnv, Settings
-from app.domains.catalog.commercial_offer import CommercialEvidenceBasis, CommercialScope
-from app.domains.catalog.mapping_evidence import (
-    ApprovedMapping,
-    ImmutableInput,
-    MappingDocument,
-    MappingRefused,
-    Nonempty,
-    TechnicalBinding,
-    evaluate_mapping,
-)
-from app.infrastructure.preflight import PreflightCleanupPending
-from app.integrations.lbx.client import LbxServerClient
-from app.integrations.lbx.offer_inputs import SelectedOfferInputs, SelectedOfferRequest
-from app.integrations.lbx.selected_offer import read_selected_offer
-
-
-MAX_OPERATOR_INPUT_BYTES = 1048576
-ModelT = TypeVar("ModelT", bound=BaseModel)
-
-
-class MappingProposal(ImmutableInput):
-    schema_version: Literal[1]
-    selection: SelectedOfferRequest
-    technical: TechnicalBinding
-    reason: Nonempty
-
-
-@dataclass(frozen=True)
-class FreshMappingEvaluation:
-    document: MappingDocument
-    deadline: float
-    evidence_valid_until: datetime
+from app.core.settings import Settings
+from app.domains.catalog.commercial_offer import CommercialScope, canonical_document, commercial_digest
+from app.domains.catalog.mapping_evidence import MappingRefused
+from app.domains.catalog.preview import require_enabled_product
+from app.domains.catalog.product_link import LINK_SCHEMA, CurrentOffer, ProductLinkDocument, ProductLinkRequest
+from app.integrations.lbx.current_offer import read_current_offer
 
 
 def authorize_operator(configuration: Settings, *, resolve_uid: Callable[[], int] | None = None) -> str:
-    """Composition-only injection for tests; no actor/username/approval flag."""
     resolver = resolve_uid if resolve_uid is not None else getattr(os, "geteuid", None)
     if resolver is None:
         raise MappingRefused("mapping_operator_identity_unavailable")
@@ -67,128 +34,66 @@ def authorize_operator(configuration: Settings, *, resolve_uid: Callable[[], int
 
 
 def configured_mapping_scope(configuration: Settings) -> CommercialScope:
-    if not configuration.mapping_account_id:
+    if not configuration.lbx_external_billing_account_id:
         raise MappingRefused("mapping_account_not_configured")
     return CommercialScope(
-        configuration.instance_tenant_id, configuration.instance_region, configuration.mapping_account_id
+        configuration.instance_tenant_id, configuration.instance_region, configuration.lbx_external_billing_account_id
     )
-
-
-def load_operator_input(path: Path | None, model: type[ModelT]) -> ModelT:
-    if path is None:
-        raise MappingRefused("mapping_input_not_configured")
-    try:
-        with path.open("rb") as stream:
-            body = stream.read(MAX_OPERATOR_INPUT_BYTES + 1)
-        if len(body) > MAX_OPERATOR_INPUT_BYTES:
-            raise MappingRefused("mapping_input_too_large")
-        return model.model_validate_json(body)
-    except (OSError, ValidationError, ValueError):
-        raise MappingRefused("mapping_input_invalid") from None
 
 
 def utc_now() -> datetime:
     return datetime.now(UTC)
 
 
-def account_billing_date(inputs: SelectedOfferInputs, *, account_id: str, now: datetime) -> date:
-    calendar = inputs.calendar
-    if calendar is None:
-        raise MappingRefused("mapping_account_calendar_not_configured")
-    if calendar.external_billing_account_id != account_id:
-        raise MappingRefused("mapping_account_calendar_scope_mismatch")
-    if calendar.evidence.basis not in {CommercialEvidenceBasis.ACCOUNT_EVIDENCE, CommercialEvidenceBasis.SIMULATED}:
-        raise MappingRefused("mapping_account_calendar_unproven")
-    if now.utcoffset() is None:
-        raise MappingRefused("mapping_clock_invalid")
-    try:
-        return now.astimezone(ZoneInfo(calendar.timezone)).date()
-    except (ZoneInfoNotFoundError, ValueError):
-        raise MappingRefused("mapping_account_calendar_invalid") from None
+@dataclass(frozen=True)
+class FreshLinkEvaluation:
+    document: ProductLinkDocument
+    deadline: float
+    offer: CurrentOffer
 
 
-async def fresh_mapping_evaluation(
+async def fresh_link_evaluation(
     configuration: Settings,
     *,
-    proposal: MappingProposal,
-    approval: ApprovedMapping,
-    source_inputs: SelectedOfferInputs,
+    selection: ProductLinkRequest,
     principal: str,
     kernel_transport: httpx.AsyncBaseTransport | None = None,
     lbx_transport: httpx.AsyncBaseTransport | None = None,
-    clock: Callable[[], datetime] | None = None,
-) -> FreshMappingEvaluation:
-    """Outer I/O only; one fresh deadline precedes admission and both sources.
-
-    Returns a neutral evaluation to synchronous Application. No Session exists
-    here. The command owns a single event loop, then runs DB work synchronously.
-    Configured LBX reads can be real; provisional Kernel always taints the result.
-    """
+) -> FreshLinkEvaluation:
+    if configuration.lbx_configuration_error is not None:
+        raise MappingRefused(configuration.lbx_configuration_error)
     scope = configured_mapping_scope(configuration)
-    selection = proposal.selection
-    if (selection.tenant_id, selection.region, selection.external_billing_account_id) != (
-        scope.tenant_id,
-        scope.region,
-        scope.external_billing_account_id,
-    ) or configuration.lbx_external_billing_account_id != scope.external_billing_account_id:
-        raise MappingRefused("mapping_scope_mismatch")
-    if configuration.app_env == AppEnv.PRODUCTION:
-        # No trusted genuine producer/release composition exists yet (G1-G4).
-        raise MappingRefused("mapping_real_enablement_unverified")
-    now = clock if clock is not None else utc_now
-
-    def require_current_date() -> datetime:
-        instant = now()
-        if selection.effective_on != account_billing_date(
-            source_inputs, account_id=scope.external_billing_account_id, now=instant
-        ):
-            raise MappingRefused("mapping_effective_date_not_current")
-        return instant
-
-    require_current_date()
-    async with source_resources(configuration, kernel_transport=kernel_transport) as sources:
-        lbx = LbxServerClient(configuration, transport=lbx_transport)
-        try:
-            async with sources.preflight.operation() as budget:
-                manifest = await sources.require_kernel().fetch_manifest(budget=budget)
-                offer = await read_selected_offer(lbx, selection=selection, inputs=source_inputs, budget=budget)
-                # Reads can cross account midnight: refuse, never rewrite the
-                # operator's independently approved date.
-                evaluated_at = require_current_date()
-                budget.check()
-                document = evaluate_mapping(
-                    manifest=manifest,
-                    offer=offer,
-                    technical=proposal.technical,
-                    approval=approval,
-                    scope=scope,
-                    principal=principal,
-                    reason=proposal.reason,
-                    evaluated_at=evaluated_at,
-                    allow_simulated=configuration.app_env in {AppEnv.DEVELOPMENT, AppEnv.TEST},
-                )
-                budget.check()
-                # These exclusive calendar bounds have already been validated
-                # by the account-date guard and selected-offer normalizer.
-                # Carry a transient UTC lease across cleanup/DB work, without
-                # changing the approved immutable document or its fingerprint.
-                assert source_inputs.calendar is not None and source_inputs.policy is not None
-                dates = [selection.effective_on + timedelta(days=1)]
-                if source_inputs.policy.valid_until is not None:
-                    dates.append(source_inputs.policy.valid_until)
-                if offer.terms.period.price_effective_until is not None:
-                    dates.append(offer.terms.period.price_effective_until)
-                evidence_valid_until = datetime.combine(
-                    min(dates), time.min, tzinfo=ZoneInfo(source_inputs.calendar.timezone)
-                ).astimezone(UTC)
-                result = FreshMappingEvaluation(document, budget.work_deadline, evidence_valid_until)
-            return result
-        finally:
-            # Drain the same owner before closing either pool. If cleanup remains
-            # counted, propagate refusal and retain resources, as in Steps 2/3.
-            await sources.preflight.aclose()
-            try:
-                async with asyncio.timeout(configuration.preflight_cleanup_timeout_seconds):
-                    await lbx.aclose()
-            except TimeoutError:
-                raise PreflightCleanupPending() from None
+    async with source_resources(
+        configuration, kernel_transport=kernel_transport, lbx_transport=lbx_transport
+    ) as sources:
+        async with sources.preflight.operation() as budget:
+            manifest = await sources.require_kernel().fetch_manifest(budget=budget)
+            require_enabled_product(manifest, selection.product_id)
+            offer = await read_current_offer(
+                sources.require_lbx(), selection=selection, configuration=configuration, budget=budget
+            )
+            now = utc_now()
+            identity = canonical_document(
+                {
+                    "schema": LINK_SCHEMA,
+                    "scope": asdict(scope),
+                    "selection": selection.model_dump(mode="json"),
+                    "kernel_provenance": manifest.provenance,
+                    "lbx_evidence_mode": offer.evidence_mode,
+                }
+            )
+            document = ProductLinkDocument(
+                scope=scope,
+                selection=selection,
+                kernel_provenance=manifest.provenance,
+                lbx_evidence_mode=offer.evidence_mode,
+                manifest_version=manifest.manifest_version,
+                manifest_generated_at=manifest.generated_at,
+                evaluated_at=now,
+                published_at=now,
+                publisher_principal=principal,
+                reason="Operator product link",
+                identity_digest=commercial_digest(identity),
+            )
+            budget.check()
+            return FreshLinkEvaluation(document, budget.work_deadline, offer)

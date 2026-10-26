@@ -49,7 +49,7 @@ for (const locale of ["ru", "pt"] as const) {
         await expect(card.getByText(locale === "ru" ? "9 007 199 254 740 993,01 RUB" : "9.007.199.254.740.993,01 RUB")).toBeVisible();
         await expect(card.getByText(locale === "ru" ? "1 месяц" : "1 mês", { exact: true })).toBeVisible();
         await expect(card.getByText(messages.CatalogPreview.periodAnchors.instance_start, { exact: true })).toBeVisible();
-        await expect(card.getByText("25 generation", { exact: true })).toBeVisible();
+        await expect(card.getByText(messages.CatalogPreview.quantity).locator("..")).toContainText("1");
         await expect(card.getByRole("link", { name: messages.CatalogPreview.details }))
           .toHaveAttribute("href", `/${locale}/products/${product.product_id}`);
         for (const slot of ["access", "usage"] as const) {

@@ -48,12 +48,26 @@ target or turn External Billing into a direct payment-provider integration.
   for provider-dependent production semantics, Widget/LBX production behavior,
   and launch.
 
-## Implementation status, 2026-10-23
+
+**ANY-709 Step 1 owner-approved correction (2026-10-26):** direct versioned
+product links replace mandatory proposal/approval/source-policy files and manual
+account-ID inputs. A link pins product/tariff/service/period/quantity and source
+provenance, not a historical publication price or an invented technical quota.
+Catalog listing discovers enabled Kernel products; selected details read current
+LBX values. PostgreSQL retains immutable v1 history, v2 link revisions/current
+product heads and future accepted purchase snapshots. Price changes do not
+require relinking. No approval/price fallback authorizes a sale. Purchase-time
+exact acceptance, effective-subscription readback, recovery, paid-access/trust
+and AccessSnapshot rules are unchanged. Implementation/testing status and normal
+operator setup are in the [Step 1 runbook](../../engineering/lbx-product-links.md).
+
+## Implementation status, 2026-10-26
 
 The retained implementation described in the original context and decision
-has since been physically removed. ANY-664 now supplies restricted immutable
-mapping publication and DB-only catalog browsing; purchases and paid access
-remain future work. See the current [architecture](../../../ARCHITECTURE.md).
+has since been physically removed. ANY-664 supplied restricted v1 publication/DB-only browsing. ANY-709 Step 1
+now supplies normal LBX configuration, direct links and source-backed current
+offers; its runtime validation is pending. Purchases and paid access remain
+future work. See the current [architecture](../../../ARCHITECTURE.md).
 The retained wording records the decision's transition history and does not
 assert that executable direct-provider code still exists.
 

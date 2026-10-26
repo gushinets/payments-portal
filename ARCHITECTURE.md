@@ -16,8 +16,9 @@ The current Portal combines product-first public discovery,
 per-product pages, presentation-only pricing navigation, direct account/auth
 entry and a product-centric cabinet. It remains pre-production and
 provider-independent on the current ANY-636 4F surface. ANY-664 adds read-only
-source clients, controlled immutable offer publication and DB-only catalog
-reads; genuine Kernel conformance and production enablement remain gated.
+source clients and historical v1 publication. ANY-709 Step 1 now supplies
+normal LBX configuration, direct immutable product links and source-backed
+catalog/current-offer reads; genuine Kernel conformance and production enablement remain gated.
 Purchase, billing lifecycle and paid access remain later work. Final 4F
 verification and human screenshot/intent acceptance remain pending.
 
@@ -69,9 +70,11 @@ and the accepted
 The owner-approved [live-source admission amendment](docs/superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md)
 narrowly supersedes those baselines' source-catalog mirroring/new-sale TTL.
 Each publication and genuinely new purchase requires live Kernel and complete
-selected-offer LBX reads. PostgreSQL stores approved immutable bindings/terms;
-catalog browsing reads that state without LBX/Kernel requests or a current
-sellability promise. There are no periodic source-catalog synchronization jobs.
+selected-offer LBX reads. ANY-709 Step 1 separates immutable product links from transient current offers
+and future accepted purchase snapshots. PostgreSQL retains links/history. Catalog
+listing reads enabled Kernel products once; selected detail reads current LBX
+values with bounded work. A current offer does not grant access or enable a
+purchase. See the [normal connection/link runbook](docs/engineering/lbx-product-links.md). There are no periodic source-catalog synchronization jobs.
 Paid-access derivation, subscription reconciliation/trust and AccessSnapshot
 deadlines are unchanged.
 External Billing owns commercial billing truth and lifecycle. The AnyToolAI
@@ -101,7 +104,7 @@ launch remain gated by Phase 0 and their owning `ANY-504` steps.
 - **Legal** — legal entities, versioned documents, required-document discovery,
   and append-only acceptance evidence.
 - **Catalog admission and billing persistence** — live source validation,
-  restricted immutable mapping publication and DB-only catalog reads;
+  direct immutable product links with one current product head and live catalog reads;
   purchase evidence, reconciliation/operation records, paid-access state and
   invalidation outbox remain storage for later stages.
 - **Presentation** — locale-prefixed product-first home, catalog,
@@ -414,7 +417,10 @@ commercial behavior:
 - paid-access state and the invalidation outbox support later provider-neutral
   access delivery.
 
-`external_billing_account_id` is an opaque configuration scope. No
+`external_billing_account_id` is an opaque server-resolved connection scope,
+bound to normalized LBX origin and server username, independent of password
+rotation. It is no longer a manual operator input. Conflicting historical real
+scopes require explicit migration rather than relabelling. No
 `external_billing_accounts` entity or table exists. Platform Kernel product
 and metric identifiers and External Billing object identifiers remain opaque
 at this boundary.
@@ -445,7 +451,7 @@ payment state, or manual operator input alone never grant paid access.
 | Password-reset confirmation | `confirm_password_reset()` atomically commits token claim, password change, outstanding-token invalidation, and active-session revocation. |
 | Email-verification confirmation | `confirm_email_verification()` atomically commits the mailbox-verification fact, token claim, and invalidation of other outstanding verification capabilities. |
 | Email-verification resend/rotation | `prepare_email_verification_resend()` atomically commits invalidation of the previous outstanding capability and creation of its replacement after the cooldown/lock checks. |
-| Commercial mapping publication | `publish_mapping()` appends one immutable revision after live source checks, under bounded scope lock/CAS; catalog reads use PostgreSQL only. |
+| Commercial mapping publication | `publish_product_link()` appends a v2 immutable revision and CAS-updates one product head after live checks; same identity is a no-op across price changes. Catalog HTTP runs outside short resource-owning worker DB units. |
 | Other target billing tables | Source-catalog slots are inert; purchase, reconciliation and paid-access behavior belongs to later `ANY-504` steps. |
 
 ## Enforced architecture guards

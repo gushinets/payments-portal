@@ -1,21 +1,19 @@
-"""Anonymous DB-only previews. Stored approval is never current sellability."""
+"""Source product discovery and explicit current-offer states; no sale/access grant."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-
-from sqlalchemy.orm import Session
+from typing import Literal
 
 from app.core.errors import AppError
-from app.domains.catalog.commercial_offer import CommercialScope
-from app.domains.catalog.mapping_evidence import MappingRefused
-from app.domains.catalog.publication import StoredMapping, validate_stored_mapping
-from app.infrastructure.queries.catalog import list_mapping_heads
+from app.domains.catalog.contracts import CapabilityManifest, SourceProvenance
+from app.domains.catalog.link_publication import StoredProductLink
+from app.domains.catalog.product_link import CurrentOffer
 
 
 class CatalogUnavailable(AppError):
-    def __init__(self) -> None:
-        super().__init__("catalog_unavailable")
+    def __init__(self, reason: str = "catalog_unavailable") -> None:
+        super().__init__(reason)
 
 
 class CatalogProductNotFound(AppError):
@@ -23,36 +21,28 @@ class CatalogProductNotFound(AppError):
         super().__init__("catalog_product_not_found")
 
 
+Availability = Literal["DETAILS_REQUIRED", "UNMAPPED", "CURRENT_OFFER", "OFFER_UNSUPPORTED", "OFFER_INCOMPLETE"]
+
+
 @dataclass(frozen=True)
 class ProductPreview:
     product_id: str
-    # Multiple distinct eligible heads are intentionally not ranked by price.
-    offers: tuple[StoredMapping, ...]
+    kernel_provenance: SourceProvenance
+    availability: Availability
+    link: StoredProductLink | None = None
+    offer: CurrentOffer | None = None
+    reason: str | None = None
 
 
-def list_product_previews(db: Session, *, scope: CommercialScope, allow_simulated: bool) -> tuple[ProductPreview, ...]:
-    if not scope.external_billing_account_id:
-        raise CatalogUnavailable()
-    grouped: dict[str, list[StoredMapping]] = {}
-    for row in list_mapping_heads(db, account_id=scope.external_billing_account_id):
-        try:
-            stored = validate_stored_mapping(
-                row, scope=scope, offer_id=row.billing_offer_id, allow_simulated=allow_simulated
-            )
-        except MappingRefused as error:
-            if error.code == "mapping_simulation_forbidden":
-                continue
-            # Do not conceal an invalid head by selecting older evidence or
-            # publishing a product identity taken from an unvalidated document.
-            raise CatalogUnavailable() from None
-        grouped.setdefault(stored.document.material.technical.product_id, []).append(stored)
-    return tuple(ProductPreview(product_id, tuple(grouped[product_id])) for product_id in sorted(grouped))
+def require_enabled_product(manifest: CapabilityManifest, product_id: str) -> None:
+    product = next((item for item in manifest.products if item.product_id == product_id and item.enabled), None)
+    if product is None:
+        raise CatalogProductNotFound()
 
 
-def get_product_preview(
-    db: Session, *, scope: CommercialScope, allow_simulated: bool, product_id: str
-) -> ProductPreview:
-    for product in list_product_previews(db, scope=scope, allow_simulated=allow_simulated):
-        if product.product_id == product_id:
-            return product
-    raise CatalogProductNotFound()
+def list_product_previews(manifest: CapabilityManifest) -> tuple[ProductPreview, ...]:
+    return tuple(
+        ProductPreview(item.product_id, manifest.provenance, "DETAILS_REQUIRED")
+        for item in sorted(manifest.products, key=lambda item: item.product_id)
+        if item.enabled
+    )

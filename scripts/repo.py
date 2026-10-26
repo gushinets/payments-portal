@@ -423,7 +423,6 @@ def write_runtime(config: RuntimeConfig) -> None:
         "APP_ENV": "development",
         "INSTANCE_TENANT_ID": LOCAL_INSTANCE_TENANT_ID,
         "INSTANCE_REGION": LOCAL_INSTANCE_REGION,
-        "MAPPING_ACCOUNT_ID": os.environ.get("MAPPING_ACCOUNT_ID", local_env.get("MAPPING_ACCOUNT_ID", "")),
         "POSTGRES_DB": config.database_name,
         "POSTGRES_USER": "anytoolai",
         "POSTGRES_PASSWORD": "anytoolai-local-only",
@@ -455,16 +454,33 @@ def write_runtime(config: RuntimeConfig) -> None:
         "OTEL_EXPORTER_OTLP_ENDPOINT": "http://observability:4318",
         "OTEL_SERVICE_NAME": "payment-portal-api",
     }
+    # Normal private connection values pass through independently of the mock.
+    # Keep them out of runtime.json/doctor/stdout and the public web environment.
+    for name in (
+        "KERNEL_BASE_URL", "KERNEL_SERVICE_TOKEN",
+        "LBX_BASE_URL", "LBX_SERVER_USERNAME", "LBX_SERVER_PASSWORD",
+        "LBX_WIDGET_SIGNING_SECRET", "LBX_SELLER_ORGANIZATION_ID",
+        "LBX_BILLING_TIMEZONE", "LBX_CURRENCY_ID", "LBX_CURRENCY",
+        "LBX_CONNECT_TIMEOUT_SECONDS", "LBX_READ_TIMEOUT_SECONDS",
+        "LBX_MAX_RESPONSE_BYTES", "LBX_MAX_GET_ATTEMPTS",
+        "LBX_RETRY_DELAY_SECONDS", "LBX_MAX_RETRY_DELAY_SECONDS",
+        "MAPPING_OPERATOR_UIDS", "MAPPING_OPERATOR_LOCK_FILE",
+    ):
+        value = os.environ.get(name, local_env.get(name, ""))
+        if "\n" in value or "\r" in value:
+            raise HarnessError(f"{name} must be a single-line value")
+        if value:
+            values[name] = value
+    lock_directory = HARNESS_DIR / "operator"
+    lock_directory.mkdir(exist_ok=True, mode=0o700)
+    protect_private_directory(lock_directory)
+    values.setdefault("MAPPING_OPERATOR_LOCK_FILE", "/run/payments-portal/operator.lock")
     if kernel_mock_enabled():
-        # Only the explicitly selected development override consumes these.
-        # Preserve the protected runtime.env writer; never print credentials.
+        values["KERNEL_MOCK_ENABLED"] = "1"
         for name in (
             "KERNEL_MOCK_TOKEN",
-            "KERNEL_SERVICE_TOKEN",
-            "KERNEL_BASE_URL",
             "KERNEL_MOCK_SCENARIO",
             "KERNEL_MOCK_DELAY_SECONDS",
-            "MAPPING_OPERATOR_UIDS",
         ):
             value = os.environ.get(name, local_env.get(name, ""))
             if "\n" in value or "\r" in value:
@@ -473,8 +489,24 @@ def write_runtime(config: RuntimeConfig) -> None:
                 values[name] = value
     write_protected_runtime_env_file(
         RUNTIME_ENV,
-        "".join(f"{key}={value}\n" for key, value in values.items()),
+        "".join(f"{key}={quote_runtime_value(value)}\n" for key, value in values.items()),
     )
+
+
+def quote_runtime_value(value: str) -> str:
+    # Compose's $$ escape survives interpolation; JSON quoting preserves quotes,
+    # backslashes (including a trailing backslash), whitespace and comments.
+    if any(char in value for char in "$#'\\\" "):
+        return json.dumps(value, ensure_ascii=False).replace("$", "$$")
+    return value
+
+
+def unquote_runtime_value(value: str) -> str:
+    if len(value) >= 2 and value.startswith('"') and value.endswith('"'):
+        return json.loads(value).replace("$$", "$")
+    if len(value) >= 2 and value.startswith("'") and value.endswith("'"):
+        return value[1:-1].replace("\\'", "'")
+    return value
 
 
 def kernel_mock_enabled() -> bool:
@@ -3161,6 +3193,8 @@ def direct_api_environment(*, environ: dict[str, str] | None = None) -> dict[str
     defaults.setdefault("APP_PUBLIC_BASE_URL", "http://localhost:3000")
     defaults.setdefault("CORS_ALLOW_ORIGINS", defaults.get("APP_PUBLIC_BASE_URL", "http://localhost:3000"))
     defaults.setdefault("SKIP_LEGAL_SEED", "true")
+    if defaults.get("MAPPING_OPERATOR_LOCK_FILE") == "/run/payments-portal/operator.lock":
+        defaults["MAPPING_OPERATOR_LOCK_FILE"] = str(HARNESS_DIR / "operator" / "operator.lock")
     return defaults
 
 
@@ -3322,7 +3356,7 @@ def read_runtime_env() -> dict[str, str]:
     for line in RUNTIME_ENV.read_text(encoding="utf-8").splitlines():
         if line and not line.startswith("#") and "=" in line:
             key, value = line.split("=", 1)
-            values[key] = value
+            values[key] = unquote_runtime_value(value)
     return values
 
 

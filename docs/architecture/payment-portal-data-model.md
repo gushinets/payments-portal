@@ -1,20 +1,21 @@
 # Payment Portal Data Model and Backend Invariants
 
 Status: authoritative current-state schema reference
-Last verified: 2026-10-02
+Last updated: 2026-10-26 (migration authored; human execution pending)
 
 > **CURRENT AS-BUILT SCHEMA REFERENCE**
 
 This document describes the schema produced by the current Alembic chain:
 
 ```text
-20260924_0001 -> 20261001_0002 (head)
+20260924_0001 -> 20261001_0002 -> 20261026_0003 (head)
 ```
 
 `20260924_0001_clean_first_install` creates the 25-table first-install schema.
 `20261001_0002_clear_false_email_verification` is a data-only forward migration
 that clears predecessor registration-time `users.email_verified_at` values,
-because those timestamps did not prove mailbox ownership. The chain has one
+because those timestamps did not prove mailbox ownership. `20261026_0003_commercial_product_heads` adds one small current-link pointer
+table without backfilling or rewriting any legacy evidence. The chain has one
 current head. This document is authoritative for the implemented SQLAlchemy
 table inventory and physical persistence rules; the generated column-level
 artifact remains `docs/generated/db-schema.md`.
@@ -35,9 +36,9 @@ paid-access derivation, or Kernel invalidation delivery is implemented.
 
 ## Physical baseline
 
-A fresh database has exactly 25 application tables: ten retained
-identity/session/legal tables and fifteen target external-billing persistence
-tables. Alembic has two revisions in one linear chain and one current head.
+A fresh database has exactly 26 application tables: ten retained
+identity/session/legal tables, fifteen original external-billing persistence
+tables, and one current product-link pointer. Alembic has three revisions in one linear chain and one current head.
 
 There is no Portal-owned product, plan, order, payment, refund, subscription,
 entitlement, trial, provider-account, or direct-payment webhook table. There is
@@ -60,6 +61,7 @@ to a Portal-managed routing catalog.
 | `capability_manifest_projections` | Inert schema slot | Former complete Kernel manifest projection; no runtime reader/writer under live-source admission. |
 | `external_billing_catalog_projections` | Inert schema slot | Former External Billing catalog projection; no runtime reader/writer under live-source admission. |
 | `commercial_mapping_revisions` | Mapping | Immutable published mapping revisions that pin manifest and catalog evidence. |
+| `commercial_product_heads` | Mapping | One current immutable revision per connection/product; product CAS sequence across offer retargets, no price catalog. |
 | `external_billing_customers` | Purchase | Portal-owned binding from a user to an opaque External Billing customer identity. |
 | `purchase_intents` | Purchase | Durable purchase orchestration state with immutable accepted commercial/legal evidence. |
 | `external_create_operations` | Recovery | Durable external-create attempt and unknown-outcome recovery state. |
@@ -131,7 +133,8 @@ document-version material.
 account. Their schema/version/timestamp/JSON columns remain physical storage
 only. Both tables are inert: no startup/periodic synchronization or admission
 reader is planned under the accepted amendment. Publication/new purchase read
-sources live. Catalog browsing uses immutable approved mappings in PostgreSQL.
+sources live. ANY-709 discovery reads enabled Kernel products and selected
+current LBX values; PostgreSQL retains immutable links/history.
 
 `commercial_mapping_revisions` is append-only publication evidence. A revision
 is unique within `(external_billing_account_id, billing_offer_id)`, has a
@@ -139,12 +142,25 @@ positive `revision_number`, and pins manifest/catalog versions and digest plus
 the typed mapping document and publishing principal. PostgreSQL triggers
 prevent updates and deletes.
 
-ANY-664 uses `catalog_version=NULL` and `catalog_digest` as the explicitly
+Historical v1 ANY-664 uses `catalog_version=NULL` and `catalog_digest` as the explicitly
 scoped `selected_offer` evidence digest in `mapping_document`, not an account
 catalog snapshot. That evidence includes the complete default-assigned service
 composition and source provenance. Technical/commercial/legal approval versions
 are pinned; changed commercial terms require new legal approval, while a purely
 technical change does not. No existing revisions are rewritten.
+
+ANY-709 v2 uses `mapping_schema_version=product-link-v2`; its `catalog_digest`
+is explicitly the **link identity digest**, not a price or whole-catalog digest.
+The versioned document pins connection scope, selected Kernel product and LBX
+service/tariff/period/quantity, independent source provenance, manifest evidence
+and operator audit. It contains no price, approval certificates or invented
+technical allowance. `commercial_product_heads` has primary key
+`(external_billing_account_id, product_id)`, a restrictive composite FK to the
+immutable revision in the same account, and a positive product revision counter.
+Offer history numbering remains independent. Product lock/CAS protects first
+publication and cross-offer retargeting; v1 rows are not auto-selected. Equal
+link identity does not append on ordinary price changes. Accepted historical
+rows and dependent purchase/legal keys remain unchanged.
 
 ## Purchase and external-create tables
 

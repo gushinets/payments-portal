@@ -27,6 +27,7 @@ from app.domains.catalog.commercial_offer import (
     canonical_document,
     commercial_digest,
 )
+from app.domains.catalog.product_link import ProductLinkRequest
 from app.infrastructure.preflight import PreflightBudget
 from app.integrations.lbx.client import LbxRead, LbxServerClient
 from app.integrations.lbx.dto import LbxServicePrice, LbxTariff, LbxTariffPeriod, LbxTariffService
@@ -131,7 +132,7 @@ class SelectedReadSet:
 
 
 async def _read_selected(
-    client: LbxServerClient, selection: SelectedOfferRequest, budget: PreflightBudget
+    client: LbxServerClient, selection: SelectedOfferRequest | ProductLinkRequest, budget: PreflightBudget
 ) -> SelectedReadSet:
     # Each read uses the same nonrenewable caller budget; no nested run().
     tariff = await client.get_tariff(tariff_id=selection.tariff_id, budget=budget)

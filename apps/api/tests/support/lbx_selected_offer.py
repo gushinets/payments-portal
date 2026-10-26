@@ -12,18 +12,22 @@ import httpx
 
 from app.integrations.lbx.client import API_PATH
 from app.integrations.lbx.offer_inputs import SelectedOfferInputs, SelectedOfferRequest
-from apps.api.tests.support.lbx import SERVICE, TARIFF, fixture_response
+from apps.api.tests.support.lbx import ACCOUNT, SERVICE, TARIFF, fixture_response
 
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures/lbx/selected_offer"
 
 
 def simulated_selection() -> SelectedOfferRequest:
-    return SelectedOfferRequest.model_validate_json((FIXTURES / "selection.json").read_bytes())
+    return SelectedOfferRequest.model_validate_json(
+        (FIXTURES / "selection.json").read_text().replace("simulated-ru-lbx-account", ACCOUNT)
+    )
 
 
 def simulated_inputs() -> SelectedOfferInputs:
-    return SelectedOfferInputs.model_validate_json((FIXTURES / "inputs.json").read_bytes())
+    return SelectedOfferInputs.model_validate_json(
+        (FIXTURES / "inputs.json").read_text().replace("simulated-ru-lbx-account", ACCOUNT)
+    )
 
 
 class SelectedOfferRecording:

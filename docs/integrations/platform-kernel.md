@@ -41,8 +41,11 @@ These identify inspected source snapshots, not a verified joint deployment.
 | `GET /internal/v1/access-snapshots/{user_id}`: Kernel -> Portal | Portal paid-access producer not implemented | Kernel snapshot client/cache/revision floor not implemented | Target contract only |
 | `POST /internal/v1/access-invalidations`: Portal -> Kernel | Portal invalidation producer/delivery not implemented | Kernel receiver endpoint not implemented | Target contract only |
 
-ANY-664 implements restricted immutable mapping publication and DB-only catalog
-browsing. Source projection slots remain inert. Purchase orchestration,
+ANY-664 implemented restricted v1 publication and DB-only browsing. ANY-709
+Step 1 now implements direct versioned links, one current product pointer,
+enabled-product discovery and current selected LBX offers. Kernel wire semantics
+and the pinned peer observation above are unchanged; no fresh peer inspection
+or real producer conformance is claimed. Source projection slots remain inert. Purchase orchestration,
 subscription reconciliation, paid-access derivation and actual cabinet usage
 remain later work; stored approved terms do not promise current sellability.
 
@@ -72,10 +75,12 @@ run, completion of every manual procedure or real producer compatibility.
   and reconcile those artifacts and run real consumer-versus-producer checks.
   Until then [provisional artifacts](../contracts/kernel-capability-manifest/v1/README.md)
   retain their historical pins and SIMULATED status; no shared runtime SDK.
-- **Enablement:** Portal Settings refuses configured provisional Kernel
-  URL/token in production even over HTTPS. A genuine producer needs separate
-  reviewed enablement after conformance; changing URLs does not upgrade
-  simulated evidence or approve sales. Portal can start without Kernel config.
+- **Enablement:** ANY-709 Step 1 accepts ordinary configured HTTPS Kernel/LBX
+  connections without a blanket production refusal. Explicit Kernel mock mode
+  remains development/test-only and SIMULATED, including after URL changes.
+  A non-mock endpoint is CONFIGURED_SOURCE, never proof of producer conformance
+  or production sales approval. Real producer delivery/conformance remains
+  ANY-711. Portal can start without Kernel config.
 - **Usage and launch:** the three operations above do not define an actual
   usage/remaining API for the cabinet. That contract and authenticated cross-app
   launch remain separate work. Kernel product-to-product handoff is not Portal
