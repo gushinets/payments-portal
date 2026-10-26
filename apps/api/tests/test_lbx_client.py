@@ -253,7 +253,6 @@ async def test_duplicate_source_identity_is_refused(fixture: str) -> None:
     "overrides",
     [
         {"lbx_base_url": ""},
-        {"lbx_external_billing_account_id": ""},
         {"lbx_server_username": ""},
         {"lbx_server_password": ""},
         {"lbx_base_url": "http://name:secret@lbx.test"},
@@ -264,7 +263,19 @@ async def test_duplicate_source_identity_is_refused(fixture: str) -> None:
         {"lbx_base_url": "ftp://lbx.test"},
         {"lbx_server_username": "bad:username"},
         {"lbx_server_password": "bad\r\npassword"},
-        {"lbx_external_billing_account_id": "wrong account"},
+    ],
+)
+def test_invalid_connection_is_a_safe_billing_error_without_breaking_auth(overrides: dict[str, Any]) -> None:
+    configuration = lbx_settings(**overrides)
+    assert configuration.lbx_configuration_error is not None
+    with pytest.raises(LbxNotConfigured):
+        LbxServerClient(configuration)
+    assert PASSWORD not in repr(configuration) and USERNAME not in repr(configuration)
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
         {"lbx_read_timeout_seconds": float("nan")},
         {"lbx_connect_timeout_seconds": 0},
         {"lbx_max_response_bytes": 0},
@@ -272,31 +283,33 @@ async def test_duplicate_source_identity_is_refused(fixture: str) -> None:
         {"lbx_max_retry_delay_seconds": float("inf")},
     ],
 )
-def test_invalid_configuration_is_safe(overrides: dict[str, Any]) -> None:
-    with pytest.raises(ValidationError) as error:
+def test_invalid_resource_bounds_remain_configuration_errors(overrides: dict[str, Any]) -> None:
+    with pytest.raises(ValidationError):
         lbx_settings(**overrides)
-    assert PASSWORD not in str(error.value)
-    assert USERNAME not in str(error.value)
 
 
 def test_configuration_is_optional_and_no_client_is_required_for_startup() -> None:
     configuration = lbx_settings(
-        lbx_base_url="", lbx_external_billing_account_id="", lbx_server_username="", lbx_server_password=""
+        lbx_base_url="",
+        lbx_server_username="",
+        lbx_server_password="",
+        lbx_widget_signing_secret="",
+        lbx_seller_organization_id="",
     )
+    assert configuration.lbx_configuration_error == "lbx_not_configured"
     with pytest.raises(LbxNotConfigured):
         LbxServerClient(configuration)
-    assert PASSWORD not in repr(lbx_settings())
 
 
 @pytest.mark.parametrize("url", ["http://lbx.example.test", "https://localhost"])
 def test_production_requires_normal_public_tls_origin(url: str) -> None:
-    with pytest.raises(ValidationError):
-        lbx_settings(
-            app_env="production",
-            app_public_base_url="https://portal.example.test",
-            cors_allow_origins=("https://portal.example.test",),
-            lbx_base_url=url,
-        )
+    configuration = lbx_settings(
+        app_env="production",
+        app_public_base_url="https://portal.example.test",
+        cors_allow_origins=("https://portal.example.test",),
+        lbx_base_url=url,
+    )
+    assert configuration.lbx_configuration_error == "lbx_base_url_requires_public_https"
 
 
 def test_production_accepts_explicit_scoped_lbx_configuration_without_enabling_sales() -> None:
@@ -304,10 +317,9 @@ def test_production_accepts_explicit_scoped_lbx_configuration_without_enabling_s
         app_env="production",
         app_public_base_url="https://portal.example.test",
         cors_allow_origins=("https://portal.example.test",),
-        lbx_base_url="https://billing.example.test",
     )
     assert configuration.lbx_external_billing_account_id == ACCOUNT
-    assert configuration.kernel_base_url == ""
+    assert configuration.lbx_configuration_error is None and configuration.kernel_base_url == ""
 
 
 async def test_close_owns_transport_and_closed_client_refuses_new_work() -> None:

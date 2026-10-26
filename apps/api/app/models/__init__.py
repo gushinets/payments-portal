@@ -7,6 +7,7 @@ from app.models.billing_operations import (
 from app.models.billing_projections import (
     CapabilityManifestProjection,
     CommercialMappingRevision,
+    CommercialProductHead,
     ExternalBillingCatalogProjection,
 )
 from app.models.billing_purchase import (
@@ -60,6 +61,7 @@ __all__ = [
     "BillingWorkItem",
     "CapabilityManifestProjection",
     "CommercialMappingRevision",
+    "CommercialProductHead",
     "CountryRegionRule",
     "DocumentAcceptance",
     "DocumentVersion",

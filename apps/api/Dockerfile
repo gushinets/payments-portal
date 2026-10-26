@@ -44,7 +44,8 @@ FROM base AS production
 COPY --from=production-dependencies /opt/api-venv /opt/api-venv
 
 RUN groupadd --system app \
-    && useradd --system --gid app --home-dir /app --no-create-home app
+    && useradd --system --gid app --home-dir /app --no-create-home app \
+    && install -d -o app -g app -m 0700 /run/payments-portal
 
 COPY apps/api/alembic.ini ./apps/api/alembic.ini
 COPY apps/api/alembic ./apps/api/alembic

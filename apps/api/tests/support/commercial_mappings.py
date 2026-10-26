@@ -10,11 +10,12 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 import httpx
 
-from app.composition.mapping_operator import FreshMappingEvaluation, MappingProposal, fresh_mapping_evaluation
+from apps.api.tests.support.v1_mapping_operator import FreshMappingEvaluation, MappingProposal, fresh_mapping_evaluation
 from app.core.settings import Settings
 from app.domains.catalog.commercial_offer import commercial_digest
 from app.domains.catalog.mapping_evidence import (
@@ -36,17 +37,31 @@ SIMULATED_UID = 29001
 SIMULATED_OFFER_ID = "selected-offer:v1:701:1001:901"
 
 
+class HistoricalOperatorSettings(Settings):
+    """v1 fixture-file harness only. These inputs are absent from runtime Settings."""
+
+    mapping_account_id: str = ACCOUNT
+    mapping_approval_file: Path | None = None
+    mapping_source_inputs_file: Path | None = None
+
+    @property
+    def lbx_external_billing_account_id(self) -> str:
+        # Explicit historical SIMULATED fixture identity. Not runtime config.
+        return self.mapping_account_id
+
+
 def operator_settings(**overrides: Any) -> Settings:
-    return lbx_settings(
-        **{
-            "kernel_base_url": "http://kernel-client.test",
-            "kernel_service_token": TOKEN,
-            "kernel_max_retries": 0,
-            "mapping_operator_uids": (SIMULATED_UID,),
-            "mapping_account_id": ACCOUNT,
-            **overrides,
-        }
-    )
+    values = {
+        "kernel_base_url": "http://kernel-client.test",
+        "kernel_service_token": TOKEN,
+        "kernel_max_retries": 0,
+        "kernel_mock_enabled": overrides.get("app_env") != "production",
+        "mapping_operator_uids": (SIMULATED_UID,),
+        "mapping_account_id": ACCOUNT,
+        **overrides,
+    }
+    configuration = lbx_settings(**values)
+    return HistoricalOperatorSettings(_env_file=None, **{**configuration.model_dump(), **values})
 
 
 def technical_binding(allowance: int = 25) -> TechnicalBinding:

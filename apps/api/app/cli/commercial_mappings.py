@@ -1,4 +1,4 @@
-"""Run with PYTHONPATH=apps/api .venv/bin/python -m app.cli.commercial_mappings."""
+"""Privileged direct product linking; no proposal, approval or source-policy files."""
 
 from __future__ import annotations
 
@@ -6,114 +6,142 @@ import argparse
 import asyncio
 import json
 import sys
+from dataclasses import asdict
 from datetime import UTC, datetime
-from pathlib import Path
 
 from pydantic import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.composition.mapping_operator import authorize_operator, configured_mapping_scope
+from app.composition.mapping_operator import authorize_operator, configured_mapping_scope, fresh_link_evaluation
 from app.core.errors import AppError
-from app.core.settings import AppEnv, Settings
-from app.domains.catalog.publication import publish_mapping, query_mapping
+from app.core.settings import Settings
+from app.domains.catalog.commercial_offer import CommercialScope, canonical_document
+from app.domains.catalog.link_publication import (
+    StoredProductLink,
+    publish_product_link,
+    query_link_history,
+    query_product_link,
+)
+from app.domains.catalog.product_link import ProductLinkRequest
+from app.domains.catalog.publication import StoredMapping
 from app.infrastructure.operator_preflight import operator_preflight_lock
 
 
 def parser() -> argparse.ArgumentParser:
-    command = argparse.ArgumentParser(description="Restricted immutable offer evidence operator")
+    command = argparse.ArgumentParser(description="Link a Kernel product to a current LBX offer")
     actions = command.add_subparsers(dest="command", required=True)
-    query = actions.add_parser("query", help="Read scoped stored evidence without source configuration")
-    query.add_argument("--offer-id", required=True, help="Complete selected-offer ID returned by dry-run/publish")
-    query.add_argument("--revision", type=int)
+    query = actions.add_parser("query", help="Read the current product link or immutable offer history")
+    identity = query.add_mutually_exclusive_group(required=True)
+    identity.add_argument("--product-id")
+    identity.add_argument("--offer-id")
+    query.add_argument("--revision", type=int, help="Offer history sequence; requires --offer-id")
     for action in ("dry-run", "publish"):
-        source = actions.add_parser(action, help="Evaluate fresh configured sources and independent approval")
-        source.add_argument("--proposal", type=Path, required=True)
+        source = actions.add_parser(action, help="Validate live sources for one product association")
+        source.add_argument("--product-id", required=True)
+        source.add_argument("--tariff-id", type=int, required=True)
+        source.add_argument("--tariff-service-id", type=int, required=True)
+        source.add_argument("--period-id", type=int, required=True)
+        source.add_argument("--quantity", type=int, default=1, help="Commercial service quantity; not a quota")
         if action == "publish":
-            source.add_argument("--expected-previous-revision", type=int, required=True)
+            source.add_argument(
+                "--expected-previous-revision",
+                type=int,
+                required=True,
+                help="Current PRODUCT revision; 0 for no current link",
+            )
     return command
+
+
+def present_stored(stored: StoredProductLink | StoredMapping) -> dict[str, object]:
+    offer_id = (
+        stored.document.selection.billing_offer_id
+        if isinstance(stored, StoredProductLink)
+        else stored.document.material.billing_offer_id
+    )
+    result: dict[str, object] = {
+        "mapping_revision_id": str(stored.mapping_revision_id),
+        "billing_offer_id": offer_id,
+        "revision_number": stored.revision_number,
+        "document": stored.document.model_dump(mode="json"),
+    }
+    if isinstance(stored, StoredProductLink):
+        result["offer_revision_number"] = stored.offer_revision_number
+    return result
 
 
 def execute(arguments: argparse.Namespace, configuration: Settings) -> str:
     principal = authorize_operator(configuration)
-    scope = configured_mapping_scope(configuration)
-    allow_simulated = configuration.app_env in {AppEnv.DEVELOPMENT, AppEnv.TEST}
     audit = {
         "command": arguments.command,
         "execution_principal": principal,
         "started_at": datetime.now(UTC).isoformat(),
     }
-    # Dispatch BEFORE creating source clients, an admission owner or an event loop.
     if arguments.command == "query":
         from app.core.database import SessionLocal
 
-        stored = query_mapping(
-            SessionLocal,
-            scope=scope,
-            offer_id=arguments.offer_id,
-            revision=arguments.revision,
-            allow_simulated=allow_simulated,
-        )
-        return json.dumps(
-            {
-                "operator_audit": audit,
-                "mapping_revision_id": str(stored.mapping_revision_id),
-                "billing_offer_id": stored.document.material.billing_offer_id,
-                "revision_number": stored.revision_number,
-                "document": stored.document.model_dump(mode="json"),
-            }
-        )
-
-    from app.composition.mapping_operator import MappingProposal, fresh_mapping_evaluation, load_operator_input
-    from app.domains.catalog.mapping_evidence import ApprovedMapping
-    from app.integrations.lbx.offer_inputs import SelectedOfferInputs
+        if arguments.product_id:
+            if arguments.revision is not None:
+                raise AppError("mapping_query_invalid")
+            scope = configured_mapping_scope(configuration)
+            stored = query_product_link(SessionLocal, scope=scope, product_id=arguments.product_id)
+            if stored is None:
+                return json.dumps(
+                    {
+                        "operator_audit": audit,
+                        "product_id": arguments.product_id,
+                        "revision_number": 0,
+                        "document": None,
+                    }
+                )
+        else:
+            scope = CommercialScope(
+                configuration.instance_tenant_id,
+                configuration.instance_region,
+                configuration.lbx_external_billing_account_id,
+            )
+            stored = query_link_history(
+                SessionLocal, scope=scope, offer_id=arguments.offer_id, revision=arguments.revision
+            )
+        return json.dumps({"operator_audit": audit, **present_stored(stored)})
 
     if arguments.command == "publish" and arguments.expected_previous_revision < 0:
         raise AppError("mapping_expected_revision_invalid")
-    proposal = load_operator_input(arguments.proposal, MappingProposal)
-    approval = load_operator_input(configuration.mapping_approval_file, ApprovedMapping)
-    inputs = load_operator_input(configuration.mapping_source_inputs_file, SelectedOfferInputs)
+    selection = ProductLinkRequest(
+        product_id=arguments.product_id,
+        tariff_id=arguments.tariff_id,
+        tariff_service_id=arguments.tariff_service_id,
+        period_id=arguments.period_id,
+        quantity=arguments.quantity,
+    )
     with operator_preflight_lock(configuration.mapping_operator_lock_file):
-        # Top-level process event-loop owner for genuine async source I/O only.
-        # No Application/Domain/Persistence layer starts or bridges an event loop.
         with asyncio.Runner() as runner:
-            evaluation = runner.run(
-                fresh_mapping_evaluation(
-                    configuration, proposal=proposal, approval=approval, source_inputs=inputs, principal=principal
-                )
-            )
+            evaluation = runner.run(fresh_link_evaluation(configuration, selection=selection, principal=principal))
         if arguments.command == "dry-run":
             return json.dumps(
                 {
                     "operator_audit": audit,
                     "persisted": False,
-                    "billing_offer_id": evaluation.document.material.billing_offer_id,
+                    "billing_offer_id": selection.billing_offer_id,
                     "evaluation": evaluation.document.model_dump(mode="json"),
+                    "current_offer": json.loads(canonical_document(asdict(evaluation.offer))),
                 }
             )
-        if arguments.command != "publish":
-            raise AppError("mapping_command_invalid")
-        # Construct the DB capability only after all HTTP and source cleanup finished.
         from app.core.database import SessionLocal
 
-        result = publish_mapping(
+        result = publish_product_link(
             SessionLocal,
             evaluation=evaluation.document,
             expected_previous_revision=arguments.expected_previous_revision,
             deadline=evaluation.deadline,
-            evidence_valid_until=evaluation.evidence_valid_until,
             lock_timeout_seconds=configuration.mapping_lock_timeout_seconds,
-            allow_simulated=allow_simulated,
         )
         return json.dumps(
             {
                 "operator_audit": audit,
-                "mapping_revision_id": str(result.stored.mapping_revision_id),
-                "billing_offer_id": result.stored.document.material.billing_offer_id,
-                "revision_number": result.stored.revision_number,
+                **present_stored(result.stored),
+                "current_offer": json.loads(canonical_document(asdict(evaluation.offer))),
                 "inserted": result.inserted,
                 "recovered_commit": result.recovered_commit,
-                "stored_document": result.stored.document.model_dump(mode="json"),
-                "current_evaluation": result.evaluation.model_dump(mode="json"),
             }
         )
 
@@ -129,13 +157,8 @@ def main(argv: list[str] | None = None) -> int:
         print('{"detail":{"code":"mapping_configuration_invalid"}}', file=sys.stderr)
         return 1
     except SQLAlchemyError:
-        # A database failure remains a database failure, never a provider status.
         print('{"detail":{"code":"mapping_database_error"}}', file=sys.stderr)
         return 1
-    # Authorized operator result, not an application log: billing_offer_id is
-    # a tariff/component/period key. Reason and approval references remain
-    # verbatim and may be private; stdout needs the input/DB access boundary.
-    # Settings and HTTP credentials are not part of MappingDocument.
     print(output)
     return 0
 

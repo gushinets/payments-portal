@@ -6,7 +6,8 @@ from enum import StrEnum
 
 
 class SourceProvenance(StrEnum):
-    # No configuration flag can assert real producer conformance in this slice.
+    # A configured endpoint is not a claim of real producer conformance.
+    CONFIGURED_SOURCE = "CONFIGURED_SOURCE"
     SIMULATED = "SIMULATED"
 
 

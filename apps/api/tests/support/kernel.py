@@ -43,6 +43,7 @@ def kernel_settings(**overrides: Any) -> Settings:
     values.update(
         kernel_base_url="http://kernel-client.test",
         kernel_service_token=TOKEN,
+        kernel_mock_enabled=True,
         kernel_max_retries=0,
     )
     values.update(overrides)

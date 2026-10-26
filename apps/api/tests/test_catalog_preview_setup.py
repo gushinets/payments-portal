@@ -63,7 +63,7 @@ def test_manual_preview_setup_refuses_unsafe_target_before_sources_or_database(
     def forbidden(*args: object, **kwargs: object) -> None:
         pytest.fail("refused manual setup must not start source reads or open a database")
 
-    monkeypatch.setattr("app.composition.mapping_operator.fresh_mapping_evaluation", forbidden)
+    monkeypatch.setattr("apps.api.tests.support.v1_mapping_operator.fresh_mapping_evaluation", forbidden)
     monkeypatch.setattr(catalog_preview, "create_engine", forbidden)
     with pytest.raises(AppError, match=code):
         catalog_preview.publish_simulated_preview(runtime, operator=configuration, expected_previous_revision=0)

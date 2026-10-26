@@ -318,8 +318,10 @@ repository. No direct-provider runtime exists in this repository.
   real Kernel producer delivery and conformance remain future enablement gates.
 - The owner-approved [live-source admission amendment](docs/superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md)
   requires live Kernel/LBX checks for offer publication and each new purchase,
-  without periodic source-catalog mirrors. Approved immutable offer terms are
-  stored and browsed from PostgreSQL without source requests. Paid-access,
+  without periodic source-catalog mirrors. ANY-709 Step 1 now uses direct versioned product links, source-backed Kernel
+  discovery and selected current LBX offers. Immutable links/history stay in
+  PostgreSQL; ordinary repricing needs no link republication. See the
+  [normal LBX runbook](docs/engineering/lbx-product-links.md). Paid-access,
   subscription trust/reconciliation and AccessSnapshot rules are unchanged.
 - Purchase/Widget, billing state, paid-access state, and usage/quota remain
   unavailable until their owning external-billing/Kernel integration steps;

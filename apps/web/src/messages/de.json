@@ -145,7 +145,7 @@
     },
     "products": {
       "title": "Produkte",
-      "description": "Veröffentlichte Produkte und ihre gespeicherten Konditionen. Informationen zu Abonnements, Zugang und Nutzung folgen später.",
+      "description": "Entdecken Sie aktive Produkte und deren aktuelle Abrechnungsbedingungen in den Details. Informationen zu Abonnement, Zugang und Nutzung folgen später.",
       "detailAction": "Produktdetails ansehen",
       "state": {
         "commercial": {
@@ -239,7 +239,7 @@
     "eyebrow": "KI-Tools",
     "hero": {
       "heading": "KI-Werkzeuge für <em>den Arbeitsalltag</em>",
-      "description": "Entdecken Sie veröffentlichte KI-Tools und ihre gespeicherten Konditionen. Wählen Sie ein Tool für Ihre Aufgabe.",
+      "description": "Entdecken Sie aktive KI-Tools und deren aktuelle Bedingungen in den Details. Wählen Sie ein Tool für Ihre Aufgabe.",
       "primaryAction": "Konto öffnen",
       "secondaryAction": "Werkzeuge entdecken"
     },
@@ -251,18 +251,23 @@
     }
   },
   "CatalogPreview": {
-    "loading": "Genehmigte Angebotsvorschauen werden geladen…",
-    "empty": "Es sind keine genehmigten Angebotsvorschauen verfügbar.",
-    "failed": "Angebotsvorschauen sind nicht verfügbar. Versuchen Sie es erneut.",
+    "loading": "Produkte werden geladen…",
+    "empty": "Keine aktiven Produkte verfügbar.",
+    "failed": "Produkte oder aktuelle Angebote nicht verfügbar. Erneut versuchen.",
     "retry": "Erneut versuchen",
-    "notFound": "Für dieses Produkt wurde kein genehmigtes Angebot gefunden.",
+    "notFound": "Dieses Produkt ist nicht verfügbar.",
     "ambiguous": "Nicht verfügbar: Für dieses Produkt gibt es mehrere genehmigte Angebote.",
-    "simulated": "SIMULATION — nur Testvorschau",
-    "unverified": "Genehmigte Konditionen — aktuelle Verfügbarkeit ungeprüft",
-    "previewNote": "Gespeicherte Konditionen dienen zur Information. Ein Kauf ist nicht verfügbar; diese Vorschau gewährt keinen Produktzugang.",
+    "simulated": "Produktquelle: Testdienst",
+    "unverified": "Aktuelles LBX-Angebot — Bestätigung erforderlich",
+    "previewNote": "Aktuelle Abrechnungswerte werden angezeigt. Käufe sind noch nicht verfügbar; die Ansicht gewährt keinen Zugang.",
+    "detailsRequired": "Öffnen Sie die Details, um das aktuelle Angebot zu prüfen.",
+    "unmapped": "Kauf nicht verfügbar: kein Abrechnungsangebot verknüpft.",
+    "unsupported": "Kauf nicht verfügbar: diese Angebotsbedingungen werden nicht unterstützt.",
+    "incomplete": "Kauf nicht verfügbar: das aktuelle Angebot konnte nicht vollständig geprüft werden.",
+    "quantity": "Anzahl der Serviceeinheiten",
     "productTitle": "Produkt",
     "fallback": "Dieses Produkt wird durch seine kanonische ID identifiziert. Weitere Produktinformationen sind noch nicht verfügbar.",
-    "details": "Konditionen ansehen",
+    "details": "Details ansehen",
     "recurring": "Wiederkehrender Betrag",
     "connection": "Separate Anschlussgebühr",
     "period": "Abrechnungszeitraum",
@@ -290,7 +295,7 @@
     "page": {
       "eyebrow": "Katalog",
       "title": "KI-Werkzeuge",
-      "description": "Sehen Sie gespeicherte genehmigte Angebotskonditionen ein. Die aktuelle Verfügbarkeit ist ungeprüft."
+      "description": "Entdecken Sie aktive Produkte und ihre aktuellen Abrechnungsbedingungen."
     },
     "signInAction": "Konto öffnen",
     "backToCatalog": "Zurück zu den Produkten",

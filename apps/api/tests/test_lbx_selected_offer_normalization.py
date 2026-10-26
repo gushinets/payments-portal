@@ -158,7 +158,7 @@ async def test_same_numeric_currency_id_is_account_scoped_with_synthetic_eu_scal
     inputs = inputs.model_copy(update={"currency": currency, "policy": policy, "calendar": calendar})
     # Application-level isolated composition only. No EU deployment or URL.
     async with lbx_source(
-        httpx.MockTransport(recording.respond), lbx_external_billing_account_id=selection.external_billing_account_id
+        httpx.MockTransport(recording.respond), fixture_account_id=selection.external_billing_account_id
     ) as (client, owner):
         async with owner.operation() as budget:
             eu = await read_selected_offer(client, selection=selection, inputs=inputs, budget=budget)

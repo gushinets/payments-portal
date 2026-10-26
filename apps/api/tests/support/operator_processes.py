@@ -29,11 +29,11 @@ ROOT = Path(__file__).resolve().parents[4]
 # CLI has no clock flag/environment override or unlocked transport fallback.
 CLI = """
 from datetime import UTC, datetime
-from app.composition import mapping_operator
+from apps.api.tests.support import v1_mapping_operator as mapping_operator
 mapping_operator.utc_now = lambda: datetime(2026, 10, 16, 12, tzinfo=UTC)
 from app.domains.catalog import publication
 publication.utc_now = mapping_operator.utc_now
-from app.cli.commercial_mappings import main
+from apps.api.tests.support.v1_cli import main
 raise SystemExit(main())
 """
 
@@ -138,6 +138,8 @@ def processes(tmp_path: Path) -> Iterator[OperatorProcesses]:
             LBX_EXTERNAL_BILLING_ACCOUNT_ID=ACCOUNT,
             LBX_SERVER_USERNAME=USERNAME,
             LBX_SERVER_PASSWORD=PASSWORD,
+            LBX_WIDGET_SIGNING_SECRET="simulated-widget-secret",
+            LBX_SELLER_ORGANIZATION_ID="21",
             PREFLIGHT_TOTAL_TIMEOUT_SECONDS="30",
         )
         result = OperatorProcesses(tmp_path, environment, entered, release, requests)

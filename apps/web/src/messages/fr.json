@@ -145,7 +145,7 @@
     },
     "products": {
       "title": "Produits",
-      "description": "Produits publiés et conditions enregistrées. Les informations sur les abonnements, l’accès et l’utilisation seront disponibles ultérieurement.",
+      "description": "Découvrez les produits actifs et leurs conditions actuelles dans les détails. Les informations d’abonnement, d’accès et d’utilisation seront disponibles ultérieurement.",
       "detailAction": "Voir les détails du produit",
       "state": {
         "commercial": {
@@ -239,7 +239,7 @@
     "eyebrow": "Outils IA",
     "hero": {
       "heading": "Des outils d’IA pour <em>le travail quotidien</em>",
-      "description": "Découvrez les outils IA publiés et leurs conditions enregistrées. Choisissez un outil adapté à votre tâche.",
+      "description": "Découvrez les outils IA actifs et leurs conditions actuelles dans les détails. Choisissez un outil adapté à votre tâche.",
       "primaryAction": "Ouvrir le compte",
       "secondaryAction": "Découvrir les outils"
     },
@@ -251,18 +251,23 @@
     }
   },
   "CatalogPreview": {
-    "loading": "Chargement des offres approuvées…",
-    "empty": "Aucun aperçu d’offre approuvée n’est disponible.",
-    "failed": "Les aperçus des offres sont indisponibles. Réessayez.",
+    "loading": "Chargement des produits…",
+    "empty": "Aucun produit actif disponible.",
+    "failed": "Produits ou offres actuelles indisponibles. Réessayez.",
     "retry": "Réessayer",
-    "notFound": "Aucune offre approuvée n’a été trouvée pour ce produit.",
+    "notFound": "Ce produit est indisponible.",
     "ambiguous": "Indisponible : plusieurs offres approuvées existent pour ce produit.",
-    "simulated": "SIMULATION — aperçu de test uniquement",
-    "unverified": "Conditions approuvées — disponibilité actuelle non vérifiée",
-    "previewNote": "Les conditions enregistrées sont présentées à titre indicatif. L’achat est indisponible ; cet aperçu ne donne pas accès au produit.",
+    "simulated": "Source des produits : service de test",
+    "unverified": "Offre LBX actuelle — à confirmer",
+    "previewNote": "Les valeurs actuelles de facturation sont affichées. L’achat n’est pas encore disponible ; consulter une offre ne donne pas accès au produit.",
+    "detailsRequired": "Ouvrez les détails pour vérifier l’offre actuelle.",
+    "unmapped": "Achat indisponible : aucune offre de facturation associée.",
+    "unsupported": "Achat indisponible : ces conditions ne sont pas prises en charge.",
+    "incomplete": "Achat indisponible : l’offre actuelle n’a pas pu être entièrement vérifiée.",
+    "quantity": "Quantité d’unités du service",
     "productTitle": "Produit",
     "fallback": "Ce produit est identifié par son identifiant canonique. Aucune description complémentaire n’est encore disponible.",
-    "details": "Voir les conditions",
+    "details": "Voir les détails",
     "recurring": "Montant récurrent",
     "connection": "Frais de raccordement distincts",
     "period": "Période de facturation",
@@ -290,7 +295,7 @@
     "page": {
       "eyebrow": "Catalogue",
       "title": "Outils d’IA",
-      "description": "Consultez les conditions approuvées enregistrées. La disponibilité actuelle n’est pas vérifiée."
+      "description": "Découvrez les produits actifs et leurs conditions de facturation actuelles."
     },
     "signInAction": "Ouvrir le compte",
     "backToCatalog": "Retour aux produits",

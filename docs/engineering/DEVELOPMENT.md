@@ -67,28 +67,11 @@ root aliases `dev:api`, `migrate:api`, `test:api:fast`, `test:api:postgres`,
 
 ## Minimal Makefile
 
-The Makefile contains Unix/WSL convenience shortcuts that delegate to the
-existing repository harness and explicit SIMULATED catalog setup:
-
-```bash
-make test_db_up
-make test_db_stop
-make catalog_preview
-make catalog_preview_publish
-```
-
-The cross-platform equivalents of the test database shortcuts are:
-
-```bash
-python scripts/repo.py test-db up
-python scripts/repo.py test-db stop
-```
-
-`catalog_preview` starts or updates the current worktree's Portal stack and
-publishes its declared SIMULATED offer. `catalog_preview_publish` only publishes
-into an already running, configured worktree. See the
-[Step 6 acceptance procedure](#step-6-stored-catalog-acceptance) for scope,
-authorization, repeat execution and evidence requirements.
+The Makefile contains only the `test_db_up` and `test_db_stop` convenience
+shortcuts. Normal startup uses `npm run repo:up -- --reuse`; direct product
+linking uses the one `app.cli.commercial_mappings` CLI. See the
+[normal LBX connection and link runbook](lbx-product-links.md). Historical
+`catalog_preview`/`catalog_preview_publish` shortcuts have been retired.
 
 Compose owns the PostgreSQL server/container and `repo.py` owns its
 worktree-specific orchestration. pytest owns creation, migration, schema reset,
@@ -223,14 +206,11 @@ must be the only default-assigned service; optional services (`0`) are excluded.
 Missing/ambiguous composition refuses the operation, and the default composition
 is pinned in selected evidence/digest. No LBX tariff is mutated.
 
-Existing approval files carry independent technical/commercial/legal version
-references. Changed normalized commercial terms (price, billing period, payment
-obligations, renewal/cancellation) require a new legal approval version as well
-as existing commercial/technical checks. A replacement retaining the old legal
-version fails with `mapping_legal_reapproval_required`. Technical-only or
-evidence-only changes with unchanged terms do not require new legal approval.
-Rewriting the same reference/revision hash remains forbidden. Neither operator
-command creates approval or supplies a legal-review interface.
+Historical ANY-664 v1 approval files pinned independent technical/commercial/legal
+versions. ANY-709 Step 1 supersedes that operator workflow: a direct product link
+contains no price or file approval. Current prices come from LBX without
+re-publication; future purchase consent freezes the accepted exact terms. The
+v1 history reader and test-only fixture harness retain the old evidence format.
 
 ### Operator publication bounds
 
@@ -252,16 +232,16 @@ the process-local `PreflightAdmission`, not cross-process concurrency. There is
 no PostgreSQL connection held for this file lock and no distributed protection:
 multiple operator hosts without the same local lock require a separate design.
 
-Fresh evaluation also carries a transient UTC applicability boundary: the
-earliest of the next account day, policy `valid_until`, and the current price's
-exclusive successor date, interpreted in the evidenced account IANA timezone.
-It is independent of the unchanged monotonic operation deadline and is not an
-immutable document field. Publication checks both limits after source cleanup,
-after PostgreSQL lock/history reads and immediately before commit. Expiry
-refuses with `mapping_publication_evidence_expired` and rolls back new rows;
-existing immutable history and uncertain-commit recovery remain authoritative.
+Current link publication keeps the shared monotonic operation deadline across
+source cleanup and PostgreSQL lock/CAS. A link is an association, not an accepted
+price or calendar lease. Current offer reads need the configured billing calendar.
 
-## Step 6 stored catalog acceptance
+## Step 6 stored catalog acceptance (historical ANY-664)
+
+The following records the completed ANY-664 workflow, not current setup.
+ANY-709 Step 1 removes its manual account/files and DB-only public catalog. Use
+[the normal connection/link runbook](lbx-product-links.md); the old fixture
+helpers are retained only under tests and are not deployment entrypoints.
 
 The public catalog reads only immutable published revisions from the configured
 `MAPPING_ACCOUNT_ID`. Set it explicitly through the shell or `.env`; `repo:up`
@@ -372,7 +352,11 @@ The joined Step 7 procedure below passed on 2026-10-21 after explicit owner
 authorization, including the real API/DB/browser checks. Its exact revision and
 saved artifacts are recorded in the completed ANY-664 plan.
 
-## Step 7 optional HTTP mock walkthrough
+## Step 7 optional HTTP mock walkthrough (historical ANY-664)
+
+The recorded joined walkthrough below is historical. The normal technical mock
+now has no billing mounts, approval files or publisher-UID startup requirement.
+Current source-backed catalog setup follows the [normal runbook](lbx-product-links.md).
 
 **Status: the positive joined P1 acceptance passed on 2026-10-21, with 2 Chromium
 projects passed and zero skips.** See the [execution record](../exec-plans/completed/ANY-664-implementation-plan.md#p1-joined-browser-acceptance--pass-2026-10-21)

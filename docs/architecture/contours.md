@@ -86,7 +86,8 @@ discovery/detail and account/auth surfaces, `docs/legal/ru`, identity/legal
 runtime, and the clean provider-neutral persistence baseline. The repository
 remains pre-production and provider-independent. Direct-provider runtime has
 been removed. ANY-664 provides source reads, restricted immutable mapping
-publication and DB-only catalog browsing; genuine Kernel conformance and sales
+publication and historical DB-only browsing. ANY-709 Step 1 now adds direct
+links and source-backed discovery/current offers; genuine Kernel conformance and sales
 remain gated. Purchase, reconciliation and paid-access producers are later work. See the
 [as-built RU Portal 4F handoff](../product/ru-mvp.md).
 
@@ -124,8 +125,8 @@ Enabling a contour requires a dedicated ticket. Minimum set:
    not invent it here. Direct-provider runtime is removed; reintroduction would
    require a separate explicit architecture decision.
 6. Live selected-offer and Platform capability validation with immutable approved
-   mappings under the accepted billing designs/amendment. PostgreSQL serves
-   approved catalog browsing; no periodic source-catalog mirror or catalog/plan
+   mappings under the accepted billing designs/amendment. PostgreSQL preserves
+   immutable links and accepted history; current catalog details read LBX live; no periodic source-catalog mirror or catalog/plan
    authority belongs to Portal.
 7. Contour locale and routes in the web application.
 8. Isolated data plane and billing-notification URLs on that plane.

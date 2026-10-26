@@ -159,7 +159,7 @@ def db_session(
 @pytest.fixture
 def mapping_clock(monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep recorded-offer publications independent of the machine's date."""
-    from app.composition import mapping_operator
+    from apps.api.tests.support import v1_mapping_operator as mapping_operator
     from app.domains.catalog import publication
 
     ticks = count()

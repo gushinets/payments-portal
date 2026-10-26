@@ -49,24 +49,6 @@ export type AcceptDocumentResponse = {
 };
 
 /**
- * CatalogAllowance
- */
-export type CatalogAllowance = {
-    /**
-     * Metric Key
-     */
-    metric_key: string;
-    /**
-     * Quantity
-     */
-    quantity: string;
-    /**
-     * Unit
-     */
-    unit: string;
-};
-
-/**
  * CatalogMoney
  */
 export type CatalogMoney = {
@@ -96,15 +78,21 @@ export type CatalogMoney = {
  * CatalogOffer
  */
 export type CatalogOffer = {
-    allowance: CatalogAllowance;
-    evidence_mode: MappingEvidenceMode;
-    money: CatalogMoney;
+    billing_provenance: CommercialEvidenceMode;
     /**
-     * Offer Id
+     * Commercial Quantity
      */
-    offer_id: string;
+    commercial_quantity: string;
+    /**
+     * Full Funding Required
+     */
+    full_funding_required: boolean;
+    money: CatalogMoney;
     period: CatalogPeriod;
-    publication_state: PublicationState;
+    /**
+     * Prepaid
+     */
+    prepaid: boolean;
     /**
      * Revision Id
      */
@@ -113,7 +101,6 @@ export type CatalogOffer = {
      * Revision Number
      */
     revision_number: number;
-    terms: CatalogTermSummary;
 };
 
 /**
@@ -141,8 +128,12 @@ export type CatalogProductResponse = {
     /**
      * Availability
      */
-    availability: 'APPROVED_UNVERIFIED_NOW' | 'SIMULATED_PREVIEW' | 'UNAVAILABLE_AMBIGUOUS_OFFERS';
-    evidence_mode: MappingEvidenceMode;
+    availability: 'DETAILS_REQUIRED' | 'UNMAPPED' | 'CURRENT_OFFER' | 'OFFER_UNSUPPORTED' | 'OFFER_INCOMPLETE';
+    /**
+     * Availability Reason
+     */
+    availability_reason: string | null;
+    kernel_provenance: SourceProvenance;
     offer: CatalogOffer | null;
     /**
      * Product Id
@@ -161,34 +152,9 @@ export type CatalogProductsResponse = {
 };
 
 /**
- * CatalogTermSummary
+ * CommercialEvidenceMode
  */
-export type CatalogTermSummary = {
-    /**
-     * Connection Charge Basis
-     */
-    connection_charge_basis: 'per_service_unit' | 'once';
-    /**
-     * Discounts
-     */
-    discounts: 'none';
-    /**
-     * Full Funding Required
-     */
-    full_funding_required: boolean;
-    /**
-     * Prepaid
-     */
-    prepaid: boolean;
-    /**
-     * Proration
-     */
-    proration: 'none';
-    /**
-     * Tax Treatment
-     */
-    tax_treatment: 'included' | 'not_applicable';
-};
+export type CommercialEvidenceMode = 'CONFIGURED_SOURCE' | 'SIMULATED';
 
 /**
  * EmailVerificationConfirmRequest
@@ -287,11 +253,6 @@ export type LogoutResponse = {
 };
 
 /**
- * MappingEvidenceMode
- */
-export type MappingEvidenceMode = 'SIMULATED' | 'GENUINE';
-
-/**
  * PasswordResetConfirmRequest
  */
 export type PasswordResetConfirmRequest = {
@@ -334,11 +295,6 @@ export type PasswordResetRequestResponse = {
      */
     status: 'accepted';
 };
-
-/**
- * PublicationState
- */
-export type PublicationState = 'SIMULATED' | 'PUBLISHED_APPROVED_UNVERIFIED_NOW';
 
 /**
  * ReadinessSuccessResponse
@@ -505,6 +461,11 @@ export type SessionUserResponse = {
      */
     user_id: string;
 };
+
+/**
+ * SourceProvenance
+ */
+export type SourceProvenance = 'CONFIGURED_SOURCE' | 'SIMULATED';
 
 /**
  * ValidationError

@@ -9,6 +9,18 @@ supersedes source-catalog mirroring and the 24h new-sale catalog TTL only.
 The relevant sections below reflect that decision. Paid-access derivation,
 AccessSnapshot, subscription reconciliation and trust deadlines are unchanged.
 
+**ANY-709 Step 1 owner-approved correction (2026-10-26):** direct versioned
+product links replace mandatory proposal/approval/source-policy files and manual
+account-ID inputs. A link pins product/tariff/service/period/quantity and source
+provenance, not a historical publication price or an invented technical quota.
+Catalog listing discovers enabled Kernel products; selected details read current
+LBX values. PostgreSQL retains immutable v1 history, v2 link revisions/current
+product heads and future accepted purchase snapshots. Price changes do not
+require relinking. No approval/price fallback authorizes a sale. Purchase-time
+exact acceptance, effective-subscription readback, recovery, paid-access/trust
+and AccessSnapshot rules are unchanged. Implementation/testing status and normal
+operator setup are in the [Step 1 runbook](../../engineering/lbx-product-links.md).
+
 ## Goal
 
 Redesign Payments Portal around a strict bounded-context split:
@@ -575,8 +587,9 @@ a fallback. Source HTTP completes outside the short PostgreSQL transaction.
 Portal does not maintain periodically refreshed Kernel/LBX catalog copies.
 The former startup/five-minute sync and `new_sales_projection_max_age = 24h`
 permission are retired, without a replacement TTL. PostgreSQL stores approved
-immutable mapping terms/evidence for DB-only catalog browsing; viewing those
-terms makes no new LBX/Kernel request and does not prove current sellability.
+immutable mapping history/accepted purchase evidence. Under the ANY-709 Step 1
+correction, listing reads enabled Kernel products once and selected detail reads
+current LBX values; these read-only operations do not grant access.
 Existing-operation retry/recovery follows the amendment's separate rules.
 Admission failure does not revoke existing pins, grants or allowances or alter
 subscription trust, reconciliation or AccessSnapshot caching.
@@ -627,12 +640,11 @@ from automatic composition. Missing or ambiguous evidence refuses publication;
 default composition and provenance participate in the stored evidence digest.
 This is a Portal admission rule, not a change to LBX tariffs or cabinet actions.
 
-Changed normalized commercial terms, including price, billing period, payment
-obligations and renewal/cancellation rules, require a new legal approval version
-through the existing approval files. Existing technical/commercial reapproval
-checks and immutable reference/revision hashes still apply. Technical or
-evidence changes alone with unchanged commercial terms do not require new legal
-approval. No approval UI or legal integration is implied.
+Historical v1 publications retain their approval-version evidence unchanged.
+Current v2 links contain only the association and provenance; repricing does not
+require approval files or relinking. Future purchase consent must freeze exact
+accepted commercial/legal terms and effective readback must compare that snapshot.
+This correction does not approve new legal text or create technical allowances.
 
 ### Purchase-time snapshot
 
