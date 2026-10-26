@@ -10,7 +10,7 @@ from alembic.script import ScriptDirectory
 from sqlalchemy import inspect, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import Engine, URL
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, ProgrammingError
 
 from apps.api.tests.support.postgres import alembic_test_config, reset_public_schema
 
@@ -972,6 +972,19 @@ def test_product_head_constraints_reject_invalid_scope_cas_and_duplicate_origin(
                 "('scope-one', 'product', '10000000-0000-4000-8000-000000000020', 1, 'https://billing.test')"
             )
         )
+    mapping_rows = text("SELECT * FROM commercial_mapping_revisions ORDER BY mapping_revision_id")
+    head_rows = text("SELECT * FROM commercial_product_heads ORDER BY external_billing_account_id, product_id")
+    with migrated_database.connect() as connection:
+        original_mappings = connection.execute(mapping_rows).mappings().all()
+        original_heads = connection.execute(head_rows).mappings().all()
+
+    # The FK is checked independently of the immutable-history DELETE trigger.
+    (foreign_key,) = inspect(migrated_database).get_foreign_keys("commercial_product_heads")
+    assert foreign_key["name"] == "fk_commercial_product_heads_mapping_scope"
+    assert foreign_key["constrained_columns"] == ["mapping_revision_id", "external_billing_account_id"]
+    assert foreign_key["referred_table"] == "commercial_mapping_revisions"
+    assert foreign_key["referred_columns"] == ["mapping_revision_id", "external_billing_account_id"]
+    assert foreign_key["options"]["ondelete"] == "RESTRICT"
     invalid = [
         ("scope-one", "product", "10000000-0000-4000-8000-000000000020", 2, None, "commercial_product_heads_pkey"),
         (
@@ -1032,11 +1045,19 @@ def test_product_head_constraints_reject_invalid_scope_cas_and_duplicate_origin(
                 },
             )
         assert error.value.orig.diag.constraint_name == constraint
-    with pytest.raises(IntegrityError) as error, migrated_database.begin() as connection:
-        connection.execute(
-            text("DELETE FROM commercial_mapping_revisions WHERE external_billing_account_id = 'scope-one'")
-        )
-    assert error.value.orig.diag.constraint_name == "fk_commercial_product_heads_mapping_scope"
+    # Both referenced and unreferenced revisions are immutable; refusal is not
+    # evidence of which FK would fire if this independent protection were absent.
+    for account in ("scope-one", "scope-two"):
+        with pytest.raises(ProgrammingError) as error, migrated_database.begin() as connection:
+            connection.execute(
+                text("DELETE FROM commercial_mapping_revisions WHERE external_billing_account_id = :account"),
+                {"account": account},
+            )
+        assert error.value.orig.sqlstate == "P0001"
+        assert error.value.orig.diag.message_primary == "commercial mapping revisions are immutable"
+        with migrated_database.connect() as connection:
+            assert connection.execute(mapping_rows).mappings().all() == original_mappings
+            assert connection.execute(head_rows).mappings().all() == original_heads
 
 
 def test_email_verification_migration_clears_false_timestamp_without_revoking_session(

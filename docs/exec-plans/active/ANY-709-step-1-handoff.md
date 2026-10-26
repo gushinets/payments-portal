@@ -4,6 +4,71 @@ Status: **IMPLEMENTED_AWAITING_HUMAN_VALIDATION**
 Date: 2026-10-26
 Selected scope: Step 1 only. The supplied untracked implementation plan was preserved unchanged.
 
+## PR #150 remaining review fixes (base f6746ba, 2026-10-26)
+
+Status: **IMPLEMENTED_AWAITING_HUMAN_VALIDATION**. This is a narrow correction
+of the current checkout. Earlier PASS evidence below does not validate this
+revision; the local implementation plan was not changed.
+
+- Moved the shared exact-money, quantity and missing-value/refusal helpers
+  unchanged into `apps/api/app/integrations/lbx/offer_values.py`; updated
+  `selected_offer.py` and `current_offer.py` imports. Static file counts after
+  formatting: selected **454**, current **258**, helpers **70** lines. The
+  existing 500-line limit and its exceptions remain unchanged. No normalization
+  algorithm, Decimal precision, refusal category or comment was discarded.
+- Corrected `test_product_head_constraints_reject_invalid_scope_cas_and_duplicate_origin`
+  in `apps/api/tests/test_alembic_postgres.py`: FK metadata independently checks
+  the exact composite reference and `ON DELETE RESTRICT`; invalid-reference
+  INSERT cases retain their named-constraint assertions. DELETE of both a
+  referenced and an unreferenced revision must raise `ProgrammingError`,
+  SQLSTATE `P0001`, with the exact immutable-history reason. Full mapping/head
+  snapshots must remain unchanged. No trigger or working schema was altered.
+- Updated `apps/api/tests/test_kernel_walkthrough_postgres.py` to override
+  `get_session_factory` with the isolated PostgreSQL factory. Kept `get_db`
+  separately; `monkeypatch.setitem` restores both overrides at teardown in both
+  HTTP scenarios. The stale catalog `SessionLocal` patch was removed; no other
+  direct test consumers remain. Publication/source faults/restart/recovery,
+  history, secret-redaction and no-automatic-promotion assertions are retained.
+
+Executed commands, all **exit 0**:
+
+```bash
+API_FILES=(
+  apps/api/app/integrations/lbx/offer_values.py
+  apps/api/app/integrations/lbx/selected_offer.py
+  apps/api/app/integrations/lbx/current_offer.py
+  apps/api/tests/test_alembic_postgres.py
+  apps/api/tests/test_kernel_walkthrough_postgres.py
+)
+.venv/bin/python -m ruff format --config apps/api/pyproject.toml "${API_FILES[@]}"
+.venv/bin/python -m ruff check --config apps/api/pyproject.toml "${API_FILES[@]}"
+git diff --check
+```
+
+Ruff formatted one file and left four unchanged. Generation was not needed:
+no schema, OpenAPI or generated contract changed. Final diff review found only
+these five Python paths and this handoff; no new runtime feature or Steps 2–4.
+
+**Tests and architecture/CI validation: NOT_RUN.** No collection, typechecks,
+builds, migrations, containers, browser or LBX calls were executed. Exact human
+commands, from repository root:
+
+```bash
+export PATH="$PWD/.venv/bin:$PATH"
+npm run architecture:check
+PYTEST_ADDOPTS='-k "test_lbx_selected_offer_normalization or test_lbx_selected_offer_failures or test_any709_step1_sources"' npm run test:api:fast
+python scripts/repo.py test-db up
+PYTEST_ADDOPTS='-k "test_product_head_constraints_reject_invalid_scope_cas_and_duplicate_origin or test_clean_first_install_has_expected_revisions_and_exact_application_schema or test_kernel_walkthrough_postgres"' npm run test:api:postgres
+# Stop only if this server was started solely for these tests:
+python scripts/repo.py test-db stop
+```
+
+Expected: architecture accepts the unchanged size rule; actual selected tests
+have zero failures, not zero selected/all skipped. Exact-money/refusal behavior,
+immutable DELETE refusal plus unchanged rows, independent FK protection and the
+complete isolated HTTP walkthrough must remain valid. Remaining limitation:
+human execution is pending; no CI or integration PASS is claimed.
+
 ## PR #150 Step 1 correction (2026-10-26)
 
 Status: **IMPLEMENTED_AWAITING_HUMAN_VALIDATION**. The owner's revised local plan
