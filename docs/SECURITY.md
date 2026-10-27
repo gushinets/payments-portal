@@ -195,3 +195,31 @@ Remove the `brace-expansion` override once every parent that requires the 1.x
 line resolves `1.1.18` or newer without it. In both cases, regenerate the
 lockfile and confirm that npm audit and the Trivy filesystem scan remain free of
 Critical and fixable High findings before removing the override.
+
+## ANY-709 analyzer adjudication, PR 150
+
+Sonar issue `AaF3I2LPjkGs2B7KgoeF` (`typescript:S2819`) flags the SDK host's
+`postMessage` target `*`. This specific use is a false positive: the receiver is
+an exact Portal-created `data:` frame with an opaque origin. The
+[Window.postMessage contract](https://developer.mozilla.org/en-US/docs/Web/API/Window/postMessage)
+requires `*` for such receivers. The window message carries a fixed handshake
+and transferred private port, never the JWT. The host accepts only its parent,
+removes the window listener before loading the configured remote SDK and receives
+the JWT over the dedicated port. The host URL/HTML contains no credential.
+Changing the target to the vendor HTTPS origin breaks this opaque-frame handshake;
+loading the SDK on the Portal origin removes the intended isolation. Component
+coverage verifies the actual window/port payloads, listener ordering and teardown.
+The documented `NOSONAR` exception is confined to this handshake line because
+scanner administration is not authenticated in this session. It addresses this
+false positive without disabling the rule or excluding the file from analysis.
+
+CodeQL alert 5 (`py/clear-text-logging-sensitive-data`) flags `print(output)` in
+`apps/api/tests/support/v1_cli.py`. This is a retained test-support CLI, excluded
+from the production image. Output is deliberately normalized mapping evidence
+(commercial IDs, references, operator reason), not configuration, raw provider
+responses, credentials or customer PII. The existing PostgreSQL CLI test checks
+password/token/PII canaries in dry-run, publish and query output. Operator-provided
+reason text must remain nonsecret; it has the same authorized input/DB boundary.
+Keep the useful output. Alert 5 was dismissed as false positive on 2026-10-27,
+with the rationale retained in GitHub and here.
+These are independent findings; neither proves real-method Widget acceptance.

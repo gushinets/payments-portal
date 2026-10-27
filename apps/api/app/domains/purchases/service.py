@@ -8,7 +8,7 @@ acknowledgement or the caller disappears. Only original fenced point proof binds
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy.orm import Session
@@ -139,6 +139,12 @@ def verify_original_consent(factory: SessionFactory, purchase: Purchase) -> None
 
 
 def _operation(db: Session, operation: ExternalCreateOperation, *, may_send: bool = False) -> FinancialOperation:
+    agreement_date = None
+    if operation.operation_kind == Kind.AGREEMENT and operation.recovery_hint_schema_version == "financial-create:v1":
+        try:
+            agreement_date = date.fromisoformat(operation.recovery_hint_document["request"]["create_date"])
+        except (KeyError, TypeError, ValueError):
+            raise PurchaseRefused("purchase_history_unproven", 409) from None
     work = recovery_work(db, operation.create_operation_id)
     candidate = work.payload_document.get("candidate_id") if work else None
     for value in (candidate, operation.bound_external_object_id):
@@ -202,6 +208,7 @@ def _operation(db: Session, operation: ExternalCreateOperation, *, may_send: boo
         may_send,
         safe_failure,
         failure_code,
+        agreement_date,
     )
 
 
@@ -253,6 +260,36 @@ def read_purchase(factory: SessionFactory, user_id: UUID, purchase_id: UUID) -> 
         if row is None:
             raise PurchaseRefused("purchase_not_found", 404)
         return _snapshot(db, row)
+
+
+def other_inventory_purchase(
+    factory: SessionFactory, purchase: Purchase, provider_id: int, agreement_id: int
+) -> Purchase | None:
+    """A tariff is not product identity; require the original permanent local binding."""
+    with factory() as db:
+        row = queries.subscription_purchase(
+            db,
+            user_id=purchase.user_id,
+            customer_id=purchase.customer_id,
+            account_id=purchase.account_id,
+            provider_id=str(provider_id),
+            agreement_id=str(agreement_id),
+        )
+        if row is None or row.product_id == purchase.accepted.selection.product_id:
+            return None
+        other = _snapshot(db, row)
+        bindings = {op.kind: op for op in other.operations}
+        if (
+            other.state != IntentState.LINKED
+            or not other.held
+            or other.accepted.provider_origin != purchase.accepted.provider_origin
+            or not {Kind.AGREEMENT, Kind.SUBSCRIPTION}.issubset(bindings)
+            or any(op.state != State.BOUND for op in bindings.values())
+            or bindings[Kind.AGREEMENT].bound_id != str(agreement_id)
+            or bindings[Kind.SUBSCRIPTION].bound_id != str(provider_id)
+        ):
+            return None
+        return other
 
 
 def inspect_purchase(factory: SessionFactory, configuration: Settings, user_id: UUID, purchase_id: UUID) -> Purchase:

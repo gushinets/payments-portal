@@ -51,6 +51,7 @@ class PurchaseIntentState(StrEnum):
 
 class ExternalCreateOperationState(StrEnum):
     PENDING = "pending"
+    PROVEN_NOT_SENT = "proven_not_sent"
     POSSIBLE_SEND = "possible_send"
     UNKNOWN = "unknown"
     BOUND = "bound"

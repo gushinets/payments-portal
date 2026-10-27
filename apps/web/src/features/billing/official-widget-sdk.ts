@@ -121,7 +121,11 @@ export function mountOfficialWidget(
   };
   frame.onload = () => {
     if (disposed || !isCurrent()) { dispose(); return; }
-    frame.contentWindow?.postMessage("portal_widget_connect", "*", [channel.port2]);
+    // data: has an opaque origin, so '*' is required (Window.postMessage contract).
+    // This exact Portal-created frame receives only the handshake/private port;
+    // its parent-only listener connects before any remote SDK executes. The JWT
+    // then travels on that port, never in a window message or the host URL.
+    frame.contentWindow?.postMessage("portal_widget_connect", "*", [channel.port2]); // NOSONAR S2819: opaque data: receiver; handshake/port only. See docs/SECURITY.md.
     frame.onload = null;
   };
   frame.src = "data:text/html;charset=utf-8," + encodeURIComponent(hostDocument(origin.origin, bootstrap.presentation === "payment"));

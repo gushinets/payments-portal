@@ -27,6 +27,7 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/api/catalog/products/*", (route) => route.fulfill({
     status: 404, json: { detail: { code: "catalog_product_not_found" } }
   }));
+  await page.route("**/api/purchase-intents/current?*", (route) => route.fulfill({ json: { purchase: null } }));
 });
 const portalRoutes = [
   "/ru",
@@ -259,7 +260,7 @@ test("home preserves account entry and discovery with an empty technical catalog
 });
 
 for (const authenticated of [false, true]) {
-  test(`public account CTAs keep neutral copy and open the account entry (authenticated: ${authenticated})`, async ({
+  test(`home account entry and product purchase controls preserve account navigation (authenticated: ${authenticated})`, async ({
     page
   }) => {
     const email = "cta-portal@example.com";
@@ -291,7 +292,20 @@ for (const authenticated of [false, true]) {
         await page.getByRole("button", { name: ruMessages.CookieBanner.acceptAction, exact: true }).click();
       }
       const main = page.getByRole("main");
-      const accountAction = main.getByRole("link", { name: "Открыть аккаунт", exact: true });
+      let accountAction: Locator;
+      if (pathname === "/ru") {
+        accountAction = main.getByRole("link", { name: ruMessages.Catalog.signInAction, exact: true });
+      } else {
+        const purchase = main.getByRole("region", { name: ruMessages.Purchase.title });
+        if (authenticated) {
+          await expect(purchase.getByRole("button", { name: ruMessages.Purchase.buy, exact: true })).toBeEnabled();
+          await expect(purchase.getByRole("button", { name: ruMessages.Billing.open, exact: true })).toBeEnabled();
+          accountAction = page.getByRole("navigation", { name: ruMessages.Navigation.mainAriaLabel })
+            .getByRole("link", { name: `${email} ${ruMessages.Auth.header.accountArea}`, exact: true });
+        } else {
+          accountAction = purchase.getByRole("link", { name: ruMessages.Purchase.signIn, exact: true });
+        }
+      }
       await expect(accountAction).toHaveAttribute("href", "/ru/account");
       await accountAction.click();
       await expect(page).toHaveURL(/\/ru\/account$/);
@@ -459,7 +473,7 @@ test("RU Portal navigation, product discovery and account forms remain usable at
   await expect(main.getByRole("status")).toHaveText(ruMessages.CatalogPreview.notFound);
   await expectMobileLayout(page, testInfo, "product-not-found");
 
-  await expectKeyboardFocus(page, main.getByRole("link", { name: ruMessages.Catalog.signInAction }));
+  await expectKeyboardFocus(page, main.getByRole("link", { name: ruMessages.Purchase.signIn, exact: true }));
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/\/ru\/account$/);
   await expect(main.getByRole("heading", { name: "Вход или регистрация" })).toBeVisible();

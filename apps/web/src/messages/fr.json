@@ -262,7 +262,7 @@
     "ambiguous": "Indisponible : plusieurs offres approuvées existent pour ce produit.",
     "simulated": "Source des produits : service de test",
     "unverified": "Offre LBX actuelle — à confirmer",
-    "previewNote": "Les valeurs actuelles de facturation sont affichées. L’achat n’est pas encore disponible ; consulter une offre ne donne pas accès au produit.",
+    "previewNote": "Les valeurs actuelles de facturation sont affichées. Les conditions d’achat doivent être confirmées séparément ; consulter une offre ne donne pas accès au produit.",
     "detailsRequired": "Ouvrez les détails pour vérifier l’offre actuelle.",
     "unmapped": "Achat indisponible : aucune offre de facturation associée.",
     "unsupported": "Achat indisponible : ces conditions ne sont pas prises en charge.",

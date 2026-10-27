@@ -71,6 +71,7 @@ def test_canonical_enum_layer_contains_approved_vocabularies() -> None:
     }
     assert _values(ExternalCreateOperationState) == {
         "pending",
+        "proven_not_sent",
         "possible_send",
         "unknown",
         "bound",

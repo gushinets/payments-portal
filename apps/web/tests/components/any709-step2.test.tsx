@@ -147,6 +147,31 @@ describe("ANY-709 Step 2 account Widget", () => {
 });
 
 describe("official SDK sandbox boundary", () => {
+  it("sends only a private port to the opaque frame and puts the credential on that port", async () => {
+    const actual = await vi.importActual<typeof import("@/features/billing/official-widget-sdk")>("@/features/billing/official-widget-sdk");
+    const port1 = { close: vi.fn(), postMessage: vi.fn(), onmessage: null as ((event: MessageEvent) => void) | null };
+    const port2 = { close: vi.fn(), postMessage: vi.fn(), onmessage: null };
+    vi.stubGlobal("MessageChannel", class { port1 = port1; port2 = port2; });
+    const node = document.createElement("div");
+    document.body.append(node);
+    const destroy = actual.mountOfficialWidget(node, response(), "Billing", () => true, vi.fn());
+    const frame = node.querySelector("iframe")!;
+    const send = vi.spyOn(frame.contentWindow!, "postMessage");
+    fireEvent.load(frame);
+    expect(send).toHaveBeenCalledExactlyOnceWith("portal_widget_connect", "*", [port2]);
+    expect(port1.postMessage).not.toHaveBeenCalled();
+    port1.onmessage!(new MessageEvent("message", { data: "ready" }));
+    expect(port1.postMessage).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ token: "private-jwt" }));
+    expect(frame.src).not.toContain("private-jwt");
+    const host = decodeURIComponent(frame.src.split(",").slice(1).join(","));
+    expect(host).toContain("event.source !== parent");
+    expect(host.indexOf('window.removeEventListener("message", connect)')).toBeLessThan(host.indexOf('document.createElement("script")'));
+    destroy();
+    expect(port1.close).toHaveBeenCalled();
+    expect(port2.close).toHaveBeenCalled();
+    node.remove();
+  });
+
   it("uses only configured origin in CSP, never embeds JWT in the host, and destroys on close", async () => {
     const actual = await vi.importActual<typeof import("@/features/billing/official-widget-sdk")>("@/features/billing/official-widget-sdk");
     const port = () => ({ close: vi.fn(), postMessage: vi.fn(), onmessage: null });

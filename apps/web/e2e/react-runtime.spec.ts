@@ -5,6 +5,7 @@ import { simulatedProduct } from "../tests/fixtures/catalog";
 
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/catalog/products", (route) => route.fulfill({ json: { products: [simulatedProduct] } }));
+  await page.route("**/api/purchase-intents/current?*", (route) => route.fulfill({ json: { purchase: null } }));
 });
 
 const sessionTokenStorageKey = "anytoolai_session_token_v1";

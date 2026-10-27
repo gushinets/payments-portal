@@ -262,7 +262,7 @@
     "ambiguous": "Indisponível: existe mais de uma oferta aprovada para este produto.",
     "simulated": "Fonte dos produtos: serviço de teste",
     "unverified": "Oferta LBX atual — sujeita a confirmação",
-    "previewNote": "São exibidos os valores atuais de cobrança. A compra ainda não está disponível; visualizar uma oferta não concede acesso.",
+    "previewNote": "São exibidos os valores atuais de cobrança. As condições de compra exigem confirmação separada; visualizar uma oferta não concede acesso.",
     "detailsRequired": "Abra os detalhes para verificar a oferta atual.",
     "unmapped": "Compra indisponível: nenhuma oferta de cobrança vinculada.",
     "unsupported": "Compra indisponível: estas condições não são compatíveis.",

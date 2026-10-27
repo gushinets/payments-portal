@@ -131,7 +131,9 @@ documents remain drafts.
 ## Primary journey and account states
 
 1. The user opens the product-first home or catalog. Product cards open a local
-   product detail page; home and product account CTAs open `/[locale]/account`.
+   product detail page. The home account CTA and signed-out product purchase
+   entry open `/[locale]/account`; authenticated product pages show purchase and
+   account-billing controls, with account navigation retained in the header.
    Public Pricing navigation opens only the presentation placeholder.
 2. A signed-out user signs in or registers directly on `/[locale]/account`
    through the existing `AuthForm`. The header sign-in modal remains available.
@@ -143,10 +145,11 @@ documents remain drafts.
    needed, and provides logout.
 5. A user can request a password-reset email, replace the password through the
    existing reset flow, and complete authenticated email verification.
-6. Each published product shows its stored approved commercial terms, including
-   duration and period anchor. Account access is unknown and usage/quota data
-   is unavailable. No purchase/checkout CTA,
-   product-execution URL, plan badge or usage progress is invented.
+6. Each enabled, linked product shows current source-backed commercial terms.
+   ANY-709 adds explicit review/consent, Buy/Continue/Manage and verified payment
+   Widget opening; accepted terms and purchase history remain immutable in
+   PostgreSQL. Account access is unverified and usage/quota data is unavailable.
+   No product-execution URL, plan badge or usage progress is invented.
 
 Account state is frontend component state: loading, signed out, session error
 with retry, or authenticated. Missing or expired sessions lead to the direct

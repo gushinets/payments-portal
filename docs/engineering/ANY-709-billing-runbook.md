@@ -294,8 +294,9 @@ docker compose up -d --build api
 
 Use one environment path, not both. The original Step 2 authoring did not execute
 these commands. The owner-authorized 2026-10-26 QA correction subsequently ran
-local services/tests and real test-043 customer verification; see the
-[QA handoff](../exec-plans/completed/ANY-709-step-2-handoff.md#manual-qa-correction-2026-10-26-base-181b8d0).
+local services/tests and real test-043 customer verification. The implemented
+result and retained acceptance limits are recorded in the
+[completed plan](../exec-plans/completed/ANY-709-implementation-plan.md#step-2-customer-and-account-widget).
 That correction required no application migration.
 Normal harness startup uses its migrate service; no manual `alembic stamp` or DB
 reset is needed. Existing users retain nullable independent FIO fields; new
@@ -924,15 +925,59 @@ No production code, billing object, schema or generated API contract changed.
 The default browser URL served an old image, so it was not used for acceptance.
 The final suite used the ignored test-owned config
 `.harness/any709-step4.playwright.config.ts`, a temporary local Next dev server
-on port 3107 and intercepted API/SDK traffic. The complete commands, sandbox
-failures, dependency-version limitation and test artifacts are recorded in the
-[plan follow-up](../exec-plans/completed/ANY-709-implementation-plan.md#step-4-owner-authorized-automated-tests-2026-10-27).
+on port 3107 and intercepted API/SDK traffic. Final totals and limits are in the
+[completed plan](../exec-plans/completed/ANY-709-implementation-plan.md#validation-evidence);
+the full pre-compaction execution record remains in Git at `2961577`.
 Manual QA, actual intended-agreement/acquiring behavior and payment remain
 NOT_RUN. No LBX call/payment, DB migration, container startup or build was run.
 
-The later [timeout-incident correction](../exec-plans/completed/ANY-709-implementation-plan.md#step-4-purchase-timeout-incident-and-correction-2026-10-27)
+The later [timeout-incident correction](../exec-plans/completed/ANY-709-implementation-plan.md#buy-timeout-correction)
 passed 227 component tests, 38 boundary/tooling tests and 10 synthetic browser
 tests, with no skips. The browser harness used webpack polling after the host
 file-watch limit prevented Turbopack startup; no global setting was changed.
 The working application was not rebuilt/restarted and actual provider/payment
 QA remains unperformed.
+
+## Final review corrections and human acceptance
+
+Financial `proven_not_sent` is positive evidence from the completed typed
+`LbxCreateNotSent` path, with no HTTP task still running. Only this state permits
+a later explicit advance to claim the same operation with a fresh fence. It
+retains the original request (including agreement date), key, unknown timestamps,
++2h deadline and coalesced work item. There is no retry within that advance.
+A process crash or lost claim acknowledgement before persisting this evidence
+remains possible-send/UNKNOWN and GET-only. Empty GET, deadline expiry, HTTP 500,
+read/write timeout and cancellation never create no-send proof. A GET-only
+recovery cannot send even a proven-unsent command. No migration or evidence-trigger
+relaxation is required: the canonical state is stored in existing TEXT columns.
+
+The occupied business scope is `(user_id, product_id)`, not tariff ID. Different
+products may use supported selections of the same tariff. Inventory ignores a
+nonterminal same-tariff subscription only when its permanent local binding proves
+a different product in the same user/customer/account/provider scope, and fresh
+point reads prove that purchase's original agreement/seller/terms. Unknown,
+foreign or mismatching inventory still requires review; unsupported multi-service
+profiles remain rejected.
+
+Human acceptance must use the intended stand, with sanitized IDs/request IDs and
+observed results recorded against the tested commit:
+
+1. With a new verified Portal user and an existing LBX-linked user, open account
+   billing and purchase `proposal_ai`. Confirm exactly one correct LBX customer.
+2. Confirm the current LBX price and accepted terms, dedicated agreement with
+   seller 21, and subscription tariff 32/service 1/period 1. These are stand data,
+   never application constants.
+3. With multiple agreements (including another seller/default), open payment
+   Widget, select the displayed intended agreement and verify a usable payment
+   method targets it. The customer-wide SDK has no documented agreement ACL or
+   automatic selection parameter. Account-only view must still work.
+4. Reload, sign out/in and press Continue/Manage; confirm the same purchase,
+   agreement and subscription without duplicate CREATEs. Existing automated
+   fault tests cover UNKNOWN/no-send/concurrency without real LBX writes.
+5. Record `MAPPED_PURCHASE_WIDGET_PASS` only after target and real-method checks.
+   Actual payment is human-only; if omitted record `PAYMENT_NOT_RUN`. If performed,
+   confirm the intended agreement receives it. Portal must still grant no paid
+   access: authoritative access/enforcement belongs to later program steps.
+
+Real CREATE/payment acceptance is NOT_RUN by the agent. Analyzer decisions and the
+line-scoped false-positive exception are documented in [Security](../SECURITY.md#any-709-analyzer-adjudication-pr-150).

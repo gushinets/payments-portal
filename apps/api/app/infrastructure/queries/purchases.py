@@ -84,6 +84,22 @@ def linked_subscription(db: Session, purchase_id: UUID) -> ExternalSubscription 
     )
 
 
+def subscription_purchase(
+    db: Session, *, user_id: UUID, customer_id: UUID, account_id: str, provider_id: str, agreement_id: str
+) -> PurchaseIntent | None:
+    return db.scalar(
+        select(PurchaseIntent)
+        .join(ExternalSubscription, ExternalSubscription.purchase_intent_id == PurchaseIntent.purchase_intent_id)
+        .where(
+            ExternalSubscription.user_id == user_id,
+            ExternalSubscription.customer_id == customer_id,
+            ExternalSubscription.external_billing_account_id == account_id,
+            ExternalSubscription.external_subscription_id == provider_id,
+            ExternalSubscription.external_agreement_id == agreement_id,
+        )
+    )
+
+
 def original_consent(
     db: Session, row: PurchaseIntent, *, limit: int
 ) -> list[tuple[DocumentAcceptance, DocumentVersion]]:

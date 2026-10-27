@@ -262,7 +262,7 @@
     "ambiguous": "Unavailable: more than one approved offer exists for this product.",
     "simulated": "Technical product source: development mock",
     "unverified": "Current LBX offer — subject to confirmation",
-    "previewNote": "Current billing values are shown. Purchasing is not available yet; viewing an offer does not grant access.",
+    "previewNote": "Current billing values are shown. Purchase terms require separate confirmation; viewing an offer does not grant access.",
     "detailsRequired": "Open details to check the current offer.",
     "unmapped": "Purchasing is unavailable: no billing offer is linked.",
     "unsupported": "Purchasing is unavailable: these offer conditions are not supported.",
