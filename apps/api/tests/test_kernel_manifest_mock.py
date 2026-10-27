@@ -116,8 +116,34 @@ def test_complete_manifest_is_served_over_http_with_stable_expected_digest() -> 
     assert payload["manifest_version"] == second.json()["manifest_version"] == EXPECTED_DIGEST
     assert first.headers["cache-control"] == "no-store"
     assert len(payload["products"]) == 6
-    assert [product["product_id"] for product in payload["products"] if product["enabled"]] == ["proposal_ai"]
+    assert {product["product_id"] for product in payload["products"] if product["enabled"]} == {
+        "proposal_ai",
+        "brief_decoder",
+    }
     assert payload["usage_metrics"][0]["metric_key"] == "proposal_ai.test_generations"
+
+
+def test_two_test_offers_have_distinct_limits_without_changing_manifest_authority() -> None:
+    with _running_mock() as client:
+        payload = client.get(ROUTE, params=SCOPE).json()
+        document = client.get("/openapi.json").json()
+    _assert_complete_manifest(payload)
+    examples = document["x-simulated-purchase-examples"]
+    assert examples["provenance"] == "SIMULATED"
+    assert [(offer["product_id"], offer["quantity"]) for offer in examples["offers"]] == [
+        ("proposal_ai", 100),
+        ("brief_decoder", 300),
+    ]
+    products = {row["product_id"] for row in payload["products"] if row["enabled"]}
+    metrics = {row["metric_key"]: row for row in payload["usage_metrics"] if row["enabled"]}
+    for offer in examples["offers"]:
+        assert offer["product_id"] in products
+        metric = metrics[offer["metric_key"]]
+        assert (metric["product_id"], metric["unit"]) == (offer["product_id"], offer["unit"])
+        assert type(offer["quantity"]) is int and offer["quantity"] > 0
+        assert offer["quantity_mode"] == "fixed_per_cycle"
+        assert str(offer["quantity"]) in document["info"]["description"]
+    assert all("quantity" not in row for row in payload["products"] + payload["usage_metrics"])
 
 
 def test_digest_ignores_generation_timestamp_version_and_array_order_but_changes_with_semantics() -> None:
@@ -157,12 +183,14 @@ def test_disabled_or_absent_selected_capability_is_a_complete_manifest(scenario:
         assert products["proposal_ai"]["enabled"] is False
     elif scenario == Scenario.MISSING_PRODUCT:
         assert "proposal_ai" not in products
-        assert not metrics
+        assert "proposal_ai.test_generations" not in metrics
     elif scenario == Scenario.DISABLED_METRIC:
         assert metrics["proposal_ai.test_generations"]["enabled"] is False
     else:
         assert products["proposal_ai"]["enabled"] is True
-        assert not metrics
+        assert "proposal_ai.test_generations" not in metrics
+    assert products["brief_decoder"]["enabled"] is True
+    assert metrics["brief_decoder.test_analyses"]["enabled"] is True
     assert payload["manifest_version"] != EXPECTED_DIGEST
 
 

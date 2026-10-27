@@ -23,10 +23,12 @@ from .documentation import SWAGGER_HTML, openapi_document
 MANIFEST_PATH = "/internal/v1/capability-manifest"
 MANIFEST_SCOPE = {"tenant_id": "anytoolai", "region": "ru"}
 CONTRACT_PATH = (
-    Path(__file__).resolve().parents[2]
-    / "docs/contracts/kernel-capability-manifest/v1"
+    Path(__file__).resolve().parents[2] / "docs/contracts/kernel-capability-manifest/v1"
 )
 FIXTURE_PATH = CONTRACT_PATH / "fixtures/valid-manifest.json"
+TEST_OFFERS_PATH = (
+    Path(__file__).resolve().parent / "fixtures/paid-access-test-offers.json"
+)
 MAX_DELAY_SECONDS = 60
 REQUEST_TIMEOUT_SECONDS = 5
 
@@ -71,8 +73,7 @@ class MockConfig:
             or any(not 33 <= ord(char) <= 126 for char in self.token)
         ):
             raise ValueError(
-                "KERNEL_MOCK_TOKEN must be an explicit nonempty development token "
-                "without whitespace"
+                "KERNEL_MOCK_TOKEN must be an explicit nonempty development token without whitespace"
             )
         if not 0 < self.delay_seconds <= MAX_DELAY_SECONDS:
             raise ValueError(
@@ -156,11 +157,19 @@ def response_manifest(fixture: dict[str, Any], scenario: Scenario) -> dict[str, 
             for product in manifest["products"]
             if product["product_id"] != "proposal_ai"
         ]
-        manifest["usage_metrics"] = []
+        manifest["usage_metrics"] = [
+            metric
+            for metric in manifest["usage_metrics"]
+            if metric["product_id"] != "proposal_ai"
+        ]
     elif scenario == Scenario.DISABLED_METRIC:
         manifest["usage_metrics"][0]["enabled"] = False
     elif scenario == Scenario.MISSING_METRIC:
-        manifest["usage_metrics"] = []
+        manifest["usage_metrics"] = [
+            metric
+            for metric in manifest["usage_metrics"]
+            if metric["product_id"] != "proposal_ai"
+        ]
     elif scenario == Scenario.WRONG_TENANT:
         manifest["tenant_id"] = "other-test-tenant"
     elif scenario == Scenario.WRONG_REGION:
@@ -190,12 +199,15 @@ class ManifestMockServer(ThreadingHTTPServer):
     def __init__(self, address: tuple[str, int], config: MockConfig) -> None:
         self.config = config
         self.fixture = json.loads(FIXTURE_PATH.read_text(encoding="utf-8"))
+        # Purchase quantities are explanatory test metadata, never manifest fields
+        # or an entitlement authority consumed by the Portal runtime.
+        test_offers = json.loads(TEST_OFFERS_PATH.read_text(encoding="utf-8"))
         semantic_version(self.fixture)
         schema = json.loads(
             (CONTRACT_PATH / "manifest.schema.json").read_text(encoding="utf-8")
         )
         self.openapi = openapi_document(
-            schema, self.fixture, MANIFEST_PATH, MANIFEST_SCOPE
+            schema, self.fixture, MANIFEST_PATH, MANIFEST_SCOPE, test_offers
         )
         super().__init__(address, ManifestMockHandler)
 
@@ -238,10 +250,13 @@ class ManifestMockHandler(BaseHTTPRequestHandler):
                 self._error(403, "browser_access_forbidden")
                 return
             if target.path == "/docs":
-                self._send(200, SWAGGER_HTML.encode("utf-8"), "text/html; charset=utf-8")
+                self._send(
+                    200, SWAGGER_HTML.encode("utf-8"), "text/html; charset=utf-8"
+                )
             else:
                 self._send(
-                    200, json.dumps(self.server.openapi, ensure_ascii=False).encode("utf-8")
+                    200,
+                    json.dumps(self.server.openapi, ensure_ascii=False).encode("utf-8"),
                 )
             return
         if target.path != MANIFEST_PATH:
@@ -311,11 +326,13 @@ def main() -> None:
         parser.error(str(error))
     with ManifestMockServer((args.host, args.port), config) as server:
         print(
-            f"SIMULATED Kernel manifest mock on {args.host}:{server.server_port}; "
-            f"scenario={config.scenario}",
+            f"SIMULATED Kernel manifest mock on {args.host}:{server.server_port}; scenario={config.scenario}",
             flush=True,
         )
-        print(f"Read-only Swagger UI: http://{args.host}:{server.server_port}/docs", flush=True)
+        print(
+            f"Read-only Swagger UI: http://{args.host}:{server.server_port}/docs",
+            flush=True,
+        )
         try:
             server.serve_forever()
         except KeyboardInterrupt:

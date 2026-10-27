@@ -66,6 +66,9 @@ async def test_independent_literal_contract_and_fresh_get_on_every_operation() -
                 require_selected_capability(
                     manifest, product_id="proposal_ai", metric_units={"proposal_ai.test_generations": "generation"}
                 )
+                require_selected_capability(
+                    manifest, product_id="brief_decoder", metric_units={"brief_decoder.test_analyses": "analysis"}
+                )
                 assert manifest.provenance is SourceProvenance.SIMULATED
                 assert manifest.manifest_version == EXPECTED_DIGEST
                 assert len(manifest.products) == 6
