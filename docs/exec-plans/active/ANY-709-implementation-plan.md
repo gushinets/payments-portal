@@ -1191,3 +1191,28 @@ removed. The 23 diagnostic PostgreSQL cases, retained QA regressions and read-on
 043 owner smoke passed. See the Step 2 handoff's diagnostic simplification section
 for canonical-stage results, corrected negative-test fixtures and skipped browser
 E2E. The owner's stored email conflict was identified without changing real data.
+
+## Owner-approved customer ensure flow, 2026-10-27
+
+Implement the explicitly requested account-only find/bind/create/find flow. The
+owner rejected indefinite UNKNOWN blocking for account creation and requested a
+single reusable CREATE use case plus Sentry reporting for unresolved failure.
+Keep original paired identity proof, same user/key/permanent operation, durable
+receipt protection and finite active-send leases/CAS fencing for concurrent opens.
+One POST per explicit open; after failure only GET recovery in that same request.
+A later open may retry after fresh empty discovery once the prior lease is released
+or expired. Scope the baseline amendment to customer account bootstrap; do not add
+purchase/agreement/subscription runtime or claim all future scenarios exist.
+
+Delivery: update domain send claim/lease lifecycle; expose shared ensure_customer;
+report handled integration errors once at the HTTP boundary; update protocol,
+PostgreSQL/concurrency and Sentry boundary tests and current architecture/runbook.
+Run focused and canonical checks, inspect final diff and record actual evidence.
+No commit/push/PR or unrelated data cleanup is included.
+
+Completed: shared discover/create/recover use case, active-send lease/fencing,
+sanitized once-only Sentry boundary and diagnostic next actions implemented.
+Canonical `npm run check` passed (1,508 API tests, 300 component tests, 38 web
+boundary tests and production build). The Step 2 handoff records detailed evidence
+and the unperformed live owner-account/browser smoke. No real account reset,
+CREATE, container rebuild or commit/push/PR was performed for this change.

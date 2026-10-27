@@ -108,9 +108,14 @@ need, security treatment, and retention.
 
 Only explicit authenticated POST after verified email may allocate the single
 customer slot. Before users POST, the permanent operation, opaque outer key,
-send fence, original two-hour deadline and coalesced recovery work are committed.
-A possible send is never replayed, including malformed success and crash. All
-recovery is bounded read-only; overdue escalation retains the slot. No fake
+send fence, per-attempt two-hour deadline and coalesced recovery work are committed.
+Under the owner-approved 2026-10-27 customer amendment, each explicit open searches
+before sending and after a failed CREATE. A finite active-send lease prevents
+concurrent sends; a completed/expired attempt may be retried after fresh empty
+discovery in the same slot/operation. There is at most one POST per opening and no
+POST retry loop. A saved receipt must be resolved by point proof, and ambiguous
+identity or failed discovery prevents creation. Unresolved integration errors are
+reported once through the sanitized Sentry boundary. No fake
 PurchaseIntent, subscription, name, password repair or agreement is created for
 account viewing. Proven provider IDs are unique within the connection scope.
 

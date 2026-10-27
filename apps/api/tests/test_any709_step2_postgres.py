@@ -203,12 +203,13 @@ def test_any709_step2_real_bootstrap_reuses_one_customer_and_never_persists_secr
                     db.commit()
         row = {"user_id": 345, "outer_id": outer}
         return httpx.Response(
-            200, json={"code": 200, "response": [row] if request.url.path.endswith("/users") else row}
+            200,
+            json={"code": 200, "response": ([row] if outer else []) if request.url.path.endswith("/users") else row},
         )
 
     async def scenario() -> None:
         async with source_resources(config, lbx_transport=httpx.MockTransport(transport)) as sources:
-            if failure != "none":
+            if failure in {"client_not_ready", "stale_session"}:
                 with pytest.raises(BillingRefused):
                     await bootstrap_account(sources, config, factory=factory, token=TOKEN)
             else:
@@ -474,6 +475,8 @@ def test_any709_step2_successful_http_bootstrap_is_no_store(
         if request.method == "POST":
             outer = json.loads(request.content)["outer_id"]
             return httpx.Response(201, json={"code": 201, "response": {"user_id": 345}})
+        if request.url.path.endswith("/users"):
+            return httpx.Response(200, json={"code": 200, "response": []})
         return httpx.Response(200, json={"code": 200, "response": {"user_id": 345, "outer_id": outer}})
 
     async def scenario() -> None:

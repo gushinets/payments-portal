@@ -251,17 +251,19 @@ LBX request is made on registration, login, catalog browsing or ordinary GET.
 4. Verify logout/cross-tab user change/close removes the SDK host. No JWT may
    appear in localStorage/sessionStorage/URLs/journal. SDK/configuration/server-auth/
    Client-readiness/identity/UNKNOWN failures show localized safe text and request ID.
-   Never fix old malformed customers by automatic PATCH or issuing another POST.
+   Never adopt another customer or repair identity drift by automatic PATCH.
 
 A successful users POST now commits its candidate ID to the existing operation
 recovery hint before the detailed GET. The hint is not a trusted customer binding;
 reopening uses that ID for paired point proof and never repeats CREATE. Server
 GET credential/contact fields are discarded by the identity projection. A
 short candidate list may omit `outer_id`; its detailed GET still must match.
-A historically reset `pending` operation does not prove no external effect: do
-not open its create path until original provider evidence establishes safe
-recovery. The QA handoff records the outstanding original operation and real
-Widget rendering limitation separately from successful API bootstrap.
+Every unbound open uses the shared `ensure_customer` operation: original-key
+search, email candidate search when needed, point proof, then one CREATE only if
+successful discovery found no candidate. CREATE failure triggers GET recovery
+before returning an error. Email matches alone never bind. A known receipt always
+uses its saved ID and prevents another CREATE. The owner supplied a successful
+Widget rendering screenshot on 2026-10-27; it proves that observed account only.
 
 For the current harness, this helper uses its exact project/files/protected env
 without printing secrets and forces a read-only PostgreSQL session:
@@ -302,21 +304,31 @@ SELECT count(*) FROM external_subscriptions;
 
 After first open: one scoped customer, one permanent customer operation with
 NULL purchase ID, one recovery item committed before any POST, no Portal-created
-purchase/subscription. Proven binding completes its recovery item; uncertainty
-keeps the original deadline and slot. Only a transport-proven before-dispatch
-failure can reset the same operation for another send; a possible send never
-can. Reopen does Server/Client GETs plus a fresh
-JWT, never another customer POST. Migration retains historical records and refuses
+purchase/subscription. Proven binding completes its recovery item and clears its
+active-send lease. The owner-approved 2026-10-27 policy permits another explicit
+open to claim a retry after fresh empty discovery when the previous attempt has
+finished or its finite lease has expired, including old UNKNOWN/manual-review
+rows. The same user, opaque key, slot and permanent operation are retained; the
+work attempt count/fence and per-attempt recovery deadline advance. An active
+lease, saved receipt, ambiguous identity or failed discovery prevents another
+POST. There is one CREATE implementation/caller and at most one POST per opening.
+On rejection (including email uniqueness), recovery searches again; a proven match
+continues to Client readiness, otherwise a safe error with request ID is returned
+and reported once to Sentry. No retry loop, direct provider PATCH, user deletion
+or diagnostic-CLI mutation is added. Reopening a bound customer uses GETs plus a
+fresh JWT. Migration retains historical records and refuses
 conflicting unique data rather than deleting/relabeling it. Legacy customer rows
 without proven origin/operation require operator review; synthetic rows are never
 promoted to live identity. Credential rotation preserves the proven origin scope.
 
-`app.composition.billing.recover_customer` is callable read-only recovery;
+`app.composition.billing.recover_customer` performs provider GET-only recovery
+and may persist a paired binding;
 `app.domains.billing.customers.escalate_overdue_customers` is callable bounded
-escalation. The latter moves overdue operations to manual review and retains
-all keys/holds. No scheduler is installed in Step 2; the next explicit open can
-recover/escalate, and later program Step 8 owns background execution. Never wait
-then blindly POST, even when discovery returns zero objects.
+escalation. The latter records overdue operations for manual review and retains
+all keys; a later explicit account open follows the amended discover/claim flow.
+No scheduler is installed in Step 2; later program Step 8 owns background execution.
+Elapsed time alone never sends a POST: an explicit authenticated opening, completed
+fresh discovery and a successful fenced claim are required.
 
 The SDK host loads once per disposable browsing context and is created only by
 the explicit button, including under React development remounts. Its opaque
@@ -366,15 +378,17 @@ There are no `--apply`, reset or supplied-customer-ID switches.
   remains false.
 - `not_provisioned` (exit 0): no customer slot exists. Use the normal Portal
   opening flow, which owns creation and all concurrency protections.
-- `customer_found_unbound` (exit 2): a matching customer exists. Investigate and
-  restore the existing binding through a separately reviewed operation.
+- `customer_found_unbound` (exit 2): a matching customer exists. Open billing normally to
+  point-verify and restore the existing binding.
 - `email_conflict` (exit 2): the latest saved CREATE response reports email
-  uniqueness rejection. Ask Billing Ops to locate the email owner or release the
-  conflicting email. Empty GET results do not override that response.
+  uniqueness rejection. Resolve the email conflict, then open billing normally for
+  fresh discovery and a new attempt if needed. The stored response is historical;
+  the diagnostic never sends CREATE to test whether the conflict still exists.
 - `create_outcome_unknown`, `email_candidates_unproven`, `identity_conflict`,
   `candidates_ambiguous`, `receipt_invalid` or `connection_conflict` (exit 2):
-  preserve the identity/holds and investigate manually. No reset is safe based
-  only on these observations.
+  preserve identity and investigate the indicated conflict. The diagnostic
+  itself never authorizes or performs a retry; normal explicit account opens
+  follow the amended discover/claim flow.
 - `email_verification_required` (exit 2): verify the existing Portal email first.
 - `source_unavailable` (exit 2): check `lbx_error`, connection and credentials,
   then repeat diagnosis. A known historical email conflict can still be reported
@@ -392,6 +406,7 @@ incident, extracting only safe owner-response fields. It does not parse logs,
 private backups or arbitrary review text. Old failures without retained facts
 remain unknown; diagnosis never sends a new CREATE to reconstruct a response.
 Neither an empty list, HTTP 404/500 nor expiry of the recovery deadline proves
-that no customer was created. Keep these cases held until authoritative manual
-resolution. The report is an observation across local/source reads, not a locked
+that no customer was created. The owner's account retry policy therefore makes
+another explicit, discover-first attempt rather than claiming provider absence.
+Saved receipts and identity conflicts still block CREATE. The report is an observation across local/source reads, not a locked
 snapshot for a later mutation; rerun it after any concurrent state change.

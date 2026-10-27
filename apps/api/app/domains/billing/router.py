@@ -11,9 +11,10 @@ from app.composition.billing import bootstrap_account
 from app.core.errors import AppError
 from app.core.observability import request_id_context
 from app.core.settings import settings
-from app.domains.billing.contracts import BillingRefused
+from app.domains.billing.contracts import BillingAccountFailure, BillingRefused
 from app.domains.catalog.publication import SessionFactory
 from app.http.dependencies import get_session_factory
+from app.infrastructure.sentry import FailureCategory, Operation, report_exception
 
 router = APIRouter(prefix="/api/billing", tags=["billing"])
 
@@ -54,6 +55,15 @@ async def widget_bootstrap(
             request.app.state.sources, settings, factory=factory, token=authorization.removeprefix("Bearer ").strip()
         )
     except AppError as error:
+        if isinstance(error, BillingAccountFailure):
+            report_exception(
+                error,
+                operation=Operation.HTTP_REQUEST,
+                failure_category=FailureCategory.INTEGRATION_FAILURE,
+                method="POST",
+                route="/api/billing/widget-bootstrap",
+                error_code=error.code,
+            )
         raise HTTPException(
             status_code=error.status if isinstance(error, BillingRefused) else 503,
             detail={"code": error.code, "request_id": request_id_context.get()},

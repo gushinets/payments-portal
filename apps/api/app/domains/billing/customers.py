@@ -157,34 +157,45 @@ def claim_customer_send(
             or operation.request_correlation_key != expected.outer_key
         ):
             raise BillingRefused("billing_identity_conflict", 409)
-        if customer.provider_customer_id is not None or operation.operation_state != State.PENDING:
+        if customer.provider_customer_id is not None or _receipt_id(operation) is not None:
             return _snapshot(customer, operation)
-        if operation.send_fence != expected.fence or _receipt_id(operation) is not None:
-            raise BillingRefused("billing_customer_pending", 409)
+        if customer.binding_state == Binding.IDENTITY_CONFLICT:
+            raise BillingRefused("billing_identity_conflict", 409)
+        if operation.send_fence != expected.fence:
+            return _snapshot(customer, operation)
         now = utc_now()
+        work = recovery_work(db, operation.create_operation_id)
+        if work is not None and work.lease_expires_at is not None and as_utc(work.lease_expires_at) > now:
+            return _snapshot(customer, operation)
+        # Called only after fresh, successful discovery found no customer.
+        # The owner-approved account policy permits another explicit-open
+        # attempt while retaining the original slot/key/operation and history.
         operation.send_fence = uuid4()
         operation.operation_state = State.POSSIBLE_SEND
         operation.unknown_since = now
         operation.unknown_recovery_deadline_at = now + RECOVERY_WINDOW
-        work = recovery_work(db, operation.create_operation_id)
         if work is None:
-            db.add(
-                BillingWorkItem(
-                    work_kind="external_create_recovery",
-                    scope_kind="create_operation",
-                    scope_reference=str(operation.create_operation_id),
-                    coalescing_key=str(operation.create_operation_id),
-                    payload_schema_version="v1",
-                    payload_document={"create_operation_id": str(operation.create_operation_id)},
-                    next_attempt_at=operation.unknown_recovery_deadline_at,
-                    work_state="pending",
-                )
+            work = BillingWorkItem(
+                work_kind="external_create_recovery",
+                scope_kind="create_operation",
+                scope_reference=str(operation.create_operation_id),
+                coalescing_key=str(operation.create_operation_id),
+                payload_schema_version="v1",
+                payload_document={"create_operation_id": str(operation.create_operation_id)},
+                next_attempt_at=operation.unknown_recovery_deadline_at,
+                work_state="pending",
             )
+            db.add(work)
         else:
             work.next_attempt_at = operation.unknown_recovery_deadline_at
             work.work_state = "pending"
+        work.attempt_count = (work.attempt_count or 0) + 1
+        work.lease_owner = f"customer-send:{operation.send_fence}"
+        work.lease_expires_at = now + timedelta(
+            seconds=configuration.preflight_total_timeout_seconds + configuration.preflight_cleanup_timeout_seconds
+        )
         result = _snapshot(customer, operation, user, may_create=True)
-        db.commit()  # The send fence AND original deadline/work item precede POST.
+        db.commit()  # Fence, active-send lease and recovery item precede POST.
         return result
 
 
@@ -281,6 +292,32 @@ def release_unsent_claim(factory: SessionFactory, expected: CustomerOpen) -> Non
         work = recovery_work(db, operation.create_operation_id)
         if work is not None:
             work.work_state = "done"
+            work.lease_owner = None
+            work.lease_expires_at = None
+        db.commit()
+
+
+def finish_customer_attempt(factory: SessionFactory, expected: CustomerOpen) -> None:
+    """A completed failed request releases only its own active-send lease."""
+    with factory() as db:
+        customer = lock_customer(db, expected.customer_id)
+        operation = customer_operation(db, expected.customer_id)
+        if (
+            operation is None
+            or operation.create_operation_id != expected.operation_id
+            or operation.send_fence != expected.fence
+            or expected.fence is None
+        ):
+            return
+        work = recovery_work(db, expected.operation_id)
+        if work is not None and work.lease_owner == f"customer-send:{expected.fence}":
+            work.lease_owner = None
+            work.lease_expires_at = None
+        if operation.operation_state == State.POSSIBLE_SEND and customer.provider_customer_id is None:
+            operation.operation_state = State.UNKNOWN
+            # Invalidate searches/snapshots taken while this send was active.
+            # A later attempt needs a fresh snapshot and fresh discovery.
+            operation.send_fence = uuid4()
         db.commit()
 
 
@@ -360,6 +397,8 @@ def apply_customer_read(
         work = recovery_work(db, operation.create_operation_id)
         if work is not None:
             work.work_state = "done"
+            work.lease_owner = None
+            work.lease_expires_at = None
         for review in open_customer_reviews(db, operation.create_operation_id):
             review.case_state = "resolved"
             review.resolved_at = utc_now()

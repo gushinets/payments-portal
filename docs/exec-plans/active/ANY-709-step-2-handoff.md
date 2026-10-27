@@ -633,3 +633,54 @@ Validation of this simplification:
   performed. The provider's email conflict remains for Billing Ops resolution.
 - Evidence logs remain local under `.harness/any709-qa/diagnose-check.log` and
   `.harness/any709-qa/diagnose-postgres-recheck.log`. No commit, push or PR was made.
+
+## Owner-approved discover/create/recover flow (2026-10-27)
+
+This supersedes the account customer's indefinite UNKNOWN/manual-review hold
+policy described earlier in this historical handoff. The owner requested search
+before CREATE, binding on a proven match, one CREATE when discovery is empty,
+GET recovery after a duplicate/other CREATE failure, and Sentry reporting if the
+customer still cannot be resolved. The canonical external-billing design now
+contains the narrow account-customer amendment; agreement/subscription creation
+and paid-access authority are unchanged.
+
+`app.composition.billing.ensure_customer` is the shared use case and sole runtime
+consumer of `LbxServerClient.create_user`. Both key and email discovery lead to
+paired point verification; an email-only match never adopts another identity.
+An existing bound ID or durable receipt uses its point GET and prevents CREATE.
+The same Portal user, opaque key, customer row and permanent operation survive
+all attempts. Existing paired work leases/fences prevent simultaneous sends and
+stale completion. Each failed completed attempt invalidates stale concurrent
+search snapshots. Crashed/cancelled source work keeps a finite active lease;
+a later explicit open searches again and can claim after expiry. A failed POST
+never loops another POST inside the same opening. Successful recovery resolves
+existing reviews and clears recovery work/lease state; no history is deleted.
+
+The HTTP boundary reports unresolved `BillingAccountFailure` once through the
+existing sanitized Sentry reporter. Recovered failures, authentication refusals
+and an active parallel attempt are not reported as unresolved integration errors.
+Delivery still requires the deployment's Sentry DSN/release configuration. The
+read-only diagnostic CLI retains historical CREATE facts and now recommends normal
+account opening to recover/retry instead of requiring an unavailable repair CLI.
+
+Validation:
+
+- `npm run check` exited 0: 1,298 non-PostgreSQL API tests, 210 PostgreSQL tests,
+  38 web boundary tests, 300 component tests, API/web lint, formatting,
+  documentation, generated-contract freshness, architecture and production web
+  build passed. The supported browser suite was skipped by the canonical command
+  because `RUN_E2E=true` was not set.
+- New coverage includes ten PostgreSQL ensure/lease/fence scenarios and five
+  single-CREATE/Sentry HTTP boundary cases. Existing transport, receipt, concurrent
+  bootstrap and diagnostic regressions were adapted to pre-CREATE discovery and
+  same-request recovery. The targeted rechecks and final canonical run passed.
+- The restricted asynchronous boundary runner stalled and was stopped; the same
+  five cases passed in the unrestricted runner and in the final canonical run.
+- The owner supplied a screenshot of real Widget rendering for another account.
+  No authenticated Portal tab was available through the browser connector for a
+  new live owner-account smoke. No real LBX CREATE/reset/binding mutation, Portal
+  account deletion or payment was performed for this implementation. The current
+  API container was not rebuilt; after rebuilding, the ordinary authenticated
+  opening is the entrypoint for recovering the owner's old manual-review row.
+- Canonical evidence: `.harness/any709-qa/customer-ensure-check.log`. No migration,
+  generated-file hand edit, environment change, commit, push or PR was made.
