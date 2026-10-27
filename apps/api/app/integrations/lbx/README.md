@@ -1,5 +1,12 @@
 # ANY-664 Step 3 handoff
 
+**Current setup:** use the [ANY-709 billing runbook](../../../../../docs/engineering/ANY-709-billing-runbook.md).
+The original read-client handoff below retains historical inventory/configuration
+facts. Its manual account-ID requirement is superseded: current runtime resolves
+the trusted provider-origin scope and uses normal connection settings. ANY-709
+Steps 2–4 add customer/purchase preparation and the shared payment-capable SDK;
+final real payment acceptance remains pending.
+
 Implementation source only; tests, checks and live LBX requests have **not**
 been run for this step. This boundary grants no commercial or paid-access
 approval. Step 4 owns complete selected-offer normalization and classification.
@@ -139,14 +146,14 @@ filtered agreement/subscription GETs and their permanently fenced CREATE on the
 same transport/decoder. POST does not retry; receipts are only candidates until
 point proof. Financial UNKNOWN never inherits customer later-open retries.
 Payment APIs remain provider-owned. See the
-[purchase runbook](../../../../../docs/engineering/lbx-product-links.md#purchase-api-and-financial-recovery-step-3)
-for pending tests, migration, financial GET-only recovery and human QA. `LbxCreateNotSent` proves a before-dispatch failure;
+[purchase runbook](../../../../../docs/engineering/ANY-709-billing-runbook.md#purchase-api-and-financial-recovery-step-3)
+for recorded synthetic/local migration evidence, financial GET-only recovery and pending human QA. `LbxCreateNotSent` proves a before-dispatch failure;
 every dispatched failure remains uncertain. Customer responses accept the
 operation-specific 200/201 envelope and must be point-verified before binding.
 Technical login/password are generated only for one POST; JWT signing uses
 type 7, the proven canonical ID and fresh `iat`. Account traffic has separate
 bounded admission/pool capacity from offer reads. See the
-[normal account runbook](../../../../../docs/engineering/lbx-product-links.md#human-account-widget-checkpoint-step-2).
+[normal account runbook](../../../../../docs/engineering/ANY-709-billing-runbook.md#human-account-widget-checkpoint-step-2).
 
 Selected-account currency/scale, historically applicable policy, rollback
 guarantees and actual account/credential deployment remain unverified. B1 and

@@ -23,6 +23,7 @@ export default async function AccountPage() {
         Auth: messages.Auth,
         Account: messages.Account,
         Billing: messages.Billing,
+        Purchase: messages.Purchase,
         CatalogPreview: messages.CatalogPreview,
         EmailVerification: messages.EmailVerification
       }}

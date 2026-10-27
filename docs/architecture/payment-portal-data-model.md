@@ -1,35 +1,44 @@
 # Payment Portal Data Model and Backend Invariants
 
 Status: authoritative current-state schema reference
-Last updated: 2026-10-27 (migration authored; human execution pending)
+Last updated: 2026-10-27 (ANY-709 consolidated as revision 0003; verified local DB relabel complete)
 
 > **CURRENT AS-BUILT SCHEMA REFERENCE**
 
 This document describes the schema produced by the current Alembic chain:
 
 ```text
-20260924_0001 -> 20261001_0002 -> 20261026_0003 -> 20261026_0004 -> 20261026_0005 -> 20261027_0006 (head)
+20260924_0001 -> 20261001_0002 -> 20261027_0003 (head)
 ```
 
 `20260924_0001_clean_first_install` creates the 25-table first-install schema.
 `20261001_0002_clear_false_email_verification` is a data-only forward migration
 that clears predecessor registration-time `users.email_verified_at` values,
-because those timestamps did not prove mailbox ownership. `20261026_0003_commercial_product_heads` adds one small current-link pointer
-table without backfilling or rewriting any legacy evidence.
-`20261026_0004_product_head_origin` adds nullable provider-origin provenance and
-unique `(provider_origin, product_id)` to that same pointer table. It guesses no
-legacy origin and rewrites no immutable scope. This correction migration is
-authored, not executed by Codex. `20261026_0005_customer_widget` adds optional
-FIO, proven customer origin, provider-ID uniqueness, permanent customer-operation
-identity, send fencing and coalesced recovery-work uniqueness. It neither
-backfills identity nor creates provider objects. `20261027_0006_purchase_preparation`
-adds the purchase hold, scoped permanent financial identities/bindings and
+because those timestamps did not prove mailbox ownership.
+`20261027_0003_normal_billing` consolidates all four ANY-709 branch-local
+revisions into one forward migration after main's unchanged head. It adds one
+small current-link pointer table, nullable provider-origin provenance and unique
+`(provider_origin, product_id)` without backfilling or rewriting legacy mappings.
+It also adds optional FIO, nullable customer origin, provider-ID uniqueness,
+permanent customer-operation identity, send fencing and coalesced recovery-work
+uniqueness. It neither guesses identity/origin nor creates provider objects.
+It adds the purchase hold, scoped permanent financial identities/bindings and
 immutable financial-send evidence. It backfills operation scope from its existing
 customer and holds nonterminal purchases; ambiguous old holds/bindings fail the
 upgrade without deletion or arbitrary adoption. It adds the explicit financial
 `unverified` state. Its clean and populated test upgrades have passed, and it was
-applied to the local development database under explicit owner authorization on
-2026-10-27. Existing application row counts were preserved. The chain has one current head.
+applied as the original four-revision chain to the local development database
+under explicit owner authorization on 2026-10-27. Existing application row counts
+were preserved. Consolidation retains every upgrade/downgrade operation. The
+owner requested consecutive numbering after the initial consolidation: an
+existing fully upgraded `20261027_0006` schema must be verified before changing
+only its revision label to `20261027_0003`; its DDL must not be replayed.
+This local transition completed under explicit owner authorization after an exact
+schema comparison and protected backup; all rows in 27 application tables were
+preserved and normal `upgrade head` passed afterward.
+Retired intermediate revisions must first reach `20261027_0006` using the old checkout;
+see the [migration runbook](../engineering/ANY-709-billing-runbook.md#consolidated-any-709-migration).
+The chain has one current head.
 This document is authoritative for the implemented SQLAlchemy
 table inventory and physical persistence rules; the generated column-level
 artifact remains `docs/generated/db-schema.md`.
@@ -53,7 +62,7 @@ invalidation delivery remain future work.
 
 A fresh database has exactly 27 application tables: ten retained
 identity/session/legal tables, fifteen original external-billing persistence
-tables, one current product-link pointer and one purchase mutex. Alembic has six revisions in one linear chain and one current head.
+tables, one current product-link pointer and one purchase mutex. Alembic has three revisions in one linear chain and one current head; only the last revision belongs to ANY-709.
 
 There is no Portal-owned product, plan, order, payment, refund, subscription,
 entitlement, trial, provider-account, or direct-payment webhook table. There is

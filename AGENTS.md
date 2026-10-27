@@ -21,7 +21,7 @@ document that applies to the current task.
      — the accepted commercial boundary and implementation baseline;
   3. [Portal ↔ Kernel Access Contract Design](docs/superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md)
      — the accepted paid-access and quota wire-contract baseline.
-  4. [Live-source commercial admission amendment](docs/superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md) — **accepted** by the owner on 2026-10-20; narrowly supersedes the baselines' source-catalog mirroring/new-sale TTL. Publication/new purchase use live Kernel/LBX reads; immutable links and accepted purchase/history use PostgreSQL. ANY-709 Step 1 replaces file approval/price-republication with direct product links and source-backed discovery/current offers; see [the normal runbook](docs/engineering/lbx-product-links.md). Subscription trust and AccessSnapshot unchanged.
+  4. [Live-source commercial admission amendment](docs/superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md) — **accepted** by the owner on 2026-10-20; narrowly supersedes the baselines' source-catalog mirroring/new-sale TTL. Publication/new purchase use live Kernel/LBX reads; immutable links and accepted purchase/history use PostgreSQL. ANY-709 Step 1 replaces file approval/price-republication with direct product links and source-backed discovery/current offers; see [the normal runbook](docs/engineering/ANY-709-billing-runbook.md). Subscription trust and AccessSnapshot unchanged.
 - [docs/PRODUCT.md](docs/PRODUCT.md) — current product scope.
 - [docs/architecture/contours.md](docs/architecture/contours.md) — contour
   isolation and country membership.

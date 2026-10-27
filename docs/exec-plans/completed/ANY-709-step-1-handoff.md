@@ -1,7 +1,13 @@
 # ANY-709 Step 1 handoff
 
-Status: **IMPLEMENTED_AWAITING_HUMAN_VALIDATION**
+Status: **DONE (implementation); archived evidence**
 Date: 2026-10-26
+
+Archive note (2026-10-27): implementation is complete. Historical statuses and
+migration IDs below describe their original checkpoints; the current consolidated
+head is `20261027_0003`. See the [completion record](ANY-709-implementation-plan.md#completion-record-2026-10-27).
+Real payment acceptance remains NOT_RUN.
+
 Selected scope: Step 1 current offers. The initial implementation plan was
 preserved for its original delivery; affected price/calendar sections are now
 updated for the owner-requested correction below.
@@ -590,7 +596,7 @@ implementation plan is excluded because it was not edited:
 - `docs/contracts/kernel-capability-manifest/v1/README.md`
 - `docs/engineering/DEVELOPMENT.md`
 - `docs/engineering/lbx-product-links.md`
-- `docs/exec-plans/active/ANY-709-step-1-handoff.md`
+- `docs/exec-plans/completed/ANY-709-step-1-handoff.md`
 - `docs/generated/db-schema.md`
 - `docs/generated/openapi.json`
 - `docs/integrations/platform-kernel.md`

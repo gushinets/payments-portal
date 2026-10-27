@@ -17,10 +17,7 @@ from apps.api.tests.support.postgres import alembic_test_config, reset_public_sc
 
 BASELINE_REVISION = "20260924_0001"
 EMAIL_VERIFICATION_REVISION = "20261001_0002"
-PRODUCT_HEAD_REVISION = "20261026_0003"
-ORIGIN_REVISION = "20261026_0004"
-CUSTOMER_REVISION = "20261026_0005"
-HEAD_REVISION = "20261027_0006"
+HEAD_REVISION = "20261027_0003"
 
 SURVIVOR_TABLES = {
     "regions",
@@ -737,9 +734,6 @@ def test_clean_first_install_has_expected_revisions_and_exact_application_schema
         assert script.get_bases() == [BASELINE_REVISION]
         assert [item.revision for item in script.walk_revisions()] == [
             HEAD_REVISION,
-            CUSTOMER_REVISION,
-            ORIGIN_REVISION,
-            PRODUCT_HEAD_REVISION,
             EMAIL_VERIFICATION_REVISION,
             BASELINE_REVISION,
         ]

@@ -1,11 +1,116 @@
 # ANY-709 - Normal LBX billing, product mapping and real Widget flow
 
-Status: IN PROGRESS - Steps 1-3 implemented; Step 3 focused synthetic checks/local migration PASS, real LBX purchase/payment QA pending; Step 4 pending
+Status: COMPLETED - implementation Steps 1-4 DONE; recorded automated checks PASS; final real LBX purchase/payment acceptance NOT_RUN
 Date: 2026-10-27
-Review revision: 3 - forward alignment with delivered Steps 1-2; unchanged four stages
+Review revision: 5 - implementation closed; consecutive migration numbering and local DB transition complete
 Program: ANY-504, program Step 7
 Delivery: four sequential implementation stages in this file, numbered Step 1-4
-Repository destination: `docs/exec-plans/active/ANY-709-implementation-plan.md`
+Repository destination: `docs/exec-plans/completed/ANY-709-implementation-plan.md`
+
+## Completion record, 2026-10-27
+
+The owner requested closure of completed implementation and consolidation of the
+branch migrations. All four implementation steps are **DONE**. This archive
+records code delivery and the actual automated evidence; it does not assert full
+human acceptance of ANY-709 or production enablement.
+
+- [x] Step 1: ordinary connection, direct product links and current offers.
+- [x] Step 2: optional names, durable customer ensure and account Widget.
+- [x] Step 3: accepted purchase, consent, preparation and safe recovery.
+- [x] Step 4: localized Buy/Continue/Manage UI, shared Widget lifecycle and runbook.
+
+Focused Step 4 evidence is 227 component tests, 38 boundary/tooling tests and 10
+synthetic browser cases PASS. The reported Buy timeout was traced to a successful
+5.555-second advance exceeding the former 5-second browser deadline; the bounded
+billing deadline and lost-response recovery correction have regression coverage.
+The owner's recorded real request reached a linked purchase with one prepared
+subscription. It does not prove actual intended-agreement Widget payment or a
+successful acquiring transaction. Manual QA, real payment and production rollout
+remain **NOT_RUN** by owner choice; no paid access or later program work is
+claimed complete. Detailed historical NOT_RUN entries below retain their dates.
+
+The branch-local revisions `20261026_0003`, `20261026_0004`, `20261026_0005`
+and `20261027_0006` are consolidated into one forward revision,
+`20261027_0003`, after main's unchanged `20261001_0002`. Every original upgrade
+operation and reverse-order downgrade operation is retained. The owner requested
+consecutive numbering after the initial consolidation retained `0006`. A fully
+upgraded local `20261027_0006` schema needs a verified revision-label transition,
+not a DDL replay. Intermediate retired revisions must finish the original chain
+before that transition; never reset data or stamp over unapplied operations.
+Current instructions are in
+the [billing runbook](../../engineering/ANY-709-billing-runbook.md#consolidated-any-709-migration).
+
+The following execution prompts and per-stage delivery records are retained
+implementation history, not instructions to start more work.
+
+### Closure and migration consolidation evidence
+
+- Four branch migration files became one; main's first two revisions are
+  untouched. Source AST comparison before/after formatting confirmed all 23
+  original upgrade statements and all 21 reverse-order downgrade statements
+  remain identical, including nested operations and SQL bodies.
+- Updated the existing Alembic/Step 1-3 PostgreSQL tests for the consolidated
+  predecessor. Added `test_any709_migration_postgres.py`: all seven purchase
+  states preserve every predecessor table's existing column values, only the
+  intended account/hold fields are backfilled, an already-current database
+  preserves names/origins/fences and all rows, and ambiguous old holds roll back
+  the entire migration without changing data or the recorded predecessor.
+- The exact focused command below passed **78/78**, with 1,610 deselected and
+  **zero skips**, in 144.10s. Its disposable `_tests` database was owned and
+  removed by pytest. No application/production database migration, provider
+  calls or manual QA ran for consolidation.
+- Changed-file Ruff formatting/checks, documentation checks and
+  `git diff --check`: **PASS**. Generation: **NOT_NEEDED**, because the final
+  schema, models and wire contracts did not change. Broad build/typecheck/full
+  repository checks: **NOT_RUN** in this focused follow-up.
+
+Exact repeat commands from the repository root (PostgreSQL test server already
+available; no application database migration is part of these commands):
+
+```bash
+PATH="$PWD/.venv/bin:$PATH" PYTEST_ADDOPTS='-k "test_alembic_postgres or test_any709_migration_postgres or test_any709_step1_postgres or test_any709_step2_postgres or test_any709_step3_postgres"' npm run test:api:postgres
+.venv/bin/python -m ruff format --config apps/api/pyproject.toml --check apps/api/alembic/versions/20261027_0003_normal_billing.py apps/api/tests/test_alembic_postgres.py apps/api/tests/test_any709_step1_postgres.py apps/api/tests/test_any709_step2_postgres.py apps/api/tests/test_any709_step3_postgres.py apps/api/tests/test_any709_migration_postgres.py
+.venv/bin/python -m ruff check --config apps/api/pyproject.toml apps/api/alembic/versions/20261027_0003_normal_billing.py apps/api/tests/test_alembic_postgres.py apps/api/tests/test_any709_step1_postgres.py apps/api/tests/test_any709_step2_postgres.py apps/api/tests/test_any709_step3_postgres.py apps/api/tests/test_any709_migration_postgres.py
+PATH="$PWD/.venv/bin:$PATH" npm run docs:check
+git diff --check
+```
+
+### Owner-requested consecutive numbering and local DB update
+
+After the initial consolidation kept the former head for compatibility, the
+owner explicitly requested consecutive revision numbers and immediate local DB
+update. The current single branch migration is now
+`apps/api/alembic/versions/20261027_0003_normal_billing.py`; the graph is
+`20260924_0001 -> 20261001_0002 -> 20261027_0003`. Its upgrade/downgrade SQL is
+unchanged. Earlier records below retain the revision IDs actually executed.
+
+The verified development database was at `20261027_0006`. A fresh isolated
+`_tests` database was migrated to the new head and its complete public schema
+was compared with the application database: tables, physical column order/types/
+defaults, constraints, indexes, functions and triggers matched exactly. A
+protected custom-format PostgreSQL backup was saved at
+`.harness/backups/any709-before-0003-20261027T065436Z.dump` (mode 0600, ignored).
+
+Under bounded database locks, the owner-authorized transition changed exactly
+one `alembic_version` row, `20261027_0006 -> 20261027_0003`. Fingerprints and
+counts of every application table matched before/after in that transaction:
+all rows in **27 tables preserved**, including 4 users, 4 billing customers,
+1 purchase, 1 subscription, 5 legal acceptance events and 15 document
+acceptances. Schema remained identical. Canonical `migrate-api` then completed
+successfully with the database already at head and no DDL replay. The temporary
+reference database was removed. Production and LBX were not touched; no manual
+product/payment QA was performed.
+
+The new graph and data-preservation suites passed **17/17**, 1,671 deselected,
+zero skips, in 25.00s:
+
+```bash
+PATH="$PWD/.venv/bin:$PATH" PYTEST_ADDOPTS='-k "test_alembic_postgres or test_any709_migration_postgres"' npm run test:api:postgres
+PATH="$PWD/.venv/bin:$PATH" npm run migrate:api
+```
+
+Changed-file Ruff, documentation checks and `git diff --check`: **PASS**.
+Generation is **NOT_NEEDED**; there is no final-schema or HTTP-contract change.
 
 ## 0. Execution contract - read for every selected step
 
@@ -394,17 +499,18 @@ unchanged AccessSnapshot or date-only/UTC quota contracts in this ticket.
 
 ## 3. Stage map and validation ownership
 
-| Plan step | Runnable result after implementation + human setup | Main validation focus |
-|---|---|---|
-| 1 | Normal LBX connection, direct CLI link and source-backed catalog | No file gates; links/history/current prices; safe migration and startup wiring |
-| 2 | Existing/new verified user opens REAL customer Widget without a subscription | One customer, credentials/JWT lifecycle, optional FIO, errors and concurrency |
-| 3 | Purchase APIs safely prepare the chosen real subscription and can authorize payment presentation | Consent, scopes/fences, agreement/subscription proof, retries/UNKNOWN |
-| 4 | Ordinary user UI completes Buy/Continue/Manage and payment-capable Widget | End-to-end intent, actual payment target, reload/logout/error UX, final handoff |
+| Plan step | Runnable result after implementation + human setup | Main validation focus | Implementation |
+|---|---|---|---|
+| 1 | Normal LBX connection, direct CLI link and source-backed catalog | No file gates; links/history/current prices; safe migration and startup wiring | DONE |
+| 2 | Existing/new verified user opens REAL customer Widget without a subscription | One customer, credentials/JWT lifecycle, optional FIO, errors and concurrency | DONE |
+| 3 | Purchase APIs safely prepare the chosen real subscription and can authorize payment presentation | Consent, scopes/fences, agreement/subscription proof, retries/UNKNOWN | DONE |
+| 4 | Ordinary user UI completes Buy/Continue/Manage and payment-capable Widget | End-to-end intent, actual payment target, reload/logout/error UX, final handoff | DONE |
 
 Steps 1-2 are implemented and have recorded automated/local QA; the owner
 additionally reports their previously blocked customer registered and opened
 the real Widget. This is an owner observation, not proof of full purchase
-or payment. Step 3 is implemented with tests/QA NOT_RUN; Step 4 remains TODO. No extra research-only stage; do not
+or payment. Step 3 has recorded focused synthetic/local QA. Step 4 is implemented
+with focused synthetic tests PASS and final real purchase/payment QA NOT_RUN. No extra research-only stage; do not
 defer missing customer/connection behavior into Step 4.
 
 Human focused Python commands below use the existing test wrappers and pytest's
@@ -416,7 +522,7 @@ can skip DB tests. Never use the development application DB as a pytest target.
 
 ## 4. Step 1 - Ordinary connection, simple product link and current offers
 
-Status: IMPLEMENTED; focused/canonical price and source checks passed; final combined purchase acceptance remains pending.
+Status: DONE (implementation); recorded source/price checks PASS; final real payment acceptance NOT_RUN.
 Depends on: approved sections 0-3 and actual main, NOT old PR #143 runtime.
 
 ### Result and changed surfaces
@@ -640,7 +746,7 @@ test; human live repricing is optional only when explicitly authorized.
 
 ## 5. Step 2 - Optional FIO, one customer and a real account Widget
 
-Status: IMPLEMENTED; focused/canonical QA passed, owner reports real Widget opened for the previously blocked customer; broader payment acceptance belongs to later steps.
+Status: DONE (implementation); recorded automated/local checks PASS and owner observed the real account Widget; real payment acceptance NOT_RUN.
 Handoff: [Step 2 delivery](ANY-709-step-2-handoff.md). Original NOT_RUN statements predate the recorded subsequent corrections and checks.
 Depends on: human-accepted Step 1 interfaces and ordinary connection wiring.
 
@@ -762,7 +868,7 @@ payment or full ANY-709. Missing mapping/price must not prevent account access.
 
 ## 6. Step 3 - Accepted purchase, safe preparation and recovery
 
-Status: IMPLEMENTED - tests, application migration and human QA NOT_RUN
+Status: DONE (implementation); focused synthetic tests and owner-authorized local migration PASS; final real payment acceptance NOT_RUN.
 Depends on: current implemented Steps 1-2, their interfaces and the owner's
 customer/Widget QA; confirm prior acceptance evidence for the real-LBX stage.
 
@@ -1112,7 +1218,7 @@ Changed files (including generated artifacts):
 - `docs/architecture/decisions/0005-external-billing-boundary.md`
 - `docs/architecture/payment-portal-data-model.md`
 - `docs/engineering/lbx-product-links.md`
-- `docs/exec-plans/active/ANY-709-implementation-plan.md`
+- `docs/exec-plans/completed/ANY-709-implementation-plan.md`
 - `docs/generated/db-schema.md`
 - `docs/generated/openapi.json`
 - `scripts/repo.py`
@@ -1214,7 +1320,7 @@ were preserved. Migration `0006` itself required no SQL correction.
 
 ## 7. Step 4 - Complete Buy, Continue and Manage UI; final acceptance handoff
 
-Status: TODO
+Status: DONE (implementation); targeted synthetic tests PASS; real-payment verification NOT_RUN.
 Depends on: human-accepted Step 3 API behavior and Steps 1-2 normal real Widget.
 
 ### Result and changed surfaces
@@ -1322,6 +1428,311 @@ missing wiring" stage is planned.
 > No live provider writes/payments, owner data migrations, background workers,
 > Kernel access or stage/commit/push. Report real-vs-synthetic evidence.
 
+### Step 4 delivery, 2026-10-27
+
+Status: IMPLEMENTED_AWAITING_HUMAN_QA. The current owner instruction limits this
+turn to editing and plan-required formatting/lint/generation; it overrides this
+step's earlier permission to run tests. No tests, typechecks, builds, migrations,
+containers, application/provider probes or external updates ran in this delivery.
+The starting checkout was clean at `db63966` with delivered Steps 1–3.
+
+Implemented result:
+
+- Product details and existing account product cards now use the same localized
+  Buy/Continue/Manage controls. Guest and email-verification prompts precede
+  personal billing; public live offer loading and account Widget opening remain
+  independent of purchase/current-catalog failures.
+- Current owned hold lookup precedes Buy/review. Review displays exact terms and
+  required canonical RU draft legal versions/text. Confirmation is fenced against
+  double clicks and keeps the same key/meaning after uncertain responses. A
+  terms-change refusal requires a new explicit review with unchecked consent.
+- One bounded advance follows acceptance; Continue/recovery retains the original
+  intent. Reload/status uses local owned history; uncertain/manual-review states
+  cannot become an invented empty purchase or a replacement Buy.
+- Manage and successful preparation request the original intent's payment
+  bootstrap. The shared disposable SDK controller validates presentation/target,
+  enables payments, shows agreement/seller and replaces any older SDK host.
+  Payment-only form/popup/user-navigation sandbox permissions remove inherited
+  account-view restrictions. No invented product filter or payment REST call.
+- Closing reads local saved status once. The UI explicitly awaits authoritative
+  financial verification and distinguishes payment from deferred paid access.
+  Credentials remain outside storage, URLs, UI state and diagnostics; late
+  results after close/logout/product/user changes cannot mount them.
+- All seven locales, Bundle 3 responsive controls, semantic consent/heading
+  structure, request-ID diagnostics, synthetic component/browser coverage and
+  the single billing runbook are updated. The browser suite authors desktop/
+  mobile screenshots and axe checks; none were executed here.
+
+Removed/replaced/retained: replaced the duplicated account-only controller with
+one shared SDK lifecycle and removed its permanent account/payment refusal.
+Moved the existing exact money formatter to shared presentation, retaining its
+old export for callers/regressions. Replaced the former runbook body with a
+navigation stub retaining historical anchors; the complete guide now lives at
+`docs/engineering/ANY-709-billing-runbook.md`. Old ANY-664 CLI/client instructions
+are explicitly historical; source inspection found no PR #143 profile loader or
+manual account/approval gate in runtime/config. Existing test doubles and
+completed Step 6 history are retained. No backend model, wire contract, financial
+policy, provider configuration or access/Kernel behavior changed.
+
+Formatting/lint/generation evidence:
+
+- IMPLEMENTED: changed-file ESLint fixes and matching existing CSS/JSON/Markdown
+  style. Initial lint found React effect/ref rules; those were corrected without
+  suppressions. Final full changed-file ESLint exited 0; the final heading/session-race changes
+  also passed focused lint. Exact command (paths relative to `apps/web`):
+
+  ```bash
+  (cd apps/web && npm exec --no -- eslint eslint.config.mjs 'src/app/[locale]/account/page.tsx' src/features/account/AccountClient.tsx src/features/billing/BillingAccount.tsx src/features/billing/index.ts src/features/billing/official-widget-sdk.ts src/features/billing/ProductBilling.tsx src/features/billing/PurchaseTerms.tsx src/features/billing/WidgetView.tsx src/features/billing/errors.ts src/features/billing/use-billing-widget.ts src/features/catalog/CatalogPreviewClient.tsx src/features/catalog/ProductDetail.tsx src/features/catalog/format-money.ts src/shared/api/billing.ts src/shared/api/transport.ts src/shared/api/purchases.ts src/shared/formatting/money.ts tests/components/AccountClient.test.tsx tests/components/SessionRaces.test.tsx tests/components/any709-step2.test.tsx tests/components/any709-step4.test.tsx tests/fixtures/purchase.ts e2e/any709-purchase.spec.ts --fix --max-warnings=0)
+  ```
+
+- `git diff --check`: PASS. No Python source changed, so Ruff is not applicable.
+- Migration: NONE. Generated sources/contracts: UNCHANGED; `npm run generate`
+  is NOT_REQUIRED and was not run. Locale catalogs are source files.
+- Tests: NOT_RUN, including new `any709-step4.test.tsx` and
+  `any709-purchase.spec.ts` and changed existing regressions. No AUTOMATED_PASS
+  or HUMAN_QA_PASS is claimed for Step 4. All typechecks/builds/canonical checks,
+  docs/boundary checks, screenshots/axe and real payment verification: NOT_RUN.
+
+Exact manual verification from the repository root:
+
+```bash
+npm --workspace @anytoolai/web run test:components -- any709-step4
+# Human configures/starts the isolated browser harness first:
+npm run test:e2e -- any709-purchase.spec.ts
+npm --workspace @anytoolai/web run test:components -- any709-step2 AccountClient SessionRaces CatalogPreview CatalogTransport
+npm run test:boundaries:web
+npm run docs:check
+npm run generate:check
+npm run typecheck:web
+npm run build:web
+```
+
+Then follow the single runbook's normal test configuration and final real
+scenario through the ordinary application. Real agreement/payment target,
+acquiring form/popup/return behavior, effective subscription prices and any safe
+test payment remain human-only NOT_RUN. Existing customer Widget observation
+and inherited Step 3 synthetic/local migration evidence do not prove them.
+The existing purchase DTO provides no observed financial time/state; this UI
+uses the approved awaiting-verification alternative. No new wire schema was
+invented. Workers/webhooks/reconciliation, paid trust/grants/AccessSnapshot and
+Kernel usage/quota remain program Steps 8–10. The runbook records actual models,
+locks/fences, GET-only recovery/escalation interfaces, SQL and capacity limits
+for ANY-715. No new business-decision contradiction was found.
+
+Diff review: checked the selected result/acceptance criteria and final human
+scenario against route wiring, generated DTO consumption, consent/idempotency,
+held recovery, original-link Manage, payment flags/sandbox, SDK races, localized
+safe diagnostics, observation truth and future-stage boundaries. No stage,
+commit, push, PR/Linear change or next-step implementation was performed.
+
+Changed files (repository-relative inventory):
+
+- `AGENTS.md`
+- `ARCHITECTURE.md`
+- `README.md`
+- `apps/api/AGENTS.md`
+- `apps/api/app/cli/COMMERCIAL_MAPPINGS.md`
+- `apps/api/app/integrations/lbx/README.md`
+- `apps/web/e2e/any709-purchase.spec.ts`
+- `apps/web/eslint.config.mjs`
+- `apps/web/src/app/[locale]/account/page.tsx`
+- `apps/web/src/app/product-detail.css`
+- `apps/web/src/features/account/AccountClient.tsx`
+- `apps/web/src/features/billing/BillingAccount.tsx`
+- `apps/web/src/features/billing/ProductBilling.tsx`
+- `apps/web/src/features/billing/PurchaseTerms.tsx`
+- `apps/web/src/features/billing/WidgetView.tsx`
+- `apps/web/src/features/billing/errors.ts`
+- `apps/web/src/features/billing/index.ts`
+- `apps/web/src/features/billing/official-widget-sdk.ts`
+- `apps/web/src/features/billing/use-billing-widget.ts`
+- `apps/web/src/features/catalog/CatalogPreviewClient.tsx`
+- `apps/web/src/features/catalog/ProductDetail.tsx`
+- `apps/web/src/features/catalog/format-money.ts`
+- `apps/web/src/messages/de.json`
+- `apps/web/src/messages/en.json`
+- `apps/web/src/messages/es.json`
+- `apps/web/src/messages/fr.json`
+- `apps/web/src/messages/it.json`
+- `apps/web/src/messages/pt.json`
+- `apps/web/src/messages/ru.json`
+- `apps/web/src/shared/api/billing.ts`
+- `apps/web/src/shared/api/purchases.ts`
+- `apps/web/src/shared/api/transport.ts`
+- `apps/web/src/shared/formatting/money.ts`
+- `apps/web/tests/components/AccountClient.test.tsx`
+- `apps/web/tests/components/SessionRaces.test.tsx`
+- `apps/web/tests/components/any709-step2.test.tsx`
+- `apps/web/tests/components/any709-step4.test.tsx`
+- `apps/web/tests/fixtures/purchase.ts`
+- `docs/PRODUCT.md`
+- `docs/README.md`
+- `docs/SECURITY.md`
+- `docs/architecture/contours.md`
+- `docs/architecture/decisions/0005-external-billing-boundary.md`
+- `docs/engineering/ANY-709-billing-runbook.md`
+- `docs/engineering/lbx-product-links.md`
+- `docs/exec-plans/completed/ANY-709-implementation-plan.md`
+- `docs/product/ru-mvp.md`
+
+### Step 4 owner-authorized automated tests, 2026-10-27
+
+The owner explicitly requested running the tests and checking their execution,
+with **no QA**. This follow-up authorizes automated test execution after the
+initial write-only handoff above. Historical NOT_RUN entries describe that first
+turn; current synthetic outcomes are recorded here. No manual/exploratory QA,
+live LBX call/payment, application DB migration, production change, container
+startup, build, stage/commit/push or next program step was performed.
+
+Executed outcomes (all final runs exited 0, no skipped tests):
+
+- `npm --workspace @anytoolai/web run test:components -- any709-step4 any709-step2 AccountClient SessionRaces CatalogPreview CatalogTransport`:
+  **205 PASS in 6 files** (19.35s). The new Step 4 file contains 23 tests;
+  inherited account/Widget/session/catalog regressions contain 182 tests.
+- `npm run test:boundaries:web`: **38 PASS** (5.99s), including seven-catalog
+  key/ICU parity, direct-copy/architecture/transport guards and the existing
+  TypeScript-tooling regression. That existing test invokes `next typegen` and
+  the web typecheck internally; no separate broad typecheck command was run.
+- `npm exec playwright test -- --config .harness/any709-step4.playwright.config.ts any709-purchase.spec.ts`:
+  **8 PASS**, four scenarios in each desktop/mobile project (46.1s).
+  These tests intercept every API request and substitute only the SDK boundary.
+  Automated screenshot, overflow and axe assertions are part of the suite;
+  they are not manual/human acceptance or evidence of actual LBX payment.
+- After correcting the test-only selector option described below,
+  `npm --workspace @anytoolai/web run test:components -- any709-step4`:
+  **23 PASS** (10.38s). Unchanged production code and the other 182 regressions
+  did not need another duplicate run.
+- Changed test ESLint with `--fix --max-warnings=0`: PASS;
+  `git diff --check`: PASS.
+
+Failures investigated and resolved:
+
+1. Restricted sandbox initially prevented Chromium launch (`sandbox_host_linux`,
+   EPERM) and the tooling test's `spawnSync npm`. Repeating those existing tests
+   outside the sandbox resolved the OS restrictions; no production guard was
+   weakened and no test assertion was disabled.
+2. The default Playwright URL served the old application image without Step 4.
+   The stale-build run was stopped and is not acceptance evidence. A temporary,
+   ignored config starts a test-owned Next dev server from this checkout at
+   `http://127.0.0.1:3107`, sets the synthetic API origin to port 3108 and uses
+   `reuseExistingServer=false`; the webServer lifecycle ends with Playwright.
+   No existing application/DB/container was restarted. All API/SDK responses
+   remain intercepted, so no billing service is contacted.
+3. The tooling regression exposed nine TypeScript errors in the new component
+   test: Testing Library's `ByRoleOptions` does not support Playwright's `exact`
+   option. Removed that test-only option; role names already match exactly by
+   default. The component rerun and all 38 boundary/tooling tests then passed.
+   No application implementation change was necessary.
+
+The temporary Playwright config imports the canonical root config and overrides
+only workers (2), the local web URL and a test-owned `webServer` command:
+`npm --workspace @anytoolai/web run dev -- --hostname 127.0.0.1 --port 3107`.
+It warms `/ru/products/proposal_ai` and injects `APP_PUBLIC_BASE_URL`, the
+synthetic `NEXT_PUBLIC_API_BASE_URL` and `NEXT_TELEMETRY_DISABLED=1`. Its readiness
+request and route compilation are test infrastructure, not manual QA. No
+backend/API contracts or commercial data changed. The installed dev server
+reported Next.js 16.3.1; the manifest pins 16.4.2. No dependency installation or
+upgrade was performed in this test-only follow-up.
+
+Artifacts: `.harness/playwright-report/results.json`,
+`.harness/playwright-report/html/index.html` and
+`.harness/playwright-results/`. These contain synthetic test identities/tokens
+only. Runtime guards keep actual credentials out of the recorded UI/storage.
+The ignored `.harness/any709-step4.playwright.config.ts` remains available for
+repeating the exact isolated browser command above.
+
+Current conclusion: **AUTOMATED_PASS for the selected synthetic Step 4 tests
+and listed regressions**. HUMAN_QA_PASS, actual intended-agreement/acquiring
+compatibility and PAYMENT_PASS remain **NOT_RUN**. This follow-up does not
+perform the separately deferred QA or implement reconciliation/paid access.
+
+### Step 4 purchase timeout incident and correction, 2026-10-27
+
+Owner report: Buy showed the generic unavailable message for request
+`7eca309854ed636e00a6534f50ac2554`. Diagnosis used only existing API logs, its
+recorded Tempo trace and a PostgreSQL session with
+`default_transaction_read_only=on`. No Buy/advance/recover was replayed, no new
+LBX call was sent, and no data was changed during diagnosis. Original provider
+CREATE entries belong to the owner's reported click, not this investigation.
+
+Observed facts:
+
+- Original `POST /api/purchase-intents` and its `/advance` both completed with
+  HTTP 200. Original agreement CREATE returned 201 and subscription CREATE 200;
+  point reads completed successfully.
+- The recorded server `/advance` span took **5555.422487 ms**. The browser's shared
+  transport timer aborted fetch after **5000 ms**, before that successful reply.
+  The UI therefore showed its client-side generic unavailable message and never
+  proceeded to Widget bootstrap for this action.
+- Read-only persistence inspection confirmed one held `linked` purchase, bound
+  agreement/subscription operations and exactly one subscription row.
+  `financial_access_status` remains `unverified`; this is not paid access or
+  actual-payment evidence. Per-user/provider identifiers are omitted here.
+
+Correction, within the existing Step 4 UI/transport scope:
+
+- `postJson` accepts an optional finite deadline while retaining five seconds by
+  default. Live review/confirm/advance and both Widget presentations use one
+  `billingRequestTimeoutMs=130000` policy, covering the API's supported 120-second
+  preflight maximum plus DB/response overhead. Identity and local status GETs
+  retain five seconds. Backend budgets, retries and financial rules are unchanged.
+- After a lost confirmation reply, one local current-intent GET discovers any
+  accepted intent. Empty/failed inspection retains the original frozen review
+  and key. No confirmation/advance POST is automatically repeated.
+- After a lost advance reply, one local GET inspects that same original intent.
+  Saved `linked` state offers Manage; failure/pending state retains the held
+  purchase and shows recovery. No payment is authorized from the local GET;
+  Manage still requests fresh original-purchase bootstrap proof.
+- Added 11 virtual-time transport tests, three lost-response UI regressions and
+  one delayed-preparation E2E scenario exercised in both browser projects.
+
+Changed in this correction:
+
+- `apps/web/src/shared/api/transport.ts`
+- `apps/web/src/shared/api/billing-policy.ts` (new)
+- `apps/web/src/shared/api/billing.ts`
+- `apps/web/src/shared/api/purchases.ts`
+- `apps/web/src/features/billing/ProductBilling.tsx`
+- `apps/web/tests/components/any709-billing-timeouts.test.ts` (new)
+- `apps/web/tests/components/any709-step4.test.tsx`
+- `apps/web/e2e/any709-purchase.spec.ts`
+- `docs/engineering/ANY-709-billing-runbook.md`
+- This implementation plan.
+
+Executed synthetic verification:
+
+```bash
+npm --workspace @anytoolai/web run test:components -- any709-step4 any709-step2 any709-billing-timeouts AuthContractValidation AccountClient SessionRaces CatalogPreview CatalogTransport
+npm run test:boundaries:web
+npm exec playwright test -- --config .harness/any709-step4.playwright.config.ts any709-purchase.spec.ts
+(cd apps/web && npm exec --no -- eslint src/shared/api/transport.ts src/shared/api/billing-policy.ts src/shared/api/billing.ts src/shared/api/purchases.ts src/features/billing/ProductBilling.tsx tests/components/any709-step4.test.tsx tests/components/any709-billing-timeouts.test.ts --fix --max-warnings=0)
+(cd apps/web && npm exec --no -- eslint e2e/any709-purchase.spec.ts --fix --max-warnings=0)
+git diff --check
+```
+
+- Component tests: **227 PASS in 8 files**, no skips (7.16s), including 11 new
+  timeout-policy tests and 26 Step 4 UI tests.
+- Boundary/tooling: **38 PASS**, no skips (4.63s), including the existing
+  TypeScript regression; no separate broad typecheck/build command was run.
+- E2E: **10 PASS**, no skips (1.2m), including the delayed-preparation regression
+  on desktop and mobile; all API/SDK responses are synthetic.
+- Changed-file ESLint and diff whitespace: PASS. No Python/API schema/migration
+  change or contract generation is required.
+
+The first browser harness startup failed before tests because Turbopack hit the
+OS file-watch limit. The ignored test config uses `--webpack` with
+`WATCHPACK_POLLING=1000` for this rerun, without changing global watcher limits,
+production config, dependencies or working containers. A permission-review
+request timed out; the single permitted retry was approved. All browser API/SDK
+traffic remains synthetic. Existing installed Next version is still 16.3.1
+versus manifest 16.4.2, as recorded in the earlier follow-up.
+
+The working web application was **not rebuilt/restarted** by this diagnosis;
+the timeout correction is a source change until normal deployment. Reloading
+reads the already-linked intent and can offer Manage without a replacement
+purchase. Actual provider/payment QA, paid access and later program steps remain
+out of scope. No stage/commit/push or external-system mutation was performed.
+
 ## 8. Human acceptance: normal setup and complete ANY-709 result
 
 ### 8.1 Ordinary test vs production configuration
@@ -1410,15 +1821,15 @@ ready. Production migrations/payment actions are never automatic QA commands.
 
 ### 8.4 Acceptance ledger
 
-| Result | Evidence needed | Status at Step 3 start |
+| Result | Evidence needed | Status at implementation closure |
 |---|---|---|
-| FORMAT_LINT | Existing Step 1-2 reported checks; rerun on final SHA | RECORDED_PASS_FOR_STEPS_1_2 |
+| FORMAT_LINT | Recorded step checks and changed-file lint | RECORDED_PASS |
 | STEP_1_LINK_PASS | Source-priced local link/preview and automated checks; final real setup separately | IMPLEMENTED_WITH_LOCAL_QA |
 | CUSTOMER_WIDGET_PASS | Owner saw real Widget for recovered customer; final multi-user E2E still due | OWNER_QA_OBSERVED |
-| PURCHASE_PREPARATION_PASS | One consent/intent, dedicated agreement/subscription and readback | NOT_RUN |
+| PURCHASE_PREPARATION_PASS | Synthetic API/PG coverage; owner request trace reached linked with one subscription | AUTOMATED_PASS; OWNER_REQUEST_OBSERVED; final manual scenario NOT_RUN |
 | MAPPED_PURCHASE_WIDGET_PASS | Actual payment-capable Widget for intended agreement | NOT_RUN |
 | PAYMENT_PASS / PAYMENT_NOT_RUN | Human-authorized payment or explicit non-execution | NOT_RUN |
-| AUTOMATED_REGRESSION_PASS | Step 1-2 suites recorded; full final-SHA suite after Step 4 | RECORDED_PASS_FOR_STEPS_1_2 |
+| AUTOMATED_REGRESSION_PASS | Recorded step suites; Step 4: 227 component, 38 boundary, 10 synthetic browser | FOCUSED_AUTOMATED_PASS; full final suite NOT_RUN |
 | PAID_ACCESS_IN_KERNEL | Program Steps 8-10/11, NOT this ticket | DEFERRED |
 
 Full ANY-709 acceptance requires the implemented product-bound payment path,

@@ -1,7 +1,12 @@
 # ANY-709 Step 2 delivery
 
-Status: **IMPLEMENTED_AWAITING_HUMAN_VALIDATION**. No runtime PASS claimed.
-Scope: approved [Step 2](ANY-709-implementation-plan.md#5-step-2---optional-fio-one-customer-and-a-real-account-widget) only; Steps 3-4 remain deferred.
+Status: **DONE (implementation); archived evidence**. No runtime PASS claimed.
+Historical scope: approved [Step 2](ANY-709-implementation-plan.md#5-step-2---optional-fio-one-customer-and-a-real-account-widget) only; Steps 3-4 were deferred at that checkpoint.
+
+Archive note (2026-10-27): implementation is complete. Historical statuses and
+migration IDs below describe their original checkpoints; the current consolidated
+head is `20261027_0003`. See the [completion record](ANY-709-implementation-plan.md#completion-record-2026-10-27).
+Real payment acceptance remains NOT_RUN.
 
 ## PR #150 nullable-name and enum correction (base 536e37a, 2026-10-26)
 
@@ -235,8 +240,8 @@ Changed files (including generated output and this handoff):
 - `docs/SECURITY.md`
 - `docs/architecture/payment-portal-data-model.md`
 - `docs/engineering/lbx-product-links.md`
-- `docs/exec-plans/active/ANY-709-implementation-plan.md`
-- `docs/exec-plans/active/ANY-709-step-2-handoff.md`
+- `docs/exec-plans/completed/ANY-709-implementation-plan.md`
+- `docs/exec-plans/completed/ANY-709-step-2-handoff.md`
 - `docs/generated/db-schema.md`
 - `docs/generated/openapi.json`
 - `docs/product/ru-mvp.md`

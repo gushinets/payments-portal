@@ -237,7 +237,7 @@ def test_any709_step2_existing_users_nullable_and_immutable_on_upgrade(
 ) -> None:
     reset_public_schema(postgres_engine)
     with alembic_test_config(database_test_url) as config:
-        command.upgrade(config, "20261026_0004")
+        command.upgrade(config, "20261001_0002")
         user_id = uuid4()
         with postgres_engine.begin() as connection:
             connection.execute(

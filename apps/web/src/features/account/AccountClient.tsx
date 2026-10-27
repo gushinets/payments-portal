@@ -328,6 +328,7 @@ export function AccountClient({ languageTag }: { languageTag: string }) {
             </div>
             <CatalogPreviewClient
               headingLevel={3}
+              billingUser={accountState.user}
               accountStatuses={{
                 access: {
                   label: t("products.state.access.label"),

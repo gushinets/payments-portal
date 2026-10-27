@@ -59,7 +59,7 @@ product heads and future accepted purchase snapshots. Price changes do not
 require relinking. No approval/price fallback authorizes a sale. Purchase-time
 exact acceptance, effective-subscription readback, recovery, paid-access/trust
 and AccessSnapshot rules are unchanged. Implementation/testing status and normal
-operator setup are in the [Step 1 runbook](../../engineering/lbx-product-links.md).
+operator setup are in the [Step 1 runbook](../../engineering/ANY-709-billing-runbook.md).
 
 ## Implementation status, 2026-10-26
 
@@ -69,8 +69,9 @@ now supplies normal LBX configuration, direct links and source-backed current
 offers. ANY-709 Step 3 now implements accepted-purchase APIs, held scopes,
 financial preparation/GET-only recovery and verified payment bootstrap. Focused
 synthetic tests and the local development migration have passed; real purchase/
-payment QA remains NOT_RUN; Step 4 browser flows and paid
-access remain future work. See the current [architecture](../../../ARCHITECTURE.md).
+payment QA remains NOT_RUN. Step 4 browser Buy/Continue/Manage and the shared
+payment-capable Widget are implemented; targeted synthetic tests PASS and real payment acceptance
+remains NOT_RUN. Paid access remains future work. See the current [architecture](../../../ARCHITECTURE.md).
 The retained wording records the decision's transition history and does not
 assert that executable direct-provider code still exists.
 

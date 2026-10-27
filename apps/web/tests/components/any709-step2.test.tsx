@@ -26,7 +26,7 @@ function response(): WidgetBootstrapResponse {
 }
 
 const user = { tenant_id: "anytoolai", region: "ru", user_id: "11111111-1111-4111-8111-111111111111", email: "synthetic@example.com", email_verified: true };
-const messages = { Billing: ruMessages.Billing, Account: ruMessages.Account, Auth: ruMessages.Auth, CatalogPreview: ruMessages.CatalogPreview, EmailVerification: ruMessages.EmailVerification };
+const messages = { Billing: ruMessages.Billing, Purchase: ruMessages.Purchase, Account: ruMessages.Account, Auth: ruMessages.Auth, CatalogPreview: ruMessages.CatalogPreview, EmailVerification: ruMessages.EmailVerification };
 function renderBilling(verified = true) {
   return renderWithIntl(<BillingAccount key="first" userId={user.user_id} emailVerified={verified} />, { locale: "ru", messages });
 }

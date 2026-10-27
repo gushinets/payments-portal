@@ -47,6 +47,9 @@ Start with the smallest document that matches the task.
 
 ### Implementation handoffs and references
 
+- [ANY-709 completed implementation plan](exec-plans/completed/ANY-709-implementation-plan.md)
+  — all four implementation steps DONE, automated evidence and consolidated
+  migration; real Widget payment/acquiring acceptance remains NOT_RUN
 - [ANY-664 completed implementation plan](exec-plans/completed/ANY-664-implementation-plan.md)
   — all eight Portal steps DONE; implementation-commit CI evidence, retained
   real-enablement gates and handoff to ANY-504 program Step 7
@@ -102,4 +105,4 @@ Start with the smallest document that matches the task.
 - [Database schema](generated/db-schema.md)
 - [OpenAPI snapshot](generated/openapi.json)
 
-- [Normal LBX connection and product links](engineering/lbx-product-links.md) — ANY-709 Steps 1-3 setup, product/customer/purchase CLI, financial recovery and human verification.
+- [ANY-709 billing runbook](engineering/ANY-709-billing-runbook.md) — one Steps 1–4 guide for normal setup, links, customer/purchase recovery, Buy/Continue/Manage, read-only SQL, human acceptance and the Step 8 seam.
