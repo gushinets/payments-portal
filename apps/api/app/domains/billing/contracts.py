@@ -6,6 +6,12 @@ from uuid import UUID
 from app.core.errors import AppError
 
 
+CREATE_RESPONSE_SCHEMA = "customer-create-response:v1"
+CREATE_FAILURE_REASONS = frozenset(
+    {"email_not_unique", "provider_rejected", "credentials_denied", "schema_invalid", "unknown"}
+)
+
+
 class BillingRefused(AppError):
     def __init__(self, code: str, status: int = 503) -> None:
         super().__init__(code)
@@ -24,3 +30,4 @@ class CustomerOpen:
     first_name: str | None = None
     surname: str | None = None
     patronymic: str | None = None
+    receipt_id: str | None = None

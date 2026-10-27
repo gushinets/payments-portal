@@ -520,3 +520,46 @@ implementation plan is excluded because it was not edited:
 - `docs/superpowers/specs/2026-09-15-external-billing-boundary-design.md`
 - `docs/superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md`
 - `scripts/repo.py`
+
+## Manual QA correction, 2026-10-26 (base 181b8d0)
+
+The owner explicitly authorized execution for this correction, superseding this
+plan's earlier no-test restriction for the two reported Steps 1–2 defects only.
+No stage/commit/push, PR/Linear changes, production access, payment, agreement,
+subscription, later-stage implementation or normative-spec edit is authorized.
+
+The selected 043 GETs were read live and retained byte-for-byte in
+`apps/api/tests/fixtures/lbx/qa043/` with their evidence/compatibility README.
+The service has integer `record_id=101`, distinct from `tariff_service_id=1`, and
+`prices[period_id=1].discounts=[]` without service-level `discounts`. Money and
+dates remain unchanged. The stand's Swagger 1.0.11 describes the legacy
+service-level period discounts; the official discount guide is separate
+commercial evidence, not a guarantee of the observed inline wire extension.
+
+`dto.py` explicitly models these fields. `discounts.py` selects evidence only
+after matching the chosen inline price's service, period, money and effective
+date. It supports either representation, rejects contradictory/ambiguous/null
+or missing evidence distinctly, and parses/refuses nonempty discounts as
+unsupported. Another period cannot fill in missing selected evidence. Both
+current and retained selected-offer consumers use it. Known metadata is typed;
+unclassified extensions still fail closed. No blanket DTO ignore, money
+coercion, current-price algorithm or timezone change was made.
+
+The ordinary configured Portal endpoint
+`GET http://localhost:39053/api/catalog/products/proposal_ai` returned HTTP 200,
+`CURRENT_OFFER`, 100.00 RUB recurring, 0.00 connection, quantity 1, monthly
+instance-start period. Technical product provenance remains `SIMULATED` (the
+existing separate Kernel development mock); billing provenance is
+`CONFIGURED_SOURCE`. Existing local `LBX_BILLING_TIMEZONE=Etc/UTC` was preserved,
+not introduced or confirmed by this check. Provider timezone confirmation is
+still required before claiming genuine commercial-calendar acceptance.
+
+Regression coverage includes captured payloads, legacy/both discount formats,
+nonempty/missing/null/wrong type/conflicting/other-period/duplicate discount
+cases, typed record metadata and identity separation. Existing exact-money,
+quantity and selected-composition checks remain. The retained selected-offer
+null regression now expects the more precise `discounts_null` reason.
+
+Execution evidence and remaining Widget/original-operation limitations are in
+the [Step 2 QA correction](ANY-709-step-2-handoff.md#manual-qa-correction-2026-10-26-base-181b8d0).
+No migration or Portal HTTP contract changed; generated artifacts are unchanged.

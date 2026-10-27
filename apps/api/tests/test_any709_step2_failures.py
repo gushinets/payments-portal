@@ -197,6 +197,7 @@ def test_any709_step2_client_error_has_only_allowlisted_diagnostics(
             "lbx_code": 401 if known else 500,
             "reason": "credentials_denied" if known else "unknown",
             "request_id": "safe-request-123",
+            "create_operation_id": None,
         }
     ]
     evidence = (
@@ -229,7 +230,7 @@ def test_any709_step2_invalid_error_envelope_never_supplies_a_reason(
     with caplog.at_level(logging.INFO):
         asyncio.run(scenario())
     facts = [record.structured for record in caplog.records if record.getMessage() == "lbx_http"]
-    assert len(facts) == 1 and facts[0]["reason"] == "unknown" and facts[0]["lbx_code"] is None
+    assert len(facts) == 1 and facts[0]["reason"] == "schema_invalid" and facts[0]["lbx_code"] is None
 
 
 def test_any709_step2_chunked_error_body_stops_at_the_existing_size_cap() -> None:

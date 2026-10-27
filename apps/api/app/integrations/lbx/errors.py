@@ -1,8 +1,19 @@
+from dataclasses import dataclass
+
 from app.core.errors import AppError
+
+
+@dataclass(frozen=True)
+class LbxResponseFacts:
+    http_status: int
+    lbx_code: int | None
+    reason: str
 
 
 class LbxError(AppError):
     """Safe transport-neutral failure: no remote body, credential or URL."""
+
+    response_facts: LbxResponseFacts | None = None
 
 
 class LbxNotConfigured(LbxError):
@@ -28,6 +39,13 @@ class LbxScopeMismatch(LbxError):
 class LbxResponseInvalid(LbxError):
     def __init__(self) -> None:
         super().__init__("lbx_response_invalid")
+
+
+class LbxProviderRejected(LbxError):
+    """Recognized provider error envelope; never proof that a CREATE had no effect."""
+
+    def __init__(self) -> None:
+        super().__init__("lbx_provider_rejected")
 
 
 class LbxUnavailable(LbxError):

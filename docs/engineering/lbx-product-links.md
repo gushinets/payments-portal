@@ -226,8 +226,11 @@ docker compose run --rm migrate
 docker compose up -d --build api
 ```
 
-Use one environment path, not both. These are HUMAN commands; Codex authored the
-forward migration but did not execute migrations, startup or any live request.
+Use one environment path, not both. The original Step 2 authoring did not execute
+these commands. The owner-authorized 2026-10-26 QA correction subsequently ran
+local services/tests and real test-043 customer verification; see the
+[QA handoff](../exec-plans/active/ANY-709-step-2-handoff.md#manual-qa-correction-2026-10-26-base-181b8d0).
+That correction required no application migration.
 Normal harness startup uses its migrate service; no manual `alembic stamp` or DB
 reset is needed. Existing users retain nullable independent FIO fields; new
 registration optionally saves trimmed first name, surname and patronymic. No
@@ -249,6 +252,16 @@ LBX request is made on registration, login, catalog browsing or ordinary GET.
    appear in localStorage/sessionStorage/URLs/journal. SDK/configuration/server-auth/
    Client-readiness/identity/UNKNOWN failures show localized safe text and request ID.
    Never fix old malformed customers by automatic PATCH or issuing another POST.
+
+A successful users POST now commits its candidate ID to the existing operation
+recovery hint before the detailed GET. The hint is not a trusted customer binding;
+reopening uses that ID for paired point proof and never repeats CREATE. Server
+GET credential/contact fields are discarded by the identity projection. A
+short candidate list may omit `outer_id`; its detailed GET still must match.
+A historically reset `pending` operation does not prove no external effect: do
+not open its create path until original provider evidence establishes safe
+recovery. The QA handoff records the outstanding original operation and real
+Widget rendering limitation separately from successful API bootstrap.
 
 For the current harness, this helper uses its exact project/files/protected env
 without printing secrets and forces a read-only PostgreSQL session:
@@ -312,3 +325,73 @@ closure does not cancel a possibly sent CREATE. LBX credentials remain potential
 usable for its accepted 72h window after local logout; flags are presentation,
 not Client API ACLs. Human validation of real rendering, CSP compatibility,
 desktop/mobile accessibility and actual Client readiness is still required.
+
+## Customer diagnosis CLI
+
+When a Portal user cannot open billing, run one read-only operator command:
+
+```bash
+.venv/bin/python scripts/repo.py billing-customer diagnose --user-id <PORTAL_USER_UUID>
+```
+
+Replace the placeholder with Portal `users.id`, not an email or LBX ID. Run from
+this deployment's trusted shell with its normal database and LBX configuration.
+The repository wrapper uses the root Python runtime and mapped local PostgreSQL
+port; it does not start containers, migrate the database or edit `.env`. Inside
+an already configured API container, use
+`python -m app.cli.billing_customers diagnose --user-id <PORTAL_USER_UUID>`.
+A direct host invocation requires `PYTHONPATH=apps/api`, the intended
+`DATABASE_URL` and matching instance/LBX settings. Keep credentials out of CLI
+arguments and reports.
+
+The command reads the scoped Portal user, existing immutable customer/create
+identity, send fence, receipt candidate and recovery state. It reads saved
+allowlisted CREATE response facts, then searches LBX by the original `outer_id`
+and original/normalized email using GET requests with `show_passwords: false`.
+At most five distinct candidates receive a detailed `GET /users/{id}`. A matching
+email is only a search candidate: paired provider ID and unchanged original
+`outer_id` are required for identity verification. Multiple candidates,
+contradictory receipts or an ID owned by another Portal customer require manual
+review. Missing/unverified/conflicting local state prevents provider calls.
+PostgreSQL reads use read-only transactions, closed before external HTTP.
+
+JSON includes `diagnosis`, `next_action`, safe state/response facts and candidate
+IDs. Email, the opaque outer key, tokens, passwords and arbitrary provider text
+are omitted. The tool never changes a binding, operation, review or recovery
+item, creates customers, issues Widget JWTs, or authorizes another CREATE.
+There are no `--apply`, reset or supplied-customer-ID switches.
+
+- `binding_verified` (exit 0): the existing binding has fresh paired proof.
+  Investigate Client readiness or Widget rendering separately; `widget_checked`
+  remains false.
+- `not_provisioned` (exit 0): no customer slot exists. Use the normal Portal
+  opening flow, which owns creation and all concurrency protections.
+- `customer_found_unbound` (exit 2): a matching customer exists. Investigate and
+  restore the existing binding through a separately reviewed operation.
+- `email_conflict` (exit 2): the latest saved CREATE response reports email
+  uniqueness rejection. Ask Billing Ops to locate the email owner or release the
+  conflicting email. Empty GET results do not override that response.
+- `create_outcome_unknown`, `email_candidates_unproven`, `identity_conflict`,
+  `candidates_ambiguous`, `receipt_invalid` or `connection_conflict` (exit 2):
+  preserve the identity/holds and investigate manually. No reset is safe based
+  only on these observations.
+- `email_verification_required` (exit 2): verify the existing Portal email first.
+- `source_unavailable` (exit 2): check `lbx_error`, connection and credentials,
+  then repeat diagnosis. A known historical email conflict can still be reported
+  alongside a current connection error.
+- Configuration, missing/scoped-out Portal user or database error (exit 1):
+  stderr contains a safe `detail.code`.
+
+For new runtime CREATE failures, the normal bootstrap stores only HTTP status,
+LBX code, timestamp and an allowlisted reason in the existing recovery work
+item's `last_failed_create` field (`customer-create-response:v1`). This does not
+change retry authority, fences or deadlines. A successful CREATE ID remains in
+the existing validated receipt. The diagnostic also recognizes the structured
+historical `curl-customer-comparison:v1` review evidence recorded during this
+incident, extracting only safe owner-response fields. It does not parse logs,
+private backups or arbitrary review text. Old failures without retained facts
+remain unknown; diagnosis never sends a new CREATE to reconstruct a response.
+Neither an empty list, HTTP 404/500 nor expiry of the recovery deadline proves
+that no customer was created. Keep these cases held until authoritative manual
+resolution. The report is an observation across local/source reads, not a locked
+snapshot for a later mutation; rerun it after any concurrent state change.

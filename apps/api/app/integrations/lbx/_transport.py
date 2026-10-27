@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal, DecimalException
@@ -21,14 +23,26 @@ from app.integrations.lbx.errors import (
     LbxAuthenticationFailed,
     LbxError,
     LbxRateLimited,
+    LbxProviderRejected,
     LbxResponseInvalid,
     LbxScopeForbidden,
     LbxUnavailable,
+    LbxResponseFacts,
 )
 
 T = TypeVar("T")
 logger = logging.getLogger("payment_portal.lbx")
 _TRANSIENT_STATUS = frozenset({429, 500, 502, 503, 504})
+_operation_id: ContextVar[str | None] = ContextVar("lbx_customer_operation_id", default=None)
+
+
+@contextmanager
+def customer_diagnostics(operation_id: str) -> Iterator[None]:
+    token = _operation_id.set(operation_id)
+    try:
+        yield
+    finally:
+        _operation_id.reset(token)
 
 
 @dataclass
@@ -90,13 +104,6 @@ def _decode_json(body: bytes) -> Any:
         raise LbxResponseInvalid() from None
 
 
-def _decode_envelope(body: bytes, model: type[LbxEnvelope[T]]) -> T:
-    try:
-        return model.model_validate(_decode_json(body)).response
-    except (ValueError, DecimalException, RecursionError):
-        raise LbxResponseInvalid() from None
-
-
 async def _payload(response: httpx.Response, budget: PreflightBudget, maximum: int) -> bytes:
     """The same finite size/encoding rules apply to success and error bodies."""
     if response.headers.get("content-type", "").split(";", 1)[0].strip().lower() != "application/json":
@@ -123,22 +130,27 @@ async def _payload(response: httpx.Response, budget: PreflightBudget, maximum: i
     return bytes(payload)
 
 
-async def _error_facts(response: httpx.Response, budget: PreflightBudget, maximum: int) -> tuple[int | None, str]:
+def _error_facts(raw: Any) -> tuple[int | None, str]:
     # Never retain or log arbitrary remote text, even after attempted redaction.
-    try:
-        raw = _decode_json(await _payload(response, budget, maximum))
-    except LbxResponseInvalid:
-        return None, "unknown"
     if not isinstance(raw, dict):
         return None, "unknown"
     code = raw.get("code")
     safe_code = code if type(code) is int and -(2**31) <= code < 2**31 else None
-    for field in ("response", "error", "message"):
-        text = raw.get(field)
+    nested = raw.get("response")
+    texts = [raw.get(field) for field in ("response", "error", "message")]
+    if isinstance(nested, dict):
+        texts.extend(nested.get(field) for field in ("error", "message"))
+    for text in texts:
+        if isinstance(text, str) and text.startswith("Invalid email ") and text.endswith(". Email must be unique"):
+            return safe_code, "email_not_unique"
         if isinstance(text, str) and (
             text == "Invalid login/pass" or text.startswith("Invalid login/pass. Client login:")
         ):
             return safe_code, "credentials_denied"
+    if isinstance(nested, dict) and isinstance(nested.get("error"), str):
+        return safe_code, "provider_rejected"
+    if isinstance(raw.get("error"), str):
+        return safe_code, "provider_rejected"
     return safe_code, "unknown"
 
 
@@ -156,8 +168,40 @@ async def decode_response(
     status = response.status_code
     code, reason = (None, "unknown")
     try:
+        try:
+            raw = _decode_json(await _payload(response, budget, maximum_bytes))
+            code, reason = _error_facts(raw)
+        except LbxResponseInvalid:
+            raw = None
+            reason = "schema_invalid"
+            if status in success_statuses:
+                raise
+        if status == 401 or reason == "credentials_denied":
+            raise LbxAuthenticationFailed()
+        if status == 403:
+            raise LbxScopeForbidden()
+        if status in _TRANSIENT_STATUS:
+            failure = LbxRateLimited() if status == 429 else LbxUnavailable()
+            raise _Retryable(failure, retry_after(response.headers.get("retry-after"), maximum_retry_delay))
+        if 500 <= status <= 599:
+            raise LbxUnavailable()
+        if reason in {"provider_rejected", "email_not_unique"} or code is not None and code >= 400:
+            if reason != "email_not_unique":
+                reason = "provider_rejected"
+            raise LbxProviderRejected()
         if status not in success_statuses:
-            code, reason = await _error_facts(response, budget, maximum_bytes)
+            raise LbxResponseInvalid()
+        try:
+            result = model.model_validate(raw).response
+        except (ValueError, DecimalException, RecursionError):
+            reason = "schema_invalid"
+            raise LbxResponseInvalid() from None
+        reason = "success"
+        return result
+    except (LbxError, _Retryable) as error:
+        failure = error.failure if isinstance(error, _Retryable) else error
+        failure.response_facts = LbxResponseFacts(status, code, reason)
+        raise
     finally:
         logger.info(
             "lbx_http",
@@ -180,21 +224,10 @@ async def decode_response(
                     "lbx_code": code,
                     "reason": reason,
                     "request_id": request_id_context.get(),
+                    "create_operation_id": _operation_id.get(),
                 }
             },
         )
-    if status == 401 or reason == "credentials_denied":
-        raise LbxAuthenticationFailed()
-    if status == 403:
-        raise LbxScopeForbidden()
-    if status in _TRANSIENT_STATUS:
-        failure = LbxRateLimited() if status == 429 else LbxUnavailable()
-        raise _Retryable(failure, retry_after(response.headers.get("retry-after"), maximum_retry_delay))
-    if 500 <= status <= 599:
-        raise LbxUnavailable()
-    if status not in success_statuses:
-        raise LbxResponseInvalid()
-    return _decode_envelope(await _payload(response, budget, maximum_bytes), model)
 
 
 def retry_after(value: str | None, maximum: float) -> float | None:

@@ -172,8 +172,6 @@ class LbxServerClient:
         result = await self._read(f"/users/{user_id}", LbxEnvelope[LbxUser], budget=budget)
         if result.user_id != user_id:
             raise LbxScopeMismatch()
-        if result.password is not None and result.password.get_secret_value():
-            raise LbxResponseInvalid()
         return result
 
     async def discover_users(self, *, outer_id: str, budget: PreflightBudget) -> tuple[int, ...]:
@@ -185,9 +183,19 @@ class LbxServerClient:
         # A capped/truncated inventory is not evidence of absence or uniqueness.
         if len(rows) >= 100 or len({row.user_id for row in rows}) != len(rows):
             raise LbxResponseInvalid()
-        if any(row.outer_id != outer_id for row in rows):
+        # Swagger ShortUserInfo does not include outer_id. A list is only
+        # candidate discovery; the caller must verify the detailed point read.
+        if any(row.outer_id is not None and row.outer_id != outer_id for row in rows):
             raise LbxScopeMismatch()
-        if any(row.password is not None and row.password.get_secret_value() for row in rows):
+        return tuple(row.user_id for row in rows)
+
+    async def discover_users_by_email(self, *, email: str, budget: PreflightBudget) -> tuple[int, ...]:
+        if not email or len(email) > 320 or any(ord(c) < 32 or ord(c) == 127 for c in email):
+            raise LbxScopeMismatch()
+        rows = await self._read(
+            "/users", LbxEnvelope[list[LbxUser]], budget=budget, body={"email": email, "show_passwords": False}
+        )
+        if len(rows) >= 100 or len({row.user_id for row in rows}) != len(rows):
             raise LbxResponseInvalid()
         return tuple(row.user_id for row in rows)
 
@@ -263,8 +271,6 @@ class LbxServerClient:
                     )
                 except _Retryable as error:
                     raise error.failure from None
-                if result.password is not None and result.password.get_secret_value():
-                    raise LbxResponseInvalid()
                 return result
 
         return await budget.run(read)
@@ -402,6 +408,7 @@ class LbxServerClient:
             write=min(remaining, config.lbx_connect_timeout_seconds),
             pool=min(remaining, config.lbx_connect_timeout_seconds),
         )
+        response_received = False
         try:
             pool = self._account_http if path.startswith(("/users", "/client")) or path == "/auth" else self._http
             if on_dispatch is not None:
@@ -409,6 +416,7 @@ class LbxServerClient:
             async with pool.stream(
                 method, API_PATH + path, headers=headers, json=body, auth=auth, timeout=timeout
             ) as response:
+                response_received = True
                 assert isinstance(response.stream, httpx.AsyncByteStream)
                 response.stream = _CleanupProtectedStream(response.stream, budget)
                 budget.check()
@@ -425,6 +433,12 @@ class LbxServerClient:
                 budget.check()
             budget.check()
             return result
+        except (httpx.PoolTimeout, httpx.ConnectTimeout, httpx.ConnectError) as error:
+            # With trust_env=False/no proxy these failures precede sending the
+            # application request. Never generalize to write/read failures.
+            if method == "POST" and not response_received:
+                raise LbxCreateNotSent() from None
+            raise _Retryable(LbxTimeout() if isinstance(error, httpx.TimeoutException) else LbxUnavailable()) from None
         except httpx.TimeoutException:
             raise _Retryable(LbxTimeout()) from None
         except (httpx.NetworkError, httpx.RemoteProtocolError):

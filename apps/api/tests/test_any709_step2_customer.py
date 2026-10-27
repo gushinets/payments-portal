@@ -190,7 +190,6 @@ def test_any709_step2_possible_post_is_never_replayed(status: int, body: dict) -
     "row,exception",
     [
         ({"user_id": 346, "outer_id": "opaque"}, LbxScopeMismatch),
-        ({"user_id": 345, "outer_id": "opaque", "password": "do-not-return"}, LbxResponseInvalid),
         ({"outer_id": "opaque"}, LbxResponseInvalid),
     ],
 )
@@ -230,3 +229,97 @@ def test_any709_step2_expired_server_session_is_definitely_not_sent() -> None:
 
     asyncio.run(scenario())
     assert calls == ["GET"]
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"code": 400, "response": {"error": "private validation details"}},
+        {"code": 200, "response": {"error": "private validation details"}},
+    ],
+)
+def test_any709_qa_documented_nested_error_is_safe_and_not_a_success(
+    body: dict, caplog: pytest.LogCaptureFixture
+) -> None:
+    from app.integrations.lbx.errors import LbxProviderRejected
+    from app.integrations.lbx._transport import customer_diagnostics
+    from app.core.observability import request_id_context
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/auth"):
+            return httpx.Response(200, json={"code": 200, "response": {"token": "private", "expires_in": 600}})
+        return httpx.Response(200, json=body)
+
+    async def scenario() -> None:
+        config = step1_settings()
+        async with source_resources(config, lbx_transport=httpx.MockTransport(respond)) as sources:
+            async with sources.billing.operation() as budget:
+                await sources.lbx.prepare_customer_create(budget=budget)
+                with customer_diagnostics("safe-operation"):
+                    with pytest.raises(LbxProviderRejected):
+                        await sources.lbx.create_user(
+                            NewCustomer(outer_id="opaque", email="synthetic@example.com"), budget=budget
+                        )
+
+    context = request_id_context.set("safe-request")
+    try:
+        with caplog.at_level(logging.INFO):
+            asyncio.run(scenario())
+    finally:
+        request_id_context.reset(context)
+    facts = [r.structured for r in caplog.records if r.getMessage() == "lbx_http" and r.structured["method"] == "POST"]
+    assert len(facts) == 1 and facts[0]["reason"] == "provider_rejected"
+    assert facts[0]["lbx_code"] == body["code"] and facts[0]["create_operation_id"] == "safe-operation"
+    assert facts[0]["request_id"] == "safe-request"
+    assert "private validation details" not in caplog.text + json.dumps(facts)
+
+
+def test_any709_qa_short_candidates_need_no_outer_id_but_point_read_must_match() -> None:
+    def respond(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/auth"):
+            data = {"token": "private", "expires_in": 600}
+        elif request.url.path.endswith("/users"):
+            data = [{"user_id": 345, "name": "Private", "email": "synthetic@example.com"}]
+        else:
+            data = {"user_id": 345, "outer_id": "opaque"}
+        return httpx.Response(200, json={"code": 200, "response": data})
+
+    async def scenario() -> None:
+        async with source_resources(step1_settings(), lbx_transport=httpx.MockTransport(respond)) as sources:
+            async with sources.billing.operation() as budget:
+                assert await sources.lbx.discover_users(outer_id="opaque", budget=budget) == (345,)
+                assert (await sources.lbx.get_user(user_id=345, budget=budget)).outer_id == "opaque"
+
+    asyncio.run(scenario())
+
+
+def test_any709_qa_real_detail_credential_fields_are_discarded_not_retained(caplog: pytest.LogCaptureFixture) -> None:
+    from app.integrations.lbx.customer import LbxUser
+
+    private = "never-retain-provider-password"
+    row = {"user_id": 345, "outer_id": "opaque", "password": private, "email": "synthetic@example.com"}
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/auth"):
+            data = {"token": "private-server-token", "expires_in": 600}
+        else:
+            data = [row] if request.url.path.endswith("/users") else row
+        return httpx.Response(200, json={"code": 200, "response": data})
+
+    async def scenario() -> None:
+        async with source_resources(step1_settings(), lbx_transport=httpx.MockTransport(respond)) as sources:
+            async with sources.billing.operation() as budget:
+                point = await sources.lbx.get_user(user_id=345, budget=budget)
+                assert point.model_dump() == {"user_id": 345, "outer_id": "opaque"}
+                assert not hasattr(point, "password") and private not in repr(point)
+                assert await sources.lbx.discover_users(outer_id="opaque", budget=budget) == (345,)
+                ready = await sources.lbx.client_user(
+                    token=sign_widget_jwt(customer_id="345", secret=step1_settings().lbx_widget_signing_secret),
+                    budget=budget,
+                )
+                assert ready == point
+
+    with caplog.at_level(logging.DEBUG):
+        asyncio.run(scenario())
+    assert private not in caplog.text and "synthetic@example.com" not in caplog.text
+    assert "password" not in LbxUser.model_fields

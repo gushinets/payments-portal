@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import select, text
+from sqlalchemy import String, cast, select, text
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -42,6 +42,57 @@ def lock_user(db: Session, user_id: UUID) -> User:
     return db.scalars(
         select(User).where(User.id == user_id).with_for_update().execution_options(populate_existing=True)
     ).one()
+
+
+def diagnostic_user(db: Session, *, user_id: UUID, tenant_id: str, region: str) -> User | None:
+    if db.get_bind().dialect.name == "postgresql":
+        db.execute(text("SET TRANSACTION READ ONLY"))
+    _bound_transaction(db)
+    return db.scalar(select(User).where(User.id == user_id, User.tenant_id == tenant_id, User.region == region))
+
+
+def diagnostic_customer_rows(
+    db: Session, user_id: UUID
+) -> list[tuple[ExternalBillingCustomer, ExternalCreateOperation | None, BillingWorkItem | None]]:
+    return list(
+        db.execute(
+            select(ExternalBillingCustomer, ExternalCreateOperation, BillingWorkItem)
+            .outerjoin(
+                ExternalCreateOperation,
+                (ExternalCreateOperation.customer_id == ExternalBillingCustomer.customer_id)
+                & (ExternalCreateOperation.operation_kind == ExternalCreateOperationKind.CUSTOMER),
+            )
+            .outerjoin(
+                BillingWorkItem,
+                (BillingWorkItem.coalescing_key == cast(ExternalCreateOperation.create_operation_id, String))
+                & (BillingWorkItem.work_kind == "external_create_recovery"),
+            )
+            .where(ExternalBillingCustomer.user_id == user_id)
+            .limit(3)
+        ).tuples()
+    )
+
+
+def diagnostic_create_reviews(db: Session, operation_id: UUID) -> list[ManualReviewCase]:
+    return list(
+        db.scalars(
+            select(ManualReviewCase)
+            .where(
+                ManualReviewCase.scope_kind == "create_operation", ManualReviewCase.scope_reference == str(operation_id)
+            )
+            .order_by(ManualReviewCase.created_at.desc())
+            .limit(20)
+        )
+    )
+
+
+def provider_customer_owner(db: Session, *, account_id: str, provider_id: str) -> UUID | None:
+    return db.scalar(
+        select(ExternalBillingCustomer.customer_id).where(
+            ExternalBillingCustomer.external_billing_account_id == account_id,
+            ExternalBillingCustomer.provider_customer_id == provider_id,
+        )
+    )
 
 
 def connection_accounts(db: Session, origin: str) -> set[str]:
