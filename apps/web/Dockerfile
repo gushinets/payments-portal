@@ -5,7 +5,8 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/web/package.json ./apps/web/package.json
 
-RUN npm ci
+# sharp is optional to npm, but required by the production image optimizer.
+RUN npm ci && node -e "require('sharp')"
 
 FROM dependencies AS builder
 
