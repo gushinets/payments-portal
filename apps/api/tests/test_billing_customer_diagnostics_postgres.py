@@ -150,6 +150,10 @@ def test_diagnosis_is_read_only_and_requires_original_identity(
     finally:
         event.remove(migrated_database, "before_cursor_execute", capture)
     assert result["diagnosis"] == expected
+    if expected == "customer_found_unbound":
+        assert result["next_action"] == "open_billing_to_recover_existing_customer"
+    if expected == "email_conflict":
+        assert result["next_action"] == "correct_email_conflict_then_open_billing"
     if mode != "unavailable":
         assert result["lbx_error"] is None
     assert all(
@@ -221,7 +225,7 @@ def test_create_500_is_retained_without_email_or_retry_and_diagnosed(
         )
 
     result = asyncio.run(scenario())
-    assert len(posts) == 1
+    assert len(posts) == 2
     assert result["diagnosis"] == ("email_conflict" if failure == "email_not_unique" else "create_outcome_unknown")
     with factory() as db:
         operation = db.scalar(select(ExternalCreateOperation))

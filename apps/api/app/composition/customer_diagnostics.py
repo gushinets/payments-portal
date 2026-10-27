@@ -116,8 +116,9 @@ async def diagnose_customer(
             diagnosis = "email_conflict"
     actions = {
         "binding_verified": "investigate_client_readiness_or_widget",
-        "customer_found_unbound": "verify_and_restore_binding_manually",
-        "email_conflict": "ask_billing_to_locate_email_owner_or_release_email",
+        "customer_found_unbound": "open_billing_to_recover_existing_customer",
+        "create_outcome_unknown": "open_billing_to_search_and_retry",
+        "email_conflict": "correct_email_conflict_then_open_billing",
         "email_verification_required": "verify_portal_email",
         "not_provisioned": "open_billing_through_portal",
         "source_unavailable": "check_lbx_connection_and_repeat_diagnosis",

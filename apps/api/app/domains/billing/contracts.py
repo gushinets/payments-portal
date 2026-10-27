@@ -18,6 +18,10 @@ class BillingRefused(AppError):
         self.status = status
 
 
+class BillingAccountFailure(BillingRefused):
+    """Unresolved account integration failure, reported once by Presentation."""
+
+
 @dataclass(frozen=True, repr=False)
 class CustomerOpen:
     customer_id: UUID

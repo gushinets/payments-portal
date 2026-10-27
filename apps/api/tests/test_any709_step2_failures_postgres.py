@@ -93,7 +93,9 @@ def test_any709_step2_proven_unsent_bootstrap_releases_only_its_claim_and_reuses
         if request.method == "POST":
             posts.append(json.loads(request.content))
             return httpx.Response(201, json={"code": 201, "response": {"user_id": 345}})
-        assert posts  # No discovery is needed for an operation proven unsent.
+        if request.url.path.endswith("/users"):
+            return httpx.Response(200, json={"code": 200, "response": []})
+        assert posts
         return httpx.Response(200, json={"code": 200, "response": {"user_id": 345, "outer_id": posts[0]["outer_id"]}})
 
     async def scenario() -> None:
@@ -173,7 +175,7 @@ def test_any709_step2_preauth_outage_leaves_the_same_operation_pending_without_a
     assert calls == [("GET", "/api/rest/v1/auth")] * (2 if failure in {401, "invalid", "credentials_500"} else 4)
 
 
-def test_any709_step2_lost_create_response_and_empty_discovery_never_release_or_replay(
+def test_any709_step2_lost_reply_retries_once_per_explicit_open_after_discovery(
     migrated_database: Engine, postgres_session_factory: sessionmaker[Session]
 ) -> None:
     factory = postgres_session_factory
@@ -195,7 +197,7 @@ def test_any709_step2_lost_create_response_and_empty_discovery_never_release_or_
         async with source_resources(config, lbx_transport=httpx.MockTransport(transport)) as sources:
             identity = None
             for _ in range(3):
-                with pytest.raises(BillingRefused, match="billing_customer_pending"):
+                with pytest.raises(BillingRefused, match="billing_source_unavailable"):
                     await billing.bootstrap_account(sources, config, factory=factory, token=TOKEN)
                 with factory() as db:
                     operation = db.scalar(select(ExternalCreateOperation))
@@ -208,11 +210,12 @@ def test_any709_step2_lost_create_response_and_empty_discovery_never_release_or_
                     )
                     if identity is None:
                         identity = current
-                    assert current == identity
+                    assert current[0] == identity[0]
+                    assert db.scalar(select(BillingWorkItem)).lease_owner is None
                     assert db.scalar(select(BillingWorkItem)).work_state == "pending"
 
     asyncio.run(scenario())
-    assert posts == 1
+    assert posts == 3
 
 
 def test_any709_step2_unsent_release_rejects_nonowner_and_changed_claims(
@@ -262,6 +265,8 @@ def test_any709_step2_client_credentials_denial_preserves_bound_customer_without
             return httpx.Response(
                 500, json={"code": 500, "response": "Invalid login/pass. Client login: private-login"}
             )
+        if request.url.path.endswith("/users"):
+            return httpx.Response(200, json={"code": 200, "response": []})
         return httpx.Response(200, json={"code": 200, "response": {"user_id": 345, "outer_id": outer}})
 
     async def scenario() -> None:

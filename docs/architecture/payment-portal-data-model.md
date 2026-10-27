@@ -203,10 +203,14 @@ hint schema/document values are paired. ANY-709 Step 2 permanently limits
 customer create to one operation per customer, including after resolution.
 Nullable `send_fence` records the current owner; `pending`, `possible_send`,
 `unknown`, `bound` and `manual_review` use the canonical Python vocabulary over
-TEXT storage. The send claim atomically records its fence, fixed original
-two-hour deadline and one coalesced `external_create_recovery` work item.
-Point proof binds only against that fence; uncertainty never permits POST replay
-or slot release. No background worker or purchase runtime is enabled here.
+TEXT storage. The customer send claim atomically records its fence, per-attempt
+two-hour deadline and one coalesced `external_create_recovery` work item. Its
+existing paired lease fields protect active account-customer sends, and
+`attempt_count` counts claimed attempts. Under the owner's 2026-10-27 amendment,
+a later explicit account open can claim a retry after fresh empty discovery and
+completion/expiry of the active lease, retaining the same operation/key. A saved
+receipt or identity conflict prevents another POST; point proof binds only against
+the current fence. Agreement/subscription UNKNOWN holds remain unchanged. No background worker or purchase runtime is enabled here.
 
 ## Reconciliation and access tables
 

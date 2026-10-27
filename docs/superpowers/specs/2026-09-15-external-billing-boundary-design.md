@@ -811,6 +811,41 @@ provider recovery hints
 bound provider object id when proven
 ```
 
+### Owner-approved account-customer retry amendment (2026-10-27)
+
+For account-only customer bootstrap, the owner explicitly replaced permanent
+UNKNOWN/manual-review blocking with discover-before-create on each authenticated,
+verified-email explicit open. This narrowly supersedes the customer part of the
+UNKNOWN policy below; agreement/subscription creation and paid-access trust do
+not change. The policy is an owner-approved retry choice, not a provider-proven
+absence predicate or an assertion of native LBX idempotency.
+
+`ensure_customer` is the single shared application use case and the sole consumer
+of LBX customer CREATE. It point-verifies an existing binding/receipt first, or
+searches by original opaque key and email. Email is candidate discovery only;
+binding still requires the unchanged original key plus canonical provider ID.
+Successful empty discovery permits one fenced customer POST per opening request.
+A failed CREATE is followed by another GET search/point proof, including after
+email/duplicate rejection or lost reply. A proven customer is bound and viewing
+continues. Unresolved failures return a safe error and are reported once to Sentry
+at the HTTP boundary. There is no immediate POST retry loop.
+
+A completed failed attempt releases only its active-send lease. A later explicit
+open repeats discovery and may claim another attempt in the same permanent
+customer slot/operation, including legacy UNKNOWN/manual-review rows. An active
+lease prevents concurrent sends; crash/cancel/protected source cleanup retains a
+finite lease of the request's configured total timeout plus cleanup timeout.
+Every new attempt compares the prior fence, records a new fence, increments the
+existing work attempt count and sets its own paired two-hour recovery deadline.
+A saved CREATE receipt prevents another POST until its identity is resolved.
+Identity conflict, ambiguous matches, source outages and incomplete/invalid
+searches never authorize creation or email-only adoption. Existing reviews remain
+as evidence and are resolved by successful paired binding, not deleted on retry.
+
+No customer, key, Portal user or operation is deleted/reallocated for recovery.
+This does not guarantee exactly-once provider execution after an ambiguous send;
+LBX uniqueness enforcement and fresh discovery remain part of the selected policy.
+
 For any of these create operations, timeout, lost response, HTTP 500/ambiguous
 provider error after mutation may have happened, or zero recovery matches do not
 prove absence. The common UNKNOWN behavior is:

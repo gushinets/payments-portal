@@ -41,12 +41,12 @@ pytestmark = pytest.mark.postgres
         httpx.RemoteProtocolError,
     ],
 )
-def test_any709_qa_only_proven_unsent_transport_failure_can_repeat_create(
+def test_any709_qa_transport_failure_retries_on_next_discover_first_open(
     migrated_database: Engine, postgres_session_factory: sessionmaker[Session], failure: type[httpx.TransportError]
 ) -> None:
     factory = postgres_session_factory
     seed(factory)
-    config = step1_settings(lbx_max_get_attempts=1)
+    config = step1_settings(lbx_max_get_attempts=2)
     attempts = 0
     outer = ""
     unsent = failure in {httpx.PoolTimeout, httpx.ConnectTimeout, httpx.ConnectError}
@@ -78,16 +78,12 @@ def test_any709_qa_only_proven_unsent_transport_failure_can_repeat_create(
                 assert db.scalar(select(ExternalCreateOperation)).operation_state == (
                     State.PENDING if unsent else State.UNKNOWN
                 )
-            if unsent:
-                await bootstrap_account(sources, config, factory=factory, token=TOKEN)
-                await bootstrap_account(sources, config, factory=factory, token=TOKEN)
-            else:
-                with pytest.raises(BillingRefused):
-                    await bootstrap_account(sources, config, factory=factory, token=TOKEN)
+            await bootstrap_account(sources, config, factory=factory, token=TOKEN)
+            await bootstrap_account(sources, config, factory=factory, token=TOKEN)
             assert reserve_customer(factory, config, TOKEN).operation_id == first.operation_id
 
     asyncio.run(scenario())
-    assert attempts == (2 if unsent else 1)
+    assert attempts == 2
 
 
 def test_any709_qa_receipt_survives_point_failure_and_restart_without_discovery_or_create(
@@ -108,7 +104,9 @@ def test_any709_qa_receipt_survives_point_failure_and_restart_without_discovery_
             posts += 1
             outer = json.loads(request.content)["outer_id"]
             return httpx.Response(201, json={"code": 201, "response": {"user_id": 345}})
-        assert not request.url.path.endswith("/users")  # Receipt is stronger recovery evidence than a list.
+        if request.url.path.endswith("/users"):
+            assert posts == 0  # Discovery precedes CREATE; saved receipt then skips lists.
+            return httpx.Response(200, json={"code": 200, "response": []})
         if request.url.path.endswith("/users/345"):
             points += 1
             with factory() as db:
@@ -186,6 +184,9 @@ def test_any709_qa_fresh_create_names_point_proof_and_reopen(
             for key, value in zip(("user_name", "user_surname", "user_patronymic"), names, strict=True):
                 assert body.get(key) == value and (value is not None or key not in body)
             return httpx.Response(201, json={"code": 201, "response": {"user_id": 345}})
+        if request.url.path.endswith("/users"):
+            assert posts == []
+            return httpx.Response(200, json={"code": 200, "response": []})
         assert request.url.path.endswith(("/users/345", "/client/user"))
         return httpx.Response(
             200,
@@ -235,7 +236,7 @@ def test_any709_qa_short_list_recovery_uses_detailed_original_outer_identity(
 
 
 @pytest.mark.parametrize("commit_phase", ["claim", "receipt"])
-def test_any709_qa_uncertain_commit_never_authorizes_another_post(
+def test_any709_qa_uncertain_commit_preserves_active_claim_or_saved_receipt(
     migrated_database: Engine,
     postgres_session_factory: sessionmaker[Session],
     monkeypatch: pytest.MonkeyPatch,
