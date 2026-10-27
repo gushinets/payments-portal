@@ -327,7 +327,7 @@ def test_production_accepts_explicit_scoped_lbx_configuration_without_enabling_s
     [
         {"lbx_widget_signing_secret": "", "lbx_seller_organization_id": ""},
         {"lbx_seller_organization_id": "not-an-id"},
-        {"lbx_currency_id": "unknown", "lbx_currency": "EUR", "lbx_billing_timezone": "Unknown/Invalid"},
+        {"lbx_currency_id": "unknown", "lbx_currency": "EUR"},
     ],
 )
 async def test_server_get_depends_only_on_server_connection_settings(overrides: dict[str, str]) -> None:
@@ -343,7 +343,7 @@ def test_widget_and_purchase_readiness_are_independent_of_catalog_applicability(
     no_widget = lbx_settings(lbx_widget_signing_secret="", lbx_seller_organization_id="")
     assert no_widget.lbx_configuration_error is None
     assert no_widget.lbx_widget_configuration_error == "lbx_widget_signing_secret_required"
-    account_only = lbx_settings(lbx_seller_organization_id="", lbx_billing_timezone="", lbx_currency="unsupported")
+    account_only = lbx_settings(lbx_seller_organization_id="", lbx_currency="unsupported")
     assert account_only.lbx_widget_configuration_error is None
     assert account_only.lbx_purchase_configuration_error == "lbx_seller_organization_id_required"
     invalid_seller = lbx_settings(lbx_seller_organization_id="-1")

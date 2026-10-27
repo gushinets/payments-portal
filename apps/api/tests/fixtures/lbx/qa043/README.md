@@ -36,5 +36,7 @@ unknown-field rejection for unclassified commercial extensions. Private customer
 GETs instead project only the two identity fields and discard all unused
 credential/contact fields. No global `extra="ignore"` change was made.
 
-Tests use an explicitly synthetic `Etc/UTC` calendar to isolate parsing. These
-captures do not establish the provider's billing timezone or authorize purchases.
+Current-offer tests use the fixed `Europe/Moscow` calendar confirmed separately
+by the direct LBX support answer. Historical/future schedules are synthetic test
+variants; the captured files remain unchanged. These captures do not authorize
+purchases or define UTC subscription intervals.

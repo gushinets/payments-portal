@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import asdict
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from zoneinfo import ZoneInfo
 
 from app.core.settings import Settings
 from app.domains.catalog.commercial_offer import (
@@ -41,13 +41,8 @@ from app.integrations.lbx.selected_offer import (
 )
 
 
-def billing_date(configuration: Settings, now: datetime) -> datetime:
-    if not configuration.lbx_billing_timezone:
-        _incomplete("billing_timezone_required")
-    try:
-        return now.astimezone(ZoneInfo(configuration.lbx_billing_timezone))
-    except (ZoneInfoNotFoundError, ValueError):
-        _incomplete("billing_timezone_invalid")
+# LBX support confirms that price start dates are inclusive in the Moscow calendar.
+BILLING_TIMEZONE = ZoneInfo("Europe/Moscow")
 
 
 def utc_now() -> datetime:
@@ -60,10 +55,9 @@ def normalize_current_offer(
     configuration: Settings,
     budget: PreflightBudget,
     *,
-    now: datetime,
+    effective_on: date,
 ) -> CurrentOffer:
     budget.check()
-    effective_on = billing_date(configuration, now).date()
     tariff = reads.tariff.value
     for read in (reads.tariff, reads.periods, reads.services, reads.prices):
         if (
@@ -149,16 +143,14 @@ def normalize_current_offer(
     if currency is None or tariff.currency_id != currency.provider_currency_id:
         _incomplete("currency_interpretation_unsupported")
     price, until = _applicable_price(reads.prices.value, period, effective_on, budget)
-    inline = [row for row in _required(service.prices, "inline_prices_missing") if row.period_id == selection.period_id]
-    if len(inline) != 1:
-        _incomplete("inline_price_missing_or_ambiguous")
+    inline, _ = _applicable_price(_required(service.prices, "inline_prices_missing"), period, effective_on, budget)
     for field in ("price", "connection_price", "bulk_price", "bulk_include_amount"):
         actual = _required(getattr(price, field), field + "_unknown")
-        if actual != _required(getattr(inline[0], field), "inline_" + field + "_unknown"):
+        if actual != _required(getattr(inline, field), "inline_" + field + "_unknown"):
             _incomplete("inline_effective_price_conflict")
-    if inline[0].price_start_date != price.start_date:
+    if inline.price_start_date != price.start_date:
         _incomplete("inline_effective_date_conflict")
-    discount_rows = selected_discounts(service, inline[0])
+    discount_rows = selected_discounts(service, inline)
     recurring = _exact(price.price, "recurring_price_invalid")
     connection = _exact(price.connection_price, "connection_price_invalid")
     quantity = Decimal(selection.quantity)
@@ -239,12 +231,13 @@ async def read_current_offer(
     configuration: Settings,
     budget: PreflightBudget,
 ) -> CurrentOffer:
+    effective_on = utc_now().astimezone(BILLING_TIMEZONE).date()
     try:
         first = normalize_current_offer(
-            await _read_selected(client, selection, budget), selection, configuration, budget, now=utc_now()
+            await _read_selected(client, selection, budget), selection, configuration, budget, effective_on=effective_on
         )
         second = normalize_current_offer(
-            await _read_selected(client, selection, budget), selection, configuration, budget, now=utc_now()
+            await _read_selected(client, selection, budget), selection, configuration, budget, effective_on=effective_on
         )
     except LbxError as error:
         raise SelectedOfferSourceFailed(error.code) from None

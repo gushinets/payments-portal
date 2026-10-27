@@ -101,8 +101,6 @@ class Settings(BaseSettings):
     lbx_server_password: SecretStr = SecretStr("")
     lbx_widget_signing_secret: SecretStr = SecretStr("")
     lbx_seller_organization_id: str = ""
-    # Required only for effective-dated offers, never inferred from locale/host.
-    lbx_billing_timezone: str = ""
     lbx_currency_id: str = "1"
     lbx_currency: str = "RUB"
     lbx_connect_timeout_seconds: float = Field(default=1.0, gt=0, le=30, allow_inf_nan=False)
