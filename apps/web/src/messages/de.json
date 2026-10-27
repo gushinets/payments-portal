@@ -147,8 +147,8 @@
       "emailUnverified": "E-Mail nicht bestätigt"
     },
     "products": {
-      "title": "Produkte",
-      "description": "Entdecken Sie aktive Produkte und deren aktuelle Abrechnungsbedingungen in den Details. Informationen zu Abonnement, Zugang und Nutzung folgen später.",
+      "title": "Meine Produkte",
+      "description": "Deine angenommenen Käufe. Zahlungs- und Abonnementstatus findest du in der Abrechnung.",
       "detailAction": "Produktdetails ansehen",
       "state": {
         "commercial": {
@@ -166,7 +166,14 @@
       },
       "action": {
         "description": "Öffnen Sie die Informationsseite des Produkts."
-      }
+      },
+      "allProducts": "Alle Produkte",
+      "loading": "Deine Produkte werden geladen…",
+      "empty": "Noch keine angenommenen Käufe. Wähle ein Produkt im Katalog.",
+      "unavailable": "Deine Käufe konnten nicht geladen werden. Die Abrechnung lässt sich separat öffnen.",
+      "loadMore": "Mehr anzeigen",
+      "prepared": "Abonnement vorbereitet",
+      "pending": "Die Kaufvorbereitung ist noch nicht abgeschlossen"
     }
   },
   "PasswordReset": {
@@ -262,7 +269,7 @@
     "ambiguous": "Nicht verfügbar: Für dieses Produkt gibt es mehrere genehmigte Angebote.",
     "simulated": "Produktquelle: Testdienst",
     "unverified": "Aktuelles LBX-Angebot — Bestätigung erforderlich",
-    "previewNote": "Aktuelle Abrechnungswerte werden angezeigt. Käufe sind noch nicht verfügbar; die Ansicht gewährt keinen Zugang.",
+    "previewNote": "Aktuelle Abrechnungswerte werden angezeigt. Kaufbedingungen müssen separat bestätigt werden; die Ansicht gewährt keinen Zugang.",
     "detailsRequired": "Öffnen Sie die Details, um das aktuelle Angebot zu prüfen.",
     "unmapped": "Kauf nicht verfügbar: kein Abrechnungsangebot verknüpft.",
     "unsupported": "Kauf nicht verfügbar: diese Angebotsbedingungen werden nicht unterstützt.",
@@ -281,7 +288,10 @@
     "prepaid": "Vorauszahlung",
     "paymentUnspecified": "Siehe genehmigte Konditionen",
     "tax": "Steuerbehandlung",
-    "taxValues": { "included": "Im Betrag enthalten", "not_applicable": "Nicht anwendbar" },
+    "taxValues": {
+      "included": "Im Betrag enthalten",
+      "not_applicable": "Nicht anwendbar"
+    },
     "periodAnchors": {
       "calendar_month": "Nach Kalendermonaten",
       "instance_start": "Ab Beginn der Instanz",
@@ -390,8 +400,10 @@
   },
   "Billing": {
     "title": "Abrechnungsdetails",
-    "description": "Öffnen Sie Ihr Abrechnungskonto, um Details anzusehen. Der bezahlte Zugriff wurde noch nicht ermittelt.",
+    "description": "Ein Abrechnungskonto für alle deine Produkte. Wähle einen Kauf zur Zahlung; Vertrag und Verkäufer werden vor dem Öffnen geprüft.",
     "open": "Abrechnung öffnen",
+    "refresh": "Abrechnung aktualisieren",
+    "refreshHint": "Aktualisiere nach Abschluss der Zahlung die Abrechnung, um deinen aktuellen Kontostand und den Zahlungsverlauf zu sehen.",
     "close": "Abrechnung schließen",
     "loading": "Wird geöffnet…",
     "frameTitle": "Abrechnungskonto",
@@ -418,7 +430,13 @@
       "financialPending": "Der Finanzvorgang ist ungeklärt. Prüfen Sie den ursprünglichen Kauf oder setzen Sie die Wiederherstellung fort; legen Sie keinen Ersatzkauf an."
     },
     "paymentTarget": "Bezahlen Sie nur den vorgesehenen Vertrag {agreement}, Verkäufer {seller}.",
-    "paymentTargetNote": "Diese Ansicht umfasst das gesamte Kundenkonto. Wählen Sie den angegebenen Vertrag im Widget; es gibt keinen Produktfilter."
+    "paymentTargetNote": "Diese Ansicht umfasst das gesamte Kundenkonto. Wählen Sie den angegebenen Vertrag im Widget; es gibt keinen Produktfilter.",
+    "selectedPurchase": "Ausgewählter Kauf",
+    "accountView": "Konto ohne ausgewählten Kauf ansehen",
+    "selectionUnavailable": "Der ausgewählte Kauf konnte nicht geprüft werden. Wähle ihn aus der Liste oder öffne die Produktseite.",
+    "purchaseOption": "{product} · Kauf {id}",
+    "selectedProduct": "Ausgewähltes Produkt: {product}",
+    "preparationRequired": "Schließe zuerst die Kaufvorbereitung auf der Produktseite ab."
   },
   "Purchase": {
     "title": "Produktabrechnung",
@@ -441,7 +459,7 @@
     "confirmationUncertain": "Die Bestätigung könnte abgeschlossen sein. Prüfen Sie den gespeicherten Status oder senden Sie dieselbe Bestätigung erneut; die akzeptierten Bedingungen bleiben erhalten.",
     "continue": "Fortsetzen",
     "recover": "Wiederherstellung fortsetzen",
-    "manage": "Verwalten / bezahlen",
+    "manage": "Abonnement verwalten",
     "termsChanged": "Die Bedingungen haben sich vor der Vorbereitung geändert. Prüfen Sie das aktuelle Angebot und stimmen Sie erneut zu.",
     "pending": "Die Vorbereitung ist ungeklärt. Setzen Sie diesen Kauf fort; es wird kein Ersatzkauf angelegt.",
     "reviewRequired": "Dieser Kauf muss geprüft werden. Bewahren Sie die Referenz für den Support auf.",
@@ -455,10 +473,11 @@
       "created": "Kauf akzeptiert. Setzen Sie die Vorbereitung fort.",
       "preparing": "Vorbereitung läuft. Fahren Sie für eine sichere Prüfung fort.",
       "awaiting_external_result": "Das Abrechnungsergebnis ist unbekannt. Der ursprüngliche Kauf bleibt reserviert.",
-      "linked": "Das Abonnement ist vorbereitet. Öffnen Sie Verwalten / bezahlen zur geprüften Abrechnung.",
+      "linked": "Abonnement vorbereitet",
       "resolved_no_external_effect": "Dieser Kauf wurde ohne externe Auswirkung abgeschlossen.",
       "failed_before_external_effect": "Dieser Kauf wurde vor der Erstellung von Finanzobjekten gestoppt.",
       "manual_review": "Der Kauf erfordert Wiederherstellung oder eine Prüfung durch einen Mitarbeiter."
-    }
+    },
+    "managedInAccount": "Zahlung und Abonnementverwaltung stehen in deinem Konto zur Verfügung."
   }
 }

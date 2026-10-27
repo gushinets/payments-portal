@@ -290,9 +290,14 @@
 }
 
 .purchase-consents a,
-.purchase-status summary {
+.purchase-status summary,
+.purchase-complete summary {
   color: var(--acc);
   cursor: pointer;
+}
+
+.purchase-complete details {
+  margin-top: 16px;
 }
 
 @media (max-width: 520px) {

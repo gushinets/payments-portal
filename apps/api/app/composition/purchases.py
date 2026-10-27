@@ -31,7 +31,7 @@ from app.infrastructure.preflight import PreflightBudget
 from app.integrations.lbx._transport import customer_diagnostics
 from app.integrations.lbx.client import LbxServerClient
 from app.integrations.lbx.current_offer import current_billing_date, read_current_offer
-from app.integrations.lbx.errors import LbxError, LbxScopeMismatch
+from app.integrations.lbx.errors import LbxCreateNotSent, LbxError, LbxScopeMismatch
 from app.integrations.lbx.financial import (
     NewAgreement,
     NewSubscription,
@@ -122,7 +122,12 @@ async def _live_original(
 
 
 async def _inventory(
-    client: LbxServerClient, purchase: Purchase, customer: CustomerOpen, *, budget: PreflightBudget
+    client: LbxServerClient,
+    purchase: Purchase,
+    customer: CustomerOpen,
+    factory: SessionFactory,
+    *,
+    budget: PreflightBudget,
 ) -> None:
     rows = await client.discover_subscriptions(user_id=int(customer.provider_id), budget=budget)
     relevant = [row for row in rows if row.tariff_id == purchase.accepted.selection.tariff_id]
@@ -137,6 +142,23 @@ async def _inventory(
         if point.state is None:
             raise PurchaseRefused("purchase_inventory_incomplete", 409)
         if point.state != 3 and str(point.subscription_id) != own:
+            other = await run_in_threadpool(
+                service.other_inventory_purchase, factory, purchase, point.subscription_id, point.agreement_id
+            )
+            if other is not None:
+                prove_agreement(
+                    agreement,
+                    user_id=int(customer.provider_id),
+                    seller_id=other.accepted.seller_id,
+                    number=_operation(other, Kind.AGREEMENT).key,
+                )
+                prove_subscription(
+                    point,
+                    agreement_id=point.agreement_id,
+                    selection=other.accepted.selection,
+                    offer=other.accepted.offer,
+                )
+                continue
             raise PurchaseRefused("purchase_existing_subscription_review", 409)
 
 
@@ -251,11 +273,11 @@ async def _recover_one(
         )
         return False
     if found is None:
-        if operation.state != State.PENDING:
+        if operation.state not in {State.PENDING, State.PROVEN_NOT_SENT}:
             await run_in_threadpool(financial.financial_pending, factory, purchase, operation)
         return False
     # No absent/unsent financial operation is adopted from a coincidental object.
-    if operation.state == State.PENDING:
+    if operation.state in {State.PENDING, State.PROVEN_NOT_SENT}:
         await run_in_threadpool(financial.financial_pending, factory, purchase, operation, conflict=True)
         return False
     provider_id, point = found
@@ -288,7 +310,7 @@ async def _prepare(
         purchase = await run_in_threadpool(service.read_purchase, factory, purchase.user_id, purchase.id)
         operation = _operation(purchase, kind)
         with customer_diagnostics(str(operation.id)):
-            if operation.state != State.PENDING:
+            if operation.state not in {State.PENDING, State.PROVEN_NOT_SENT}:
                 if not await _recover_one(client, purchase, operation, customer, factory, budget=budget):
                     break
                 verified.add(kind)
@@ -299,7 +321,7 @@ async def _prepare(
                 break
             try:
                 if kind == Kind.AGREEMENT:
-                    await _inventory(client, purchase, customer, budget=budget)
+                    await _inventory(client, purchase, customer, factory, budget=budget)
                 found = await _find_financial(client, purchase, operation, customer, budget=budget)
             except (LbxScopeMismatch, PurchaseRefused) as error:
                 await run_in_threadpool(financial.financial_pending, factory, purchase, operation, conflict=True)
@@ -317,7 +339,7 @@ async def _prepare(
                     user_id=int(customer.provider_id),
                     organization_id=purchase.accepted.seller_id,
                     agreement_number=operation.key,
-                    create_date=current_billing_date(),
+                    create_date=operation.agreement_create_date or current_billing_date(),
                 )
             else:
                 command = NewSubscription(
@@ -346,9 +368,11 @@ async def _prepare(
                 else:
                     provider_id = await client.create_subscription(command, budget=budget)
                 await run_in_threadpool(financial.record_receipt, factory, purchase, operation, provider_id)
+            except LbxCreateNotSent:
+                await run_in_threadpool(financial.proven_not_sent, factory, purchase, operation)
+                break  # Resume only on another explicit advance; never retry this attempt.
             except AppError as error:
-                # Includes proven not-sent, HTTP 500 response.error, malformed replies
-                # and timeouts. This financial identity is never POSTed again.
+                # HTTP 500, malformed replies and timeouts remain GET-only recovery.
                 facts = error.response_facts if isinstance(error, LbxError) else None
                 await run_in_threadpool(
                     financial.financial_pending,

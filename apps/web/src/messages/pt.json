@@ -147,8 +147,8 @@
       "emailUnverified": "E-mail não verificado"
     },
     "products": {
-      "title": "Produtos",
-      "description": "Explore os produtos ativos e suas condições atuais nos detalhes. Informações de assinatura, acesso e uso estarão disponíveis mais tarde.",
+      "title": "Meus produtos",
+      "description": "Suas compras aceitas. Consulte os pagamentos e as assinaturas no faturamento.",
       "detailAction": "Ver detalhes do produto",
       "state": {
         "commercial": {
@@ -166,7 +166,14 @@
       },
       "action": {
         "description": "Abra a página de informações do produto."
-      }
+      },
+      "allProducts": "Todos os produtos",
+      "loading": "Carregando seus produtos…",
+      "empty": "Você ainda não tem compras aceitas. Escolha um produto no catálogo.",
+      "unavailable": "Não foi possível carregar suas compras. Você pode abrir o faturamento separadamente.",
+      "loadMore": "Mostrar mais",
+      "prepared": "Assinatura preparada",
+      "pending": "A preparação da compra está incompleta"
     }
   },
   "PasswordReset": {
@@ -262,7 +269,7 @@
     "ambiguous": "Indisponível: existe mais de uma oferta aprovada para este produto.",
     "simulated": "Fonte dos produtos: serviço de teste",
     "unverified": "Oferta LBX atual — sujeita a confirmação",
-    "previewNote": "São exibidos os valores atuais de cobrança. A compra ainda não está disponível; visualizar uma oferta não concede acesso.",
+    "previewNote": "São exibidos os valores atuais de cobrança. As condições de compra exigem confirmação separada; visualizar uma oferta não concede acesso.",
     "detailsRequired": "Abra os detalhes para verificar a oferta atual.",
     "unmapped": "Compra indisponível: nenhuma oferta de cobrança vinculada.",
     "unsupported": "Compra indisponível: estas condições não são compatíveis.",
@@ -281,7 +288,10 @@
     "prepaid": "Pagamento antecipado",
     "paymentUnspecified": "Consulte as condições aprovadas",
     "tax": "Tratamento tributário",
-    "taxValues": { "included": "Incluído no valor", "not_applicable": "Não se aplica" },
+    "taxValues": {
+      "included": "Incluído no valor",
+      "not_applicable": "Não se aplica"
+    },
     "periodAnchors": {
       "calendar_month": "Por mês civil",
       "instance_start": "A partir do início da instância",
@@ -390,8 +400,10 @@
   },
   "Billing": {
     "title": "Dados de cobrança",
-    "description": "Abra sua conta de cobrança para consultar os dados. O acesso pago ainda não foi determinado.",
+    "description": "Um único espaço de faturamento para todos os seus produtos. Selecione uma compra para pagar; o contrato e o vendedor serão verificados antes da abertura.",
     "open": "Abrir cobrança",
+    "refresh": "Atualizar cobrança",
+    "refreshHint": "Após concluir o pagamento, atualize a cobrança para ver seu saldo atual e o histórico de pagamentos.",
     "close": "Fechar cobrança",
     "loading": "Abrindo cobrança…",
     "frameTitle": "Conta de cobrança",
@@ -418,7 +430,13 @@
       "financialPending": "A operação financeira está sem resolução. Consulte a compra original ou continue a recuperação; não crie uma substituta."
     },
     "paymentTarget": "Pague somente o contrato indicado {agreement}, vendedor {seller}.",
-    "paymentTargetNote": "Esta visão abrange toda a conta do cliente. Selecione o contrato indicado no widget; não há filtro por produto."
+    "paymentTargetNote": "Esta visão abrange toda a conta do cliente. Selecione o contrato indicado no widget; não há filtro por produto.",
+    "selectedPurchase": "Compra selecionada",
+    "accountView": "Ver a conta sem selecionar uma compra",
+    "selectionUnavailable": "Não foi possível verificar a compra selecionada. Selecione-a na lista ou abra a página do produto.",
+    "purchaseOption": "{product} · compra {id}",
+    "selectedProduct": "Produto selecionado: {product}",
+    "preparationRequired": "Primeiro conclua a preparação da compra na página do produto."
   },
   "Purchase": {
     "title": "Cobrança do produto",
@@ -441,7 +459,7 @@
     "confirmationUncertain": "A confirmação pode ter sido concluída. Consulte o estado salvo ou repita a mesma confirmação; as condições aceitas serão preservadas.",
     "continue": "Continuar",
     "recover": "Continuar recuperação",
-    "manage": "Gerenciar / pagar",
+    "manage": "Gerenciar assinatura",
     "termsChanged": "As condições mudaram antes da preparação. Revise a oferta atual e aceite novamente.",
     "pending": "A preparação continua sem resolução. Continue esta compra; nenhuma substituta será criada.",
     "reviewRequired": "Esta compra precisa de revisão. Guarde a referência para falar com o suporte.",
@@ -455,10 +473,11 @@
       "created": "Compra aceita. Continue a preparação.",
       "preparing": "Preparação em andamento. Continue para verificar com segurança.",
       "awaiting_external_result": "O resultado na cobrança é desconhecido. A compra original continua reservada.",
-      "linked": "A assinatura está preparada. Abra Gerenciar / pagar para a cobrança verificada.",
+      "linked": "Assinatura preparada",
       "resolved_no_external_effect": "A compra foi resolvida sem efeito externo.",
       "failed_before_external_effect": "A compra parou antes da criação de objetos financeiros.",
       "manual_review": "A compra precisa de recuperação ou revisão por um operador."
-    }
+    },
+    "managedInAccount": "O pagamento e o gerenciamento da assinatura estão disponíveis na sua conta."
   }
 }

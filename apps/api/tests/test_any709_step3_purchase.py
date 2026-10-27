@@ -10,10 +10,14 @@ from uuid import uuid4
 import httpx
 import pytest
 from pydantic import ValidationError
+from sqlalchemy.orm import Session
 
 from app.composition.sources import source_resources
 from app.domains.billing.router import WidgetBootstrapRequest, WidgetBootstrapResponse
 from app.domains.purchases.router import PurchaseConfirmRequest
+from app.domains.purchases.contracts import PurchaseRefused
+from app.domains.purchases.service import _operation
+from app.models import ExternalCreateOperation, ExternalCreateOperationKind
 from app.integrations.lbx.current_offer import read_current_offer
 from app.integrations.lbx.financial import (
     NewAgreement,
@@ -40,6 +44,17 @@ def fixed_billing_calendar(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"
+
+
+@pytest.mark.parametrize("request_document", [None, {}, {"create_date": "invalid"}, {"create_date": 123}])
+def test_original_agreement_date_requires_valid_persisted_evidence(request_document: object) -> None:
+    operation = ExternalCreateOperation(
+        operation_kind=ExternalCreateOperationKind.AGREEMENT,
+        recovery_hint_schema_version="financial-create:v1",
+        recovery_hint_document={"request": request_document},
+    )
+    with Session() as db, pytest.raises(PurchaseRefused, match="purchase_history_unproven"):
+        _operation(db, operation)
 
 
 @pytest.mark.parametrize("path", ["/agreements", "/subscriptions"])

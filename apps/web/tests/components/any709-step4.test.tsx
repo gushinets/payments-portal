@@ -1,10 +1,9 @@
-import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { NextIntlClientProvider } from "next-intl";
-import { BillingAccount, ProductBilling } from "@/features/billing";
+import { ProductBilling } from "@/features/billing";
 import type { PurchaseIntentResponse } from "@/generated/api-contracts/types.gen";
 import ru from "@/messages/ru.json";
-import { sessionChangedEvent, sessionStorageKey } from "@/shared/api/auth";
+import { sessionStorageKey } from "@/shared/api/auth";
 import { purchaseReview, purchaseUser, savedPurchase, widgetResponse } from "../fixtures/purchase";
 import { renderWithIntl } from "../setup/render-with-intl";
 
@@ -71,7 +70,7 @@ describe("ANY-709 Step 4 purchase journey", () => {
     expect(fetcher).not.toHaveBeenCalled();
   });
 
-  it("reviews exact terms/consent then confirms once and opens payment on the proven agreement", async () => {
+  it("reviews exact terms/consent then confirms once and links to cabinet without opening billing", async () => {
     renderProduct();
     expect(await screen.findByRole("button", { name: ru.Purchase.buy })).toBeVisible();
     expect(review).not.toHaveBeenCalled();
@@ -83,7 +82,7 @@ describe("ANY-709 Step 4 purchase journey", () => {
     fireEvent.click(checkbox);
     const button = screen.getByRole("button", { name: ru.Purchase.confirm });
     fireEvent.click(button); fireEvent.click(button);
-    await waitFor(() => expect(mount).toHaveBeenCalledTimes(1));
+    expect(await screen.findByRole("link", { name: ru.Purchase.manage })).toHaveAttribute("href", `/ru/account?purchase=${savedPurchase.purchase_intent_id}#billing`);
     expect(confirm).toHaveBeenCalledTimes(1);
     expect(advance).toHaveBeenCalledTimes(1);
     expect(JSON.parse(String(confirm.mock.calls[0][0].body))).toEqual({
@@ -91,11 +90,10 @@ describe("ANY-709 Step 4 purchase journey", () => {
       documents: purchaseReview.documents.map(({ document_version_id, acceptance_text_hash }) => ({ document_version_id, acceptance_text_hash }))
     });
     expect(confirm.mock.calls[0][0].headers["Idempotency-Key"]).toBeTruthy();
-    expect(mount.mock.calls[0][1].disablePayments).toBe(false);
-    expect(mount.mock.calls[0][1].disableCreateSubscription).toBe(true);
-    expect(screen.getByText(/synthetic-agreement/)).toHaveTextContent("synthetic-seller");
-    expect(screen.getByText(ru.Purchase.awaitingVerification)).toBeVisible();
-    expect(screen.getByText(ru.Purchase.accessDeferred)).toBeVisible();
+    expect(bootstrap).not.toHaveBeenCalled();
+    expect(mount).not.toHaveBeenCalled();
+    expect(screen.getByRole("heading", { name: ru.Purchase.states.linked })).toBeVisible();
+    expect(screen.getByText(ru.Purchase.managedInAccount)).toBeVisible();
     expect(document.body).not.toHaveTextContent("synthetic-widget-token");
     expect(Object.keys(window.localStorage)).toEqual([sessionStorageKey]);
     expect(window.sessionStorage.length).toBe(0);
@@ -111,7 +109,7 @@ describe("ANY-709 Step 4 purchase journey", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: ru.Purchase.retryConfirm })).toBeEnabled());
     expect(screen.getByRole("checkbox")).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: ru.Purchase.retryConfirm }));
-    await waitFor(() => expect(mount).toHaveBeenCalledTimes(1));
+    expect(await screen.findByRole("link", { name: ru.Purchase.manage })).toHaveAttribute("href", `/ru/account?purchase=${savedPurchase.purchase_intent_id}#billing`);
     expect(confirm).toHaveBeenCalledTimes(2);
     expect(confirm.mock.calls[0][0].headers["Idempotency-Key"]).toBe(confirm.mock.calls[1][0].headers["Idempotency-Key"]);
     expect(confirm.mock.calls[0][0].body).toBe(confirm.mock.calls[1][0].body);
@@ -126,7 +124,7 @@ describe("ANY-709 Step 4 purchase journey", () => {
     renderProduct();
     await accept();
     fireEvent.click(await screen.findByRole("button", { name: ru.Purchase.continue }));
-    await waitFor(() => expect(mount).toHaveBeenCalledTimes(1));
+    expect(await screen.findByRole("link", { name: ru.Purchase.manage })).toHaveAttribute("href", `/ru/account?purchase=${savedPurchase.purchase_intent_id}#billing`);
     expect(confirm).toHaveBeenCalledTimes(1);
     expect(advance).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("button", { name: ru.Purchase.buy })).not.toBeInTheDocument();
@@ -139,16 +137,14 @@ describe("ANY-709 Step 4 purchase journey", () => {
     });
     renderProduct();
     await accept();
-    expect(await screen.findByRole("button", { name: ru.Purchase.manage })).toBeEnabled();
+    expect(await screen.findByRole("link", { name: ru.Purchase.manage })).toBeVisible();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: ru.Purchase.buy })).not.toBeInTheDocument();
     expect(advance).toHaveBeenCalledTimes(1);
     expect(confirm).toHaveBeenCalledTimes(1);
     expect(bootstrap).not.toHaveBeenCalled(); // A local GET is not payment proof.
     expect(fetcher.mock.calls.some(([url]) => String(url).endsWith(`/${savedPurchase.purchase_intent_id}`))).toBe(true);
-    fireEvent.click(screen.getByRole("button", { name: ru.Purchase.manage }));
-    await waitFor(() => expect(mount).toHaveBeenCalledTimes(1));
-    expect(advance).toHaveBeenCalledTimes(1);
+
   });
 
   it("keeps the held intent and shows recovery when timeout status inspection also fails", async () => {
@@ -192,30 +188,15 @@ describe("ANY-709 Step 4 purchase journey", () => {
     expect(bootstrap).not.toHaveBeenCalled();
   });
 
-  it("Manage uses the original intent without current catalog/link/currency reads; close only reads local status", async () => {
+  it("restores the compact prepared state without current catalog or billing reads", async () => {
     owned = savedPurchase;
     renderProduct();
-    fireEvent.click(await screen.findByRole("button", { name: ru.Purchase.manage }));
-    await waitFor(() => expect(mount).toHaveBeenCalledTimes(1));
-    expect(JSON.parse(bootstrap.mock.calls[0][0].body)).toEqual({ purchase_intent_id: savedPurchase.purchase_intent_id });
-    fireEvent.click(screen.getByRole("button", { name: ru.Billing.close }));
-    await waitFor(() => expect(fetcher.mock.calls.some(([url]) => String(url).endsWith(`/${savedPurchase.purchase_intent_id}`))).toBe(true));
-    expect(dispose).toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: ru.Purchase.manage })).toBeEnabled();
+    expect(await screen.findByRole("link", { name: ru.Purchase.manage })).toHaveAttribute("href", `/ru/account?purchase=${savedPurchase.purchase_intent_id}#billing`);
+    expect(screen.queryByRole("button", { name: ru.Purchase.buy })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: ru.Billing.open })).not.toBeInTheDocument();
     expect(review).not.toHaveBeenCalled(); expect(advance).not.toHaveBeenCalled();
+    expect(bootstrap).not.toHaveBeenCalled();
     expect(fetcher.mock.calls.some(([url]) => String(url).includes("catalog"))).toBe(false);
-    expect(screen.getByText(ru.Purchase.awaitingVerification)).toBeVisible();
-  });
-
-  it("replaces an earlier account presentation and disposes other mounted hosts", async () => {
-    renderWithIntl(<><BillingAccount userId={purchaseUser.user_id} emailVerified /><ProductBilling productId="proposal_ai" user={purchaseUser} /></>, { locale: "ru", messages });
-    fireEvent.click(screen.getAllByRole("button", { name: ru.Billing.open })[0]);
-    await waitFor(() => expect(mount).toHaveBeenCalledTimes(1));
-    expect(mount.mock.calls[0][1].disablePayments).toBe(true);
-    await accept();
-    await waitFor(() => expect(mount).toHaveBeenCalledTimes(2));
-    expect(dispose).toHaveBeenCalled();
-    expect(mount.mock.calls[1][1].disablePayments).toBe(false);
   });
 
   it("keeps unknown status distinct from no purchase and retries without Buy", async () => {
@@ -236,35 +217,7 @@ describe("ANY-709 Step 4 purchase journey", () => {
     expect(document.body).not.toHaveTextContent("secret-provider-text");
   });
 
-  it("shows script failure and supports retry without new purchase", async () => {
-    owned = savedPurchase;
-    mount.mockImplementationOnce(() => { throw new Error("private-sdk-error"); }).mockReturnValue(dispose);
-    renderProduct();
-    fireEvent.click(await screen.findByRole("button", { name: ru.Purchase.manage }));
-    expect(await screen.findByRole("alert")).toHaveTextContent(ru.Billing.errors.sdk);
-    fireEvent.click(screen.getByRole("button", { name: ru.Purchase.manage }));
-    await waitFor(() => expect(mount).toHaveBeenCalledTimes(2));
-    expect(confirm).not.toHaveBeenCalled();
-  });
 
-  it.each(["logout", "user", "silent_user", "product", "unmount"])("discards a late payment credential after %s changes", async (change) => {
-    owned = savedPurchase;
-    let finish!: (response: Response) => void;
-    bootstrap.mockImplementation(() => new Promise<Response>((resolve) => { finish = resolve; }));
-    const view = renderProduct();
-    fireEvent.click(await screen.findByRole("button", { name: ru.Purchase.manage }));
-    await waitFor(() => expect(bootstrap).toHaveBeenCalledTimes(1));
-    if (change === "unmount") view.unmount();
-    else if (change === "product") view.rerender(<NextIntlClientProvider locale="ru" messages={messages}><ProductBilling productId="another-product" user={purchaseUser} /></NextIntlClientProvider>);
-    else act(() => {
-      if (change === "logout") window.localStorage.removeItem(sessionStorageKey);
-      else window.localStorage.setItem(sessionStorageKey, "another-user-session");
-      if (change !== "silent_user") window.dispatchEvent(new Event(sessionChangedEvent));
-    });
-    await act(async () => finish(json(widgetResponse(true))));
-    expect(mount).not.toHaveBeenCalled();
-    if (change === "silent_user") expect(screen.getByRole("alert")).toHaveTextContent(ru.Billing.errors.session);
-  });
 });
 
 it("official SDK accepts the server payment presentation and keeps all unsupported actions disabled", async () => {

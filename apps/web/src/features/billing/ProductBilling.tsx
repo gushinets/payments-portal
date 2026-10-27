@@ -10,8 +10,6 @@ import { ApiError, apiErrorCode } from "@/shared/api/transport";
 import { subscribeToSessionChanges, useSessionOperation } from "@/shared/session/use-session-operation";
 import { billingErrorKey, newRequestId, safeRequestId, type BillingErrorKey } from "./errors";
 import { PurchaseTerms } from "./PurchaseTerms";
-import { useBillingWidget } from "./use-billing-widget";
-import { WidgetView } from "./WidgetView";
 
 type PurchaseState =
   | { kind: "loading" | "unavailable" | "none" }
@@ -72,7 +70,6 @@ function PurchasePanel({ productId, user, headingLevel }: { productId: string; u
   const [working, setWorking] = useState(false);
   const busy = useRef(false);
   const { begin, cancel } = useSessionOperation();
-  const widget = useBillingWidget(user.user_id, user.email_verified);
   const Heading = headingLevel === 2 ? "h2" : "h4";
   const ReviewHeading = headingLevel === 2 ? "h3" : "h5";
 
@@ -169,7 +166,6 @@ function PurchasePanel({ productId, user, headingLevel }: { productId: string; u
     }
     if (!current()) return;
     setState({ kind: "purchase", purchase: result });
-    if (result.state === "linked") await widget.open(result.purchase_intent_id);
   }
 
   function confirm() {
@@ -205,14 +201,19 @@ function PurchasePanel({ productId, user, headingLevel }: { productId: string; u
       }
       if (!current()) return;
       setState({ kind: "purchase", purchase: result });
-      if (result.state === "linked") await widget.open(result.purchase_intent_id);
-      else if (result.state === "created" || result.state === "preparing" || result.state === "awaiting_external_result") await prepare(token, result, id, current);
+      if (result.state === "created" || result.state === "preparing" || result.state === "awaiting_external_result") await prepare(token, result, id, current);
     });
   }
 
   const purchase = state.kind === "purchase" ? state.purchase : null;
   const resumable = purchase && purchase.scope_held && purchase.state !== "linked";
   const released = purchase && !purchase.scope_held && (purchase.state === "resolved_no_external_effect" || purchase.state === "failed_before_external_effect");
+  if (purchase?.state === "linked") return <section className="purchase-panel purchase-complete" aria-label={t("title")}>
+    <Heading>{t("states.linked")}</Heading>
+    <p className="card-copy">{t("managedInAccount")}</p>
+    <Link className="btn-primary" href={`/account?purchase=${encodeURIComponent(purchase.purchase_intent_id)}#billing`}>{t("manage")}</Link>
+    <details><summary>{t("acceptedTerms")}</summary><PurchaseTerms review={purchase.accepted} /></details>
+  </section>;
   return <section className="purchase-panel" aria-label={t("title")}>
     <Heading>{t("title")}</Heading>
     {!user.email_verified ? <>
@@ -220,7 +221,6 @@ function PurchasePanel({ productId, user, headingLevel }: { productId: string; u
       <Link className="btn-secondary" href="/account">{t("verifyAction")}</Link>
     </> : <>
       <div className="purchase-actions">
-        <button className="btn-secondary" type="button" disabled={widget.state.status === "loading"} onClick={() => void widget.open()}>{b("open")}</button>
         {(state.kind === "none" || released) && <button className="btn-primary" type="button" disabled={working} onClick={() => void review()}>{t("buy")}</button>}
         {(state.kind === "unavailable" || state.kind === "review" || purchase) && <button className="btn-secondary" type="button" disabled={working} onClick={() => void refresh()}>{t("refresh")}</button>}
       </div>
@@ -250,12 +250,10 @@ function PurchasePanel({ productId, user, headingLevel }: { productId: string; u
         <p className="catalog-product-id">{t("reference", { id: purchase.purchase_intent_id })}</p>
         <details><summary>{t("acceptedTerms")}</summary><PurchaseTerms review={purchase.accepted} /></details>
         {resumable && <button className="btn-primary" type="button" disabled={working} onClick={() => void run((token, id, current) => prepare(token, purchase, id, current))}>{t(purchase.state === "created" ? "continue" : "recover")}</button>}
-        {purchase.state === "linked" && <button className="btn-primary" type="button" disabled={working || widget.state.status === "loading"} onClick={() => void widget.open(purchase.purchase_intent_id)}>{t("manage")}</button>}
         <p>{t("awaitingVerification")}</p>
       </div>}
       {failure && <div className="notice error" role="alert">{b(`errors.${failure.message}`)}{failure.requestId && <p>{b("requestId", { id: failure.requestId })}</p>}</div>}
       <p className="card-copy">{t("accessDeferred")}</p>
-      <WidgetView widget={widget} onClose={() => void refresh()} />
     </>}
   </section>;
 }

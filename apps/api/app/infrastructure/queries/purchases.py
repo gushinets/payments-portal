@@ -26,6 +26,21 @@ from app.models import (
 MAX_HELD_PURCHASES = 100
 
 
+def account_purchases(db: Session, user_id: UUID, *, after: UUID | None, limit: int) -> list[PurchaseIntent]:
+    query = (
+        select(PurchaseIntent)
+        .join(
+            BillingPurchaseScopeHold, BillingPurchaseScopeHold.purchase_intent_id == PurchaseIntent.purchase_intent_id
+        )
+        .where(PurchaseIntent.user_id == user_id)
+        .order_by(PurchaseIntent.purchase_intent_id)
+        .limit(limit)
+    )
+    if after is not None:
+        query = query.where(PurchaseIntent.purchase_intent_id > after)
+    return list(db.scalars(query))
+
+
 def by_key(db: Session, user_id: UUID, key: str) -> list[PurchaseIntent]:
     return list(
         db.scalars(
@@ -81,6 +96,22 @@ def required_documents(
 def linked_subscription(db: Session, purchase_id: UUID) -> ExternalSubscription | None:
     return db.scalar(
         select(ExternalSubscription).where(ExternalSubscription.purchase_intent_id == purchase_id).with_for_update()
+    )
+
+
+def subscription_purchase(
+    db: Session, *, user_id: UUID, customer_id: UUID, account_id: str, provider_id: str, agreement_id: str
+) -> PurchaseIntent | None:
+    return db.scalar(
+        select(PurchaseIntent)
+        .join(ExternalSubscription, ExternalSubscription.purchase_intent_id == PurchaseIntent.purchase_intent_id)
+        .where(
+            ExternalSubscription.user_id == user_id,
+            ExternalSubscription.customer_id == customer_id,
+            ExternalSubscription.external_billing_account_id == account_id,
+            ExternalSubscription.external_subscription_id == provider_id,
+            ExternalSubscription.external_agreement_id == agreement_id,
+        )
     )
 
 

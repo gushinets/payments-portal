@@ -20,7 +20,8 @@ lifecycle have been physically removed. The target persistence graph exists,
 starts empty, and ANY-664's restricted publication path commits immutable
 commercial mapping revisions. ANY-709 Step 3 implements acceptance, held purchase
 scopes and request-driven financial preparation/recovery, with focused synthetic
-tests passing and real purchase/payment QA pending. Subscription reconciliation workers, paid-access derivation and
+tests passing and the recorded owner test-payment QA complete; independent final
+review remains pending (see the ANY-709 current acceptance ledger). Subscription reconciliation workers, paid-access derivation and
 invalidation delivery remain unimplemented. The two source-catalog projection tables remain inert.
 
 ## Cross-cutting critical paths

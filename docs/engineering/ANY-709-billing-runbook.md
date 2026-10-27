@@ -1,10 +1,15 @@
 # ANY-709 billing runbook
 
-Status: IMPLEMENTED_AWAITING_HUMAN_VALIDATION. Step 2 adds explicit account-only
-customer/Widget bootstrap. Step 3 adds accepted-purchase APIs and verified payment
-presentation. Focused synthetic tests have passed and the original migration `20261027_0006`
-was applied to the local development database under explicit owner authorization.
-Step 4 implements browser Buy/Continue/Manage with targeted synthetic coverage PASS after the owner-authorized test-only follow-up. Real LBX purchase/payment QA remains NOT_RUN; implementation is not human acceptance.
+Status: IMPLEMENTED_AND_TESTED; owner test-payment and SDK-readiness QA complete;
+independent final review pending. Ordinary customer viewing,
+accepted purchase preparation and the selected-purchase cabinet Widget are
+implemented. The current migration is `20261027_0003_normal_billing`.
+The owner completed YooKassa payment on the intended agreement; see the
+[recorded result](#owner-payment-result-and-refreshing-the-widget). The
+[current acceptance ledger](../exec-plans/completed/ANY-709-implementation-plan.md#current-acceptance-and-final-review)
+owns current outcomes. Historical authoring NOT_RUN entries below are explicitly
+checkpoint evidence, not the current acceptance status. Paid access and launch
+remain later program steps; independent review is not replaced by author QA.
 
 ## Connection and deployment
 
@@ -50,7 +55,9 @@ are unsupported offer errors. These settings do not attest credit, tax,
 renewal/cancellation or historical-subscription policy; no unknown fact is filled
 with false/zero. Purchase point-read validation obtains its own applicable facts.
 Currency readiness does not block a raw Server API GET or the
-account-Widget readiness check. Real Step 3 provider acceptance remains pending.
+account-Widget readiness check. Real Step 3 purchase proof and the owner payment
+result are recorded in the current acceptance ledger; they do not certify
+unsupported policy variants.
 
 The transport accepts the retained E04/E05 representations: exact JSON numeric
 `1.0` quantity bounds, a provider-local midnight `price_start_date`, and history
@@ -294,8 +301,9 @@ docker compose up -d --build api
 
 Use one environment path, not both. The original Step 2 authoring did not execute
 these commands. The owner-authorized 2026-10-26 QA correction subsequently ran
-local services/tests and real test-043 customer verification; see the
-[QA handoff](../exec-plans/completed/ANY-709-step-2-handoff.md#manual-qa-correction-2026-10-26-base-181b8d0).
+local services/tests and real test-043 customer verification. The implemented
+result and retained acceptance limits are recorded in the
+[completed plan](../exec-plans/completed/ANY-709-implementation-plan.md#step-2-customer-and-account-widget).
 That correction required no application migration.
 Normal harness startup uses its migrate service; no manual `alembic stamp` or DB
 reset is needed. Existing users retain nullable independent FIO fields; new
@@ -492,9 +500,9 @@ snapshot for a later mutation; rerun it after any concurrent state change.
 
 ## Purchase API and financial recovery (Step 3)
 
-Status: IMPLEMENTED; focused synthetic tests and the local development migration
-have passed. Real purchase/payment QA is NOT_RUN. The existing customer Widget observation proves only account
-viewing. Browser Buy/Continue/Manage is implemented in Step 4; see the final human scenario below. The following is a human-operated
+Status: IMPLEMENTED; automated checks, original-source purchase proof and the
+owner's intended-agreement payment passed for the recorded stand/purchase.
+Browser Buy/Continue/Manage is implemented in Step 4. The following is a repeatable human-operated
 API checkpoint after review and application migration, using a verified Portal
 user and the normal configured link; never assign a research customer ID.
 
@@ -607,17 +615,24 @@ payment targeting/payment remain human integration evidence, not synthetic PASS.
 
 ## Step 4 browser journey and observation limits
 
-Status: IMPLEMENTED; targeted component/boundary/desktop/mobile synthetic tests PASS
-after the owner-authorized test-only follow-up. No manual QA or real Widget/
-payment PASS is claimed. Initial authoring evidence is retained below. This step adds no migration or backend wire change; it consumes the
-Step 3 generated contracts. No generation is needed for locale message edits.
+Status: IMPLEMENTED; component/boundary/desktop/mobile synthetic tests and the
+recorded live customer/purchase/payment scenario passed. Current independent
+review is pending. Initial authoring evidence is retained as history below. The
+initial Step 4 consumed Step 3 contracts without DDL; the cabinet follow-up adds
+a local owned-inventory GET and regenerated contracts, with no new migration.
 
 Product details load current public offers independently of personal billing.
 Guests get an account link; unverified users must verify email first. Verified
 users read `GET /api/purchase-intents/current?product_id=...` before displaying
-Buy. A failed read is unknown, never an empty purchase. Account cards use the
-same controls without redesigning the cabinet. Account-only billing can open
-while catalog requests fail or a purchase needs review.
+Buy. A failed read is unknown, never an empty purchase. The owner-approved
+cabinet follow-up moves all Widget hosts to the cabinet. Account cards are brief
+owned-purchase summaries from authenticated `GET /api/purchase-intents` (default
+50, maximum 100 per page, UUID keyset cursor). Only held accepted purchases are
+listed; released unsuccessful attempts remain in history but leave the cards.
+Unfinished accepted purchases remain visible for continuation on product detail.
+The cabinet has a full-catalog link and never fetches the public catalog as owned
+inventory. Account-only billing remains available if the list/source catalog
+fails or the account has no purchase.
 
 Buy first checks the owned current hold, then displays the live review, exact
 money/period/quantity/funding and each required canonical RU legal text/version.
@@ -631,9 +646,14 @@ refusal requires a new explicit review and consent. Before any new review, the
 current hold is checked again, including after an automatic unsent release.
 
 Created purchases show Continue; preparing/uncertain/manual-review purchases
-show recovery and their safe purchase reference. Linked purchases show Manage /
-pay. Manage bootstraps the original intent and fresh effective subscription
-proof; it never reads today's product head/catalog price as authority. The UI
+show recovery and their safe purchase reference. Linked purchases show the compact
+“Subscription prepared” state, accepted terms and “Manage subscription” link to
+`/account?purchase=<id>#billing`. This means prepared, not paid/active. The deep
+link performs an owner-scoped local read; it never automatically opens a Widget.
+A single owned purchase is visibly selected by default; multiple purchases need
+explicit selection (or the product deep link). The cabinet’s open and card-manage
+actions both bootstrap that original intent with fresh effective subscription
+proof; neither reads today's product head/catalog price as authority. The UI
 shows the proven agreement/seller next to the Widget. There is no product-only
 filter: the user must select that agreement in the customer-wide Widget.
 
@@ -648,9 +668,10 @@ connect/frame policy. Actual acquiring compatibility is a human checkpoint.
 Provider JWT replay/72-hour `iat` limitations and customer-wide scope remain
 accepted residual risks; destroying the local host does not revoke a copied JWT.
 
-Closing the Widget triggers at most one **local** purchase-status GET. The UI
-says payment awaits authoritative verification and that this GET does not
-refresh LBX facts. It never claims paid/activated, grants access, or mutates
+Closing or changing the selected purchase destroys the Widget and cancels late
+credentials. Reopening explicitly repeats fresh server verification for that
+same selected purchase. No status GET on close is presented as an LBX refresh.
+The Portal never claims paid/activated, grants access, or mutates
 quota. The current purchase DTO exposes no last-observed financial status/time;
 the UI therefore uses awaiting-verification text instead of inventing one.
 Step 8 must supply future observation/reconciliation feedback.
@@ -788,6 +809,14 @@ For financial UNKNOWN/manual review, retain the purchase and inspect/recover
 with the CLI above. Empty discovery or elapsed +2h is not permission to repeat
 CREATE. Catalog errors cannot rebind Manage. Widget script/CSP/network failure
 allows reopening the same presentation without creating another purchase.
+The host waits for the existing SDK `lbx-widget`/`READY` signal from the exact
+nested window at the configured LBX origin; returning from `render()` does not
+cancel the 20-second loading deadline. A timeout removes the stale host and
+shows a localized Portal error with the bootstrap request ID. Console event
+`billing_widget_load_failed` and optional sanitized Sentry retain only service,
+operation, stage, closed reason and that request ID. Correlate it with the
+server bootstrap logs. No vendor error text, URL, token or user fields are
+reported. A ready Widget has no refresh timer that could interrupt checkout.
 An empty Widget, permanently disabled payments, or another agreement does not
 satisfy the payment checkpoint; fix the configured provider payment method.
 
@@ -799,7 +828,8 @@ proven facts and audit. There is no force-bind, force-release or paid-grant CLI.
 
 ## Step 4 human verification commands
 
-All commands below are NOT_RUN in this delivery. They use synthetic transport
+These are repeatable checks, not instructions to repeat an acquiring payment.
+Recorded results live in the current acceptance ledger. They use synthetic transport
 fixtures only. Start/configure the intended isolated browser harness manually;
 Playwright's desktop and mobile projects capture screenshots and run axe.
 
@@ -849,13 +879,14 @@ overlapping broad checks; do not claim any of these ran during authoring.
 7. Review sanitized request correlation, storage/URL/logs and screenshots/axe.
    Never publish JWT, provider raw text, secrets or PII.
 
-At Step 4 authoring handoff: implementation and diff review are complete;
+Historical Step 4 authoring checkpoint (superseded by the current acceptance ledger): implementation and diff review were complete;
 changed-file ESLint/diff results are recorded in the implementation plan.
 Component/browser/boundary/docs/typecheck/build checks, screenshots and axe are
 NOT_RUN. Prior Step 1-3 synthetic/local migration evidence remains historical.
 Owner-observed customer Widget rendering is not purchase/payment acceptance.
 `PURCHASE_PREPARATION_PASS`, `MAPPED_PURCHASE_WIDGET_PASS` and `PAYMENT_PASS` all
-remain NOT_RUN for the final real scenario. Steps 8–10/launch remain deferred.
+were NOT_RUN at that checkpoint. The later owner result records actual purchase
+and payment PASS for the intended stand/purchase. Steps 8–10/launch remain deferred.
 
 ## Compact program Step 8 integration seam
 
@@ -924,15 +955,115 @@ No production code, billing object, schema or generated API contract changed.
 The default browser URL served an old image, so it was not used for acceptance.
 The final suite used the ignored test-owned config
 `.harness/any709-step4.playwright.config.ts`, a temporary local Next dev server
-on port 3107 and intercepted API/SDK traffic. The complete commands, sandbox
-failures, dependency-version limitation and test artifacts are recorded in the
-[plan follow-up](../exec-plans/completed/ANY-709-implementation-plan.md#step-4-owner-authorized-automated-tests-2026-10-27).
-Manual QA, actual intended-agreement/acquiring behavior and payment remain
-NOT_RUN. No LBX call/payment, DB migration, container startup or build was run.
+on port 3107 and intercepted API/SDK traffic. Final totals and limits are in the
+[completed plan](../exec-plans/completed/ANY-709-implementation-plan.md#validation-evidence);
+the full pre-compaction execution record remains in Git at `2961577`.
+At that historical checkpoint manual QA, actual intended-agreement/acquiring
+behavior and payment were NOT_RUN. No LBX call/payment, DB migration, container
+startup or build was run in that checkpoint; the current ledger records later checks.
 
-The later [timeout-incident correction](../exec-plans/completed/ANY-709-implementation-plan.md#step-4-purchase-timeout-incident-and-correction-2026-10-27)
+The later [timeout-incident correction](../exec-plans/completed/ANY-709-implementation-plan.md#buy-timeout-correction)
 passed 227 component tests, 38 boundary/tooling tests and 10 synthetic browser
 tests, with no skips. The browser harness used webpack polling after the host
 file-watch limit prevented Turbopack startup; no global setting was changed.
-The working application was not rebuilt/restarted and actual provider/payment
-QA remains unperformed.
+At that correction's checkpoint the working application was not rebuilt/restarted
+and actual provider/payment QA was unperformed. Later deployment and owner
+payment evidence supersede that limitation.
+
+## Final review corrections and human acceptance
+
+Financial `proven_not_sent` is positive evidence from the completed typed
+`LbxCreateNotSent` path, with no HTTP task still running. Only this state permits
+a later explicit advance to claim the same operation with a fresh fence. It
+retains the original request (including agreement date), key, unknown timestamps,
++2h deadline and coalesced work item. There is no retry within that advance.
+A process crash or lost claim acknowledgement before persisting this evidence
+remains possible-send/UNKNOWN and GET-only. Empty GET, deadline expiry, HTTP 500,
+read/write timeout and cancellation never create no-send proof. A GET-only
+recovery cannot send even a proven-unsent command. No migration or evidence-trigger
+relaxation is required: the canonical state is stored in existing TEXT columns.
+
+The occupied business scope is `(user_id, product_id)`, not tariff ID. Different
+products may use supported selections of the same tariff. Inventory ignores a
+nonterminal same-tariff subscription only when its permanent local binding proves
+a different product in the same user/customer/account/provider scope, and fresh
+point reads prove that purchase's original agreement/seller/terms. Unknown,
+foreign or mismatching inventory still requires review; unsupported multi-service
+profiles remain rejected.
+
+Human acceptance must use the intended stand, with sanitized IDs/request IDs and
+observed results recorded against the tested commit:
+
+1. With a new verified Portal user and an existing LBX-linked user, open account
+   billing and purchase `proposal_ai`. Confirm exactly one correct LBX customer.
+2. Confirm the current LBX price and accepted terms, dedicated agreement with
+   seller 21, and subscription tariff 32/service 1/period 1. These are stand data,
+   never application constants.
+3. With multiple agreements (including another seller/default), open payment
+   Widget, select the displayed intended agreement and verify a usable payment
+   method targets it. The customer-wide SDK has no documented agreement ACL or
+   automatic selection parameter. Account-only view must still work.
+4. Reload, sign out/in and press Continue/Manage; confirm the same purchase,
+   agreement and subscription without duplicate CREATEs. Existing automated
+   fault tests cover UNKNOWN/no-send/concurrency without real LBX writes.
+5. Record `MAPPED_PURCHASE_WIDGET_PASS` only after target and real-method checks.
+   Actual payment is human-only; if omitted record `PAYMENT_NOT_RUN`. If performed,
+   confirm the intended agreement receives it. Portal must still grant no paid
+   access: authoritative access/enforcement belongs to later program steps.
+
+Real payment was performed by the owner and verified through the supplied
+provider evidence; the agent did not execute acquiring payment. Analyzer decisions and the
+line-scoped false-positive exception are documented in [Security](../SECURITY.md#any-709-analyzer-adjudication-pr-150).
+
+## Cabinet follow-up acceptance, 2026-10-27
+
+The owner approved a single cabinet Widget and compact owned-purchase cards.
+The following repeatable checklist describes the cabinet acceptance. Recorded
+results and outstanding independent review are in the current acceptance ledger;
+the owner does not need to repeat payment to validate readiness or refresh.
+
+1. Open `/ru/products/proposal_ai` as the existing test user. Confirm that the
+   prepared state is compact and that no Widget appears on product detail.
+2. Follow “Manage subscription”. Confirm the URL carries the original purchase
+   ID and the cabinet visibly selects that product. No payment request runs until
+   an explicit open. Confirm the proven agreement and seller after opening.
+3. Close and reopen with the main button, then use the owned card’s management
+   action. Both must show the same payment-capable Widget and agreement; only one
+   Widget may be mounted. Changing selection must close the previous one.
+4. Confirm the cabinet contains only this user’s accepted purchases, including
+   an unfinished purchase if one exists; no other catalog products. Open a detail
+   card and the “All products” link. Verify a fresh empty user sees no owned cards
+   but can explicitly view their billing account without a purchase.
+5. With multiple purchases, verify each selected purchase’s agreement/seller.
+   The LBX Widget is customer-wide: manually select the displayed agreement in it.
+   `demo_*` or other LBX agreements are not removed by this UX change.
+6. Verify the actual acquiring/top-up path in the agreed test environment and
+   record its result separately. The prior manual LBX-admin credit proves
+   activation, not Widget acquiring. `MAPPED_PURCHASE_WIDGET_PASS` is only an
+   evidence-ledger label in this runbook/QA result; it is not a setting or env var.
+   Do not declare payment PASS from a Portal prepared state.
+7. Check desktop/mobile layout and logout. Legal pages and consent remain draft;
+   the warning is intentional pending legal approval. Paid access/usage remain
+   deferred and are not inferred from an active billing subscription.
+
+### Owner payment result and refreshing the Widget
+
+On 2026-10-27, the owner completed a 100 RUB YooKassa top-up from the Widget on
+`50d833c`. Supplied LBX-admin and Widget-history screenshots show the credit on
+the intended `portal-8634d1993dea4260902b6aa003b5fff4` agreement, client 29,
+seller 21, and the resulting 100 RUB balance. This records
+`MAPPED_PURCHASE_WIDGET_PASS` for this stand/purchase; the payment was performed
+by the owner. It does not certify production launch or grant paid access.
+
+After completing payment, use "Refresh billing" above the open Widget if its
+balance/history or billing view has not updated. The same selected purchase is
+reverified on the server and a fresh Widget replaces the old one. If verification
+fails, resolve the displayed error before reopening. The customer-wide Widget
+may default to another agreement after refresh; select the displayed intended
+agreement again. No new subscription or payment is created by refreshing.
+
+The inspected LBX SDK 0.0.1 exposes no payment-completed callback to the Portal.
+Embedded acquiring return and its success UI are vendor-owned. Automatic refresh
+at the exact payment-completion point requires a supported LBX notification;
+the Portal does not infer payment/access from a browser event or inspect a
+third-party checkout's DOM.

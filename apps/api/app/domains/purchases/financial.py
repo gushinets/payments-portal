@@ -1,4 +1,4 @@
-"""Financial preparation transaction owner; original claims are never replayed."""
+"""Financial claims retain identity; only fenced proven-not-sent attempts may resume."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ from app.domains.purchases.contracts import (
     Purchase,
     PurchaseRefused,
 )
-from app.domains.purchases.service import _locked, _operation, accepted, read_purchase
+from app.domains.purchases.service import _locked, _operation, read_purchase
 from app.infrastructure.queries import purchases as queries
 from app.infrastructure.queries.billing_customers import recovery_work, open_customer_reviews
 from app.models import (
@@ -63,16 +63,27 @@ def claim_financial(
         operation = next(op for op in operations if op.create_operation_id == expected.id)
         if (
             row.state == IntentState.MANUAL_REVIEW
-            or operation.operation_state != State.PENDING
+            or operation.operation_state not in {State.PENDING, State.PROVEN_NOT_SENT}
             or operation.send_fence != expected.fence
-            or operation.unknown_since is not None
+            or operation.bound_external_object_id is not None
         ):
             return _operation(db, operation)
-        # Other locally unresolved purchases of this tariff cannot be bypassed by another product ID.
-        others = queries.other_held_purchases(db, purchase.user_id, purchase.id)
-        if len(others) >= queries.MAX_HELD_PURCHASES or any(
-            accepted(other).selection.tariff_id == purchase.accepted.selection.tariff_id for other in others
+        retry_unsent = operation.operation_state == State.PROVEN_NOT_SENT
+        if not retry_unsent and operation.unknown_since is not None:
+            return _operation(db, operation)
+        work = recovery_work(db, operation.create_operation_id)
+        if retry_unsent and (
+            operation.unknown_since is None
+            or operation.recovery_hint_schema_version != FINANCIAL_HINT_SCHEMA
+            or not isinstance(operation.recovery_hint_document, dict)
+            or operation.recovery_hint_document.get("request") != request_document
+            or work is None
+            or work.payload_document.get("candidate_id") is not None
         ):
+            raise PurchaseRefused("purchase_history_unproven", 409)
+        # Business uniqueness is the locked user/product hold, not the tariff.
+        others = queries.other_held_purchases(db, purchase.user_id, purchase.id)
+        if len(others) >= queries.MAX_HELD_PURCHASES:
             raise PurchaseRefused("purchase_scope_occupied", 409)
         if operation.operation_kind == Kind.SUBSCRIPTION and not any(
             op.operation_kind == Kind.AGREEMENT and op.operation_state == State.BOUND for op in operations
@@ -81,16 +92,17 @@ def claim_financial(
         now = utc_now()
         operation.send_fence = uuid4()
         operation.operation_state = State.POSSIBLE_SEND
-        operation.unknown_since = now
-        operation.unknown_recovery_deadline_at = now + RECOVERY_WINDOW
-        operation.recovery_hint_schema_version = FINANCIAL_HINT_SCHEMA
-        operation.recovery_hint_document = {
-            "request": request_document,
-            "purchase_intent_id": str(purchase.id),
-            "accepted_fingerprint": purchase.accepted.offer.fingerprint,
-        }
-        db.add(
-            BillingWorkItem(
+        if not retry_unsent:
+            operation.unknown_since = now
+            operation.unknown_recovery_deadline_at = now + RECOVERY_WINDOW
+            operation.recovery_hint_schema_version = FINANCIAL_HINT_SCHEMA
+            operation.recovery_hint_document = {
+                "request": request_document,
+                "purchase_intent_id": str(purchase.id),
+                "accepted_fingerprint": purchase.accepted.offer.fingerprint,
+            }
+        if work is None:
+            work = BillingWorkItem(
                 work_kind="external_create_recovery",
                 scope_kind="create_operation",
                 scope_reference=str(operation.create_operation_id),
@@ -104,7 +116,11 @@ def claim_financial(
                 work_state="pending",
                 attempt_count=1,
             )
-        )
+            db.add(work)
+        else:
+            work.work_state = "pending"
+            work.next_attempt_at = operation.unknown_recovery_deadline_at
+            work.attempt_count += 1
         row.state = IntentState.PREPARING
         row.state_updated_at = now
         db.flush()
@@ -113,13 +129,48 @@ def claim_financial(
         return result
 
 
+def proven_not_sent(factory: SessionFactory, purchase: Purchase, expected: FinancialOperation) -> None:
+    """Only a completed typed no-send result, never a GET or expiry, permits resume."""
+    with factory() as db:
+        row = _locked(db, purchase)
+        op = next(op for op in queries.operations(db, purchase.id, lock=True) if op.create_operation_id == expected.id)
+        work = recovery_work(db, op.create_operation_id)
+        if (
+            not expected.may_send
+            or expected.fence is None
+            or op.send_fence != expected.fence
+            or op.operation_state not in {State.POSSIBLE_SEND, State.UNKNOWN}
+            or op.bound_external_object_id is not None
+            or op.unknown_since is None
+            or op.recovery_hint_schema_version != FINANCIAL_HINT_SCHEMA
+            or work is None
+            or work.payload_document.get("candidate_id") is not None
+            or row.state == IntentState.MANUAL_REVIEW
+        ):
+            return
+        op.operation_state = State.PROVEN_NOT_SENT
+        op.send_fence = uuid4()
+        work.work_state = "done"
+        work.payload_document = {
+            **work.payload_document,
+            "last_failure": {"code": "lbx_create_not_sent", "reason": "network"},
+        }
+        row.state = IntentState.PREPARING
+        row.state_updated_at = utc_now()
+        db.commit()
+
+
 def record_receipt(factory: SessionFactory, purchase: Purchase, expected: FinancialOperation, provider_id: int) -> None:
     if type(provider_id) is not int or not 0 < provider_id < 10**20:
         raise ValueError("invalid provider receipt")
     with factory() as db:
         _locked(db, purchase)
         op = next(op for op in queries.operations(db, purchase.id, lock=True) if op.create_operation_id == expected.id)
-        if op.send_fence != expected.fence or not expected.may_send:
+        if (
+            op.send_fence != expected.fence
+            or not expected.may_send
+            or op.operation_state not in {State.POSSIBLE_SEND, State.UNKNOWN}
+        ):
             raise PurchaseRefused("purchase_pending", 409)
         work = recovery_work(db, op.create_operation_id)
         if work is None or work.payload_document.get("candidate_id") not in {None, str(provider_id)}:
@@ -164,6 +215,8 @@ def financial_pending(
             return  # A stale failure cannot demote a newer proven result.
         if conflict:
             _review(db, row, op, "financial_binding_conflict")
+        elif op.operation_state == State.PROVEN_NOT_SENT:
+            return  # A failed GET cannot erase completed no-send evidence.
         elif op.operation_state != State.BOUND:
             if op.unknown_recovery_deadline_at and utc_now() >= as_utc(op.unknown_recovery_deadline_at):
                 _review(db, row, op, "external_create_outcome_unknown:" + op.operation_kind.value)
@@ -189,7 +242,10 @@ def changed_unsent_terms(factory: SessionFactory, purchase: Purchase) -> None:
     with factory() as db:
         row = _locked(db, purchase)
         operations = queries.operations(db, purchase.id, lock=True)
-        if any(op.unknown_since is not None or op.bound_external_object_id for op in operations):
+        if any(
+            op.operation_state not in {State.PENDING, State.PROVEN_NOT_SENT} or op.bound_external_object_id
+            for op in operations
+        ):
             target = next(op for op in operations if op.operation_kind == Kind.SUBSCRIPTION)
             _review(db, row, target, "accepted_terms_changed_after_preparation")
         else:
@@ -214,7 +270,11 @@ def _bind_financial(
         op = next(op for op in operations if op.create_operation_id == expected.id)
         if op.send_fence != expected.fence:
             raise PurchaseRefused("purchase_pending", 409)
-        if op.unknown_since is None or op.recovery_hint_schema_version != FINANCIAL_HINT_SCHEMA:
+        if (
+            op.operation_state in {State.PENDING, State.PROVEN_NOT_SENT}
+            or op.unknown_since is None
+            or op.recovery_hint_schema_version != FINANCIAL_HINT_SCHEMA
+        ):
             raise PurchaseRefused("purchase_history_unproven", 409)
         if op.bound_external_object_id not in {None, str(provider_id)}:
             raise PurchaseRefused("purchase_review_required", 409)

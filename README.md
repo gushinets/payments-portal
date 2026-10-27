@@ -19,12 +19,15 @@ work. Platform Kernel code is maintained in the separate
 The repository remains pre-production on the surface established by ANY-636 4F. All thirteen ANY-636 steps are marked `done` in the
 [completed plan](docs/exec-plans/completed/ANY-636-implementation-plan.md).
 ANY-709 Step 1 adds real source reads, direct links and current offers; Step 2
-adds explicit verified-email customer-only Widget viewing, pending human
-validation. Step 3 adds accepted-purchase APIs, financial preparation/recovery
+adds explicit verified-email customer-only Widget viewing, verified on the test
+stand. Step 3 adds accepted-purchase APIs, financial preparation/recovery
 and verified payment bootstrap, with focused synthetic tests passing and the local
 development migration applied. Step 4 implements localized Buy/Continue/Manage, explicit
 review/consent and the shared payment-capable Widget lifecycle. Step 4 targeted component/boundary/desktop/mobile synthetic tests PASS;
-final real purchase/payment acceptance remains NOT_RUN. Confirmed paid access
+the owner completed the intended-agreement Widget/YooKassa test payment.
+Independent final review remains pending; the
+[current acceptance ledger](docs/exec-plans/completed/ANY-709-implementation-plan.md#current-acceptance-and-final-review)
+records evidence and limits. Confirmed paid access
 and actual usage/quota integration remain deferred. There are no production direct-provider
 subscribers or subscriptions to migrate. The fifteen target billing tables
 start empty; the link and explicit customer paths now populate their owned
@@ -333,9 +336,10 @@ repository. No direct-provider runtime exists in this repository.
   verified email, paired customer identity and Client readiness. It requires no
   product price or subscription; see the runbook for human acceptance.
 - Step 3 APIs can prepare purchases and authorize verified payment presentation;
-  focused automated checks and the local development migration have passed; real
-  purchase/payment QA remains pending. Step 4 browser Buy/Continue/Manage is
-  implemented with targeted synthetic tests PASS; paid-access state and usage/quota await their
+  automated checks, the local development migration and recorded owner
+  purchase/payment QA have passed. Step 4 browser Buy/Continue/Manage and SDK
+  readiness/error handling are implemented and tested; independent final review
+  remains pending. Paid-access state and usage/quota await their
   owning external-billing/Kernel integration steps;
   provider-dependent work remains subject to Phase 0 gates.
 - Legal documents are drafts until reviewed and approved by counsel.

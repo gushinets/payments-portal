@@ -5,6 +5,10 @@ const FAILURE_CATEGORY = "consistency_invariant_violation";
 const OPERATION = "api_contract_validation";
 const CONTRACT_EVENT_MESSAGE = "Invalid JSON in successful API response";
 const GENERIC_EVENT_MESSAGE = "Frontend error";
+const WIDGET_OPERATION = "billing_widget_load";
+const WIDGET_EVENT_MESSAGE = "Billing Widget failed to load";
+const WIDGET_FAILURE_REASONS = new Set(["host_timeout", "ready_timeout", "script_load_failed", "sdk_failed"]);
+export type WidgetFailureReason = "host_timeout" | "ready_timeout" | "script_load_failed" | "sdk_failed";
 const CONTRACT_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9_.-]{0,127}$/;
 const DISABLED_INTEGRATION_NAMES = new Set([
   "BrowserSession",
@@ -88,13 +92,26 @@ export function reportApiContractError(
   }
 }
 
+export function reportBillingWidgetFailure(requestId: string, reason: WidgetFailureReason): void {
+  const tags = widgetFailureTags(requestId, reason);
+  // These fixed fields also work when optional remote reporting is disabled.
+  console.warn("billing_widget_load_failed", tags);
+  if (!isSentryEnabled()) return;
+  try {
+    Sentry.captureException(new Error(WIDGET_EVENT_MESSAGE), { tags });
+  } catch {
+    // Optional reporting cannot prevent the safe error/retry presentation.
+  }
+}
+
 export function sanitizeSentryEvent(
   event: Sentry.ErrorEvent
 ): Sentry.ErrorEvent {
   const isContractEvent = event.tags?.operation === OPERATION;
-  const genericMessage = isContractEvent
-    ? CONTRACT_EVENT_MESSAGE
-    : GENERIC_EVENT_MESSAGE;
+  const isWidgetEvent = event.tags?.operation === WIDGET_OPERATION;
+  let genericMessage = GENERIC_EVENT_MESSAGE;
+  if (isContractEvent) genericMessage = CONTRACT_EVENT_MESSAGE;
+  else if (isWidgetEvent) genericMessage = WIDGET_EVENT_MESSAGE;
   const sanitizedEvent: Sentry.ErrorEvent = {
     type: event.type,
     ...(event.event_id !== undefined ? { event_id: event.event_id } : {}),
@@ -130,9 +147,21 @@ export function sanitizeSentryEvent(
           ? contractName(contract)
           : "unknown_contract"
     };
+  } else if (isWidgetEvent) {
+    sanitizedEvent.tags = widgetFailureTags(event.tags?.request_id, event.tags?.reason);
   }
 
   return sanitizedEvent;
+}
+
+function widgetFailureTags(requestId: unknown, reason: unknown): Record<string, string> {
+  return {
+    service: SERVICE,
+    operation: WIDGET_OPERATION,
+    stage: "widget_load",
+    reason: typeof reason === "string" && WIDGET_FAILURE_REASONS.has(reason) ? reason : "sdk_failed",
+    request_id: typeof requestId === "string" && /^[A-Za-z0-9._-]{1,128}$/.test(requestId) ? requestId : "unavailable"
+  };
 }
 
 function sanitizeException(

@@ -49,6 +49,39 @@ export type AcceptDocumentResponse = {
 };
 
 /**
+ * AccountPurchaseResponse
+ */
+export type AccountPurchaseResponse = {
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Product Id
+     */
+    product_id: string;
+    /**
+     * Purchase Intent Id
+     */
+    purchase_intent_id: string;
+    state: PurchaseIntentState;
+};
+
+/**
+ * AccountPurchasesResponse
+ */
+export type AccountPurchasesResponse = {
+    /**
+     * Next Cursor
+     */
+    next_cursor: string | null;
+    /**
+     * Purchases
+     */
+    purchases: Array<AccountPurchaseResponse>;
+};
+
+/**
  * CatalogMoney
  */
 export type CatalogMoney = {
@@ -1199,6 +1232,46 @@ export type ListRequiredDocumentsApiLegalRequiredDocumentsGetResponses = {
 };
 
 export type ListRequiredDocumentsApiLegalRequiredDocumentsGetResponse = ListRequiredDocumentsApiLegalRequiredDocumentsGetResponses[keyof ListRequiredDocumentsApiLegalRequiredDocumentsGetResponses];
+
+export type AccountPurchasesApiPurchaseIntentsGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+    };
+    path?: never;
+    query?: {
+        /**
+         * After
+         */
+        after?: string | null;
+        /**
+         * Limit
+         */
+        limit?: number;
+    };
+    url: '/api/purchase-intents';
+};
+
+export type AccountPurchasesApiPurchaseIntentsGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HTTPValidationError;
+};
+
+export type AccountPurchasesApiPurchaseIntentsGetError = AccountPurchasesApiPurchaseIntentsGetErrors[keyof AccountPurchasesApiPurchaseIntentsGetErrors];
+
+export type AccountPurchasesApiPurchaseIntentsGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: AccountPurchasesResponse;
+};
+
+export type AccountPurchasesApiPurchaseIntentsGetResponse = AccountPurchasesApiPurchaseIntentsGetResponses[keyof AccountPurchasesApiPurchaseIntentsGetResponses];
 
 export type ConfirmApiPurchaseIntentsPostData = {
     body: PurchaseConfirmRequest;

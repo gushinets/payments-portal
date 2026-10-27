@@ -7,6 +7,7 @@ import { bootstrapWidget } from "@/shared/api/billing";
 import { subscribeToSessionChanges, useSessionOperation } from "@/shared/session/use-session-operation";
 import { billingErrorKey, newRequestId, safeRequestId, type BillingErrorKey } from "./errors";
 import { mountOfficialWidget } from "./official-widget-sdk";
+import { reportBillingWidgetFailure, type WidgetFailureReason } from "@/shared/observability/sentry";
 
 type WidgetState =
   | { status: "closed" | "loading" }
@@ -72,10 +73,13 @@ export function useBillingWidget(userId: string, emailVerified: boolean) {
         return;
       }
       const id = response.request_id || correlationId;
-      const sdkFailure = () => {
-        if (operation.isCurrent()) {
+      let failureReported = false;
+      const sdkFailure = (reason: WidgetFailureReason = "sdk_failed") => {
+        if (operation.isCurrent() && !failureReported) {
+          failureReported = true;
           dispose.current?.();
           dispose.current = undefined;
+          reportBillingWidgetFailure(id, reason);
           setState({ status: "error", message: "sdk", requestId: id });
         }
       };

@@ -12,9 +12,10 @@ selects deployment or contour.
 
 The current `ru` surface is product-centric: product-first home and discovery,
 detail pages keyed by Kernel `product_id`, presentation-only pricing
-navigation, direct auth entry, and an authenticated cabinet led by published
-products. Identity/verification/logout context supports the per-product
-commercial/access/usage/action slots. Account/session/email-verification,
+navigation, direct auth entry, and an authenticated cabinet led by the user’s
+held accepted purchases. Brief cards link to product details and the full
+catalog remains one link away. Identity/verification/logout context supports
+one wide billing Widget with an explicit purchase selection. Account/session/email-verification,
 password-recovery and legal-acceptance flows remain implemented. Published
 immutable commercial terms are displayed; paid access remains unknown and
 actual usage/quota unavailable. The repository remains pre-production on the
@@ -25,12 +26,14 @@ offers; genuine
 Kernel conformance and sales remain gated. There are no production direct-
 provider subscribers or subscriptions to migrate.
 ANY-709 Step 2 adds independently optional FIO and explicit verified-email
-account-only Widget viewing, pending human validation. One durable customer is
+account-only Widget viewing, verified on the test stand. One durable customer is
 shared across products. This action needs no offer or subscription and does not
 authorize purchases or paid access. ANY-709 Steps 3–4 add immutable purchase
 consent, fenced preparation/recovery and localized Buy/Continue/Manage with a
-verified payment-capable Widget. Step 4 targeted synthetic tests PASS; final real
-purchase/payment acceptance is NOT_RUN; paid access is deferred.
+verified payment-capable Widget. Automated checks and the recorded owner
+intended-agreement Widget/YooKassa test payment passed; independent final review
+remains pending. Paid access is deferred. See the
+[current acceptance ledger](exec-plans/completed/ANY-709-implementation-plan.md#current-acceptance-and-final-review).
 
 The former CloudPayments/direct-provider implementation and Portal-owned
 catalog/order/payment/subscription/entitlement runtime have been physically
@@ -76,10 +79,12 @@ only their source-read/admission strategy.
   only: a not-ready state, localized metadata and safe home/products links,
   without commercial facts, purchase controls or API calls.
 - `/[locale]/account` as the direct sign-in/registration entry and authenticated
-  product-centric cabinet, with compact identity context and one card per
-  published product, showing commercial terms and independent unknown-access
-  and unavailable-usage states; the header retains its sign-in modal. These
-  account-only states are absent from public catalog/detail pages and home.
+  cabinet. Only owned held accepted purchases appear as compact cards; unfinished
+  purchases remain resumable. No published-but-unpurchased product is listed.
+  A full-catalog link is always available. A product management link selects its
+  purchase in the cabinet; every payment action uses fresh original-purchase
+  verification before opening the one wide Widget. Account-only viewing remains
+  available without a purchase or healthy source catalog.
 - The approved RU mockup's product/visual direction encoded by evolved Bundle 3
   and applied across the active Portal: navy/amber, flat dark panels, thin
   borders, compact radii/spacing and Manrope (the ANY-636 basic Cyrillic coverage
@@ -88,7 +93,7 @@ only their source-read/admission strategy.
 - Password-based registration, sessions, logout, and the existing
   `/[locale]/forgot-password`, `/[locale]/reset-password`, and
   `/[locale]/verify-email` flows. Region Resolver confirmation is not implemented.
-- Product/account Buy/Continue/Manage with live review, explicit draft legal
+- Product-page Buy/Continue with live review, explicit draft legal
   consent, original held-purchase recovery and verified payment bootstrap. The
   UI distinguishes unknown from no purchase and awaits financial verification.
   One disposable SDK lifecycle replaces account/payment views and rejects late
@@ -124,7 +129,8 @@ trust boundary under ANY-541.
 - Genuine enablement of ANY-504 Step 6's live-source clients and immutable
   approved offer mappings, subject to real Kernel/LBX and approval gates.
   ANY-664 records the historical Step 6 baseline. ANY-709 implements live catalog
-  browsing and Step 7 purchase/payment UI with final real acceptance pending;
+  browsing and Step 7 purchase/payment UI with recorded owner payment QA complete
+  and independent final review pending;
   there is no periodic source-catalog mirror. Operating reconciliation/recovery
   in Step 8; confirmed paid-access projection and
   delivery in Step 9; actual usage/quota integration in Step 10. These are
@@ -162,4 +168,5 @@ trust boundary under ANY-541.
 - Pricing navigation and its unavailable placeholder establish presentation
   topology only. Published offer terms use the ANY-504 Step 6 Portal path;
   current sellability and genuine enablement retain the source/approval gates;
-  ANY-709 implements Step 7 purchase/Widget behavior, pending final human acceptance.
+  ANY-709 implements and tests Step 7 purchase/Widget behavior, with recorded
+  owner payment QA complete and independent final review pending.

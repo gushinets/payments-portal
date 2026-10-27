@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Annotated, Awaitable, Literal, TypeVar
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
@@ -26,6 +27,7 @@ from app.domains.purchases.contracts import (
     PurchaseMeaning,
 )
 from app.domains.purchases import service
+from app.domains.purchases.account import list_account_purchases
 from app.http.dependencies import get_session_factory
 from app.models import PurchaseIntentState
 
@@ -97,6 +99,18 @@ class PurchaseIntentResponse(BaseModel):
 
 class CurrentPurchaseResponse(BaseModel):
     purchase: PurchaseIntentResponse | None
+
+
+class AccountPurchaseResponse(BaseModel):
+    purchase_intent_id: UUID
+    product_id: str
+    state: PurchaseIntentState
+    created_at: datetime
+
+
+class AccountPurchasesResponse(BaseModel):
+    purchases: list[AccountPurchaseResponse]
+    next_cursor: UUID | None
 
 
 def present_review(
@@ -232,6 +246,29 @@ async def current(
         run_in_threadpool(service.current_purchase, factory, settings, bearer(authorization), product_id)
     )
     return CurrentPurchaseResponse(purchase=present_purchase(purchase) if purchase else None)
+
+
+@router.get("/purchase-intents", response_model=AccountPurchasesResponse)
+async def account_purchases(
+    response: Response,
+    factory: Annotated[SessionFactory, Depends(get_session_factory)],
+    after: UUID | None = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    authorization: Annotated[str | None, Header()] = None,
+) -> AccountPurchasesResponse:
+    response.headers["Cache-Control"] = "no-store"
+    items, next_cursor = await _boundary(
+        run_in_threadpool(list_account_purchases, factory, settings, bearer(authorization), after=after, limit=limit)
+    )
+    return AccountPurchasesResponse(
+        purchases=[
+            AccountPurchaseResponse(
+                purchase_intent_id=item.id, product_id=item.product_id, state=item.state, created_at=item.created_at
+            )
+            for item in items
+        ],
+        next_cursor=next_cursor,
+    )
 
 
 @router.get("/purchase-intents/{purchase_id}", response_model=PurchaseIntentResponse)

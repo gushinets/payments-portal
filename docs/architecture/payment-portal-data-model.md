@@ -220,8 +220,8 @@ PostgreSQL deadline is exactly two hours after `unknown_since`, and recovery
 hint schema/document values are paired. ANY-709 Step 2 permanently limits
 customer create to one operation per customer, including after resolution.
 Nullable `send_fence` records the current owner; `pending`, `possible_send`,
-`unknown`, `bound` and `manual_review` use the canonical Python vocabulary over
-TEXT storage. The customer send claim atomically records its fence, per-attempt
+`unknown`, `proven_not_sent`, `bound` and `manual_review` use the canonical Python
+vocabulary over TEXT storage. The customer send claim atomically records its fence, per-attempt
 two-hour deadline and one coalesced `external_create_recovery` work item. Its
 existing paired lease fields protect active account-customer sends, and
 `attempt_count` counts claimed attempts. Under the owner's 2026-10-27 amendment,
@@ -232,7 +232,11 @@ the current fence. Financial operations have a unique intent/kind identity and a
 account/kind/provider-object binding. Their account/customer composite FK prevents
 cross-connection ownership. Financial evidence guards prevent deletion, identity
 changes, deadline/request replacement and resetting a possibly sent operation to
-pending. Customer retry semantics remain separate. No background worker is enabled.
+pending. A completed typed no-send result may persist `proven_not_sent`; a later
+explicit advance claims the same immutable request/key/deadline with a fresh fence
+and reused work item. UNKNOWN, empty GET and deadline expiry never authorize this
+transition or a replay. Customer retry semantics remain separate. No background
+worker is enabled.
 
 `billing_purchase_scope_holds` has `(user_id, product_id)` as its primary key,
 a unique intent and a composite FK to its exact purchase scope. A linked unpaid

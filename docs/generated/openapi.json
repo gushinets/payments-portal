@@ -62,6 +62,64 @@
         "title": "AcceptDocumentResponse",
         "type": "object"
       },
+      "AccountPurchaseResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "product_id": {
+            "title": "Product Id",
+            "type": "string"
+          },
+          "purchase_intent_id": {
+            "format": "uuid",
+            "title": "Purchase Intent Id",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/PurchaseIntentState"
+          }
+        },
+        "required": [
+          "purchase_intent_id",
+          "product_id",
+          "state",
+          "created_at"
+        ],
+        "title": "AccountPurchaseResponse",
+        "type": "object"
+      },
+      "AccountPurchasesResponse": {
+        "properties": {
+          "next_cursor": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "purchases": {
+            "items": {
+              "$ref": "#/components/schemas/AccountPurchaseResponse"
+            },
+            "title": "Purchases",
+            "type": "array"
+          }
+        },
+        "required": [
+          "purchases",
+          "next_cursor"
+        ],
+        "title": "AccountPurchasesResponse",
+        "type": "object"
+      },
       "CatalogMoney": {
         "properties": {
           "connection_amount": {
@@ -1912,6 +1970,82 @@
       }
     },
     "/api/purchase-intents": {
+      "get": {
+        "operationId": "account_purchases_api_purchase_intents_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "After"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountPurchasesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Account Purchases",
+        "tags": [
+          "purchases"
+        ]
+      },
       "post": {
         "operationId": "confirm_api_purchase_intents_post",
         "parameters": [

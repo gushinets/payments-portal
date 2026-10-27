@@ -147,8 +147,8 @@
       "emailUnverified": "Email not verified"
     },
     "products": {
-      "title": "Products",
-      "description": "Explore enabled products. Open product details for current billing terms; subscription, access and usage information will be available later.",
+      "title": "My products",
+      "description": "Your accepted purchases. Check payment and subscription status in billing.",
       "detailAction": "View product details",
       "state": {
         "commercial": {
@@ -166,7 +166,14 @@
       },
       "action": {
         "description": "Open the product information page."
-      }
+      },
+      "allProducts": "All products",
+      "loading": "Loading your products…",
+      "empty": "No accepted purchases yet. Choose a product in the catalog.",
+      "unavailable": "Your purchases could not be loaded. You can open billing separately.",
+      "loadMore": "Load more",
+      "prepared": "Subscription prepared",
+      "pending": "Purchase preparation is incomplete"
     }
   },
   "PasswordReset": {
@@ -262,7 +269,7 @@
     "ambiguous": "Unavailable: more than one approved offer exists for this product.",
     "simulated": "Technical product source: development mock",
     "unverified": "Current LBX offer — subject to confirmation",
-    "previewNote": "Current billing values are shown. Purchasing is not available yet; viewing an offer does not grant access.",
+    "previewNote": "Current billing values are shown. Purchase terms require separate confirmation; viewing an offer does not grant access.",
     "detailsRequired": "Open details to check the current offer.",
     "unmapped": "Purchasing is unavailable: no billing offer is linked.",
     "unsupported": "Purchasing is unavailable: these offer conditions are not supported.",
@@ -281,7 +288,10 @@
     "prepaid": "Prepaid",
     "paymentUnspecified": "See the approved terms",
     "tax": "Tax treatment",
-    "taxValues": { "included": "Included in the amount", "not_applicable": "Not applicable" },
+    "taxValues": {
+      "included": "Included in the amount",
+      "not_applicable": "Not applicable"
+    },
     "periodAnchors": {
       "calendar_month": "By calendar month",
       "instance_start": "From the instance start",
@@ -390,8 +400,10 @@
   },
   "Billing": {
     "title": "Billing details",
-    "description": "Open your billing account to view its details. Paid access has not yet been derived.",
+    "description": "One billing account for all your products. Select a purchase for payment; its agreement and seller are verified before opening.",
     "open": "Open billing",
+    "refresh": "Refresh billing",
+    "refreshHint": "After completing payment, refresh billing to see your current balance and payment history.",
     "close": "Close billing",
     "loading": "Opening billing…",
     "frameTitle": "Billing account",
@@ -418,7 +430,13 @@
       "financialPending": "The financial operation is unresolved. Check the original purchase or continue recovery; do not start a replacement."
     },
     "paymentTarget": "Pay only the intended agreement {agreement}, seller {seller}.",
-    "paymentTargetNote": "This is a customer-wide billing view. Select the stated agreement in the widget; no product filter is applied."
+    "paymentTargetNote": "This is a customer-wide billing view. Select the stated agreement in the widget; no product filter is applied.",
+    "selectedPurchase": "Selected purchase",
+    "accountView": "View account without selecting a purchase",
+    "selectionUnavailable": "The selected purchase could not be verified. Select it from the list or open the product page.",
+    "purchaseOption": "{product} · purchase {id}",
+    "selectedProduct": "Selected product: {product}",
+    "preparationRequired": "Complete purchase preparation on the product page first."
   },
   "Purchase": {
     "title": "Product billing",
@@ -441,7 +459,7 @@
     "confirmationUncertain": "Confirmation may have completed. Check saved status or retry this same confirmation; its accepted terms will not change.",
     "continue": "Continue",
     "recover": "Continue recovery",
-    "manage": "Manage / pay",
+    "manage": "Manage subscription",
     "termsChanged": "Terms changed before preparation. Review the current offer and consent again.",
     "pending": "Preparation is unresolved. Continue with this purchase; no replacement will be created.",
     "reviewRequired": "This purchase needs review. Keep its reference when contacting support.",
@@ -455,10 +473,11 @@
       "created": "Purchase accepted. Continue preparation.",
       "preparing": "Preparation is in progress. Continue to check safely.",
       "awaiting_external_result": "The billing outcome is unknown. The original purchase remains reserved.",
-      "linked": "The subscription is prepared. Open Manage / pay for verified billing.",
+      "linked": "Subscription prepared",
       "resolved_no_external_effect": "This purchase was resolved without an external effect.",
       "failed_before_external_effect": "This purchase stopped before any financial creation.",
       "manual_review": "The purchase needs recovery or operator review."
-    }
+    },
+    "managedInAccount": "Payment and subscription management are available in your account."
   }
 }

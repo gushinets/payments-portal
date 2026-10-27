@@ -2,6 +2,7 @@
 
 import type {
   CurrentPurchaseResponse,
+  AccountPurchasesResponse,
   PurchaseConfirmRequest,
   PurchaseIntentResponse,
   PurchaseReviewRequest,
@@ -9,6 +10,11 @@ import type {
 } from "@/generated/api-contracts/types.gen";
 import { getJson, postJson } from "./transport";
 import { billingRequestTimeoutMs } from "./billing-policy";
+
+export function accountPurchases(token: string, requestId: string, after?: string) {
+  const query = after ? `?after=${encodeURIComponent(after)}` : "";
+  return getJson<AccountPurchasesResponse>(`/api/purchase-intents${query}`, token, "AccountPurchasesResponse", { "X-Request-ID": requestId });
+}
 
 export function reviewPurchase(token: string, productId: string, requestId: string) {
   const request: PurchaseReviewRequest = { product_id: productId };

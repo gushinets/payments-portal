@@ -20,9 +20,10 @@ source clients and historical v1 publication. ANY-709 Step 1 now supplies
 normal LBX configuration, direct immutable product links and source-backed
 catalog/current-offer reads; genuine Kernel conformance and production enablement remain gated.
 ANY-709 Step 3 adds accepted-purchase APIs and financial preparation/recovery,
-with focused synthetic/local QA recorded and real purchase/payment validation pending.
+with automated QA and recorded owner test-payment validation complete.
 Step 4 adds localized product/account Buy/Continue/Manage and a shared payment-capable
-Widget controller; targeted synthetic tests PASS, with final real acceptance pending. Billing lifecycle
+Widget controller; automated and intended-agreement owner payment QA passed,
+with independent final review pending. Billing lifecycle
 workers and paid access remain later work. Final 4F
 verification and human screenshot/intent acceptance remain pending.
 
@@ -125,8 +126,9 @@ time permits another POST. Point proof of the original customer/seller/agreement
 and effective subscription terms gates the existing bootstrap's optional payment
 presentation. Its initial subscription projection is `unverified` financially,
 with no paid-trust interval, grant or access-primary selection. Focused synthetic
-tests and the local development migration have passed; real prepared-subscription/
-payment acceptance remains NOT_RUN.
+tests, the local development migration, original source purchase proof and the
+owner's intended-agreement test payment have passed; independent final review
+remains pending. The current acceptance ledger records their scope and limits.
 See the [Step 3 runbook](docs/engineering/ANY-709-billing-runbook.md#purchase-api-and-financial-recovery-step-3).
 
 ## Current domains and API
@@ -173,14 +175,19 @@ direct sign-in/registration and the product-centric authenticated cabinet; the
 header sign-in modal is retained. Product cards open local detail pages, and
 account CTAs enter `/[locale]/account`. Verified product/account controls review,
 confirm and resume the original held purchase; no product-execution URL is fabricated.
-Home, catalog, product detail and the authenticated cabinet read published
-products through the Portal catalog API. Listing reads enabled Kernel products;
+Home, catalog and product detail read published products through the Portal
+catalog API. The cabinet instead lists the authenticated user’s held accepted
+purchases from PostgreSQL through bounded `GET /api/purchase-intents` pages; it
+never substitutes the public catalog for owned inventory. Listing reads enabled Kernel products;
 selected detail/review reads current LBX terms. Detail routes use Kernel
 `product_id`; PostgreSQL preserves immutable links and accepted purchase history. The former static
 `document-summary` and `prompt-optimizer` slugs belong to the historical 4F
-presentation and are not the current catalog identity source. Account cards
-retain independent unknown-access and unavailable-usage slots for Steps 9–10;
-public pages show commercial terms without these account-only statuses.
+presentation and are not the current catalog identity source. Brief owned cards
+link to product details; incomplete accepted purchases remain resumable. Product
+details own review, consent and preparation. Prepared purchases link to
+`/account?purchase=<id>#billing`; the cabinet owns one wide disposable Widget.
+Every payment entry uses the same original-purchase bootstrap and fresh proof.
+Payment/access reconciliation and usage remain deferred to Steps 8–10.
 
 `/pricing` and public Pricing navigation are presentation-only: localized
 metadata, an honest unavailable/not-ready state and home/products links. The

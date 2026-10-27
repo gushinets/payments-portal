@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 
@@ -93,6 +93,7 @@ class FinancialOperation:
     may_send: bool = False
     last_failure: tuple[int | None, int | None, str] | None = None
     last_failure_code: str | None = None
+    agreement_create_date: date | None = None
 
 
 @dataclass(frozen=True)

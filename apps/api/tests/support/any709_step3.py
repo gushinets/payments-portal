@@ -26,6 +26,7 @@ class PurchaseTransport:
         self.hide: set[str] = set()
         self.pool: Any = None
         self.before_offer: Any = None
+        self.period_lengths = {901: 1}
 
     def kernel(self, request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=manifest_fixture())
@@ -49,21 +50,23 @@ class PurchaseTransport:
                 self.customer = {"user_id": 345, "outer_id": body["outer_id"]}
                 return self.response({"user_id": 345}, status=201)
             if path == "/agreements":
-                self.agreements.append({**body, "agreement_id": 456, "agreement_link": ""})
-                value = {"agreement_id": 456}
+                agreement_id = 456 + len(self.agreements)
+                self.agreements.append({**body, "agreement_id": agreement_id, "agreement_link": ""})
+                value = {"agreement_id": agreement_id}
             elif path == "/subscriptions":
-                assert body["period_id"] == 901 and "subscription_start_date" not in body
+                assert body["period_id"] in self.period_lengths and "subscription_start_date" not in body
                 assert body["activate_by_balance"] is True and body["demo_period_length"] == 0
                 assert body["activate_manually"] is False
                 assert body["services"] == [{"tariff_service_id": 1001, "multiplicator": 1}]
+                subscription_id = 567 + len(self.subscriptions)
                 self.subscriptions.append(
                     {
-                        "subscription_id": 567,
+                        "subscription_id": subscription_id,
                         "agreement_id": body["agreement_id"],
                         "tariff_id": body["tariff_id"],
                         "period_id": body["period_id"],
                         "period_type": 3,
-                        "period_length": 1,
+                        "period_length": self.period_lengths[body["period_id"]],
                         "state": -2,
                         "current_blocking": 0,
                         "is_demo": False,
@@ -86,7 +89,7 @@ class PurchaseTransport:
                         ],
                     }
                 )
-                value = {"subscription_id": 567}
+                value = {"subscription_id": subscription_id}
             else:
                 raise AssertionError(path)
             if self.fail_create == path:

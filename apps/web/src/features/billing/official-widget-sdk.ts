@@ -1,6 +1,7 @@
 "use client";
 
 import type { WidgetBootstrapResponse } from "@/generated/api-contracts/types.gen";
+import type { WidgetFailureReason } from "@/shared/observability/sentry";
 
 // One SDK load per isolated browsing context. Remote code never shares the
 // Portal origin/session storage. Removing the frame destroys its SDK memory;
@@ -21,18 +22,35 @@ window.addEventListener("message", function connect(event) {
   port.onmessage = function receive(event) {
     port.onmessage = null;
     let options = event.data;
-    if (!options || typeof options.token !== "string" || !options.token) { port.postMessage("failed"); port.close(); return; }
+    let finished = false;
+    function finish(signal) {
+      if (finished) return;
+      finished = true;
+      options = null;
+      window.removeEventListener("message", widgetReady);
+      port.postMessage(signal);
+      port.close();
+    }
+    function widgetReady(event) {
+      const frame = document.querySelector("#widget > iframe");
+      if (!(frame instanceof HTMLIFrameElement) || event.source !== frame.contentWindow || event.origin !== "${origin}") return;
+      const data = event.data;
+      if (data && typeof data === "object" && data.source === "lbx-widget" && data.type === "READY") finish("mounted");
+    }
+    if (!options || typeof options.token !== "string" || !options.token) { finish("sdk_failed"); return; }
+    // Observe the SDK's existing READY protocol, never the vendor frame's DOM.
+    window.addEventListener("message", widgetReady);
     const script = document.createElement("script");
     script.src = "${origin}/lbxwidget.js";
     script.referrerPolicy = "no-referrer";
-    script.onerror = function() { options = null; port.postMessage("failed"); port.close(); };
+    script.onerror = function() { finish("script_load_failed"); };
     script.onload = function() {
       try {
         if (typeof window.lbxwidget !== "function") throw new Error("widget_unavailable");
         window.lbxwidget(options).render("widget");
-        port.postMessage("mounted");
-      } catch { port.postMessage("failed"); }
-      finally { options = null; port.close(); }
+        port.postMessage("rendered");
+      } catch { finish("sdk_failed"); }
+      finally { options = null; }
     };
     document.head.appendChild(script);
   };
@@ -49,7 +67,7 @@ export function mountOfficialWidget(
   bootstrap: WidgetBootstrapResponse,
   title: string,
   isCurrent: () => boolean,
-  onFailure: () => void
+  onFailure: (reason: WidgetFailureReason) => void
 ): () => void {
   const origin = new URL(bootstrap.widget_origin);
   if (
@@ -93,6 +111,7 @@ export function mountOfficialWidget(
   frame.style.border = "0";
   const channel = new MessageChannel();
   let disposed = false;
+  let rendered = false;
   const dispose = () => {
     disposed = true;
     options = null;
@@ -104,24 +123,31 @@ export function mountOfficialWidget(
   };
   const timeout = setTimeout(() => {
     dispose();
-    if (isCurrent()) onFailure();
+    if (isCurrent()) onFailure(rendered ? "ready_timeout" : "host_timeout");
   }, sdkTimeoutMs);
   channel.port1.onmessage = (event: MessageEvent<unknown>) => {
     if (disposed || !isCurrent()) { dispose(); return; }
     if (event.data === "ready") {
       channel.port1.postMessage(options);
       options = null;
+    } else if (event.data === "rendered") {
+      // render() returns before the vendor iframe is ready. Keep the deadline.
+      rendered = true;
     } else if (event.data === "mounted") {
       clearTimeout(timeout);
       channel.port1.close();
     } else {
       dispose();
-      onFailure();
+      onFailure(event.data === "script_load_failed" ? "script_load_failed" : "sdk_failed");
     }
   };
   frame.onload = () => {
     if (disposed || !isCurrent()) { dispose(); return; }
-    frame.contentWindow?.postMessage("portal_widget_connect", "*", [channel.port2]);
+    // data: has an opaque origin, so '*' is required (Window.postMessage contract).
+    // This exact Portal-created frame receives only the handshake/private port;
+    // its parent-only listener connects before any remote SDK executes. The JWT
+    // then travels on that port, never in a window message or the host URL.
+    frame.contentWindow?.postMessage("portal_widget_connect", "*", [channel.port2]); // NOSONAR S2819: opaque data: receiver; handshake/port only. See docs/SECURITY.md.
     frame.onload = null;
   };
   frame.src = "data:text/html;charset=utf-8," + encodeURIComponent(hostDocument(origin.origin, bootstrap.presentation === "payment"));

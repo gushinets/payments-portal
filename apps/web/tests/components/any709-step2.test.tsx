@@ -32,6 +32,7 @@ function renderBilling(verified = true) {
 }
 
 beforeEach(() => {
+  vi.spyOn(console, "warn").mockImplementation(() => undefined);
   window.localStorage.clear();
   window.sessionStorage.clear();
   window.localStorage.setItem(sessionStorageKey, "portal-session");
@@ -39,7 +40,7 @@ beforeEach(() => {
   mount.mockReset().mockImplementation(() => dispose);
   dispose.mockReset();
 });
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers(); });
 
 describe("ANY-709 Step 2 account Widget", () => {
   it("opens only on explicit action, including an empty account; no token storage", async () => {
@@ -58,7 +59,7 @@ describe("ANY-709 Step 2 account Widget", () => {
     expect(bootstrap).toHaveBeenCalledTimes(1); // Reload requires another explicit open.
   });
 
-  it("keeps billing independent of an unresolved catalog request", async () => {
+  it("keeps billing independent of an unresolved owned-purchases request", async () => {
     const fetcher = vi.fn<typeof fetch>((input) => {
       if (String(input).endsWith("/api/auth/session")) return Promise.resolve(new Response(JSON.stringify({ authenticated: true, user }), { status: 200 }));
       return new Promise<Response>(() => undefined);
@@ -67,7 +68,7 @@ describe("ANY-709 Step 2 account Widget", () => {
     renderWithIntl(<AccountClient languageTag="ru" />, { locale: "ru", messages });
     fireEvent.click(await screen.findByRole("button", { name: ruMessages.Billing.open }));
     await waitFor(() => expect(mount).toHaveBeenCalledTimes(1));
-    expect(fetcher.mock.calls.some(([url]) => String(url).includes("/api/catalog/"))).toBe(true);
+    expect(fetcher.mock.calls.some(([url]) => String(url).endsWith("/api/purchase-intents"))).toBe(true);
   });
 
   it("keeps verification and guest guards", async () => {
@@ -116,6 +117,7 @@ describe("ANY-709 Step 2 account Widget", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(ruMessages.Billing.errors.sdk);
     expect(screen.getByRole("alert")).toHaveTextContent("request-123");
     expect(document.body).not.toHaveTextContent("private-sdk-error");
+    expect(console.warn).toHaveBeenCalledExactlyOnceWith("billing_widget_load_failed", expect.objectContaining({ request_id: "request-123", reason: "sdk_failed", stage: "widget_load" }));
     fireEvent.click(screen.getByRole("button", { name: ruMessages.Billing.open }));
     await waitFor(() => expect(mount).toHaveBeenCalledTimes(2));
   });
@@ -147,6 +149,74 @@ describe("ANY-709 Step 2 account Widget", () => {
 });
 
 describe("official SDK sandbox boundary", () => {
+  it.each(["host_timeout", "ready_timeout"])("keeps the deadline until actual READY and disposes on %s", async (reason) => {
+    vi.useFakeTimers();
+    const actual = await vi.importActual<typeof import("@/features/billing/official-widget-sdk")>("@/features/billing/official-widget-sdk");
+    const port1 = { close: vi.fn(), postMessage: vi.fn(), onmessage: null as ((event: MessageEvent) => void) | null };
+    const port2 = { close: vi.fn() };
+    vi.stubGlobal("MessageChannel", class { port1 = port1; port2 = port2; });
+    const node = document.createElement("div");
+    const failure = vi.fn();
+    const destroy = actual.mountOfficialWidget(node, response(), "Billing", () => true, failure);
+    if (reason === "ready_timeout") {
+      port1.onmessage!(new MessageEvent("message", { data: "ready" }));
+      port1.onmessage!(new MessageEvent("message", { data: "rendered" }));
+    }
+    await vi.advanceTimersByTimeAsync(20001);
+    expect(failure).toHaveBeenCalledExactlyOnceWith(reason);
+    expect(node.querySelector("iframe")).toBeNull();
+    port1.onmessage!(new MessageEvent("message", { data: "mounted" }));
+    expect(failure).toHaveBeenCalledTimes(1);
+    destroy();
+  });
+
+  it("cancels the loading deadline after READY and ignores completion after session change", async () => {
+    vi.useFakeTimers();
+    const actual = await vi.importActual<typeof import("@/features/billing/official-widget-sdk")>("@/features/billing/official-widget-sdk");
+    const port1 = { close: vi.fn(), postMessage: vi.fn(), onmessage: null as ((event: MessageEvent) => void) | null };
+    vi.stubGlobal("MessageChannel", class { port1 = port1; port2 = { close: vi.fn() }; });
+    const node = document.createElement("div");
+    let current = true;
+    const failure = vi.fn();
+    const destroy = actual.mountOfficialWidget(node, response(), "Billing", () => current, failure);
+    port1.onmessage!(new MessageEvent("message", { data: "ready" }));
+    port1.onmessage!(new MessageEvent("message", { data: "rendered" }));
+    port1.onmessage!(new MessageEvent("message", { data: "mounted" }));
+    await vi.advanceTimersByTimeAsync(21000);
+    expect(failure).not.toHaveBeenCalled();
+    expect(node.querySelector("iframe")).not.toBeNull();
+    current = false;
+    port1.onmessage!(new MessageEvent("message", { data: "sdk_failed" }));
+    expect(node.querySelector("iframe")).toBeNull();
+    expect(failure).not.toHaveBeenCalled();
+    destroy();
+  });
+
+  it("sends only a private port to the opaque frame and puts the credential on that port", async () => {
+    const actual = await vi.importActual<typeof import("@/features/billing/official-widget-sdk")>("@/features/billing/official-widget-sdk");
+    const port1 = { close: vi.fn(), postMessage: vi.fn(), onmessage: null as ((event: MessageEvent) => void) | null };
+    const port2 = { close: vi.fn(), postMessage: vi.fn(), onmessage: null };
+    vi.stubGlobal("MessageChannel", class { port1 = port1; port2 = port2; });
+    const node = document.createElement("div");
+    document.body.append(node);
+    const destroy = actual.mountOfficialWidget(node, response(), "Billing", () => true, vi.fn());
+    const frame = node.querySelector("iframe")!;
+    const send = vi.spyOn(frame.contentWindow!, "postMessage");
+    fireEvent.load(frame);
+    expect(send).toHaveBeenCalledExactlyOnceWith("portal_widget_connect", "*", [port2]);
+    expect(port1.postMessage).not.toHaveBeenCalled();
+    port1.onmessage!(new MessageEvent("message", { data: "ready" }));
+    expect(port1.postMessage).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ token: "private-jwt" }));
+    expect(frame.src).not.toContain("private-jwt");
+    const host = decodeURIComponent(frame.src.split(",").slice(1).join(","));
+    expect(host).toContain("event.source !== parent");
+    expect(host.indexOf('window.removeEventListener("message", connect)')).toBeLessThan(host.indexOf('document.createElement("script")'));
+    destroy();
+    expect(port1.close).toHaveBeenCalled();
+    expect(port2.close).toHaveBeenCalled();
+    node.remove();
+  });
+
   it("uses only configured origin in CSP, never embeds JWT in the host, and destroys on close", async () => {
     const actual = await vi.importActual<typeof import("@/features/billing/official-widget-sdk")>("@/features/billing/official-widget-sdk");
     const port = () => ({ close: vi.fn(), postMessage: vi.fn(), onmessage: null });

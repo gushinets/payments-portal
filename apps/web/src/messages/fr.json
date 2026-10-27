@@ -147,8 +147,8 @@
       "emailUnverified": "Adresse e-mail non vérifiée"
     },
     "products": {
-      "title": "Produits",
-      "description": "Découvrez les produits actifs et leurs conditions actuelles dans les détails. Les informations d’abonnement, d’accès et d’utilisation seront disponibles ultérieurement.",
+      "title": "Mes produits",
+      "description": "Vos achats acceptés. Consultez les paiements et les abonnements dans la facturation.",
       "detailAction": "Voir les détails du produit",
       "state": {
         "commercial": {
@@ -166,7 +166,14 @@
       },
       "action": {
         "description": "Ouvrez la page de présentation du produit."
-      }
+      },
+      "allProducts": "Tous les produits",
+      "loading": "Chargement de vos produits…",
+      "empty": "Aucun achat accepté. Choisissez un produit dans le catalogue.",
+      "unavailable": "Impossible de charger vos achats. La facturation reste accessible séparément.",
+      "loadMore": "Afficher plus",
+      "prepared": "Abonnement préparé",
+      "pending": "La préparation de l’achat est incomplète"
     }
   },
   "PasswordReset": {
@@ -262,7 +269,7 @@
     "ambiguous": "Indisponible : plusieurs offres approuvées existent pour ce produit.",
     "simulated": "Source des produits : service de test",
     "unverified": "Offre LBX actuelle — à confirmer",
-    "previewNote": "Les valeurs actuelles de facturation sont affichées. L’achat n’est pas encore disponible ; consulter une offre ne donne pas accès au produit.",
+    "previewNote": "Les valeurs actuelles de facturation sont affichées. Les conditions d’achat doivent être confirmées séparément ; consulter une offre ne donne pas accès au produit.",
     "detailsRequired": "Ouvrez les détails pour vérifier l’offre actuelle.",
     "unmapped": "Achat indisponible : aucune offre de facturation associée.",
     "unsupported": "Achat indisponible : ces conditions ne sont pas prises en charge.",
@@ -281,7 +288,10 @@
     "prepaid": "Prépaiement",
     "paymentUnspecified": "Voir les conditions approuvées",
     "tax": "Traitement fiscal",
-    "taxValues": { "included": "Inclus dans le montant", "not_applicable": "Sans objet" },
+    "taxValues": {
+      "included": "Inclus dans le montant",
+      "not_applicable": "Sans objet"
+    },
     "periodAnchors": {
       "calendar_month": "Par mois civil",
       "instance_start": "À partir du début de l’instance",
@@ -390,8 +400,10 @@
   },
   "Billing": {
     "title": "Détails de facturation",
-    "description": "Ouvrez votre espace de facturation pour consulter ses données. L’accès payant n’est pas encore déterminé.",
+    "description": "Un seul espace de facturation pour tous vos produits. Sélectionnez un achat pour payer ; son contrat et son vendeur sont vérifiés avant l’ouverture.",
     "open": "Ouvrir la facturation",
+    "refresh": "Actualiser la facturation",
+    "refreshHint": "Une fois le paiement terminé, actualisez la facturation pour consulter votre solde actuel et l’historique des paiements.",
     "close": "Fermer la facturation",
     "loading": "Ouverture…",
     "frameTitle": "Espace de facturation",
@@ -418,7 +430,13 @@
       "financialPending": "L’opération financière reste incertaine. Vérifiez l’achat initial ou poursuivez la récupération ; ne créez pas de remplacement."
     },
     "paymentTarget": "Payez uniquement le contrat prévu {agreement}, vendeur {seller}.",
-    "paymentTargetNote": "Cette vue couvre tout le compte client. Sélectionnez le contrat indiqué dans le widget ; aucun filtre produit n’est appliqué."
+    "paymentTargetNote": "Cette vue couvre tout le compte client. Sélectionnez le contrat indiqué dans le widget ; aucun filtre produit n’est appliqué.",
+    "selectedPurchase": "Achat sélectionné",
+    "accountView": "Consulter le compte sans sélectionner d’achat",
+    "selectionUnavailable": "Impossible de vérifier cet achat. Sélectionnez-le dans la liste ou ouvrez la page du produit.",
+    "purchaseOption": "{product} · achat {id}",
+    "selectedProduct": "Produit sélectionné : {product}",
+    "preparationRequired": "Terminez d’abord la préparation de l’achat sur la page du produit."
   },
   "Purchase": {
     "title": "Facturation du produit",
@@ -441,7 +459,7 @@
     "confirmationUncertain": "La confirmation a peut-être abouti. Consultez l’état enregistré ou renvoyez la même confirmation ; les conditions acceptées resteront identiques.",
     "continue": "Continuer",
     "recover": "Poursuivre la récupération",
-    "manage": "Gérer / payer",
+    "manage": "Gérer l’abonnement",
     "termsChanged": "Les conditions ont changé avant la préparation. Consultez l’offre actuelle et renouvelez votre consentement.",
     "pending": "La préparation reste incertaine. Poursuivez cet achat ; aucun remplacement ne sera créé.",
     "reviewRequired": "Cet achat nécessite une vérification. Conservez sa référence pour contacter l’assistance.",
@@ -455,10 +473,11 @@
       "created": "Achat accepté. Poursuivez la préparation.",
       "preparing": "Préparation en cours. Continuez pour vérifier sans risque.",
       "awaiting_external_result": "Le résultat de facturation est inconnu. L’achat initial reste réservé.",
-      "linked": "L’abonnement est préparé. Ouvrez Gérer / payer pour une facturation vérifiée.",
+      "linked": "Abonnement préparé",
       "resolved_no_external_effect": "Cet achat a été résolu sans effet externe.",
       "failed_before_external_effect": "Cet achat s’est arrêté avant toute création financière.",
       "manual_review": "Cet achat nécessite une récupération ou une vérification par un opérateur."
-    }
+    },
+    "managedInAccount": "Le paiement et la gestion de l’abonnement sont disponibles dans votre compte."
   }
 }

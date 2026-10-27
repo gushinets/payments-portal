@@ -3,8 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Clock3, LogOut, ShieldCheck, UserRound } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { BillingAccount } from "@/features/billing";
-import { CatalogPreviewClient } from "@/features/catalog";
+import { AccountBilling } from "@/features/billing";
 import type { SessionUserResponse } from "@/generated/api-contracts/types.gen";
 import {
   ApiError,
@@ -33,7 +32,7 @@ type AccountState =
   | { status: "session_error"; token: string }
   | { status: "authenticated"; user: SessionUserResponse };
 
-export function AccountClient({ languageTag }: { languageTag: string }) {
+export function AccountClient({ languageTag, initialPurchaseId }: { languageTag: string; initialPurchaseId?: string }) {
   const t = useTranslations("Account");
   const authT = useTranslations("Auth");
   const { begin: beginOperation, beginAuth } = useSessionOperation();
@@ -317,30 +316,7 @@ export function AccountClient({ languageTag }: { languageTag: string }) {
         </aside>
 
         <div className="account-workspace">
-          <BillingAccount key={accountState.user.user_id} userId={accountState.user.user_id} emailVerified={accountState.user.email_verified} />
-          <section
-            className="account-products-panel"
-            aria-labelledby="account-products-title"
-          >
-            <div className="account-products-heading">
-              <h2 id="account-products-title">{t("products.title")}</h2>
-              <p className="card-copy">{t("products.description")}</p>
-            </div>
-            <CatalogPreviewClient
-              headingLevel={3}
-              billingUser={accountState.user}
-              accountStatuses={{
-                access: {
-                  label: t("products.state.access.label"),
-                  description: t("products.state.access.description")
-                },
-                usage: {
-                  label: t("products.state.usage.label"),
-                  description: t("products.state.usage.description")
-                }
-              }}
-            />
-          </section>
+          <AccountBilling key={`${accountState.user.user_id}:${initialPurchaseId ?? ""}`} userId={accountState.user.user_id} emailVerified={accountState.user.email_verified} initialPurchaseId={initialPurchaseId} />
         </div>
       </div>
     </section>
