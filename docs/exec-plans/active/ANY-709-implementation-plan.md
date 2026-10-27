@@ -1,74 +1,52 @@
 # ANY-709 - Normal LBX billing, product mapping and real Widget flow
 
-Status: reviewed execution plan based on owner-approved ANY-709 decisions; NOT IMPLEMENTED
-Date: 2026-10-26
-Review revision: 2 - inherited-code closure and execution clarifications; no new stages
+Status: IN PROGRESS - Steps 1-2 implemented/checked; Steps 3-4 pending
+Date: 2026-10-27
+Review revision: 3 - forward alignment with delivered Steps 1-2; unchanged four stages
 Program: ANY-504, program Step 7
 Delivery: four sequential implementation stages in this file, numbered Step 1-4
 Repository destination: `docs/exec-plans/active/ANY-709-implementation-plan.md`
 
 ## 0. Execution contract - read for every selected step
 
-**2026-10-27 price-calendar correction:** the owner authorized implementation,
-targeted tests, formatting/lint, supported canonical checks and Docker runtime
-checks for current-price selection and removal of the timezone setting. LBX
-support directly confirmed `Europe/Moscow` and the latest-start-date rule for
-both price methods. This narrow correction does not authorize LBX writes,
-Steps 3-4, stage/commit/push or remote ticket/PR changes. Earlier execution
-restrictions below describe the original stage deliveries.
+**Current rules for Steps 3-4 (2026-10-27).** Historical write-only/test-pause
+instructions for Steps 1-2 were superseded by separately authorized QA. Actual
+Step 1-2 code, targeted/canonical automated checks, the owner's real Widget
+observation and full ANY-709 acceptance are distinct evidence. The historical
+exceptions and their exact outcomes remain in the Step 1-2 handoffs.
 
-**2026-10-26 manual-QA exception:** for the two reported Steps 1–2 defects,
-the owner explicitly authorized local diagnostics/tests/application/containers,
-test-043 reads and synthetic customer verification, and separately a second
-synthetic customer. This exception does not authorize production, payment,
-agreement/subscription creation, Steps 3–4 or stage/commit/push/PR/Linear writes.
-Actual results and unresolved acceptance are recorded in the existing Step 1–2
-handoffs; the earlier authoring-only restrictions below remain historical for
-that original delivery.
-
-This is a NEW plan from current `main`, not an addendum to the rejected plan.
-ANY-664 / program Step 6 remains completed. Its accepted delivery and history are
-not rewritten. Necessary changes to that code belong to THIS ANY-709 delivery.
-PR #143 is closed without merge and was not accepted. Do not merge/cherry-pick
-that whole branch, treat its six stages as completed prerequisites, or use its
-old instructions as authority. Reuse a relevant implementation/test fragment
-only after checking it against this plan and the current code.
-
-Implement ONE selected step, then stop for owner verification/review. Do not
-implement later steps automatically. Read sections 0-3, the selected step in
-full, applicable AGENTS instructions and its direct current dependencies. Read
-preceding-step interfaces/handoffs when required, not all other step prompts.
-The owner-approved ticket decisions below supersede the specifically identified
-old requirements; this is not permission to redesign unrelated architecture.
-The inherited gates named in Step 1 are EXPECTED remediation work, not a new
-contradiction that requires stopping for permission. Concrete implementation
-layout stays with the executor; another architecture/evidence framework does not.
+Implement ONE selected step, then stop for owner QA/review. Read sections 0-3,
+the selected step, applicable AGENTS and directly relevant current code. Start
+from the latest PR #150 checkout, never the original main baseline or PR #143.
+Reuse delivered code for product offers, customer ensure, JWT/Widget and central
+LBX error decoding; no duplicate provider adapters or parallel state machines.
 
 ### Codex may execute
 
-- Read-only code/diff/history inspection and implementation-required file writes.
-- Formatting and linting of changed code; fix in-scope findings.
-- `npm run generate` when Pydantic/OpenAPI/generated TypeScript or other owned
-  generated artifacts change. This is a necessary WRITE, not a test run. Never
-  hand-edit generated artifacts. Generation must not contact LBX or run migrations.
-- Read-only `git status` / `git diff`; `git diff --check` as whitespace lint.
+- Code changes, necessary forward migration files, generated API/contracts,
+  changed-file formatting/linting and `git diff --check`.
+- Focused unit, HTTP mock, API, disposable PostgreSQL and synthetic frontend
+  tests, plus relevant existing regressions. Use existing supported test wrappers;
+  any migration execution must be **isolated to the test database**.
+- Supported focused checks and one `npm run check` at the completed stage
+  checkpoint when the harness is available. Report explicit executed results.
+- Synthetic browser tests against an isolated harness; they are not evidence of
+  real LBX payment.
 
 ### Codex must NOT execute
 
-Tests of any kind, pytest collection, Vitest, Node tests, Playwright, browser
-smokes, application/live-LBX probes, migrations, builds, typechecks, security
-scanners, `npm run check`, `check:fast`, `docs:check`, `architecture:check`, or
-`generate:check`. Do not start/restart containers or run `repo:up`, `repo:setup`
-or `repo:reset`. Do not use a formatter/linter wrapper that secretly runs tests.
-Do not stage, commit, push, change remote tickets, alter LBX records, or fill real
-secrets. The human owns environment setup, migrations, test execution and E2E.
+- Any live LBX write: no real customer, agreement, subscription or payment POST,
+  no edits of tariff, price or organization in 043 or production. The owner
+  performs the explicit real-LBX purchase/payment QA checkpoint.
+- Migrations against the owner's application or production DB, destructive
+  cleanup, force binding, synthetic paid grants, external secrets/PII in logs.
+- Scheduler/webhooks/paid-access/Kernel implementation (program Steps 8-11).
+- Stage, commit, push, modify Linear/PR or unrelated changes without separate
+  owner instruction.
 
-WRITE meaningful tests in every step; NOT running them does not mean omitting
-them. Report them as `NOT_RUN`. Final step status is
-`IMPLEMENTED_AWAITING_HUMAN_VALIDATION`, never a fabricated PASS. Respect the
-owner's execution restriction over broader repository instructions to run all
-checks. Do not repeatedly seek permission to implement the already-selected
-step; stop only for a concrete material contradiction or nonrecoverable blocker.
+Do not claim full human acceptance from automated PASS. A real Widget with no
+subscription is Step 2 evidence only; prepared payment and actual payment
+remain separate Step 3-4/final acceptance outcomes.
 
 ### Formatting / linting commands
 
@@ -103,21 +81,17 @@ failure and manual remedy; do not run installation/build/test suites instead.
 
 ### Required handoff after each step
 
-Report changed files; observable result; migrations and generation performed;
-format/lint commands with actual outcomes; tests written but NOT_RUN; exact
-human commands and expected result; remaining scope/real external prerequisites.
-Do not narrate intermediate investigation. Keep delivery notes short and tied to
-the selected step. Do not hide an incomplete result behind a green linter.
-Include a short removed/replaced/retained summary for the inherited paths touched by this step;
-this belongs in the handoff, not a new approval file. Report focused commands for
-changed EXISTING regression tests too, not only new any709_stepN tests. Do not
-rename unrelated tests or run the entire repository after every edit.
+Report changed files, observable behavior, migration/generation, exact tests,
+lint/build/check outcomes, skipped checks, safe manual QA and remaining scope.
+Distinguish IMPLEMENTED, AUTOMATED_PASS, HUMAN_QA_PASS and NOT_RUN. Include a
+brief removed/replaced/retained note for inherited code and commands to retest
+changed existing regressions. Avoid duplicate broad test runs during iteration.
 
 ## 1. Evidence, baseline and scope
 
 ### 1.1 Pinned baseline
 
-- Current `main` inspected: `dfdc67a9617df1afb5213b0fb831b770e6d816be`.
+- Historical planning main baseline: `dfdc67a9617df1afb5213b0fb831b770e6d816be`. Steps 3-4 start from the latest PR #150 head with delivered Steps 1-2, never from this pinned SHA.
 - ANY-709 inspected revision: `updatedAt=2026-10-26T02:28:22.122Z`.
 - ANY-504 / ANY-709 owner decisions: Step 6 unchanged as history; all corrective
   implementation and narrow documentation alignment belong to program Step 7.
@@ -128,9 +102,10 @@ rename unrelated tests or run the entire repository after every edit.
 - This plan was prepared by reading code, tickets and supplied reports. No repo
   tests, migrations, live provider calls or browser acceptance ran during planning.
 
-Existing main contains source clients, restricted mapping publication, catalog,
-identity/legal flows and target billing MODEL TABLES. It does NOT contain the
-rejected PR's complete purchase runtime. Schema presence is not working runtime.
+The historical main baseline contained source clients, restricted mapping,
+catalog and purchase MODEL TABLES, but not working purchase runtime. The current
+PR now delivers product links/current offers and customer/account Widget.
+Schema presence still does not mean Step 3 purchase runtime exists.
 
 ### 1.2 What the current code establishes
 
@@ -326,12 +301,27 @@ Session across threads or start nested event loops. Reuse main's composition,
 preflight and framework worker conventions. HTTP always occurs between short
 transactions. Apply results only against the current ownership fence.
 
-Read retries are bounded. Business CREATE is not sent through the GET retry loop:
-no automatic POST reauth/replay after possible dispatch, timeout, HTTP 5xx or
-ambiguous success. Distinguish definite before-send failure from uncertain send.
-Valid 200/201 responses and valid body IDs are parsed per operation, then point
-verified. Malformed success can mean an object exists; it is not a safe retry.
-Keep request status/recovery capacity separate from saturated new-offer reads.
+Read retries are bounded. All LBX Server API methods use the now-centralized
+decoder for HTTP status, JSON `code`, `response.error`, safe diagnostics and
+bounded GET retry eligibility. An HTTP 500 can be a business refusal; neither
+its message nor a zero-result discovery proves a possibly sent CREATE had no
+side effect. No raw provider text, personal data or secrets in public errors.
+
+**Customer and financial CREATE deliberately have different recovery policies.**
+The owner-approved Step 2 `ensure_customer()` performs discover -> at most one
+POST per explicit account opening -> GET recovery. After a failed attempt's
+finite active-send lease clears, a later **separate** authenticated open may
+discover again and make one more customer attempt, preserving the original
+slot, opaque key, operation and history. It never POST-retries within one open.
+
+For **agreement/subscription CREATE** in Step 3, a possible send, 5xx/error
+envelope, timeout, lost response or malformed success retains the original
+financial operation and held purchase scope; recovery is GET-only. Do not
+blindly repeat financial CREATE because a new request arrived, a query was
+empty or the +2h deadline elapsed. Only separately proven terminal/no-effect
+and audited safe release can free the financial scope. Successful 200/201
+response IDs require authoritative point readback. Never route business POST
+through the GET retry loop or start HTTP inside a database transaction.
 
 ### 2.6 Widget has two presentations, not two identity systems
 
@@ -363,7 +353,7 @@ are this plan's proposed implementation contract, NOT claims they exist today:
 
 | Route/use case | Meaning |
 |---|---|
-| `POST /api/billing/widget-bootstrap` | Explicit ensure-customer + safe JWT; optional Portal purchase reference enables verified payment presentation. |
+| `POST /api/billing/widget-bootstrap` | Step 2 currently implements the empty account-only request/response. Step 3 extends this **same** contract with optional owned prepared-purchase reference and verified payment presentation; keep empty account-only requests backward compatible. |
 | `POST /api/purchases/review` | Current selected offer + opaque link revision + expected terms fingerprint + legal versions for authenticated review; no provider mutation and no extra durable checkout session. |
 | `POST /api/purchase-intents` | Server-recomputed current terms matched to submitted expected fingerprint/legal selection; one accepted intent under idempotency/business scope. |
 | `GET /api/purchase-intents/current?product_id=...` | Authorized existing local purchase/scope state; no source-catalog dependency or hidden CREATE. |
@@ -404,9 +394,11 @@ unchanged AccessSnapshot or date-only/UTC quota contracts in this ticket.
 | 3 | Purchase APIs safely prepare the chosen real subscription and can authorize payment presentation | Consent, scopes/fences, agreement/subscription proof, retries/UNKNOWN |
 | 4 | Ordinary user UI completes Buy/Continue/Manage and payment-capable Widget | End-to-end intent, actual payment target, reload/logout/error UX, final handoff |
 
-All four are new delivery stages and start `TODO`. No separate research-only or
-formatting-only step. Source changes and migrations are validated in their own
-stage; do not defer missing startup wiring or customer identity to Step 4.
+Steps 1-2 are implemented and have recorded automated/local QA; the owner
+additionally reports their previously blocked customer registered and opened
+the real Widget. This is an owner observation, not proof of full purchase
+or payment. Steps 3-4 remain TODO. No extra research-only stage; do not
+defer missing customer/connection behavior into Step 4.
 
 Human focused Python commands below use the existing test wrappers and pytest's
 `PYTEST_ADDOPTS=-k` filtering. Add the proposed `any709_stepN` filename/test-name
@@ -417,7 +409,7 @@ can skip DB tests. Never use the development application DB as a pytest target.
 
 ## 4. Step 1 - Ordinary connection, simple product link and current offers
 
-Status: TODO
+Status: IMPLEMENTED; focused/canonical price and source checks passed; final combined purchase acceptance remains pending.
 Depends on: approved sections 0-3 and actual main, NOT old PR #143 runtime.
 
 ### Result and changed surfaces
@@ -641,8 +633,8 @@ test; human live repricing is optional only when explicitly authorized.
 
 ## 5. Step 2 - Optional FIO, one customer and a real account Widget
 
-Status: IMPLEMENTED_AWAITING_HUMAN_VALIDATION
-Handoff: [Step 2 delivery](ANY-709-step-2-handoff.md). Tests and runtime acceptance NOT_RUN.
+Status: IMPLEMENTED; focused/canonical QA passed, owner reports real Widget opened for the previously blocked customer; broader payment acceptance belongs to later steps.
+Handoff: [Step 2 delivery](ANY-709-step-2-handoff.md). Original NOT_RUN statements predate the recorded subsequent corrections and checks.
 Depends on: human-accepted Step 1 interfaces and ordinary connection wiring.
 
 ### Result and changed surfaces
@@ -675,12 +667,15 @@ public safe errors/locales/CSP. Generate OpenAPI/TS in this step.
    only in transient request memory. No password/raw request in recovery JSON,
    model repr/errors, logs, artifacts or generated config. No password reset or
    automatic PATCH for old malformed research customers.
-4. Recognize operation-specific response status/body and point-read user identity
-   before binding. After possible-send failure/crash, only bounded GET/discovery;
-   no blind POST replay. Save original 2h deadline/work item at send claim and
-   provide callable overdue escalation/read-only recovery for later Step 8.
-   No scheduler is started now. A bound customer is reused by both widgets and
-   the later purchase flow, not recreated per product.
+4. Recognize operation-specific response status/body and point-read identity
+   before binding. The owner-approved current `ensure_customer()` uses a fresh
+   key/email discovery (point-proven by original identity), at most one CREATE
+   during an explicit opening, then GET-only recovery after any CREATE failure.
+   A later explicit opening can discover again and attempt one customer POST
+   after its finite lease clears, preserving original key/slot/operation.
+   Active leases, saved receipt and ambiguous identity prevent new POST.
+   Save fenced possible-send and +2h recovery evidence, no scheduler. The
+   financial operations in Step 3 **must not inherit** this retry allowance.
 5. Implement authenticated POST bootstrap. Each allowed open rechecks session,
    email and paired provider ID/original customer outer key, then signs fresh
    type-7 JWT. For newly created/recovered/not-yet-ready customers, perform the
@@ -761,20 +756,25 @@ payment or full ANY-709. Missing mapping/price must not prevent account access.
 ## 6. Step 3 - Accepted purchase, safe preparation and recovery
 
 Status: TODO
-Depends on: human-accepted Steps 1-2; reuse their link/offer and customer services.
+Depends on: current implemented Steps 1-2, their interfaces and the owner's
+customer/Widget QA; confirm prior acceptance evidence for the real-LBX stage.
 
 ### Result and changed surfaces
 
-Through the new Portal APIs a confirmed purchase results in exactly the chosen
-prepared subscription and payment-capable bootstrap, or a precise safe pending/
-conflict state. This step is independently reviewable at API/DB/protocol level;
-the complete browser Buy/Continue/Manage presentation follows in Step 4.
+Through Portal APIs the explicitly accepted purchase results in exactly the
+chosen prepared subscription and payment-capable bootstrap, or a precise
+pending/conflict state. Reuse Step 1's `Europe/Moscow` current-offer selection,
+Step 2's **existing shared `ensure_customer()`**, and common LBX response/error
+decoding. Do not fork account customer creation, JWT, error classification or
+price handling. Step 3 is independently reviewable at API/DB/protocol level;
+Step 4 completes Buy/Continue/Manage browser presentation.
 
-Modify new focused purchase application/routes/contracts; existing legal models/
-services; purchase/operation/subscription models and scope queries/persistence;
-existing LBX client plus narrow agreement/subscription DTO/normalizers; bootstrap
-payment eligibility, migrations and Step 8 recovery seam. Do not implement a
-parallel provider state machine or scheduler.
+Modify focused purchase app/routes/contracts; legal acceptance; relevant
+purchase/operation/subscription models, scope queries/persistence; add narrow
+agreement/subscription DTOs and methods to the existing LBX client; extend
+the current account Widget bootstrap with optional verified purchase/payment
+presentation; migration, Step 8 recovery seam and tests. No second SDK/identity
+system or scheduler.
 
 ### Implement
 
@@ -800,32 +800,37 @@ parallel provider state machine or scheduler.
    2.4, reusing Step 2's customer operation. No paid-access-primary selection is
    performed. A linked unpaid subscription holds the scope indefinitely until
    proven terminal/no-effect or audited safe release, never a browser TTL.
-5. `advance` is bounded and resumes one pipeline: ensure customer; discover/check
-   relevant existing bindings/operations; prepare dedicated agreement; prepare
-   selected subscription; authoritative readback; persist proven link. Before a
-   previously UNSENT financial preparation resumes after a pause/restart/deadline,
-   freshly revalidate the ORIGINAL accepted terms; reuse a read only within the
-   current bounded operation, never across an expired preflight. No repricing or
-   fresh new-sale admission for UNKNOWN/read-only recovery. Customer-only ensure
-   does not acquire a commercial prerequisite. Source reads cannot make later
-   provider CREATE atomic, so final effective-subscription readback still matters.
-   No HTTP while holding a DB transaction and no duplicate send after a crash.
+5. `advance` resumes a bounded pipeline: call shared `ensure_customer()`;
+   discover purchase bindings/operations; prepare dedicated agreement, selected
+   subscription, authoritative readback and proven binding. Customer account
+   opening remains independent of product price. Its owner-approved later-open
+   customer retry policy is **not** a rule for financial CREATE. Revalidate the
+   ORIGINAL accepted terms before previously UNSENT financial preparation after
+   delay/restart/deadline, using Step 1's live Moscow-date offer, not stored
+   current catalog prices. Do not silently reprice accepted conditions, turn
+   an UNKNOWN financial operation into a fresh sale or rerun the original
+   financial POST. Readback remains authoritative; never hold a DB transaction
+   over LBX HTTP.
 6. For an existing customer, use documented scoped inventory plus point proofs and
    local nonterminal/UNKNOWN scopes before admitting another relevant create.
    No list ordering, pagination guesses, whole-account scans or "zero -> retry".
    A foreign default agreement is not the chosen purchase agreement. Recover
    only a dedicated agreement whose origin/purpose/owner/seller are proven.
-7. Extend the same typed REAL LBX client for agreement/subscription commands and
-   reads. Preserve documented JSON filter transport and operation-specific 200/
-   201 semantics. Do not reuse a GET retry wrapper for a POST. Every possible
-   send has durable identity/fence/deadline first. Full safe request shape, not
-   secrets, is recoverable for noncredential creates.
+7. Extend the existing typed LBX client for agreement/subscription commands
+   and reads, using its central HTTP response decoder and `LbxResponseFacts`.
+   All endpoints interpret HTTP status, JSON `code`, `response.error` and
+   safe failure categories consistently, including unknown texts and real
+   HTTP 500. Provider error is diagnostic and does not prove a non-side-effect.
+   Preserve documented filtered GET and 200/201 semantics; financial POST never
+   uses GET retry. Persist durable identity, fence, original deadline and
+   recoverable non-secret request facts before possible send.
 8. Agreement request: proven user ID, explicit configured organization, durable
    unique number/correlation and documented create fields. Use supported non-offer
    form where the accepted evidence calls for it; empty agreement_link is not an
    error by itself. Creation date is a provider-required contract field, not a
-   purchased period; derive it from the documented configured billing calendar
-   only if needed, never from an operator-written per-purchase profile. Do not
+   purchased period; where an LBX calendar date is needed, use the confirmed
+   `Europe/Moscow` calendar, never `LBX_BILLING_TIMEZONE`, host timezone,
+   invented UTC intervals or an operator-written per-purchase profile. Do not
    add undocumented `debt_threshold` or claim missing credit facts are zero.
 9. Subscription request: selected tariff and PERIOD ID, explicit selected service
    with verified fixed quantity, balance-gated activation, no manual/demo path
@@ -842,16 +847,21 @@ parallel provider state machine or scheduler.
     WITHOUT issuing grants, assuming financial eligibility or extending paid
     trust. Known mismatch is conflict; incomplete proof stays pending/review.
     Catalog change alone cannot invalidate an unchanged historical subscription.
-12. Extend bootstrap payment eligibility: original owned accepted purchase and
-    effective readback choose payment-capable flags. Existing Manage does not
-    require fresh new-sale approval, current mapping head equality or today's
-    catalog price. Unknown customer identity blocks all JWT; a purchase-only
-    issue does not fabricate successful payment or prevent safe account viewing.
-13. Deliver request-driven read-only recovery and callable overdue escalation,
-    plus one bounded authorized operator inspect/recover entry point using the
-    same application functions. Do not add a UI for support or arbitrary force-
-    bind/grant commands. Document held scopes and evidence for safe release;
-    do not implement an unproved absence predicate. Save Step 8 handoff details.
+12. Extend the *existing* `POST /api/billing/widget-bootstrap` from Step 2
+    with an optional owned prepared-purchase reference and generated DTOs.
+    Preserve the empty account-only request/response and single SDK/JWT identity.
+    Only the original accepted purchase and verified concrete subscription,
+    customer, seller and agreement readback enable payment-capable flags.
+    Manage checks the original binding, not today's catalog price/mapping.
+    Customer identity UNKNOWN blocks JWT; purchase-only failure does not block
+    independently proven account-only viewing or fabricate paid access.
+13. Deliver request-driven **financial** GET-only recovery, callable overdue
+    escalation and bounded authorized operator financial inspect/recover using
+    existing app functions. The current `billing-customer diagnose` remains a
+    read-only customer command, not a financial operation or a separate
+    HTTP 500 decoder. Reuse safe centralized diagnostics. No force-bind/grant,
+    guessed absence proof, support UI or Step 8 worker. Document holds,
+    trustworthy release requirements and Step 8 integration seam.
 
 ### State and failure matrix to implement
 
@@ -862,7 +872,7 @@ parallel provider state machine or scheduler.
 | Price changes before accepted intent | Fresh review/terms_changed; no provider financial object created at unaccepted price. |
 | Accepted intent, no agreement/subscription may have been sent, terms now differ | Mark safe not-prepared/needs-new-consent outcome without rewriting acceptance; new accepted attempt only after safe hold resolution. Keep the shared customer. |
 | Agreement/subscription may already exist when terms differ | Keep hold; recover and verify original operation; conflict/manual review rather than silent replacement/repricing. |
-| Success body is missing/invalid, post-send 5xx, timeout, crash | UNKNOWN, original deadline and hold; GET-only recovery. |
+| Malformed success, possibly sent financial POST with 5xx (including `response.error`), timeout or crash | Financial UNKNOWN/hold and original deadline; GET-only recovery. Error text does not authorize a repeated CREATE. |
 | Discovery zero / multiple / one fully proven | Pending / review / bind existing object. No count alone authorizes a retry. |
 | Deadline reaches +2h | Escalate to review; do not release scope or retransmit. |
 | Old worker/response arrives after fence changed | Reject stale apply; retain newer result and safe holds. |
@@ -870,7 +880,7 @@ parallel provider state machine or scheduler.
 | Current catalog price changed, old effective subscription unchanged | Historical Manage/readback can succeed using original consent. |
 | User switched/logged out during preparation/bootstrap | No wrong-user result/JWT; recorded operation remains safely recoverable. |
 
-### Tests to write (not run)
+### Focused tests and validation
 
 `test_any709_step3_purchase.py`, `test_any709_step3_postgres.py`: exact accepted
 terms/doc versions; before/after-acceptance price changes; owner/tenant/auth
@@ -886,6 +896,10 @@ equal-price different-offer selection, and unchanged terms with only irrelevant
 observation timestamps/read-set provenance changing. Those must not silently
 rebind a purchase or manufacture a new monetary-consent conflict.
 Test that payment flags are not permanently fixed true in the generated DTO.
+Additionally cover reuse of the actual `ensure_customer()`, the separate
+customer-later-open vs financial-no-retry policies, shared LBX 500/200 error
+envelopes for agreement/subscription GET/POST, and confirmed Moscow dates.
+All automated tests use synthetic provider transports, never live LBX writes.
 
 ### Human verification and review checkpoint
 
@@ -896,8 +910,10 @@ PYTEST_ADDOPTS='-k any709_step3' npm run test:api:postgres
 python scripts/repo.py test-db stop
 ```
 
-After migration in the intended local environment, the HUMAN may use the named
-Portal API/Swagger to review and explicitly confirm one test purchase. Use a
+Codex may run these focused commands on the isolated disposable test DB,
+plus relevant regressions and a canonical stage check. Only the HUMAN may apply
+migrations to the intended application DB and use real LBX 043 through Portal
+API/Swagger to review and explicitly confirm one test purchase. Use a
 verified user/current product link, not a manually assigned research user ID.
 Record intent/operation IDs and sanitized provider bindings; inspect that there
 is one proper seller agreement and one correct subscription, no paid grant and
@@ -907,21 +923,22 @@ org21/tariff32 behavior differs, rather than adding global approval flags.
 
 ### AI prompt
 
-> Implement ONLY Step 3 from human-accepted Steps 1-2. Read sections 0-3, this
-> step and direct purchase/legal/model/LBX interfaces. Preserve the prepared-
-> unpaid-subscription-before-payment design. Build review/confirmation/current/
-> status/advance APIs, one immutable accepted snapshot and legal event, one held
-> product scope and the shared durable customer/agreement/subscription operation
-> mechanism. Use real documented requests, explicit configured seller and selected
-> service/period, then authoritative effective-term readback. Save send fences and
-> original 2h escalation before a possible POST. Never blind-repeat, reprice
-> accepted meaning, release uncertainty on zero matches/time, or mint payment
-> presentation from unproven binding. Customer-only account entry stays separate.
-> Implement bounded GET-only recovery/operator inspection and Step 8 seam, not
-> its worker or paid access. Write the focused tests/forward migrations/generated
-> contracts and safe manual API/SQL instructions. Execute only section 0 allowed
-> format/lint/generation commands. No tests/live mutations/migrations/builds or
-> stage/commit/push. Stop with a concrete API-level checkpoint for the owner.
+> Implement ONLY Step 3 using the latest accepted Step 1-2 code and handoffs.
+> Read sections 0-3 and this step, then directly affected purchase/legal/LBX
+> interfaces. Create immutable PurchaseIntent/consent, one held scope and the
+> review/confirm/current/status/advance APIs. Reuse `ensure_customer()`, the
+> Europe/Moscow current-offer selector and shared LBX response/error decoder.
+> Customer later-explicit-open retry must NOT become financial CREATE retry.
+> Before any agreement/subscription possible send record its durable
+> fence/identity/hold and original +2h escalation; a 500 `response.error`
+> is diagnostic, not proof of no side effects. Use seller21 only via config,
+> chosen tariff/service/period and authoritative concrete subscription readback.
+> Extend existing widget-bootstrap for optional verified payment presentation,
+> leaving the account-only request unchanged. No repricing, blind financial
+> replay, fabricated paid access or Step 8 worker. Write and run focused
+> synthetic/disposable-DB tests, generated contracts and stage checks permitted
+> by section 0. No live LBX writes, owner-DB migration or stage/commit/push.
+> Stop for owner QA/review with actual results and safe manual commands.
 
 ## 7. Step 4 - Complete Buy, Continue and Manage UI; final acceptance handoff
 
@@ -970,9 +987,11 @@ backend/configuration from previous steps into an undocumented cleanup list.
    A local status GET is not a new LBX observation. Until the Step 8 loop exists,
    show the last observed state/time or awaiting-verification truthfully; do not
    claim the status refreshed at LBX merely because a local GET returned 200.
-7. Finish accessible desktop/mobile Bundle 3 presentation, localization and
-   diagnostic correlation. Keep frontend wire DTOs generated and transport-
-   owned; no second handwritten runtime schema or broad auth/error redesign.
+7. Finish accessible desktop/mobile Bundle 3, localization and request-ID
+   diagnostics. Use Step 3's generated Portal contracts and centralized LBX
+   error classification: distinguish provider rejection, outage, auth, invalid
+   response, terms_changed and financial UNKNOWN/recovery. Never expose raw
+   `response.error` or invent a second frontend error parser/schema.
 8. Reconcile touched docs/guards with as-built code, preserve completed Step 6
    history and explicitly list Step 8-10 deferrals. Remove abandoned runtime
    loaders/config/sample profiles/test-stub paths if any were selectively copied.
@@ -984,7 +1003,7 @@ backend/configuration from previous steps into an undocumented cleanup list.
    mapping IDs/revisions, common failures, migration/rollback cautions, human
    acceptance ledger and concise Step 8 handoff. No compulsory companion JSON.
 
-### Tests to write (not run)
+### Focused tests and validation
 
 `any709-step4.test.tsx`: guest/verified flow, fresh review, double click, terms
 changed, return unpaid, Manage with old link, script failure, wrong-user late
@@ -996,7 +1015,9 @@ must not mutate LBX or grant access. Separate this from the HUMAN real-LBX
 acceptance; a mocked browser suite is not real Widget/payment evidence.
 
 Extend backend contract/diagnostic regressions only where this step changes them;
-keep test grouping `any709_step4` for focused manual runs. Run no test commands.
+keep test grouping `any709_step4`. Codex may run targeted synthetic
+component/browser and isolated API tests plus the stage check under section 0;
+actual LBX payment acceptance remains human-only.
 
 ### Human verification and review checkpoint
 
@@ -1016,20 +1037,18 @@ missing wiring" stage is planned.
 
 ### AI prompt
 
-> Implement ONLY Step 4 using the accepted Steps 1-3 contracts. Read sections
-> 0-3, this step and directly affected frontend/API/session/SDK code. Complete
-> ordinary Details, live review/consent, Buy, Continue and Manage with the real
-> configured Widget and verified intended payment agreement. Reuse one customer,
-> one accepted purchase/scope and one SDK lifecycle; handle reload, races, changed
-> price, UNKNOWN, source failure and logout without duplicate CREATE or fake
-> access. Keep client-contract generation, localization, Bundle 3 and privacy.
-> Write focused component/browser tests using test-only substitutions. Finalize
-> the one runbook, read-only SQL, narrow docs/guard corrections and Step 8 handoff.
-> Do not turn payment callbacks into paid authority or implement workers/Kernel
-> access. Follow section 0: formatting/lint and necessary generation only, NO
-> tests/browser/live payment/migrations/builds/typechecks or stage/commit/push.
-> Report implementation status, NOT_RUN checks and exact human acceptance steps;
-> do not claim full E2E on the basis of a stub or empty Widget.
+> Implement ONLY Step 4 from reviewed Steps 1-3 and the existing customer
+> Widget, not a new SDK/identity system. Complete Details, review/consent,
+> Buy, Continue, Manage and payment-capable presentation of the proven target
+> agreement. Preserve original acceptance/link history, customer reuse,
+> held financial scope and read-only account view. Handle changed prices,
+> pending/UNKNOWN recovery, normalized provider rejections, no source,
+> retry/race/logout and safe request ID without duplicate CREATE or fake
+> paid access. Use generated API DTOs, localization and existing Widget
+> lifecycle. Write and run focused synthetic component/browser/isolated tests
+> and permitted checks, and finish the one runbook and Step 8 handoff.
+> No live provider writes/payments, owner data migrations, background workers,
+> Kernel access or stage/commit/push. Report real-vs-synthetic evidence.
 
 ## 8. Human acceptance: normal setup and complete ANY-709 result
 
@@ -1119,16 +1138,16 @@ ready. Production migrations/payment actions are never automatic QA commands.
 
 ### 8.4 Acceptance ledger
 
-| Result | Evidence needed | Initial state |
+| Result | Evidence needed | Status at Step 3 start |
 |---|---|---|
-| FORMAT_LINT | Actual per-step commands/outcomes, not a code-review guess | NOT_RUN |
-| STEP_1_LINK_PASS | Tests, normal configuration, direct live link/query, honest catalog and all inherited ANY-664 closure rows | NOT_RUN |
-| CUSTOMER_WIDGET_PASS | Normal Portal, existing/new user, actual SDK/Client identity, no duplicate customer | NOT_RUN |
-| PURCHASE_PREPARATION_PASS | Correct consent, one intent/dedicated agreement/subscription, actual readback and retry safety | NOT_RUN |
-| MAPPED_PURCHASE_WIDGET_PASS | Actual prepared intended subscription and usable correct-agreement payment UI | NOT_RUN |
-| PAYMENT_PASS / PAYMENT_NOT_RUN | Human-authorized actual test-payment observation, or honest explicit non-execution | NOT_RUN |
-| AUTOMATED_REGRESSION_PASS | Human/CI suites against final SHA, with meaningful selected tests | NOT_RUN |
-| PAID_ACCESS_IN_KERNEL | Program Steps 8-10 / Step 11, NOT this ticket's implementation claim | DEFERRED |
+| FORMAT_LINT | Existing Step 1-2 reported checks; rerun on final SHA | RECORDED_PASS_FOR_STEPS_1_2 |
+| STEP_1_LINK_PASS | Source-priced local link/preview and automated checks; final real setup separately | IMPLEMENTED_WITH_LOCAL_QA |
+| CUSTOMER_WIDGET_PASS | Owner saw real Widget for recovered customer; final multi-user E2E still due | OWNER_QA_OBSERVED |
+| PURCHASE_PREPARATION_PASS | One consent/intent, dedicated agreement/subscription and readback | NOT_RUN |
+| MAPPED_PURCHASE_WIDGET_PASS | Actual payment-capable Widget for intended agreement | NOT_RUN |
+| PAYMENT_PASS / PAYMENT_NOT_RUN | Human-authorized payment or explicit non-execution | NOT_RUN |
+| AUTOMATED_REGRESSION_PASS | Step 1-2 suites recorded; full final-SHA suite after Step 4 | RECORDED_PASS_FOR_STEPS_1_2 |
+| PAID_ACCESS_IN_KERNEL | Program Steps 8-10/11, NOT this ticket | DEFERRED |
 
 Full ANY-709 acceptance requires the implemented product-bound payment path,
 not merely customer Widget PASS. An unavailable payment method leaves payment
@@ -1166,9 +1185,10 @@ Sources used for decisions, not a request that Codex repeat all reading:
 The authoritative requirements above come from the updated owner/ticket record.
 The four-stage decomposition, proposed route/CLI shapes, narrow storage strategy
 and focused test grouping are planning choices for approval, not claims they
-already exist or have passed testing. Unknown account/calendar/payment-method
-facts are explicitly separated from evidence. No test, production enablement or
-future Kernel functionality is inferred from a successful document review.
+already exist or have passed testing. The `Europe/Moscow` price calendar is
+confirmed and implemented; provider purchase/readback/payment-method readiness
+still needs human acceptance. No production launch or Kernel paid access is
+inferred from synthetic or customer Widget tests.
 
 ## Owner-requested customer repair CLI, 2026-10-26
 
