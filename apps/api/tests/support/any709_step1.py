@@ -30,7 +30,6 @@ def step1_settings(**overrides: Any) -> Settings:
             "kernel_mock_enabled": True,
             "lbx_widget_signing_secret": "isolated-test-widget-secret",
             "lbx_seller_organization_id": "21",
-            "lbx_billing_timezone": "Etc/UTC",
             "lbx_currency_id": "1",
             "lbx_currency": "RUB",
             **overrides,

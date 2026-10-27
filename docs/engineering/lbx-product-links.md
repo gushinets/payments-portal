@@ -22,12 +22,24 @@ startup. There is no startup provider call or automatic link publication.
 The seller is deployment configuration; catalog reads do not query organizations.
 The later purchase agreement must prove the configured seller.
 
-Effective-dated offers also require **`LBX_BILLING_TIMEZONE`**, an actual
-operator-supplied IANA billing calendar. The supplied stand-043 evidence does
-not establish its timezone: obtain it before the human offer checkpoint. Do
-not infer UTC/Moscow from locale or host settings. Missing/invalid calendar is
-`selected_offer_billing_timezone_required` / `selected_offer_billing_timezone_invalid`,
-an offer error. Currency interpretation is a typed mapping from the configured
+LBX support directly confirmed that both services `prices[]` and the dedicated
+service-prices GET return historical and future prices, and price start dates
+take effect inclusively in Moscow. The integration uses the fixed IANA calendar
+`Europe/Moscow`; no manual timezone setting is needed. One Moscow evaluation
+date is captured for both complete control reads. Each method selects the
+selected period's latest start date on or before that date; the selected period,
+start date and all monetary values must agree. The dedicated method supplies
+the final amount and `price_id`. Multiple distinct historical/future starts are
+valid; missing applicable prices, duplicate starts or conflicting current facts
+are safe offer errors. A genuine commercial change between control reads still
+refuses the offer. Only the chosen current price supplies discount evidence:
+explicit `discounts: []` means none, missing/null is incomplete and nonempty
+discounts remain unsupported by the MVP. Another price/period cannot supply it.
+The pinned API base supplies system IANA `tzdata`; the build checks
+`Europe/Moscow` for both development and production targets. The server's local
+timezone does not set the billing calendar.
+
+Currency interpretation is a typed mapping from the configured
 `LBX_CURRENCY_ID` to `LBX_CURRENCY=RUB`, major units with scale 2. ID 1 is the
 supplied test setup, not an algorithm constant; configure another proven external
 ID for the same supported RUB contract when needed. Mismatching IDs/unsupported
@@ -35,15 +47,17 @@ interpretations
 are unsupported offer errors. These settings do not attest credit, tax,
 renewal/cancellation or historical-subscription policy; no unknown fact is filled
 with false/zero. Later purchase validation must obtain its own applicable facts.
-Neither calendar nor currency readiness blocks a raw Server API GET or the
+Currency readiness does not block a raw Server API GET or the
 account-Widget readiness check. Purchase runtime remains deferred.
 
 The transport accepts the retained E04/E05 representations: exact JSON numeric
 `1.0` quantity bounds, a provider-local midnight `price_start_date`, and history
 `start_date_year`/`start_date_month`. A schedule month means its first calendar
-day, with no assumed timezone/paid UTC interval. Fractional quantities parse
-exactly but are unsupported by the integer-service profile; missing facts remain
-incomplete. Invalid/nonfinite numbers and invalid/conflicting dates fail safely.
+day in the confirmed Moscow price calendar, never a paid UTC interval.
+No subscription/tariff UTC duration is derived from these calendar dates.
+Fractional quantities parse exactly but are unsupported by the integer-service
+profile; missing facts remain incomplete. Invalid/nonfinite numbers and
+invalid/conflicting dates fail safely.
 
 Configure the existing Kernel URL/token. Optional `KERNEL_MOCK_ENABLED=1` with
 explicit `KERNEL_MOCK_TOKEN` and matching `KERNEL_SERVICE_TOKEN` starts only the

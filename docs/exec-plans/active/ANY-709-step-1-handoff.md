@@ -2,18 +2,95 @@
 
 Status: **IMPLEMENTED_AWAITING_HUMAN_VALIDATION**
 Date: 2026-10-26
-Selected scope: Step 1 only. The supplied untracked implementation plan was preserved unchanged.
+Selected scope: Step 1 current offers. The initial implementation plan was
+preserved for its original delivery; affected price/calendar sections are now
+updated for the owner-requested correction below.
+
+## Current-price and Moscow calendar correction (2026-10-27, base d8a8758)
+
+The direct answer from LBX support confirms that service inline `prices[]`
+contains all historical and future prices, both price methods use the latest
+start date already reached for the chosen period, and starts are inclusive in
+Moscow. `current_offer.py` now captures one `Europe/Moscow` date before both
+complete control reads. The shared `_applicable_price()` mechanism supports
+inline and dedicated rows without changing the retained legacy normalizer's
+independent contract. Both selected rows must agree on period, start and money;
+the dedicated method supplies the amount and `price_id`. Multiple distinct
+starts work normally; missing applicable rows, duplicate starts, source
+conflicts and observed commercial changes still refuse safely.
+
+Only the selected current inline price is checked for discounts. Explicit empty
+discounts mean none; missing/null and conflicting representations remain
+incomplete, and nonempty discounts remain unsupported. Historical/future/other
+period prices cannot change this evidence. Exact Decimal arithmetic, quantity,
+currency, composition checks, two complete reads and live purchase revalidation
+requirements remain in place. No UTC subscription intervals or Portal price
+list are introduced; price changes do not change product-link identity.
+
+Removed `LBX_BILLING_TIMEZONE` from Settings, environment examples, all three
+Compose configurations, harness pass-through and test setup. No replacement
+setting or obsolete calendar-required/invalid offer error remains. The pinned
+API Docker base supplies system `tzdata` and checks `Europe/Moscow` at build.
+Customer binding/recovery, Widget/JWT/session, PurchaseIntent, Kernel/mock,
+database schema/migrations and legal source are outside this correction.
+
+New regressions use captured 043 fixtures with synthetic prices only; no LBX
+tariff or price was changed. The obsolete key was also removed from the
+untracked local `.env`, preserving its other values. Checked-in changes cover
+the two offer modules, Settings, Dockerfile, environment examples, three Compose
+files, `scripts/repo.py`, current-offer/source/client tests and their related
+fixtures, and only the affected plan/handoff/runbook documentation.
+
+Validation for this correction (2026-10-27):
+
+- Baseline before changes: 174 selected current/legacy-offer tests passed.
+  Focused offer/source/client regression run: 317 passed. The final expanded
+  `test_any709_qa_offers.py` has 62 passing cases, included in the full run below.
+  All captured 043 JSON files remain unchanged.
+- `npm run check`: PASS, with external LBX/Kernel connection values cleared and
+  two-CPU affinity. This includes docs, generation freshness, architecture,
+  complete API Ruff checks, 38 web boundary tests (including TypeScript), 300
+  component tests (including account/Widget), web lint and production build,
+  1340 fast API tests and 210 PostgreSQL tests. The PostgreSQL partition used
+  the existing local server and pytest's disposable test database. The initial
+  sandbox-only invocation was superseded by this complete run outside its local
+  socket restrictions. Existing SQLite fixture warnings did not fail tests.
+- Python 3.12.13 on the host resolves `Europe/Moscow`. The existing API image
+  supplies system `tzdata` 2026e-0+deb13u1. All 62 price regressions also passed
+  in that image with current source mounted read-only, no network, a temporary
+  `/tmp`, and `TZ=America/Los_Angeles`.
+- `docker build --target production --file apps/api/Dockerfile --tag
+  payments-any709-price-calendar:review .`: PASS. Image
+  `8c2a681eeca8a5855717c755667b94f1cd83754568f9c1478f64edac87df9df5`
+  uses Python 3.12.14. Its network-disabled, read-only smoke imported the current
+  integration using synthetic required app settings, confirmed the removed
+  Settings field, and passed both sides of the Moscow midnight boundary under
+  `UTC`, `America/Los_Angeles` and `Asia/Tokyo`. The final Dockerfile also passed
+  all 35 deployment-contract tests.
+- Read-only local Portal GETs: health/live and health/ready 200; selected
+  `proposal_ai` detail 200, `CURRENT_OFFER`, 100.00 RUB recurring / 0.00
+  connection, monthly instance-start period and `Cache-Control: no-store`.
+  Kernel provenance remains `SIMULATED`; LBX remains `CONFIGURED_SOURCE`.
+- Changed-file Ruff format/lint, final docs check and `git diff --check`: PASS.
+  Diff review confirmed the selected-price/discount/money/source safeguards and
+  no changes to web runtime, generated contracts, legal source or migrations.
+
+Remaining validation limit: the browser E2E suite was skipped because
+`RUN_E2E` was unset; no live customer creation, Widget payment or purchase was
+exercised. Nonempty discounts remain deliberately unsupported by the MVP.
+The correction is locally validated and awaits human review. HEAD remains
+`d8a875827529da25e6e8c9668431b8f9c85594dd`; nothing was staged, committed or pushed.
 
 ## Owner follow-up: environment example inventory (2026-10-26)
 
-Expanded `.env.example` to list all 47 runtime Settings fields and the remaining
+Expanded `.env.example` to list runtime Settings fields and the remaining
 supported keys found in the local `.env`, including mock token/options, test DB
 host/DSN and observability. Values are public defaults or empty placeholders;
 local secrets were inspected only for presence and were not copied or changed.
 Obsolete direct-provider/account-ID keys were not restored. Host-only policy
 tuning is marked explicitly because Compose currently uses its code defaults.
-The billing timezone remains empty by default; an explicit `Etc/UTC` example is
-labeled an unconfirmed isolated-test assumption, pending the actual LBX answer.
+The timezone placeholder from that initial inventory has been removed by the
+2026-10-27 correction: direct LBX support confirms the fixed Moscow calendar.
 Read-only key inspection found no missing Settings/supported local keys or
 duplicate example assignments; `git diff --check` passed. No runtime wiring,
 tests/collection, generation, migrations, containers or live requests were run
@@ -113,8 +190,8 @@ DB configuration; pytest owns the disposable database lifecycle.
 Tests/collection, typechecks, builds, scanners, docs/architecture/check suites,
 containers, browser and live LBX: **NOT_RUN** under the execution contract.
 No current CI/full-QA success is claimed. Steps 3-4, customer recovery, Widget,
-agreements, subscriptions and paid access are unchanged. `LBX_BILLING_TIMEZONE`
-and price selection are unchanged; the actual timezone still awaits LBX support.
+agreements, subscriptions and paid access were unchanged by that correction.
+Current price/calendar behavior follows the 2026-10-27 correction above.
 
 ## PR #150 remaining review fixes (base f6746ba, 2026-10-26)
 
@@ -268,7 +345,8 @@ dry-run/publish/query and read-only SQL commands: real source reads, no required
 Widget secret/seller for linking, one current head, unchanged pin on identical
 publish/repricing and credential rotation, separate unavailable states, no new
 customer/purchase/subscription. Pending: human migration/test/live acceptance
-and the actual provider billing timezone. Steps 2–4 remain untouched.
+only. The price calendar is confirmed as Moscow by direct LBX support and
+requires no manual setup. Steps 2–4 remain untouched.
 
 ## Implemented result
 
@@ -424,7 +502,7 @@ single-head, immutable-history and unchanged billing-object counts.
 
 ## Limitations and final diff review
 
-- Human setup must provide connection secrets, actual operator UID/lock permissions and the actual LBX billing IANA timezone. Supplied 043 evidence does not establish a timezone; it was not guessed.
+- Human setup must provide connection secrets and actual operator UID/lock permissions. Direct LBX support confirms `Europe/Moscow`; no timezone setup is needed.
 - RU currency interpretation is explicitly configured as ID 1 / RUB major units, two decimals. Unknown interpretations remain offer errors. Non-unit quantities with nonzero connection charges remain incomplete without a proven quantity basis.
 - Real Kernel producer/conformance remains ANY-711; production launch approval remains separately gated. A development Kernel mock can accompany configured real LBX; its provenance remains SIMULATED independently of LBX.
 - Buy, customer creation, Widget, consent/purchases, recovery orchestration and paid access remain later steps. No legal source text was changed.
@@ -550,9 +628,8 @@ The ordinary configured Portal endpoint
 `CURRENT_OFFER`, 100.00 RUB recurring, 0.00 connection, quantity 1, monthly
 instance-start period. Technical product provenance remains `SIMULATED` (the
 existing separate Kernel development mock); billing provenance is
-`CONFIGURED_SOURCE`. Existing local `LBX_BILLING_TIMEZONE=Etc/UTC` was preserved,
-not introduced or confirmed by this check. Provider timezone confirmation is
-still required before claiming genuine commercial-calendar acceptance.
+`CONFIGURED_SOURCE`. That historical check did not establish calendar semantics;
+the 2026-10-27 direct LBX support answer now confirms the fixed Moscow calendar.
 
 Regression coverage includes captured payloads, legacy/both discount formats,
 nonempty/missing/null/wrong type/conflicting/other-period/duplicate discount

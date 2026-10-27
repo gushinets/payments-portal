@@ -9,6 +9,14 @@ Repository destination: `docs/exec-plans/active/ANY-709-implementation-plan.md`
 
 ## 0. Execution contract - read for every selected step
 
+**2026-10-27 price-calendar correction:** the owner authorized implementation,
+targeted tests, formatting/lint, supported canonical checks and Docker runtime
+checks for current-price selection and removal of the timezone setting. LBX
+support directly confirmed `Europe/Moscow` and the latest-start-date rule for
+both price methods. This narrow correction does not authorize LBX writes,
+Steps 3-4, stage/commit/push or remote ticket/PR changes. Earlier execution
+restrictions below describe the original stage deliveries.
+
 **2026-10-26 manual-QA exception:** for the two reported Steps 1–2 defects,
 the owner explicitly authorized local diagnostics/tests/application/containers,
 test-043 reads and synthetic customer verification, and separately a second
@@ -254,15 +262,18 @@ external IDs against another configured provider origin. Preserve original
 historical scope values rather than rewriting immutable rows. Ambiguous real
 legacy bindings are diagnosed locally; they do not authorize a destructive reset.
 
-Currency interpretation is a small provider-side typed mapping. If selecting an
-effective-dated price with the existing algorithm genuinely needs the billing
-calendar, use one ordinary connection setting (not `effective_on` in each link
-or an evidence JSON). No 043 timezone has been established by the supplied
-reports: do not guess UTC/Moscow from locale or host time. Prefer an already
-DOCUMENTED provider-current-price value when its semantics suffice; otherwise
-missing calendar applicability gives a precise OFFER error, not a customer
-Widget gate. Record the actual required setting in the runbook. This is a known
-source-input limitation, not an invitation to repeat Phase 0 or invent an API.
+Currency interpretation is a small provider-side typed mapping. The direct LBX
+support answer confirms one fixed `Europe/Moscow` price calendar; no manual
+timezone setting or per-link `effective_on` is needed. Capture one Moscow date
+for both complete control reads. For the selected service/period, each price
+method selects the maximum start date on or before that date, inclusively.
+Inline `prices[]` may contain multiple historical and future prices. Compare
+the selected period, start and monetary values with the dedicated price method;
+use its confirmed amount and `price_id`. Missing/ambiguous applicable prices or
+conflicts refuse the offer; real commercial drift between reads still refuses.
+Validate discounts only for the selected current inline price and retain the
+unsupported-nonempty-discounts rule. Do not derive UTC subscription/tariff
+intervals from calendar dates or store a current price in the product link.
 
 Server/Client API and SDK addresses come only from validated server config;
 use the correct `/api/rest/v1`, `/api/rest/v1/client` and `/lbxwidget.js` paths,
@@ -509,7 +520,7 @@ consumers to require facts needed by the particular operation:
 | Concern | Source and boundary |
 |---|---|
 | Product and selected service/period/quantity | Authenticated Kernel manifest plus documented LBX tariff/services/periods and fixed quantity rules. A list is validated according to its documented contract; no operator-written completeness certificate. |
-| Current monetary quote | Actual service-price fields and documented applicability, configured currency units/scale, and an ordinary billing-calendar setting only where necessary. Keep the specific missing/ambiguous price error; never infer an unproven timezone. |
+| Current monetary quote | Actual service-price fields and configured currency units/scale. Direct LBX support confirms `Europe/Moscow`, inclusive latest-start-date selection in both methods and historical/future inline prices. Use one date for both control reads, require selected current facts to agree and keep precise missing/ambiguous/conflict errors; no timezone setting. |
 | Supported preparation flags | Actual tariff/service flags and the explicit supported CREATE choices. Do not infer absent `debt_threshold`, global credit policy or financial eligibility. Future paid-access proof is not a prerequisite of a simple product link or customer Widget. |
 | Renewal/cancellation acceptance | Existing required versioned Portal documents and applicable documented provider facts for THIS purchase. Do not fabricate legal/policy text or require a separate operator proof-file version on every price change. |
 | Historical obligations | The immutable accepted purchase plus that concrete subscription's effective readback. A fake `historical_policy` certificate or today's catalogue equality cannot replace either. A truly missing material fact yields a precise affected-operation error. |
@@ -563,12 +574,18 @@ configuration, without printing secrets or assuming an unrelated Compose project
 
 `test_any709_step1_sources.py`: real-client mocked HTTP parsing, enabled product,
 complete selected composition, correct period vs period-association ID, exact
-money, current price change, invalid/unknown currency/calendar, unavailable
+money, current price change, invalid/unknown currency or price dates, unavailable
 sources, separate mock provenance, removed-config independence, configuration
 pass-through and redaction. Add positive normal-config tests with NO retired
 proof objects; production-shaped compatible remote-source configuration; dev
 Kernel mock + real-client LBX; missing signing secret not breaking catalog/auth;
 known unmapped product and absent metered allowance without fabricated values.
+Use captured LBX 043 fixtures plus synthetic historical/future prices for
+selected-period applicability, duplicate dates, absent current prices,
+cross-method conflicts and selected-only discount evidence. Cover the inclusive
+2026-10-31 23:59:59 MSK -> 2026-11-01 00:00:00 MSK boundary, one evaluation date
+across both control reads, actual drift, host-timezone independence and no
+timezone configuration. Check IANA availability in Python and the API image.
 Use test transports, not real credentials or a live network.
 
 `test_any709_step1_postgres.py`: migration on populated baseline; legacy history
@@ -1030,10 +1047,9 @@ missing wiring" stage is planned.
 | Commercial config/payment method | Configured in test LBX, suitable safe payment test path | Configured by manager in production LBX |
 
 Connection/privileged CLI parameters are one-time deployment configuration.
-A necessary price-calendar setting, if the implemented documented read needs it,
-is stated explicitly with its source and has no invented test timezone. It is
-not a per-user profile or reason to block customer-only Widget. Ordinary auth,
-SMTP and environment secrets use existing repository mechanisms.
+The price calendar is fixed to `Europe/Moscow` from the direct LBX support
+answer; no timezone configuration is required in test or production. Ordinary
+auth, SMTP and environment secrets use existing repository mechanisms.
 
 Do NOT configure: user UUID lists; `LBX043_*` approvals; `MAPPING_ACCOUNT_ID`;
 `LBX_EXTERNAL_BILLING_ACCOUNT_ID`; `PURCHASE_*PROFILE_FILE`; proposal/approval/

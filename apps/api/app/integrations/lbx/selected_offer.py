@@ -30,7 +30,7 @@ from app.domains.catalog.product_link import ProductLinkRequest
 from app.infrastructure.preflight import PreflightBudget
 from app.integrations.lbx.client import LbxRead, LbxServerClient
 from app.integrations.lbx.discounts import selected_discounts
-from app.integrations.lbx.dto import LbxServicePrice, LbxTariff, LbxTariffPeriod, LbxTariffService
+from app.integrations.lbx.dto import LbxInlinePrice, LbxServicePrice, LbxTariff, LbxTariffPeriod, LbxTariffService
 from app.integrations.lbx.errors import LbxError
 from app.integrations.lbx.offer_inputs import (
     REQUIRED_POLICY_FIELDS,
@@ -181,28 +181,37 @@ def _validate_configuration(
     return policy, references
 
 
-def _applicable_price(
-    prices: list[LbxServicePrice], period: LbxTariffPeriod, effective_on: date, budget: PreflightBudget
-) -> tuple[LbxServicePrice, date | None]:
+def _price_start(price: LbxServicePrice | LbxInlinePrice) -> date:
+    return _required(
+        price.start_date if isinstance(price, LbxServicePrice) else price.price_start_date, "price_start_unknown"
+    )
+
+
+def _applicable_price[Price: (LbxServicePrice, LbxInlinePrice)](
+    prices: list[Price], period: LbxTariffPeriod, effective_on: date, budget: PreflightBudget
+) -> tuple[Price, date | None]:
     relevant = [row for row in prices if row.period_id == period.period_id]
     for row in relevant:
         budget.check()
-        _required(row.start_date, "price_start_unknown")
-        if (row.period_type, row.period_length) != (period.period_type, period.period_length):
+        _price_start(row)
+        if isinstance(row, LbxServicePrice) and (row.period_type, row.period_length) != (
+            period.period_type,
+            period.period_length,
+        ):
             _incomplete("price_period_conflict")
-    relevant.sort(key=lambda row: _required(row.start_date, "price_start_unknown"))
-    if len({row.start_date for row in relevant}) != len(relevant):
+    relevant.sort(key=_price_start)
+    if len({_price_start(row) for row in relevant}) != len(relevant):
         _incomplete("price_applicability_ambiguous")
     for index, row in enumerate(relevant):
-        following = relevant[index + 1].start_date if index + 1 < len(relevant) else None
-        if row.next_change_date is not None and row.next_change_date != following:
+        following = _price_start(relevant[index + 1]) if index + 1 < len(relevant) else None
+        if isinstance(row, LbxServicePrice) and row.next_change_date is not None and row.next_change_date != following:
             _incomplete("price_schedule_gap_or_overlap")
-    applicable = [row for row in relevant if _required(row.start_date, "price_start_unknown") <= effective_on]
+    applicable = [row for row in relevant if _price_start(row) <= effective_on]
     if not applicable:
         _incomplete("applicable_price_missing")
     row = applicable[-1]
     index = relevant.index(row)
-    until = relevant[index + 1].start_date if index + 1 < len(relevant) else None
+    until = _price_start(relevant[index + 1]) if index + 1 < len(relevant) else None
     return row, until
 
 

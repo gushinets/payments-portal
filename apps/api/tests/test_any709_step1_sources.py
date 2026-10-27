@@ -161,7 +161,7 @@ async def test_any709_step1_calendar_wire_values_are_validated_strictly(name: st
     [
         ("services", '"min_multiplicator": 1.0,', "", "min_multiplicator_unknown"),
         ("prices", '"start_date_month": 10,', "", "price_start_unknown"),
-        ("services", "2026-10-01 00:00:00", "2026-11-01 00:00:00", "inline_effective_date_conflict"),
+        ("services", "2026-10-01 00:00:00", "2026-10-02 00:00:00", "inline_effective_date_conflict"),
     ],
 )
 async def test_any709_step1_missing_or_conflicting_calendar_and_quantity_stay_offer_errors(
@@ -234,13 +234,11 @@ async def test_any709_step1_refuses_incomplete_or_unsupported_offer(
 @pytest.mark.parametrize(
     "overrides,reason",
     [
-        ({"lbx_billing_timezone": ""}, "billing_timezone_required"),
-        ({"lbx_billing_timezone": "Unknown/Invalid"}, "billing_timezone_invalid"),
         ({"lbx_currency": "EUR"}, "currency_interpretation_unsupported"),
         ({"lbx_currency_id": "unknown"}, "currency_interpretation_unsupported"),
     ],
 )
-async def test_any709_step1_calendar_and_currency_are_offer_errors(overrides: dict[str, str], reason: str) -> None:
+async def test_any709_step1_currency_errors_are_offer_errors(overrides: dict[str, str], reason: str) -> None:
     configuration = step1_settings(**overrides)
     assert configuration.lbx_configuration_error is None
     with pytest.raises(SelectedOfferRefused) as error:
@@ -460,6 +458,7 @@ def test_any709_step1_harness_connection_pass_through_is_private_and_mock_indepe
         "LBX_SERVER_PASSWORD": secret,
         "LBX_BASE_URL": "https://billing.test",
         "MAPPING_OPERATOR_UIDS": "not-json",
+        "LBX_BILLING_TIMEZONE": "Unknown/Invalid",
     }
     if lock_file is not None:
         local_env["MAPPING_OPERATOR_LOCK_FILE"] = lock_file
@@ -473,6 +472,7 @@ def test_any709_step1_harness_connection_pass_through_is_private_and_mock_indepe
     assert written["LBX_SERVER_PASSWORD"] == secret
     assert written["LBX_BASE_URL"] == "https://billing.test"
     assert "MAPPING_OPERATOR_UIDS" not in written
+    assert "LBX_BILLING_TIMEZONE" not in written
     assert written["MAPPING_OPERATOR_LOCK_FILE"] == (lock_file or "/run/payments-portal/operator.lock")
     assert "LBX_SERVER_PASSWORD" not in json.loads(repo.RUNTIME_JSON.read_text())
     assert repo.RUNTIME_ENV.stat().st_mode & 0o077 == 0
@@ -482,6 +482,7 @@ def test_any709_step1_harness_connection_pass_through_is_private_and_mock_indepe
     for filename in ("docker-compose.yml", "docker-compose.agent.yml", "docker-compose.prod.yml"):
         text = (repo.ROOT / filename).read_text()
         assert "MAPPING_OPERATOR_UIDS" not in text
+        assert "LBX_BILLING_TIMEZONE" not in text
         for setting in (
             "LBX_BASE_URL",
             "LBX_SERVER_USERNAME",
@@ -494,6 +495,7 @@ def test_any709_step1_harness_connection_pass_through_is_private_and_mock_indepe
     for filename in (".env.example", ".env.production.example"):
         text = (repo.ROOT / filename).read_text()
         assert "MAPPING_OPERATOR_UIDS" not in text
+        assert "LBX_BILLING_TIMEZONE" not in text
         assert "MAPPING_OPERATOR_LOCK_FILE=" in text
     mock = (repo.ROOT / "docker-compose.kernel-mock.dev.yml").read_text()
     assert "MAPPING_" not in mock and "LBX_" not in mock and "kernel-walkthrough" not in mock

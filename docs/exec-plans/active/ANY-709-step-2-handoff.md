@@ -30,7 +30,8 @@ affected regressions are in the
 Earlier PASS evidence does not validate this correction. No tests, collection,
 typechecks, builds, scanners, check suites, containers, browser or live LBX ran;
 customer recovery/Widget/agreements/subscriptions/paid access and Steps 3-4 are
-unchanged. Billing timezone and price selection are unchanged, pending LBX support.
+unchanged. Current price/calendar behavior now follows the direct LBX support
+answer and the [2026-10-27 Step 1 correction](ANY-709-step-1-handoff.md#current-price-and-moscow-calendar-correction-2026-10-27-base-d8a8758).
 
 The account now has an explicit localized billing button independent of catalog
 loading, mappings, prices, seller/calendar and subscriptions. Verified existing
@@ -494,7 +495,7 @@ environment["PATH"] = str(Path.cwd() / ".venv/bin") + os.pathsep + environment["
 for key in (
     "KERNEL_BASE_URL", "KERNEL_SERVICE_TOKEN", "KERNEL_MOCK_TOKEN",
     "LBX_BASE_URL", "LBX_SERVER_USERNAME", "LBX_SERVER_PASSWORD",
-    "LBX_WIDGET_SIGNING_SECRET", "LBX_SELLER_ORGANIZATION_ID", "LBX_BILLING_TIMEZONE",
+    "LBX_WIDGET_SIGNING_SECRET", "LBX_SELLER_ORGANIZATION_ID",
 ):
     environment[key] = ""
 environment["KERNEL_MOCK_ENABLED"] = "0"

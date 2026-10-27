@@ -170,7 +170,6 @@ def test_any709_step2_real_bootstrap_reuses_one_customer_and_never_persists_secr
     factory = postgres_session_factory
     seed(factory)
     config = step1_settings(
-        lbx_billing_timezone="",
         lbx_seller_organization_id="",
         kernel_base_url="",
         kernel_service_token="",
