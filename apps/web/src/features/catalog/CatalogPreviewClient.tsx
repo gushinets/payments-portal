@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 
-import type { CatalogProductResponse } from "@/generated/api-contracts/types.gen";
+import type { CatalogProductResponse, SessionUserResponse } from "@/generated/api-contracts/types.gen";
+import { ProductBilling } from "@/features/billing";
 import { Link } from "@/i18n/navigation";
 import { useIntlLocale } from "@/i18n/use-formatting-locale";
 import { getCatalogProduct, getCatalogProducts } from "@/shared/api/catalog";
@@ -75,10 +76,12 @@ function OfferPreview({ product }: { product: CatalogProductResponse }) {
 export function CatalogPreviewClient({
   productId,
   headingLevel = 2,
-  accountStatuses
+  accountStatuses,
+  billingUser
 }: {
   productId?: string;
   headingLevel?: 2 | 3;
+  billingUser?: SessionUserResponse;
   accountStatuses?: {
     [slot in "access" | "usage"]: { label: string; description: string };
   };
@@ -149,6 +152,7 @@ export function CatalogPreviewClient({
                   ))}
                 </dl>
               )}
+              {billingUser && <ProductBilling productId={product.product_id} user={billingUser} headingLevel={4} />}
               {productId === undefined && (
                 <div className="tool-card-bottom">
                   <Link className="tool-detail-action" href={`/products/${encodeURIComponent(product.product_id)}`}>

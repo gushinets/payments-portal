@@ -22,12 +22,14 @@ ANY-709 Step 1 adds real source reads, direct links and current offers; Step 2
 adds explicit verified-email customer-only Widget viewing, pending human
 validation. Step 3 adds accepted-purchase APIs, financial preparation/recovery
 and verified payment bootstrap, with focused synthetic tests passing and the local
-development migration applied. Real purchase/payment acceptance is pending. Step 4 browser
-purchase flows, confirmed paid access, and actual usage/quota integration remain deferred. There are no production direct-provider
+development migration applied. Step 4 implements localized Buy/Continue/Manage, explicit
+review/consent and the shared payment-capable Widget lifecycle. Step 4 targeted component/boundary/desktop/mobile synthetic tests PASS;
+final real purchase/payment acceptance remains NOT_RUN. Confirmed paid access
+and actual usage/quota integration remain deferred. There are no production direct-provider
 subscribers or subscriptions to migrate. The fifteen target billing tables
 start empty; the link and explicit customer paths now populate their owned
 records. Step 3 can prepare an accepted subscription through the API without
-granting paid access; see the [purchase runbook](docs/engineering/lbx-product-links.md#purchase-api-and-financial-recovery-step-3).
+granting paid access; see the [billing runbook](docs/engineering/ANY-709-billing-runbook.md#purchase-api-and-financial-recovery-step-3).
 For target billing work, follow [ADR 0005](docs/architecture/decisions/0005-external-billing-boundary.md),
 the accepted [External Billing Boundary Design](docs/superpowers/specs/2026-09-15-external-billing-boundary-design.md),
 and the accepted
@@ -325,14 +327,15 @@ repository. No direct-provider runtime exists in this repository.
   without periodic source-catalog mirrors. ANY-709 Step 1 now uses direct versioned product links, source-backed Kernel
   discovery and selected current LBX offers. Immutable links/history stay in
   PostgreSQL; ordinary repricing needs no link republication. See the
-  [normal LBX runbook](docs/engineering/lbx-product-links.md). Paid-access,
+  [normal LBX runbook](docs/engineering/ANY-709-billing-runbook.md). Paid-access,
   subscription trust/reconciliation and AccessSnapshot rules are unchanged.
 - Account-only Widget viewing uses the real configured SDK after explicit open,
   verified email, paired customer identity and Client readiness. It requires no
   product price or subscription; see the runbook for human acceptance.
 - Step 3 APIs can prepare purchases and authorize verified payment presentation;
   focused automated checks and the local development migration have passed; real
-  purchase/payment QA remains pending. Browser purchase UI, paid-access
-  state and usage/quota await their owning external-billing/Kernel integration steps;
+  purchase/payment QA remains pending. Step 4 browser Buy/Continue/Manage is
+  implemented with targeted synthetic tests PASS; paid-access state and usage/quota await their
+  owning external-billing/Kernel integration steps;
   provider-dependent work remains subject to Phase 0 gates.
 - Legal documents are drafts until reviewed and approved by counsel.

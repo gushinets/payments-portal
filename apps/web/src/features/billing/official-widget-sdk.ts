@@ -5,10 +5,10 @@ import type { WidgetBootstrapResponse } from "@/generated/api-contracts/types.ge
 // One SDK load per isolated browsing context. Remote code never shares the
 // Portal origin/session storage. Removing the frame destroys its SDK memory;
 // there is no invented vendor dispose method and no credential in HTML/URLs.
-function hostDocument(origin: string): string {
+function hostDocument(origin: string, payment: boolean): string {
   return `<!doctype html><html><head>
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' ${origin}; connect-src ${origin}; frame-src ${origin}; style-src 'unsafe-inline' ${origin}; img-src data: ${origin}; font-src data: ${origin}; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' ${origin}; connect-src ${origin}; frame-src ${origin}; style-src 'unsafe-inline' ${origin}; img-src data: ${origin}; font-src data: ${origin}; base-uri 'none'; form-action ${payment ? origin : "'none'"}">
 <style>html,body,#widget{height:100%;margin:0}iframe{width:100%;height:100%;border:0}</style>
 </head><body><div id="widget"></div><script>
 "use strict";
@@ -58,10 +58,13 @@ export function mountOfficialWidget(
     origin.username || origin.password || /[<>"'\s]/.test(bootstrap.widget_origin) ||
     bootstrap.sdk_url !== origin.origin + "/lbxwidget.js" ||
     bootstrap.serviceBaseUrl !== origin.origin + "/api/rest/v1/client" ||
-    bootstrap.presentation !== "account" || !bootstrap.credential ||
+    !bootstrap.credential ||
     !bootstrap.disableCreateSubscription || !bootstrap.disableEditSubscription ||
     !bootstrap.disableStopSubscription || !bootstrap.disableAutopayments ||
-    !bootstrap.disablePayments || !bootstrap.disableInvoiceGeneration
+    !bootstrap.disableInvoiceGeneration ||
+    (bootstrap.presentation === "account"
+      ? !bootstrap.disablePayments || !!bootstrap.payment_target
+      : bootstrap.presentation !== "payment" || bootstrap.disablePayments || !bootstrap.payment_target)
   ) throw new Error("widget_configuration_refused");
 
   let options: Record<string, string | boolean> | null = {
@@ -79,7 +82,11 @@ export function mountOfficialWidget(
   frame.title = title;
   // The data URL has an opaque origin even with allow-same-origin, allowing
   // the nested HTTPS vendor frame to use its own Client API origin.
-  frame.setAttribute("sandbox", "allow-scripts allow-same-origin");
+  // Payment methods may submit forms or open an acquiring window. Only the
+  // proven payment presentation permits those user-driven browser actions.
+  frame.setAttribute("sandbox", bootstrap.presentation === "payment"
+    ? "allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation"
+    : "allow-scripts allow-same-origin");
   frame.referrerPolicy = "no-referrer";
   frame.style.width = "100%";
   frame.style.height = "560px";
@@ -117,7 +124,7 @@ export function mountOfficialWidget(
     frame.contentWindow?.postMessage("portal_widget_connect", "*", [channel.port2]);
     frame.onload = null;
   };
-  frame.src = "data:text/html;charset=utf-8," + encodeURIComponent(hostDocument(origin.origin));
+  frame.src = "data:text/html;charset=utf-8," + encodeURIComponent(hostDocument(origin.origin, bootstrap.presentation === "payment"));
   node.replaceChildren(frame);
   return dispose;
 }

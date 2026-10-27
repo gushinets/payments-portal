@@ -57,6 +57,7 @@ function renderAccountClient(locale: "ru" | "pt" = "ru", withHeader = false) {
         Auth: messages.Auth,
         Account: messages.Account,
         Billing: messages.Billing,
+        Purchase: messages.Purchase,
         CatalogPreview: messages.CatalogPreview,
         EmailVerification: messages.EmailVerification
       }
@@ -70,7 +71,8 @@ describe("direct account authentication and session", () => {
     fetchMock.mockReset();
     catalogFetchMock.mockReset().mockImplementation(async () => jsonResponse({ products: [simulatedProduct] }));
     vi.stubGlobal("fetch", ((input, init) => String(input).endsWith("/api/catalog/products")
-      ? catalogFetchMock(input, init) : fetchMock(input, init)) satisfies typeof fetch);
+      ? catalogFetchMock(input, init) : String(input).includes("/api/purchase-intents/current?")
+        ? Promise.resolve(jsonResponse({ purchase: null })) : fetchMock(input, init)) satisfies typeof fetch);
   });
 
   afterEach(() => {
@@ -158,7 +160,7 @@ describe("direct account authentication and session", () => {
         const card = within(cards[index]);
         expect(card.getByText(product.product_id)).toBeVisible();
         expect(card.getByText(messages.CatalogPreview.simulated)).toBeVisible();
-        expect(card.getByRole("heading", { level: 3 })).toBeVisible();
+        expect(card.getByRole("heading", { level: 3, name: messages.CatalogPreview.productTitle })).toBeVisible();
         expect(card.getByRole("link", { name: messages.CatalogPreview.details }))
           .toHaveAttribute("href", `/${locale}/products/${product.product_id}`);
         expect(card.getByText(locale === "ru" ? "9 007 199 254 740 993,01 RUB" : "9.007.199.254.740.993,01 RUB"))

@@ -20,7 +20,10 @@ source clients and historical v1 publication. ANY-709 Step 1 now supplies
 normal LBX configuration, direct immutable product links and source-backed
 catalog/current-offer reads; genuine Kernel conformance and production enablement remain gated.
 ANY-709 Step 3 adds accepted-purchase APIs and financial preparation/recovery,
-with tests and human validation pending. Billing lifecycle workers and paid access remain later work. Final 4F
+with focused synthetic/local QA recorded and real purchase/payment validation pending.
+Step 4 adds localized product/account Buy/Continue/Manage and a shared payment-capable
+Widget controller; targeted synthetic tests PASS, with final real acceptance pending. Billing lifecycle
+workers and paid access remain later work. Final 4F
 verification and human screenshot/intent acceptance remain pending.
 
 Each production deployment serves exactly one contour. Region Resolver is a
@@ -53,7 +56,7 @@ CloudPayments runtime, `PaymentProviderAdapter`, `PaymentProviderRegistry`,
 provider-account routing model, direct-payment webhook path, or Portal-owned
 catalog/order/payment/subscription/entitlement lifecycle. Purchase preparation is
 available through Step 3 APIs for explicit acceptance and bounded preparation;
-Step 4 browser Buy/Continue/Manage remains pending. Catalog details read current
+Step 4 browser Buy/Continue/Manage is implemented with targeted synthetic tests PASS. Catalog details read current
 selected offers, and no commercial observation grants paid access.
 
 The clean first-install schema contains ten retained identity/session/legal
@@ -76,7 +79,7 @@ selected-offer LBX reads. ANY-709 Step 1 separates immutable product links from 
 and immutable accepted purchase snapshots. PostgreSQL retains links/history. Catalog
 listing reads enabled Kernel products once; selected detail reads current LBX
 values with bounded work. A current offer does not grant access. New purchase admission independently
-revalidates it and pins exact terms and append-only legal evidence. See the [normal connection/link runbook](docs/engineering/lbx-product-links.md). There are no periodic source-catalog synchronization jobs.
+revalidates it and pins exact terms and append-only legal evidence. See the [normal connection/link runbook](docs/engineering/ANY-709-billing-runbook.md). There are no periodic source-catalog synchronization jobs.
 Paid-access derivation, subscription reconciliation/trust and AccessSnapshot
 deadlines are unchanged.
 External Billing owns commercial billing truth and lifecycle. The AnyToolAI
@@ -124,20 +127,22 @@ presentation. Its initial subscription projection is `unverified` financially,
 with no paid-trust interval, grant or access-primary selection. Focused synthetic
 tests and the local development migration have passed; real prepared-subscription/
 payment acceptance remains NOT_RUN.
-See the [Step 3 runbook](docs/engineering/lbx-product-links.md#purchase-api-and-financial-recovery-step-3).
+See the [Step 3 runbook](docs/engineering/ANY-709-billing-runbook.md#purchase-api-and-financial-recovery-step-3).
 
 ## Current domains and API
 
 - **Identity** — contour-local users, hashed sessions, registration, login,
   logout, authenticated email verification, and password reset.
 - **Billing account** — explicit `POST /api/billing/widget-bootstrap`; verified
-  identity and read-only Widget presentation, no commercial admission.
+  identity for account viewing, or original owned purchase/effective-term proof
+  for payment presentation. The same disposable SDK controller handles both.
 - **Legal** — legal entities, versioned documents, required-document discovery,
   and append-only acceptance evidence.
 - **Catalog admission and billing persistence** — live source validation,
   direct immutable product links with one current product head and live catalog reads;
-  purchase evidence, reconciliation/operation records, paid-access state and
-  invalidation outbox remain storage for later stages.
+  accepted purchase evidence and fenced request-driven preparation/recovery are
+  implemented. Reconciliation workers, paid-access derivation and invalidation
+  delivery remain later stages.
 - **Presentation** — locale-prefixed product-first home, catalog,
   product detail pages, pricing placeholder, direct account/auth entry,
   product-centric cabinet, recovery, verification, and
@@ -166,12 +171,12 @@ Legal routes remain `/ru/privacy`, `/ru/consent-personal-data`, `/ru/offer`,
 `/ru/cancellation`, `/ru/cookies`, and `/ru/security`. `/[locale]/account` owns
 direct sign-in/registration and the product-centric authenticated cabinet; the
 header sign-in modal is retained. Product cards open local detail pages, and
-account CTAs enter `/[locale]/account`; no purchase or fabricated
-product-execution target is exposed.
+account CTAs enter `/[locale]/account`. Verified product/account controls review,
+confirm and resume the original held purchase; no product-execution URL is fabricated.
 Home, catalog, product detail and the authenticated cabinet read published
-products through the Portal catalog API. Detail routes use the Kernel
-`product_id` preserved in the approved immutable mapping; browsing reads stored
-terms from PostgreSQL without live source calls. The former static
+products through the Portal catalog API. Listing reads enabled Kernel products;
+selected detail/review reads current LBX terms. Detail routes use Kernel
+`product_id`; PostgreSQL preserves immutable links and accepted purchase history. The former static
 `document-summary` and `prompt-optimizer` slugs belong to the historical 4F
 presentation and are not the current catalog identity source. Account cards
 retain independent unknown-access and unavailable-usage slots for Steps 9–10;

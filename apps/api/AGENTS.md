@@ -16,7 +16,7 @@ retained billing document:
    reads for publication/new purchase, PostgreSQL for immutable history/accepted purchase terms. ANY-709 Step 1
    uses direct versioned product links and source-backed catalog/current offers
    without file approvals or price-republication; see the
-   [runbook](../../docs/engineering/lbx-product-links.md). No change to subscription trust or AccessSnapshot.
+   [runbook](../../docs/engineering/ANY-709-billing-runbook.md). No change to subscription trust or AccessSnapshot.
 
 The [payment-provider document](../../docs/architecture/payment-providers.md)
 is historical characterization of the physically removed direct-provider
@@ -126,9 +126,11 @@ database lifecycle.
   pending human validation. ANY-709 Step 3 implements accepted-purchase APIs,
   held scopes, financial preparation/recovery and verified payment bootstrap;
   focused synthetic tests and the local development migration have passed; real
-  purchase/payment QA is pending. Reconciliation, paid-access and
+  purchase/payment QA is pending. Step 4 consumes these contracts in localized
+  Buy/Continue/Manage UI; targeted synthetic tests PASS; real payment acceptance is NOT_RUN.
+  Reconciliation, paid-access and
   billing-callback runtime remain future work. See the
-  [purchase runbook](../../docs/engineering/lbx-product-links.md#purchase-api-and-financial-recovery-step-3).
+  [purchase runbook](../../docs/engineering/ANY-709-billing-runbook.md#purchase-api-and-financial-recovery-step-3).
 - Never log authentication tokens, authorization headers, secrets, card fields,
   or unredacted webhook bodies.
 - Legal acceptance records are append-only.

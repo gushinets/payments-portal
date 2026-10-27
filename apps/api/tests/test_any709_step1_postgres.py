@@ -268,7 +268,7 @@ def test_any709_step1_origin_binding_lost_ack_never_replays_an_association(
         assert db.scalar(select(func.count()).select_from(CommercialMappingRevision)) == 1
 
 
-def test_any709_step1_populated_origin_upgrade_preserves_proven_legacy_scope_through_rotation(
+def test_any709_step1_populated_upgrade_preserves_mapping_and_legacy_scope_through_rotation(
     postgres_engine: Engine,
     database_test_url: URL,
     postgres_session_factory: sessionmaker[Session],
@@ -279,7 +279,7 @@ def test_any709_step1_populated_origin_upgrade_preserves_proven_legacy_scope_thr
     document = link_document(scope=scope, product_revision_number=1)
     revision_id = uuid4()
     with alembic_test_config(database_test_url) as config:
-        command.upgrade(config, "20261026_0003")
+        command.upgrade(config, "20261001_0002")
         with postgres_engine.begin() as connection:
             connection.execute(
                 text(
@@ -299,6 +299,10 @@ def test_any709_step1_populated_origin_upgrade_preserves_proven_legacy_scope_thr
                     "principal": document.publisher_principal,
                 },
             )
+        command.upgrade(config, "head")
+        with postgres_engine.begin() as connection:
+            # Consolidation must not adopt the immutable predecessor mapping.
+            assert connection.execute(text("SELECT count(*) FROM commercial_product_heads")).scalar_one() == 0
             connection.execute(
                 text(
                     "INSERT INTO commercial_product_heads (external_billing_account_id, product_id, mapping_revision_id, revision_number) "
@@ -306,7 +310,6 @@ def test_any709_step1_populated_origin_upgrade_preserves_proven_legacy_scope_thr
                 ),
                 {"account": scope.external_billing_account_id, "id": revision_id},
             )
-        command.upgrade(config, "head")
     with postgres_session_factory() as db:
         head = db.get(CommercialProductHead, (scope.external_billing_account_id, "proposal_ai"))
         assert head.provider_origin is None  # The migration guessed no provenance.

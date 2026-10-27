@@ -110,10 +110,11 @@ export async function postJson<T>(
   body: unknown,
   contract: string,
   token?: string,
-  extraHeaders?: Readonly<Record<string, string>>
+  extraHeaders?: Readonly<Record<string, string>>,
+  timeoutMs = requestTimeoutMs
 ): Promise<T> {
   const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), requestTimeoutMs);
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
   const response = await fetch(`${resolveApiBase()}${path}`, {
     method: "POST",
     headers: {
@@ -135,7 +136,8 @@ export async function postJson<T>(
 export async function getJson<T>(
   path: string,
   token: string | undefined,
-  contract: string
+  contract: string,
+  extraHeaders?: Readonly<Record<string, string>>
 ): Promise<T> {
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => controller.abort(), requestTimeoutMs);
@@ -143,6 +145,7 @@ export async function getJson<T>(
   try {
     const response = await fetch(`${resolveApiBase()}${path}`, {
       headers: {
+        ...extraHeaders,
         ...(token ? { Authorization: `Bearer ${token}` } : {})
       },
       signal: controller.signal

@@ -515,41 +515,47 @@ async def test_any709_step3_forward_upgrade_preserves_populated_history(
 ) -> None:
     reset_public_schema(postgres_engine)
     with alembic_test_config(database_test_url) as config:
-        command.upgrade(config, "20261026_0005")
+        command.upgrade(config, "20261001_0002")
     factory = sessionmaker(bind=postgres_engine)
-    seed(factory)
     configuration = step1_settings()
-    customer_id, operation_id, fence = uuid4(), uuid4(), uuid4()
+    user_id, customer_id, operation_id = uuid4(), uuid4(), uuid4()
     original_unknown_since = utc_now()
     original_deadline = original_unknown_since + timedelta(hours=2)
     outer_key = "retained-customer-key"
     # Seed the previous wire/schema shape, without running current application
     # code against a schema that predates its new mapped operation column.
     with factory() as db:
-        from app.models import User
-
-        db.add(
-            ExternalBillingCustomer(
-                customer_id=customer_id,
-                external_billing_account_id=configuration.lbx_external_billing_account_id,
-                user_id=db.scalar(select(User.id)),
-                provider_origin=configuration.lbx_provider_origin,
-                billing_customer_key=outer_key,
-            )
+        db.execute(
+            text(
+                "INSERT INTO users (id, tenant_id, region, email, email_normalized, status, metadata) "
+                "VALUES (:id, 'anytoolai', 'ru', 'retained@example.test', 'retained@example.test', 'active', '{}')"
+            ),
+            {"id": user_id},
         )
-        db.flush()
+        db.execute(
+            text(
+                "INSERT INTO external_billing_customers "
+                "(customer_id, external_billing_account_id, user_id, billing_customer_key) "
+                "VALUES (:id, :account, :user, :key)"
+            ),
+            {
+                "id": customer_id,
+                "account": configuration.lbx_external_billing_account_id,
+                "user": user_id,
+                "key": outer_key,
+            },
+        )
         db.execute(
             text(
                 "INSERT INTO external_create_operations "
                 "(create_operation_id, operation_kind, customer_id, request_correlation_key, "
-                "operation_state, send_fence, unknown_since, unknown_recovery_deadline_at) "
-                "VALUES (:id, 'customer', :customer, :key, 'possible_send', :fence, :since, :deadline)"
+                "operation_state, unknown_since, unknown_recovery_deadline_at) "
+                "VALUES (:id, 'customer', :customer, :key, 'possible_send', :since, :deadline)"
             ),
             {
                 "id": operation_id,
                 "customer": customer_id,
                 "key": outer_key,
-                "fence": fence,
                 "since": original_unknown_since,
                 "deadline": original_deadline,
             },
@@ -558,14 +564,15 @@ async def test_any709_step3_forward_upgrade_preserves_populated_history(
     with alembic_test_config(database_test_url) as config:
         command.upgrade(config, "head")
     with factory() as db:
-        assert db.get(ExternalBillingCustomer, customer_id).billing_customer_key == outer_key
+        customer = db.get(ExternalBillingCustomer, customer_id)
+        assert customer.billing_customer_key == outer_key and customer.provider_origin is None
         operation = db.get(ExternalCreateOperation, operation_id)
         assert (
             operation.external_billing_account_id
             == db.get(ExternalBillingCustomer, customer_id).external_billing_account_id
         )
         assert operation.operation_state == State.POSSIBLE_SEND
-        assert operation.request_correlation_key == outer_key and operation.send_fence == fence
+        assert operation.request_correlation_key == outer_key and operation.send_fence is None
         assert operation.unknown_since == original_unknown_since
         assert operation.unknown_recovery_deadline_at == original_deadline
         assert db.scalar(select(func.count()).select_from(BillingPurchaseScopeHold)) == 0

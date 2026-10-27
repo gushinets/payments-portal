@@ -141,6 +141,15 @@ customer later-open retry policy, and UNKNOWN keeps its hold and original +2h
 deadline. No operation or Widget outcome grants paid access.
 Account viewing has no catalog, price, seller-agreement or subscription prerequisite.
 
+Step 4 uses one disposable SDK lifecycle for account and payment views. Opening
+another presentation destroys the previous host; product/user changes, logout,
+close and late-response guards prevent local credential reuse. Only proven
+payment presentation permits sandboxed forms, acquiring popups that can leave
+the sandbox, and user-activated navigation. Account viewing retains its stricter
+sandbox. These browser capabilities enable provider payment UX, do not establish
+ACLs or paid access, and require real-method human acceptance. Widget close reads
+local status only; the UI explicitly awaits authoritative payment verification.
+
 ## High-risk review paths
 
 Authentication, payments, legal sources and seeds, migrations, telemetry
