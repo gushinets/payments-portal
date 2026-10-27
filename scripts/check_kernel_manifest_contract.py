@@ -20,7 +20,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "docs/contracts/kernel-capability-manifest/v1"
-EXPECTED_DIGEST = "sha256:535a1cdf925b0afaa07b6d6045fd92f98dcb620dbd5fac7bf359dd3416a741fe"
+EXPECTED_DIGEST = "sha256:a39bac9f210a6ac67e97e117f8481a5954dc3f36bdaab2fd54c7522b27d6ec29"
 ROUTE = "/internal/v1/capability-manifest"
 SCOPE = {"tenant_id": "anytoolai", "region": "ru"}
 TEST_TOKEN = "simulated-step8-local-only"
@@ -96,7 +96,7 @@ def validate_schema(value: Any, schema: dict[str, Any], root: dict[str, Any]) ->
 
 
 def semantic_digest(payload: dict[str, Any]) -> str:
-    """Independent implementation, anchored to the unchanged literal digest."""
+    """Independent implementation, anchored to the versioned literal digest."""
     semantic = {key: payload[key] for key in ("schema_version", "tenant_id", "region", "products", "usage_metrics")}
     semantic["products"] = sorted(semantic["products"], key=lambda row: row["product_id"])
     semantic["usage_metrics"] = sorted(semantic["usage_metrics"], key=lambda row: row["metric_key"])
@@ -251,7 +251,10 @@ async def check_case(scenario: str, schema: dict[str, Any], *, fixture: dict[str
                 require(manifest.provenance is SourceProvenance.SIMULATED, "simulation_provenance_lost")
                 selection = dict(SELECTION)
                 if fixture is not None:
-                    selection = {row["metric_key"]: row["unit"] for row in fixture["usage_metrics"]}
+                    selection = {
+                        row["metric_key"]: row["unit"]
+                        for row in fixture["usage_metrics"] if row["product_id"] == "proposal_ai"
+                    }
                 try:
                     require_selected_capability(manifest, product_id="proposal_ai", metric_units=selection)
                 except SelectedCapabilityUnavailable:

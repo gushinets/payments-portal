@@ -60,12 +60,45 @@ is not sufficient to prove those relationships or that a producer returned
 its entire configured deployment.
 
 The [complete positive fixture](fixtures/valid-manifest.json) declares a
-six-product **test deployment**, not a partial copy of a live registry. Only
-`proposal_ai` is enabled; all five other products, including `kernel_demo`,
-are disabled. `proposal_ai.test_generations`, unit `generation`, is explicitly
-**TEST-ONLY** and enabled for the positive example. It is not a real paid
-metric. No price, allowance or commercial/legal approval is established by
-this fixture.
+six-product **test deployment**, not a partial copy of a live registry.
+`proposal_ai` and `brief_decoder` are enabled; the other four products,
+including `kernel_demo`, stay disabled. Each enabled product has one explicitly
+**TEST-ONLY** metric. These are test vocabulary, not released paid metrics.
+No price, purchased quantity or commercial/legal approval is established by
+the manifest.
+
+### Two-product paid-access test examples
+
+The owner selected two different fixed test limits for ANY-765 / program Step 9:
+
+| Product | Test metric | Unit | Purchased quantity per confirmed cycle |
+| --- | --- | --- | --- |
+| `proposal_ai` | `proposal_ai.test_generations` | `generation` | 100 |
+| `brief_decoder` | `brief_decoder.test_analyses` | `analysis` | 300 |
+
+The [test-offer fixture](../../../../tools/kernel_manifest_mock/fixtures/paid-access-test-offers.json)
+owns these **SIMULATED purchase examples**. The mock exposes them in Swagger's
+description and `/openapi.json` as `x-simulated-purchase-examples`, outside the
+manifest response/schema. Portal runtime does not read this metadata. A test
+purchase in Step 9 must pin its quantity in accepted test-offer terms; do not
+infer it from the manifest, LBX service count, price or Kernel guest quota.
+No new HTTP operation, billing stub, usage ledger or paid-access producer is
+introduced. Real configured LBX remains the subscription/lifecycle source.
+
+The second product identity was checked against Kernel commit
+`fa03de85c99bd5ecbfc28b9d0f7ac68938ed9130`:
+[Brief Decoder product config](https://github.com/gushinets/anytoolai-platform/blob/fa03de85c99bd5ecbfc28b9d0f7ac68938ed9130/packages/backend/product-platforms/freelancer-suite/src/anytoolai_freelancer_suite/products/brief_decoder/product.yaml)
+declares `brief_decoder.decode_v1`. The
+[Kernel quota model](https://github.com/gushinets/anytoolai-platform/blob/fa03de85c99bd5ecbfc28b9d0f7ac68938ed9130/docs/architecture/quota-model.md)
+describes existing guest quotas, which are not these purchased test limits.
+The test metric names and 100/300 quantities are local test choices, not claims
+about the real Kernel's paid registry or production offers.
+
+These examples are enough to develop/test two independent product allowances:
+repeat reads and same-cycle block/unblock preserve the ID and fixed quantity;
+a confirmed new cycle creates a new ID with the same purchased limit. Actual
+usage and remaining quota are still Step 10's Kernel responsibility. The mock
+does not grant access or implement those future behaviors itself.
 
 `enabled` controls new bindings. Both the selected product and selected metric
 must be enabled, with matching product identity. A later disablement does not
@@ -140,10 +173,11 @@ other environments fail before binding. The default bind address is
 The mock is not automatically started and has no Portal startup dependency.
 Stop with Ctrl-C; restart with a different `--scenario` to select a case:
 
-- `valid`: complete six-product positive fixture.
+- `valid`: complete six-product fixture with two enabled products/test metrics.
 - `disabled-product`, `missing-product`, `disabled-metric`, `missing-metric`:
   complete alternate test deployments with fresh matching semantic versions.
-  Missing product also removes its metrics to preserve reference validity.
+  The selected product is `proposal_ai`. Missing product/metric removes only
+  its own metrics; `brief_decoder` remains enabled and correctly referenced.
 - `unauthorized`, `forbidden`, `unavailable`: inject `401`, `403`, `503` after
   the normal route/auth checks, with no successful manifest body.
 - `timeout`: delay a valid response by `--delay-seconds` (default 2 seconds;

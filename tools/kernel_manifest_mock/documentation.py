@@ -61,6 +61,7 @@ def openapi_document(
     fixture: dict[str, Any],
     manifest_path: str,
     scope: dict[str, str],
+    test_offers: dict[str, Any],
 ) -> dict[str, Any]:
     manifest_schema = _schema_for_openapi(schema)
     # Use the implicit OAS 3.1 dialect, which includes the contract's 2020-12
@@ -73,8 +74,7 @@ def openapi_document(
                 "application/json": {
                     "schema": {"$ref": "#/components/schemas/MockError"},
                     "examples": {
-                        code: {"value": {"detail": {"code": code}}}
-                        for code in codes
+                        code: {"value": {"detail": {"code": code}}} for code in codes
                     },
                 }
             },
@@ -123,9 +123,20 @@ def openapi_document(
                 "service-auth, exact-scope and browser-access restrictions. "
                 "Manifest schema is projected from the versioned JSON Schema; "
                 "enabled semantics, identity/reference uniqueness and semantic "
-                "digest rules remain defined in the contract README."
+                "digest rules remain defined in the contract README.\n\n"
+                "SIMULATED purchased allowances for Step 9 tests only. These "
+                "quantities belong to accepted test-offer terms, not the "
+                "Capability Manifest. No paid access or usage is implemented "
+                "by this mock.\n\n"
+                "| Product | Test metric | Purchased quantity per confirmed cycle |\n"
+                "| --- | --- | --- |\n"
+                + "\n".join(
+                    f"| {offer['product_id']} | {offer['metric_key']} | {offer['quantity']} {offer['unit']} |"
+                    for offer in test_offers["offers"]
+                )
             ),
         },
+        "x-simulated-purchase-examples": test_offers,
         "servers": [{"url": "/", "description": "Current development mock"}],
         "paths": {
             manifest_path: {
