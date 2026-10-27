@@ -1232,3 +1232,87 @@ Canonical `npm run check` passed (1,508 API tests, 300 component tests, 38 web
 boundary tests and production build). The Step 2 handoff records detailed evidence
 and the unperformed live owner-account/browser smoke. No real account reset,
 CREATE, container rebuild or commit/push/PR was performed for this change.
+
+## Central LBX Server API error handling (2026-10-27)
+
+Owner-requested correction on checkout `ce93c1177589aa038000afe385816de74847e98f`;
+[ANY-709](https://linear.app/paveldik/issue/ANY-709/7-deliver-normal-lbx-billing-and-widget-flow-and-simplify-product),
+existing [PR #150](https://github.com/gushinets/payments-portal/pull/150).
+No commit or push is authorized for this correction.
+
+Cause: `decode_response` extracted provider reasons but applied its transient
+HTTP-status branch before provider rejection, so an actual HTTP 500 erased the
+provider failure class. The correction keeps one bounded decoder for every
+Server API method, separates safe provider classification from GET retry policy,
+and extends existing response facts/logging to HTTP, no-response and transport
+failures. Generic 5xx envelopes retain provider classification and bounded GET
+retries; the known permanent rejection does not retry. POST never loops.
+
+Delivery checklist:
+
+- [x] Correct the shared decoder and preserve safe codes/reasons/correlation.
+- [x] Preserve customer discovery, send fencing, receipts and GET recovery.
+- [x] Distinguish provider refusal and unknown CREATE in Portal presentation;
+      expose live safe response facts through the existing read-only diagnosis.
+- [x] Verify synthetic HTTP/error/privacy matrix, existing customer/Widget
+      regressions, PostgreSQL behavior and the broadest supported canonical check.
+- [x] Inspect final diff and record actual checks and remaining limitations.
+
+
+Verified evidence:
+
+- Full canonical check passed with process-only isolation of development Kernel
+  settings (no `.env` edits):
+  `KERNEL_MOCK_ENABLED=0 KERNEL_BASE_URL= KERNEL_SERVICE_TOKEN= PATH="$PWD/.venv/bin:$PATH" npm run check`.
+  Results: 1,422 non-PostgreSQL API tests, 218 PostgreSQL tests, 301 web component
+  tests, 38 web boundary tests, production build, TypeScript, Ruff lint/format,
+  ESLint, architecture, docs and generated-contract freshness checks passed.
+- The final conservative GET retry adjustment for malformed 500 envelopes was
+  verified with the same environment and `npm run check:fast` (all stages passed),
+  plus `.venv/bin/python -m pytest -q apps/api/tests/test_lbx_error_contract.py
+  apps/api/tests/test_lbx_client_errors.py` (142 passed). The new transport matrix
+  has 80 cases, including generic and known 500s, 200 error envelopes, auth/rate
+  limits, malformed/oversized payloads, multiple endpoint templates, GET/POST
+  behavior, partial/no-response failures, correlation and private-text canaries.
+- Changed existing regressions were exercised directly:
+  `test_any709_step2_customer.py`, `test_any709_step2_failures.py`,
+  `test_lbx_client_errors.py`, `test_billing_customer_ensure_boundary.py`,
+  `test_billing_customer_diagnostics_cli.py`, plus the customer diagnostics,
+  ensure, Step 2 failures and Step 2 PostgreSQL files; the complete canonical
+  partitions then passed. The PostgreSQL suite covers a provider returning an
+  unknown error after creating the customer: GET recovery binds the same customer
+  and allows viewing without another POST. CLI integration uses synthetic LBX
+  500s, safe JSON output and the unchanged unsent operation.
+- A temporary production web server and Playwright checked all five public
+  failure states on desktop (1440x1000) and mobile (390x844), with synthetic API
+  interception, keyboard activation, request-ID display, no private-text display,
+  no Widget mount on failure, no overflow and no unexpected console/page/network
+  errors. Axe WCAG A/AA checks reported zero violations. Screenshots were visually
+  inspected. Local evidence (ignored, synthetic fixtures only):
+  `.harness/any709-lbx-errors/{desktop.png,mobile.png,results.json}`.
+  The temporary server was stopped; the already-running PostgreSQL test server
+  was reused.
+- `git diff --check` and the correctness/payment-security/UI checklists were
+  applied. No generated, legal, database schema, pricing/calendar, Kernel,
+  Widget/JWT implementation or purchase-runtime changes were introduced.
+
+Replaced: HTTP-status-first failure classification and loss of response context
+on transport failures. Retained: one decoder/HTTP event vocabulary, bounded
+admission/retries, private vendor-log suppression, customer discover/create/GET
+recovery, send leases/CAS fencing, receipts, read-only diagnosis and single HTTP
+failure reporting. Portal adds only `billing_source_rejected`; unresolved CREATE
+reuses `billing_customer_pending` and its existing localized presentation.
+
+Limitations: LBX supplies free-form error text, not a proven business-error
+catalog, permanence marker, native CREATE idempotency or no-side-effect proof.
+Generic 5xx refusals therefore remain provider failures with conservative GET
+retries; no error envelope authorizes a blind POST retry. The existing
+owner-approved later-explicit-open customer policy remains unchanged.
+
+The normal unisolated check initially exposed development Kernel mock settings
+leaking into production-settings/harness negative tests; clearing only the three
+Kernel environment values above resolved those unrelated failures. An early
+sandbox-only focused ASGI run was interrupted and rerun successfully with local
+socket access. Full browser E2E (`RUN_E2E=true`) and live LBX/customer Widget
+acceptance were not run; the focused synthetic browser check above is the UI
+regression evidence. No real provider call, commit or push was performed.

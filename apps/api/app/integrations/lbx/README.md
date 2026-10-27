@@ -90,6 +90,27 @@ refresh tasks. Per-HTTP sublimits never extend the absolute work deadline.
 
 ## Failures and future boundary
 
+All Server API methods use the same bounded decoder for success and failure.
+An LBX error envelope (`code`, `response.error`) is a provider refusal even at
+HTTP 500 or inside HTTP 200. Unknown nonempty error text becomes the safe
+`provider_rejected` category; it is never retained. Authentication/permission,
+rate limit, malformed response, no-response network failure and timeout remain
+distinct. Missing error text alone is not success: the success DTO must validate.
+
+Classification and retries are independent: unknown transient HTTP/LBX codes
+retain bounded GET retries and the provider error class/codes; known permanent
+rejections do not retry. A 5xx without a readable LBX refusal retains bounded
+unavailability retries; malformed error fields remain invalid responses with
+bounded GET retries at transient codes. POST never automatically retries. An error envelope does
+not prove that CREATE had no effect; customer send fencing and GET recovery
+remain authoritative for handling an uncertain outcome.
+
+`LbxResponseFacts` and the existing `lbx_http` event carry HTTP/LBX codes,
+error-field presence, safe reason/failure category, GET retry eligibility,
+method/allowlisted endpoint template and request/create-operation correlation.
+No response is represented by null codes. Arbitrary body text, provider IDs,
+URLs, credentials and request values never enter these diagnostics.
+
 `errors.py` contains safe `AppError` subclasses. `LbxNotConfigured` and
 `LbxClosed` indicate resource misuse/absence; `LbxAuthenticationFailed` is
 unauthorized auth or persistent GET 401; `LbxScopeForbidden` is 403;

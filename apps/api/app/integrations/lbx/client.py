@@ -4,7 +4,7 @@ import asyncio
 import math
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Any, Generic, TypeVar
 
@@ -14,7 +14,14 @@ from pydantic import SecretStr
 from app.core.errors import AppError
 from app.core.settings import Settings
 from app.infrastructure.preflight import PreflightBudget
-from app.integrations.lbx._transport import _Attempts, _CleanupProtectedStream, _Retryable, decode_response
+from app.integrations.lbx._transport import (
+    _Attempts,
+    _CleanupProtectedStream,
+    _Retryable,
+    decode_response,
+    log_http,
+    response_facts,
+)
 from app.integrations.lbx.customer import CreatedUserEnvelope, LbxUser, NewCustomer
 from app.integrations.lbx.dto import (
     LbxEnvelope,
@@ -25,9 +32,11 @@ from app.integrations.lbx.dto import (
     LbxTariffService,
 )
 from app.integrations.lbx.errors import (
+    LbxAttemptsExhausted,
     LbxAuthenticationFailed,
     LbxClosed,
     LbxCreateNotSent,
+    LbxError,
     LbxNotConfigured,
     LbxResponseInvalid,
     LbxScopeMismatch,
@@ -311,6 +320,7 @@ class LbxServerClient:
         attempts = _Attempts(self._configuration.lbx_max_get_attempts)
         reauthenticated = False
         previous_session: _Session | None = None
+        last_auth_failure: LbxAuthenticationFailed | None = None
         while True:
             budget.check()
             try:
@@ -329,13 +339,18 @@ class LbxServerClient:
                         headers={"Authorization": f"Bearer {session.token.get_secret_value()}"},
                         body=body,
                     )
-                except LbxAuthenticationFailed:
+                except LbxAuthenticationFailed as error:
                     # A stale 401 must never invalidate another caller's fresh
                     # token. No business GET receives more than one reauth.
                     if self._session is session:
                         self._session = None
                     if reauthenticated:
                         raise
+                    last_auth_failure = error
+            except LbxAttemptsExhausted as error:
+                if last_auth_failure is not None:
+                    error.response_facts = last_auth_failure.response_facts
+                raise
             except _Retryable as retry:
                 await self._wait_retry(retry, attempts, budget)
 
@@ -408,43 +423,69 @@ class LbxServerClient:
             write=min(remaining, config.lbx_connect_timeout_seconds),
             pool=min(remaining, config.lbx_connect_timeout_seconds),
         )
-        response_received = False
+        status: int | None = None
+        facts = None
         try:
-            pool = self._account_http if path.startswith(("/users", "/client")) or path == "/auth" else self._http
-            if on_dispatch is not None:
-                on_dispatch()
-            async with pool.stream(
-                method, API_PATH + path, headers=headers, json=body, auth=auth, timeout=timeout
-            ) as response:
-                response_received = True
-                assert isinstance(response.stream, httpx.AsyncByteStream)
-                response.stream = _CleanupProtectedStream(response.stream, budget)
+            try:
+                pool = self._account_http if path.startswith(("/users", "/client")) or path == "/auth" else self._http
+                if on_dispatch is not None:
+                    on_dispatch()
+                async with pool.stream(
+                    method, API_PATH + path, headers=headers, json=body, auth=auth, timeout=timeout
+                ) as response:
+                    status = response.status_code
+                    assert isinstance(response.stream, httpx.AsyncByteStream)
+                    response.stream = _CleanupProtectedStream(response.stream, budget)
+                    budget.check()
+                    result, facts = await decode_response(
+                        response,
+                        model,
+                        budget=budget,
+                        maximum_bytes=config.lbx_max_response_bytes,
+                        maximum_retry_delay=config.lbx_max_retry_delay_seconds,
+                        method=method,
+                        path=path,
+                        success_statuses=success_statuses,
+                    )
+                    budget.check()
                 budget.check()
-                result = await decode_response(
-                    response,
-                    model,
-                    budget=budget,
-                    maximum_bytes=config.lbx_max_response_bytes,
-                    maximum_retry_delay=config.lbx_max_retry_delay_seconds,
+                return result
+            except (httpx.PoolTimeout, httpx.ConnectTimeout, httpx.ConnectError) as error:
+                # With trust_env=False/no proxy these failures precede sending the
+                # application request. Never generalize to write/read failures.
+                failure = LbxTimeout() if isinstance(error, httpx.TimeoutException) else LbxUnavailable()
+                if method == "POST" and status is None:
+                    failure = LbxCreateNotSent()
+                kind = "timeout" if isinstance(error, httpx.TimeoutException) else "network"
+                retry = not isinstance(failure, LbxCreateNotSent)
+            except httpx.TimeoutException:
+                failure, kind, retry = LbxTimeout(), "timeout", True
+            except (httpx.NetworkError, httpx.RemoteProtocolError):
+                failure, kind, retry = LbxUnavailable(), "network", True
+            except httpx.TransportError:
+                failure, kind, retry = LbxUnavailable(), "network", False
+            failure.response_facts = (
+                replace(facts, reason=kind, failure_kind=kind, retryable_get=retry)
+                if facts
+                else response_facts(
+                    http_status=status,
+                    reason=kind,
+                    failure_kind=kind,
+                    retryable_get=retry,
                     method=method,
                     path=path,
-                    success_statuses=success_statuses,
                 )
-                budget.check()
-            budget.check()
-            return result
-        except (httpx.PoolTimeout, httpx.ConnectTimeout, httpx.ConnectError) as error:
-            # With trust_env=False/no proxy these failures precede sending the
-            # application request. Never generalize to write/read failures.
-            if method == "POST" and not response_received:
-                raise LbxCreateNotSent() from None
-            raise _Retryable(LbxTimeout() if isinstance(error, httpx.TimeoutException) else LbxUnavailable()) from None
-        except httpx.TimeoutException:
-            raise _Retryable(LbxTimeout()) from None
-        except (httpx.NetworkError, httpx.RemoteProtocolError):
-            raise _Retryable(LbxUnavailable()) from None
-        except httpx.TransportError:
-            raise LbxUnavailable() from None
+            )
+            if retry:
+                raise _Retryable(failure) from None
+            raise failure from None
+        except (LbxError, _Retryable) as error:
+            failure = error.failure if isinstance(error, _Retryable) else error
+            facts = failure.response_facts
+            raise
+        finally:
+            if facts is not None:
+                log_http(facts)
 
     async def aclose(self) -> None:
         """Owner stops/drains its PreflightAdmission BEFORE closing this pool.

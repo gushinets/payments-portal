@@ -387,6 +387,19 @@ are omitted. The tool never changes a binding, operation, review or recovery
 item, creates customers, issues Widget JWTs, or authorizes another CREATE.
 There are no `--apply`, reset or supplied-customer-ID switches.
 
+Live failures include `lbx_error` and `lbx_response_facts`: HTTP status (null
+without a response), JSON LBX code when safely readable, error-field presence,
+safe reason/failure category, method/endpoint template, GET retry eligibility
+and request/create-operation correlation. Unknown HTTP 500 error envelopes
+remain provider refusals (`source_rejected`), distinct from connection failures,
+`source_auth_failed`, `source_invalid_response` and `source_rate_limited`.
+Saved CREATE response facts remain historical evidence; they do not authorize a
+retry or prove that no customer was created. Unresolved CREATE followed by GET
+recovery uses the existing public `billing_customer_pending` response; a
+pre-CREATE provider refusal uses `billing_source_rejected`. Neither exposes LBX
+text. This does not change discovery, send leases/fences or the explicit-open
+retry amendment above.
+
 - `binding_verified` (exit 0): the existing binding has fresh paired proof.
   Investigate Client readiness or Widget rendering separately; `widget_checked`
   remains false.

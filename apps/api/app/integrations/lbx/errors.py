@@ -5,9 +5,18 @@ from app.core.errors import AppError
 
 @dataclass(frozen=True)
 class LbxResponseFacts:
-    http_status: int
+    """Safe observed context; retryable_get never authorizes repeating a CREATE."""
+
+    http_status: int | None
     lbx_code: int | None
     reason: str
+    provider_error_present: bool
+    failure_kind: str
+    retryable_get: bool
+    method: str
+    endpoint: str
+    request_id: str | None
+    create_operation_id: str | None
 
 
 class LbxError(AppError):

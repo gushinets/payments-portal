@@ -45,7 +45,11 @@ pytestmark = pytest.mark.postgres
         ("email_only", "email_candidates_unproven"),
         ("wrong_receipt", "identity_conflict"),
         ("multiple", "candidates_ambiguous"),
-        ("unavailable", "source_unavailable"),
+        ("unavailable", "source_auth_failed"),
+        ("provider_500", "source_rejected"),
+        ("invalid_response", "source_invalid_response"),
+        ("rate_limited", "source_rate_limited"),
+        ("timeout", "source_unavailable"),
     ],
 )
 def test_diagnosis_is_read_only_and_requires_original_identity(
@@ -114,6 +118,14 @@ def test_diagnosis_is_read_only_and_requires_original_identity(
         assert request.method == "GET"
         if request.url.path.endswith("/auth"):
             data = {"token": "SECRET-TOKEN", "expires_in": 600}
+        elif mode == "provider_500":
+            return httpx.Response(500, json={"code": 500, "response": {"error": "SECRET-EMAIL-AND-TOKEN"}})
+        elif mode == "invalid_response":
+            return httpx.Response(200, json={"code": 200, "response": {"error": None}})
+        elif mode == "rate_limited":
+            return httpx.Response(429, json={"code": 429, "response": {"error": "SECRET-EMAIL-AND-TOKEN"}})
+        elif mode == "timeout":
+            raise httpx.ReadTimeout("SECRET-EMAIL-AND-TOKEN", request=request)
         elif mode == "unavailable":
             return httpx.Response(403, json={"code": 403, "response": {"error": "SECRET-EMAIL-AND-TOKEN"}})
         elif request.url.path.endswith("/users"):
@@ -154,8 +166,19 @@ def test_diagnosis_is_read_only_and_requires_original_identity(
         assert result["next_action"] == "open_billing_to_recover_existing_customer"
     if expected == "email_conflict":
         assert result["next_action"] == "correct_email_conflict_then_open_billing"
-    if mode != "unavailable":
+    if mode not in {"unavailable", "provider_500", "invalid_response", "rate_limited", "timeout"}:
         assert result["lbx_error"] is None
+        assert result["lbx_response_facts"] is None
+    else:
+        facts = result["lbx_response_facts"]
+        assert facts["method"] == "GET" and facts["endpoint"] == "/users"
+        assert facts["create_operation_id"] == str(current.operation_id)
+        if mode == "provider_500":
+            assert facts["http_status"] == facts["lbx_code"] == 500
+            assert facts["reason"] == "provider_rejected" and facts["failure_kind"] == "provider"
+        elif mode == "timeout":
+            assert facts["http_status"] is facts["lbx_code"] is None
+            assert facts["failure_kind"] == "timeout"
     assert all(
         not result[key] for key in ("writes_performed", "create_performed", "retry_authorized", "widget_checked")
     )
@@ -312,3 +335,50 @@ def test_diagnosis_refuses_foreign_contour_without_http(
         user_id = foreign.id
     with pytest.raises(BillingRefused, match="billing_customer_user_not_found"):
         asyncio.run(diagnose_customer(config, factory=factory, user_id=user_id))
+
+
+def test_cli_exposes_unknown_live_500_facts_without_writes_or_private_text(
+    migrated_database: Engine,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from app.cli import billing_customers
+    from app.core import database
+
+    factory = postgres_session_factory
+    config = step1_settings(lbx_max_get_attempts=2)
+    seed(factory)
+    current = reserve_customer(factory, config, TOKEN)
+    with factory() as db:
+        user_id = db.scalar(select(User.id))
+    calls = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        calls.append(request.method)
+        if request.url.path.endswith("/auth"):
+            return httpx.Response(200, json={"code": 200, "response": {"token": "PRIVATE", "expires_in": 600}})
+        return httpx.Response(500, json={"code": 500, "response": {"error": "PRIVATE synthetic@example.com"}})
+
+    async def diagnose(*args: object, **kwargs: object) -> dict[str, object]:
+        return await diagnose_customer(
+            config, factory=factory, user_id=user_id, lbx_transport=httpx.MockTransport(respond)
+        )
+
+    monkeypatch.setattr(billing_customers, "diagnose_customer", diagnose)
+    monkeypatch.setattr(billing_customers, "resolve_operator_principal", lambda: "os-euid:1000")
+    monkeypatch.setattr(billing_customers, "Settings", lambda: config)
+    monkeypatch.setattr(database, "SessionLocal", factory)
+    assert billing_customers.main(["diagnose", "--user-id", str(user_id)]) == 2
+    output = capsys.readouterr().out
+    report = json.loads(output)
+    assert report["diagnosis"] == "source_rejected"
+    assert report["lbx_error"] == "lbx_provider_rejected"
+    assert report["lbx_response_facts"]["http_status"] == report["lbx_response_facts"]["lbx_code"] == 500
+    assert report["lbx_response_facts"]["create_operation_id"] == str(current.operation_id)
+    assert report["lbx_response_facts"]["reason"] == "provider_rejected"
+    assert calls == ["GET", "GET"]
+    assert not report["writes_performed"] and not report["create_performed"]
+    assert all(value not in output for value in ("PRIVATE", "synthetic@example.com", current.outer_key))
+    with factory() as db:
+        assert db.scalar(select(ExternalCreateOperation)).send_fence is None

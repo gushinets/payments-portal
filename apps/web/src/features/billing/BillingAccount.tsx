@@ -7,7 +7,7 @@ import { ApiError, apiErrorCode } from "@/shared/api/transport";
 import { subscribeToSessionChanges, useSessionOperation } from "@/shared/session/use-session-operation";
 import { mountOfficialWidget } from "./official-widget-sdk";
 
-type BillingErrorKey = "session" | "verification" | "identity" | "pending" | "review" | "serverAuth" | "response" | "client" | "configuration" | "unavailable" | "sdk";
+type BillingErrorKey = "session" | "verification" | "identity" | "pending" | "review" | "serverAuth" | "rejected" | "response" | "client" | "configuration" | "unavailable" | "sdk";
 
 type BillingState =
   | { status: "closed" }
@@ -33,6 +33,7 @@ function errorKey(error: unknown): BillingErrorKey {
     case "billing_customer_pending": return "pending";
     case "billing_customer_review": return "review";
     case "billing_server_auth_failed": return "serverAuth";
+    case "billing_source_rejected": return "rejected";
     case "billing_source_invalid_response": return "response";
     case "billing_client_not_ready": return "client";
     case "lbx_not_configured":
