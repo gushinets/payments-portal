@@ -404,6 +404,7 @@
       "pending": "La creazione dell’account potrebbe essere ancora in corso. Riapri la fatturazione per una verifica sicura.",
       "review": "L’account richiede una verifica dell’operatore. La sua identità resta riservata.",
       "serverAuth": "Il servizio ha rifiutato le credenziali del server. Contatta l’assistenza.",
+      "rejected": "Il servizio di fatturazione ha rifiutato la richiesta. Contatta l’assistenza.",
       "response": "Il servizio di fatturazione ha restituito una risposta non valida. Contatta il supporto.",
       "client": "L’account di fatturazione non è ancora pronto. Contatta l’assistenza; la riapertura userà lo stesso account.",
       "configuration": "La configurazione è incompleta. Contatta l’assistenza.",

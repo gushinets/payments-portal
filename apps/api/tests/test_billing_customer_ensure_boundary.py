@@ -9,6 +9,7 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
+from app.core.observability import request_id_context
 from app.composition.billing import AccountWidget
 from app.domains.billing import router as billing_router
 from app.domains.billing.contracts import BillingAccountFailure, BillingRefused
@@ -28,7 +29,7 @@ def test_customer_create_has_one_application_caller() -> None:
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize("mode", ["failed", "auth", "pending", "recovered"])
+@pytest.mark.parametrize("mode", ["failed", "auth", "pending", "recovered", "rejected", "unknown_create"])
 async def test_widget_reports_only_unresolved_integration_failure_once(
     monkeypatch: pytest.MonkeyPatch,
     mode: str,
@@ -40,6 +41,10 @@ async def test_widget_reports_only_unresolved_integration_failure_once(
     async def bootstrap(*args: object, **kwargs: object) -> AccountWidget:
         if mode == "failed":
             raise BillingAccountFailure("billing_source_unavailable")
+        if mode == "rejected":
+            raise BillingAccountFailure("billing_source_rejected")
+        if mode == "unknown_create":
+            raise BillingAccountFailure("billing_customer_pending", 409)
         if mode == "auth":
             raise BillingRefused("billing_email_verification_required", 403)
         if mode == "pending":
@@ -56,12 +61,28 @@ async def test_widget_reports_only_unresolved_integration_failure_once(
     app.include_router(billing_router.router)
     app.state.sources = object()
     app.dependency_overrides[get_session_factory] = lambda: object()
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://portal.test") as client:
-        response = await client.post(
-            "/api/billing/widget-bootstrap", json={}, headers={"Authorization": "Bearer PRIVATE"}
-        )
-    assert len(reported) == (1 if mode == "failed" else 0)
-    assert response.status_code == {"failed": 503, "auth": 403, "pending": 409, "recovered": 200}[mode]
+    context = request_id_context.set("safe-request")
+    try:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://portal.test") as client:
+            response = await client.post(
+                "/api/billing/widget-bootstrap", json={}, headers={"Authorization": "Bearer PRIVATE"}
+            )
+    finally:
+        request_id_context.reset(context)
+    assert len(reported) == (1 if mode in {"failed", "rejected", "unknown_create"} else 0)
+    assert (
+        response.status_code
+        == {"failed": 503, "auth": 403, "pending": 409, "recovered": 200, "rejected": 503, "unknown_create": 409}[mode]
+    )
     if reported:
-        assert reported[0][1]["error_code"] == "billing_source_unavailable"
+        assert (
+            reported[0][1]["error_code"]
+            == {
+                "failed": "billing_source_unavailable",
+                "rejected": "billing_source_rejected",
+                "unknown_create": "billing_customer_pending",
+            }[mode]
+        )
+        assert response.json()["detail"]["request_id"] == "safe-request"
+        assert "PRIVATE" not in response.text
         assert "PRIVATE" not in str(reported)

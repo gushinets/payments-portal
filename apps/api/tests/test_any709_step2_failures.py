@@ -17,6 +17,7 @@ from app.integrations.lbx.customer import NewCustomer, sign_widget_jwt
 from app.integrations.lbx.errors import (
     LbxAuthenticationFailed,
     LbxCreateNotSent,
+    LbxProviderRejected,
     LbxRateLimited,
     LbxResponseInvalid,
     LbxTimeout,
@@ -29,7 +30,7 @@ from apps.api.tests.support.lbx import PASSWORD, USERNAME
 @pytest.mark.parametrize(
     "failure,expected,attempts",
     [
-        (503, LbxUnavailable, 3),
+        (503, LbxProviderRejected, 3),
         (429, LbxRateLimited, 3),
         ("timeout", LbxTimeout, 3),
         (401, LbxAuthenticationFailed, 1),
@@ -179,7 +180,7 @@ def test_any709_step2_client_error_has_only_allowlisted_diagnostics(
         try:
             async with source_resources(config, lbx_transport=httpx.MockTransport(transport)) as sources:
                 async with sources.billing.operation() as budget:
-                    with pytest.raises(LbxAuthenticationFailed if known else LbxUnavailable) as caught:
+                    with pytest.raises(LbxAuthenticationFailed if known else LbxProviderRejected) as caught:
                         await sources.lbx.client_user(token=token, budget=budget)
                     assert all(value not in str(caught.value) for value in private)
         finally:
@@ -195,7 +196,10 @@ def test_any709_step2_client_error_has_only_allowlisted_diagnostics(
             "endpoint": "/client/user",
             "status": 500,
             "lbx_code": 401 if known else 500,
-            "reason": "credentials_denied" if known else "unknown",
+            "reason": "credentials_denied" if known else "provider_rejected",
+            "provider_error_present": False,
+            "failure_kind": "authorization" if known else "provider",
+            "retryable_get": not known,
             "request_id": "safe-request-123",
             "create_operation_id": None,
         }

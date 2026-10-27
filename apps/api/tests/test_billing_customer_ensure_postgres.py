@@ -35,6 +35,7 @@ pytestmark = pytest.mark.postgres
         "new",
         "existing",
         "duplicate",
+        "unknown_error_after_effect",
         "old_review",
         "expired_claim",
         "email_unproven",
@@ -75,12 +76,14 @@ def test_customer_ensure_find_create_recover(
                 return httpx.Response(
                     500, json={"code": 500, "response": {"error": "Invalid email PRIVATE. Email must be unique"}}
                 )
+            if mode == "unknown_error_after_effect":
+                return httpx.Response(500, json={"code": 500, "response": {"error": "PRIVATE-unknown-rejection"}})
             return httpx.Response(201, json={"code": 201, "response": {"user_id": 345}})
         elif request.url.path.endswith("/users"):
             body = json.loads(request.content)
             assert body["show_passwords"] is False
             ids = []
-            if mode == "existing" or mode == "duplicate" and posts:
+            if mode == "existing" or mode in {"duplicate", "unknown_error_after_effect"} and posts:
                 ids = [345]
             if mode == "ambiguous":
                 ids = [345, 346]

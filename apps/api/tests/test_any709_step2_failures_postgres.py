@@ -127,10 +127,12 @@ def test_any709_step2_proven_unsent_bootstrap_releases_only_its_claim_and_reuses
 @pytest.mark.parametrize(
     "failure,expected",
     [
-        (503, "billing_source_unavailable"),
+        (503, "billing_source_rejected"),
         (429, "billing_source_unavailable"),
         ("timeout", "billing_source_unavailable"),
         (401, "billing_server_auth_failed"),
+        (403, "billing_server_auth_failed"),
+        ("provider_500", "billing_source_rejected"),
         ("credentials_500", "billing_server_auth_failed"),
         ("invalid", "billing_source_invalid_response"),
     ],
@@ -149,6 +151,8 @@ def test_any709_step2_preauth_outage_leaves_the_same_operation_pending_without_a
             raise httpx.ReadTimeout("private timeout", request=request)
         if failure == "invalid":
             return httpx.Response(200, json={"code": 200, "response": {}})
+        if failure == "provider_500":
+            return httpx.Response(500, json={"code": 500, "response": {"error": "private rejection"}})
         if failure == "credentials_500":
             return httpx.Response(
                 500, json={"code": 500, "response": "Invalid login/pass. Client login: private-login"}
@@ -172,7 +176,7 @@ def test_any709_step2_preauth_outage_leaves_the_same_operation_pending_without_a
                     assert db.scalar(select(func.count()).select_from(BillingWorkItem)) == 0
 
     asyncio.run(scenario())
-    assert calls == [("GET", "/api/rest/v1/auth")] * (2 if failure in {401, "invalid", "credentials_500"} else 4)
+    assert calls == [("GET", "/api/rest/v1/auth")] * (2 if failure in {401, 403, "invalid", "credentials_500"} else 4)
 
 
 def test_any709_step2_lost_reply_retries_once_per_explicit_open_after_discovery(
@@ -197,7 +201,7 @@ def test_any709_step2_lost_reply_retries_once_per_explicit_open_after_discovery(
         async with source_resources(config, lbx_transport=httpx.MockTransport(transport)) as sources:
             identity = None
             for _ in range(3):
-                with pytest.raises(BillingRefused, match="billing_source_unavailable"):
+                with pytest.raises(BillingRefused, match="billing_customer_pending"):
                     await billing.bootstrap_account(sources, config, factory=factory, token=TOKEN)
                 with factory() as db:
                     operation = db.scalar(select(ExternalCreateOperation))

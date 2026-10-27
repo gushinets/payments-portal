@@ -404,6 +404,7 @@
       "pending": "La création du compte est peut-être en cours. Rouvrez la facturation pour vérifier sans risque.",
       "review": "Le compte nécessite une vérification par un opérateur. Son identité reste réservée.",
       "serverAuth": "Le service de facturation a refusé les identifiants serveur. Contactez l’assistance.",
+      "rejected": "Le service de facturation a refusé la demande. Contactez l’assistance.",
       "response": "Le service de facturation a renvoyé une réponse invalide. Contactez le support.",
       "client": "Votre compte de facturation n’est pas encore prêt. Contactez l’assistance ; la réouverture réutilisera ce compte.",
       "configuration": "La configuration de facturation est incomplète. Contactez l’assistance.",

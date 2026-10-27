@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from collections.abc import AsyncIterator, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -130,28 +131,102 @@ async def _payload(response: httpx.Response, budget: PreflightBudget, maximum: i
     return bytes(payload)
 
 
-def _error_facts(raw: Any) -> tuple[int | None, str]:
+def _error_facts(raw: Any) -> tuple[int | None, str, bool]:
     # Never retain or log arbitrary remote text, even after attempted redaction.
     if not isinstance(raw, dict):
-        return None, "unknown"
+        return None, "unknown", False
     code = raw.get("code")
     safe_code = code if type(code) is int and -(2**31) <= code < 2**31 else None
     nested = raw.get("response")
+    present = isinstance(nested, dict) and "error" in nested or "error" in raw
+    if "code" in raw and safe_code is None:
+        return safe_code, "schema_invalid", present
+    errors = [container["error"] for container in (nested, raw) if isinstance(container, dict) and "error" in container]
+    if any(not isinstance(value, str) or not value.strip() for value in errors):
+        return safe_code, "schema_invalid", present
     texts = [raw.get(field) for field in ("response", "error", "message")]
     if isinstance(nested, dict):
         texts.extend(nested.get(field) for field in ("error", "message"))
     for text in texts:
         if isinstance(text, str) and text.startswith("Invalid email ") and text.endswith(". Email must be unique"):
-            return safe_code, "email_not_unique"
+            return safe_code, "email_not_unique", present
         if isinstance(text, str) and (
             text == "Invalid login/pass" or text.startswith("Invalid login/pass. Client login:")
         ):
-            return safe_code, "credentials_denied"
-    if isinstance(nested, dict) and isinstance(nested.get("error"), str):
-        return safe_code, "provider_rejected"
-    if isinstance(raw.get("error"), str):
-        return safe_code, "provider_rejected"
-    return safe_code, "unknown"
+            return safe_code, "credentials_denied", present
+    return safe_code, "provider_rejected" if present else "unknown", present
+
+
+def response_facts(
+    *,
+    http_status: int | None,
+    lbx_code: int | None = None,
+    reason: str,
+    provider_error_present: bool = False,
+    failure_kind: str,
+    retryable_get: bool = False,
+    method: str,
+    path: str,
+) -> LbxResponseFacts:
+    # Match only repository-owned templates; never log URLs, query data or IDs.
+    templates = (
+        "/auth",
+        "/client/user",
+        "/users",
+        "/users/{id}",
+        "/tariffs",
+        "/tariffs/{id}",
+        "/tariffs/{id}/periods",
+        "/tariffs/{id}/services",
+        "/tariffs/{id}/services/{id}/prices",
+        "/agreements",
+        "/agreements/{id}",
+        "/subscriptions",
+        "/subscriptions/{id}",
+    )
+    endpoint = next(
+        (template for template in templates if re.fullmatch(template.replace("{id}", "[0-9]+"), path)),
+        "server_api",
+    )
+    return LbxResponseFacts(
+        http_status,
+        lbx_code,
+        reason,
+        provider_error_present,
+        failure_kind,
+        retryable_get,
+        method if method in {"GET", "POST", "PUT", "PATCH", "DELETE"} else "OTHER",
+        endpoint,
+        request_id_context.get(),
+        _operation_id.get(),
+    )
+
+
+def log_http(facts: LbxResponseFacts) -> None:
+    logger.info(
+        "lbx_http",
+        extra={
+            "structured": {
+                "stage": "client_readiness"
+                if facts.endpoint == "/client/user"
+                else "server_auth"
+                if facts.endpoint == "/auth"
+                else "customer"
+                if facts.endpoint.startswith("/users")
+                else "source",
+                "method": facts.method,
+                "endpoint": facts.endpoint,
+                "status": facts.http_status,
+                "lbx_code": facts.lbx_code,
+                "reason": facts.reason,
+                "provider_error_present": facts.provider_error_present,
+                "failure_kind": facts.failure_kind,
+                "retryable_get": facts.retryable_get,
+                "request_id": facts.request_id,
+                "create_operation_id": facts.create_operation_id,
+            }
+        },
+    )
 
 
 async def decode_response(
@@ -164,70 +239,77 @@ async def decode_response(
     method: str,
     path: str,
     success_statuses: frozenset[int],
-) -> T:
+) -> tuple[T, LbxResponseFacts]:
     status = response.status_code
-    code, reason = (None, "unknown")
+    code, reason, present = None, "unknown", False
+    failure_kind = "invalid_response"
     try:
         try:
             raw = _decode_json(await _payload(response, budget, maximum_bytes))
-            code, reason = _error_facts(raw)
+            code, reason, present = _error_facts(raw)
         except LbxResponseInvalid:
             raw = None
             reason = "schema_invalid"
-            if status in success_statuses:
-                raise
-        if status == 401 or reason == "credentials_denied":
+        if status == 401 or code == 401 or reason == "credentials_denied":
+            failure_kind = "authorization"
             raise LbxAuthenticationFailed()
-        if status == 403:
+        if status == 403 or code == 403:
+            failure_kind = "authorization"
             raise LbxScopeForbidden()
-        if status in _TRANSIENT_STATUS:
-            failure = LbxRateLimited() if status == 429 else LbxUnavailable()
-            raise _Retryable(failure, retry_after(response.headers.get("retry-after"), maximum_retry_delay))
-        if 500 <= status <= 599:
-            raise LbxUnavailable()
+        if status == 429 or code == 429:
+            failure_kind = "rate_limit"
+            raise _Retryable(LbxRateLimited(), retry_after(response.headers.get("retry-after"), maximum_retry_delay))
+        if present and reason == "schema_invalid":
+            if status in _TRANSIENT_STATUS or code in _TRANSIENT_STATUS:
+                raise _Retryable(
+                    LbxResponseInvalid(), retry_after(response.headers.get("retry-after"), maximum_retry_delay)
+                )
+            raise LbxResponseInvalid()
         if reason in {"provider_rejected", "email_not_unique"} or code is not None and code >= 400:
+            failure_kind = "provider"
             if reason != "email_not_unique":
                 reason = "provider_rejected"
-            raise LbxProviderRejected()
-        if status not in success_statuses:
+            failure = LbxProviderRejected()
+            # A generic error envelope proves a refusal, not its permanence or
+            # the absence of side effects. Only GETs may consume this retry hint.
+            if reason == "provider_rejected" and (status in _TRANSIENT_STATUS or code in _TRANSIENT_STATUS):
+                raise _Retryable(failure, retry_after(response.headers.get("retry-after"), maximum_retry_delay))
+            raise failure
+        if 500 <= status <= 599:
+            failure_kind = "unavailable"
+            if status in _TRANSIENT_STATUS:
+                raise _Retryable(
+                    LbxUnavailable(), retry_after(response.headers.get("retry-after"), maximum_retry_delay)
+                )
+            raise LbxUnavailable()
+        if status not in success_statuses or reason == "schema_invalid":
             raise LbxResponseInvalid()
         try:
             result = model.model_validate(raw).response
         except (ValueError, DecimalException, RecursionError):
             reason = "schema_invalid"
             raise LbxResponseInvalid() from None
-        reason = "success"
-        return result
+        return result, response_facts(
+            http_status=status,
+            lbx_code=code,
+            reason="success",
+            failure_kind="success",
+            method=method,
+            path=path,
+        )
     except (LbxError, _Retryable) as error:
         failure = error.failure if isinstance(error, _Retryable) else error
-        failure.response_facts = LbxResponseFacts(status, code, reason)
-        raise
-    finally:
-        logger.info(
-            "lbx_http",
-            extra={
-                "structured": {
-                    "stage": "client_readiness"
-                    if path == "/client/user"
-                    else "server_auth"
-                    if path == "/auth"
-                    else "customer"
-                    if path.startswith("/users")
-                    else "source",
-                    "method": method,
-                    "endpoint": "/users/{id}"
-                    if path.startswith("/users/")
-                    else path
-                    if path in {"/users", "/client/user", "/auth"}
-                    else "selected_offer",
-                    "status": status,
-                    "lbx_code": code,
-                    "reason": reason,
-                    "request_id": request_id_context.get(),
-                    "create_operation_id": _operation_id.get(),
-                }
-            },
+        failure.response_facts = response_facts(
+            http_status=status,
+            lbx_code=code,
+            reason=reason,
+            provider_error_present=present,
+            failure_kind=failure_kind,
+            retryable_get=isinstance(error, _Retryable),
+            method=method,
+            path=path,
         )
+        raise
 
 
 def retry_after(value: str | None, maximum: float) -> float | None:

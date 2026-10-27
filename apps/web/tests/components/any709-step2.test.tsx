@@ -124,6 +124,7 @@ describe("ANY-709 Step 2 account Widget", () => {
     ["billing_customer_pending", "pending"],
     ["billing_server_auth_failed", "serverAuth"],
     ["billing_source_invalid_response", "response"],
+    ["billing_source_rejected", "rejected"],
     ["billing_source_unavailable", "unavailable"],
     ["billing_client_not_ready", "client"]
   ] as const)("shows a distinct safe %s error without raw payloads", async (code, key) => {

@@ -33,7 +33,9 @@ from app.integrations.lbx.errors import (
     LbxAuthenticationFailed,
     LbxCreateNotSent,
     LbxError,
+    LbxProviderRejected,
     LbxResponseInvalid,
+    LbxScopeForbidden,
     LbxScopeMismatch,
 )
 
@@ -122,7 +124,7 @@ async def ensure_customer(
             raise
         except LbxError as error:
             facts = error.response_facts
-            if facts is not None:
+            if facts is not None and facts.http_status is not None:
                 await run_in_threadpool(
                     record_customer_create_failure,
                     factory,
@@ -133,10 +135,15 @@ async def ensure_customer(
                 )
             # Includes duplicate/uniqueness rejection and lost/malformed replies.
             # Recovery never sends another POST in the same opening request.
-            found = await _find_customer(client, factory, current, budget=budget)
+            try:
+                found = await _find_customer(client, factory, current, budget=budget)
+            except LbxScopeMismatch:
+                raise
+            except LbxError:
+                raise BillingAccountFailure("billing_customer_pending", 409) from None
             if found is not None:
                 return found
-            raise error
+            raise BillingAccountFailure("billing_customer_pending", 409) from None
         current = await run_in_threadpool(record_customer_receipt, factory, current, provider_id)
         return await recover_customer(client, factory, current, budget=budget)
     except LbxCreateNotSent:
@@ -222,10 +229,12 @@ async def bootstrap_account(
                         raise BillingAccountFailure(conflict.code, conflict.status) from None
                 raise BillingAccountFailure(
                     "billing_server_auth_failed"
-                    if isinstance(error, LbxAuthenticationFailed)
+                    if isinstance(error, (LbxAuthenticationFailed, LbxScopeForbidden))
                     else "billing_identity_conflict"
                     if isinstance(error, LbxScopeMismatch)
                     else "billing_source_invalid_response"
                     if isinstance(error, LbxResponseInvalid)
+                    else "billing_source_rejected"
+                    if isinstance(error, LbxProviderRejected)
                     else "billing_source_unavailable"
                 ) from None
