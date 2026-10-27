@@ -23,6 +23,7 @@ from app.domains.catalog.product_link import CurrentOffer, ProductLinkRequest
 from app.infrastructure.preflight import PreflightBudget
 from app.integrations.lbx.client import LbxServerClient
 from app.integrations.lbx.errors import LbxError
+from app.integrations.lbx.discounts import selected_discounts
 from app.integrations.lbx.offer_values import (
     _exact,
     _incomplete,
@@ -157,12 +158,7 @@ def normalize_current_offer(
             _incomplete("inline_effective_price_conflict")
     if inline[0].price_start_date != price.start_date:
         _incomplete("inline_effective_date_conflict")
-    discounts = [
-        row for row in _required(service.discounts, "discounts_unknown") if row.period_id == selection.period_id
-    ]
-    if len(discounts) > 1:
-        _incomplete("discounts_ambiguous")
-    discount_rows = _required(discounts[0].discounts, "discounts_unknown") if discounts else []
+    discount_rows = selected_discounts(service, inline[0])
     recurring = _exact(price.price, "recurring_price_invalid")
     connection = _exact(price.connection_price, "connection_price_invalid")
     quantity = Decimal(selection.quantity)

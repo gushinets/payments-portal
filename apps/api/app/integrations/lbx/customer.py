@@ -25,10 +25,11 @@ class PrivateDto(BaseModel):
 
 
 class LbxUser(PrivateDto):
+    # GET /users/{id} on 043 includes credential/contact fields. Project only
+    # identity: extra="ignore" discards them rather than retaining credentials
+    # or refusing otherwise valid paired identity proof.
     user_id: Annotated[int, Field(strict=True, gt=0)]
     outer_id: str | None = None
-    # Explicitly excluded from diagnostics/serialization, including hostile GETs.
-    password: SecretStr | None = Field(default=None, exclude=True, repr=False)
 
 
 class CreatedUser(PrivateDto):

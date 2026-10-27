@@ -43,7 +43,7 @@ def anyio_backend() -> str:
             '"tariff_service_id":1002',
             "component_membership_missing_or_ambiguous",
         ),
-        ("services", '"discounts":[]', '"discounts":null', "discounts_unknown"),
+        ("services", '"discounts":[]', '"discounts":null', "discounts_null"),
         ("services", '"enabled_by_default":1,', "", "component_enabled_by_default_unknown"),
         ("services", '"enabled_by_default":1', '"enabled_by_default":null', "component_enabled_by_default_unknown"),
         ("services", '"enabled_by_default":1', '"enabled_by_default":2', "component_enabled_by_default_unknown"),

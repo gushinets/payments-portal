@@ -19,6 +19,7 @@ import tempfile
 import tomllib
 import urllib.parse
 import urllib.request
+import uuid
 from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Callable, Iterable
@@ -3214,6 +3215,25 @@ def cmd_dev_api(_: argparse.Namespace) -> None:
     )
 
 
+def cmd_billing_customer(args: argparse.Namespace) -> None:
+    environment = direct_api_environment()
+    environment["PYTHONPATH"] = os.pathsep.join(
+        value
+        for value in (str(ROOT / "apps/api"), environment.get("PYTHONPATH", ""))
+        if value
+    )
+    command = [
+        sys.executable,
+        "-m",
+        "app.cli.billing_customers",
+        args.action,
+        "--user-id",
+        str(args.user_id),
+    ]
+    result = subprocess.run(command, cwd=ROOT, env=environment, check=False)
+    raise SystemExit(result.returncode)
+
+
 def cmd_migrate_api(_: argparse.Namespace) -> None:
     run(
         [
@@ -3426,6 +3446,12 @@ def build_parser() -> argparse.ArgumentParser:
     check.add_argument("--fast", action="store_true")
     check.set_defaults(func=cmd_check)
     sub.add_parser("dev-api").set_defaults(func=cmd_dev_api)
+    customer = sub.add_parser(
+        "billing-customer", help="Read-only billing customer diagnosis"
+    )
+    customer.add_argument("action", choices=("diagnose",))
+    customer.add_argument("--user-id", type=uuid.UUID, required=True)
+    customer.set_defaults(func=cmd_billing_customer)
     sub.add_parser("sync-api").set_defaults(func=cmd_sync_api)
     sub.add_parser("lock-api").set_defaults(func=cmd_lock_api)
     sub.add_parser("check-api-lock").set_defaults(func=cmd_check_api_lock)
@@ -3458,6 +3484,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def reexec_in_repository_venv_if_required() -> None:
     if len(sys.argv) < 2 or sys.argv[1] not in {
+        "billing-customer",
         "check",
         "check-api-lock",
         "coverage",

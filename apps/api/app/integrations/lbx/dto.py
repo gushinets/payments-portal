@@ -101,6 +101,14 @@ class LbxTariffPeriod(LbxDto):
     period_length: Annotated[int, Field(gt=0)] | None = None
 
 
+class LbxDiscount(LbxDto):
+    discount_id: Identity
+    count: NonnegativeInteger | None = None
+    new_price: ExactNumber | None = None
+    new_bulk_price: ExactNumber | None = None
+    rate: ExactNumber | None = None
+
+
 class LbxInlinePrice(LbxDto):
     period_id: Identity
     price: ExactNumber | None = None
@@ -108,14 +116,7 @@ class LbxInlinePrice(LbxDto):
     connection_price: ExactNumber | None = None
     price_start_date: CalendarDate | None = None
     bulk_include_amount: NonnegativeInteger | None = None
-
-
-class LbxDiscount(LbxDto):
-    discount_id: Identity
-    count: NonnegativeInteger | None = None
-    new_price: ExactNumber | None = None
-    new_bulk_price: ExactNumber | None = None
-    rate: ExactNumber | None = None
+    discounts: list[LbxDiscount] | None = None
 
 
 class LbxPeriodDiscount(LbxDto):
@@ -126,6 +127,8 @@ class LbxPeriodDiscount(LbxDto):
 class LbxTariffService(LbxDto):
     tariff_id: Identity
     tariff_service_id: Identity
+    # Observed 043 service-row metadata, never a substitute for service identity.
+    record_id: Identity | None = None
     bulk_service: bool | None = None
     catalog_id: Identity | None = None
     catalog_service_id: Identity | None = None

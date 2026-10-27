@@ -29,6 +29,7 @@ from app.domains.catalog.commercial_offer import (
 from app.domains.catalog.product_link import ProductLinkRequest
 from app.infrastructure.preflight import PreflightBudget
 from app.integrations.lbx.client import LbxRead, LbxServerClient
+from app.integrations.lbx.discounts import selected_discounts
 from app.integrations.lbx.dto import LbxServicePrice, LbxTariff, LbxTariffPeriod, LbxTariffService
 from app.integrations.lbx.errors import LbxError
 from app.integrations.lbx.offer_inputs import (
@@ -295,15 +296,7 @@ def normalize_selected_offer(
             _incomplete("inline_effective_price_conflict")
     if inline[0].price_start_date != price.start_date:
         _incomplete("inline_effective_date_conflict")
-    discounts = [
-        row for row in _required(service.discounts, "discounts_unknown") if row.period_id == selection.period_id
-    ]
-    if len(discounts) > 1:
-        _incomplete("discounts_ambiguous")
-    discount_rows = _required(discounts[0].discounts, "discounts_unknown") if discounts else []
-    for discount in discount_rows:
-        for field in ("count", "new_price", "new_bulk_price", "rate"):
-            _required(getattr(discount, field), "discount_terms_unknown")
+    discount_rows = selected_discounts(service, inline[0])
     currency = _required(inputs.currency, "currency_evidence_missing")
     if tariff.currency_id != currency.currency_id:
         _incomplete("currency_identity_mismatch")

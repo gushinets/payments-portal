@@ -9,6 +9,15 @@ Repository destination: `docs/exec-plans/active/ANY-709-implementation-plan.md`
 
 ## 0. Execution contract - read for every selected step
 
+**2026-10-26 manual-QA exception:** for the two reported Steps 1–2 defects,
+the owner explicitly authorized local diagnostics/tests/application/containers,
+test-043 reads and synthetic customer verification, and separately a second
+synthetic customer. This exception does not authorize production, payment,
+agreement/subscription creation, Steps 3–4 or stage/commit/push/PR/Linear writes.
+Actual results and unresolved acceptance are recorded in the existing Step 1–2
+handoffs; the earlier authoring-only restrictions below remain historical for
+that original delivery.
+
 This is a NEW plan from current `main`, not an addendum to the rejected plan.
 ANY-664 / program Step 6 remains completed. Its accepted delivery and history are
 not rewritten. Necessary changes to that code belong to THIS ANY-709 delivery.
@@ -1144,3 +1153,41 @@ and focused test grouping are planning choices for approval, not claims they
 already exist or have passed testing. Unknown account/calendar/payment-method
 facts are explicitly separated from evidence. No test, production enablement or
 future Kernel functionality is inferred from a successful document review.
+
+## Owner-requested customer repair CLI, 2026-10-26
+
+Superseded by the diagnostic-only scope below; retained as decision history.
+
+The owner authorized a single operator entrypoint that diagnoses from durable
+customer/create state and fresh Server GETs, without parsing application logs.
+Implement preview by default and explicit apply, plus optional candidate ID for
+operator-assisted point verification. Reuse original keys, paired identity,
+connection scope and existing binding transitions. Never CREATE/PATCH a provider
+customer, mint a Widget credential, delete history, or release UNKNOWN from an
+empty search. Missing trustworthy absence evidence remains a manual decision.
+
+Delivery sequence: add scoped snapshots and atomic guarded/audited binding;
+compose bounded GET-only recovery; expose through the repository CLI and document
+exact commands/results; test previews, candidate/identity conflicts, stale state,
+repeated apply, database uniqueness and provider failures with isolated fixtures.
+No repair apply against the owner's account is included in this implementation.
+
+## Owner-approved diagnostic simplification, 2026-10-27
+
+Replace the unfinished repair CLI with GET-only `billing-customer diagnose`.
+Remove apply/bind/reset paths and their dedicated concurrency/audit machinery.
+Read scoped durable state, receipt evidence and stored CREATE failures; query
+LBX by stored identity, original key and email without granting ownership from
+email. Never scan raw logs or send a diagnostic CREATE. Preserve the independent
+QA fixes for customer DTOs, receipt retention, unsent classification and offers.
+Persist only allowlisted HTTP/LBX CREATE failure facts on the existing recovery
+work item so future diagnoses can explain errors without retaining raw bodies.
+The owner explicitly requested verification, superseding the earlier test pause
+for this work. Run focused tests, supported canonical checks and a read-only
+smoke on the current owner account. Do not create more provider customers.
+
+Completed: diagnostic-only command and runbook delivered; repair-only code/tests
+removed. The 23 diagnostic PostgreSQL cases, retained QA regressions and read-only
+043 owner smoke passed. See the Step 2 handoff's diagnostic simplification section
+for canonical-stage results, corrected negative-test fixtures and skipped browser
+E2E. The owner's stored email conflict was identified without changing real data.

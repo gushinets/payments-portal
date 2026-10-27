@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.core.settings import Settings
 from app.core.time import utc_now
-from app.domains.billing.contracts import BillingRefused, CustomerOpen
+from app.domains.billing.contracts import CREATE_FAILURE_REASONS, CREATE_RESPONSE_SCHEMA, BillingRefused, CustomerOpen
 from app.domains.catalog.publication import SessionFactory
 from app.domains.identity.errors import InvalidAuthSessionError
 from app.domains.identity.services.auth import as_utc, authenticate_session
@@ -39,6 +39,26 @@ from app.models import (
 
 
 RECOVERY_WINDOW = timedelta(hours=2)
+CUSTOMER_RECEIPT_SCHEMA = "customer-create-receipt:v1"
+
+
+def _receipt_id(operation: ExternalCreateOperation) -> str | None:
+    if operation.recovery_hint_schema_version is None and operation.recovery_hint_document is None:
+        return None
+    hint = operation.recovery_hint_document
+    if operation.recovery_hint_schema_version != CUSTOMER_RECEIPT_SCHEMA or not isinstance(hint, dict):
+        raise BillingRefused("billing_identity_unproven", 409)
+    value = hint.get("provider_customer_candidate_id")
+    if (
+        not isinstance(value, str)
+        or not value.isascii()
+        or not value.isdecimal()
+        or len(value) > 20
+        or int(value) <= 0
+        or str(int(value)) != value
+    ):
+        raise BillingRefused("billing_identity_unproven", 409)
+    return value
 
 
 def authenticate(db: Session, configuration: Settings, token: str) -> User:
@@ -71,6 +91,7 @@ def _snapshot(
         user.first_name if user else None,
         user.surname if user else None,
         user.patronymic if user else None,
+        _receipt_id(operation),
     )
 
 
@@ -138,6 +159,8 @@ def claim_customer_send(
             raise BillingRefused("billing_identity_conflict", 409)
         if customer.provider_customer_id is not None or operation.operation_state != State.PENDING:
             return _snapshot(customer, operation)
+        if operation.send_fence != expected.fence or _receipt_id(operation) is not None:
+            raise BillingRefused("billing_customer_pending", 409)
         now = utc_now()
         operation.send_fence = uuid4()
         operation.operation_state = State.POSSIBLE_SEND
@@ -165,6 +188,74 @@ def claim_customer_send(
         return result
 
 
+def record_customer_receipt(factory: SessionFactory, expected: CustomerOpen, provider_id: int) -> CustomerOpen:
+    """Durably retain the POST candidate before point-read I/O; this is not binding."""
+    if type(provider_id) is not int or not 0 < provider_id < 10**20:
+        raise BillingRefused("billing_identity_unproven", 409)
+    with factory() as db:
+        customer = lock_customer(db, expected.customer_id)
+        operation = customer_operation(db, expected.customer_id)
+        if (
+            operation is None
+            or not expected.may_create
+            or expected.fence is None
+            or operation.create_operation_id != expected.operation_id
+            or operation.send_fence != expected.fence
+            or operation.operation_state not in {State.POSSIBLE_SEND, State.UNKNOWN, State.MANUAL_REVIEW}
+            or customer.billing_customer_key != expected.outer_key
+            or operation.request_correlation_key != expected.outer_key
+        ):
+            raise BillingRefused("billing_customer_pending", 409)
+        previous = _receipt_id(operation)
+        if previous not in {None, str(provider_id)}:
+            raise BillingRefused("billing_identity_conflict", 409)
+        operation.recovery_hint_schema_version = CUSTOMER_RECEIPT_SCHEMA
+        operation.recovery_hint_document = {"provider_customer_candidate_id": str(provider_id)}
+        result = _snapshot(customer, operation)
+        db.commit()
+        return result
+
+
+def record_customer_create_failure(
+    factory: SessionFactory, expected: CustomerOpen, *, http_status: int, lbx_code: int | None, reason: str
+) -> None:
+    """Retain bounded safe response facts, never raw text or permission to retry."""
+    if type(http_status) is not int or not 100 <= http_status <= 599:
+        raise ValueError("invalid HTTP status")
+    if lbx_code is not None and (type(lbx_code) is not int or not -(2**31) <= lbx_code < 2**31):
+        raise ValueError("invalid LBX code")
+    with factory() as db:
+        customer = lock_customer(db, expected.customer_id)
+        operation = customer_operation(db, expected.customer_id)
+        if (
+            operation is None
+            or not expected.may_create
+            or operation.create_operation_id != expected.operation_id
+            or operation.send_fence != expected.fence
+            or expected.fence is None
+            or customer.billing_customer_key != expected.outer_key
+            or operation.request_correlation_key != expected.outer_key
+            or customer.provider_customer_id is not None
+            or _receipt_id(operation) is not None
+        ):
+            return
+        work = recovery_work(db, expected.operation_id)
+        if work is not None:
+            safe_reason = reason if reason in CREATE_FAILURE_REASONS else "unknown"
+            work.last_error_classification = safe_reason
+            work.payload_document = {
+                **work.payload_document,
+                "last_failed_create": {
+                    "schema_version": CREATE_RESPONSE_SCHEMA,
+                    "http_status": http_status,
+                    "lbx_code": lbx_code,
+                    "reason": safe_reason,
+                    "recorded_at": utc_now().isoformat(),
+                },
+            }
+        db.commit()
+
+
 def release_unsent_claim(factory: SessionFactory, expected: CustomerOpen) -> None:
     """Only this owner's proven unsent result authorizes resetting its claim."""
     with factory() as db:
@@ -180,6 +271,7 @@ def release_unsent_claim(factory: SessionFactory, expected: CustomerOpen) -> Non
             or customer.provider_customer_id is not None
             or operation.send_fence != expected.fence
             or operation.operation_state != State.POSSIBLE_SEND
+            or operation.recovery_hint_document is not None
         ):
             raise BillingRefused("billing_customer_pending", 409)
         operation.operation_state = State.PENDING

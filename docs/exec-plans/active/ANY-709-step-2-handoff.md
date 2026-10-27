@@ -341,3 +341,295 @@ and logout remove it. Isolated protocol/component tests do not establish real
 SDK compatibility with the opaque sandbox wrapper. No CI, runtime or live Widget
 PASS is claimed; real credentials, Client readiness and human SDK acceptance
 remain external prerequisites.
+
+## Manual QA correction, 2026-10-26 (base 181b8d0)
+
+**Later owner follow-up:** the [pending investigation below](#owner-pending-follow-up-2026-10-26)
+updates the original operation's current state and supplies previously missing
+archived first-POST evidence. Earlier snapshots describe the initial QA run.
+
+Scope: the two owner-reported Steps 1–2 defects. The owner explicitly authorized
+local execution, isolated tests and test-043 reads/customer smoke for this
+correction, then separately approved the second synthetic customer. Earlier
+NOT_RUN entries remain historical. The current branch/HEAD was `ANY-709` /
+`181b8d0b498311da043a49289ab9aa5b444bc4dd`, initially clean. Owner changes were
+not reverted or restored from the previous experiment.
+
+### Original operation: outcome still unknown, no replay
+
+Read-only inspection found operation `84b02ba9-cf64-4bef-90e1-88a7be46d0cf`
+created at 08:01:34 UTC, now `pending`, with non-null fence, no receipt/provider
+binding, and cleared unknown timestamps. Its review and work item were manually
+resolved/done at approximately 11:01:52 UTC. The retained resolution asserts
+`operator_confirmed_no_external_effect`; that assertion is not independently
+verified provider evidence. The current container logs begin after the first
+attempt. No retained first POST request/status/body was found. Config/code show
+what the serializer would send, not what that first attempt actually sent.
+A new authorized GET search by the original opaque outer key returned HTTP/LBX
+200 with zero candidates. That does not prove absence after a possible send.
+
+No original-user billing open, POST, binding, reset, review resolution or
+operation update was performed. Its row remains `pending` exactly as found.
+Do not open that user's normal billing path while this manually retriable state
+lacks a proven absence predicate. Safe restoration needs provider-side request/
+audit evidence for the original attempt, or a candidate ID followed by detailed
+paired `user_id`/original `outer_id` proof. Empty discovery, UI absence, email or
+FIO are insufficient. Until such evidence exists, preserve the slot and use
+read-only investigation; any audited quarantine/release is a separate owner
+operation. This session does not declare that original failure repaired.
+
+### Confirmed defects and implementation
+
+- `client.py` distinguishes HTTPX pool/connect timeout and connect failure
+  before receiving a response from write/read/protocol/late failures. Only the
+  proven-unsent case releases its own committed claim. Durable send fencing
+  stays before POST; ambiguous outcomes and uncertain commits never authorize
+  another CREATE. GET retry budgets retain their timeout/network meanings.
+- `_transport.py` decodes once under existing size/encoding/deadline limits,
+  handles documented nested `response.error` and LBX errors inside HTTP success,
+  and emits allowlisted stage/HTTP/LBX/schema categories with request/operation
+  correlation. Untrusted remote text/Pydantic input is never logged. A rejected
+  CREATE is not assumed harmless merely from HTTP 4xx.
+- `customers.py` commits a receipt candidate in existing recovery fields using
+  schema `customer-create-receipt:v1` and document key
+  `provider_customer_candidate_id`, under the same operation/key/fence, before
+  the verifying network GET. It is not `provider_customer_id`. Reopens prefer
+  this durable hint; only point proof binds. Invalid/conflicting/stale hints
+  refuse; release cannot erase a received candidate. No DB transaction spans
+  HTTP and no new migration/state machine/worker/repair CLI was added.
+- Candidate lists may omit `outer_id` as documented by Swagger `ShortUserInfo`.
+  They never establish ownership and multiple candidates are not first-picked.
+  Detailed GET must match both requested ID and original key.
+- The first controlled run exposed an additional actual normal-path blocker:
+  043's detailed HTTP/LBX 200 response includes nonempty `password`, which the
+  old client rejected after DTO decoding. `LbxUser` now projects only identity
+  fields and discards credential/contact fields instead of retaining them or
+  rejecting otherwise valid proof. The password value was neither printed nor
+  stored. This is proven for the new run, not the unknown historical attempt.
+
+### Live evidence and mutations
+
+Two explicitly synthetic Portal users were registered through ordinary HTTP
+registration, received verification mail through a temporary loopback SMTP
+receiver, and confirmed through the ordinary authenticated confirmation API.
+Both unverified billing requests first returned 403. No direct verification flag
+or auth bypass was used. Browser login/open used the ordinary configured Portal
+at `http://localhost:39053`, real SDK and test LBX 043.
+
+First test operation `172dee69-c699-4807-922d-3d548155c71f` sent one POST
+(HTTP/LBX 201), persisted its receipt, then hit the confirmed detail-password
+rejection. After correction it recovered by the saved ID and reached Server
+point proof + Client HTTP/LBX 200, without another POST. Several explicit
+reopens reused it. Provider ID 24 is now verified/bound.
+
+Second operation `c4510798-92ff-44cf-b906-317c7e274276` exercised a clean first
+open on the corrected code: auth 200 → one users POST 201 → detailed GET 200 →
+binding → Client GET 200 → Portal readiness. Provider ID 25 is verified/bound.
+Both accounts omitted FIO. All three FIO shapes are additionally covered in
+isolated PostgreSQL tests. POST fields are type=2, original opaque outer_id,
+email and generated transient login/password; absent FIO is omitted, not
+fabricated. Portal user UUID, outer key and provider ID remain distinct.
+
+Local application totals changed from 1 to 3 users/customers; PurchaseIntent
+and external subscription counts remain 0. No agreement/subscription/payment
+CREATE endpoint was called, and no LBX configuration was changed. Existing
+original operation/review/work rows remain untouched. Only normal new-user
+identity/consent/session/verification and customer/receipt/binding/recovery rows
+were written. No application migration ran. PostgreSQL test migrations/resets
+were confined to pytest's disposable `_tests` database.
+
+The API container was refreshed from current source without deleting data or
+volumes. Temporary diagnostic API/web/SMTP processes were stopped; the normal
+worktree services were retained. Test account credentials are not part of Git
+or this evidence. The host-only diagnostic catalog's initial `kernel_unavailable`
+was an internal Docker hostname mismatch; the ordinary configured Portal source
+path returned the Step 1 current offer without changing connection settings.
+
+### Browser outcome and remaining acceptance
+
+Actual official `lbxwidget.js` loaded and created its real
+`https://043.lbxbilling.ru/widget/index.html` iframe, but the SDK displayed
+its localized Widget-load-failure message. Its public iframe/app assets return 200; the public
+loader reports missing iframe readiness. This session has not established the
+underlying browser/provider cause. Do not claim CUSTOMER_WIDGET_PASS. The
+Portal bootstrap/identity success is distinct from visual SDK readiness.
+Closing the Widget and logout removed the iframe; no token was inspected in
+browser storage or printed. The opaque-origin sandbox/CSP was preserved.
+
+The original operation outcome, actual Widget rendering, and the previously
+unconfirmed billing timezone keep complete Steps 1–2 QA acceptance open. No
+payment-capable Widget, agreements, subscriptions, access grants, webhooks,
+background workers or Steps 3–4 were implemented.
+
+### Executed verification and final ledger
+
+Final canonical `npm run check`: **exit 0**. It passed documentation,
+generation freshness (no generated diff), architecture, Ruff, frontend lint,
+38 frontend boundary checks, all 300 component tests, production web build,
+1,286 PostgreSQL-free API tests and 177 PostgreSQL tests. Automated Playwright
+E2E was explicitly **SKIPPED** by the canonical command because `RUN_E2E` was
+not enabled; the real browser scenario above was driven separately, without
+SDK/network substitutions. Browser visual Widget acceptance remains **FAIL**.
+
+The broad check ran outside the restrictive sandbox with live connection inputs
+blanked **only in the check process**, and two-core CPU affinity to bound test
+workers. No `.env`, application setting, test timeout, package/dependency or
+worker configuration file was changed. The earlier sandbox boundary failure,
+component-worker timeout and local development-source contamination are not
+reported as passing runs. A first full API run had 1,452 passes / 5 failures:
+four were development Kernel environment contamination, and one retained null
+assertion needed the new precise reason. All are covered by the final green
+canonical check.
+
+The executed check wrapper was `/tmp/any709_qa_checks.py`; its reproducible
+contents, run with the root venv Python from repository root, are:
+
+```python
+import os
+import subprocess
+from pathlib import Path
+
+environment = dict(os.environ)
+environment["PATH"] = str(Path.cwd() / ".venv/bin") + os.pathsep + environment["PATH"]
+for key in (
+    "KERNEL_BASE_URL", "KERNEL_SERVICE_TOKEN", "KERNEL_MOCK_TOKEN",
+    "LBX_BASE_URL", "LBX_SERVER_USERNAME", "LBX_SERVER_PASSWORD",
+    "LBX_WIDGET_SIGNING_SECRET", "LBX_SELLER_ORGANIZATION_ID", "LBX_BILLING_TIMEZONE",
+):
+    environment[key] = ""
+environment["KERNEL_MOCK_ENABLED"] = "0"
+os.sched_setaffinity(0, sorted(os.sched_getaffinity(0))[:2])
+raise SystemExit(subprocess.call(["npm", "run", "check"], env=environment))
+```
+
+The final receipt-owner guard additionally rejects a non-sending reader with
+the same fence. After that last diff-review adjustment, the normal name-shape,
+stale/nonowner/conflicting receipt and uncertain claim/receipt commit cases
+were rerun: **6 PostgreSQL tests passed**. Broader PostgreSQL coverage had
+already passed all 177 tests. The exact final targeted command was:
+
+```bash
+PATH="$PWD/.venv/bin:$PATH" \
+PYTEST_ADDOPTS='-k "test_any709_qa_receipt_rejects_stale_fences_and_conflicting_candidates or test_any709_qa_fresh_create_names_point_proof_and_reopen or test_any709_qa_uncertain_commit_never_authorizes_another_post"' \
+npm run test:api:postgres
+```
+
+The new QA suites plus existing Step 2 tests cover fresh success/reuse; omitted,
+partial and full FIO; documented nested errors; pool/connect versus write/read/
+protocol failure; no blind replay; durable receipt before failing point GET and
+recovery across client restart; short/zero/multiple candidate lists; races,
+stale fences and uncertain commit acknowledgements. Offer tests retain exact
+money/composition behavior and the raw commercial captures. Final Ruff/format,
+documentation and whitespace checks passed.
+
+At the end of that QA run, before the later owner follow-up, read-only evidence
+(`.harness/any709-qa/live-summary.json`, ignored) showed that each
+of the two test keys has exactly one LBX candidate and one POST; their Portal
+ready counts are respectively 3 and 2. The original operation ID/fence/unknown
+fields/update timestamp are unchanged. Application totals are 3 users, 3
+customer slots, 0 PurchaseIntents and 0 external subscriptions. Browser logout
+removed every Widget iframe for both test users. No secrets/customer bodies
+were added to fixtures, Git or diagnostic output. No staging, commit, push,
+PR/Linear write or test-database container stop was performed (PostgreSQL was
+already serving the existing normal worktree).
+
+
+## Owner pending follow-up, 2026-10-26
+
+Owner-reported Portal request `a5c15d82d08a3fbcdf69a9e049bb1559` returned
+`billing_customer_pending`. Current container logs establish that this request
+at 13:26:55–56 UTC performed only GET `/users` with HTTP/LBX 200, then returned
+pending without a candidate. It did not start a CREATE or reach Client/SDK
+bootstrap.
+
+The operation is the original `84b02ba9-cf64-4bef-90e1-88a7be46d0cf`, now
+`unknown`, with a new fence and fixed recovery interval 13:24:58–15:24:58 UTC.
+It has no receipt candidate, provider binding or resolved timestamp. This is a
+change after the previous QA snapshot, not an agent reset during this follow-up.
+No database write or original-customer billing open was performed by this
+follow-up investigation.
+
+The local Loki archive retained evidence that the current container lacked.
+Its OTEL billing fields are structured attributes, rather than JSON text in the
+message body; a body-only operation-ID search does not retrieve them. Bounded
+UTC-range queries, followed by allowlisted structured-field extraction, found:
+
+- Initial request: Server auth HTTP 200 at 08:01:35.616 UTC, then users POST
+  HTTP 500 at 08:01:35.833 UTC, followed by `lbx_unavailable`. Its POST and the
+  original operation-open event share the same trace. This establishes that
+  the first POST was sent and received HTTP 500; its body and original JSON code
+  remain unavailable. The earlier first-send uncertainty is superseded by this
+  archived trace evidence, not by an assumption about losing a returned ID.
+- Later owner attempt: users POST at 13:24:58.956 UTC, request
+  `46d5b77410d3fa3a4077fc2e15cdb39a`, HTTP 500 / LBX code 500, safe reason
+  `provider_rejected`, followed by `lbx_unavailable`. No success receipt was
+  obtained. This explains the new UNKNOWN interval after the earlier manually
+  pending state was opened.
+- Fresh GET-only discovery at 13:34:23 UTC: HTTP/LBX 200, zero candidates for
+  the original opaque outer key. No customer identity can currently be proven.
+
+Local request-shape inspection shows absent FIO for the original user and both
+successful synthetic users. The current command fields are type, outer_id,
+email and transient login/password. Differences in email casing and opaque-key
+characters were observed without printing values; neither difference is a
+proven explanation of the 500 and no identifiers/email were changed to test a
+guess. The historical request body is not reconstructed as if it were captured.
+
+The remote error text was intentionally not retained in privacy-safe logs. A
+provider server-side error/audit record for the two failed POSTs is now the
+concrete missing evidence: what caused HTTP 500, and whether either request
+created an object before failing. A 500 plus empty search is not a safe absence
+predicate. Do not replay CREATE merely to obtain an error body, bind by email,
+or clear UNKNOWN. Read-only recovery can bind only after a candidate's detailed
+original-key/ID proof. No provider mutation, manual reset, new account or
+subscription/payment action occurred in this follow-up.
+
+Sanitized local evidence: `.harness/any709-qa/original-operation-loki.json` and
+`.harness/any709-qa/owner-late-discovery.json` (ignored). Documentation/whitespace
+checks are the relevant verification for this diagnostic-only follow-up; no
+runtime code or test behavior changed.
+
+## Diagnostic CLI simplification (2026-10-27)
+
+The owner requested retaining useful diagnostics and removing the unshipped
+operator binding/reset workflow. The supported command is now
+`billing-customer diagnose --user-id <PORTAL_USER_UUID>`; there is no apply,
+manual-ID adoption or retry override. It performs scoped read-only PostgreSQL
+queries, bounded LBX GET discovery/point proof and allowlisted inspection of
+saved CREATE response facts. See the [operator runbook](../../engineering/lbx-product-links.md#customer-diagnosis-cli).
+Earlier repair-CLI instructions in execution history are superseded.
+
+The owner's HTTP 500 was independently traced to LBX's email uniqueness
+rejection, despite zero results in visible GET searches. That failure must not
+be treated as proven absence. The structured, previously recorded curl review
+is readable by diagnosis; new bootstrap failures retain only safe response
+codes/reason/time in the existing recovery item. No raw response body, email,
+password or token is copied into diagnostic output. The independent receipt,
+transport-before-dispatch, credential projection and selected-offer DTO fixes
+remain in scope. No production semantic or paid-access authority is added.
+
+Validation of this simplification:
+
+- `npm run check` passed documentation, generation, architecture, API lint/format,
+  38 web boundary tests, 300 component tests, web lint, 1,293 non-PostgreSQL API
+  tests and the production web build. Its PostgreSQL stage passed 194 cases and
+  exposed six errors in the newly added negative-test fixtures: recovery work
+  was read before claiming a send, and unsupported Settings were constructed
+  instead of seeding a foreign-scoped user. These fixture errors were corrected;
+  no runtime fix was needed. The affected PostgreSQL suite was rerun with
+  `PYTEST_ADDOPTS='-k "billing_customer_diagnostics" --tb=short' npm run test:api:postgres`:
+  all 23 cases passed (including the six corrected cases). Together the runs
+  cover all 200 PostgreSQL cases on the unchanged runtime code.
+- Focused QA/protocol/CLI fast checks: 182 passed. API Ruff, formatting,
+  architecture and `git diff --check` passed. The final documentation check was
+  rerun after recording these results. Browser E2E was not run; no UI changed.
+- The real wrapper was exercised against the current owner's local Portal
+  account and test LBX 043 using GET only. It returned `email_conflict`, saved
+  HTTP/LBX code 500 and `email_not_unique`; live original-key and both email
+  searches returned no candidates, with no source error. The exit status was 2
+  as documented. Before/after hashes of users, customer slots, create operations,
+  recovery items and review rows were unchanged. No customer CREATE, reset,
+  binding mutation, Widget credential, contract, subscription or payment was
+  performed. The provider's email conflict remains for Billing Ops resolution.
+- Evidence logs remain local under `.harness/any709-qa/diagnose-check.log` and
+  `.harness/any709-qa/diagnose-postgres-recheck.log`. No commit, push or PR was made.
