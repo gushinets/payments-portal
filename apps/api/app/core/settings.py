@@ -273,7 +273,7 @@ class Settings(BaseSettings):
 
     @property
     def lbx_purchase_configuration_error(self) -> str | None:
-        """Reserved for product-bound payment; does not enable a purchase flow."""
+        """Product-bound preparation readiness; account viewing remains independent."""
         if self.lbx_widget_configuration_error is not None:
             return self.lbx_widget_configuration_error
         seller = self.lbx_seller_organization_id

@@ -19,7 +19,8 @@ BASELINE_REVISION = "20260924_0001"
 EMAIL_VERIFICATION_REVISION = "20261001_0002"
 PRODUCT_HEAD_REVISION = "20261026_0003"
 ORIGIN_REVISION = "20261026_0004"
-HEAD_REVISION = "20261026_0005"
+CUSTOMER_REVISION = "20261026_0005"
+HEAD_REVISION = "20261027_0006"
 
 SURVIVOR_TABLES = {
     "regions",
@@ -42,6 +43,7 @@ TARGET_TABLES = {
     "external_billing_customers",
     "purchase_intents",
     "external_create_operations",
+    "billing_purchase_scope_holds",
     "billing_product_access_scopes",
     "external_subscriptions",
     "billing_state_observations",
@@ -252,7 +254,9 @@ EXPECTED_COLUMNS = {
         "state_updated_at",
         "resolved_at",
     },
+    "billing_purchase_scope_holds": {"user_id", "product_id", "external_billing_account_id", "purchase_intent_id"},
     "external_create_operations": {
+        "external_billing_account_id",
         "create_operation_id",
         "operation_kind",
         "customer_id",
@@ -427,6 +431,7 @@ EXPECTED_CHECKS = {
         "ck_purchase_intents_state",
     },
     "external_create_operations": {
+        "ck_financial_operation_account",
         "ck_external_create_operations_purchase_requirement",
         "ck_external_create_operations_kind",
         "ck_external_create_operations_correlation_nonempty",
@@ -497,6 +502,7 @@ EXPECTED_UNIQUE_CONSTRAINTS = {
         "uq_external_billing_customers_account_user",
         "uq_external_billing_customers_billing_customer_key",
         "uq_billing_customers_provider",
+        "uq_billing_customers_id_account",
     },
     "purchase_intents": {
         "uq_purchase_intents_client_idempotency",
@@ -504,11 +510,14 @@ EXPECTED_UNIQUE_CONSTRAINTS = {
         "uq_purchase_intents_id_account_user_product",
         "uq_purchase_intents_full_scope",
     },
+    "billing_purchase_scope_holds": {"uq_purchase_hold_intent"},
     "billing_product_access_scopes": {
         "uq_billing_product_access_scopes_id_user_product",
         "uq_billing_product_access_scopes_user_product",
     },
     "external_subscriptions": {
+        "uq_subscription_provider",
+        "uq_subscription_agreement",
         "uq_external_subscriptions_id_product",
         "uq_external_subscriptions_id_user_product",
         "uq_external_subscriptions_id_account_user_product",
@@ -728,6 +737,7 @@ def test_clean_first_install_has_expected_revisions_and_exact_application_schema
         assert script.get_bases() == [BASELINE_REVISION]
         assert [item.revision for item in script.walk_revisions()] == [
             HEAD_REVISION,
+            CUSTOMER_REVISION,
             ORIGIN_REVISION,
             PRODUCT_HEAD_REVISION,
             EMAIL_VERIFICATION_REVISION,
@@ -736,7 +746,7 @@ def test_clean_first_install_has_expected_revisions_and_exact_application_schema
         command.upgrade(config, "head")
 
     assert tuple(logging.getLogger().handlers) == handlers
-    assert len(APPLICATION_TABLES) == 26
+    assert len(APPLICATION_TABLES) == 27
     assert _public_table_names(postgres_engine) == APPLICATION_TABLES | {"alembic_version"}
     assert LEGACY_TABLES.isdisjoint(_public_table_names(postgres_engine))
     with postgres_engine.connect() as connection:
@@ -813,6 +823,8 @@ def test_clean_first_install_has_expected_revisions_and_exact_application_schema
         "fk_purchase_intents_mapping_scope",
         "fk_purchase_intents_legal_evidence",
         "fk_external_create_operations_purchase_customer",
+        "fk_create_operation_account",
+        "fk_purchase_hold_scope",
         "fk_billing_product_access_scopes_primary_subscription",
         "fk_external_subscriptions_customer_scope",
         "fk_external_subscriptions_purchase_provenance",

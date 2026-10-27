@@ -1,8 +1,10 @@
-# LBX connection, product links and account Widget (ANY-709 Steps 1-2)
+# LBX connection, product links and account Widget (ANY-709 Steps 1-3)
 
-Status: IMPLEMENTED_AWAITING_HUMAN_VALIDATION. No runtime/test/migration PASS is
-claimed. Step 2 adds explicit account-only customer/Widget bootstrap. Purchases
-and payment presentation remain later ANY-709 steps.
+Status: IMPLEMENTED_AWAITING_HUMAN_VALIDATION. Step 2 adds explicit account-only
+customer/Widget bootstrap. Step 3 adds accepted-purchase APIs and verified payment
+presentation. Focused synthetic tests have passed and migration `20261027_0006`
+was applied to the local development database under explicit owner authorization.
+Real LBX purchase/payment QA is NOT_RUN. Step 4 browser purchase UI is pending.
 
 ## Connection and deployment
 
@@ -10,7 +12,7 @@ Server API reads and product linking require only `LBX_BASE_URL` (HTTP(S)
 origin only), `LBX_SERVER_USERNAME` and `LBX_SERVER_PASSWORD` in the configured
 environment or untracked `.env`. Use production HTTPS. `LBX_WIDGET_SIGNING_SECRET`
 is a separate account-Widget requirement; `LBX_SELLER_ORGANIZATION_ID` is
-a later purchase requirement. Missing signing/seller values do not gate GETs or
+an explicit purchase requirement. Missing signing/seller values do not gate GETs or
 linking. Server API requests append
 `/api/rest/v1` exactly once; Client API/SDK paths are
 `/api/rest/v1/client` and `/lbxwidget.js` on the same validated origin. Never put
@@ -20,7 +22,7 @@ All-empty connection settings leave billing unavailable. Partial/invalid
 connection settings produce safe billing errors; they do not prevent identity
 startup. There is no startup provider call or automatic link publication.
 The seller is deployment configuration; catalog reads do not query organizations.
-The later purchase agreement must prove the configured seller.
+Each new purchase agreement must prove its accepted configured seller.
 
 LBX support directly confirmed that both services `prices[]` and the dedicated
 service-prices GET return historical and future prices, and price start dates
@@ -46,9 +48,9 @@ ID for the same supported RUB contract when needed. Mismatching IDs/unsupported
 interpretations
 are unsupported offer errors. These settings do not attest credit, tax,
 renewal/cancellation or historical-subscription policy; no unknown fact is filled
-with false/zero. Later purchase validation must obtain its own applicable facts.
+with false/zero. Purchase point-read validation obtains its own applicable facts.
 Currency readiness does not block a raw Server API GET or the
-account-Widget readiness check. Purchase runtime remains deferred.
+account-Widget readiness check. Real Step 3 provider acceptance remains pending.
 
 The transport accepts the retained E04/E05 representations: exact JSON numeric
 `1.0` quantity bounds, a provider-local midnight `price_start_date`, and history
@@ -437,3 +439,118 @@ that no customer was created. The owner's account retry policy therefore makes
 another explicit, discover-first attempt rather than claiming provider absence.
 Saved receipts and identity conflicts still block CREATE. The report is an observation across local/source reads, not a locked
 snapshot for a later mutation; rerun it after any concurrent state change.
+
+## Purchase API and financial recovery (Step 3)
+
+Status: IMPLEMENTED; focused synthetic tests and the local development migration
+have passed. Real purchase/payment QA is NOT_RUN. The existing customer Widget observation proves only account
+viewing. Browser Buy/Continue/Manage is Step 4. The following is a human-operated
+API checkpoint after review and application migration, using a verified Portal
+user and the normal configured link; never assign a research customer ID.
+
+1. `POST /api/purchases/review` with `{"product_id":"<enabled product>"}` and
+   the Portal bearer session. Review returns exact decimal strings, quantity,
+   period meaning, opaque `revision_id`, `expected_fingerprint`, and required
+   legal versions/text hashes. Documents remain drafts. Review makes no provider
+   mutation, consent or durable checkout session.
+2. `POST /api/purchase-intents` with a stable `Idempotency-Key` header, the same
+   product/revision/fingerprint, and `documents` containing each returned
+   `document_version_id` and `acceptance_text_hash`. Do not submit provider IDs,
+   amounts or flags. The server rereads current source facts, then atomically
+   rechecks the link and legal versions and pins acceptance, consent, the local
+   customer slot, two permanent financial identities and one user/product hold.
+   `terms_changed` requires fresh review. Same key/same selection returns the
+   original intent before source I/O; changed meaning conflicts, and another
+   key cannot bypass an occupied scope.
+3. `POST /api/purchase-intents/<purchase_intent_id>/advance` explicitly ensures
+   the shared customer and prepares a dedicated non-offer agreement for the
+   accepted seller, then the selected tariff, **period ID** and service quantity.
+   Agreement creation uses a Moscow calendar date; the subscription request
+   omits activation/start dates, disables manual/demo activation and requests
+   balance-gated activation. Original accepted live terms are rechecked before
+   each previously unsent financial operation. No DB transaction spans HTTP.
+4. Inspect `GET /api/purchase-intents/current?product_id=<product>` and
+   `GET /api/purchase-intents/<purchase_intent_id>`. Both use owned local history
+   without catalog reads or CREATE. A `linked` result is a prepared subscription,
+   with financial status `unverified`, immediately expired paid projection and
+   no paid grant, allowance, access primary or Kernel call.
+5. `POST /api/billing/widget-bootstrap` with the owned
+   `{"purchase_intent_id":"<purchase_intent_id>"}` requires fresh paired customer,
+   seller/agreement and original effective-subscription proof. The response has
+   `presentation: "payment"`, `disablePayments: false` and the proven intended
+   `payment_target.agreement_reference` / `seller_reference` to show next to the
+   Widget. All create/edit/stop/autopay/invoice flags stay disabled. The same
+   endpoint with `{}` retains account viewing with payments disabled. This is
+   one SDK/JWT identity; flags are presentation, not server ACLs or a product-only
+   filter. Human acceptance must validate the actual supported agreement payment
+   selection; no custom auto-selection/filter or payment API is supplied.
+
+Point proof compares canonical subscription -> dedicated agreement -> customer,
+original seller, tariff/period, one fixed non-bulk service, effective price and
+quantity/total, supported lifecycle/creation conditions and configured RUB
+meaning (including the provider
+Cyrillic ruble symbol). It ignores mutable subscription `outer_id`,
+current catalog `tariff_price`, historical price-row IDs and association IDs as
+subscription authority. Nullable non-applicable bulk fields are preserved;
+waiting NULL/1970/3000 calendar values never become paid dates or UTC intervals.
+A nonzero accepted connection charge without explicit effective readback remains
+pending; it is never assumed to be zero or proven by today's catalog.
+
+A financial possible-send claim commits its original correlation, request,
+fence, `unknown_since + 2h` and one coalesced recovery work item before POST.
+A 500/error envelope, malformed success, timeout, crash, lost commit acknowledgement,
+zero discovery or elapsed deadline never authorizes another financial POST. An
+unresolved operation holds the product scope and resumes through GET-only
+recovery; multiple candidates or a known mismatch enter review. At +2h, unresolved
+operations escalate to review while retaining the same hold/deadline. A recovered
+point match can resolve deadline escalation. Known-conflict reviews require an
+audited decision and cannot be cleared by another matching response alone.
+
+A linked unpaid subscription holds its scope indefinitely, including after
+browser abandonment. Automatic release here exists only when original terms
+changed and all financial operations are still provably unsent under the same
+locks as send claims. Customer identity is retained. Other release requires
+trustworthy terminal/no-effect evidence and an audited decision; there is no
+force-bind/release/grant command or absence inference from an empty list.
+Historical Manage uses the accepted revision and effective subscription terms,
+without consulting today's price or product head. A purchase failure leaves
+independently proven account viewing available; customer uncertainty blocks JWT.
+
+Authorized operators use the existing privileged OS identity boundary. These
+commands never print credentials, personal data, raw provider text or bodies:
+
+```bash
+.venv/bin/python scripts/repo.py billing-purchase inspect --user-id <portal-user-uuid> --purchase-id <purchase-intent-uuid>
+.venv/bin/python scripts/repo.py billing-purchase recover --user-id <portal-user-uuid> --purchase-id <purchase-intent-uuid>
+```
+
+`inspect` is local/read-only. `recover` performs bounded Server GETs and applies
+only fenced point-proven bindings/review state; it never sends customer or
+financial CREATE, mints JWT, releases a hold or grants access. Safe stored
+HTTP/LBX failure facts explain unresolved CREATE without raw provider text.
+The existing `billing-customer diagnose` remains a separate read-only customer
+command. CLI invocations are human commands, NOT_RUN by this implementation.
+
+The later Step 8 worker may call `recover_financial()` with an owned local
+purchase and `escalate_overdue_financial(factory, now=..., limit=...)` (1..100).
+Consume the existing `external_create_recovery` work by operation ID and original
+fixed deadline. No scheduler/webhook/reconciliation/trust runtime is started in
+Step 3. Retain independent future reconciliation capacity and do not reinterpret
+preparation observations as verified paid financial facts.
+
+Focused synthetic verification from repository root (executed; rerun commands):
+
+```bash
+PATH="$PWD/.venv/bin:$PATH" PYTEST_ADDOPTS='-k any709_step3' npm run test:api:fast
+.venv/bin/python scripts/repo.py test-db up
+PATH="$PWD/.venv/bin:$PATH" PYTEST_ADDOPTS='-k any709_step3' npm run test:api:postgres
+.venv/bin/python scripts/repo.py test-db stop
+```
+
+Migration `20261027_0006` was applied to the local development database under
+explicit owner authorization on 2026-10-27. Production migration and the explicit
+real org/tariff purchase checkpoint through Portal APIs remain owner-operated.
+Record sanitized intent/operation/binding evidence, exactly one intended seller
+agreement and subscription, correct effective terms, no grant and no duplicate
+CREATE on repeated advance. Actual tariff-32 acceptance and actual Widget
+payment targeting/payment remain human integration evidence, not synthetic PASS.

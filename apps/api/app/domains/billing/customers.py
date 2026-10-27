@@ -99,45 +99,53 @@ def reserve_customer(factory: SessionFactory, configuration: Settings, token: st
     with factory() as db:
         user = authenticate(db, configuration, token)
         user = lock_user(db, user.id)
-        accounts = connection_accounts(db, configuration.lbx_provider_origin)
-        if len(accounts) > 1:
-            raise BillingRefused("billing_connection_conflict", 409)
-        account = next(iter(accounts), configuration.lbx_external_billing_account_id)
-        if foreign_customer(db, user.id, account):
-            raise BillingRefused("billing_connection_conflict", 409)
-        customer = customer_slot(db, account, user.id)
-        if customer is None:
-            customer = ExternalBillingCustomer(
-                customer_id=uuid4(),
-                external_billing_account_id=account,
-                user_id=user.id,
-                provider_origin=configuration.lbx_provider_origin,
-                billing_customer_key=secrets.token_urlsafe(32),
-                binding_state=Binding.UNBOUND,
-            )
-            db.add(customer)
-            db.flush()
-        if customer.provider_origin != configuration.lbx_provider_origin:
-            # Retained legacy rows lack provenance; never try old IDs at a new origin.
-            raise BillingRefused("billing_connection_conflict", 409)
-        operation = customer_operation(db, customer.customer_id)
-        if operation is None:
-            if customer.provider_customer_id is not None:
-                raise BillingRefused("billing_legacy_identity_unproven", 409)
-            operation = ExternalCreateOperation(
-                create_operation_id=uuid4(),
-                customer_id=customer.customer_id,
-                operation_kind=Kind.CUSTOMER,
-                request_correlation_key=customer.billing_customer_key,
-                operation_state=State.PENDING,
-            )
-            db.add(operation)
-            db.flush()
-        if operation.request_correlation_key != customer.billing_customer_key:
-            raise BillingRefused("billing_identity_conflict", 409)
-        result = _snapshot(customer, operation, user, may_create=operation.operation_state == State.PENDING)
+        result = reserve_customer_in_transaction(db, configuration, user)
         db.commit()
         return result
+
+
+def reserve_customer_in_transaction(db: Session, configuration: Settings, user: User) -> CustomerOpen:
+    """Reuse the account slot inside purchase admission's caller-owned transaction.
+
+    Caller has locked the user. No provider calls, consent or commit here.
+    """
+    accounts = connection_accounts(db, configuration.lbx_provider_origin)
+    if len(accounts) > 1:
+        raise BillingRefused("billing_connection_conflict", 409)
+    account = next(iter(accounts), configuration.lbx_external_billing_account_id)
+    if foreign_customer(db, user.id, account):
+        raise BillingRefused("billing_connection_conflict", 409)
+    customer = customer_slot(db, account, user.id)
+    if customer is None:
+        customer = ExternalBillingCustomer(
+            customer_id=uuid4(),
+            external_billing_account_id=account,
+            user_id=user.id,
+            provider_origin=configuration.lbx_provider_origin,
+            billing_customer_key=secrets.token_urlsafe(32),
+            binding_state=Binding.UNBOUND,
+        )
+        db.add(customer)
+        db.flush()
+    if customer.provider_origin != configuration.lbx_provider_origin:
+        # Retained legacy rows lack provenance; never try old IDs at a new origin.
+        raise BillingRefused("billing_connection_conflict", 409)
+    operation = customer_operation(db, customer.customer_id)
+    if operation is None:
+        if customer.provider_customer_id is not None:
+            raise BillingRefused("billing_legacy_identity_unproven", 409)
+        operation = ExternalCreateOperation(
+            create_operation_id=uuid4(),
+            customer_id=customer.customer_id,
+            operation_kind=Kind.CUSTOMER,
+            request_correlation_key=customer.billing_customer_key,
+            operation_state=State.PENDING,
+        )
+        db.add(operation)
+        db.flush()
+    if operation.request_correlation_key != customer.billing_customer_key:
+        raise BillingRefused("billing_identity_conflict", 409)
+    return _snapshot(customer, operation, user, may_create=operation.operation_state == State.PENDING)
 
 
 def claim_customer_send(

@@ -134,8 +134,13 @@ consumer. Future program Steps 7/8 must persist the operation before CREATE;
 an uncertain result stays UNKNOWN and is discovered read-only, never blindly
 retried. That was the original read-consumer boundary. ANY-709 Step 2 now adds
 only fenced customer CREATE, users discovery/point reads and Client user
-readiness on this same real client. No agreement/subscription/payment mutation
-is supplied in this step. `LbxCreateNotSent` proves a before-dispatch failure;
+readiness on this same real client. That Step 2 slice supplies no financial mutation. ANY-709 Step 3 now adds
+filtered agreement/subscription GETs and their permanently fenced CREATE on the
+same transport/decoder. POST does not retry; receipts are only candidates until
+point proof. Financial UNKNOWN never inherits customer later-open retries.
+Payment APIs remain provider-owned. See the
+[purchase runbook](../../../../../docs/engineering/lbx-product-links.md#purchase-api-and-financial-recovery-step-3)
+for pending tests, migration, financial GET-only recovery and human QA. `LbxCreateNotSent` proves a before-dispatch failure;
 every dispatched failure remains uncertain. Customer responses accept the
 operation-specific 200/201 envelope and must be point-verified before binding.
 Technical login/password are generated only for one POST; JWT signing uses

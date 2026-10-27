@@ -102,4 +102,4 @@ Start with the smallest document that matches the task.
 - [Database schema](generated/db-schema.md)
 - [OpenAPI snapshot](generated/openapi.json)
 
-- [Normal LBX connection and product links](engineering/lbx-product-links.md) — ANY-709 Step 1 setup, CLI, read-only SQL and human verification.
+- [Normal LBX connection and product links](engineering/lbx-product-links.md) — ANY-709 Steps 1-3 setup, product/customer/purchase CLI, financial recovery and human verification.

@@ -1,14 +1,14 @@
 # Payment Portal Data Model and Backend Invariants
 
 Status: authoritative current-state schema reference
-Last updated: 2026-10-26 (migration authored; human execution pending)
+Last updated: 2026-10-27 (migration authored; human execution pending)
 
 > **CURRENT AS-BUILT SCHEMA REFERENCE**
 
 This document describes the schema produced by the current Alembic chain:
 
 ```text
-20260924_0001 -> 20261001_0002 -> 20261026_0003 -> 20261026_0004 -> 20261026_0005 (head)
+20260924_0001 -> 20261001_0002 -> 20261026_0003 -> 20261026_0004 -> 20261026_0005 -> 20261027_0006 (head)
 ```
 
 `20260924_0001_clean_first_install` creates the 25-table first-install schema.
@@ -22,7 +22,14 @@ legacy origin and rewrites no immutable scope. This correction migration is
 authored, not executed by Codex. `20261026_0005_customer_widget` adds optional
 FIO, proven customer origin, provider-ID uniqueness, permanent customer-operation
 identity, send fencing and coalesced recovery-work uniqueness. It neither
-backfills identity nor creates provider objects. The chain has one current head.
+backfills identity nor creates provider objects. `20261027_0006_purchase_preparation`
+adds the purchase hold, scoped permanent financial identities/bindings and
+immutable financial-send evidence. It backfills operation scope from its existing
+customer and holds nonterminal purchases; ambiguous old holds/bindings fail the
+upgrade without deletion or arbitrary adoption. It adds the explicit financial
+`unverified` state. Its clean and populated test upgrades have passed, and it was
+applied to the local development database under explicit owner authorization on
+2026-10-27. Existing application row counts were preserved. The chain has one current head.
 This document is authoritative for the implemented SQLAlchemy
 table inventory and physical persistence rules; the generated column-level
 artifact remains `docs/generated/db-schema.md`.
@@ -38,14 +45,15 @@ narrowly supersedes source-catalog mirroring/new-sale TTL; it requires no schema
 change. Subscription trust, reconciliation and AccessSnapshot are unchanged.
 
 The schema is a provider-independent storage baseline. Its presence does not
-mean provider integration, purchase orchestration, reconciliation workers,
-paid-access derivation, or Kernel invalidation delivery is implemented.
+itself establish runtime acceptance. ANY-709 Step 3 implements purchase preparation
+with focused synthetic tests passing and real purchase/payment QA pending; workers, paid-access derivation and Kernel
+invalidation delivery remain future work.
 
 ## Physical baseline
 
-A fresh database has exactly 26 application tables: ten retained
+A fresh database has exactly 27 application tables: ten retained
 identity/session/legal tables, fifteen original external-billing persistence
-tables, and one current product-link pointer. Alembic has five revisions in one linear chain and one current head.
+tables, one current product-link pointer and one purchase mutex. Alembic has six revisions in one linear chain and one current head.
 
 There is no Portal-owned product, plan, order, payment, refund, subscription,
 entitlement, trial, provider-account, or direct-payment webhook table. There is
@@ -71,6 +79,7 @@ to a Portal-managed routing catalog.
 | `commercial_product_heads` | Mapping | One current immutable revision per connection/product; product CAS sequence across offer retargets, no price catalog. |
 | `external_billing_customers` | Purchase | Portal-owned binding from a user to an opaque External Billing customer identity. |
 | `purchase_intents` | Purchase | Durable purchase orchestration state with immutable accepted commercial/legal evidence. |
+| `billing_purchase_scope_holds` | Purchase | Unique user/product hold pointing to the accepted intent, independent of paid-access primary selection. |
 | `external_create_operations` | Recovery | Durable external-create attempt and unknown-outcome recovery state. |
 | `billing_product_access_scopes` | Reconciliation | One user/product access scope and its selected primary external subscription. |
 | `external_subscriptions` | Reconciliation | Normalized external-subscription projection with lifecycle and access statuses. |
@@ -210,7 +219,18 @@ existing paired lease fields protect active account-customer sends, and
 a later explicit account open can claim a retry after fresh empty discovery and
 completion/expiry of the active lease, retaining the same operation/key. A saved
 receipt or identity conflict prevents another POST; point proof binds only against
-the current fence. Agreement/subscription UNKNOWN holds remain unchanged. No background worker or purchase runtime is enabled here.
+the current fence. Financial operations have a unique intent/kind identity and a unique permanent
+account/kind/provider-object binding. Their account/customer composite FK prevents
+cross-connection ownership. Financial evidence guards prevent deletion, identity
+changes, deadline/request replacement and resetting a possibly sent operation to
+pending. Customer retry semantics remain separate. No background worker is enabled.
+
+`billing_purchase_scope_holds` has `(user_id, product_id)` as its primary key,
+a unique intent and a composite FK to its exact purchase scope. A linked unpaid
+subscription keeps this hold without TTL. Step 3 releases only a purchase whose
+accepted terms changed before any financial operation could have been sent, under
+the same locks as send claims. Other release needs trustworthy audited proof; no
+operator force-release command exists.
 
 ## Reconciliation and access tables
 
@@ -225,8 +245,14 @@ authoritative-read freshness, reconciliation lease/fencing state, and the
 latest observation. Closed provider-neutral status vocabularies are:
 
 - lifecycle: `active`, `inactive`, `ended`;
-- financial access: `allowed`, `blocked`;
+- financial access: `allowed`, `blocked`, `unverified`;
 - commercial access: `eligible`, `ineligible`.
+
+Account/provider subscription and agreement IDs are each unique, preserving the
+dedicated agreement binding. Initial Step 3 preparation records `unverified`
+financial status and an immediately expired projection, plus normalized effective
+terms and nullable/sentinel calendar observations. It creates no access-primary,
+paid state, grant or allowance, and never extends paid trust on Manage.
 
 `billing_state_observations` stores evidence whose core fields are immutable.
 Its closed kinds are

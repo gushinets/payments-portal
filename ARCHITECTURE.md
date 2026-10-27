@@ -19,7 +19,8 @@ provider-independent on the current ANY-636 4F surface. ANY-664 adds read-only
 source clients and historical v1 publication. ANY-709 Step 1 now supplies
 normal LBX configuration, direct immutable product links and source-backed
 catalog/current-offer reads; genuine Kernel conformance and production enablement remain gated.
-Purchase, billing lifecycle and paid access remain later work. Final 4F
+ANY-709 Step 3 adds accepted-purchase APIs and financial preparation/recovery,
+with tests and human validation pending. Billing lifecycle workers and paid access remain later work. Final 4F
 verification and human screenshot/intent acceptance remain pending.
 
 Each production deployment serves exactly one contour. Region Resolver is a
@@ -42,7 +43,7 @@ flowchart LR
   Kernel -. "future GET access-snapshots/{user_id}" .-> API
   API -. "future POST access-invalidations" .-> Kernel
   API -->|"current Manifest HTTP client · dev/test only"| Mock["Optional Kernel Manifest mock"]
-  API -. "future external-billing integration" .-> Billing["External Billing"]
+  API -->|"source/customer/preparation HTTP"| Billing["External Billing"]
 ```
 
 ## Billing architecture status
@@ -50,16 +51,17 @@ flowchart LR
 The direct-provider architecture has been physically removed. There is no
 CloudPayments runtime, `PaymentProviderAdapter`, `PaymentProviderRegistry`,
 provider-account routing model, direct-payment webhook path, or Portal-owned
-catalog/order/payment/subscription/entitlement lifecycle. Checkout is
-deliberately unavailable; the offer catalog reads stored approved terms and
-does not promise current sellability.
+catalog/order/payment/subscription/entitlement lifecycle. Purchase preparation is
+available through Step 3 APIs for explicit acceptance and bounded preparation;
+Step 4 browser Buy/Continue/Manage remains pending. Catalog details read current
+selected offers, and no commercial observation grants paid access.
 
 The clean first-install schema contains ten retained identity/session/legal
 tables and fifteen provider-neutral target persistence tables. Those fifteen
 tables are empty after bootstrap. ANY-664 can append approved mapping revisions
 through its restricted operator path; simulated evidence remains simulated.
-Purchase orchestration, workers, paid-access derivation and invalidation delivery
-remain later work. The two source-catalog projection tables are inert schema
+ANY-709 Step 3 adds a purchase mutex and request-driven financial preparation.
+Workers, paid-access derivation and invalidation delivery remain later work. The two source-catalog projection tables are inert schema
 slots with no runtime readers/writers.
 
 The canonical target is defined, in precedence order, by
@@ -71,10 +73,10 @@ The owner-approved [live-source admission amendment](docs/superpowers/specs/2026
 narrowly supersedes those baselines' source-catalog mirroring/new-sale TTL.
 Each publication and genuinely new purchase requires live Kernel and complete
 selected-offer LBX reads. ANY-709 Step 1 separates immutable product links from transient current offers
-and future accepted purchase snapshots. PostgreSQL retains links/history. Catalog
+and immutable accepted purchase snapshots. PostgreSQL retains links/history. Catalog
 listing reads enabled Kernel products once; selected detail reads current LBX
-values with bounded work. A current offer does not grant access or enable a
-purchase. See the [normal connection/link runbook](docs/engineering/lbx-product-links.md). There are no periodic source-catalog synchronization jobs.
+values with bounded work. A current offer does not grant access. New purchase admission independently
+revalidates it and pins exact terms and append-only legal evidence. See the [normal connection/link runbook](docs/engineering/lbx-product-links.md). There are no periodic source-catalog synchronization jobs.
 Paid-access derivation, subscription reconciliation/trust and AccessSnapshot
 deadlines are unchanged.
 External Billing owns commercial billing truth and lifecycle. The AnyToolAI
@@ -109,6 +111,20 @@ access is created for viewing. The official SDK runs only on explicit open in a
 disposable opaque-origin host; server-side paired identity, Client readiness and
 post-I/O session checks precede each no-store JWT response. See the runbook and
 [Widget security rules](docs/SECURITY.md#account-widget-credentials-any-709-step-2).
+
+ANY-709 Step 3 adds authenticated review/confirm/current/status/advance APIs,
+`billing_purchase_scope_holds`, permanent agreement/subscription operations and
+GET-only recovery. Acceptance atomically rechecks the current link and required
+legal versions after source I/O. The shared customer ensure remains the sole
+customer CREATE path. Financial possible-send claims permanently retain their
+original request, fence and +2h escalation; neither empty discovery nor elapsed
+time permits another POST. Point proof of the original customer/seller/agreement
+and effective subscription terms gates the existing bootstrap's optional payment
+presentation. Its initial subscription projection is `unverified` financially,
+with no paid-trust interval, grant or access-primary selection. Focused synthetic
+tests and the local development migration have passed; real prepared-subscription/
+payment acceptance remains NOT_RUN.
+See the [Step 3 runbook](docs/engineering/lbx-product-links.md#purchase-api-and-financial-recovery-step-3).
 
 ## Current domains and API
 
@@ -470,7 +486,9 @@ payment state, or manual operator input alone never grant paid access.
 | Email-verification confirmation | `confirm_email_verification()` atomically commits the mailbox-verification fact, token claim, and invalidation of other outstanding verification capabilities. |
 | Email-verification resend/rotation | `prepare_email_verification_resend()` atomically commits invalidation of the previous outstanding capability and creation of its replacement after the cooldown/lock checks. |
 | Commercial mapping publication | `publish_product_link()` appends a v2 immutable revision and CAS-updates one product head after live checks; same identity is a no-op across price changes. Catalog HTTP runs outside short resource-owning worker DB units. |
-| Other target billing tables | Source-catalog slots are inert; purchase, reconciliation and paid-access behavior belongs to later `ANY-504` steps. |
+| Accepted purchase | `pin_purchase()` atomically commits immutable terms, consent, local customer slot, permanent financial identities and one product hold after source reads. |
+| Financial preparation | `claim_financial()` commits permanent possible-send evidence/work before HTTP; fenced point-read apply owns separate short binding/observation transactions. |
+| Other target billing tables | Source-catalog slots are inert; worker reconciliation and paid-access behavior belong to later `ANY-504` steps. |
 
 ## Enforced architecture guards
 

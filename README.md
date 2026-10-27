@@ -7,7 +7,7 @@ Each production deployment serves one contour (compliance zone). This
 repository currently implements the `ru` contour; route locale does not select
 a contour.
 
-It contains a Next.js web application, a FastAPI identity/legal API, PostgreSQL
+It contains a Next.js web application, a FastAPI identity/legal/purchase-preparation API, PostgreSQL
 persistence, and the clean provider-neutral external-billing storage baseline.
 The former CloudPayments/direct-provider runtime and Portal-owned catalog,
 order, payment, subscription, entitlement, and trial architecture have been
@@ -20,11 +20,14 @@ The repository remains pre-production on the surface established by ANY-636 4F. 
 [completed plan](docs/exec-plans/completed/ANY-636-implementation-plan.md).
 ANY-709 Step 1 adds real source reads, direct links and current offers; Step 2
 adds explicit verified-email customer-only Widget viewing, pending human
-validation. Purchase/payment presentation, confirmed paid access, and actual
-usage/quota integration remain deferred. There are no production direct-provider
+validation. Step 3 adds accepted-purchase APIs, financial preparation/recovery
+and verified payment bootstrap, with focused synthetic tests passing and the local
+development migration applied. Real purchase/payment acceptance is pending. Step 4 browser
+purchase flows, confirmed paid access, and actual usage/quota integration remain deferred. There are no production direct-provider
 subscribers or subscriptions to migrate. The fifteen target billing tables
 start empty; the link and explicit customer paths now populate their owned
-records without creating subscriptions or paid access.
+records. Step 3 can prepare an accepted subscription through the API without
+granting paid access; see the [purchase runbook](docs/engineering/lbx-product-links.md#purchase-api-and-financial-recovery-step-3).
 For target billing work, follow [ADR 0005](docs/architecture/decisions/0005-external-billing-boundary.md),
 the accepted [External Billing Boundary Design](docs/superpowers/specs/2026-09-15-external-billing-boundary-design.md),
 and the accepted
@@ -327,7 +330,9 @@ repository. No direct-provider runtime exists in this repository.
 - Account-only Widget viewing uses the real configured SDK after explicit open,
   verified email, paired customer identity and Client readiness. It requires no
   product price or subscription; see the runbook for human acceptance.
-- Purchase/payment Widget, subscription billing state, paid-access state, and usage/quota remain
-  unavailable until their owning external-billing/Kernel integration steps;
+- Step 3 APIs can prepare purchases and authorize verified payment presentation;
+  focused automated checks and the local development migration have passed; real
+  purchase/payment QA remains pending. Browser purchase UI, paid-access
+  state and usage/quota await their owning external-billing/Kernel integration steps;
   provider-dependent work remains subject to Phase 0 gates.
 - Legal documents are drafts until reviewed and approved by counsel.
