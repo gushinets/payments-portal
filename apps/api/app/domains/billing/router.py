@@ -1,8 +1,9 @@
-"""Explicit account-only Widget open; no implicit GET mutation."""
+"""Explicit account or verified-purchase Widget open; no implicit GET mutation."""
 
 from __future__ import annotations
 
 from typing import Annotated, Literal
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
@@ -21,10 +22,18 @@ router = APIRouter(prefix="/api/billing", tags=["billing"])
 
 class WidgetBootstrapRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    purchase_intent_id: UUID | None = None
+
+
+class WidgetPaymentTarget(BaseModel):
+    purchase_intent_id: UUID
+    agreement_reference: str
+    seller_reference: str
 
 
 class WidgetBootstrapResponse(BaseModel):
-    presentation: Literal["account"]
+    presentation: Literal["account", "payment"]
+    payment_target: WidgetPaymentTarget | None = None
     credential: str = Field(repr=False)
     widget_origin: str
     sdk_url: str
@@ -52,7 +61,11 @@ async def widget_bootstrap(
         if not authorization or not authorization.startswith("Bearer "):
             raise BillingRefused("billing_session_required", 401)
         result = await bootstrap_account(
-            request.app.state.sources, settings, factory=factory, token=authorization.removeprefix("Bearer ").strip()
+            request.app.state.sources,
+            settings,
+            factory=factory,
+            token=authorization.removeprefix("Bearer ").strip(),
+            purchase_id=payload.purchase_intent_id,
         )
     except AppError as error:
         if isinstance(error, BillingAccountFailure):
@@ -70,12 +83,19 @@ async def widget_bootstrap(
             headers={"Cache-Control": "no-store"},
         ) from None
     return WidgetBootstrapResponse(
-        presentation="account",
+        presentation="payment" if result.purchase_id is not None else "account",
+        payment_target=WidgetPaymentTarget(
+            purchase_intent_id=result.purchase_id,
+            agreement_reference=result.agreement_reference,
+            seller_reference=result.seller_reference,
+        )
+        if result.purchase_id is not None
+        else None,
         disableCreateSubscription=True,
         disableEditSubscription=True,
         disableStopSubscription=True,
         disableAutopayments=True,
-        disablePayments=True,
+        disablePayments=result.purchase_id is None,
         disableInvoiceGeneration=True,
         credential=result.credential.get_secret_value(),
         widget_origin=result.origin,

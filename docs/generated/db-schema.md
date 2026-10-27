@@ -67,6 +67,20 @@ Indexes and constraints:
 - `uq_billing_product_access_scopes_user_product`
 - `ix_billing_product_access_scopes_primary_subscription`
 
+## `billing_purchase_scope_holds`
+
+| Column | Type | Nullable | Key |
+|---|---|---:|---|
+| `user_id` | `CHAR(32)` | no | PK |
+| `product_id` | `TEXT` | no | PK |
+| `external_billing_account_id` | `TEXT` | no | FK |
+| `purchase_intent_id` | `CHAR(32)` | no | FK |
+
+Indexes and constraints:
+
+- `fk_purchase_hold_scope`
+- `uq_purchase_hold_intent`
+
 ## `billing_state_observations`
 
 | Column | Type | Nullable | Key |
@@ -324,6 +338,7 @@ Indexes and constraints:
 
 - `ck_external_billing_customers_binding_state`
 - `ck_external_billing_customers_key_nonempty`
+- `uq_billing_customers_id_account`
 - `uq_billing_customers_provider`
 - `uq_external_billing_customers_account_user`
 - `uq_external_billing_customers_billing_customer_key`
@@ -367,6 +382,7 @@ Indexes and constraints:
 | `create_operation_id` | `CHAR(32)` | no | PK |
 | `operation_kind` | `TEXT` | no |  |
 | `customer_id` | `CHAR(32)` | no | FK |
+| `external_billing_account_id` | `TEXT` | yes | FK |
 | `purchase_intent_id` | `CHAR(32)` | yes | FK |
 | `request_correlation_key` | `TEXT` | no |  |
 | `send_fence` | `CHAR(32)` | yes |  |
@@ -388,6 +404,8 @@ Indexes and constraints:
 - `ck_external_create_operations_recovery_hint_pair`
 - `ck_external_create_operations_unknown_deadline`
 - `ck_external_create_operations_unknown_pair`
+- `ck_financial_operation_account`
+- `fk_create_operation_account`
 - `fk_external_create_operations_purchase_customer`
 - `ix_external_create_operations_bound_object`
 - `ix_external_create_operations_correlation`
@@ -397,6 +415,8 @@ Indexes and constraints:
 - `ix_external_create_operations_unknown_deadline`
 - `uq_external_create_operations_customer_identity`
 - `uq_external_create_operations_unresolved_customer`
+- `uq_financial_operation_binding`
+- `uq_financial_operation_identity`
 
 ## `external_subscriptions`
 
@@ -438,6 +458,8 @@ Indexes and constraints:
 - `uq_external_subscriptions_id_account_user_product`
 - `uq_external_subscriptions_id_product`
 - `uq_external_subscriptions_id_user_product`
+- `uq_subscription_agreement`
+- `uq_subscription_provider`
 - `ix_external_subscriptions_account_customer`
 - `ix_external_subscriptions_agreement_id`
 - `ix_external_subscriptions_commercial_status`

@@ -70,6 +70,7 @@ class ExternalSubscriptionLifecycleStatus(StrEnum):
 
 
 class ExternalSubscriptionFinancialAccessStatus(StrEnum):
+    UNVERIFIED = "unverified"
     ALLOWED = "allowed"
     BLOCKED = "blocked"
 

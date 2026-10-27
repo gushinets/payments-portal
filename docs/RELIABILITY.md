@@ -18,9 +18,10 @@ ownership, persistence, or paid-access derivation.
 The direct-provider/CloudPayments runtime and Portal-owned commercial/access
 lifecycle have been physically removed. The target persistence graph exists,
 starts empty, and ANY-664's restricted publication path commits immutable
-commercial mapping revisions. Purchase orchestration, subscription
-reconciliation, paid-access derivation and invalidation delivery remain
-unimplemented. The two source-catalog projection tables remain inert.
+commercial mapping revisions. ANY-709 Step 3 implements acceptance, held purchase
+scopes and request-driven financial preparation/recovery, with focused synthetic
+tests passing and real purchase/payment QA pending. Subscription reconciliation workers, paid-access derivation and
+invalidation delivery remain unimplemented. The two source-catalog projection tables remain inert.
 
 ## Cross-cutting critical paths
 

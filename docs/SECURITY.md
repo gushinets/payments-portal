@@ -92,7 +92,10 @@ need, security treatment, and retention.
 - Validate HTTP, environment, webhook, and database-boundary data.
 - Verify authenticity at every external billing or payment Integration before
   trusting external state. ANY-709 implements real source reads and an explicit
-  account-only Widget bootstrap; purchase and paid-access derivation remain deferred.
+  account Widget bootstrap. Step 3 implements accepted-purchase preparation and
+  point-verified payment presentation; focused synthetic tests have passed, while
+  real purchase/payment QA remains pending. Paid-access
+  derivation remains deferred.
 - Treat request IDs and external billing or payment metadata as untrusted input
   with length and character limits.
 - Store session tokens only as hashes.
@@ -130,7 +133,12 @@ origin. Logout/unmount removes Portal-held SDK/token memory.
 These local lifecycle controls do not revoke a copied provider JWT. LBX's accepted
 72h `iat` behavior and provider-owned Client API permissions remain unchanged;
 presentation flags are not ACLs. Account-view flags disable purchasing/payment.
-Later payment presentation still requires owned accepted-subscription readback.
+Step 3 payment presentation requires owned original acceptance plus fresh concrete
+subscription/customer/seller/agreement readback, followed by auth and fence rechecks.
+It enables only the payment presentation flag; subscription create/edit, autopay,
+invoice and stop controls stay disabled. Financial CREATE never inherits the
+customer later-open retry policy, and UNKNOWN keeps its hold and original +2h
+deadline. No operation or Widget outcome grants paid access.
 Account viewing has no catalog, price, seller-agreement or subscription prerequisite.
 
 ## High-risk review paths

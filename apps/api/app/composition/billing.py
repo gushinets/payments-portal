@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass, field
+from uuid import UUID
 
 from pydantic import SecretStr
 from starlette.concurrency import run_in_threadpool
@@ -46,6 +47,9 @@ logger = logging.getLogger("payment_portal.billing")
 class AccountWidget:
     credential: SecretStr = field(repr=False)
     origin: str
+    purchase_id: UUID | None = None
+    agreement_reference: str | None = None
+    seller_reference: str | None = None
 
 
 async def _find_customer(
@@ -161,13 +165,25 @@ async def ensure_customer(
 
 
 async def bootstrap_account(
-    sources: SourceResources, configuration: Settings, *, factory: SessionFactory, token: str
+    sources: SourceResources,
+    configuration: Settings,
+    *,
+    factory: SessionFactory,
+    token: str,
+    purchase_id: UUID | None = None,
 ) -> AccountWidget:
-    def check_auth() -> None:
+    def check_auth() -> UUID:
         with factory() as db:
-            authenticate(db, configuration, token)
+            return authenticate(db, configuration, token).id
 
-    await run_in_threadpool(check_auth)
+    owner_id = await run_in_threadpool(check_auth)
+    if purchase_id is not None:
+        from app.domains.purchases.service import read_purchase
+        from app.models import PurchaseIntentState
+
+        owned_purchase = await run_in_threadpool(read_purchase, factory, owner_id, purchase_id)
+        if not owned_purchase.held or owned_purchase.state != PurchaseIntentState.LINKED:
+            raise BillingRefused("purchase_not_prepared", 409)
     if configuration.lbx_widget_configuration_error is not None:
         raise BillingAccountFailure(configuration.lbx_widget_configuration_error)
     client = sources.require_lbx()
@@ -189,6 +205,19 @@ async def bootstrap_account(
                 current = await ensure_customer(
                     client, configuration, factory=factory, token=token, current=current, budget=budget
                 )
+                payment_purchase = None
+                if purchase_id is not None:
+                    from app.composition.purchases import verify_payment_purchase
+
+                    payment_purchase = await verify_payment_purchase(
+                        sources,
+                        configuration,
+                        factory=factory,
+                        token=token,
+                        purchase_id=purchase_id,
+                        customer=current,
+                        budget=budget,
+                    )
                 credential = sign_widget_jwt(
                     customer_id=current.provider_id, secret=configuration.lbx_widget_signing_secret
                 )
@@ -206,6 +235,22 @@ async def bootstrap_account(
                     "billing_account_ready",
                     extra={"structured": {"stage": "client_ready", "create_operation_id": str(current.operation_id)}},
                 )
+                if payment_purchase is not None:
+                    from app.domains.purchases.service import recheck_payment_purchase
+                    from app.models import ExternalCreateOperationKind
+
+                    await run_in_threadpool(recheck_payment_purchase, factory, configuration, token, payment_purchase)
+                    budget.check()
+                    agreement = next(
+                        op for op in payment_purchase.operations if op.kind == ExternalCreateOperationKind.AGREEMENT
+                    )
+                    return AccountWidget(
+                        credential,
+                        configuration.lbx_provider_origin,
+                        payment_purchase.id,
+                        agreement.key,
+                        str(payment_purchase.accepted.seller_id),
+                    )
                 return AccountWidget(credential, configuration.lbx_provider_origin)
             except AppError as error:
                 logger.warning(

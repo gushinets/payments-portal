@@ -123,8 +123,12 @@ database lifecycle.
   callback, webhook, outbound request success, or payment state alone is not
   access authority. Direct versioned product linking and source-backed catalog reads are implemented;
   account-only customer/Widget bootstrap is implemented by ANY-709 Step 2,
-  pending human validation. Purchase, reconciliation, paid-access and
-  billing-callback runtime remain future work.
+  pending human validation. ANY-709 Step 3 implements accepted-purchase APIs,
+  held scopes, financial preparation/recovery and verified payment bootstrap;
+  focused synthetic tests and the local development migration have passed; real
+  purchase/payment QA is pending. Reconciliation, paid-access and
+  billing-callback runtime remain future work. See the
+  [purchase runbook](../../docs/engineering/lbx-product-links.md#purchase-api-and-financial-recovery-step-3).
 - Never log authentication tokens, authorization headers, secrets, card fields,
   or unredacted webhook bodies.
 - Legal acceptance records are append-only.

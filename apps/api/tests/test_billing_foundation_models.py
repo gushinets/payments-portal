@@ -131,6 +131,7 @@ def test_nullable_storage_is_limited_to_approved_gated_and_lifecycle_slots() -> 
     assert _nullable_columns(ExternalBillingCustomer) == {"provider_customer_id", "provider_origin"}
     assert _nullable_columns(PurchaseIntent) == {"resolved_at"}
     assert _nullable_columns(ExternalCreateOperation) == {
+        "external_billing_account_id",
         "purchase_intent_id",
         "send_fence",
         "unknown_since",
@@ -141,6 +142,7 @@ def test_nullable_storage_is_limited_to_approved_gated_and_lifecycle_slots() -> 
         "resolved_at",
     }
     assert _column_names(ExternalCreateOperation) == {
+        "external_billing_account_id",
         "create_operation_id",
         "operation_kind",
         "customer_id",
@@ -168,6 +170,7 @@ def test_projection_mapping_and_customer_keys_are_exact() -> None:
         ("external_billing_account_id", "billing_offer_id", "revision_number"),
     }
     assert _unique_keys(ExternalBillingCustomer) == {
+        ("customer_id", "external_billing_account_id"),
         ("customer_id", "external_billing_account_id", "user_id"),
         ("external_billing_account_id", "user_id"),
         ("billing_customer_key",),
@@ -228,6 +231,11 @@ def test_purchase_relational_targets_and_foreign_keys_are_exact() -> None:
         ),
     }
     assert _foreign_keys(ExternalCreateOperation) == {
+        (
+            ("customer_id", "external_billing_account_id"),
+            ("external_billing_customers.customer_id", "external_billing_customers.external_billing_account_id"),
+            "RESTRICT",
+        ),
         (("customer_id",), ("external_billing_customers.customer_id",), "RESTRICT"),
         (
             ("purchase_intent_id", "customer_id"),
@@ -272,6 +280,7 @@ def test_step_4_checks_and_indexes_cover_the_fixed_contract() -> None:
         "ck_purchase_intents_state",
     }
     assert _check_names(ExternalCreateOperation) == {
+        "ck_financial_operation_account",
         "ck_external_create_operations_purchase_requirement",
         "ck_external_create_operations_kind",
         "ck_external_create_operations_correlation_nonempty",
@@ -319,6 +328,8 @@ def test_step_4_checks_and_indexes_cover_the_fixed_contract() -> None:
         "ix_purchase_intents_state_updated_at": ("state", "state_updated_at"),
     }
     assert _indexes(ExternalCreateOperation) == {
+        "uq_financial_operation_identity": ("purchase_intent_id", "operation_kind"),
+        "uq_financial_operation_binding": ("external_billing_account_id", "operation_kind", "bound_external_object_id"),
         "uq_external_create_operations_unresolved_customer": ("customer_id",),
         "uq_external_create_operations_customer_identity": ("customer_id",),
         "ix_external_create_operations_customer_state": ("customer_id", "operation_state"),

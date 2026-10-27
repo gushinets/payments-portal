@@ -8,7 +8,8 @@ incomplete evidence rather than interpreting None as zero/false/approval.
 from __future__ import annotations
 
 import re
-from datetime import date
+from dataclasses import dataclass
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated, Any, Generic, TypeVar
 
@@ -46,6 +47,22 @@ class LbxDto(BaseModel):
 
 
 T = TypeVar("T")
+
+
+@dataclass(frozen=True)
+class LbxRead(Generic[T]):
+    """Integration-only source DTO and configured/requested identity context.
+
+    Account identity is the deployment's provider-origin binding, not a provider
+    attestation: these GET responses contain no billing-account identity.
+    Step 4 must normalize this before Application. No atomic snapshot implied.
+    """
+
+    external_billing_account_id: str
+    tariff_id: int
+    tariff_service_id: int | None
+    observed_at: datetime
+    value: T
 
 
 class LbxEnvelope(LbxDto, Generic[T]):

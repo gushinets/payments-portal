@@ -49,6 +49,11 @@ def utc_now() -> datetime:
     return datetime.now(UTC)
 
 
+def current_billing_date() -> date:
+    """The confirmed provider calendar, shared by offer reads and agreement CREATE."""
+    return utc_now().astimezone(BILLING_TIMEZONE).date()
+
+
 def normalize_current_offer(
     reads: SelectedReadSet,
     selection: ProductLinkRequest,
@@ -231,7 +236,7 @@ async def read_current_offer(
     configuration: Settings,
     budget: PreflightBudget,
 ) -> CurrentOffer:
-    effective_on = utc_now().astimezone(BILLING_TIMEZONE).date()
+    effective_on = current_billing_date()
     try:
         first = normalize_current_offer(
             await _read_selected(client, selection, budget), selection, configuration, budget, effective_on=effective_on

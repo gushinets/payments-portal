@@ -1,6 +1,6 @@
 # ANY-709 - Normal LBX billing, product mapping and real Widget flow
 
-Status: IN PROGRESS - Steps 1-2 implemented/checked; Steps 3-4 pending
+Status: IN PROGRESS - Steps 1-3 implemented; Step 3 focused synthetic checks/local migration PASS, real LBX purchase/payment QA pending; Step 4 pending
 Date: 2026-10-27
 Review revision: 3 - forward alignment with delivered Steps 1-2; unchanged four stages
 Program: ANY-504, program Step 7
@@ -14,6 +14,13 @@ instructions for Steps 1-2 were superseded by separately authorized QA. Actual
 Step 1-2 code, targeted/canonical automated checks, the owner's real Widget
 observation and full ANY-709 acceptance are distinct evidence. The historical
 exceptions and their exact outcomes remain in the Step 1-2 handoffs.
+
+Owner follow-up on 2026-10-27 explicitly authorizes the agent to execute
+migrations, tests and focused QA for Step 3. This additionally permits applying
+`20261027_0006` to the verified local development application database. The
+production database and real LBX financial writes remain outside this QA run.
+See the Step 3 follow-up evidence below; the initial delivery's NOT_RUN entries
+are retained as historical evidence.
 
 Implement ONE selected step, then stop for owner QA/review. Read sections 0-3,
 the selected step, applicable AGENTS and directly relevant current code. Start
@@ -397,7 +404,7 @@ unchanged AccessSnapshot or date-only/UTC quota contracts in this ticket.
 Steps 1-2 are implemented and have recorded automated/local QA; the owner
 additionally reports their previously blocked customer registered and opened
 the real Widget. This is an owner observation, not proof of full purchase
-or payment. Steps 3-4 remain TODO. No extra research-only stage; do not
+or payment. Step 3 is implemented with tests/QA NOT_RUN; Step 4 remains TODO. No extra research-only stage; do not
 defer missing customer/connection behavior into Step 4.
 
 Human focused Python commands below use the existing test wrappers and pytest's
@@ -755,7 +762,7 @@ payment or full ANY-709. Missing mapping/price must not prevent account access.
 
 ## 6. Step 3 - Accepted purchase, safe preparation and recovery
 
-Status: TODO
+Status: IMPLEMENTED - tests, application migration and human QA NOT_RUN
 Depends on: current implemented Steps 1-2, their interfaces and the owner's
 customer/Widget QA; confirm prior acceptance evidence for the real-LBX stage.
 
@@ -939,6 +946,271 @@ org21/tariff32 behavior differs, rather than adding global approval flags.
 > synthetic/disposable-DB tests, generated contracts and stage checks permitted
 > by section 0. No live LBX writes, owner-DB migration or stage/commit/push.
 > Stop for owner QA/review with actual results and safe manual commands.
+
+### Step 3 delivery, 2026-10-27
+
+Initial delivery record; superseded for executed checks by the owner-authorized
+follow-up below. IMPLEMENTED only. That request explicitly prohibited tests, typechecks, builds,
+migration execution, app/live-provider probes, containers and broader checks.
+Consequently, automated behavior acceptance and HUMAN_QA_PASS are **NOT_RUN**.
+Base checkout: `9baaf2b225f951e04a0febe159795d158c870d52`; the starting working tree
+was clean. No stage, commit, push, branch change or external-system write occurred.
+Step 4 has not started.
+
+The API now reviews current enabled-product/link/LBX terms, confirms immutable
+acceptance with append-only exact document evidence, reserves one product hold,
+returns owned local current/status, and explicitly advances bounded preparation.
+Same-key/occupied-scope checks precede live reads; publication and required legal
+versions are rechecked in the pin transaction after I/O. Original consent is
+verified again before financial preparation/payment, without requiring old legal
+versions to remain active. No financial HTTP runs inside SQL transactions.
+
+The existing account customer ensure, JWT/Client readiness, central LBX decoder
+and Moscow price selector are reused. One permanent financial operation per
+intent/kind records its fence, original request/deadline and recovery work before
+possible send. Dedicated agreement/subscription discovery and canonical point
+proof can bind or report pending/conflict; malformed success, 500/response.error,
+zero results, restart and +2h never trigger financial POST replay or TTL release.
+Deadline escalation, safe unsent-terms hold resolution and authorized financial
+inspect/GET-only recover are supplied, with no worker or force-release/grant.
+Prepared subscription evidence is financially `unverified`, with no trust interval,
+access-primary selection, grant, allowance or Kernel paid-access write.
+
+The existing bootstrap accepts an optional owned prepared purchase, point-checks
+its original customer/seller/agreement/effective subscription and session/fences,
+and returns payment presentation with `disablePayments=false` and the intended
+agreement/seller reference. Empty account-only requests remain compatible.
+Create/edit/stop/autopay/invoice flags remain disabled. Historical Manage ignores
+today's product head/catalog price. The real customer-wide JWT and accepted LBX
+permission/replay risks are unchanged; the SDK gets no invented product filter.
+
+Removed/replaced/retained: extracted the existing local customer-slot reservation
+so consent/intent/hold can commit together; centralized the already-fenced POST
+transport for its three actual consumers; replaced the account-only bootstrap
+restriction only for verified prepared purchases. Retained one customer ensure,
+SDK/JWT, HTTP error decoder, all immutable mapping/legal history and customer-only
+viewing. Existing v1 mapping readers remain unchanged; unrecognized legacy purchase
+snapshots fail closed as `purchase_history_unproven` rather than being promoted.
+No legal source text, locale catalog or frontend purchase UI was changed.
+
+Migration `20261027_0006` is authored, **NOT_RUN**. It adds the separate purchase
+mutex, scoped permanent financial identities/bindings/evidence guard, unique
+subscription/agreement history and explicit unverified financial state. Existing
+operation scopes are copied from their own customers and nonterminal purchase
+holds are backfilled; ambiguous history fails rather than choosing/deleting it.
+No frozen baseline or prior migration was edited.
+
+Tests authored/updated, all **NOT_RUN**:
+
+- `test_any709_step3_purchase.py`: real typed synthetic HTTP 200/201/500,
+  shared decoder/no POST retry, effective vs catalog terms, invalid/missing
+  proof, seller isolation, nullable waiting dates/bulk facts, connection proof,
+  generated boolean payment flag contract, account/payment response flags and
+  the confirmed Moscow calendar.
+- `test_any709_step3_postgres.py`: atomic consent/hold, 20 same/different-key
+  attempts, price changes before/after acceptance/possible send, current-link
+  retarget/legal change during source reads, shared customer, no HTTP while a DB
+  resource is held, malformed/lost replies, zero/multiple discovery, restart/+2h,
+  commit acknowledgement loss, stale fences, permanent uniqueness, old terms
+  after price/link/legal-active changes, local API ownership/outage retrieval,
+  logout before JWT, missing consent, populated forward upgrade and no paid writes.
+- Updated the existing model/enumeration/schema/architecture/target-persistence
+  expectations for this migration. Existing customer/Widget/source regressions
+  remain required human verification.
+
+Executed outcomes:
+
+- Ruff format: PASS on the 29 changed API/migration/test Python files, with
+  explicit file paths in the executed command; the harness keeps its existing
+  manual formatting. Ruff check: PASS on the same paths.
+- `KERNEL_MOCK_ENABLED=0 KERNEL_BASE_URL= KERNEL_SERVICE_TOKEN= PATH="$PWD/.venv/bin:$PATH" npm run generate`: PASS.
+  Regenerated OpenAPI, SQLAlchemy schema reference and TypeScript contracts only.
+  An initial generation found a misplaced `as_utc` import; it was corrected and
+  final generation completed. Generation imports schemas without running the app.
+- `npm run lint:web`: PASS (`eslint . --max-warnings=0`).
+- `git diff --check`: PASS. Correctness and payment-security checklists were
+  reviewed against the result/acceptance criteria; this is static review, not
+  test/runtime evidence.
+- All tests, typechecks, builds, migrations, app/browser/live-provider probes,
+  container startup, architecture/docs checks and `check:fast`/`check`: **NOT_RUN**.
+
+Exact human commands from repository root, **NOT_RUN** here:
+
+```bash
+PATH="$PWD/.venv/bin:$PATH" PYTEST_ADDOPTS='-k any709_step3' npm run test:api:fast
+.venv/bin/python scripts/repo.py test-db up
+PATH="$PWD/.venv/bin:$PATH" PYTEST_ADDOPTS='-k any709_step3' npm run test:api:postgres
+.venv/bin/python scripts/repo.py test-db stop
+```
+
+Retest affected existing regressions with the same isolated test DB lifecycle:
+
+```bash
+PATH="$PWD/.venv/bin:$PATH" PYTEST_ADDOPTS='-k "any709_step1 or any709_step2 or any709_qa_offers or mapping_billing_calendar or billing_customer or lbx or billing_foundation or billing_reconciliation or model_enums or canonical_orm or clean_first_install or target_persistence"' npm run test:api:fast
+.venv/bin/python scripts/repo.py test-db up
+PATH="$PWD/.venv/bin:$PATH" PYTEST_ADDOPTS='-k "any709_step1 or any709_step2 or any709_qa_offers or mapping_billing_calendar or billing_customer or lbx or billing_foundation or billing_reconciliation or model_enums or canonical_orm or clean_first_install or target_persistence"' npm run test:api:postgres
+.venv/bin/python scripts/repo.py test-db stop
+```
+
+After human review/tests, only the human may run
+`.venv/bin/python scripts/repo.py migrate-api` against the intended configured
+application database. Then follow the exact API/CLI checkpoint in the
+[purchase runbook](../../engineering/lbx-product-links.md#purchase-api-and-financial-recovery-step-3):
+review -> explicit confirmation with stable key -> advance -> current/status ->
+optional purchase bootstrap. Repeat advance/reload and confirm one intended
+seller agreement/subscription and no grants or repeated CREATE. The normal
+`billing-purchase inspect` and `recover` commands are documented there.
+
+Limitations: actual org21/tariff32 preparation, effective real readback, supported
+Widget agreement targeting and payment still need human acceptance. A nonzero
+accepted connection charge without effective connection evidence remains pending.
+No current source/identity/consent ambiguity is guessed away. Step 4 browser UI,
+Step 8 worker/reconciliation and later paid-access/Kernel delivery are deferred
+as approved. No business decision or invariant was changed.
+
+Changed files (including generated artifacts):
+
+- `AGENTS.md`
+- `ARCHITECTURE.md`
+- `README.md`
+- `apps/api/AGENTS.md`
+- `apps/api/alembic/versions/20261027_0006_purchase_preparation.py`
+- `apps/api/app/cli/billing_purchases.py`
+- `apps/api/app/composition/billing.py`
+- `apps/api/app/composition/purchases.py`
+- `apps/api/app/core/settings.py`
+- `apps/api/app/domains/billing/customers.py`
+- `apps/api/app/domains/billing/router.py`
+- `apps/api/app/domains/purchases/__init__.py`
+- `apps/api/app/domains/purchases/contracts.py`
+- `apps/api/app/domains/purchases/router.py`
+- `apps/api/app/domains/purchases/service.py`
+- `apps/api/app/infrastructure/queries/purchases.py`
+- `apps/api/app/integrations/lbx/README.md`
+- `apps/api/app/integrations/lbx/client.py`
+- `apps/api/app/integrations/lbx/current_offer.py`
+- `apps/api/app/integrations/lbx/financial.py`
+- `apps/api/app/main.py`
+- `apps/api/app/models/__init__.py`
+- `apps/api/app/models/billing_purchase.py`
+- `apps/api/app/models/billing_subscriptions.py`
+- `apps/api/app/models/enums.py`
+- `apps/api/tests/support/any709_step3.py`
+- `apps/api/tests/test_alembic_postgres.py`
+- `apps/api/tests/test_any709_step3_postgres.py`
+- `apps/api/tests/test_any709_step3_purchase.py`
+- `apps/api/tests/test_architecture.py`
+- `apps/api/tests/test_billing_foundation_models.py`
+- `apps/api/tests/test_billing_reconciliation_models.py`
+- `apps/api/tests/test_model_enums.py`
+- `apps/api/tests/test_target_persistence_postgres.py`
+- `apps/web/src/generated/api-contracts/index.ts`
+- `apps/web/src/generated/api-contracts/types.gen.ts`
+- `docs/README.md`
+- `docs/RELIABILITY.md`
+- `docs/SECURITY.md`
+- `docs/architecture/decisions/0005-external-billing-boundary.md`
+- `docs/architecture/payment-portal-data-model.md`
+- `docs/engineering/lbx-product-links.md`
+- `docs/exec-plans/active/ANY-709-implementation-plan.md`
+- `docs/generated/db-schema.md`
+- `docs/generated/openapi.json`
+- `scripts/repo.py`
+
+### Step 3 owner-authorized tests, migration and focused QA, 2026-10-27
+
+Status: IMPLEMENTED + AUTOMATED_PASS for the focused synthetic scenarios;
+LOCAL_DEVELOPMENT_MIGRATION_PASS. Real LBX purchase/payment HUMAN_QA_PASS is
+NOT_RUN. The owner explicitly requested running migrations/tests and basic QA
+and supplied two failing PostgreSQL tests. This follow-up supersedes the initial
+delivery's execution pause, without starting Step 4 or changing business rules.
+
+Both reported failures were reproduced and corrected in test setup:
+
+- Populated upgrade seeded customer operations by calling the current application
+  against revision `0005`, before its new ORM account column existed. Seed the
+  prior operation schema directly, then upgrade and assert the original customer
+  key, operation ID/state/correlation/fence and +2h recovery timestamps survive,
+  with the operation account backfilled from its own customer.
+- Lost-commit-acknowledgement injection inspected `Session.dirty` after the claim
+  deliberately flushed. Inspect the retained session identity map instead and
+  assert that the injected loss actually occurred. GET recovery retains the
+  original fence/deadline/hold and sends no agreement CREATE.
+
+Added two complete HTTP smoke scenarios using the real app router/middleware,
+disposable PostgreSQL and synthetic Kernel/LBX transports: ordinary preparation
+and a lost agreement response with temporarily invisible discovery. Both cover
+account bootstrap, review, immutable confirmation, occupied alternate-key scope,
+refused premature payment, advance/Continue, verified payment presentation,
+original agreement number/seller target, source-independent current/status/same-key
+replay, exactly one customer/agreement/subscription and no paid-access writes.
+The smoke test initially compared the agreement number to its numeric provider ID;
+the expected customer-facing reference was corrected, then both scenarios passed.
+
+Architecture/docs checks also exposed Step 3 delivery gaps, now corrected:
+
+- Query storage takes the acceptance row bound as an argument rather than
+  importing a Domain policy constant.
+- Financial transactions moved unchanged from `purchases/service.py` to
+  `purchases/financial.py`; composition and tests use that owner directly.
+- The existing single-attempt HTTP body moved unchanged to LBX `_transport.py`;
+  `LbxRead` moved to `dto.py`, preserving client reexports. There is one client,
+  response decoder and POST path. All runtime modules meet the existing 500-line
+  limit with no exception or architecture-rule weakening.
+- Engineering docs use an English description of the provider currency symbol.
+
+Executed outcomes:
+
+- Final unit/HTTP/architecture regression selection: **627 passed** in 16.95s,
+  including all **13 Step 3** protocol/contract tests.
+- Final PostgreSQL selection: **37 passed** in 82.64s, comprising all **26 Step 3**
+  tests (including both new API smoke cases) and **11 shared customer-ensure**
+  regressions. Clean upgrades and the populated `0005 -> 0006` upgrade execute
+  only in the disposable test database.
+- Earlier expanded PostgreSQL run: **122 existing related regressions passed**;
+  only the two new smoke reference expectations failed, corrected and rerun as
+  described above. No claim that this initial combined run was a full PASS.
+- An initial sandboxed fast run was interrupted after 9 passes when its HTTP
+  test stalled; the unsandboxed focused runs completed, first 548 and finally
+  627 passing. No runtime code workaround was introduced for the sandbox.
+- Explicitly verified the application target as this worktree's local loopback
+  development database, then ran `scripts/repo.py migrate-api`: **PASS**, revision
+  `20261026_0005 -> 20261027_0006`. Counts before/after were identical: users 4,
+  customers 4, create operations 4, document acceptances 12, legal events 4;
+  purchases and subscriptions remained 0. No production migration/provider I/O.
+- Ruff format/check: **PASS** on all 9 Python files changed in this follow-up.
+- `npm run architecture:check`, `npm run docs:check`,
+  `KERNEL_MOCK_ENABLED=0 KERNEL_BASE_URL= KERNEL_SERVICE_TOKEN= PATH="$PWD/.venv/bin:$PATH" npm run generate:check`,
+  and `git diff --check`: **PASS**. Generated contracts remained current.
+- Full canonical check, builds/typechecks, browser E2E, real LBX financial writes,
+  actual Widget agreement selection/payment and production migration: **NOT_RUN**.
+  QA here is API/DB/protocol evidence with synthetic providers; the full human
+  integration checkpoint remains in the purchase runbook. No staging/commit/push
+  or next-step implementation occurred.
+
+Exact final retest commands from the repository root:
+
+```bash
+.venv/bin/python scripts/repo.py test-db up
+PATH="$PWD/.venv/bin:$PATH" PYTEST_ADDOPTS='-k "any709_step3 or billing_customer_ensure_postgres" --tb=short --show-capture=no' npm run test:api:postgres
+PATH="$PWD/.venv/bin:$PATH" PYTEST_ADDOPTS='-k "any709_step3 or any709_step1 or any709_step2 or any709_qa_offers or mapping_billing_calendar or billing_customer or lbx or billing_foundation or billing_reconciliation or model_enums or canonical_orm or clean_first_install or target_persistence or architecture" --tb=short --show-capture=no -o faulthandler_timeout=60' npm run test:api:fast
+.venv/bin/python scripts/repo.py test-db stop
+```
+
+Follow-up changed files: `apps/api/tests/test_any709_step3_postgres.py`,
+`apps/api/tests/test_any709_step3_purchase.py`,
+`apps/api/app/domains/purchases/service.py`,
+`apps/api/app/domains/purchases/financial.py` (new),
+`apps/api/app/composition/purchases.py`,
+`apps/api/app/infrastructure/queries/purchases.py`,
+`apps/api/app/integrations/lbx/client.py`,
+`apps/api/app/integrations/lbx/_transport.py`,
+`apps/api/app/integrations/lbx/dto.py`, `apps/api/AGENTS.md`, `README.md`,
+`ARCHITECTURE.md`, `docs/RELIABILITY.md`, `docs/SECURITY.md`,
+`docs/architecture/decisions/0005-external-billing-boundary.md`,
+`docs/architecture/payment-portal-data-model.md`,
+`docs/engineering/lbx-product-links.md`, and this plan. Existing user changes
+were preserved. Migration `0006` itself required no SQL correction.
 
 ## 7. Step 4 - Complete Buy, Continue and Manage UI; final acceptance handoff
 

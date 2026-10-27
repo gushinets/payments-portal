@@ -46,6 +46,7 @@ class ExternalBillingCustomer(Base):
             name="uq_external_billing_customers_billing_customer_key",
         ),
         UniqueConstraint("external_billing_account_id", "provider_customer_id", name="uq_billing_customers_provider"),
+        UniqueConstraint("customer_id", "external_billing_account_id", name="uq_billing_customers_id_account"),
         CheckConstraint(
             "trim(billing_customer_key) <> ''",
             name="ck_external_billing_customers_key_nonempty",
@@ -219,6 +220,33 @@ class ExternalCreateOperation(Base):
     __tablename__ = "external_create_operations"
     __table_args__ = (
         ForeignKeyConstraint(
+            ["customer_id", "external_billing_account_id"],
+            ["external_billing_customers.customer_id", "external_billing_customers.external_billing_account_id"],
+            name="fk_create_operation_account",
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint(
+            "operation_kind = 'customer' OR external_billing_account_id IS NOT NULL",
+            name="ck_financial_operation_account",
+        ),
+        Index(
+            "uq_financial_operation_identity",
+            "purchase_intent_id",
+            "operation_kind",
+            unique=True,
+            postgresql_where=text("operation_kind IN ('agreement', 'subscription')"),
+            sqlite_where=text("operation_kind IN ('agreement', 'subscription')"),
+        ),
+        Index(
+            "uq_financial_operation_binding",
+            "external_billing_account_id",
+            "operation_kind",
+            "bound_external_object_id",
+            unique=True,
+            postgresql_where=text("operation_kind IN ('agreement', 'subscription')"),
+            sqlite_where=text("operation_kind IN ('agreement', 'subscription')"),
+        ),
+        ForeignKeyConstraint(
             ["purchase_intent_id", "customer_id"],
             ["purchase_intents.purchase_intent_id", "purchase_intents.customer_id"],
             name="fk_external_create_operations_purchase_customer",
@@ -300,6 +328,7 @@ class ExternalCreateOperation(Base):
         ForeignKey("external_billing_customers.customer_id", ondelete="RESTRICT"),
         nullable=False,
     )
+    external_billing_account_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     purchase_intent_id: Mapped[uuid.UUID | None] = mapped_column(uuid_type, nullable=True)
     request_correlation_key: Mapped[str] = mapped_column(Text, nullable=False)
     send_fence: Mapped[uuid.UUID | None] = mapped_column(uuid_type, nullable=True)
@@ -322,3 +351,27 @@ class ExternalCreateOperation(Base):
         onupdate=func.now(),
     )
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class BillingPurchaseScopeHold(Base):
+    """Purchase mutex, independent of future paid-access primary selection."""
+
+    __tablename__ = "billing_purchase_scope_holds"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["purchase_intent_id", "external_billing_account_id", "user_id", "product_id"],
+            [
+                "purchase_intents.purchase_intent_id",
+                "purchase_intents.external_billing_account_id",
+                "purchase_intents.user_id",
+                "purchase_intents.product_id",
+            ],
+            name="fk_purchase_hold_scope",
+            ondelete="RESTRICT",
+        ),
+        UniqueConstraint("purchase_intent_id", name="uq_purchase_hold_intent"),
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(uuid_type, primary_key=True)
+    product_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    external_billing_account_id: Mapped[str] = mapped_column(Text, nullable=False)
+    purchase_intent_id: Mapped[uuid.UUID] = mapped_column(uuid_type, nullable=False)

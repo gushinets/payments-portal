@@ -11,6 +11,7 @@ from app.models.billing_projections import (
     ExternalBillingCatalogProjection,
 )
 from app.models.billing_purchase import (
+    BillingPurchaseScopeHold,
     ExternalBillingCustomer,
     ExternalCreateOperation,
     PurchaseIntent,
@@ -57,6 +58,7 @@ __all__ = [
     "AccessInvalidationOutbox",
     "AuthSession",
     "BillingProductAccessScope",
+    "BillingPurchaseScopeHold",
     "BillingStateObservation",
     "BillingStateObservationKind",
     "BillingWorkItem",

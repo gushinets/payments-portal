@@ -3234,6 +3234,29 @@ def cmd_billing_customer(args: argparse.Namespace) -> None:
     raise SystemExit(result.returncode)
 
 
+def cmd_billing_purchase(args: argparse.Namespace) -> None:
+    environment = direct_api_environment()
+    environment["PYTHONPATH"] = os.pathsep.join(
+        value for value in (str(ROOT / "apps/api"), environment.get("PYTHONPATH", "")) if value
+    )
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "app.cli.billing_purchases",
+            args.action,
+            "--user-id",
+            str(args.user_id),
+            "--purchase-id",
+            str(args.purchase_id),
+        ],
+        cwd=ROOT,
+        env=environment,
+        check=False,
+    )
+    raise SystemExit(result.returncode)
+
+
 def cmd_migrate_api(_: argparse.Namespace) -> None:
     run(
         [
@@ -3452,6 +3475,13 @@ def build_parser() -> argparse.ArgumentParser:
     customer.add_argument("action", choices=("diagnose",))
     customer.add_argument("--user-id", type=uuid.UUID, required=True)
     customer.set_defaults(func=cmd_billing_customer)
+    purchase = sub.add_parser(
+        "billing-purchase", help="Financial inspect and GET-only recovery"
+    )
+    purchase.add_argument("action", choices=("inspect", "recover"))
+    purchase.add_argument("--user-id", type=uuid.UUID, required=True)
+    purchase.add_argument("--purchase-id", type=uuid.UUID, required=True)
+    purchase.set_defaults(func=cmd_billing_purchase)
     sub.add_parser("sync-api").set_defaults(func=cmd_sync_api)
     sub.add_parser("lock-api").set_defaults(func=cmd_lock_api)
     sub.add_parser("check-api-lock").set_defaults(func=cmd_check_api_lock)
@@ -3485,6 +3515,7 @@ def build_parser() -> argparse.ArgumentParser:
 def reexec_in_repository_venv_if_required() -> None:
     if len(sys.argv) < 2 or sys.argv[1] not in {
         "billing-customer",
+        "billing-purchase",
         "check",
         "check-api-lock",
         "coverage",

@@ -82,6 +82,7 @@ def test_canonical_enum_layer_contains_approved_vocabularies() -> None:
         "ended",
     }
     assert _values(ExternalSubscriptionFinancialAccessStatus) == {
+        "unverified",
         "allowed",
         "blocked",
     }

@@ -66,8 +66,11 @@ operator setup are in the [Step 1 runbook](../../engineering/lbx-product-links.m
 The retained implementation described in the original context and decision
 has since been physically removed. ANY-664 supplied restricted v1 publication/DB-only browsing. ANY-709 Step 1
 now supplies normal LBX configuration, direct links and source-backed current
-offers; its runtime validation is pending. Purchases and paid access remain
-future work. See the current [architecture](../../../ARCHITECTURE.md).
+offers. ANY-709 Step 3 now implements accepted-purchase APIs, held scopes,
+financial preparation/GET-only recovery and verified payment bootstrap. Focused
+synthetic tests and the local development migration have passed; real purchase/
+payment QA remains NOT_RUN; Step 4 browser flows and paid
+access remain future work. See the current [architecture](../../../ARCHITECTURE.md).
 The retained wording records the decision's transition history and does not
 assert that executable direct-provider code still exists.
 

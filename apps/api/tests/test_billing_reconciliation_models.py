@@ -224,6 +224,8 @@ def test_access_scope_subscription_and_observation_keys_are_exact() -> None:
         ("user_id", "product_id"),
     }
     assert _unique_keys(ExternalSubscription) == {
+        ("external_billing_account_id", "external_subscription_id"),
+        ("external_billing_account_id", "external_agreement_id"),
         ("subscription_id", "product_id"),
         ("subscription_id", "user_id", "product_id"),
         ("subscription_id", "external_billing_account_id", "user_id", "product_id"),

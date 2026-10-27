@@ -4,9 +4,9 @@ import asyncio
 import math
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any, Generic, TypeVar
+from typing import Any, TypeVar
 
 import httpx
 from pydantic import SecretStr
@@ -15,15 +15,22 @@ from app.core.errors import AppError
 from app.core.settings import Settings
 from app.infrastructure.preflight import PreflightBudget
 from app.integrations.lbx._transport import (
+    API_PATH as API_PATH,
     _Attempts,
-    _CleanupProtectedStream,
+    request_once,
     _Retryable,
-    decode_response,
-    log_http,
-    response_facts,
 )
 from app.integrations.lbx.customer import CreatedUserEnvelope, LbxUser, NewCustomer
+from app.integrations.lbx.financial import (
+    Agreement,
+    AgreementCreated,
+    NewAgreement,
+    Subscription,
+    SubscriptionCreated,
+    NewSubscription,
+)
 from app.integrations.lbx.dto import (
+    LbxRead as LbxRead,
     LbxEnvelope,
     LbxServicePrice,
     LbxSession,
@@ -36,34 +43,15 @@ from app.integrations.lbx.errors import (
     LbxAuthenticationFailed,
     LbxClosed,
     LbxCreateNotSent,
-    LbxError,
     LbxNotConfigured,
     LbxResponseInvalid,
     LbxScopeMismatch,
-    LbxTimeout,
-    LbxUnavailable,
 )
 from app.integrations.lbx.privacy import private_http_diagnostics
 
 
-API_PATH = "/api/rest/v1"
+MAX_FINANCIAL_INVENTORY_ROWS = 100
 T = TypeVar("T")
-
-
-@dataclass(frozen=True)
-class LbxRead(Generic[T]):
-    """Integration-only source DTO and configured/requested identity context.
-
-    Account identity is the deployment's provider-origin binding, not a provider
-    attestation: these GET responses contain no billing-account identity.
-    Step 4 must normalize this before Application. No atomic snapshot implied.
-    """
-
-    external_billing_account_id: str
-    tariff_id: int
-    tariff_service_id: int | None
-    observed_at: datetime
-    value: T
 
 
 @dataclass(frozen=True)
@@ -78,7 +66,7 @@ def _require_identity(value: int) -> None:
 
 
 class LbxServerClient:
-    """One scoped async Server API client; selected GETs and fenced customer POST.
+    """One scoped async Server API client; GETs and durably fenced preparation POSTs.
 
     Construct explicitly for source work, never from a DB-only query/startup
     dependency. There is no construction-time HTTP, external catalog cache or
@@ -222,12 +210,24 @@ class LbxServerClient:
         await budget.run(authenticate)
 
     async def create_user(self, command: NewCustomer, *, budget: PreflightBudget) -> int:
+        result = await self._create("/users", CreatedUserEnvelope, command.request_document(), budget=budget)
+        return result.user_id
+
+    async def create_agreement(self, command: NewAgreement, *, budget: PreflightBudget) -> int:
+        result = await self._create("/agreements", AgreementCreated, command.request_document(), budget=budget)
+        return result.agreement_id
+
+    async def create_subscription(self, command: NewSubscription, *, budget: PreflightBudget) -> int:
+        result = await self._create("/subscriptions", SubscriptionCreated, command.request_document(), budget=budget)
+        return result.subscription_id
+
+    async def _create(self, path: str, model: type, body: dict[str, Any], *, budget: PreflightBudget) -> Any:
         # Application has durably claimed possible_send. No POST retry or POST
         # reauthentication is allowed, even for 401/5xx/malformed success.
-        source_task: asyncio.Task[int] | None = None
+        source_task: asyncio.Task[Any] | None = None
         dispatched = False
 
-        def mark_scheduled(task: asyncio.Task[int]) -> None:
+        def mark_scheduled(task: asyncio.Task[Any]) -> None:
             nonlocal source_task
             source_task = task
 
@@ -235,24 +235,24 @@ class LbxServerClient:
             nonlocal dispatched
             dispatched = True
 
-        async def send() -> int:
+        async def send() -> Any:
             with private_http_diagnostics():
                 session = self._session
                 if session is None or time.monotonic() >= session.expires_at:
                     raise LbxCreateNotSent()
                 try:
                     receipt = await self._request_once(
-                        "/users",
-                        CreatedUserEnvelope,
+                        path,
+                        model,
                         _Attempts(1),
                         budget,
                         headers={"Authorization": f"Bearer {session.token.get_secret_value()}"},
-                        body=command.request_document(),
+                        body=body,
                         method="POST",
                         success_statuses=frozenset({200, 201}),
                         on_dispatch=mark_dispatch,
                     )
-                    return receipt.user_id
+                    return receipt
                 except _Retryable as error:
                     raise error.failure from None
                 except AppError:
@@ -266,6 +266,53 @@ class LbxServerClient:
             if not dispatched and (source_task is None or source_task.done()):
                 raise LbxCreateNotSent() from None
             raise
+
+    async def get_agreement(self, *, agreement_id: int, budget: PreflightBudget) -> Agreement:
+        _require_identity(agreement_id)
+        point = await self._read(f"/agreements/{agreement_id}", LbxEnvelope[Agreement], budget=budget)
+        if point.agreement_id != agreement_id:
+            raise LbxScopeMismatch()
+        return point
+
+    async def discover_agreements(self, *, user_id: int, number: str, budget: PreflightBudget) -> tuple[int, ...]:
+        _require_identity(user_id)
+        if not number or len(number) > 100:
+            raise LbxScopeMismatch()
+        rows = await self._read(
+            "/agreements",
+            LbxEnvelope[list[Agreement]],
+            budget=budget,
+            body={"user_id": user_id, "agreement_number": number},
+        )
+        if any(row.user_id != user_id or row.agreement_number != number for row in rows):
+            raise LbxScopeMismatch()
+        ids = tuple(row.agreement_id for row in rows)
+        if len(ids) >= MAX_FINANCIAL_INVENTORY_ROWS or len(set(ids)) != len(ids):
+            raise LbxResponseInvalid()
+        return ids
+
+    async def get_subscription(self, *, subscription_id: int, budget: PreflightBudget) -> Subscription:
+        _require_identity(subscription_id)
+        point = await self._read(f"/subscriptions/{subscription_id}", LbxEnvelope[Subscription], budget=budget)
+        if point.subscription_id != subscription_id:
+            raise LbxScopeMismatch()
+        return point
+
+    async def discover_subscriptions(
+        self, *, user_id: int, budget: PreflightBudget, agreement_id: int | None = None
+    ) -> tuple[Subscription, ...]:
+        _require_identity(user_id)
+        body = {"user_id": user_id}
+        if agreement_id is not None:
+            _require_identity(agreement_id)
+            body["agreement_id"] = agreement_id
+        rows = await self._read("/subscriptions", LbxEnvelope[list[Subscription]], budget=budget, body=body)
+        ids = tuple(row.subscription_id for row in rows)
+        if len(ids) >= MAX_FINANCIAL_INVENTORY_ROWS or len(set(ids)) != len(ids):
+            raise LbxResponseInvalid()
+        if agreement_id is not None and any(row.agreement_id != agreement_id for row in rows):
+            raise LbxScopeMismatch()
+        return tuple(rows)
 
     async def client_user(self, *, token: SecretStr, budget: PreflightBudget) -> LbxUser:
         async def read() -> LbxUser:
@@ -413,79 +460,25 @@ class LbxServerClient:
         success_statuses: frozenset[int] = frozenset({200}),
         on_dispatch: Callable[[], None] | None = None,
     ) -> T:
-        budget.check()
-        attempts.take()
-        config = self._configuration
-        remaining = budget.remaining_seconds()
-        timeout = httpx.Timeout(
-            connect=min(remaining, config.lbx_connect_timeout_seconds),
-            read=min(remaining, config.lbx_read_timeout_seconds),
-            write=min(remaining, config.lbx_connect_timeout_seconds),
-            pool=min(remaining, config.lbx_connect_timeout_seconds),
+        pool = (
+            self._account_http
+            if path.startswith(("/users", "/client", "/agreements", "/subscriptions")) or path == "/auth"
+            else self._http
         )
-        status: int | None = None
-        facts = None
-        try:
-            try:
-                pool = self._account_http if path.startswith(("/users", "/client")) or path == "/auth" else self._http
-                if on_dispatch is not None:
-                    on_dispatch()
-                async with pool.stream(
-                    method, API_PATH + path, headers=headers, json=body, auth=auth, timeout=timeout
-                ) as response:
-                    status = response.status_code
-                    assert isinstance(response.stream, httpx.AsyncByteStream)
-                    response.stream = _CleanupProtectedStream(response.stream, budget)
-                    budget.check()
-                    result, facts = await decode_response(
-                        response,
-                        model,
-                        budget=budget,
-                        maximum_bytes=config.lbx_max_response_bytes,
-                        maximum_retry_delay=config.lbx_max_retry_delay_seconds,
-                        method=method,
-                        path=path,
-                        success_statuses=success_statuses,
-                    )
-                    budget.check()
-                budget.check()
-                return result
-            except (httpx.PoolTimeout, httpx.ConnectTimeout, httpx.ConnectError) as error:
-                # With trust_env=False/no proxy these failures precede sending the
-                # application request. Never generalize to write/read failures.
-                failure = LbxTimeout() if isinstance(error, httpx.TimeoutException) else LbxUnavailable()
-                if method == "POST" and status is None:
-                    failure = LbxCreateNotSent()
-                kind = "timeout" if isinstance(error, httpx.TimeoutException) else "network"
-                retry = not isinstance(failure, LbxCreateNotSent)
-            except httpx.TimeoutException:
-                failure, kind, retry = LbxTimeout(), "timeout", True
-            except (httpx.NetworkError, httpx.RemoteProtocolError):
-                failure, kind, retry = LbxUnavailable(), "network", True
-            except httpx.TransportError:
-                failure, kind, retry = LbxUnavailable(), "network", False
-            failure.response_facts = (
-                replace(facts, reason=kind, failure_kind=kind, retryable_get=retry)
-                if facts
-                else response_facts(
-                    http_status=status,
-                    reason=kind,
-                    failure_kind=kind,
-                    retryable_get=retry,
-                    method=method,
-                    path=path,
-                )
-            )
-            if retry:
-                raise _Retryable(failure) from None
-            raise failure from None
-        except (LbxError, _Retryable) as error:
-            failure = error.failure if isinstance(error, _Retryable) else error
-            facts = failure.response_facts
-            raise
-        finally:
-            if facts is not None:
-                log_http(facts)
+        return await request_once(
+            pool,
+            self._configuration,
+            path,
+            model,
+            attempts,
+            budget,
+            headers=headers,
+            body=body,
+            auth=auth,
+            method=method,
+            success_statuses=success_statuses,
+            on_dispatch=on_dispatch,
+        )
 
     async def aclose(self) -> None:
         """Owner stops/drains its PreflightAdmission BEFORE closing this pool.

@@ -5,10 +5,10 @@ from __future__ import annotations
 import json
 import logging
 import re
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from decimal import Decimal, DecimalException
 from email.utils import parsedate_to_datetime
@@ -16,11 +16,14 @@ from typing import Any, TypeVar
 
 import httpx
 
+from app.core.settings import Settings
 from app.core.observability import request_id_context
 from app.infrastructure.preflight import PreflightBudget
 from app.integrations.lbx.dto import LbxEnvelope
 from app.integrations.lbx.errors import (
     LbxAttemptsExhausted,
+    LbxCreateNotSent,
+    LbxTimeout,
     LbxAuthenticationFailed,
     LbxError,
     LbxRateLimited,
@@ -31,6 +34,7 @@ from app.integrations.lbx.errors import (
     LbxResponseFacts,
 )
 
+API_PATH = "/api/rest/v1"
 T = TypeVar("T")
 logger = logging.getLogger("payment_portal.lbx")
 _TRANSIENT_STATUS = frozenset({429, 500, 502, 503, 504})
@@ -325,3 +329,92 @@ def retry_after(value: str | None, maximum: float) -> float | None:
     except (ValueError, OverflowError):
         pass
     return None
+
+
+async def request_once(
+    pool: httpx.AsyncClient,
+    configuration: Settings,
+    path: str,
+    model: type[LbxEnvelope[T]],
+    attempts: _Attempts,
+    budget: PreflightBudget,
+    *,
+    headers: dict[str, str] | None = None,
+    body: dict[str, Any] | None = None,
+    auth: httpx.Auth | None = None,
+    method: str = "GET",
+    success_statuses: frozenset[int] = frozenset({200}),
+    on_dispatch: Callable[[], None] | None = None,
+) -> T:
+    budget.check()
+    attempts.take()
+    config = configuration
+    remaining = budget.remaining_seconds()
+    timeout = httpx.Timeout(
+        connect=min(remaining, config.lbx_connect_timeout_seconds),
+        read=min(remaining, config.lbx_read_timeout_seconds),
+        write=min(remaining, config.lbx_connect_timeout_seconds),
+        pool=min(remaining, config.lbx_connect_timeout_seconds),
+    )
+    status: int | None = None
+    facts = None
+    try:
+        try:
+            if on_dispatch is not None:
+                on_dispatch()
+            async with pool.stream(
+                method, API_PATH + path, headers=headers, json=body, auth=auth, timeout=timeout
+            ) as response:
+                status = response.status_code
+                assert isinstance(response.stream, httpx.AsyncByteStream)
+                response.stream = _CleanupProtectedStream(response.stream, budget)
+                budget.check()
+                result, facts = await decode_response(
+                    response,
+                    model,
+                    budget=budget,
+                    maximum_bytes=config.lbx_max_response_bytes,
+                    maximum_retry_delay=config.lbx_max_retry_delay_seconds,
+                    method=method,
+                    path=path,
+                    success_statuses=success_statuses,
+                )
+                budget.check()
+            budget.check()
+            return result
+        except (httpx.PoolTimeout, httpx.ConnectTimeout, httpx.ConnectError) as error:
+            # With trust_env=False/no proxy these failures precede sending the
+            # application request. Never generalize to write/read failures.
+            failure = LbxTimeout() if isinstance(error, httpx.TimeoutException) else LbxUnavailable()
+            if method == "POST" and status is None:
+                failure = LbxCreateNotSent()
+            kind = "timeout" if isinstance(error, httpx.TimeoutException) else "network"
+            retry = not isinstance(failure, LbxCreateNotSent)
+        except httpx.TimeoutException:
+            failure, kind, retry = LbxTimeout(), "timeout", True
+        except (httpx.NetworkError, httpx.RemoteProtocolError):
+            failure, kind, retry = LbxUnavailable(), "network", True
+        except httpx.TransportError:
+            failure, kind, retry = LbxUnavailable(), "network", False
+        failure.response_facts = (
+            replace(facts, reason=kind, failure_kind=kind, retryable_get=retry)
+            if facts
+            else response_facts(
+                http_status=status,
+                reason=kind,
+                failure_kind=kind,
+                retryable_get=retry,
+                method=method,
+                path=path,
+            )
+        )
+        if retry:
+            raise _Retryable(failure) from None
+        raise failure from None
+    except (LbxError, _Retryable) as error:
+        failure = error.failure if isinstance(error, _Retryable) else error
+        facts = failure.response_facts
+        raise
+    finally:
+        if facts is not None:
+            log_http(facts)
