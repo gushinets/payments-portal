@@ -106,4 +106,4 @@ Start with the smallest document that matches the task.
 - [OpenAPI snapshot](generated/openapi.json)
 
 - [ANY-709 billing runbook](engineering/ANY-709-billing-runbook.md) — one Steps 1–4 guide for normal setup, links, customer/purchase recovery, Buy/Continue/Manage, read-only SQL, human acceptance and the Step 8 seam.
-- [ANY-715 billing operations](engineering/ANY-715-billing-operations.md) — Step 1 shared authoritative proof, state/trust semantics, evidence limits and owner checkpoint; automatic execution remains planned.
+- [ANY-715 billing operations](engineering/ANY-715-billing-operations.md) — Steps 1–4 authoritative proof, embedded polling/recovery, optional webhook setup, real enablement gate and rollback; audited operator controls remain planned.

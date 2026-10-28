@@ -81,7 +81,11 @@ adds atomic enrollment, bounded embedded execution and provider-free trust-expir
 evidence. Step 3 dispatches shared GET-only uncertain-create recovery, separate
 fixed two-hour local deadlines and bounded customer inventory. Permanent operation
 keys, original accepted proof and customer send leases remain authoritative;
-no background CREATE or cross-product adoption is permitted. See [billing operations](docs/engineering/ANY-715-billing-operations.md).
+no background CREATE or cross-product adoption is permitted. Step 4 adds the
+default-disabled authenticated `POST /api/billing/lbx/webhook`: bounded input,
+redacted durable inbox and generation-coalesced hints commit before 200; worker
+GET/apply alone updates facts. Real header/delivery compatibility remains a
+separate enablement gate; polling is independent. See [billing operations](docs/engineering/ANY-715-billing-operations.md).
 
 The canonical target is defined, in precedence order, by
 [ADR 0005](docs/architecture/decisions/0005-external-billing-boundary.md), the

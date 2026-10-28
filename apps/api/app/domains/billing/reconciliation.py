@@ -18,9 +18,11 @@ from app.domains.catalog.publication import SessionFactory
 from app.domains.identity.services.auth import as_utc
 from app.domains.purchases import service
 from app.infrastructure.queries import billing_reconciliation as queries, purchases
+from app.infrastructure.persistence.billing_webhooks import mark_processed
 from app.infrastructure.queries.billing_customers import lock_customer, customer_operation, open_customer_reviews
 from app.domains.billing.work import schedule_reconciliation, verify_claim
 from app.domains.billing.work_contracts import WorkClaim
+from app.domains.billing.webhook_contracts import CORRELATION_SCHEMA
 from app.models import (
     BillingProductAccessScope,
     BillingStateObservation,
@@ -311,5 +313,14 @@ def apply_reconciliation(
         current.reconciliation_lease_owner = None
         current.reconciliation_lease_expires_at = None
         schedule_reconciliation(db, current, work_claim, complete=proof.complete and not conflict and not known_review)
+        if work_claim is not None and proof.complete:
+            mark_processed(
+                db,
+                correlation_schema=CORRELATION_SCHEMA,
+                work_id=work_claim.id,
+                generation=work_claim.generation,
+                started_at=work_claim.started_at,
+                now=now,
+            )
         db.commit()
         return observation.observation_id

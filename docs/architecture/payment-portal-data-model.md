@@ -330,7 +330,14 @@ baseline.
 `external_billing_webhook_deliveries` stores bounded, redacted correlation and
 evidence documents, receipt/processing timestamps, and safe classifications.
 It never stores authorization material, card/payment fields, or a raw provider
-payload, and receipt alone never grants access.
+payload, and receipt alone never grants access. ANY-715 Step 4 uses existing
+JSON storage without a schema migration: `billing-webhook-receipt:v1` retains
+only the allowlisted event; `billing-webhook-work:v1` retains a subject hash and,
+for queued receipts, local subscription/work IDs and `enqueue_generation`.
+The payload hash is diagnostic, never permanent deduplication. Processing states
+are canonical text-backed `WebhookDeliveryState` values: `pending`, `processed`,
+`ignored`. Complete fenced apply updates covered pending receipts atomically;
+later generations and incomplete/crashed attempts stay pending.
 
 `billing_work_items` stores open work/scope/state vocabularies, bounded typed
 payloads, priority, due time, attempt count, paired lease owner/expiry and nullable
@@ -371,7 +378,8 @@ Closed text-backed enums are defined only in `app.models.enums`:
 - reconciliation: `ExternalSubscriptionLifecycleStatus`,
   `ExternalSubscriptionFinancialAccessStatus`,
   `ExternalSubscriptionCommercialAccessStatus`,
-  `BillingStateObservationKind`.
+  `BillingStateObservationKind`;
+- webhook inbox: `WebhookDeliveryState`.
 
 Other operational classifications remain open text until their owning runtime
 step closes them. The repository guard prevents duplicate definitions of the

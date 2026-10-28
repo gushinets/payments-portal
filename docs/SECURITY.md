@@ -94,6 +94,14 @@ receipt durable. A concrete integration may persist additional payload data only
 under a separately approved integration-specific requirement that defines its
 need, security treatment, and retention.
 
+ANY-715 Step 4 implements `POST /api/billing/lbx/webhook`, disabled by default.
+Exact constant-time credential-header authentication precedes bounded ASGI body
+processing. Deployment resolves account/contour; only proven local bindings route
+hints. Inbox evidence retains event, safe hashes and local work/generation
+correlation, never unrestricted provider fields. Real LBX header/delivery
+compatibility must pass the [operations gate](engineering/ANY-715-billing-operations.md#real-enablement-checklist-and-rollback)
+before enablement. Receipt cannot update subscription/access facts.
+
 ## Trust boundaries
 
 - Validate HTTP, environment, webhook, and database-boundary data.
