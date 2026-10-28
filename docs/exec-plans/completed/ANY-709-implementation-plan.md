@@ -174,6 +174,49 @@ Verification for the remediation:
   These results do not replace a clean locked CI run on a future patched HEAD.
   No fresh real-LBX CREATE/payment or paid-access acceptance is claimed.
 
+## Widget recheck recovery correction, 2026-10-28
+
+The independent review reproduced a linked purchase losing its prepared state
+after a transient agreement/subscription GET failure. The next cabinet retry
+then returned `409 purchase_not_prepared` before any provider read. A separate
+advance was required even after LBX recovered.
+
+The owner authorized a narrow correction: retain `linked` preparation and its
+permanent bindings on incomplete reads, while the current payment opening still
+refuses credentials without fresh complete proof. Keep recovery work/failure
+facts, manual review for known conflicts, original consent, financial no-retry
+rules and the existing bootstrap gates. No migration or wire change is needed.
+
+Verification plan:
+
+- Reproduce HTTP refresh failure on disposable PostgreSQL for both agreement
+  and subscription point reads, with unavailable and incomplete source replies.
+  All four new cases failed before the production correction.
+- Verify direct explicit bootstrap retry, persisted prepared state after reload,
+  unchanged acceptance/bindings, GET-only rechecks and exactly one original
+  customer/agreement/subscription CREATE through synthetic transports.
+- Retain seller, customer and effective-price conflict refusals, including after
+  a later matching response; run focused purchase tests and canonical checks.
+
+Focused post-fix verification: 46 PostgreSQL purchase/contention/recovery cases
+passed, including all four new HTTP retry cases and three known-conflict cases.
+Log: `/tmp/pr150-widget-focused.log`.
+
+Canonical post-fix `npm run check`: PASS, including documentation, generation
+freshness, architecture, Ruff formatting/lint, 1,447 fast API tests, 275 PostgreSQL
+tests, 370 component tests, 38 boundary/tooling tests, web lint/typecheck and the
+production web build. Log: `/tmp/pr150-widget-check.log`. PostgreSQL ran on a
+separate temporary version-14 cluster with a disposable `_tests` database and
+Unix socket; it was stopped afterwards. The configured application database was
+not used. Local Next.js remains 16.3.1 versus locked 16.4.2; clean CI must validate
+the eventual published correction. The full harness browser suite was skipped
+because `RUN_E2E` and a running stack were not selected. This backend-only change
+is covered through real HTTP/application/PostgreSQL paths with synthetic LBX;
+no new live Widget/acquiring acceptance is claimed.
+
+No real LBX CREATE/payment, working-database change or deployment is authorized
+or performed by this correction. Baseline log: `/tmp/pr150-widget-baseline.log`.
+
 ## Retained decisions and boundaries
 
 - Kernel owns enabled products; LBX owns current offers and commercial facts.

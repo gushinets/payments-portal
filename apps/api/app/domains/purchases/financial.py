@@ -224,9 +224,9 @@ def financial_pending(
                 op.operation_state = State.UNKNOWN if op.unknown_since else State.PENDING
                 row.state = IntentState.AWAITING_EXTERNAL_RESULT
                 row.state_updated_at = utc_now()
-        elif row.state != IntentState.MANUAL_REVIEW:
-            # A previously bound object whose current proof is incomplete is
-            # recoverable, but cannot authorize this opening's payment view.
+        elif row.state not in {IntentState.MANUAL_REVIEW, IntentState.LINKED}:
+            # Keep proven preparation LINKED across incomplete reads. Each
+            # payment opening still requires complete fresh point proof.
             row.state = IntentState.AWAITING_EXTERNAL_RESULT
             row.state_updated_at = utc_now()
         work = recovery_work(db, op.create_operation_id)

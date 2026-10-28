@@ -151,6 +151,99 @@ async def test_any709_step3_complete_preparation_and_historical_manage(
         assert db.scalar(select(func.count()).select_from(ExternalBillingCustomer)) == 1
 
 
+@pytest.mark.parametrize("path", ["/agreements/456", "/subscriptions/567"])
+@pytest.mark.parametrize("failure", ["unavailable", "incomplete"])
+async def test_any709_step3_linked_widget_retries_after_failed_point_proof(
+    migrated_database: Engine,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    path: str,
+    failure: str,
+) -> None:
+    from app.domains.billing import router as billing_routes
+    from app.domains.purchases import router as purchase_routes
+    from app.http.dependencies import get_session_factory
+    from app.main import create_app
+
+    factory = postgres_session_factory
+    transport = setup_purchase(factory)
+    configuration = step1_settings()
+    monkeypatch.setattr(billing_routes, "settings", configuration)
+    monkeypatch.setattr(purchase_routes, "settings", configuration)
+    app = create_app()
+    app.dependency_overrides[get_session_factory] = lambda: factory
+    failing = False
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        if failing and request.url.path == "/api/rest/v1" + path:
+            if failure == "unavailable":
+                transport.requests.append(request)
+                return httpx.Response(503, json={"code": 503, "response": {"error": "Synthetic unavailable"}})
+            body = transport.respond(request).json()
+            body["response"].pop("organization_id" if path.startswith("/agreements/") else "services")
+            return httpx.Response(200, json=body)
+        return transport.respond(request)
+
+    async with source_resources(
+        configuration,
+        kernel_transport=httpx.MockTransport(transport.kernel),
+        lbx_transport=httpx.MockTransport(respond),
+    ) as sources:
+        purchase = await accept(sources, factory)
+        prepared = await advance_purchase(sources, configuration, factory=factory, token=TOKEN, purchase_id=purchase.id)
+        assert prepared.state == IntentState.LINKED
+        app.state.sources = sources
+        body = {"purchase_intent_id": str(purchase.id)}
+        before = len(transport.requests)
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            base_url="http://portal.test",
+            headers={"Authorization": "Bearer " + TOKEN},
+        ) as client:
+            original = await client.post("/api/billing/widget-bootstrap", json=body)
+            assert original.status_code == 200
+            target = original.json()["payment_target"]
+            failing = True
+            refused = await client.post("/api/billing/widget-bootstrap", json=body)
+            assert refused.status_code == 409 and refused.json()["detail"]["code"] == "purchase_not_prepared"
+            assert "credential" not in refused.json() and refused.headers["cache-control"] == "no-store"
+            current = await client.get(f"/api/purchase-intents/{purchase.id}")
+            assert current.status_code == 200 and current.json()["state"] == "linked"
+            assert current.json()["scope_held"] is True and current.json()["paid_access_granted"] is False
+            retained = service.read_purchase(factory, purchase.user_id, purchase.id)
+            assert retained.accepted == purchase.accepted
+            assert all(op.state == State.BOUND for op in retained.operations)
+            assert [(op.id, op.bound_id) for op in retained.operations] == [
+                (op.id, op.bound_id) for op in prepared.operations
+            ]
+            operation = next(
+                op
+                for op in retained.operations
+                if op.kind == (Kind.AGREEMENT if path.startswith("/agreements/") else Kind.SUBSCRIPTION)
+            )
+            with factory() as db:
+                work = db.scalar(select(BillingWorkItem).where(BillingWorkItem.coalescing_key == str(operation.id)))
+                assert work.work_state == "pending" and work.payload_document["last_failure"]
+            failing = False
+            retry_start = len(transport.requests)
+            retried = await client.post("/api/billing/widget-bootstrap", json=body)
+            assert retried.status_code == 200 and retried.headers["cache-control"] == "no-store"
+            assert retried.json()["presentation"] == "payment" and retried.json()["disablePayments"] is False
+            assert retried.json()["payment_target"] == target
+            assert {"/api/rest/v1/agreements/456", "/api/rest/v1/subscriptions/567"}.issubset(
+                {request.url.path for request in transport.requests[retry_start:]}
+            )
+        assert all(request.method == "GET" for request in transport.requests[before:])
+        assert not any("/tariffs" in request.url.path for request in transport.requests[before:])
+    assert [transport.creates(path) for path in ("/users", "/agreements", "/subscriptions")] == [1, 1, 1]
+    with factory() as db:
+        for model in (PaidAccessState, PurchasedAllowance, BillingProductAccessScope, ManualReviewCase):
+            assert db.scalar(select(func.count()).select_from(model)) == 0
+        sub = db.scalar(select(ExternalSubscription))
+        assert sub.financial_access_status.value == "unverified"
+        assert sub.projection_valid_until == sub.last_authoritative_read_at
+
+
 @pytest.mark.parametrize("lost_agreement_response", [False, True])
 async def test_any709_step3_api_smoke_review_confirm_continue_payment(
     migrated_database: Engine,
@@ -463,8 +556,9 @@ async def test_any709_step3_rechecks_local_changes_during_source_io(
         assert db.scalar(select(func.count()).select_from(LegalAcceptanceEvent)) == 0
 
 
-async def test_any709_step3_wrong_seller_mismatch_blocks_payment_but_keeps_account_view(
-    migrated_database: Engine, postgres_session_factory: sessionmaker[Session]
+@pytest.mark.parametrize("mismatch", ["seller", "customer", "price"])
+async def test_any709_step3_material_mismatch_blocks_payment_but_keeps_account_view(
+    migrated_database: Engine, postgres_session_factory: sessionmaker[Session], mismatch: str
 ) -> None:
     factory = postgres_session_factory
     transport = setup_purchase(factory)
@@ -476,12 +570,27 @@ async def test_any709_step3_wrong_seller_mismatch_blocks_payment_but_keeps_accou
     ) as sources:
         purchase = await accept(sources, factory)
         await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
-        transport.agreements[0]["organization_id"] = 9
+        if mismatch == "price":
+            transport.subscriptions[0]["services"][0]["price"] = 101
+        else:
+            transport.agreements[0]["organization_id" if mismatch == "seller" else "user_id"] = 9
         with pytest.raises(BillingRefused):
             await bootstrap_account(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
         assert (await bootstrap_account(sources, config, factory=factory, token=TOKEN)).credential
         latest = service.read_purchase(factory, purchase.user_id, purchase.id)
         assert latest.state == IntentState.MANUAL_REVIEW and latest.held
+        assert latest.accepted == purchase.accepted
+        # A known conflict cannot be cleared by merely restoring the next GET.
+        if mismatch == "price":
+            transport.subscriptions[0]["services"][0]["price"] = 100
+        else:
+            transport.agreements[0]["organization_id" if mismatch == "seller" else "user_id"] = (
+                21 if mismatch == "seller" else 345
+            )
+        with pytest.raises(BillingRefused):
+            await bootstrap_account(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
+        assert service.read_purchase(factory, purchase.user_id, purchase.id).state == IntentState.MANUAL_REVIEW
+    assert [transport.creates(path) for path in ("/users", "/agreements", "/subscriptions")] == [1, 1, 1]
 
 
 async def test_any709_step3_permanent_scope_binding_and_evidence_constraints(

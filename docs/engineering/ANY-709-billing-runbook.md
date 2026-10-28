@@ -554,6 +554,14 @@ waiting NULL/1970/3000 calendar values never become paid dates or UTC intervals.
 A nonzero accepted connection charge without explicit effective readback remains
 pending; it is never assumed to be zero or proven by today's catalog.
 
+A temporary or incomplete agreement/subscription GET does not erase a linked
+purchase's proven preparation or original bindings. That Widget opening fails
+without a credential; the next explicit open/refresh repeats complete fresh
+point verification for the same purchase, without financial CREATE or a separate
+advance. Recovery work remains pending until point proof completes; safe failure
+facts are retained. A known ownership, seller or material-term mismatch still enters
+manual review and cannot be cleared by another matching response alone.
+
 A financial possible-send claim commits its original correlation, request,
 fence, `unknown_since + 2h` and one coalesced recovery work item before POST.
 A 500/error envelope, malformed success, timeout, crash, lost commit acknowledgement,
