@@ -203,6 +203,29 @@
         "title": "BillingHealthResponse",
         "type": "object"
       },
+      "BillingWebhookResponse": {
+        "properties": {
+          "delivery_id": {
+            "format": "uuid",
+            "title": "Delivery Id",
+            "type": "string"
+          },
+          "outcome": {
+            "enum": [
+              "queued",
+              "ignored"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          }
+        },
+        "required": [
+          "delivery_id",
+          "outcome"
+        ],
+        "title": "BillingWebhookResponse",
+        "type": "object"
+      },
       "CatalogMoney": {
         "properties": {
           "connection_amount": {
@@ -1795,6 +1818,27 @@
         "summary": "Get Session",
         "tags": [
           "auth"
+        ]
+      }
+    },
+    "/api/billing/lbx/webhook": {
+      "post": {
+        "operationId": "billing_webhook_api_billing_lbx_webhook_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillingWebhookResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Billing Webhook",
+        "tags": [
+          "billing"
         ]
       }
     },

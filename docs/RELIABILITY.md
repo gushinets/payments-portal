@@ -61,8 +61,12 @@ deadlines. Paid-access derivation and invalidation delivery remain unimplemented
   manual operator input alone never grants paid access.
 
 These are cross-cutting constraints. Purchase preparation and embedded
-reconciliation/recovery are implemented; webhook processing, paid-access
-derivation and invalidation delivery remain later work.
+reconciliation/recovery and default-disabled durable webhook hints are implemented;
+paid-access derivation and invalidation delivery remain later work. Webhook receipt
+and coalesced work commit before 200. Complete fenced rereads process only covered
+receipt generations; incomplete reads/crashes retry, and later hints remain due.
+Polling converges independently of delivery, ordering or provider retries. See the
+[real enablement gate and rollback](engineering/ANY-715-billing-operations.md#real-enablement-checklist-and-rollback).
 
 ## Transaction, idempotency, and retry contract
 

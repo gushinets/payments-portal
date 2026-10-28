@@ -1,9 +1,9 @@
 # ANY-715 billing operations
 
-Status: Steps 1–3 shared reconciliation, embedded polling, recovery and inventory implemented.
+Status: Steps 1–4 shared reconciliation, embedded polling, recovery, inventory and optional webhook hints implemented.
 Updated: 2026-10-28.
 Issue: [ANY-715](https://linear.app/paveldik/issue/ANY-715).
-Scope: [implementation plan](../exec-plans/active/ANY-715-implementation-plan.md), Steps 1–3.
+Scope: [implementation plan](../exec-plans/active/ANY-715-implementation-plan.md), Steps 1–4.
 
 ## Shared proof and original history
 
@@ -90,8 +90,7 @@ exact UTC boundaries, native cycle ID or allowance identity. This step does not
 claim to prove natural rollover or derive paid access from those dates.
 
 Step 2 supplies automatic enrollment, durable polling and local source-trust
-expiry evidence. Step 3 adds uncertain-create recovery/inventory loops. Later steps own
-webhook hints and audited operator commands. Step 9 owns primary selection,
+expiry evidence. Step 3 adds uncertain-create recovery/inventory loops. Step 4 adds optional webhook hints; Step 5 owns audited operator commands. Step 9 owns primary selection,
 access derivation, effective authorization deadlines, grants, allowances,
 revisions and invalidations. No paid-access producer runs here.
 
@@ -243,8 +242,134 @@ Owner checkpoint: review existing synthetic GET traffic and persisted original
 history using the `billing_background_recovery` PostgreSQL selection from the
 plan's shared harness recipe. All such fixtures are **SIMULATED**; no live billing
 failure, provider CREATE or payment is manufactured. Actual test-LBX failure
-recovery is **NOT_RUN**. Webhook mode remains **DISABLED/POLLING-ONLY**; webhook
-setup and audited resolution/inspection CLI expansion remain Steps 4–5.
+recovery is **NOT_RUN**. Webhook mode remains **DISABLED/POLLING-ONLY** until its real gate below passes.
+Audited resolution/inspection CLI expansion remains Step 5.
+
+## Optional webhook receiver and manual deployment
+
+`POST /api/billing/lbx/webhook` is implemented behind these settings:
+
+- `LBX_WEBHOOK_ENABLED=false`: default; returns 404 before body processing or DB use.
+- `LBX_WEBHOOK_AUTH_HEADER=`: required credential header name when enabled.
+- `LBX_WEBHOOK_AUTH_VALUE=`: required exact shared-secret header value when enabled;
+  keep it in the deployment secret manager/protected API environment, separate
+  from Server API credentials and the Widget signing secret.
+
+Enabling requires a valid configured LBX connection. Invalid/missing header or
+secret configuration fails startup. Transport/correlation headers (including
+`X-Request-ID`, tracing headers and `User-Agent`) cannot carry the credential,
+preventing its reuse in request diagnostics. Header names are HTTP case insensitive;
+values are compared exactly in constant time. Duplicate/missing/wrong credentials
+return 401 before reading the body. No query-token or signature fallback exists.
+The JSON receive limit is 65536 bytes, enforced for declared and streamed bodies
+(413). Unsupported media type returns 415; malformed JSON, unsupported event or
+invalid correlation fields returns 422. Rejections never echo payload or headers.
+
+Supported events are exactly:
+
+- `create_subscription`
+- `change_subscription`
+- `block_subscription`
+- `new_charge_period`
+- `close_subscription`
+- `delete_subscription`
+
+The Integration reads only `event` and positive integer `parameters.subscription_id`,
+`parameters.agreement_id` and optional `parameters.user_id`. Other fields are
+discarded. Account/tenant/contour come from deployment configuration; user/product
+and work IDs come from existing local bindings. Unknown, foreign or conflicting
+correlation is acknowledged as `ignored`, with hashed correlation only. It creates
+no binding or recovery authority. Unknown creates still converge through independent
+GET-only recovery/inventory. An ignored receipt can be inspected by its local
+delivery ID; a later proven binding is polled independently.
+
+A valid known hint atomically commits a redacted receipt and immediate coalesced
+reconciliation work before returning 200 with a named response containing only
+local `delivery_id` and `outcome` (`queued` or `ignored`). No LBX REST request runs
+in receipt, and payload lifecycle/price/payment fields never become facts.
+`billing-webhook-receipt:v1` evidence contains only the allowlisted event.
+`billing-webhook-work:v1` correlation retains a subject hash and, for queued work,
+local subscription/work IDs and `enqueue_generation`. Raw bodies, headers,
+credentials, customer contact/payment fields and provider event IDs are not stored.
+The body SHA-256 is diagnostic only: identical later events receive separate
+receipts and are never permanently deduplicated by hash.
+
+Receipts stay `pending` through failed/incomplete GETs or crashed workers. A fenced
+claim applying complete authoritative proof marks only its covered generations
+`processed` in the same transaction as facts and rescheduling. Later receipts
+remain pending and their immediate hint survives that completion. Reclaiming an
+expired lease or restarting uses the same durable work. An incomplete read retries
+with the existing urgent backoff; a webhook arriving before REST visibility cannot
+extend trust. A complete but still old source response is only a current read;
+normal polling observes later visibility without any visibility-SLA assumption.
+Known conflicts remain subject to their existing review policy. `processed` means
+complete reread applied, never a payment, access grant or event-version match.
+
+### Test and production setup
+
+The [official manual setup guide](https://docs.lbxbilling.ru/api/webhooks/set_webhooks/)
+and [event examples](https://docs.lbxbilling.ru/api/webhooks/list_webhooks/)
+were checked on 2026-10-28. The guide documents URL, token, event selection and
+an optional retry switch; it does not establish the actual authentication header
+name/value format for this account. No configuration API is assumed.
+
+1. Keep the receiver disabled while preparing the target deployment's LBX
+   connection and secret configuration. Use separate test/production secrets.
+   Confirm ordinary embedded polling is healthy and migrations are applied.
+2. Test URL: the authorized publicly reachable HTTPS **test Portal origin** plus
+   `/api/billing/lbx/webhook`. Production URL: the approved HTTPS
+   `APP_PUBLIC_BASE_URL` origin plus `/api/billing/lbx/webhook`, served by that
+   contour's API through the existing Caddy `/api/*` proxy. Substitute actual
+   deployment origins; do not use a Kernel, Resolver, Widget or another contour URL.
+3. In the correct LBX account, open Settings → Parameters → Webhooks → Add.
+   Enter the target URL, token from the secret manager, and a nonsecret description.
+   Select exactly the six events listed above. The optional **Repeat request**
+   switch may be enabled, but Portal correctness does not rely on redelivery.
+   Save only as part of an authorized integration gate.
+4. Verify the account's real authentication transport through an authorized,
+   privacy-controlled test delivery. Set `LBX_WEBHOOK_AUTH_HEADER` to its verified
+   credential header and `LBX_WEBHOOK_AUTH_VALUE` to the **entire exact header
+   value**, including any verified prefix. Do not guess a header/prefix from the
+   token field, accept anonymous delivery, or move the secret into the URL.
+   If the account cannot send this mode securely, leave disabled. Avoid body/header
+   logging at LBX, ingress, debug proxies, traces and the test capture boundary.
+5. Once the test mode is verified, set `LBX_WEBHOOK_ENABLED=true` and restart the
+   test API through its ordinary deployment path. Confirm the checklist below.
+   A local synthetic POST proves only Portal handling, not real LBX delivery.
+6. Production requires its own origin/account/secret and the same verified
+   transport, correlation and event-to-GET checks before enablement. Keep one API
+   replica and independent polling enabled. Document dated results without secrets.
+
+### Real enablement checklist and rollback
+
+As of 2026-10-28 the gate is **NOT_RUN**, with **DISABLED/POLLING-ONLY** required.
+Synthetic HTTP/PostgreSQL coverage is separate from this gate: 38 fast webhook
+cases and 10 PostgreSQL webhook cases PASS, including failure after commit,
+concurrent claims/hints and polling-only convergence. The full canonical check
+also passes; browser E2E was skipped by the harness. Authorized owner QA
+must record date, environment and sanitized local delivery/work/observation IDs for:
+
+- Real correct-header delivery accepted; missing/incorrect secret rejected before
+  body processing, with no credential/payload leakage.
+- Each selected event correlates only to its already owned canonical scope;
+  unknown/conflicting correlation stays ignored.
+- Receipt and work are durable before 200; worker subsequently uses GETs and the
+  shared transition. Verify duplicate/reordered hints and a restart during work.
+- Observe event-to-REST visibility, including an early event/incomplete read and
+  later convergence. Do not assume a provider delivery or visibility deadline.
+- Lose a notification or disable delivery and confirm polling convergence;
+  record provider retry behavior only if actually observed.
+
+Rollback: set `LBX_WEBHOOK_ENABLED=false`, restart the API and verify the route
+returns 404. Disable/delete the webhook in the correct LBX account when authorized.
+Keep `BILLING_WORKER_ENABLED=true` and confirm polling/queue progress. Already
+committed pending receipts/work survive disablement and restart; never delete them
+or release holds to roll back. Rotate the secret in both systems through the same
+verified gate before re-enabling. Investigate old pending receipts by their local
+work ID/generation, claim/lease, due time and `last_error_classification`; the
+existing worker retries without replaying raw payloads. There is no inbox-delete,
+manual replay or provider-configuration CLI in Step 4. No 500→retry assumption
+is required after a DB failure or lost response.
 
 ## Startup, inspection and shutdown
 

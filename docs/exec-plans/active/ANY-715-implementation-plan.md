@@ -1,6 +1,6 @@
 # ANY-715 — Background Work, Webhooks, Reconciliation & Recovery
 
-Status: Steps 1–3 implemented and locally verified; Steps 4–5 not started
+Status: Steps 1–4 implemented and locally verified; Step 5 not started
 Updated: 2026-10-28  
 Issue: https://linear.app/paveldik/issue/ANY-715  
 Program: https://linear.app/paveldik/issue/ANY-504
@@ -1240,6 +1240,54 @@ repeat the documented setup on production after its own verification.
 **Proposed commit**
 
 `ANY-715 - Add durable webhook hints and deployment runbook`
+
+**Step 4 implementation record — 2026-10-28**
+
+- Implemented default-disabled `POST /api/billing/lbx/webhook`, exact constant-time
+  configurable shared-secret-header verification before bounded body processing,
+  the six subscription events and named response DTO. Enabled configuration fails
+  closed on invalid connection/header/secret; no authentication transport is guessed.
+- Receipt owns one short transaction: server-scoped existing binding lookup,
+  redacted inbox insert and immediate coalesced reconciliation hint. Correlation
+  persists only safe hashes and local subscription/work/generation references;
+  raw bodies, headers, credentials and contact/payment fields are discarded.
+  Unknown/conflicting correlation is recorded as ignored. There is no provider
+  call or subscription/access writer in receipt.
+- Shared fenced worker apply marks only complete-read receipts covered by its
+  claimed generation, atomically with facts/scheduling. Newer arrivals remain
+  pending/due; failures/incomplete proof and crashes retain retryable work. Payload
+  hash never suppresses future identical events. Existing tables/JSON correlation
+  are reused without migration; inbox states now use the canonical text-backed
+  enum. Independent polling/recovery remains the correctness path.
+- Updated all Compose/API environment examples, generated OpenAPI/TypeScript,
+  architecture/security/reliability/schema navigation and the operational runbook.
+  Manual test/production setup, event/setting contracts, safe inspection, real gate,
+  secret placement/rotation and rollback are documented and checked against code.
+- Focused synthetic verification initially passed **35 fast and 10 PostgreSQL
+  cases**. Coverage includes disabled/invalid credentials before body, malformed/
+  oversized/unsupported input, redaction, commit-before-ack, rollback, duplicates,
+  order, concurrent enqueue, newer generations, stale/crashed claims, incomplete
+  REST visibility, atomic apply rollback and polling-only convergence. The
+  response-loss case was subsequently strengthened to inject failure after commit;
+  final verification below records that rerun.
+- The first broad check stopped with the new enum export assertion (corrected)
+  and four pre-existing test-isolation failures from inherited development Kernel
+  mock configuration. Final checks use `KERNEL_MOCK_ENABLED=0`, empty
+  `KERNEL_BASE_URL`/`KERNEL_SERVICE_TOKEN` for the test process only, as in Step 3.
+  Local socket restrictions required running HTTP/PostgreSQL checks outside the
+  sandbox. The pre-existing local test PostgreSQL server remains running.
+- Final `npm run check` **PASS** on the final code: **1,539 fast API tests**,
+  **355 PostgreSQL tests**, **38 web boundary tests**, **370 component tests**,
+  production web build, Ruff lint/format, architecture, documentation and generated
+  freshness. This includes **38 webhook fast cases and all 10 webhook PostgreSQL
+  cases**, including injected response loss after commit and credential-header
+  privacy refusals. The final documentation-only evidence update was followed by
+  another documentation check and diff whitespace review. Log:
+  `.harness/any715-step4-check.log`. Browser E2E remains **SKIPPED** by the harness.
+  Final diff review confirms no Step 5 functionality or unrelated refactoring.
+- Real LBX authentication/delivery/event-to-REST enablement is **NOT_RUN**;
+  deployment stays **DISABLED/POLLING-ONLY**. No external billing/configuration,
+  production, Git mutation or Step 5 execution was performed.
 
 ### Step 5 — Deliver audited operations and lifecycle handoff
 
