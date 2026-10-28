@@ -254,7 +254,7 @@ def test_create_500_is_retained_without_email_and_diagnosed_after_bounded_recove
     assert result["diagnosis"] == ("email_conflict" if failure == "email_not_unique" else "create_outcome_unknown")
     with factory() as db:
         operation = db.scalar(select(ExternalCreateOperation))
-        work = db.scalar(select(BillingWorkItem))
+        work = db.scalar(select(BillingWorkItem).where(BillingWorkItem.work_kind == "external_create_recovery"))
         saved = work.payload_document["last_failed_create"]
         assert saved["http_status"] == saved["lbx_code"] == 500
         assert saved["reason"] == ("email_not_unique" if failure == "email_not_unique" else "provider_rejected")
@@ -274,7 +274,12 @@ def test_failure_evidence_cannot_overwrite_new_fence_or_receipt(
     record_customer_receipt(factory, current, 345)
     record_customer_create_failure(factory, current, http_status=500, lbx_code=500, reason="email_not_unique")
     with factory() as db:
-        assert "last_failed_create" not in db.scalar(select(BillingWorkItem)).payload_document
+        assert (
+            "last_failed_create"
+            not in db.scalar(
+                select(BillingWorkItem).where(BillingWorkItem.work_kind == "external_create_recovery")
+            ).payload_document
+        )
 
 
 @pytest.mark.parametrize(
@@ -299,7 +304,7 @@ def test_diagnostic_evidence_is_allowlisted(
     claim_customer_send(factory, config, TOKEN, reserve_customer(factory, config, TOKEN))
     with factory() as db:
         user_id = db.scalar(select(User.id))
-        work = db.scalar(select(BillingWorkItem))
+        work = db.scalar(select(BillingWorkItem).where(BillingWorkItem.work_kind == "external_create_recovery"))
         work.payload_document = {
             "last_failed_create": {
                 "schema_version": CREATE_RESPONSE_SCHEMA,

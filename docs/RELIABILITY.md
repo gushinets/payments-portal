@@ -21,8 +21,9 @@ starts empty, and ANY-664's restricted publication path commits immutable
 commercial mapping revisions. ANY-709 Step 3 implements acceptance, held purchase
 scopes and request-driven financial preparation/recovery, with focused synthetic
 tests passing and the recorded owner test-payment QA complete; independent final
-review remains pending (see the ANY-709 current acceptance ledger). Subscription reconciliation workers, paid-access derivation and
-invalidation delivery remain unimplemented. The two source-catalog projection tables remain inert.
+review remains pending (see the ANY-709 current acceptance ledger). ANY-715
+implements embedded reconciliation and GET-only recovery/inventory with local
+deadlines. Paid-access derivation and invalidation delivery remain unimplemented. The two source-catalog projection tables remain inert.
 
 ## Cross-cutting critical paths
 
@@ -59,9 +60,9 @@ invalidation delivery remain unimplemented. The two source-catalog projection ta
 - Webhook receipt, Widget callback, outbound command success, payment state, or
   manual operator input alone never grants paid access.
 
-These are target constraints. Provider command flows, webhook processing,
-reconciliation workers, paid-access derivation, and invalidation delivery are
-not current runtime behavior.
+These are cross-cutting constraints. Purchase preparation and embedded
+reconciliation/recovery are implemented; webhook processing, paid-access
+derivation and invalidation delivery remain later work.
 
 ## Transaction, idempotency, and retry contract
 
@@ -147,8 +148,9 @@ worker boundary. Do not add unbounded blocking work, retry loops, or retry
 sleeps.
 
 Password-reset email delivery remains its bounded synchronous framework
-background task. Billing work tables do not establish a worker runtime; the
-durable worker implementation belongs to a later step.
+background task. Billing work tables do not establish a worker runtime by
+themselves. Billing uses the separate bounded embedded runner with durable
+PostgreSQL claims and provider-free deadline capacity documented below.
 
 ## Agent-verifiable signals
 
@@ -227,8 +229,10 @@ ANY-715 Step 1 shared reconciliation uses short database-time fenced claims and
 apply transactions around one bounded four-point source read set. Incomplete
 attempts never renew finite source trust; owned blocks/conflicts reduce usability
 without depending on complete unrelated commercial fields. Preparation cannot
-overwrite monitored facts. This is a reusable use case, not automatic execution;
-deadline processing and worker resource isolation remain Step 2. See the
+overwrite monitored facts. Steps 2–3 execute it in the bounded embedded worker, with separate provider-free
+trust/create deadlines, urgent GET-only recovery and bounded customer inventory.
+Local contention preserves original send authority; retries and source outages
+never move financial UNKNOWN deadlines or convert completed no-send evidence. See the
 [billing operations runbook](engineering/ANY-715-billing-operations.md).
 
 Development environments are worktree-isolated and disposable. The Step-4

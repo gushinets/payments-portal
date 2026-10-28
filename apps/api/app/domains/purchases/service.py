@@ -264,7 +264,6 @@ def read_purchase(factory: SessionFactory, user_id: UUID, purchase_id: UUID) -> 
 def other_inventory_purchase(
     factory: SessionFactory, purchase: Purchase, provider_id: int, agreement_id: int
 ) -> Purchase | None:
-    """A tariff is not product identity; require the original permanent local binding."""
     with factory() as db:
         row = queries.subscription_purchase(
             db,
@@ -277,6 +276,7 @@ def other_inventory_purchase(
         if row is None or row.product_id == purchase.accepted.selection.product_id:
             return None
         other = _snapshot(db, row)
+        _verify_original_consent(db, row, other.accepted)
         bindings = {op.kind: op for op in other.operations}
         if (
             other.state != IntentState.LINKED
