@@ -811,27 +811,39 @@ provider recovery hints
 bound provider object id when proven
 ```
 
-### Owner-approved account-customer retry amendment (2026-10-27)
+### Owner-approved bounded account-customer recovery amendment (2026-10-28)
 
-For account-only customer bootstrap, the owner explicitly replaced permanent
-UNKNOWN/manual-review blocking with discover-before-create on each authenticated,
-verified-email explicit open. This narrowly supersedes the customer part of the
+For customer bootstrap, the owner approved bounded discover/create/recover within
+each authenticated, verified-email explicit opening. This replaces the 2026-10-27
+one-POST-per-opening limit and narrowly supersedes the customer part of the
 UNKNOWN policy below; agreement/subscription creation and paid-access trust do
-not change. The policy is an owner-approved retry choice, not a provider-proven
-absence predicate or an assertion of native LBX idempotency.
+not change. UNKNOWN records uncertainty, not permanent refusal of customer
+recovery. The selected retry policy relies on LBX email uniqueness; it is not a
+provider-proven absence predicate, native CREATE idempotency or a newly verified
+provider guarantee.
 
 `ensure_customer` is the single shared application use case and the sole consumer
 of LBX customer CREATE. It point-verifies an existing binding/receipt first, or
 searches by original opaque key and email. Email is candidate discovery only;
 binding still requires the unchanged original key plus canonical provider ID.
-Successful empty discovery permits one fenced customer POST per opening request.
-A failed CREATE is followed by another GET search/point proof, including after
-email/duplicate rejection or lost reply. A proven customer is bound and viewing
-continues. Unresolved failures return a safe error and are reported once to Sentry
-at the HTTP boundary. There is no immediate POST retry loop.
+Successful complete empty discovery permits a fenced customer POST. A temporary
+CREATE failure is followed by GET search/point proof and, when still absent,
+another claim after bounded backoff with jitter. Every attempt reuses the same
+slot, operation, opaque key and opening's email. A failed GET never means absence
+and permits only another GET. A saved CREATE ID or binding permits point reads
+only. Email-uniqueness rejection switches the rest of that opening to GET-only
+recovery. Identity conflicts, authorization errors and permanent validation
+failures stop; a failed CREATE still gets recovery before a permanent refusal is
+returned. A proven customer is bound and viewing continues.
 
-A completed failed attempt releases only its active-send lease. A later explicit
-open repeats discovery and may claim another attempt in the same permanent
+One existing nonrenewable request budget includes discovery, every CREATE,
+backoff, readback and cleanup. Deadline exhaustion retains the operation and
+returns a safe temporary pending result for a later explicit opening. There is
+no infinite HTTP loop or new background worker. Only unresolved failures are
+reported once to Sentry at the HTTP boundary.
+
+A completed failed attempt releases only its active-send lease. The same opening
+or a later explicit opening repeats discovery and may claim another attempt in the same permanent
 customer slot/operation, including legacy UNKNOWN/manual-review rows. An active
 lease prevents concurrent sends; crash/cancel/protected source cleanup retains a
 finite lease of the request's configured total timeout plus cleanup timeout.

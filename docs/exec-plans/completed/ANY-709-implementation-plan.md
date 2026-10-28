@@ -217,6 +217,63 @@ no new live Widget/acquiring acceptance is claimed.
 No real LBX CREATE/payment, working-database change or deployment is authorized
 or performed by this correction. Baseline log: `/tmp/pr150-widget-baseline.log`.
 
+## Owner-approved bounded customer recovery and pricing correction, 2026-10-28
+
+The owner approved replacing one customer CREATE per explicit opening with a
+bounded discover/create/recover cycle within the existing nonrenewable request
+budget. UNKNOWN records uncertainty and is not a permanent customer block.
+Successful complete discovery may authorize another fenced customer attempt;
+failed discovery never means absence. Reuse the original customer slot,
+operation, opaque key and opening's email. A saved receipt or binding permits
+point recovery only. Email-uniqueness rejection switches the opening to GET-only
+recovery; identity conflicts, authorization and permanent validation failures
+stop. Retry temporary failures with bounded backoff. Deadline exhaustion retains
+the operation for a later opening. No agreement/subscription retry policy changes.
+This selected customer policy relies on LBX email uniqueness; it is not native
+CREATE idempotency or a newly verified provider guarantee.
+
+The price correction selects the latest start on/before the captured Moscow
+date and rejects competing rows at that effective start only. Historical/future
+ties do not invalidate an otherwise unique current offer.
+
+- [x] Rebase ANY-709 onto main `83637fb01d446b97e9c952d3bee0862674542084`
+  (ANY-669 native sharp checks); all 17 commits replayed without conflicts.
+- [x] Reproduced the missing same-opening recovery and irrelevant-price cases:
+  all eight new regressions failed before the fix, while both effective-date
+  ambiguity cases passed. Log: `/tmp/pr150-recovery-baseline.log`.
+- [x] Implement both corrections and focused synthetic/PostgreSQL regressions.
+- [x] Align specification, architecture, security, schema/runbook guidance and
+  Linear ANY-709 sections 4B/D6/D8 with the approved policy.
+- [x] Run focused checks, independent review and the broadest supported check;
+  record actual evidence and remaining limitations here.
+
+Verification completed on the rebased working tree:
+
+- Full canonical `npm run check` PASS (exit 0): **1,447 fast API, 285 PostgreSQL,
+  370 component and 38 frontend boundary tests**; documentation, generation
+  freshness, architecture, Ruff lint/format, web lint and production build,
+  including main's native sharp guard. Log:
+  `/tmp/pr150-recovery-canonical-final.log`. Kernel settings were isolated and
+  PostgreSQL used a dedicated disposable `_tests` database owned by pytest.
+- **13 focused PostgreSQL recovery/diagnostic checks** passed separately,
+  including delayed visibility after email rejection, lost replies with/without
+  a provider side effect, failed discovery, permanent refusal, durable receipt
+  continuation, caller cancellation and deadline exhaustion. Log:
+  `/tmp/pr150-recovery-final-edges.log`.
+- Independent Bugbot review found no bugs. `git diff --check` passed. Rebase
+  range-diff confirmed all 17 original commits retained identical patches.
+- An early canonical attempt exposed a test-environment mismatch
+  (`KERNEL_MOCK_ENABLED=false` instead of harness `0`); the corrected full run
+  above completed all stages without test failures.
+- The canonical command skipped browser E2E (`RUN_E2E` was not enabled).
+  No new live LBX/payment run or Docker/runtime smoke is claimed. Installed local
+  Next.js remains `16.3.1` versus locked `16.4.2`; clean CI must validate the
+  locked install on the published rebased HEAD. Previous CI results do not
+  establish this new HEAD's result. No migration or public wire change is added.
+
+No live LBX CREATE/payment, working-database mutation or deployment is part of
+this correction. Issue: https://linear.app/paveldik/issue/ANY-709.
+
 ## Retained decisions and boundaries
 
 - Kernel owns enabled products; LBX owns current offers and commercial facts.
@@ -230,9 +287,9 @@ or performed by this correction. Baseline log: `/tmp/pr150-widget-baseline.log`.
 - Runtime and CLI share a server-resolved connection scope, stable through
   credential rotation. Preserve proven legacy scope and immutable history;
   never guess an origin, adopt ambiguous objects or promote synthetic evidence.
-- Customer ensure is discover -> at most one CREATE per explicit opening ->
-  GET recovery. A later separate opening may search/retry after its finite
-  send lease clears. The same customer key, slot, receipts and operation survive.
+- Customer ensure uses the owner-approved bounded discover/create/recover cycle
+  above. The same customer key, slot, receipts and operation survive; failed
+  discovery never authorizes CREATE and saved identity evidence allows GET only.
 - Financial CREATE has a stricter policy: possible send, timeout, lost response
   or error retains the operation and purchase hold; recovery is GET-only.
   Empty discovery or expiry of the original `unknown_since + 2h` deadline never

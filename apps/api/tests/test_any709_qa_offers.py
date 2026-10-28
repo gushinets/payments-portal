@@ -202,7 +202,7 @@ async def test_any709_qa_current_price_requires_applicable_dated_record(
 
 @pytest.mark.parametrize("name", ["services", "prices"])
 @pytest.mark.parametrize("start", ["2026-09-01", "2026-10-01", "2026-11-01"])
-async def test_any709_qa_current_price_rejects_competing_same_start_dates(name: str, start: str) -> None:
+async def test_any709_qa_current_price_checks_ambiguity_only_at_effective_start(name: str, start: str) -> None:
     source = scheduled_prices()
     document = json.loads(source.bodies[name])
     rows = document["response"][0]["prices"] if name == "services" else document["response"]
@@ -213,8 +213,13 @@ async def test_any709_qa_current_price_rejects_competing_same_start_dates(name: 
         competing["price_id"] = 999
     rows.append(competing)
     source.bodies[name] = json.dumps(document).encode()
-    with pytest.raises(SelectedOfferRefused, match="price_applicability_ambiguous"):
-        await quote(source)
+    if start == "2026-10-01":
+        with pytest.raises(SelectedOfferRefused, match="price_applicability_ambiguous"):
+            await quote(source)
+    else:
+        offer = await quote(source)
+        assert offer.money.recurring_amount == 100 and offer.price_id == 288
+        assert offer.period.price_effective_until == date(2026, 11, 1)
 
 
 @pytest.mark.parametrize("name", ["services", "prices"])

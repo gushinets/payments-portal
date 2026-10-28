@@ -199,19 +199,17 @@ def _applicable_price[Price: (LbxServicePrice, LbxInlinePrice)](
             period.period_length,
         ):
             _incomplete("price_period_conflict")
-    relevant.sort(key=_price_start)
-    if len({_price_start(row) for row in relevant}) != len(relevant):
-        _incomplete("price_applicability_ambiguous")
-    for index, row in enumerate(relevant):
-        following = _price_start(relevant[index + 1]) if index + 1 < len(relevant) else None
-        if isinstance(row, LbxServicePrice) and row.next_change_date is not None and row.next_change_date != following:
-            _incomplete("price_schedule_gap_or_overlap")
     applicable = [row for row in relevant if _price_start(row) <= effective_on]
     if not applicable:
         _incomplete("applicable_price_missing")
-    row = applicable[-1]
-    index = relevant.index(row)
-    until = _price_start(relevant[index + 1]) if index + 1 < len(relevant) else None
+    start = max(_price_start(row) for row in applicable)
+    candidates = [row for row in applicable if _price_start(row) == start]
+    if len(candidates) != 1:
+        _incomplete("price_applicability_ambiguous")
+    row = candidates[0]
+    until = min((_price_start(price) for price in relevant if _price_start(price) > start), default=None)
+    if isinstance(row, LbxServicePrice) and row.next_change_date is not None and row.next_change_date != until:
+        _incomplete("price_schedule_gap_or_overlap")
     return row, until
 
 

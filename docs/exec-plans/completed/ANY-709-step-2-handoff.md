@@ -4,6 +4,10 @@ Status: DONE - condensed historical implementation/evidence report
 Date: 2026-10-27
 Scope: Step 2 and shared LBX error corrections; actual payment remains unverified.
 
+Historical checkpoint: the one-POST-per-opening behavior recorded below was
+superseded by the owner-approved 2026-10-28 bounded customer recovery amendment.
+Current behavior and verification are in the completed plan and billing runbook.
+
 ## Delivered result
 
 - First name, surname and patronymic are independently optional. Empty/whitespace

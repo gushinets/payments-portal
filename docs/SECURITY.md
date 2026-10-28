@@ -113,12 +113,15 @@ need, security treatment, and retention.
 Only explicit authenticated POST after verified email may allocate the single
 customer slot. Before users POST, the permanent operation, opaque outer key,
 send fence, per-attempt two-hour deadline and coalesced recovery work are committed.
-Under the owner-approved 2026-10-27 customer amendment, each explicit open searches
-before sending and after a failed CREATE. A finite active-send lease prevents
-concurrent sends; a completed/expired attempt may be retried after fresh empty
-discovery in the same slot/operation. There is at most one POST per opening and no
-POST retry loop. A saved receipt must be resolved by point proof, and ambiguous
-identity or failed discovery prevents creation. Unresolved integration errors are
+Under the owner-approved 2026-10-28 customer amendment, each explicit open uses a
+bounded discover/create/recover cycle. Temporary failures wait with backoff within
+the existing request deadline. A finite active-send lease protects sends; each
+later claim requires fresh successful empty discovery in the same slot/operation.
+A saved receipt must be resolved by point proof. Email-uniqueness rejection
+permits GET recovery only for the rest of the opening; ambiguous identity, failed
+discovery, authorization and permanent validation errors never authorize CREATE.
+The selected customer policy relies on LBX email uniqueness; agreement and
+subscription retries remain stricter. Unresolved integration errors are
 reported once through the sanitized Sentry boundary. No fake
 PurchaseIntent, subscription, name, password repair or agreement is created for
 account viewing. Proven provider IDs are unique within the connection scope.

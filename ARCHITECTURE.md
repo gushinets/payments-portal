@@ -107,10 +107,12 @@ ANY-709 Step 2 adds explicit verified-email account-only customer/Widget
 bootstrap, pending human validation. It reuses the durable customer/create/work
 models and resolves the same proven provider-origin scope without a catalog/price
 prerequisite. The shared `ensure_customer` operation searches before CREATE and after a failed
-CREATE, binds only paired point proof, and permits one fenced send per explicit
-open. A finite active-send lease prevents concurrent sends; completed/expired
-attempts can be retried after fresh discovery under the owner's 2026-10-27
-account-customer amendment. Unresolved failures are reported once to Sentry. No purchase/subscription or paid
+CREATE, binds only paired point proof, and retries temporary customer failures
+with backoff within one nonrenewable opening deadline. Failed GETs never permit
+CREATE; saved IDs and email-uniqueness rejection allow GET recovery only. A finite
+active-send lease protects sends; each later claim needs fresh discovery under
+the owner's 2026-10-28 customer amendment. Unresolved failures are reported once
+to Sentry. No purchase/subscription or paid
 access is created for viewing. The official SDK runs only on explicit open in a
 disposable opaque-origin host; server-side paired identity, Client readiness and
 post-I/O session checks precede each no-store JWT response. See the runbook and

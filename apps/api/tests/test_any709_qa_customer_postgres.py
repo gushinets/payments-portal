@@ -41,7 +41,7 @@ pytestmark = pytest.mark.postgres
         httpx.RemoteProtocolError,
     ],
 )
-def test_any709_qa_transport_failure_retries_on_next_discover_first_open(
+def test_any709_qa_transport_failure_recovers_in_the_same_discover_first_open(
     migrated_database: Engine, postgres_session_factory: sessionmaker[Session], failure: type[httpx.TransportError]
 ) -> None:
     factory = postgres_session_factory
@@ -49,7 +49,7 @@ def test_any709_qa_transport_failure_retries_on_next_discover_first_open(
     config = step1_settings(lbx_max_get_attempts=2)
     attempts = 0
     outer = ""
-    unsent = failure in {httpx.PoolTimeout, httpx.ConnectTimeout, httpx.ConnectError}
+    first = reserve_customer(factory, config, TOKEN)
 
     def respond(request: httpx.Request) -> httpx.Response:
         nonlocal attempts, outer
@@ -71,13 +71,6 @@ def test_any709_qa_transport_failure_retries_on_next_discover_first_open(
 
     async def scenario() -> None:
         async with source_resources(config, lbx_transport=httpx.MockTransport(respond)) as sources:
-            with pytest.raises(BillingRefused):
-                await bootstrap_account(sources, config, factory=factory, token=TOKEN)
-            first = reserve_customer(factory, config, TOKEN)
-            with factory() as db:
-                assert db.scalar(select(ExternalCreateOperation)).operation_state == (
-                    State.PENDING if unsent else State.UNKNOWN
-                )
             await bootstrap_account(sources, config, factory=factory, token=TOKEN)
             await bootstrap_account(sources, config, factory=factory, token=TOKEN)
             assert reserve_customer(factory, config, TOKEN).operation_id == first.operation_id
@@ -86,7 +79,7 @@ def test_any709_qa_transport_failure_retries_on_next_discover_first_open(
     assert attempts == 2
 
 
-def test_any709_qa_receipt_survives_point_failure_and_restart_without_discovery_or_create(
+def test_any709_qa_receipt_survives_point_failure_without_more_discovery_or_create(
     migrated_database: Engine, postgres_session_factory: sessionmaker[Session]
 ) -> None:
     factory = postgres_session_factory
@@ -119,11 +112,6 @@ def test_any709_qa_receipt_survives_point_failure_and_restart_without_discovery_
         return httpx.Response(200, json={"code": 200, "response": {"user_id": 345, "outer_id": outer}})
 
     async def scenario() -> None:
-        async with source_resources(config, lbx_transport=httpx.MockTransport(respond)) as sources:
-            with pytest.raises(BillingRefused):
-                await bootstrap_account(sources, config, factory=factory, token=TOKEN)
-        with factory() as db:
-            assert db.scalar(select(ExternalCreateOperation)).operation_state == State.UNKNOWN
         async with source_resources(config, lbx_transport=httpx.MockTransport(respond)) as sources:
             for _ in range(2):
                 await bootstrap_account(sources, config, factory=factory, token=TOKEN)
@@ -246,7 +234,7 @@ def test_any709_qa_uncertain_commit_preserves_active_claim_or_saved_receipt(
 
     factory = postgres_session_factory
     seed(factory)
-    config = step1_settings()
+    config = step1_settings(preflight_total_timeout_seconds=0.6, preflight_cleanup_timeout_seconds=0.025)
     posts = []
     target = "claim_customer_send" if commit_phase == "claim" else "record_customer_receipt"
     original = getattr(billing, target)

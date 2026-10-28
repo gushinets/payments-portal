@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from random import uniform
+from time import monotonic
 from uuid import UUID
 
 from pydantic import SecretStr
@@ -26,21 +28,27 @@ from app.domains.billing.customers import (
     reserve_customer,
 )
 from app.domains.catalog.publication import SessionFactory
-from app.infrastructure.preflight import PreflightBudget, PreflightCleanupPending
+from app.infrastructure.preflight import PreflightBudget, PreflightCleanupPending, PreflightDeadlineExceeded
 from app.integrations.lbx._transport import customer_diagnostics
 from app.integrations.lbx.client import LbxServerClient
 from app.integrations.lbx.customer import NewCustomer, sign_widget_jwt
 from app.integrations.lbx.errors import (
     LbxAuthenticationFailed,
+    LbxAttemptsExhausted,
     LbxCreateNotSent,
     LbxError,
     LbxProviderRejected,
+    LbxRateLimited,
     LbxResponseInvalid,
     LbxScopeForbidden,
     LbxScopeMismatch,
+    LbxTimeout,
+    LbxUnavailable,
 )
 
 logger = logging.getLogger("payment_portal.billing")
+CUSTOMER_RETRY_BASE_SECONDS = 0.25
+CUSTOMER_RETRY_MAX_SECONDS = 2.0
 
 
 @dataclass(frozen=True)
@@ -86,27 +94,36 @@ async def recover_customer(
     return found
 
 
-async def ensure_customer(
+def _temporary_customer_failure(error: LbxError) -> bool:
+    if error.response_facts is not None and error.response_facts.failure_kind == "authorization":
+        return False
+    if isinstance(error, (LbxCreateNotSent, LbxTimeout, LbxUnavailable, LbxRateLimited, LbxAttemptsExhausted)):
+        return True
+    # This hint classifies a temporary response only. Permission to repeat a
+    # customer CREATE comes from the owner-approved customer policy and claim.
+    return error.response_facts is not None and error.response_facts.retryable_get
+
+
+async def _customer_retry_wait(budget: PreflightBudget, retries: int) -> None:
+    delay = min(CUSTOMER_RETRY_MAX_SECONDS, CUSTOMER_RETRY_BASE_SECONDS * 2 ** min(retries, 3))
+    if delay >= budget.remaining_seconds():
+        raise PreflightDeadlineExceeded()
+
+    async def pause() -> None:
+        await asyncio.sleep(uniform(delay / 2, delay))
+
+    await budget.run(pause)
+
+
+async def _create_customer_attempt(
     client: LbxServerClient,
-    configuration: Settings,
     *,
     factory: SessionFactory,
-    token: str,
     current: CustomerOpen,
+    command: NewCustomer,
     budget: PreflightBudget,
 ) -> CustomerOpen:
-    """Shared discover/bind/create/recover use case; the sole caller of CREATE."""
-    found = await _find_customer(client, factory, current, budget=budget)
-    if found is not None:
-        return found
-    await client.prepare_customer_create(budget=budget)
-    current = await run_in_threadpool(claim_customer_send, factory, configuration, token, current)
-    if not current.may_create:
-        # Another open owns the send or has just stored a receipt/binding.
-        found = await _find_customer(client, factory, current, budget=budget)
-        if found is not None:
-            return found
-        raise BillingRefused("billing_customer_pending", 409)
+    """One fenced send; resource cleanup finishes before any later attempt."""
     keep_lease = False
     try:
         try:
@@ -114,16 +131,7 @@ async def ensure_customer(
         except AppError:
             raise LbxCreateNotSent() from None
         try:
-            provider_id = await client.create_user(
-                NewCustomer(
-                    outer_id=current.outer_key,
-                    email=current.email,
-                    user_name=current.first_name,
-                    user_surname=current.surname,
-                    user_patronymic=current.patronymic,
-                ),
-                budget=budget,
-            )
+            provider_id = await client.create_user(command, budget=budget)
         except LbxCreateNotSent:
             raise
         except LbxError as error:
@@ -137,31 +145,91 @@ async def ensure_customer(
                     lbx_code=facts.lbx_code,
                     reason=facts.reason,
                 )
-            # Includes duplicate/uniqueness rejection and lost/malformed replies.
-            # Recovery never sends another POST in the same opening request.
-            try:
-                found = await _find_customer(client, factory, current, budget=budget)
-            except LbxScopeMismatch:
-                raise
-            except LbxError:
-                raise BillingAccountFailure("billing_customer_pending", 409) from None
-            if found is not None:
-                return found
-            raise BillingAccountFailure("billing_customer_pending", 409) from None
-        current = await run_in_threadpool(record_customer_receipt, factory, current, provider_id)
-        return await recover_customer(client, factory, current, budget=budget)
+            raise
+        return await run_in_threadpool(record_customer_receipt, factory, current, provider_id)
     except LbxCreateNotSent:
         await run_in_threadpool(release_unsent_claim, factory, current)
         raise
-    except (PreflightCleanupPending, asyncio.CancelledError):
+    except (PreflightDeadlineExceeded, PreflightCleanupPending, asyncio.CancelledError):
         keep_lease = True
         # A timed-out source task can still own cleanup: retain its finite lease.
         raise
     finally:
-        # Pending source work keeps its lease until expiry. Completed responses
-        # can be retried on another explicit open after fresh discovery.
+        # Pending source work keeps its lease until expiry. A completed attempt
+        # must be followed by a fresh snapshot and discovery before another send.
         if not keep_lease:
             await run_in_threadpool(finish_customer_attempt, factory, current)
+
+
+async def ensure_customer(
+    client: LbxServerClient,
+    configuration: Settings,
+    *,
+    factory: SessionFactory,
+    token: str,
+    current: CustomerOpen,
+    budget: PreflightBudget,
+) -> CustomerOpen:
+    """Bounded customer recovery; failed reads never authorize a CREATE."""
+    command = NewCustomer(
+        outer_id=current.outer_key,
+        email=current.email,
+        user_name=current.first_name,
+        user_surname=current.surname,
+        user_patronymic=current.patronymic,
+    )
+    operation_id = current.operation_id
+    retries = 0
+    failure: LbxError | None = None
+    email_taken = False
+    try:
+        while True:
+            budget.check()
+            if current.operation_id != operation_id or current.outer_key != command.outer_id:
+                raise BillingRefused("billing_identity_conflict", 409)
+            current = replace(current, email=command.email)
+            try:
+                found = await _find_customer(client, factory, current, budget=budget)
+                if found is None and not email_taken and failure is None:
+                    await client.prepare_customer_create(budget=budget)
+            except LbxError as error:
+                if not _temporary_customer_failure(error):
+                    raise
+            else:
+                if found is not None:
+                    return found
+                # An email rejection proves this opening must search, not send
+                # again. A permanent failure still gets one recovery read first.
+                if failure is not None and not email_taken and not _temporary_customer_failure(failure):
+                    raise failure
+                if not email_taken and failure is None:
+                    current = await run_in_threadpool(claim_customer_send, factory, configuration, token, current)
+                    if current.may_create:
+                        try:
+                            current = await _create_customer_attempt(
+                                client, factory=factory, current=current, command=command, budget=budget
+                            )
+                        except LbxError as error:
+                            failure = error
+                            facts = error.response_facts
+                            email_taken = facts is not None and facts.reason == "email_not_unique"
+                        current = await run_in_threadpool(reserve_customer, factory, configuration, token)
+                        # Immediately verify the saved receipt or recover the
+                        # failed send. Another CREATE always waits and rereads.
+                        continue
+            await _customer_retry_wait(budget, retries)
+            retries += 1
+            if failure is not None and _temporary_customer_failure(failure):
+                failure = None
+            current = await run_in_threadpool(reserve_customer, factory, configuration, token)
+    except PreflightDeadlineExceeded:
+        raise BillingAccountFailure("billing_customer_pending", 409) from None
+    except asyncio.CancelledError:
+        # The enclosing admission scope also enforces this same deadline.
+        # Preserve caller cancellation; normalize only its own timeout.
+        if monotonic() >= budget.work_deadline:
+            raise BillingAccountFailure("billing_customer_pending", 409) from None
+        raise
 
 
 async def bootstrap_account(

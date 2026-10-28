@@ -214,11 +214,13 @@ def test_diagnose_missing_slot_does_not_allocate_or_contact_billing(
 
 
 @pytest.mark.parametrize("failure", ["email_not_unique", "unknown"])
-def test_create_500_is_retained_without_email_or_retry_and_diagnosed(
+def test_create_500_is_retained_without_email_and_diagnosed_after_bounded_recovery(
     migrated_database: Engine, postgres_session_factory: sessionmaker[Session], failure: str
 ) -> None:
     factory = postgres_session_factory
-    config = step1_settings(lbx_max_get_attempts=2)
+    config = step1_settings(
+        lbx_max_get_attempts=2, preflight_total_timeout_seconds=0.6, preflight_cleanup_timeout_seconds=0.025
+    )
     seed(factory)
     posts = []
 
@@ -248,7 +250,7 @@ def test_create_500_is_retained_without_email_or_retry_and_diagnosed(
         )
 
     result = asyncio.run(scenario())
-    assert len(posts) == 2
+    assert len(posts) == 2 if failure == "email_not_unique" else len(posts) > 2
     assert result["diagnosis"] == ("email_conflict" if failure == "email_not_unique" else "create_outcome_unknown")
     with factory() as db:
         operation = db.scalar(select(ExternalCreateOperation))

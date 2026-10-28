@@ -100,19 +100,11 @@ def test_any709_step2_proven_unsent_bootstrap_releases_only_its_claim_and_reuses
 
     async def scenario() -> None:
         async with source_resources(config, lbx_transport=httpx.MockTransport(transport)) as sources:
-            with pytest.raises(BillingRefused, match="billing_source_unavailable"):
-                await billing.bootstrap_account(sources, config, factory=factory, token=TOKEN)
-            assert posts == [] and rejected
-            with factory() as db:
-                operation = db.scalar(select(ExternalCreateOperation))
-                assert operation.operation_state == State.PENDING
-                assert operation.unknown_since is None and operation.unknown_recovery_deadline_at is None
-                assert db.scalar(select(BillingWorkItem)).work_state == "done"
-            for _ in range(2):  # Both opens are explicit; the second reuses the binding.
+            for _ in range(2):  # Proven no-send is recovered inside the first opening.
                 assert (await billing.bootstrap_account(sources, config, factory=factory, token=TOKEN)).credential
 
     asyncio.run(scenario())
-    assert len(posts) == 1 and len(claims) == 2
+    assert rejected and len(posts) == 1 and len(claims) == 2
     assert claims[0].operation_id == claims[1].operation_id
     assert claims[0].outer_key == claims[1].outer_key == posts[0]["outer_id"]
     assert claims[0].fence != claims[1].fence
@@ -127,12 +119,12 @@ def test_any709_step2_proven_unsent_bootstrap_releases_only_its_claim_and_reuses
 @pytest.mark.parametrize(
     "failure,expected",
     [
-        (503, "billing_source_rejected"),
-        (429, "billing_source_unavailable"),
-        ("timeout", "billing_source_unavailable"),
+        (503, "billing_customer_pending"),
+        (429, "billing_customer_pending"),
+        ("timeout", "billing_customer_pending"),
         (401, "billing_server_auth_failed"),
         (403, "billing_server_auth_failed"),
-        ("provider_500", "billing_source_rejected"),
+        ("provider_500", "billing_customer_pending"),
         ("credentials_500", "billing_server_auth_failed"),
         ("invalid", "billing_source_invalid_response"),
     ],
@@ -142,7 +134,9 @@ def test_any709_step2_preauth_outage_leaves_the_same_operation_pending_without_a
 ) -> None:
     factory = postgres_session_factory
     seed(factory)
-    config = step1_settings(lbx_max_get_attempts=2)
+    config = step1_settings(
+        lbx_max_get_attempts=2, preflight_total_timeout_seconds=0.6, preflight_cleanup_timeout_seconds=0.025
+    )
     calls: list[tuple[str, str]] = []
 
     def transport(request: httpx.Request) -> httpx.Response:
@@ -176,15 +170,19 @@ def test_any709_step2_preauth_outage_leaves_the_same_operation_pending_without_a
                     assert db.scalar(select(func.count()).select_from(BillingWorkItem)) == 0
 
     asyncio.run(scenario())
-    assert calls == [("GET", "/api/rest/v1/auth")] * (2 if failure in {401, 403, "invalid", "credentials_500"} else 4)
+    assert calls and all(call == ("GET", "/api/rest/v1/auth") for call in calls)
+    if failure in {401, 403, "invalid", "credentials_500"}:
+        assert len(calls) == 2  # Permanent refusals never loop inside an opening.
 
 
-def test_any709_step2_lost_reply_retries_once_per_explicit_open_after_discovery(
-    migrated_database: Engine, postgres_session_factory: sessionmaker[Session]
+def test_any709_step2_lost_replies_exhaust_one_budget_and_retain_the_operation(
+    migrated_database: Engine, postgres_session_factory: sessionmaker[Session], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     factory = postgres_session_factory
     seed(factory)
-    config = step1_settings()
+    config = step1_settings(preflight_total_timeout_seconds=0.6, preflight_cleanup_timeout_seconds=0.025)
+    monkeypatch.setattr(billing, "CUSTOMER_RETRY_BASE_SECONDS", 0.01)
+    monkeypatch.setattr(billing, "CUSTOMER_RETRY_MAX_SECONDS", 0.02)
     posts = 0
 
     def transport(request: httpx.Request) -> httpx.Response:
@@ -205,7 +203,7 @@ def test_any709_step2_lost_reply_retries_once_per_explicit_open_after_discovery(
                     await billing.bootstrap_account(sources, config, factory=factory, token=TOKEN)
                 with factory() as db:
                     operation = db.scalar(select(ExternalCreateOperation))
-                    assert operation.operation_state == State.UNKNOWN
+                    assert operation.operation_state in {State.UNKNOWN, State.POSSIBLE_SEND}
                     current = (
                         operation.create_operation_id,
                         operation.send_fence,
@@ -215,11 +213,15 @@ def test_any709_step2_lost_reply_retries_once_per_explicit_open_after_discovery(
                     if identity is None:
                         identity = current
                     assert current[0] == identity[0]
-                    assert db.scalar(select(BillingWorkItem)).lease_owner is None
-                    assert db.scalar(select(BillingWorkItem)).work_state == "pending"
+                    work = db.scalar(select(BillingWorkItem))
+                    if operation.operation_state == State.UNKNOWN:
+                        assert work.lease_owner is None
+                    else:
+                        assert work.lease_owner is not None and work.lease_expires_at is not None
+                    assert work.work_state == "pending"
 
     asyncio.run(scenario())
-    assert posts == 3
+    assert posts > 3  # Bounded automatic recovery replaces one POST per opening.
 
 
 def test_any709_step2_unsent_release_rejects_nonowner_and_changed_claims(

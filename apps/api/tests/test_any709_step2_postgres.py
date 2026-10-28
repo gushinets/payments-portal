@@ -99,7 +99,7 @@ def test_any709_step2_crash_zero_one_multiple_and_overdue_recovery(
     migrated_database: Engine, postgres_session_factory: sessionmaker[Session], candidates: int
 ) -> None:
     factory = postgres_session_factory
-    config = step1_settings()
+    config = step1_settings(preflight_total_timeout_seconds=0.6, preflight_cleanup_timeout_seconds=0.025)
     seed(factory)
     initial = reserve_customer(factory, config, TOKEN)
     claim = claim_customer_send(factory, config, TOKEN, initial)

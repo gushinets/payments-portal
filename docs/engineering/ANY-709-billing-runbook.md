@@ -333,9 +333,13 @@ reopening uses that ID for paired point proof and never repeats CREATE. Server
 GET credential/contact fields are discarded by the identity projection. A
 short candidate list may omit `outer_id`; its detailed GET still must match.
 Every unbound open uses the shared `ensure_customer` operation: original-key
-search, email candidate search when needed, point proof, then one CREATE only if
-successful discovery found no candidate. CREATE failure triggers GET recovery
-before returning an error. Email matches alone never bind. A known receipt always
+search, email candidate search when needed, point proof, then a fenced CREATE only
+if successful discovery found no candidate. Temporary failures use bounded
+discover/create/recover with backoff within the existing opening deadline;
+failed reads never permit CREATE. Email-uniqueness rejection uses GET recovery
+only for the rest of the opening. Permanent errors stop after recovery. Deadline
+exhaustion retains the operation for later explicit continuation. Email matches
+alone never bind. A known receipt always
 uses its saved ID and prevents another CREATE. The owner supplied a successful
 Widget rendering screenshot on 2026-10-27; it proves that observed account only.
 
@@ -379,16 +383,20 @@ SELECT count(*) FROM external_subscriptions;
 After first open: one scoped customer, one permanent customer operation with
 NULL purchase ID, one recovery item committed before any POST, no Portal-created
 purchase/subscription. Proven binding completes its recovery item and clears its
-active-send lease. The owner-approved 2026-10-27 policy permits another explicit
-open to claim a retry after fresh empty discovery when the previous attempt has
-finished or its finite lease has expired, including old UNKNOWN/manual-review
+active-send lease. The owner-approved 2026-10-28 policy permits bounded
+same-opening recovery and later explicit opens to claim a retry after fresh
+successful empty discovery when the previous attempt has finished or its finite
+lease has expired, including old UNKNOWN/manual-review
 rows. The same user, opaque key, slot and permanent operation are retained; the
 work attempt count/fence and per-attempt recovery deadline advance. An active
 lease, saved receipt, ambiguous identity or failed discovery prevents another
-POST. There is one CREATE implementation/caller and at most one POST per opening.
-On rejection (including email uniqueness), recovery searches again; a proven match
-continues to Client readiness, otherwise a safe error with request ID is returned
-and reported once to Sentry. No retry loop, direct provider PATCH, user deletion
+POST. There is one CREATE implementation/caller. Temporary failures retry with
+backoff and jitter inside the nonrenewable opening budget. Email-uniqueness
+rejection switches to GET-only recovery; authorization, identity conflicts and
+permanent validation failures stop. A proven match continues to Client readiness;
+deadline exhaustion retains the operation and returns a temporary pending error
+with request ID, reported once to Sentry. The opening reuses its original email
+and opaque key. No infinite loop, direct provider PATCH, user deletion
 or diagnostic-CLI mutation is added. Reopening a bound customer uses GETs plus a
 fresh JWT. Migration retains historical records and refuses
 conflicting unique data rather than deleting/relabeling it. Legacy customer rows

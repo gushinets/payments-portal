@@ -224,9 +224,10 @@ Nullable `send_fence` records the current owner; `pending`, `possible_send`,
 vocabulary over TEXT storage. The customer send claim atomically records its fence, per-attempt
 two-hour deadline and one coalesced `external_create_recovery` work item. Its
 existing paired lease fields protect active account-customer sends, and
-`attempt_count` counts claimed attempts. Under the owner's 2026-10-27 amendment,
-a later explicit account open can claim a retry after fresh empty discovery and
-completion/expiry of the active lease, retaining the same operation/key. A saved
+`attempt_count` counts claimed attempts. Under the owner's 2026-10-28 amendment,
+bounded same-opening recovery or a later explicit open can claim a retry after
+fresh successful empty discovery and completion/expiry of the active lease,
+retaining the same operation/key. A saved
 receipt or identity conflict prevents another POST; point proof binds only against
 the current fence. Financial operations have a unique intent/kind identity and a unique permanent
 account/kind/provider-object binding. Their account/customer composite FK prevents
