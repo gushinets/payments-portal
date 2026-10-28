@@ -141,7 +141,7 @@ derived database name ending in `_tests`.
 ## Runtime baseline
 
 - Node.js: `24.x` LTS for local development, CI, and the production web image.
-  The production Docker image is pinned to `node:24.18.0-alpine3.24` plus its
+  The production Docker image is pinned to `node:24.22.1-alpine3.24` plus its
   multi-architecture digest.
   The production web image uses Next.js standalone output and starts the traced
   workspace server directly with `node apps/web/server.js`; npm and other build
