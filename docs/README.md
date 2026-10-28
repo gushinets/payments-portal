@@ -111,3 +111,5 @@ Start with the smallest document that matches the task.
 
 - [Database schema](generated/db-schema.md)
 - [OpenAPI snapshot](generated/openapi.json)
+
+- [ANY-715 billing operations](engineering/ANY-715-billing-operations.md) — Step 1 shared authoritative proof, state/trust semantics, evidence limits and owner checkpoint; automatic execution remains planned.
