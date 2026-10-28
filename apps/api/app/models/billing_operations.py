@@ -7,6 +7,7 @@ from app.models._shared import (
     Index,
     Integer,
     Mapped,
+    PersistedEnumType,
     Text,
     datetime,
     func,
@@ -16,6 +17,7 @@ from app.models._shared import (
     uuid,
     uuid_type,
 )
+from app.models.enums import WebhookDeliveryState
 
 
 class BillingWorkItem(Base):
@@ -148,7 +150,9 @@ class ExternalBillingWebhookDelivery(Base):
     correlation_document: Mapped[dict] = mapped_column(json_type, nullable=False)
     evidence_schema_version: Mapped[str] = mapped_column(Text, nullable=False)
     evidence_document: Mapped[dict] = mapped_column(json_type, nullable=False)
-    processing_state: Mapped[str] = mapped_column(Text, nullable=False)
+    processing_state: Mapped[WebhookDeliveryState] = mapped_column(
+        PersistedEnumType(WebhookDeliveryState), nullable=False
+    )
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     processing_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
