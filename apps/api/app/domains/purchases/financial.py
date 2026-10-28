@@ -30,6 +30,7 @@ from app.infrastructure.queries.billing_customers import (
     recovery_work,
     open_customer_reviews,
 )
+from app.infrastructure.queries.billing_reconciliation import open_reviews
 from app.models import (
     BillingStateObservation,
     BillingStateObservationKind,
@@ -286,6 +287,9 @@ def _bind_financial(
     with factory() as db:
         row = _locked(db, purchase)
         operations = queries.operations(db, purchase.id, lock=True)
+        existing = queries.linked_subscription(db, purchase.id)
+        if existing is not None and open_reviews(db, existing.subscription_id):
+            raise PurchaseRefused("purchase_review_required", 409)
         op = next(op for op in operations if op.create_operation_id == expected.id)
         if op.send_fence != expected.fence:
             raise PurchaseRefused("purchase_pending", 409)
@@ -360,7 +364,6 @@ def _bind_financial(
                 or sub.external_agreement_id != agreement.bound_external_object_id
             ):
                 raise PurchaseRefused("purchase_review_required", 409)
-            sub.lifecycle_status = Lifecycle.ACTIVE if observation.state == 2 else Lifecycle.INACTIVE
             evidence = BillingStateObservation(
                 observation_kind=BillingStateObservationKind.AUTHORITATIVE_SUBSCRIPTION_READ,
                 external_billing_account_id=row.external_billing_account_id,
@@ -375,7 +378,12 @@ def _bind_financial(
             )
             db.add(evidence)
             db.flush()
-            sub.latest_observation_id = evidence.observation_id
+            # Any reconciliation claim marks this as a monitored subscription.
+            # Preparation may append evidence, but it cannot replace lifecycle,
+            # financial status, supporting observation or source trust.
+            if sub.reconciliation_fencing_token == 0:
+                sub.lifecycle_status = Lifecycle.ACTIVE if observation.state == 2 else Lifecycle.INACTIVE
+                sub.latest_observation_id = evidence.observation_id
             # No paid trust extension, financial eligibility, access scope, grant or allowance.
             row.state = IntentState.LINKED
             row.state_updated_at = now

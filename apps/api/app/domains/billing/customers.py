@@ -343,6 +343,15 @@ def finish_customer_attempt(factory: SessionFactory, expected: CustomerOpen) -> 
         db.commit()
 
 
+def mark_customer_identity_conflict(
+    db: Session, customer: ExternalBillingCustomer, operation: ExternalCreateOperation
+) -> None:
+    """Caller owns the transaction; record a conflict requiring controlled review."""
+    customer.binding_state = Binding.IDENTITY_CONFLICT
+    operation.send_fence = uuid4()
+    record_customer_review(db, operation, "customer_identity_conflict")
+
+
 def apply_customer_read(
     factory: SessionFactory,
     expected: CustomerOpen,
