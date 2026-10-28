@@ -88,10 +88,12 @@ The conceptual user-facing destination is the AnyToolAI Portal for the selected
 contour, with Platform Kernel as a separate API/service boundary; no separate
 Application Portal peer frontend is required. The Resolver API schema remains
 undefined, and this topology defines no response fields or client behavior.
-There is no current provider webhook runtime or callback endpoint. If a future
-External Billing webhook integration is implemented by its owning later step,
-it is contour-local and terminates at that contour's API; Region Resolver is
-not a webhook proxy.
+ANY-715 Step 4 implements contour-local `POST /api/billing/lbx/webhook`, default
+disabled via `LBX_WEBHOOK_ENABLED=false`. All Compose API environments forward
+that flag plus `LBX_WEBHOOK_AUTH_HEADER` and secret `LBX_WEBHOOK_AUTH_VALUE`.
+The existing Caddy `/api/*` proxy terminates at that contour's API; Region Resolver
+is not a webhook proxy. Follow the [manual setup and real enablement gate](../engineering/ANY-715-billing-operations.md#test-and-production-setup)
+for each environment. Keep polling enabled; no real header/delivery PASS is claimed.
 
 The clean baseline validates the configured scope and then bootstraps only the
 currently supported `anytoolai` / `ru` contour and its RU country membership.

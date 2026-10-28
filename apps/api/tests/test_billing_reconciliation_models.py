@@ -14,6 +14,7 @@ from app.models import (
     ExternalSubscriptionLifecycleStatus,
     ManualReviewCase,
     PurchasedAllowance,
+    WebhookDeliveryState,
 )
 from app.models._shared import PersistedEnumType
 
@@ -357,6 +358,7 @@ def test_closed_and_open_vocabularies_are_explicit() -> None:
         ExternalSubscription.__table__.c.financial_access_status: ExternalSubscriptionFinancialAccessStatus,
         ExternalSubscription.__table__.c.commercial_access_status: ExternalSubscriptionCommercialAccessStatus,
         BillingStateObservation.__table__.c.observation_kind: BillingStateObservationKind,
+        ExternalBillingWebhookDelivery.__table__.c.processing_state: WebhookDeliveryState,
     }
     for column, enum_cls in enum_columns.items():
         assert isinstance(column.type, PersistedEnumType)
@@ -365,7 +367,6 @@ def test_closed_and_open_vocabularies_are_explicit() -> None:
     open_columns = (
         BillingStateObservation.__table__.c.completeness_classification,
         BillingStateObservation.__table__.c.result_classification,
-        ExternalBillingWebhookDelivery.__table__.c.processing_state,
         BillingWorkItem.__table__.c.work_kind,
         BillingWorkItem.__table__.c.scope_kind,
         BillingWorkItem.__table__.c.work_state,
