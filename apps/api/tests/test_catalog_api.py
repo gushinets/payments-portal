@@ -81,12 +81,13 @@ async def test_any709_step1_discovery_is_not_limited_by_mapping_or_billing(
     assert response.status_code == 200 and response.headers["cache-control"] == "no-store"
     assert response.json()["products"] == [
         {
-            "product_id": "proposal_ai",
+            "product_id": product_id,
             "kernel_provenance": "SIMULATED",
             "availability": "DETAILS_REQUIRED",
             "availability_reason": None,
             "offer": None,
         }
+        for product_id in ("brief_decoder", "proposal_ai")
     ]
     assert source.requests == []
     detail = await http.get("/api/catalog/products/proposal_ai")

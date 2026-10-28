@@ -24,6 +24,8 @@ from .support.settings import DEFAULT_API_TEST_ENV
 load_dotenv()
 os.environ["SENTRY_DSN"] = ""
 os.environ["SENTRY_RELEASE"] = ""
+# Never start source work from an inherited developer/stand configuration.
+os.environ["BILLING_WORKER_ENABLED"] = "false"
 for name, value in DEFAULT_API_TEST_ENV.items():
     os.environ.setdefault(name, value)
 

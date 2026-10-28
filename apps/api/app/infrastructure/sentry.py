@@ -50,6 +50,7 @@ class FailureCategory(StrEnum):
 class Operation(StrEnum):
     HTTP_REQUEST = "http_request"
     PASSWORD_RESET_EMAIL = "password_reset_email"
+    BILLING_WORKER = "billing_worker"
 
 
 def classify_exception(error: Exception) -> FailureCategory:

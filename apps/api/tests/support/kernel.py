@@ -13,7 +13,7 @@ from apps.api.tests.support.settings import DEFAULT_API_TEST_ENV
 
 
 CONTRACT = Path(__file__).resolve().parents[4] / "docs/contracts/kernel-capability-manifest/v1"
-EXPECTED_DIGEST = "sha256:535a1cdf925b0afaa07b6d6045fd92f98dcb620dbd5fac7bf359dd3416a741fe"
+EXPECTED_DIGEST = "sha256:a39bac9f210a6ac67e97e117f8481a5954dc3f36bdaab2fd54c7522b27d6ec29"
 TOKEN = "simulated-kernel-client-test-token"
 
 

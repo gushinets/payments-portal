@@ -31,6 +31,7 @@ from app.infrastructure.queries.billing_customers import (
     open_customer_reviews,
 )
 from app.infrastructure.queries.billing_reconciliation import open_reviews
+from app.domains.billing.work import enroll_subscription
 from app.models import (
     BillingStateObservation,
     BillingStateObservationKind,
@@ -340,6 +341,7 @@ def _bind_financial(
                 raise PurchaseRefused("purchase_pending", 409)
             now = utc_now()
             sub = queries.linked_subscription(db, purchase.id)
+            new_subscription = sub is None
             if sub is None:
                 sub = ExternalSubscription(
                     subscription_id=uuid4(),
@@ -384,6 +386,8 @@ def _bind_financial(
             if sub.reconciliation_fencing_token == 0:
                 sub.lifecycle_status = Lifecycle.ACTIVE if observation.state == 2 else Lifecycle.INACTIVE
                 sub.latest_observation_id = evidence.observation_id
+            if new_subscription:
+                enroll_subscription(db, sub)
             # No paid trust extension, financial eligibility, access scope, grant or allowance.
             row.state = IntentState.LINKED
             row.state_updated_at = now

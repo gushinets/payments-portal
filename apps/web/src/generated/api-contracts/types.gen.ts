@@ -82,6 +82,52 @@ export type AccountPurchasesResponse = {
 };
 
 /**
+ * BillingHealthResponse
+ */
+export type BillingHealthResponse = {
+    /**
+     * Active Slots
+     */
+    active_slots?: number;
+    /**
+     * Cleanup Pending
+     */
+    cleanup_pending?: number;
+    /**
+     * Enrolled Batches
+     */
+    enrolled_batches?: number;
+    /**
+     * Failures
+     */
+    failures?: number;
+    /**
+     * Invalid Work
+     */
+    invalid_work?: number;
+    /**
+     * Last Progress At
+     */
+    last_progress_at?: string | null;
+    /**
+     * Last Scan At
+     */
+    last_scan_at?: string | null;
+    /**
+     * Oldest Due At
+     */
+    oldest_due_at?: string | null;
+    /**
+     * Pending Work
+     */
+    pending_work?: number;
+    /**
+     * Status
+     */
+    status: 'disabled' | 'not_configured' | 'running' | 'degraded' | 'stopping';
+};
+
+/**
  * CatalogMoney
  */
 export type CatalogMoney = {
@@ -1144,6 +1190,22 @@ export type ProductDetailApiCatalogProductsProductIdGetResponses = {
 };
 
 export type ProductDetailApiCatalogProductsProductIdGetResponse = ProductDetailApiCatalogProductsProductIdGetResponses[keyof ProductDetailApiCatalogProductsProductIdGetResponses];
+
+export type BillingHealthApiHealthBillingGetData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/health/billing';
+};
+
+export type BillingHealthApiHealthBillingGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: BillingHealthResponse;
+};
+
+export type BillingHealthApiHealthBillingGetResponse = BillingHealthApiHealthBillingGetResponses[keyof BillingHealthApiHealthBillingGetResponses];
 
 export type LivenessApiHealthLiveGetData = {
     body?: never;

@@ -116,7 +116,10 @@ def test_complete_manifest_is_served_over_http_with_stable_expected_digest() -> 
     assert payload["manifest_version"] == second.json()["manifest_version"] == EXPECTED_DIGEST
     assert first.headers["cache-control"] == "no-store"
     assert len(payload["products"]) == 6
-    assert [product["product_id"] for product in payload["products"] if product["enabled"]] == ["proposal_ai"]
+    assert [product["product_id"] for product in payload["products"] if product["enabled"]] == [
+        "brief_decoder",
+        "proposal_ai",
+    ]
     assert payload["usage_metrics"][0]["metric_key"] == "proposal_ai.test_generations"
 
 
@@ -157,12 +160,14 @@ def test_disabled_or_absent_selected_capability_is_a_complete_manifest(scenario:
         assert products["proposal_ai"]["enabled"] is False
     elif scenario == Scenario.MISSING_PRODUCT:
         assert "proposal_ai" not in products
-        assert not metrics
+        assert "proposal_ai.test_generations" not in metrics
     elif scenario == Scenario.DISABLED_METRIC:
         assert metrics["proposal_ai.test_generations"]["enabled"] is False
     else:
         assert products["proposal_ai"]["enabled"] is True
-        assert not metrics
+        assert "proposal_ai.test_generations" not in metrics
+    assert products["brief_decoder"]["enabled"] is True
+    assert metrics["brief_decoder.test_analyses"]["enabled"] is True
     assert payload["manifest_version"] != EXPECTED_DIGEST
 
 
