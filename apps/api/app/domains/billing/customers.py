@@ -366,6 +366,15 @@ def _manual_review(db: Session, operation: ExternalCreateOperation, reason: str)
     operation.operation_state = State.MANUAL_REVIEW
 
 
+def mark_customer_identity_conflict(
+    db: Session, customer: ExternalBillingCustomer, operation: ExternalCreateOperation
+) -> None:
+    """Caller owns the transaction; original paired-key proof may restore it."""
+    customer.binding_state = Binding.IDENTITY_CONFLICT
+    operation.send_fence = uuid4()
+    _manual_review(db, operation, "customer_identity_conflict")
+
+
 def apply_customer_read(
     factory: SessionFactory,
     expected: CustomerOpen,
@@ -396,9 +405,7 @@ def apply_customer_read(
             and (outer_key != customer.billing_customer_key or customer.provider_customer_id not in {None, provider_id})
         )
         if conflict:
-            customer.binding_state = Binding.IDENTITY_CONFLICT
-            operation.send_fence = uuid4()  # Invalidate any delayed successful CREATE completion.
-            _manual_review(db, operation, "customer_identity_conflict")
+            mark_customer_identity_conflict(db, customer, operation)
             db.commit()
             raise BillingRefused("billing_identity_conflict", 409)
         if provider_id is None:

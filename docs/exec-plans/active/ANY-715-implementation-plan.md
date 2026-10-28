@@ -1,6 +1,6 @@
 # ANY-715 — Background Work, Webhooks, Reconciliation & Recovery
 
-Status: proposed; application implementation not started  
+Status: Step 1 implemented and locally verified; Steps 2–5 not started
 Updated: 2026-10-28  
 Issue: https://linear.app/paveldik/issue/ANY-715  
 Program: https://linear.app/paveldik/issue/ANY-504
@@ -702,6 +702,36 @@ Application logic and preserve its facts across subsequent preparation reads.
 
 `ANY-715 - Establish shared authoritative reconciliation`
 
+**Step 1 execution evidence — 2026-10-28**
+
+- Shared claim/read/normalize/apply, original provenance, finite trust,
+  negative/conflict handling and preparation-writer protection are implemented.
+  No worker, queue enrollment, webhook, operator command or paid-access producer
+  is enabled by this step.
+- `billing_subscription_reconciliation`: 42 fast tests and 7 PostgreSQL tests
+  PASS with synthetic sources. The PostgreSQL coverage includes minimum reads,
+  lifecycle/history, outage beyond trust expiry, review preservation,
+  preparation races, fencing, customer restoration, timeout and HTTP 404.
+- Affected Step 7 PostgreSQL suite: 32 PASS on isolated rerun. The first combined
+  selection reported failures under concurrent checks and hit its 240-second
+  wrapper limit before a failure summary; it is not a PASS. The isolated rerun
+  completed without those failures.
+- API Ruff lint/format, architecture, documentation, generated-artifact
+  freshness and `npm run check:fast` PASS. The fast canonical run included
+  1,489 API tests, 38 web boundary tests and 370 component tests.
+- `npm run check` PASS, including the production web build and all 282
+  PostgreSQL tests. The final source-scope guard was followed by another
+  42-test focused fast PASS. Browser E2E was skipped by the canonical harness
+  because `RUN_E2E=true` and a running browser stack were not supplied.
+- The [operations runbook](../../engineering/ANY-715-billing-operations.md)
+  records implemented semantics and deferred runtime work. Sanitized normalizer
+  examples were inspected locally and saved under ignored
+  `.harness/any715-step1-normalized-examples.json`; they are SIMULATED and do not
+  represent executed provider point reads.
+- Real LBX normalized-output inspection, untouched natural renewal and human
+  owner acceptance remain NOT_RUN. No real financial mutation or Git mutation
+  was performed.
+
 ### Step 2 — Run durable polling with bounded execution
 
 **Goal**
@@ -717,6 +747,10 @@ restart. The embedded runner claims only available slots, reads LBX outside
 transactions, applies current fenced results and reschedules safely. Expired
 leases cannot make old reads authoritative or free still-occupied HTTP slots.
 Local deadlines continue during slow provider work.
+The two enabled mock products, `proposal_ai` and `brief_decoder`, have separate
+owned subscriptions and independently enrolled/reconciled facts, including after
+restart. Mock Kernel supplies only technical product/metric identity; synthetic
+LBX responses supply subscription states.
 
 **Read before implementation**
 
@@ -727,6 +761,11 @@ Local deadlines continue during slow provider work.
 - `http/health.py`, observability and Sentry boundaries.
 - `apps/api/alembic/versions/20261027_0003_normal_billing.py`.
 - Settings, Compose variants, harness propagation and deployment tests.
+- Selective reference: `any-765-mock-two-products`, commit
+  `c1b093757702c112298a07f60999e9697f0efcd4`. Inspect its diff for
+  `tools/kernel_manifest_mock/server.py`, the versioned manifest fixture/digest,
+  `apps/api/tests/support/kernel.py`, manifest client/mock tests and
+  `scripts/check_kernel_manifest_contract.py`; adapt against current ANY-715.
 
 **Implementation**
 
@@ -750,6 +789,32 @@ Local deadlines continue during slow provider work.
   the future expansion path immediately.
 - Add settings documentation tests and small competing-handler coverage.
 
+**Selective two-product mock reuse**
+
+Port only compatible technical mock/fixture/test changes from the referenced
+commit. Keep the complete six-product manifest with `proposal_ai` and
+`brief_decoder` enabled, and independent TEST-ONLY metrics
+`proposal_ai.test_generations` (`generation`) and
+`brief_decoder.test_analyses` (`analysis`). Update the fixture semantic digest
+and independent expected values consistently. Adapt mock missing/disabled
+product/metric scenarios to affect only their intended product; preserve the
+other product and its metric. Scope contract-checker metric selection to the
+selected product instead of all manifest metrics.
+
+Preserve current manifest schema, routes, service authentication, contour/scope
+checks and SIMULATED provenance. Update only applicable fixture-description
+text and tests that assumed one enabled product. Do not merge/cherry-pick the
+whole ANY-765 branch or replace current files with its old Step 7 versions.
+Reuse the completed Step 1 contracts; do not redo that step or its evidence.
+
+Exclude the donor's `paid-access-test-offers.json`, its loading/OpenAPI metadata
+and the associated 100/300 allowance examples/tests. Those quantities belong to
+future Step 9, not the Capability Manifest or Step 8 subscription proof. No
+allowances, grants or quota calculations are introduced. Mock discovery remains
+test setup, not a new Kernel dependency for historical reconciliation. Use
+synthetic LBX GET responses and disposable local records for both subscriptions;
+do not create real paid/provider objects.
+
 **Invariants / Non-goals**
 
 No network under locks, in-memory correctness queue, generic scheduler, new
@@ -763,6 +828,19 @@ and affected deployment tests. With batch size 2 and five eligible subscriptions
 prove all three batches enroll, restart after a committed batch completes the
 remainder, a new link is immediate, and concurrent sweeps/linking create one job.
 Verify repeated sweeps preserve existing future due times and expired claims.
+
+Add a small two-product PostgreSQL/integration fixture for the same user and
+billing account with independent purchases/agreements/subscriptions. Verify
+both products enroll through linking and backfill, duplicate hints coalesce per
+subscription without collapsing product jobs, each reconciles its own synthetic
+LBX facts, and restart preserves both schedules/bindings. Inspect separate work,
+observation and projection identities; no paid-state writes are permitted.
+
+Run affected `test_kernel_manifest_mock.py` and
+`test_kernel_manifest_client.py` coverage and the existing contract checker
+(`.venv/bin/python scripts/check_kernel_manifest_contract.py`). Verify both
+metrics, consistent semantic digests and product-specific mock failure cases,
+without importing Step 9 quantity expectations or weakening contract guards.
 
 Use two handlers and controlled clocks/transports to cover: A's lease expires
 while its GET remains live; B reclaims/applies; A cannot overwrite or complete B's
@@ -780,11 +858,15 @@ persisted work and the documented future expansion path.
 
 After this step, the system can automatically monitor every eligible linked
 subscription, resume durable work after restart and reject stale handler results
-with bounded embedded execution and visible backlog.
+with bounded embedded execution and visible backlog. The two enabled technical
+mock products independently enroll and reconcile through synthetic LBX facts;
+neither product's job or observation is reused as the other's.
 
 **AI execution prompt**
 
 > Implement Step 2 of `docs/exec-plans/active/ANY-715-implementation-plan.md`. Read Step 1, API lifespan/source composition, work/subscription models, PreflightAdmission/PreflightBudget and cleanup tests, customer leases, health/telemetry, migration `20261027_0003`, Settings and deployment/harness tests. Build the transport-independent runner with embedded startup only, atomic enrollment and the bounded missing-set backfill, PostgreSQL claims/fences, generation-safe coalescing, approved scheduling and local expiry. Preserve existing due times during repeated sweeps. Reuse isolated bounded resource admission; unfinished HTTP keeps its slot, and expired/timed-out/superseded results cannot apply. Derive leases from the I/O budget and bounded apply margin. Document per-process limits and future extraction/expansion; do not implement standalone deployment or distributed admission now.
+>
+> Selectively adapt the technical mock/fixture/test hunks of `c1b093757702c112298a07f60999e9697f0efcd4` from `any-765-mock-two-products`: enable `proposal_ai` and `brief_decoder` with their distinct test metrics, keep digest expectations consistent and isolate mock product/metric scenarios. Do not import the donor branch, old Step 7 code, paid-access example loading/OpenAPI metadata or 100/300 expectations. Reuse completed Step 1 unchanged. Add independent two-product enrollment/reconciliation/restart coverage using synthetic LBX GETs; Mock Kernel is technical vocabulary, not billing-state authority or a new reconciliation dependency. No real paid objects, allowances, grants or quota calculations.
 >
 > Follow the repository's root and applicable subtree AGENTS.md files, ARCHITECTURE.md, docs/engineering/CODING_CONVENTIONS.md, docs/engineering/AGENT_WORKFLOW.md, and docs/engineering/TESTING.md. Respect existing architectural layers, coding conventions, typing, error handling, transaction ownership, dependency direction and established project structure. Use equivalent authoritative instructions in other affected repositories.
 >
@@ -793,6 +875,8 @@ with bounded embedded execution and visible backlog.
 > Run appropriate formatters, linters and focused automated tests. Fix failures caused by your changes and rerun affected checks. Run additional relevant validation when necessary; report unexecuted or blocked checks accurately.
 >
 > Run `billing_worker` fast/PostgreSQL selections and affected migration, health, deployment, composition and documentation tests. Use several small enrollment batches and a restart/concurrent enqueue. Use two handlers to prove stale-apply rejection after lease expiry with unfinished HTTP, retained slots, bounded cancellation/timeout cleanup, reserved deadline/urgent progress and lost-hint safety. No capacity benchmark or large fixture population is required. Generate changed model/OpenAPI artifacts through repository tooling.
+>
+> Run the affected manifest mock/client tests and existing contract checker, plus focused two-product worker/PostgreSQL cases. Assert separate jobs, bindings, observations and trust; duplicate hints and restart must not conflate products. Keep existing schema/auth/scope/provenance checks intact.
 >
 > If a material contradiction appears, investigate the relevant surrounding context and available evidence, then propose a resolution. Stop and ask only when an important decision cannot be made safely.
 >
@@ -819,6 +903,8 @@ Urgent GET recovery runs independently of fixed deadline work. One original
 point-proven candidate may bind; zero remains uncertain; ambiguity enters review.
 Recovered subscriptions enroll in reconciliation. Inventory recognizes another
 product only through permanent local ownership and original accepted proof.
+`proposal_ai` and `brief_decoder` may share an LBX tariff while retaining distinct
+accepted purchases, dedicated agreements, subscriptions and recovery outcomes.
 
 **Read before implementation**
 
@@ -827,6 +913,8 @@ product only through permanent local ownership and original accepted proof.
 - Purchase/customer queries and other-product inventory proof.
 - Steps 1–2 runner/shared transitions.
 - Step 7 UNKNOWN/no-send/lost-ack/same-tariff/contention tests.
+- Step 2's adapted two-product mock/fixtures and synthetic LBX setup; reuse the
+  current same-tariff ownership proof, not the donor branch's old purchase code.
 
 **Implementation**
 
@@ -848,6 +936,14 @@ product only through permanent local ownership and original accepted proof.
   selection.
 - Document recovery decisions, deadlines, limitations and refusal cases.
 - Add shared-entrypoint behavior tests.
+- Exercise both products for one user/customer in the same billing account.
+  The same tariff/service/period selection is valid across products only with
+  separate accepted purchases, dedicated agreements and canonical subscriptions.
+  Use local product/purchase/subscription identity for jobs and proof, never
+  tariff ID alone. Exclude the other product from competing inventory only after
+  its permanent owner/agreement/seller/original-effective-term proof succeeds.
+  Recovery or conflict handling for one must not rebind, overwrite or consume
+  the other's operation/work/observation. Preserve existing uniqueness rules.
 
 **Invariants / Non-goals**
 
@@ -866,17 +962,30 @@ must not create `PROVEN_NOT_SENT`, reset UNKNOWN/deadlines, release the hold or
 trigger a background POST. Verify the eventual GET-only retry uses the original
 operation and enrollment remains idempotent.
 
+Using synthetic LBX responses, prove legitimate same-tariff inventory for both
+products with distinct agreements/subscriptions; recover one original UNKNOWN
+while the other's binding remains unchanged. Cover swapped/foreign agreement or
+subscription IDs, incomplete other-product proof and ambiguous candidates: refuse
+unsafe adoption/exclusion, retain affected review/UNKNOWN fences, and never bind
+one product's object to the other. Inspect per-product work/projection/history
+and preserve holds. Test both product roles without provider CREATE, payment,
+allowances, grants or any use of 100/300 as subscription/quota authority.
+
 Owner checkpoint: inspect existing test history and GET-only recovery traffic.
 Do not manufacture a live billing failure.
 
 **Expected completion**
 
 After this step, the system can recover or escalate uncertain creates and
-discover relevant conflicts without browser activity or duplicate CREATE.
+discover relevant conflicts without browser activity or duplicate CREATE,
+including isolated recovery for two products that legitimately share a tariff
+but have different permanent purchase/agreement/subscription bindings.
 
 **AI execution prompt**
 
 > Implement Step 3 of `docs/exec-plans/active/ANY-715-implementation-plan.md`. Read existing financial/customer recovery, claims/fences/escalation, inventory ownership queries, Steps 1–2 and Step 7 UNKNOWN/no-send/same-tariff/contention tests. Connect shared GET-only recovery to urgent scheduling and independent fixed-deadline work. Add bounded inventory and scoped conflict evidence. Preserve `PROVEN_NOT_SENT`, permanent financial identity and the distinct customer retry policy. `503 billing_busy` means local PostgreSQL contention, not provider failure or no-send proof; it must not authorize CREATE, reset an operation/deadline or release a hold. Update the operational recovery/inventory documentation and its checks.
+>
+> Reuse Step 2's two-product fixtures for `proposal_ai` and `brief_decoder`. Verify same-user/customer/account subscriptions may share one LBX tariff only with distinct accepted purchases, agreements and subscriptions. Keep jobs/recovery/projections scoped to their original products. Exclude another product from competing inventory only after current permanent ownership and original effective-term proof; refuse swapped/foreign/ambiguous or incomplete proof without cross-product adoption. Use synthetic LBX responses, preserve current Step 7/Step 1 contracts and add no paid-access/quantity logic or real provider objects.
 >
 > Follow the repository's root and applicable subtree AGENTS.md files, ARCHITECTURE.md, docs/engineering/CODING_CONVENTIONS.md, docs/engineering/AGENT_WORKFLOW.md, and docs/engineering/TESTING.md. Respect existing architectural layers, coding conventions, typing, error handling, transaction ownership, dependency direction and established project structure. Use equivalent authoritative instructions in other affected repositories.
 >
@@ -885,6 +994,8 @@ discover relevant conflicts without browser activity or duplicate CREATE.
 > Run appropriate formatters, linters and focused automated tests. Fix failures caused by your changes and rerun affected checks. Run additional relevant validation when necessary; report unexecuted or blocked checks accurately.
 >
 > Run `billing_background_recovery` PostgreSQL coverage and affected Step 7 regressions. Assert no worker CREATE, unchanged financial escalation, safe customer leases, original candidate proof, bounded inventory and equivalent shared recovery behavior. Include local `billing_busy` before claim and during recovery/apply; prove safe retry retains original identity/fencing and cannot manufacture no-send evidence.
+>
+> Add focused two-product PostgreSQL/integration cases for valid same-tariff ownership, recovery of only one UNKNOWN, swapped/foreign IDs and incomplete/ambiguous candidates. Repeat with product roles reversed and assert no cross-product binding, job completion or observation/projection overwrite.
 >
 > If a material contradiction appears, investigate the relevant surrounding context and available evidence, then propose a resolution. Stop and ask only when an important decision cannot be made safely.
 >
@@ -1155,12 +1266,45 @@ Run real Portal HTTP/Application and disposable PostgreSQL with simulated LBX:
 Assert no Step 8 primary, allowance, paid-state revision or invalidation-outbox
 writes.
 
+### Two-product isolation acceptance
+
+Use the adapted Mock Kernel technical manifest plus synthetic LBX GET responses
+and disposable PostgreSQL fixtures for `proposal_ai` and `brief_decoder`, owned
+by the same user/customer/account. Give each a separate accepted purchase,
+agreement and subscription; include the supported shared-tariff case. Repeat
+these scenarios with product roles reversed:
+
+- Activate one while the other remains waiting; only the intended product's
+  lifecycle, supporting observation and trust change.
+- Financially/administratively block one while the other's independently
+  verified subscription stays active and within its own trust deadline.
+- Return a subscription-specific timeout, 404 or incomplete/mismatching response
+  for one; preserve the other's facts, bindings, jobs and independent trust.
+- Expire one source-trust deadline while the other still has valid fresh proof;
+  provider-free expiry affects only the intended product. Recover the first
+  through complete synthetic proof without modifying the other.
+- Restart/replay hints and recover one UNKNOWN without collapsing the two job
+  keys or completing/rebinding the other product's operation.
+
+Compare per-product persisted lifecycle/completeness, supporting observations,
+trust deadlines, work and original ownership before/after each targeted action;
+allow the other product to change only through its own legitimately executed
+work. Shared customer identity/account failures or a provider-wide outage may
+legitimately affect both: distinguish these from product-specific failures and
+never extend either trust deadline to mask the outage.
+
+Mock Kernel proves only technical product/metric availability; it does not
+activate/block subscriptions. All multi-subscription transitions here are
+SIMULATED LBX evidence, with no real paid object/payment creation. The 100/300
+purchase examples remain Step 9 concerns; assert no allowance, grant, quota
+calculation, access revision or Kernel enforcement is introduced.
+
 ### Evidence classification
 
 Record separately:
 
 - `SIMULATED`: provider transitions, renewal, faults, small concurrency/backlog
-  and restart tests.
+  and restart tests, including two-product isolation with synthetic LBX states.
 - `CONFIGURED_TEST_LBX_READ_VERIFIED`: actual bounded read-only integration.
 - `REAL WEBHOOK ENABLEMENT VERIFIED` or `DISABLED/POLLING-ONLY`.
 - Configured per-process resource limits and unverified provider quotas; no

@@ -223,6 +223,14 @@ provider payloads, secrets, or card/token/payment values.
 
 ## Recovery
 
+ANY-715 Step 1 shared reconciliation uses short database-time fenced claims and
+apply transactions around one bounded four-point source read set. Incomplete
+attempts never renew finite source trust; owned blocks/conflicts reduce usability
+without depending on complete unrelated commercial fields. Preparation cannot
+overwrite monitored facts. This is a reusable use case, not automatic execution;
+deadline processing and worker resource isolation remain Step 2. See the
+[billing operations runbook](engineering/ANY-715-billing-operations.md).
+
 Development environments are worktree-isolated and disposable. The Step-4
 baseline is a destructive compatibility boundary:
 
