@@ -111,7 +111,7 @@ def test_any709_step2_proven_unsent_bootstrap_releases_only_its_claim_and_reuses
     with factory() as db:
         assert db.scalar(select(func.count()).select_from(ExternalBillingCustomer)) == 1
         assert db.scalar(select(func.count()).select_from(ExternalCreateOperation)) == 1
-        assert db.scalar(select(func.count()).select_from(BillingWorkItem)) == 1
+        assert db.scalar(select(func.count()).select_from(BillingWorkItem)) == 2
         assert db.scalar(select(func.count()).select_from(PurchaseIntent)) == 0
         assert db.scalar(select(ExternalCreateOperation)).operation_state == State.BOUND
 
@@ -213,7 +213,7 @@ def test_any709_step2_lost_replies_exhaust_one_budget_and_retain_the_operation(
                     if identity is None:
                         identity = current
                     assert current[0] == identity[0]
-                    work = db.scalar(select(BillingWorkItem))
+                    work = db.scalar(select(BillingWorkItem).where(BillingWorkItem.work_kind == "external_create_recovery"))
                     if operation.operation_state == State.UNKNOWN:
                         assert work.lease_owner is None
                     else:

@@ -13,6 +13,8 @@ from uuid import UUID
 import anyio
 
 from app.composition.reconciliation import reconcile_subscription
+from app.composition.billing_background import recover_operation, inventory_customer
+from app.domains.billing import background_recovery
 from app.core.settings import Settings
 from app.core.time import utc_now
 from app.domains.billing import work
@@ -99,6 +101,8 @@ class BillingWorker:
             if claim.kind == work.SWEEP:
                 # One committed batch per tick allows due expiry between batches.
                 count = await self.db(lane, work.enroll_batch, self.factory, self.configuration)
+                repaired = await self.db(lane, background_recovery.repair_batch, self.factory, self.configuration)
+                count = max(count, repaired)
                 self.enrolled_batches += int(count > 0)
                 await self.db(
                     lane,
@@ -107,6 +111,8 @@ class BillingWorker:
                     claim,
                     more=count == self.configuration.billing_worker_scan_batch_size,
                 )
+            elif claim.kind == background_recovery.DEADLINE:
+                await self.db(lane, background_recovery.apply_deadline, self.factory, claim)
             else:
                 await self.db(lane, work.expire_trust, self.factory, claim)
         else:
@@ -118,16 +124,36 @@ class BillingWorker:
                 if claim is None:
                     return False
                 try:
-                    await reconcile_subscription(
-                        self.client,
-                        admission,
-                        self.configuration,
-                        factory=self.factory,
-                        subscription_id=UUID(claim.reference),
-                        work_claim=claim,
-                        budget=budget,
-                        delegate=partial(self.db, lane),
-                    )
+                    if claim.kind == background_recovery.RECOVERY:
+                        await recover_operation(
+                            self.client,
+                            admission,
+                            self.configuration,
+                            factory=self.factory,
+                            claim=claim,
+                            budget=budget,
+                            delegate=partial(self.db, lane),
+                        )
+                    elif claim.kind == background_recovery.INVENTORY:
+                        await inventory_customer(
+                            self.client,
+                            self.configuration,
+                            factory=self.factory,
+                            claim=claim,
+                            budget=budget,
+                            delegate=partial(self.db, lane),
+                        )
+                    else:
+                        await reconcile_subscription(
+                            self.client,
+                            admission,
+                            self.configuration,
+                            factory=self.factory,
+                            subscription_id=UUID(claim.reference),
+                            work_claim=claim,
+                            budget=budget,
+                            delegate=partial(self.db, lane),
+                        )
                 except BillingRefused as error:
                     await self.db(
                         lane,

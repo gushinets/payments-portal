@@ -64,7 +64,13 @@ def subs(factory: sessionmaker[Session]) -> list[ExternalSubscription]:
 
 
 def historical_link(
-    factory: sessionmaker[Session], template: Purchase, transport: object, product: str, number: int
+    factory: sessionmaker[Session],
+    template: Purchase,
+    transport: object,
+    product: str,
+    number: int,
+    *,
+    uncertain_subscription: bool = False,
 ) -> Purchase:
     """Construct accepted historical fixtures via real local acceptance/bind paths.
 
@@ -107,7 +113,8 @@ def historical_link(
             sub.update(subscription_id=subscription_id, agreement_id=agreement_id, outer_id=op.key)
             transport.subscriptions.append(sub)
             observation = _observation(Subscription.model_validate(sub), purchase)
-            financial.bind_financial(factory, purchase, claimed, provider_id, observation=observation)
+            if not uncertain_subscription:
+                financial.bind_financial(factory, purchase, claimed, provider_id, observation=observation)
         purchase = service.read_purchase(factory, purchase.user_id, purchase.id)
     return purchase
 

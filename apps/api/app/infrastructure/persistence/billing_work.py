@@ -65,3 +65,29 @@ def coalesce(
         else table.work_state == "completed",
     )
     db.execute(statement)
+
+
+def ensure_recovery(db: Session, operation_id: str, due: datetime) -> None:
+    """Preserve receipt payload and send lease when repairing a missing queue row."""
+    insert = pg_insert if db.get_bind().dialect.name == "postgresql" else sqlite_insert
+    db.execute(
+        insert(BillingWorkItem)
+        .values(
+            work_item_id=uuid4(),
+            work_kind="external_create_recovery",
+            scope_kind="create_operation",
+            scope_reference=operation_id,
+            coalescing_key=operation_id,
+            payload_schema_version="billing-recovery:v1",
+            payload_document={},
+            priority=0,
+            next_attempt_at=due,
+            work_state="pending",
+            enqueue_generation=0,
+            attempt_count=0,
+        )
+        .on_conflict_do_nothing(
+            index_elements=["coalescing_key"],
+            index_where=text("work_kind = 'external_create_recovery'"),
+        )
+    )

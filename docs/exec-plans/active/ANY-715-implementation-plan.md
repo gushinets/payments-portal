@@ -1,6 +1,6 @@
 # ANY-715 — Background Work, Webhooks, Reconciliation & Recovery
 
-Status: Steps 1–2 implemented and locally verified; Steps 3–5 not started
+Status: Steps 1–3 implemented and locally verified; Steps 4–5 not started
 Updated: 2026-10-28  
 Issue: https://linear.app/paveldik/issue/ANY-715  
 Program: https://linear.app/paveldik/issue/ANY-504
@@ -1085,6 +1085,82 @@ but have different permanent purchase/agreement/subscription bindings.
 **Proposed commit**
 
 `ANY-715 - Recover uncertain creates and discover inventory conflicts`
+
+**Step 3 execution evidence — 2026-10-28**
+
+- Shared GET-only financial/customer recovery now runs through worker-owned
+  admission, absolute budgets and bounded DB delegation. Permanent recovery
+  keys, receipts, original request/date and financial two-hour deadlines remain
+  intact. Separate local `external_create_deadline` work escalates without LBX;
+  bounded startup/periodic repair preserves active customer sends, future jobs
+  and completed no-send evidence. Recovered subscriptions enroll atomically.
+- Queue ownership/expiry and operation fences protect apply; lost claim
+  acknowledgement starts no HTTP. Local `billing_busy` retries preserve send
+  authority, UNKNOWN history and holds. Customer original-key conflict cannot be
+  restored by background work. Already bound terminal subscriptions use lifecycle
+  reconciliation instead of preparation restrictions.
+- Bounded customer inventory reuses original ownership/effective-term proof,
+  requires fewer than 100 rows and at most 20 relevant candidates, detects
+  observed membership drift and records scoped conflict/review evidence.
+  Same-tariff `proposal_ai` / `brief_decoder` fixtures exercise both product
+  roles, distinct agreements/subscriptions and refusal of foreign, swapped,
+  incomplete or ambiguous candidates without cross-product adoption.
+- All **39 new PostgreSQL recovery cases PASS**, including local contention,
+  stale I/O/claims, delayed visibility, fixed escalation, late objects, completed
+  no-send, active customer sends, terminal history and two-product isolation.
+  The documentation-contract test and affected Step 7/Step 2 regressions PASS.
+- Final `npm run check` **PASS**: 1,501 fast API tests, all 341 PostgreSQL tests,
+  38 web boundary tests, 370 component tests and the production web build.
+  API Ruff lint/format, architecture, docs, generation freshness and final diff
+  whitespace checks PASS. No schema migration or generated-file edit was needed.
+  The worktree-local PostgreSQL server was already running and is left running.
+- The final canonical command used test-process overrides
+  `KERNEL_MOCK_ENABLED=0 KERNEL_BASE_URL= KERNEL_SERVICE_TOKEN=` and the canonical
+  repository virtual environment on `PATH`. Initial inherited development
+  Kernel configuration interfered with unrelated production-settings tests;
+  no local configuration file was changed. A sandboxed fast selection stalled
+  after 83 passes and was interrupted; the final unrestricted canonical run
+  passes the same tests, including the earlier Widget-response case.
+  Early assertions selecting an arbitrary work row were corrected to select the
+  permanent recovery kind now that deadline rows coexist. A run that had already
+  collected those assertions was interrupted; the final run used fresh
+  collection and passed. Its log is `.harness/any715-step3-final-check.log`.
+- Base SHA: `4941a1a5c334a0622c74d209baeee92a625d735c`; delivery remains
+  uncommitted. The runbook, current-state architecture, reliability and schema
+  guidance describe recovery, inventory, deadlines and refusals.
+- Evidence is **SIMULATED** through injected LBX GET responses and disposable
+  PostgreSQL. Live LBX owner QA is **NOT_RUN**; no live failure/payment/provider
+  mutation was manufactured. Browser E2E is **SKIPPED** by the harness because
+  `RUN_E2E=true` and a running browser stack were not supplied. Webhooks remain
+  **DISABLED/POLLING-ONLY**. No Step 4–5 implementation, paid-access writer,
+  primary/allowance/revision/outbox write, hold-release command or Git mutation
+  was introduced.
+
+**Step 3 post-review correction — 2026-10-28**
+
+- Reproduced inventory starvation for both same-tariff product roles: the first
+  conflicting purchase finished customer work, leaving the other subscription
+  eligible and able to renew trust through ordinary point reconciliation.
+  Both regression cases failed with one review instead of the required two.
+- Inventory now checks each product before changing ownership/review state,
+  then applies all proven scoped conflicts in one transaction and completes
+  customer work once. All purchase snapshots and operation fences are rechecked
+  before the queue claim is locked last; a stale operation or expired claim
+  rejects the whole batch. Existing budgets, limits and GET-only behavior remain.
+- Focused PostgreSQL checks PASS: 41 recovery cases including both starvation
+  regressions, plus two batch-fencing cases. Three consecutive inventory runs
+  preserve separate reviews, holds and original bindings for both products;
+  ordinary point reconciliation cannot restore eligibility or extend their
+  source trust. Stale-operation and expired-claim cases leave no partial review
+  or observation writes. These four new cases use synthetic source data only.
+- Final post-correction `npm run check` **PASS**: 1,501 fast API tests, all
+  345 PostgreSQL tests (including all 43 recovery cases), 38 web boundary tests,
+  370 component tests and the production build. Ruff lint/format, architecture,
+  documentation and generation freshness checks PASS. The same test-process
+  Kernel overrides and repository virtual environment described above were
+  used. Log: `.harness/any715-step3-inventory-fix-check.log`. Browser E2E remains
+  **SKIPPED** by the harness; live LBX QA remains **NOT_RUN**. The existing test
+  PostgreSQL server is left running. No Git or real billing mutation occurred.
 
 ### Step 4 — Add authenticated webhook hints and deployment instructions
 

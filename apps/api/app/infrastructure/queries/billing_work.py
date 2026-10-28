@@ -40,11 +40,15 @@ def claimable(
         BillingWorkItem.work_kind.in_(kinds),
         BillingWorkItem.work_state.in_(("pending", "running")),
         BillingWorkItem.next_attempt_at <= now,
-        BillingWorkItem.coalescing_key.startswith(account + ":", autoescape=True)
-        if kinds == ("subscription_reconciliation",)
-        else (
-            (BillingWorkItem.coalescing_key == account)
-            | BillingWorkItem.coalescing_key.startswith(account + ":", autoescape=True)
+        or_(
+            BillingWorkItem.coalescing_key == account,
+            BillingWorkItem.coalescing_key.startswith(account + ":", autoescape=True),
+            (BillingWorkItem.work_kind == "external_create_recovery")
+            & exists().where(
+                func.cast(ExternalCreateOperation.create_operation_id, Text) == BillingWorkItem.scope_reference,
+                ExternalCreateOperation.customer_id == ExternalBillingCustomer.customer_id,
+                ExternalBillingCustomer.external_billing_account_id == account,
+            ),
         ),
         or_(BillingWorkItem.lease_expires_at.is_(None), BillingWorkItem.lease_expires_at <= now),
     )
@@ -117,11 +121,24 @@ def backlog(db: Session, account: str) -> tuple[int, datetime | None, int]:
         select(BillingWorkItem.work_state, func.count(), func.min(BillingWorkItem.next_attempt_at))
         .where(
             BillingWorkItem.work_kind.in_(
-                ("subscription_reconciliation", "subscription_trust_expiry", "billing_enrollment_sweep")
+                (
+                    "subscription_reconciliation",
+                    "subscription_trust_expiry",
+                    "billing_enrollment_sweep",
+                    "external_create_recovery",
+                    "external_create_deadline",
+                    "customer_inventory",
+                )
             ),
-            (
-                (BillingWorkItem.coalescing_key == account)
-                | BillingWorkItem.coalescing_key.startswith(account + ":", autoescape=True)
+            or_(
+                BillingWorkItem.coalescing_key == account,
+                BillingWorkItem.coalescing_key.startswith(account + ":", autoescape=True),
+                (BillingWorkItem.work_kind == "external_create_recovery")
+                & exists().where(
+                    func.cast(ExternalCreateOperation.create_operation_id, Text) == BillingWorkItem.scope_reference,
+                    ExternalCreateOperation.customer_id == ExternalBillingCustomer.customer_id,
+                    ExternalBillingCustomer.external_billing_account_id == account,
+                ),
             ),
         )
         .group_by(BillingWorkItem.work_state)

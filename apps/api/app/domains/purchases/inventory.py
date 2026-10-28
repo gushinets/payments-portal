@@ -5,7 +5,7 @@ from __future__ import annotations
 from app.domains.catalog.publication import SessionFactory
 from app.domains.billing.customers import lock_user
 from app.domains.purchases.contracts import Purchase
-from app.domains.purchases.service import _snapshot
+from app.domains.purchases.service import _snapshot, _verify_original_consent
 from app.infrastructure.queries import purchases as queries
 from app.models import ExternalCreateOperationKind as Kind, ExternalCreateOperationState as State
 from app.models import PurchaseIntentState as IntentState
@@ -29,6 +29,7 @@ def other_inventory_purchase(
         if row is None or row.product_id == purchase.accepted.selection.product_id:
             return None
         other = _snapshot(db, row)
+        _verify_original_consent(db, row, other.accepted)
         bindings = {op.kind: op for op in other.operations}
         if (
             not other.held

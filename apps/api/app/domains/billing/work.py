@@ -142,7 +142,9 @@ def claim_work(factory: SessionFactory, configuration: Settings, lane: WorkLane)
         now = as_utc(billing_reconciliation.database_now(db))
         row = queries.claimable(
             db,
-            (SWEEP, EXPIRY) if lane == WorkLane.LOCAL else (RECONCILIATION,),
+            (SWEEP, EXPIRY, "external_create_deadline")
+            if lane == WorkLane.LOCAL
+            else (RECONCILIATION, "external_create_recovery", "customer_inventory"),
             now,
             urgent=None if lane == WorkLane.LOCAL else lane == WorkLane.URGENT,
             account=configuration.lbx_external_billing_account_id,
@@ -183,6 +185,12 @@ def verify_claim(db: Session, claim: WorkClaim) -> BillingWorkItem:
     ):
         raise BillingRefused("billing_work_stale", 409)
     return row
+
+
+def verify_operation_claim(db: Session, claim: WorkClaim, operation_id: UUID) -> BillingWorkItem:
+    if claim.kind != "external_create_recovery" or claim.reference != str(operation_id):
+        raise BillingRefused("billing_work_stale", 409)
+    return verify_claim(db, claim)
 
 
 def finish(
@@ -245,7 +253,9 @@ def schedule_reconciliation(db: Session, sub: ExternalSubscription, claim: WorkC
         )
 
 
-def retry_work(factory: SessionFactory, claim: WorkClaim, *, invalid: bool = False) -> None:
+def retry_work(
+    factory: SessionFactory, claim: WorkClaim, *, invalid: bool = False, error: str = "worker_attempt_failed"
+) -> None:
     with factory() as db:
         try:
             row = verify_claim(db, claim)
@@ -255,7 +265,7 @@ def retry_work(factory: SessionFactory, claim: WorkClaim, *, invalid: bool = Fal
         # Source lease may still be occupied after cancellation: wait until its
         # finite expiry; never promote an old result or extend source trust.
         due = max(now + timedelta(seconds=30), claim.expires_at + timedelta(seconds=1))
-        finish(db, row, claim, due=due, error="worker_attempt_failed")
+        finish(db, row, claim, due=due, error=error)
         if invalid:
             row.work_state = "invalid"
             row.last_error_classification = "subscription_provenance_unproven"
