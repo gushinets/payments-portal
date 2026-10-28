@@ -1,6 +1,6 @@
 # ANY-715 — Background Work, Webhooks, Reconciliation & Recovery
 
-Status: Step 1 implemented and locally verified; Steps 2–5 not started
+Status: Steps 1–2 implemented and locally verified; Steps 3–5 not started
 Updated: 2026-10-28  
 Issue: https://linear.app/paveldik/issue/ANY-715  
 Program: https://linear.app/paveldik/issue/ANY-504
@@ -838,7 +838,7 @@ observation and projection identities; no paid-state writes are permitted.
 
 Run affected `test_kernel_manifest_mock.py` and
 `test_kernel_manifest_client.py` coverage and the existing contract checker
-(`.venv/bin/python scripts/check_kernel_manifest_contract.py`). Verify both
+(`.venv/bin/python scripts/check_kernel_manifest_contract.py --local`). Verify both
 metrics, consistent semantic digests and product-specific mock failure cases,
 without importing Step 9 quantity expectations or weakening contract guards.
 
@@ -889,6 +889,83 @@ neither product's job or observation is reused as the other's.
 **Proposed commit**
 
 `ANY-715 - Run durable polling with bounded worker execution`
+
+**Step 2 execution evidence — 2026-10-28**
+
+- Implemented embedded supervision and a transport-independent bounded runner,
+  isolated worker HTTP/DB resources, PostgreSQL claims/subscription fences,
+  generation-safe coalescing, approved cadence/backoff and provider-free expiry.
+  New links enroll in their binding transaction; missing-set sweeps commit and
+  yield between batches without moving existing schedules or expired claims.
+- Migration `20261028_0004` adds generation/attempt-start fields and recurring
+  coalescing uniqueness while preserving existing recovery identities/send leases.
+  Populated upgrade/downgrade, uniqueness and nonnegative generation are tested.
+- Two technical mock products are enabled with separate TEST-ONLY metrics and
+  the consistent semantic digest. No donor purchase-quantity examples or
+  paid-access metadata were imported. Synthetic two-product PostgreSQL scenarios
+  prove separate bindings/jobs/observations/trust, coalescing and restart.
+- Coverage includes three small enrollment batches, concurrent linking/sweeps,
+  malformed-history quarantine, lost claim acknowledgement, hints during work,
+  competing handlers, stale queue ownership independently of subscription fencing,
+  unfinished cleanup ownership, cancellation/timeout/restart, local expiry under
+  occupied source slots, refresh races and embedded API/health startup.
+- The final first-read-outage guard keeps zero-length preparation trust and its
+  unscoped evidence out of expiry work. Existing expiry fixtures retain coherent
+  source-read/trust intervals. After this last code change, all **23 focused
+  PostgreSQL worker/shared-reconciliation tests PASS**; the selection includes
+  16 worker/migration cases and the seven retained reconciliation cases.
+- Worker fast coverage (11 cases), API Ruff lint/format, architecture,
+  documentation and generated-artifact freshness PASS. The final local Kernel
+  checker reports `LOCAL_SPEC_CONFORMANCE=PASS` and
+  `REAL_KERNEL_CONFORMANCE=DEFERRED_NOT_IMPLEMENTED`.
+- `npm run check:fast` and final `npm run check` PASS. The final canonical run
+  includes 1,500 fast API tests, all 298 PostgreSQL tests, 38 web boundary tests,
+  370 component tests and the production web build. API lint/format, architecture,
+  documentation, generated freshness and diff whitespace checks PASS. Browser
+  E2E is SKIPPED by the harness because `RUN_E2E=true` and a running browser
+  stack were not supplied. The final run includes the first-read expiry guard.
+  Logs are retained under ignored `.harness/any715-step2-final-focused.log` and
+  `.harness/any715-step2-final-check.log`.
+- Earlier development failures from old migration-head/one-product expectations
+  were corrected. An unchanged HeaderNavigation component test timed out once;
+  its isolated 14-case rerun and subsequent complete component runs PASS without
+  changing its timeout.
+- Base SHA: `16f0e6267c3a594d8f40c8ab9513846336b136a7`; delivery changes remain
+  uncommitted. The runbook documents settings, health/metrics, shutdown/restart,
+  batch progress, per-process limits and future extraction/expansion.
+- Evidence is **SIMULATED**, with disposable PostgreSQL and injected sources.
+  Real LBX read-only owner inspection, real renewal/production enablement and
+  human owner acceptance remain NOT_RUN. Browser E2E requires the separately
+  enabled running harness. No real provider mutation, paid-access writer,
+  Git mutation, webhook receiver or Step 3–5 execution was introduced.
+
+**Step 2 post-review correction — 2026-10-28**
+
+- Reproduced the urgency finding before the fix: the exact 30-minute boundary,
+  near-expiry and expired-trust cases failed; the normal case outside the window
+  passed. Claims now derive urgency from the current persisted trust deadline
+  as well as stored priority. Due normal jobs can use urgent capacity without
+  re-enrollment or changes to their due time, generation or live lease.
+- PostgreSQL regressions cover both sides of the boundary, expired trust and
+  progress while normal source capacity is occupied. Focused verification:
+  **53 fast and 27 PostgreSQL tests PASS**. No migration or source contract changed.
+- The broad check passed documentation, generated freshness, architecture,
+  lint/format, 38 web boundary tests, 370 component tests, 1,500 fast API tests
+  and the production web build. Its PostgreSQL phase reported **300 PASS and
+  two timeout failures**: the existing customer-bootstrap `malformed_success`
+  case and worker timeout/restart case. Both parameterized families then passed
+  separately (**7/7**) without code or timeout changes. The broad command itself
+  did not pass; this is retained as a verification limitation.
+- The first broad attempt inherited development mock settings and failed four
+  test-isolation cases. Those cases passed after clearing `KERNEL_BASE_URL` and
+  `KERNEL_SERVICE_TOKEN` and setting `KERNEL_MOCK_ENABLED=0` only for checks.
+  The running local mock/configuration remains enabled and its two-product
+  catalog, API readiness and Swagger smoke checks PASS. Browser E2E and real
+  LBX QA were not run.
+- Logs: ignored `.harness/any715-urgency-before.log`,
+  `.harness/any715-urgency-fast.log`, `.harness/any715-urgency-postgres.log`,
+  `.harness/any715-urgency-check-isolated.log` and
+  `.harness/any715-urgency-timeout-rerun.log`.
 
 ### Step 3 — Recover uncertain creates and discover conflicts
 

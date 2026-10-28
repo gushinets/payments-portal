@@ -65,7 +65,8 @@ tables and fifteen provider-neutral target persistence tables. Those fifteen
 tables are empty after bootstrap. ANY-664 can append approved mapping revisions
 through its restricted operator path; simulated evidence remains simulated.
 ANY-709 Step 3 adds a purchase mutex and request-driven financial preparation.
-Workers, paid-access derivation and invalidation delivery remain later work. The two source-catalog projection tables are inert schema
+ANY-715 Step 2 adds embedded reconciliation polling; paid-access derivation
+and invalidation delivery remain later work. The two source-catalog projection tables are inert schema
 slots with no runtime readers/writers.
 
 ANY-715 Step 1 supplies shared authoritative subscription reconciliation through
@@ -75,8 +76,9 @@ claim/apply transactions preserve original purchase/legal provenance. Complete
 matching proof establishes finite source trust; incomplete attempts cannot
 renew it, and owned negative/conflict evidence reduces usability immediately.
 Preparation readback preserves reconciled facts. Scope provenance has no chosen
-primary, and no access revision, allowance or paid grant is produced. Automatic
-execution remains future work. See [billing operations](docs/engineering/ANY-715-billing-operations.md).
+primary, and no access revision, allowance or paid grant is produced. Step 2
+adds atomic enrollment, bounded embedded execution and provider-free trust-expiry
+evidence. See [billing operations](docs/engineering/ANY-715-billing-operations.md).
 
 The canonical target is defined, in precedence order, by
 [ADR 0005](docs/architecture/decisions/0005-external-billing-boundary.md), the
@@ -586,8 +588,11 @@ trace/span, and structured-log context remain correlated across the framework
 worker boundary.
 
 Password-reset email delivery remains the existing synchronous framework
-background task. The clean baseline does not introduce a billing worker
-runtime merely because durable work tables exist.
+background task. ANY-715 Step 2 adds a durable billing runner embedded in the API lifespan. It
+uses isolated worker HTTP/DB resources, PostgreSQL claims/generations and the
+shared fenced reconciliation path. Local enrollment and trust expiry perform
+no provider HTTP. Paid-access production remains deferred; see the
+[billing operations runbook](docs/engineering/ANY-715-billing-operations.md).
 
 The web dependency direction is:
 

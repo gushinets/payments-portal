@@ -72,8 +72,9 @@ change. Subscription trust, reconciliation and AccessSnapshot are unchanged.
 
 The schema is a provider-independent storage baseline. Its presence does not
 itself establish runtime acceptance. ANY-709 Step 3 implements purchase preparation
-with focused synthetic tests passing and real purchase/payment QA pending; workers, paid-access derivation and Kernel
-invalidation delivery remain future work.
+with focused synthetic tests passing and real purchase/payment QA pending.
+ANY-715 Steps 1–2 add shared reconciliation and embedded durable polling;
+paid-access derivation and Kernel invalidation delivery remain future work.
 
 ## Physical baseline
 
@@ -336,8 +337,16 @@ payloads, priority, due time, attempt count, paired lease owner/expiry and nulla
 `active_recovery_deadline_at` for the current financial send. The active deadline
 is independent of mutable retry scheduling and changes only in the locked,
 fenced financial send claim; GET recovery does not renew it. It
-is scheduling state, not commercial or access authority. Exact work kinds,
-state transitions and coalescing rules are intentionally deferred.
+is scheduling state, not commercial or access authority. Its work/state
+vocabularies remain open for concrete billing jobs. ANY-715 Step 2 adds
+nonnegative `enqueue_generation`, nullable `last_attempt_started_at` and a partial
+unique `(work_kind, coalescing_key)` index for subscription reconciliation/trust
+expiry, enrollment sweep and the reserved inventory/create-deadline kinds.
+The pre-existing create-recovery index and customer-send lease identity remain
+unchanged. Claims use paired finite ownership; completion preserves newer enqueue
+generations. Binding atomically enrolls new canonical subscriptions. Source apply
+atomically reschedules monitoring and the local trust deadline, with no paid-state
+or access-revision writes. Migration `20261028_0004` advances the schema from `0003`.
 
 `manual_review_cases` stores bounded evidence and optional resolution proof.
 It cannot itself activate access, invent an allowance, or rewrite historical

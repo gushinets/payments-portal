@@ -120,6 +120,89 @@
         "title": "AccountPurchasesResponse",
         "type": "object"
       },
+      "BillingHealthResponse": {
+        "properties": {
+          "active_slots": {
+            "default": 0,
+            "title": "Active Slots",
+            "type": "integer"
+          },
+          "cleanup_pending": {
+            "default": 0,
+            "title": "Cleanup Pending",
+            "type": "integer"
+          },
+          "enrolled_batches": {
+            "default": 0,
+            "title": "Enrolled Batches",
+            "type": "integer"
+          },
+          "failures": {
+            "default": 0,
+            "title": "Failures",
+            "type": "integer"
+          },
+          "invalid_work": {
+            "default": 0,
+            "title": "Invalid Work",
+            "type": "integer"
+          },
+          "last_progress_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Progress At"
+          },
+          "last_scan_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Scan At"
+          },
+          "oldest_due_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oldest Due At"
+          },
+          "pending_work": {
+            "default": 0,
+            "title": "Pending Work",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "disabled",
+              "not_configured",
+              "running",
+              "degraded",
+              "stopping"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "BillingHealthResponse",
+        "type": "object"
+      },
       "CatalogMoney": {
         "properties": {
           "connection_amount": {
@@ -1834,6 +1917,27 @@
         "summary": "Product Detail",
         "tags": [
           "catalog"
+        ]
+      }
+    },
+    "/api/health/billing": {
+      "get": {
+        "operationId": "billing_health_api_health_billing_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillingHealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Billing Health",
+        "tags": [
+          "health"
         ]
       }
     },

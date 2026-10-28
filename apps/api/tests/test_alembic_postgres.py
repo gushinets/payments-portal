@@ -17,7 +17,8 @@ from apps.api.tests.support.postgres import alembic_test_config, reset_public_sc
 
 BASELINE_REVISION = "20260924_0001"
 EMAIL_VERIFICATION_REVISION = "20261001_0002"
-HEAD_REVISION = "20261029_0003"
+BILLING_PREPARATION_REVISION = "20261029_0003"
+HEAD_REVISION = "20261028_0004"
 
 SURVIVOR_TABLES = {
     "regions",
@@ -349,6 +350,8 @@ EXPECTED_COLUMNS = {
         "last_error_classification",
     },
     "billing_work_items": {
+        "enqueue_generation",
+        "last_attempt_started_at",
         "work_item_id",
         "work_kind",
         "scope_kind",
@@ -463,7 +466,11 @@ EXPECTED_CHECKS = {
         "ck_external_billing_webhook_deliveries_corr_schema_nonempty",
         "ck_external_billing_webhook_deliveries_evidence_schema_nonempty",
     },
-    "billing_work_items": {"ck_billing_work_items_payload_schema_nonempty", "ck_billing_work_items_lease_pair"},
+    "billing_work_items": {
+        "ck_billing_work_items_payload_schema_nonempty",
+        "ck_billing_work_items_lease_pair",
+        "ck_billing_work_items_generation_nonnegative",
+    },
     "manual_review_cases": {"ck_manual_review_cases_evidence_schema_nonempty"},
     "paid_access_states": set(),
     "access_invalidation_outbox": {
@@ -661,6 +668,7 @@ EXPECTED_INDEXES = {
         "ix_billing_work_items_scope",
         "ix_billing_work_items_coalescing_key",
         "uq_billing_work_items_create_recovery",
+        "uq_billing_work_items_recurring",
         "ix_billing_work_items_priority_retry",
         "ix_billing_work_items_lease_expiry",
         "ix_billing_work_items_claim_scan",
@@ -692,6 +700,7 @@ DATABASE_DEFAULT_COLUMNS = {
     ("external_billing_customers", "binding_state"): "'unbound'",
     ("purchase_intents", "state"): "'created'",
     ("external_subscriptions", "reconciliation_fencing_token"): "0",
+    ("billing_work_items", "enqueue_generation"): "0",
     ("billing_work_items", "priority"): "0",
     ("billing_work_items", "attempt_count"): "0",
     ("access_invalidation_outbox", "delivered_revision"): "0",
@@ -735,6 +744,7 @@ def test_clean_first_install_has_expected_revisions_and_exact_application_schema
         assert script.get_bases() == [BASELINE_REVISION]
         assert [item.revision for item in script.walk_revisions()] == [
             HEAD_REVISION,
+            BILLING_PREPARATION_REVISION,
             EMAIL_VERIFICATION_REVISION,
             BASELINE_REVISION,
         ]
