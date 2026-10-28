@@ -7,6 +7,9 @@ COPY apps/web/package.json ./apps/web/package.json
 
 RUN npm ci
 
+# sharp is optional to npm, but required by the production image optimizer.
+RUN node -e "require('sharp')"
+
 FROM dependencies AS builder
 
 ARG APP_PUBLIC_BASE_URL
