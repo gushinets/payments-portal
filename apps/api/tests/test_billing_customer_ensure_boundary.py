@@ -4,15 +4,19 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, Mock
+from uuid import uuid4
 
 import httpx
 import pytest
 from fastapi import FastAPI
 
 from app.core.observability import request_id_context
+from app.composition import billing
 from app.composition.billing import AccountWidget
 from app.domains.billing import router as billing_router
-from app.domains.billing.contracts import BillingAccountFailure, BillingRefused
+from app.domains.billing.contracts import BillingAccountFailure, BillingRefused, CustomerOpen
 from app.http.dependencies import get_session_factory
 from apps.api.tests.support.any709_step1 import step1_settings
 
@@ -29,7 +33,34 @@ def test_customer_create_has_one_application_caller() -> None:
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize("mode", ["failed", "auth", "pending", "recovered", "rejected", "unknown_create"])
+@pytest.mark.parametrize("stage", ["reserve", "recheck"])
+async def test_widget_contention_remains_a_temporary_local_refusal(monkeypatch: pytest.MonkeyPatch, stage: str) -> None:
+    from pydantic import SecretStr
+
+    current = CustomerOpen(uuid4(), uuid4(), None, "synthetic-key", "123")
+    factory = MagicMock()
+    sources = MagicMock()
+    sources.billing.operation.return_value.__aenter__.return_value = Mock()
+    client = sources.require_lbx.return_value
+    client.client_user = AsyncMock(return_value=SimpleNamespace(user_id=123, outer_id=current.outer_key))
+    monkeypatch.setattr(billing, "authenticate", Mock(return_value=SimpleNamespace(id=uuid4())))
+    monkeypatch.setattr(
+        billing,
+        "reserve_customer",
+        Mock(side_effect=BillingRefused("billing_busy", 503)) if stage == "reserve" else Mock(return_value=current),
+    )
+    monkeypatch.setattr(billing, "ensure_customer", AsyncMock(return_value=current))
+    monkeypatch.setattr(billing, "sign_widget_jwt", Mock(return_value=SecretStr("synthetic-widget-token")))
+    monkeypatch.setattr(billing, "recheck_widget_session", Mock(side_effect=BillingRefused("billing_busy", 503)))
+    with pytest.raises(BillingRefused) as caught:
+        await billing.bootstrap_account(sources, step1_settings(), factory=factory, token="synthetic-session")
+    assert type(caught.value) is BillingRefused
+    assert caught.value.code == "billing_busy" and caught.value.status == 503
+    client.create_user.assert_not_called()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("mode", ["failed", "auth", "pending", "busy", "recovered", "rejected", "unknown_create"])
 async def test_widget_reports_only_unresolved_integration_failure_once(
     monkeypatch: pytest.MonkeyPatch,
     mode: str,
@@ -49,6 +80,8 @@ async def test_widget_reports_only_unresolved_integration_failure_once(
             raise BillingRefused("billing_email_verification_required", 403)
         if mode == "pending":
             raise BillingRefused("billing_customer_pending", 409)
+        if mode == "busy":
+            raise BillingRefused("billing_busy", 503)
         return AccountWidget(SecretStr("opaque-widget-token"), "https://billing.test")
 
     def report(error: Exception, **kwargs: object) -> None:
@@ -72,7 +105,15 @@ async def test_widget_reports_only_unresolved_integration_failure_once(
     assert len(reported) == (1 if mode in {"failed", "rejected", "unknown_create"} else 0)
     assert (
         response.status_code
-        == {"failed": 503, "auth": 403, "pending": 409, "recovered": 200, "rejected": 503, "unknown_create": 409}[mode]
+        == {
+            "failed": 503,
+            "auth": 403,
+            "pending": 409,
+            "busy": 503,
+            "recovered": 200,
+            "rejected": 503,
+            "unknown_create": 409,
+        }[mode]
     )
     if reported:
         assert (

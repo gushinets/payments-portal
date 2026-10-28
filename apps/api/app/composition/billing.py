@@ -193,7 +193,7 @@ async def bootstrap_account(
         try:
             current = await run_in_threadpool(reserve_customer, factory, configuration, token)
         except BillingRefused as error:
-            if error.status in {401, 403}:
+            if error.status in {401, 403} or error.code == "billing_busy":
                 raise
             raise BillingAccountFailure(error.code, error.status) from None
         logger.info(
@@ -264,7 +264,7 @@ async def bootstrap_account(
                     },
                 )
                 if isinstance(error, BillingRefused):
-                    if error.status in {401, 403} or error.code == "billing_customer_pending":
+                    if error.status in {401, 403} or error.code in {"billing_customer_pending", "billing_busy"}:
                         raise
                     raise BillingAccountFailure(error.code, error.status) from None
                 if isinstance(error, LbxScopeMismatch):

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import secrets
 from datetime import datetime, timedelta
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -16,12 +16,13 @@ from app.domains.catalog.publication import SessionFactory
 from app.domains.identity.errors import InvalidAuthSessionError
 from app.domains.identity.services.auth import as_utc, authenticate_session
 from app.infrastructure.queries.billing_customers import (
+    BillingUserLockBusy,
     connection_accounts,
     customer_operation,
     customer_slot,
     foreign_customer,
     lock_customer,
-    lock_user,
+    lock_user as lock_storage_user,
     overdue_customer_ids,
     open_customer_reviews,
     recovery_work,
@@ -40,6 +41,13 @@ from app.models import (
 
 RECOVERY_WINDOW = timedelta(hours=2)
 CUSTOMER_RECEIPT_SCHEMA = "customer-create-receipt:v1"
+
+
+def lock_user(db: Session, user_id: UUID) -> User:
+    try:
+        return lock_storage_user(db, user_id)
+    except BillingUserLockBusy:
+        raise BillingRefused("billing_busy", 503) from None
 
 
 def _receipt_id(operation: ExternalCreateOperation) -> str | None:

@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from app.core.settings import Settings
 from app.core.time import utc_now
 from app.domains.billing.contracts import CustomerOpen
-from app.domains.billing.customers import authenticate, reserve_customer_in_transaction
+from app.domains.billing.customers import authenticate, lock_user, reserve_customer_in_transaction
 from app.domains.catalog.link_publication import StoredProductLink
 from app.domains.catalog.product_link import CurrentOffer
 from app.domains.catalog.publication import SessionFactory
@@ -40,7 +40,6 @@ from app.infrastructure.persistence.commercial_mappings import lock_mapping_scop
 from app.infrastructure.queries.billing_customers import (
     customer_operation,
     lock_customer,
-    lock_user,
     recovery_work,
     open_customer_reviews,
     diagnostic_user,
@@ -319,7 +318,7 @@ def prior_request(
 ) -> Purchase | None:
     with factory() as db:
         user = authenticate(db, configuration, token)
-        lock_user(db, user.id)
+        # Accepted meaning is immutable; a replay does not need the mutation lock.
         return _prior_request(db, user.id, key, meaning)
 
 
@@ -350,6 +349,7 @@ def pin_purchase(
     with factory() as db:
         user = authenticate(db, configuration, token)
         lock_user(db, user.id)
+        # A concurrent acceptance may have committed since the initial replay read.
         previous = _prior_request(db, user.id, key, meaning)
         if previous is not None:
             return previous

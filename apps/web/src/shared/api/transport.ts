@@ -115,22 +115,26 @@ export async function postJson<T>(
 ): Promise<T> {
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
-  const response = await fetch(`${resolveApiBase()}${path}`, {
-    method: "POST",
-    headers: {
-      ...extraHeaders,
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {})
-    },
-    body: JSON.stringify(body),
-    signal: controller.signal
-  }).finally(() => window.clearTimeout(timeoutId));
+  try {
+    const response = await fetch(`${resolveApiBase()}${path}`, {
+      method: "POST",
+      headers: {
+        ...extraHeaders,
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
 
-  if (!response.ok) {
-    throw await makeApiError(response);
+    if (!response.ok) {
+      throw await makeApiError(response);
+    }
+
+    return await decodeSuccessfulResponse<T>(response, path, contract);
+  } finally {
+    window.clearTimeout(timeoutId);
   }
-
-  return decodeSuccessfulResponse<T>(response, path, contract);
 }
 
 export async function getJson<T>(

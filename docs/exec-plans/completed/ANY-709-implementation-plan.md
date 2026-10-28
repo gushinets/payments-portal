@@ -113,6 +113,67 @@ its safe correlated failure checks. D10's independent final review is the
 remaining acceptance item. All optional-name variants and destructive fault
 cases were tested synthetically, not repeated as live LBX financial writes.
 
+## Independent review remediation, 2026-10-28
+
+Scope: the owner authorized fixes for the two findings against `34845fd` in
+PR #150. The remote HEAD was rechecked and remains
+`34845fdddde870e7201735e20ae8f6af7f563cde` before publication. The earlier
+acceptance and CI totals remain evidence for that predecessor; CI must rerun
+on the remediation commit.
+
+1. Return an authenticated exact accepted-request replay without the user-row
+   mutation lock. Keep the locked idempotency/scope recheck for new acceptance.
+   Interpret only the user-lock PostgreSQL `55P03` result as temporary
+   `503 billing_busy`, preserving transaction rollback and request correlation.
+   Do not retry provider commands or reinterpret ambiguous database errors.
+2. Keep the existing billing POST deadline active through successful/error-body
+   consumption. Clear it only after the whole response operation settles.
+3. Add deterministic PostgreSQL/HTTP regressions for locked replay, new-request
+   contention, rollback and same-key recovery, plus delayed-body deadline tests.
+   Rerun focused tests, the broadest supported canonical checks and the affected
+   synthetic desktop/mobile journeys. Record actual results below.
+
+Commercial/legal snapshots, customer/financial identities, scope holds, Widget
+authorization and paid-access boundaries remain unchanged. No migration, real
+LBX CREATE, payment or deployment is part of this remediation. Commit, push and
+PR-description alignment are authorized delivery steps after verification.
+
+Verification for the remediation:
+
+- Before the production fixes, both new PostgreSQL/HTTP regressions reproduced
+  `500` under a held user lock; eight new delayed-body cases reproduced the
+  missing timeout. Logs: `/tmp/pr150-fix-pg-baseline.log` and
+  `/tmp/pr150-fix-web-baseline.log`.
+- The focused PostgreSQL purchase/contention run passed 28 tests. The lock and
+  Widget error-boundary run passed 15 tests, including reserve/final-session
+  contention without reclassifying it as an external integration failure.
+  Logs: `/tmp/pr150-fix-pg-focused.log` and `/tmp/pr150-fix-lock-unit-host.log`.
+- The canonical `npm run check` passed docs, generation, architecture,
+  Ruff formatting/lint, 38 frontend boundary tests, all 370 component tests,
+  web lint, all 1,447 fast API tests, the production web build and all 269
+  PostgreSQL tests (480.54 seconds). Log: `/tmp/pr150-fix-check-final.log`.
+  It uses the isolated `_pr150fix_tests` database, with Kernel mock/base/token
+  configuration disabled. The app database is not a test target. The canonical
+  full harness browser suite was skipped because `RUN_E2E` was unset; the
+  affected synthetic journeys were checked separately below.
+- `npm run typecheck:web` passed. Log: `/tmp/pr150-fix-typecheck.log`.
+- A focused recheck after the work interruption passed 19 backend/PostgreSQL
+  tests and 41 frontend tests, including held-lock HTTP replay/refusal, both
+  20-confirmation concurrency cases, delayed-body deadlines and explicit
+  same-key UI retry. No further code changes were needed. Logs:
+  `/tmp/pr150-recheck-api.log` and `/tmp/pr150-recheck-web.log`.
+- All 14 `any709-purchase.spec.ts` browser cases passed on an independent
+  production preview at port 41351, desktop and mobile, with zero retries/skips.
+  API/SDK substitutions stayed synthetic. Buy/Continue/Manage, preparation
+  beyond five seconds, UNKNOWN recovery, selected-purchase bootstrap, READY
+  timeout/retry and session teardown remained valid. Axe reported no
+  serious/critical violations in the covered views; desktop/mobile prepared and
+  cabinet screenshots were inspected. The temporary preview was stopped.
+  Log: `/tmp/pr150-fix-browser.log`; screenshots/report: `.harness/playwright-results/`.
+- Local installed Next is `16.3.1`, while the lockfile declares `16.4.2`.
+  These results do not replace a clean locked CI run on a future patched HEAD.
+  No fresh real-LBX CREATE/payment or paid-access acceptance is claimed.
+
 ## Retained decisions and boundaries
 
 - Kernel owns enabled products; LBX owns current offers and commercial facts.

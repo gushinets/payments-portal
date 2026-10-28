@@ -28,6 +28,26 @@ function delayedResponse(payload: unknown, delayMs: number) {
   }));
 }
 
+function delayedBody(payload: unknown, status: number, delayMs: number) {
+  fetcher.mockImplementation(async (_input, init) => {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        const timer = window.setTimeout(() => {
+          init?.signal?.removeEventListener("abort", abort);
+          controller.enqueue(new TextEncoder().encode(JSON.stringify(payload)));
+          controller.close();
+        }, delayMs);
+        function abort() {
+          window.clearTimeout(timer);
+          controller.error(new DOMException("synthetic_body_timeout", "AbortError"));
+        }
+        init?.signal?.addEventListener("abort", abort, { once: true });
+      }
+    });
+    return new Response(stream, { status, headers: { "Content-Type": "application/json" } });
+  });
+}
+
 beforeEach(() => { vi.useFakeTimers(); fetcher.mockReset(); vi.stubGlobal("fetch", fetcher); });
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
@@ -51,6 +71,43 @@ describe("ANY-709 live billing request deadlines", () => {
     await result;
     expect(fetcher).toHaveBeenCalledTimes(1);
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it.each(liveRequests)("%s keeps its deadline through a successful response body", async (_name, request, payload) => {
+    delayedBody(payload, 200, billingRequestTimeoutMs + 1);
+    const result = expect(request()).rejects.toMatchObject({ name: "AbortError" });
+    await vi.advanceTimersByTimeAsync(billingRequestTimeoutMs);
+    expect(fetcher.mock.calls[0][1]?.signal?.aborted).toBe(true);
+    await result;
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it.each(liveRequests)("%s keeps its deadline through an error response body", async (_name, request) => {
+    delayedBody({ detail: { code: "billing_busy", request_id: "synthetic-request" } }, 503, billingRequestTimeoutMs + 1);
+    const result = expect(request()).rejects.toMatchObject({ name: "AbortError" });
+    await vi.advanceTimersByTimeAsync(billingRequestTimeoutMs);
+    expect(fetcher.mock.calls[0][1]?.signal?.aborted).toBe(true);
+    await result;
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it.each([200, 503])("clears the deadline after the complete %s response body", async (status) => {
+    const detail = { code: "billing_busy", request_id: "synthetic-request" };
+    const payload = status === 200 ? savedPurchase : { detail };
+    delayedBody(payload, status, 5556);
+    const request = advancePurchase("synthetic-session", savedPurchase.purchase_intent_id, "synthetic-request");
+    const result = status === 200
+      ? expect(request).resolves.toEqual(payload)
+      : expect(request).rejects.toMatchObject({ status: 503, detail });
+    await vi.advanceTimersByTimeAsync(5556);
+    await result;
+    expect(fetcher.mock.calls[0][1]?.signal?.aborted).toBe(false);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+    await vi.advanceTimersByTimeAsync(billingRequestTimeoutMs);
+    expect(fetcher.mock.calls[0][1]?.signal?.aborted).toBe(false);
   });
 
   it.each([

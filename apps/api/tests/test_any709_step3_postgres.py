@@ -8,7 +8,7 @@ from __future__ import annotations
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import httpx
 import pytest
@@ -289,18 +289,30 @@ async def test_any709_step3_twenty_confirmations_one_scope_and_consent(
         ),
     )
 
-    def attempt(index: int) -> object:
+    def attempt(index: int) -> UUID | BillingRefused | None:
         try:
             return service.pin_purchase(
                 factory, config, TOKEN, "same" if same_key else str(index), meaning, link, offer, docs
             ).id
-        except PurchaseRefused as error:
+        except BillingRefused as error:
+            if error.code == "billing_busy":
+                assert error.status == 503
+                return error
             assert error.code == "purchase_scope_occupied"
             return None
 
     with ThreadPoolExecutor(max_workers=20) as executor:
         outcomes = list(executor.map(attempt, range(20)))
-    assert len(set(value for value in outcomes if value is not None)) == 1
+    accepted_ids = {value for value in outcomes if isinstance(value, UUID)}
+    assert len(accepted_ids) == 1
+    # Explicit requests after contention reuse the accepted intent or its scope conflict.
+    for index in range(20):
+        retried = attempt(index)
+        assert not isinstance(retried, BillingRefused)
+        if same_key:
+            assert retried in accepted_ids
+        else:
+            assert retried is None or retried in accepted_ids
     with factory() as db:
         for model in (PurchaseIntent, BillingPurchaseScopeHold, LegalAcceptanceEvent):
             assert db.scalar(select(func.count()).select_from(model)) == 1

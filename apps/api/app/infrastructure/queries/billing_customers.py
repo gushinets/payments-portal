@@ -6,6 +6,7 @@ from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import String, cast, select, text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -24,6 +25,10 @@ CUSTOMER_LOCK_TIMEOUT_MS = 1000
 CUSTOMER_STATEMENT_TIMEOUT_MS = 2000
 
 
+class BillingUserLockBusy(Exception):
+    """The bounded user-row lock could not be acquired in this transaction."""
+
+
 def _bound_transaction(db: Session) -> None:
     if db.get_bind().dialect.name == "postgresql":
         db.execute(
@@ -39,9 +44,14 @@ def _bound_transaction(db: Session) -> None:
 
 def lock_user(db: Session, user_id: UUID) -> User:
     _bound_transaction(db)
-    return db.scalars(
-        select(User).where(User.id == user_id).with_for_update().execution_options(populate_existing=True)
-    ).one()
+    try:
+        return db.scalars(
+            select(User).where(User.id == user_id).with_for_update().execution_options(populate_existing=True)
+        ).one()
+    except DBAPIError as error:
+        if getattr(error.orig, "sqlstate", None) == "55P03":
+            raise BillingUserLockBusy from error
+        raise
 
 
 def diagnostic_user(db: Session, *, user_id: UUID, tenant_id: str, region: str) -> User | None:

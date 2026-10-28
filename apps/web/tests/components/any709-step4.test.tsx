@@ -116,6 +116,25 @@ describe("ANY-709 Step 4 purchase journey", () => {
     expect(review).toHaveBeenCalledTimes(1);
   });
 
+  it("retains frozen consent and the same key for an explicit retry after billing contention", async () => {
+    confirm.mockResolvedValueOnce(json({ detail: { code: "billing_busy", request_id: "synthetic-contention" } }, 503));
+    renderProduct();
+    await accept();
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(ru.Billing.errors.unavailable);
+    expect(alert).toHaveTextContent("synthetic-contention");
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(advance).not.toHaveBeenCalled();
+    expect(screen.getByRole("checkbox")).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: ru.Purchase.retryConfirm }));
+    expect(await screen.findByRole("link", { name: ru.Purchase.manage })).toBeVisible();
+    expect(confirm).toHaveBeenCalledTimes(2);
+    expect(confirm.mock.calls[1][0].headers["Idempotency-Key"]).toBe(confirm.mock.calls[0][0].headers["Idempotency-Key"]);
+    expect(confirm.mock.calls[1][0].body).toBe(confirm.mock.calls[0][0].body);
+    expect(review).toHaveBeenCalledTimes(1);
+    expect(advance).toHaveBeenCalledTimes(1);
+  });
+
   it("discovers a confirmed intent after a lost response without another confirm or advance", async () => {
     confirm.mockImplementationOnce(async () => {
       owned = { ...savedPurchase, state: "created" };

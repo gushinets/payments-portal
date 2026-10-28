@@ -683,6 +683,16 @@ Live review, confirmation, preparation and Widget bootstrap use a finite
 of 120 seconds plus response/DB overhead. Identity and local purchase/status
 GETs retain the ordinary five-second deadline. The browser must not report a
 provider outage merely because a valid server operation exceeded five seconds.
+POST deadlines cover reading both successful and error response bodies; receiving
+headers does not end the timer. A timeout never automatically repeats a POST.
+
+An authenticated exact confirmation replay reads its existing accepted intent
+without acquiring the user mutation lock. New acceptance still locks and rechecks
+the key and product hold before writing. If the bounded user lock times out
+(PostgreSQL `55P03`), the caller receives `503 billing_busy` with its request ID;
+the transaction closes without accepting a purchase. An explicit retry preserves
+the original key and frozen meaning. Other database failures are not classified
+as contention, and this temporary refusal does not authorize a financial retry.
 
 On a lost confirmation response, the UI makes one local current-purchase GET.
 An accepted intent becomes Continue/Manage; empty/failed inspection retains the
