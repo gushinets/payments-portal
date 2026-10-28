@@ -21,6 +21,21 @@ from app.models._shared import (
 class BillingWorkItem(Base):
     __tablename__ = "billing_work_items"
     __table_args__ = (
+        CheckConstraint("enqueue_generation >= 0", name="ck_billing_work_items_generation_nonnegative"),
+        Index(
+            "uq_billing_work_items_recurring",
+            "work_kind",
+            "coalescing_key",
+            unique=True,
+            postgresql_where=text(
+                "work_kind IN ('subscription_reconciliation', 'subscription_trust_expiry', "
+                "'billing_enrollment_sweep', 'customer_inventory', 'external_create_deadline')"
+            ),
+            sqlite_where=text(
+                "work_kind IN ('subscription_reconciliation', 'subscription_trust_expiry', "
+                "'billing_enrollment_sweep', 'customer_inventory', 'external_create_deadline')"
+            ),
+        ),
         CheckConstraint(
             "trim(payload_schema_version) <> ''",
             name="ck_billing_work_items_payload_schema_nonempty",
@@ -65,6 +80,9 @@ class BillingWorkItem(Base):
         ),
         Index("ix_billing_work_items_kind_state", "work_kind", "work_state"),
     )
+
+    enqueue_generation: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
+    last_attempt_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     work_item_id: Mapped[uuid.UUID] = mapped_column(uuid_type, primary_key=True, default=uuid.uuid4)
     work_kind: Mapped[str] = mapped_column(Text, nullable=False)

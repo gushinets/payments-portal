@@ -58,7 +58,8 @@ identity/session/legal tables, fifteen original target billing tables, a current
 product-link pointer and a purchase hold. The billing tables start empty. Direct
 link publication and explicit customer/purchase flows populate their owned
 records. Source-catalog projection slots have no runtime readers/writers.
-Workers, paid-access derivation and invalidation delivery remain later work.
+ANY-715 Step 2 adds embedded reconciliation polling; paid-access derivation
+and invalidation delivery remain later work.
 
 ANY-715 Step 1 supplies shared authoritative subscription reconciliation through
 `composition/reconciliation.py`, billing Application contracts/apply and LBX
@@ -67,8 +68,9 @@ claim/apply transactions preserve original purchase/legal provenance. Complete
 matching proof establishes finite source trust; incomplete attempts cannot
 renew it, and owned negative/conflict evidence reduces usability immediately.
 Preparation readback preserves reconciled facts. Scope provenance has no chosen
-primary, and no access revision, allowance or paid grant is produced. Automatic
-execution remains future work. See [billing operations](docs/engineering/ANY-715-billing-operations.md).
+primary, and no access revision, allowance or paid grant is produced. Step 2
+adds atomic enrollment, bounded embedded execution and provider-free trust-expiry
+evidence. See [billing operations](docs/engineering/ANY-715-billing-operations.md).
 
 The canonical target is defined, in precedence order, by
 [ADR 0005](docs/architecture/decisions/0005-external-billing-boundary.md), the
@@ -596,8 +598,11 @@ trace/span, and structured-log context remain correlated across the framework
 worker boundary.
 
 Password-reset email delivery remains the existing synchronous framework
-background task. The clean baseline does not introduce a billing worker
-runtime merely because durable work tables exist.
+background task. ANY-715 Step 2 adds a durable billing runner embedded in the API lifespan. It
+uses isolated worker HTTP/DB resources, PostgreSQL claims/generations and the
+shared fenced reconciliation path. Local enrollment and trust expiry perform
+no provider HTTP. Paid-access production remains deferred; see the
+[billing operations runbook](docs/engineering/ANY-715-billing-operations.md).
 
 The web dependency direction is:
 

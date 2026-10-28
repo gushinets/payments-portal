@@ -1,16 +1,16 @@
 # ANY-715 billing operations
 
-Status: Step 1 shared reconciliation implemented; automatic execution is planned.
+Status: Steps 1–2 shared reconciliation and embedded durable polling implemented.
 Updated: 2026-10-28.
 Issue: [ANY-715](https://linear.app/paveldik/issue/ANY-715).
-Scope: [implementation plan](../exec-plans/active/ANY-715-implementation-plan.md), Step 1.
+Scope: [implementation plan](../exec-plans/active/ANY-715-implementation-plan.md), Steps 1–2.
 
 ## Shared proof and original history
 
 `app.composition.reconciliation.reconcile_subscription()` is the reusable outer
 I/O seam. It accepts an explicitly supplied LBX client and bounded admission
 resource, configuration, session factory and canonical local subscription ID.
-It is not a public endpoint, a scheduled worker or an operator CLI command.
+The embedded worker calls this shared seam; it is not a public endpoint or operator CLI command.
 It makes no financial POST, Kernel call, catalog discovery or current-offer read.
 
 Application claims a finite subscription lease in a short transaction using
@@ -89,11 +89,131 @@ calculation-period pair is preserved without inventing an account timezone,
 exact UTC boundaries, native cycle ID or allowance identity. This step does not
 claim to prove natural rollover or derive paid access from those dates.
 
-Step 2 owns automatic enrollment, durable polling, local trust-expiry execution,
-isolated worker resources and startup/shutdown. Later steps own recovery loops,
-webhook hints and audited operator commands. Step 9 owns access derivation,
-earlier effective authorization deadlines, grants, allowances, revisions and
-invalidations. None of those entrypoints or effects is implemented by Step 1.
+Step 2 supplies automatic enrollment, durable polling and local source-trust
+expiry evidence. Later steps own uncertain-create recovery/inventory loops,
+webhook hints and audited operator commands. Step 9 owns primary selection,
+access derivation, effective authorization deadlines, grants, allowances,
+revisions and invalidations. No paid-access producer runs here.
+
+## Embedded worker settings and resource limits
+
+The initial deployment is one API process/replica. The API lifespan supervises
+`app.jobs.billing.BillingWorker` through `app.composition.billing_worker`.
+The runner accepts an explicit session factory and LBX client, independent of
+HTTP startup. There is no standalone worker command/container.
+
+- `BILLING_WORKER_ENABLED=true`: starts embedded execution when LBX is configured.
+- `BILLING_WORKER_URGENT_CONCURRENCY=2`: independent urgent source slots (1–16).
+- `BILLING_WORKER_NORMAL_CONCURRENCY=1`: independent normal source slots (1–16).
+- `BILLING_WORKER_IO_TIMEOUT_SECONDS=60`: total read/cleanup budget (greater
+  than the cleanup reserve, at most 600 seconds).
+- `BILLING_WORKER_SCAN_BATCH_SIZE=100`: local batch size (1–100).
+
+`PREFLIGHT_CLEANUP_TIMEOUT_SECONDS` reserves cleanup within that total budget.
+Work and subscription leases cover the total budget plus 30 seconds for local
+apply/safety. Each source slot has one owner through actual HTTP cleanup.
+Timeout/cancellation/expired DB leases do not release unfinished HTTP slots.
+No replacement request can accumulate behind an abandoned owner. Apply checks
+both queue ownership/expiry and subscription owner/fence/expiry under business
+locks. All provider retries are GET-only; the worker never creates a customer,
+agreement, subscription, payment or renewal.
+
+These are **per-process** limits, not provider-wide concurrency/RPS guarantees.
+The worker owns separate LBX HTTP pools and bounded DB delegation/connection
+capacity from purchase, Widget and new-sale resources. Local sweep/deadline work
+has separate DB delegation and no provider HTTP. Normal and urgent lanes cannot
+consume each other's reserved slots. Wholly unconfigured LBX reports
+`not_configured` without source calls; disabled execution reports `disabled`.
+Partial LBX configuration also prevents source execution without breaking auth.
+Retained cleanup is reported as degraded billing health while local supervision
+continues; source unavailability alone does not withdraw identity readiness.
+Ordinary automated tests explicitly disable unattended execution.
+
+## Enrollment, cadence and restart
+
+Step 7's canonical local binding and its immediate reconciliation job commit
+atomically. Repeated preparation readbacks preserve existing future schedules,
+generation and ownership. Coalescing keys use configured account and local
+subscription identity, so two products sharing a customer/tariff keep independent
+jobs, observations and trust.
+
+Startup and every 60 seconds run a durable local enrollment sweep. Each batch
+selects the missing set by subscription ID (no offset/cursor), commits at most
+100 enrollments, yields to other tasks and continues until empty. Restart repeats
+from missing work. Existing pending/running work, including future jobs and
+expired leases awaiting reclaim, is already enrolled; completed recurring jobs
+reactivate. Malformed historical provenance is isolated as `invalid` with a
+bounded reason, without provider calls or repeatedly failing the first batch.
+Missing source-trust expiry jobs are repaired locally as well. Inventory and
+uncertain-create/deadline repair belong to Step 3 and are not dispatched yet;
+existing customer active-send leases and completed no-send records are untouched.
+
+New links are immediately due. Never-positive/blocked/incomplete/conflicted or
+near-expiry (within 30 minutes) work is urgent, with at most five minutes between
+scheduled attempts. Claims check the current persisted trust deadline as well as
+stored priority, so waiting normal work can use urgent capacity as trust approaches
+expiry. This classification preserves the job's due time, generation and live
+lease. Otherwise reconciliation runs approximately every 15 minutes.
+Recurring due times use deterministic earlier-only jitter up to 20%; incomplete
+reads use bounded 30-second exponential backoff capped at five minutes. Scheduling
+includes attempt duration; a paused process/backlog can still cause observable
+lag and never extends source trust. Authentication/configuration failures cannot
+start rapid POST retries and retain the bounded read cooldown.
+
+Claims use short PostgreSQL `FOR UPDATE SKIP LOCKED` transactions, DB time,
+unique ownership and an enqueue generation. Consumers claim only available
+execution capacity, then claim subscription fences separately. No network runs
+under locks. Hints arriving during execution survive completion. Source apply,
+trust scheduling and queue rescheduling commit atomically. Local expiry appends
+`subscription-trust-expiry:v1` / `deterministic_access_boundary` evidence with the
+supporting observation and effective deadline, without changing provider
+lifecycle/financial facts, extending trust or writing an access revision.
+A concurrent refresh wins through the same lock/generation checks.
+
+## Startup, inspection and shutdown
+
+Apply migration `20261028_0004` through the normal migration service before
+starting the API. Start/restart with the existing repository/deployment commands;
+there is no additional process to launch. To stop source execution, set
+`BILLING_WORKER_ENABLED=false` and restart through the ordinary deployment path.
+Stop claiming before replacing the owner. Shutdown drains up to the configured
+I/O budget, cancels/awaits tasks and drains source cleanup. If cleanup is still
+pending it retains its slot, reports degraded shutdown and propagates failure;
+it never reports a successful drain or closes the client underneath live I/O.
+After process exit, finite durable leases are reclaimable on restart.
+
+`GET /api/health/billing` exposes named, redacted worker status, occupied slots,
+cleanup-pending count, pending/invalid work, oldest due time, failures, enrollment
+batch count and last scan/progress times. `/api/health/ready` requires the DB and
+progressing local worker supervision; an LBX outage alone does not make identity
+unready. `/api/health/live` remains DB-independent. No IDs/secrets are returned.
+
+Prometheus `payment_portal_billing_worker_*` signals report attempts by lane and
+outcome, active/cleanup slots, pending/invalid work, oldest overdue age and last
+progress time. `failures` counts execution exceptions; completed work and last
+progress include durably recorded incomplete attempts and local sweeps. They do
+not claim successful source proof. Inspect `source_incomplete` work classifications,
+versioned observations and bounded `lbx_http` source/authentication diagnostics
+for source failures. Alert on repeated authentication denial/configuration errors
+or incomplete reads approaching the affected source-trust deadline; the read
+backoff supplies cooldown without preserving or extending trust.
+Labels contain no local/customer/product IDs. Growing overdue age,
+invalid records, failed local scans (120 seconds) or persistent cleanup warrant
+operator investigation. Inspect durable work/projections through existing trusted
+local DB access; the expanded purchase inspection/recheck CLI is Step 5.
+Do not use public health output as commercial or access authority.
+
+## Future expansion path
+
+Use measured queue age/source latency to tune bounded concurrency/timing within
+actual provider limits first. If API resource isolation requires it, a future
+thin standalone entrypoint can reuse the same runner/use cases: disable embedded
+startup, stop claims, drain/stop the old owner, then restart over the same durable
+jobs. Roll back by draining that owner before re-enabling embedded execution.
+Add consumers/read optimizations only after measured need and account for
+multiplied per-process limits and actual LBX quotas; add aggregate enforcement
+when required by that deployment. No scaled deployment, MQ, global admission,
+capacity benchmark or large-load claim is implemented by Step 2.
 
 ## Evidence levels and owner checkpoint
 
