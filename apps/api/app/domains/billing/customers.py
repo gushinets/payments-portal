@@ -10,6 +10,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.settings import Settings
+from app.domains.billing.work_contracts import WorkClaim
+from app.domains.billing.customer_receipts import CUSTOMER_RECEIPT_SCHEMA, receipt_id as _receipt_id
 from app.core.time import utc_now
 from app.domains.billing.contracts import CREATE_FAILURE_REASONS, CREATE_RESPONSE_SCHEMA, BillingRefused, CustomerOpen
 from app.domains.catalog.publication import SessionFactory
@@ -41,7 +43,6 @@ from app.models import (
 
 
 RECOVERY_WINDOW = timedelta(hours=2)
-CUSTOMER_RECEIPT_SCHEMA = "customer-create-receipt:v1"
 
 
 def lock_user(db: Session, user_id: UUID) -> User:
@@ -49,25 +50,6 @@ def lock_user(db: Session, user_id: UUID) -> User:
         return lock_storage_user(db, user_id)
     except BillingUserLockBusy:
         raise BillingRefused("billing_busy", 503) from None
-
-
-def _receipt_id(operation: ExternalCreateOperation) -> str | None:
-    if operation.recovery_hint_schema_version is None and operation.recovery_hint_document is None:
-        return None
-    hint = operation.recovery_hint_document
-    if operation.recovery_hint_schema_version != CUSTOMER_RECEIPT_SCHEMA or not isinstance(hint, dict):
-        raise BillingRefused("billing_identity_unproven", 409)
-    value = hint.get("provider_customer_candidate_id")
-    if (
-        not isinstance(value, str)
-        or not value.isascii()
-        or not value.isdecimal()
-        or len(value) > 20
-        or int(value) <= 0
-        or str(int(value)) != value
-    ):
-        raise BillingRefused("billing_identity_unproven", 409)
-    return value
 
 
 def authenticate(db: Session, configuration: Settings, token: str) -> User:
@@ -224,6 +206,10 @@ def claim_customer_send(
         work.lease_expires_at = now + timedelta(
             seconds=configuration.preflight_total_timeout_seconds + configuration.preflight_cleanup_timeout_seconds
         )
+        from app.domains.billing.background_recovery import enroll_operation
+
+        db.flush()
+        enroll_operation(db, operation, customer.external_billing_account_id, sent=True)
         result = _snapshot(customer, operation, user, may_create=True)
         db.commit()  # Fence, active-send lease and recovery item precede POST.
         return result
@@ -382,11 +368,22 @@ def apply_customer_read(
     provider_id: str | None = None,
     outer_key: str | None = None,
     ambiguous: bool = False,
+    work_claim: WorkClaim | None = None,
 ) -> CustomerOpen:
     """Apply point proof only against its current fence; lists alone never bind."""
     with factory() as db:
+        if work_claim is not None:
+            from app.infrastructure.queries.billing_background import customer as read_customer
+
+            lock_user(db, read_customer(db, expected.customer_id).user_id)
         customer = lock_customer(db, expected.customer_id)
         operation = customer_operation(db, customer.customer_id)
+        if work_claim is not None:
+            from app.domains.billing.work import verify_operation_claim
+
+            verify_operation_claim(db, work_claim, expected.operation_id)
+            if customer.binding_state == Binding.IDENTITY_CONFLICT:
+                raise BillingRefused("billing_identity_conflict", 409)
         if (
             operation is None
             or operation.create_operation_id != expected.operation_id
@@ -433,9 +430,14 @@ def apply_customer_read(
             operation.send_fence = uuid4()
         work = recovery_work(db, operation.create_operation_id)
         if work is not None:
-            work.work_state = "done"
-            work.lease_owner = None
-            work.lease_expires_at = None
+            if work_claim is not None:
+                from app.domains.billing.work import finish
+
+                finish(db, work, work_claim, due=None)
+            else:
+                work.work_state = "done"
+                work.lease_owner = None
+                work.lease_expires_at = None
         for review in open_customer_reviews(db, operation.create_operation_id):
             review.case_state = "resolved"
             review.resolved_at = utc_now()

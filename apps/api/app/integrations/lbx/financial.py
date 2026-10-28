@@ -219,3 +219,9 @@ def prove_effective_terms(
         raise LbxResponseInvalid()
     if service.connection_price is not None and service.connection_price != offer.money.connection_unit_amount:
         raise LbxScopeMismatch()
+
+
+def inventory_terminal(point: Subscription) -> bool:
+    if point.state not in {-2, -1, 0, 2, 3}:
+        raise LbxResponseInvalid()
+    return point.state == 3

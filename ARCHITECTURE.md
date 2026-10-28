@@ -23,8 +23,8 @@ ANY-709 Step 3 adds accepted-purchase APIs and financial preparation/recovery,
 with automated QA and recorded owner test-payment validation complete.
 Step 4 adds localized product/account Buy/Continue/Manage and a shared payment-capable
 Widget controller; automated and intended-agreement owner payment QA passed,
-with independent final review pending. Billing lifecycle
-workers and paid access remain later work. Final 4F
+with independent final review pending. ANY-715 supplies embedded lifecycle
+polling and GET-only recovery/inventory; paid access remains later work. Final 4F
 verification and human screenshot/intent acceptance remain pending.
 
 Each production deployment serves exactly one contour. Region Resolver is a
@@ -78,7 +78,10 @@ renew it, and owned negative/conflict evidence reduces usability immediately.
 Preparation readback preserves reconciled facts. Scope provenance has no chosen
 primary, and no access revision, allowance or paid grant is produced. Step 2
 adds atomic enrollment, bounded embedded execution and provider-free trust-expiry
-evidence. See [billing operations](docs/engineering/ANY-715-billing-operations.md).
+evidence. Step 3 dispatches shared GET-only uncertain-create recovery, separate
+fixed two-hour local deadlines and bounded customer inventory. Permanent operation
+keys, original accepted proof and customer send leases remain authoritative;
+no background CREATE or cross-product adoption is permitted. See [billing operations](docs/engineering/ANY-715-billing-operations.md).
 
 The canonical target is defined, in precedence order, by
 [ADR 0005](docs/architecture/decisions/0005-external-billing-boundary.md), the

@@ -86,10 +86,12 @@ def test_any709_step2_two_tabs_products_have_one_send_identity(
     assert sum(claim.may_create for claim in claims) == 1
     with factory() as db:
         op = db.scalar(select(ExternalCreateOperation))
-        work = db.scalar(select(BillingWorkItem))
+        work = db.scalar(select(BillingWorkItem).where(BillingWorkItem.work_kind == "external_create_recovery"))
         assert op.purchase_intent_id is None and op.send_fence is not None
         assert op.unknown_recovery_deadline_at == op.unknown_since + timedelta(hours=2)
-        assert work.next_attempt_at == op.unknown_recovery_deadline_at
+        assert work.next_attempt_at < op.unknown_recovery_deadline_at
+        deadline = db.scalar(select(BillingWorkItem).where(BillingWorkItem.work_kind == "external_create_deadline"))
+        assert deadline.next_attempt_at == op.unknown_recovery_deadline_at
         assert db.scalar(select(func.count()).select_from(PurchaseIntent)) == 0
         assert db.scalar(select(func.count()).select_from(ExternalBillingCustomer)) == 1
 
@@ -227,7 +229,12 @@ def test_any709_step2_real_bootstrap_reuses_one_customer_and_never_persists_secr
         assert db.scalar(select(func.count()).select_from(ExternalCreateOperation)) == 1
         assert db.scalar(select(func.count()).select_from(PurchaseIntent)) == 0
         documents = [str(row.recovery_hint_document) for row in db.scalars(select(ExternalCreateOperation))]
-        documents += [str(row.payload_document) for row in db.scalars(select(BillingWorkItem))]
+        documents += [
+            str(row.payload_document)
+            for row in db.scalars(
+                select(BillingWorkItem).where(BillingWorkItem.work_kind == "external_create_recovery")
+            )
+        ]
         for secret in [posts[0]["password"], posts[0]["login"], "synthetic@example.com", "server-secret", "Synthetic"]:
             assert all(secret not in document for document in documents)
 
@@ -410,10 +417,12 @@ def test_any709_step2_only_proven_unsent_claim_can_reset_same_operation(
     assert second.may_create and second.fence != first.fence
     assert second.operation_id == first.operation_id and second.outer_key == first.outer_key
     with factory() as db:
-        assert db.scalar(select(func.count()).select_from(BillingWorkItem)) == 1
+        assert db.scalar(select(func.count()).select_from(BillingWorkItem)) == 2
         assert (
-            db.scalar(select(BillingWorkItem)).next_attempt_at
-            == db.scalar(select(ExternalCreateOperation)).unknown_recovery_deadline_at
+            db.scalar(
+                select(BillingWorkItem).where(BillingWorkItem.work_kind == "external_create_recovery")
+            ).next_attempt_at
+            < db.scalar(select(ExternalCreateOperation)).unknown_recovery_deadline_at
         )
 
 

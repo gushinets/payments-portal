@@ -342,6 +342,14 @@ vocabularies remain open for concrete billing jobs. ANY-715 Step 2 adds
 nonnegative `enqueue_generation`, nullable `last_attempt_started_at` and a partial
 unique `(work_kind, coalescing_key)` index for subscription reconciliation/trust
 expiry, enrollment sweep and the reserved inventory/create-deadline kinds.
+ANY-715 Step 3 reuses permanent create-operation recovery keys for urgent GET
+work and separate account/operation `external_create_deadline` keys for local
+fixed two-hour escalation. Customer inventory coalesces by account/local customer,
+while subscriptions retain account/local subscription keys. Recovery receipts,
+original request/date/fences and customer active-send leases keep their existing
+storage identity. No new table or migration is needed. Inventory observations
+use `customer-inventory:v1`; conflicts never grant access or rewrite bindings.
+
 The pre-existing create-recovery index and customer-send lease identity remain
 unchanged. Claims use paired finite ownership; completion preserves newer enqueue
 generations. Binding atomically enrolls new canonical subscriptions. Source apply
