@@ -405,6 +405,14 @@ conflicting unique data rather than deleting/relabeling it. Legacy customer rows
 without proven origin/operation require operator review; synthetic rows are never
 promoted to live identity. Credential rotation preserves the proven origin scope.
 
+Caller cancellation propagates unchanged, including when protected HTTP cleanup
+crosses the work deadline. Only the owning admission `asyncio.timeout` classifies
+its expiry. Widget bootstrap and purchase advance translate that owned expiry to
+`billing_customer_pending` outside the admission context while customer proof is
+incomplete; later Client/payment/financial deadlines keep their original meaning.
+Pending HTTP cleanup retains its counted slot and any active customer-send lease.
+No cancellation or timeout becomes positive no-send proof or authorizes a replay.
+
 `app.composition.billing.recover_customer` performs provider GET-only recovery
 and may persist a paired binding;
 `app.domains.billing.customers.escalate_overdue_customers` is callable bounded

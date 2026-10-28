@@ -332,6 +332,54 @@ application-database migration are outside this follow-up; migration checks used
 disposable PostgreSQL only. Independent final review and human merge approval
 remain pending.
 
+## Caller cancellation correction (REV-1), 2026-10-28
+
+The owner authorized fixing the reproduced caller-cancellation defect and then
+replying to all review findings in PR #150. A caller can cancel before the work
+deadline while protected HTTP cleanup outlasts it. `ensure_customer` must not
+infer the cancellation owner from the clock or replace it with a billing error.
+
+- [x] Propagate cancellation unchanged; normalize only the owning admission
+  timeout outside its context, while the customer phase is still incomplete.
+- [x] Exercise GET/POST cleanup, caller cancellation and owned expiry through
+  both Widget bootstrap and purchase advance using disposable PostgreSQL and
+  synthetic HTTP. Preserve possible-send evidence, leases and safe continuation.
+- [x] Keep later payment/financial timeouts distinct from customer recovery.
+- [x] Run focused and canonical checks and inspect the final diff.
+
+Delivery includes publishing the validated fix and replying in the six human
+review threads plus the Sonar cancellation finding with commit/scenario evidence.
+
+No schema, financial retry policy, paid-access authority or live provider mutation
+is part of this correction. Human review and merge approval remain separate.
+
+Before the implementation change, the new integration matrix reproduced all four
+caller-cancellation failures (GET/POST through Widget/advance); six owned-expiry
+and later-phase controls passed. Log: `/tmp/pr150-recovery-caller-cancel-red.log`.
+The production fix removes clock-based cancellation inference. Public entrypoints
+translate the admission owner's typed deadline only while customer proof remains
+incomplete, after the admission context has distinguished its own cancellation.
+Source cleanup counting, active leases and permanent operation evidence remain
+intact; explicit continuation recovers the same customer without an extra CREATE.
+The unchanged redacted subscription-observation projection moves into its own
+composition module to retain the 500-line file limit without a guard exception.
+
+After the fix, all 57 focused customer/recovery/failure cases passed. Final
+`npm run check` PASS: 1,447 fast API, 308 PostgreSQL (including the ten new
+cancellation/expiry cases), 378 component and 38 frontend boundary tests, docs,
+generated-artifact freshness, architecture, Ruff, web lint and production build.
+Log: `/tmp/pr150-recovery-caller-cancel-canonical-final.log`; PostgreSQL took
+610.70 seconds. The canonical command skipped the full browser suite. The earlier
+delayed-catalog browser evidence and predecessor `39f46d7` locked-install CI are
+recorded separately; new-head CI/Sonar results belong to the PR, not this local
+check. Local dependency-version differences recorded above still apply.
+
+Final diff review verified that the existing bootstrap/advance admission bodies
+are AST-identical apart from the readiness marker, and the extracted observation
+projection is AST-identical apart from its name. The behavior change is confined
+to cancellation/owned-expiry classification. No application database migration,
+live LBX CREATE/payment or deployment was performed.
+
 ## Retained decisions and boundaries
 
 - Kernel owns enabled products; LBX owns current offers and commercial facts.

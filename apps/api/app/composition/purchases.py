@@ -8,12 +8,12 @@ from starlette.concurrency import run_in_threadpool
 
 from app.composition.billing import ensure_customer, recover_customer
 from app.composition.catalog import catalog_preview
+from app.composition.purchase_observation import prepared_subscription_observation
 from app.composition.sources import SourceResources
 from app.core.errors import AppError
 from app.core.settings import Settings
-from app.domains.billing.contracts import CustomerOpen
+from app.domains.billing.contracts import BillingAccountFailure, CustomerOpen
 from app.domains.billing.customers import reserve_customer, recheck_widget_session
-from app.domains.catalog.commercial_offer import canonical_decimal
 from app.domains.catalog.link_publication import StoredProductLink
 from app.domains.catalog.product_link import CurrentOffer, current_offer_fingerprint
 from app.domains.catalog.preview import require_enabled_product
@@ -26,9 +26,8 @@ from app.domains.purchases.contracts import (
     PurchaseRefused,
     PurchaseInventoryIncomplete,
 )
-from app.domains.purchases.contracts import EffectiveServiceEvidence, PreparedSubscriptionObservation
 from app.domains.purchases import financial, service
-from app.infrastructure.preflight import PreflightBudget
+from app.infrastructure.preflight import PreflightBudget, PreflightDeadlineExceeded
 from app.integrations.lbx._transport import customer_diagnostics
 from app.integrations.lbx.client import LbxServerClient
 from app.integrations.lbx.current_offer import current_billing_date, read_current_offer
@@ -215,39 +214,6 @@ async def _find_financial(
     return point.subscription_id, point
 
 
-def _observation(point: Subscription, purchase: Purchase) -> PreparedSubscriptionObservation:
-    # Deliberately excludes balance, provider text and PII. Dates remain provider calendar evidence.
-    return PreparedSubscriptionObservation(
-        subscription_id=str(point.subscription_id),
-        agreement_id=str(point.agreement_id),
-        state=point.state,
-        current_blocking=point.current_blocking,
-        accepted_fingerprint=purchase.accepted.offer.fingerprint,
-        period_id=point.period_id,
-        period_type=point.period_type,
-        period_length=point.period_length,
-        currency=purchase.accepted.offer.money.currency,
-        effective_recurring_amount=canonical_decimal(point.total_price),
-        services=tuple(
-            EffectiveServiceEvidence(
-                service.tariff_service_id, canonical_decimal(service.multiplicator), canonical_decimal(service.price)
-            )
-            for service in point.services
-        ),
-        calendar={
-            field: getattr(point, field)
-            for field in (
-                "subscription_start_date",
-                "subscription_end_date",
-                "subscription_instance_start_date",
-                "subscription_instance_end_date",
-                "last_tariffication_period_start",
-                "last_tariffication_period_end",
-            )
-        },
-    )
-
-
 async def _recover_one(
     client: LbxServerClient,
     purchase: Purchase,
@@ -292,7 +258,7 @@ async def _recover_one(
         purchase,
         operation,
         provider_id,
-        observation=_observation(point, purchase) if point else None,
+        observation=prepared_subscription_observation(point, purchase) if point else None,
     )
     return True
 
@@ -414,25 +380,34 @@ async def advance_purchase(
     await run_in_threadpool(service.verify_original_consent, factory, purchase)
     if sources.billing is None:
         raise PurchaseRefused("purchase_billing_not_configured", 503)
-    async with sources.billing.operation() as budget:
-        current = await run_in_threadpool(reserve_customer, factory, configuration, token)
-        if current.customer_id != purchase.customer_id:
-            raise PurchaseRefused("billing_identity_conflict", 409)
-        current = await ensure_customer(
-            sources.require_lbx(), configuration, factory=factory, token=token, current=current, budget=budget
-        )
-        result = await _prepare(
-            sources,
-            configuration,
-            factory=factory,
-            purchase=purchase,
-            customer=current,
-            budget=budget,
-            token=token,
-            recover_only=False,
-        )
-        await run_in_threadpool(recheck_widget_session, factory, configuration, token, current)
-        return result
+    customer_ready = False
+    try:
+        async with sources.billing.operation() as budget:
+            current = await run_in_threadpool(reserve_customer, factory, configuration, token)
+            if current.customer_id != purchase.customer_id:
+                raise PurchaseRefused("billing_identity_conflict", 409)
+            current = await ensure_customer(
+                sources.require_lbx(), configuration, factory=factory, token=token, current=current, budget=budget
+            )
+            customer_ready = True
+            result = await _prepare(
+                sources,
+                configuration,
+                factory=factory,
+                purchase=purchase,
+                customer=current,
+                budget=budget,
+                token=token,
+                recover_only=False,
+            )
+            await run_in_threadpool(recheck_widget_session, factory, configuration, token, current)
+            return result
+    except PreflightDeadlineExceeded:
+        # The admission context distinguishes its own expiry from caller cancellation.
+        # Preserve the phase-specific errors after customer proof completes.
+        if customer_ready:
+            raise
+        raise BillingAccountFailure("billing_customer_pending", 409) from None
 
 
 async def verify_payment_purchase(

@@ -6,7 +6,6 @@ import asyncio
 import logging
 from dataclasses import dataclass, field, replace
 from random import uniform
-from time import monotonic
 from uuid import UUID
 
 from pydantic import SecretStr
@@ -224,12 +223,6 @@ async def ensure_customer(
             current = await run_in_threadpool(reserve_customer, factory, configuration, token)
     except PreflightDeadlineExceeded:
         raise BillingAccountFailure("billing_customer_pending", 409) from None
-    except asyncio.CancelledError:
-        # The enclosing admission scope also enforces this same deadline.
-        # Preserve caller cancellation; normalize only its own timeout.
-        if monotonic() >= budget.work_deadline:
-            raise BillingAccountFailure("billing_customer_pending", 409) from None
-        raise
 
 
 async def bootstrap_account(
@@ -257,97 +250,110 @@ async def bootstrap_account(
     client = sources.require_lbx()
     if sources.billing is None:
         raise BillingAccountFailure("billing_not_configured")
-    async with sources.billing.operation() as budget:
-        try:
-            current = await run_in_threadpool(reserve_customer, factory, configuration, token)
-        except BillingRefused as error:
-            if error.status in {401, 403} or error.code == "billing_busy":
-                raise
-            raise BillingAccountFailure(error.code, error.status) from None
-        logger.info(
-            "billing_account_open",
-            extra={"structured": {"stage": "account_bootstrap", "create_operation_id": str(current.operation_id)}},
-        )
-        with customer_diagnostics(str(current.operation_id)):
+    customer_ready = False
+    try:
+        async with sources.billing.operation() as budget:
             try:
-                current = await ensure_customer(
-                    client, configuration, factory=factory, token=token, current=current, budget=budget
-                )
-                payment_purchase = None
-                if purchase_id is not None:
-                    from app.composition.purchases import verify_payment_purchase
-
-                    payment_purchase = await verify_payment_purchase(
-                        sources,
-                        configuration,
-                        factory=factory,
-                        token=token,
-                        purchase_id=purchase_id,
-                        customer=current,
-                        budget=budget,
-                    )
-                credential = sign_widget_jwt(
-                    customer_id=current.provider_id, secret=configuration.lbx_widget_signing_secret
-                )
+                current = await run_in_threadpool(reserve_customer, factory, configuration, token)
+            except BillingRefused as error:
+                if error.status in {401, 403} or error.code == "billing_busy":
+                    raise
+                raise BillingAccountFailure(error.code, error.status) from None
+            logger.info(
+                "billing_account_open",
+                extra={"structured": {"stage": "account_bootstrap", "create_operation_id": str(current.operation_id)}},
+            )
+            with customer_diagnostics(str(current.operation_id)):
                 try:
-                    ready = await client.client_user(token=credential, budget=budget)
-                except AppError:
-                    raise BillingAccountFailure("billing_client_not_ready") from None
-                if str(ready.user_id) != current.provider_id or ready.outer_id not in {None, current.outer_key}:
-                    await run_in_threadpool(apply_customer_read, factory, current, ambiguous=True)
-                    raise BillingAccountFailure("billing_identity_conflict", 409)
-                budget.check()
-                await run_in_threadpool(recheck_widget_session, factory, configuration, token, current)
-                budget.check()
-                logger.info(
-                    "billing_account_ready",
-                    extra={"structured": {"stage": "client_ready", "create_operation_id": str(current.operation_id)}},
-                )
-                if payment_purchase is not None:
-                    from app.domains.purchases.service import recheck_payment_purchase
-                    from app.models import ExternalCreateOperationKind
+                    current = await ensure_customer(
+                        client, configuration, factory=factory, token=token, current=current, budget=budget
+                    )
+                    customer_ready = True
+                    payment_purchase = None
+                    if purchase_id is not None:
+                        from app.composition.purchases import verify_payment_purchase
 
-                    await run_in_threadpool(recheck_payment_purchase, factory, configuration, token, payment_purchase)
-                    budget.check()
-                    agreement = next(
-                        op for op in payment_purchase.operations if op.kind == ExternalCreateOperationKind.AGREEMENT
+                        payment_purchase = await verify_payment_purchase(
+                            sources,
+                            configuration,
+                            factory=factory,
+                            token=token,
+                            purchase_id=purchase_id,
+                            customer=current,
+                            budget=budget,
+                        )
+                    credential = sign_widget_jwt(
+                        customer_id=current.provider_id, secret=configuration.lbx_widget_signing_secret
                     )
-                    return AccountWidget(
-                        credential,
-                        configuration.lbx_provider_origin,
-                        payment_purchase.id,
-                        agreement.key,
-                        str(payment_purchase.accepted.seller_id),
-                    )
-                return AccountWidget(credential, configuration.lbx_provider_origin)
-            except AppError as error:
-                logger.warning(
-                    "billing_account_failed",
-                    extra={
-                        "structured": {
-                            "stage": "account_bootstrap",
-                            "create_operation_id": str(current.operation_id),
-                            "reason": error.code,
-                        }
-                    },
-                )
-                if isinstance(error, BillingRefused):
-                    if error.status in {401, 403} or error.code in {"billing_customer_pending", "billing_busy"}:
-                        raise
-                    raise BillingAccountFailure(error.code, error.status) from None
-                if isinstance(error, LbxScopeMismatch):
                     try:
+                        ready = await client.client_user(token=credential, budget=budget)
+                    except AppError:
+                        raise BillingAccountFailure("billing_client_not_ready") from None
+                    if str(ready.user_id) != current.provider_id or ready.outer_id not in {None, current.outer_key}:
                         await run_in_threadpool(apply_customer_read, factory, current, ambiguous=True)
-                    except BillingRefused as conflict:
-                        raise BillingAccountFailure(conflict.code, conflict.status) from None
-                raise BillingAccountFailure(
-                    "billing_server_auth_failed"
-                    if isinstance(error, (LbxAuthenticationFailed, LbxScopeForbidden))
-                    else "billing_identity_conflict"
-                    if isinstance(error, LbxScopeMismatch)
-                    else "billing_source_invalid_response"
-                    if isinstance(error, LbxResponseInvalid)
-                    else "billing_source_rejected"
-                    if isinstance(error, LbxProviderRejected)
-                    else "billing_source_unavailable"
-                ) from None
+                        raise BillingAccountFailure("billing_identity_conflict", 409)
+                    budget.check()
+                    await run_in_threadpool(recheck_widget_session, factory, configuration, token, current)
+                    budget.check()
+                    logger.info(
+                        "billing_account_ready",
+                        extra={
+                            "structured": {"stage": "client_ready", "create_operation_id": str(current.operation_id)}
+                        },
+                    )
+                    if payment_purchase is not None:
+                        from app.domains.purchases.service import recheck_payment_purchase
+                        from app.models import ExternalCreateOperationKind
+
+                        await run_in_threadpool(
+                            recheck_payment_purchase, factory, configuration, token, payment_purchase
+                        )
+                        budget.check()
+                        agreement = next(
+                            op for op in payment_purchase.operations if op.kind == ExternalCreateOperationKind.AGREEMENT
+                        )
+                        return AccountWidget(
+                            credential,
+                            configuration.lbx_provider_origin,
+                            payment_purchase.id,
+                            agreement.key,
+                            str(payment_purchase.accepted.seller_id),
+                        )
+                    return AccountWidget(credential, configuration.lbx_provider_origin)
+                except AppError as error:
+                    logger.warning(
+                        "billing_account_failed",
+                        extra={
+                            "structured": {
+                                "stage": "account_bootstrap",
+                                "create_operation_id": str(current.operation_id),
+                                "reason": error.code,
+                            }
+                        },
+                    )
+                    if isinstance(error, BillingRefused):
+                        if error.status in {401, 403} or error.code in {"billing_customer_pending", "billing_busy"}:
+                            raise
+                        raise BillingAccountFailure(error.code, error.status) from None
+                    if isinstance(error, LbxScopeMismatch):
+                        try:
+                            await run_in_threadpool(apply_customer_read, factory, current, ambiguous=True)
+                        except BillingRefused as conflict:
+                            raise BillingAccountFailure(conflict.code, conflict.status) from None
+                    raise BillingAccountFailure(
+                        "billing_server_auth_failed"
+                        if isinstance(error, (LbxAuthenticationFailed, LbxScopeForbidden))
+                        else "billing_identity_conflict"
+                        if isinstance(error, LbxScopeMismatch)
+                        else "billing_source_invalid_response"
+                        if isinstance(error, LbxResponseInvalid)
+                        else "billing_source_rejected"
+                        if isinstance(error, LbxProviderRejected)
+                        else "billing_source_unavailable"
+                    ) from None
+    except PreflightDeadlineExceeded:
+        # The admission context distinguishes its own expiry from caller cancellation.
+        # Preserve the phase-specific errors after customer proof completes.
+        if customer_ready:
+            raise
+        raise BillingAccountFailure("billing_customer_pending", 409) from None
