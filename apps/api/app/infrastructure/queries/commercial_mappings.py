@@ -49,6 +49,28 @@ def product_head_revision(db: Session, head: CommercialProductHead) -> Commercia
     return db.get(CommercialMappingRevision, head.mapping_revision_id)
 
 
+def has_other_offer_product(db: Session, *, account_id: str, offer_id: str, product_id: str) -> bool:
+    """Only current heads own an offer; historical revisions remain reusable."""
+    statement = (
+        select(CommercialProductHead.product_id)
+        .join(
+            CommercialMappingRevision,
+            (CommercialMappingRevision.mapping_revision_id == CommercialProductHead.mapping_revision_id)
+            & (
+                CommercialMappingRevision.external_billing_account_id
+                == CommercialProductHead.external_billing_account_id
+            ),
+        )
+        .where(
+            CommercialProductHead.external_billing_account_id == account_id,
+            CommercialMappingRevision.billing_offer_id == offer_id,
+            CommercialProductHead.product_id != product_id,
+        )
+        .limit(1)
+    )
+    return db.scalar(statement) is not None
+
+
 def connection_heads(
     db: Session, *, account_id: str, provider_origin: str, legacy_account_id: str | None
 ) -> list[CommercialProductHead]:

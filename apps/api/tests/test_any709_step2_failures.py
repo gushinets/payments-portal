@@ -189,6 +189,8 @@ def test_any709_step2_client_error_has_only_allowlisted_diagnostics(
     with caplog.at_level(logging.DEBUG):
         asyncio.run(scenario())
     diagnostics = [record.structured for record in caplog.records if record.getMessage() == "lbx_http"]
+    assert len(diagnostics) == 1 and diagnostics[0]["duration_ms"] >= 0
+    diagnostics = [{key: value for key, value in item.items() if key != "duration_ms"} for item in diagnostics]
     assert diagnostics == [
         {
             "stage": "client_readiness",

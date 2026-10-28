@@ -251,6 +251,13 @@ JOIN commercial_mapping_revisions r
 WHERE h.product_id = 'proposal_ai';
 SELECT product_id, count(*) FROM commercial_product_heads
 GROUP BY external_billing_account_id, product_id HAVING count(*) > 1;
+SELECT h.external_billing_account_id, r.billing_offer_id,
+       array_agg(h.product_id ORDER BY h.product_id) AS current_products
+FROM commercial_product_heads h
+JOIN commercial_mapping_revisions r
+  ON (r.mapping_revision_id, r.external_billing_account_id) =
+     (h.mapping_revision_id, h.external_billing_account_id)
+GROUP BY h.external_billing_account_id, r.billing_offer_id HAVING count(*) > 1;
 SELECT mapping_revision_id, billing_offer_id, revision_number,
        mapping_schema_version, published_at
 FROM commercial_mapping_revisions ORDER BY published_at, revision_number;
@@ -264,6 +271,20 @@ Expect one selected product head and no duplicates. Repeat the same publish:
 one changed head and a retained old revision. Baseline migration creates no
 heads, modifies no history and promotes no synthetic evidence. Linking and
 catalog browsing leave customer/purchase/subscription counts unchanged.
+
+Both current-head duplicate queries must return no rows. A selected offer can
+have only one current product owner. Publication checks this under its offer
+lock, including identical retries, and returns `mapping_offer_product_conflict`
+without appending a revision on conflict. After a product is retargeted, its old
+offer can be linked to another product; all historical pins remain readable.
+
+Retained conflicting heads are not deleted or reassigned automatically. New
+catalog/purchase admission fails closed, including the final acceptance recheck.
+Operator `query --product-id` remains available for inspecting each pointer and
+its CAS revision. Resolve a conflict with an explicitly selected normal `publish`
+retarget to another validated offer. Do not reset accepted purchases, customer
+bindings, consent or operation rows. Original purchase replay and Manage use
+their immutable pins independently of current offer ownership.
 
 ## Step 1 regression commands (human rerun)
 

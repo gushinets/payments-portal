@@ -5,6 +5,55 @@ Completed: 2026-10-27
 Program: ANY-504, Step 7
 Issue: [ANY-709](https://linear.app/paveldik/issue/ANY-709)
 
+## Final local review remediation, 2026-10-28
+
+Owner-authorized scope: P1-1, ARCH-1 and DOD-1 on `f5aacab`.
+
+- [x] P1-1: compare fresh and accepted commercial terms in the same canonical
+  connection scope, retaining historical account FKs, consent and operation IDs.
+- [x] ARCH-1: reject another current product owner under the offer publication
+  lock, including no-op publication; reject ambiguous retained links for new
+  catalog/purchase admission while keeping operator queries/history and accepted
+  purchase management available. Do not delete or automatically reassign data.
+- [x] DOD-1: add per-attempt `duration_ms` to the existing safe LBX event;
+  preserve streaming, deadlines, cancellation and retry classification.
+- [x] Add focused regressions, run the supported canonical checks and record
+  actual results. No real LBX writes or new payment are required for these fixes.
+
+The fixes add no schema migration and do not rewrite historical fingerprints,
+account bindings, consent, operation IDs or accepted snapshots. Provider-origin
+and seller checks remain in force. Peer impact: None; Kernel product IDs and
+wire contracts are unchanged.
+
+A read-only transaction against the existing local application database found
+one current head and zero duplicate account/offer groups. No application data
+was changed. Automated fault/concurrency tests use separate disposable databases
+and synthetic HTTP transports.
+
+Verification on the resulting working tree:
+
+- `PATH="$PWD/.venv/bin:$PATH" KERNEL_MOCK_ENABLED=0 KERNEL_BASE_URL= KERNEL_SERVICE_TOKEN= TEST_POSTGRES_DATABASE_URL=postgresql+psycopg://review@127.0.0.1:55440/any709_canonical_tests npm run check`
+  passed documentation, generated-contract freshness, architecture, Ruff,
+  38 web boundary checks, 378 component tests, web lint/build, 1,450 fast API
+  tests and all 320 PostgreSQL tests. Log: `/tmp/any709-remediation-check.log`.
+- Separate `npm run test:api:fast` and `npm run test:api:postgres` runs in the
+  same isolated environment also passed 1,450 and 320 tests respectively. Logs:
+  `/tmp/any709-remediation-api-fast.log` and
+  `/tmp/any709-remediation-api-postgres.log`.
+- The new regressions cover old/new account scopes, username rotation, actual
+  price changes, simultaneous offer claims, offer reuse after retarget, retained
+  conflicting heads, acceptance recheck, original Manage/idempotent replay, and
+  precise HTTP body/close/error duration with safe diagnostics.
+- The first focused runs exposed test-fixture mistakes: the duration probe
+  bypassed counted source scheduling and omitted JSON Content-Type; one old
+  migration test reused the same offer for a second product. The probe now uses
+  the real counted path and valid headers; the migration fixture uses a distinct
+  offer while preserving its scope/history assertions. All affected checks
+  subsequently passed in the complete suites.
+- Browser E2E was skipped by the canonical command because `RUN_E2E` was unset
+  and no harness stack was started. No web source changed; browser results from
+  prior review remain predecessor evidence, not a new E2E claim.
+
 ## Goal and delivered scenario
 
 Provide an ordinary LBX-backed purchase journey without per-user operator setup

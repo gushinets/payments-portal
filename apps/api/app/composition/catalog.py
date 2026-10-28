@@ -46,6 +46,7 @@ async def catalog_preview(
             lock_timeout_seconds=configuration.mapping_lock_timeout_seconds,
             provider_origin=configuration.lbx_provider_origin,
             legacy_account_id=configuration.lbx_legacy_credential_scope,
+            require_unique_offer=True,
         )
         budget.check()
         if link is None:

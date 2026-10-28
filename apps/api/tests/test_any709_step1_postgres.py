@@ -354,7 +354,7 @@ def test_any709_step1_populated_upgrade_preserves_mapping_and_legacy_scope_throu
     assert not retry.inserted and retry.stored == known
     other = publish_product_link(
         postgres_session_factory,
-        evaluation=link_document(selection=link_selection(product_id="other-product")),
+        evaluation=link_document(selection=link_selection(product_id="other-product", tariff_id=702)),
         expected_previous_revision=0,
         deadline=time.monotonic() + 5,
         lock_timeout_seconds=1,
@@ -437,16 +437,16 @@ async def test_any709_step1_populated_baseline_upgrade_preserves_v1_without_synt
     )
 
 
-def test_any709_step1_two_products_can_share_offer_without_head_or_revision_collision(
+def test_any709_step1_offer_cannot_have_two_current_products(
     migrated_database: Engine,
     postgres_session_factory: sessionmaker[Session],
 ) -> None:
     first = publish(postgres_session_factory, link_document()).stored
-    other = publish(
-        postgres_session_factory, link_document(selection=link_selection(product_id="other_product"))
-    ).stored
-    assert first.offer_revision_number == 1 and other.offer_revision_number == 2
-    assert first.revision_number == other.revision_number == 1
+    with pytest.raises(MappingRefused, match="mapping_offer_product_conflict"):
+        publish(postgres_session_factory, link_document(selection=link_selection(product_id="other_product")))
+    with postgres_session_factory() as db:
+        assert db.scalar(select(func.count()).select_from(CommercialProductHead)) == 1
+        assert db.scalar(select(func.count()).select_from(CommercialMappingRevision)) == 1
     assert query_product_link(postgres_session_factory, scope=first.document.scope, product_id="proposal_ai") == first
 
 

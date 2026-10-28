@@ -17,7 +17,7 @@ from app.core.settings import Settings
 from app.core.time import utc_now
 from app.domains.billing.contracts import CustomerOpen
 from app.domains.billing.customers import authenticate, lock_user, reserve_customer_in_transaction
-from app.domains.catalog.link_publication import StoredProductLink
+from app.domains.catalog.link_publication import StoredProductLink, require_offer_product_owner
 from app.domains.catalog.product_link import CurrentOffer
 from app.domains.catalog.publication import SessionFactory
 from app.domains.legal.acceptance_text import (
@@ -354,7 +354,6 @@ def pin_purchase(
         if previous is not None:
             return previous
         account = link.document.scope.external_billing_account_id
-        # Same advisory boundary used by publication, then exact pointer recheck.
         lock_mapping_scope(db, account_id=account, offer_id="product-head:v2:" + meaning.product_id)
         head = queries.current_head(db, account, meaning.product_id)
         now = utc_now()
@@ -370,6 +369,7 @@ def pin_purchase(
             or selected != tuple((doc.document_version_id, doc.acceptance_text_hash) for doc in meaning.documents)
         ):
             raise PurchaseRefused("terms_changed", 409)
+        require_offer_product_owner(db, scope=link.document.scope, selection=link.document.selection)
         customer = reserve_customer_in_transaction(db, configuration, user)
         slot = lock_customer(db, customer.customer_id)
         if slot.external_billing_account_id != account:

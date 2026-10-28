@@ -118,6 +118,12 @@ method/allowlisted endpoint template and request/create-operation correlation.
 No response is represented by null codes. Arbitrary body text, provider IDs,
 URLs, credentials and request values never enter these diagnostics.
 
+Each existing `lbx_http` event also includes numeric `duration_ms`, measured with
+`perf_counter` around one HTTP attempt, including pool wait, response-body
+decoding and stream close. Preflight admission and retry backoff are outside
+that interval. The value is log-only: it is not stored in response facts,
+recovery evidence or purchase snapshots and does not affect retries/deadlines.
+
 `errors.py` contains safe `AppError` subclasses. `LbxNotConfigured` and
 `LbxClosed` indicate resource misuse/absence; `LbxAuthenticationFailed` is
 unauthorized auth or persistent GET 401; `LbxScopeForbidden` is 403;

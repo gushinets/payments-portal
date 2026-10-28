@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -206,7 +207,7 @@ def response_facts(
     )
 
 
-def log_http(facts: LbxResponseFacts) -> None:
+def log_http(facts: LbxResponseFacts, *, duration_ms: float) -> None:
     logger.info(
         "lbx_http",
         extra={
@@ -219,6 +220,7 @@ def log_http(facts: LbxResponseFacts) -> None:
                 if facts.endpoint.startswith("/users")
                 else "source",
                 "method": facts.method,
+                "duration_ms": duration_ms,
                 "endpoint": facts.endpoint,
                 "status": facts.http_status,
                 "lbx_code": facts.lbx_code,
@@ -358,6 +360,7 @@ async def request_once(
     )
     status: int | None = None
     facts = None
+    started = time.perf_counter()
     try:
         try:
             if on_dispatch is not None:
@@ -417,4 +420,4 @@ async def request_once(
         raise
     finally:
         if facts is not None:
-            log_http(facts)
+            log_http(facts, duration_ms=(time.perf_counter() - started) * 1000)

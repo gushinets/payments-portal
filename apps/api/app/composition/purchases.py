@@ -116,9 +116,10 @@ async def _live_original(
         sources.require_lbx(), selection=purchase.accepted.selection, configuration=configuration, budget=budget
     )
     # Recompute from immutable historical fields under the current comparison
-    # contract. Older stored digests included future scheduling metadata.
+    # contract and the same canonical connection scope as the fresh offer.
+    # Historical account FKs and accepted digests remain unchanged.
     if offer.fingerprint != current_offer_fingerprint(
-        purchase.account_id, purchase.accepted.selection, purchase.accepted.offer
+        configuration.lbx_external_billing_account_id, purchase.accepted.selection, purchase.accepted.offer
     ):
         await run_in_threadpool(financial.changed_unsent_terms, factory, purchase)
         return False
