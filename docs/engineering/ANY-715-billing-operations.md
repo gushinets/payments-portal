@@ -1,9 +1,9 @@
 # ANY-715 billing operations
 
-Status: Steps 1–2 shared reconciliation and embedded durable polling implemented.
+Status: Steps 1–3 shared reconciliation, embedded polling, recovery and inventory implemented.
 Updated: 2026-10-28.
 Issue: [ANY-715](https://linear.app/paveldik/issue/ANY-715).
-Scope: [implementation plan](../exec-plans/active/ANY-715-implementation-plan.md), Steps 1–2.
+Scope: [implementation plan](../exec-plans/active/ANY-715-implementation-plan.md), Steps 1–3.
 
 ## Shared proof and original history
 
@@ -90,7 +90,7 @@ exact UTC boundaries, native cycle ID or allowance identity. This step does not
 claim to prove natural rollover or derive paid access from those dates.
 
 Step 2 supplies automatic enrollment, durable polling and local source-trust
-expiry evidence. Later steps own uncertain-create recovery/inventory loops,
+expiry evidence. Step 3 adds uncertain-create recovery/inventory loops. Later steps own
 webhook hints and audited operator commands. Step 9 owns primary selection,
 access derivation, effective authorization deadlines, grants, allowances,
 revisions and invalidations. No paid-access producer runs here.
@@ -144,9 +144,9 @@ from missing work. Existing pending/running work, including future jobs and
 expired leases awaiting reclaim, is already enrolled; completed recurring jobs
 reactivate. Malformed historical provenance is isolated as `invalid` with a
 bounded reason, without provider calls or repeatedly failing the first batch.
-Missing source-trust expiry jobs are repaired locally as well. Inventory and
-uncertain-create/deadline repair belong to Step 3 and are not dispatched yet;
-existing customer active-send leases and completed no-send records are untouched.
+Missing source-trust expiry jobs are repaired locally as well. Step 3 also repairs missing customer inventory, urgent recovery and independent
+create-deadline jobs in bounded batches. Existing customer active-send leases,
+future recurring schedules and completed no-send records remain protected.
 
 New links are immediately due. Never-positive/blocked/incomplete/conflicted or
 near-expiry (within 30 minutes) work is urgent, with at most five minutes between
@@ -169,6 +169,82 @@ trust scheduling and queue rescheduling commit atomically. Local expiry appends
 supporting observation and effective deadline, without changing provider
 lifecycle/financial facts, extending trust or writing an access revision.
 A concurrent refresh wins through the same lock/generation checks.
+
+## GET-only uncertain-create recovery and customer inventory
+
+`external_create_recovery` runs in the urgent source lane through shared
+`recover_financial()` / `recover_customer()` Application proof and transitions.
+The permanent recovery key is the original local create-operation ID; receipts
+and request/key/date history remain on that same row. Claims commit before GETs.
+Apply checks current queue ownership/expiry and the original operation fence.
+A lost claim acknowledgement starts no HTTP; a late/superseded result cannot bind.
+Recovered canonical subscriptions enroll atomically through the same subscription
+binding path. Bound subscriptions use lifecycle reconciliation, avoiding
+preparation-only terminal restrictions.
+
+Zero candidates remain uncertain; delayed visibility can later recover. Exactly
+one original point-proven agreement/subscription/customer can bind. Multiple,
+foreign, swapped or already-bound candidates enter conflict review or remain
+incomplete, with no adoption. Saved receipts select only an original candidate;
+a discovery list alone never proves ownership. Known financial conflicts remain
+open after later matching GETs; only deadline-only review can recover normally.
+The hold and original legal/accepted history survive zero matches, review, ended
+states and source failure. No worker POST, force release, current-price
+reapproval, primary selection or access/grant/allowance/revision write exists.
+
+Recovery retries use bounded earlier-only jitter/backoff, at most five minutes
+between scheduled urgent attempts, accounting for attempt duration. A separate
+provider-free `external_create_deadline` job uses the original financial
+`unknown_since + 2h` pair. It escalates unresolved possible-send/UNKNOWN to
+`external_create_outcome_unknown:<operation_kind>` even during an LBX outage.
+Retrying GETs, restarting and delayed candidates never move that deadline.
+`PENDING` and completed `PROVEN_NOT_SENT` authorize no background CREATE and
+are excluded from UNKNOWN repair/escalation. Only the existing authenticated
+explicit advance and completed typed no-send rules can resume a financial send.
+
+Customer creation retains its distinct owner-approved explicit-open policy:
+background recovery never creates or restores an identity-conflict binding.
+An active `customer-send:` lease excludes competing recovery claims. After that
+finite lease or a completed explicit attempt, GET recovery is safe. A later
+explicit authenticated open may perform its existing discover-before-create
+retry with a new fence and its own two-hour pair, on the same customer operation.
+The customer policy does not change financial send authority.
+
+`503 billing_busy` / user-lock `55P03` is local contention. Retry the durable job
+with the same operation, request, key, send fence and fixed deadline. It is never
+provider failure, completed no-send evidence, permission to POST or hold release.
+Inspect `last_error_classification=billing_busy` to distinguish this local retry.
+
+`customer_inventory` runs in the normal lane, approximately every six hours
+when stable, and retries incomplete/conflicting reads urgently within five
+minutes. It uses paired customer proof, fewer than 100 discovery rows and at
+most 20 relevant candidates under one worker I/O budget. Capped, duplicate,
+unstable or partial results are incomplete, never absence. Two bounded inventory
+lists detect observed membership drift; they do not establish an atomic snapshot
+or a provider visibility SLA. Point reads must agree with discovery identities.
+
+A tariff is not product identity. `proposal_ai` and `brief_decoder` may share
+one tariff/service/period for the same customer/account only with separate
+accepted purchases, agreements and subscriptions. Another product is excluded
+from competing inventory only through its permanent local owner, original legal
+consent, agreement/customer/seller/correlation and original effective-term proof.
+Incomplete other-product evidence cannot exclude an object. Proven relevant
+competition records scoped `customer-inventory:v1` evidence and a durable
+`customer_inventory_conflict` review, reducing the affected subscription's
+commercial eligibility without rebinding any object or renewing source trust.
+Each bounded pass checks the customer's product scopes before applying its
+scoped conflicts together in one fenced transaction. The customer job finishes
+once after all those conflicts are recorded; an earlier conflicting product
+cannot repeatedly prevent later products from being checked. A stale operation
+snapshot or expired work claim rejects the entire conflict batch.
+Ordinary inventory success cannot close a known conflict.
+
+Owner checkpoint: review existing synthetic GET traffic and persisted original
+history using the `billing_background_recovery` PostgreSQL selection from the
+plan's shared harness recipe. All such fixtures are **SIMULATED**; no live billing
+failure, provider CREATE or payment is manufactured. Actual test-LBX failure
+recovery is **NOT_RUN**. Webhook mode remains **DISABLED/POLLING-ONLY**; webhook
+setup and audited resolution/inspection CLI expansion remain Steps 4–5.
 
 ## Startup, inspection and shutdown
 
