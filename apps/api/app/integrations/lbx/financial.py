@@ -146,12 +146,23 @@ def prove_agreement(point: Agreement, *, user_id: int, seller_id: int, number: s
 def prove_subscription(
     point: Subscription, *, agreement_id: int, selection: ProductLinkRequest, offer: CurrentOffer
 ) -> None:
+    # Preparation deliberately excludes terminal subscriptions. Lifecycle reads
+    # share the effective-term proof below without inheriting this restriction.
+    if point.state is None or point.current_blocking is None:
+        raise LbxResponseInvalid()
+    if point.state not in {-2, -1, 0, 2} or point.current_blocking not in {0, 1, 3}:
+        raise LbxScopeMismatch()
+    prove_effective_terms(point, agreement_id=agreement_id, selection=selection, offer=offer)
+
+
+def prove_effective_terms(
+    point: Subscription, *, agreement_id: int, selection: ProductLinkRequest, offer: CurrentOffer
+) -> None:
+    """Compare accepted effective terms, independently of lifecycle/calendar."""
     required = (
         point.period_id,
         point.period_type,
         point.period_length,
-        point.state,
-        point.current_blocking,
         point.is_demo,
         point.is_offer_agrm,
         point.currency_symbol,
@@ -159,6 +170,16 @@ def prove_subscription(
         point.services,
     )
     if any(value is None for value in required):
+        raise LbxResponseInvalid()
+    if len(point.services) == 1 and any(
+        value is None
+        for value in (
+            point.services[0].multiplicator,
+            point.services[0].price,
+            point.services[0].periodic_service,
+            point.services[0].bulk_service,
+        )
+    ):
         raise LbxResponseInvalid()
     if (
         point.agreement_id != agreement_id
@@ -171,12 +192,7 @@ def prove_subscription(
         offer.period.length,
     ):
         raise LbxScopeMismatch()
-    if (
-        point.state not in {-2, -1, 0, 2}
-        or point.current_blocking not in {0, 1, 3}
-        or point.is_demo
-        or point.is_offer_agrm
-    ):
+    if point.is_demo or point.is_offer_agrm:
         raise LbxScopeMismatch()
     if (
         offer.money.currency != "RUB"
@@ -187,16 +203,6 @@ def prove_subscription(
     if len(point.services) != 1:
         raise LbxScopeMismatch()
     service = point.services[0]
-    if any(
-        value is None
-        for value in (
-            service.multiplicator,
-            service.price,
-            service.periodic_service,
-            service.bulk_service,
-        )
-    ):
-        raise LbxResponseInvalid()
     if (
         service.tariff_service_id != selection.tariff_service_id
         or service.multiplicator != Decimal(selection.quantity)
