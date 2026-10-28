@@ -289,6 +289,16 @@ financial status and an immediately expired projection, plus normalized effectiv
 terms and nullable/sentinel calendar observations. It creates no access-primary,
 paid state, grant or allowance, and never extends paid trust on Manage.
 
+ANY-715 Step 1 uses the existing reconciliation lease/fence columns and appends
+`subscription-reconciliation:v1` evidence through shared claim/read/apply logic.
+It creates/reuses a product scope without selecting a primary. Complete matching
+proof anchors at most six hours of source trust to read-set start; incomplete
+attempts preserve the existing deadline and complete support, while decisive
+owned negative/conflict evidence reduces usability. Subsequent preparation
+cannot overwrite monitored facts. All resulting access revisions remain null.
+There is no schema change or automatic worker in this step; see the
+[operations runbook](../engineering/ANY-715-billing-operations.md).
+
 `billing_state_observations` stores evidence whose core fields are immutable.
 Its closed kinds are
 `authoritative_subscription_read`, `target_product_discovery`,

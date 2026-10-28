@@ -68,6 +68,16 @@ ANY-709 Step 3 adds a purchase mutex and request-driven financial preparation.
 Workers, paid-access derivation and invalidation delivery remain later work. The two source-catalog projection tables are inert schema
 slots with no runtime readers/writers.
 
+ANY-715 Step 1 supplies shared authoritative subscription reconciliation through
+`composition/reconciliation.py`, billing Application contracts/apply and LBX
+normalization. Four bounded point reads run outside transactions; short fenced
+claim/apply transactions preserve original purchase/legal provenance. Complete
+matching proof establishes finite source trust; incomplete attempts cannot
+renew it, and owned negative/conflict evidence reduces usability immediately.
+Preparation readback preserves reconciled facts. Scope provenance has no chosen
+primary, and no access revision, allowance or paid grant is produced. Automatic
+execution remains future work. See [billing operations](docs/engineering/ANY-715-billing-operations.md).
+
 The canonical target is defined, in precedence order, by
 [ADR 0005](docs/architecture/decisions/0005-external-billing-boundary.md), the
 accepted [External Billing Boundary Design](docs/superpowers/specs/2026-09-15-external-billing-boundary-design.md),

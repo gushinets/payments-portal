@@ -5,6 +5,13 @@ Last verified: 2026-09-24
 
 ## Sensitive data
 
+ANY-715 Step 1 reconciliation persists allowlisted normalized conclusions,
+calendar facts and immutable local provenance, never raw source payloads,
+credentials or contact fields. Scope and original customer/agreement/subscription
+bindings are server-resolved and rechecked under locks before apply. Conflicts
+cannot silently rebind or grant access; see
+[billing operations](engineering/ANY-715-billing-operations.md).
+
 Never collect, persist, or log full card data. Redact card-related external
 fields, raw session, password-reset, and email-verification tokens,
 authorization headers, webhook secrets, passwords, and private billing or
