@@ -134,6 +134,8 @@ Indexes and constraints:
 
 | Column | Type | Nullable | Key |
 |---|---|---:|---|
+| `enqueue_generation` | `INTEGER` | no |  |
+| `last_attempt_started_at` | `DATETIME` | yes |  |
 | `work_item_id` | `CHAR(32)` | no | PK |
 | `work_kind` | `TEXT` | no |  |
 | `scope_kind` | `TEXT` | no |  |
@@ -154,6 +156,7 @@ Indexes and constraints:
 
 Indexes and constraints:
 
+- `ck_billing_work_items_generation_nonnegative`
 - `ck_billing_work_items_lease_pair`
 - `ck_billing_work_items_payload_schema_nonempty`
 - `ix_billing_work_items_claim_scan`
@@ -164,6 +167,7 @@ Indexes and constraints:
 - `ix_billing_work_items_priority_retry`
 - `ix_billing_work_items_scope`
 - `uq_billing_work_items_create_recovery`
+- `uq_billing_work_items_recurring`
 
 ## `capability_manifest_projections`
 
