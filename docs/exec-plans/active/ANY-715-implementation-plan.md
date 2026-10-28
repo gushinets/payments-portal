@@ -33,14 +33,14 @@ The running system must:
    and coalesced queue, with independent polling as the correctness path.
 8. Provide documented privileged CLI inspection, bounded rechecks and
    proof-based audited resolutions.
-9. Support multiple consumers safely and provide a tested path from one
-   embedded worker to independently deployed workers.
+9. Keep claims and facts safe under competing consumers, while initially running
+   one embedded worker with bounded resources.
 10. Supply Step 9 with trustworthy provider-neutral facts and deadlines.
 
-The initial deployment remains one API replica with an embedded worker.
-Capacity is bounded and measured. Supporting 10,000 subscriptions is a
-capacity-characterization scenario, not an unverified launch or LBX-throughput
-promise.
+The initial deployment remains one API replica with an embedded worker, suitable
+for the current small workload. Separating execution, durable jobs and business
+logic preserves a future expansion path without implementing extra deployment
+modes or hypothetical load requirements now.
 
 Step 8 does not select an access primary, grant paid access, create allowances,
 update access revisions, produce invalidations or implement Kernel enforcement.
@@ -69,13 +69,15 @@ Develop Step 8 from the current `ANY-709` branch without waiting for its merge.
 Refresh relevant Step 7 interfaces and tests after subsequent review corrections.
 PR #143 is rejected history and supplies no implementation dependency.
 
-The owner authorized a documentation-only planning delivery on `ANY-715`, based
-on `ANY-709`. Commit only this plan as
-`ANY-715 - Add background billing implementation plan` and open a draft PR
-targeting `ANY-709`. Include the Linear URL, PR #150, source SHAs and an explicit
-statement that the branch inherits Step 7. Rebase/retarget to main after Step 7
-merges through a separately authorized Git operation. Per-step execution
-prompts below do not authorize Git mutations.
+The planning branch `ANY-715` inherits `ANY-709`; its draft
+[PR #154](https://github.com/gushinets/payments-portal/pull/154) targets `ANY-709`
+and records the Step 7 dependency. Rebase/retarget to main after Step 7 merges
+through a separately authorized Git operation. Per-step execution prompts below
+do not authorize Git mutations.
+
+Owner-requested revalidation keeps the five implementation steps and removes
+premature capacity requirements. Only this plan changes in this revision; no
+Step 8 application behavior is presented as implemented.
 
 ### Reuse and gap register
 
@@ -119,8 +121,8 @@ Confirmed gaps:
 - Customer active-send leases share recovery rows and require claim
   compatibility.
 - There is no working webhook receiver or Step 8 operational CLI/runbook.
-- Source pools and process-local admission do not establish a multi-process
-  capacity policy.
+- Source pools/admission are process-local. MVP needs isolated worker resources;
+  a provider-wide capacity policy is a future deployment concern.
 
 ### Planning verification
 
@@ -183,19 +185,35 @@ an audited operator action.
 
 ### Authoritative read contract
 
-For a known canonical subscription, perform two bounded rounds of:
+For a known canonical subscription, use one bounded set of four point reads,
+with IDs taken from the permanent local bindings and accepted purchase:
 
 1. `get_user()` — paired provider customer ID and immutable Portal customer key.
 2. `get_agreement()` — original canonical agreement, customer, seller and
    permanent agreement correlation.
-3. `get_subscription()` — identity, effective services/quantity/prices/total/
-   currency, period, lifecycle/blocking and original calendar values.
-4. `get_tariff()` — relevant supported prepaid/blocking policy.
+3. `get_tariff()` — relevant supported prepaid/blocking policy and currency
+   interpretation; sale visibility/archive fields do not decide old purchases.
+4. `get_subscription()` — identity, effective services/quantity/prices/total/
+   currency, period, lifecycle/blocking and original calendar values. Read it last
+   so the lifecycle/effective-term point is the latest read in the set.
 
-Compare relevant normalized fields between rounds. Changing or incomplete proof
-does not refresh positive trust. This is defensive rereading, not a provider
-atomic-snapshot guarantee. All reads share one absolute operation budget. Reuse
-existing decoding, `Decimal` handling and GET retry policy.
+Each read proves a different required fact; none can be replaced by a discovery
+list, stored preparation evidence or current catalog price. Reuse the paired
+customer check and exact original agreement/seller/correlation proof. Check the
+applicable tariff flags for the supported prepaid, full-funding, auto-blocking,
+non-demo/non-prorated profile, without importing new-sale availability rules.
+
+Remove unconditional duplication of this set: neither the authority documents
+nor the existing point contracts require two rounds. The DTOs expose no common
+source revision or atomic snapshot; repeating all GETs does not establish one.
+Record the read window/provenance and verify all returned identities, joins and
+material facts against the original purchase. Contradictory, missing or unknown
+proof cannot renew positive trust and schedules a bounded later retry. Do not
+claim that an undetected concurrent provider change is impossible.
+
+All reads share one absolute operation budget. Reuse existing decoding,
+`Decimal` handling and GET retry policy. Four is the normal business-read set,
+not a wire-request limit including authentication and bounded transport retries.
 
 Compare against the original accepted purchase and original link revision:
 
@@ -208,7 +226,9 @@ Compare against the original accepted purchase and original link revision:
 - Unsupported or missing applicable policy prevents positive trust refresh.
 
 Keep lifecycle normalization separate from preparation restrictions. Reuse
-narrow commercial comparison logic where appropriate.
+narrow commercial comparison logic where appropriate. A terminal/closed source
+must still yield owned negative facts; preparation-only open-agreement and
+nonterminal restrictions must not reject that ordinary lifecycle observation.
 
 Normalized output must include local identity and immutable purchase/link/legal
 provenance; `COMPLETE_MATCH`, `COMPLETE_MISMATCH` or `INCOMPLETE` commercial
@@ -227,16 +247,20 @@ without inventing UTC boundaries or allowance/cycle identity.
 |---|---|---|
 | Owned waiting `state=-2/block=0`, including null cycle dates | Real inactive/blocked observation; commercial match when supported | Urgent polling; no invented paid period |
 | Fully verified supported prepaid `state=2/block=0` | Active/allowed operational facts and complete matching evidence | Finite source trust; normal cadence when urgency clears; no grant |
+| Same owned subscription reports a coherent new calculation period, with unchanged accepted effective terms | Updated calendar/lifecycle facts; no inferred settlement | Refresh trust only on complete proof; no allowance/cycle ID or UTC invention |
 | Financial block `2/1` or administrative block `2/3` | Ordinary negative facts with distinct reason | Supersede prior positive usability immediately |
+| Insufficient funds are suspected, but LBX has not supplied a complete confirmed block | No Portal accounting conclusion from balance or missing renewal fields | Preserve only existing finite LKG; retry incomplete evidence; `2/1` is the confirmed financial-block case |
 | Ended `3/0` | Terminal ended/blocked fact | No automatic revival or silent hold release |
 | Previously ended canonical ID becomes nonterminal | Terminal-revival conflict | Remain ineligible; controlled review |
 | Catalog 10→20; original effective subscription remains accepted 10 | Original terms still match | No false conflict or repricing |
 | Effective subscription 10→15, or changed service/quantity/currency | Commercial mismatch when sufficiently proven | Ineligible conflict and review |
-| Missing fields, unstable reads, timeout, 404 or exhausted budget | Incomplete/unknown observation | No trust extension; prior good facts only until their existing deadline |
+| Missing/contradictory fields, timeout, 404 or exhausted budget | Incomplete/unknown observation | No trust extension; prior good facts only until their existing deadline |
 | Foreign customer/agreement or canonical identity drift | Identity conflict | No silent rebind; affected positive usability removed |
 | UNKNOWN create: zero / one / multiple candidates | Uncertain / original point-proven binding / ambiguity | GET-only recovery; unchanged fixed deadline |
 | `PROVEN_NOT_SENT` | Completed typed no-send evidence | No autonomous POST or overdue UNKNOWN conversion |
 | Trust deadline due | Local expiry evidence | Provider-free processing; Step 9 owns later access revision/outbox |
+| Complete matching source proof returns after outage/expiry | Fresh owned facts with a new finite trust deadline | Original identities/history remain; Step 9 alone derives paid access |
+| Local `503 billing_busy` / user-lock `55P03` | Local PostgreSQL contention, not an LBX result or no-send proof | Retry appropriate local/GET work safely; preserve create state, original key/fence and deadline |
 
 Decisive authoritative negative/conflict evidence must not be hidden by
 unrelated missing commercial fields. Applying it still requires proof of the
@@ -305,9 +329,67 @@ while acquiring business locks. Claim/commit, then acquire the subscription
 lease separately. Network I/O occurs outside transactions. Apply follows the
 established business lock order, with work finalization last.
 
-Local enrollment sweeps run at startup and every 60 seconds, using keyset batches
-of at most 100. They find previously linked subscriptions and missing monitoring,
-recovery/deadline work without provider I/O.
+#### Automatic enrollment and restart/backfill
+
+When Step 7 creates the canonical local subscription, atomically insert/coalesce
+its immediate reconciliation job in that same transaction. Repeated preparation
+readback must not re-enroll an already monitored subscription or reset its due
+time. Recovered bindings use this same enrollment path.
+
+Run local enrollment sweeps at startup and every 60 seconds, without provider
+I/O. Select only eligible linked subscriptions in the configured account that
+lack usable recurring reconciliation work, ordered by local subscription ID,
+with a batch limit of 100. Use an anti-join against the durable coalescing key;
+there is no offset or cursor that can skip missing records.
+
+Commit idempotent inserts/reactivation for the batch, yield to other worker
+tasks, then query the remaining missing set. Continue until it is empty. The
+previous batch leaves the missing set after commit, so the next query reaches
+later subscriptions instead of repeating the first 100. On restart, repeat from
+the missing set; committed enrollment itself is the durable progress marker.
+
+The unique job key handles concurrent linking, sweeps and webhook enqueue. A
+race uses upsert/recheck, not duplicate jobs or a new immediate hint. Existing
+pending/running jobs, including future-due jobs and expired leases awaiting
+reclaim, are already enrolled: preserve their schedule, generation and ownership.
+An unexpectedly completed recurring job is reactivated safely. Do not reclassify
+completed `PROVEN_NOT_SENT` operation recovery as missing UNKNOWN work.
+
+Eligibility requires the original purchase/customer/link provenance and canonical
+subscription binding; never adopt a foreign or unproven subscription. Isolate
+and report a malformed historical record rather than repeatedly failing the
+whole sweep or hot-looping. Apply equivalent bounded/idempotent repair to missing
+inventory, unresolved recovery and local deadline jobs without moving an
+existing UNKNOWN deadline or trust deadline.
+
+#### Timeout, expired leases and unfinished I/O
+
+Reuse `PreflightAdmission` / `PreflightBudget` for dedicated worker resources.
+One execution slot owns its outbound task through actual completion/cleanup,
+including when the waiter times out or is cancelled. A timed-out waiter or an
+expired database lease never releases that occupied slot or permits detached
+replacement HTTP to accumulate. Do not restart a failed runner over still-live
+resource owners.
+
+Reserve cleanup inside the total configured I/O budget. Derive the claim and
+subscription lease duration from that budget plus a bounded local apply/safety
+margin (initially 30 seconds); do not allow the ordinary lease to expire before
+the permitted read/cleanup window. Use the existing finite DB lock policy and
+short apply transactions; no heartbeat/distributed execution framework is needed.
+
+A lease can nevertheless expire during a paused process or uncooperative I/O.
+A second handler may reclaim work with fresh ownership and a higher subscription
+fence. Apply must recheck both current work ownership and the subscription
+owner/fence/lease under the business locks, plus original purchase/scope facts.
+Reject expired, superseded or timed-out attempt results even if their old GET
+eventually succeeds. Conditional completion cannot clear a newer claim/hint.
+
+Failure/cancellation leaves durable work retryable; a lost claim acknowledgement
+does not start HTTP until ownership is established. Shutdown stops claims, drains
+bounded work and cancels/awaits source cleanup using the existing policy. If
+cleanup remains pending, retain its resource ownership, report degraded health
+and do not claim successful shutdown. A process exit leaves leases reclaimable.
+All repeated external operations on these paths are GET-only.
 
 Approved schedules:
 
@@ -328,19 +410,12 @@ alerts. Keep financial escalation separate from retry cadence; exclude completed
 `PROVEN_NOT_SENT` from overdue UNKNOWN work. Customer explicit-open retries retain
 their separately approved per-attempt policy.
 
-### Capacity controls and scaling strategy
+### MVP resource controls and future expansion
 
 Separate reusable job execution from FastAPI startup. The runner must not depend
-on HTTP request objects or own another business state machine. Provide a minimal
-standalone CLI entrypoint using the same runner:
-
-```bash
-PYTHONPATH=apps/api .venv/bin/python -m app.cli.billing_worker run
-```
-
-Initial production deployment remains embedded. Standalone deployment is an
-operational option using the same project/image/database, not a new service
-implementation.
+on HTTP request objects or own another business state machine. Implement only
+the embedded startup mode for MVP; no standalone worker CLI/container or
+horizontally scaled production deployment is required now.
 
 Resource settings:
 
@@ -356,69 +431,37 @@ HTTP pools and bounded database delegation are isolated from new-sale and Widget
 resources. Wholly unconfigured LBX leaves the worker `not_configured` without
 source calls.
 
-Provider-operation caps apply across worker consumers for one configured account,
-not independently per process. Implement the small PostgreSQL claim-admission
-critical section using a stable transaction advisory key and existing active
-work leases. Release that transaction before HTTP. Reject inconsistent live
-consumer budget configurations. Keep the key stable across processes; do not use
-Python's process-randomized hash.
+The concurrency limits apply per worker process, not provider-wide. The initial
+one-process deployment bounds worker calls by the configured urgent plus normal
+slots; interactive purchase/Widget/CLI calls have their own existing budgets.
+Finite GET timeouts/retries and retained cleanup ownership prevent abandoned
+requests from creating an unbounded tail. These are not global requests-per-second
+quotas. Record active slots, cleanup-pending work, failures, queue age, cadence
+lag and last successful progress with bounded-cardinality telemetry.
 
-These are concurrent-operation limits, not a claimed provider requests-per-second
-quota. Record actual HTTP request rate, including retries/authentication. If LBX
-imposes a hard request-rate quota, shared per-request enforcement is a required
-gate before raising deployment capacity; per-process limits cannot be presented
-as a global quota.
+Keep PostgreSQL claim/fence/coalescing correctness safe for competing handlers;
+test it with two handlers. Do not build aggregate admission, fleet configuration
+consensus or a new distributed limiter for this initial deployment. Any future
+increase in process count must account for multiplied per-process limits and
+actual LBX quotas before enablement.
 
-The documented expansion sequence is:
+Document a short future expansion path in the runbook:
 
-1. **Initial:** one embedded worker with conservative configured limits.
-2. **Increase capacity:** measure latency/rate/backlog and adjust approved
-   aggregate limits within the tested LBX/PostgreSQL envelope.
-3. **Separate resources:** disable embedded workers in API processes and run the
-   same runner in a dedicated process/container.
-4. **Add consumers:** launch more copies sharing PostgreSQL claims, leases,
-   fences and aggregate admission limits.
-5. **Further storage/provider work:** only when measurements identify that
-   bottleneck; no speculative MQ, sharding, catalog mirror or autoscaling
-   framework.
+1. Diagnose growing queue age/latency using real operating evidence; tune bounded
+   concurrency and timing within provider limits when needed.
+2. If API resource isolation requires it, add a thin standalone entrypoint for
+   the same runner and shared Application functions. Disable embedded startup,
+   stop claiming, drain/stop the old owner and restart against the same durable
+   jobs. Preserve a rollback path.
+3. Add consumers or optimize LBX reads only after measured need. Reuse existing
+   claims/leases/fences and introduce aggregate rate/concurrency enforcement if
+   required by the chosen deployment/provider limits.
 
-Increasing replica count alone must not multiply allowed source load. Document
-switch/rollback: stop claiming, drain bounded work, disable the old startup mode,
-start the new mode and verify progress. PostgreSQL work survives the transition.
-
-### Capacity characterization
-
-At 10,000 ordinary subscriptions:
-
-- Required completed checks per second for a 15-minute cycle: approximately
-  11.11.
-- The eight-GET baseline requires approximately 88.89 business GETs per second
-  before authentication, retries, inventory and urgent traffic.
-- One observation per normal check produces approximately 960,000 observations
-  per day.
-
-These are estimates for the proposed read shape, not measured LBX capability.
-Determine supported capacity from measured check duration, HTTP exchanges and
-database cost. Do not choose production consumer count from subscription count
-alone.
-
-Add a reproducible opt-in capacity test using disposable PostgreSQL and simulated
-LBX: 10,000 seeded owned subscriptions/due work, one/multiple consumers, urgent
-and normal work together, slow/unavailable source, restart/recovery bursts,
-duplicate webhook hints, ordinary API traffic and local deadlines.
-
-Measure throughput, queue age, cadence lag, actual active concurrency, provider
-request rate, database contention and observation/index growth. Assert bounded
-memory/work claims, no lost jobs, no stale overwrite and reserved-work progress.
-
-Distinguish measured runtime from latency-based projections. This does not prove
-a 10,000-subscription live-provider SLA. Overload is an expected tested condition:
-work stays durable, lag becomes visible and trust is not extended to conceal it.
-Keep a bounded execution budget; report unfinished draining as overload rather
-than PASS. Document the exact opt-in test command and configuration.
-
-Record storage growth and a capacity-review threshold in the runbook. Do not
-delete immutable history or implement an unapproved retention/partition policy.
+Those are future operational changes, not Step 8 deliverables. No synthetic
+subscription-count target, separate capacity benchmark, speculative MQ, sharding,
+retention deletion or autoscaling framework is required. Small deterministic
+tests must still prove bounded work, urgent/local progress and visible lag during
+source slowness. Backlog never extends trust or makes unfinished work a PASS.
 
 ### Webhook mode and production setup
 
@@ -478,15 +521,18 @@ does not block core Step 8 acceptance.
 Create one operational authority:
 `docs/engineering/ANY-715-billing-operations.md`. It must contain:
 
-1. Startup, embedded/standalone modes, shutdown and restart.
+1. Embedded startup, shutdown, restart and the distinction between implemented
+   behavior and the future standalone expansion path.
 2. Approved cadence, trust, UNKNOWN and retry semantics.
-3. Every resource setting, unit, default and per-process/aggregate scope.
+3. Every resource setting, unit, default and per-process scope; do not describe
+   these as provider-wide quotas.
 4. Exact manual webhook setup for test and production: endpoint, event list,
    secret location, verification and disablement.
 5. Every supported CLI command, arguments, prerequisites, effects, refusal cases
    and examples.
 6. Monitoring, backlog diagnosis, outage response and safe recovery.
-7. Capacity evidence, supported envelope and staged expansion procedure.
+7. Backlog diagnosis and the short future expansion path, with no hypothetical
+   load target or unimplemented deployment commands.
 8. Current real/simulated/unverified integration status.
 
 Never put secret values in examples. Every implementation step updates its
@@ -507,17 +553,18 @@ or rewrite accepted architecture specifications.
 
 | Capability | Owner steps | Acceptance evidence |
 |---|---|---|
-| Verified lifecycle/commercial facts | 1, 2 | Application/PostgreSQL fixtures and configured read-only checkpoint |
+| Verified lifecycle/commercial facts, including renewal/block/end | 1, 2 | Synthetic lifecycle integration and configured read-only checkpoint |
 | Historical terms and conflict distinction | 1, 3 | Catalog-change versus effective-change tests |
 | Shared HTTP/worker/CLI semantics | 1–5 | Shared use cases and equivalent behavior through entrypoints |
-| Enrollment, restart and durable polling | 2 | Newly linked/backfilled subscriptions run without browser traffic |
-| Claims, fencing and lost-hint safety | 2 | PostgreSQL concurrency/crash tests |
-| Aggregate capacity and deployment modes | 2, 5 | Competing runners, isolated lanes, standalone smoke and runbook |
+| Enrollment, restart and durable polling | 2 | Several small batches, restart/concurrent enqueue; no browser dependency |
+| Claims, fencing and lost-hint safety | 2 | Two-handler PostgreSQL tests, expired lease with unfinished GET, crash/cancel |
+| Bounded MVP execution and future expansion | 2, 5 | Isolated lanes, retained cleanup slots, embedded smoke and runbook |
 | UNKNOWN and immutable two-hour deadline | 3 | Zero/one/multiple, no-send, crash and lost-reply tests |
+| Local `billing_busy` preserves CREATE authority | 3 | PostgreSQL contention and shared recovery regressions |
 | Inventory and same-tariff ownership | 3 | Proven other-product exclusion and bounded incomplete inventory |
 | Trust expiry and unaffected scopes | 1, 2 | Controlled-clock outage and expiry-race tests |
 | Optional durable webhook | 4 | Synthetic HTTP/PostgreSQL tests; separate real gate |
-| Audited operator controls | 5 | Authorization, stale-proof, refusal and audit tests |
+| Narrow audited operator controls | 5 | Allowed resolutions, stale-proof/refusal/audit tests; no terminal hold release |
 | Current runbook and scaling strategy | All | Documentation-contract tests and operational review |
 | Step 9 handoff | 5 | Versioned facts, deadlines, constraints and exact evidence |
 
@@ -589,6 +636,9 @@ evidence. Later preparation/payment readback preserves those stronger facts.
 - Add focused contracts/Application reconciliation under the existing billing
   slice and LBX normalization under Integration.
 - Implement the read/decision matrix and bounded evidence.
+- Use the four distinct point reads once per normal attempt; explain their
+  proof responsibilities and test missing/contradictory fields. Do not duplicate
+  current-offer/catalog reads or add a second full proof round.
 - Reuse original consent, accepted snapshot and permanent identities.
 - Share commercial comparison without weakening preparation restrictions.
 - Establish scope provenance with no selected primary.
@@ -610,8 +660,16 @@ automatic hold release or UTC cycle invention.
 Run `billing_subscription_reconciliation` fast/PostgreSQL selections and affected
 Step 7 regressions. Cover required statuses, null waiting dates, unknown status,
 historical/catalog changes, effective drift without instance change,
-missing/extra service, quantity/currency/owner mismatch, unstable reads, terminal
+missing/extra service, quantity/currency/owner mismatch, contradictory read sets, terminal
 revival, known review and concurrent preparation/reconciliation.
+
+For the normal known-subscription path, assert one call to each of the four point
+methods (authentication/transport retry tests remain separate). Cover waiting →
+active, both blocking types, active → next calculation period with unchanged
+terms, provider-confirmed underfunding block, ended and incomplete renewal facts.
+Assert the same purchase/bindings survive and no Portal payment/allowance/cycle
+identity is invented. Contradictory returned facts reject positive proof; do not
+claim atomic provider-snapshot detection from these tests.
 
 Owner checkpoint: inspect representative sanitized normalized outputs.
 
@@ -622,7 +680,7 @@ Application logic and preserve its facts across subsequent preparation reads.
 
 **AI execution prompt**
 
-> Implement Step 1 of `docs/exec-plans/active/ANY-715-implementation-plan.md`. Read its decision matrix, LBX financial/client/current-offer modules, purchase contracts/service/financial transitions, billing models and Step 7 effective-term/recheck/review tests. Build the shared bounded authoritative read/normalization/apply path. Preserve original accepted history, negative-state semantics, finite trust and known-review rules. Protect reconciled facts from preparation-only writes and preserve the `d28eddd` linked-recheck correction. Create the relevant operational runbook sections and documentation checks.
+> Implement Step 1 of `docs/exec-plans/active/ANY-715-implementation-plan.md`. Read its decision matrix, LBX financial/client/current-offer modules, purchase contracts/service/financial transitions, billing models and Step 7 effective-term/recheck/review tests. Build the shared bounded authoritative read/normalization/apply path using the four distinct point reads, without a second full round or current catalog repricing. Verify their identities, original terms and supported policy; preserve the read window without claiming an atomic source snapshot. Cover waiting, activation, renewal/calendar changes, confirmed financial/admin blocking and ended states. Preserve original accepted history, finite trust and known-review rules. Protect reconciled facts from preparation-only writes and preserve the `d28eddd` linked-recheck correction. Create the relevant operational runbook sections and documentation checks.
 >
 > Follow the repository's root and applicable subtree AGENTS.md files, ARCHITECTURE.md, docs/engineering/CODING_CONVENTIONS.md, docs/engineering/AGENT_WORKFLOW.md, and docs/engineering/TESTING.md. Respect existing architectural layers, coding conventions, typing, error handling, transaction ownership, dependency direction and established project structure. Use equivalent authoritative instructions in other affected repositories.
 >
@@ -630,7 +688,7 @@ Application logic and preserve its facts across subsequent preparation reads.
 >
 > Run appropriate formatters, linters and focused automated tests. Fix failures caused by your changes and rerun affected checks. Run additional relevant validation when necessary; report unexecuted or blocked checks accurately.
 >
-> Run `billing_subscription_reconciliation` fast/PostgreSQL selections, affected Step 7 regressions, architecture and documentation checks using the plan's recipe. Prove historical-price matching, incomplete-read trust limits, ordinary negative states and writer concurrency.
+> Run `billing_subscription_reconciliation` fast/PostgreSQL selections, affected Step 7 regressions, architecture and documentation checks using the plan's recipe. Prove the minimum read set, historical-price matching, missing/contradictory-proof rejection, lifecycle/renewal normalization, incomplete-read trust limits, ordinary negative states and writer concurrency. Use synthetic provider transitions; do not execute real payments.
 >
 > If a material contradiction appears, investigate the relevant surrounding context and available evidence, then propose a resolution. Stop and ask only when an important decision cannot be made safely.
 >
@@ -644,25 +702,28 @@ Application logic and preserve its facts across subsequent preparation reads.
 
 `ANY-715 - Establish shared authoritative reconciliation`
 
-### Step 2 — Run durable polling with bounded scalable execution
+### Step 2 — Run durable polling with bounded execution
 
 **Goal**
 
-Make monitoring automatic and restart-safe while establishing the reusable
-runner and capacity controls.
+Make monitoring automatic for new and existing subscriptions, restart-safe and
+bounded within the single-process MVP deployment.
 
 **Expected behavior**
 
-Linking atomically enrolls subscriptions. Local sweeps backfill missing work.
-The runner claims executable capacity, reads LBX outside transactions, applies
-current fenced results and reschedules safely. Multiple consumers share the
-queue and aggregate limits. Local deadlines continue during slow provider work.
+Linking atomically enrolls subscriptions. The local sweep drains successive
+missing-work batches, preserving existing schedules, and repeats safely after
+restart. The embedded runner claims only available slots, reads LBX outside
+transactions, applies current fenced results and reschedules safely. Expired
+leases cannot make old reads authoritative or free still-occupied HTTP slots.
+Local deadlines continue during slow provider work.
 
 **Read before implementation**
 
 - Step 1 Application contracts/transitions.
 - `apps/api/app/main.py`, `composition/sources.py`, work/subscription models.
-- `infrastructure/preflight.py`, customer leases and query/persistence rules.
+- `infrastructure/preflight.py` (`PreflightAdmission`, `PreflightBudget`), its
+  cancellation/cleanup tests, customer leases and query/persistence rules.
 - `http/health.py`, observability and Sentry boundaries.
 - `apps/api/alembic/versions/20261027_0003_normal_billing.py`.
 - Settings, Compose variants, harness propagation and deployment tests.
@@ -670,46 +731,60 @@ queue and aggregate limits. Local deadlines continue during slow provider work.
 **Implementation**
 
 - Implement the transport-independent runner and lifespan supervision.
-- Add queue mechanics, aggregate admission, generation-safe coalescing and
-  subscription fencing.
+- Add queue mechanics, dedicated bounded admission, generation-safe coalescing
+  and subscription fencing; reuse existing unfinished-I/O ownership.
 - Add a forward migration for work generation, attempt-start timestamp and
   coalescing constraints. Do not rewrite predecessor migrations.
-- Enroll links atomically and backfill via bounded sweeps.
+- Enroll links atomically and implement the missing-set sweep above. Keep each
+  batch at most 100, yield between commits and continue until no work is missing.
+  Do not reset existing future jobs or mistake expired leases for absent jobs.
 - Implement approved cadence, due-time spreading, backoff and local expiry.
-- Provide the standalone worker entrypoint using the same runner; keep embedded
-  as the initial deployment.
+- Derive leases from the total I/O budget plus the bounded apply/safety margin.
+  Reject expired/timed-out/stale apply; retain slots until real cleanup ends.
+- Keep the runner independent of HTTP startup, but implement only embedded
+  startup. Future extraction does not require another business implementation.
 - Add named `/api/health/billing` output and worker-aware readiness. Liveness
   remains DB-independent; LBX outage alone does not make the identity API unready.
 - Propagate settings and disable unattended source work in ordinary tests.
-- Document modes/settings, shutdown/restart, capacity and expansion immediately.
-- Add settings/commands documentation tests and multi-consumer coverage.
+- Document settings, shutdown/restart, batch progression, per-process limits and
+  the future expansion path immediately.
+- Add settings documentation tests and small competing-handler coverage.
 
 **Invariants / Non-goals**
 
 No network under locks, in-memory correctness queue, generic scheduler, new
-billing service, speculative MQ, paid-state writer or automatic scaling policy.
+billing service, standalone deployment, aggregate distributed admission,
+speculative MQ, paid-state writer or automatic scaling policy.
 
 **Verification**
 
 Run `billing_worker` fast/PostgreSQL selections, migration, health, composition
-and deployment tests. Prove restart/backfill, coalescing during execution,
-competing consumers, stale apply, lease expiry, DB/crash boundaries, customer-send
-lease exclusion, aggregate caps, mixed-budget refusal, normal/urgent fairness,
-deadline progress under saturation and expiry-versus-refresh races.
+and affected deployment tests. With batch size 2 and five eligible subscriptions,
+prove all three batches enroll, restart after a committed batch completes the
+remainder, a new link is immediate, and concurrent sweeps/linking create one job.
+Verify repeated sweeps preserve existing future due times and expired claims.
 
-Smoke-test embedded and standalone startup with injected/local simulated sources.
-Run no production worker. Owner checkpoint: inspect startup, health, persisted
-work and the documented mode-switch procedure.
+Use two handlers and controlled clocks/transports to cover: A's lease expires
+while its GET remains live; B reclaims/applies; A cannot overwrite or complete B's
+work; the old HTTP slot remains counted. Also cover cancellation-resistant
+cleanup, timeout/restart, lost claim acknowledgement, hints during execution,
+customer-send lease exclusion, normal/urgent fairness, provider-free deadlines
+under occupied source slots and expiry-versus-refresh races. Assert bounded
+active requests and no external CREATE, without a large load test.
+
+Smoke-test embedded startup with injected/local simulated sources. Run no
+production worker. Owner checkpoint: inspect startup, health, batch progress,
+persisted work and the documented future expansion path.
 
 **Expected completion**
 
-After this step, the system can poll automatically, recover queued work after
-restart and run the same implementation in embedded or standalone form with
-bounded shared capacity.
+After this step, the system can automatically monitor every eligible linked
+subscription, resume durable work after restart and reject stale handler results
+with bounded embedded execution and visible backlog.
 
 **AI execution prompt**
 
-> Implement Step 2 of `docs/exec-plans/active/ANY-715-implementation-plan.md`. Read Step 1, API lifespan/source composition, work/subscription models, preflight/customer leases, health/telemetry, migration `20261027_0003`, Settings and deployment/harness tests. Build the shared runner, atomic enrollment/backfill, PostgreSQL claims/fences, generation-safe coalescing, approved scheduling and local expiry. Implement bounded aggregate operation admission and isolated resources. Add the standalone entrypoint using the same runner while preserving embedded startup as the default. Update the runbook and settings/CLI documentation checks in this step.
+> Implement Step 2 of `docs/exec-plans/active/ANY-715-implementation-plan.md`. Read Step 1, API lifespan/source composition, work/subscription models, PreflightAdmission/PreflightBudget and cleanup tests, customer leases, health/telemetry, migration `20261027_0003`, Settings and deployment/harness tests. Build the transport-independent runner with embedded startup only, atomic enrollment and the bounded missing-set backfill, PostgreSQL claims/fences, generation-safe coalescing, approved scheduling and local expiry. Preserve existing due times during repeated sweeps. Reuse isolated bounded resource admission; unfinished HTTP keeps its slot, and expired/timed-out/superseded results cannot apply. Derive leases from the I/O budget and bounded apply margin. Document per-process limits and future extraction/expansion; do not implement standalone deployment or distributed admission now.
 >
 > Follow the repository's root and applicable subtree AGENTS.md files, ARCHITECTURE.md, docs/engineering/CODING_CONVENTIONS.md, docs/engineering/AGENT_WORKFLOW.md, and docs/engineering/TESTING.md. Respect existing architectural layers, coding conventions, typing, error handling, transaction ownership, dependency direction and established project structure. Use equivalent authoritative instructions in other affected repositories.
 >
@@ -717,7 +792,7 @@ bounded shared capacity.
 >
 > Run appropriate formatters, linters and focused automated tests. Fix failures caused by your changes and rerun affected checks. Run additional relevant validation when necessary; report unexecuted or blocked checks accurately.
 >
-> Run `billing_worker` fast/PostgreSQL selections and affected migration, health, deployment, composition and documentation tests. Prove multiple-consumer correctness, aggregate caps, reserved deadline/urgent progress, restart and lost-hint safety. Generate changed model/OpenAPI artifacts through repository tooling.
+> Run `billing_worker` fast/PostgreSQL selections and affected migration, health, deployment, composition and documentation tests. Use several small enrollment batches and a restart/concurrent enqueue. Use two handlers to prove stale-apply rejection after lease expiry with unfinished HTTP, retained slots, bounded cancellation/timeout cleanup, reserved deadline/urgent progress and lost-hint safety. No capacity benchmark or large fixture population is required. Generate changed model/OpenAPI artifacts through repository tooling.
 >
 > If a material contradiction appears, investigate the relevant surrounding context and available evidence, then propose a resolution. Stop and ask only when an important decision cannot be made safely.
 >
@@ -729,7 +804,7 @@ bounded shared capacity.
 
 **Proposed commit**
 
-`ANY-715 - Run durable polling with scalable worker execution`
+`ANY-715 - Run durable polling with bounded worker execution`
 
 ### Step 3 — Recover uncertain creates and discover conflicts
 
@@ -760,6 +835,11 @@ product only through permanent local ownership and original accepted proof.
 - Preserve original financial request/key/date and fixed deadline.
 - Never autonomously send for `PENDING` or `PROVEN_NOT_SENT`.
 - Respect approved customer explicit-open retry/fence policy.
+- Treat `503 billing_busy` from the Step 7 user-lock `55P03` path as local
+  contention, not provider failure or completed no-send evidence. Retry local
+  work/GET recovery without modifying send authority, original key/fence or
+  `unknown_since + 2h`. Only the existing explicit authenticated advance and
+  completed typed no-send rules can authorize their respective CREATE path.
 - Do not apply preparation lifecycle restrictions to already reconciled terminal
   subscriptions.
 - Add bounded customer inventory using the current under-100 row and 20
@@ -781,6 +861,10 @@ customer/UNKNOWN/no-send/same-tariff/contention tests. Cover zero/one/multiple,
 delayed visibility, lost response/claim acknowledgement, escalation during
 outage, stale fences, late objects, completed no-send beyond its deadline,
 active send leases, foreign candidates and legitimate same-tariff products.
+Include contention before a claim and during recovery/apply: `billing_busy`
+must not create `PROVEN_NOT_SENT`, reset UNKNOWN/deadlines, release the hold or
+trigger a background POST. Verify the eventual GET-only retry uses the original
+operation and enrollment remains idempotent.
 
 Owner checkpoint: inspect existing test history and GET-only recovery traffic.
 Do not manufacture a live billing failure.
@@ -792,7 +876,7 @@ discover relevant conflicts without browser activity or duplicate CREATE.
 
 **AI execution prompt**
 
-> Implement Step 3 of `docs/exec-plans/active/ANY-715-implementation-plan.md`. Read existing financial/customer recovery, claims/fences/escalation, inventory ownership queries, Steps 1–2 and Step 7 UNKNOWN/no-send/same-tariff tests. Connect shared GET-only recovery to urgent scheduling and independent fixed-deadline work. Add bounded inventory and scoped conflict evidence. Preserve `PROVEN_NOT_SENT`, permanent financial identity and the distinct customer retry policy. Update the operational recovery/inventory documentation and its checks.
+> Implement Step 3 of `docs/exec-plans/active/ANY-715-implementation-plan.md`. Read existing financial/customer recovery, claims/fences/escalation, inventory ownership queries, Steps 1–2 and Step 7 UNKNOWN/no-send/same-tariff/contention tests. Connect shared GET-only recovery to urgent scheduling and independent fixed-deadline work. Add bounded inventory and scoped conflict evidence. Preserve `PROVEN_NOT_SENT`, permanent financial identity and the distinct customer retry policy. `503 billing_busy` means local PostgreSQL contention, not provider failure or no-send proof; it must not authorize CREATE, reset an operation/deadline or release a hold. Update the operational recovery/inventory documentation and its checks.
 >
 > Follow the repository's root and applicable subtree AGENTS.md files, ARCHITECTURE.md, docs/engineering/CODING_CONVENTIONS.md, docs/engineering/AGENT_WORKFLOW.md, and docs/engineering/TESTING.md. Respect existing architectural layers, coding conventions, typing, error handling, transaction ownership, dependency direction and established project structure. Use equivalent authoritative instructions in other affected repositories.
 >
@@ -800,7 +884,7 @@ discover relevant conflicts without browser activity or duplicate CREATE.
 >
 > Run appropriate formatters, linters and focused automated tests. Fix failures caused by your changes and rerun affected checks. Run additional relevant validation when necessary; report unexecuted or blocked checks accurately.
 >
-> Run `billing_background_recovery` PostgreSQL coverage and affected Step 7 regressions. Assert no worker CREATE, unchanged financial escalation, safe customer leases, original candidate proof, bounded inventory and equivalent shared recovery behavior.
+> Run `billing_background_recovery` PostgreSQL coverage and affected Step 7 regressions. Assert no worker CREATE, unchanged financial escalation, safe customer leases, original candidate proof, bounded inventory and equivalent shared recovery behavior. Include local `billing_busy` before claim and during recovery/apply; prove safe retry retains original identity/fencing and cannot manufacture no-send evidence.
 >
 > If a material contradiction appears, investigate the relevant surrounding context and available evidence, then propose a resolution. Stop and ask only when an important decision cannot be made safely.
 >
@@ -893,81 +977,130 @@ repeat the documented setup on production after its own verification.
 
 `ANY-715 - Add durable webhook hints and deployment runbook`
 
-### Step 5 — Deliver audited operations, capacity evidence and final acceptance
+### Step 5 — Deliver audited operations and lifecycle handoff
 
 **Goal**
 
-Make the complete lifecycle operable and establish measured expansion guidance
-and a durable Step 9 handoff.
+Make the complete lifecycle operable with narrowly proven operator resolutions,
+current documentation and a durable Step 9 handoff.
 
 **Expected behavior**
 
 An operator can inspect evidence, trigger bounded shared recovery/reconciliation
-and perform a supported audited resolution. The running stack recovers without
-browser/webhook activity, and capacity limits are visible rather than concealed.
+and resolve a supported case only after fresh original-object proof. The running
+stack recovers without browser/webhook activity; stuck work and resource limits
+are visible. Terminal purchase holds and immutable history remain intact.
 
 **Read before implementation**
 
-- Existing purchase/customer CLI and operator principal resolution.
+- `apps/api/app/cli/billing_purchases.py`, existing customer diagnostic CLI and
+  `composition/mapping_operator.py::resolve_operator_principal()`.
+- `domains/purchases/financial.py` review/bind transitions,
+  `domains/purchases/service.py` locks/holds and purchase query helpers.
 - Shared transitions from Steps 1–4.
 - Review/work/observation models, telemetry/Sentry privacy rules.
 - New runbook and documentation-contract tests.
 
 **Implementation**
 
-Extend existing CLI patterns with documented actions:
+Extend the existing privileged `billing-purchase` CLI, using its OS principal
+and deployment access boundary; do not introduce roles or a new admin API. Keep
+the existing customer diagnose command. Document these purchase actions:
 
 - `inspect`: local facts, trust, work and reviews.
 - `recover`: existing GET-only operation recovery.
 - `reconcile`: bounded authoritative subscription recheck.
-- `resolve-review`: narrowly supported proof-based resolution.
-- `release-terminal`: explicit audited terminal purchase-hold release.
+- `resolve-review`: only the supported audited cases below.
 
-Use real OS principal resolution. Require stable reason/ticket reference and
-expected current observation/case where applicable. Reuse original proof and
-Application transactions; authorization is not an alternative business path.
+`inspect` reads local evidence without source I/O or mutation. `recover` keeps
+the existing GET-only proof/binding behavior; deadline-only escalation can still
+resolve through that existing path. `reconcile` uses the same bounded read/apply
+as the worker. None bypasses a known-conflict review or changes immutable terms.
 
-Allow only original uniquely proven binding and supported restoration of original
-facts. Terminal release requires fresh canonical ended proof, no unresolved
-create effect and no downstream paid-primary transition requiring Step 9.
-Remove only the hold and record an idempotent audit; preserve immutable purchase
-and permanent bindings. Do not label an ended subscription as no external effect.
+Use `resolve-review` only when ordinary recovery is deliberately blocked by an
+open known-conflict case and one of these resolutions is now provable:
 
-Refuse UNKNOWN release from empty discovery, arbitrary rebind, terminal revival,
-commercial reacceptance, paid marking and quota edits. Add worker `status`
-diagnostics from persisted progress/backlog; fleet progress does not prove every
-process is healthy.
+1. **Restore original facts:** the original canonical binding still belongs to
+   this purchase and LBX now again proves its original owner, agreement/seller,
+   accepted terms and supported policy. Persist fresh reconciled facts and
+   resolve the corresponding corrected conflict; do not change the binding.
+2. **Bind the original uncertain operation:** bounded complete discovery now
+   finds exactly one original point-proven candidate, with the original saved
+   operation/correlation/request and no competing binding. Apply the shared
+   original bind transition with explicit audited resolution of its conflict.
+   The operation must have possible-send history; `PENDING`/`PROVEN_NOT_SENT`
+   cannot adopt a coincidental provider object.
 
-Complete bounded metrics/alerts and expansion guidance. Local/entity IDs are not
-metric labels. Add opt-in `billing_capacity` characterization and
-entrypoint-equivalence tests.
+Require user/purchase/case identity, expected current case and supporting
+observation/operation fence, a nonempty reason and ticket/reference. The command
+collects fresh proof through shared Application functions; operator-provided IDs
+or assertions are not source evidence. Customer original-key restoration keeps
+its existing separate policy, not a new financial identity override.
+
+In the short apply transaction, use the existing user → purchase/hold → ordered
+operation → subscription lock order and lock/recheck the target review. Reject
+changed expected evidence/ownership/fence, unrelated open cases or a stale read.
+Atomically record the permitted binding/fact update and case resolution with OS
+principal, reason/reference, before/after identities, supporting observation and
+versioned proof summary in the existing audit/review storage. Preserve original
+evidence; an identical completed resolution is idempotent, and a different repeat
+or concurrent stale resolution is refused. Enqueue required reconciliation using
+the same transaction/queue contracts as other entrypoints.
+
+Refuse incomplete/capped or ambiguous discovery, foreign or already-bound
+objects, arbitrary rebind, mapping/commercial reacceptance, terminal revival,
+unresolved unsafe CREATE effects, manual paid marking and quota edits. Do not
+close a case merely because an operator supplies a reason or repeats a matching
+GET; the explicitly supported proof and audited transition are required.
+
+**Terminal hold release is deferred.** Remove `release-terminal` from this
+ticket's required CLI: fresh ended state alone does not prove safe repurchase,
+absence of late CREATE or compatibility with later primary/access transitions.
+Keep the hold, original purchase, consent and permanent bindings. This does not
+change Step 7's existing proven-unsent automatic release rule. A future scoped
+decision may define additional release semantics; do not add a force-release
+escape hatch now.
+
+Expose local worker progress/backlog through the existing planned health and
+`inspect` diagnostics rather than another administrative subsystem. Complete
+bounded metrics/alerts and the short future expansion guidance. Local/entity IDs
+are not metric labels. Add entrypoint-equivalence tests; no capacity benchmark.
 
 Run the configured test-LBX read-only checkpoint on an existing intended Step 7
 purchase when available. Require no new payment or provider fixture mutation.
 
 **Invariants / Non-goals**
 
-No second CLI business implementation, admin panel, manual access authority,
-retention deletion or speculative distributed infrastructure.
+No second CLI business implementation, new operator permission, admin panel,
+terminal hold release, manual access authority, retention deletion or speculative
+distributed infrastructure.
 
 **Verification**
 
-Run `billing_recovery_cli` fast/PostgreSQL selection, shared-entrypoint tests and
-the opt-in capacity suite. Verify authorization, stale proof, concurrency,
-release, audit and refusals. Measure bounded backlog handling, aggregate caps,
-reserved work, API responsiveness and storage growth for 10,000 subscriptions.
+Run `billing_recovery_cli` fast/PostgreSQL selection and shared-entrypoint tests.
+Prove both permitted resolutions and their exact persisted effects, OS principal
+failure, missing reason/reference, stale case/observation/fence, simultaneous
+worker/operator apply, ambiguous/foreign candidates, idempotent replay and atomic
+audit rollback on failure. Verify normal recovery cannot close a known conflict,
+no terminal release command exists and holds/history/create fences survive ended,
+empty-discovery and refusal cases. Confirm worker/CLI share the same proof and
+transitions while retaining distinct authorization.
 
-Owner checkpoint: review commands, actual test-LBX result, capacity findings,
-mode-switch procedure and webhook status. Run final canonical verification below.
+Use the small worker/fault fixtures to verify bounded backlog, urgent/local
+progress and truthful health during source failure; no artificial load target.
+Owner checkpoint: review documented CLI effects/refusals, actual read-only
+test-LBX result, future expansion guidance and webhook status. Run final
+canonical implementation verification below.
 
 **Expected completion**
 
-After this step, the system can operate and diagnose Step 8 with current
-documentation, measured limits and a practical expansion procedure.
+After this step, the system can diagnose Step 8, perform only proven audited
+resolutions and provide Step 9 with verified lifecycle/recovery/deadline facts,
+current commands and an explicit future expansion path.
 
 **AI execution prompt**
 
-> Implement Step 5 of `docs/exec-plans/active/ANY-715-implementation-plan.md`. Read existing CLI/operator composition, Steps 1–4 shared transitions, billing evidence/work/review models, telemetry privacy rules and the operational runbook. Add only the specified inspection, recheck, proof-based resolution and terminal-release controls. Reuse the same Application functions as HTTP and worker. Finish status/metrics, documentation-contract checks, reproducible capacity characterization and the Step 9 handoff.
+> Implement Step 5 of `docs/exec-plans/active/ANY-715-implementation-plan.md`. Read the existing billing-purchase/customer CLI, OS operator principal composition, purchase financial review/bind/hold locks, Steps 1–4 shared transitions, billing evidence/work/review models, telemetry privacy rules and the operational runbook. Extend the existing CLI with inspect/recover/reconcile and only the two specified audited resolve-review cases: restore original canonical facts or bind the uniquely proven original possible-send operation. Require fresh complete proof, expected case/observation/fence and reason/reference; atomically recheck, apply and audit. Preserve existing authorization and reuse the same Application functions as worker/HTTP. Do not implement terminal hold release, arbitrary identity override, new operator rights or a capacity benchmark. Finish health/metrics, documentation checks, future expansion guidance and the Step 9 handoff.
 >
 > Follow the repository's root and applicable subtree AGENTS.md files, ARCHITECTURE.md, docs/engineering/CODING_CONVENTIONS.md, docs/engineering/AGENT_WORKFLOW.md, and docs/engineering/TESTING.md. Respect existing architectural layers, coding conventions, typing, error handling, transaction ownership, dependency direction and established project structure. Use equivalent authoritative instructions in other affected repositories.
 >
@@ -975,7 +1108,7 @@ documentation, measured limits and a practical expansion procedure.
 >
 > Run appropriate formatters, linters and focused automated tests. Fix failures caused by your changes and rerun affected checks. Run additional relevant validation when necessary; report unexecuted or blocked checks accurately.
 >
-> Run `billing_recovery_cli` fast/PostgreSQL coverage, shared-entrypoint scenarios, opt-in `billing_capacity` characterization and final canonical checks. Verify the running polling lifecycle and only authorized read-only test-LBX integration. Record measured versus projected capacity, simulated faults and actual webhook status separately. Ensure CLI/settings/events documentation matches implementation.
+> Run `billing_recovery_cli` fast/PostgreSQL coverage, shared-entrypoint scenarios and final canonical implementation checks. Verify allowed resolutions, refusals, stale/concurrent proof, idempotency and atomic audit; prove holds/history/UNKNOWN fences remain protected and no release-terminal command is added. Exercise the complete polling lifecycle and small cancellation/outage/restart scenarios. Use only authorized read-only test-LBX integration, with no real payment or provider mutation. Classify simulated versus actual integration evidence and webhook status separately. Ensure CLI/settings/events documentation matches implementation.
 >
 > If a material contradiction appears, investigate the relevant surrounding context and available evidence, then propose a resolution. Stop and ask only when an important decision cannot be made safely.
 >
@@ -987,7 +1120,7 @@ documentation, measured limits and a practical expansion procedure.
 
 **Proposed commit**
 
-`ANY-715 - Deliver audited operations and capacity handoff`
+`ANY-715 - Deliver audited operations and lifecycle handoff`
 
 ## 6. Final Verification & Review
 
@@ -995,18 +1128,29 @@ documentation, measured limits and a practical expansion procedure.
 
 Run real Portal HTTP/Application and disposable PostgreSQL with simulated LBX:
 
-1. Prepare/link a purchase and remove browser activity.
-2. Observe enrollment and waiting normalization.
-3. Progress to active/unblocked, financial/admin block and ended.
-4. Verify finite trust, negative supersession and terminal revival protection.
-5. Lose a CREATE reply, restart and recover through GET-only proof.
-6. Exercise zero/multiple candidates and exact two-hour escalation.
-7. Drop/duplicate/reorder webhook hints; repeat with webhook disabled.
-8. Expire trust during outage while unrelated scopes remain independent.
-9. Let a stale consumer finish after a newer observation; reject its apply.
-10. Perform supported and refused CLI resolutions.
-11. Switch embedded/standalone runners and run multiple consumers.
-12. Exercise overload without lost work, unbounded claims or trust extension.
+1. Prepare/link a purchase and remove browser activity; automatically enroll it.
+2. Backfill several small batches of pre-existing subscriptions, restart after a
+   committed batch and verify no missing or duplicate monitoring work.
+3. Record waiting, then active/unblocked, coherent next-period calendar facts,
+   financial/admin block and ended on the same original owned subscription.
+4. Distinguish provider-confirmed underfunding block from an incomplete renewal
+   or a balance-based guess; preserve accepted effective terms and calendar facts.
+5. Verify finite trust, negative supersession and terminal revival protection.
+6. Lose a CREATE reply, restart and recover through GET-only proof; exercise
+   zero/multiple candidates and exact two-hour escalation.
+7. Inject local `billing_busy`; preserve operation identity/UNKNOWN fencing and
+   never send another CREATE or manufacture no-send evidence.
+8. Drop/duplicate/reorder webhook hints; repeat with webhook disabled.
+9. Expire trust during outage while unrelated scopes remain independent; restore
+   LBX and require fresh complete proof before new positive trust.
+10. Keep A's GET running after its lease expires; let B reclaim/apply, then reject
+    A's late result/completion while retaining its occupied HTTP slot.
+11. Exercise timeout/cancellation/restart and generation-safe hints with two
+    handlers; verify bounded requests and provider-free deadline progress.
+12. Perform both supported CLI resolutions and the specified refusals; verify
+    atomic audit and unchanged holds/history, including terminal subscriptions.
+13. Smoke-test embedded startup and small-source-saturation/backlog scenarios
+    without lost work, unbounded claims or trust extension.
 
 Assert no Step 8 primary, allowance, paid-state revision or invalidation-outbox
 writes.
@@ -1015,10 +1159,12 @@ writes.
 
 Record separately:
 
-- `SIMULATED`: provider transitions, faults, renewal and capacity tests.
+- `SIMULATED`: provider transitions, renewal, faults, small concurrency/backlog
+  and restart tests.
 - `CONFIGURED_TEST_LBX_READ_VERIFIED`: actual bounded read-only integration.
 - `REAL WEBHOOK ENABLEMENT VERIFIED` or `DISABLED/POLLING-ONLY`.
-- Measured versus extrapolated capacity and unverified LBX limits.
+- Configured per-process resource limits and unverified provider quotas; no
+  large-load capability or horizontally scaled deployment is claimed.
 - Step 9/10/11 incompleteness.
 
 Unavailable integration does not block development, but leaves that acceptance
@@ -1040,22 +1186,23 @@ npm run test:api:postgres
 npm run check
 ```
 
-Run the documented opt-in capacity command separately and record environment,
-configuration, duration and result. Do not hide it among skipped canonical tests.
-Run affected frontend/build/browser checks when required. Report skipped/blocked
-checks accurately.
+These commands verify the completed application implementation, not this
+documentation-only plan revision. There is no separate capacity benchmark or
+large subscription fixture requirement. Run affected frontend/build/browser
+checks when required. Report skipped/blocked checks accurately.
 
-Recheck Step 7 shared writers, linked-read recovery, customer leases, source
-capacity and no-send/UNKNOWN behavior. Reproduce or classify the earlier stalled
+Recheck Step 7 shared writers, linked-read recovery, customer leases, isolated
+source budgets and no-send/UNKNOWN/contention behavior. Reproduce or classify the earlier stalled
 test in the implementation environment.
 
 ### Documentation and operational review
 
 Verify that a reviewer can follow the runbook to start/restart/inspect the worker;
 configure webhook on test and repeat on production; execute every CLI command;
-diagnose backlog/source failure/trust expiry; identify the tested capacity
-envelope; expand using documented gates; and distinguish current capability
-from future operational work.
+diagnose backlog/source failure/trust expiry; identify per-process limits and
+cleanup-pending requests; understand enrollment progress and permitted/refused
+operator effects; and distinguish implemented embedded operation from the short
+future expansion path. Do not document unimplemented commands as available.
 
 Check runbook references against parsers, Settings, routes and event constants.
 Review semantic accuracy and secret handling separately. Record final SHA,
@@ -1072,9 +1219,10 @@ Step 9 receives:
   deterministic expiry evidence.
 - Original calendar facts without invented UTC or allowance identity.
 - Recovery/fencing/coalescing APIs and fixed financial UNKNOWN semantics.
-- Scoped conflicts, review gates and audited operator controls.
-- Reusable runner, startup modes, aggregate capacity controls and measured
-  expansion guidance.
+- Scoped conflicts, exact supported/refused audited operator resolutions and the
+  deliberate deferral of terminal hold release.
+- Reusable runner with embedded startup, bounded per-process resources,
+  cancellation/cleanup ownership and a documented future expansion path.
 - Current CLI/webhook/monitoring runbook and documentation freshness checks.
 - Final migrations, tested SHAs and classified evidence.
 
