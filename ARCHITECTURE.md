@@ -16,9 +16,10 @@ The current Portal combines public discovery, product detail, account/auth and
 an owned-purchase cabinet. ANY-709 implements direct product links, live current
 offers, account Widget, accepted-purchase preparation/recovery and localized
 Buy/Continue/Manage with one shared payment-capable Widget. It remains
-pre-production. Billing lifecycle workers, paid access, actual usage/quota and
-real Kernel enablement belong to later program steps. Delivery and acceptance
-evidence are recorded in [ANY-709](https://linear.app/paveldik/issue/ANY-709).
+pre-production. ANY-715 supplies embedded lifecycle polling and GET-only
+recovery/inventory. Paid access, actual usage/quota and real Kernel enablement
+belong to later program steps. Delivery and acceptance evidence are recorded in
+[ANY-709](https://linear.app/paveldik/issue/ANY-709).
 
 Each production deployment serves exactly one contour. Region Resolver is a
 separate planned service for contour selection; it is not implemented here.
@@ -70,7 +71,10 @@ renew it, and owned negative/conflict evidence reduces usability immediately.
 Preparation readback preserves reconciled facts. Scope provenance has no chosen
 primary, and no access revision, allowance or paid grant is produced. Step 2
 adds atomic enrollment, bounded embedded execution and provider-free trust-expiry
-evidence. See [billing operations](docs/engineering/ANY-715-billing-operations.md).
+evidence. Step 3 dispatches shared GET-only uncertain-create recovery, separate
+fixed two-hour local deadlines and bounded customer inventory. Permanent operation
+keys, original accepted proof and customer send leases remain authoritative;
+no background CREATE or cross-product adoption is permitted. See [billing operations](docs/engineering/ANY-715-billing-operations.md).
 
 The canonical target is defined, in precedence order, by
 [ADR 0005](docs/architecture/decisions/0005-external-billing-boundary.md), the
