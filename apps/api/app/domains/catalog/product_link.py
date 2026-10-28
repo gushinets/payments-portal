@@ -91,3 +91,31 @@ class CurrentOffer:
     evidence_mode: CommercialEvidenceMode
     observed_at: datetime
     fingerprint: str
+
+
+def current_offer_fingerprint(account_id: str, selection: ProductLinkRequest, offer: CurrentOffer) -> str:
+    """Current acceptance identity, reproducible from old immutable snapshots.
+
+    The next scheduled price is observation metadata. The selected price's
+    identity/start and all current commercial conditions remain material.
+    """
+    period = asdict(offer.period)
+    del period["price_effective_until"]
+    return commercial_digest(
+        canonical_document(
+            {
+                "schema": "current-terms:v2",
+                "scope": account_id,
+                "selection": selection.model_dump(),
+                "money": asdict(offer.money),
+                "period": period,
+                "quantity": asdict(offer.quantity),
+                "price_id": offer.price_id,
+                "period_membership_id": offer.period_membership_id,
+                "defaults": [offer.tariff_service_id],
+                "prepaid": offer.prepaid,
+                "full_funding_required": offer.full_funding_required,
+                "block_to_close_days": offer.block_to_close_days,
+            }
+        )
+    )

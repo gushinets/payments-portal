@@ -17,7 +17,7 @@ from apps.api.tests.support.postgres import alembic_test_config, reset_public_sc
 
 BASELINE_REVISION = "20260924_0001"
 EMAIL_VERIFICATION_REVISION = "20261001_0002"
-HEAD_REVISION = "20261027_0003"
+HEAD_REVISION = "20261028_0004"
 
 SURVIVOR_TABLES = {
     "regions",
@@ -358,6 +358,7 @@ EXPECTED_COLUMNS = {
         "payload_document",
         "priority",
         "next_attempt_at",
+        "active_recovery_deadline_at",
         "attempt_count",
         "work_state",
         "lease_owner",
@@ -734,6 +735,7 @@ def test_clean_first_install_has_expected_revisions_and_exact_application_schema
         assert script.get_bases() == [BASELINE_REVISION]
         assert [item.revision for item in script.walk_revisions()] == [
             HEAD_REVISION,
+            "20261027_0003",
             EMAIL_VERIFICATION_REVISION,
             BASELINE_REVISION,
         ]

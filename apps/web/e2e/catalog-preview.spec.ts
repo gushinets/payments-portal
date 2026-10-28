@@ -37,6 +37,28 @@ async function mockCatalog(page: Page, path: "" | "/products" | "/account") {
   return state;
 }
 
+test("catalog detail survives a healthy source response beyond five seconds", async ({ page }, testInfo) => {
+  let reads = 0;
+  await page.route("**/api/catalog/products/proposal_ai", async (route) => {
+    reads += 1;
+    // A synthetic successful Portal response, with real browser time/fetch.
+    await new Promise((resolve) => setTimeout(resolve, 5709));
+    await route.fulfill({ json: simulatedProduct });
+  });
+  await page.goto("/ru/products/proposal_ai");
+  const main = page.getByRole("main");
+  await expect(main.getByText(ru.CatalogPreview.simulated)).toBeVisible({ timeout: 15000 });
+  await expect(main.getByText(ru.CatalogPreview.failed)).toHaveCount(0);
+  expect(reads).toBe(1);
+  await page.getByRole("button", { name: ru.CookieBanner.acceptAction, exact: true }).click();
+  const accessibility = await new AxeBuilder({ page }).analyze();
+  expect(accessibility.violations.filter(({ impact }) => impact === "critical" || impact === "serious")).toEqual([]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await testInfo.attach("delayed-catalog-detail", {
+    body: await page.screenshot({ fullPage: true }), contentType: "image/png"
+  });
+});
+
 for (const locale of ["ru", "pt"] as const) {
   for (const path of ["", "/products"] as const) {
     test(`${locale}${path || "/"} displays all published products with exact localized terms`, async ({ page }, testInfo) => {

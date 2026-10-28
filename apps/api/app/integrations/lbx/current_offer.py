@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict
+from dataclasses import replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from zoneinfo import ZoneInfo
@@ -16,10 +16,8 @@ from app.domains.catalog.commercial_offer import (
     OfferRefusalKind,
     SelectedOfferRefused,
     SelectedOfferSourceFailed,
-    canonical_document,
-    commercial_digest,
 )
-from app.domains.catalog.product_link import CurrentOffer, ProductLinkRequest
+from app.domains.catalog.product_link import CurrentOffer, ProductLinkRequest, current_offer_fingerprint
 from app.infrastructure.preflight import PreflightBudget
 from app.integrations.lbx.client import LbxServerClient
 from app.integrations.lbx.errors import LbxError
@@ -194,24 +192,7 @@ def normalize_current_offer(
         until,
     )
     normalized_quantity = CommercialQuantity("commercial_service", quantity, minimum, maximum)
-    fingerprint = commercial_digest(
-        canonical_document(
-            {
-                "scope": configuration.lbx_external_billing_account_id,
-                "selection": selection.model_dump(),
-                "money": asdict(money),
-                "period": asdict(normalized_period),
-                "quantity": asdict(normalized_quantity),
-                "price_id": price.price_id,
-                "period_membership_id": period.tariff_period_id,
-                "defaults": defaults,
-                "prepaid": tariff.payment_type == 0,
-                "full_funding_required": tariff.dynamic_rent_unblock_type == 0,
-                "block_to_close_days": tariff.block_to_close_days,
-            }
-        )
-    )
-    return CurrentOffer(
+    offer = CurrentOffer(
         money,
         normalized_period,
         normalized_quantity,
@@ -225,7 +206,10 @@ def normalize_current_offer(
         tariff.block_to_close_days,
         CommercialEvidenceMode.CONFIGURED_SOURCE,
         max(read.observed_at for read in (reads.tariff, reads.periods, reads.services, reads.prices)),
-        fingerprint,
+        "",
+    )
+    return replace(
+        offer, fingerprint=current_offer_fingerprint(configuration.lbx_external_billing_account_id, selection, offer)
     )
 
 

@@ -123,8 +123,10 @@ ANY-709 Step 3 adds authenticated review/confirm/current/status/advance APIs,
 GET-only recovery. Acceptance atomically rechecks the current link and required
 legal versions after source I/O. The shared customer ensure remains the sole
 customer CREATE path. Financial possible-send claims permanently retain their
-original request, fence and +2h escalation; neither empty discovery nor elapsed
-time permits another POST. Point proof of the original customer/seller/agreement
+original request and first-send +2h history; neither empty discovery nor elapsed
+time permits another POST. Only completed no-send proof permits a later explicit
+send with a new fence and its own nonrenewable +2h window on the recovery work
+item. Point proof of the original customer/seller/agreement
 and effective subscription terms gates the existing bootstrap's optional payment
 presentation. Its initial subscription projection is `unverified` financially,
 with no paid-trust interval, grant or access-primary selection. Focused synthetic

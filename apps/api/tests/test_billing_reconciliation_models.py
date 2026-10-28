@@ -147,6 +147,7 @@ def test_target_reconciliation_model_columns_are_exact() -> None:
         "payload_document",
         "priority",
         "next_attempt_at",
+        "active_recovery_deadline_at",
         "attempt_count",
         "work_state",
         "lease_owner",
@@ -205,6 +206,7 @@ def test_nullable_slots_are_limited_to_the_approved_contract() -> None:
         "last_error_classification",
     }
     assert _nullable_columns(BillingWorkItem) == {
+        "active_recovery_deadline_at",
         "coalescing_key",
         "lease_owner",
         "lease_expires_at",

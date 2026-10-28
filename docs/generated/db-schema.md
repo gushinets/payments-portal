@@ -143,6 +143,7 @@ Indexes and constraints:
 | `payload_document` | `JSON` | no |  |
 | `priority` | `INTEGER` | no |  |
 | `next_attempt_at` | `DATETIME` | no |  |
+| `active_recovery_deadline_at` | `DATETIME` | yes |  |
 | `attempt_count` | `INTEGER` | no |  |
 | `work_state` | `TEXT` | no |  |
 | `lease_owner` | `TEXT` | yes |  |

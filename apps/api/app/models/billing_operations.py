@@ -75,6 +75,9 @@ class BillingWorkItem(Base):
     payload_document: Mapped[dict] = mapped_column(json_type, nullable=False)
     priority: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
     next_attempt_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # Financial recovery's active send window is independent of retry scheduling
+    # and the immutable first-send evidence on external_create_operations.
+    active_recovery_deadline_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
     work_state: Mapped[str] = mapped_column(Text, nullable=False)
     lease_owner: Mapped[str | None] = mapped_column(Text, nullable=True)

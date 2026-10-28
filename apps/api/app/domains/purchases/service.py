@@ -203,7 +203,7 @@ def _operation(db: Session, operation: ExternalCreateOperation, *, may_send: boo
         operation.send_fence,
         operation.bound_external_object_id,
         candidate,
-        operation.unknown_recovery_deadline_at,
+        queries.financial_recovery_deadline(operation, work),
         may_send,
         safe_failure,
         failure_code,

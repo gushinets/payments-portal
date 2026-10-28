@@ -5,13 +5,14 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import select, text
+from sqlalchemy import Text, and_, cast, func, select, text
 from sqlalchemy.orm import Session
 
 from app.core.time import utc_now
 from app.infrastructure.queries.legal import list_active_required_documents
 from app.models import (
     BillingPurchaseScopeHold,
+    BillingWorkItem,
     CommercialProductHead,
     ExternalCreateOperation,
     ExternalCreateOperationKind as Kind,
@@ -145,19 +146,36 @@ def other_held_purchases(db: Session, user_id: UUID, purchase_id: UUID) -> list[
     )
 
 
+def financial_recovery_deadline(operation: ExternalCreateOperation, work: BillingWorkItem | None) -> datetime | None:
+    """Pre-migration work keeps the original window; retry scheduling is unrelated."""
+    if work is not None and work.active_recovery_deadline_at is not None:
+        return work.active_recovery_deadline_at
+    return operation.unknown_recovery_deadline_at
+
+
 def overdue_financial(db: Session, now: datetime, limit: int) -> tuple[tuple[UUID, UUID], ...]:
+    deadline = func.coalesce(
+        BillingWorkItem.active_recovery_deadline_at, ExternalCreateOperation.unknown_recovery_deadline_at
+    )
     return tuple(
         db.execute(
             select(PurchaseIntent.user_id, PurchaseIntent.purchase_intent_id)
             .join(
                 ExternalCreateOperation, ExternalCreateOperation.purchase_intent_id == PurchaseIntent.purchase_intent_id
             )
+            .outerjoin(
+                BillingWorkItem,
+                and_(
+                    BillingWorkItem.work_kind == "external_create_recovery",
+                    BillingWorkItem.coalescing_key == cast(ExternalCreateOperation.create_operation_id, Text),
+                ),
+            )
             .where(
                 ExternalCreateOperation.operation_kind.in_([Kind.AGREEMENT, Kind.SUBSCRIPTION]),
                 ExternalCreateOperation.operation_state.in_([State.UNKNOWN, State.POSSIBLE_SEND]),
-                ExternalCreateOperation.unknown_recovery_deadline_at <= now,
+                deadline <= now,
             )
-            .order_by(ExternalCreateOperation.unknown_recovery_deadline_at)
+            .order_by(deadline)
             .limit(limit)
         ).tuples()
     )

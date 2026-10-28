@@ -870,6 +870,16 @@ never auto-release on zero matches
 unknown_recovery_deadline_at = unknown_since + 2h   # fixed MVP constant
 ```
 
+The owner-approved 2026-10-28 financial recovery correction preserves that first
+send deadline as immutable history. Positive completed `PROVEN_NOT_SENT` evidence
+alone may permit a later explicit send of the same command/key with a new fence.
+That newly permitted send receives its own fixed two-hour active recovery window
+on the coalesced work item, separate from retry scheduling. Inline recovery and
+overdue scans use the active window; GETs never extend it and UNKNOWN never
+authorizes a new financial CREATE. Existing work without an active window retains
+the original deadline. This correction grants neither paid access nor automatic
+scope release.
+
 The affected scope is the external-customer slot for customer create and the
 purchase/product flow for agreement or subscription create. Customer uncertainty
 blocks both Widget presentations; purchase uncertainty blocks payment presentation.

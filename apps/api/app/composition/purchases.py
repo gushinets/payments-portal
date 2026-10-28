@@ -15,7 +15,7 @@ from app.domains.billing.contracts import CustomerOpen
 from app.domains.billing.customers import reserve_customer, recheck_widget_session
 from app.domains.catalog.commercial_offer import canonical_decimal
 from app.domains.catalog.link_publication import StoredProductLink
-from app.domains.catalog.product_link import CurrentOffer
+from app.domains.catalog.product_link import CurrentOffer, current_offer_fingerprint
 from app.domains.catalog.preview import require_enabled_product
 from app.domains.catalog.publication import SessionFactory
 from app.domains.purchases.contracts import (
@@ -24,6 +24,7 @@ from app.domains.purchases.contracts import (
     Purchase,
     PurchaseMeaning,
     PurchaseRefused,
+    PurchaseInventoryIncomplete,
 )
 from app.domains.purchases.contracts import EffectiveServiceEvidence, PreparedSubscriptionObservation
 from app.domains.purchases import financial, service
@@ -115,7 +116,11 @@ async def _live_original(
     offer = await read_current_offer(
         sources.require_lbx(), selection=purchase.accepted.selection, configuration=configuration, budget=budget
     )
-    if offer.fingerprint != purchase.accepted.offer.fingerprint:
+    # Recompute from immutable historical fields under the current comparison
+    # contract. Older stored digests included future scheduling metadata.
+    if offer.fingerprint != current_offer_fingerprint(
+        purchase.account_id, purchase.accepted.selection, purchase.accepted.offer
+    ):
         await run_in_threadpool(financial.changed_unsent_terms, factory, purchase)
         return False
     return True
@@ -132,7 +137,7 @@ async def _inventory(
     rows = await client.discover_subscriptions(user_id=int(customer.provider_id), budget=budget)
     relevant = [row for row in rows if row.tariff_id == purchase.accepted.selection.tariff_id]
     if len(relevant) > MAX_RELEVANT_SUBSCRIPTIONS:
-        raise PurchaseRefused("purchase_inventory_incomplete", 409)
+        raise PurchaseInventoryIncomplete()
     own = _operation(purchase, Kind.SUBSCRIPTION).bound_id
     for candidate in relevant:
         point = await client.get_subscription(subscription_id=candidate.subscription_id, budget=budget)
@@ -140,7 +145,7 @@ async def _inventory(
         if agreement.user_id != int(customer.provider_id):
             raise LbxScopeMismatch()
         if point.state is None:
-            raise PurchaseRefused("purchase_inventory_incomplete", 409)
+            raise PurchaseInventoryIncomplete()
         if point.state != 3 and str(point.subscription_id) != own:
             other = await run_in_threadpool(
                 service.other_inventory_purchase, factory, purchase, point.subscription_id, point.agreement_id
@@ -323,6 +328,9 @@ async def _prepare(
                 if kind == Kind.AGREEMENT:
                     await _inventory(client, purchase, customer, factory, budget=budget)
                 found = await _find_financial(client, purchase, operation, customer, budget=budget)
+            except PurchaseInventoryIncomplete:
+                await run_in_threadpool(financial.financial_pending, factory, purchase, operation)
+                raise
             except (LbxScopeMismatch, PurchaseRefused) as error:
                 await run_in_threadpool(financial.financial_pending, factory, purchase, operation, conflict=True)
                 if isinstance(error, PurchaseRefused):

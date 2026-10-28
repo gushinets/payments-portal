@@ -274,6 +274,64 @@ Verification completed on the rebased working tree:
 No live LBX CREATE/payment, working-database mutation or deployment is part of
 this correction. Issue: https://linear.app/paveldik/issue/ANY-709.
 
+## Reproduced review follow-up, 2026-10-28
+
+The owner authorized fixes for four independently reproduced findings from PR
+#150. The regression scenarios precede implementation; synthetic provider
+responses are not live LBX acceptance evidence.
+
+- [x] Preserve original financial command/history while giving a genuinely new
+  explicit `PROVEN_NOT_SENT` resume its own fenced two-hour recovery window.
+  Inline recovery and overdue scans must agree; GETs cannot extend it.
+- [x] Keep incomplete inventory retryable without financial sends; retain the
+  same purchase/hold and preserve manual review for proven conflicts.
+- [x] Exclude future price scheduling from current commercial identity, retain
+  immutable accepted snapshots and compare existing snapshots compatibly.
+- [x] Give source-backed catalog GETs the bounded live-request deadline and
+  cover delayed headers/bodies plus ordinary short-timeout controls.
+- [x] Run focused PostgreSQL/frontend checks, actual Chromium HTTP verification,
+  broad canonical checks and inspect the final changes before updating PR #150.
+
+Implementation: additive migration `20261028_0004` adds a nullable active deadline
+to recovery work, with original-deadline fallback for existing rows. Financial
+commands, timestamps, keys and accepted/legal evidence remain immutable. The
+current comparison contract is `current-terms:v2`, reproducible from stored
+accepted fields without rewriting historical fingerprints. Catalog list/detail
+GETs use the existing 130-second live-operation budget; local reads stay at five
+seconds. Migration and normal `upgrade head` guidance are in the runbook.
+
+Focused verification passed 12 PostgreSQL cases (including migration/old-deadline
+fallback and exact schema), 29 deadline cases and web lint. The preceding broader
+financial/migration run passed 69 cases; its only failure was the expected
+revision-chain assertion, corrected and rechecked in the 12-case run. Two further
+cases now exercise a future price becoming effective before continuation, for
+both old and new stored fingerprints; they are included in the full check.
+The first full check stopped on five-second timeouts in two unchanged navigation
+tests. Both files passed immediately in isolation (17 tests, unchanged limits);
+the next full run passed all 378 component tests. Its fast backend checks exposed
+two additional exact-model assertions that still listed the predecessor columns;
+those expectations now include the nullable active deadline (all eight model
+contract tests passed).
+
+Final `npm run check` PASS: 1,447 fast API tests, 298 PostgreSQL tests (including
+all 12 cross-step recovery cases plus the additive migration preservation case),
+378 component tests, 38 frontend boundary tests, docs, generated-artifact freshness,
+architecture, Ruff, web lint and production build. Log:
+`/tmp/pr150-recovery-four-fixes-canonical-final.log`. The canonical command skipped
+the full browser suite; the dedicated delayed-catalog page test separately passed
+desktop/mobile Chromium against that build with a synthetic 5.709-second Portal
+response, actual browser fetch/time and no automatic retry. Log:
+`/tmp/pr150-recovery-browser-page.log`. Both cases also passed the final rerun
+with accessibility and overflow checks plus screenshots after dismissing the
+cookie banner (20.9 seconds total).
+
+Local toolchain limits: Next.js 16.3.1 vs locked 16.4.2, Vitest 3.2.7 vs locked
+4.1.12, Vite 7.3.6 vs locked 7.3.7; React 19.2.8 matches. Clean exact-head CI must
+verify the locked installation. Real LBX mutation/payment, deployment and an
+application-database migration are outside this follow-up; migration checks used
+disposable PostgreSQL only. Independent final review and human merge approval
+remain pending.
+
 ## Retained decisions and boundaries
 
 - Kernel owns enabled products; LBX owns current offers and commercial facts.
@@ -294,7 +352,8 @@ this correction. Issue: https://linear.app/paveldik/issue/ANY-709.
   or error retains the operation and purchase hold; recovery is GET-only.
   Empty discovery or expiry of the original `unknown_since + 2h` deadline never
   permits another CREATE. Only completed typed no-send evidence allows a later
-  explicit advance of the same immutable request/key/deadline with a fresh fence.
+  explicit advance of the same immutable request/key/history with a fresh fence
+  and a separate active two-hour recovery deadline on the reused work item.
   Fences reject stale completion; provider I/O stays
   outside short database transactions.
 - Acceptance freezes exact commercial/legal terms and link revision. The server

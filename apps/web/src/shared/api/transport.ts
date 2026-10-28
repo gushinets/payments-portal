@@ -141,10 +141,11 @@ export async function getJson<T>(
   path: string,
   token: string | undefined,
   contract: string,
-  extraHeaders?: Readonly<Record<string, string>>
+  extraHeaders?: Readonly<Record<string, string>>,
+  timeoutMs = requestTimeoutMs
 ): Promise<T> {
   const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), requestTimeoutMs);
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const response = await fetch(`${resolveApiBase()}${path}`, {

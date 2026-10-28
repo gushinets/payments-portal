@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getSession } from "@/shared/api/auth";
+import { getCatalogProduct, getCatalogProducts } from "@/shared/api/catalog";
 import { bootstrapWidget } from "@/shared/api/billing";
 import { billingRequestTimeoutMs } from "@/shared/api/billing-policy";
 import { advancePurchase, confirmPurchase, currentPurchase, purchaseStatus, reviewPurchase } from "@/shared/api/purchases";
@@ -8,6 +9,8 @@ import { purchaseReview, savedPurchase, widgetResponse } from "../fixtures/purch
 
 const fetcher = vi.fn<typeof fetch>();
 const liveRequests: [string, () => Promise<unknown>, unknown][] = [
+  ["catalog", () => getCatalogProducts(), { products: [] }],
+  ["catalog detail", () => getCatalogProduct("proposal_ai"), { product_id: "proposal_ai" }],
   ["review", () => reviewPurchase("synthetic-session", "proposal_ai", "synthetic-request"), purchaseReview],
   ["confirm", () => confirmPurchase("synthetic-session", {
     product_id: purchaseReview.product_id, revision_id: purchaseReview.revision_id,

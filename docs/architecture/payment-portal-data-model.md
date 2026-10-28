@@ -1,14 +1,14 @@
 # Payment Portal Data Model and Backend Invariants
 
 Status: authoritative current-state schema reference
-Last updated: 2026-10-27 (ANY-709 consolidated as revision 0003; verified local DB relabel complete)
+Last updated: 2026-10-28 (additive active financial recovery window after consolidated revision 0003)
 
 > **CURRENT AS-BUILT SCHEMA REFERENCE**
 
 This document describes the schema produced by the current Alembic chain:
 
 ```text
-20260924_0001 -> 20261001_0002 -> 20261027_0003 (head)
+20260924_0001 -> 20261001_0002 -> 20261027_0003 -> 20261028_0004 (head)
 ```
 
 `20260924_0001_clean_first_install` creates the 25-table first-install schema.
@@ -38,6 +38,10 @@ schema comparison and protected backup; all rows in 27 application tables were
 preserved and normal `upgrade head` passed afterward.
 Retired intermediate revisions must first reach `20261027_0006` using the old checkout;
 see the [migration runbook](../engineering/ANY-709-billing-runbook.md#consolidated-any-709-migration).
+`20261028_0004_financial_recovery_window` adds nullable
+`billing_work_items.active_recovery_deadline_at` without rewriting existing rows.
+NULL retains the original immutable financial deadline. Only a new fenced send
+permitted by `proven_not_sent` establishes a fresh two-hour recovery window.
 The chain has one current head.
 This document is authoritative for the implemented SQLAlchemy
 table inventory and physical persistence rules; the generated column-level
@@ -62,7 +66,7 @@ invalidation delivery remain future work.
 
 A fresh database has exactly 27 application tables: ten retained
 identity/session/legal tables, fifteen original external-billing persistence
-tables, one current product-link pointer and one purchase mutex. Alembic has three revisions in one linear chain and one current head; only the last revision belongs to ANY-709.
+tables, one current product-link pointer and one purchase mutex. Alembic has four revisions in one linear chain and one current head; the last two revisions belong to ANY-709.
 
 There is no Portal-owned product, plan, order, payment, refund, subscription,
 entitlement, trial, provider-account, or direct-payment webhook table. There is
@@ -234,8 +238,10 @@ account/kind/provider-object binding. Their account/customer composite FK preven
 cross-connection ownership. Financial evidence guards prevent deletion, identity
 changes, deadline/request replacement and resetting a possibly sent operation to
 pending. A completed typed no-send result may persist `proven_not_sent`; a later
-explicit advance claims the same immutable request/key/deadline with a fresh fence
-and reused work item. UNKNOWN, empty GET and deadline expiry never authorize this
+explicit advance claims the same immutable request/key/history with a fresh fence
+and reused work item. Its new send has an independent two-hour active recovery
+deadline on that work item; the original operation deadline stays immutable.
+UNKNOWN, empty GET and deadline expiry never authorize this
 transition or a replay. Customer retry semantics remain separate. No background
 worker is enabled.
 
@@ -301,7 +307,10 @@ It never stores authorization material, card/payment fields, or a raw provider
 payload, and receipt alone never grants access.
 
 `billing_work_items` stores open work/scope/state vocabularies, bounded typed
-payloads, priority, due time, attempt count, and paired lease owner/expiry. It
+payloads, priority, due time, attempt count, paired lease owner/expiry and nullable
+`active_recovery_deadline_at` for the current financial send. The active deadline
+is independent of mutable retry scheduling and changes only in the locked,
+fenced financial send claim; GET recovery does not renew it. It
 is scheduling state, not commercial or access authority. Exact work kinds,
 state transitions and coalescing rules are intentionally deferred.
 

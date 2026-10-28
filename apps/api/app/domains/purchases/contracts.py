@@ -46,6 +46,13 @@ class PurchaseRefused(BillingRefused):
     pass
 
 
+class PurchaseInventoryIncomplete(PurchaseRefused):
+    """Absence of complete inventory proof permits a later read, never a send."""
+
+    def __init__(self) -> None:
+        super().__init__("purchase_inventory_incomplete", 409)
+
+
 class LegalSelection(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     document_version_id: UUID
@@ -89,6 +96,7 @@ class FinancialOperation:
     fence: UUID | None
     bound_id: str | None
     candidate_id: str | None
+    # Active send's recovery window; first-send history remains on the DB operation.
     deadline: datetime | None
     may_send: bool = False
     last_failure: tuple[int | None, int | None, str] | None = None

@@ -93,7 +93,7 @@ async def test_proven_not_sent_resumes_original_operation_only_on_explicit_advan
         second = await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
         assert second.state == IntentState.LINKED and second.held
         later = next(op for op in second.operations if op.kind == kind)
-        assert later.id == original.id and later.key == original.key and later.deadline == original.deadline
+        assert later.id == original.id and later.key == original.key and later.deadline > original.deadline
         assert transport.creates(path) == 1
         financial.proven_not_sent(factory, first, replace(original, may_send=True))
         assert (
@@ -105,6 +105,7 @@ async def test_proven_not_sent_resumes_original_operation_only_on_explicit_advan
         with factory() as db:
             op = db.get(ExternalCreateOperation, original.id)
             assert op.recovery_hint_document == evidence and op.unknown_since == since
+            assert op.unknown_recovery_deadline_at == original.deadline
             work = db.scalar(select(BillingWorkItem).where(BillingWorkItem.coalescing_key == str(original.id)))
             assert work.work_item_id == work_id and work.attempt_count == 2
 

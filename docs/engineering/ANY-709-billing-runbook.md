@@ -96,8 +96,9 @@ On hosts without `python` on PATH, prefix npm commands with
 
 ### Consolidated ANY-709 migration
 
-The branch contains one forward migration, `20261027_0003`, after main's
-unchanged `20261001_0002`. It retains all operations from the former branch-local
+The branch contains consolidated migration `20261027_0003` after main's
+unchanged `20261001_0002`, followed by additive `20261028_0004` for the active
+financial recovery window. The consolidated migration retains all operations from the former branch-local
 `20261026_0003` / `0004` / `0005` / `20261027_0006` chain, including indexes,
 constraints, triggers, operation-account backfill and purchase holds. No schema,
 legal seed, historical consent or accepted-purchase meaning changed.
@@ -105,10 +106,11 @@ legal seed, historical consent or accepted-purchase meaning changed.
 - Fresh databases and databases at `20261001_0002` use the normal migration
   command below. Conflicting old identities or held scopes abort the transaction;
   the migration never chooses, deletes or relabels those records.
-- Databases already at the current `20261027_0003` need no migration replay.
+- Databases already at `20261027_0003` run normal `upgrade head` to add the nullable
+  active recovery deadline. Never replay the consolidated migration.
 - A fully upgraded database at retired `20261027_0006` has the same schema, but
   its old label is not in the new graph. Verify that its columns, constraints,
-  indexes, functions and triggers match a fresh current-head database, retain a
+  indexes, functions and triggers match a fresh `20261027_0003` database, retain a
   protected backup, then change only its `alembic_version` label to
   `20261027_0003` in a guarded transaction. Preserve all application rows and
   verify normal `upgrade head` afterward. Never rerun the consolidated DDL over
@@ -607,8 +609,9 @@ command. CLI invocations are human commands, NOT_RUN by this implementation.
 
 The later Step 8 worker may call `recover_financial()` with an owned local
 purchase and `escalate_overdue_financial(factory, now=..., limit=...)` (1..100).
-Consume the existing `external_create_recovery` work by operation ID and original
-fixed deadline. No scheduler/webhook/reconciliation/trust runtime is started in
+Consume the existing `external_create_recovery` work by operation ID and active
+fixed deadline, falling back to the original deadline for predecessor work.
+No scheduler/webhook/reconciliation/trust runtime is started in
 Step 3. Retain independent future reconciliation capacity and do not reinterpret
 preparation observations as verified paid financial facts.
 
@@ -694,12 +697,12 @@ Step 8 must supply future observation/reconciliation feedback.
 
 ### Browser deadlines and lost responses
 
-Live review, confirmation, preparation and Widget bootstrap use a finite
+Live catalog listing/detail, review, confirmation, preparation and Widget bootstrap use a finite
 130-second browser deadline, covering the server's supported preflight maximum
 of 120 seconds plus response/DB overhead. Identity and local purchase/status
 GETs retain the ordinary five-second deadline. The browser must not report a
 provider outage merely because a valid server operation exceeded five seconds.
-POST deadlines cover reading both successful and error response bodies; receiving
+Live GET/POST deadlines cover reading both successful and error response bodies; receiving
 headers does not end the timer. A timeout never automatically repeats a POST.
 
 An authenticated exact confirmation replay reads its existing accepted intent
@@ -801,7 +804,8 @@ LEFT JOIN billing_purchase_scope_holds h ON h.purchase_intent_id = p.purchase_in
 WHERE p.purchase_intent_id = '<portal-purchase-uuid>';
 SELECT o.create_operation_id, o.operation_kind, o.operation_state,
        o.send_fence, o.unknown_since, o.unknown_recovery_deadline_at,
-       o.bound_external_object_id, w.work_state, w.next_attempt_at
+       o.bound_external_object_id, w.work_state, w.next_attempt_at,
+       COALESCE(w.active_recovery_deadline_at, o.unknown_recovery_deadline_at) AS active_recovery_deadline_at
 FROM external_create_operations o
 LEFT JOIN billing_work_items w ON w.scope_reference = o.create_operation_id::text
   AND w.work_kind = 'external_create_recovery'
@@ -1002,12 +1006,20 @@ Financial `proven_not_sent` is positive evidence from the completed typed
 `LbxCreateNotSent` path, with no HTTP task still running. Only this state permits
 a later explicit advance to claim the same operation with a fresh fence. It
 retains the original request (including agreement date), key, unknown timestamps,
-+2h deadline and coalesced work item. There is no retry within that advance.
+historical +2h deadline and coalesced work item. The newly fenced send records its
+own nonrenewable +2h window in `billing_work_items.active_recovery_deadline_at`,
+independent of `next_attempt_at` scheduling. Inline recovery and overdue scans use
+that active window; GETs, empty discovery and scheduling changes never extend it.
+Existing work with a NULL active window uses the immutable original deadline.
+There is no retry within that advance.
 A process crash or lost claim acknowledgement before persisting this evidence
 remains possible-send/UNKNOWN and GET-only. Empty GET, deadline expiry, HTTP 500,
 read/write timeout and cancellation never create no-send proof. A GET-only
-recovery cannot send even a proven-unsent command. No migration or evidence-trigger
-relaxation is required: the canonical state is stored in existing TEXT columns.
+recovery cannot send even a proven-unsent command. Forward migration
+`20261028_0004` adds only the nullable active-window column; it preserves all old
+rows/evidence and the original evidence triggers. Run normal `upgrade head`
+before deploying this code; do not roll back to an older binary while a resumed
+financial send is unresolved.
 
 The occupied business scope is `(user_id, product_id)`, not tariff ID. Different
 products may use supported selections of the same tariff. Inventory ignores a
@@ -1015,7 +1027,19 @@ nonterminal same-tariff subscription only when its permanent local binding prove
 a different product in the same user/customer/account/provider scope, and fresh
 point reads prove that purchase's original agreement/seller/terms. Unknown,
 foreign or mismatching inventory still requires review; unsupported multi-service
-profiles remain rejected.
+profiles remain rejected. Incomplete inventory (missing lifecycle state or too
+many candidates for bounded proof) instead retains the same unsent operation and
+purchase hold in a retryable pending state. No financial CREATE is permitted
+until a later complete read proves inventory safe.
+
+Current accepted-term identity uses `current-terms:v2`: current selected price
+ID/start, money, quantity, period and supported policies remain material. The next
+scheduled price boundary is observation metadata, excluded from that identity.
+Adding a future row cannot invalidate unchanged current terms or strand a purchase
+after its agreement is bound. A newly effective price is still a material change.
+Continuation recomputes the comparison from stored accepted fields, including
+older snapshots; accepted fingerprints, snapshots and legal evidence are never
+rewritten.
 
 Human acceptance must use the intended stand, with sanitized IDs/request IDs and
 observed results recorded against the tested commit:

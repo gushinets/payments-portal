@@ -112,14 +112,16 @@ def claim_financial(
                     "purchase_intent_id": str(purchase.id),
                     "create_operation_id": str(operation.create_operation_id),
                 },
-                next_attempt_at=operation.unknown_recovery_deadline_at,
+                next_attempt_at=now + RECOVERY_WINDOW,
+                active_recovery_deadline_at=now + RECOVERY_WINDOW,
                 work_state="pending",
                 attempt_count=1,
             )
             db.add(work)
         else:
             work.work_state = "pending"
-            work.next_attempt_at = operation.unknown_recovery_deadline_at
+            work.active_recovery_deadline_at = now + RECOVERY_WINDOW
+            work.next_attempt_at = work.active_recovery_deadline_at
             work.attempt_count += 1
         row.state = IntentState.PREPARING
         row.state_updated_at = now
@@ -213,12 +215,14 @@ def financial_pending(
         op = next(op for op in queries.operations(db, purchase.id, lock=True) if op.create_operation_id == expected.id)
         if op.send_fence != expected.fence:
             return  # A stale failure cannot demote a newer proven result.
+        work = recovery_work(db, op.create_operation_id)
+        deadline = queries.financial_recovery_deadline(op, work)
         if conflict:
             _review(db, row, op, "financial_binding_conflict")
         elif op.operation_state == State.PROVEN_NOT_SENT:
             return  # A failed GET cannot erase completed no-send evidence.
         elif op.operation_state != State.BOUND:
-            if op.unknown_recovery_deadline_at and utc_now() >= as_utc(op.unknown_recovery_deadline_at):
+            if deadline and utc_now() >= as_utc(deadline):
                 _review(db, row, op, "external_create_outcome_unknown:" + op.operation_kind.value)
             elif op.operation_state != State.MANUAL_REVIEW:
                 op.operation_state = State.UNKNOWN if op.unknown_since else State.PENDING
@@ -229,7 +233,6 @@ def financial_pending(
             # payment opening still requires complete fresh point proof.
             row.state = IntentState.AWAITING_EXTERNAL_RESULT
             row.state_updated_at = utc_now()
-        work = recovery_work(db, op.create_operation_id)
         if work and op.operation_state == State.BOUND:
             work.work_state = "pending"
             work.next_attempt_at = utc_now()
@@ -400,10 +403,19 @@ def escalate_overdue_financial(
                         for item in queries.operations(db, purchase.id, lock=True)
                         if item.create_operation_id == op.id
                     )
-                    if current.send_fence == op.fence and current.operation_state in {
-                        State.POSSIBLE_SEND,
-                        State.UNKNOWN,
-                    }:
+                    deadline = queries.financial_recovery_deadline(
+                        current, recovery_work(db, current.create_operation_id)
+                    )
+                    if (
+                        deadline
+                        and as_utc(deadline) <= instant
+                        and current.send_fence == op.fence
+                        and current.operation_state
+                        in {
+                            State.POSSIBLE_SEND,
+                            State.UNKNOWN,
+                        }
+                    ):
                         _review(db, row, current, "external_create_outcome_unknown:" + current.operation_kind.value)
                         db.commit()
                         count += 1
