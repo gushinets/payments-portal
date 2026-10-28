@@ -201,6 +201,10 @@ class PreflightAdmission:
         return len(self._active)
 
     @property
+    def cleanup_pending_count(self) -> int:
+        return sum(budget._finished and bool(budget._tasks) for budget in self._active)
+
+    @property
     def waiting_count(self) -> int:
         return len(self._waiting)
 

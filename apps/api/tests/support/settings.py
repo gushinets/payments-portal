@@ -21,6 +21,7 @@ DEFAULT_API_TEST_ENV = {
     "SENTRY_DSN": "",
     "SENTRY_RELEASE": "",
     "SKIP_LEGAL_SEED": "true",
+    "BILLING_WORKER_ENABLED": "false",
 }
 
 

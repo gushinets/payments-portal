@@ -19,6 +19,8 @@ from app.domains.identity.services.auth import as_utc
 from app.domains.purchases import service
 from app.infrastructure.queries import billing_reconciliation as queries, purchases
 from app.infrastructure.queries.billing_customers import lock_customer, customer_operation, open_customer_reviews
+from app.domains.billing.work import schedule_reconciliation, verify_claim
+from app.domains.billing.work_contracts import WorkClaim
 from app.models import (
     BillingProductAccessScope,
     BillingStateObservation,
@@ -147,7 +149,13 @@ def claim_reconciliation(
         return result
 
 
-def apply_reconciliation(factory: SessionFactory, subject: ReconciliationSubject, proof: SubscriptionProof) -> UUID:
+def apply_reconciliation(
+    factory: SessionFactory,
+    subject: ReconciliationSubject,
+    proof: SubscriptionProof,
+    *,
+    work_claim: WorkClaim | None = None,
+) -> UUID:
     """Recheck permanent provenance and current fences before any fact changes."""
     with factory() as db:
         purchase = subject.purchase
@@ -199,6 +207,10 @@ def apply_reconciliation(factory: SessionFactory, subject: ReconciliationSubject
             != {(op.id, op.kind, op.key, op.bound_id) for op in purchase.operations}
         ):
             raise BillingRefused("subscription_provenance_changed", 409)
+        if work_claim is not None:
+            if work_claim.kind != "subscription_reconciliation" or work_claim.reference != str(current.subscription_id):
+                raise BillingRefused("billing_work_stale", 409)
+            verify_claim(db, work_claim)
         service._verify_original_consent(db, row, purchase.accepted)
         reviews = queries.open_reviews(db, current.subscription_id)
         known_review = (
@@ -298,5 +310,6 @@ def apply_reconciliation(factory: SessionFactory, subject: ReconciliationSubject
         # but never renews trust. No paid-access writer runs in this step.
         current.reconciliation_lease_owner = None
         current.reconciliation_lease_expires_at = None
+        schedule_reconciliation(db, current, work_claim, complete=proof.complete and not conflict and not known_review)
         db.commit()
         return observation.observation_id

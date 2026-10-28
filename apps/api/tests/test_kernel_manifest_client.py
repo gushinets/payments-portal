@@ -66,6 +66,9 @@ async def test_independent_literal_contract_and_fresh_get_on_every_operation() -
                 require_selected_capability(
                     manifest, product_id="proposal_ai", metric_units={"proposal_ai.test_generations": "generation"}
                 )
+                require_selected_capability(
+                    manifest, product_id="brief_decoder", metric_units={"brief_decoder.test_analyses": "analysis"}
+                )
                 assert manifest.provenance is SourceProvenance.SIMULATED
                 assert manifest.manifest_version == EXPECTED_DIGEST
                 assert len(manifest.products) == 6
@@ -238,11 +241,15 @@ async def test_valid_manifest_and_selected_eligibility_are_separate(change: str,
         next(item for item in payload["products"] if item["product_id"] == "proposal_ai")["enabled"] = False
     elif change == "missing_product":
         payload["products"] = [item for item in payload["products"] if item["product_id"] != "proposal_ai"]
-        payload["usage_metrics"] = []
+        payload["usage_metrics"] = [
+            metric for metric in payload["usage_metrics"] if metric["product_id"] != "proposal_ai"
+        ]
     elif change == "disabled_metric":
         payload["usage_metrics"][0]["enabled"] = False
     elif change == "missing_metric":
-        payload["usage_metrics"] = []
+        payload["usage_metrics"] = [
+            metric for metric in payload["usage_metrics"] if metric["product_id"] != "proposal_ai"
+        ]
     elif change == "other_owner":
         payload["usage_metrics"][0]["product_id"] = "kernel_demo"
     elif change == "different_unit":

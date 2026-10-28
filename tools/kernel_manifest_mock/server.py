@@ -156,11 +156,11 @@ def response_manifest(fixture: dict[str, Any], scenario: Scenario) -> dict[str, 
             for product in manifest["products"]
             if product["product_id"] != "proposal_ai"
         ]
-        manifest["usage_metrics"] = []
+        manifest["usage_metrics"] = [metric for metric in manifest["usage_metrics"] if metric["product_id"] != "proposal_ai"]
     elif scenario == Scenario.DISABLED_METRIC:
         manifest["usage_metrics"][0]["enabled"] = False
     elif scenario == Scenario.MISSING_METRIC:
-        manifest["usage_metrics"] = []
+        manifest["usage_metrics"] = [metric for metric in manifest["usage_metrics"] if metric["product_id"] != "proposal_ai"]
     elif scenario == Scenario.WRONG_TENANT:
         manifest["tenant_id"] = "other-test-tenant"
     elif scenario == Scenario.WRONG_REGION:

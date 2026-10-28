@@ -234,6 +234,7 @@ def canonical_check_environment(
     temp_dir.mkdir(parents=True, exist_ok=True)
     for variable in ("TEMP", "TMP", "TMPDIR"):
         environment[variable] = str(temp_dir)
+    environment["BILLING_WORKER_ENABLED"] = "false"
     environment["OTEL_EXPORTER_OTLP_ENDPOINT"] = ""
     environment["INSTANCE_TENANT_ID"] = LOCAL_INSTANCE_TENANT_ID
     environment["INSTANCE_REGION"] = LOCAL_INSTANCE_REGION
@@ -465,6 +466,9 @@ def write_runtime(config: RuntimeConfig) -> None:
         "LBX_CONNECT_TIMEOUT_SECONDS", "LBX_READ_TIMEOUT_SECONDS",
         "LBX_MAX_RESPONSE_BYTES", "LBX_MAX_GET_ATTEMPTS",
         "LBX_RETRY_DELAY_SECONDS", "LBX_MAX_RETRY_DELAY_SECONDS",
+        "BILLING_WORKER_ENABLED", "BILLING_WORKER_URGENT_CONCURRENCY",
+        "BILLING_WORKER_NORMAL_CONCURRENCY", "BILLING_WORKER_IO_TIMEOUT_SECONDS",
+        "BILLING_WORKER_SCAN_BATCH_SIZE",
         "MAPPING_OPERATOR_LOCK_FILE",
     ):
         value = os.environ.get(name, local_env.get(name, ""))

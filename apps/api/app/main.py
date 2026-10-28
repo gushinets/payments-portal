@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.concurrency import run_in_threadpool
 
 from app.composition.sources import source_resources
+from app.composition.billing_worker import billing_worker_resources
 from app.core.database import SessionLocal, engine
 from app.core.errors import AppError
 from app.core.observability import (
@@ -45,7 +46,12 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
     async with source_resources(settings) as sources:
         _app.state.sources = sources
-        yield
+        async with billing_worker_resources(settings) as worker:
+            _app.state.billing_worker = worker
+            _app.state.billing_worker_mode = (
+                "disabled" if not settings.billing_worker_enabled else "not_configured" if worker is None else "running"
+            )
+            yield
 
 
 def get_cors_origins() -> tuple[str, ...]:
