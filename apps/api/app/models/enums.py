@@ -88,6 +88,12 @@ class BillingStateObservationKind(StrEnum):
     DETERMINISTIC_ACCESS_BOUNDARY = "deterministic_access_boundary"
 
 
+class WebhookDeliveryState(StrEnum):
+    PENDING = "pending"
+    PROCESSED = "processed"
+    IGNORED = "ignored"
+
+
 __all__ = [
     "AcceptanceKind",
     "BillingStateObservationKind",
@@ -103,4 +109,5 @@ __all__ = [
     "PurchaseIntentState",
     "RegionStatus",
     "UserStatus",
+    "WebhookDeliveryState",
 ]

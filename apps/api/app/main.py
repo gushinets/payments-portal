@@ -24,6 +24,7 @@ from app.domains.identity.router import router as auth_router
 from app.domains.legal.router import router as legal_router
 from app.domains.purchases.router import router as purchases_router
 from app.http.errors import app_error_handler, unexpected_failure_middleware
+from app.http.billing_webhook import router as billing_webhook_router
 from app.http.health import health_router
 from app.http.metrics import metrics_router
 from app.infrastructure.sentry import configure_sentry
@@ -91,6 +92,7 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(billing_router)
+    app.include_router(billing_webhook_router)
     app.include_router(purchases_router)
     app.include_router(catalog_router)
     app.include_router(auth_router)
