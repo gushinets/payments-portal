@@ -124,6 +124,7 @@ class BillingWorker:
     async def tick(self, lane: WorkLane) -> bool:
         if any(task in self.db_cleanup for task in self.db_tasks[lane]):
             return False  # An interrupted DB owner may still be committing.
+        attempt_outcome = "completed"
         if lane == WorkLane.LOCAL:
             claim = await self.db(lane, work.claim_work, self.factory, self.configuration, lane)
             if claim is None:
@@ -194,17 +195,20 @@ class BillingWorker:
                             )
                             metrics.LAST_PROOF.set(self.last_verified_subscription_at.timestamp())
                 except BillingRefused as error:
-                    await self.db(
+                    saved = await self.db(
                         lane,
                         work.retry_work,
                         self.factory,
                         claim,
                         invalid=error.code == "subscription_not_found",
+                        error=error.code,
                     )
-                    raise
+                    if not saved:
+                        raise
+                    attempt_outcome = "refused"
         self.last_progress_at = utc_now()
         metrics.PROGRESS.set(self.last_progress_at.timestamp())
-        metrics.ATTEMPTS.labels(lane=lane.value, outcome="completed").inc()
+        metrics.ATTEMPTS.labels(lane=lane.value, outcome=attempt_outcome).inc()
         return True
 
     async def _loop(self, lane: WorkLane) -> None:
