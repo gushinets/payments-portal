@@ -2,6 +2,7 @@
 
 from dataclasses import replace
 from datetime import date, datetime
+from collections.abc import Awaitable
 
 from app.core.settings import Settings
 from app.core.time import utc_now
@@ -245,6 +246,17 @@ def normalize_subscription(
     )
 
 
+async def _timely_point[T](read: Awaitable[T], budget: PreflightBudget) -> T:
+    """Reject both values and scope errors returned after the read deadline."""
+    try:
+        value = await read
+    except LbxError:
+        budget.check()
+        raise
+    budget.check()
+    return value
+
+
 async def read_subscription_proof(
     client: LbxServerClient,
     subject: ReconciliationSubject | SubscriptionCandidateSubject,
@@ -259,23 +271,27 @@ async def read_subscription_proof(
     # Customer pair; canonical agreement/seller/correlation; prepaid policy;
     # effective terms and latest lifecycle. No discovery/current-offer round.
     try:
-        user = await client.get_user(user_id=int(subject.customer.provider_id), budget=budget)
+        user = await _timely_point(client.get_user(user_id=int(subject.customer.provider_id), budget=budget), budget)
         reads.append("customer")
     except (LbxError, PreflightDeadlineExceeded) as error:
         failures.append("customer:" + error.code)
     try:
-        agreement = await client.get_agreement(agreement_id=int(subject.agreement_id), budget=budget)
+        agreement = await _timely_point(
+            client.get_agreement(agreement_id=int(subject.agreement_id), budget=budget), budget
+        )
         reads.append("agreement")
     except (LbxError, PreflightDeadlineExceeded) as error:
         failures.append("agreement:" + error.code)
     try:
-        tariff = await client.get_tariff(tariff_id=subject.purchase.accepted.selection.tariff_id, budget=budget)
+        tariff = await _timely_point(
+            client.get_tariff(tariff_id=subject.purchase.accepted.selection.tariff_id, budget=budget), budget
+        )
         reads.append("tariff_policy")
     except (LbxError, PreflightDeadlineExceeded) as error:
         failures.append("tariff:" + error.code)
     try:
-        subscription = await client.get_subscription(
-            subscription_id=int(subject.provider_subscription_id), budget=budget
+        subscription = await _timely_point(
+            client.get_subscription(subscription_id=int(subject.provider_subscription_id), budget=budget), budget
         )
         reads.append("subscription")
     except (LbxError, PreflightDeadlineExceeded) as error:
@@ -296,6 +312,10 @@ async def read_subscription_proof(
         proof = replace(
             proof, identity=IdentityProof.CONFLICT, lifecycle=None, financial=None, reasons=proof.reasons + conflicts
         )
+    try:
+        budget.check()
+    except PreflightDeadlineExceeded:
+        failures.append("read_budget_exhausted")
     return replace(
         proof,
         read_started_at=started,
