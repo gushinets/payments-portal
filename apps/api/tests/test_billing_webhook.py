@@ -230,3 +230,39 @@ def test_billing_webhook_deployment_and_documentation_contract() -> None:
         "ignored",
     ):
         assert required in text
+
+
+@pytest.mark.parametrize("from_environment", [False, True])
+def test_billing_webhook_harness_forwards_private_settings(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    from_environment: bool,
+) -> None:
+    from scripts import repo
+
+    harness = tmp_path / ".harness"
+    monkeypatch.setattr(repo, "HARNESS_DIR", harness)
+    monkeypatch.setattr(repo, "RUNTIME_ENV", harness / "runtime.env")
+    monkeypatch.setattr(repo, "RUNTIME_JSON", harness / "runtime.json")
+    monkeypatch.setattr(repo, "kernel_mock_enabled", lambda: False)
+    expected = {
+        "LBX_WEBHOOK_ENABLED": "true",
+        "LBX_WEBHOOK_AUTH_HEADER": "X-Lbx-Test-Auth",
+        "LBX_WEBHOOK_AUTH_VALUE": "synthetic-$secret #with'quote",
+    }
+    local = {name: "overridden" for name in expected} if from_environment else expected
+    monkeypatch.setattr(repo, "read_dotenv", lambda: local)
+    for name, value in expected.items():
+        if from_environment:
+            monkeypatch.setenv(name, value)
+        else:
+            monkeypatch.delenv(name, raising=False)
+    repo.write_runtime(repo.runtime_config(root=tmp_path))
+    written = repo.read_runtime_env()
+    assert {name: written[name] for name in expected} == expected
+    public = json.loads(repo.RUNTIME_JSON.read_text())
+    assert not set(expected).intersection(public)
+    assert repo.RUNTIME_ENV.stat().st_mode & 0o077 == 0
+    output = capsys.readouterr()
+    assert expected["LBX_WEBHOOK_AUTH_VALUE"] not in output.out + output.err + json.dumps(public)
