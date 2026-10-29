@@ -10,8 +10,8 @@ from starlette.concurrency import run_in_threadpool
 
 from app.composition.billing import ensure_customer
 from app.composition.catalog import catalog_preview
-from app.composition.purchase_observation import prepared_subscription_observation
 from app.composition.purchase_recovery import recover_financial as recover_financial
+from app.composition.purchase_observation import prepared_subscription_observation
 from app.composition.sources import SourceResources
 from app.core.errors import AppError
 from app.core.settings import Settings
@@ -35,7 +35,7 @@ from app.infrastructure.preflight import PreflightBudget, PreflightDeadlineExcee
 from app.integrations.lbx._transport import customer_diagnostics
 from app.integrations.lbx.client import LbxServerClient
 from app.integrations.lbx.current_offer import current_billing_date, read_current_offer
-from app.integrations.lbx.errors import LbxCreateNotSent, LbxError, LbxResponseInvalid, LbxScopeMismatch
+from app.integrations.lbx.errors import LbxCreateNotSent, LbxError, LbxScopeMismatch, LbxResponseInvalid
 from app.integrations.lbx.financial import (
     NewAgreement,
     NewSubscription,

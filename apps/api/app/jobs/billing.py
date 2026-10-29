@@ -59,6 +59,8 @@ class BillingWorker:
                 (WorkLane.NORMAL, configuration.billing_worker_normal_concurrency),
             )
         }
+        self.db_tasks: dict[WorkLane, set[asyncio.Task[Any]]] = {lane: set() for lane in self.db_limiters}
+        self.db_cleanup: set[asyncio.Task[Any]] = set()
         self.tasks: list[asyncio.Task[None]] = []
         self.stopping = False
         self.failed = False
@@ -71,10 +73,35 @@ class BillingWorker:
         self.enrolled_batches = 0
 
     async def db(self, lane: WorkLane, function: Callable[..., T], *args: Any, **kwargs: Any) -> T:
-        return await anyio.to_thread.run_sync(partial(function, *args, **kwargs), limiter=self.db_limiters[lane])
+        # Shield the resource-owning framework task, not just its waiter. Native
+        # asyncio cancellation must not release AnyIO's limiter while its thread
+        # can still commit. The worker retains and drains that exact task.
+        task = asyncio.create_task(
+            anyio.to_thread.run_sync(partial(function, *args, **kwargs), limiter=self.db_limiters[lane])
+        )
+        self.db_tasks[lane].add(task)
+
+        def completed(owner: asyncio.Task[T]) -> None:
+            self.db_tasks[lane].discard(owner)
+            self.db_cleanup.discard(owner)
+            if not owner.cancelled():
+                owner.exception()
+
+        task.add_done_callback(completed)
+        try:
+            return await asyncio.shield(task)
+        except asyncio.CancelledError:
+            if not task.done():
+                self.db_cleanup.add(task)
+            raise
 
     async def start(self) -> None:
-        if self.tasks:
+        if (
+            self.tasks
+            or self.stopping
+            or any(self.db_tasks.values())
+            or any(admission.active_count for admission in self.admissions.values())
+        ):
             raise RuntimeError("billing worker cannot restart over existing resource owners")
         await self.db(WorkLane.LOCAL, work.ensure_sweep, self.factory, self.configuration)
         for lane, count in (
@@ -94,6 +121,8 @@ class BillingWorker:
                 report_exception(task.exception(), operation=Operation.BILLING_WORKER)
 
     async def tick(self, lane: WorkLane) -> bool:
+        if any(task in self.db_cleanup for task in self.db_tasks[lane]):
+            return False  # An interrupted DB owner may still be committing.
         if lane == WorkLane.LOCAL:
             claim = await self.db(lane, work.claim_work, self.factory, self.configuration, lane)
             if claim is None:
@@ -119,7 +148,7 @@ class BillingWorker:
             admission = self.admissions[lane]
             if admission.active_count >= admission.policy.max_active:
                 return False  # Unfinished cleanup still occupies its actual slot.
-            async with admission.operation() as budget:
+            async with admission.operation(bound_scope=False) as budget:
                 claim = await self.db(lane, work.claim_work, self.factory, self.configuration, lane)
                 if claim is None:
                     return False
@@ -188,7 +217,13 @@ class BillingWorker:
                 progressed = False
             for source_lane, admission in self.admissions.items():
                 metrics.SLOTS.labels(lane=source_lane.value).set(admission.active_count)
-                metrics.CLEANUP.labels(lane=source_lane.value).set(admission.cleanup_pending_count)
+                metrics.CLEANUP.labels(lane=source_lane.value).set(
+                    admission.cleanup_pending_count
+                    + sum(task in self.db_cleanup for task in self.db_tasks[source_lane])
+                )
+            metrics.CLEANUP.labels(lane=WorkLane.LOCAL.value).set(
+                sum(task in self.db_cleanup for task in self.db_tasks[WorkLane.LOCAL])
+            )
             metrics.BACKLOG.set(self.pending)
             metrics.INVALID.set(self.invalid)
             metrics.LAG.set(max(0, utc_now().timestamp() - self.oldest_due_at.timestamp()) if self.oldest_due_at else 0)
@@ -196,7 +231,7 @@ class BillingWorker:
 
     @property
     def cleanup_pending(self) -> int:
-        return sum(admission.cleanup_pending_count for admission in self.admissions.values())
+        return len(self.db_cleanup) + sum(admission.cleanup_pending_count for admission in self.admissions.values())
 
     @property
     def ready(self) -> bool:
@@ -224,6 +259,12 @@ class BillingWorker:
                 if still_pending:
                     self.failed = True
                     raise PreflightCleanupPending()
+        db_owners = set().union(*self.db_tasks.values())
+        if db_owners:
+            _, pending_db = await asyncio.wait(db_owners, timeout=self.configuration.preflight_cleanup_timeout_seconds)
+            if pending_db:
+                self.failed = True
+                raise PreflightCleanupPending()
         results = await asyncio.gather(
             *(admission.aclose() for admission in self.admissions.values()), return_exceptions=True
         )

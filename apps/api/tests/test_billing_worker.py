@@ -154,3 +154,49 @@ def test_billing_worker_spreading_is_earlier_only_and_lease_covers_io() -> None:
         value = spread_seconds(identity, interval)
         assert interval * 0.8 <= value <= interval
         assert spread_seconds(identity, interval) == value
+
+
+async def test_billing_worker_cancelled_db_waiter_retains_capacity_context_and_shutdown_ownership() -> None:
+    from contextvars import ContextVar
+    from threading import Event
+
+    release, entered = Event(), Event()
+    context = ContextVar("billing_test_context", default="missing")
+    observed: list[str] = []
+    worker = BillingWorker(
+        step1_settings(billing_worker_io_timeout_seconds=0.06, preflight_cleanup_timeout_seconds=0.01),
+        lambda: None,
+        object(),
+    )
+    worker.last_scan_at = utc_now()
+
+    def unit() -> None:
+        entered.set()
+        assert release.wait(5)
+        observed.append(context.get())
+
+    context.set("request-context")
+    task = asyncio.create_task(worker.db(WorkLane.LOCAL, unit))
+    try:
+        async with asyncio.timeout(2):
+            while not entered.is_set():
+                await asyncio.sleep(0.005)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert worker.db_limiters[WorkLane.LOCAL].borrowed_tokens == 1
+        assert worker.cleanup_pending == 1 and not worker.healthy
+        assert not await worker.tick(WorkLane.LOCAL)
+        with pytest.raises(RuntimeError, match="resource owners"):
+            await worker.start()
+        with pytest.raises(PreflightCleanupPending):
+            await worker.aclose()
+        assert worker.failed and worker.db_limiters[WorkLane.LOCAL].borrowed_tokens == 1
+    finally:
+        release.set()
+        owners = set(worker.db_tasks[WorkLane.LOCAL])
+        if owners:
+            await asyncio.wait_for(asyncio.gather(*owners), 2)
+    assert observed == ["request-context"]
+    assert worker.cleanup_pending == worker.db_limiters[WorkLane.LOCAL].borrowed_tokens == 0
+    await worker.aclose()

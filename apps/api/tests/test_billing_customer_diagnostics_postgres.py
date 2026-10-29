@@ -215,34 +215,51 @@ def test_diagnose_missing_slot_does_not_allocate_or_contact_billing(
 
 @pytest.mark.parametrize("failure", ["email_not_unique", "unknown"])
 def test_create_500_is_retained_without_email_and_diagnosed_after_bounded_recovery(
-    migrated_database: Engine, postgres_session_factory: sessionmaker[Session], failure: str
+    migrated_database: Engine,
+    postgres_session_factory: sessionmaker[Session],
+    failure: str,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     factory = postgres_session_factory
     config = step1_settings(
-        lbx_max_get_attempts=2, preflight_total_timeout_seconds=0.6, preflight_cleanup_timeout_seconds=0.025
+        lbx_max_get_attempts=2, preflight_total_timeout_seconds=2, preflight_cleanup_timeout_seconds=0.025
     )
     seed(factory)
-    posts = []
+    monkeypatch.setattr("app.composition.billing.CUSTOMER_RETRY_BASE_SECONDS", 0.01)
+    monkeypatch.setattr("app.composition.billing.CUSTOMER_RETRY_MAX_SECONDS", 0.02)
+    posts: list[httpx.Request] = []
+    opening_posts = 0
+    opening = True
+    attempts = 1 if failure == "email_not_unique" else 2
 
-    def respond(request: httpx.Request) -> httpx.Response:
+    async def respond(request: httpx.Request) -> httpx.Response:
+        nonlocal opening_posts
         if request.url.path.endswith("/auth"):
             data = {"token": "SECRET-TOKEN", "expires_in": 600}
         elif request.method == "POST":
             posts.append(request)
+            opening_posts += 1
             message = (
                 "Invalid email SECRET-EMAIL. Email must be unique" if failure == "email_not_unique" else "SECRET-BODY"
             )
             return httpx.Response(500, json={"code": 500, "response": {"error": message}})
         else:
             assert request.method == "GET" and request.url.path.endswith("/users")
+            if opening and opening_posts == attempts:
+                # Expire during discovery after the intended completed attempts,
+                # never while failure evidence is still being committed.
+                await asyncio.sleep(10)
             data = []
         return httpx.Response(200, json={"code": 200, "response": data})
 
     async def scenario() -> dict[str, object]:
+        nonlocal opening_posts, opening
         async with source_resources(config, lbx_transport=httpx.MockTransport(respond)) as sources:
             for _ in range(2):
+                opening_posts = 0
                 with pytest.raises(BillingRefused):
                     await bootstrap_account(sources, config, factory=factory, token=TOKEN)
+        opening = False  # The diagnostic remains an ordinary bounded GET-only read.
         with factory() as db:
             user_id = db.scalar(select(User.id))
         return await diagnose_customer(
@@ -250,7 +267,7 @@ def test_create_500_is_retained_without_email_and_diagnosed_after_bounded_recove
         )
 
     result = asyncio.run(scenario())
-    assert len(posts) == 2 if failure == "email_not_unique" else len(posts) > 2
+    assert len(posts) == 2 * attempts
     assert result["diagnosis"] == ("email_conflict" if failure == "email_not_unique" else "create_outcome_unknown")
     with factory() as db:
         operation = db.scalar(select(ExternalCreateOperation))

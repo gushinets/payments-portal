@@ -50,7 +50,7 @@ def test_customer_ensure_find_create_recover(
 ) -> None:
     factory = postgres_session_factory
     seed(factory)
-    config = step1_settings(preflight_total_timeout_seconds=0.6, preflight_cleanup_timeout_seconds=0.025)
+    config = step1_settings(preflight_total_timeout_seconds=2, preflight_cleanup_timeout_seconds=0.025)
     slot = reserve_customer(factory, config, TOKEN)
     if mode in {"old_review", "expired_claim"}:
         claim_customer_send(factory, config, TOKEN, slot)
@@ -131,7 +131,7 @@ def test_customer_ensure_corrected_email_retries_on_next_open_without_reset(
 ) -> None:
     factory = postgres_session_factory
     seed(factory)
-    config = step1_settings(preflight_total_timeout_seconds=0.6, preflight_cleanup_timeout_seconds=0.025)
+    config = step1_settings(preflight_total_timeout_seconds=2, preflight_cleanup_timeout_seconds=0.025)
     slot = reserve_customer(factory, config, TOKEN)
     posts = []
 

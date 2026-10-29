@@ -12,7 +12,7 @@ from sqlalchemy import func, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.composition.purchases import _observation
+from app.composition.purchase_observation import prepared_subscription_observation as _observation
 from app.composition.sources import SourceResources, source_resources
 from app.domains.billing import background_recovery as recovery, customers, work
 from app.domains.billing.work_contracts import WorkLane
@@ -416,3 +416,75 @@ async def test_billing_background_recovery_bound_terminal_uses_lifecycle_not_pre
         assert (ended.latest_observation_id, ended.projection_valid_until) == before
         assert db.scalar(select(func.count()).select_from(ManualReviewCase)) == 0
     await worker.aclose()
+
+
+async def test_billing_background_recovery_resumed_unsent_uses_active_window_and_exact_deadline(
+    background_scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.infrastructure.queries import billing_reconciliation
+
+    transport, _, purchase = background_scenario
+    factory = postgres_session_factory
+    now = datetime.now(UTC)
+    op = next(op for op in purchase.operations if op.kind == Kind.AGREEMENT)
+    request = NewAgreement(
+        user_id=345, organization_id=21, agreement_number=op.key, create_date=date(2026, 10, 27)
+    ).request_document()
+    monkeypatch.setattr(financial, "utc_now", lambda: now - timedelta(hours=3))
+    claimed = financial.claim_financial(factory, purchase, op, request, configuration=step1_settings(), token=TOKEN)
+    financial.proven_not_sent(factory, purchase, claimed)
+    before = original(factory, op.id)
+    purchase = service.read_purchase(factory, purchase.user_id, purchase.id)
+    op = next(op for op in purchase.operations if op.id == claimed.id)
+    monkeypatch.setattr(financial, "utc_now", lambda: now)
+    resumed = financial.claim_financial(factory, purchase, op, request, configuration=step1_settings(), token=TOKEN)
+    assert resumed.fence != claimed.fence and resumed.key == claimed.key
+    active = job(factory, recovery.RECOVERY, op.id).active_recovery_deadline_at
+    assert active == now + timedelta(hours=2) and before[3] < now
+    assert job(factory, recovery.DEADLINE, op.id).next_attempt_at == active
+    # Reconstruct missing local scheduling after restart using the same helper.
+    with factory() as db:
+        db.delete(db.get(BillingWorkItem, job(factory, recovery.DEADLINE, op.id).work_item_id))
+        db.flush()
+        recovery.enroll_operation(db, db.get(ExternalCreateOperation, op.id), purchase.account_id)
+        db.commit()
+    assert job(factory, recovery.DEADLINE, op.id).next_attempt_at == active
+    count = len(transport.requests)
+    for instant, state in ((active - timedelta(microseconds=1), State.POSSIBLE_SEND), (active, State.MANUAL_REVIEW)):
+        monkeypatch.setattr(billing_reconciliation, "database_now", lambda db: instant)
+        with factory() as db:
+            row = db.get(BillingWorkItem, job(factory, recovery.DEADLINE, op.id).work_item_id)
+            row.next_attempt_at = instant
+            db.commit()
+        for _ in range(3):
+            claim = work.claim_work(factory, step1_settings(), WorkLane.LOCAL)
+            assert claim is not None and claim.kind == recovery.DEADLINE
+            recovery.apply_deadline(factory, claim)
+            if claim.reference == str(op.id):
+                break
+        else:
+            pytest.fail("financial deadline was not processed")
+        current = service.read_purchase(factory, purchase.user_id, purchase.id)
+        assert next(item for item in current.operations if item.id == op.id).state == state
+        assert job(factory, recovery.RECOVERY, op.id).active_recovery_deadline_at == active
+        assert original(factory, op.id) == before
+    assert len(transport.requests) == count and current.held
+
+
+async def test_billing_background_recovery_legacy_null_window_uses_original_deadline(
+    background_scenario: tuple, postgres_session_factory: sessionmaker[Session]
+) -> None:
+    transport, _, purchase = background_scenario
+    factory = postgres_session_factory
+    purchase = synthetic_prepare(factory, transport, purchase, uncertain=True)
+    op = next(op for op in purchase.operations if op.kind == Kind.SUBSCRIPTION)
+    with factory() as db:
+        row = db.get(BillingWorkItem, job(factory, recovery.RECOVERY, op.id).work_item_id)
+        row.active_recovery_deadline_at = None  # Existing pre-0004 financial work.
+        db.delete(db.get(BillingWorkItem, job(factory, recovery.DEADLINE, op.id).work_item_id))
+        db.flush()
+        recovery.enroll_operation(db, db.get(ExternalCreateOperation, op.id), purchase.account_id)
+        db.commit()
+    assert job(factory, recovery.DEADLINE, op.id).next_attempt_at == original(factory, op.id)[3]
