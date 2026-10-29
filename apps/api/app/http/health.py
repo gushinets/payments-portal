@@ -66,6 +66,7 @@ class BillingHealthResponse(BaseModel):
     enrolled_batches: int = 0
     oldest_due_at: str | None = None
     last_progress_at: str | None = None
+    last_verified_subscription_at: str | None = None
     last_scan_at: str | None = None
 
 
@@ -84,5 +85,8 @@ def billing_health(request: Request) -> BillingHealthResponse:
         enrolled_batches=worker.enrolled_batches,
         oldest_due_at=worker.oldest_due_at.isoformat() if worker.oldest_due_at else None,
         last_progress_at=worker.last_progress_at.isoformat() if worker.last_progress_at else None,
+        last_verified_subscription_at=worker.last_verified_subscription_at.isoformat()
+        if worker.last_verified_subscription_at
+        else None,
         last_scan_at=worker.last_scan_at.isoformat() if worker.last_scan_at else None,
     )

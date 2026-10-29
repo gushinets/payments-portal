@@ -1,6 +1,6 @@
 # ANY-715 — Background Work, Webhooks, Reconciliation & Recovery
 
-Status: Steps 1–4 implemented and locally verified; Step 5 not started
+Status: Steps 1–5 implemented; Step 5 verification and remaining integration gates recorded below
 Updated: 2026-10-29
 Issue: https://linear.app/paveldik/issue/ANY-715  
 Program: https://linear.app/paveldik/issue/ANY-504
@@ -1441,6 +1441,97 @@ current commands and an explicit future expansion path.
 **Proposed commit**
 
 `ANY-715 - Deliver audited operations and lifecycle handoff`
+
+**Step 5 implementation record — 2026-10-29**
+
+- Extended the existing OS-principal `billing-purchase` CLI with local read-only
+  `inspect`, shared GET-only `recover` / `reconcile` and only `restore-original`
+  / `bind-original` audited review resolutions. The repository wrapper forwards
+  the same options; customer diagnosis remains separate.
+- Resolution requires the owned user/purchase/case, current case digest,
+  supporting observation/reconciliation fence or operation/send fence, and
+  bounded nonempty reason/reference. Fresh proof reuses normal reconciliation
+  and financial discovery/point proof. The shared locked writers atomically
+  apply facts/binding, resolve/audit the case and schedule work. Identical
+  completed commands replay without provider calls or another audit; stale or
+  different attempts refuse. Original evidence, terms, consent, holds, permanent
+  bindings and UNKNOWN history/windows survive.
+  Resolution rotates financial fences to reject preparation/recovery callbacks
+  and inventory snapshots started before that audited decision; a focused
+  regression checks that a late conflict cannot reopen the resolved case.
+- Financial conflict evidence now preserves the pre-conflict operation state
+  and send fence. Binding requires proven possible-send history, including the
+  original saved request; completed no-send/PENDING and older cases without
+  sufficient preserved evidence refuse. No operator assertion/backfill can
+  supply missing history. Unique discovery is required even with a saved receipt.
+  Subscription candidates reuse the lifecycle normalizer without inventing a
+  canonical local subscription ID before binding.
+- Corrected original ended facts may resolve a commercial conflict while
+  remaining ended/blocked and held. Nonterminal revival and terminal-revival
+  review overrides refuse. No terminal hold release, arbitrary identity override,
+  admin API, new role, manual paid/quota command or Step 9 producer was added.
+- Health and bounded metrics distinguish durable queue/local progress from
+  complete matching subscription proof. Local/entity IDs are never labels.
+  Unexpected CLI failures report once through the sanitized failure adapter and
+  return only a fixed code. Regenerated OpenAPI/TypeScript reflect the additional
+  billing-health timestamp. There is no new migration; head remains
+  `20261028_0005` after `20261029_0003`.
+- Updated the operations authority, navigation and current architecture,
+  security/reliability/schema guidance with every CLI option/effect/refusal,
+  monitoring/outage actions, the short future expansion path and Step 9 handoff.
+  Documentation-contract tests compare parsers, Settings and runbook coverage;
+  existing webhook event/route/setting contracts remain covered.
+- Focused development verification: 31 operator PostgreSQL cases PASS before
+  the final ended-facts case; 20 operator fast cases PASS before the final generic
+  error-redaction case. The broader selection passed 119 fast tests and 72
+  PostgreSQL cases before the new telemetry test incorrectly retried normal work
+  in the urgent lane. The fixture was corrected to follow the approved cadence;
+  the subsequent 31-case operator run passed. Initial focused fixture corrections
+  also replaced a raw persisted-enum string, used the source AppError contract
+  for ambiguity and preserved DB-guarded no-send evidence rather than editing
+  immutable sent state. No runtime timer or safety assertion was weakened.
+- Canonical `npm run check:fast` PASS: 1,569 fast API tests, 378 component tests,
+  38 web boundary tests, lint/format, architecture, documentation and generated
+  freshness. Log: `.harness/any715-step5-check-fast.log`. This preceded the final
+  ended-facts and generic-error refinements. A first complete-check attempt was
+  deliberately interrupted during fast API tests to apply the terminal-facts
+  correction found in diff review; it is not a complete-check PASS.
+- Complete canonical `npm run check` **PASS** before the final financial-fence
+  refinement: **1,570 fast API**, **441 PostgreSQL**, **378 component** and
+  **38 web boundary** tests, production web build, Ruff lint/format, architecture,
+  documentation and generated freshness. Log:
+  `.harness/any715-step5-final-check.log`. All 32 operator PostgreSQL cases and
+  21 operator fast cases are included. Browser E2E was explicitly skipped by
+  the harness. The final fence refinement was made while this run was active;
+  this is not claimed as a whole-suite run of the final source tree.
+- Final-source verification after that refinement: **21 fast** and **50
+  PostgreSQL** tests **PASS**, covering all operator cases plus inventory,
+  financial/subscription fencing and competing writers. This includes rejection
+  of a late pre-resolution financial conflict, both allowed resolutions,
+  stale/refused/ambiguous/foreign/already-bound/history cases, replay and atomic
+  audit rollback. Log: `.harness/any715-step5-final-fence-regressions.log`.
+  The separate final terminal/telemetry/error edge selection also passed
+  **2 fast + 4 PostgreSQL** cases before that refinement, in
+  `.harness/any715-step5-final-edges.log`.
+- Final-source Ruff lint/format, architecture, documentation, generated freshness
+  and whitespace checks **PASS**. The complete 441-case PostgreSQL suite was
+  not repeated after the narrow fence refinement; affected checks above were
+  rerun instead. Final diff review used the local correctness and payment/security
+  checklists, including proof freshness, lock/transaction ownership, privacy,
+  durable scheduling and absence of paid-access/terminal-release producers.
+- The configured read-only checkpoint returned **NOT_RUN / LBX_NOT_CONFIGURED**
+  without provider or database writes. Log:
+  `.harness/any715-step5-readonly-checkpoint.log`. All automated provider evidence
+  is **SIMULATED**. Actual read-only intended-purchase verification and real
+  webhook authentication/delivery/event-to-GET QA remain outstanding; webhook
+  status is **DISABLED/POLLING-ONLY**. Browser E2E and production migration are
+  NOT_RUN. Human semantic/security/reliability review and merge approval remain
+  required; the agent applies the local correctness/payment-security checklists
+  and reviews the Step 5 diff before handoff.
+- Work is local and uncommitted on base HEAD
+  `2bb07d778edc5ea56011b0034ba24b0702ede81f`. No Git or real billing mutations
+  were performed. The disposable test PostgreSQL server started for this work
+  was stopped after verification.
 
 ## Review corrections after Steps 1–4
 

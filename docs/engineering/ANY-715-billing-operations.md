@@ -1,16 +1,16 @@
 # ANY-715 billing operations
 
-Status: Steps 1–4 shared reconciliation, embedded polling, recovery, inventory and optional webhook hints implemented.
-Updated: 2026-10-28.
+Status: Steps 1–5 shared reconciliation, embedded polling, recovery, inventory, optional webhook hints and audited operations implemented; final verification recorded in the plan.
+Updated: 2026-10-29.
 Issue: [ANY-715](https://linear.app/paveldik/issue/ANY-715).
-Scope: [implementation plan](../exec-plans/active/ANY-715-implementation-plan.md), Steps 1–4.
+Scope: [implementation plan](../exec-plans/active/ANY-715-implementation-plan.md), Steps 1–5.
 
 ## Shared proof and original history
 
 `app.composition.reconciliation.reconcile_subscription()` is the reusable outer
 I/O seam. It accepts an explicitly supplied LBX client and bounded admission
 resource, configuration, session factory and canonical local subscription ID.
-The embedded worker calls this shared seam; it is not a public endpoint or operator CLI command.
+The embedded worker and privileged `reconcile` CLI call this shared seam; it is not a public billing endpoint.
 It makes no financial POST, Kernel call, catalog discovery or current-offer read.
 
 Application claims a finite subscription lease in a short transaction using
@@ -93,7 +93,7 @@ exact UTC boundaries, native cycle ID or allowance identity. This step does not
 claim to prove natural rollover or derive paid access from those dates.
 
 Step 2 supplies automatic enrollment, durable polling and local source-trust
-expiry evidence. Step 3 adds uncertain-create recovery/inventory loops. Step 4 adds optional webhook hints; Step 5 owns audited operator commands. Step 9 owns primary selection,
+expiry evidence. Step 3 adds uncertain-create recovery/inventory loops. Step 4 adds optional webhook hints; Step 5 supplies audited operator commands. Step 9 owns primary selection,
 access derivation, effective authorization deadlines, grants, allowances,
 revisions and invalidations. No paid-access producer runs here.
 
@@ -253,7 +253,7 @@ history using the `billing_background_recovery` PostgreSQL selection from the
 plan's shared harness recipe. All such fixtures are **SIMULATED**; no live billing
 failure, provider CREATE or payment is manufactured. Actual test-LBX failure
 recovery is **NOT_RUN**. Webhook mode remains **DISABLED/POLLING-ONLY** until its real gate below passes.
-Audited resolution/inspection CLI expansion remains Step 5.
+Audited resolution and inspection commands are documented below.
 
 ## Optional webhook receiver and manual deployment
 
@@ -416,7 +416,7 @@ backoff supplies cooldown without preserving or extending trust.
 Labels contain no local/customer/product IDs. Growing overdue age,
 invalid records, failed local scans (120 seconds) or persistent cleanup warrant
 operator investigation. Inspect durable work/projections through existing trusted
-local DB access; the expanded purchase inspection/recheck CLI is Step 5.
+local DB access; use the purchase `inspect`/`recover`/`reconcile` commands documented below.
 Do not use public health output as commercial or access authority.
 
 ## Future expansion path
@@ -447,3 +447,174 @@ customer keys or authorization data. Synthetic outputs are reproducible through
 the `billing_subscription_reconciliation` fast/PostgreSQL test selection in the
 plan's shared harness recipe. Real untouched renewal and provider-to-Portal-to-Kernel
 acceptance remain separate enablement gates.
+
+## Privileged purchase operations
+
+All actions use the existing trusted deployment/OS access boundary and resolve
+`os-euid:<uid>` through `resolve_operator_principal()`. An unavailable OS identity
+refuses execution. There is no operator role, admin HTTP API or provider-ID
+input. Keep the existing `billing-customer diagnose --user-id <portal-user-uuid>`
+for separate customer diagnostics and original-key restoration policy.
+
+Invoke `.venv/bin/python scripts/repo.py billing-purchase <action>` with both
+`--user-id <portal-user-uuid>` and `--purchase-id <purchase-intent-uuid>`.
+The equivalent module is `app.cli.billing_purchases` with `PYTHONPATH=apps/api`
+and the same configured deployment environment. JSON success includes the OS
+principal; exit 0 means the bounded command completed, not paid access or a
+successful provider conclusion. Exit 1 returns only `detail.code`; invalid parser
+arguments exit 2. A source refusal cannot expose raw errors or credentials.
+
+- `inspect` reads local evidence only, in a read-only PostgreSQL transaction.
+  It opens no source resources and changes no rows or leases. Output includes
+  local operation IDs, states, send fences, receipts as booleans, active recovery
+  deadlines, canonical subscription lifecycle/commercial/financial facts,
+  finite trust, supporting observation/fence, recent observation summaries,
+  due/leased work, generations, attempts, errors and review identities/digests.
+  Work/review lists cap at 100 with explicit truncation flags; the observation
+  list contains the latest 20 records. No customer keys, provider payloads,
+  secrets, accepted amounts or raw requests appear in this output.
+- `recover` performs bounded GET-only discovery/point proof through the same
+  `recover_financial()` as the worker. It may bind the uniquely proven original
+  possible-send operation and close a deadline-only escalation. It never sends
+  CREATE, adopts PENDING/PROVEN_NOT_SENT, clears a known conflict or changes the
+  original request/key/history/deadline. Bound subscriptions use `reconcile`.
+- `reconcile` resolves the purchase's canonical local subscription and calls
+  the worker's shared four-point read and fenced apply. It may record waiting,
+  active, blocked, ended, incomplete or conflicting evidence; known conflicts
+  remain open and cannot refresh positive trust. Reads use the existing CLI
+  `PREFLIGHT_TOTAL_TIMEOUT_SECONDS` total budget, cleanup reserve and finite
+  subscription lease. An active worker/CLI lease may return
+  `subscription_reconciliation_busy`; inspect and retry after its owner finishes
+  or the lease expires. Source outages never extend trust.
+- `resolve-review` is the only explicit audited known-conflict transition.
+  Required common options: `--resolution`, `--case-id`,
+  `--expected-case-digest`, `--reason` and `--reference`. Copy the current case
+  ID and `sha256:` digest from `inspect`. Reason/reference must be nonempty,
+  bounded single-line text (500/300 characters); never put secrets or personal
+  data there. The reference identifies the incident/ticket. Stale evidence or
+  unrelated open cases refuse the command.
+
+Examples (placeholders must be replaced with local IDs and current expectations):
+
+```bash
+.venv/bin/python scripts/repo.py billing-purchase inspect --user-id <portal-user-uuid> --purchase-id <purchase-intent-uuid>
+.venv/bin/python scripts/repo.py billing-purchase recover --user-id <portal-user-uuid> --purchase-id <purchase-intent-uuid>
+.venv/bin/python scripts/repo.py billing-purchase reconcile --user-id <portal-user-uuid> --purchase-id <purchase-intent-uuid>
+.venv/bin/python scripts/repo.py billing-purchase resolve-review --user-id <portal-user-uuid> --purchase-id <purchase-intent-uuid> --resolution restore-original --case-id <case-uuid> --expected-case-digest <sha256:digest> --expected-observation-id <supporting-observation-uuid> --expected-reconciliation-fence <integer> --reason 'Original canonical facts restored and verified' --reference 'ANY-715'
+.venv/bin/python scripts/repo.py billing-purchase resolve-review --user-id <portal-user-uuid> --purchase-id <purchase-intent-uuid> --resolution bind-original --case-id <case-uuid> --expected-case-digest <sha256:digest> --operation-id <create-operation-uuid> --expected-operation-fence <send-fence-uuid> --reason 'Original uncertain operation uniquely proven' --reference 'ANY-715'
+```
+
+`restore-original` additionally requires `--expected-observation-id` and
+`--expected-reconciliation-fence`, with no operation override. It supports only
+`subscription_identity_conflict`, `subscription_commercial_mismatch`, or an
+original already-bound operation's `financial_binding_conflict` /
+`accepted_terms_changed_after_preparation`. All original financial bindings must
+still exist. Fresh complete owned original-term/prepaid-policy proof is required.
+Apply preserves those bindings, records a new authoritative observation and finite
+trust, resolves the corrected case and restores the purchase's linked state.
+A block is still a block: resolving commercial review never manually marks paid.
+Complete matching ended proof may resolve its corrected commercial conflict while
+remaining ended/blocked and held. A nonterminal reread of a previously ended
+canonical ID is refused; `subscription_terminal_revival_conflict` itself has no
+operator override.
+
+`bind-original` additionally requires `--operation-id` and
+`--expected-operation-fence`, with no reconciliation expectations. Only
+`financial_binding_conflict` / `accepted_terms_changed_after_preparation` on that
+unbound possible-send financial operation are supported. Its immutable saved
+request, original correlation, accepted fingerprint and possible-send history
+must prove the same command. Full bounded discovery must yield exactly one
+point-proven original candidate, including when a receipt is saved. Agreements
+also prove the original creation date. Subscription binding additionally requires
+complete supported-policy/lifecycle proof. Apply reuses `bind_financial()` and
+atomically enrolls the resulting subscription; this preparation does not itself
+renew source trust. A remaining PENDING operation still requires the user's
+existing explicit authorized advance before any send.
+
+The original conflict evidence must retain its prior POSSIBLE_SEND/UNKNOWN state
+and send fence. Historical cases without that proof, or cases raised from
+PENDING/PROVEN_NOT_SENT, refuse binding as `purchase_history_unproven`; do not edit
+the case/history to manufacture authorization.
+
+Both resolutions lock/recheck user, purchase/hold, ordered financial operations,
+subscription and target case before writing. Current customer identity, original
+consent, accepted history, saved requests, fences and expected evidence must still
+match; a competing poll, operator or changed receipt cannot be overwritten.
+Resolution rotates the affected financial fences so older preparation/recovery
+results or inventory snapshots cannot reopen the corrected conflict afterward.
+`billing-operator-resolution:v1` on the existing review row records OS principal,
+reason/reference, command digest, before/after identities, supporting observation
+when one exists, and versioned fresh-proof summary/read window. Original case
+and source evidence remain intact. Audit/fact/binding/queue updates roll back
+as one transaction on failure. A completed identical request by the same OS
+principal returns `already_resolved` without source I/O or another audit;
+a different repeat refuses as stale. Failed reads may leave only the normal
+finite reconciliation claim for safe later reclaim.
+
+Refusals include stale case/digest/observation/fence, incomplete/empty/capped or
+ambiguous discovery, foreign or already-bound candidates, unsupported policy,
+customer identity conflict, unrelated inventory/review cases, terminal revival,
+unsafe unresolved CREATE effects, changed accepted request, arbitrary rebind,
+commercial reacceptance, paid marking and quota edits. `billing_review_stale`,
+`billing_review_unrelated_cases`, `billing_review_proof_incomplete`,
+`billing_review_terminal`, `purchase_history_unproven` and ordinary source/busy
+errors require diagnosis rather than bypass. No `release-terminal`, force-release,
+manual paid or quota command exists. Ended state retains the hold, purchase,
+consent and permanent bindings; proven-unsent automatic release retains its
+separate existing Step 7 rule.
+
+## Alerts and outage diagnosis
+
+Treat `last_progress_at` as durable queue/local progress, including incomplete
+attempts. `last_verified_subscription_at` and
+`payment_portal_billing_worker_last_verified_subscription_timestamp_seconds`
+track complete matching subscription proof in this process; they do not prove
+all subscriptions are fresh. The bounded
+`payment_portal_billing_worker_subscription_proofs_total{outcome}` distinguishes
+`verified`, `incomplete` and `conflict`. Process restarts reset these diagnostic
+signals; per-subscription persisted evidence remains authoritative.
+
+Alert on growing queue age/cadence lag, stale local scans (120 seconds), invalid
+records, persistent cleanup, repeated source authentication denial, or repeated
+incomplete proofs approaching a subscription's existing trust deadline. Inspect
+`/api/health/billing`, the metrics and the affected purchase's `inspect` output.
+During an outage confirm local expiry/deadline work progresses while source work
+backs off. Restore connection/authentication through the ordinary deployment
+path, keep polling enabled and require fresh complete proof. Use `recover` for
+UNKNOWN, `reconcile` for canonical subscriptions and only the supported audited
+resolution for a corrected known conflict. Do not delete jobs, reset deadlines,
+release holds or enlarge trust to hide backlog. Actual LBX quotas remain
+unverified; configured limits apply per-process. Deployment alert routing remains
+operator-owned under ANY-86.
+
+## Step 9 handoff
+
+Reuse `subscription-reconciliation:v1`, complete/mismatch/incomplete classification,
+original ownership/legal/link/accepted provenance, source observation IDs,
+`last_authoritative_read_at`, `projection_valid_until`, and
+`subscription-trust-expiry:v1` deterministic boundary evidence. Preserve date-only
+and timestamp calendar precision; no account timezone, UTC cycle or allowance
+identity is inferred. Incomplete attempts preserve only finite existing support;
+known negative/conflict facts supersede usability immediately.
+
+Reuse shared recovery/bind/apply, PostgreSQL claims/generations/fences, active
+UNKNOWN windows and the embedded runner's cancellation/cleanup ownership. The
+migration head remains `20261028_0005`, after `20261029_0003`; Step 5 adds no DDL.
+The two audit modes above are the entire supported operator resolution surface.
+Terminal hold release and inventory-conflict overrides remain deferred.
+
+Step 9 owns primary selection, paid grants/allowances, effective-access revisions
+and atomic outbox production, and must attach earlier access-reducing deadlines
+to this scheduling path. Step 10 owns Kernel wire/invalidation and coupled UTC
+calendar design. Step 11 owns real paid-access/natural-renewal and launch QA.
+No operator action, observation, webhook, successful CREATE or Widget event
+independently grants access. Automated evidence remains **SIMULATED**; real
+read-only LBX and real webhook gates must be recorded separately below and in the
+implementation record. Production migration and browser E2E are separate checks.
+
+2026-10-29 checkpoint: **NOT_RUN / LBX_NOT_CONFIGURED**. The local configured
+read-only check exited before source or database writes; no actual provider read
+PASS is claimed. Real webhook authentication/delivery is also NOT_RUN and the
+required mode remains **DISABLED/POLLING-ONLY**. See the Step 5 implementation
+record for final automated counts and logs; simulated proofs cannot satisfy
+either real integration checkpoint.
