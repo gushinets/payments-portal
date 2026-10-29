@@ -76,6 +76,27 @@ def possible_send_case(case: ManualReviewCase) -> bool:
         return False
 
 
+def original_possible_send(case: ManualReviewCase, related: list[ManualReviewCase], purchase: Purchase) -> bool:
+    evidence = case.evidence_document
+    if (
+        case.evidence_schema_version != "financial-review:v1"
+        or not isinstance(evidence, dict)
+        or evidence.get("purchase_intent_id") != str(purchase.id)
+        or evidence.get("create_operation_id") != case.scope_reference
+    ):
+        return False
+    if possible_send_case(case):
+        return True
+    # Deadline escalation rotates the send fence and moves the operation to
+    # MANUAL_REVIEW. Its preserved earlier evidence still proves possible-send;
+    # no new send can be authorized while this review is open. Database-created
+    # timestamps reflect transaction starts, not the causal order of these
+    # locked transitions; the saved prior states establish that order.
+    return evidence.get("operation_state_at_conflict") == State.MANUAL_REVIEW.value and any(
+        possible_send_case(previous) for previous in related
+    )
+
+
 def customer_digest(db: Session, purchase: Purchase) -> str:
     customer = lock_customer(db, purchase.customer_id)
     op = customer_operation(db, purchase.customer_id)
@@ -145,13 +166,22 @@ def identities(operations: list[ExternalCreateOperation], subscription: External
 
 
 def _validate_case(
-    db: Session, request: ResolutionRequest, purchase: Purchase, subscription: ExternalSubscription | None
-) -> ManualReviewCase:
+    db: Session,
+    request: ResolutionRequest,
+    purchase: Purchase,
+    subscription: ExternalSubscription | None,
+    operations: list[ExternalCreateOperation],
+) -> tuple[ManualReviewCase, list[ManualReviewCase]]:
     case = queries.review(db, request.case_id, lock=True)
     cases = queries.reviews(
-        db, purchase.id, purchase.customer_id, subscription.subscription_id if subscription else None, open_only=True
+        db,
+        purchase.id,
+        purchase.customer_id,
+        subscription.subscription_id if subscription else None,
+        open_only=True,
+        lock=True,
     )
-    if case is None or len(cases) != 1 or cases[0].review_case_id != request.case_id:
+    if case is None or len(cases) > 100 or not any(item.review_case_id == request.case_id for item in cases):
         raise PurchaseRefused("billing_review_unrelated_cases", 409)
     if case.case_state != "open" or case_digest(case) != request.expected_case_digest:
         raise PurchaseRefused("billing_review_stale", 409)
@@ -162,7 +192,23 @@ def _validate_case(
         str(request.operation_id),
     ):
         raise PurchaseRefused("billing_review_stale", 409)
-    return case
+    related = [item for item in cases if item.review_case_id != case.review_case_id]
+    target = next((op for op in operations if op.create_operation_id == request.operation_id), None)
+    for previous in related:
+        evidence = previous.evidence_document
+        if (
+            request.resolution != "bind-original"
+            or target is None
+            or (previous.scope_kind, previous.scope_reference) != (case.scope_kind, case.scope_reference)
+            or previous.reason_code != "external_create_outcome_unknown:" + target.operation_kind.value
+            or previous.evidence_schema_version != "financial-review:v1"
+            or not isinstance(evidence, dict)
+            or evidence.get("purchase_intent_id") != str(purchase.id)
+            or evidence.get("create_operation_id") != str(target.create_operation_id)
+            or not possible_send_case(previous)
+        ):
+            raise PurchaseRefused("billing_review_unrelated_cases", 409)
+    return case, related
 
 
 def prepare_resolution(
@@ -196,7 +242,7 @@ def prepare_resolution(
                     "observation_id": case.resolution_document.get("observation_id"),
                 }
             raise PurchaseRefused("billing_review_stale", 409)
-        case = _validate_case(db, request, purchase, subscription)
+        case, related = _validate_case(db, request, purchase, subscription, operations)
         if (
             customer.binding_state != Binding.BOUND
             or customer_op is None
@@ -232,7 +278,7 @@ def prepare_resolution(
                 or target.unknown_since is None
                 or target.recovery_hint_schema_version != "financial-create:v1"
                 or subscription is not None
-                or not possible_send_case(case)
+                or not original_possible_send(case, related, purchase)
             ):
                 raise PurchaseRefused("purchase_history_unproven", 409)
             if any(op is not target and op.operation_state == State.MANUAL_REVIEW for op in operations):
@@ -269,6 +315,7 @@ def prepare_resolution(
             identities(operations, subscription),
             now,
             now + timedelta(seconds=io_timeout_seconds + 30),
+            tuple((item.review_case_id, case_digest(item)) for item in related),
         )
 
 
@@ -327,7 +374,9 @@ def authorize_resolution(
         or restoring != (request.resolution == "restore-original")
     ):
         raise PurchaseRefused("billing_review_stale", 409)
-    case = _validate_case(db, request, resolution.purchase, subscription)
+    case, related = _validate_case(db, request, resolution.purchase, subscription, operations)
+    if tuple((item.review_case_id, case_digest(item)) for item in related) != resolution.related_case_digests:
+        raise PurchaseRefused("billing_review_stale", 409)
     service._verify_original_consent(db, row, resolution.purchase.accepted)
     if subscription is not None:
         if (
@@ -348,17 +397,20 @@ def authorize_resolution(
         row.state = PurchaseIntentState.LINKED
         row.state_updated_at = now
     # The case and resulting facts commit together. Failure anywhere rolls both back.
-    case.case_state = "resolved"
-    case.resolved_at = now
-    case.resolved_by_principal = resolution.principal
-    case.resolution_schema_version = RESOLUTION_SCHEMA
-    case.resolution_document = {
+    document = {
         "command_digest": command_digest(request, resolution.principal),
         "resolution": request.resolution,
         "reason": request.reason,
         "reference": request.reference,
         "before": resolution.before,
+        "related_deadline_cases": [{"id": str(item.review_case_id), "digest": case_digest(item)} for item in related],
     }
+    for item in (case, *related):
+        item.case_state = "resolved"
+        item.resolved_at = now
+        item.resolved_by_principal = resolution.principal
+        item.resolution_schema_version = RESOLUTION_SCHEMA
+        item.resolution_document = document
     db.flush()
     return case
 
@@ -378,6 +430,12 @@ def audit_resolution(
         "observation_id": str(observation_id) if observation_id else None,
         "proof": proof,
     }
+    for related in case.resolution_document["related_deadline_cases"]:
+        previous = queries.review(db, UUID(related["id"]), lock=True)
+        previous.resolution_document = {
+            **case.resolution_document,
+            "related_to_review_case_id": str(case.review_case_id),
+        }
     db.flush()
 
 

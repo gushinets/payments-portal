@@ -610,7 +610,11 @@ async def test_billing_worker_timeout_or_cancel_restart_preserves_facts_and_recl
         return await budget.run(wait)
 
     monkeypatch.setattr(sources.require_lbx(), "get_user", slow)
-    configuration = step1_settings(billing_worker_io_timeout_seconds=0.1, preflight_cleanup_timeout_seconds=0.01)
+    # This budget includes both DB claims. Explicit cancellation must reach
+    # the source before the deadline; the timeout branch still uses 100 ms.
+    configuration = step1_settings(
+        billing_worker_io_timeout_seconds=1 if cancel else 0.1, preflight_cleanup_timeout_seconds=0.01
+    )
     interrupted = BillingWorker(configuration, factory, sources.require_lbx())
     task = asyncio.create_task(interrupted.tick(WorkLane.URGENT))
     await asyncio.wait_for(entered.wait(), 2)
