@@ -1727,6 +1727,59 @@ Verification for this rebase:
 - Browser E2E, real LBX/webhook delivery and application/production migration
   were not run. Only the disposable test database was used.
 
+### Independent review corrections — 2026-10-29
+
+The owner authorized fixing P1-1, P1-2 and ARCH-1 after the correctness,
+architecture and DoD reviews of HEAD `1d7a62a`. These local changes retain the
+five implemented steps and the Step 9/10/11 scope boundaries:
+
+- **P1-1:** shared effective-term proof rejects known supplied contradictions
+  before checking missing required fields. Positive matching still requires all
+  mandatory terms. PostgreSQL regressions cover price drift plus missing total
+  or period length, immediate ineligibility/review, unchanged finite trust and
+  refusal to clear the review through an ordinary matching poll.
+- **ARCH-1:** worker composition sizes both LBX HTTP pools to the sum of normal
+  and urgent admission limits, independently of interactive preflight capacity.
+  Existing per-lane admission and retained cleanup ownership remain unchanged.
+  A real localhost HTTP test holds four normal requests and proves two urgent
+  reads can finish in each pool while normal requests remain held.
+- **P1-2:** the worktree harness forwards the three webhook settings from root
+  `.env` or the process environment into protected runtime configuration.
+  Regressions check environment precedence, quoted secret roundtrip, private
+  file permissions and exclusion from public metadata/output.
+
+Verification applies to the uncommitted working tree over HEAD `1d7a62a`, not
+the unchanged commit alone:
+
+- Regression-first checks reproduced the missing-field conflicts, omitted
+  webhook settings and exhausted HTTP pools before the production fixes. After
+  the fixes, the focused fast regressions passed (15 cases), as did both real
+  localhost HTTP pool cases in `test_billing_worker_http.py`.
+- Shared PostgreSQL harness recipe with selection
+  `billing_subscription_reconciliation or billing_worker or billing_recovery_cli or billing_background_recovery or billing_webhook`:
+  **136 PASS** on a separate disposable database. Log:
+  `.harness/any715-independent-review-fixes-postgres.log`.
+- One full `npm run check` completed fast API (**1,586 PASS**), components
+  (**378 PASS**), web boundaries (**38 PASS**, including typecheck), lint,
+  production web build, documentation, architecture and generated freshness.
+  PostgreSQL completed **459 PASS / 1 FAIL**: the unchanged
+  `test_any709_qa_uncertain_commit_preserves_active_claim_or_saved_receipt[receipt]`
+  exhausted its two-second preflight budget before the injected lost-commit
+  error. Its isolated fresh-database rerun passed both `claim` and `receipt`
+  (**2 PASS**). This is not an unqualified canonical-check PASS. Logs:
+  `.harness/any715-independent-review-fixes-check.log` and
+  `.harness/any715-independent-review-fixes-customer-recheck.log`.
+- `npm run build:api` **PASS**. A disposable network-disabled container received
+  all three webhook values exactly, including a quoted synthetic secret with
+  dollar signs/spaces; runtime metadata excluded these settings. Logs:
+  `.harness/any715-independent-review-fixes-build-api.log`,
+  `.harness/any715-independent-review-fixes-http.log` and
+  `.harness/any715-independent-review-fixes-webhook-runtime.log`.
+
+Only pytest-owned disposable databases were migrated. All provider inputs remain
+simulated; browser E2E, real LBX/webhook, application/production migration and
+launch gates are unchanged. Webhooks remain **DISABLED/POLLING-ONLY**.
+
 ## 6. Final Verification & Review
 
 ### Complete behavior scenario
