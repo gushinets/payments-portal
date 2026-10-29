@@ -211,9 +211,11 @@ async def test_billing_subscription_reconciliation_incomplete_outage_and_negativ
     assert snapshot(factory)[2] == "allowed"
 
 
+@pytest.mark.parametrize("missing", [None, "total_price", "period_length"])
 async def test_billing_subscription_reconciliation_known_review_and_effective_mismatch(
     scenario: tuple,
     postgres_session_factory: sessionmaker[Session],
+    missing: str | None,
 ) -> None:
     transport, sources, purchase = scenario
     factory = postgres_session_factory
@@ -221,11 +223,16 @@ async def test_billing_subscription_reconciliation_known_review_and_effective_mi
     await run(sources, factory)
     trusted = snapshot(factory)
     transport.subscriptions[0]["services"][0]["price"] = 15
+    original = transport.subscriptions[0].get(missing) if missing else None
+    if missing:
+        transport.subscriptions[0][missing] = None
     mismatch = await run(sources, factory)
     assert mismatch.result_classification == "subscription_commercial_mismatch"
     assert snapshot(factory)[2:4] == ("blocked", "ineligible")
     assert snapshot(factory)[4:6] == trusted[4:6]
     transport.subscriptions[0]["services"][0]["price"] = 100
+    if missing:
+        transport.subscriptions[0][missing] = original
     matched = await run(sources, factory)
     assert matched.result_classification == "review_required" and snapshot(factory)[2] == "blocked"
     with pytest.raises(BillingRefused, match="purchase_review_required"):
