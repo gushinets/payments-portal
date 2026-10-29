@@ -1,14 +1,14 @@
 # Payment Portal Data Model and Backend Invariants
 
 Status: authoritative current-state schema reference
-Last updated: 2026-10-29 (one consolidated ANY-709 migration, including active recovery windows)
+Last updated: 2026-10-29 (consolidated ANY-709 billing and ANY-715 worker generations)
 
 > **CURRENT AS-BUILT SCHEMA REFERENCE**
 
 This document describes the schema produced by the current Alembic chain:
 
 ```text
-20260924_0001 -> 20261001_0002 -> 20261029_0003 (head)
+20260924_0001 -> 20261001_0002 -> 20261029_0003 -> 20261028_0005 (head)
 ```
 
 `20260924_0001_clean_first_install` creates the 25-table first-install schema.
@@ -55,7 +55,12 @@ to the new `20261029_0003`. An old `0004` database needs the same verified label
 transition, with no DDL replay or row rewrite. Retired earlier revisions must
 follow their original upgrade path first; see the
 [migration runbook](../engineering/ANY-709-billing-runbook.md#consolidated-any-709-migration).
-No automatic compatibility stamp is performed. The chain has one current head.
+No automatic compatibility stamp is performed.
+
+`20261028_0005_billing_worker` adds durable enqueue generations, attempt-start
+timestamps and recurring-job uniqueness after consolidated revision
+`20261029_0003`, preserving active deadlines and existing send leases. The chain
+has one current head.
 This document is authoritative for the implemented SQLAlchemy
 table inventory and physical persistence rules; the generated column-level
 artifact remains `docs/generated/db-schema.md`.
@@ -81,8 +86,8 @@ paid-access derivation and Kernel invalidation delivery remain future work.
 A fresh database has exactly 27 application tables: ten retained
 identity/session/legal tables, fifteen original external-billing persistence
 tables, one current product-link pointer and one purchase mutex. Alembic has
-three revisions in one linear chain and one current head; only the last revision
-belongs to ANY-709.
+four revisions in one linear chain and one current head. Revision
+`20261029_0003` belongs to ANY-709; revision `20261028_0005` belongs to ANY-715.
 
 There is no Portal-owned product, plan, order, payment, refund, subscription,
 entitlement, trial, provider-account, or direct-payment webhook table. There is
@@ -258,8 +263,9 @@ explicit advance claims the same immutable request/key/history with a fresh fenc
 and reused work item. Its new send has an independent two-hour active recovery
 deadline on that work item; the original operation deadline stays immutable.
 UNKNOWN, empty GET and deadline expiry never authorize this
-transition or a replay. Customer retry semantics remain separate. No background
-worker is enabled.
+transition or a replay. Customer retry semantics remain separate. ANY-715 runs
+GET-only background recovery and local deadlines through its embedded worker;
+background execution never acquires CREATE authority.
 
 `billing_purchase_scope_holds` has `(user_id, product_id)` as its primary key,
 a unique intent and a composite FK to its exact purchase scope. A linked unpaid
@@ -341,9 +347,8 @@ later generations and incomplete/crashed attempts stay pending.
 
 `billing_work_items` stores open work/scope/state vocabularies, bounded typed
 payloads, priority, due time, attempt count, paired lease owner/expiry and nullable
-`active_recovery_deadline_at` for the current financial send. The active deadline
-is independent of mutable retry scheduling and changes only in the locked,
-fenced financial send claim; GET recovery does not renew it. It
+`active_recovery_deadline_at` for the current financial send. This active deadline
+changes only in the locked send claim; GET recovery never renews it. It
 is scheduling state, not commercial or access authority. Its work/state
 vocabularies remain open for concrete billing jobs. ANY-715 Step 2 adds
 nonnegative `enqueue_generation`, nullable `last_attempt_started_at` and a partial
@@ -361,7 +366,8 @@ The pre-existing create-recovery index and customer-send lease identity remain
 unchanged. Claims use paired finite ownership; completion preserves newer enqueue
 generations. Binding atomically enrolls new canonical subscriptions. Source apply
 atomically reschedules monitoring and the local trust deadline, with no paid-state
-or access-revision writes. Migration `20261028_0004` advances the schema from `0003`.
+or access-revision writes. Migration `20261028_0005` follows consolidated billing revision
+`20261029_0003` and preserves its active deadline and existing rows.
 
 `manual_review_cases` stores bounded evidence and optional resolution proof.
 It cannot itself activate access, invent an allowance, or rewrite historical

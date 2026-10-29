@@ -101,11 +101,15 @@ def test_any709_step2_crash_zero_one_multiple_and_overdue_recovery(
     migrated_database: Engine, postgres_session_factory: sessionmaker[Session], candidates: int
 ) -> None:
     factory = postgres_session_factory
-    config = step1_settings(preflight_total_timeout_seconds=0.6, preflight_cleanup_timeout_seconds=0.025)
+    config = step1_settings(preflight_total_timeout_seconds=2, preflight_cleanup_timeout_seconds=0.25)
     seed(factory)
     initial = reserve_customer(factory, config, TOKEN)
     claim = claim_customer_send(factory, config, TOKEN, initial)
-    # Simulated crash immediately after committed possible_send: new process/open.
+    with factory() as db:
+        work = db.scalar(select(BillingWorkItem).where(BillingWorkItem.work_kind == "external_create_recovery"))
+        work.lease_expires_at = utc_now() + timedelta(seconds=10)
+        db.commit()
+    # Simulated crash during a lease covering the entire next opening.
     reopened = reserve_customer(factory, config, TOKEN)
     assert not reopened.may_create and reopened.fence == claim.fence
     sends = []

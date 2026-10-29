@@ -13,7 +13,8 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 from starlette.concurrency import run_in_threadpool
 
-from app.composition.purchases import advance_purchase, _observation
+from app.composition.purchases import advance_purchase
+from app.composition.purchase_observation import prepared_subscription_observation as _observation
 from app.composition.reconciliation import reconcile_subscription
 from app.composition.sources import SourceResources, source_resources
 from app.domains.billing.contracts import BillingRefused
@@ -377,3 +378,23 @@ async def test_billing_subscription_reconciliation_total_budget_and_404(
         evidence = await run(other, factory)
         assert evidence.completeness_classification == "incomplete"
         assert snapshot(factory) == good
+
+
+async def test_billing_subscription_reconciliation_contradictory_times_preserve_prior_trust(
+    scenario: tuple, postgres_session_factory: sessionmaker[Session]
+) -> None:
+    transport, sources, _ = scenario
+    factory = postgres_session_factory
+    activate(transport)
+    await run(sources, factory)
+    before = snapshot(factory)
+    transport.subscriptions[0].update(
+        subscription_instance_start_date="2026-10-01 12:00:00",
+        last_tariffication_period_start="2026-10-01 00:00:00",
+        last_tariffication_period_end="2026-11-01 12:00:00",
+        subscription_instance_end_date="2026-11-01 00:00:00",
+    )
+    observation = await run(sources, factory)
+    assert observation.completeness_classification == "incomplete"
+    assert observation.evidence_document["calendar_complete"] is False
+    assert snapshot(factory) == before

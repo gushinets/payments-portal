@@ -62,8 +62,9 @@ outage grace interval. Incomplete reads append attempt evidence without replacin
 the last complete supporting observation or extending its deadline. Decisive
 owned blocks/end or identity/commercial conflicts supersede positive usability
 even if unrelated commercial fields are missing. They never renew trust from
-incomplete evidence. Timed-out attempts persist only incomplete-attempt evidence;
-their delayed results cannot become positive facts. Expired or superseded leases
+incomplete evidence. Attempts whose source reads exhaust the I/O budget persist only incomplete
+evidence; delayed source results cannot become positive facts. On-time proof
+can finish its short fenced DB apply within the existing 30-second lease margin. Expired or superseded leases
 cannot apply. Failed/cancelled claims remain reclaimable after their finite lease.
 
 Known subscription/financial conflicts require controlled review and cannot be
@@ -84,7 +85,9 @@ lifecycle transitions, including ended. There is no automatic hold release.
 Original subscription, instance and calculation-period strings remain calendar
 evidence. Positive proof requires valid ordered calculation-period dates;
 sentinel/missing dates, reversed periods and contradictions with supplied
-lifetime/instance bounds cannot establish positive trust. The provider's latest
+lifetime/instance bounds cannot establish positive trust. Datetime evidence keeps
+its time-of-day precision. Date-only evidence stays a calendar date; mixed
+precision on the same day cannot prove ordering and remains incomplete. The provider's latest
 calculation-period pair is preserved without inventing an account timezone,
 exact UTC boundaries, native cycle ID or allowance identity. This step does not
 claim to prove natural rollover or derive paid access from those dates.
@@ -112,6 +115,10 @@ HTTP startup. There is no standalone worker command/container.
 Work and subscription leases cover the total budget plus 30 seconds for local
 apply/safety. Each source slot has one owner through actual HTTP cleanup.
 Timeout/cancellation/expired DB leases do not release unfinished HTTP slots.
+DB apply runs outside the source timeout and still checks finite ownership/fences.
+Cancelling a DB waiter retains the exact framework thread task and its limiter
+until the synchronous transaction finishes. No replacement claim starts in that
+lane while cancelled DB work remains live; health reports pending cleanup.
 No replacement request can accumulate behind an abandoned owner. Apply checks
 both queue ownership/expiry and subscription owner/fence/expiry under business
 locks. All provider retries are GET-only; the worker never creates a customer,
@@ -193,8 +200,11 @@ reapproval, primary selection or access/grant/allowance/revision write exists.
 
 Recovery retries use bounded earlier-only jitter/backoff, at most five minutes
 between scheduled urgent attempts, accounting for attempt duration. A separate
-provider-free `external_create_deadline` job uses the original financial
-`unknown_since + 2h` pair. It escalates unresolved possible-send/UNKNOWN to
+provider-free `external_create_deadline` job uses the current financial
+`billing_work_items.active_recovery_deadline_at`, falling back to the immutable
+original `unknown_since + 2h` pair for pre-migration NULL rows. A completed typed
+`PROVEN_NOT_SENT` followed by an authorized explicit advance sets a new active
+two-hour window under the send fence; original request/date/history remain unchanged. It escalates unresolved possible-send/UNKNOWN to
 `external_create_outcome_unknown:<operation_kind>` even during an LBX outage.
 Retrying GETs, restarting and delayed candidates never move that deadline.
 `PENDING` and completed `PROVEN_NOT_SENT` authorize no background CREATE and
@@ -373,14 +383,19 @@ is required after a DB failure or lost response.
 
 ## Startup, inspection and shutdown
 
-Apply migration `20261028_0004` through the normal migration service before
-starting the API. Start/restart with the existing repository/deployment commands;
+Apply migrations through `20261028_0005` (worker, following consolidated billing
+revision `20261029_0003`) through the normal migration service before starting
+the API. Retired ANY-709 revision labels require the verified transition in the
+[base migration runbook](ANY-709-billing-runbook.md#consolidated-any-709-migration);
+do not replay consolidated DDL over an existing branch schema. Start/restart with the existing repository/deployment commands;
 there is no additional process to launch. To stop source execution, set
 `BILLING_WORKER_ENABLED=false` and restart through the ordinary deployment path.
 Stop claiming before replacing the owner. Shutdown drains up to the configured
-I/O budget, cancels/awaits tasks and drains source cleanup. If cleanup is still
+I/O budget, cancels/awaits waiters and drains source cleanup plus retained DB
+owners. If cleanup is still
 pending it retains its slot, reports degraded shutdown and propagates failure;
-it never reports a successful drain or closes the client underneath live I/O.
+it never reports a successful drain or closes the client/engine underneath live
+I/O or a synchronous DB transaction.
 After process exit, finite durable leases are reclaimable on restart.
 
 `GET /api/health/billing` exposes named, redacted worker status, occupied slots,
