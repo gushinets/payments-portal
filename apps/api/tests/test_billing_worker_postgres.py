@@ -583,13 +583,23 @@ async def test_billing_worker_normal_and_urgent_have_reserved_capacity_for_local
     assert work.claim_work(factory, step1_settings(), WorkLane.URGENT).id == urgent.work_item_id
 
 
-@pytest.mark.parametrize("cancel", [False, True])
+@pytest.mark.parametrize(
+    "cancel,delay_claim",
+    [(False, False), (False, True), (True, False)],
+    ids=["timeout", "timeout_before_source", "cancel"],
+)
 async def test_billing_worker_timeout_or_cancel_restart_preserves_facts_and_reclaims(
     scenario: tuple,
     postgres_session_factory: sessionmaker[Session],
     monkeypatch: pytest.MonkeyPatch,
     cancel: bool,
+    delay_claim: bool,
 ) -> None:
+    from collections.abc import Callable
+    from typing import Any
+
+    from app.domains.billing.reconciliation import claim_reconciliation
+
     transport, sources, _ = scenario
     factory = postgres_session_factory
     activate(transport)
@@ -610,21 +620,35 @@ async def test_billing_worker_timeout_or_cancel_restart_preserves_facts_and_recl
         return await budget.run(wait)
 
     monkeypatch.setattr(sources.require_lbx(), "get_user", slow)
-    # This budget includes both DB claims. Explicit cancellation must reach
-    # the source before the deadline; the timeout branch still uses 100 ms.
+    # Both DB claims consume this budget. A timeout may precede HTTP, whereas
+    # explicit cancellation must reach the source before the deadline.
     configuration = step1_settings(
         billing_worker_io_timeout_seconds=1 if cancel else 0.1, preflight_cleanup_timeout_seconds=0.01
     )
     interrupted = BillingWorker(configuration, factory, sources.require_lbx())
+    if delay_claim:
+        delegate = interrupted.db
+
+        async def delayed_db(lane: WorkLane, function: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+            result = await delegate(lane, function, *args, **kwargs)
+            if function is claim_reconciliation:
+                # Deterministically exhaust the read budget after the real
+                # source claim commits, without starting simulated HTTP.
+                await asyncio.sleep(configuration.billing_worker_io_timeout_seconds * 2)
+            return result
+
+        monkeypatch.setattr(interrupted, "db", delayed_db)
     task = asyncio.create_task(interrupted.tick(WorkLane.URGENT))
-    await asyncio.wait_for(entered.wait(), 2)
     if cancel:
+        await asyncio.wait_for(entered.wait(), 2)
         task.cancel()
     if cancel:
         with pytest.raises(asyncio.CancelledError):
             await task
     else:
         assert await task  # Expired reads persist incomplete evidence, never positive facts.
+        if delay_claim:
+            assert not entered.is_set()
     assert interrupted.admissions[WorkLane.URGENT].active_count == 0
     current = subs(factory)[0]
     assert current.projection_valid_until == original.projection_valid_until
