@@ -415,9 +415,15 @@ unready. `/api/health/live` remains DB-independent. No IDs/secrets are returned.
 
 Prometheus `payment_portal_billing_worker_*` signals report attempts by lane and
 outcome, active/cleanup slots, pending/invalid work, oldest overdue age and last
-progress time. `failures` counts execution exceptions; completed work and last
-progress include durably recorded incomplete attempts and local sweeps. They do
-not claim successful source proof. Inspect `source_incomplete` work classifications,
+progress time. `failures` counts execution exceptions. A `BillingRefused` caught
+by worker dispatch counts as `refused` only when its retry or quarantine commits
+under the current queue owner. This advances last progress and retains the safe
+refusal code in durable diagnostics;
+it does not increment failures or report an execution exception. Lost ownership
+and failed or uncertain commit acknowledgement remain execution failures.
+Completed work and last progress include durably recorded incomplete attempts
+and local sweeps. Neither completed nor refused attempts claim successful source
+proof. Inspect `source_incomplete` work classifications,
 versioned observations and bounded `lbx_http` source/authentication diagnostics
 for source failures. Alert on repeated authentication denial/configuration errors
 or incomplete reads approaching the affected source-trust deadline; the read
