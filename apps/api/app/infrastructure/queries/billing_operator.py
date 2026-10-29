@@ -22,7 +22,13 @@ def review(db: Session, case_id: UUID, *, lock: bool = False) -> ManualReviewCas
 
 
 def reviews(
-    db: Session, purchase_id: UUID, customer_id: UUID, subscription_id: UUID | None, *, open_only: bool = False
+    db: Session,
+    purchase_id: UUID,
+    customer_id: UUID,
+    subscription_id: UUID | None,
+    *,
+    open_only: bool = False,
+    lock: bool = False,
 ) -> list[ManualReviewCase]:
     operations = select(ExternalCreateOperation.create_operation_id).where(
         (ExternalCreateOperation.purchase_intent_id == purchase_id)
@@ -47,6 +53,8 @@ def reviews(
     )
     if open_only:
         query = query.where(ManualReviewCase.case_state == "open")
+    if lock:
+        query = query.with_for_update().execution_options(populate_existing=True)
     return list(
         db.scalars(query.order_by(ManualReviewCase.created_at.desc(), ManualReviewCase.review_case_id).limit(101))
     )

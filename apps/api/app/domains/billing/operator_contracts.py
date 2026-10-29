@@ -63,6 +63,7 @@ class ReviewResolution:
     before: dict
     started_at: datetime
     expires_at: datetime
+    related_case_digests: tuple[tuple[UUID, str], ...] = ()
 
 
 @dataclass(frozen=True)

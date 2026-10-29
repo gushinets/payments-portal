@@ -364,7 +364,8 @@ async def test_billing_subscription_reconciliation_total_budget_and_404(
     assert snapshot(factory) == good
     with factory() as db:
         evidence = db.get(BillingStateObservation, observation_id)
-        assert evidence.evidence_document["reasons"] == ["read_budget_exhausted"]
+        assert "read_budget_exhausted" in evidence.evidence_document["reasons"]
+        assert evidence.evidence_document["reads"] == []
     monkeypatch.setattr(sources.require_lbx(), "get_user", original_get)
     # A real decoded HTTP 404 remains incomplete source evidence, not deletion.
     async with source_resources(

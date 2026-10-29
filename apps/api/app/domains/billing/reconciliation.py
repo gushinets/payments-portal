@@ -329,7 +329,13 @@ def apply_reconciliation(
         # but never renews trust. No paid-access writer runs in this step.
         current.reconciliation_lease_owner = None
         current.reconciliation_lease_expires_at = None
-        schedule_reconciliation(db, current, work_claim, complete=proof.complete and not conflict and not known_review)
+        schedule_reconciliation(
+            db,
+            current,
+            work_claim,
+            complete=proof.complete and not conflict and not known_review,
+            attempt_started_at=proof.read_started_at,
+        )
         if work_claim is not None and proof.complete:
             mark_processed(
                 db,
