@@ -17,9 +17,23 @@ if [ "$configured_command" != "$expected_command" ]; then
   exit 1
 fi
 
-docker run --rm --entrypoint sh "$image_ref" -ec '
+docker run --rm --network none --entrypoint sh "$image_ref" -ec '
   test "$(id -u)" -ne 0
-  test "$(node --version)" = "v24.18.0"
+  test "$(node --version)" = "v24.22.1"
+
+  # APK compares these constraints against the installed package database.
+  for package_constraint in \
+    "libcrypto3>=3.5.8-r0" \
+    "libssl3>=3.5.8-r0" \
+    "musl>=1.2.6-r3" \
+    "musl-utils>=1.2.6-r3" \
+    "zlib>=1.3.2-r1"
+  do
+    if ! apk info --exists --verbose "$package_constraint"; then
+      echo "Missing or vulnerable runtime package: $package_constraint" >&2
+      exit 1
+    fi
+  done
 
   for path in \
     /usr/local/bin/corepack \
@@ -48,7 +62,16 @@ docker run --rm --entrypoint sh "$image_ref" -ec '
 docker run --rm -i --network none --entrypoint node "$image_ref" <<'NODE'
 const assert = require('node:assert/strict');
 const { createRequire } = require('node:module');
+const { deflateSync, gunzipSync, gzipSync, inflateSync } = require('node:zlib');
 const sharp = createRequire('/app/apps/web/server.js')('sharp');
+
+const compressionInput = Buffer.concat([
+  Buffer.from('AnyToolAI runtime compression: '.repeat(64)),
+  Buffer.from([0, 1, 127, 128, 255])
+]);
+assert.deepEqual(gunzipSync(gzipSync(compressionInput)), compressionInput);
+assert.deepEqual(inflateSync(deflateSync(compressionInput)), compressionInput);
+console.log('PASS: gzip/deflate round trips', process.versions.zlib);
 
 async function verifyImageProcessing() {
   assert.ok(Object.keys(require.cache).some(path =>
