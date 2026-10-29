@@ -296,12 +296,13 @@ def schedule_reconciliation(
 
 def retry_work(
     factory: SessionFactory, claim: WorkClaim, *, invalid: bool = False, error: str = "worker_attempt_failed"
-) -> None:
+) -> bool:
+    """Acknowledge only a committed owned retry/quarantine; DB errors propagate."""
     with factory() as db:
         try:
             row = verify_claim(db, claim)
         except BillingRefused:
-            return
+            return False
         now = as_utc(billing_reconciliation.database_now(db))
         # Source lease may still be occupied after cancellation: wait until its
         # finite expiry; never promote an old result or extend source trust.
@@ -311,6 +312,7 @@ def retry_work(
             row.work_state = "invalid"
             row.last_error_classification = "subscription_provenance_unproven"
         db.commit()
+        return True
 
 
 def finish_sweep(factory: SessionFactory, claim: WorkClaim, *, more: bool = False) -> None:
