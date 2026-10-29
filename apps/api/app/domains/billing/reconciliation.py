@@ -22,6 +22,7 @@ from app.infrastructure.persistence.billing_webhooks import mark_processed
 from app.infrastructure.queries.billing_customers import lock_customer, customer_operation, open_customer_reviews
 from app.domains.billing.work import schedule_reconciliation, verify_claim
 from app.domains.billing.work_contracts import WorkClaim
+from app.domains.billing.operator_contracts import ReviewResolution
 from app.domains.billing.webhook_contracts import CORRELATION_SCHEMA
 from app.models import (
     BillingProductAccessScope,
@@ -157,6 +158,7 @@ def apply_reconciliation(
     proof: SubscriptionProof,
     *,
     work_claim: WorkClaim | None = None,
+    resolution: ReviewResolution | None = None,
 ) -> UUID:
     """Recheck permanent provenance and current fences before any fact changes."""
     with factory() as db:
@@ -214,6 +216,21 @@ def apply_reconciliation(
                 raise BillingRefused("billing_work_stale", 409)
             verify_claim(db, work_claim)
         service._verify_original_consent(db, row, purchase.accepted)
+        resolved_case = None
+        if resolution is not None:
+            from app.domains.billing.operator_review import authorize_resolution
+
+            if current.lifecycle_status == Lifecycle.ENDED and proof.lifecycle != Lifecycle.ENDED:
+                raise BillingRefused("billing_review_terminal", 409)
+            if (
+                not proof.complete
+                or proof.identity != IdentityProof.MATCH
+                or proof.commercial != CommercialProof.MATCH
+                or proof.read_started_at < resolution.started_at
+                or proof.read_finished_at >= resolution.expires_at - timedelta(seconds=30)
+            ):
+                raise BillingRefused("billing_review_proof_incomplete", 409)
+            resolved_case = authorize_resolution(db, resolution, row, operations, current, restoring=True)
         reviews = queries.open_reviews(db, current.subscription_id)
         known_review = (
             row.state == PurchaseIntentState.MANUAL_REVIEW
@@ -321,6 +338,24 @@ def apply_reconciliation(
                 generation=work_claim.generation,
                 started_at=work_claim.started_at,
                 now=now,
+            )
+        if resolved_case is not None:
+            from app.domains.billing.operator_review import audit_resolution
+
+            audit_resolution(
+                db,
+                resolved_case,
+                operations,
+                current,
+                observation_id=observation.observation_id,
+                proof={
+                    "schema": RECONCILIATION_SCHEMA,
+                    "identity": proof.identity,
+                    "commercial": proof.commercial,
+                    "reads": list(proof.reads),
+                    "read_started_at": proof.read_started_at.isoformat(),
+                    "read_finished_at": proof.read_finished_at.isoformat(),
+                },
             )
         db.commit()
         return observation.observation_id

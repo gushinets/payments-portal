@@ -66,6 +66,7 @@ class BillingWorker:
         self.failed = False
         self.failures = 0
         self.last_progress_at: datetime | None = None
+        self.last_verified_subscription_at: datetime | None = None
         self.last_scan_at: datetime | None = None
         self.pending = 0
         self.oldest_due_at: datetime | None = None
@@ -173,7 +174,7 @@ class BillingWorker:
                             delegate=partial(self.db, lane),
                         )
                     else:
-                        await reconcile_subscription(
+                        observation_id = await reconcile_subscription(
                             self.client,
                             admission,
                             self.configuration,
@@ -183,6 +184,15 @@ class BillingWorker:
                             budget=budget,
                             delegate=partial(self.db, lane),
                         )
+                        outcome, observed_at = await self.db(
+                            lane, work.reconciliation_outcome, self.factory, observation_id
+                        )
+                        metrics.PROOFS.labels(outcome=outcome).inc()
+                        if outcome == "verified":
+                            self.last_verified_subscription_at = max(
+                                self.last_verified_subscription_at or observed_at, observed_at
+                            )
+                            metrics.LAST_PROOF.set(self.last_verified_subscription_at.timestamp())
                 except BillingRefused as error:
                     await self.db(
                         lane,
