@@ -62,7 +62,10 @@ outage grace interval. Incomplete reads append attempt evidence without replacin
 the last complete supporting observation or extending its deadline. Decisive
 owned blocks/end or identity/commercial conflicts supersede positive usability
 even if unrelated commercial fields are missing. They never renew trust from
-incomplete evidence. Attempts whose source reads exhaust the I/O budget persist only incomplete
+incomplete evidence. Effective-term proof checks supplied contradictions before
+missing fields: a changed service price with an absent total still opens a
+commercial conflict. A positive match continues to require all mandatory terms.
+Attempts whose source reads exhaust the I/O budget persist only incomplete
 evidence; delayed source results cannot become positive facts. On-time proof
 can finish its short fenced DB apply within the existing 30-second lease margin. Expired or superseded leases
 cannot apply. Failed/cancelled claims remain reclaimable after their finite lease.
@@ -128,7 +131,9 @@ These are **per-process** limits, not provider-wide concurrency/RPS guarantees.
 The worker owns separate LBX HTTP pools and bounded DB delegation/connection
 capacity from purchase, Widget and new-sale resources. Local sweep/deadline work
 has separate DB delegation and no provider HTTP. Normal and urgent lanes cannot
-consume each other's reserved slots. Wholly unconfigured LBX reports
+consume each other's reserved slots. Each worker HTTP pool fits the sum of both
+lane limits, independently of interactive `PREFLIGHT_MAX_ACTIVE`; retained cleanup
+continues to occupy its lane's admission slot. Wholly unconfigured LBX reports
 `not_configured` without source calls; disabled execution reports `disabled`.
 Partial LBX configuration also prevents source execution without breaking auth.
 Retained cleanup is reported as degraded billing health while local supervision
@@ -264,6 +269,10 @@ Audited resolution and inspection commands are documented below.
 - `LBX_WEBHOOK_AUTH_VALUE=`: required exact shared-secret header value when enabled;
   keep it in the deployment secret manager/protected API environment, separate
   from Server API credentials and the Widget signing secret.
+
+For worktree `repo:up`, all three settings pass from root `.env` or exported
+environment values into private `.harness/runtime.env`; exported values take
+precedence. They are excluded from public runtime metadata and web settings.
 
 Enabling requires a valid configured LBX connection. Invalid/missing header or
 secret configuration fails startup. Transport/correlation headers (including
