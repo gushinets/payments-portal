@@ -1533,6 +1533,72 @@ current commands and an explicit future expansion path.
   were performed. The disposable test PostgreSQL server started for this work
   was stopped after verification.
 
+### Step 5 review corrections — 2026-10-29
+
+At the owner's explicit request, the reviewed Step 5 delivery was saved unchanged
+in local commit `621db5d` before these follow-up corrections. Its contents matched
+the previous review's source snapshot. The corrections remain within ANY-715;
+there are no new billing decisions, migrations, access producers or terminal
+release permissions.
+
+- **REV-5:** reconciliation checks each point result and scope error against the
+  shared absolute budget before accepting it. Timely identity-conflict evidence
+  survives a later unrelated timeout; late values/errors are discarded and an
+  incomplete read set cannot renew trust. The CLI uses the worker's per-read
+  budget ownership rather than a scope timeout that would discard partial proof.
+- **REV-6:** `bind-original` may include only the same operation's proven
+  deadline-only review alongside its targeted known conflict. Preparation and
+  apply lock/recheck the related cases, preserve their evidence digests and
+  original possible-send history, and atomically resolve/audit them with the OS
+  principal, reason/reference, resulting identities and fresh proof. Foreign,
+  unrelated, unsupported or changed cases still refuse. Saved prior operation
+  states establish causal order; PostgreSQL transaction-start `created_at`
+  timestamps are not an authorization clock.
+- **REV-7:** claim-free CLI apply coalesces required urgent reconciliation from
+  the source attempt's start, including elapsed I/O in the five-minute maximum.
+  It preserves running queue ownership/generations and existing urgent hints.
+- Added 17 PostgreSQL regressions for timely/late conflicts, related-case audit
+  and replay, reverse timestamps, stale/foreign/missing evidence, atomic rollback,
+  urgent cadence and running worker ownership. The existing explicit-cancellation
+  fixture now allows one second to enter source I/O after its DB claims; its
+  actual-timeout branch retains 100 ms. Cleanup, lease, fencing and fact-preservation
+  assertions are unchanged; runtime timeouts are unchanged.
+- Initial focused checks passed **82 fast + 122 PostgreSQL** cases before the
+  final elapsed-time and causal-order refinements. Log:
+  `.harness/any715-review-fixes-focused.log`.
+- Complete canonical verification passed with the explicit test environment:
+  `PATH="$PWD/.venv/bin:$PATH" KERNEL_MOCK_ENABLED=0 KERNEL_BASE_URL= KERNEL_SERVICE_TOKEN= npm run check`.
+  Results: **1,570 fast API + 457 PostgreSQL + 378 component + 38 boundary**
+  tests, production web build, lint/format, documentation, architecture and
+  generated freshness **PASS**. Log: `.harness/any715-review-fixes-check.log`.
+  This run preceded the final causal-order guard and cancellation-fixture
+  refinement; it is not claimed as a complete-suite run of the final tree.
+- The first canonical attempt inherited `KERNEL_MOCK_ENABLED=1` and failed four
+  production/configuration tests. The explicit environment above passed them;
+  no user configuration was edited. Failure evidence remains in
+  `.harness/any715-review-fixes-check-inherited-mock.log`.
+- Final-source fast selection `billing_recovery_cli or
+  billing_subscription_reconciliation or billing_worker`: **81 PASS**. Combined
+  PostgreSQL repeats exposed the 100 ms cancellation fixture's pre-source
+  deadline twice; three isolated timeout/cancellation repetitions passed
+  **6/6**. A later combined repeat stopped at an existing purchase-setup
+  ten-second deadline. Logs remain in
+  `.harness/any715-review-fixes-final-guard-first.log`,
+  `.harness/any715-review-fixes-final-guard-second.log`,
+  `.harness/any715-review-fixes-cancellation-recheck.log` and
+  `.harness/any715-review-fixes-final-guard-setup-timeout.log`.
+- After the fixture refinement, separate final-source PostgreSQL processes
+  passed **22 worker** and **57 operator/reconciliation** tests, including every
+  new regression and both cancellation/timeout branches. Log:
+  `.harness/any715-review-fixes-final-separated.log`. They use the established
+  `repo.api_test_environment`, marker selection and `repo.api_pytest_command`;
+  no database or safety assertion was bypassed.
+- Final lint/format, architecture, documentation, generated freshness and
+  whitespace checks are recorded at handoff. Real LBX remains
+  **NOT_RUN / LBX_NOT_CONFIGURED**; provider evidence is **SIMULATED**, browser
+  E2E is **NOT_RUN**, and webhooks remain **DISABLED/POLLING-ONLY**. No real
+  billing mutation, push or branch change was performed.
+
 ## Review corrections after Steps 1–4
 
 The owner authorized two local commits: preserve Step 4 first, then integrate

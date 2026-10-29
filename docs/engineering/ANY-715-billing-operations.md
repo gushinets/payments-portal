@@ -485,7 +485,12 @@ arguments exit 2. A source refusal cannot expose raw errors or credentials.
   `PREFLIGHT_TOTAL_TIMEOUT_SECONDS` total budget, cleanup reserve and finite
   subscription lease. An active worker/CLI lease may return
   `subscription_reconciliation_busy`; inspect and retry after its owner finishes
-  or the lease expires. Source outages never extend trust.
+  or the lease expires. Source outages never extend trust. Each point result,
+  including a scope error, must arrive within the shared read budget. A timely
+  proven identity conflict survives a later unrelated read timeout; late facts
+  are discarded. Incomplete or blocked CLI results coalesce urgent reconciliation
+  within five minutes without clearing a running worker's lease/generation or
+  downgrading an existing urgent hint after a complete positive read.
 - `resolve-review` is the only explicit audited known-conflict transition.
   Required common options: `--resolution`, `--case-id`,
   `--expected-case-digest`, `--reason` and `--reference`. Copy the current case
@@ -532,9 +537,14 @@ renew source trust. A remaining PENDING operation still requires the user's
 existing explicit authorized advance before any send.
 
 The original conflict evidence must retain its prior POSSIBLE_SEND/UNKNOWN state
-and send fence. Historical cases without that proof, or cases raised from
-PENDING/PROVEN_NOT_SENT, refuse binding as `purchase_history_unproven`; do not edit
-the case/history to manufacture authorization.
+and send fence. If an earlier deadline escalation already moved the same
+operation to MANUAL_REVIEW, that operation's open
+`external_create_outcome_unknown:<kind>` case can supply the preserved original
+possible-send evidence. Its schema, purchase/operation identity, saved prior state and
+evidence digest are checked; a different operation's deadline or any additional
+known conflict still refuses. Historical cases without that proof, or cases
+raised from PENDING/PROVEN_NOT_SENT, refuse binding; do not edit the case/history
+to manufacture authorization.
 
 Both resolutions lock/recheck user, purchase/hold, ordered financial operations,
 subscription and target case before writing. Current customer identity, original
@@ -545,7 +555,11 @@ results or inventory snapshots cannot reopen the corrected conflict afterward.
 `billing-operator-resolution:v1` on the existing review row records OS principal,
 reason/reference, command digest, before/after identities, supporting observation
 when one exists, and versioned fresh-proof summary/read window. Original case
-and source evidence remain intact. Audit/fact/binding/queue updates roll back
+and source evidence remain intact. Related deadline cases are locked and
+rechecked after source I/O, then resolved in the same transaction with the OS
+principal, reason/reference, original case digests and a link to the targeted
+known-conflict case. Each retains the resulting binding and fresh-proof audit.
+Audit/fact/binding/queue updates roll back
 as one transaction on failure. A completed identical request by the same OS
 principal returns `already_resolved` without source I/O or another audit;
 a different repeat refuses as stale. Failed reads may leave only the normal
