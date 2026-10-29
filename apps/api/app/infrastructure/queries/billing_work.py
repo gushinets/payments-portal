@@ -18,6 +18,10 @@ from app.models import (
 )
 
 
+def observation(db: Session, observation_id: UUID) -> BillingStateObservation | None:
+    return db.get(BillingStateObservation, observation_id)
+
+
 def item(db: Session, identity: UUID) -> BillingWorkItem | None:
     return db.scalar(
         select(BillingWorkItem)

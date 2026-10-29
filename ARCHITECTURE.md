@@ -87,6 +87,13 @@ redacted durable inbox and generation-coalesced hints commit before 200; worker
 GET/apply alone updates facts. Real header/delivery compatibility remains a
 separate enablement gate; polling is independent. See [billing operations](docs/engineering/ANY-715-billing-operations.md).
 
+Step 5 extends the existing privileged purchase CLI with local inspection,
+GET-only recovery/reconciliation and two audited resolutions: restore original
+canonical facts or bind the uniquely proven original possible-send operation.
+Fresh proof, expected review/evidence/fences and OS principal are rechecked in the
+shared writer; facts/binding, review audit and scheduling commit atomically.
+No terminal hold release, arbitrary rebind or access authority is introduced.
+
 The canonical target is defined, in precedence order, by
 [ADR 0005](docs/architecture/decisions/0005-external-billing-boundary.md), the
 accepted [External Billing Boundary Design](docs/superpowers/specs/2026-09-15-external-billing-boundary-design.md),
@@ -523,7 +530,8 @@ payment state, or manual operator input alone never grant paid access.
 | Commercial mapping publication | `publish_product_link()` appends a v2 immutable revision and CAS-updates one product head after live checks; same identity is a no-op across price changes. Catalog HTTP runs outside short resource-owning worker DB units. |
 | Accepted purchase | `pin_purchase()` atomically commits immutable terms, consent, local customer slot, permanent financial identities and one product hold after source reads. |
 | Financial preparation | `claim_financial()` commits permanent possible-send evidence/work before HTTP; fenced point-read apply owns separate short binding/observation transactions. |
-| Other target billing tables | Source-catalog slots are inert; worker reconciliation and paid-access behavior belong to later `ANY-504` steps. |
+| Subscription reconciliation | Claims commit before source reads; shared fenced apply atomically writes observations, facts and work. Audited operator resolutions use that same apply/bind transaction. |
+| Other target billing tables | Source-catalog slots are inert; paid-access behavior belongs to later `ANY-504` steps. |
 
 ## Enforced architecture guards
 

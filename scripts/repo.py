@@ -3243,17 +3243,26 @@ def cmd_billing_purchase(args: argparse.Namespace) -> None:
     environment["PYTHONPATH"] = os.pathsep.join(
         value for value in (str(ROOT / "apps/api"), environment.get("PYTHONPATH", "")) if value
     )
+    command = [
+        sys.executable,
+        "-m",
+        "app.cli.billing_purchases",
+        args.action,
+        "--user-id",
+        str(args.user_id),
+        "--purchase-id",
+        str(args.purchase_id),
+    ]
+    for name in (
+        "resolution", "case_id", "expected_case_digest",
+        "expected_observation_id", "expected_reconciliation_fence",
+        "operation_id", "expected_operation_fence", "reason", "reference",
+    ):
+        value = getattr(args, name, None)
+        if value is not None:
+            command.extend(["--" + name.replace("_", "-"), str(value)])
     result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "app.cli.billing_purchases",
-            args.action,
-            "--user-id",
-            str(args.user_id),
-            "--purchase-id",
-            str(args.purchase_id),
-        ],
+        command,
         cwd=ROOT,
         env=environment,
         check=False,
@@ -3480,11 +3489,18 @@ def build_parser() -> argparse.ArgumentParser:
     customer.add_argument("--user-id", type=uuid.UUID, required=True)
     customer.set_defaults(func=cmd_billing_customer)
     purchase = sub.add_parser(
-        "billing-purchase", help="Financial inspect and GET-only recovery"
+        "billing-purchase", help="Billing evidence, GET-only rechecks and audited resolutions"
     )
-    purchase.add_argument("action", choices=("inspect", "recover"))
+    purchase.add_argument("action", choices=("inspect", "recover", "reconcile", "resolve-review"))
     purchase.add_argument("--user-id", type=uuid.UUID, required=True)
     purchase.add_argument("--purchase-id", type=uuid.UUID, required=True)
+    purchase.add_argument("--resolution", choices=("restore-original", "bind-original"))
+    for name in ("case-id", "expected-observation-id", "operation-id", "expected-operation-fence"):
+        purchase.add_argument("--" + name, type=uuid.UUID)
+    purchase.add_argument("--expected-case-digest")
+    purchase.add_argument("--expected-reconciliation-fence", type=int)
+    purchase.add_argument("--reason")
+    purchase.add_argument("--reference")
     purchase.set_defaults(func=cmd_billing_purchase)
     sub.add_parser("sync-api").set_defaults(func=cmd_sync_api)
     sub.add_parser("lock-api").set_defaults(func=cmd_lock_api)

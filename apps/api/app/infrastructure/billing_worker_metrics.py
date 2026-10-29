@@ -11,3 +11,10 @@ BACKLOG = Gauge("payment_portal_billing_worker_pending", "Durable pending or run
 INVALID = Gauge("payment_portal_billing_worker_invalid", "Quarantined historical records")
 LAG = Gauge("payment_portal_billing_worker_lag_seconds", "Age of oldest overdue durable work")
 PROGRESS = Gauge("payment_portal_billing_worker_last_progress_timestamp_seconds", "Last completed local or source work")
+PROOFS = Counter(
+    "payment_portal_billing_worker_subscription_proofs_total", "Committed subscription proof outcomes", ("outcome",)
+)
+LAST_PROOF = Gauge(
+    "payment_portal_billing_worker_last_verified_subscription_timestamp_seconds",
+    "Last complete matching subscription proof",
+)

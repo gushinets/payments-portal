@@ -182,6 +182,16 @@ no loading timer may interrupt an active checkout.
 
 ## High-risk review paths
 
+ANY-715 privileged purchase commands retain the existing OS/deployment access
+boundary. `inspect` is local and read-only; other rechecks use bounded GETs.
+Only fresh original-object proof plus current review/evidence/fence expectations
+permits the two audited resolutions. Principal, bounded reason/reference,
+before/after identities and proof summary stay in existing durable review storage,
+atomically with shared apply/bind. Never include secrets/PII in operator text or
+logs. No terminal hold release, arbitrary identity override, admin API, new role,
+manual paid marking or quota editing is exposed. See the exact
+[effects and refusals](engineering/ANY-715-billing-operations.md#privileged-purchase-operations).
+
 Authentication, payments, legal sources and seeds, migrations, telemetry
 redaction, production Compose, deployment configuration, and secret handling
 require human review. Agents may prepare changes and evidence but may not merge
