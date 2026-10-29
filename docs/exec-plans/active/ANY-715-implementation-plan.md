@@ -1,7 +1,7 @@
 # ANY-715 — Background Work, Webhooks, Reconciliation & Recovery
 
 Status: Steps 1–4 implemented and locally verified; Step 5 not started
-Updated: 2026-10-28  
+Updated: 2026-10-29
 Issue: https://linear.app/paveldik/issue/ANY-715  
 Program: https://linear.app/paveldik/issue/ANY-504
 
@@ -27,8 +27,8 @@ The running system must:
 5. Execute local trust-expiry and uncertain-create escalation work without
    provider availability.
 6. Recover possible-send/UNKNOWN financial operations through GET-only discovery
-   and point proof, preserving permanent send fences and original two-hour
-   escalation.
+   and point proof, preserving permanent send fences and the fixed two-hour
+   escalation window of the current authorized send.
 7. Optionally accept authenticated webhook hints into a durable redacted inbox
    and coalesced queue, with independent polling as the correctness path.
 8. Provide documented privileged CLI inspection, bounded rechecks and
@@ -49,7 +49,7 @@ update access revisions, produce invalidations or implement Kernel enforcement.
 
 ### Baseline and delivery policy
 
-Latest inspected sources:
+Sources inspected at plan approval:
 
 - `ANY-709`, `origin/ANY-709`, PR #150 HEAD:
   `d28edddb565a2d7e1e6a5892199e3c00d3ad5417`.
@@ -57,7 +57,7 @@ Latest inspected sources:
   `e323d56c380ba3d98a650fc6db29556eb0ca748e`.
 - Merge base: `dfdc67a9617df1afb5213b0fb831b770e6d816be`.
 - [PR #150](https://github.com/gushinets/payments-portal/pull/150) remains open.
-- Step 7 migration head: `20261027_0003`.
+- Step 7 migration head: `20261029_0003` (consolidated on 2026-10-29).
 - The working tree was clean before creating the plan branch.
 
 Commit `d28eddd` preserves a linked purchase across transient/incomplete Widget
@@ -381,8 +381,12 @@ A lease can nevertheless expire during a paused process or uncooperative I/O.
 A second handler may reclaim work with fresh ownership and a higher subscription
 fence. Apply must recheck both current work ownership and the subscription
 owner/fence/lease under the business locks, plus original purchase/scope facts.
-Reject expired, superseded or timed-out attempt results even if their old GET
-eventually succeeds. Conditional completion cannot clear a newer claim/hint.
+Reject expired, superseded or source-timed-out results even if their old GET
+eventually succeeds. An on-time proof may finish its short DB apply within the
+finite apply margin. The I/O budget bounds source work, not the transaction
+waiter. Cancellation retains the exact resource-owning framework DB task and
+limiter until synchronous completion; shutdown must account for pending DB
+owners and must not close their engine or report successful drain. Conditional completion cannot clear a newer claim/hint.
 
 Failure/cancellation leaves durable work retryable; a lost claim acknowledgement
 does not start HTTP until ownership is established. Shutdown stops claims, drains
@@ -397,7 +401,10 @@ Approved schedules:
 - Urgent attempts: no more than five minutes apart.
 - Stable customer inventory: approximately six hours.
 - Source trust: at most six hours.
-- Financial UNKNOWN escalation: original `unknown_since + 2h`.
+- Financial UNKNOWN escalation: current `active_recovery_deadline_at`, with
+  immutable original `unknown_since + 2h` fallback for pre-migration NULL rows.
+  Only an authorized explicit send after completed `PROVEN_NOT_SENT` sets a new
+  active window. GETs/retries/restarts never renew it or change original history.
 
 Urgency includes unresolved work, never-positive linked subscriptions and trust
 expiry within 30 minutes. Distribute recurring due times across the interval,
@@ -559,7 +566,7 @@ or rewrite accepted architecture specifications.
 | Enrollment, restart and durable polling | 2 | Several small batches, restart/concurrent enqueue; no browser dependency |
 | Claims, fencing and lost-hint safety | 2 | Two-handler PostgreSQL tests, expired lease with unfinished GET, crash/cancel |
 | Bounded MVP execution and future expansion | 2, 5 | Isolated lanes, retained cleanup slots, embedded smoke and runbook |
-| UNKNOWN and immutable two-hour deadline | 3 | Zero/one/multiple, no-send, crash and lost-reply tests |
+| UNKNOWN and fixed active two-hour window | 3 | Zero/one/multiple, no-send, crash and lost-reply tests |
 | Local `billing_busy` preserves CREATE authority | 3 | PostgreSQL contention and shared recovery regressions |
 | Inventory and same-tariff ownership | 3 | Proven other-product exclusion and bounded incomplete inventory |
 | Trust expiry and unaffected scopes | 1, 2 | Controlled-clock outage and expiry-race tests |
@@ -759,7 +766,7 @@ LBX responses supply subscription states.
 - `infrastructure/preflight.py` (`PreflightAdmission`, `PreflightBudget`), its
   cancellation/cleanup tests, customer leases and query/persistence rules.
 - `http/health.py`, observability and Sentry boundaries.
-- `apps/api/alembic/versions/20261027_0003_normal_billing.py`.
+- `apps/api/alembic/versions/20261029_0003_normal_billing.py`.
 - Settings, Compose variants, harness propagation and deployment tests.
 - Selective reference: `any-765-mock-two-products`, commit
   `c1b093757702c112298a07f60999e9697f0efcd4`. Inspect its diff for
@@ -864,7 +871,7 @@ neither product's job or observation is reused as the other's.
 
 **AI execution prompt**
 
-> Implement Step 2 of `docs/exec-plans/active/ANY-715-implementation-plan.md`. Read Step 1, API lifespan/source composition, work/subscription models, PreflightAdmission/PreflightBudget and cleanup tests, customer leases, health/telemetry, migration `20261027_0003`, Settings and deployment/harness tests. Build the transport-independent runner with embedded startup only, atomic enrollment and the bounded missing-set backfill, PostgreSQL claims/fences, generation-safe coalescing, approved scheduling and local expiry. Preserve existing due times during repeated sweeps. Reuse isolated bounded resource admission; unfinished HTTP keeps its slot, and expired/timed-out/superseded results cannot apply. Derive leases from the I/O budget and bounded apply margin. Document per-process limits and future extraction/expansion; do not implement standalone deployment or distributed admission now.
+> Implement Step 2 of `docs/exec-plans/active/ANY-715-implementation-plan.md`. Read Step 1, API lifespan/source composition, work/subscription models, PreflightAdmission/PreflightBudget and cleanup tests, customer leases, health/telemetry, migration `20261029_0003`, Settings and deployment/harness tests. Build the transport-independent runner with embedded startup only, atomic enrollment and the bounded missing-set backfill, PostgreSQL claims/fences, generation-safe coalescing, approved scheduling and local expiry. Preserve existing due times during repeated sweeps. Reuse isolated bounded resource admission; unfinished HTTP keeps its slot, and expired/timed-out/superseded results cannot apply. Derive leases from the I/O budget and bounded apply margin. Document per-process limits and future extraction/expansion; do not implement standalone deployment or distributed admission now.
 >
 > Selectively adapt the technical mock/fixture/test hunks of `c1b093757702c112298a07f60999e9697f0efcd4` from `any-765-mock-two-products`: enable `proposal_ai` and `brief_decoder` with their distinct test metrics, keep digest expectations consistent and isolate mock product/metric scenarios. Do not import the donor branch, old Step 7 code, paid-access example loading/OpenAPI metadata or 100/300 expectations. Reuse completed Step 1 unchanged. Add independent two-product enrollment/reconciliation/restart coverage using synthetic LBX GETs; Mock Kernel is technical vocabulary, not billing-state authority or a new reconciliation dependency. No real paid objects, allowances, grants or quota calculations.
 >
@@ -897,7 +904,7 @@ neither product's job or observation is reused as the other's.
   generation-safe coalescing, approved cadence/backoff and provider-free expiry.
   New links enroll in their binding transaction; missing-set sweeps commit and
   yield between batches without moving existing schedules or expired claims.
-- Migration `20261028_0004` adds generation/attempt-start fields and recurring
+- Migration `20261028_0005` (renumbered after base-709 integration) adds generation/attempt-start fields and recurring
   coalescing uniqueness while preserving existing recovery identities/send leases.
   Populated upgrade/downgrade, uniqueness and nonnegative generation are tested.
 - Two technical mock products are enabled with separate TEST-ONLY metrics and
@@ -1002,8 +1009,9 @@ accepted purchases, dedicated agreements, subscriptions and recovery outcomes.
 - Respect approved customer explicit-open retry/fence policy.
 - Treat `503 billing_busy` from the Step 7 user-lock `55P03` path as local
   contention, not provider failure or completed no-send evidence. Retry local
-  work/GET recovery without modifying send authority, original key/fence or
-  `unknown_since + 2h`. Only the existing explicit authenticated advance and
+  work/GET recovery without modifying send authority, original key/fence, immutable
+  first-send history or the active financial recovery window. Only the existing
+  explicit authenticated advance and
   completed typed no-send rules can authorize their respective CREATE path.
 - Do not apply preparation lifecycle restrictions to already reconciled terminal
   subscriptions.
@@ -1433,6 +1441,134 @@ current commands and an explicit future expansion path.
 **Proposed commit**
 
 `ANY-715 - Deliver audited operations and lifecycle handoff`
+
+## Review corrections after Steps 1–4
+
+The owner authorized two local commits: preserve Step 4 first, then integrate
+current base ANY-709 and fix the four confirmed review findings. Step 5 remains
+unstarted. Step 4 was saved as `67a48ad`; the second commit incorporates base
+`f5aacab1533b6c4b03f793689ec30972a8129ff2` without rewriting branch history.
+
+- REV-1: retain ANY-709 financial-window revision `20261028_0004`; worker
+  migration becomes `20261028_0005` and preserves populated work, active deadlines
+  and send leases on upgrade/downgrade.
+- REV-2: keep source deadlines separate from fenced DB apply; cancelled DB
+  waiters retain their counted framework task, health and shutdown ownership.
+  No replacement claim starts in a lane with unfinished cancelled DB work.
+- REV-3: preserve timestamp precision in calendar ordering. Same-day mixed
+  precision cannot prove order; date-only calendars remain supported. Contradictory
+  times append incomplete evidence without replacing prior trust.
+- REV-4: enrollment/repair and local deadline apply reuse the base financial
+  active-window helper, retaining immutable first-send history and the old-NULL
+  fallback. Completed no-send and customer policies remain distinct.
+
+Implementation files: `app/jobs/billing.py`, `app/infrastructure/preflight.py`,
+`app/http/health.py`, `app/integrations/lbx/reconciliation.py`,
+`app/domains/billing/background_recovery.py` and the forward worker migration,
+all under `apps/api/`. Base integration also preserves the extracted
+`composition/purchase_observation.py` seam and maps unproven inventory lifecycle
+to recoverable `purchase_inventory_incomplete`.
+
+Verification and review evidence:
+
+- Focused fast regressions: **68 PASS**. Focused PostgreSQL development runs
+  exposed and corrected fixture-flush/lease-pair assumptions; all affected cases
+  passed their subsequent reruns, including the final five-case inventory/window
+  selection and the isolated customer deadline scenario.
+- The first complete check passed fast API, web checks/build and **392 of 393
+  PostgreSQL cases**, with one timing-dependent customer test failure. Its
+  operation and work queries straddled a late DB completion under READ COMMITTED.
+  The test now exhausts the budget in a controlled GET after two completed failed
+  attempts per opening, retaining strict UNKNOWN/lease assertions. Its focused
+  rerun passed, followed by all 14 customer-recovery module cases in the final
+  complete check. A subsequent complete-check repeat was interrupted after
+  **258 PostgreSQL passes** to inspect a different inherited cleanup-test failure: a
+  teardown timeout hid the original phase failure. That test now cancels on the
+  close event with a longer cleanup reserve than work window and a generous DB
+  preparation margin, while retaining strict cancellation/lease/slot assertions
+  and surfacing preparation errors instead of masking them. All **11** customer
+  cancellation/deadline regressions passed the focused rerun. A further fail-fast
+  complete check passed **218 PostgreSQL cases** before another inherited
+  diagnostic assumed a fixed POST count inside 0.6 seconds. Both diagnostics
+  now expire during a controlled GET after the intended completed attempts;
+  strict counts, UNKNOWN state and redaction assertions remain. Both diagnostic
+  cases passed their focused rerun. Related successful customer preparations use
+  a two-second test budget to avoid coupling assertions to database speed. Only
+  tests/docs changed after the production-code check; the entire PostgreSQL suite
+  was rerun separately. That repeat exposed a lost-commit-ack fixture whose
+  0.6-second budget expired before its injection point (37 passes before
+  fail-fast). It now has a preparation margin; active-lease scenarios explicitly
+  keep their lease valid for the entire subsequent opening, rather than relying
+  on near-equal timers. All five claim/crash regressions passed. Related short
+  customer-only test budgets were aligned without changing runtime settings or
+  policy. The final PostgreSQL result is recorded below.
+- Diff review confirms only base-709 integration and the review corrections; no
+  Step 5 CLI, paid-access/grant/revision behavior, unrelated refactoring or
+  production migration. The generated schema includes the active window;
+  generated freshness, architecture, Ruff and documentation checks passed.
+- Node dependencies were synchronized from the merged lockfile with
+  `npm ci --ignore-scripts` before verification. All provider evidence is
+  **SIMULATED**. Browser E2E and real LBX/webhook acceptance remain unexecuted;
+  real authentication/delivery is still required before webhook enablement.
+
+Final verification after the corrections:
+
+- **PASS:** complete PostgreSQL suite, **393 tests**, via
+  `npm run test:api:postgres` with fail-fast; log
+  `.harness/any715-fixes-final-postgres.log`.
+- **PASS:** canonical fast-check components on the same production code:
+  **1,546 fast API**, **378 component** and **38 web boundary** tests, web lint,
+  Ruff, architecture and generated freshness; `check:fast` and subsequent
+  complete-check component logs are retained under `.harness/any715-fixes-*`.
+- **PASS:** production web build using the merged lockfile (Next 16.4.2 and
+  Vitest 4.1.12). Latest complete-check component log:
+  `.harness/any715-fixes-complete-check.log`. The earlier complete-command
+  attempts failed on the inherited test timing/fixture issues described above;
+  they are not reported as successful complete-command runs. After those
+  test-only corrections, the whole PostgreSQL suite passed separately.
+- Final documentation/static checks and diff review were rerun before the fix
+  commit. The diff contains the current base plus these corrections, preserves
+  the separate Step 4 commit, and leaves Step 5 unstarted.
+- **NOT_RUN:** browser E2E, real LBX/webhook delivery and production migration.
+  Webhook enablement remains gated on actual authentication/delivery QA. The
+  pre-existing worktree test PostgreSQL server remains running.
+
+There are no external billing mutations or new Step 5 operations.
+
+### Rebase on current ANY-709, 2026-10-29
+
+The owner's explicit rebase request supersedes the historical history-preservation
+instruction above. ANY-715 retains its seven own commits on ANY-709 `830f0df`;
+the former merge's review fixes remain a separate ordinary commit. Step 5 remains
+unstarted.
+
+ANY-709 now consolidates its billing and active-window operations in
+`20261029_0003`. Worker revision `20261028_0005` follows that revision with
+unchanged worker DDL. This supersedes REV-1's former predecessor reference;
+active deadlines, original financial history and send leases are still preserved.
+The four-revision chain has one head. Existing retired branch labels follow the
+base runbook's guarded, verified transition; no application database was changed.
+
+The historical multi-product fixture now retargets the current offer owner through
+normal publication before reusing the released offer. Existing accepted purchases
+keep their original tariff pins, preserving multi-product recovery/enrollment and
+webhook isolation coverage while respecting exclusive current offer ownership.
+
+Verification for this rebase:
+
+- Full `npm run check` passed on predecessor base `afb46c5`: 1,549 fast API,
+  405 PostgreSQL, 378 component and 38 boundary tests, web build/lint, Ruff,
+  architecture, documentation and generated freshness. Log:
+  `.harness/any715-rebase-verified-check.log`.
+- On final base `830f0df`, all 23 focused PostgreSQL migration tests passed;
+  worker upgrade/downgrade operations are unchanged. Log:
+  `.harness/any715-rebase-consolidated-migrations.log`.
+- The final-base canonical repeat passed fast API, web checks/build and static
+  checks, then was deliberately interrupted during the redundant PostgreSQL
+  repeat after the owner's clarification about excessive verification. It is
+  not a complete-check PASS. Log: `.harness/any715-rebase-latest709-check.log`.
+- Browser E2E, real LBX/webhook delivery and application/production migration
+  were not run. Only the disposable test database was used.
 
 ## 6. Final Verification & Review
 

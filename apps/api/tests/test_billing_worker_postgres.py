@@ -13,7 +13,7 @@ import pytest
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.composition.purchases import _observation
+from app.composition.purchase_observation import prepared_subscription_observation as _observation
 from app.composition.reconciliation import reconcile_subscription
 from app.domains.billing import work
 from app.domains.billing.contracts import BillingRefused
@@ -29,6 +29,8 @@ from app.models import (
     BillingStateObservation,
     BillingStateObservationKind,
     BillingProductAccessScope,
+    CommercialMappingRevision,
+    CommercialProductHead,
     PaidAccessState,
     PurchasedAllowance,
     AccessInvalidationOutbox,
@@ -74,11 +76,31 @@ def historical_link(
 ) -> Purchase:
     """Construct accepted historical fixtures via real local acceptance/bind paths.
 
-    Historical eligibility does not consult today's Kernel enablement. The two
-    enabled products and three disabled historical products share a supported tariff.
-    No external CREATE is executed by this fixture.
+    Historical eligibility does not consult today's Kernel enablement. Retarget
+    the current offer owner before reuse, preserving accepted pins to the shared
+    historical tariff for enabled and disabled products. No external CREATE runs.
     """
     config = step1_settings()
+    with factory() as db:
+        owner, revision = db.execute(
+            select(CommercialProductHead.product_id, CommercialProductHead.revision_number)
+            .join(
+                CommercialMappingRevision,
+                CommercialMappingRevision.mapping_revision_id == CommercialProductHead.mapping_revision_id,
+            )
+            .where(
+                CommercialProductHead.external_billing_account_id == template.account_id,
+                CommercialMappingRevision.billing_offer_id == template.accepted.selection.billing_offer_id,
+            )
+        ).one()
+    publish_product_link(
+        factory,
+        evaluation=link_document(selection=link_selection(product_id=owner, tariff_id=701 + number)),
+        expected_previous_revision=revision,
+        deadline=time.monotonic() + 5,
+        lock_timeout_seconds=1,
+        provider_origin=config.lbx_provider_origin,
+    )
     linked = publish_product_link(
         factory,
         evaluation=link_document(selection=link_selection(product_id=product)),
@@ -568,8 +590,6 @@ async def test_billing_worker_timeout_or_cancel_restart_preserves_facts_and_recl
     monkeypatch: pytest.MonkeyPatch,
     cancel: bool,
 ) -> None:
-    from app.infrastructure.preflight import PreflightDeadlineExceeded
-
     transport, sources, _ = scenario
     factory = postgres_session_factory
     activate(transport)
@@ -596,17 +616,25 @@ async def test_billing_worker_timeout_or_cancel_restart_preserves_facts_and_recl
     await asyncio.wait_for(entered.wait(), 2)
     if cancel:
         task.cancel()
-    with pytest.raises(asyncio.CancelledError if cancel else PreflightDeadlineExceeded):
-        await task
+    if cancel:
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    else:
+        assert await task  # Expired reads persist incomplete evidence, never positive facts.
     assert interrupted.admissions[WorkLane.URGENT].active_count == 0
     current = subs(factory)[0]
     assert current.projection_valid_until == original.projection_valid_until
     assert current.latest_observation_id == original.latest_observation_id
     with factory() as db:
         row = db.get(BillingWorkItem, jobs(factory)[0].work_item_id)
-        assert row.work_state == "running" and row.lease_owner
-        row.lease_expires_at = datetime.now(UTC) - timedelta(seconds=1)
-        db.get(ExternalSubscription, original.subscription_id).reconciliation_lease_expires_at = row.lease_expires_at
+        assert row.work_state == ("running" if cancel else "pending")
+        assert bool(row.lease_owner) is cancel
+        row.next_attempt_at = datetime.now(UTC) - timedelta(seconds=1)
+        if cancel:
+            row.lease_expires_at = row.next_attempt_at
+            db.get(
+                ExternalSubscription, original.subscription_id
+            ).reconciliation_lease_expires_at = row.lease_expires_at
         db.commit()
     monkeypatch.setattr(sources.require_lbx(), "get_user", original_get)
     restarted = BillingWorker(step1_settings(), factory, sources.require_lbx())
@@ -728,3 +756,69 @@ async def test_billing_worker_incomplete_first_read_cannot_expire_preparation_ev
         current = db.get(ExternalSubscription, current.subscription_id)
         evidence = db.get(BillingStateObservation, current.latest_observation_id)
         assert evidence.access_scope_id is not None
+
+
+@pytest.mark.parametrize("cancel", [False, True])
+async def test_billing_worker_on_time_proof_keeps_delayed_apply_owned(
+    scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    cancel: bool,
+) -> None:
+    from threading import Event
+    from app.composition import reconciliation
+    from app.infrastructure.preflight import PreflightCleanupPending
+
+    transport, sources, _ = scenario
+    factory = postgres_session_factory
+    activate(transport)
+    before = subs(factory)[0].latest_observation_id
+    entered, release = Event(), Event()
+    apply = reconciliation.apply_reconciliation
+
+    def delayed(*args: object, **kwargs: object) -> UUID:
+        entered.set()
+        assert release.wait(5)
+        return apply(*args, **kwargs)
+
+    monkeypatch.setattr(reconciliation, "apply_reconciliation", delayed)
+    worker = BillingWorker(
+        step1_settings(
+            billing_worker_io_timeout_seconds=0.3,
+            preflight_cleanup_timeout_seconds=0.01,
+            billing_worker_urgent_concurrency=1,
+        ),
+        factory,
+        sources.require_lbx(),
+    )
+    task = asyncio.create_task(worker.tick(WorkLane.URGENT))
+    try:
+        async with asyncio.timeout(2):
+            while not entered.is_set():
+                await asyncio.sleep(0.005)
+        # The read completed in budget. Its short fenced transaction has the
+        # existing 30s apply margin, independent of the source deadline.
+        await asyncio.sleep(0.35)
+        assert not task.done() and worker.db_limiters[WorkLane.URGENT].borrowed_tokens == 1
+        assert subs(factory)[0].latest_observation_id == before
+        if cancel:
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+            assert worker.cleanup_pending == 1
+            with pytest.raises(PreflightCleanupPending):
+                await worker.aclose()
+        else:
+            assert worker.admissions[WorkLane.URGENT].active_count == 1
+        assert not await worker.tick(WorkLane.URGENT)
+    finally:
+        release.set()
+        owners = set(worker.db_tasks[WorkLane.URGENT])
+        if owners:
+            await asyncio.wait_for(asyncio.gather(*owners), 2)
+        if not cancel:
+            assert await task
+    assert subs(factory)[0].latest_observation_id != before
+    assert subs(factory)[0].financial_access_status == "allowed"
+    assert worker.db_limiters[WorkLane.URGENT].borrowed_tokens == worker.cleanup_pending == 0
+    await worker.aclose()
