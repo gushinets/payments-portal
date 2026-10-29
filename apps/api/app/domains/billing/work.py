@@ -33,6 +33,21 @@ NORMAL_SECONDS = 900
 URGENT_TRUST_WINDOW = timedelta(minutes=30)
 
 
+def reconciliation_outcome(factory: SessionFactory, observation_id: UUID) -> tuple[str, datetime]:
+    """Telemetry reads committed evidence; queue progress is not proof success."""
+    with factory() as db:
+        observation = queries.observation(db, observation_id)
+        outcome = (
+            "verified"
+            if observation.completeness_classification == "complete"
+            and observation.result_classification == "COMPLETE_MATCH"
+            else "incomplete"
+            if observation.completeness_classification == "incomplete"
+            else "conflict"
+        )
+        return outcome, as_utc(observation.observed_at)
+
+
 def key(subscription: ExternalSubscription) -> str:
     return f"{subscription.external_billing_account_id}:{subscription.subscription_id}"
 

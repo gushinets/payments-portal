@@ -169,6 +169,17 @@
             ],
             "title": "Last Scan At"
           },
+          "last_verified_subscription_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Verified Subscription At"
+          },
           "oldest_due_at": {
             "anyOf": [
               {

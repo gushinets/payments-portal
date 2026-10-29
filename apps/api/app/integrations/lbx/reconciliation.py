@@ -9,6 +9,7 @@ from app.domains.billing.reconciliation_contracts import (
     CommercialProof,
     IdentityProof,
     ReconciliationSubject,
+    SubscriptionCandidateSubject,
     SubscriptionProof,
 )
 from app.infrastructure.preflight import PreflightBudget, PreflightDeadlineExceeded
@@ -71,7 +72,7 @@ def _calendar_complete(calendar: dict[str, str | None]) -> bool:
 
 
 def normalize_subscription(
-    subject: ReconciliationSubject,
+    subject: ReconciliationSubject | SubscriptionCandidateSubject,
     configuration: Settings,
     *,
     user: LbxUser | None,
@@ -245,7 +246,11 @@ def normalize_subscription(
 
 
 async def read_subscription_proof(
-    client: LbxServerClient, subject: ReconciliationSubject, configuration: Settings, *, budget: PreflightBudget
+    client: LbxServerClient,
+    subject: ReconciliationSubject | SubscriptionCandidateSubject,
+    configuration: Settings,
+    *,
+    budget: PreflightBudget,
 ) -> SubscriptionProof:
     started = utc_now()
     user, agreement, tariff, subscription = None, None, None, None

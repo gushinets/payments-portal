@@ -28,6 +28,17 @@ class IdentityProof(StrEnum):
 
 
 @dataclass(frozen=True)
+class SubscriptionCandidateSubject:
+    """Original possible-send candidate; no canonical local subscription yet."""
+
+    purchase: Purchase
+    customer: CustomerOpen
+    agreement_id: str
+    agreement_key: str
+    provider_subscription_id: str
+
+
+@dataclass(frozen=True)
 class ReconciliationSubject:
     subscription_id: UUID
     purchase: Purchase

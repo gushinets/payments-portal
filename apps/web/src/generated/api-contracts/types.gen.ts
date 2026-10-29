@@ -114,6 +114,10 @@ export type BillingHealthResponse = {
      */
     last_scan_at?: string | null;
     /**
+     * Last Verified Subscription At
+     */
+    last_verified_subscription_at?: string | null;
+    /**
      * Oldest Due At
      */
     oldest_due_at?: string | null;

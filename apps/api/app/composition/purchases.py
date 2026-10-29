@@ -203,6 +203,7 @@ async def _find_financial(
     customer: CustomerOpen,
     *,
     budget: PreflightBudget,
+    require_discovery: bool = False,
 ) -> tuple[int, Subscription | None] | None:
     user_id = int(customer.provider_id)
     agreement_op = _operation(purchase, Kind.AGREEMENT)
@@ -210,15 +211,21 @@ async def _find_financial(
         saved = operation.bound_id or operation.candidate_id
         ids = (
             (int(saved),)
-            if saved
+            if saved and not require_discovery
             else await client.discover_agreements(user_id=user_id, number=operation.key, budget=budget)
         )
         if len(ids) > 1:
             raise LbxScopeMismatch()
         if not ids:
             return None
+        if require_discovery and saved and ids != (int(saved),):
+            raise LbxScopeMismatch()
         point = await client.get_agreement(agreement_id=ids[0], budget=budget)
         prove_agreement(point, user_id=user_id, seller_id=purchase.accepted.seller_id, number=operation.key)
+        if require_discovery and (
+            operation.agreement_create_date is None or point.create_date != operation.agreement_create_date.isoformat()
+        ):
+            raise LbxResponseInvalid()
         return point.agreement_id, None
     if agreement_op.bound_id is None:
         raise PurchaseRefused("purchase_pending", 409)
@@ -231,6 +238,8 @@ async def _find_financial(
     if saved:
         # A known ID remains authoritative when the non-unique outer hint changes.
         if any(value != int(saved) for value in ids):
+            raise LbxScopeMismatch()
+        if require_discovery and ids != (int(saved),):
             raise LbxScopeMismatch()
         ids = (int(saved),)
     if len(ids) > 1:

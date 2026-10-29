@@ -229,6 +229,16 @@ provider payloads, secrets, or card/token/payment values.
 
 ## Recovery
 
+ANY-715 Step 5 purchase diagnostics distinguish durable queue progress from
+complete verified subscription proof. Health/metrics expose both; outage/backlog
+never extends source trust. The privileged CLI reuses worker reconciliation and
+financial recovery. Supported review resolutions recheck current original
+provenance/fences under business locks and commit facts/bindings, audit and queue
+changes together. Identical completed commands replay without writes or source
+calls; stale/different commands refuse. A failed read may leave its finite
+reconciliation lease, never an unbounded replacement source request. Terminal
+holds/history and fixed UNKNOWN windows survive inspection, rechecks and refusals.
+
 ANY-715 Step 1 shared reconciliation uses short database-time fenced claims and
 apply transactions around one bounded four-point source read set. Incomplete
 attempts never renew finite source trust; owned blocks/conflicts reduce usability

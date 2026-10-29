@@ -372,6 +372,14 @@ or access-revision writes. Migration `20261028_0005` follows consolidated billin
 `manual_review_cases` stores bounded evidence and optional resolution proof.
 It cannot itself activate access, invent an allowance, or rewrite historical
 purchase/mapping evidence.
+ANY-715 Step 5 records `billing-operator-resolution:v1` in those existing slots:
+OS principal, reason/reference, command digest, before/after identities,
+supporting observation and versioned fresh-proof summary. Original evidence is
+preserved. Financial conflict evidence retains the prior operation state/send
+fence to distinguish possible-send history from completed no-send. Known cases
+without sufficient preserved proof refuse binding; no retrospective assertion
+or force override supplies it. Audit, permitted shared apply/bind and scheduling
+commit atomically; terminal holds remain. No Step 5 DDL is required.
 
 ## Persisted vocabularies
 
