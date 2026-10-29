@@ -1780,6 +1780,61 @@ Only pytest-owned disposable databases were migrated. All provider inputs remain
 simulated; browser E2E, real LBX/webhook, application/production migration and
 launch gates are unchanged. Webhooks remain **DISABLED/POLLING-ONLY**.
 
+### CodeRabbit worker refusal correction — 2026-10-29
+
+The owner authorized fixing the validated worker reporting comment in
+[PR #154](https://github.com/gushinets/payments-portal/pull/154#discussion_r4407861676)
+over HEAD `acb0fb2`, preserving the preceding independent-review corrections.
+
+`retry_work()` now acknowledges only a committed retry/quarantine under the
+current queue owner. The worker records that result as `refused`, advances
+durable progress and retains the safe refusal code without reporting an
+execution failure. Lost ownership and failed/uncertain commit acknowledgement
+still reach the existing failure boundary. Common progress bookkeeping remains
+separate from verified subscription proof. Scheduling, generation coalescing,
+finite leases, source trust and paid-access authority are unchanged.
+
+Verification:
+
+- Before the production change, the new committed-refusal regression failed
+  and emitted the worker-failure warning after the retry was saved.
+- All **7** new PostgreSQL regressions passed: busy reschedule, a concurrent
+  generation hint, committed quarantine, changed queue owner, expired lease,
+  failed commit and lost acknowledgement after an actual commit. Each begins
+  with successful production worker proof using PostgreSQL and simulated LBX,
+  and checks preserved subscription facts, progress/proof separation, attempt
+  metrics and exception reporting. Logs:
+  `.harness/any715-worker-refusal-red.log` and
+  `.harness/any715-worker-refusal-postgres.log`.
+- The initial canonical attempt inherited an enabled development Kernel mock
+  and HTTP origin, causing four production-configuration tests to fail. Setting
+  `KERNEL_MOCK_ENABLED=0`, `KERNEL_BASE_URL=` and `KERNEL_SERVICE_TOKEN=` only
+  in the child check process resolved those four tests. The worktree `.env`
+  and running application configuration were not edited. Log:
+  `.harness/any715-worker-refusal-environment-recheck.log`.
+- Full `npm run check` in that isolated environment passed fast API
+  (**1,586**), components (**378**), web boundaries (**38**, including
+  typecheck), lint, production build, documentation, architecture and generated
+  freshness. PostgreSQL completed **466 PASS / 1 FAIL**. The sole failure was
+  the existing timeout/restart test's assumption that both DB claims must finish
+  and source I/O must start inside its 100 ms budget. The budget legitimately
+  expired before source entry, so the test's separate entry wait timed out.
+  Log: `.harness/any715-worker-refusal-check.log`.
+- Corrected only that test's entry expectation: explicit cancellation still
+  waits for the held source, while a timeout can precede HTTP. A new parameter
+  deterministically consumes the budget after the real source claim commits,
+  verifies no source entry, preserved facts/queue ownership and successful
+  restart. Production deadlines and runtime code were unchanged after the full
+  check. The complete final PostgreSQL worker selection passed **30** cases,
+  including all seven refusal regressions and the three timeout/cancel variants.
+  Log: `.harness/any715-worker-refusal-worker.log`. The full canonical command
+  was not repeated after this test-only correction and is not recorded as an
+  unqualified PASS.
+- Final focused Ruff/format and diff-whitespace checks passed.
+
+Only disposable test databases were used. Browser E2E, real LBX/webhook delivery,
+application/production migration and launch gates remain unchanged.
+
 ## 6. Final Verification & Review
 
 ### Complete behavior scenario
