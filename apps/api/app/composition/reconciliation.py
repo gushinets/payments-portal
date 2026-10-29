@@ -15,6 +15,7 @@ from app.domains.billing.reconciliation_contracts import CommercialProof, Identi
 from app.domains.catalog.publication import SessionFactory
 from app.infrastructure.preflight import PreflightAdmission, PreflightBudget, PreflightDeadlineExceeded
 from app.domains.billing.work_contracts import WorkClaim
+from app.domains.billing.operator_contracts import ReviewResolution
 from app.integrations.lbx.client import LbxServerClient
 from app.integrations.lbx.reconciliation import read_subscription_proof
 
@@ -29,6 +30,7 @@ async def reconcile_subscription(
     work_claim: WorkClaim | None = None,
     budget: PreflightBudget | None = None,
     delegate: Callable[..., Awaitable[Any]] = run_in_threadpool,
+    resolution: ReviewResolution | None = None,
 ) -> UUID:
     if configuration.lbx_configuration_error is not None:
         raise BillingRefused("billing_not_configured")
@@ -62,7 +64,7 @@ async def reconcile_subscription(
             ("read_budget_exhausted",),
             (),
         )
-    return await delegate(apply_reconciliation, factory, subject, proof, work_claim=work_claim)
+    return await delegate(apply_reconciliation, factory, subject, proof, work_claim=work_claim, resolution=resolution)
 
 
 @asynccontextmanager
