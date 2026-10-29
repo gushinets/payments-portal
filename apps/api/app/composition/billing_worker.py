@@ -25,21 +25,24 @@ async def billing_worker_resources(
     if not configuration.billing_worker_enabled or configuration.lbx_configuration_error is not None:
         yield None
         return
+    source_concurrency = (
+        configuration.billing_worker_urgent_concurrency + configuration.billing_worker_normal_concurrency
+    )
     engine = None
     if factory is None:
         options = {"pool_pre_ping": True}
         if configuration.database_url.startswith("postgresql"):
             options.update(
-                pool_size=configuration.billing_worker_urgent_concurrency
-                + configuration.billing_worker_normal_concurrency
-                + 1,
+                pool_size=source_concurrency + 1,
                 max_overflow=0,
                 pool_timeout=2,
                 connect_args={"options": "-c statement_timeout=10000 -c lock_timeout=2000"},
             )
         engine = create_engine(configuration.database_url, **options)
         factory = sessionmaker(bind=engine, autoflush=False, autocommit=False)
-    client = LbxServerClient(configuration, transport=transport)
+    # Each admitted source owner makes one HTTP call at a time. Both HTTP pools
+    # must fit all normal and urgent owners, including retained cleanup slots.
+    client = LbxServerClient(configuration, transport=transport, max_connections=source_concurrency)
     worker = BillingWorker(configuration, factory, client)
     try:
         await worker.start()

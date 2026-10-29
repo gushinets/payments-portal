@@ -82,13 +82,16 @@ def test_billing_subscription_reconciliation_commercial(change: dict, classifica
 
 
 @pytest.mark.parametrize("field,value", [("price", 15), ("multiplicator", 2), ("tariff_service_id", 1002)])
-def test_billing_subscription_reconciliation_effective_drift(field: str, value: int) -> None:
+@pytest.mark.parametrize("missing", [None, "total_price", "period_length"])
+def test_billing_subscription_reconciliation_effective_drift(field: str, value: int, missing: str | None) -> None:
     subject = subject_factory()
     raw = subscription_factory().model_dump()
     raw["services"][0][field] = value
     # A catalog price or unchanged provider instance cannot mask effective drift.
     raw["services"][0]["tariff_price"] = 999
     raw["subscription_instance_id"] = 123
+    if missing is not None:
+        raw[missing] = None
     point = Subscription.model_validate(raw)
     proof = normalize_subscription(
         subject,
@@ -99,6 +102,23 @@ def test_billing_subscription_reconciliation_effective_drift(field: str, value: 
         subscription=point,
     )
     assert proof.commercial == CommercialProof.MISMATCH
+
+
+@pytest.mark.parametrize(
+    "change", [{"currency_symbol": "USD"}, {"period_length": 2}, {"is_demo": True}, {"services": []}]
+)
+def test_billing_subscription_reconciliation_known_terms_conflict_survives_missing_total(change: dict) -> None:
+    subject = subject_factory()
+    point = subscription_factory().model_copy(update={"total_price": None, **change})
+    proof = normalize_subscription(
+        subject,
+        step1_settings(),
+        user=user_factory(),
+        agreement=agreement_factory(),
+        tariff=tariff_factory(subject),
+        subscription=point,
+    )
+    assert proof.identity == IdentityProof.MATCH and proof.commercial == CommercialProof.MISMATCH
 
 
 @pytest.mark.parametrize(
