@@ -22,7 +22,7 @@ from apps.api.tests.test_target_persistence_postgres import (
 
 pytestmark = pytest.mark.postgres
 PREDECESSOR = "20261001_0002"
-HEAD = "20261029_0003"
+HEAD = "20261028_0005"
 
 
 def _columns(engine: Engine) -> dict[str, list[str]]:

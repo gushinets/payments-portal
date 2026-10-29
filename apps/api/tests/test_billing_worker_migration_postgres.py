@@ -25,13 +25,13 @@ def test_billing_worker_migration_preserves_populated_work_and_unique_coalescing
             connection.execute(
                 text("""INSERT INTO billing_work_items
                 (work_item_id, work_kind, scope_kind, scope_reference, coalescing_key,
-                 payload_schema_version, payload_document, next_attempt_at, work_state, lease_owner, lease_expires_at)
+                 payload_schema_version, payload_document, next_attempt_at, work_state, lease_owner, lease_expires_at, active_recovery_deadline_at)
                 VALUES (:id, 'external_create_recovery', 'create_operation', 'retained-operation', 'retained-operation',
-                        'v1', '{}', now() + interval '2 hours', 'pending', 'customer-send:retained', now() + interval '60 seconds')"""),
+                        'v1', '{}', now() + interval '2 hours', 'pending', 'customer-send:retained', now() + interval '60 seconds', now() + interval '2 hours')"""),
                 {"id": identity},
             )
             before = connection.execute(text("SELECT to_jsonb(w) FROM billing_work_items w")).scalar_one()
-        command.upgrade(config, "20261028_0004")
+        command.upgrade(config, "20261028_0005")
         with postgres_engine.connect() as connection:
             after = connection.execute(text("SELECT to_jsonb(w) FROM billing_work_items w")).scalar_one()
             assert after == {**before, "enqueue_generation": 0, "last_attempt_started_at": None}
