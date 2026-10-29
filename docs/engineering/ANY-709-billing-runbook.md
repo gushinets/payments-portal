@@ -3,7 +3,7 @@
 Status: IMPLEMENTED_AND_TESTED; owner test-payment and SDK-readiness QA complete;
 independent final review pending. Ordinary customer viewing,
 accepted purchase preparation and the selected-purchase cabinet Widget are
-implemented. The current migration is `20261027_0003_normal_billing`.
+implemented. The current migration is `20261029_0003_normal_billing`.
 The owner completed YooKassa payment on the intended agreement; see the
 [recorded result](#owner-payment-result-and-refreshing-the-widget). The
 [current acceptance ledger](../exec-plans/completed/ANY-709-implementation-plan.md#current-acceptance-and-final-review)
@@ -88,7 +88,7 @@ outside runtime.json, doctor output and public web settings. Do not print
 ## Human setup and privileged CLI
 
 Run only against the intended local environment, never a production URL for
-development migrations. Apply the current head `20261027_0003` through `npm run migrate:api`
+development migrations. Apply the current head `20261029_0003` through `npm run migrate:api`
 with the intended host database configuration, then `npm run repo:up -- --reuse`.
 The harness's normal migrate service also applies the chain during startup.
 On hosts without `python` on PATH, prefix npm commands with
@@ -96,38 +96,59 @@ On hosts without `python` on PATH, prefix npm commands with
 
 ### Consolidated ANY-709 migration
 
-The branch contains consolidated migration `20261027_0003` after main's
-unchanged `20261001_0002`, followed by additive `20261028_0004` for the active
-financial recovery window. The consolidated migration retains all operations from the former branch-local
-`20261026_0003` / `0004` / `0005` / `20261027_0006` chain, including indexes,
-constraints, triggers, operation-account backfill and purchase holds. No schema,
-legal seed, historical consent or accepted-purchase meaning changed.
+The branch contains one migration, `20261029_0003`, after main's unchanged
+`20261001_0002`. It retains all operations from the former branch-local
+`20261026_0003` / `0004` / `0005` / `20261027_0006` chain and the later
+`20261028_0004` active financial recovery window, including indexes, constraints,
+triggers, operation-account backfill and purchase holds. Upgrade order is the
+exact old `0003` then `0004` order; downgrade reverses `0004` before `0003`.
+The final schema, legal seed, historical consent and accepted-purchase meaning
+are unchanged.
 
 - Fresh databases and databases at `20261001_0002` use the normal migration
   command below. Conflicting old identities or held scopes abort the transaction;
   the migration never chooses, deletes or relabels those records.
-- Databases already at `20261027_0003` run normal `upgrade head` to add the nullable
-  active recovery deadline. Never replay the consolidated migration.
-- A fully upgraded database at retired `20261027_0006` has the same schema, but
+- A database already at the final `20261029_0003`, with the nullable active
+  recovery column and the complete expected schema, runs normal `upgrade head`
+  as a no-op.
+- A **pre-consolidation** database at `20261027_0003` may lack
+  `billing_work_items.active_recovery_deadline_at`. The new distinct revision ID
+  makes `upgrade head` refuse this retired label instead of silently skipping
+  the missing column. Finish its
+  normal upgrade to `20261028_0004` using the old checkout `afb46c5` before
+  switching to this checkout. Do not stamp an unapplied column as complete.
+- For an old fully applied `20261028_0004`, stop concurrent migration processes,
+  retain a protected backup and compare all columns/types/defaults, constraints,
+  indexes, functions and triggers with a fresh final `20261029_0003` database.
+  After an exact match, use a guarded transaction that requires the single old
+  `0004` version row to change only `alembic_version` to `20261029_0003`.
+  Preserve/fingerprint all application rows before and after, then verify normal
+  `upgrade head` is a no-op. Never replay the consolidated DDL on that database.
+- A fully upgraded database at retired `20261027_0006` has the pre-window schema, but
   its old label is not in the new graph. Verify that its columns, constraints,
-  indexes, functions and triggers match a fresh `20261027_0003` database, retain a
-  protected backup, then change only its `alembic_version` label to
+  indexes, functions and triggers match the pre-window `0003` in checkout
+  `afb46c5`, retain a protected backup, then change only its `alembic_version` label to
   `20261027_0003` in a guarded transaction. Preserve all application rows and
-  verify normal `upgrade head` afterward. Never rerun the consolidated DDL over
-  that schema. The owner explicitly authorized this local transition on 2026-10-27.
+  run old `upgrade head` in `afb46c5` to reach `20261028_0004`. Then perform the
+  final verified label transition above. Never rerun the consolidated DDL over
+  that schema. The owner explicitly authorized the earlier local `0006 -> 0003`
+  transition on 2026-10-27.
 - A database still at retired `20261026_0003`, `0004` or `0005` must first run
   the original chain to `20261027_0006` using the pre-consolidation checkout
   (`db63966`) and the same protected deployment/database configuration. Then
-  perform the verified label transition above and switch to the consolidated
-  checkout. Do not stamp over unapplied operations.
+  follow the `0006` route above, including the old upgrade to `0004`, before the
+  final label transition and switch to this checkout. Do not stamp over unapplied operations.
   This is an operator action, not an automatic compatibility rewrite.
 
-The local development transition has completed: `0006 -> 0003`, exact schema
+The earlier local development transition completed: `0006 -> 0003`, exact schema
 comparison PASS, all rows in 27 application tables preserved, and normal
 `upgrade head` PASS afterward. The protected pre-transition backup is
 `.harness/backups/any709-before-0003-20261027T065436Z.dump` (0600, ignored).
 This was a revision-label update of an already-applied schema, not a downgrade
 or repeat application of the consolidated migration.
+It does not assert application of the later active-window column or the final
+2026-10-29 consolidation. The local application DB was unavailable during that
+consolidation, and no application database was started or modified.
 
 The following command changes the configured application database and is for the
 operator's intended environment only. Retired labels require the transition
@@ -141,7 +162,7 @@ Focused automated migration/regression command (disposable `_tests` database;
 the existing test PostgreSQL server must already be available):
 
 ```bash
-PATH="$PWD/.venv/bin:$PATH" PYTEST_ADDOPTS='-k "test_alembic_postgres or test_any709_migration_postgres or test_any709_step1_postgres or test_any709_step2_postgres or test_any709_step3_postgres"' npm run test:api:postgres
+PATH="$PWD/.venv/bin:$PATH" PYTEST_ADDOPTS='-k "test_alembic_postgres or test_any709_migration_postgres or test_any709_recovery_migration_postgres or test_any709_step1_postgres or test_any709_step2_postgres or test_any709_step3_postgres"' npm run test:api:postgres
 ```
 
 ### CLI execution and product linking
@@ -214,7 +235,7 @@ explicitly; never relabel it or ask customers to register again.
 The fresh connection ID derives from canonical provider origin plus deployment
 tenant/region, never login or password. For an existing credential-derived v1
 scope, keep the previous username configured for one authorized identical
-`publish` after applying the current head `20261027_0003`. The prior hash must match this exact
+`publish` after applying the current head `20261029_0003`. The prior hash must match this exact
 origin/username. The command records the proven origin on the mutable head,
 returns the same immutable link (`inserted=false`), and preserves its scope/FKs.
 Subsequent username/password rotation and new links use that proven storage
@@ -778,8 +799,9 @@ Choose host processes OR containers for application ports. The optional technica
 Kernel mock is configured through `KERNEL_MOCK_ENABLED=1` plus matching explicit
 mock/service tokens, never a billing test profile. The setup above is for the
 local application DB, **not** pytest's disposable `_tests` DB. Step 4 applies no
-migration. The current chain ends at `20261027_0003`; prior owner authorization
-applied it locally and does not authorize production migration or this run.
+migration. The current chain ends at `20261029_0003`; earlier owner authorization
+applied the previous chain locally and does not authorize production migration
+or imply application of this consolidated revision.
 
 For an existing worktree, this helper resolves its exact Compose project,
 protected env and optional mock overlay without printing private configuration:
@@ -1045,10 +1067,11 @@ A process crash or lost claim acknowledgement before persisting this evidence
 remains possible-send/UNKNOWN and GET-only. Empty GET, deadline expiry, HTTP 500,
 read/write timeout and cancellation never create no-send proof. A GET-only
 recovery cannot send even a proven-unsent command. Forward migration
-`20261028_0004` adds only the nullable active-window column; it preserves all old
-rows/evidence and the original evidence triggers. Run normal `upgrade head`
-before deploying this code; do not roll back to an older binary while a resumed
-financial send is unresolved.
+`20261029_0003` includes the former `20261028_0004` nullable active-window
+column; it preserves all old rows/evidence and the original evidence triggers.
+Fresh/main databases use normal `upgrade head`; already-applied branch databases
+require the verified transition above before deployment. Do not roll back to an
+older binary while a resumed financial send is unresolved.
 
 The occupied business scope is `(user_id, product_id)`, not tariff ID. Different
 products may use supported selections of the same tariff. Inventory ignores a

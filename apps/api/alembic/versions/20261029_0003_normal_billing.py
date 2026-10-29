@@ -1,12 +1,12 @@
-"""Normal LBX billing: product links, customer identity and purchase preparation.
+"""Normal LBX billing: links, customer identity, purchase and recovery windows.
 
-Revision ID: 20261027_0003
+Revision ID: 20261029_0003
 Revises: 20261001_0002
 
-Consolidates the branch-local 0003-0006 revisions without changing their SQL
-operations. This is the third revision after the unchanged main baseline.
-Already-upgraded local databases require a verified revision-label transition
-from the retired 20261027_0006; never replay this DDL over an existing schema.
+Consolidates retired 20261027_0003 and 20261028_0004 in their
+original upgrade/downgrade order. Main's first two revisions remain unchanged.
+Existing branch databases must finish the old chain and verify schema/data
+before a guarded revision-label transition; never replay this DDL over them.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from __future__ import annotations
 from alembic import op
 import sqlalchemy as sa
 
-revision = "20261027_0003"
+revision = "20261029_0003"
 down_revision = "20261001_0002"
 branch_labels = None
 depends_on = None
@@ -174,9 +174,15 @@ def upgrade() -> None:
         CREATE TRIGGER trg_guard_financial_create_evidence BEFORE UPDATE OR DELETE ON external_create_operations
         FOR EACH ROW EXECUTE FUNCTION guard_financial_create_evidence();
     """)
+    # Retain the old deadline on existing work. Only a newly fenced, permitted
+    # financial send records its own active recovery window.
+    op.add_column(
+        "billing_work_items", sa.Column("active_recovery_deadline_at", sa.DateTime(timezone=True), nullable=True)
+    )
 
 
 def downgrade() -> None:
+    op.drop_column("billing_work_items", "active_recovery_deadline_at")
     # Purchase holds and permanent financial-create evidence.
     op.execute("DROP TRIGGER trg_guard_financial_create_evidence ON external_create_operations")
     op.execute("DROP FUNCTION guard_financial_create_evidence()")

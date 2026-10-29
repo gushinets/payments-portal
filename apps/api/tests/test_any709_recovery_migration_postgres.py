@@ -1,4 +1,4 @@
-"""The additive recovery-window migration retains all existing billing evidence."""
+"""The consolidated migration retains recovery evidence and original deadlines."""
 
 from __future__ import annotations
 
@@ -26,18 +26,18 @@ def test_recovery_window_upgrade_preserves_history_and_original_deadline_fallbac
     reset_public_schema(postgres_engine)
     operation_id = uuid4()
     with alembic_test_config(database_test_url) as config:
-        command.upgrade(config, "20261027_0003")
+        command.upgrade(config, "20261001_0002")
         with postgres_engine.begin() as connection:
             _seed_subscription_graph(connection)
             connection.execute(
                 text(
                     "INSERT INTO external_create_operations (create_operation_id, operation_kind, customer_id, "
-                    "purchase_intent_id, external_billing_account_id, request_correlation_key, operation_state, "
-                    "send_fence, unknown_since, unknown_recovery_deadline_at, recovery_hint_schema_version, recovery_hint_document) "
-                    "VALUES (:id, 'agreement', :customer, :purchase, 'account-a', 'retained-key', 'unknown', :fence, "
+                    "purchase_intent_id, request_correlation_key, operation_state, "
+                    "unknown_since, unknown_recovery_deadline_at, recovery_hint_schema_version, recovery_hint_document) "
+                    "VALUES (:id, 'agreement', :customer, :purchase, 'retained-key', 'unknown', "
                     "now(), now() + interval '2 hours', 'financial-create:v1', '{\"request\":{\"create_date\":\"2026-10-27\"}}')"
                 ),
-                {"id": operation_id, "customer": CUSTOMER_ID, "purchase": PURCHASE_ID, "fence": uuid4()},
+                {"id": operation_id, "customer": CUSTOMER_ID, "purchase": PURCHASE_ID},
             )
             connection.execute(
                 text(

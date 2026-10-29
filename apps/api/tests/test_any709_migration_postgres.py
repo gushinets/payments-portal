@@ -6,9 +6,10 @@ from uuid import uuid4
 
 import pytest
 from alembic import command
+from alembic.util.exc import CommandError
 from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine, URL
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from apps.api.tests.support.postgres import alembic_test_config, reset_public_schema
 from apps.api.tests.test_target_persistence_postgres import (
@@ -21,7 +22,7 @@ from apps.api.tests.test_target_persistence_postgres import (
 
 pytestmark = pytest.mark.postgres
 PREDECESSOR = "20261001_0002"
-HEAD = "20261028_0004"
+HEAD = "20261029_0003"
 
 
 def _columns(engine: Engine) -> dict[str, list[str]]:
@@ -152,6 +153,17 @@ def test_any709_existing_head_preserves_names_origins_fences_and_all_rows(
             ),
             {"user": USER_ID, "purchase": PURCHASE_ID},
         )
+        connection.execute(
+            text(
+                "INSERT INTO billing_work_items (work_item_id, work_kind, scope_kind, scope_reference, "
+                "coalescing_key, payload_schema_version, payload_document, next_attempt_at, "
+                "active_recovery_deadline_at, attempt_count, work_state) "
+                "VALUES (:id, 'external_create_recovery', 'create_operation', 'retained-operation', "
+                "'retained-active-window', 'financial-recovery:v1', '{\"candidate_id\":\"456\"}', "
+                "now() + interval '1 hour', now() + interval '2 hours', 1, 'pending')"
+            ),
+            {"id": uuid4()},
+        )
     columns = _columns(migrated_database)
     before = _rows(migrated_database, columns)
     with alembic_test_config(database_test_url) as config:
@@ -177,3 +189,66 @@ def test_any709_ambiguous_legacy_holds_abort_entire_consolidated_upgrade(
     assert _rows(postgres_engine, columns) == before
     with postgres_engine.connect() as connection:
         assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == PREDECESSOR
+
+
+def test_any709_consolidated_roundtrip_preserves_populated_main_rows(
+    postgres_engine: Engine, database_test_url: URL
+) -> None:
+    reset_public_schema(postgres_engine)
+    with alembic_test_config(database_test_url) as config:
+        command.upgrade(config, PREDECESSOR)
+        with postgres_engine.begin() as connection:
+            _seed_subscription_graph(connection)
+        columns = _columns(postgres_engine)
+        before = _rows(postgres_engine, columns)
+        command.upgrade(config, "head")
+        assert "active_recovery_deadline_at" in _columns(postgres_engine)["billing_work_items"]
+        command.downgrade(config, PREDECESSOR)
+        assert _columns(postgres_engine) == columns
+        assert _rows(postgres_engine, columns) == before
+        command.upgrade(config, "head")
+    assert _rows(postgres_engine, columns) == before
+
+
+def test_any709_refused_downgrade_rolls_back_the_recovery_column_drop(
+    migrated_database: Engine, database_test_url: URL
+) -> None:
+    with migrated_database.begin() as connection:
+        _seed_subscription_graph(connection)
+        connection.execute(text("UPDATE external_subscriptions SET financial_access_status = 'unverified'"))
+    columns = _columns(migrated_database)
+    before = _rows(migrated_database, columns)
+    with (
+        alembic_test_config(database_test_url) as config,
+        pytest.raises(DBAPIError, match="unverified preparation requires explicit migration decision"),
+    ):
+        command.downgrade(config, PREDECESSOR)
+    assert _columns(migrated_database) == columns
+    assert _rows(migrated_database, columns) == before
+    with migrated_database.connect() as connection:
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == HEAD
+        assert (
+            connection.execute(
+                text("SELECT count(*) FROM pg_trigger WHERE tgname = 'trg_guard_financial_create_evidence'")
+            ).scalar_one()
+            == 1
+        )
+
+
+@pytest.mark.parametrize("retired_head", ["20261027_0003", "20261028_0004"])
+def test_any709_retired_heads_cannot_silently_skip_consolidated_operations(
+    migrated_database: Engine, database_test_url: URL, retired_head: str
+) -> None:
+    with migrated_database.begin() as connection:
+        _seed_subscription_graph(connection)
+        if retired_head == "20261027_0003":
+            connection.execute(text("ALTER TABLE billing_work_items DROP COLUMN active_recovery_deadline_at"))
+        connection.execute(text("UPDATE alembic_version SET version_num = :old"), {"old": retired_head})
+    columns = _columns(migrated_database)
+    before = _rows(migrated_database, columns)
+    with alembic_test_config(database_test_url) as config, pytest.raises(CommandError, match="Can't locate revision"):
+        command.upgrade(config, "head")
+    assert _columns(migrated_database) == columns
+    assert _rows(migrated_database, columns) == before
+    with migrated_database.connect() as connection:
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == retired_head

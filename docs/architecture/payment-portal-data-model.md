@@ -1,22 +1,22 @@
 # Payment Portal Data Model and Backend Invariants
 
 Status: authoritative current-state schema reference
-Last updated: 2026-10-28 (additive active financial recovery window after consolidated revision 0003)
+Last updated: 2026-10-29 (one consolidated ANY-709 migration, including active recovery windows)
 
 > **CURRENT AS-BUILT SCHEMA REFERENCE**
 
 This document describes the schema produced by the current Alembic chain:
 
 ```text
-20260924_0001 -> 20261001_0002 -> 20261027_0003 -> 20261028_0004 (head)
+20260924_0001 -> 20261001_0002 -> 20261029_0003 (head)
 ```
 
 `20260924_0001_clean_first_install` creates the 25-table first-install schema.
 `20261001_0002_clear_false_email_verification` is a data-only forward migration
 that clears predecessor registration-time `users.email_verified_at` values,
 because those timestamps did not prove mailbox ownership.
-`20261027_0003_normal_billing` consolidates all four ANY-709 branch-local
-revisions into one forward migration after main's unchanged head. It adds one
+`20261029_0003_normal_billing` consolidates all ANY-709 branch-local
+operations into one forward migration after main's unchanged head. It adds one
 small current-link pointer table, nullable provider-origin provenance and unique
 `(provider_origin, product_id)` without backfilling or rewriting legacy mappings.
 It also adds optional FIO, nullable customer origin, provider-ID uniqueness,
@@ -26,23 +26,36 @@ It adds the purchase hold, scoped permanent financial identities/bindings and
 immutable financial-send evidence. It backfills operation scope from its existing
 customer and holds nonterminal purchases; ambiguous old holds/bindings fail the
 upgrade without deletion or arbitrary adoption. It adds the explicit financial
-`unverified` state. Its clean and populated test upgrades have passed, and it was
-applied as the original four-revision chain to the local development database
-under explicit owner authorization on 2026-10-27. Existing application row counts
-were preserved. Consolidation retains every upgrade/downgrade operation. The
+`unverified` state. Clean and populated test upgrades have passed. The earlier
+purchase-preparation schema was applied as the original four-revision chain to
+the local development database under explicit owner authorization on 2026-10-27;
+existing application row counts were preserved. This historical application does
+not assert application of the final `20261029_0003` revision. Consolidation
+retains every upgrade/downgrade operation. The
 owner requested consecutive numbering after the initial consolidation: an
 existing fully upgraded `20261027_0006` schema must be verified before changing
-only its revision label to `20261027_0003`; its DDL must not be replayed.
+only its revision label to the then-current `20261027_0003`; its DDL must not be replayed.
 This local transition completed under explicit owner authorization after an exact
 schema comparison and protected backup; all rows in 27 application tables were
 preserved and normal `upgrade head` passed afterward.
-Retired intermediate revisions must first reach `20261027_0006` using the old checkout;
-see the [migration runbook](../engineering/ANY-709-billing-runbook.md#consolidated-any-709-migration).
-`20261028_0004_financial_recovery_window` adds nullable
-`billing_work_items.active_recovery_deadline_at` without rewriting existing rows.
+The final single migration also includes the former
+`20261028_0004_financial_recovery_window`: nullable
+`billing_work_items.active_recovery_deadline_at`, without rewriting existing rows.
 NULL retains the original immutable financial deadline. Only a new fenced send
 permitted by `proven_not_sent` establishes a fresh two-hour recovery window.
-The chain has one current head.
+Upgrade operations are the exact concatenation of the former `0003` and `0004`;
+downgrade executes `0004`'s inverse before `0003`'s inverse.
+
+Both old `20261027_0003` and `20261028_0004` are retired revision IDs; normal
+`upgrade head` rejects them without replaying DDL or silently skipping changes.
+The former `0003` may lack the active-window column. Such databases must first
+finish the old chain at `20261028_0004` using checkout `afb46c5`, then verify the
+complete schema, retain a protected backup and change only the revision label
+to the new `20261029_0003`. An old `0004` database needs the same verified label
+transition, with no DDL replay or row rewrite. Retired earlier revisions must
+follow their original upgrade path first; see the
+[migration runbook](../engineering/ANY-709-billing-runbook.md#consolidated-any-709-migration).
+No automatic compatibility stamp is performed. The chain has one current head.
 This document is authoritative for the implemented SQLAlchemy
 table inventory and physical persistence rules; the generated column-level
 artifact remains `docs/generated/db-schema.md`.
@@ -66,7 +79,9 @@ invalidation delivery remain future work.
 
 A fresh database has exactly 27 application tables: ten retained
 identity/session/legal tables, fifteen original external-billing persistence
-tables, one current product-link pointer and one purchase mutex. Alembic has four revisions in one linear chain and one current head; the last two revisions belong to ANY-709.
+tables, one current product-link pointer and one purchase mutex. Alembic has
+three revisions in one linear chain and one current head; only the last revision
+belongs to ANY-709.
 
 There is no Portal-owned product, plan, order, payment, refund, subscription,
 entitlement, trial, provider-account, or direct-payment webhook table. There is

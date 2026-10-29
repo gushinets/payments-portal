@@ -5,6 +5,59 @@ Completed: 2026-10-27
 Program: ANY-504, Step 7
 Issue: [ANY-709](https://linear.app/paveldik/issue/ANY-709)
 
+## Single branch migration, 2026-10-29
+
+Owner request: keep one ANY-709 migration after main's unchanged
+`20261001_0002`, without losing schema operations or retained data.
+
+- [x] Fold old `20261027_0003` and `20261028_0004` into one
+  `20261029_0003`, retaining exact upgrade and reverse downgrade order.
+- [x] Update chain assertions, populated recovery tests and current docs.
+- [x] Compare the saved pre-consolidation chain with the single migration:
+  operation AST, PostgreSQL schema objects, populated rows and rollback behavior.
+- [x] Verify the retired-head transition without replaying DDL; record results
+  and the supported canonical checks.
+
+Local application DB revision/schema audit was unavailable (`OperationalError`);
+no application database was started or modified. All migration exercises use
+disposable PostgreSQL databases. Previously applied branch revisions require the
+explicit, verified transition in the runbook; no runtime auto-stamp is added.
+The final revision has a new date/ID so old `0003` cannot silently skip the
+active-window column. Both retired IDs are refused until the verified transition.
+The preliminary check using the old ID was stopped before the final validation;
+all final migration checks run with `20261029_0003`.
+
+Focused evidence:
+
+- The saved `afb46c5` migration files were compared structurally: new upgrade
+  AST equals old `0003` plus old `0004`, and new downgrade AST equals old `0004`
+  plus old `0003`. Every original statement and its ordering are retained.
+- `KERNEL_MOCK_ENABLED=0 KERNEL_BASE_URL= KERNEL_SERVICE_TOKEN= TEST_POSTGRES_DATABASE_URL=postgresql+psycopg://review:isolated-test@127.0.0.1:55440/any709_squash_focused_tests .venv/bin/python -m pytest -p no:cacheprovider apps/api/tests/test_alembic_postgres.py apps/api/tests/test_any709_migration_postgres.py apps/api/tests/test_any709_recovery_migration_postgres.py -q`:
+  22 passed on final revision `20261029_0003`, including explicit refusal of both
+  retired revision IDs; log `/tmp/any709-squash-focused.log`.
+- A separate comparison against the saved original chain exercised old `0003`
+  and old `0004`, populated financial operations/work (including a non-NULL
+  active window), old-chain completion, guarded version-only transition and
+  new `upgrade head` as a no-op. All rows of 27 application tables were identical
+  across the transition. Fresh old/new schema signatures matched every column,
+  144 constraints, 180 indexes, nine functions, nine triggers and sequences.
+  Both cases passed; log `/tmp/any709-squash-equivalence.log`. The first isolated
+  comparison run failed Settings validation for an empty test password; using
+  an explicit synthetic test password resolved the diagnostic setup issue.
+
+Final canonical verification:
+
+- `PATH="$PWD/.venv/bin:$PATH" KERNEL_MOCK_ENABLED=0 KERNEL_BASE_URL= KERNEL_SERVICE_TOKEN= APP_PUBLIC_BASE_URL=https://payments.example.test TEST_POSTGRES_DATABASE_URL=postgresql+psycopg://review:isolated-test@127.0.0.1:55440/any709_squash_canonical_tests npm run check`:
+  PASS on the final revision: documentation, generation freshness, architecture,
+  Ruff, 38 web boundary checks, 378 component tests, web lint/build, 1,450 fast
+  API tests and all 324 PostgreSQL tests. Log: `/tmp/any709-squash-check.log`.
+- Exactly one migration file differs from main's migration inventory:
+  `20261029_0003_normal_billing.py`; both main migrations are byte-for-byte
+  unchanged. The graph has three revisions and one head.
+- Browser E2E was skipped (`RUN_E2E` unset, no harness stack). No web or runtime
+  billing behavior changed. The application database remains untouched; its
+  unavailable audit is not counted as an applied revision-label transition.
+
 ## Final local review remediation, 2026-10-28
 
 Owner-authorized scope: P1-1, ARCH-1 and DOD-1 on `f5aacab`.
