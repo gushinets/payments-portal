@@ -229,7 +229,14 @@ def spread_seconds(identity: UUID, interval: int) -> float:
     return interval * (0.8 + 0.2 * fraction)
 
 
-def schedule_reconciliation(db: Session, sub: ExternalSubscription, claim: WorkClaim | None, *, complete: bool) -> None:
+def schedule_reconciliation(
+    db: Session,
+    sub: ExternalSubscription,
+    claim: WorkClaim | None,
+    *,
+    complete: bool,
+    attempt_started_at: datetime | None = None,
+) -> None:
     now = as_utc(billing_reconciliation.database_now(db))
     urgent = (
         not complete
@@ -244,6 +251,25 @@ def schedule_reconciliation(db: Session, sub: ExternalSubscription, claim: WorkC
         due = max(now + timedelta(seconds=1), claim.started_at + timedelta(seconds=spread_seconds(claim.id, interval)))
         finish(db, row, claim, due=due, error=None if complete else "source_incomplete")
         row.priority = int(urgent or row.enqueue_generation != claim.generation)
+    else:
+        # CLI/source applies have no queue claim. Coalesce urgent follow-up
+        # without clearing a running owner's lease or its newer generation.
+        # A complete normal read must not downgrade an unconsumed urgent hint.
+        coalesce(
+            db,
+            kind=RECONCILIATION,
+            key=key(sub),
+            scope_kind="subscription",
+            reference=str(sub.subscription_id),
+            due=max(
+                now + timedelta(seconds=1),
+                (attempt_started_at or now)
+                + timedelta(seconds=spread_seconds(sub.subscription_id, URGENT_SECONDS if urgent else NORMAL_SECONDS)),
+            ),
+            priority=int(urgent),
+            payload={},
+            hint=urgent,
+        )
     # Renewed trust and its deterministic deadline are committed together.
     if (
         sub.latest_observation_id is not None

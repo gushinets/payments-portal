@@ -47,7 +47,6 @@ async def reconcile_subscription(
     try:
         async with _budget(admission, budget) as active_budget:
             proof = await read_subscription_proof(client, subject, configuration, budget=active_budget)
-            active_budget.check()
     except PreflightDeadlineExceeded:
         # Record a failed attempt, never apply facts returned after its budget.
         # Preflight retains any unfinished HTTP/cleanup resource ownership.
@@ -73,5 +72,7 @@ async def _budget(admission: PreflightAdmission, supplied: PreflightBudget | Non
         supplied.check()
         yield supplied
     else:
-        async with admission.operation() as budget:
+        # Each source read checks this budget. Keep normalization of timely
+        # negative facts outside a scope timeout that would discard them.
+        async with admission.operation(bound_scope=False) as budget:
             yield budget
