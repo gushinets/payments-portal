@@ -225,7 +225,7 @@ class PreflightAdmission:
             waiter.set_result(None)
 
     @asynccontextmanager
-    async def operation(self) -> AsyncIterator[PreflightBudget]:
+    async def operation(self, *, bound_scope: bool = True) -> AsyncIterator[PreflightBudget]:
         loop = asyncio.get_running_loop()
         if self.closed:
             raise PreflightClosed()
@@ -249,12 +249,18 @@ class PreflightAdmission:
             budget.check()
             # Also bound waits between reads. Sync normalization must check the
             # same budget before/after; bounded payloads limit its input size.
-            try:
-                async with asyncio.timeout(budget.remaining_seconds()):
-                    yield budget
-                    budget.check()
-            except TimeoutError:
-                raise PreflightDeadlineExceeded() from None
+            if bound_scope:
+                try:
+                    async with asyncio.timeout(budget.remaining_seconds()):
+                        yield budget
+                        budget.check()
+                except TimeoutError:
+                    raise PreflightDeadlineExceeded() from None
+            else:
+                # Worker source calls still use run()/check() on this absolute
+                # budget. Short fenced DB units finish outside the I/O timeout;
+                # their resource ownership and finite leases remain separate.
+                yield budget
         finally:
             if waiter is not None:
                 entry = (waiter, budget)

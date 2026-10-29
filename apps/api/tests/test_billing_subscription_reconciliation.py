@@ -300,3 +300,39 @@ def test_billing_subscription_reconciliation_unsupported_policy(field: str, valu
         subscription=subscription_factory(),
     )
     assert evidence.commercial == CommercialProof.MISMATCH
+
+
+@pytest.mark.parametrize(
+    "start,cycle_start,cycle_end,end,complete",
+    [
+        ("2026-10-01 12:00:00", "2026-10-01 00:00:00", "2026-11-01 00:00:00", "2026-11-01 00:00:00", False),
+        ("2026-10-01 00:00:00", "2026-10-01 00:00:00", "2026-11-01 12:00:00", "2026-11-01 00:00:00", False),
+        ("2026-10-01 12:00:00", "2026-10-01 12:00:00", "2026-10-01 14:00:00", "2026-10-01 14:00:00", True),
+        ("2026-10-01", "2026-10-01 12:00:00", "2026-11-01 00:00:00", "2026-11-02", False),
+        ("2026-09-30", "2026-10-01 12:00:00", "2026-11-01 00:00:00", "2026-11-02", True),
+        ("2026-10-01", "2026-10-01", "2026-11-01", "2026-11-01", True),
+    ],
+)
+def test_billing_subscription_reconciliation_preserves_calendar_precision(
+    start: str, cycle_start: str, cycle_end: str, end: str, complete: bool
+) -> None:
+    subject = subject_factory()
+    raw = subscription_factory().model_dump()
+    raw.update(
+        subscription_instance_start_date=start,
+        subscription_instance_end_date=end,
+        last_tariffication_period_start=cycle_start,
+        last_tariffication_period_end=cycle_end,
+    )
+    proof = normalize_subscription(
+        subject,
+        step1_settings(),
+        user=user_factory(),
+        agreement=agreement_factory(),
+        tariff=tariff_factory(subject),
+        subscription=Subscription.model_validate(raw),
+    )
+    assert proof.calendar_complete is complete and proof.complete is complete
+    assert (proof.financial == "allowed") is complete
+    assert proof.calendar["subscription_instance_start_date"] == start
+    assert proof.calendar["last_tariffication_period_end"] == cycle_end

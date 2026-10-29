@@ -34,13 +34,23 @@ CALENDAR_FIELDS = (
 EMPTY_CALENDAR = {None, "", "0000-00-00", "0000-00-00 00:00:00", "1970-01-01", "1970-01-01 00:00:00"}
 
 
+def _calendar_ordered(left: date | datetime, right: date | datetime, *, strict: bool = False) -> bool:
+    if type(left) is type(right):
+        return left < right if strict else left <= right
+    left_day = left.date() if isinstance(left, datetime) else left
+    right_day = right.date() if isinstance(right, datetime) else right
+    # A date carries no time. Different days prove order without inventing a
+    # timezone or midnight; a shared day at mixed precision proves neither.
+    return left_day < right_day
+
+
 def _calendar_complete(calendar: dict[str, str | None]) -> bool:
     """Calendar evidence only: no UTC conversion, settlement or cycle identity."""
-    parsed: dict[str, date] = {}
+    parsed: dict[str, date | datetime] = {}
     try:
         for key, value in calendar.items():
             if value not in EMPTY_CALENDAR:
-                parsed[key] = datetime.fromisoformat(value).date()
+                parsed[key] = date.fromisoformat(value) if len(value) == 10 else datetime.fromisoformat(value)
     except ValueError:
         return False
     for prefix in ("subscription", "subscription_instance", "last_tariffication_period"):
@@ -49,13 +59,13 @@ def _calendar_complete(calendar: dict[str, str | None]) -> bool:
             start, end = parsed.get(prefix + "_start"), parsed.get(prefix + "_end")
             if start is None or end is None:
                 return False
-        if start is not None and end is not None and start >= end:
+        if start is not None and end is not None and not _calendar_ordered(start, end, strict=True):
             return False
     cycle_start = parsed["last_tariffication_period_start"]
     cycle_end = parsed["last_tariffication_period_end"]
     for prefix in ("subscription", "subscription_instance"):
         start, end = parsed.get(prefix + "_start_date"), parsed.get(prefix + "_end_date")
-        if (start and cycle_start < start) or (end and cycle_end > end):
+        if (start and not _calendar_ordered(start, cycle_start)) or (end and not _calendar_ordered(cycle_end, end)):
             return False
     return True
 

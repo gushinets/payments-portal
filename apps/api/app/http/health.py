@@ -77,7 +77,7 @@ def billing_health(request: Request) -> BillingHealthResponse:
     return BillingHealthResponse(
         status="stopping" if worker.stopping else "running" if worker.healthy else "degraded",
         active_slots=sum(admission.active_count for admission in worker.admissions.values()),
-        cleanup_pending=sum(admission.cleanup_pending_count for admission in worker.admissions.values()),
+        cleanup_pending=worker.cleanup_pending,
         pending_work=worker.pending,
         invalid_work=worker.invalid,
         failures=worker.failures,

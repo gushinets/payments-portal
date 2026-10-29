@@ -51,7 +51,11 @@ def enroll_operation(db: Session, operation: ExternalCreateOperation, account: s
         key=f"{account}:{operation.create_operation_id}",
         scope_kind="create_operation",
         reference=str(operation.create_operation_id),
-        due=as_utc(operation.unknown_recovery_deadline_at),
+        due=as_utc(
+            operation.unknown_recovery_deadline_at
+            if operation.operation_kind == Kind.CUSTOMER
+            else purchases.financial_recovery_deadline(operation, recovery)
+        ),
         priority=1,
         payload={"unknown_since": as_utc(operation.unknown_since).isoformat(), "send_fence": str(operation.send_fence)},
         replace_deadline=True,
@@ -263,7 +267,12 @@ def apply_deadline(factory: SessionFactory, claim: WorkClaim) -> None:
             )
         row = work.verify_claim(db, claim)
         now = as_utc(billing_reconciliation.database_now(db))
-        deadline = as_utc(op.unknown_recovery_deadline_at) if op.unknown_recovery_deadline_at else None
+        deadline = (
+            op.unknown_recovery_deadline_at
+            if op.operation_kind == Kind.CUSTOMER
+            else purchases.financial_recovery_deadline(op, billing_customers.recovery_work(db, op.create_operation_id))
+        )
+        deadline = as_utc(deadline) if deadline else None
         due = deadline if deadline and deadline > now else None
         if due is None and deadline and op.operation_state in {State.POSSIBLE_SEND, State.UNKNOWN}:
             reason = "external_create_outcome_unknown:" + op.operation_kind.value

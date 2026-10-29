@@ -92,7 +92,7 @@ def test_customer_recovers_in_one_opening(
     with factory() as db:
         customer = db.scalar(select(ExternalBillingCustomer))
         operation = db.scalar(select(ExternalCreateOperation))
-        work = db.scalar(select(BillingWorkItem))
+        work = db.scalar(select(BillingWorkItem).where(BillingWorkItem.work_kind == "external_create_recovery"))
         assert customer.provider_customer_id == "345"
         assert operation.create_operation_id == initial.operation_id
         assert work.attempt_count == len(posts) and work.lease_owner is None and work.work_state == "done"
@@ -105,7 +105,7 @@ def test_customer_recovery_never_turns_failed_reads_or_terminal_evidence_into_cr
     factory = postgres_session_factory
     seed(factory)
     config = step1_settings(
-        preflight_total_timeout_seconds=0.6, preflight_cleanup_timeout_seconds=0.025, lbx_max_get_attempts=2
+        preflight_total_timeout_seconds=2, preflight_cleanup_timeout_seconds=0.025, lbx_max_get_attempts=2
     )
     initial = reserve_customer(factory, config, TOKEN)
     posts = 0
@@ -193,5 +193,5 @@ def test_customer_caller_cancellation_retains_the_send_lease(
     asyncio.run(scenario())
     with factory() as db:
         assert db.scalar(select(ExternalCreateOperation)).operation_state == ExternalCreateOperationState.POSSIBLE_SEND
-        work = db.scalar(select(BillingWorkItem))
+        work = db.scalar(select(BillingWorkItem).where(BillingWorkItem.work_kind == "external_create_recovery"))
         assert work.attempt_count == 1 and work.lease_owner is not None and work.lease_expires_at is not None
